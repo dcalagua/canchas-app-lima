@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
-import 'screens/home_shell.dart';
-import 'screens/login_screen.dart';
-import 'state/app_state.dart';
+import 'screens/explorar_home_screen.dart';
 import 'theme.dart';
 
 void main() => runApp(const CanchasApp());
@@ -24,21 +22,8 @@ class CanchasApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      home: const _RootGate(),
-    );
-  }
-}
-
-class _RootGate extends StatelessWidget {
-  const _RootGate();
-
-  @override
-  Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: appState,
-      builder: (context, _) {
-        return appState.sesionIniciada ? const HomeShell() : const LoginScreen();
-      },
+      // Pantalla de inicio estilo Airbnb (mapa de Google a pantalla completa).
+      home: const ExplorarHomeScreen(),
     );
   }
 }

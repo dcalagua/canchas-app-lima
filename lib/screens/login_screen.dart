@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/sample_data.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'home_shell.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -24,6 +25,14 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: verdeCancha,
+        title: const Text('Soy dueño de cancha',
+            style: TextStyle(color: verdeCancha, fontSize: 16)),
+      ),
+      extendBodyBehindAppBar: true,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -57,7 +66,12 @@ class _LoginScreenState extends State<LoginScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton(
-                    onPressed: () => appState.iniciarSesion(_ctrl.text),
+                    onPressed: () {
+                      appState.iniciarSesion(_ctrl.text);
+                      Navigator.of(context).pushReplacement(
+                        MaterialPageRoute(builder: (_) => const HomeShell()),
+                      );
+                    },
                     style: FilledButton.styleFrom(
                       backgroundColor: verdeCancha,
                       padding: const EdgeInsets.symmetric(vertical: 14),

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import 'agenda_screen.dart';
 import 'disponibilidad_screen.dart';
-import 'explorar_screen.dart';
 import 'reportes_screen.dart';
 import 'reservas_screen.dart';
 
@@ -21,7 +20,6 @@ class _HomeShellState extends State<HomeShell> {
     DisponibilidadScreen(),
     ReservasScreen(),
     ReportesScreen(),
-    ExplorarScreen(),
   ];
 
   @override
@@ -40,7 +38,6 @@ class _HomeShellState extends State<HomeShell> {
               icon: Icon(Icons.list_alt), label: 'Reservas'),
           NavigationDestination(
               icon: Icon(Icons.bar_chart), label: 'Reportes'),
-          NavigationDestination(icon: Icon(Icons.map), label: 'Explorar'),
         ],
       ),
     );
