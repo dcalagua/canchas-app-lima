@@ -1,17 +1,32 @@
-# Gradle / Android
-.gradle/
+# Carpetas de plataforma: se regeneran en CI con `flutter create` + tool/configure_platforms.py
+/android/
+/ios/
+/linux/
+/macos/
+/windows/
+/web/
+
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
 build/
-app/build/
-local.properties
+.pub-cache/
+.pub/
+pubspec.lock
+
+# Artefactos
 *.apk
 *.aab
-*.keystore
-*.jks
+*.ipa
 
 # IDE
 .idea/
+.vscode/
 *.iml
 .DS_Store
-captures/
-.externalNativeBuild/
-.cxx/
+
+# Python
+__pycache__/
+*.pyc
