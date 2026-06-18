@@ -59,11 +59,17 @@ jobs:
           path: dist/*.apk
           if-no-files-found: error
 
-      - name: Publicar en Release (solo en tags v*)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Publicar APK en Release (v0.1.0)
+        if: github.ref == 'refs/heads/claude/apk-google-maps-setup-fvpl9w' || startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v0.1.0
+          name: Canchas Lima v0.1.0
+          body: |
+            APK de la app **Canchas Lima** (Panel del Club — Fase 1), compilado por CI.
+            Instálalo en Android por sideload. El mapa requiere el secret `MAPS_API_KEY`.
           files: dist/*.apk
+          fail_on_unmatched_files: true
 
   ios:
     name: iOS (compilación, sin firma)
