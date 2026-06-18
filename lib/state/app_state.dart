@@ -16,6 +16,36 @@ class AppState extends ChangeNotifier {
   final List<BloqueHorario> agenda = List.of(SampleData.agendaHoy());
 
   int _contadorDemo = 1;
+  int _contadorJugador = 1;
+
+  /// Registra una reserva hecha por un jugador desde el detalle de cancha.
+  /// Aparece como reserva nueva (traída por la app) y, si la cancha es del club
+  /// activo, también ocupa el bloque en su agenda.
+  Reserva agregarReservaJugador(Cancha cancha, String dia, String hora) {
+    final reserva = Reserva(
+      id: 'jug${_contadorJugador++}',
+      canchaId: cancha.id,
+      jugador: 'Tú (jugador)',
+      nivel: 'Intermedio 3.5',
+      dia: dia,
+      horaInicio: hora,
+      horaFin: _siguienteHora(hora),
+      estado: EstadoReserva.confirmada,
+      traidaPorApp: true,
+      precio: cancha.precioHora,
+      sena: (cancha.precioHora * 0.3).round(),
+    );
+    reservas.insert(0, reserva);
+    if (dia == 'Hoy') {
+      final i = agenda.indexWhere(
+          (b) => b.canchaId == cancha.id && b.hora == hora);
+      if (i >= 0) agenda[i] = agenda[i].copyWith(reservaId: reserva.id);
+    }
+    notifyListeners();
+    return reserva;
+  }
+
+  String siguienteHora(String hora) => _siguienteHora(hora);
 
   void iniciarSesion(String club) {
     nombreClub = club.trim().isEmpty ? SampleData.clubActivo : club.trim();

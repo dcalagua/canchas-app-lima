@@ -7,6 +7,7 @@ import '../data/sample_data.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'cancha_detalle_screen.dart';
 import 'login_screen.dart';
 import 'home_shell.dart';
 
@@ -147,6 +148,12 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     _rebuildMarkers();
   }
 
+  void _abrirDetalle(Cancha cancha) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => CanchaDetalleScreen(cancha: cancha)),
+    );
+  }
+
   void _abrirPanel() {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -202,8 +209,10 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                   controller: _pageController,
                   itemCount: canchas.length,
                   onPageChanged: _onPage,
-                  itemBuilder: (context, i) =>
-                      _CanchaCard(cancha: canchas[i], onTap: () {}),
+                  itemBuilder: (context, i) => _CanchaCard(
+                    cancha: canchas[i],
+                    onTap: () => _abrirDetalle(canchas[i]),
+                  ),
                 ),
               ),
             ),
@@ -347,7 +356,10 @@ class _CanchaCard extends StatelessWidget {
         elevation: 6,
         borderRadius: BorderRadius.circular(18),
         color: Colors.white,
-        child: Padding(
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(18),
+          child: Padding(
           padding: const EdgeInsets.all(10),
           child: Row(
             children: [
@@ -459,6 +471,7 @@ class _CanchaCard extends StatelessWidget {
               ),
             ],
           ),
+        ),
         ),
       ),
     );

@@ -1,0 +1,401 @@
+import 'package:flutter/material.dart';
+
+import '../models/models.dart';
+import '../state/app_state.dart';
+import '../theme.dart';
+
+/// Detalle de una cancha (estilo ficha de Airbnb) con selección de día/hora y
+/// flujo de reserva. Demo sin backend: la reserva se guarda en memoria.
+class CanchaDetalleScreen extends StatefulWidget {
+  final Cancha cancha;
+  const CanchaDetalleScreen({super.key, required this.cancha});
+
+  @override
+  State<CanchaDetalleScreen> createState() => _CanchaDetalleScreenState();
+}
+
+class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
+  static const _horas = [
+    '07:00', '08:00', '09:00', '10:00', '11:00',
+    '16:00', '17:00', '18:00', '19:00', '20:00',
+  ];
+
+  String _dia = 'Hoy';
+  String? _hora;
+
+  Cancha get cancha => widget.cancha;
+  Color get _color =>
+      cancha.deporte == Deporte.padel ? azulPadel : verdeCancha;
+
+  bool _ocupada(String hora) {
+    return appState.reservas.any((r) =>
+        r.canchaId == cancha.id && r.dia == _dia && r.horaInicio == hora);
+  }
+
+  void _reservar() {
+    final hora = _hora;
+    if (hora == null) return;
+    final sena = (cancha.precioHora * 0.3).round();
+
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmar reserva'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('${cancha.nombre} · ${cancha.club}'),
+            const SizedBox(height: 8),
+            Text('$_dia a las $hora'),
+            const SizedBox(height: 8),
+            Text('Precio: S/ ${cancha.precioHora}'),
+            Text('Seña con tarjeta: S/ $sena',
+                style: const TextStyle(color: arena, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            const Text(
+              'La seña reduce los plantones y se descuenta del total.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: verdeCancha),
+            onPressed: () {
+              final messenger = ScaffoldMessenger.of(context);
+              final nav = Navigator.of(context);
+              appState.agregarReservaJugador(cancha, _dia, hora);
+              Navigator.of(ctx).pop(); // cierra diálogo
+              nav.pop(); // vuelve al mapa
+              messenger.showSnackBar(
+                SnackBar(
+                  backgroundColor: verdeCancha,
+                  content: Text(
+                      '✅ Reserva confirmada en ${cancha.nombre} · $_dia $hora'),
+                ),
+              );
+            },
+            child: const Text('Reservar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: CustomScrollView(
+        slivers: [
+          SliverAppBar(
+            expandedHeight: 220,
+            pinned: true,
+            backgroundColor: _color,
+            foregroundColor: Colors.white,
+            flexibleSpace: FlexibleSpaceBar(
+              title: Text(
+                cancha.nombre,
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+              background: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [_color, _color.withOpacity(0.6)],
+                  ),
+                ),
+                child: Stack(
+                  children: [
+                    Center(
+                      child: Icon(
+                        cancha.deporte == Deporte.padel
+                            ? Icons.sports_handball
+                            : Icons.sports_tennis,
+                        size: 90,
+                        color: Colors.white.withOpacity(0.85),
+                      ),
+                    ),
+                    if (cancha.clubFundador)
+                      const Positioned(
+                        top: 70,
+                        right: 16,
+                        child: _Badge('★ Club Fundador'),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      _Pill(cancha.deporte.etiqueta, _color),
+                      const SizedBox(width: 8),
+                      _Pill(cancha.distrito.etiqueta, Colors.black54),
+                      const Spacer(),
+                      Text(
+                        'S/ ${cancha.precioHora}',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 22,
+                            color: verdeCancha),
+                      ),
+                      const Text(' /hora',
+                          style: TextStyle(color: Colors.grey)),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    cancha.club,
+                    style: const TextStyle(color: Colors.grey, fontSize: 14),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Cancha de ${cancha.deporte.etiqueta.toLowerCase()} en ${cancha.distrito.etiqueta}. '
+                    'Reserva tu hora y juega con quien quieras, a tu nivel. '
+                    'Pagas una seña con tarjeta para asegurar tu cancha.',
+                    style: const TextStyle(height: 1.4),
+                  ),
+                  const SizedBox(height: 24),
+                  const Text('Elige el día',
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 16)),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      _DiaChip('Hoy', _dia == 'Hoy',
+                          () => setState(() {
+                                _dia = 'Hoy';
+                                _hora = null;
+                              })),
+                      const SizedBox(width: 10),
+                      _DiaChip('Mañana', _dia == 'Mañana',
+                          () => setState(() {
+                                _dia = 'Mañana';
+                                _hora = null;
+                              })),
+                    ],
+                  ),
+                  const SizedBox(height: 22),
+                  const Text('Elige la hora',
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 16)),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Las mañanas suelen estar más libres.',
+                    style: TextStyle(color: Colors.grey, fontSize: 12),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      for (final h in _horas)
+                        _HoraChip(
+                          hora: h,
+                          ocupada: _ocupada(h),
+                          seleccionada: _hora == h,
+                          onTap: () => setState(() => _hora = h),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 100),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+      bottomSheet: _BarraReserva(
+        habilitado: _hora != null,
+        textoHora: _hora,
+        dia: _dia,
+        onReservar: _reservar,
+      ),
+    );
+  }
+}
+
+class _BarraReserva extends StatelessWidget {
+  final bool habilitado;
+  final String? textoHora;
+  final String dia;
+  final VoidCallback onReservar;
+  const _BarraReserva({
+    required this.habilitado,
+    required this.textoHora,
+    required this.dia,
+    required this.onReservar,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8)],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              habilitado
+                  ? 'Reservar $dia · $textoHora'
+                  : 'Elige una hora disponible',
+              style: TextStyle(
+                color: habilitado ? Colors.black87 : Colors.grey,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: verdeCancha,
+              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+            ),
+            onPressed: habilitado ? onReservar : null,
+            child: const Text('Reservar'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DiaChip extends StatelessWidget {
+  final String texto;
+  final bool activo;
+  final VoidCallback onTap;
+  const _DiaChip(this.texto, this.activo, this.onTap);
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+        decoration: BoxDecoration(
+          color: activo ? verdeCancha : Colors.white,
+          borderRadius: BorderRadius.circular(30),
+          border: Border.all(color: verdeCancha),
+        ),
+        child: Text(
+          texto,
+          style: TextStyle(
+            color: activo ? Colors.white : verdeCancha,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HoraChip extends StatelessWidget {
+  final String hora;
+  final bool ocupada;
+  final bool seleccionada;
+  final VoidCallback onTap;
+  const _HoraChip({
+    required this.hora,
+    required this.ocupada,
+    required this.seleccionada,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (ocupada) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEDEDED),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(
+          hora,
+          style: const TextStyle(
+            color: Colors.grey,
+            decoration: TextDecoration.lineThrough,
+          ),
+        ),
+      );
+    }
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+        decoration: BoxDecoration(
+          color: seleccionada ? verdeCancha : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+              color: seleccionada ? verdeCancha : const Color(0xFFCDD8D1)),
+        ),
+        child: Text(
+          hora,
+          style: TextStyle(
+            color: seleccionada ? Colors.white : Colors.black87,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Pill extends StatelessWidget {
+  final String texto;
+  final Color color;
+  const _Pill(this.texto, this.color);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        texto,
+        style: const TextStyle(
+            color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+}
+
+class _Badge extends StatelessWidget {
+  final String texto;
+  const _Badge(this.texto);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: arena,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        texto,
+        style: const TextStyle(
+            color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+}
