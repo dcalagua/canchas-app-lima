@@ -8,6 +8,8 @@ import '../data/sample_data.dart';
 import '../models/models.dart';
 import '../models/usuario.dart';
 import '../services/auth_service.dart';
+import '../services/places_service.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 /// Instancia única del estado para toda la app (sin paquetes extra de DI).
 final AppState appState = AppState();
@@ -27,10 +29,15 @@ class AppState extends ChangeNotifier {
   final List<Reserva> misReservas = []; // reservas del jugador logueado
   final List<Cancha> canchasExtra = []; // canchas registradas en este dispositivo
   final List<Cancha> canchasRemotas = []; // canchas traídas de Supabase
+  final List<Cancha> canchasDescubiertas = []; // reales de Google Places (sin registrar)
 
-  /// Todas las canchas (semilla + remotas + locales), sin duplicar por id.
+  /// Todas las canchas (descubiertas + semilla + remotas + locales), sin duplicar
+  /// por id. Las registradas se ponen después para que ganen ante una colisión.
   List<Cancha> todasLasCanchas() {
     final map = <String, Cancha>{};
+    for (final c in canchasDescubiertas) {
+      map[c.id] = c;
+    }
     for (final c in SampleData.canchas) {
       map[c.id] = c;
     }
@@ -41,6 +48,18 @@ class AppState extends ChangeNotifier {
       map[c.id] = c;
     }
     return map.values.toList();
+  }
+
+  /// Descubre canchas REALES cerca de [centro] con Google Places y las suma al
+  /// mapa como "sin registrar". Fail-safe: si Places no responde, no cambia nada.
+  Future<void> descubrirCanchasCerca(LatLng centro) async {
+    final reales = await PlacesService.canchasCerca(centro);
+    if (reales.isEmpty) return;
+    final existentes = canchasDescubiertas.map((c) => c.id).toSet();
+    final nuevas = reales.where((c) => !existentes.contains(c.id)).toList();
+    if (nuevas.isEmpty) return;
+    canchasDescubiertas.addAll(nuevas);
+    notifyListeners();
   }
 
   /// Trae las canchas compartidas desde Supabase (si está disponible).

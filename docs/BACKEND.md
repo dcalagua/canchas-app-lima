@@ -98,6 +98,20 @@ escritura del club solo por su `owner`; reservas escritas por el jugador dueño.
 3. Auth con Supabase + Google; los datos pasan a ser **compartidos entre celulares**.
 4. Migración por capas: primero canchas y reservas; luego saldo/pagos.
 
+## Migración — columnas `direccion` y `registrada` (correr en SQL Editor)
+La tabla en uso por la app es **`pichangol_canchas`**. Para que se compartan la
+dirección escrita y el estado "registrada/descubierta", agrega dos columnas:
+
+```sql
+alter table pichangol_canchas
+  add column if not exists direccion text,
+  add column if not exists registrada boolean not null default true;
+```
+
+> Si no corres esto, la app sigue funcionando: las canchas nuevas se ven en tu
+> celular, pero el alta a Supabase podría fallar en silencio hasta que existan
+> las columnas. Por eso conviene aplicarlo.
+
 ## Escalabilidad a futuro
 - Edge Functions para webhooks de la pasarela (Culqi/Yape) y para el
   matchmaking por nivel.

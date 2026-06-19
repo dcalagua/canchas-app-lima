@@ -12,6 +12,34 @@ Para producción se reemplaza por un modelo real **sin cambiar la interfaz**:
   más preciso, clasifica "cancha de pádel/tenis/fútbol" e incluso estado del
   grass, número de canchas, techada/abierta.
 
+## Lo implementado: descubrimiento de canchas reales (Google Places)
+Al abrir la app (o al buscar una zona) Pichangol consulta la **Places API (New)**
+de Google y trae las **canchas reales que existen alrededor** —las mismas que
+ves en Google Maps— aunque todavía no estén dadas de alta en Pichangol
+(`lib/services/places_service.dart`). Se muestran en el mapa con un pin "Ver" y
+la etiqueta **"En Google / Reclama tu cancha"**. Es, además, una palanca de
+crecimiento: el dueño ve su cancha ya en el mapa y la reclama para recibir
+reservas.
+
+**Requisito de configuración (una sola vez):**
+1. En Google Cloud Console → APIs y servicios → habilitar **Places API (New)**
+   en el mismo proyecto de la `MAPS_API_KEY`.
+2. La key debe poder usarse como *web service*: si la restringes a apps Android,
+   estas llamadas se rechazan. Para producción, lo ideal es una **key aparte**
+   solo para Places (restringida por API, sin restricción de app) o, mejor aún,
+   **proxyar la llamada por una Edge Function de Supabase** para no exponer la
+   key en el cliente.
+
+> Si la Places API no está habilitada, la app no falla: simplemente no aparecen
+> las canchas descubiertas y sigue funcionando con las registradas.
+
+### Registrar una cancha por dirección (geocoding)
+Registrar una cancha ya **no depende de una lista de distritos**: el dueño
+escribe la dirección, la app la **geocodifica** y coloca el pin en el mapa
+(arrastrable para ajustar), igual que en eSupplier. Un mismo local puede tener
+**varias canchas de distintos deportes** (selección múltiple): se crea una
+cancha por deporte en el mismo punto.
+
 ## Otros usos de IA recomendados (alto impacto)
 1. **Matchmaking por nivel** (el diferencial del plan): IA que arma partidos
    juntando jugadores de nivel parecido y sugiere "te falta 1 para tu pichanga".

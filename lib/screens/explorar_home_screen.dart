@@ -90,6 +90,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     if (_pageController.hasClients) _pageController.jumpToPage(0);
     _controller?.animateCamera(CameraUpdate.newLatLngZoom(pos, 13.5));
     _rebuildMarkers();
+    appState.descubrirCanchasCerca(pos); // canchas reales (Google Places)
   }
 
   @override
@@ -106,7 +107,8 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     for (var i = 0; i < list.length; i++) {
       final c = list[i];
       final sel = i == _selected;
-      final icon = await _pinPrecio('S/ ${c.precioHora}', seleccionado: sel);
+      final etiqueta = c.registrada ? 'S/ ${c.precioHora}' : 'Ver';
+      final icon = await _pinPrecio(etiqueta, seleccionado: sel);
       markers.add(
         Marker(
           markerId: MarkerId(c.id),
@@ -225,6 +227,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     if (_pageController.hasClients) _pageController.jumpToPage(0);
     _controller?.animateCamera(CameraUpdate.newLatLngZoom(res.centro, 13.5));
     _rebuildMarkers();
+    appState.descubrirCanchasCerca(res.centro); // canchas reales cerca de la zona
   }
 
   void _limpiarBusqueda() {
@@ -582,7 +585,27 @@ class _CanchaCard extends StatelessWidget {
                         size: 44,
                       ),
                     ),
-                    if (destacado)
+                    if (!cancha.registrada)
+                      Positioned(
+                        top: 8,
+                        left: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.black54,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Text(
+                            '◎ En Google',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      )
+                    else if (destacado)
                       Positioned(
                         top: 8,
                         left: 8,
@@ -640,7 +663,8 @@ class _CanchaCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '${cancha.club} · ${cancha.distrito.etiqueta}',
+                      cancha.direccion ??
+                          '${cancha.club} · ${cancha.distrito.etiqueta}',
                       style: const TextStyle(color: Colors.grey, fontSize: 12),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -664,22 +688,31 @@ class _CanchaCard extends StatelessWidget {
                           ),
                         ),
                         const Spacer(),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.baseline,
-                          textBaseline: TextBaseline.alphabetic,
-                          children: [
-                            Text(
-                              'S/ ${cancha.precioHora}',
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                  color: verdeCancha),
-                            ),
-                            const Text(' /h',
-                                style: TextStyle(
-                                    color: Colors.grey, fontSize: 12)),
-                          ],
-                        ),
+                        if (cancha.registrada)
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.baseline,
+                            textBaseline: TextBaseline.alphabetic,
+                            children: [
+                              Text(
+                                'S/ ${cancha.precioHora}',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                    color: verdeCancha),
+                              ),
+                              const Text(' /h',
+                                  style: TextStyle(
+                                      color: Colors.grey, fontSize: 12)),
+                            ],
+                          )
+                        else
+                          const Text(
+                            'Reclama tu cancha',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12,
+                                color: coral),
+                          ),
                       ],
                     ),
                   ],

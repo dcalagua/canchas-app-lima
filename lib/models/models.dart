@@ -30,6 +30,8 @@ class Cancha {
   final LatLng ubicacion;
   final bool clubFundador; // sello "Club Fundador" de su distrito
   final bool digitalizada; // false = aún en cuaderno/WhatsApp (objetivo prioritario)
+  final String? direccion; // dirección real (texto), si se registró por dirección
+  final bool registrada; // false = descubierta (Google Places), aún no en Pichangol
 
   const Cancha({
     required this.id,
@@ -41,6 +43,8 @@ class Cancha {
     required this.ubicacion,
     required this.clubFundador,
     required this.digitalizada,
+    this.direccion,
+    this.registrada = true,
   });
 
   Map<String, dynamic> toJson() => {
@@ -54,6 +58,8 @@ class Cancha {
         'lng': ubicacion.longitude,
         'clubFundador': clubFundador,
         'digitalizada': digitalizada,
+        'direccion': direccion,
+        'registrada': registrada,
       };
 
   factory Cancha.fromJson(Map<String, dynamic> j) => Cancha(
@@ -67,6 +73,8 @@ class Cancha {
             (j['lat'] as num).toDouble(), (j['lng'] as num).toDouble()),
         clubFundador: j['clubFundador'] as bool,
         digitalizada: j['digitalizada'] as bool,
+        direccion: j['direccion'] as String?,
+        registrada: (j['registrada'] ?? true) as bool,
       );
 }
 

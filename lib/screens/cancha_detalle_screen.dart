@@ -6,6 +6,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import 'login_google_sheet.dart';
 import 'pago_sheet.dart';
+import 'registrar_cancha_screen.dart';
 
 /// Detalle de una cancha (estilo ficha de Airbnb) con selección de día/hora y
 /// flujo de reserva. Demo sin backend: la reserva se guarda en memoria.
@@ -159,72 +160,78 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
                       const SizedBox(width: 8),
                       _Pill(cancha.distrito.etiqueta, Colors.black54),
                       const Spacer(),
-                      Text(
-                        'S/ ${cancha.precioHora}',
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 22,
-                            color: verdeCancha),
-                      ),
-                      const Text(' /hora',
-                          style: TextStyle(color: Colors.grey)),
+                      if (cancha.registrada) ...[
+                        Text(
+                          'S/ ${cancha.precioHora}',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 22,
+                              color: verdeCancha),
+                        ),
+                        const Text(' /hora',
+                            style: TextStyle(color: Colors.grey)),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    cancha.club,
+                    cancha.direccion ?? cancha.club,
                     style: const TextStyle(color: Colors.grey, fontSize: 14),
                   ),
                   const SizedBox(height: 16),
-                  Text(
-                    'Cancha de ${cancha.deporte.etiqueta.toLowerCase()} en ${cancha.distrito.etiqueta}. '
-                    'Reserva tu hora y juega con quien quieras, a tu nivel. '
-                    'Pagas una seña con tarjeta para asegurar tu cancha.',
-                    style: const TextStyle(height: 1.4),
-                  ),
-                  const SizedBox(height: 24),
-                  const Text('Elige el día',
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 16)),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      _DiaChip('Hoy', _dia == 'Hoy',
-                          () => setState(() {
-                                _dia = 'Hoy';
-                                _hora = null;
-                              })),
-                      const SizedBox(width: 10),
-                      _DiaChip('Mañana', _dia == 'Mañana',
-                          () => setState(() {
-                                _dia = 'Mañana';
-                                _hora = null;
-                              })),
-                    ],
-                  ),
-                  const SizedBox(height: 22),
-                  const Text('Elige la hora',
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 16)),
-                  const SizedBox(height: 4),
-                  const Text(
-                    'Las mañanas suelen estar más libres.',
-                    style: TextStyle(color: Colors.grey, fontSize: 12),
-                  ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: [
-                      for (final h in _horas)
-                        _HoraChip(
-                          hora: h,
-                          ocupada: _ocupada(h),
-                          seleccionada: _hora == h,
-                          onTap: () => setState(() => _hora = h),
-                        ),
-                    ],
-                  ),
+                  if (!cancha.registrada)
+                    _PanelDescubierta(cancha: cancha)
+                  else ...[
+                    Text(
+                      'Cancha de ${cancha.deporte.etiqueta.toLowerCase()} en ${cancha.distrito.etiqueta}. '
+                      'Reserva tu hora y juega con quien quieras, a tu nivel. '
+                      'Pagas una seña con tarjeta para asegurar tu cancha.',
+                      style: const TextStyle(height: 1.4),
+                    ),
+                    const SizedBox(height: 24),
+                    const Text('Elige el día',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 16)),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        _DiaChip('Hoy', _dia == 'Hoy',
+                            () => setState(() {
+                                  _dia = 'Hoy';
+                                  _hora = null;
+                                })),
+                        const SizedBox(width: 10),
+                        _DiaChip('Mañana', _dia == 'Mañana',
+                            () => setState(() {
+                                  _dia = 'Mañana';
+                                  _hora = null;
+                                })),
+                      ],
+                    ),
+                    const SizedBox(height: 22),
+                    const Text('Elige la hora',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 16)),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Las mañanas suelen estar más libres.',
+                      style: TextStyle(color: Colors.grey, fontSize: 12),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: [
+                        for (final h in _horas)
+                          _HoraChip(
+                            hora: h,
+                            ocupada: _ocupada(h),
+                            seleccionada: _hora == h,
+                            onTap: () => setState(() => _hora = h),
+                          ),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 100),
                 ],
               ),
@@ -232,12 +239,14 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
           ),
         ],
       ),
-      bottomSheet: _BarraReserva(
-        habilitado: _hora != null,
-        textoHora: _hora,
-        dia: _dia,
-        onReservar: _reservar,
-      ),
+      bottomSheet: cancha.registrada
+          ? _BarraReserva(
+              habilitado: _hora != null,
+              textoHora: _hora,
+              dia: _dia,
+              onReservar: _reservar,
+            )
+          : null,
     );
   }
 }
@@ -366,6 +375,63 @@ class _HoraChip extends StatelessWidget {
             fontWeight: FontWeight.w600,
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Panel para una cancha REAL descubierta en Google que aún no está en
+/// Pichangol. Invita al dueño a reclamarla/registrarla (palanca de crecimiento).
+class _PanelDescubierta extends StatelessWidget {
+  final Cancha cancha;
+  const _PanelDescubierta({required this.cancha});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEAF6EF),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: verdeClaro),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.travel_explore, color: verdeOscuro),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Encontramos esta cancha en Google Maps',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold, color: verdeOscuro),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'Todavía no está activa en Pichangol, así que aún no se puede '
+            'reservar online. ¿Es tuya? Regístrala y empieza a recibir '
+            'reservas con seña.',
+            style: TextStyle(height: 1.4),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(backgroundColor: coral),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                    builder: (_) => const RegistrarCanchaScreen()),
+              ),
+              icon: const Icon(Icons.add_location_alt),
+              label: const Text('Reclamar / registrar esta cancha'),
+            ),
+          ),
+        ],
       ),
     );
   }

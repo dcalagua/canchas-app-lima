@@ -1,7 +1,7 @@
-import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -10,6 +10,9 @@ import '../services/sport_detector.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 
+/// Registrar una cancha escribiendo la dirección: se geocodifica y aparece en el
+/// mapa automáticamente (estilo eSupplier). Un local puede tener varias canchas
+/// de distintos deportes, así que el deporte es de selección múltiple.
 class RegistrarCanchaScreen extends StatefulWidget {
   const RegistrarCanchaScreen({super.key});
 
@@ -18,25 +21,30 @@ class RegistrarCanchaScreen extends StatefulWidget {
 }
 
 class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
-  static const _centros = {
-    Distrito.sanBorja: LatLng(-12.108, -76.999),
-    Distrito.surco: LatLng(-12.135, -76.992),
-    Distrito.laMolina: LatLng(-12.079, -76.948),
-  };
-
   final _nombre = TextEditingController();
+  final _direccion = TextEditingController();
   final _precio = TextEditingController(text: '120');
-  Distrito _distrito = Distrito.sanBorja;
-  Deporte _deporte = Deporte.futbol;
+
+  // Deportes del local (varios a la vez). Fútbol viene marcado por defecto.
+  final Set<Deporte> _deportes = {Deporte.futbol};
+
+  GoogleMapController? _map;
+  LatLng? _ubicacion; // null hasta geocodificar o tocar el mapa
+  bool _geocodificando = false;
+  String? _errorGeo;
 
   Uint8List? _foto;
   bool _analizando = false;
   DeteccionDeporte? _deteccion;
 
+  static const _limaCentro = LatLng(-12.0931, -77.0465);
+
   @override
   void dispose() {
     _nombre.dispose();
+    _direccion.dispose();
     _precio.dispose();
+    _map?.dispose();
     super.dispose();
   }
 
@@ -56,42 +64,115 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
     setState(() {
       _analizando = false;
       _deteccion = det;
-      _deporte = det.deporte; // la IA preselecciona el deporte
+      _deportes.add(det.deporte); // la IA agrega el deporte que detectó
     });
   }
 
-  void _publicar() {
+  /// Geocodifica la dirección escrita y coloca el marcador en el mapa.
+  Future<void> _ubicarDireccion() async {
+    final q = _direccion.text.trim();
+    if (q.isEmpty) {
+      setState(() => _errorGeo = 'Escribe la dirección de tu cancha.');
+      return;
+    }
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _geocodificando = true;
+      _errorGeo = null;
+    });
+    try {
+      final locs = await locationFromAddress('$q, Lima, Perú');
+      if (locs.isEmpty) {
+        setState(() {
+          _geocodificando = false;
+          _errorGeo = 'No encontré esa dirección. Revísala o mueve el pin a mano.';
+        });
+        return;
+      }
+      final l = locs.first;
+      final destino = LatLng(l.latitude, l.longitude);
+      if (!mounted) return;
+      setState(() {
+        _geocodificando = false;
+        _ubicacion = destino;
+      });
+      _map?.animateCamera(CameraUpdate.newLatLngZoom(destino, 16));
+    } catch (_) {
+      setState(() {
+        _geocodificando = false;
+        _errorGeo = 'No pude ubicar la dirección. Toca el mapa para marcarla a mano.';
+      });
+    }
+  }
+
+  /// Best-effort: deduce el distrito desde las coordenadas (para clasificar).
+  Future<Distrito> _distritoDe(LatLng p) async {
+    try {
+      final marks = await placemarkFromCoordinates(p.latitude, p.longitude);
+      for (final m in marks) {
+        final texto = '${m.subLocality} ${m.locality} ${m.subAdministrativeArea}'
+            .toLowerCase();
+        for (final d in Distrito.values) {
+          if (texto.contains(d.etiqueta.toLowerCase())) return d;
+        }
+      }
+    } catch (_) {}
+    return Distrito.sanBorja;
+  }
+
+  Future<void> _publicar() async {
     final nombre = _nombre.text.trim();
     if (nombre.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ponle un nombre a la cancha.')),
-      );
+      _avisar('Ponle un nombre al local / cancha.');
+      return;
+    }
+    if (_ubicacion == null) {
+      _avisar('Ubica la dirección en el mapa primero.');
+      return;
+    }
+    if (_deportes.isEmpty) {
+      _avisar('Elige al menos un deporte.');
       return;
     }
     final precio = int.tryParse(_precio.text.trim()) ?? 100;
-    final base = _centros[_distrito]!;
-    final rnd = Random();
-    final ubic = LatLng(
-      base.latitude + (rnd.nextDouble() - 0.5) * 0.012,
-      base.longitude + (rnd.nextDouble() - 0.5) * 0.012,
-    );
-    appState.agregarCancha(Cancha(
-      id: 'u${DateTime.now().millisecondsSinceEpoch}',
-      nombre: nombre,
-      club: appState.nombreClub,
-      distrito: _distrito,
-      deporte: _deporte,
-      precioHora: precio,
-      ubicacion: ubic,
-      clubFundador: false,
-      digitalizada: true,
-    ));
+    final direccion = _direccion.text.trim();
+    final distrito = await _distritoDe(_ubicacion!);
+    final ts = DateTime.now().millisecondsSinceEpoch;
+
+    // Un local con varias canchas = una Cancha por deporte, mismo punto y dirección.
+    final deportes = _deportes.toList();
+    for (final dep in deportes) {
+      final nombreCancha =
+          deportes.length > 1 ? '$nombre · ${dep.etiqueta}' : nombre;
+      appState.agregarCancha(Cancha(
+        id: 'u${ts}_${dep.name}',
+        nombre: nombreCancha,
+        club: appState.nombreClub,
+        distrito: distrito,
+        deporte: dep,
+        precioHora: precio,
+        ubicacion: _ubicacion!,
+        clubFundador: false,
+        digitalizada: true,
+        direccion: direccion.isEmpty ? null : direccion,
+      ));
+    }
+    if (!mounted) return;
     Navigator.of(context).pop();
+    final n = deportes.length;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-          backgroundColor: verdeCancha,
-          content: Text('✅ "$nombre" publicada en el mapa.')),
+        backgroundColor: verdeCancha,
+        content: Text(n > 1
+            ? '✅ "$nombre" publicado con $n canchas en el mapa.'
+            : '✅ "$nombre" publicada en el mapa.'),
+      ),
     );
+  }
+
+  void _avisar(String msg) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg)));
   }
 
   @override
@@ -101,10 +182,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _ZonaFoto(
-            foto: _foto,
-            onTap: _elegirFoto,
-          ),
+          _ZonaFoto(foto: _foto, onTap: _elegirFoto),
           const SizedBox(height: 12),
           if (_analizando)
             Row(
@@ -123,33 +201,99 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
           TextField(
             controller: _nombre,
             decoration: const InputDecoration(
-              labelText: 'Nombre de la cancha',
+              labelText: 'Nombre del local / cancha',
               border: OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 14),
-          DropdownButtonFormField<Deporte>(
-            value: _deporte,
-            decoration: const InputDecoration(
-                labelText: 'Deporte', border: OutlineInputBorder()),
-            items: [
+
+          // Dirección + botón geocodificar (auto-ubica en el mapa).
+          TextField(
+            controller: _direccion,
+            textInputAction: TextInputAction.search,
+            onSubmitted: (_) => _ubicarDireccion(),
+            decoration: InputDecoration(
+              labelText: 'Dirección (calle y número, distrito)',
+              hintText: 'Ej.: Av. Aviación 2345, San Borja',
+              prefixIcon: const Icon(Icons.place, color: coral),
+              border: const OutlineInputBorder(),
+              suffixIcon: _geocodificando
+                  ? const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2)),
+                    )
+                  : IconButton(
+                      tooltip: 'Ubicar en el mapa',
+                      icon: const Icon(Icons.search, color: verdeCancha),
+                      onPressed: _ubicarDireccion,
+                    ),
+            ),
+          ),
+          if (_errorGeo != null) ...[
+            const SizedBox(height: 8),
+            Text(_errorGeo!, style: const TextStyle(color: coralOscuro)),
+          ],
+          const SizedBox(height: 12),
+
+          // Mapa de confirmación: marcador arrastrable + tocar para ajustar.
+          _MapaUbicacion(
+            inicial: _ubicacion ?? _limaCentro,
+            ubicacion: _ubicacion,
+            onMapCreated: (c) => _map = c,
+            onElegir: (p) => setState(() {
+              _ubicacion = p;
+              _errorGeo = null;
+            }),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _ubicacion == null
+                ? 'Escribe la dirección y toca buscar, o toca el mapa para marcar el punto.'
+                : 'Arrastra el pin o toca el mapa para ajustar el punto exacto.',
+            style: const TextStyle(color: Colors.grey, fontSize: 12),
+          ),
+          const SizedBox(height: 18),
+
+          // Deportes del local (varios a la vez).
+          const Text('¿Qué deportes hay en este local?',
+              style: TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 4),
+          const Text('Puedes marcar más de uno.',
+              style: TextStyle(color: Colors.grey, fontSize: 12)),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 10,
+            runSpacing: 8,
+            children: [
               for (final d in Deporte.values)
-                DropdownMenuItem(value: d, child: Text(d.etiqueta)),
+                FilterChip(
+                  avatar: Icon(iconoDeporte(d),
+                      size: 18,
+                      color: _deportes.contains(d)
+                          ? Colors.white
+                          : colorDeporte(d)),
+                  label: Text(d.etiqueta),
+                  selected: _deportes.contains(d),
+                  selectedColor: colorDeporte(d),
+                  checkmarkColor: Colors.white,
+                  labelStyle: TextStyle(
+                    color: _deportes.contains(d) ? Colors.white : tinta,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  onSelected: (s) => setState(() {
+                    if (s) {
+                      _deportes.add(d);
+                    } else {
+                      _deportes.remove(d);
+                    }
+                  }),
+                ),
             ],
-            onChanged: (v) => setState(() => _deporte = v ?? _deporte),
           ),
-          const SizedBox(height: 14),
-          DropdownButtonFormField<Distrito>(
-            value: _distrito,
-            decoration: const InputDecoration(
-                labelText: 'Distrito', border: OutlineInputBorder()),
-            items: [
-              for (final d in _centros.keys)
-                DropdownMenuItem(value: d, child: Text(d.etiqueta)),
-            ],
-            onChanged: (v) => setState(() => _distrito = v ?? _distrito),
-          ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           TextField(
             controller: _precio,
             keyboardType: TextInputType.number,
@@ -172,6 +316,51 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Mapa de confirmación de ubicación con marcador arrastrable.
+class _MapaUbicacion extends StatelessWidget {
+  final LatLng inicial;
+  final LatLng? ubicacion;
+  final void Function(GoogleMapController) onMapCreated;
+  final void Function(LatLng) onElegir;
+
+  const _MapaUbicacion({
+    required this.inicial,
+    required this.ubicacion,
+    required this.onMapCreated,
+    required this.onElegir,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: SizedBox(
+        height: 220,
+        child: GoogleMap(
+          initialCameraPosition: CameraPosition(
+            target: inicial,
+            zoom: ubicacion == null ? 11 : 16,
+          ),
+          onMapCreated: onMapCreated,
+          myLocationButtonEnabled: false,
+          zoomControlsEnabled: false,
+          onTap: onElegir,
+          markers: ubicacion == null
+              ? const {}
+              : {
+                  Marker(
+                    markerId: const MarkerId('cancha'),
+                    position: ubicacion!,
+                    draggable: true,
+                    onDragEnd: onElegir,
+                  ),
+                },
+        ),
       ),
     );
   }

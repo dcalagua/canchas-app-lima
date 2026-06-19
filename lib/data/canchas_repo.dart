@@ -39,6 +39,8 @@ class CanchasRepo {
         'lng': c.ubicacion.longitude,
         'club_fundador': c.clubFundador,
         'digitalizada': c.digitalizada,
+        'direccion': c.direccion,
+        'registrada': c.registrada,
       };
 
   static Cancha _fromRow(Map<String, dynamic> r) => Cancha(
@@ -54,6 +56,8 @@ class CanchasRepo {
         ),
         clubFundador: (r['club_fundador'] ?? false) as bool,
         digitalizada: (r['digitalizada'] ?? true) as bool,
+        direccion: r['direccion'] as String?,
+        registrada: (r['registrada'] ?? true) as bool,
       );
 
   static Distrito _enumDistrito(String? s) {
