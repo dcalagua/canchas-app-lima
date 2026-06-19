@@ -33,6 +33,13 @@ reservas.
 > Si la Places API no está habilitada, la app no falla: simplemente no aparecen
 > las canchas descubiertas y sigue funcionando con las registradas.
 
+### Fotos automáticas desde Google (sin que el dueño suba nada)
+Las canchas descubiertas traen sus **fotos reales de Google** automáticamente:
+la Edge Function resuelve cada foto a su `photoUri` público (Places Photos API,
+con la key del lado servidor) y la app las muestra en tarjetas y en el carrusel
+de la ficha. El dueño solo sube fotos si **reclama** su cancha y quiere
+reemplazarlas, o si registra un **local nuevo** que aún no está en Google.
+
 ### Registrar una cancha por dirección (geocoding)
 Registrar una cancha ya **no depende de una lista de distritos**: el dueño
 escribe la dirección, la app la **geocodifica** y coloca el pin en el mapa

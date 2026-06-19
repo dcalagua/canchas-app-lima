@@ -1,14 +1,12 @@
 // Edge Function: places-cerca
 // Proxy server-side de la Places API (New) para Pichangol. Mantiene la API key
-// FUERA del APK (se guarda como secret de Supabase: PLACES_API_KEY).
+// FUERA del APK (secret de Supabase: PLACES_API_KEY) y además resuelve las
+// FOTOS reales de Google (photoUri público) para cada lugar, así la app las
+// muestra sin que el dueño tenga que subirlas.
 //
 // Deploy:
 //   supabase functions deploy places-cerca --no-verify-jwt
 //   supabase secrets set PLACES_API_KEY=tu_key
-//
-// La app la invoca con supabase.functions.invoke('places-cerca',
-//   body: { lat, lng, radius }). Devuelve { places: [...] } con el mismo shape
-// de Google (id, displayName, location, formattedAddress, types).
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
@@ -21,6 +19,10 @@ const CONSULTAS = [
   "cancha de pádel",
 ];
 
+// Cuántos lugares y fotos resolvemos (control de latencia/cuota).
+const MAX_LUGARES_CON_FOTO = 16;
+const MAX_FOTOS = 3;
+
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -32,6 +34,23 @@ function json(obj: unknown, status = 200): Response {
     status,
     headers: { ...CORS, "Content-Type": "application/json" },
   });
+}
+
+// deno-lint-ignore no-explicit-any
+async function resolverFotos(place: any): Promise<string[]> {
+  const fotos: string[] = [];
+  for (const ph of (place.photos ?? []).slice(0, MAX_FOTOS)) {
+    try {
+      const u =
+        `https://places.googleapis.com/v1/${ph.name}/media` +
+        `?maxWidthPx=800&skipHttpRedirect=true&key=${KEY}`;
+      const r = await fetch(u);
+      if (!r.ok) continue;
+      const j = await r.json();
+      if (j.photoUri) fotos.push(j.photoUri); // URL pública (sin key)
+    } catch (_) { /* ignora esta foto */ }
+  }
+  return fotos;
 }
 
 serve(async (req) => {
@@ -51,7 +70,7 @@ serve(async (req) => {
             "Content-Type": "application/json",
             "X-Goog-Api-Key": KEY,
             "X-Goog-FieldMask":
-              "places.id,places.displayName,places.location,places.formattedAddress,places.types",
+              "places.id,places.displayName,places.location,places.formattedAddress,places.types,places.photos",
           },
           body: JSON.stringify({
             textQuery: q,
@@ -72,7 +91,18 @@ serve(async (req) => {
       for (const p of body.places ?? []) porId.set(p.id, p);
     }
 
-    return json({ places: [...porId.values()] });
+    const lista = [...porId.values()];
+    // Resuelve fotos reales para los primeros lugares (cover + galería).
+    const conFoto = await Promise.all(
+      // deno-lint-ignore no-explicit-any
+      lista.slice(0, MAX_LUGARES_CON_FOTO).map(async (p: any) => ({
+        ...p,
+        fotos: await resolverFotos(p),
+      })),
+    );
+    const resto = lista.slice(MAX_LUGARES_CON_FOTO);
+
+    return json({ places: [...conFoto, ...resto] });
   } catch (e) {
     return json({ places: [], error: String(e) }, 500);
   }

@@ -56,7 +56,7 @@ class PlacesService {
                 'X-Goog-Api-Key': _key,
                 'X-Goog-FieldMask':
                     'places.id,places.displayName,places.location,'
-                        'places.formattedAddress,places.types',
+                        'places.formattedAddress,places.types,places.photos',
               },
               body: jsonEncode({
                 'textQuery': q,
@@ -134,6 +134,8 @@ class PlacesService {
     final deporte = _deporteDe(nombre, tipos);
     if (deporte == null) return null; // no parece una cancha deportiva
 
+    final fotos = _fotosDe(p);
+
     return Cancha(
       id: 'gp_$id',
       nombre: nombre,
@@ -146,7 +148,32 @@ class PlacesService {
       digitalizada: false,
       direccion: p['formattedAddress'] as String?,
       registrada: false, // descubierta en Google, aún no en Pichangol
+      fotoUrl: fotos.isNotEmpty ? fotos.first : null,
+      fotos: fotos,
     );
+  }
+
+  /// Fotos reales del lugar. Si vienen de la Edge Function ya son URLs públicas
+  /// (`fotos`). Si es el modo directo, construimos la URL de la Place Photo
+  /// (New) con la key del cliente (solo en fallback).
+  static List<String> _fotosDe(Map<String, dynamic> p) {
+    final yaResueltas = p['fotos'];
+    if (yaResueltas is List && yaResueltas.isNotEmpty) {
+      return yaResueltas.map((e) => e.toString()).toList();
+    }
+    final photos = p['photos'];
+    if (photos is List && _key.isNotEmpty) {
+      final urls = <String>[];
+      for (final ph in photos.take(3)) {
+        final name = (ph is Map) ? ph['name']?.toString() : null;
+        if (name != null) {
+          urls.add(
+              'https://places.googleapis.com/v1/$name/media?maxWidthPx=800&key=$_key');
+        }
+      }
+      return urls;
+    }
+    return const [];
   }
 
   // Tipos de Google que NO son canchas (descartar aunque el nombre confunda).
