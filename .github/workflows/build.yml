@@ -70,7 +70,7 @@ jobs:
       - name: Renombrar APK
         run: |
           mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk "dist/pichangol-${GITHUB_REF_NAME//\//-}.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "dist/pichangol.apk"
 
       - name: Subir APK (artifact)
         uses: actions/upload-artifact@v4
@@ -78,6 +78,15 @@ jobs:
           name: pichangol-apk
           path: dist/*.apk
           if-no-files-found: error
+
+      - name: Limpiar assets viejos del Release
+        if: github.ref == 'refs/heads/claude/apk-google-maps-setup-fvpl9w' || startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view v0.1.0 -R "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' 2>/dev/null | while read -r a; do
+            [ -n "$a" ] && gh release delete-asset v0.1.0 "$a" -y -R "$GITHUB_REPOSITORY" || true
+          done
 
       - name: Publicar APK en Release (v0.1.0)
         if: github.ref == 'refs/heads/claude/apk-google-maps-setup-fvpl9w' || startsWith(github.ref, 'refs/tags/v')
@@ -88,7 +97,7 @@ jobs:
           body: |
             APK de **Pichangol** — marketplace de canchas de tenis y pádel en Lima.
             Instálalo en Android por sideload. Mapa con Google Maps (secret `MAPS_API_KEY`).
-          files: dist/*.apk
+          files: dist/pichangol.apk
           fail_on_unmatched_files: true
 
   ios:
