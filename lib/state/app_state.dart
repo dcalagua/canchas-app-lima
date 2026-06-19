@@ -25,6 +25,53 @@ class AppState extends ChangeNotifier {
   final List<BloqueHorario> agenda = List.of(SampleData.agendaHoy());
   final List<Reserva> misReservas = []; // reservas del jugador logueado
 
+  // Saldo prepago del club (modelo inDrive): con saldo aparece destacado y
+  // cada reserva nueva descuenta una comisión. Sin saldo, deja de destacarse.
+  int saldoClub = 30;
+  final List<MovimientoSaldo> movimientos = [
+    const MovimientoSaldo(
+        tipo: TipoMovimiento.recarga, monto: 30, concepto: 'Recarga inicial', cuando: 'Ayer'),
+  ];
+  bool get destacadoActivo => saldoClub > 0;
+
+  /// Comisión que descuenta del saldo cada reserva nueva (5%, mínimo S/ 2).
+  int comisionDe(int precio) {
+    final c = (precio * 0.05).round();
+    return c < 2 ? 2 : c;
+  }
+
+  /// Recarga el saldo prepago del club.
+  void recargar(int monto) {
+    if (monto <= 0) return;
+    saldoClub += monto;
+    movimientos.insert(
+      0,
+      MovimientoSaldo(
+          tipo: TipoMovimiento.recarga,
+          monto: monto,
+          concepto: 'Recarga de saldo',
+          cuando: 'Ahora'),
+    );
+    notifyListeners();
+  }
+
+  /// Descuenta la comisión del saldo cuando entra una reserva a una cancha del
+  /// club activo. No llama notifyListeners (lo hace el método que la invoca).
+  void _consumirComision(Cancha cancha) {
+    if (cancha.club != SampleData.clubActivo) return;
+    if (saldoClub <= 0) return;
+    final c = comisionDe(cancha.precioHora);
+    saldoClub = (saldoClub - c).clamp(0, 1 << 31);
+    movimientos.insert(
+      0,
+      MovimientoSaldo(
+          tipo: TipoMovimiento.consumo,
+          monto: c,
+          concepto: 'Comisión · ${cancha.nombre}',
+          cuando: 'Ahora'),
+    );
+  }
+
   int _contadorDemo = 1;
   int _contadorJugador = 1;
 
@@ -94,6 +141,7 @@ class AppState extends ChangeNotifier {
           (b) => b.canchaId == cancha.id && b.hora == hora);
       if (i >= 0) agenda[i] = agenda[i].copyWith(reservaId: reserva.id);
     }
+    _consumirComision(cancha);
     notifyListeners();
     return reserva;
   }
@@ -161,6 +209,7 @@ class AppState extends ChangeNotifier {
     );
     reservas.insert(0, nueva);
     agenda[idx] = bloque.copyWith(reservaId: nueva.id);
+    _consumirComision(cancha);
     notifyListeners();
     return '${cancha.nombre} · ${nueva.horaInicio} · +S/ ${nueva.precio}';
   }

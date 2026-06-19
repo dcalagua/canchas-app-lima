@@ -108,3 +108,20 @@ class BloqueHorario {
     );
   }
 }
+
+/// Movimiento del saldo prepago del club (modelo estilo inDrive).
+enum TipoMovimiento { recarga, consumo }
+
+class MovimientoSaldo {
+  final TipoMovimiento tipo;
+  final int monto; // soles
+  final String concepto;
+  final String cuando; // etiqueta simple ("Ahora", "Hoy", etc.)
+
+  const MovimientoSaldo({
+    required this.tipo,
+    required this.monto,
+    required this.concepto,
+    required this.cuando,
+  });
+}
