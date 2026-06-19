@@ -8,6 +8,7 @@ import '../models/models.dart';
 import '../brand.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/court_lines.dart';
 import '../services/location_service.dart';
 import '../utils/geo.dart';
 import 'buscar_direccion_screen.dart';
@@ -570,14 +571,11 @@ class _CanchaCard extends StatelessWidget {
                 height: 130,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(14),
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [color, color.withOpacity(0.6)],
-                  ),
+                  gradient: gradienteDeporte(cancha.deporte),
                 ),
                 child: Stack(
                   children: [
+                    const Positioned.fill(child: CourtLines(opacity: 0.5)),
                     Center(
                       child: Icon(
                         iconoDeporte(cancha.deporte),

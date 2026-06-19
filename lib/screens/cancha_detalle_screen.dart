@@ -4,6 +4,7 @@ import '../models/models.dart';
 import '../services/payments_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/court_lines.dart';
 import 'login_google_sheet.dart';
 import 'pago_sheet.dart';
 import 'registrar_cancha_screen.dart';
@@ -122,19 +123,16 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
               ),
               background: Container(
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [_color, _color.withOpacity(0.6)],
-                  ),
+                  gradient: gradienteDeporte(cancha.deporte),
                 ),
                 child: Stack(
                   children: [
+                    const Positioned.fill(child: CourtLines(opacity: 0.5)),
                     Center(
                       child: Icon(
                         iconoDeporte(cancha.deporte),
                         size: 90,
-                        color: Colors.white.withOpacity(0.85),
+                        color: Colors.white.withOpacity(0.9),
                       ),
                     ),
                     if (cancha.clubFundador)
@@ -287,7 +285,8 @@ class _BarraReserva extends StatelessWidget {
           ),
           FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: coral,
+              backgroundColor: pino,
+              foregroundColor: lima,
               padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
             ),
             onPressed: habilitado ? onReservar : null,
