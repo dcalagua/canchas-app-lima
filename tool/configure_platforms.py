@@ -263,8 +263,27 @@ def configurar_compile_sdk_global():
     print("  compileSdk global aplicado a subproyectos Android")
 
 
+def configurar_min_sdk():
+    """Sube minSdk a 23 (lo exige passkeys_android de supabase_flutter)."""
+    path = "android/app/build.gradle"
+    if not os.path.exists(path):
+        return
+    with open(path, "r", encoding="utf-8") as f:
+        text = f.read()
+    nuevo = re.sub(
+        r"minSdk(?:Version)?\s*=?\s*flutter\.minSdkVersion",
+        "minSdk = 23",
+        text,
+    )
+    if nuevo != text:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(nuevo)
+        print("  minSdk forzado a 23")
+
+
 def main():
     print(f"Configurando plataformas (MAPS_API_KEY {'definida' if KEY != 'YOUR_MAPS_API_KEY_HERE' else 'placeholder'})")
+    configurar_min_sdk()
     patch("android/app/src/main/AndroidManifest.xml", android_manifest)
     patch("ios/Runner/AppDelegate.swift", ios_appdelegate)
     patch("ios/Runner/Info.plist", ios_infoplist)
