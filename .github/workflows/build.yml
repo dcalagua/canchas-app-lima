@@ -34,7 +34,7 @@ jobs:
           cache: true
 
       - name: Generar carpetas de plataforma
-        run: flutter create --org pe.ebim --project-name canchas_lima --platforms=android .
+        run: flutter create --org pe.ebim --project-name canchas_lima --platforms=android,ios .
 
       - name: Configurar Google Maps (Android)
         env:
@@ -94,7 +94,7 @@ jobs:
           cache: true
 
       - name: Generar carpetas de plataforma
-        run: flutter create --org pe.ebim --project-name canchas_lima --platforms=ios .
+        run: flutter create --org pe.ebim --project-name canchas_lima --platforms=android,ios .
 
       - name: Configurar Google Maps (iOS)
         env:
