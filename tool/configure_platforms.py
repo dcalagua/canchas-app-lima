@@ -265,7 +265,6 @@ def configurar_compile_sdk_global():
 
 def main():
     print(f"Configurando plataformas (MAPS_API_KEY {'definida' if KEY != 'YOUR_MAPS_API_KEY_HERE' else 'placeholder'})")
-    configurar_compile_sdk_global()
     patch("android/app/src/main/AndroidManifest.xml", android_manifest)
     patch("ios/Runner/AppDelegate.swift", ios_appdelegate)
     patch("ios/Runner/Info.plist", ios_infoplist)
