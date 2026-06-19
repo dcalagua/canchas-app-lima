@@ -29,10 +29,12 @@ dev_dependencies:
   flutter_launcher_icons: ^0.14.1
   flutter_native_splash: ^2.4.1
 
-# geolocator_android 4.6.x referencia flutter.compileSdkVersion y rompe el build
-# en CI; forzamos la 4.5.5 (hardcodea compileSdk) que es compatible con geolocator 12.
+# Algunos plugins (geolocator_android 4.6+, app_links 6.4+) referencian
+# flutter.compileSdkVersion, que no está disponible para subproyectos en este
+# entorno y rompe el build. Forzamos versiones que hardcodean compileSdk.
 dependency_overrides:
   geolocator_android: 4.5.5
+  app_links: 6.3.3
 
 flutter:
   uses-material-design: true
