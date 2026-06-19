@@ -5,6 +5,8 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../data/sample_data.dart';
 import '../models/models.dart';
+import '../models/club.dart';
+import '../widgets/club_card.dart';
 import '../brand.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -12,7 +14,7 @@ import '../widgets/court_lines.dart';
 import '../services/location_service.dart';
 import '../utils/geo.dart';
 import 'buscar_direccion_screen.dart';
-import 'cancha_detalle_screen.dart';
+import 'club_detalle_screen.dart';
 import 'login_google_sheet.dart';
 import 'login_screen.dart';
 import 'home_shell.dart';
@@ -40,6 +42,10 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
 
   LatLng? _centroBusqueda; // zona buscada por el usuario (estilo Airbnb)
   String? _labelBusqueda;
+  bool _lista = false; // vista lista de clubes (toggle estilo Airbnb)
+
+  /// Clubes derivados de las canchas filtradas (un local = varias canchas).
+  List<Club> _clubs() => Club.agrupar(_filtradas());
 
   static const double _radioKm = 8.0; // canchas "cercanas" a la zona buscada
 
@@ -244,8 +250,16 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
   }
 
   void _abrirDetalle(Cancha cancha) {
+    // Construye el club de esa cancha (un local puede tener varias) y abre su ficha.
+    final clubs = Club.agrupar(appState.todasLasCanchas());
+    final club = clubs.firstWhere(
+      (cl) => cl.canchas.any((c) => c.id == cancha.id),
+      orElse: () => Club(id: cancha.id, nombre: cancha.club, canchas: [cancha]),
+    );
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => CanchaDetalleScreen(cancha: cancha)),
+      MaterialPageRoute(
+        builder: (_) => ClubDetalleScreen(club: club, canchaInicial: cancha),
+      ),
     );
   }
 
@@ -324,6 +338,50 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
             padding: const EdgeInsets.only(bottom: 180, top: 120),
           ),
 
+          // Vista LISTA de clubes (overlay sobre el mapa)
+          if (_lista)
+            Positioned.fill(
+              top: 0,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 160),
+                child: Container(
+                  color: papel,
+                  child: ListenableBuilder(
+                    listenable: appState,
+                    builder: (context, _) {
+                      final clubs = _clubs();
+                      return ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(18, 16, 18, 28),
+                        itemCount: clubs.length + 1,
+                        separatorBuilder: (_, __) => const SizedBox(height: 14),
+                        itemBuilder: (context, i) {
+                          if (i == 0) {
+                            final nCanchas = clubs.fold<int>(
+                                0, (a, c) => a + c.canchas.length);
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 2),
+                              child: Text(
+                                '${clubs.length} clubes · $nCanchas canchas',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.copyWith(color: textoTenue),
+                              ),
+                            );
+                          }
+                          final club = clubs[i - 1];
+                          return ClubCard(
+                            club: club,
+                            onTap: () => _abrirDetalle(club.principal),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+
           // Barra de búsqueda + filtros (overlay superior)
           SafeArea(
             child: Padding(
@@ -347,7 +405,8 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
           ),
 
           // Botón "mi ubicación" (sobre el carrusel)
-          Positioned(
+          if (!_lista)
+            Positioned(
             right: 16,
             bottom: 188,
             child: Material(
@@ -367,7 +426,8 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
 
           // Carrusel de canchas (overlay inferior). ListenableBuilder para que
           // el badge "Destacado" reaccione al saldo del club.
-          Align(
+          if (!_lista)
+            Align(
             alignment: Alignment.bottomCenter,
             child: SafeArea(
               child: SizedBox(
@@ -388,6 +448,41 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                       ),
                     );
                   },
+                ),
+              ),
+            ),
+          ),
+
+          // Toggle Mapa ⇄ Lista (píldora centrada, estilo Airbnb)
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: SafeArea(
+              child: Padding(
+                padding: EdgeInsets.only(bottom: _lista ? 16 : 184),
+                child: Material(
+                  color: tinta,
+                  borderRadius: BorderRadius.circular(999),
+                  elevation: 6,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(999),
+                    onTap: () => setState(() => _lista = !_lista),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 12),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(_lista ? Icons.map : Icons.view_list,
+                              color: lima, size: 18),
+                          const SizedBox(width: 8),
+                          Text(_lista ? 'Mapa' : 'Lista',
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700)),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
