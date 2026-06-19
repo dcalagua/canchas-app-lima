@@ -8,6 +8,7 @@ import '../models/models.dart';
 import '../brand.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../services/location_service.dart';
 import '../utils/geo.dart';
 import 'buscar_direccion_screen.dart';
 import 'cancha_detalle_screen.dart';
@@ -31,7 +32,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
   final PageController _pageController =
       PageController(viewportFraction: 0.88);
 
-  Deporte? _filtro; // null = todos
+  Deporte? _filtro = Deporte.futbol; // por defecto: Fútbol
   int _selected = 0;
   Set<Marker> _markers = {};
 
@@ -60,6 +61,20 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
   @override
   void initState() {
     super.initState();
+    _rebuildMarkers();
+    _autoUbicar(); // autodetecta la ubicación al abrir
+  }
+
+  Future<void> _autoUbicar() async {
+    final pos = await LocationService.ubicacionActual();
+    if (pos == null || !mounted) return;
+    setState(() {
+      _centroBusqueda = pos;
+      _labelBusqueda = 'Tu ubicación';
+      _selected = 0;
+    });
+    if (_pageController.hasClients) _pageController.jumpToPage(0);
+    _controller?.animateCamera(CameraUpdate.newLatLngZoom(pos, 13.5));
     _rebuildMarkers();
   }
 
@@ -275,7 +290,13 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
             myLocationButtonEnabled: false,
             zoomControlsEnabled: false,
             mapToolbarEnabled: false,
-            onMapCreated: (c) => _controller = c,
+            onMapCreated: (c) {
+              _controller = c;
+              if (_centroBusqueda != null) {
+                c.animateCamera(
+                    CameraUpdate.newLatLngZoom(_centroBusqueda!, 13.5));
+              }
+            },
             padding: const EdgeInsets.only(bottom: 180, top: 120),
           ),
 
@@ -297,6 +318,25 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                     onSeleccion: _cambiarFiltro,
                   ),
                 ],
+              ),
+            ),
+          ),
+
+          // Botón "mi ubicación" (sobre el carrusel)
+          Positioned(
+            right: 16,
+            bottom: 188,
+            child: Material(
+              elevation: 4,
+              shape: const CircleBorder(),
+              color: Colors.white,
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: _autoUbicar,
+                child: const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: Icon(Icons.my_location, color: verdeCancha),
+                ),
               ),
             ),
           ),
@@ -464,10 +504,10 @@ class _FiltrosDeporte extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
+            chip('Fútbol', Deporte.futbol, Icons.sports_soccer),
             chip('Todos', null, Icons.sports),
             chip('Tenis', Deporte.tenis, Icons.sports_tennis),
             chip('Pádel', Deporte.padel, Icons.sports_handball),
-            chip('Fútbol', Deporte.futbol, Icons.sports_soccer),
           ],
         ),
       ),

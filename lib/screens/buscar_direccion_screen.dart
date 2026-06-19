@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../services/location_service.dart';
 import '../theme.dart';
 
 /// Resultado de la búsqueda: centro geográfico + etiqueta para mostrar.
@@ -67,6 +68,23 @@ class _BuscarDireccionScreenState extends State<BuscarDireccionScreen> {
     }
   }
 
+  Future<void> _usarMiUbicacion() async {
+    setState(() {
+      _buscando = true;
+      _error = null;
+    });
+    final pos = await LocationService.ubicacionActual();
+    if (!mounted) return;
+    if (pos == null) {
+      setState(() {
+        _buscando = false;
+        _error = 'No pude obtener tu ubicación. Activa el GPS y los permisos.';
+      });
+      return;
+    }
+    Navigator.of(context).pop(ResultadoBusqueda(pos, 'Tu ubicación'));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -104,6 +122,27 @@ class _BuscarDireccionScreenState extends State<BuscarDireccionScreen> {
               const SizedBox(height: 10),
               Text(_error!, style: const TextStyle(color: coralOscuro)),
             ],
+            const SizedBox(height: 16),
+            Material(
+              color: const Color(0xFFEAF6EF),
+              borderRadius: BorderRadius.circular(14),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: _usarMiUbicacion,
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                  child: Row(
+                    children: [
+                      Icon(Icons.my_location, color: verdeCancha),
+                      SizedBox(width: 12),
+                      Text('Usar mi ubicación actual',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w600, color: verdeOscuro)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
             const SizedBox(height: 22),
             Text('Distritos populares',
                 style: Theme.of(context)

@@ -46,6 +46,14 @@ def android_manifest(text):
             text,
             count=1,
         )
+    if "ACCESS_FINE_LOCATION" not in text:
+        text = re.sub(
+            r"(<manifest[^>]*>)",
+            r'\1\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>'
+            r'\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>',
+            text,
+            count=1,
+        )
     if "com.google.android.geo.API_KEY" not in text:
         meta = (
             '        <meta-data android:name="com.google.android.geo.API_KEY" '
@@ -87,6 +95,14 @@ def ios_infoplist(text):
         rf"\g<1>{APP_LABEL}\g<2>",
         text,
     )
+    # Permiso de ubicación (para canchas cercanas).
+    if "NSLocationWhenInUseUsageDescription" not in text:
+        block = (
+            "\t<key>NSLocationWhenInUseUsageDescription</key>\n"
+            "\t<string>Pichangol usa tu ubicación para mostrarte canchas cercanas.</string>\n"
+            "</dict>\n</plist>"
+        )
+        text = text.replace("</dict>\n</plist>", block, 1)
     return text
 
 
