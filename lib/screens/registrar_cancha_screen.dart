@@ -5,6 +5,7 @@ import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../data/canchas_repo.dart';
 import '../models/models.dart';
 import '../services/sport_detector.dart';
 import '../state/app_state.dart';
@@ -139,6 +140,12 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
     final distrito = await _distritoDe(_ubicacion!);
     final ts = DateTime.now().millisecondsSinceEpoch;
 
+    // Sube la foto (si hay) y la usa de portada para las canchas del local.
+    String? fotoUrl;
+    if (_foto != null) {
+      fotoUrl = await CanchasRepo.subirFoto('u$ts', _foto!);
+    }
+
     // Un local con varias canchas = una Cancha por deporte, mismo punto y dirección.
     final deportes = _deportes.toList();
     for (final dep in deportes) {
@@ -155,6 +162,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
         clubFundador: false,
         digitalizada: true,
         direccion: direccion.isEmpty ? null : direccion,
+        fotoUrl: fotoUrl,
       ));
     }
     if (!mounted) return;

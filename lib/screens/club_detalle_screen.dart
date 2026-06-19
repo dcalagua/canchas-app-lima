@@ -83,12 +83,20 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
               background: DecoratedBox(
                 decoration: BoxDecoration(gradient: gradienteDeporte(_cancha.deporte)),
                 child: Stack(
+                  fit: StackFit.expand,
                   children: [
-                    const Positioned.fill(child: CourtLines(opacity: 0.5)),
-                    Center(
-                      child: Icon(iconoDeporte(_cancha.deporte),
-                          size: 96, color: Colors.white.withOpacity(0.9)),
-                    ),
+                    if (_cancha.fotoUrl != null)
+                      Image.network(_cancha.fotoUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) =>
+                              const SizedBox.shrink())
+                    else ...[
+                      const Positioned.fill(child: CourtLines(opacity: 0.5)),
+                      Center(
+                        child: Icon(iconoDeporte(_cancha.deporte),
+                            size: 96, color: Colors.white.withOpacity(0.9)),
+                      ),
+                    ],
                   ],
                 ),
               ),

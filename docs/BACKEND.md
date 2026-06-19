@@ -105,8 +105,25 @@ dirección escrita y el estado "registrada/descubierta", agrega dos columnas:
 ```sql
 alter table pichangol_canchas
   add column if not exists direccion text,
-  add column if not exists registrada boolean not null default true;
+  add column if not exists registrada boolean not null default true,
+  add column if not exists foto_url text;
 ```
+
+### Fotos de cancha (Supabase Storage)
+Para que el dueño suba una **foto de portada** al registrar/editar su cancha:
+1. En Supabase → **Storage** → **New bucket** → nombre **`canchas`** → marcar
+   **Public bucket** → crear.
+2. (Opcional, recomendado) políticas: lectura pública e inserción/actualización
+   para el rol `anon` mientras no haya auth de dueño:
+   ```sql
+   -- Subir/actualizar fotos (piloto sin auth de dueño)
+   create policy "canchas_upload" on storage.objects
+     for insert to anon with check (bucket_id = 'canchas');
+   create policy "canchas_update" on storage.objects
+     for update to anon using (bucket_id = 'canchas');
+   ```
+   La lectura ya es pública por ser *public bucket*. Si no creas el bucket, la
+   app no falla: la cancha simplemente queda sin foto.
 
 > Si no corres esto, la app sigue funcionando: las canchas nuevas se ven en tu
 > celular, pero el alta a Supabase podría fallar en silencio hasta que existan

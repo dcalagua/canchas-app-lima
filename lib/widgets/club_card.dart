@@ -44,7 +44,15 @@ class ClubCard extends StatelessWidget {
                           BoxDecoration(gradient: gradienteDeporte(portada)),
                     ),
                   ),
-                  const Positioned.fill(child: CourtLines()),
+                  if (club.principal.fotoUrl != null)
+                    Positioned.fill(
+                      child: Image.network(club.principal.fotoUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) =>
+                              const SizedBox.shrink()),
+                    )
+                  else
+                    const Positioned.fill(child: CourtLines()),
                   Positioned(
                     top: 14,
                     left: 14,

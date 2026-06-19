@@ -109,28 +109,52 @@ class PlacesService {
     );
   }
 
-  /// Heurística de deporte por nombre/tipos del lugar.
+  // Tipos de Google que NO son canchas (descartar aunque el nombre confunda).
+  static const _tiposExcluidos = {
+    'gym', 'store', 'shopping_mall', 'clothing_store', 'school',
+    'university', 'lodging', 'gas_station', 'supermarket', 'restaurant',
+    'bar', 'doctor', 'hospital', 'pharmacy', 'bank',
+  };
+
+  // Palabras en el nombre que delatan que NO es una cancha de alquiler.
+  static const _palabrasExcluidas = [
+    'gimnasio', 'gym', 'tienda', 'store', 'academia', 'colegio',
+    'universidad', 'federación', 'federacion', 'crossfit', 'spinning',
+    'natación', 'natacion', 'piscina', 'billar', 'bowling',
+  ];
+
+  /// Heurística de deporte por nombre/tipos del lugar. Devuelve null si no
+  /// parece una cancha de alquiler (gimnasios, tiendas, etc. quedan fuera).
   static Deporte? _deporteDe(String nombre, List<String> tipos) {
     final n = nombre.toLowerCase();
+
+    // 1) Descartes duros por tipo o por nombre.
+    if (tipos.any(_tiposExcluidos.contains)) return null;
+    if (_palabrasExcluidas.any(n.contains)) return null;
+
+    // 2) Señal positiva por deporte en el nombre.
     if (n.contains('pádel') || n.contains('padel')) return Deporte.padel;
     if (n.contains('tenis') || n.contains('tennis')) return Deporte.tenis;
     if (n.contains('fútbol') ||
         n.contains('futbol') ||
         n.contains('cancha') ||
+        n.contains('canchita') ||
         n.contains('sintétic') ||
         n.contains('sintetic') ||
         n.contains('grass') ||
-        n.contains('loza') ||
+        n.contains('loza deportiva') ||
         n.contains('complejo deportivo') ||
-        n.contains('sport')) {
+        n.contains('fulbito') ||
+        n.contains('futsal')) {
       return Deporte.futbol;
     }
-    // Si Google lo clasifica como recinto deportivo, asumimos fútbol (lo común).
+
+    // 3) Sin señal en el nombre: solo si Google lo marca como recinto deportivo.
     if (tipos.contains('stadium') ||
         tipos.contains('sports_complex') ||
-        tipos.contains('sports_activity_location')) {
+        tipos.contains('athletic_field')) {
       return Deporte.futbol;
     }
-    return null;
+    return null; // por defecto, no lo metemos (evita falsos positivos)
   }
 }

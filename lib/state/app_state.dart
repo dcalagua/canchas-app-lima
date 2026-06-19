@@ -82,6 +82,30 @@ class AppState extends ChangeNotifier {
     CanchasRepo.insertar(c); // best-effort, compartir entre dispositivos
   }
 
+  /// Canchas que registró el dueño en este dispositivo (para "Mis canchas").
+  List<Cancha> get misCanchas => canchasExtra;
+
+  /// Edita una cancha registrada por el dueño (la actualiza local + Supabase).
+  void actualizarCancha(Cancha c) {
+    final i = canchasExtra.indexWhere((x) => x.id == c.id);
+    if (i >= 0) {
+      canchasExtra[i] = c;
+    } else {
+      canchasExtra.insert(0, c);
+    }
+    notifyListeners();
+    _persistirDatos();
+    CanchasRepo.actualizar(c); // best-effort
+  }
+
+  /// Elimina una cancha registrada por el dueño (local + Supabase).
+  void eliminarCancha(String id) {
+    canchasExtra.removeWhere((x) => x.id == id);
+    notifyListeners();
+    _persistirDatos();
+    CanchasRepo.eliminar(id); // best-effort
+  }
+
   // Saldo prepago del club (modelo inDrive): con saldo aparece destacado y
   // cada reserva nueva descuenta una comisión. Sin saldo, deja de destacarse.
   int saldoClub = 30;

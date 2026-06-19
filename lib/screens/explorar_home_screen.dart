@@ -19,6 +19,7 @@ import 'login_google_sheet.dart';
 import 'login_screen.dart';
 import 'home_shell.dart';
 import 'mis_reservas_screen.dart';
+import 'mis_canchas_screen.dart';
 import 'registrar_cancha_screen.dart';
 
 /// Pantalla de inicio estilo Airbnb: mapa de Google a pantalla completa con
@@ -300,6 +301,12 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
           Navigator.of(sheetContext).pop();
           Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const RegistrarCanchaScreen()),
+          );
+        },
+        onMisCanchas: () {
+          Navigator.of(sheetContext).pop();
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const MisCanchasScreen()),
           );
         },
         onLogin: () async {
@@ -664,20 +671,30 @@ class _CanchaCard extends StatelessWidget {
               Container(
                 width: 110,
                 height: 130,
+                clipBehavior: Clip.antiAlias,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(14),
                   gradient: gradienteDeporte(cancha.deporte),
                 ),
                 child: Stack(
                   children: [
-                    const Positioned.fill(child: CourtLines(opacity: 0.5)),
-                    Center(
-                      child: Icon(
-                        iconoDeporte(cancha.deporte),
-                        color: Colors.white,
-                        size: 44,
+                    if (cancha.fotoUrl != null)
+                      Positioned.fill(
+                        child: Image.network(cancha.fotoUrl!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) =>
+                                const SizedBox.shrink()),
+                      )
+                    else ...[
+                      const Positioned.fill(child: CourtLines(opacity: 0.5)),
+                      Center(
+                        child: Icon(
+                          iconoDeporte(cancha.deporte),
+                          color: Colors.white,
+                          size: 44,
+                        ),
                       ),
-                    ),
+                    ],
                     if (!cancha.registrada)
                       Positioned(
                         top: 8,
@@ -824,12 +841,14 @@ class _MenuSheet extends StatelessWidget {
   final VoidCallback onMisReservas;
   final VoidCallback onPanel;
   final VoidCallback onRegistrar;
+  final VoidCallback onMisCanchas;
   final Future<void> Function() onLogin;
   final Future<void> Function() onLogout;
   const _MenuSheet({
     required this.onMisReservas,
     required this.onPanel,
     required this.onRegistrar,
+    required this.onMisCanchas,
     required this.onLogin,
     required this.onLogout,
   });
@@ -914,6 +933,13 @@ class _MenuSheet extends StatelessWidget {
                 title: const Text('Registrar mi cancha'),
                 subtitle: const Text('La IA detecta el deporte por foto'),
                 onTap: onRegistrar,
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.sports_soccer, color: verdeCancha),
+                title: const Text('Mis canchas'),
+                subtitle: const Text('Edita precio, fotos y ubicación'),
+                onTap: onMisCanchas,
               ),
               const Divider(),
               if (u == null)

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../models/models.dart';
@@ -28,6 +30,46 @@ class CanchasRepo {
     } catch (_) {}
   }
 
+  /// Actualiza una cancha existente (edición del dueño). Fail-safe.
+  static Future<void> actualizar(Cancha c) async {
+    if (!SupabaseService.disponible) return;
+    try {
+      await SupabaseService.client
+          .from(_tabla)
+          .update(_toRow(c))
+          .eq('id', c.id);
+    } catch (_) {}
+  }
+
+  /// Elimina una cancha. Fail-safe.
+  static Future<void> eliminar(String id) async {
+    if (!SupabaseService.disponible) return;
+    try {
+      await SupabaseService.client.from(_tabla).delete().eq('id', id);
+    } catch (_) {}
+  }
+
+  /// Sube una foto de portada al bucket `canchas` y devuelve su URL pública.
+  /// Requiere un bucket público llamado `canchas` en Supabase Storage. Fail-safe:
+  /// si no está configurado o falla, devuelve null y la cancha queda sin foto.
+  static Future<String?> subirFoto(String canchaId, Uint8List bytes) async {
+    if (!SupabaseService.disponible) return null;
+    try {
+      final ruta = '$canchaId.jpg';
+      final storage = SupabaseService.client.storage.from('canchas');
+      await storage.uploadBinary(
+        ruta,
+        bytes,
+        fileOptions: const FileOptions(upsert: true, contentType: 'image/jpeg'),
+      );
+      // Cache-busting para que se vea la foto nueva tras editar.
+      final base = storage.getPublicUrl(ruta);
+      return '$base?v=${DateTime.now().millisecondsSinceEpoch}';
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Map<String, dynamic> _toRow(Cancha c) => {
         'id': c.id,
         'nombre': c.nombre,
@@ -41,6 +83,7 @@ class CanchasRepo {
         'digitalizada': c.digitalizada,
         'direccion': c.direccion,
         'registrada': c.registrada,
+        'foto_url': c.fotoUrl,
       };
 
   static Cancha _fromRow(Map<String, dynamic> r) => Cancha(
@@ -58,6 +101,7 @@ class CanchasRepo {
         digitalizada: (r['digitalizada'] ?? true) as bool,
         direccion: r['direccion'] as String?,
         registrada: (r['registrada'] ?? true) as bool,
+        fotoUrl: r['foto_url'] as String?,
       );
 
   static Distrito _enumDistrito(String? s) {
