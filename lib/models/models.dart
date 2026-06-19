@@ -81,6 +81,34 @@ class Reserva {
     required this.precio,
     required this.sena,
   });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'canchaId': canchaId,
+        'jugador': jugador,
+        'nivel': nivel,
+        'dia': dia,
+        'horaInicio': horaInicio,
+        'horaFin': horaFin,
+        'estado': estado.name,
+        'traidaPorApp': traidaPorApp,
+        'precio': precio,
+        'sena': sena,
+      };
+
+  factory Reserva.fromJson(Map<String, dynamic> j) => Reserva(
+        id: j['id'] as String,
+        canchaId: j['canchaId'] as String,
+        jugador: j['jugador'] as String,
+        nivel: j['nivel'] as String,
+        dia: j['dia'] as String,
+        horaInicio: j['horaInicio'] as String,
+        horaFin: j['horaFin'] as String,
+        estado: EstadoReserva.values.byName(j['estado'] as String),
+        traidaPorApp: j['traidaPorApp'] as bool,
+        precio: j['precio'] as int,
+        sena: j['sena'] as int,
+      );
 }
 
 /// Un bloque horario de una cancha en la agenda de hoy.
@@ -125,4 +153,14 @@ class MovimientoSaldo {
     required this.concepto,
     required this.cuando,
   });
+
+  Map<String, dynamic> toJson() =>
+      {'tipo': tipo.name, 'monto': monto, 'concepto': concepto, 'cuando': cuando};
+
+  factory MovimientoSaldo.fromJson(Map<String, dynamic> j) => MovimientoSaldo(
+        tipo: TipoMovimiento.values.byName(j['tipo'] as String),
+        monto: j['monto'] as int,
+        concepto: j['concepto'] as String,
+        cuando: j['cuando'] as String,
+      );
 }

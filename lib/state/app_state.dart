@@ -53,6 +53,7 @@ class AppState extends ChangeNotifier {
           cuando: 'Ahora'),
     );
     notifyListeners();
+    _persistirDatos();
   }
 
   /// Descuenta la comisión del saldo cuando entra una reserva a una cancha del
@@ -76,16 +77,60 @@ class AppState extends ChangeNotifier {
   int _contadorJugador = 1;
 
   static const _kUsuario = 'usuario_json';
+  static const _kSaldo = 'saldo_club';
+  static const _kMovs = 'movimientos_json';
+  static const _kMisReservas = 'mis_reservas_json';
 
-  /// Carga la sesión persistida (al arrancar la app).
+  /// Carga la sesión y los datos persistidos (al arrancar la app).
   Future<void> cargarSesion() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+
       final raw = prefs.getString(_kUsuario);
       if (raw != null) {
         usuario = Usuario.fromJson(jsonDecode(raw) as Map<String, dynamic>);
-        notifyListeners();
       }
+
+      if (prefs.containsKey(_kSaldo)) {
+        saldoClub = prefs.getInt(_kSaldo) ?? saldoClub;
+      }
+
+      final movsRaw = prefs.getString(_kMovs);
+      if (movsRaw != null) {
+        final list = (jsonDecode(movsRaw) as List)
+            .map((e) => MovimientoSaldo.fromJson(e as Map<String, dynamic>))
+            .toList();
+        movimientos
+          ..clear()
+          ..addAll(list);
+      }
+
+      final misRaw = prefs.getString(_kMisReservas);
+      if (misRaw != null) {
+        final list = (jsonDecode(misRaw) as List)
+            .map((e) => Reserva.fromJson(e as Map<String, dynamic>))
+            .toList();
+        misReservas
+          ..clear()
+          ..addAll(list);
+        // Refleja también en el panel del dueño (reservas) las que faltan.
+        for (final r in list) {
+          if (!reservas.any((x) => x.id == r.id)) reservas.insert(0, r);
+        }
+      }
+
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<void> _persistirDatos() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_kSaldo, saldoClub);
+      await prefs.setString(
+          _kMovs, jsonEncode(movimientos.map((m) => m.toJson()).toList()));
+      await prefs.setString(_kMisReservas,
+          jsonEncode(misReservas.map((r) => r.toJson()).toList()));
     } catch (_) {}
   }
 
@@ -143,6 +188,7 @@ class AppState extends ChangeNotifier {
     }
     _consumirComision(cancha);
     notifyListeners();
+    _persistirDatos();
     return reserva;
   }
 
@@ -211,6 +257,7 @@ class AppState extends ChangeNotifier {
     agenda[idx] = bloque.copyWith(reservaId: nueva.id);
     _consumirComision(cancha);
     notifyListeners();
+    _persistirDatos();
     return '${cancha.nombre} · ${nueva.horaInicio} · +S/ ${nueva.precio}';
   }
 
