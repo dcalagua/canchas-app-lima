@@ -1,9 +1,16 @@
 # Canchas Lima — Panel del Club (Fase 1)
 
 App **multiplataforma (Android + iOS)** del marketplace de reserva de **canchas de
-tenis y pádel en Lima**, hecha en **Flutter**. Esta primera versión está alineada a
-la **Fase 1 de la estrategia comercial: captar la oferta (dueños de canchas)**. Por
-eso el corazón de la app es el **Panel del Club**, no todavía la app del jugador.
+fútbol, tenis y pádel en Lima**, hecha en **Flutter**. Esta primera versión está
+alineada a la **Fase 1 de la estrategia comercial: captar la oferta (dueños de
+canchas)**. Por eso el corazón de la app es el **Panel del Club**, no todavía la app
+del jugador.
+
+> El fútbol (canchas sintéticas 5/7) es el mercado de mayor rotación de Lima y entra
+> de lleno en el alcance: la app ya descubre, mapea y filtra canchas de fútbol. Nota
+> estratégica: es también el terreno fuerte del competidor regional (ATC), así que
+> en fútbol ganamos por **soporte humano local** y por el **gancho social**
+> ("te falta 1 para tu pichanga"), no por reserva pura. Ver `docs/PLAN_FUTBOL.md`.
 
 > Tesis: *no vendemos software, le llenamos al dueño sus horas vacías.* El software
 > es el medio; las reservas nuevas son la venta.

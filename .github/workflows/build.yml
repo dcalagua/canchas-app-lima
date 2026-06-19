@@ -99,7 +99,7 @@ jobs:
           tag_name: v0.1.0
           name: Pichangol v0.1.0
           body: |
-            APK de **Pichangol** — marketplace de canchas de tenis y pádel en Lima.
+            APK de **Pichangol** — marketplace de canchas de fútbol, tenis y pádel en Lima.
             Instálalo en Android por sideload. Mapa con Google Maps (secret `MAPS_API_KEY`).
           files: dist/pichangol.apk
           fail_on_unmatched_files: true

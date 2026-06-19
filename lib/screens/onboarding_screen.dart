@@ -28,7 +28,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   static const _slides = [
     _Slide(Icons.map, verdeCancha, 'Encuentra tu cancha',
-        'Mira en el mapa las canchas de tenis y pádel cerca de ti, con su precio por hora. Buscar es libre, sin registrarte.'),
+        'Mira en el mapa las canchas de fútbol, tenis y pádel cerca de ti, con su precio por hora. Buscar es libre, sin registrarte.'),
     _Slide(Icons.bolt, coral, 'Reserva en segundos',
         'Elige día y hora y asegura tu cancha con una seña. Menos plantones, tu hora garantizada.'),
     _Slide(Icons.groups, arena, 'Arma tu partido',
