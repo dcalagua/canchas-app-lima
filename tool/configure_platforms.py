@@ -227,8 +227,41 @@ def configurar_google_signin_ios():
     print("  Google Sign-In iOS: URL scheme configurado")
 
 
+def configurar_compile_sdk_global():
+    """Fuerza compileSdk en todos los subproyectos Android.
+    Varios plugins (app_links, package_info_plus, geolocator…) esperan
+    flutter.compileSdkVersion, que no está disponible para subproyectos en este
+    entorno y rompe el build. Esto lo resuelve de raíz para todos a la vez."""
+    path = "android/build.gradle"
+    if not os.path.exists(path):
+        return
+    with open(path, "r", encoding="utf-8") as f:
+        text = f.read()
+    if "pichangol_compile_sdk_fix" in text:
+        return
+    bloque = (
+        "\n\n// pichangol_compile_sdk_fix: forzar compileSdk en subproyectos de plugin\n"
+        "subprojects {\n"
+        "    afterEvaluate { project ->\n"
+        "        if (project.hasProperty(\"android\")) {\n"
+        "            project.android {\n"
+        "                if (namespace == null) {\n"
+        "                    namespace project.group\n"
+        "                }\n"
+        "                compileSdkVersion 34\n"
+        "            }\n"
+        "        }\n"
+        "    }\n"
+        "}\n"
+    )
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(text + bloque)
+    print("  compileSdk global aplicado a subproyectos Android")
+
+
 def main():
     print(f"Configurando plataformas (MAPS_API_KEY {'definida' if KEY != 'YOUR_MAPS_API_KEY_HERE' else 'placeholder'})")
+    configurar_compile_sdk_global()
     patch("android/app/src/main/AndroidManifest.xml", android_manifest)
     patch("ios/Runner/AppDelegate.swift", ios_appdelegate)
     patch("ios/Runner/Info.plist", ios_infoplist)
