@@ -239,23 +239,27 @@ def configurar_compile_sdk_global():
         text = f.read()
     if "pichangol_compile_sdk_fix" in text:
         return
+    # Se PREPONE para registrar el hook antes de que Flutter dispare la
+    # evaluación de subproyectos (evita "afterEvaluate when already evaluated").
     bloque = (
-        "\n\n// pichangol_compile_sdk_fix: forzar compileSdk en subproyectos de plugin\n"
-        "subprojects {\n"
-        "    afterEvaluate { project ->\n"
-        "        if (project.hasProperty(\"android\")) {\n"
-        "            project.android {\n"
-        "                if (namespace == null) {\n"
-        "                    namespace project.group\n"
+        "// pichangol_compile_sdk_fix: forzar compileSdk en subproyectos de plugin\n"
+        "subprojects { sub ->\n"
+        "    if (!sub.state.executed) {\n"
+        "        sub.afterEvaluate { p ->\n"
+        "            if (p.hasProperty(\"android\")) {\n"
+        "                p.android {\n"
+        "                    if (namespace == null) {\n"
+        "                        namespace p.group\n"
+        "                    }\n"
+        "                    compileSdkVersion 34\n"
         "                }\n"
-        "                compileSdkVersion 34\n"
         "            }\n"
         "        }\n"
         "    }\n"
-        "}\n"
+        "}\n\n"
     )
     with open(path, "w", encoding="utf-8") as f:
-        f.write(text + bloque)
+        f.write(bloque + text)
     print("  compileSdk global aplicado a subproyectos Android")
 
 
