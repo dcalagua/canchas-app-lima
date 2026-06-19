@@ -1,7 +1,12 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/sample_data.dart';
 import '../models/models.dart';
+import '../models/usuario.dart';
+import '../services/auth_service.dart';
 
 /// Instancia única del estado para toda la app (sin paquetes extra de DI).
 final AppState appState = AppState();
@@ -9,14 +14,61 @@ final AppState appState = AppState();
 /// Estado de la app. Sin backend todavía: arranca de [SampleData] y muta en memoria.
 /// Pensado para Fase 1 (panel del dueño) + demo en la cancha.
 class AppState extends ChangeNotifier {
-  bool sesionIniciada = false;
+  bool sesionIniciada = false; // sesión del DUEÑO (panel del club)
   String nombreClub = SampleData.clubActivo;
+
+  // Sesión del JUGADOR (Google). Navegar/buscar es libre; reservar exige login.
+  Usuario? usuario;
+  bool get logueado => usuario != null;
 
   final List<Reserva> reservas = List.of(SampleData.reservas);
   final List<BloqueHorario> agenda = List.of(SampleData.agendaHoy());
+  final List<Reserva> misReservas = []; // reservas del jugador logueado
 
   int _contadorDemo = 1;
   int _contadorJugador = 1;
+
+  static const _kUsuario = 'usuario_json';
+
+  /// Carga la sesión persistida (al arrancar la app).
+  Future<void> cargarSesion() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_kUsuario);
+      if (raw != null) {
+        usuario = Usuario.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+        notifyListeners();
+      }
+    } catch (_) {}
+  }
+
+  /// Login del jugador con Google. Devuelve true si quedó logueado.
+  Future<bool> entrarConGoogle() async {
+    final u = await AuthService.entrarConGoogle();
+    if (u == null) return false; // canceló
+    usuario = u;
+    await _persistirUsuario();
+    notifyListeners();
+    return true;
+  }
+
+  Future<void> cerrarSesionUsuario() async {
+    await AuthService.salir();
+    usuario = null;
+    await _persistirUsuario();
+    notifyListeners();
+  }
+
+  Future<void> _persistirUsuario() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (usuario == null) {
+        await prefs.remove(_kUsuario);
+      } else {
+        await prefs.setString(_kUsuario, jsonEncode(usuario!.toJson()));
+      }
+    } catch (_) {}
+  }
 
   /// Registra una reserva hecha por un jugador desde el detalle de cancha.
   /// Aparece como reserva nueva (traída por la app) y, si la cancha es del club
@@ -25,7 +77,7 @@ class AppState extends ChangeNotifier {
     final reserva = Reserva(
       id: 'jug${_contadorJugador++}',
       canchaId: cancha.id,
-      jugador: 'Tú (jugador)',
+      jugador: usuario?.nombre ?? 'Jugador',
       nivel: 'Intermedio 3.5',
       dia: dia,
       horaInicio: hora,
@@ -35,7 +87,8 @@ class AppState extends ChangeNotifier {
       precio: cancha.precioHora,
       sena: (cancha.precioHora * 0.3).round(),
     );
-    reservas.insert(0, reserva);
+    reservas.insert(0, reserva); // visible para el dueño en su panel
+    misReservas.insert(0, reserva); // visible para el jugador en "Mis reservas"
     if (dia == 'Hoy') {
       final i = agenda.indexWhere(
           (b) => b.canchaId == cancha.id && b.hora == hora);

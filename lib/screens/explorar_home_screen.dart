@@ -9,8 +9,10 @@ import '../brand.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'cancha_detalle_screen.dart';
+import 'login_google_sheet.dart';
 import 'login_screen.dart';
 import 'home_shell.dart';
+import 'mis_reservas_screen.dart';
 
 /// Pantalla de inicio estilo Airbnb: mapa de Google a pantalla completa con
 /// barra de búsqueda flotante, filtros por deporte y un carrusel de canchas
@@ -164,6 +166,42 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     );
   }
 
+  Future<void> _abrirMisReservas() async {
+    if (!appState.logueado) {
+      final ok = await LoginGoogleSheet.mostrar(context);
+      if (!ok || !mounted) return;
+    }
+    if (!mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const MisReservasScreen()),
+    );
+  }
+
+  void _abrirMenu() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => _MenuSheet(
+        onMisReservas: () {
+          Navigator.of(sheetContext).pop();
+          _abrirMisReservas();
+        },
+        onPanel: () {
+          Navigator.of(sheetContext).pop();
+          _abrirPanel();
+        },
+        onLogin: () async {
+          Navigator.of(sheetContext).pop();
+          await LoginGoogleSheet.mostrar(context);
+        },
+        onLogout: () async {
+          await appState.cerrarSesionUsuario();
+          if (mounted) Navigator.of(sheetContext).pop();
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final canchas = _filtradas();
@@ -189,7 +227,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
               child: Column(
                 children: [
-                  _BarraBusqueda(onAvatar: _abrirPanel),
+                  _BarraBusqueda(onAvatar: _abrirMenu),
                   const SizedBox(height: 10),
                   _FiltrosDeporte(
                     seleccion: _filtro,
@@ -475,6 +513,115 @@ class _CanchaCard extends StatelessWidget {
         ),
         ),
       ),
+    );
+  }
+}
+
+class _MenuSheet extends StatelessWidget {
+  final VoidCallback onMisReservas;
+  final VoidCallback onPanel;
+  final Future<void> Function() onLogin;
+  final Future<void> Function() onLogout;
+  const _MenuSheet({
+    required this.onMisReservas,
+    required this.onPanel,
+    required this.onLogin,
+    required this.onLogout,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: appState,
+      builder: (context, _) {
+        final u = appState.usuario;
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 44,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: Colors.black12,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              // Cabecera de perfil
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 26,
+                    backgroundColor: verdeClaro,
+                    backgroundImage: (u?.fotoUrl != null)
+                        ? NetworkImage(u!.fotoUrl!)
+                        : null,
+                    child: (u?.fotoUrl == null)
+                        ? const Icon(Icons.person, color: Colors.white)
+                        : null,
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          u?.nombre ?? 'Invitado',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 17),
+                        ),
+                        Text(
+                          u?.email ?? 'Inicia sesión para reservar',
+                          style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              const Divider(),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.event_available, color: verdeCancha),
+                title: const Text('Mis reservas'),
+                onTap: onMisReservas,
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.storefront, color: verdeCancha),
+                title: const Text('Soy dueño de cancha'),
+                subtitle: const Text('Panel del club'),
+                onTap: onPanel,
+              ),
+              const Divider(),
+              if (u == null)
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(backgroundColor: coral),
+                  onPressed: onLogin,
+                  icon: const Icon(Icons.login),
+                  label: const Text('Iniciar sesión con Google'),
+                )
+              else
+                TextButton.icon(
+                  onPressed: onLogout,
+                  icon: const Icon(Icons.logout, color: Colors.redAccent),
+                  label: const Text('Cerrar sesión',
+                      style: TextStyle(color: Colors.redAccent)),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

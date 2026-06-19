@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'login_google_sheet.dart';
 
 /// Detalle de una cancha (estilo ficha de Airbnb) con selección de día/hora y
 /// flujo de reserva. Demo sin backend: la reserva se guarda en memoria.
@@ -32,9 +33,16 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
         r.canchaId == cancha.id && r.dia == _dia && r.horaInicio == hora);
   }
 
-  void _reservar() {
+  Future<void> _reservar() async {
     final hora = _hora;
     if (hora == null) return;
+
+    // Navegar/buscar es libre; reservar exige login con Google.
+    if (!appState.logueado) {
+      final ok = await LoginGoogleSheet.mostrar(context);
+      if (!ok || !mounted) return;
+    }
+
     final sena = (cancha.precioHora * 0.3).round();
 
     showDialog<void>(
