@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show FileOptions;
 
 import '../models/models.dart';
 import '../services/supabase_service.dart';
@@ -60,7 +61,7 @@ class CanchasRepo {
       await storage.uploadBinary(
         ruta,
         bytes,
-        fileOptions: const FileOptions(upsert: true, contentType: 'image/jpeg'),
+        fileOptions: const FileOptions(upsert: true),
       );
       // Cache-busting para que se vea la foto nueva tras editar.
       final base = storage.getPublicUrl(ruta);
