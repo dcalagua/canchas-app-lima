@@ -80,26 +80,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
             backgroundColor: _color,
             foregroundColor: Colors.white,
             flexibleSpace: FlexibleSpaceBar(
-              background: DecoratedBox(
-                decoration: BoxDecoration(gradient: gradienteDeporte(_cancha.deporte)),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    if (_cancha.fotoUrl != null)
-                      Image.network(_cancha.fotoUrl!,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) =>
-                              const SizedBox.shrink())
-                    else ...[
-                      const Positioned.fill(child: CourtLines(opacity: 0.5)),
-                      Center(
-                        child: Icon(iconoDeporte(_cancha.deporte),
-                            size: 96, color: Colors.white.withOpacity(0.9)),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
+              background: _HeroGaleria(cancha: _cancha),
             ),
           ),
           SliverToBoxAdapter(
@@ -446,6 +427,84 @@ class _PanelDescubierta extends StatelessWidget {
               label: const Text('Reclamar / registrar esta cancha'),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Hero con galería de fotos deslizable (puntos indicadores). Si no hay fotos,
+/// muestra el gradiente del deporte con líneas de cancha.
+class _HeroGaleria extends StatefulWidget {
+  const _HeroGaleria({required this.cancha});
+  final Cancha cancha;
+
+  @override
+  State<_HeroGaleria> createState() => _HeroGaleriaState();
+}
+
+class _HeroGaleriaState extends State<_HeroGaleria> {
+  final _ctrl = PageController();
+  int _pagina = 0;
+
+  List<String> get _fotos => widget.cancha.fotos.isNotEmpty
+      ? widget.cancha.fotos
+      : (widget.cancha.fotoUrl != null ? [widget.cancha.fotoUrl!] : []);
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fotos = _fotos;
+    return DecoratedBox(
+      decoration: BoxDecoration(gradient: gradienteDeporte(widget.cancha.deporte)),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (fotos.isEmpty) ...[
+            const Positioned.fill(child: CourtLines(opacity: 0.5)),
+            Center(
+              child: Icon(iconoDeporte(widget.cancha.deporte),
+                  size: 96, color: Colors.white.withOpacity(0.9)),
+            ),
+          ] else ...[
+            PageView.builder(
+              controller: _ctrl,
+              itemCount: fotos.length,
+              onPageChanged: (i) => setState(() => _pagina = i),
+              itemBuilder: (_, i) => Image.network(fotos[i],
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+            ),
+            if (fotos.length > 1)
+              Positioned(
+                bottom: 14,
+                left: 0,
+                right: 0,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    for (var i = 0; i < fotos.length; i++)
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        margin: const EdgeInsets.symmetric(horizontal: 3),
+                        width: i == _pagina ? 18 : 7,
+                        height: 7,
+                        decoration: BoxDecoration(
+                          color: i == _pagina
+                              ? Colors.white
+                              : Colors.white54,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+          ],
         ],
       ),
     );

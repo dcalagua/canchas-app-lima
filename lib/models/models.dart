@@ -32,7 +32,8 @@ class Cancha {
   final bool digitalizada; // false = aún en cuaderno/WhatsApp (objetivo prioritario)
   final String? direccion; // dirección real (texto), si se registró por dirección
   final bool registrada; // false = descubierta (Google Places), aún no en Pichangol
-  final String? fotoUrl; // foto de portada (Supabase Storage), si se subió
+  final String? fotoUrl; // foto de portada (= primera de la galería)
+  final List<String> fotos; // galería de fotos (URLs en Supabase Storage)
 
   const Cancha({
     required this.id,
@@ -47,6 +48,7 @@ class Cancha {
     this.direccion,
     this.registrada = true,
     this.fotoUrl,
+    this.fotos = const [],
   });
 
   Cancha copyWith({
@@ -58,6 +60,7 @@ class Cancha {
     LatLng? ubicacion,
     String? direccion,
     String? fotoUrl,
+    List<String>? fotos,
   }) {
     return Cancha(
       id: id,
@@ -72,6 +75,7 @@ class Cancha {
       direccion: direccion ?? this.direccion,
       registrada: registrada,
       fotoUrl: fotoUrl ?? this.fotoUrl,
+      fotos: fotos ?? this.fotos,
     );
   }
 
@@ -89,6 +93,7 @@ class Cancha {
         'direccion': direccion,
         'registrada': registrada,
         'fotoUrl': fotoUrl,
+        'fotos': fotos,
       };
 
   factory Cancha.fromJson(Map<String, dynamic> j) => Cancha(
@@ -105,6 +110,8 @@ class Cancha {
         direccion: j['direccion'] as String?,
         registrada: (j['registrada'] ?? true) as bool,
         fotoUrl: j['fotoUrl'] as String?,
+        fotos: (j['fotos'] as List?)?.map((e) => e.toString()).toList() ??
+            const [],
       );
 }
 

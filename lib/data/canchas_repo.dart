@@ -50,20 +50,20 @@ class CanchasRepo {
     } catch (_) {}
   }
 
-  /// Sube una foto de portada al bucket `canchas` y devuelve su URL pública.
-  /// Requiere un bucket público llamado `canchas` en Supabase Storage. Fail-safe:
-  /// si no está configurado o falla, devuelve null y la cancha queda sin foto.
-  static Future<String?> subirFoto(String canchaId, Uint8List bytes) async {
+  /// Sube una foto al bucket `canchas` y devuelve su URL pública. Si [sufijo]
+  /// es null usa una ruta fija (portada, se sobreescribe); con [sufijo] crea
+  /// rutas únicas para una galería. Requiere un bucket público `canchas`.
+  static Future<String?> subirFoto(String canchaId, Uint8List bytes,
+      {String? sufijo}) async {
     if (!SupabaseService.disponible) return null;
     try {
-      final ruta = '$canchaId.jpg';
+      final ruta = sufijo == null ? '$canchaId.jpg' : '$canchaId/$sufijo.jpg';
       final storage = SupabaseService.client.storage.from('canchas');
       await storage.uploadBinary(
         ruta,
         bytes,
         fileOptions: const FileOptions(upsert: true),
       );
-      // Cache-busting para que se vea la foto nueva tras editar.
       final base = storage.getPublicUrl(ruta);
       return '$base?v=${DateTime.now().millisecondsSinceEpoch}';
     } catch (_) {
@@ -85,6 +85,7 @@ class CanchasRepo {
         'direccion': c.direccion,
         'registrada': c.registrada,
         'foto_url': c.fotoUrl,
+        'fotos': c.fotos,
       };
 
   static Cancha _fromRow(Map<String, dynamic> r) => Cancha(
@@ -103,6 +104,8 @@ class CanchasRepo {
         direccion: r['direccion'] as String?,
         registrada: (r['registrada'] ?? true) as bool,
         fotoUrl: r['foto_url'] as String?,
+        fotos: (r['fotos'] as List?)?.map((e) => e.toString()).toList() ??
+            const [],
       );
 
   static Distrito _enumDistrito(String? s) {

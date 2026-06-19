@@ -163,6 +163,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
         digitalizada: true,
         direccion: direccion.isEmpty ? null : direccion,
         fotoUrl: fotoUrl,
+        fotos: fotoUrl != null ? [fotoUrl] : const [],
       ));
     }
     if (!mounted) return;

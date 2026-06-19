@@ -106,7 +106,8 @@ dirección escrita y el estado "registrada/descubierta", agrega dos columnas:
 alter table pichangol_canchas
   add column if not exists direccion text,
   add column if not exists registrada boolean not null default true,
-  add column if not exists foto_url text;
+  add column if not exists foto_url text,
+  add column if not exists fotos jsonb default '[]'::jsonb;
 ```
 
 ### Fotos de cancha (Supabase Storage)

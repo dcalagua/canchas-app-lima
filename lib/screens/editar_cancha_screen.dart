@@ -35,7 +35,13 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
   bool _geocodificando = false;
   String? _errorGeo;
 
-  Uint8List? _fotoNueva; // foto recién elegida (aún no subida)
+  // Galería: URLs ya subidas + fotos nuevas (locales, aún sin subir).
+  late final List<String> _fotosUrl = List.of(
+    widget.cancha.fotos.isNotEmpty
+        ? widget.cancha.fotos
+        : (widget.cancha.fotoUrl != null ? [widget.cancha.fotoUrl!] : []),
+  );
+  final List<Uint8List> _fotosNuevas = [];
   bool _guardando = false;
 
   @override
@@ -47,13 +53,15 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
     super.dispose();
   }
 
-  Future<void> _elegirFoto() async {
-    final XFile? file = await ImagePicker()
-        .pickImage(source: ImageSource.gallery, maxWidth: 1280);
-    if (file == null) return;
-    final bytes = await file.readAsBytes();
+  Future<void> _agregarFotos() async {
+    final files = await ImagePicker().pickMultiImage(maxWidth: 1280);
+    if (files.isEmpty) return;
+    final nuevas = <Uint8List>[];
+    for (final f in files) {
+      nuevas.add(await f.readAsBytes());
+    }
     if (!mounted) return;
-    setState(() => _fotoNueva = bytes);
+    setState(() => _fotosNuevas.addAll(nuevas));
   }
 
   Future<void> _ubicarDireccion() async {
@@ -97,18 +105,24 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
     }
     setState(() => _guardando = true);
 
-    // Sube la foto nueva (si hay) y obtiene su URL.
-    String? fotoUrl = widget.cancha.fotoUrl;
-    if (_fotoNueva != null) {
-      final url = await CanchasRepo.subirFoto(widget.cancha.id, _fotoNueva!);
-      if (url != null) fotoUrl = url;
+    // Sube las fotos nuevas y arma la galería final (existentes + nuevas).
+    final fotos = List<String>.of(_fotosUrl);
+    for (var i = 0; i < _fotosNuevas.length; i++) {
+      final url = await CanchasRepo.subirFoto(
+        widget.cancha.id,
+        _fotosNuevas[i],
+        sufijo: '${DateTime.now().millisecondsSinceEpoch}_$i',
+      );
+      if (url != null) fotos.add(url);
     }
+    final fotoUrl = fotos.isNotEmpty ? fotos.first : null;
 
     final actualizada = widget.cancha.copyWith(
       nombre: nombre,
       precioHora: int.tryParse(_precio.text.trim()) ?? widget.cancha.precioHora,
       deporte: _deporte,
       ubicacion: _ubicacion,
+      fotos: fotos,
       direccion: _direccion.text.trim().isEmpty ? null : _direccion.text.trim(),
       fotoUrl: fotoUrl,
     );
@@ -174,10 +188,21 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
       body: ListView(
         padding: const EdgeInsets.all(18),
         children: [
-          _ZonaFoto(
-            fotoNueva: _fotoNueva,
-            fotoUrl: widget.cancha.fotoUrl,
-            onTap: _elegirFoto,
+          Row(
+            children: [
+              const Text('Fotos', style: TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(width: 8),
+              Text('(la 1ª es la portada)',
+                  style: TextStyle(color: textoTenue, fontSize: 12)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          _GaleriaEditor(
+            fotosUrl: _fotosUrl,
+            fotosNuevas: _fotosNuevas,
+            onAgregar: _agregarFotos,
+            onQuitarUrl: (i) => setState(() => _fotosUrl.removeAt(i)),
+            onQuitarNueva: (i) => setState(() => _fotosNuevas.removeAt(i)),
           ),
           const SizedBox(height: 16),
           TextField(
@@ -297,75 +322,120 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
   }
 }
 
-class _ZonaFoto extends StatelessWidget {
-  const _ZonaFoto(
-      {required this.fotoNueva, required this.fotoUrl, required this.onTap});
-  final Uint8List? fotoNueva;
-  final String? fotoUrl;
-  final VoidCallback onTap;
+/// Editor de galería: miniaturas (existentes + nuevas) con botón de quitar y un
+/// recuadro para agregar más fotos.
+class _GaleriaEditor extends StatelessWidget {
+  const _GaleriaEditor({
+    required this.fotosUrl,
+    required this.fotosNuevas,
+    required this.onAgregar,
+    required this.onQuitarUrl,
+    required this.onQuitarNueva,
+  });
+
+  final List<String> fotosUrl;
+  final List<Uint8List> fotosNuevas;
+  final VoidCallback onAgregar;
+  final ValueChanged<int> onQuitarUrl;
+  final ValueChanged<int> onQuitarNueva;
 
   @override
   Widget build(BuildContext context) {
-    Widget contenido;
-    if (fotoNueva != null) {
-      contenido = Image.memory(fotoNueva!, fit: BoxFit.cover, width: double.infinity);
-    } else if (fotoUrl != null) {
-      contenido = Image.network(fotoUrl!, fit: BoxFit.cover, width: double.infinity,
-          errorBuilder: (_, __, ___) => _placeholder());
-    } else {
-      contenido = _placeholder();
-    }
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 180,
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          color: const Color(0xFFEFEBE1),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: trazo),
-        ),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            contenido,
-            Positioned(
-              right: 10,
-              bottom: 10,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                decoration: BoxDecoration(
-                    color: pino, borderRadius: BorderRadius.circular(999)),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.add_a_photo, color: lima, size: 16),
-                    SizedBox(width: 6),
-                    Text('Cambiar foto',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 12)),
-                  ],
-                ),
+    return SizedBox(
+      height: 110,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: [
+          for (var i = 0; i < fotosUrl.length; i++)
+            _Miniatura(
+              imagen: Image.network(fotosUrl[i],
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) =>
+                      const ColoredBox(color: Color(0xFFEFEBE1))),
+              esPortada: i == 0,
+              onQuitar: () => onQuitarUrl(i),
+            ),
+          for (var i = 0; i < fotosNuevas.length; i++)
+            _Miniatura(
+              imagen: Image.memory(fotosNuevas[i], fit: BoxFit.cover),
+              esPortada: fotosUrl.isEmpty && i == 0,
+              onQuitar: () => onQuitarNueva(i),
+            ),
+          // Botón agregar
+          GestureDetector(
+            onTap: onAgregar,
+            child: Container(
+              width: 100,
+              margin: const EdgeInsets.only(right: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEFEBE1),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: trazo),
+              ),
+              child: const Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.add_a_photo, color: pino, size: 28),
+                  SizedBox(height: 6),
+                  Text('Agregar',
+                      style: TextStyle(
+                          color: verdeOscuro,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12)),
+                ],
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
+}
 
-  Widget _placeholder() {
-    return const Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+class _Miniatura extends StatelessWidget {
+  const _Miniatura(
+      {required this.imagen, required this.esPortada, required this.onQuitar});
+  final Widget imagen;
+  final bool esPortada;
+  final VoidCallback onQuitar;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 100,
+      margin: const EdgeInsets.only(right: 8),
+      child: Stack(
+        fit: StackFit.expand,
         children: [
-          Icon(Icons.add_a_photo, color: pino, size: 40),
-          SizedBox(height: 8),
-          Text('Agrega una foto de la cancha',
-              style: TextStyle(color: verdeOscuro, fontWeight: FontWeight.w600)),
+          ClipRRect(borderRadius: BorderRadius.circular(14), child: imagen),
+          if (esPortada)
+            Positioned(
+              left: 6,
+              top: 6,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                decoration: BoxDecoration(
+                    color: pino, borderRadius: BorderRadius.circular(999)),
+                child: const Text('Portada',
+                    style: TextStyle(
+                        color: lima,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700)),
+              ),
+            ),
+          Positioned(
+            right: 4,
+            top: 4,
+            child: GestureDetector(
+              onTap: onQuitar,
+              child: const CircleAvatar(
+                radius: 12,
+                backgroundColor: Colors.black54,
+                child: Icon(Icons.close, color: Colors.white, size: 15),
+              ),
+            ),
+          ),
         ],
       ),
     );
