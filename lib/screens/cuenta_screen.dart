@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../models/models.dart';
+import '../services/payments_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'pago_sheet.dart';
 
 /// Cuenta del club: saldo prepago (modelo inDrive), recargas y movimientos.
 class CuentaScreen extends StatelessWidget {
@@ -47,15 +49,24 @@ class CuentaScreen extends StatelessWidget {
       context: context,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) => _RecargaSheet(
-        onRecargar: (monto) {
-          appState.recargar(monto);
-          Navigator.of(sheetContext).pop();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              backgroundColor: verdeCancha,
-              content: Text('✅ Recargaste S/ $monto. ¡Ya apareces destacado!'),
-            ),
+        onRecargar: (monto) async {
+          Navigator.of(sheetContext).pop(); // cierra la selección de monto
+          final res = await PagoSheet.mostrar(
+            context,
+            monto: monto,
+            concepto: 'Recarga de saldo',
+            esRecarga: true,
           );
+          if (res != null && res.exito) {
+            appState.recargar(monto);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                backgroundColor: verdeCancha,
+                content: Text(
+                    '✅ Recargaste S/ $monto. ¡Ya apareces destacado! (${res.referencia})'),
+              ),
+            );
+          }
         },
       ),
     );

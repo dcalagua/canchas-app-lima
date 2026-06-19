@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../models/models.dart';
+import '../services/payments_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'login_google_sheet.dart';
+import 'pago_sheet.dart';
 
 /// Detalle de una cancha (estilo ficha de Airbnb) con selección de día/hora y
 /// flujo de reserva. Demo sin backend: la reserva se guarda en memoria.
@@ -73,11 +75,18 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: coral),
-            onPressed: () {
+            onPressed: () async {
               final messenger = ScaffoldMessenger.of(context);
               final nav = Navigator.of(context);
+              Navigator.of(ctx).pop(); // cierra diálogo de confirmación
+              // Cobro de la seña antes de confirmar la reserva.
+              final pago = await PagoSheet.mostrar(
+                context,
+                monto: sena,
+                concepto: 'Seña · ${cancha.nombre}',
+              );
+              if (pago == null || !pago.exito) return;
               appState.agregarReservaJugador(cancha, _dia, hora);
-              Navigator.of(ctx).pop(); // cierra diálogo
               nav.pop(); // vuelve al mapa
               messenger.showSnackBar(
                 SnackBar(
