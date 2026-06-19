@@ -131,6 +131,7 @@ class Reserva {
   final bool traidaPorApp; // true = reserva nueva (genera comisión en Fase 2)
   final int precio;
   final int sena; // monto de seña/garantía con tarjeta (anti no-show)
+  final String usuario; // correo del jugador (para "mis reservas" entre dispositivos)
 
   const Reserva({
     required this.id,
@@ -144,6 +145,7 @@ class Reserva {
     required this.traidaPorApp,
     required this.precio,
     required this.sena,
+    this.usuario = '',
   });
 
   Map<String, dynamic> toJson() => {
@@ -158,6 +160,7 @@ class Reserva {
         'traidaPorApp': traidaPorApp,
         'precio': precio,
         'sena': sena,
+        'usuario': usuario,
       };
 
   factory Reserva.fromJson(Map<String, dynamic> j) => Reserva(
@@ -172,6 +175,7 @@ class Reserva {
         traidaPorApp: j['traidaPorApp'] as bool,
         precio: j['precio'] as int,
         sena: j['sena'] as int,
+        usuario: (j['usuario'] ?? '') as String,
       );
 }
 

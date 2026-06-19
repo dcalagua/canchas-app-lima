@@ -129,6 +129,49 @@ Para que el dueño suba una **foto de portada** al registrar/editar su cancha:
 > celular, pero el alta a Supabase podría fallar en silencio hasta que existan
 > las columnas. Por eso conviene aplicarlo.
 
+## Reservas compartidas (tabla `pichangol_reservas`)
+Para que la **disponibilidad de horarios** se comparta entre dispositivos y
+"Mis reservas" siga al jugador por su correo, corre en el SQL Editor:
+
+```sql
+create table if not exists pichangol_reservas (
+  id text primary key,
+  cancha_id text,
+  jugador text,
+  nivel text,
+  dia text,
+  hora_inicio text,
+  hora_fin text,
+  estado text default 'confirmada',
+  traida_por_app boolean default true,
+  precio int,
+  sena int,
+  usuario text,            -- correo del jugador (para "mis reservas")
+  creado timestamptz default now()
+);
+alter table pichangol_reservas enable row level security;
+-- Piloto sin auth de dueño: lectura/escritura para anon (ajustar con RLS real luego)
+create policy "reservas_read"  on pichangol_reservas for select to anon using (true);
+create policy "reservas_write" on pichangol_reservas for insert to anon with check (true);
+```
+
+> Fail-safe: si no creas la tabla, las reservas siguen funcionando en local;
+> simplemente no se comparten entre dispositivos.
+
+## Places vía Edge Function (sacar la API key del APK)
+La app llama primero a la función `places-cerca` (código en
+`supabase/functions/places-cerca/`) y solo si no está desplegada cae al llamado
+directo a Google. Para desplegarla y guardar la key del lado servidor:
+
+```bash
+# Requiere la CLI de Supabase y haber hecho `supabase link` a tu proyecto
+supabase functions deploy places-cerca --no-verify-jwt
+supabase secrets set PLACES_API_KEY=tu_key_de_places
+```
+
+Con esto la key deja de viajar en el APK (más seguro y escalable). Mientras no
+la despliegues, todo sigue funcionando con la key del cliente.
+
 ## Escalabilidad a futuro
 - Edge Functions para webhooks de la pasarela (Culqi/Yape) y para el
   matchmaking por nivel.

@@ -4,6 +4,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/models.dart';
+import 'supabase_service.dart';
 
 /// Descubre canchas REALES cerca de una ubicación usando la **Places API (New)**
 /// de Google (endpoint `places:searchText`). Son canchas que existen en Google
@@ -31,10 +32,17 @@ class PlacesService {
   ];
 
   /// Busca canchas cerca de [centro] dentro de [radioMetros].
+  ///
+  /// Preferimos la **Edge Function de Supabase** (`places-cerca`), que guarda la
+  /// API key del lado servidor (no viaja en el APK). Si la función no está
+  /// desplegada, cae al llamado directo a Google con la key del cliente.
   static Future<List<Cancha>> canchasCerca(
     LatLng centro, {
     double radioMetros = 4000,
   }) async {
+    final viaFuncion = await _viaEdgeFunction(centro, radioMetros);
+    if (viaFuncion != null) return viaFuncion;
+
     if (!disponible) return [];
     final uri = Uri.https('places.googleapis.com', '/v1/places:searchText');
     final porId = <String, Cancha>{};
@@ -78,6 +86,38 @@ class PlacesService {
       }
     }
     return porId.values.toList();
+  }
+
+  /// Intenta vía Edge Function de Supabase. Devuelve la lista (posiblemente
+  /// vacía) si la función respondió; o null si no está disponible/desplegada,
+  /// para que el caller use el fallback directo a Google.
+  static Future<List<Cancha>?> _viaEdgeFunction(
+      LatLng centro, double radioMetros) async {
+    if (!SupabaseService.disponible) return null;
+    try {
+      final res = await SupabaseService.client.functions.invoke(
+        'places-cerca',
+        body: {
+          'lat': centro.latitude,
+          'lng': centro.longitude,
+          'radius': radioMetros,
+        },
+      );
+      final data = res.data;
+      if (data is! Map) return null; // respuesta inesperada → fallback
+      final places = data['places'];
+      if (places is! List) return null;
+      final porId = <String, Cancha>{};
+      for (final p in places) {
+        if (p is Map) {
+          final c = _aCancha(Map<String, dynamic>.from(p));
+          if (c != null) porId[c.id] = c;
+        }
+      }
+      return porId.values.toList();
+    } catch (_) {
+      return null; // función no desplegada o error → fallback directo
+    }
   }
 
   static Cancha? _aCancha(Map<String, dynamic> p) {

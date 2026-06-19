@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/canchas_repo.dart';
+import '../data/reservas_repo.dart';
 import '../data/sample_data.dart';
 import '../models/models.dart';
 import '../models/usuario.dart';
@@ -60,6 +61,29 @@ class AppState extends ChangeNotifier {
     if (nuevas.isEmpty) return;
     canchasDescubiertas.addAll(nuevas);
     notifyListeners();
+  }
+
+  /// Trae las reservas compartidas desde Supabase (disponibilidad entre
+  /// dispositivos) y recalcula "Mis reservas" según el correo del jugador.
+  Future<void> cargarReservasRemotas() async {
+    final remotas = await ReservasRepo.fetchRemotas();
+    if (remotas.isEmpty) return;
+    for (final r in remotas) {
+      if (!reservas.any((x) => x.id == r.id)) reservas.insert(0, r);
+    }
+    _recomputarMisReservas();
+    notifyListeners();
+  }
+
+  /// Mis reservas = reservas cuyo correo coincide con el jugador logueado.
+  void _recomputarMisReservas() {
+    final email = usuario?.email;
+    if (email == null || email.isEmpty) return;
+    for (final r in reservas) {
+      if (r.usuario == email && !misReservas.any((x) => x.id == r.id)) {
+        misReservas.insert(0, r);
+      }
+    }
   }
 
   /// Trae las canchas compartidas desde Supabase (si está disponible).
@@ -234,14 +258,18 @@ class AppState extends ChangeNotifier {
     if (u == null) return false; // canceló
     usuario = u;
     await _persistirUsuario();
+    _recomputarMisReservas(); // recupera sus reservas de otros dispositivos
     notifyListeners();
+    cargarReservasRemotas(); // best-effort refresco
     return true;
   }
 
   Future<void> cerrarSesionUsuario() async {
     await AuthService.salir();
     usuario = null;
+    misReservas.clear(); // no mezclar reservas entre cuentas
     await _persistirUsuario();
+    _persistirDatos();
     notifyListeners();
   }
 
@@ -261,7 +289,7 @@ class AppState extends ChangeNotifier {
   /// activo, también ocupa el bloque en su agenda.
   Reserva agregarReservaJugador(Cancha cancha, String dia, String hora) {
     final reserva = Reserva(
-      id: 'jug${_contadorJugador++}',
+      id: 'jug_${DateTime.now().millisecondsSinceEpoch}_${_contadorJugador++}',
       canchaId: cancha.id,
       jugador: usuario?.nombre ?? 'Jugador',
       nivel: 'Intermedio 3.5',
@@ -272,6 +300,7 @@ class AppState extends ChangeNotifier {
       traidaPorApp: true,
       precio: cancha.precioHora,
       sena: (cancha.precioHora * 0.3).round(),
+      usuario: usuario?.email ?? '',
     );
     reservas.insert(0, reserva); // visible para el dueño en su panel
     misReservas.insert(0, reserva); // visible para el jugador en "Mis reservas"
@@ -283,6 +312,7 @@ class AppState extends ChangeNotifier {
     _consumirComision(cancha);
     notifyListeners();
     _persistirDatos();
+    ReservasRepo.insertar(reserva); // best-effort, compartir disponibilidad
     return reserva;
   }
 

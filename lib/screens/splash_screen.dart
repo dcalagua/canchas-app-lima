@@ -26,6 +26,7 @@ class _SplashScreenState extends State<SplashScreen> {
     // Carga la sesión guardada y decide la primera pantalla.
     await appState.cargarSesion();
     appState.cargarCanchasRemotas(); // canchas compartidas (best-effort)
+    appState.cargarReservasRemotas(); // reservas compartidas (best-effort)
     bool onboardingVisto = true;
     try {
       final prefs = await SharedPreferences.getInstance();
