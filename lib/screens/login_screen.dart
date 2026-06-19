@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../brand.dart';
 import '../data/sample_data.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -43,7 +44,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 const Text('🎾', style: TextStyle(fontSize: 56)),
                 const SizedBox(height: 8),
                 Text(
-                  'Canchas Lima',
+                  kBrandName,
                   style: Theme.of(context)
                       .textTheme
                       .headlineMedium

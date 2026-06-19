@@ -5,6 +5,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../data/sample_data.dart';
 import '../models/models.dart';
+import '../brand.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'cancha_detalle_screen.dart';
@@ -237,10 +238,10 @@ class _BarraBusqueda extends StatelessWidget {
             borderRadius: BorderRadius.circular(30),
             color: Colors.white,
             child: const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+              padding: EdgeInsets.symmetric(horizontal: 18, vertical: 12),
               child: Row(
                 children: [
-                  Icon(Icons.search, color: verdeCancha),
+                  Icon(Icons.search, color: coral),
                   SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -248,12 +249,12 @@ class _BarraBusqueda extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          '¿Dónde quieres jugar?',
+                          kBrandTaglineShort,
                           style: TextStyle(
-                              fontWeight: FontWeight.w600, fontSize: 14),
+                              fontWeight: FontWeight.w700, fontSize: 15),
                         ),
                         Text(
-                          'Tenis y pádel · Lima',
+                          'Tenis · Pádel · Lima',
                           style: TextStyle(color: Colors.grey, fontSize: 12),
                         ),
                       ],

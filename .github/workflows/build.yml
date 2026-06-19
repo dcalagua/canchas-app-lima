@@ -44,18 +44,23 @@ jobs:
       - name: pub get
         run: flutter pub get
 
+      - name: Generar ícono y splash de marca
+        run: |
+          dart run flutter_launcher_icons
+          dart run flutter_native_splash:create
+
       - name: Build APK (release)
         run: flutter build apk --release
 
       - name: Renombrar APK
         run: |
           mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk "dist/canchas-lima-${GITHUB_REF_NAME//\//-}.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "dist/pichangol-${GITHUB_REF_NAME//\//-}.apk"
 
       - name: Subir APK (artifact)
         uses: actions/upload-artifact@v4
         with:
-          name: canchas-lima-apk
+          name: pichangol-apk
           path: dist/*.apk
           if-no-files-found: error
 
@@ -64,10 +69,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v0.1.0
-          name: Canchas Lima v0.1.0
+          name: Pichangol v0.1.0
           body: |
-            APK de la app **Canchas Lima** (Panel del Club — Fase 1), compilado por CI.
-            Instálalo en Android por sideload. El mapa requiere el secret `MAPS_API_KEY`.
+            APK de **Pichangol** — marketplace de canchas de tenis y pádel en Lima.
+            Instálalo en Android por sideload. Mapa con Google Maps (secret `MAPS_API_KEY`).
           files: dist/*.apk
           fail_on_unmatched_files: true
 
@@ -98,6 +103,11 @@ jobs:
 
       - name: pub get
         run: flutter pub get
+
+      - name: Generar ícono y splash de marca
+        run: |
+          dart run flutter_launcher_icons
+          dart run flutter_native_splash:create
 
       - name: Build iOS (sin firma)
         run: flutter build ios --release --no-codesign

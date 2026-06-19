@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
-import 'screens/explorar_home_screen.dart';
+import 'brand.dart';
+import 'screens/splash_screen.dart';
 import 'theme.dart';
 
-void main() => runApp(const CanchasApp());
+void main() => runApp(const PichangolApp());
 
-class CanchasApp extends StatelessWidget {
-  const CanchasApp({super.key});
+class PichangolApp extends StatelessWidget {
+  const PichangolApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Canchas Lima',
+      title: kBrandName,
       debugShowCheckedModeBanner: false,
       theme: buildTheme(),
       locale: const Locale('es'),
@@ -22,8 +23,8 @@ class CanchasApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      // Pantalla de inicio estilo Airbnb (mapa de Google a pantalla completa).
-      home: const ExplorarHomeScreen(),
+      // Arranca en el splash de marca y luego entra al mapa (estilo Airbnb).
+      home: const SplashScreen(),
     );
   }
 }

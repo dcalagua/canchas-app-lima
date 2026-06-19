@@ -65,7 +65,7 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
             child: const Text('Cancelar'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: verdeCancha),
+            style: FilledButton.styleFrom(backgroundColor: coral),
             onPressed: () {
               final messenger = ScaffoldMessenger.of(context);
               final nav = Navigator.of(context);
@@ -264,7 +264,7 @@ class _BarraReserva extends StatelessWidget {
           ),
           FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: verdeCancha,
+              backgroundColor: coral,
               padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
             ),
             onPressed: habilitado ? onReservar : null,

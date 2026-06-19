@@ -33,8 +33,11 @@ def patch(path, fn):
         print(f"  sin cambios {path}")
 
 
+APP_LABEL = "Pichangol"
+
+
 def android_manifest(text):
-    text = text.replace('android:label="canchas_lima"', 'android:label="Canchas Lima"')
+    text = text.replace('android:label="canchas_lima"', f'android:label="{APP_LABEL}"')
     if "android.permission.INTERNET" not in text:
         text = re.sub(
             r"(<manifest[^>]*>)",
@@ -76,6 +79,16 @@ def ios_appdelegate(text):
     return text
 
 
+def ios_infoplist(text):
+    # Nombre visible de la app en iOS.
+    text = re.sub(
+        r"(<key>CFBundleDisplayName</key>\s*<string>)[^<]*(</string>)",
+        rf"\g<1>{APP_LABEL}\g<2>",
+        text,
+    )
+    return text
+
+
 def ios_podfile(text):
     if re.search(r"^\s*#?\s*platform :ios", text, re.MULTILINE):
         text = re.sub(
@@ -105,6 +118,7 @@ def main():
     print(f"Configurando plataformas (MAPS_API_KEY {'definida' if KEY != 'YOUR_MAPS_API_KEY_HERE' else 'placeholder'})")
     patch("android/app/src/main/AndroidManifest.xml", android_manifest)
     patch("ios/Runner/AppDelegate.swift", ios_appdelegate)
+    patch("ios/Runner/Info.plist", ios_infoplist)
     patch("ios/Podfile", ios_podfile)
 
 
