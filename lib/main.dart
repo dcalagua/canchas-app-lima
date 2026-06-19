@@ -3,9 +3,14 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'brand.dart';
 import 'screens/splash_screen.dart';
+import 'services/supabase_service.dart';
 import 'theme.dart';
 
-void main() => runApp(const PichangolApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await SupabaseService.init();
+  runApp(const PichangolApp());
+}
 
 class PichangolApp extends StatelessWidget {
   const PichangolApp({super.key});

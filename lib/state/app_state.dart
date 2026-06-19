@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../data/canchas_repo.dart';
 import '../data/sample_data.dart';
 import '../models/models.dart';
 import '../models/usuario.dart';
@@ -24,16 +25,42 @@ class AppState extends ChangeNotifier {
   final List<Reserva> reservas = List.of(SampleData.reservas);
   final List<BloqueHorario> agenda = List.of(SampleData.agendaHoy());
   final List<Reserva> misReservas = []; // reservas del jugador logueado
-  final List<Cancha> canchasExtra = []; // canchas registradas por dueños
+  final List<Cancha> canchasExtra = []; // canchas registradas en este dispositivo
+  final List<Cancha> canchasRemotas = []; // canchas traídas de Supabase
 
-  /// Todas las canchas (semilla + registradas por dueños).
-  List<Cancha> todasLasCanchas() => [...SampleData.canchas, ...canchasExtra];
+  /// Todas las canchas (semilla + remotas + locales), sin duplicar por id.
+  List<Cancha> todasLasCanchas() {
+    final map = <String, Cancha>{};
+    for (final c in SampleData.canchas) {
+      map[c.id] = c;
+    }
+    for (final c in canchasRemotas) {
+      map[c.id] = c;
+    }
+    for (final c in canchasExtra) {
+      map[c.id] = c;
+    }
+    return map.values.toList();
+  }
+
+  /// Trae las canchas compartidas desde Supabase (si está disponible).
+  Future<void> cargarCanchasRemotas() async {
+    final remotas = await CanchasRepo.fetchRemotas();
+    if (remotas.isNotEmpty) {
+      canchasRemotas
+        ..clear()
+        ..addAll(remotas);
+      notifyListeners();
+    }
+  }
 
   /// Registra una cancha nueva (desde el flujo con detección por IA).
+  /// Queda local (se ve al toque) y se sube a Supabase para compartirla.
   void agregarCancha(Cancha c) {
     canchasExtra.insert(0, c);
     notifyListeners();
     _persistirDatos();
+    CanchasRepo.insertar(c); // best-effort, compartir entre dispositivos
   }
 
   // Saldo prepago del club (modelo inDrive): con saldo aparece destacado y
