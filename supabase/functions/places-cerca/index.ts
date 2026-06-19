@@ -58,7 +58,20 @@ serve(async (req) => {
   if (!KEY) return json({ places: [], error: "missing PLACES_API_KEY" });
 
   try {
-    const { lat, lng, radius } = await req.json();
+    // Acepta POST (body JSON, como la app) o GET (?lat=&lng=&radius=) para
+    // poder probar pegando una URL en el navegador.
+    let lat: number, lng: number, radius: number | undefined;
+    if (req.method === "GET") {
+      const u = new URL(req.url);
+      lat = Number(u.searchParams.get("lat"));
+      lng = Number(u.searchParams.get("lng"));
+      radius = Number(u.searchParams.get("radius")) || undefined;
+    } else {
+      const b = await req.json();
+      lat = b.lat;
+      lng = b.lng;
+      radius = b.radius;
+    }
     const porId = new Map<string, unknown>();
 
     for (const q of CONSULTAS) {
