@@ -59,6 +59,28 @@ class SampleData {
       distrito: Distrito.laMolina, deporte: Deporte.padel, precioHora: 92,
       ubicacion: LatLng(-12.0820, -76.9445), clubFundador: false, digitalizada: false,
     ),
+
+    // --- Fútbol sintético (nuevo deporte) ---
+    Cancha(
+      id: 'f1', nombre: 'Grass Sintético San Borja', club: 'Complejo La Bombonera',
+      distrito: Distrito.sanBorja, deporte: Deporte.futbol, precioHora: 120,
+      ubicacion: LatLng(-12.1075, -77.0008), clubFundador: false, digitalizada: false,
+    ),
+    Cancha(
+      id: 'f2', nombre: 'Fútbol 7 Surco', club: 'Surco Sport Center',
+      distrito: Distrito.surco, deporte: Deporte.futbol, precioHora: 140,
+      ubicacion: LatLng(-12.1380, -76.9905), clubFundador: false, digitalizada: false,
+    ),
+    Cancha(
+      id: 'f3', nombre: 'Cancha Sintética La Molina', club: 'Molina Fútbol Club',
+      distrito: Distrito.laMolina, deporte: Deporte.futbol, precioHora: 150,
+      ubicacion: LatLng(-12.0785, -76.9425), clubFundador: false, digitalizada: false,
+    ),
+    Cancha(
+      id: 'f4', nombre: 'Mini Fútbol El Polo', club: 'El Polo Grass',
+      distrito: Distrito.surco, deporte: Deporte.futbol, precioHora: 130,
+      ubicacion: LatLng(-12.1085, -76.9760), clubFundador: false, digitalizada: false,
+    ),
   ];
 
   /// Centro aproximado del eje piloto San Borja–Surco–La Molina.

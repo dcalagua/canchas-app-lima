@@ -12,7 +12,8 @@ enum Distrito {
 
 enum Deporte {
   tenis('Tenis'),
-  padel('Pádel');
+  padel('Pádel'),
+  futbol('Fútbol');
 
   final String etiqueta;
   const Deporte(this.etiqueta);

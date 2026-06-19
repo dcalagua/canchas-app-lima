@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'models/models.dart';
+
 // ─────────────────────────────────────────────────────────────────────────
 // Sistema de color — mood "energético y social" (psicología del color):
 //  • Verde   = deporte, confianza, "go", crecimiento / valor.  (marca)
@@ -15,8 +17,23 @@ const Color coralOscuro = Color(0xFFE8553F);
 const Color lima = Color(0xFFCFF24D); // energía / acentos
 const Color arena = Color(0xFFF4A93B); // seña / horas valle
 const Color azulPadel = Color(0xFF2E7BE4); // tag pádel
+const Color naranjaFutbol = Color(0xFFEF6C2B); // tag fútbol
 const Color tinta = Color(0xFF14201B); // texto
 const Color fondoApp = Color(0xFFF4F8F5);
+
+/// Color de marca por deporte (para chips, tarjetas y cabeceras).
+Color colorDeporte(Deporte d) => switch (d) {
+      Deporte.tenis => verdeCancha,
+      Deporte.padel => azulPadel,
+      Deporte.futbol => naranjaFutbol,
+    };
+
+/// Ícono por deporte.
+IconData iconoDeporte(Deporte d) => switch (d) {
+      Deporte.tenis => Icons.sports_tennis,
+      Deporte.padel => Icons.sports_handball,
+      Deporte.futbol => Icons.sports_soccer,
+    };
 
 ThemeData buildTheme() {
   final scheme = ColorScheme.fromSeed(

@@ -25,8 +25,7 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
   String? _hora;
 
   Cancha get cancha => widget.cancha;
-  Color get _color =>
-      cancha.deporte == Deporte.padel ? azulPadel : verdeCancha;
+  Color get _color => colorDeporte(cancha.deporte);
 
   bool _ocupada(String hora) {
     return appState.reservas.any((r) =>
@@ -123,9 +122,7 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
                   children: [
                     Center(
                       child: Icon(
-                        cancha.deporte == Deporte.padel
-                            ? Icons.sports_handball
-                            : Icons.sports_tennis,
+                        iconoDeporte(cancha.deporte),
                         size: 90,
                         color: Colors.white.withOpacity(0.85),
                       ),

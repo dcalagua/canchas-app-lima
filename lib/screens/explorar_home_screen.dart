@@ -8,6 +8,8 @@ import '../models/models.dart';
 import '../brand.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../utils/geo.dart';
+import 'buscar_direccion_screen.dart';
 import 'cancha_detalle_screen.dart';
 import 'login_google_sheet.dart';
 import 'login_screen.dart';
@@ -33,9 +35,26 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
   int _selected = 0;
   Set<Marker> _markers = {};
 
+  LatLng? _centroBusqueda; // zona buscada por el usuario (estilo Airbnb)
+  String? _labelBusqueda;
+
+  static const double _radioKm = 8.0; // canchas "cercanas" a la zona buscada
+
   List<Cancha> _filtradas() {
-    if (_filtro == null) return SampleData.canchas;
-    return SampleData.canchas.where((c) => c.deporte == _filtro).toList();
+    var lista = _filtro == null
+        ? List<Cancha>.of(SampleData.canchas)
+        : SampleData.canchas.where((c) => c.deporte == _filtro).toList();
+
+    if (_centroBusqueda != null) {
+      final centro = _centroBusqueda!;
+      lista.sort((a, b) => distanciaKm(centro, a.ubicacion)
+          .compareTo(distanciaKm(centro, b.ubicacion)));
+      final cercanas = lista
+          .where((c) => distanciaKm(centro, c.ubicacion) <= _radioKm)
+          .toList();
+      lista = cercanas.isNotEmpty ? cercanas : lista.take(6).toList();
+    }
+    return lista;
   }
 
   @override
@@ -69,6 +88,18 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
             duration: const Duration(milliseconds: 350),
             curve: Curves.easeOut,
           ),
+        ),
+      );
+    }
+    if (_centroBusqueda != null) {
+      markers.add(
+        Marker(
+          markerId: const MarkerId('_busqueda'),
+          position: _centroBusqueda!,
+          icon: BitmapDescriptor.defaultMarkerWithHue(
+              BitmapDescriptor.hueRose),
+          infoWindow: InfoWindow(title: _labelBusqueda ?? 'Tu zona'),
+          zIndex: 0,
         ),
       );
     }
@@ -151,6 +182,33 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     _rebuildMarkers();
   }
 
+  Future<void> _abrirBuscar() async {
+    final res = await Navigator.of(context).push<ResultadoBusqueda>(
+      MaterialPageRoute(builder: (_) => const BuscarDireccionScreen()),
+    );
+    if (res == null || !mounted) return;
+    setState(() {
+      _centroBusqueda = res.centro;
+      _labelBusqueda = res.etiqueta;
+      _selected = 0;
+    });
+    if (_pageController.hasClients) _pageController.jumpToPage(0);
+    _controller?.animateCamera(CameraUpdate.newLatLngZoom(res.centro, 13.5));
+    _rebuildMarkers();
+  }
+
+  void _limpiarBusqueda() {
+    setState(() {
+      _centroBusqueda = null;
+      _labelBusqueda = null;
+      _selected = 0;
+    });
+    if (_pageController.hasClients) _pageController.jumpToPage(0);
+    _controller?.animateCamera(
+        CameraUpdate.newLatLngZoom(SampleData.centroPiloto, 12.5));
+    _rebuildMarkers();
+  }
+
   void _abrirDetalle(Cancha cancha) {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => CanchaDetalleScreen(cancha: cancha)),
@@ -227,7 +285,12 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
               child: Column(
                 children: [
-                  _BarraBusqueda(onAvatar: _abrirMenu),
+                  _BarraBusqueda(
+                    onAvatar: _abrirMenu,
+                    onBuscar: _abrirBuscar,
+                    label: _labelBusqueda,
+                    onClear: _limpiarBusqueda,
+                  ),
                   const SizedBox(height: 10),
                   _FiltrosDeporte(
                     seleccion: _filtro,
@@ -238,19 +301,25 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
             ),
           ),
 
-          // Carrusel de canchas (overlay inferior)
+          // Carrusel de canchas (overlay inferior). ListenableBuilder para que
+          // el badge "Destacado" reaccione al saldo del club.
           Align(
             alignment: Alignment.bottomCenter,
             child: SafeArea(
               child: SizedBox(
                 height: 168,
-                child: PageView.builder(
-                  controller: _pageController,
-                  itemCount: canchas.length,
-                  onPageChanged: _onPage,
-                  itemBuilder: (context, i) => _CanchaCard(
-                    cancha: canchas[i],
-                    onTap: () => _abrirDetalle(canchas[i]),
+                child: ListenableBuilder(
+                  listenable: appState,
+                  builder: (context, _) => PageView.builder(
+                    controller: _pageController,
+                    itemCount: canchas.length,
+                    onPageChanged: _onPage,
+                    itemBuilder: (context, i) => _CanchaCard(
+                      cancha: canchas[i],
+                      destacado: canchas[i].club == SampleData.clubActivo &&
+                          appState.destacadoActivo,
+                      onTap: () => _abrirDetalle(canchas[i]),
+                    ),
                   ),
                 ),
               ),
@@ -264,10 +333,19 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
 
 class _BarraBusqueda extends StatelessWidget {
   final VoidCallback onAvatar;
-  const _BarraBusqueda({required this.onAvatar});
+  final VoidCallback onBuscar;
+  final VoidCallback onClear;
+  final String? label;
+  const _BarraBusqueda({
+    required this.onAvatar,
+    required this.onBuscar,
+    required this.onClear,
+    this.label,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final buscando = label != null;
     return Row(
       children: [
         Expanded(
@@ -275,30 +353,45 @@ class _BarraBusqueda extends StatelessWidget {
             elevation: 4,
             borderRadius: BorderRadius.circular(30),
             color: Colors.white,
-            child: const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-              child: Row(
-                children: [
-                  Icon(Icons.search, color: coral),
-                  SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          kBrandTaglineShort,
-                          style: TextStyle(
-                              fontWeight: FontWeight.w700, fontSize: 15),
-                        ),
-                        Text(
-                          'Tenis · Pádel · Lima',
-                          style: TextStyle(color: Colors.grey, fontSize: 12),
-                        ),
-                      ],
+            child: InkWell(
+              onTap: onBuscar,
+              borderRadius: BorderRadius.circular(30),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                child: Row(
+                  children: [
+                    const Icon(Icons.search, color: coral),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            buscando ? label! : kBrandTaglineShort,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w700, fontSize: 15),
+                          ),
+                          Text(
+                            buscando
+                                ? 'Canchas cerca de tu zona'
+                                : 'Tenis · Pádel · Fútbol · Lima',
+                            style: const TextStyle(
+                                color: Colors.grey, fontSize: 12),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                    if (buscando)
+                      GestureDetector(
+                        onTap: onClear,
+                        child: const Icon(Icons.close, color: Colors.grey),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -374,6 +467,7 @@ class _FiltrosDeporte extends StatelessWidget {
             chip('Todos', null, Icons.sports),
             chip('Tenis', Deporte.tenis, Icons.sports_tennis),
             chip('Pádel', Deporte.padel, Icons.sports_handball),
+            chip('Fútbol', Deporte.futbol, Icons.sports_soccer),
           ],
         ),
       ),
@@ -383,12 +477,14 @@ class _FiltrosDeporte extends StatelessWidget {
 
 class _CanchaCard extends StatelessWidget {
   final Cancha cancha;
+  final bool destacado;
   final VoidCallback onTap;
-  const _CanchaCard({required this.cancha, required this.onTap});
+  const _CanchaCard(
+      {required this.cancha, this.destacado = false, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final colorDeporte = cancha.deporte == Deporte.padel ? azulPadel : verdeCancha;
+    final color = colorDeporte(cancha.deporte);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
       child: Material(
@@ -411,21 +507,39 @@ class _CanchaCard extends StatelessWidget {
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [colorDeporte, colorDeporte.withOpacity(0.6)],
+                    colors: [color, color.withOpacity(0.6)],
                   ),
                 ),
                 child: Stack(
                   children: [
                     Center(
                       child: Icon(
-                        cancha.deporte == Deporte.padel
-                            ? Icons.sports_handball
-                            : Icons.sports_tennis,
+                        iconoDeporte(cancha.deporte),
                         color: Colors.white,
                         size: 44,
                       ),
                     ),
-                    if (cancha.clubFundador)
+                    if (destacado)
+                      Positioned(
+                        top: 8,
+                        left: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: coral,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Text(
+                            '★ Destacado',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      )
+                    else if (cancha.clubFundador)
                       Positioned(
                         top: 8,
                         left: 8,
@@ -475,7 +589,7 @@ class _CanchaCard extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
-                            color: colorDeporte,
+                            color: color,
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: Text(

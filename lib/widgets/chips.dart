@@ -57,7 +57,6 @@ class ChipDeporte extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fondo = deporte == Deporte.padel ? azulPadel : verdeCancha;
-    return EtiquetaChip(deporte.etiqueta, fondo: fondo);
+    return EtiquetaChip(deporte.etiqueta, fondo: colorDeporte(deporte));
   }
 }
