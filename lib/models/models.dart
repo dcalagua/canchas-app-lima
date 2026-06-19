@@ -51,6 +51,21 @@ class Cancha {
     this.fotos = const [],
   });
 
+  /// Precio referencial por hora (S/). Si la cancha ya fue reclamada usa su
+  /// precio real; si es descubierta (Google, aún sin precio) estima según el
+  /// deporte para mostrar un número en el mapa en vez de un texto genérico.
+  int get precioReferencial {
+    if (precioHora > 0) return precioHora;
+    switch (deporte) {
+      case Deporte.futbol:
+        return 120;
+      case Deporte.padel:
+        return 90;
+      case Deporte.tenis:
+        return 70;
+    }
+  }
+
   Cancha copyWith({
     String? nombre,
     String? club,

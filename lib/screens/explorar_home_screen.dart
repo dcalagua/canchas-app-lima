@@ -115,7 +115,11 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     for (var i = 0; i < list.length; i++) {
       final c = list[i];
       final sel = i == _selected;
-      final etiqueta = c.registrada ? 'S/ ${c.precioHora}' : 'Ver';
+      // Las reclamadas muestran su precio real; las descubiertas en Google aún
+      // no tienen precio, así que mostramos un estimado por deporte con "~".
+      final etiqueta = c.registrada
+          ? 'S/ ${c.precioHora}'
+          : '~S/ ${c.precioReferencial}';
       final icon = await _pinPrecio(etiqueta, seleccionado: sel);
       markers.add(
         Marker(
@@ -816,12 +820,21 @@ class _CanchaCard extends StatelessWidget {
                             ],
                           )
                         else
-                          const Text(
-                            'Reclama tu cancha',
-                            style: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 12,
-                                color: coral),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.baseline,
+                            textBaseline: TextBaseline.alphabetic,
+                            children: [
+                              Text(
+                                '~S/ ${cancha.precioReferencial}',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                    color: verdeCancha),
+                              ),
+                              const Text(' /h ref.',
+                                  style: TextStyle(
+                                      color: Colors.grey, fontSize: 12)),
+                            ],
                           ),
                       ],
                     ),
