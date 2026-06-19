@@ -42,6 +42,32 @@ class Cancha {
     required this.clubFundador,
     required this.digitalizada,
   });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'nombre': nombre,
+        'club': club,
+        'distrito': distrito.name,
+        'deporte': deporte.name,
+        'precioHora': precioHora,
+        'lat': ubicacion.latitude,
+        'lng': ubicacion.longitude,
+        'clubFundador': clubFundador,
+        'digitalizada': digitalizada,
+      };
+
+  factory Cancha.fromJson(Map<String, dynamic> j) => Cancha(
+        id: j['id'] as String,
+        nombre: j['nombre'] as String,
+        club: j['club'] as String,
+        distrito: Distrito.values.byName(j['distrito'] as String),
+        deporte: Deporte.values.byName(j['deporte'] as String),
+        precioHora: j['precioHora'] as int,
+        ubicacion: LatLng(
+            (j['lat'] as num).toDouble(), (j['lng'] as num).toDouble()),
+        clubFundador: j['clubFundador'] as bool,
+        digitalizada: j['digitalizada'] as bool,
+      );
 }
 
 enum EstadoReserva {

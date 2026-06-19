@@ -103,6 +103,14 @@ def ios_infoplist(text):
             "</dict>\n</plist>"
         )
         text = text.replace("</dict>\n</plist>", block, 1)
+    # Permiso de fotos (registrar cancha + detección de deporte con IA).
+    if "NSPhotoLibraryUsageDescription" not in text:
+        block = (
+            "\t<key>NSPhotoLibraryUsageDescription</key>\n"
+            "\t<string>Pichangol usa tus fotos para registrar canchas y detectar el deporte.</string>\n"
+            "</dict>\n</plist>"
+        )
+        text = text.replace("</dict>\n</plist>", block, 1)
     return text
 
 

@@ -16,6 +16,7 @@ import 'login_google_sheet.dart';
 import 'login_screen.dart';
 import 'home_shell.dart';
 import 'mis_reservas_screen.dart';
+import 'registrar_cancha_screen.dart';
 
 /// Pantalla de inicio estilo Airbnb: mapa de Google a pantalla completa con
 /// barra de búsqueda flotante, filtros por deporte y un carrusel de canchas
@@ -42,9 +43,10 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
   static const double _radioKm = 8.0; // canchas "cercanas" a la zona buscada
 
   List<Cancha> _filtradas() {
+    final base = appState.todasLasCanchas();
     var lista = _filtro == null
-        ? List<Cancha>.of(SampleData.canchas)
-        : SampleData.canchas.where((c) => c.deporte == _filtro).toList();
+        ? base
+        : base.where((c) => c.deporte == _filtro).toList();
 
     if (_centroBusqueda != null) {
       final centro = _centroBusqueda!;
@@ -58,11 +60,23 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     return lista;
   }
 
+  int _numCanchas = 0;
+
   @override
   void initState() {
     super.initState();
+    _numCanchas = appState.todasLasCanchas().length;
+    appState.addListener(_onStateChange);
     _rebuildMarkers();
     _autoUbicar(); // autodetecta la ubicación al abrir
+  }
+
+  void _onStateChange() {
+    final n = appState.todasLasCanchas().length;
+    if (n != _numCanchas) {
+      _numCanchas = n;
+      _rebuildMarkers(); // refresca los pines al registrar una cancha nueva
+    }
   }
 
   Future<void> _autoUbicar() async {
@@ -80,6 +94,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
 
   @override
   void dispose() {
+    appState.removeListener(_onStateChange);
     _pageController.dispose();
     _controller?.dispose();
     super.dispose();
@@ -263,6 +278,12 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
           Navigator.of(sheetContext).pop();
           _abrirPanel();
         },
+        onRegistrar: () {
+          Navigator.of(sheetContext).pop();
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const RegistrarCanchaScreen()),
+          );
+        },
         onLogin: () async {
           Navigator.of(sheetContext).pop();
           await LoginGoogleSheet.mostrar(context);
@@ -277,7 +298,6 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final canchas = _filtradas();
     return Scaffold(
       body: Stack(
         children: [
@@ -350,17 +370,20 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                 height: 168,
                 child: ListenableBuilder(
                   listenable: appState,
-                  builder: (context, _) => PageView.builder(
-                    controller: _pageController,
-                    itemCount: canchas.length,
-                    onPageChanged: _onPage,
-                    itemBuilder: (context, i) => _CanchaCard(
-                      cancha: canchas[i],
-                      destacado: canchas[i].club == SampleData.clubActivo &&
-                          appState.destacadoActivo,
-                      onTap: () => _abrirDetalle(canchas[i]),
-                    ),
-                  ),
+                  builder: (context, _) {
+                    final lista = _filtradas();
+                    return PageView.builder(
+                      controller: _pageController,
+                      itemCount: lista.length,
+                      onPageChanged: _onPage,
+                      itemBuilder: (context, i) => _CanchaCard(
+                        cancha: lista[i],
+                        destacado: lista[i].club == SampleData.clubActivo &&
+                            appState.destacadoActivo,
+                        onTap: () => _abrirDetalle(lista[i]),
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
@@ -504,8 +527,8 @@ class _FiltrosDeporte extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
-            chip('Fútbol', Deporte.futbol, Icons.sports_soccer),
             chip('Todos', null, Icons.sports),
+            chip('Fútbol', Deporte.futbol, Icons.sports_soccer),
             chip('Tenis', Deporte.tenis, Icons.sports_tennis),
             chip('Pádel', Deporte.padel, Icons.sports_handball),
           ],
@@ -674,11 +697,13 @@ class _CanchaCard extends StatelessWidget {
 class _MenuSheet extends StatelessWidget {
   final VoidCallback onMisReservas;
   final VoidCallback onPanel;
+  final VoidCallback onRegistrar;
   final Future<void> Function() onLogin;
   final Future<void> Function() onLogout;
   const _MenuSheet({
     required this.onMisReservas,
     required this.onPanel,
+    required this.onRegistrar,
     required this.onLogin,
     required this.onLogout,
   });
@@ -756,6 +781,13 @@ class _MenuSheet extends StatelessWidget {
                 title: const Text('Soy dueño de cancha'),
                 subtitle: const Text('Panel del club'),
                 onTap: onPanel,
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.add_a_photo, color: verdeCancha),
+                title: const Text('Registrar mi cancha'),
+                subtitle: const Text('La IA detecta el deporte por foto'),
+                onTap: onRegistrar,
               ),
               const Divider(),
               if (u == null)

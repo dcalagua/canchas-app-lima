@@ -24,6 +24,17 @@ class AppState extends ChangeNotifier {
   final List<Reserva> reservas = List.of(SampleData.reservas);
   final List<BloqueHorario> agenda = List.of(SampleData.agendaHoy());
   final List<Reserva> misReservas = []; // reservas del jugador logueado
+  final List<Cancha> canchasExtra = []; // canchas registradas por dueños
+
+  /// Todas las canchas (semilla + registradas por dueños).
+  List<Cancha> todasLasCanchas() => [...SampleData.canchas, ...canchasExtra];
+
+  /// Registra una cancha nueva (desde el flujo con detección por IA).
+  void agregarCancha(Cancha c) {
+    canchasExtra.insert(0, c);
+    notifyListeners();
+    _persistirDatos();
+  }
 
   // Saldo prepago del club (modelo inDrive): con saldo aparece destacado y
   // cada reserva nueva descuenta una comisión. Sin saldo, deja de destacarse.
@@ -80,6 +91,7 @@ class AppState extends ChangeNotifier {
   static const _kSaldo = 'saldo_club';
   static const _kMovs = 'movimientos_json';
   static const _kMisReservas = 'mis_reservas_json';
+  static const _kCanchas = 'canchas_extra_json';
 
   /// Carga la sesión y los datos persistidos (al arrancar la app).
   Future<void> cargarSesion() async {
@@ -101,6 +113,16 @@ class AppState extends ChangeNotifier {
             .map((e) => MovimientoSaldo.fromJson(e as Map<String, dynamic>))
             .toList();
         movimientos
+          ..clear()
+          ..addAll(list);
+      }
+
+      final canchasRaw = prefs.getString(_kCanchas);
+      if (canchasRaw != null) {
+        final list = (jsonDecode(canchasRaw) as List)
+            .map((e) => Cancha.fromJson(e as Map<String, dynamic>))
+            .toList();
+        canchasExtra
           ..clear()
           ..addAll(list);
       }
@@ -131,6 +153,8 @@ class AppState extends ChangeNotifier {
           _kMovs, jsonEncode(movimientos.map((m) => m.toJson()).toList()));
       await prefs.setString(_kMisReservas,
           jsonEncode(misReservas.map((r) => r.toJson()).toList()));
+      await prefs.setString(
+          _kCanchas, jsonEncode(canchasExtra.map((c) => c.toJson()).toList()));
     } catch (_) {}
   }
 
