@@ -10,31 +10,71 @@ import 'pago_sheet.dart';
 class CuentaScreen extends StatelessWidget {
   const CuentaScreen({super.key});
 
+  static const _saldoBajo = 15;
+
   @override
   Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('Mi cuenta')),
+      backgroundColor: papelCalido,
       body: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
           return ListView(
-            padding: const EdgeInsets.all(16),
+            padding: EdgeInsets.fromLTRB(
+                18, 18 + MediaQuery.of(context).padding.top, 18, 28),
             children: [
+              Row(
+                children: [
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).maybePop(),
+                    child: const Padding(
+                      padding: EdgeInsets.only(right: 10),
+                      child:
+                          Icon(Icons.arrow_back_ios_new, color: tinta, size: 20),
+                    ),
+                  ),
+                  Text('Mi cuenta', style: t.headlineSmall),
+                ],
+              ),
+              const SizedBox(height: 16),
               _TarjetaSaldo(
                 saldo: appState.saldoClub,
                 destacado: appState.destacadoActivo,
                 onRecargar: () => _abrirRecarga(context),
               ),
-              const SizedBox(height: 18),
+              if (appState.saldoClub <= _saldoBajo) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF1EC),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: clay.withOpacity(0.5)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded, color: clayOscuro),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Saldo bajo: si llega a 0 dejas de aparecer destacado. '
+                          'Recarga para seguir recibiendo reservas.',
+                          style: t.bodySmall
+                              ?.copyWith(color: clayOscuro, height: 1.3),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 22),
               Text('Movimientos',
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleMedium
-                      ?.copyWith(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
+                  style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 10),
               if (appState.movimientos.isEmpty)
                 Text('Aún no hay movimientos.',
-                    style: TextStyle(color: Colors.grey[600]))
+                    style: t.bodyMedium?.copyWith(color: textoTenue))
               else
                 ...appState.movimientos.map((m) => _FilaMovimiento(m)),
             ],
@@ -50,7 +90,7 @@ class CuentaScreen extends StatelessWidget {
       backgroundColor: Colors.transparent,
       builder: (sheetContext) => _RecargaSheet(
         onRecargar: (monto) async {
-          Navigator.of(sheetContext).pop(); // cierra la selección de monto
+          Navigator.of(sheetContext).pop();
           final res = await PagoSheet.mostrar(
             context,
             monto: monto,
@@ -61,9 +101,9 @@ class CuentaScreen extends StatelessWidget {
             appState.recargar(monto);
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                backgroundColor: verdeCancha,
+                backgroundColor: pino,
                 content: Text(
-                    '✅ Recargaste S/ $monto. ¡Ya apareces destacado! (${res.referencia})'),
+                    '✅ Recargaste S/$monto. ¡Ya apareces destacado! (${res.referencia})'),
               ),
             );
           }
@@ -82,70 +122,65 @@ class _TarjetaSaldo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [verdeClaro, verdeOscuro],
-        ),
+        color: tinta,
+        borderRadius: BorderRadius.circular(22),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Saldo disponible',
-              style: TextStyle(color: Colors.white70, fontSize: 14)),
-          const SizedBox(height: 4),
-          Text('S/ $saldo',
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 40,
-                  fontWeight: FontWeight.bold)),
-          const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.18),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(destacado ? Icons.star : Icons.pause_circle_filled,
-                    color: destacado ? lima : Colors.white, size: 16),
-                const SizedBox(width: 6),
-                Text(
-                  destacado
-                      ? 'Destacado activo · apareces primero'
-                      : 'Pausado · recarga para aparecer',
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600),
+          Row(
+            children: [
+              Text('Saldo Pichangol',
+                  style: t.bodyMedium?.copyWith(color: Colors.white70)),
+              const Spacer(),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: (destacado ? lima : Colors.white24).withOpacity(
+                      destacado ? 0.18 : 1),
+                  borderRadius: BorderRadius.circular(999),
                 ),
-              ],
-            ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(destacado ? Icons.star : Icons.pause_circle_filled,
+                        color: destacado ? lima : Colors.white, size: 14),
+                    const SizedBox(width: 5),
+                    Text(destacado ? 'Destacado' : 'Pausado',
+                        style: TextStyle(
+                            color: destacado ? lima : Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700)),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
+          Text('S/ $saldo.00',
+              style: t.displaySmall?.copyWith(
+                  color: Colors.white, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 4),
+          Text('Las comisiones de cada reserva nueva se descuentan de aquí.',
+              style: t.bodySmall?.copyWith(color: Colors.white60)),
+          const SizedBox(height: 18),
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
               style: FilledButton.styleFrom(
-                backgroundColor: coral,
-                padding: const EdgeInsets.symmetric(vertical: 14),
+                backgroundColor: lima,
+                foregroundColor: pinoOscuro,
+                padding: const EdgeInsets.symmetric(vertical: 15),
               ),
               onPressed: onRecargar,
               icon: const Icon(Icons.add),
               label: const Text('Recargar saldo'),
             ),
-          ),
-          const SizedBox(height: 10),
-          const Text(
-            'Cada reserva nueva descuenta una pequeña comisión de tu saldo. '
-            'Solo pagas por las reservas que la app te trae.',
-            style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
           ),
         ],
       ),
@@ -159,24 +194,41 @@ class _FilaMovimiento extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
     final esRecarga = m.tipo == TipoMovimiento.recarga;
-    final color = esRecarga ? verdeCancha : coral;
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: color.withOpacity(0.14),
-          child: Icon(esRecarga ? Icons.arrow_downward : Icons.arrow_upward,
-              color: color, size: 20),
-        ),
-        title: Text(m.concepto,
-            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-        subtitle: Text(m.cuando),
-        trailing: Text(
-          '${esRecarga ? '+' : '−'} S/ ${m.monto}',
-          style: TextStyle(
-              color: color, fontWeight: FontWeight.bold, fontSize: 15),
-        ),
+    final color = esRecarga ? verdeFutbol : clayOscuro;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: trazo),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 20,
+            backgroundColor: color.withOpacity(0.12),
+            child: Icon(esRecarga ? Icons.arrow_downward : Icons.arrow_upward,
+                color: color, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(m.concepto,
+                    style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+                Text(m.cuando,
+                    style: t.bodySmall?.copyWith(color: textoTenue)),
+              ],
+            ),
+          ),
+          Text('${esRecarga ? '+' : '−'} S/${m.monto}',
+              style: t.titleMedium
+                  ?.copyWith(color: color, fontWeight: FontWeight.w700)),
+        ],
       ),
     );
   }
@@ -188,33 +240,33 @@ class _RecargaSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
     const montos = [20, 50, 100, 200];
     return Container(
       decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        color: papel,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
+      padding: const EdgeInsets.fromLTRB(22, 14, 22, 30),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Center(
             child: Container(
-              width: 44,
+              width: 38,
               height: 5,
               decoration: BoxDecoration(
-                color: Colors.black12,
-                borderRadius: BorderRadius.circular(10),
+                color: const Color(0xFFD8D3C6),
+                borderRadius: BorderRadius.circular(3),
               ),
             ),
           ),
           const SizedBox(height: 18),
-          const Text('Elige cuánto recargar',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          Text('Elige cuánto recargar', style: t.titleLarge),
           const SizedBox(height: 4),
           Text('Mientras tengas saldo, tu club aparece destacado en el mapa.',
-              style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+              style: t.bodySmall?.copyWith(color: textoTenue)),
           const SizedBox(height: 16),
           GridView.count(
             crossAxisCount: 2,
@@ -232,7 +284,7 @@ class _RecargaSheet extends StatelessWidget {
           Text(
             'Pago con tarjeta o Yape (se conectará la pasarela en la siguiente fase).',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey[500], fontSize: 12),
+            style: t.bodySmall?.copyWith(color: const Color(0xFFA39D91)),
           ),
         ],
       ),
@@ -248,17 +300,20 @@ class _BotonMonto extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: const Color(0xFFEAF6EF),
-      borderRadius: BorderRadius.circular(14),
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Center(
-          child: Text(
-            'S/ $monto',
-            style: const TextStyle(
-                color: verdeOscuro, fontWeight: FontWeight.bold, fontSize: 20),
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: trazo),
           ),
+          alignment: Alignment.center,
+          child: Text('S/ $monto',
+              style: const TextStyle(
+                  color: pino, fontWeight: FontWeight.w800, fontSize: 20)),
         ),
       ),
     );
