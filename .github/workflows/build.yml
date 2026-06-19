@@ -36,9 +36,13 @@ jobs:
       - name: Generar carpetas de plataforma
         run: flutter create --org pe.ebim --project-name canchas_lima --platforms=android,ios .
 
-      - name: Configurar Google Maps (Android)
+      - name: Configurar plataforma (Maps + firma)
         env:
           MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: python3 tool/configure_platforms.py
 
       - name: pub get
@@ -51,6 +55,11 @@ jobs:
 
       - name: Build APK (release)
         run: flutter build apk --release
+
+      - name: Verificar firma del APK
+        run: |
+          echo "SHA-1 del certificado con que se firmó el APK:"
+          keytool -printcert -jarfile build/app/outputs/flutter-apk/app-release.apk | grep -E "SHA1:|SHA-1:" || echo "(no se pudo leer; revisar firma)"
 
       - name: Renombrar APK
         run: |
@@ -96,9 +105,10 @@ jobs:
       - name: Generar carpetas de plataforma
         run: flutter create --org pe.ebim --project-name canchas_lima --platforms=android,ios .
 
-      - name: Configurar Google Maps (iOS)
+      - name: Configurar plataforma (Maps + Google Sign-In)
         env:
           MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
+          GOOGLE_IOS_CLIENT_ID: ${{ secrets.GOOGLE_IOS_CLIENT_ID }}
         run: python3 tool/configure_platforms.py
 
       - name: pub get
