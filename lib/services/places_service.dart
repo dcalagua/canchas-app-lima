@@ -15,7 +15,10 @@ import '../models/models.dart';
 /// key NO esté restringida solo a apps Android (las llamadas web service la
 /// rechazarían). Todo es fail-safe: si algo falla, devuelve vacío.
 class PlacesService {
-  static const _key = String.fromEnvironment('MAPS_API_KEY');
+  // Key dedicada a Places (web service). Si no se define, cae a la del mapa.
+  static const _placesKey = String.fromEnvironment('PLACES_API_KEY');
+  static const _mapsKey = String.fromEnvironment('MAPS_API_KEY');
+  static String get _key => _placesKey.isNotEmpty ? _placesKey : _mapsKey;
 
   static bool get disponible => _key.isNotEmpty;
 
