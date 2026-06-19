@@ -15,10 +15,7 @@ class LocationService {
           permiso == LocationPermission.deniedForever) {
         return null;
       }
-      final pos = await Geolocator.getCurrentPosition(
-        locationSettings:
-            const LocationSettings(accuracy: LocationAccuracy.high),
-      );
+      final pos = await Geolocator.getCurrentPosition();
       return LatLng(pos.latitude, pos.longitude);
     } catch (_) {
       return null;
