@@ -86,6 +86,7 @@ class CanchasRepo {
         'registrada': c.registrada,
         'foto_url': c.fotoUrl,
         'fotos': c.fotos,
+        'dueno': c.dueno,
       };
 
   static Cancha _fromRow(Map<String, dynamic> r) => Cancha(
@@ -106,6 +107,7 @@ class CanchasRepo {
         fotoUrl: r['foto_url'] as String?,
         fotos: (r['fotos'] as List?)?.map((e) => e.toString()).toList() ??
             const [],
+        dueno: (r['dueno'] ?? '') as String,
       );
 
   static Distrito _enumDistrito(String? s) {

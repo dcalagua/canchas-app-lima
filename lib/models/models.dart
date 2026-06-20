@@ -34,6 +34,7 @@ class Cancha {
   final bool registrada; // false = descubierta (Google Places), aún no en Pichangol
   final String? fotoUrl; // foto de portada (= primera de la galería)
   final List<String> fotos; // galería de fotos (URLs en Supabase Storage)
+  final String dueno; // correo del dueño (para "Mis canchas" entre dispositivos)
 
   const Cancha({
     required this.id,
@@ -49,6 +50,7 @@ class Cancha {
     this.registrada = true,
     this.fotoUrl,
     this.fotos = const [],
+    this.dueno = '',
   });
 
   /// Precio referencial por hora (S/). Si la cancha ya fue reclamada usa su
@@ -76,6 +78,7 @@ class Cancha {
     String? direccion,
     String? fotoUrl,
     List<String>? fotos,
+    String? dueno,
   }) {
     return Cancha(
       id: id,
@@ -91,6 +94,7 @@ class Cancha {
       registrada: registrada,
       fotoUrl: fotoUrl ?? this.fotoUrl,
       fotos: fotos ?? this.fotos,
+      dueno: dueno ?? this.dueno,
     );
   }
 
@@ -109,6 +113,7 @@ class Cancha {
         'registrada': registrada,
         'fotoUrl': fotoUrl,
         'fotos': fotos,
+        'dueno': dueno,
       };
 
   factory Cancha.fromJson(Map<String, dynamic> j) => Cancha(
@@ -127,6 +132,7 @@ class Cancha {
         fotoUrl: j['fotoUrl'] as String?,
         fotos: (j['fotos'] as List?)?.map((e) => e.toString()).toList() ??
             const [],
+        dueno: (j['dueno'] ?? '') as String,
       );
 }
 

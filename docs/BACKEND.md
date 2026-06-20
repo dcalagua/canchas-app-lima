@@ -107,8 +107,15 @@ alter table pichangol_canchas
   add column if not exists direccion text,
   add column if not exists registrada boolean not null default true,
   add column if not exists foto_url text,
-  add column if not exists fotos jsonb default '[]'::jsonb;
+  add column if not exists fotos jsonb default '[]'::jsonb,
+  add column if not exists dueno text default '';   -- correo del dueño
 ```
+
+La columna **`dueno`** (correo del dueño) hace que **"Mis canchas"** recupere las
+canchas del dueño desde la nube tras reinstalar la app: la app filtra por ese
+correo. Las canchas registradas antes de esta columna quedan con `dueno` vacío
+("legado"); aparecen igual en "Mis canchas" y, al **guardarlas/editarlas una vez**,
+se **reclaman** automáticamente con el correo del usuario logueado.
 
 ### Fotos de cancha (Supabase Storage)
 Para que el dueño suba una **foto de portada** al registrar/editar su cancha:

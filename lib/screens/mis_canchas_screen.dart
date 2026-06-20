@@ -7,7 +7,8 @@ import '../widgets/court_lines.dart';
 import 'editar_cancha_screen.dart';
 import 'registrar_cancha_screen.dart';
 
-/// Canchas que el dueño registró en este dispositivo, con acceso a editarlas.
+/// Canchas del dueño (locales de este dispositivo + las suyas en la nube,
+/// recuperadas por su correo tras reinstalar), con acceso a editarlas/eliminarlas.
 class MisCanchasScreen extends StatelessWidget {
   const MisCanchasScreen({super.key});
 

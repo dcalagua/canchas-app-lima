@@ -106,10 +106,29 @@ class AppState extends ChangeNotifier {
     CanchasRepo.insertar(c); // best-effort, compartir entre dispositivos
   }
 
-  /// Canchas que registró el dueño en este dispositivo (para "Mis canchas").
-  List<Cancha> get misCanchas => canchasExtra;
+  /// Canchas del dueño para "Mis canchas". Combina:
+  ///  - las registradas en ESTE dispositivo (`canchasExtra`), y
+  ///  - las que están en la nube y son mías: `dueno == mi correo`, o de
+  ///    **legado sin dueño** (registradas antes de atar la cancha a una cuenta,
+  ///    p. ej. CEANDE), para poder editarlas/eliminarlas/reclamarlas.
+  /// Así, tras reinstalar, el dueño recupera sus canchas desde Supabase.
+  List<Cancha> get misCanchas {
+    final email = usuario?.email ?? '';
+    final map = <String, Cancha>{};
+    for (final c in canchasRemotas) {
+      final mia = email.isNotEmpty && c.dueno == email;
+      final legadoSinDueno = c.dueno.isEmpty && c.registrada;
+      if (mia || legadoSinDueno) map[c.id] = c;
+    }
+    // Las locales de este dispositivo siempre son mías (ganan ante colisión).
+    for (final c in canchasExtra) {
+      map[c.id] = c;
+    }
+    return map.values.toList();
+  }
 
-  /// Edita una cancha registrada por el dueño (la actualiza local + Supabase).
+  /// Edita una cancha del dueño (local + nube). Funciona aunque la cancha venga
+  /// solo de Supabase (tras reinstalar): la refleja también en `canchasRemotas`.
   void actualizarCancha(Cancha c) {
     final i = canchasExtra.indexWhere((x) => x.id == c.id);
     if (i >= 0) {
@@ -117,14 +136,18 @@ class AppState extends ChangeNotifier {
     } else {
       canchasExtra.insert(0, c);
     }
+    final j = canchasRemotas.indexWhere((x) => x.id == c.id);
+    if (j >= 0) canchasRemotas[j] = c;
     notifyListeners();
     _persistirDatos();
     CanchasRepo.actualizar(c); // best-effort
   }
 
-  /// Elimina una cancha registrada por el dueño (local + Supabase).
+  /// Elimina una cancha del dueño (local + nube). Quita también de la lista
+  /// remota para que desaparezca al instante aunque viniera solo de Supabase.
   void eliminarCancha(String id) {
     canchasExtra.removeWhere((x) => x.id == id);
+    canchasRemotas.removeWhere((x) => x.id == id);
     notifyListeners();
     _persistirDatos();
     CanchasRepo.eliminar(id); // best-effort

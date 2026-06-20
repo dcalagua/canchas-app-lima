@@ -146,6 +146,10 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
       fotoUrl = await CanchasRepo.subirFoto('u$ts', _foto!);
     }
 
+    // Atamos la cancha a la cuenta del dueño (correo) para recuperarla luego en
+    // "Mis canchas" desde cualquier dispositivo.
+    final dueno = appState.usuario?.email ?? '';
+
     // Un local con varias canchas = una Cancha por deporte, mismo punto y dirección.
     final deportes = _deportes.toList();
     for (final dep in deportes) {
@@ -164,6 +168,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
         direccion: direccion.isEmpty ? null : direccion,
         fotoUrl: fotoUrl,
         fotos: fotoUrl != null ? [fotoUrl] : const [],
+        dueno: dueno,
       ));
     }
     if (!mounted) return;

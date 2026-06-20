@@ -117,6 +117,12 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
     }
     final fotoUrl = fotos.isNotEmpty ? fotos.first : null;
 
+    // Si la cancha no tenía dueño (legado, p. ej. registrada antes de atarla a
+    // una cuenta), al guardar la reclamamos con el correo del usuario logueado.
+    final dueno = widget.cancha.dueno.isEmpty
+        ? (appState.usuario?.email ?? '')
+        : widget.cancha.dueno;
+
     final actualizada = widget.cancha.copyWith(
       nombre: nombre,
       precioHora: int.tryParse(_precio.text.trim()) ?? widget.cancha.precioHora,
@@ -125,6 +131,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
       fotos: fotos,
       direccion: _direccion.text.trim().isEmpty ? null : _direccion.text.trim(),
       fotoUrl: fotoUrl,
+      dueno: dueno,
     );
     appState.actualizarCancha(actualizada);
 
