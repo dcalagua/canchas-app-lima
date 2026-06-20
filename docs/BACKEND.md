@@ -108,8 +108,22 @@ alter table pichangol_canchas
   add column if not exists registrada boolean not null default true,
   add column if not exists foto_url text,
   add column if not exists fotos jsonb default '[]'::jsonb,
-  add column if not exists dueno text default '';   -- correo del dueño
+  add column if not exists dueno text default '',          -- correo del dueño
+  add column if not exists verificada boolean default true; -- propiedad verificada
 ```
+
+La columna **`verificada`** habilita el flujo anti-fraude (Capa 1): al **registrar o
+reclamar** una cancha, la app la marca `verificada = false` ("Pendiente de
+verificación") y **bloquea las reservas online** hasta confirmar que quien la reclama
+es el dueño real. Para **aprobar** una cancha (revisión manual del piloto), en el
+**Table Editor** de Supabase pon `verificada = true` en esa fila, o por SQL:
+
+```sql
+update pichangol_canchas set verificada = true where id = 'ID_DE_LA_CANCHA';
+```
+
+> La Capa 2 (OTP por WhatsApp/SMS al teléfono del local) automatizará esta aprobación
+> cuando elijas proveedor; hará el mismo `update` tras validar el código.
 
 La columna **`dueno`** (correo del dueño) hace que **"Mis canchas"** recupere las
 canchas del dueño desde la nube tras reinstalar la app: la app filtra por ese

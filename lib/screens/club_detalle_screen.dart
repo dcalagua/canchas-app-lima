@@ -41,6 +41,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
   Future<void> _reservar() async {
     final hora = _hora;
     if (hora == null) return;
+    if (!_cancha.reservable) return; // no se reserva si está pendiente/descubierta
     if (!appState.logueado) {
       final ok = await LoginGoogleSheet.mostrar(context);
       if (!ok || !mounted) return;
@@ -70,6 +71,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     final t = Theme.of(context).textTheme;
     final c = widget.club;
     final descubierta = !_cancha.registrada;
+    final pendiente = _cancha.pendienteVerificacion;
     return Scaffold(
       backgroundColor: papel,
       body: CustomScrollView(
@@ -97,6 +99,9 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                       if (descubierta)
                         const _Badge('◎ EN GOOGLE',
                             bg: Color(0xFF3A352E), fg: Colors.white)
+                      else if (pendiente)
+                        const _Badge('⏳ PENDIENTE DE VERIFICACIÓN',
+                            bg: Color(0xFFFBEAD2), fg: clayOscuro)
                       else
                         const _Badge('DIGITALIZADA',
                             bg: Color(0xFFF0ECE2), fg: Color(0xFF5C574E)),
@@ -114,6 +119,8 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
 
                   if (descubierta)
                     _PanelDescubierta()
+                  else if (pendiente)
+                    const _PanelPendiente()
                   else ...[
                     // Selector "Elige cancha"
                     if (c.canchas.length > 1) ...[
@@ -222,7 +229,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: descubierta
+      bottomNavigationBar: (descubierta || pendiente)
           ? null
           : _ReservarBar(
               precio: _cancha.precioHora,
@@ -426,6 +433,48 @@ class _PanelDescubierta extends StatelessWidget {
               icon: const Icon(Icons.add_location_alt),
               label: const Text('Reclamar / registrar esta cancha'),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Panel cuando la cancha está reclamada/registrada pero aún sin verificar la
+/// propiedad: no se puede reservar online hasta validar al dueño (anti-fraude).
+class _PanelPendiente extends StatelessWidget {
+  const _PanelPendiente();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFDF6EC),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE9D9C2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.verified_user_outlined, color: clayOscuro),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Cancha pendiente de verificación',
+                    style:
+                        t.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Alguien la registró como suya y estamos validando que sea el dueño '
+            'real. Por seguridad, las reservas online se habilitan recién cuando '
+            'se confirme la propiedad.',
+            style: t.bodyMedium?.copyWith(color: textoTenue, height: 1.4),
           ),
         ],
       ),

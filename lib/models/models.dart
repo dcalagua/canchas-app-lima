@@ -35,6 +35,7 @@ class Cancha {
   final String? fotoUrl; // foto de portada (= primera de la galería)
   final List<String> fotos; // galería de fotos (URLs en Supabase Storage)
   final String dueno; // correo del dueño (para "Mis canchas" entre dispositivos)
+  final bool verificada; // true = propiedad verificada; false = reclamo pendiente
 
   const Cancha({
     required this.id,
@@ -51,7 +52,15 @@ class Cancha {
     this.fotoUrl,
     this.fotos = const [],
     this.dueno = '',
+    this.verificada = true,
   });
+
+  /// Se puede reservar online solo si está en Pichangol y su propiedad fue
+  /// verificada (evita reservas en canchas reclamadas por alguien sin validar).
+  bool get reservable => registrada && verificada;
+
+  /// Reclamada/registrada pero aún sin verificar la propiedad del dueño.
+  bool get pendienteVerificacion => registrada && !verificada;
 
   /// Precio referencial por hora (S/). Si la cancha ya fue reclamada usa su
   /// precio real; si es descubierta (Google, aún sin precio) estima según el
@@ -79,6 +88,7 @@ class Cancha {
     String? fotoUrl,
     List<String>? fotos,
     String? dueno,
+    bool? verificada,
   }) {
     return Cancha(
       id: id,
@@ -95,6 +105,7 @@ class Cancha {
       fotoUrl: fotoUrl ?? this.fotoUrl,
       fotos: fotos ?? this.fotos,
       dueno: dueno ?? this.dueno,
+      verificada: verificada ?? this.verificada,
     );
   }
 
@@ -114,6 +125,7 @@ class Cancha {
         'fotoUrl': fotoUrl,
         'fotos': fotos,
         'dueno': dueno,
+        'verificada': verificada,
       };
 
   factory Cancha.fromJson(Map<String, dynamic> j) => Cancha(
@@ -133,6 +145,7 @@ class Cancha {
         fotos: (j['fotos'] as List?)?.map((e) => e.toString()).toList() ??
             const [],
         dueno: (j['dueno'] ?? '') as String,
+        verificada: (j['verificada'] ?? true) as bool,
       );
 }
 

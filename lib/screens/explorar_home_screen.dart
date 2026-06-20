@@ -765,6 +765,26 @@ class _CanchaCard extends StatelessWidget {
                           ),
                         ),
                       )
+                    else if (cancha.pendienteVerificacion)
+                      Positioned(
+                        top: 8,
+                        left: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: clayOscuro,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Text(
+                            '⏳ Por verificar',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      )
                     else if (destacado)
                       Positioned(
                         top: 8,

@@ -12,6 +12,7 @@ import '../models/models.dart';
 import '../services/sport_detector.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'login_google_sheet.dart';
 
 /// Registrar una cancha escribiendo la dirección: se geocodifica y aparece en el
 /// mapa automáticamente (estilo eSupplier). Un local puede tener varias canchas
@@ -137,6 +138,15 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
       _avisar('Elige al menos un deporte.');
       return;
     }
+    // Anti-fraude: para registrar/reclamar hay que identificarse con Google, así
+    // la cancha queda atada a una cuenta real y pasa a verificación.
+    if (!appState.logueado) {
+      final ok = await LoginGoogleSheet.mostrar(context);
+      if (!ok || !mounted) {
+        _avisar('Inicia sesión para registrar tu cancha.');
+        return;
+      }
+    }
     final precio = int.tryParse(_precio.text.trim()) ?? 100;
     final direccion = _direccion.text.trim();
     final distrito = await _distritoDe(_ubicacion!);
@@ -171,6 +181,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
         fotoUrl: fotoUrl,
         fotos: fotoUrl != null ? [fotoUrl] : const [],
         dueno: dueno,
+        verificada: false, // pendiente de verificación hasta validar al dueño
       ));
     }
     if (!mounted) return;

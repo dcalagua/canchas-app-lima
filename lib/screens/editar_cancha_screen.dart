@@ -120,10 +120,12 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
     final fotoUrl = fotos.isNotEmpty ? fotos.first : null;
 
     // Si la cancha no tenía dueño (legado, p. ej. registrada antes de atarla a
-    // una cuenta), al guardar la reclamamos con el correo del usuario logueado.
-    final dueno = widget.cancha.dueno.isEmpty
-        ? (appState.usuario?.email ?? '')
-        : widget.cancha.dueno;
+    // una cuenta), al guardar la reclamamos con el correo del usuario logueado y
+    // queda pendiente de verificación (anti-fraude).
+    final eraReclamo = widget.cancha.dueno.isEmpty;
+    final dueno =
+        eraReclamo ? (appState.usuario?.email ?? '') : widget.cancha.dueno;
+    final verificada = eraReclamo ? false : widget.cancha.verificada;
 
     final actualizada = widget.cancha.copyWith(
       nombre: nombre,
@@ -134,6 +136,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
       direccion: _direccion.text.trim().isEmpty ? null : _direccion.text.trim(),
       fotoUrl: fotoUrl,
       dueno: dueno,
+      verificada: verificada,
     );
     appState.actualizarCancha(actualizada);
 
@@ -143,7 +146,10 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         backgroundColor: pino,
-        content: Text('✅ "$nombre" actualizada.',
+        content: Text(
+            eraReclamo
+                ? '✅ "$nombre" reclamada. Queda pendiente de verificación.'
+                : '✅ "$nombre" actualizada.',
             style: const TextStyle(color: Colors.white)),
       ),
     );
