@@ -31,6 +31,7 @@ class AppState extends ChangeNotifier {
   final List<Cancha> canchasExtra = []; // canchas registradas en este dispositivo
   final List<Cancha> canchasRemotas = []; // canchas traídas de Supabase
   final List<Cancha> canchasDescubiertas = []; // reales de Google Places (sin registrar)
+  bool descubriendo = false; // true mientras se traen canchas cercanas (feedback UI)
 
   /// Todas las canchas (descubiertas + semilla + remotas + locales), sin duplicar
   /// por id. Las registradas se ponen después para que ganen ante una colisión.
@@ -54,13 +55,19 @@ class AppState extends ChangeNotifier {
   /// Descubre canchas REALES cerca de [centro] con Google Places y las suma al
   /// mapa como "sin registrar". Fail-safe: si Places no responde, no cambia nada.
   Future<void> descubrirCanchasCerca(LatLng centro) async {
-    final reales = await PlacesService.canchasCerca(centro);
-    if (reales.isEmpty) return;
-    final existentes = canchasDescubiertas.map((c) => c.id).toSet();
-    final nuevas = reales.where((c) => !existentes.contains(c.id)).toList();
-    if (nuevas.isEmpty) return;
-    canchasDescubiertas.addAll(nuevas);
-    notifyListeners();
+    descubriendo = true;
+    notifyListeners(); // muestra el indicador "Buscando canchas cerca de ti…"
+    try {
+      final reales = await PlacesService.canchasCerca(centro);
+      final existentes = canchasDescubiertas.map((c) => c.id).toSet();
+      final nuevas = reales.where((c) => !existentes.contains(c.id)).toList();
+      if (nuevas.isNotEmpty) canchasDescubiertas.addAll(nuevas);
+    } catch (_) {
+      // fail-safe: si Places no responde, no cambia nada
+    } finally {
+      descubriendo = false;
+      notifyListeners();
+    }
   }
 
   /// Trae las reservas compartidas desde Supabase (disponibilidad entre

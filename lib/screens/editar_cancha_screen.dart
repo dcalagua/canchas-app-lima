@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -258,6 +259,12 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
                 onMapCreated: (c) => _map = c,
                 myLocationButtonEnabled: false,
                 zoomControlsEnabled: false,
+                // El mapa reclama los gestos de arrastre/zoom para que se pueda
+                // panear y ajustar el pin dentro de la lista que hace scroll.
+                gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+                  Factory<OneSequenceGestureRecognizer>(
+                      () => EagerGestureRecognizer()),
+                },
                 onTap: (p) => setState(() => _ubicacion = p),
                 markers: {
                   Marker(

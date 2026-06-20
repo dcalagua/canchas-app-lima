@@ -410,6 +410,16 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                     seleccion: _filtro,
                     onSeleccion: _cambiarFiltro,
                   ),
+                  // Feedback mientras la app trae canchas reales cerca (Places).
+                  ListenableBuilder(
+                    listenable: appState,
+                    builder: (_, __) => appState.descubriendo
+                        ? const Padding(
+                            padding: EdgeInsets.only(top: 10),
+                            child: _BuscandoCerca(),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
                 ],
               ),
             ),
@@ -584,6 +594,42 @@ class _BarraBusqueda extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Píldora de "cargando" mientras se traen canchas reales cerca del usuario.
+/// Da feedback claro (estilo Airbnb) para que la espera no confunda.
+class _BuscandoCerca extends StatelessWidget {
+  const _BuscandoCerca();
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(999),
+          boxShadow: const [
+            BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 2)),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2, color: verdeCancha),
+            ),
+            SizedBox(width: 10),
+            Text('Buscando canchas cerca de ti…',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+          ],
+        ),
+      ),
     );
   }
 }

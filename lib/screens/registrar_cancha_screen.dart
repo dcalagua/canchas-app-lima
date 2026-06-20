@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -363,6 +364,11 @@ class _MapaUbicacion extends StatelessWidget {
           onMapCreated: onMapCreated,
           myLocationButtonEnabled: false,
           zoomControlsEnabled: false,
+          // Reclama los gestos para poder panear/ajustar el pin dentro del scroll.
+          gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+            Factory<OneSequenceGestureRecognizer>(
+                () => EagerGestureRecognizer()),
+          },
           onTap: onElegir,
           markers: ubicacion == null
               ? const {}
