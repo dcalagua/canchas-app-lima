@@ -77,8 +77,25 @@ Otros endpoints: `POST /consentimientos`,
 - `adapters/address_normalizer.py` — normaliza y compara direcciones con
   tolerancia de formato (abreviaturas, acentos, puntuación).
 
-> Ningún adaptador llama a servicios reales todavía. Las claves van por `.env`
-> (ver `.env.example`).
+> Las claves van por `.env` (ver `.env.example`), nunca versionadas.
+
+### Activar SUNAT real (Factiliza)
+El adaptador `factiliza` ya está implementado contra el endpoint de **RUC**
+(`/ruc/info/{ruc}`) — **no** el de DNI: este módulo verifica el **negocio**, no a
+una persona. Para activarlo, en el `.env` del host:
+
+```
+SUNAT_PROVIDER=factiliza
+FACTILIZA_BASE_URL=https://api.factiliza.com/v1
+FACTILIZA_API_TOKEN=***   # secreto; NUNCA versionar; regenerar si se filtró
+```
+
+Es fail-safe: ante 401/5xx/timeout, SUNAT queda "no consultado" y el scoring
+redistribuye su peso; ante 404, el RUC se trata como inexistente (penaliza).
+
+> Verificación de **identidad por DNI** (endpoint `/dni/...`): queda fuera de este
+> módulo por cumplimiento. Si se requiere, va como módulo aparte con
+> "procesar y descartar" (nunca persistir el DNI).
 
 ## Persistencia
 `db/schema.sql` define **solo**:

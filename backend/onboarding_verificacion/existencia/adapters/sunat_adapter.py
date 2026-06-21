@@ -13,9 +13,16 @@ personales. No se solicita ni almacena DNI ni documentos de personas.
 
 from __future__ import annotations
 
+import json
 import os
+import urllib.error
+import urllib.request
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+
+# Base de la API de Factiliza. El TOKEN nunca se hardcodea: se lee de
+# FACTILIZA_API_TOKEN (en .env del host / variable del despliegue).
+FACTILIZA_BASE_URL = os.getenv("FACTILIZA_BASE_URL", "https://api.factiliza.com/v1")
 
 
 @dataclass
@@ -76,19 +83,65 @@ class StubSunatAdapter(SunatAdapter):
 
 
 class FactilizaSunatAdapter(SunatAdapter):
-    """STUB del proveedor Factiliza. Cuando se active, leería FACTILIZA_API_TOKEN
-    y llamaría su API REST. Hoy delega en el stub para no llamar servicios reales."""
+    """Adaptador REAL de Factiliza para consulta de **RUC** (negocio).
 
-    def __init__(self, token: str | None = None) -> None:
+    Usa el endpoint de RUC (`/ruc/info/{ruc}`), NO el de DNI: este submódulo
+    verifica la existencia del negocio y, por diseño de cumplimiento, no consulta
+    datos personales (DNI). El token se lee de `FACTILIZA_API_TOKEN` (nunca se
+    hardcodea ni se versiona).
+
+    Fail-safe: ante error de red/timeout/respuesta inesperada devuelve
+    `no_consultado` (el scoring excluye SUNAT y redistribuye su peso).
+    """
+
+    def __init__(self, token: str | None = None, base_url: str | None = None,
+                 timeout: float = 8.0) -> None:
         self._token = token or os.getenv("FACTILIZA_API_TOKEN", "")
-        self._stub = StubSunatAdapter()
+        self._base = (base_url or FACTILIZA_BASE_URL).rstrip("/")
+        self._timeout = timeout
 
     def consultar_ruc(self, ruc: str) -> SunatResultado:
-        # TODO(real): requests.get(f"{FACTILIZA_URL}/ruc/{ruc}",
-        #             headers={"Authorization": f"Bearer {self._token}"})
-        res = self._stub.consultar_ruc(ruc)
-        res.fuente = "factiliza-stub"
-        return res
+        if not _ruc_valido(ruc):
+            return SunatResultado(True, False, ruc, None, None, None, None, [],
+                                  "factiliza")
+        if not self._token:
+            # Sin token configurado no se puede consultar de verdad: no consultado.
+            return SunatResultado.no_consultado(ruc)
+
+        url = f"{self._base}/ruc/info/{ruc}"
+        req = urllib.request.Request(url, headers={
+            "Authorization": f"Bearer {self._token}",
+            "Accept": "application/json",
+        })
+        try:
+            with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            if e.code == 404:  # RUC no encontrado → existe=False (penaliza)
+                return SunatResultado(True, False, ruc, None, None, None, None,
+                                      [], "factiliza")
+            return SunatResultado.no_consultado(ruc)  # 401/5xx → fail-safe
+        except Exception:
+            return SunatResultado.no_consultado(ruc)   # timeout/parse → fail-safe
+
+        return self._mapear(ruc, payload)
+
+    @staticmethod
+    def _mapear(ruc: str, payload: dict) -> SunatResultado:
+        if payload.get("success") is False:
+            return SunatResultado(True, False, ruc, None, None, None, None, [],
+                                  "factiliza")
+        data = payload.get("data") or payload  # tolera variaciones de formato
+        razon = (data.get("nombre_o_razon_social") or data.get("razon_social")
+                 or data.get("nombre"))
+        estado = (data.get("estado") or "").upper() or None
+        condicion = (data.get("condicion") or "").upper() or None
+        domicilio = (data.get("direccion_completa") or data.get("direccion")
+                     or None)
+        return SunatResultado(
+            consultado=True, existe=True, ruc=ruc, razon_social=razon,
+            estado=estado, condicion=condicion, domicilio_fiscal=domicilio,
+            establecimientos_anexos=[], fuente="factiliza")
 
 
 class OficialSunatAdapter(SunatAdapter):
