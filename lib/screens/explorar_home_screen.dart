@@ -44,6 +44,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
   LatLng? _centroBusqueda; // zona buscada por el usuario (estilo Airbnb)
   String? _labelBusqueda;
   bool _lista = false; // vista lista de clubes (toggle estilo Airbnb)
+  bool _ubicando = true; // true mientras se resuelve la ubicación inicial
 
   /// Clubes derivados de las canchas filtradas (un local = varias canchas).
   List<Club> _clubs() => Club.agrupar(_filtradas());
@@ -60,10 +61,11 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
       final centro = _centroBusqueda!;
       lista.sort((a, b) => distanciaKm(centro, a.ubicacion)
           .compareTo(distanciaKm(centro, b.ubicacion)));
-      final cercanas = lista
+      // Solo las que están de verdad cerca (radio). Si no hay ninguna, devuelve
+      // vacío en vez de mostrar canchas lejanas: la UI muestra "buscando…".
+      lista = lista
           .where((c) => distanciaKm(centro, c.ubicacion) <= _radioKm)
           .toList();
-      lista = cercanas.isNotEmpty ? cercanas : lista.take(6).toList();
     }
     return lista;
   }
@@ -88,8 +90,29 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
   }
 
   Future<void> _autoUbicar() async {
-    final pos = await LocationService.ubicacionActual();
-    if (pos == null || !mounted) return;
+    if (mounted) setState(() => _ubicando = true);
+    try {
+      // 1) Ubicación INSTANTÁNEA con la última conocida: centra los cards en la
+      //    zona del usuario de inmediato (sin esperar el GPS) y dispara la
+      //    búsqueda de canchas reales cerca. Evita mostrar canchas lejanas.
+      final rapida = await LocationService.ultimaConocida();
+      if (rapida != null && mounted) _aplicarUbicacion(rapida);
+
+      // 2) Fix PRECISO (puede tardar). Solo re-busca si el usuario está lejos de
+      //    la posición rápida (evita una segunda llamada innecesaria).
+      final precisa = await LocationService.ubicacionActual();
+      if (precisa != null && mounted) {
+        final reUbicar = rapida == null || distanciaKm(rapida, precisa) > 2;
+        _aplicarUbicacion(precisa, descubrir: reUbicar);
+      }
+    } finally {
+      if (mounted) setState(() => _ubicando = false);
+    }
+  }
+
+  /// Aplica una ubicación: centra el mapa, reordena los cards a lo cercano y
+  /// (opcionalmente) descubre canchas reales alrededor.
+  void _aplicarUbicacion(LatLng pos, {bool descubrir = true}) {
     setState(() {
       _centroBusqueda = pos;
       _labelBusqueda = 'Tu ubicación';
@@ -98,7 +121,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     if (_pageController.hasClients) _pageController.jumpToPage(0);
     _controller?.animateCamera(CameraUpdate.newLatLngZoom(pos, 13.5));
     _rebuildMarkers();
-    appState.descubrirCanchasCerca(pos); // canchas reales (Google Places)
+    if (descubrir) appState.descubrirCanchasCerca(pos); // canchas reales (Places)
   }
 
   @override
@@ -456,7 +479,19 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                 child: ListenableBuilder(
                   listenable: appState,
                   builder: (context, _) {
+                    // Mientras se resuelve la ubicación: skeleton desde el primer
+                    // frame (evita el parpadeo de canchas lejanas con el GPS).
+                    if (_centroBusqueda == null && _ubicando) {
+                      return const _CarruselSkeleton();
+                    }
                     final lista = _filtradas();
+                    // Con ubicación pero sin canchas cerca: si seguimos buscando,
+                    // skeleton; si ya terminó, mensaje claro.
+                    if (lista.isEmpty) {
+                      return appState.descubriendo
+                          ? const _CarruselSkeleton()
+                          : const _SinCanchasCerca();
+                    }
                     return PageView.builder(
                       controller: _pageController,
                       itemCount: lista.length,
@@ -627,6 +662,97 @@ class _BuscandoCerca extends StatelessWidget {
             SizedBox(width: 10),
             Text('Buscando canchas cerca de ti…',
                 style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Tarjetas "fantasma" mientras se cargan las canchas cercanas (percepción de
+/// rapidez estilo Airbnb), en vez de mostrar canchas lejanas o un hueco vacío.
+class _CarruselSkeleton extends StatelessWidget {
+  const _CarruselSkeleton();
+
+  Widget _bloque(double w, double h, {double radius = 8}) => Container(
+        width: w,
+        height: h,
+        decoration: BoxDecoration(
+            color: const Color(0xFFEDEAE2),
+            borderRadius: BorderRadius.circular(radius)),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final ancho = MediaQuery.of(context).size.width * 0.82;
+    return ListView.separated(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      itemCount: 3,
+      separatorBuilder: (_, __) => const SizedBox(width: 12),
+      itemBuilder: (_, __) => Container(
+        width: ancho,
+        margin: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: const [
+            BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4)),
+          ],
+        ),
+        child: Row(
+          children: [
+            _bloque(86, 86, radius: 14),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _bloque(double.infinity, 14),
+                  const SizedBox(height: 8),
+                  _bloque(140, 12),
+                  const SizedBox(height: 14),
+                  _bloque(90, 20, radius: 999),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Mensaje cuando ya se terminó de buscar y no hay canchas en el radio cercano.
+class _SinCanchasCerca extends StatelessWidget {
+  const _SinCanchasCerca();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: const [
+            BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4)),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(Icons.location_off, color: textoTenue),
+            SizedBox(width: 10),
+            Flexible(
+              child: Text(
+                'No encontramos canchas cerca de ti. Mueve el mapa o busca otra zona.',
+                style: TextStyle(color: tinta, fontWeight: FontWeight.w600),
+              ),
+            ),
           ],
         ),
       ),

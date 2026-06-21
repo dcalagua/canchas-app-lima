@@ -38,19 +38,25 @@ function json(obj: unknown, status = 200): Response {
 
 // deno-lint-ignore no-explicit-any
 async function resolverFotos(place: any): Promise<string[]> {
-  const fotos: string[] = [];
-  for (const ph of (place.photos ?? []).slice(0, MAX_FOTOS)) {
-    try {
-      const u =
-        `https://places.googleapis.com/v1/${ph.name}/media` +
-        `?maxWidthPx=800&skipHttpRedirect=true&key=${KEY}`;
-      const r = await fetch(u);
-      if (!r.ok) continue;
-      const j = await r.json();
-      if (j.photoUri) fotos.push(j.photoUri); // URL pública (sin key)
-    } catch (_) { /* ignora esta foto */ }
-  }
-  return fotos;
+  // Resuelve las fotos en PARALELO (antes era secuencial) para bajar latencia.
+  const phs = (place.photos ?? []).slice(0, MAX_FOTOS);
+  const urls = await Promise.all(
+    // deno-lint-ignore no-explicit-any
+    phs.map(async (ph: any): Promise<string | null> => {
+      try {
+        const u =
+          `https://places.googleapis.com/v1/${ph.name}/media` +
+          `?maxWidthPx=800&skipHttpRedirect=true&key=${KEY}`;
+        const r = await fetch(u);
+        if (!r.ok) return null;
+        const j = await r.json();
+        return j.photoUri ?? null; // URL pública (sin key)
+      } catch (_) {
+        return null; // ignora esta foto
+      }
+    }),
+  );
+  return urls.filter((u): u is string => !!u);
 }
 
 serve(async (req) => {
@@ -72,12 +78,10 @@ serve(async (req) => {
       lng = b.lng;
       radius = b.radius;
     }
-    const porId = new Map<string, unknown>();
-
-    for (const q of CONSULTAS) {
-      const resp = await fetch(
-        "https://places.googleapis.com/v1/places:searchText",
-        {
+    // Las 4 consultas de texto salen en PARALELO (antes, secuenciales).
+    const respuestas = await Promise.all(
+      CONSULTAS.map((q) =>
+        fetch("https://places.googleapis.com/v1/places:searchText", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -97,10 +101,14 @@ serve(async (req) => {
               },
             },
           }),
-        },
-      );
-      if (!resp.ok) continue;
-      const body = await resp.json();
+        })
+          .then((r) => (r.ok ? r.json() : { places: [] }))
+          .catch(() => ({ places: [] }))
+      ),
+    );
+
+    const porId = new Map<string, unknown>();
+    for (const body of respuestas) {
       for (const p of body.places ?? []) porId.set(p.id, p);
     }
 
