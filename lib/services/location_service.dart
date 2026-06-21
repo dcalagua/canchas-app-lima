@@ -30,10 +30,8 @@ class LocationService {
         return null;
       }
       final pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.medium,
-          timeLimit: Duration(seconds: 8),
-        ),
+        desiredAccuracy: LocationAccuracy.medium, // más rápido que high
+        timeLimit: const Duration(seconds: 8),
       );
       return LatLng(pos.latitude, pos.longitude);
     } catch (_) {
