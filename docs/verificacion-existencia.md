@@ -137,8 +137,21 @@ Mientras no se defina, la verificación queda inactiva y todo sigue funcionando.
 Para activarla: despliega este backend (p. ej. en un host con HTTPS) y crea el
 secret `VERIF_API_URL` en GitHub Actions con su URL pública.
 
+### Activar Google Places real (operatividad + distancia)
+El adaptador `google` ya está implementado (`places:searchText`, API New). Para
+activarlo, en el host (Railway → Variables):
+
+```
+PLACES_PROVIDER=google
+GOOGLE_PLACES_API_KEY=***   # puede ser la misma key del mapa (app restriction = Ninguna)
+```
+
+Mapea `businessStatus` → operativo y la distancia (Haversine) entre la coordenada
+declarada y la de Google. Fail-safe: sin key o ante error → "no consultado" y el
+scoring redistribuye el peso de `maps`.
+
 ## Roadmap
-1. Activar `factiliza`/oficial en `sunat_adapter` (reemplazar TODOs).
-2. Activar Google Places real en `places_adapter`.
+1. ✅ SUNAT real (Factiliza, RUC) — en producción.
+2. ✅ Google Places real en `places_adapter` (activar con `PLACES_PROVIDER=google`).
 3. Conectar `db/repository.py` a Postgres (Supabase) con `schema.sql`.
 4. Capa OTP por WhatsApp como verificación de propiedad además de existencia.
