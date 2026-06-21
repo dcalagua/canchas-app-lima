@@ -10,6 +10,7 @@ import '../models/models.dart';
 import '../models/usuario.dart';
 import '../services/auth_service.dart';
 import '../services/places_service.dart';
+import '../services/verificacion_service.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 /// Instancia única del estado para toda la app (sin paquetes extra de DI).
@@ -178,6 +179,46 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     _persistirDatos();
     CanchasRepo.actualizar(c); // best-effort
+  }
+
+  /// Verifica la EXISTENCIA de una cancha contra el backend y, si el score la
+  /// aprueba, la marca como **verificada** (habilita reservas). Si el servicio no
+  /// está configurado o falla, devuelve null y la cancha queda pendiente (revisión
+  /// manual). Pensado para llamarse en segundo plano tras registrar/reclamar.
+  Future<ResultadoExistencia?> verificarCancha(Cancha c,
+      {String? ruc, String? razonSocial}) async {
+    final res = await VerificacionService.verificarExistencia(
+      canchaId: c.id,
+      direccion: c.direccion ?? c.nombre,
+      ruc: ruc,
+      razonSocial: razonSocial ?? c.nombre,
+      ubicacion: c.ubicacion,
+    );
+    if (res != null && res.aprobado && !c.verificada) {
+      actualizarCancha(c.copyWith(verificada: true));
+    }
+    return res;
+  }
+
+  /// Verifica un LOCAL completo (varias canchas en el mismo punto/dirección): una
+  /// sola consulta y, si aprueba, marca verificadas todas sus canchas.
+  Future<ResultadoExistencia?> verificarVenue(List<Cancha> canchas,
+      {String? ruc, String? razonSocial}) async {
+    if (canchas.isEmpty) return null;
+    final base = canchas.first;
+    final res = await VerificacionService.verificarExistencia(
+      canchaId: base.id,
+      direccion: base.direccion ?? base.nombre,
+      ruc: ruc,
+      razonSocial: razonSocial ?? base.nombre,
+      ubicacion: base.ubicacion,
+    );
+    if (res != null && res.aprobado) {
+      for (final c in canchas) {
+        if (!c.verificada) actualizarCancha(c.copyWith(verificada: true));
+      }
+    }
+    return res;
   }
 
   /// Elimina una cancha del dueño (local + nube). Quita también de la lista

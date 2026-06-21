@@ -10,6 +10,7 @@ import 'package:image_picker/image_picker.dart';
 import '../data/canchas_repo.dart';
 import '../models/models.dart';
 import '../services/sport_detector.dart';
+import '../services/verificacion_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'login_google_sheet.dart';
@@ -28,6 +29,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
   final _nombre = TextEditingController();
   final _direccion = TextEditingController();
   final _precio = TextEditingController(text: '120');
+  final _ruc = TextEditingController(); // opcional: refuerza la verificación
 
   // Deportes del local (varios a la vez). Fútbol viene marcado por defecto.
   final Set<Deporte> _deportes = {Deporte.futbol};
@@ -48,6 +50,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
     _nombre.dispose();
     _direccion.dispose();
     _precio.dispose();
+    _ruc.dispose();
     _map?.dispose();
     super.dispose();
   }
@@ -164,10 +167,11 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
 
     // Un local con varias canchas = una Cancha por deporte, mismo punto y dirección.
     final deportes = _deportes.toList();
+    final creadas = <Cancha>[];
     for (final dep in deportes) {
       final nombreCancha =
           deportes.length > 1 ? '$nombre · ${dep.etiqueta}' : nombre;
-      appState.agregarCancha(Cancha(
+      final cancha = Cancha(
         id: 'u${ts}_${dep.name}',
         nombre: nombreCancha,
         club: appState.nombreClub,
@@ -182,17 +186,27 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
         fotos: fotoUrl != null ? [fotoUrl] : const [],
         dueno: dueno,
         verificada: false, // pendiente de verificación hasta validar al dueño
-      ));
+      );
+      creadas.add(cancha);
+      appState.agregarCancha(cancha);
     }
+
+    // Verificación de existencia en segundo plano (no bloquea el cierre). Si el
+    // backend aprueba el score, las canchas pasan de "pendiente" a verificadas.
+    appState.verificarVenue(creadas,
+        ruc: _ruc.text.trim(), razonSocial: nombre);
+
     if (!mounted) return;
     Navigator.of(context).pop();
     final n = deportes.length;
+    final cola =
+        VerificacionService.disponible ? ' Verificando existencia…' : '';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         backgroundColor: verdeCancha,
         content: Text(n > 1
-            ? '✅ "$nombre" publicado con $n canchas en el mapa.'
-            : '✅ "$nombre" publicada en el mapa.'),
+            ? '✅ "$nombre" publicado con $n canchas.$cola'
+            : '✅ "$nombre" publicada.$cola'),
       ),
     );
   }
@@ -229,6 +243,19 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
             controller: _nombre,
             decoration: const InputDecoration(
               labelText: 'Nombre del local / cancha',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          // RUC opcional: refuerza la verificación de existencia (SUNAT).
+          TextField(
+            controller: _ruc,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              labelText: 'RUC del negocio (opcional)',
+              hintText: 'Ayuda a verificar tu cancha más rápido',
+              prefixIcon: Icon(Icons.verified_outlined, color: verdeCancha),
               border: OutlineInputBorder(),
             ),
           ),

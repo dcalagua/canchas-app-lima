@@ -9,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../data/canchas_repo.dart';
 import '../models/models.dart';
+import '../services/verificacion_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 
@@ -29,6 +30,8 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
       TextEditingController(text: widget.cancha.direccion ?? '');
   late final TextEditingController _precio =
       TextEditingController(text: widget.cancha.precioHora.toString());
+  final TextEditingController _ruc =
+      TextEditingController(); // opcional, refuerza la verificación al reclamar
 
   late Deporte _deporte = widget.cancha.deporte;
   late LatLng _ubicacion = widget.cancha.ubicacion;
@@ -51,6 +54,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
     _nombre.dispose();
     _direccion.dispose();
     _precio.dispose();
+    _ruc.dispose();
     _map?.dispose();
     super.dispose();
   }
@@ -140,15 +144,23 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
     );
     appState.actualizarCancha(actualizada);
 
+    // Al reclamar, dispara la verificación de existencia en segundo plano: si el
+    // score aprueba, la cancha pasa de "pendiente" a verificada sola.
+    if (eraReclamo) {
+      appState.verificarCancha(actualizada, ruc: _ruc.text.trim());
+    }
+
     if (!mounted) return;
     setState(() => _guardando = false);
     Navigator.of(context).pop();
+    final cola =
+        VerificacionService.disponible ? ' Verificando existencia…' : '';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         backgroundColor: pino,
         content: Text(
             eraReclamo
-                ? '✅ "$nombre" reclamada. Queda pendiente de verificación.'
+                ? '✅ "$nombre" reclamada. Pendiente de verificación.$cola'
                 : '✅ "$nombre" actualizada.',
             style: const TextStyle(color: Colors.white)),
       ),
@@ -317,6 +329,19 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
               border: OutlineInputBorder(),
             ),
           ),
+          if (!widget.cancha.verificada) ...[
+            const SizedBox(height: 16),
+            TextField(
+              controller: _ruc,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'RUC del negocio (opcional)',
+                hintText: 'Acelera la verificación de tu cancha',
+                prefixIcon: Icon(Icons.verified_outlined, color: pino),
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,

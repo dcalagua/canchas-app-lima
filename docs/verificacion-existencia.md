@@ -104,6 +104,22 @@ python -m pytest                # tests del scoring
 que no cuadra (score bajo), negocio en baja en SUNAT (penaliza), redistribución
 de peso por factor sin dato y validación de pesos = 1.0.
 
+## Conexión con la app (Flutter)
+La app ya está conectada (`lib/services/verificacion_service.dart`):
+
+- Al **registrar** o **reclamar** una cancha, la app llama en segundo plano a
+  `POST /verificacion/existencia` con `cancha_id`, `direccion`, `lat/lng` y un
+  **RUC opcional** (campo nuevo en ambas pantallas).
+- Si el resultado viene **aprobado** (`score >= 70`), la cancha pasa sola de
+  **"Pendiente de verificación"** a **verificada** (se habilitan reservas).
+- Si es **medio/bajo**, o el backend no está configurado/falla, la cancha queda
+  **pendiente** para revisión manual (fail-safe — nada se rompe).
+
+La URL base se inyecta como secret/define **`VERIF_API_URL`** (en `build.yml`).
+Mientras no se defina, la verificación queda inactiva y todo sigue funcionando.
+Para activarla: despliega este backend (p. ej. en un host con HTTPS) y crea el
+secret `VERIF_API_URL` en GitHub Actions con su URL pública.
+
 ## Roadmap
 1. Activar `factiliza`/oficial en `sunat_adapter` (reemplazar TODOs).
 2. Activar Google Places real en `places_adapter`.
