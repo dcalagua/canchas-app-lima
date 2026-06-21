@@ -102,3 +102,16 @@ los documentos personales se procesan y se descartan; solo persiste el resultado
 - Doc: `docs/verificacion-existencia.md`
 - Correr: `cd backend/onboarding_verificacion/existencia && pip install -r requirements.txt && uvicorn main:app --reload`
 - Tests: `python -m pytest` (en ese directorio)
+
+## Backend: crecimiento (puntos, zonas, verificación física)
+
+Tres subsistemas **conectados** que impulsan la captación de oferta, con
+anti-fraude y cumplimiento **Ley 29733**: **Puntos/Premios** (pendiente→liberado),
+**Solicitudes por zona** ("pide tu cancha" + ranking de demanda) y **Verificación
+física** (IA primero, visita solo si hace falta). Backend FastAPI; app en
+`mobile/` (React Native/Expo). Integraciones en STUB (no mueve dinero).
+
+- Código: `backend/growth/` · App: `mobile/`
+- Doc: `docs/growth-puntos-zonas-verificacion.md`
+- Correr: `cd backend/growth && pip install -r requirements.txt && uvicorn main:app --reload`
+- Tests: `python -m pytest` (en ese directorio)

@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "Pichangol Growth",
+    "slug": "pichangol-growth",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": { "backgroundColor": "#15473A" },
+    "ios": { "supportsTablet": true },
+    "android": { "package": "pe.ebim.pichangol.growth" },
+    "plugins": [
+      ["expo-image-picker", {
+        "photosPermission": "Permite elegir/tomar fotos del local para verificar la cancha."
+      }],
+      ["expo-location", {
+        "locationWhenInUsePermission": "Usamos tu ubicación para confirmar que estás en la cancha."
+      }]
+    ]
+  }
+}
