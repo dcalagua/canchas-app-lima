@@ -57,17 +57,47 @@ class AppState extends ChangeNotifier {
   Future<void> descubrirCanchasCerca(LatLng centro) async {
     descubriendo = true;
     notifyListeners(); // muestra el indicador "Buscando canchas cerca de ti…"
+    // Fase 1: canchas SIN fotos → respuesta rápida, las tarjetas salen al toque.
     try {
-      final reales = await PlacesService.canchasCerca(centro);
-      final existentes = canchasDescubiertas.map((c) => c.id).toSet();
-      final nuevas = reales.where((c) => !existentes.contains(c.id)).toList();
-      if (nuevas.isNotEmpty) canchasDescubiertas.addAll(nuevas);
+      final rapidas = await PlacesService.canchasCerca(centro, conFotos: false);
+      _agregarDescubiertas(rapidas);
     } catch (_) {
       // fail-safe: si Places no responde, no cambia nada
     } finally {
       descubriendo = false;
       notifyListeners();
     }
+    // Fase 2: vuelve a pedir CON fotos y las pinta encima (segundo plano).
+    try {
+      final conFotos =
+          await PlacesService.canchasCerca(centro, conFotos: true);
+      _fusionarFotos(conFotos);
+    } catch (_) {
+      // sin fotos, las canchas igual quedan visibles (placeholder de deporte)
+    }
+  }
+
+  void _agregarDescubiertas(List<Cancha> reales) {
+    final existentes = canchasDescubiertas.map((c) => c.id).toSet();
+    final nuevas = reales.where((c) => !existentes.contains(c.id)).toList();
+    if (nuevas.isNotEmpty) canchasDescubiertas.addAll(nuevas);
+  }
+
+  /// Mezcla las fotos resueltas (fase 2) sobre las canchas ya mostradas (fase 1).
+  void _fusionarFotos(List<Cancha> conFotos) {
+    var cambio = false;
+    for (final c in conFotos) {
+      final i = canchasDescubiertas.indexWhere((x) => x.id == c.id);
+      if (i < 0) {
+        canchasDescubiertas.add(c); // cancha nueva que apareció en fase 2
+        cambio = true;
+      } else if (c.fotos.isNotEmpty) {
+        canchasDescubiertas[i] = canchasDescubiertas[i]
+            .copyWith(fotos: c.fotos, fotoUrl: c.fotos.first);
+        cambio = true;
+      }
+    }
+    if (cambio) notifyListeners();
   }
 
   /// Trae las reservas compartidas desde Supabase (disponibilidad entre

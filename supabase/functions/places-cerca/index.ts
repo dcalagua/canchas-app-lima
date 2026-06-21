@@ -67,16 +67,20 @@ serve(async (req) => {
     // Acepta POST (body JSON, como la app) o GET (?lat=&lng=&radius=) para
     // poder probar pegando una URL en el navegador.
     let lat: number, lng: number, radius: number | undefined;
+    let conFotos = false; // por defecto NO resuelve fotos (respuesta rápida)
     if (req.method === "GET") {
       const u = new URL(req.url);
       lat = Number(u.searchParams.get("lat"));
       lng = Number(u.searchParams.get("lng"));
       radius = Number(u.searchParams.get("radius")) || undefined;
+      const f = u.searchParams.get("fotos");
+      conFotos = f === "1" || f === "true";
     } else {
       const b = await req.json();
       lat = b.lat;
       lng = b.lng;
       radius = b.radius;
+      conFotos = b.fotos === true;
     }
     // Las 4 consultas de texto salen en PARALELO (antes, secuenciales).
     const respuestas = await Promise.all(
@@ -113,7 +117,12 @@ serve(async (req) => {
     }
 
     const lista = [...porId.values()];
-    // Resuelve fotos reales para los primeros lugares (cover + galería).
+
+    // Modo rápido (default): devuelve las canchas SIN resolver fotos. La app las
+    // muestra al instante y vuelve a pedir con fotos=true para enriquecerlas.
+    if (!conFotos) return json({ places: lista });
+
+    // Modo con fotos: resuelve las fotos reales de los primeros lugares.
     const conFoto = await Promise.all(
       // deno-lint-ignore no-explicit-any
       lista.slice(0, MAX_LUGARES_CON_FOTO).map(async (p: any) => ({

@@ -36,11 +36,16 @@ class PlacesService {
   /// Preferimos la **Edge Function de Supabase** (`places-cerca`), que guarda la
   /// API key del lado servidor (no viaja en el APK). Si la función no está
   /// desplegada, cae al llamado directo a Google con la key del cliente.
+  ///
+  /// [conFotos]: si es false (por defecto) la función NO resuelve las fotos en el
+  /// servidor y responde **mucho más rápido** (las canchas salen al instante).
+  /// La app vuelve a llamar con `conFotos: true` para enriquecer las fotos luego.
   static Future<List<Cancha>> canchasCerca(
     LatLng centro, {
     double radioMetros = 4000,
+    bool conFotos = false,
   }) async {
-    final viaFuncion = await _viaEdgeFunction(centro, radioMetros);
+    final viaFuncion = await _viaEdgeFunction(centro, radioMetros, conFotos);
     if (viaFuncion != null) return viaFuncion;
 
     if (!disponible) return [];
@@ -92,7 +97,7 @@ class PlacesService {
   /// vacía) si la función respondió; o null si no está disponible/desplegada,
   /// para que el caller use el fallback directo a Google.
   static Future<List<Cancha>?> _viaEdgeFunction(
-      LatLng centro, double radioMetros) async {
+      LatLng centro, double radioMetros, bool conFotos) async {
     if (!SupabaseService.disponible) return null;
     try {
       final res = await SupabaseService.client.functions.invoke(
@@ -101,6 +106,7 @@ class PlacesService {
           'lat': centro.latitude,
           'lng': centro.longitude,
           'radius': radioMetros,
+          'fotos': conFotos, // false = respuesta rápida sin resolver fotos
         },
       );
       final data = res.data;
