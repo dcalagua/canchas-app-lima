@@ -90,3 +90,15 @@ flutter build apk --release
 - **Fase 1 (esta v1):** panel del club + captación de oferta. Datos de demo.
 - **Fase 2:** backend real, app del jugador, reservas y comisión introductoria, seña/anti no-show.
 - **Fase 3:** SaaS, destacados, torneos/ligas por nivel.
+
+## Backend: verificación de existencia (onboarding anti-fraude)
+
+Submódulo en **Python (FastAPI)** que estima qué tan **real** es un negocio antes
+de aprobarlo, combinando **SUNAT + Google Places + redes** en un **score
+explicable**. Cumple **Ley 29733 + DS 016-2024-JUS** (verificar y **no retener**:
+los documentos personales se procesan y se descartan; solo persiste el resultado).
+
+- Código: `backend/onboarding_verificacion/existencia/`
+- Doc: `docs/verificacion-existencia.md`
+- Correr: `cd backend/onboarding_verificacion/existencia && pip install -r requirements.txt && uvicorn main:app --reload`
+- Tests: `python -m pytest` (en ese directorio)
