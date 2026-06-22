@@ -40,6 +40,27 @@ con la key del lado servidor) y la app las muestra en tarjetas y en el carrusel
 de la ficha. El dueño solo sube fotos si **reclama** su cancha y quiere
 reemplazarlas, o si registra un **local nuevo** que aún no está en Google.
 
+### Enriquecer con redes (Instagram) — investigación por IA + consentimiento
+Idea (pendiente de construir): para locales que **no están en Google** (ej. una
+cancha de tenis dentro de una escuela), la IA puede **investigar** y proponer las
+fotos. Diseño correcto, en 3 pasos:
+
+1. **Investigar (legal):** dado nombre + dirección, un modelo con **búsqueda web**
+   encuentra la presencia asociada (Instagram/web) y la **sugiere** al registrar
+   — p. ej. "Encontramos `@academiadetenisbaldeon`, ¿es tu cancha?". Esto es
+   investigación, no scraping.
+2. **Importar con permiso (clave):** bajar fotos de un Instagram **ajeno** y
+   publicarlas **viola los Términos de Instagram y el copyright**. Lo correcto es
+   que el **dueño confirme que la cuenta es suya y la conecte** (Instagram *Basic
+   Display API* / login Meta) → ahí se importan **sus** fotos legalmente; o que
+   **pegue los links** de los posts que tiene derecho a usar.
+3. **Curar con visión:** la IA verifica que las fotos **sean de canchas** y elige
+   las de mejor calidad antes de enriquecer el local.
+
+> NO recomendado: scraping forzado de Instagram (rompe seguido, va contra ToS y
+> expone a reclamos de derechos). El valor está en *investigar + sugerir* y luego
+> *importar con consentimiento del dueño*.
+
 ### Registrar una cancha por dirección (geocoding)
 Registrar una cancha ya **no depende de una lista de distritos**: el dueño
 escribe la dirección, la app la **geocodifica** y coloca el pin en el mapa
