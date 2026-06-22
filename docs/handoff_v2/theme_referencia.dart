@@ -44,9 +44,6 @@ const Color verdeOscuro = tinta;
 const Color clay = sage;        // ya no hay coral; "valle" usa verdes
 const Color clayOscuro = verde;
 const Color coral = sage;
-const Color coralOscuro = verde;
-const Color arena = verde;      // antes tono "arena"; ahora verde EBIM
-const Color naranjaFutbol = lima;
 const Color fondoApp = papel;
 
 // Superficies de cancha por deporte: degradados verdes EBIM (sin azul/coral).
