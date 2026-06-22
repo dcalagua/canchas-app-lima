@@ -112,6 +112,36 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
     }
   }
 
+  /// Mueve el pin y **rellena la dirección automáticamente** desde esa
+  /// coordenada (geocodificación inversa). Fail-safe.
+  Future<void> _moverPin(LatLng p) async {
+    setState(() {
+      _ubicacion = p;
+      _errorGeo = null;
+    });
+    try {
+      final marks = await placemarkFromCoordinates(p.latitude, p.longitude);
+      if (!mounted || marks.isEmpty) return;
+      final dir = _direccionDePlacemark(marks.first);
+      if (dir.isNotEmpty) setState(() => _direccion.text = dir);
+    } catch (_) {
+      // sin red / sin resultado: deja la dirección como está
+    }
+  }
+
+  String _direccionDePlacemark(Placemark m) {
+    bool ok(String? s) => s != null && s.trim().isNotEmpty;
+    final calle =
+        [m.thoroughfare, m.subThoroughfare].where(ok).join(' ').trim();
+    final base = calle.isNotEmpty ? calle : (m.street ?? '');
+    final partes = <String>[
+      if (base.trim().isNotEmpty) base.trim(),
+      if (ok(m.subLocality)) m.subLocality!,
+      if (ok(m.locality) && m.locality != m.subLocality) m.locality!,
+    ];
+    return partes.join(', ');
+  }
+
   /// Best-effort: deduce el distrito desde las coordenadas (para clasificar).
   Future<Distrito> _distritoDe(LatLng p) async {
     try {
@@ -297,16 +327,13 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
             inicial: _ubicacion ?? _limaCentro,
             ubicacion: _ubicacion,
             onMapCreated: (c) => _map = c,
-            onElegir: (p) => setState(() {
-              _ubicacion = p;
-              _errorGeo = null;
-            }),
+            onElegir: _moverPin,
           ),
           const SizedBox(height: 6),
           Text(
             _ubicacion == null
                 ? 'Escribe la dirección y toca buscar, o toca el mapa para marcar el punto.'
-                : 'Arrastra el pin o toca el mapa para ajustar el punto exacto.',
+                : 'Arrastra el pin o toca el mapa: la dirección se actualiza sola.',
             style: const TextStyle(color: Colors.grey, fontSize: 12),
           ),
           const SizedBox(height: 18),

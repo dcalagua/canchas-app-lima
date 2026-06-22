@@ -103,6 +103,39 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
     }
   }
 
+  /// Mueve el pin y **rellena la dirección automáticamente** desde esa
+  /// coordenada (geocodificación inversa). Fail-safe: si no resuelve, conserva
+  /// la dirección actual.
+  Future<void> _moverPin(LatLng p) async {
+    setState(() {
+      _ubicacion = p;
+      _errorGeo = null;
+    });
+    try {
+      final marks = await placemarkFromCoordinates(p.latitude, p.longitude);
+      if (!mounted || marks.isEmpty) return;
+      final dir = _direccionDePlacemark(marks.first);
+      if (dir.isNotEmpty) setState(() => _direccion.text = dir);
+    } catch (_) {
+      // sin red / sin resultado: deja la dirección como está
+    }
+  }
+
+  String _direccionDePlacemark(Placemark m) {
+    bool ok(String? s) => s != null && s.trim().isNotEmpty;
+    final calle = [m.thoroughfare, m.subThoroughfare]
+        .where(ok)
+        .join(' ')
+        .trim();
+    final base = calle.isNotEmpty ? calle : (m.street ?? '');
+    final partes = <String>[
+      if (base.trim().isNotEmpty) base.trim(),
+      if (ok(m.subLocality)) m.subLocality!,
+      if (ok(m.locality) && m.locality != m.subLocality) m.locality!,
+    ];
+    return partes.join(', ');
+  }
+
   Future<void> _guardar() async {
     final nombre = _nombre.text.trim();
     if (nombre.isEmpty) {
@@ -284,20 +317,21 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
                   Factory<OneSequenceGestureRecognizer>(
                       () => EagerGestureRecognizer()),
                 },
-                onTap: (p) => setState(() => _ubicacion = p),
+                onTap: _moverPin,
                 markers: {
                   Marker(
                     markerId: const MarkerId('cancha'),
                     position: _ubicacion,
                     draggable: true,
-                    onDragEnd: (p) => setState(() => _ubicacion = p),
+                    onDragEnd: _moverPin,
                   ),
                 },
               ),
             ),
           ),
           const SizedBox(height: 6),
-          const Text('Arrastra el pin o toca el mapa para ajustar el punto.',
+          const Text(
+              'Arrastra el pin o toca el mapa: la dirección se actualiza sola.',
               style: TextStyle(color: textoTenue, fontSize: 12)),
           const SizedBox(height: 16),
           const Text('Deporte', style: TextStyle(fontWeight: FontWeight.w700)),
