@@ -22,6 +22,10 @@ class Club {
   bool get clubFundador => canchas.any((c) => c.clubFundador);
   bool get registrada => canchas.any((c) => c.registrada);
 
+  /// Club verificado: está en Pichangol y al menos una de sus canchas pasó la
+  /// verificación. Habilita el sello público "✓ Verificada".
+  bool get verificada => registrada && canchas.any((c) => c.verificada);
+
   /// Deportes únicos del club, en orden de aparición.
   List<Deporte> get deportes {
     final vistos = <Deporte>[];

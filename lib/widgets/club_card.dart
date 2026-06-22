@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/club.dart';
 import '../theme.dart';
 import 'court_lines.dart';
+import 'marca.dart';
 
 /// Tarjeta de club (rediseño): portada con gradiente de deporte + líneas de
 /// cancha, badges, rating, chips de deportes y precio "desde".
@@ -107,6 +108,12 @@ class ClubCard extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
+                  if (club.verificada) ...[
+                    const SizedBox(height: 8),
+                    const Align(
+                        alignment: Alignment.centerLeft,
+                        child: SelloVerificada()),
+                  ],
                   const SizedBox(height: 10),
                   Wrap(
                     spacing: 6,

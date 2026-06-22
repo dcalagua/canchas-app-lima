@@ -11,6 +11,7 @@ import '../brand.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/court_lines.dart';
+import '../widgets/marca.dart';
 import '../services/location_service.dart';
 import '../utils/geo.dart';
 import 'buscar_direccion_screen.dart';
@@ -1083,6 +1084,14 @@ class _MenuSheet extends StatelessWidget {
                     borderRadius: BorderRadius.circular(10),
                   ),
                 ),
+              ),
+              const SizedBox(height: 16),
+              const Center(child: PichangolWordmark(fontSize: 24)),
+              const SizedBox(height: 2),
+              Center(
+                child: Text(kBrandEslogan,
+                    style: TextStyle(
+                        color: textoTenue, fontWeight: FontWeight.w600)),
               ),
               const SizedBox(height: 18),
               // Cabecera de perfil

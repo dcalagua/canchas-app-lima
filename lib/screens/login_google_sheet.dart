@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../brand.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/marca.dart';
 
 /// Hoja de login con Google (rediseño premium). Se muestra cuando un invitado
 /// intenta reservar. Devuelve true por Navigator.pop si quedó logueado.
@@ -60,19 +62,14 @@ class _LoginGoogleSheetState extends State<LoginGoogleSheet> {
               ),
             ),
           ),
-          // Marca: cuadrado pino con "P" lima.
-          Container(
-            width: 60,
-            height: 60,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: pino,
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: Text('P',
-                style: t.headlineSmall
-                    ?.copyWith(color: lima, fontWeight: FontWeight.w700)),
-          ),
+          // Marca: logo cuadrado bosque con la "o"-pelota + wordmark + eslogan.
+          const LogoCuadrado(size: 60),
+          const SizedBox(height: 14),
+          const PichangolWordmark(fontSize: 26),
+          const SizedBox(height: 4),
+          Text(kBrandEslogan,
+              style: t.bodyMedium?.copyWith(
+                  color: textoTenue, fontWeight: FontWeight.w600)),
           const SizedBox(height: 18),
           Text('Inicia sesión para\nreservar tu cancha',
               style: t.headlineSmall),
@@ -111,6 +108,12 @@ class _LoginGoogleSheetState extends State<LoginGoogleSheet> {
               textAlign: TextAlign.center,
               style: t.bodySmall?.copyWith(color: const Color(0xFFA39D91)),
             ),
+          ),
+          const SizedBox(height: 8),
+          Center(
+            child: Text(kRespaldoEbim,
+                style: t.bodySmall?.copyWith(
+                    color: textoTenue, fontWeight: FontWeight.w700)),
           ),
         ],
       ),

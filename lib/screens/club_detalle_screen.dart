@@ -5,6 +5,7 @@ import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/court_lines.dart';
+import '../widgets/marca.dart';
 import 'login_google_sheet.dart';
 import 'pago_sheet.dart';
 import 'registrar_cancha_screen.dart';
@@ -105,6 +106,10 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                       else
                         const _Badge('DIGITALIZADA',
                             bg: Color(0xFFF0ECE2), fg: Color(0xFF5C574E)),
+                      if (_cancha.verificada) ...[
+                        const SizedBox(width: 6),
+                        const SelloVerificada(),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 12),
