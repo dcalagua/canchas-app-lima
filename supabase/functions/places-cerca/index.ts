@@ -15,8 +15,15 @@ const KEY = Deno.env.get("PLACES_API_KEY") ?? "";
 const CONSULTAS = [
   "canchas de fútbol",
   "cancha sintética de fútbol",
+  "pichanga",
+  "grass sintético",
+  "fútbol 7",
+  "loza deportiva",
+  "complejo deportivo",
   "club de tenis",
+  "cancha de tenis",
   "cancha de pádel",
+  "club de pádel",
 ];
 
 // Cuántos lugares y fotos resolvemos (control de latencia/cuota).

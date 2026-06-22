@@ -24,11 +24,20 @@ class PlacesService {
   static bool get disponible => _key.isNotEmpty;
 
   /// Consultas de texto que cubren los deportes del marketplace en Lima.
+  /// Incluye jerga peruana (pichanga, fulbito, grass/loza, fútbol 5/6/7) para
+  /// no perder canchas informales.
   static const _consultas = [
     'canchas de fútbol',
     'cancha sintética de fútbol',
+    'pichanga',
+    'grass sintético',
+    'fútbol 7',
+    'loza deportiva',
+    'complejo deportivo',
     'club de tenis',
+    'cancha de tenis',
     'cancha de pádel',
+    'club de pádel',
   ];
 
   /// Busca canchas cerca de [centro] dentro de [radioMetros].
@@ -190,8 +199,9 @@ class PlacesService {
   };
 
   // Palabras en el nombre que delatan que NO es una cancha de alquiler.
+  // (Nota: 'academia' NO se excluye: las academias de tenis/pádel SÍ son canchas.)
   static const _palabrasExcluidas = [
-    'gimnasio', 'gym', 'tienda', 'store', 'academia', 'colegio',
+    'gimnasio', 'gym', 'tienda', 'store', 'colegio',
     'universidad', 'federación', 'federacion', 'crossfit', 'spinning',
     'natación', 'natacion', 'piscina', 'billar', 'bowling',
   ];
@@ -210,15 +220,21 @@ class PlacesService {
     if (n.contains('tenis') || n.contains('tennis')) return Deporte.tenis;
     if (n.contains('fútbol') ||
         n.contains('futbol') ||
+        n.contains('pichang') ||      // pichanga / pichanguita (jerga PE)
+        n.contains('golazo') ||
+        n.contains('fulbito') ||
+        n.contains('futsal') ||
         n.contains('cancha') ||
         n.contains('canchita') ||
         n.contains('sintétic') ||
         n.contains('sintetic') ||
         n.contains('grass') ||
         n.contains('loza deportiva') ||
+        n.contains('losa deportiva') ||
         n.contains('complejo deportivo') ||
-        n.contains('fulbito') ||
-        n.contains('futsal')) {
+        n.contains('club deportivo') ||
+        n.contains('centro deportivo') ||
+        n.contains('estadio')) {
       return Deporte.futbol;
     }
 
