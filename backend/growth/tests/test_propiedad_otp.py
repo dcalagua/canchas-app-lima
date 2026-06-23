@@ -60,3 +60,28 @@ def test_otp_no_se_persiste_en_snapshot():
     prop.solicitar("c5", "987654321")
     estado = stores.to_state()
     assert "otps" not in estado  # nunca se serializan códigos
+
+
+def test_canal_preferido_elige_sms_si_whatsapp_no_disponible(monkeypatch):
+    from propiedad import twilio_adapter, whatsapp_adapter
+
+    monkeypatch.setattr(whatsapp_adapter, "disponible", lambda: False)
+    monkeypatch.setattr(twilio_adapter, "disponible", lambda: True)
+    monkeypatch.setattr(
+        twilio_adapter, "enviar_sms", lambda t, c: {"ok": True, "via": "sms"})
+
+    r = prop.solicitar("c6", "987654321")
+    assert r["ok"] and r["via"] == "sms"
+
+
+def test_canal_preferido_whatsapp_gana_cuando_ambos(monkeypatch):
+    from propiedad import twilio_adapter, whatsapp_adapter
+
+    monkeypatch.setattr(config, "OTP_CANAL_PREFERIDO", "whatsapp")
+    monkeypatch.setattr(whatsapp_adapter, "disponible", lambda: True)
+    monkeypatch.setattr(twilio_adapter, "disponible", lambda: True)
+    monkeypatch.setattr(
+        whatsapp_adapter, "enviar_otp", lambda t, c: {"ok": True, "via": "whatsapp"})
+
+    r = prop.solicitar("c7", "987654321")
+    assert r["ok"] and r["via"] == "whatsapp"

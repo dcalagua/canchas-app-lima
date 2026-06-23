@@ -133,7 +133,7 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
               style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
           Text(
-              'Te enviaremos un código por WhatsApp al teléfono del local. '
+              'Te enviaremos un código por WhatsApp o SMS al teléfono del local. '
               'Solo quien lo recibe puede activar la cancha para recibir reservas.',
               style: t.bodyMedium?.copyWith(color: textoTenue)),
           const SizedBox(height: 22),
@@ -168,8 +168,9 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
                 padding: const EdgeInsets.only(bottom: 12),
                 child: Text(
                     _via == 'stub'
-                        ? 'Modo prueba (WhatsApp no configurado todavía).'
-                        : 'Código enviado a $_telefonoEnmascarado por WhatsApp.',
+                        ? 'Modo prueba (envío real aún no configurado).'
+                        : 'Código enviado a $_telefonoEnmascarado'
+                            ' por ${_via == 'sms' ? 'SMS' : 'WhatsApp'}.',
                     style: t.bodySmall?.copyWith(color: textoTenue)),
               ),
             TextField(

@@ -26,6 +26,17 @@ OTP_TTL_SEG = int(os.getenv("OTP_TTL_SEG", "300"))        # vence en 5 min
 OTP_MAX_INTENTOS = int(os.getenv("OTP_MAX_INTENTOS", "5"))
 OTP_REENVIO_MIN_SEG = int(os.getenv("OTP_REENVIO_MIN_SEG", "60"))
 
+# --- Twilio (OTP por SMS, alternativa/respaldo a WhatsApp) ------------------
+# Independiente de Meta: sirve mientras WhatsApp Cloud API no esté habilitado.
+# Si TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN no están, el adapter queda inactivo.
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
+# Remitente: un número Twilio (+1...) o un Messaging Service SID (MG...).
+TWILIO_FROM = os.getenv("TWILIO_FROM", "")
+TWILIO_MESSAGING_SERVICE_SID = os.getenv("TWILIO_MESSAGING_SERVICE_SID", "")
+# Canal preferido cuando ambos están configurados: "whatsapp" | "sms".
+OTP_CANAL_PREFERIDO = os.getenv("OTP_CANAL_PREFERIDO", "whatsapp")
+
 # Distancia máx (m) entre la ubicación declarada y la del sitio para considerar
 # que la verificación física "coincide".
 COINCIDENCIA_MAX_M = float(os.getenv("VERIF_COINCIDENCIA_MAX_M", "200"))

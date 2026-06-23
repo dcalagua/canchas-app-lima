@@ -9,7 +9,7 @@ from models import (
     OtpConfirmarRequest,
     OtpSolicitarRequest,
 )
-from propiedad import service, whatsapp_adapter
+from propiedad import service, twilio_adapter, whatsapp_adapter
 
 router = APIRouter(prefix="/propiedad", tags=["propiedad"])
 
@@ -43,5 +43,8 @@ def post_aprobar_manual(req: AprobarManualRequest) -> dict:
 
 @router.get("/canal")
 def get_canal() -> dict:
-    """Informativo: qué canal de OTP está activo en esta build."""
-    return {"whatsapp": whatsapp_adapter.disponible()}
+    """Informativo: qué canales de OTP están activos en esta build."""
+    wa = whatsapp_adapter.disponible()
+    sms = twilio_adapter.disponible()
+    activo = "whatsapp" if wa else ("sms" if sms else "stub")
+    return {"whatsapp": wa, "sms": sms, "activo": activo}

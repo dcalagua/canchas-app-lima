@@ -28,7 +28,24 @@ import config
 from db.store import ConfirmacionPropiedad, OtpPropiedad, ahora, stores
 from datetime import timedelta
 
-from propiedad import whatsapp_adapter
+from propiedad import twilio_adapter, whatsapp_adapter
+
+
+def _enviar_codigo(telefono: str, codigo: str) -> dict:
+    """Elige canal y envía el código. Preferencia configurable (whatsapp|sms);
+    si el preferido no está disponible, cae al otro; si ninguno, modo stub."""
+    pref = config.OTP_CANAL_PREFERIDO
+    orden = (
+        [twilio_adapter, whatsapp_adapter]
+        if pref == "sms"
+        else [whatsapp_adapter, twilio_adapter]
+    )
+    for adapter in orden:
+        if adapter is whatsapp_adapter and whatsapp_adapter.disponible():
+            return whatsapp_adapter.enviar_otp(telefono, codigo)
+        if adapter is twilio_adapter and twilio_adapter.disponible():
+            return twilio_adapter.enviar_sms(telefono, codigo)
+    return {"ok": True, "via": "stub"}
 
 
 def _norm_tel(telefono: str) -> str:
@@ -75,7 +92,7 @@ def solicitar(cancha_id: str, telefono: str) -> dict:
         creado_en=ahora(),
     )
 
-    envio = whatsapp_adapter.enviar_otp(tel, codigo)
+    envio = _enviar_codigo(tel, codigo)
     otp.enviado_via = envio.get("via", "stub")
     if not envio.get("ok"):
         return {"ok": False, "error": "envio_fallo", "detalle": envio.get("error")}

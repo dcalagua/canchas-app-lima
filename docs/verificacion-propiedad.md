@@ -51,6 +51,19 @@ Leer un código prueba que controlas **ese teléfono**, no que seas el dueño. P
 - Las fotos de verificación física son **del establecimiento**, nunca documentos
   personales (ni DNI ni recibos).
 
+### Canales de OTP (multicanal)
+
+El backend elige el canal automáticamente:
+
+1. **WhatsApp Cloud API** (principal) — ver `docs/whatsapp-cloud-api-setup.md`.
+2. **SMS por Twilio** (alternativa/respaldo, no depende de Meta) — ver
+   `docs/twilio-sms-otp-setup.md`.
+3. **Stub** (sin envío real) si no hay ninguno configurado.
+
+Preferencia configurable con `OTP_CANAL_PREFERIDO` (`whatsapp` | `sms`). Si el canal
+preferido no está disponible, cae al otro. `GET /propiedad/canal` informa cuál está
+activo.
+
 ## Endpoints (backend/growth, módulo `propiedad`)
 
 ```
