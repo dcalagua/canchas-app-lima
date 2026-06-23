@@ -11,6 +11,7 @@ import '../models/usuario.dart';
 import '../services/auth_service.dart';
 import '../services/places_service.dart';
 import '../services/verificacion_service.dart';
+import '../services/growth_service.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 /// Instancia única del estado para toda la app (sin paquetes extra de DI).
@@ -187,6 +188,29 @@ class AppState extends ChangeNotifier {
   /// manual). Pensado para llamarse en segundo plano tras registrar/reclamar.
   Future<ResultadoExistencia?> verificarCancha(Cancha c,
       {String? ruc, String? razonSocial}) async {
+    // Carril informal (backend/growth): IA primero; si no concluye, agenda visita.
+    if (GrowthService.disponible) {
+      final rf = await GrowthService.evaluarFisica(
+        canchaId: c.id,
+        direccion: c.direccion ?? c.nombre,
+        ruc: ruc,
+        ubicacion: c.ubicacion,
+      );
+      if (rf != null) {
+        if (rf.verificada && !c.verificada) {
+          actualizarCancha(c.copyWith(verificada: true));
+        }
+        return ResultadoExistencia(
+          score: rf.score,
+          aprobado: rf.verificada,
+          nivel: rf.verificada ? 'alto' : 'pendiente',
+          justificacion: rf.verificada
+              ? 'Verificada por IA (existencia).'
+              : 'Pendiente: se agendó una visita de verificación.',
+        );
+      }
+    }
+    // Fallback: verificación de existencia directa.
     final res = await VerificacionService.verificarExistencia(
       canchaId: c.id,
       direccion: c.direccion ?? c.nombre,
@@ -206,6 +230,33 @@ class AppState extends ChangeNotifier {
       {String? ruc, String? razonSocial}) async {
     if (canchas.isEmpty) return null;
     final base = canchas.first;
+
+    // Carril informal (backend/growth) para todo el local.
+    if (GrowthService.disponible) {
+      final rf = await GrowthService.evaluarFisica(
+        canchaId: base.id,
+        direccion: base.direccion ?? base.nombre,
+        ruc: ruc,
+        ubicacion: base.ubicacion,
+      );
+      if (rf != null) {
+        if (rf.verificada) {
+          for (final c in canchas) {
+            if (!c.verificada) actualizarCancha(c.copyWith(verificada: true));
+          }
+        }
+        return ResultadoExistencia(
+          score: rf.score,
+          aprobado: rf.verificada,
+          nivel: rf.verificada ? 'alto' : 'pendiente',
+          justificacion: rf.verificada
+              ? 'Verificada por IA (existencia).'
+              : 'Pendiente: se agendó una visita de verificación.',
+        );
+      }
+    }
+
+    // Fallback: verificación de existencia directa.
     final res = await VerificacionService.verificarExistencia(
       canchaId: base.id,
       direccion: base.direccion ?? base.nombre,

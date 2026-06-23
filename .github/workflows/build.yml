@@ -60,13 +60,15 @@ jobs:
           MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
           PLACES_API_KEY: ${{ secrets.PLACES_API_KEY }}
           VERIF_API_URL: ${{ secrets.VERIF_API_URL }}
+          GROWTH_API_URL: ${{ secrets.GROWTH_API_URL }}
         run: |
           flutter build apk --release \
             --dart-define=SUPABASE_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
             --dart-define=MAPS_API_KEY="$MAPS_API_KEY" \
             --dart-define=PLACES_API_KEY="$PLACES_API_KEY" \
-            --dart-define=VERIF_API_URL="$VERIF_API_URL"
+            --dart-define=VERIF_API_URL="$VERIF_API_URL" \
+            --dart-define=GROWTH_API_URL="$GROWTH_API_URL"
 
       - name: Verificar firma del APK
         run: |
@@ -147,10 +149,12 @@ jobs:
           MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
           PLACES_API_KEY: ${{ secrets.PLACES_API_KEY }}
           VERIF_API_URL: ${{ secrets.VERIF_API_URL }}
+          GROWTH_API_URL: ${{ secrets.GROWTH_API_URL }}
         run: |
           flutter build ios --release --no-codesign \
             --dart-define=SUPABASE_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
             --dart-define=MAPS_API_KEY="$MAPS_API_KEY" \
             --dart-define=PLACES_API_KEY="$PLACES_API_KEY" \
-            --dart-define=VERIF_API_URL="$VERIF_API_URL"
+            --dart-define=VERIF_API_URL="$VERIF_API_URL" \
+            --dart-define=GROWTH_API_URL="$GROWTH_API_URL"
