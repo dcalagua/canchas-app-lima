@@ -9,8 +9,10 @@ import 'package:image_picker/image_picker.dart';
 
 import '../data/canchas_repo.dart';
 import '../models/models.dart';
+import '../services/propiedad_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'verificar_propiedad_screen.dart';
 
 /// Edición de una cancha ya registrada por el dueño: cambiar nombre, precio,
 /// deporte, dirección/ubicación, agregar foto de portada o eliminarla.
@@ -186,6 +188,16 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
 
     if (!mounted) return;
     setState(() => _guardando = false);
+
+    // Al reclamar, llevamos al dueño directo a confirmar su propiedad por código
+    // (WhatsApp/SMS): ahí aparece el campo del teléfono del local.
+    if (eraReclamo && PropiedadService.disponible) {
+      Navigator.of(context).pushReplacement(MaterialPageRoute(
+        builder: (_) => VerificarPropiedadScreen(cancha: actualizada),
+      ));
+      return;
+    }
+
     Navigator.of(context).pop();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(

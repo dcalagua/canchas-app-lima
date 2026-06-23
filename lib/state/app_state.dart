@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -51,7 +52,57 @@ class AppState extends ChangeNotifier {
     for (final c in canchasExtra) {
       map[c.id] = c;
     }
-    return map.values.toList();
+    return _dedupPorLugar(map.values.toList());
+  }
+
+  /// Colapsa canchas que son el MISMO lugar pero llegaron por fuentes distintas
+  /// con ids diferentes (p. ej. la descubierta en Google + la misma reclamada en
+  /// Supabase). Criterio: mismo deporte, nombre normalizado igual y a <120 m.
+  /// Se queda con la "mejor": la registrada/reclamada (con dueño y precio real)
+  /// gana a la descubierta; a igualdad, la que tiene fotos.
+  List<Cancha> _dedupPorLugar(List<Cancha> canchas) {
+    final salida = <Cancha>[];
+    for (final c in canchas) {
+      final clave = _claveLugar(c);
+      final i = salida.indexWhere((x) =>
+          _claveLugar(x) == clave && _cercaDe(x.ubicacion, c.ubicacion, 0.12));
+      if (i < 0) {
+        salida.add(c);
+      } else if (_puntajeCancha(c) > _puntajeCancha(salida[i])) {
+        salida[i] = c; // la nueva es mejor representante del lugar
+      }
+    }
+    return salida;
+  }
+
+  String _claveLugar(Cancha c) {
+    final n = c.nombre
+        .toLowerCase()
+        .replaceAll(RegExp(r'[áàä]'), 'a')
+        .replaceAll(RegExp(r'[éèë]'), 'e')
+        .replaceAll(RegExp(r'[íìï]'), 'i')
+        .replaceAll(RegExp(r'[óòö]'), 'o')
+        .replaceAll(RegExp(r'[úùü]'), 'u')
+        .replaceAll(RegExp(r'[^a-z0-9]'), '');
+    return '${c.deporte.name}|$n';
+  }
+
+  int _puntajeCancha(Cancha c) {
+    var p = 0;
+    if (c.registrada) p += 4;
+    if (c.dueno.isNotEmpty) p += 2;
+    if (c.fotos.isNotEmpty) p += 1;
+    return p;
+  }
+
+  bool _cercaDe(LatLng a, LatLng b, double maxKm) {
+    // Aproximación rápida (equirectangular) suficiente para deduplicar a <1 km.
+    const kmPorGrado = 111.0;
+    final dLat = (a.latitude - b.latitude) * kmPorGrado;
+    final dLng = (a.longitude - b.longitude) *
+        kmPorGrado *
+        math.cos(a.latitude * math.pi / 180);
+    return (dLat * dLat + dLng * dLng) <= maxKm * maxKm;
   }
 
   /// Descubre canchas REALES cerca de [centro] con Google Places y las suma al

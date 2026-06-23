@@ -9,10 +9,12 @@ import 'package:image_picker/image_picker.dart';
 
 import '../data/canchas_repo.dart';
 import '../models/models.dart';
+import '../services/propiedad_service.dart';
 import '../services/sport_detector.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'login_google_sheet.dart';
+import 'verificar_propiedad_screen.dart';
 
 /// Registrar una cancha escribiendo la dirección: se geocodifica y aparece en el
 /// mapa automáticamente (estilo eSupplier). Un local puede tener varias canchas
@@ -258,8 +260,19 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
         ruc: _ruc.text.trim(), razonSocial: nombre);
 
     if (!mounted) return;
-    Navigator.of(context).pop();
     final n = deportes.length;
+
+    // Si el canal de verificación está disponible, llevamos al dueño DIRECTO a
+    // confirmar su propiedad por código (WhatsApp/SMS). Así reclamar y verificar
+    // es un solo flujo y aparece de una el campo del teléfono del local.
+    if (PropiedadService.disponible && creadas.isNotEmpty) {
+      Navigator.of(context).pushReplacement(MaterialPageRoute(
+        builder: (_) => VerificarPropiedadScreen(cancha: creadas.first),
+      ));
+      return;
+    }
+
+    Navigator.of(context).pop();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         backgroundColor: verdeCancha,
