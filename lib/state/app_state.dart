@@ -182,10 +182,15 @@ class AppState extends ChangeNotifier {
     CanchasRepo.actualizar(c); // best-effort
   }
 
-  /// Verifica la EXISTENCIA de una cancha contra el backend y, si el score la
-  /// aprueba, la marca como **verificada** (habilita reservas). Si el servicio no
-  /// está configurado o falla, devuelve null y la cancha queda pendiente (revisión
-  /// manual). Pensado para llamarse en segundo plano tras registrar/reclamar.
+  /// Verifica la EXISTENCIA de una cancha contra el backend. **Importante:**
+  /// existencia ≠ propiedad. Que un RUC sea válido en SUNAT (o que la IA confirme
+  /// que el local existe) sólo prueba que el establecimiento es real, **no** que
+  /// quien reclama sea el dueño. Por eso este método NUNCA marca la cancha como
+  /// `verificada` (eso habilitaría reservas y daría el control al reclamante).
+  /// La propiedad se confirma aparte —código al teléfono del local (OTP),
+  /// aprobación manual o visita física del verificador— vía [confirmarPropiedad].
+  /// Devuelve el resultado de existencia (informativo). Pensado para correr en
+  /// segundo plano tras registrar/reclamar.
   Future<ResultadoExistencia?> verificarCancha(Cancha c,
       {String? ruc, String? razonSocial}) async {
     // Carril informal (backend/growth): IA primero; si no concluye, agenda visita.
@@ -197,20 +202,18 @@ class AppState extends ChangeNotifier {
         ubicacion: c.ubicacion,
       );
       if (rf != null) {
-        if (rf.verificada && !c.verificada) {
-          actualizarCancha(c.copyWith(verificada: true));
-        }
+        // NO se marca verificada: existencia confirmada, propiedad pendiente.
         return ResultadoExistencia(
           score: rf.score,
           aprobado: rf.verificada,
-          nivel: rf.verificada ? 'alto' : 'pendiente',
+          nivel: 'pendiente_propiedad',
           justificacion: rf.verificada
-              ? 'Verificada por IA (existencia).'
-              : 'Pendiente: se agendó una visita de verificación.',
+              ? 'Existencia confirmada. Falta validar que eres el dueño.'
+              : 'Pendiente: se agendó una visita para validar el local.',
         );
       }
     }
-    // Fallback: verificación de existencia directa.
+    // Fallback: verificación de existencia directa (tampoco confirma propiedad).
     final res = await VerificacionService.verificarExistencia(
       canchaId: c.id,
       direccion: c.direccion ?? c.nombre,
@@ -218,14 +221,13 @@ class AppState extends ChangeNotifier {
       razonSocial: razonSocial ?? c.nombre,
       ubicacion: c.ubicacion,
     );
-    if (res != null && res.aprobado && !c.verificada) {
-      actualizarCancha(c.copyWith(verificada: true));
-    }
     return res;
   }
 
-  /// Verifica un LOCAL completo (varias canchas en el mismo punto/dirección): una
-  /// sola consulta y, si aprueba, marca verificadas todas sus canchas.
+  /// Verifica la EXISTENCIA de un LOCAL completo (varias canchas en el mismo
+  /// punto/dirección) en una sola consulta. Igual que [verificarCancha]: confirma
+  /// existencia, **no** propiedad, por lo que no marca ninguna cancha como
+  /// verificada. La propiedad se valida aparte con [confirmarPropiedad].
   Future<ResultadoExistencia?> verificarVenue(List<Cancha> canchas,
       {String? ruc, String? razonSocial}) async {
     if (canchas.isEmpty) return null;
@@ -240,23 +242,19 @@ class AppState extends ChangeNotifier {
         ubicacion: base.ubicacion,
       );
       if (rf != null) {
-        if (rf.verificada) {
-          for (final c in canchas) {
-            if (!c.verificada) actualizarCancha(c.copyWith(verificada: true));
-          }
-        }
+        // NO se marcan verificadas: existencia confirmada, propiedad pendiente.
         return ResultadoExistencia(
           score: rf.score,
           aprobado: rf.verificada,
-          nivel: rf.verificada ? 'alto' : 'pendiente',
+          nivel: 'pendiente_propiedad',
           justificacion: rf.verificada
-              ? 'Verificada por IA (existencia).'
-              : 'Pendiente: se agendó una visita de verificación.',
+              ? 'Existencia confirmada. Falta validar que eres el dueño.'
+              : 'Pendiente: se agendó una visita para validar el local.',
         );
       }
     }
 
-    // Fallback: verificación de existencia directa.
+    // Fallback: verificación de existencia directa (tampoco confirma propiedad).
     final res = await VerificacionService.verificarExistencia(
       canchaId: base.id,
       direccion: base.direccion ?? base.nombre,
@@ -264,12 +262,28 @@ class AppState extends ChangeNotifier {
       razonSocial: razonSocial ?? base.nombre,
       ubicacion: base.ubicacion,
     );
-    if (res != null && res.aprobado) {
-      for (final c in canchas) {
-        if (!c.verificada) actualizarCancha(c.copyWith(verificada: true));
+    return res;
+  }
+
+  /// Confirma la **PROPIEDAD** de una cancha (no su existencia). Sólo este camino
+  /// habilita reservas (`verificada: true`) y debe llamarse cuando el dueño probó
+  /// que controla el local: código OTP al teléfono registrado del establecimiento,
+  /// aprobación manual del equipo, o visita física confirmada por el verificador.
+  /// Un RUC válido por sí solo NUNCA llega aquí.
+  void confirmarPropiedad(String canchaId,
+      {String via = 'manual', String? dueno}) {
+    Cancha? actual;
+    for (final c in [...canchasExtra, ...canchasRemotas]) {
+      if (c.id == canchaId) {
+        actual = c;
+        break;
       }
     }
-    return res;
+    if (actual == null) return;
+    actualizarCancha(actual.copyWith(
+      verificada: true,
+      dueno: dueno ?? actual.dueno,
+    ));
   }
 
   /// Elimina una cancha del dueño (local + nube). Quita también de la lista

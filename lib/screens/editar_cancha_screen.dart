@@ -9,7 +9,6 @@ import 'package:image_picker/image_picker.dart';
 
 import '../data/canchas_repo.dart';
 import '../models/models.dart';
-import '../services/verificacion_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 
@@ -177,8 +176,10 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
     );
     appState.actualizarCancha(actualizada);
 
-    // Al reclamar, dispara la verificación de existencia en segundo plano: si el
-    // score aprueba, la cancha pasa de "pendiente" a verificada sola.
+    // Al reclamar, dispara la verificación de EXISTENCIA en segundo plano. Esto
+    // confirma que el local es real, pero NO te convierte en dueño: la cancha
+    // queda en revisión de propiedad hasta validar al titular (código al teléfono
+    // del local, aprobación manual o visita). Un RUC válido por sí solo no basta.
     if (eraReclamo) {
       appState.verificarCancha(actualizada, ruc: _ruc.text.trim());
     }
@@ -186,14 +187,12 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
     if (!mounted) return;
     setState(() => _guardando = false);
     Navigator.of(context).pop();
-    final cola =
-        VerificacionService.disponible ? ' Verificando existencia…' : '';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         backgroundColor: pino,
         content: Text(
             eraReclamo
-                ? '✅ "$nombre" reclamada. Pendiente de verificación.$cola'
+                ? '✅ "$nombre" reclamada. En revisión de propiedad: validaremos que eres el dueño antes de habilitar reservas.'
                 : '✅ "$nombre" actualizada.',
             style: const TextStyle(color: Colors.white)),
       ),
@@ -370,7 +369,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
                 labelText: 'RUC del negocio (opcional)',
-                hintText: 'Acelera la verificación de tu cancha',
+                hintText: 'Ayuda a confirmar que el local existe (no reemplaza la validación del dueño)',
                 prefixIcon: Icon(Icons.verified_outlined, color: pino),
                 border: OutlineInputBorder(),
               ),

@@ -10,7 +10,6 @@ import 'package:image_picker/image_picker.dart';
 import '../data/canchas_repo.dart';
 import '../models/models.dart';
 import '../services/sport_detector.dart';
-import '../services/verificacion_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'login_google_sheet.dart';
@@ -251,22 +250,22 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
       appState.agregarCancha(cancha);
     }
 
-    // Verificación de existencia en segundo plano (no bloquea el cierre). Si el
-    // backend aprueba el score, las canchas pasan de "pendiente" a verificadas.
+    // Verificación de EXISTENCIA en segundo plano (no bloquea el cierre). Confirma
+    // que el local es real, pero NO te da la propiedad: la cancha queda "en
+    // revisión de propiedad" hasta validar al dueño (código al teléfono del local,
+    // aprobación manual o visita). Recién ahí se habilitan reservas.
     appState.verificarVenue(creadas,
         ruc: _ruc.text.trim(), razonSocial: nombre);
 
     if (!mounted) return;
     Navigator.of(context).pop();
     final n = deportes.length;
-    final cola =
-        VerificacionService.disponible ? ' Verificando existencia…' : '';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         backgroundColor: verdeCancha,
         content: Text(n > 1
-            ? '✅ "$nombre" publicado con $n canchas.$cola'
-            : '✅ "$nombre" publicada.$cola'),
+            ? '✅ "$nombre" publicado con $n canchas. En revisión de propiedad.'
+            : '✅ "$nombre" publicada. En revisión de propiedad.'),
       ),
     );
   }
@@ -314,7 +313,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
             keyboardType: TextInputType.number,
             decoration: const InputDecoration(
               labelText: 'RUC del negocio (opcional)',
-              hintText: 'Ayuda a verificar tu cancha más rápido',
+              hintText: 'Confirma que el local existe (la propiedad se valida aparte)',
               prefixIcon: Icon(Icons.verified_outlined, color: verdeCancha),
               border: OutlineInputBorder(),
             ),
