@@ -167,6 +167,36 @@ class Stores:
         """Reinicia todo (para tests)."""
         self.__init__()
 
+    # --- persistencia por snapshot (JSON) -----------------------------------
+    def to_state(self) -> dict:
+        """Serializa TODO el estado durable a un dict JSON-able."""
+        return {
+            "ids": dict(self._ids),
+            "config": dict(self.config),
+            "movimientos": [como_dict(m) for m in self.movimientos],
+            "canjes": [como_dict(c) for c in self.canjes],
+            "solicitudes": [como_dict(s) for s in self.solicitudes],
+            "vfs": [como_dict(v) for v in self.verificaciones_fisicas],
+            "verificadores": [como_dict(v) for v in self.verificadores],
+            "canchas": {k: como_dict(v) for k, v in self.canchas.items()},
+            "visitas_liquidacion": list(self.visitas_liquidacion),
+        }
+
+    def load_state(self, data: dict) -> None:
+        """Reconstruye el estado desde un snapshot (al arrancar)."""
+        self.reset()
+        self._ids = {k: int(v) for k, v in (data.get("ids") or {}).items()}
+        self.config = {**CONFIG_DEFAULT, **(data.get("config") or {})}
+        self.movimientos = [_mov_from(d) for d in data.get("movimientos", [])]
+        self.canjes = [_canje_from(d) for d in data.get("canjes", [])]
+        self.solicitudes = [_sol_from(d) for d in data.get("solicitudes", [])]
+        self.verificaciones_fisicas = [_vf_from(d) for d in data.get("vfs", [])]
+        self.verificadores = [Verificador(**d) for d in data.get("verificadores", [])]
+        self.canchas = {
+            k: CanchaEstado(**v) for k, v in (data.get("canchas") or {}).items()
+        }
+        self.visitas_liquidacion = list(data.get("visitas_liquidacion") or [])
+
 
 # Singleton (en producción: repos contra Supabase).
 stores = Stores()
@@ -195,3 +225,43 @@ def como_dict(obj) -> dict:
         if isinstance(v, datetime):
             d[k] = v.isoformat()
     return d
+
+
+def _dt(s):
+    return datetime.fromisoformat(s) if s else None
+
+
+def _mov_from(d: dict) -> PuntosMovimiento:
+    return PuntosMovimiento(
+        id=d["id"], usuario_id=d["usuario_id"], accion=d["accion"],
+        puntos=d["puntos"], estado=d["estado"], ref_tipo=d.get("ref_tipo"),
+        ref_id=d.get("ref_id"), creado_en=_dt(d["creado_en"]),
+        liberado_en=_dt(d.get("liberado_en")))
+
+
+def _canje_from(d: dict) -> PremioCanje:
+    return PremioCanje(
+        id=d["id"], usuario_id=d["usuario_id"], puntos_usados=d["puntos_usados"],
+        tipo_premio=d["tipo_premio"], vale_id=d["vale_id"],
+        fuente_financiamiento=d["fuente_financiamiento"], estado=d["estado"],
+        valor_soles=d["valor_soles"], creado_en=_dt(d["creado_en"]))
+
+
+def _sol_from(d: dict) -> SolicitudCancha:
+    return SolicitudCancha(
+        id=d["id"], usuario_id=d["usuario_id"],
+        nombre_cancha_libre=d["nombre_cancha_libre"],
+        direccion_texto=d["direccion_texto"], lat=d.get("lat"), lng=d.get("lng"),
+        distrito=d["distrito"], zona=d["zona"], estado=d["estado"],
+        cancha_id=d.get("cancha_id"), creado_en=_dt(d["creado_en"]))
+
+
+def _vf_from(d: dict) -> VerificacionFisica:
+    return VerificacionFisica(
+        id=d["id"], cancha_id=d["cancha_id"], solicitud_id=d.get("solicitud_id"),
+        motivo=d["motivo"], verificador_id=d.get("verificador_id"),
+        estado=d["estado"], fotos_geo_urls=list(d.get("fotos_geo_urls") or []),
+        lat_sitio=d.get("lat_sitio"), lng_sitio=d.get("lng_sitio"),
+        firma_verificador=d.get("firma_verificador"),
+        observaciones=d.get("observaciones"), metodo=d.get("metodo"),
+        creado_en=_dt(d["creado_en"]), cerrada_en=_dt(d.get("cerrada_en")))

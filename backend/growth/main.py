@@ -7,9 +7,10 @@ Ejecutar (desde este directorio):
 
 from __future__ import annotations
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 
 from compliance.consent import consent_store
+from db import pg
 from db.store import seed_verificadores, stores
 from models import ConfigRequest, ConsentimientoRequest
 from puntos.router import router as puntos_router
@@ -22,7 +23,24 @@ app = FastAPI(
     version="0.1.0",
 )
 
-seed_verificadores()
+# Persistencia: carga el snapshot guardado (si hay BD) y siembra verificadores.
+_snapshot = pg.init_y_cargar()
+if _snapshot:
+    stores.load_state(_snapshot)
+if not stores.verificadores:
+    seed_verificadores()
+
+
+@app.middleware("http")
+async def _persistir(request: Request, call_next):
+    """Tras cada request que muta estado, guarda el snapshot (fail-safe)."""
+    response = await call_next(request)
+    if pg.habilitado and request.method in ("POST", "PUT", "DELETE"):
+        try:
+            pg.guardar(stores.to_state())
+        except Exception:  # noqa: BLE001
+            pass
+    return response
 
 app.include_router(puntos_router)
 app.include_router(solicitudes_router)
