@@ -34,7 +34,11 @@ TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
 # Remitente: un número Twilio (+1...) o un Messaging Service SID (MG...).
 TWILIO_FROM = os.getenv("TWILIO_FROM", "")
 TWILIO_MESSAGING_SERVICE_SID = os.getenv("TWILIO_MESSAGING_SERVICE_SID", "")
-# Canal preferido cuando ambos están configurados: "whatsapp" | "sms".
+# Remitente de WhatsApp por Twilio (sandbox o número aprobado), ej.
+# "+14155238886" (sandbox). Si está, se puede mandar el OTP por WhatsApp vía
+# Twilio SIN depender de la aprobación de Meta.
+TWILIO_WHATSAPP_FROM = os.getenv("TWILIO_WHATSAPP_FROM", "")
+# Canal preferido: "whatsapp" (Meta) | "twilio_whatsapp" | "sms".
 OTP_CANAL_PREFERIDO = os.getenv("OTP_CANAL_PREFERIDO", "whatsapp")
 
 # Distancia máx (m) entre la ubicación declarada y la del sitio para considerar

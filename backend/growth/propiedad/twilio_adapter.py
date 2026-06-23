@@ -1,8 +1,10 @@
-"""Adapter de Twilio para enviar el código OTP por **SMS**.
+"""Adapter de Twilio para enviar el código OTP por **SMS** o por **WhatsApp**
+(sandbox o número aprobado de Twilio).
 
-Alternativa/respaldo a WhatsApp Cloud API que NO depende de Meta (útil mientras la
-cuenta de Meta esté en revisión). Usa la API de Mensajes de Twilio enviando el
-mismo código que genera nuestro servicio (mantiene el hash + TTL + no-retención).
+Alternativa/respaldo a WhatsApp Cloud API de Meta que NO depende de la aprobación
+de Meta (útil mientras la cuenta de WhatsApp Business está en revisión). Usa la API
+de Mensajes de Twilio enviando el mismo código que genera nuestro servicio
+(mantiene el hash + TTL + no-retención).
 
 Fail-safe: sin `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN` el adapter queda inactivo.
 """
@@ -16,31 +18,36 @@ import urllib.request
 import config
 
 
+def _creds_ok() -> bool:
+    return bool(config.TWILIO_ACCOUNT_SID and config.TWILIO_AUTH_TOKEN)
+
+
 def disponible() -> bool:
+    """¿Se puede enviar por SMS? (número o messaging service configurado)."""
     return bool(
-        config.TWILIO_ACCOUNT_SID
-        and config.TWILIO_AUTH_TOKEN
+        _creds_ok()
         and (config.TWILIO_FROM or config.TWILIO_MESSAGING_SERVICE_SID)
     )
 
 
-def enviar_sms(telefono_e164: str, codigo: str) -> dict:
-    """Envía el código por SMS. `telefono_e164` sin '+'; Twilio lo requiere con '+'.
-    Devuelve {ok, via, error?}. Nunca lanza."""
-    if not disponible():
-        return {"ok": True, "via": "stub"}
+def disponible_whatsapp() -> bool:
+    """¿Se puede enviar por WhatsApp vía Twilio? (remitente WhatsApp configurado)."""
+    return bool(_creds_ok() and config.TWILIO_WHATSAPP_FROM)
 
-    to = telefono_e164 if telefono_e164.startswith("+") else f"+{telefono_e164}"
-    cuerpo = (
+
+def _cuerpo(codigo: str) -> str:
+    return (
         f"Tu codigo de verificacion Pichangol es {codigo}. "
         f"Vence en 5 minutos. No lo compartas."
     )
-    datos = {"To": to, "Body": cuerpo}
-    if config.TWILIO_MESSAGING_SERVICE_SID:
-        datos["MessagingServiceSid"] = config.TWILIO_MESSAGING_SERVICE_SID
-    else:
-        datos["From"] = config.TWILIO_FROM
 
+
+def _con_mas(telefono_e164: str) -> str:
+    return telefono_e164 if telefono_e164.startswith("+") else f"+{telefono_e164}"
+
+
+def _post(datos: dict, via: str) -> dict:
+    """POST a la API de Mensajes de Twilio. Nunca lanza."""
     url = (
         "https://api.twilio.com/2010-04-01/Accounts/"
         f"{config.TWILIO_ACCOUNT_SID}/Messages.json"
@@ -59,6 +66,32 @@ def enviar_sms(telefono_e164: str, codigo: str) -> dict:
     )
     try:
         with urllib.request.urlopen(req, timeout=12) as resp:
-            return {"ok": resp.status < 300, "via": "sms"}
+            return {"ok": resp.status < 300, "via": via}
     except Exception as e:  # noqa: BLE001
-        return {"ok": False, "via": "sms", "error": str(e)[:200]}
+        return {"ok": False, "via": via, "error": str(e)[:200]}
+
+
+def enviar_sms(telefono_e164: str, codigo: str) -> dict:
+    """Envía el código por SMS. Devuelve {ok, via, error?}."""
+    if not disponible():
+        return {"ok": True, "via": "stub"}
+    datos = {"To": _con_mas(telefono_e164), "Body": _cuerpo(codigo)}
+    if config.TWILIO_MESSAGING_SERVICE_SID:
+        datos["MessagingServiceSid"] = config.TWILIO_MESSAGING_SERVICE_SID
+    else:
+        datos["From"] = config.TWILIO_FROM
+    return _post(datos, via="sms")
+
+
+def enviar_whatsapp(telefono_e164: str, codigo: str) -> dict:
+    """Envía el código por WhatsApp vía Twilio (prefijo `whatsapp:`). El número
+    de destino debe haberse unido al sandbox (en pruebas). Devuelve {ok, via}."""
+    if not disponible_whatsapp():
+        return {"ok": True, "via": "stub"}
+    desde = _con_mas(config.TWILIO_WHATSAPP_FROM)
+    datos = {
+        "From": f"whatsapp:{desde}",
+        "To": f"whatsapp:{_con_mas(telefono_e164)}",
+        "Body": _cuerpo(codigo),
+    }
+    return _post(datos, via="twilio_whatsapp")

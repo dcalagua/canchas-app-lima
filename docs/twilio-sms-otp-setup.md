@@ -4,9 +4,52 @@ Sirve para enviar el código de verificación de **propiedad** por **SMS**, sin
 depender de Meta/WhatsApp. Útil mientras la cuenta de Meta está en revisión, o como
 respaldo permanente si WhatsApp falla.
 
-El backend ya es **multicanal**: si `WHATSAPP_TOKEN` está configurado usa WhatsApp;
-si no, usa Twilio SMS; si ninguno, corre en modo stub. La preferencia se controla con
-`OTP_CANAL_PREFERIDO` (`whatsapp` por defecto, o `sms`).
+El backend ya es **multicanal**. Orden de canales (cae al siguiente disponible):
+1. `whatsapp` — WhatsApp Cloud API de Meta.
+2. `twilio_whatsapp` — **WhatsApp vía Twilio** (sandbox o número aprobado), NO depende
+   de la aprobación de Meta → ideal para probar hoy.
+3. `sms` — SMS vía Twilio.
+4. `stub` — sin envío real.
+
+La preferencia se controla con `OTP_CANAL_PREFERIDO`
+(`whatsapp` | `twilio_whatsapp` | `sms`).
+
+---
+
+## Opción A (recomendada para probar HOY): WhatsApp Sandbox de Twilio
+
+No requiere aprobación de Meta. Limitación: en el sandbox, **cada destinatario debe
+unirse una vez** enviando una palabra clave por WhatsApp al número del sandbox (sirve
+para pruebas con tu equipo; para producción real se usa WhatsApp Cloud de Meta o un
+número de WhatsApp aprobado en Twilio).
+
+1. En la Console: **Messaging → Try it out → Send a WhatsApp message**.
+2. Verás el **número del sandbox** (normalmente `+1 415 523 8886`) y una **palabra de
+   unión** tipo `join <dos-palabras>`.
+3. Desde **tu WhatsApp**, envía ese `join <dos-palabras>` al número del sandbox. Te
+   responde "conectado". (Cada tester hace lo mismo con su celular.)
+4. Carga en Railway (`pg-backend`):
+
+   | Variable | Valor |
+   |---|---|
+   | `TWILIO_ACCOUNT_SID` | tu Account SID (`AC...`) |
+   | `TWILIO_AUTH_TOKEN` | tu Auth Token |
+   | `TWILIO_WHATSAPP_FROM` | número del sandbox, ej. `+14155238886` |
+   | `OTP_CANAL_PREFERIDO` | `twilio_whatsapp` |
+
+5. Verifica:
+
+   ```bash
+   curl https://pg-backend-production-c176.up.railway.app/propiedad/canal
+   # -> {"whatsapp": false, "twilio_whatsapp": true, "sms": false, "activo": "twilio_whatsapp"}
+   ```
+
+> El OTP llegará por WhatsApp al celular que se unió al sandbox. Cuando Meta apruebe tu
+> cuenta, pasas a `OTP_CANAL_PREFERIDO=whatsapp` y ya no hace falta el "join".
+
+---
+
+## Opción B: SMS por Twilio
 
 ## Paso a paso
 
@@ -38,7 +81,7 @@ Verifica el canal activo:
 
 ```bash
 curl https://pg-backend-production-c176.up.railway.app/propiedad/canal
-# -> {"whatsapp": false, "sms": true, "activo": "sms"}
+# -> {"whatsapp": false, "twilio_whatsapp": false, "sms": true, "activo": "sms"}
 ```
 
 ## Consideraciones (Perú)

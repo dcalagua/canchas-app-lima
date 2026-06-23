@@ -43,8 +43,14 @@ def post_aprobar_manual(req: AprobarManualRequest) -> dict:
 
 @router.get("/canal")
 def get_canal() -> dict:
-    """Informativo: qué canales de OTP están activos en esta build."""
+    """Informativo: qué canales de OTP están activos en esta build. El canal
+    'activo' respeta OTP_CANAL_PREFERIDO y cae al siguiente disponible."""
+    import config
+
     wa = whatsapp_adapter.disponible()
+    twa = twilio_adapter.disponible_whatsapp()
     sms = twilio_adapter.disponible()
-    activo = "whatsapp" if wa else ("sms" if sms else "stub")
-    return {"whatsapp": wa, "sms": sms, "activo": activo}
+    disp = {"whatsapp": wa, "twilio_whatsapp": twa, "sms": sms}
+    orden = sorted(disp, key=lambda k: 0 if k == config.OTP_CANAL_PREFERIDO else 1)
+    activo = next((k for k in orden if disp[k]), "stub")
+    return {"whatsapp": wa, "twilio_whatsapp": twa, "sms": sms, "activo": activo}

@@ -31,20 +31,27 @@ from datetime import timedelta
 from propiedad import twilio_adapter, whatsapp_adapter
 
 
+def _canales() -> list[tuple[str, callable, callable]]:
+    """Canales de envío disponibles como (nombre, ¿disponible?, enviar)."""
+    return [
+        ("whatsapp", whatsapp_adapter.disponible,
+         whatsapp_adapter.enviar_otp),                      # WhatsApp Cloud (Meta)
+        ("twilio_whatsapp", twilio_adapter.disponible_whatsapp,
+         twilio_adapter.enviar_whatsapp),                   # WhatsApp vía Twilio
+        ("sms", twilio_adapter.disponible,
+         twilio_adapter.enviar_sms),                        # SMS vía Twilio
+    ]
+
+
 def _enviar_codigo(telefono: str, codigo: str) -> dict:
-    """Elige canal y envía el código. Preferencia configurable (whatsapp|sms);
-    si el preferido no está disponible, cae al otro; si ninguno, modo stub."""
+    """Elige canal y envía el código. El canal preferido (OTP_CANAL_PREFERIDO) va
+    primero; si no está disponible, cae al siguiente; si ninguno, modo stub."""
     pref = config.OTP_CANAL_PREFERIDO
-    orden = (
-        [twilio_adapter, whatsapp_adapter]
-        if pref == "sms"
-        else [whatsapp_adapter, twilio_adapter]
-    )
-    for adapter in orden:
-        if adapter is whatsapp_adapter and whatsapp_adapter.disponible():
-            return whatsapp_adapter.enviar_otp(telefono, codigo)
-        if adapter is twilio_adapter and twilio_adapter.disponible():
-            return twilio_adapter.enviar_sms(telefono, codigo)
+    canales = _canales()
+    canales.sort(key=lambda c: 0 if c[0] == pref else 1)
+    for _, disponible, enviar in canales:
+        if disponible():
+            return enviar(telefono, codigo)
     return {"ok": True, "via": "stub"}
 
 

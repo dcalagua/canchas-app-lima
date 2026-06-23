@@ -53,16 +53,17 @@ Leer un código prueba que controlas **ese teléfono**, no que seas el dueño. P
 
 ### Canales de OTP (multicanal)
 
-El backend elige el canal automáticamente:
+El backend elige el canal automáticamente (cae al siguiente disponible):
 
-1. **WhatsApp Cloud API** (principal) — ver `docs/whatsapp-cloud-api-setup.md`.
-2. **SMS por Twilio** (alternativa/respaldo, no depende de Meta) — ver
+1. **WhatsApp Cloud API** de Meta (principal) — ver `docs/whatsapp-cloud-api-setup.md`.
+2. **WhatsApp vía Twilio** (sandbox/número aprobado, no depende de Meta) — ver
    `docs/twilio-sms-otp-setup.md`.
-3. **Stub** (sin envío real) si no hay ninguno configurado.
+3. **SMS por Twilio** (alternativa/respaldo) — ver `docs/twilio-sms-otp-setup.md`.
+4. **Stub** (sin envío real) si no hay ninguno configurado.
 
-Preferencia configurable con `OTP_CANAL_PREFERIDO` (`whatsapp` | `sms`). Si el canal
-preferido no está disponible, cae al otro. `GET /propiedad/canal` informa cuál está
-activo.
+Preferencia configurable con `OTP_CANAL_PREFERIDO`
+(`whatsapp` | `twilio_whatsapp` | `sms`). Si el canal preferido no está disponible,
+cae al siguiente. `GET /propiedad/canal` informa cuál está activo.
 
 ## Endpoints (backend/growth, módulo `propiedad`)
 

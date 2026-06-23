@@ -85,3 +85,18 @@ def test_canal_preferido_whatsapp_gana_cuando_ambos(monkeypatch):
 
     r = prop.solicitar("c7", "987654321")
     assert r["ok"] and r["via"] == "whatsapp"
+
+
+def test_canal_twilio_whatsapp_cuando_meta_no_y_es_preferido(monkeypatch):
+    from propiedad import twilio_adapter, whatsapp_adapter
+
+    monkeypatch.setattr(config, "OTP_CANAL_PREFERIDO", "twilio_whatsapp")
+    monkeypatch.setattr(whatsapp_adapter, "disponible", lambda: False)
+    monkeypatch.setattr(twilio_adapter, "disponible", lambda: True)  # SMS también
+    monkeypatch.setattr(twilio_adapter, "disponible_whatsapp", lambda: True)
+    monkeypatch.setattr(
+        twilio_adapter, "enviar_whatsapp",
+        lambda t, c: {"ok": True, "via": "twilio_whatsapp"})
+
+    r = prop.solicitar("c8", "987654321")
+    assert r["ok"] and r["via"] == "twilio_whatsapp"
