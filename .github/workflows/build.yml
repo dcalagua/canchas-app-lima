@@ -63,6 +63,7 @@ jobs:
           GROWTH_API_URL: ${{ secrets.GROWTH_API_URL }}
         run: |
           flutter build apk --release \
+            --build-number=${{ github.run_number }} \
             --dart-define=SUPABASE_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
             --dart-define=MAPS_API_KEY="$MAPS_API_KEY" \
