@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../models/models.dart';
+import '../services/propiedad_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/court_lines.dart';
 import 'editar_cancha_screen.dart';
 import 'registrar_cancha_screen.dart';
+import 'verificar_propiedad_screen.dart';
 
 /// Canchas del dueño (locales de este dispositivo + las suyas en la nube,
 /// recuperadas por su correo tras reinstalar), con acceso a editarlas/eliminarlas.
@@ -116,18 +118,40 @@ class _CanchaItem extends StatelessWidget {
                                 color: tinta, fontWeight: FontWeight.w700)),
                         if (cancha.pendienteVerificacion) ...[
                           const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 7, vertical: 2),
-                            decoration: BoxDecoration(
-                                color: const Color(0xFFFBEAD2),
-                                borderRadius: BorderRadius.circular(999)),
-                            child: const Text('⏳ Por verificar',
-                                style: TextStyle(
-                                    color: clayOscuro,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w700)),
-                          ),
+                          if (PropiedadService.disponible)
+                            InkWell(
+                              borderRadius: BorderRadius.circular(999),
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                    builder: (_) => VerificarPropiedadScreen(
+                                        cancha: cancha)),
+                              ),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 9, vertical: 3),
+                                decoration: BoxDecoration(
+                                    color: bosque,
+                                    borderRadius: BorderRadius.circular(999)),
+                                child: const Text('Verificar propiedad',
+                                    style: TextStyle(
+                                        color: lima,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w800)),
+                              ),
+                            )
+                          else
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 7, vertical: 2),
+                              decoration: BoxDecoration(
+                                  color: const Color(0xFFFBEAD2),
+                                  borderRadius: BorderRadius.circular(999)),
+                              child: const Text('⏳ Por verificar',
+                                  style: TextStyle(
+                                      color: clayOscuro,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700)),
+                            ),
                         ],
                       ],
                     ),

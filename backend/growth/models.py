@@ -60,6 +60,28 @@ class CapturaRequest(BaseModel):
     observaciones: str | None = None
 
 
+# --- D. Verificación de PROPIEDAD (OTP WhatsApp + manual) ---
+class OtpSolicitarRequest(BaseModel):
+    cancha_id: str
+    telefono: str  # del local; se normaliza a E.164 (Perú por defecto)
+
+
+class OtpConfirmarRequest(BaseModel):
+    cancha_id: str
+    codigo: str
+    solicitante_id: str
+    # Teléfono público del local (Places/redes), si se conoce, para contrastar.
+    telefono_publico: str | None = None
+
+
+class AprobarManualRequest(BaseModel):
+    cancha_id: str
+    solicitante_id: str
+    aprobado: bool = True
+    revisor: str | None = None
+    nota: str | None = None
+
+
 # --- Transversal ---
 class ConsentimientoRequest(BaseModel):
     sujeto_id: str

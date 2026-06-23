@@ -8,6 +8,24 @@ import os
 # URL del módulo de existencia (Capa IA). Si está vacío, se usa el stub.
 EXISTENCIA_API_URL = os.getenv("EXISTENCIA_API_URL", "")
 
+# --- WhatsApp Cloud API (OTP de PROPIEDAD) ---------------------------------
+# Credenciales que se cargan como secrets en Railway tras seguir la guía
+# docs/whatsapp-cloud-api-setup.md. Si el token está vacío, el adapter corre en
+# modo STUB (no envía nada real; el código se devuelve sólo en entorno de prueba).
+WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN", "")
+WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "")
+WHATSAPP_API_VERSION = os.getenv("WHATSAPP_API_VERSION", "v21.0")
+# Plantilla de AUTENTICACIÓN aprobada por Meta (categoría Authentication).
+WHATSAPP_OTP_TEMPLATE = os.getenv("WHATSAPP_OTP_TEMPLATE", "pichangol_otp")
+WHATSAPP_OTP_LANG = os.getenv("WHATSAPP_OTP_LANG", "es")
+# Sólo en entornos de prueba: devolver el código en la respuesta (NUNCA en prod).
+OTP_DEBUG_DEVOLVER_CODIGO = os.getenv("OTP_DEBUG_DEVOLVER_CODIGO", "0") == "1"
+
+# Parámetros del OTP de propiedad.
+OTP_TTL_SEG = int(os.getenv("OTP_TTL_SEG", "300"))        # vence en 5 min
+OTP_MAX_INTENTOS = int(os.getenv("OTP_MAX_INTENTOS", "5"))
+OTP_REENVIO_MIN_SEG = int(os.getenv("OTP_REENVIO_MIN_SEG", "60"))
+
 # Distancia máx (m) entre la ubicación declarada y la del sitio para considerar
 # que la verificación física "coincide".
 COINCIDENCIA_MAX_M = float(os.getenv("VERIF_COINCIDENCIA_MAX_M", "200"))

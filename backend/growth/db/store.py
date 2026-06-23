@@ -105,6 +105,35 @@ class Verificador:
 
 
 @dataclass
+class OtpPropiedad:
+    """Código OTP transitorio para validar la PROPIEDAD de una cancha. NO se
+    persiste (seguridad): vive en memoria con TTL y se borra al usarse/vencer.
+    Sólo guardamos el hash del código, nunca el texto plano."""
+    cancha_id: str
+    telefono: str                # E.164 sin '+', sólo en memoria
+    codigo_hash: str
+    expira_en: datetime
+    creado_en: datetime
+    intentos: int = 0
+    enviado_via: str = "stub"     # whatsapp | stub
+
+
+@dataclass
+class ConfirmacionPropiedad:
+    """Registro durable de la DECISIÓN de propiedad (auditable). No guarda el
+    teléfono completo, sólo enmascarado."""
+    id: int
+    cancha_id: str
+    solicitante_id: str
+    metodo: str                  # otp_whatsapp | manual | en_sitio
+    estado: str                  # confirmada | pendiente_revision | rechazada
+    telefono_enmascarado: str | None
+    creado_en: datetime
+    decidido_en: datetime | None = None
+    nota: str | None = None
+
+
+@dataclass
 class CanchaEstado:
     """Estado relevante de una cancha para estos subsistemas (en producción es la
     fila de `pichangol_canchas`)."""
@@ -128,6 +157,9 @@ class Stores:
         self.verificadores: list[Verificador] = []
         self.canchas: dict[str, CanchaEstado] = {}
         self.visitas_liquidacion: list[dict] = []   # pagos a verificadores (stub)
+        # OTP de propiedad: transitorio, NO se persiste (uno activo por cancha).
+        self.otps: dict[str, OtpPropiedad] = {}
+        self.confirmaciones_propiedad: list[ConfirmacionPropiedad] = []
         self._idem: dict[tuple[str, str], dict] = {}
         self._ids: dict[str, int] = {}
 
@@ -180,6 +212,10 @@ class Stores:
             "verificadores": [como_dict(v) for v in self.verificadores],
             "canchas": {k: como_dict(v) for k, v in self.canchas.items()},
             "visitas_liquidacion": list(self.visitas_liquidacion),
+            # OTPs NO se persisten (transitorios/seguridad). Sólo las decisiones.
+            "confirmaciones_propiedad": [
+                como_dict(c) for c in self.confirmaciones_propiedad
+            ],
         }
 
     def load_state(self, data: dict) -> None:
@@ -196,6 +232,9 @@ class Stores:
             k: CanchaEstado(**v) for k, v in (data.get("canchas") or {}).items()
         }
         self.visitas_liquidacion = list(data.get("visitas_liquidacion") or [])
+        self.confirmaciones_propiedad = [
+            _conf_from(d) for d in data.get("confirmaciones_propiedad", [])
+        ]
 
 
 # Singleton (en producción: repos contra Supabase).
@@ -254,6 +293,15 @@ def _sol_from(d: dict) -> SolicitudCancha:
         direccion_texto=d["direccion_texto"], lat=d.get("lat"), lng=d.get("lng"),
         distrito=d["distrito"], zona=d["zona"], estado=d["estado"],
         cancha_id=d.get("cancha_id"), creado_en=_dt(d["creado_en"]))
+
+
+def _conf_from(d: dict) -> ConfirmacionPropiedad:
+    return ConfirmacionPropiedad(
+        id=d["id"], cancha_id=d["cancha_id"], solicitante_id=d["solicitante_id"],
+        metodo=d["metodo"], estado=d["estado"],
+        telefono_enmascarado=d.get("telefono_enmascarado"),
+        creado_en=_dt(d["creado_en"]), decidido_en=_dt(d.get("decidido_en")),
+        nota=d.get("nota"))
 
 
 def _vf_from(d: dict) -> VerificacionFisica:

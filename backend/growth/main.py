@@ -13,6 +13,7 @@ from compliance.consent import consent_store
 from db import pg
 from db.store import seed_verificadores, stores
 from models import ConfigRequest, ConsentimientoRequest
+from propiedad.router import router as propiedad_router
 from puntos.router import router as puntos_router
 from solicitudes.router import router as solicitudes_router
 from verificacion_fisica.router import router as vf_router
@@ -45,6 +46,7 @@ async def _persistir(request: Request, call_next):
 app.include_router(puntos_router)
 app.include_router(solicitudes_router)
 app.include_router(vf_router)
+app.include_router(propiedad_router)
 
 
 @app.get("/health")
