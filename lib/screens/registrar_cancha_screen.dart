@@ -262,10 +262,10 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
     if (!mounted) return;
     final n = deportes.length;
 
-    // Si el canal de verificación está disponible, llevamos al dueño DIRECTO a
-    // confirmar su propiedad por código (WhatsApp/SMS). Así reclamar y verificar
-    // es un solo flujo y aparece de una el campo del teléfono del local.
-    if (PropiedadService.disponible && creadas.isNotEmpty) {
+    // Reclamar/registrar siempre te lleva a confirmar tu propiedad por código
+    // (WhatsApp/SMS): ahí aparece el campo del teléfono del local. Si el backend
+    // de verificación no está configurado, esa pantalla lo avisa con claridad.
+    if (creadas.isNotEmpty) {
       Navigator.of(context).pushReplacement(MaterialPageRoute(
         builder: (_) => VerificarPropiedadScreen(cancha: creadas.first),
       ));

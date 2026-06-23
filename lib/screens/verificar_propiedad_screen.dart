@@ -136,6 +136,21 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
               'Te enviaremos un código por WhatsApp o SMS al teléfono del local. '
               'Solo quien lo recibe puede activar la cancha para recibir reservas.',
               style: t.bodyMedium?.copyWith(color: textoTenue)),
+          if (!PropiedadService.disponible) ...[
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                  color: const Color(0xFFFBEAD2),
+                  borderRadius: BorderRadius.circular(12)),
+              child: Text(
+                'La verificación por código aún no está activa en esta versión de '
+                'la app. Tu cancha quedó "en revisión de propiedad" y la validará '
+                'nuestro equipo. (Falta configurar GROWTH_API_URL en la build.)',
+                style: t.bodySmall?.copyWith(color: clayOscuro),
+              ),
+            ),
+          ],
           const SizedBox(height: 22),
           TextField(
             controller: _telefono,

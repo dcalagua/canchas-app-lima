@@ -190,8 +190,9 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
     setState(() => _guardando = false);
 
     // Al reclamar, llevamos al dueño directo a confirmar su propiedad por código
-    // (WhatsApp/SMS): ahí aparece el campo del teléfono del local.
-    if (eraReclamo && PropiedadService.disponible) {
+    // (WhatsApp/SMS): ahí aparece el campo del teléfono del local. Si el backend
+    // no está configurado, esa pantalla lo avisa con claridad.
+    if (eraReclamo) {
       Navigator.of(context).pushReplacement(MaterialPageRoute(
         builder: (_) => VerificarPropiedadScreen(cancha: actualizada),
       ));
