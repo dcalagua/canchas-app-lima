@@ -123,7 +123,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                   const SizedBox(height: 20),
 
                   if (descubierta)
-                    _PanelDescubierta()
+                    _PanelDescubierta(cancha: _cancha)
                   else if (pendiente)
                     const _PanelPendiente()
                   else ...[
@@ -397,6 +397,9 @@ class _SlotChip extends StatelessWidget {
 }
 
 class _PanelDescubierta extends StatelessWidget {
+  const _PanelDescubierta({required this.cancha});
+  final Cancha cancha;
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
@@ -433,7 +436,7 @@ class _PanelDescubierta extends StatelessWidget {
             child: FilledButton.icon(
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute(
-                    builder: (_) => const RegistrarCanchaScreen()),
+                    builder: (_) => RegistrarCanchaScreen(base: cancha)),
               ),
               icon: const Icon(Icons.add_location_alt),
               label: const Text('Reclamar / registrar esta cancha'),

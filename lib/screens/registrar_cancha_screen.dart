@@ -19,7 +19,12 @@ import 'login_google_sheet.dart';
 /// mapa automáticamente (estilo eSupplier). Un local puede tener varias canchas
 /// de distintos deportes, así que el deporte es de selección múltiple.
 class RegistrarCanchaScreen extends StatefulWidget {
-  const RegistrarCanchaScreen({super.key});
+  /// Si se pasa [base] (una cancha descubierta en Google que se está
+  /// reclamando), el formulario abre pre-rellenado con su nombre, dirección,
+  /// ubicación (pin) y deporte.
+  const RegistrarCanchaScreen({super.key, this.base});
+
+  final Cancha? base;
 
   @override
   State<RegistrarCanchaScreen> createState() => _RegistrarCanchaScreenState();
@@ -43,7 +48,27 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
   bool _analizando = false;
   DeteccionDeporte? _deteccion;
 
+  // Fotos que ya traía la cancha descubierta (Google): se conservan al reclamar.
+  List<String> _fotosBase = const [];
+
   static const _limaCentro = LatLng(-12.0931, -77.0465);
+
+  @override
+  void initState() {
+    super.initState();
+    final b = widget.base;
+    if (b != null) {
+      _nombre.text = b.nombre;
+      _direccion.text = b.direccion ?? '';
+      _ubicacion = b.ubicacion; // marca el pin en la ubicación de Google
+      _deportes
+        ..clear()
+        ..add(b.deporte);
+      _fotosBase = b.fotos.isNotEmpty
+          ? b.fotos
+          : (b.fotoUrl != null ? [b.fotoUrl!] : const []);
+    }
+  }
 
   @override
   void dispose() {
@@ -185,11 +210,16 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
     final distrito = await _distritoDe(_ubicacion!);
     final ts = DateTime.now().millisecondsSinceEpoch;
 
-    // Sube la foto (si hay) y la usa de portada para las canchas del local.
-    String? fotoUrl;
+    // Sube la foto nueva (si hay) y conserva las que ya traía de Google.
+    String? fotoSubida;
     if (_foto != null) {
-      fotoUrl = await CanchasRepo.subirFoto('u$ts', _foto!);
+      fotoSubida = await CanchasRepo.subirFoto('u$ts', _foto!);
     }
+    final fotos = <String>[
+      if (fotoSubida != null) fotoSubida,
+      ..._fotosBase,
+    ];
+    final fotoUrl = fotos.isNotEmpty ? fotos.first : null;
 
     // Atamos la cancha a la cuenta del dueño (correo) para recuperarla luego en
     // "Mis canchas" desde cualquier dispositivo.
@@ -213,7 +243,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
         digitalizada: true,
         direccion: direccion.isEmpty ? null : direccion,
         fotoUrl: fotoUrl,
-        fotos: fotoUrl != null ? [fotoUrl] : const [],
+        fotos: fotos,
         dueno: dueno,
         verificada: false, // pendiente de verificación hasta validar al dueño
       );
