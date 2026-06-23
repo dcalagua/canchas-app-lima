@@ -65,4 +65,54 @@ class GrowthService {
       return null; // fail-safe: cae a la verificación de existencia directa
     }
   }
+
+  /// Cola de visitas del verificador (agendada/en_sitio), priorizada por demanda
+  /// (las canchas más pedidas primero).
+  static Future<List<Map<String, dynamic>>> visitas({String? zona}) async {
+    if (!disponible) return [];
+    try {
+      final q = zona != null && zona.isNotEmpty ? '?zona=$zona' : '';
+      final uri = Uri.parse('$_baseUrl/verificacion-fisica/visitas$q');
+      final resp = await http.get(uri).timeout(const Duration(seconds: 10));
+      if (resp.statusCode != 200) return [];
+      final data = jsonDecode(resp.body);
+      if (data is! List) return [];
+      return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// El verificador captura fotos GEO del sitio, confirma coincidencia y firma.
+  /// Devuelve el resultado del servidor (ok/estado/coincide/distancia/insignia).
+  static Future<Map<String, dynamic>?> captura({
+    required int vfId,
+    required List<String> fotosGeoUrls,
+    required double latSitio,
+    required double lngSitio,
+    required String firma,
+    String? observaciones,
+  }) async {
+    if (!disponible) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/verificacion-fisica/$vfId/captura');
+      final resp = await http
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'fotos_geo_urls': fotosGeoUrls,
+              'lat_sitio': latSitio,
+              'lng_sitio': lngSitio,
+              'firma_verificador': firma,
+              if (observaciones != null) 'observaciones': observaciones,
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
+      if (resp.statusCode != 200) return null;
+      return Map<String, dynamic>.from(jsonDecode(resp.body) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
 }

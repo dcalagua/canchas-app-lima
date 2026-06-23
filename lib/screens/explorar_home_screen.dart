@@ -22,6 +22,8 @@ import 'home_shell.dart';
 import 'mis_reservas_screen.dart';
 import 'mis_canchas_screen.dart';
 import 'registrar_cancha_screen.dart';
+import 'verificador_screen.dart';
+import '../services/growth_service.dart';
 
 /// Pantalla de inicio estilo Airbnb: mapa de Google a pantalla completa con
 /// barra de búsqueda flotante, filtros por deporte y un carrusel de canchas
@@ -335,6 +337,12 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
           Navigator.of(sheetContext).pop();
           Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const MisCanchasScreen()),
+          );
+        },
+        onVerificador: () {
+          Navigator.of(sheetContext).pop();
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const VerificadorScreen()),
           );
         },
         onLogin: () async {
@@ -1048,6 +1056,7 @@ class _MenuSheet extends StatelessWidget {
   final VoidCallback onPanel;
   final VoidCallback onRegistrar;
   final VoidCallback onMisCanchas;
+  final VoidCallback onVerificador;
   final Future<void> Function() onLogin;
   final Future<void> Function() onLogout;
   const _MenuSheet({
@@ -1055,6 +1064,7 @@ class _MenuSheet extends StatelessWidget {
     required this.onPanel,
     required this.onRegistrar,
     required this.onMisCanchas,
+    required this.onVerificador,
     required this.onLogin,
     required this.onLogout,
   });
@@ -1155,6 +1165,14 @@ class _MenuSheet extends StatelessWidget {
                 subtitle: const Text('Edita precio, fotos y ubicación'),
                 onTap: onMisCanchas,
               ),
+              if (GrowthService.disponible)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.verified_user, color: verdeCancha),
+                  title: const Text('Verificador'),
+                  subtitle: const Text('Visitas: foto, GPS y firma'),
+                  onTap: onVerificador,
+                ),
               const Divider(),
               if (u == null)
                 FilledButton.icon(
