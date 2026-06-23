@@ -81,6 +81,73 @@ Config por entorno: ver `docs/whatsapp-cloud-api-setup.md` y `backend/growth/con
 
 ---
 
+## Pendientes conocidos
+
+- **Remitente del WhatsApp dice "Twilio" (sandbox).** En producción debe verse
+  "Pichangol": vía WhatsApp Cloud de Meta con display name aprobado, o un número
+  de WhatsApp propio aprobado en Twilio (salir del sandbox).
+- **El OTP a un número que el usuario escribe NO prueba propiedad** (ver propuesta
+  abajo). Hoy la app no envía `telefono_publico`, así que el OTP confirma sin
+  contrastar contra el teléfono público del local.
+
+## Propuesta: verificación de PROPIEDAD por capas y por riesgo
+
+Recibir un código prueba *control de un teléfono*, no *propiedad del local*. La
+propiedad se prueba combinando señales que **solo el operador real puede producir**,
+y se decide con un **score de riesgo** (auto-aprueba si es fuerte; si no, revisión
+humana). Capas, de más barata/automática a más fuerte:
+
+**Capa A — Control del contacto público del local (automático, barato).**
+El OTP debe ir al **teléfono que YA aparece públicamente** para esa cancha (Google
+Places / Instagram / Facebook), no a uno que el usuario teclea. Si el código llega a
+ese número público → señal fuerte. (La lógica ya existe en `service.confirmar` vía
+`telefono_publico`; falta que la app la mande desde la cancha descubierta.)
+
+**Capa B — Prueba EN SITIO con código (geo + foto en vivo) — la más fuerte para
+informales.** Pichangol genera un código corto; el reclamante debe **ir al local**,
+escribirlo en un papel y tomar una **foto en vivo** (cámara, no galería) del local
+con ese papel, y el **GPS debe coincidir** con la ubicación de la cancha (±100 m).
+Un impostor remoto no puede falsearlo. Reusa el motor de captura geo del Verificador.
+
+**Capa C — Prueba SOCIAL (si tienen IG/FB/TikTok).** El reclamante publica una
+historia/post con un código que le da Pichangol, desde la **cuenta oficial** de la
+cancha; el sistema la verifica. Prueba que controla la cuenta oficial del local.
+
+**Capa D — Documento del negocio (cuando exista).** Recibo de luz/agua, licencia
+municipal o contrato con la dirección del local → subida y revisada. Para formales,
+además: el **representante en SUNAT** (RUC) debe coincidir con la identidad del
+reclamante.
+
+**Capa E — Identidad de la persona (biometría) = responsabilidad, no propiedad.**
+Selfie con **prueba de vida** + match con DNI, idealmente cotejo **RENIEC**. NO
+prueba que sea el dueño, pero **ata el reclamo a una persona real y responsable**
+(disuade el fraude, habilita acciones legales y resolución de disputas). Dato
+**sensible** (Ley 29733): consentimiento explícito y, de preferencia, no retener la
+plantilla (proveedor que devuelva solo "match/no-match"). Proveedores: Truora,
+Reconoce-ID, Jumio, Onfido, AWS Rekognition Liveness.
+
+**Capa F — Revisión humana / visita.** Solo para alto valor, disputas (dos
+reclamantes de la misma cancha) o cuando las señales automáticas no alcanzan.
+
+### Cómo se combinan (score de riesgo)
+- **Auto-aprueba** si junta señales fuertes, p. ej. *A (teléfono público coincide)*
+  **o** *B (prueba en sitio geo-foto)* → propiedad confirmada.
+- **Revisión humana** si solo hay señales débiles (OTP a número tecleado sin más),
+  hay disputa, o es una cancha de alto valor.
+- La biometría (E) se exige según riesgo: para todos como identidad básica, o solo
+  en disputa/alto valor para no friccionar a dueños informales con equipos de gama
+  baja.
+
+### Recomendación de secuencia (qué construir primero)
+1. **Capa B (prueba en sitio geo-foto con código)** — la de mejor relación
+   fuerza/costo para canchas informales, y reusa lo que ya existe en el Verificador.
+2. **Capa A (match con teléfono público)** — barato, solo falta pasar
+   `telefono_publico` desde la cancha de Google.
+3. **Capa C (post social con código)** — fuerte si tienen redes; encaja con la idea
+   de "conectar IG/FB e importar fotos".
+4. **Capa E (biometría)** como capa de identidad/responsabilidad, con consentimiento.
+5. **Capa F (humano)** siempre como red de seguridad para disputas.
+
 ## Roadmap: biometría (a madurar, NO para este sprint)
 
 La idea de "el que registra se toma una selfie biométrica y el sistema valida" es
