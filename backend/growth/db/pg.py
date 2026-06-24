@@ -27,7 +27,11 @@ _DDL = (
 
 def _conn():
     import psycopg  # import perezoso: solo si hay DATABASE_URL
-    return psycopg.connect(DATABASE_URL, connect_timeout=8)
+    conn = psycopg.connect(DATABASE_URL, connect_timeout=8)
+    # Sin prepared statements: compatible con el pooler en modo transacción
+    # (pgbouncer) sin errores de "prepared statement already exists".
+    conn.prepare_threshold = None
+    return conn
 
 
 def init_y_cargar() -> dict | None:
