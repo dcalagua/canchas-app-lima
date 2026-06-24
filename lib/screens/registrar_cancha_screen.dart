@@ -35,7 +35,7 @@ class RegistrarCanchaScreen extends StatefulWidget {
 class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
   final _nombre = TextEditingController();
   final _direccion = TextEditingController();
-  final _precio = TextEditingController(text: '120');
+  final _precio = TextEditingController(text: '120.00');
   final _ruc = TextEditingController(); // opcional: refuerza la verificación
   final _contacto = TextEditingController(); // WhatsApp del dueño (obligatorio)
   final _dni = TextEditingController(); // DNI del reclamante (obligatorio)
@@ -280,7 +280,8 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
         return;
       }
     }
-    final precio = int.tryParse(_precio.text.trim()) ?? 100;
+    final precio =
+        double.tryParse(_precio.text.trim().replaceAll(',', '.')) ?? 100;
     final direccion = _direccion.text.trim();
     final distrito = await _distritoDe(_ubicacion!);
     final ts = DateTime.now().millisecondsSinceEpoch;
@@ -633,7 +634,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
             const SizedBox(height: 16),
             TextField(
               controller: _precio,
-              keyboardType: TextInputType.number,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
               decoration: const InputDecoration(
                 labelText: 'Precio por hora',
                 prefixText: 'S/ ',

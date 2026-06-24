@@ -141,7 +141,7 @@ class ClubCard extends StatelessWidget {
                             children: [
                               const TextSpan(text: 'desde '),
                               TextSpan(
-                                text: 'S/${club.precioDesde ?? '--'}',
+                                text: 'S/${club.precioDesde?.toStringAsFixed(2) ?? '--'}',
                                 style: t.titleMedium?.copyWith(
                                     color: tinta, fontWeight: FontWeight.w700),
                               ),

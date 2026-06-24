@@ -357,7 +357,7 @@ class AppState extends ChangeNotifier {
   bool get destacadoActivo => saldoClub > 0;
 
   /// Comisión que descuenta del saldo cada reserva nueva (5%, mínimo S/ 2).
-  int comisionDe(int precio) {
+  int comisionDe(num precio) {
     final c = (precio * 0.05).round();
     return c < 2 ? 2 : c;
   }
@@ -515,7 +515,7 @@ class AppState extends ChangeNotifier {
       horaFin: _siguienteHora(hora),
       estado: EstadoReserva.confirmada,
       traidaPorApp: true,
-      precio: cancha.precioHora,
+      precio: cancha.precioHora.round(),
       sena: (cancha.precioHora * 0.3).round(),
       usuario: usuario?.email ?? '',
     );
@@ -591,7 +591,7 @@ class AppState extends ChangeNotifier {
       horaFin: _siguienteHora(bloque.hora),
       estado: EstadoReserva.nueva,
       traidaPorApp: true,
-      precio: cancha.precioHora,
+      precio: cancha.precioHora.round(),
       sena: (cancha.precioHora * 0.3).round(),
     );
     reservas.insert(0, nueva);

@@ -60,7 +60,7 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
             const SizedBox(height: 8),
             Text('$_dia a las $hora'),
             const SizedBox(height: 8),
-            Text('Precio: S/ ${cancha.precioHora}'),
+            Text('Precio: S/ ${cancha.precioHora.toStringAsFixed(2)}'),
             Text('Seña con tarjeta: S/ $sena',
                 style: const TextStyle(color: arena, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
@@ -160,7 +160,7 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
                       const Spacer(),
                       if (cancha.registrada) ...[
                         Text(
-                          'S/ ${cancha.precioHora}',
+                          'S/ ${cancha.precioHora.toStringAsFixed(2)}',
                           style: const TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 22,

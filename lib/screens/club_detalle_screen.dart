@@ -248,7 +248,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
 class _ReservarBar extends StatelessWidget {
   const _ReservarBar(
       {required this.precio, required this.hora, required this.onReservar});
-  final int precio;
+  final double precio;
   final String? hora;
   final VoidCallback? onReservar;
 
@@ -274,7 +274,7 @@ class _ReservarBar extends StatelessWidget {
                     style: t.bodySmall?.copyWith(color: textoTenue),
                     children: [
                       TextSpan(
-                        text: 'S/$precio',
+                        text: 'S/${precio.toStringAsFixed(2)}',
                         style: t.titleLarge?.copyWith(
                             color: tinta, fontWeight: FontWeight.w700),
                       ),

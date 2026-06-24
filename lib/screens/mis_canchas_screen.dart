@@ -113,7 +113,7 @@ class _CanchaItem extends StatelessWidget {
                                   fontWeight: FontWeight.w700)),
                         ),
                         const SizedBox(width: 8),
-                        Text('S/ ${cancha.precioHora} /h',
+                        Text('S/ ${cancha.precioHora.toStringAsFixed(2)} /h',
                             style: t.bodySmall?.copyWith(
                                 color: tinta, fontWeight: FontWeight.w700)),
                         if (cancha.pendienteVerificacion) ...[

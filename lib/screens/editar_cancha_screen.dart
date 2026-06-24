@@ -31,7 +31,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
   late final TextEditingController _direccion =
       TextEditingController(text: widget.cancha.direccion ?? '');
   late final TextEditingController _precio =
-      TextEditingController(text: widget.cancha.precioHora.toString());
+      TextEditingController(text: widget.cancha.precioHora.toStringAsFixed(2));
   final TextEditingController _ruc =
       TextEditingController(); // opcional, refuerza la verificación al reclamar
   final TextEditingController _contacto =
@@ -186,7 +186,8 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
 
     final actualizada = widget.cancha.copyWith(
       nombre: nombre,
-      precioHora: int.tryParse(_precio.text.trim()) ?? widget.cancha.precioHora,
+      precioHora: double.tryParse(_precio.text.trim().replaceAll(',', '.')) ??
+          widget.cancha.precioHora,
       deporte: _deporte,
       ubicacion: _ubicacion,
       fotos: fotos,
@@ -390,7 +391,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
           const SizedBox(height: 16),
           TextField(
             controller: _precio,
-            keyboardType: TextInputType.number,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: const InputDecoration(
               labelText: 'Precio por hora',
               prefixText: 'S/ ',

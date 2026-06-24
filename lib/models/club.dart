@@ -36,7 +36,7 @@ class Club {
   }
 
   /// Precio "desde" entre las canchas con precio conocido (>0).
-  int? get precioDesde {
+  double? get precioDesde {
     final precios = canchas.where((c) => c.precioHora > 0).map((c) => c.precioHora);
     if (precios.isEmpty) return null;
     return precios.reduce((a, b) => a < b ? a : b);

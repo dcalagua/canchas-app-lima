@@ -146,8 +146,8 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
       // Las reclamadas muestran su precio real; las descubiertas en Google aún
       // no tienen precio, así que mostramos un estimado por deporte con "~".
       final etiqueta = c.registrada
-          ? 'S/ ${c.precioHora}'
-          : '~S/ ${c.precioReferencial}';
+          ? 'S/ ${c.precioHora.toStringAsFixed(2)}'
+          : '~S/ ${c.precioReferencial.toStringAsFixed(2)}';
       final icon = await _pinPrecio(etiqueta, seleccionado: sel);
       markers.add(
         Marker(
@@ -1017,7 +1017,7 @@ class _CanchaCard extends StatelessWidget {
                             textBaseline: TextBaseline.alphabetic,
                             children: [
                               Text(
-                                'S/ ${cancha.precioHora}',
+                                'S/ ${cancha.precioHora.toStringAsFixed(2)}',
                                 style: const TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 16,
@@ -1034,7 +1034,7 @@ class _CanchaCard extends StatelessWidget {
                             textBaseline: TextBaseline.alphabetic,
                             children: [
                               Text(
-                                '~S/ ${cancha.precioReferencial}',
+                                '~S/ ${cancha.precioReferencial.toStringAsFixed(2)}',
                                 style: const TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 16,

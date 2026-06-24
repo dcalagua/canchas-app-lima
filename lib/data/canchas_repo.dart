@@ -96,7 +96,7 @@ class CanchasRepo {
         club: (r['club'] ?? '') as String,
         distrito: _enumDistrito(r['distrito'] as String?),
         deporte: _enumDeporte(r['deporte'] as String?),
-        precioHora: ((r['precio_hora'] ?? 100) as num).toInt(),
+        precioHora: ((r['precio_hora'] ?? 100) as num).toDouble(),
         ubicacion: LatLng(
           ((r['lat'] ?? -12.108) as num).toDouble(),
           ((r['lng'] ?? -76.978) as num).toDouble(),

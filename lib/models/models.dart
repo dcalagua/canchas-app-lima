@@ -26,7 +26,7 @@ class Cancha {
   final String club;
   final Distrito distrito;
   final Deporte deporte;
-  final int precioHora; // soles por hora
+  final double precioHora; // soles por hora (admite 2 decimales)
   final LatLng ubicacion;
   final bool clubFundador; // sello "Club Fundador" de su distrito
   final bool digitalizada; // false = aún en cuaderno/WhatsApp (objetivo prioritario)
@@ -65,7 +65,7 @@ class Cancha {
   /// Precio referencial por hora (S/). Si la cancha ya fue reclamada usa su
   /// precio real; si es descubierta (Google, aún sin precio) estima según el
   /// deporte para mostrar un número en el mapa en vez de un texto genérico.
-  int get precioReferencial {
+  double get precioReferencial {
     if (precioHora > 0) return precioHora;
     switch (deporte) {
       case Deporte.futbol:
@@ -82,7 +82,7 @@ class Cancha {
     String? club,
     Distrito? distrito,
     Deporte? deporte,
-    int? precioHora,
+    double? precioHora,
     LatLng? ubicacion,
     String? direccion,
     String? fotoUrl,
@@ -134,7 +134,7 @@ class Cancha {
         club: j['club'] as String,
         distrito: Distrito.values.byName(j['distrito'] as String),
         deporte: Deporte.values.byName(j['deporte'] as String),
-        precioHora: j['precioHora'] as int,
+        precioHora: (j['precioHora'] as num).toDouble(),
         ubicacion: LatLng(
             (j['lat'] as num).toDouble(), (j['lng'] as num).toDouble()),
         clubFundador: j['clubFundador'] as bool,
