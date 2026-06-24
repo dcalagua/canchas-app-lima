@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show Factory;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -35,6 +36,8 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
       TextEditingController(); // opcional, refuerza la verificación al reclamar
   final TextEditingController _contacto =
       TextEditingController(); // WhatsApp del dueño al reclamar (obligatorio)
+  final TextEditingController _dni =
+      TextEditingController(); // DNI del reclamante (obligatorio al reclamar)
 
   late Deporte _deporte = widget.cancha.deporte;
   late LatLng _ubicacion = widget.cancha.ubicacion;
@@ -59,6 +62,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
     _precio.dispose();
     _ruc.dispose();
     _contacto.dispose();
+    _dni.dispose();
     _map?.dispose();
     super.dispose();
   }
@@ -148,9 +152,14 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
     }
     final esReclamo = widget.cancha.dueno.isEmpty;
     final contacto = _contacto.text.trim();
+    final dni = _dni.text.replaceAll(RegExp(r'[^0-9]'), '');
     if (esReclamo &&
         contacto.replaceAll(RegExp(r'[^0-9]'), '').length < 9) {
       _avisar('Pon tu WhatsApp de contacto para que el equipo te valide.');
+      return;
+    }
+    if (esReclamo && dni.length != 8) {
+      _avisar('Pon tu DNI (8 dígitos) para validar tu identidad.');
       return;
     }
     setState(() => _guardando = true);
@@ -202,6 +211,8 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
         solicitanteId: dueno,
         nombreLocal: nombre,
         telefonoContacto: contacto,
+        dni: dni,
+        ruc: _ruc.text.trim(),
         ubicacion: _ubicacion,
       );
     }
@@ -388,17 +399,39 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
           if (widget.cancha.dueno.isEmpty) ...[
             const SizedBox(height: 16),
             TextField(
+              controller: _dni,
+              keyboardType: TextInputType.number,
+              maxLength: 8,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(8),
+              ],
+              decoration: const InputDecoration(
+                labelText: 'Tu DNI *',
+                hintText: '8 dígitos — validamos tu identidad',
+                prefixIcon: Icon(Icons.badge_outlined, color: pino),
+                counterText: '',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
               controller: _contacto,
               keyboardType: TextInputType.phone,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(9),
+              ],
               decoration: const InputDecoration(
                 labelText: 'Tu WhatsApp de contacto *',
-                hintText: 'Ej.: 987 654 321 — te escribiremos para validarte',
-                prefixIcon: Padding(
+                hintText: '987 654 321',
+                prefixIcon: _PrefijoPeruEditar(),
+                prefixIconConstraints: BoxConstraints(minWidth: 76),
+                suffixIcon: Padding(
                   padding: EdgeInsets.all(12),
                   child: FaIcon(FontAwesomeIcons.whatsapp,
                       color: Color(0xFF25D366), size: 20),
                 ),
-                prefixIconConstraints: BoxConstraints(minWidth: 44),
                 border: OutlineInputBorder(),
               ),
             ),
@@ -556,6 +589,26 @@ class _Miniatura extends StatelessWidget {
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Prefijo de teléfono peruano: banderita 🇵🇪 + "+51".
+class _PrefijoPeruEditar extends StatelessWidget {
+  const _PrefijoPeruEditar();
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.only(left: 12, right: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('🇵🇪', style: TextStyle(fontSize: 18)),
+          SizedBox(width: 4),
+          Text('+51',
+              style: TextStyle(fontWeight: FontWeight.w800, color: tinta)),
         ],
       ),
     );

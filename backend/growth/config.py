@@ -8,6 +8,12 @@ import os
 # URL del módulo de existencia (Capa IA). Si está vacío, se usa el stub.
 EXISTENCIA_API_URL = os.getenv("EXISTENCIA_API_URL", "")
 
+# --- Factiliza (consulta de DNI = identidad del reclamante) -----------------
+# El token nunca va en el APK; se lee aquí. Sin token, la consulta queda
+# inactiva (fail-safe) y el flujo sigue con validación humana.
+FACTILIZA_API_TOKEN = os.getenv("FACTILIZA_API_TOKEN", "")
+FACTILIZA_BASE_URL = os.getenv("FACTILIZA_BASE_URL", "https://api.factiliza.com/v1")
+
 # --- WhatsApp Cloud API (OTP de PROPIEDAD) ---------------------------------
 # Credenciales que se cargan como secrets en Railway tras seguir la guía
 # docs/whatsapp-cloud-api-setup.md. Si el token está vacío, el adapter corre en

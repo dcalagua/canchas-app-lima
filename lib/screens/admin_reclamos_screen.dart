@@ -172,6 +172,17 @@ class _ReclamoCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 6),
+          if ((reclamo['nombre_titular'] ?? '').toString().isNotEmpty)
+            Text(
+                '👤 ${reclamo['nombre_titular']}  ·  DNI ${reclamo['dni'] ?? '—'}',
+                style: t.bodySmall
+                    ?.copyWith(color: tinta, fontWeight: FontWeight.w700))
+          else if ((reclamo['dni'] ?? '').toString().isNotEmpty)
+            Text('DNI ${reclamo['dni']} (sin datos)',
+                style: t.bodySmall?.copyWith(color: textoTenue)),
+          if ((reclamo['razon_social'] ?? '').toString().isNotEmpty)
+            Text('🏢 ${reclamo['razon_social']}  ·  RUC ${reclamo['ruc'] ?? ''}',
+                style: t.bodySmall?.copyWith(color: textoTenue)),
           Text('Solicitante: ${reclamo['solicitante_id'] ?? '—'}',
               style: t.bodySmall?.copyWith(color: textoTenue)),
           if ((reclamo['telefono_contacto'] ?? '').toString().isNotEmpty) ...[

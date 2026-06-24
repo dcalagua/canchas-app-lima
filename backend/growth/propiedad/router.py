@@ -12,9 +12,20 @@ from models import (
     TriageRequest,
     ValidarReclamoRequest,
 )
-from propiedad import reclamos, service, twilio_adapter, whatsapp_adapter
+from propiedad import identidad, reclamos, service, twilio_adapter, whatsapp_adapter
 
 router = APIRouter(prefix="/propiedad", tags=["propiedad"])
+
+
+# --- Consulta de identidad (DNI persona / RUC negocio) vía Factiliza ---
+@router.get("/dni/{dni}")
+def get_dni(dni: str) -> dict:
+    return identidad.consultar_dni(dni)
+
+
+@router.get("/ruc/{ruc}")
+def get_ruc(ruc: str) -> dict:
+    return identidad.consultar_ruc(ruc)
 
 
 # --- Reclamo con intervención humana + validación en sitio ---
@@ -23,7 +34,7 @@ def post_reclamo(req: ReclamoRequest) -> dict:
     """El dueño presiona 'Reclamar': avisa al admin por WhatsApp con un código."""
     return reclamos.crear_reclamo(
         req.cancha_id, req.solicitante_id, req.nombre_local,
-        req.telefono_contacto, req.lat, req.lng)
+        req.telefono_contacto, req.dni, req.ruc, req.lat, req.lng)
 
 
 @router.get("/reclamo/{cancha_id}")

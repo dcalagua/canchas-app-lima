@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show Factory;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -37,6 +38,50 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
   final _precio = TextEditingController(text: '120');
   final _ruc = TextEditingController(); // opcional: refuerza la verificación
   final _contacto = TextEditingController(); // WhatsApp del dueño (obligatorio)
+  final _dni = TextEditingController(); // DNI del reclamante (obligatorio)
+
+  /// true cuando se está RECLAMANDO una cancha descubierta en Google (trae base).
+  bool get _esReclamo => widget.base != null;
+
+  // Resultado de la consulta a Factiliza (se muestra debajo del campo).
+  String? _dniNombre;
+  bool _dniCargando = false;
+  String? _rucRazon;
+  bool _rucCargando = false;
+
+  Future<void> _consultarDni(String v) async {
+    final d = v.replaceAll(RegExp(r'[^0-9]'), '');
+    if (d.length != 8) {
+      setState(() => _dniNombre = null);
+      return;
+    }
+    setState(() => _dniCargando = true);
+    final r = await PropiedadService.consultarDni(d);
+    if (!mounted) return;
+    setState(() {
+      _dniCargando = false;
+      _dniNombre = (r != null && r['ok'] == true)
+          ? (r['nombre_completo'] as String?)
+          : null;
+    });
+  }
+
+  Future<void> _consultarRuc(String v) async {
+    final d = v.replaceAll(RegExp(r'[^0-9]'), '');
+    if (d.length != 11) {
+      setState(() => _rucRazon = null);
+      return;
+    }
+    setState(() => _rucCargando = true);
+    final r = await PropiedadService.consultarRuc(d);
+    if (!mounted) return;
+    setState(() {
+      _rucCargando = false;
+      _rucRazon = (r != null && r['ok'] == true)
+          ? (r['razon_social'] as String?)
+          : null;
+    });
+  }
 
   // Deportes del local (varios a la vez). Fútbol viene marcado por defecto.
   final Set<Deporte> _deportes = {Deporte.futbol};
@@ -79,6 +124,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
     _precio.dispose();
     _ruc.dispose();
     _contacto.dispose();
+    _dni.dispose();
     _map?.dispose();
     super.dispose();
   }
@@ -204,6 +250,16 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
       _avisar('Pon tu WhatsApp de contacto para que el equipo te valide.');
       return;
     }
+    final dni = _dni.text.trim();
+    if (dni.replaceAll(RegExp(r'[^0-9]'), '').length != 8) {
+      _avisar('Pon tu DNI (8 dígitos) para validar tu identidad.');
+      return;
+    }
+    final rucDigs = _ruc.text.replaceAll(RegExp(r'[^0-9]'), '');
+    if (rucDigs.isNotEmpty && rucDigs.length != 11) {
+      _avisar('El RUC debe tener 11 dígitos (o déjalo vacío).');
+      return;
+    }
     // Anti-fraude: para registrar/reclamar hay que identificarse con Google, así
     // la cancha queda atada a una cuenta real y pasa a verificación.
     if (!appState.logueado) {
@@ -275,6 +331,8 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
         solicitanteId: dueno,
         nombreLocal: nombre,
         telefonoContacto: contacto,
+        dni: dni,
+        ruc: _ruc.text.trim(),
         ubicacion: _ubicacion,
       );
     }
@@ -300,25 +358,44 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Registrar cancha')),
+      appBar: AppBar(
+          title: Text(_esReclamo ? 'Reclamar cancha' : 'Registrar cancha')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _ZonaFoto(foto: _foto, onTap: _elegirFoto),
-          const SizedBox(height: 12),
-          if (_analizando)
-            Row(
-              children: const [
-                SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2)),
-                SizedBox(width: 10),
-                Text('Analizando la foto con IA…'),
-              ],
-            )
-          else if (_deteccion != null)
-            _ResultadoIA(deteccion: _deteccion!),
+          // La subida manual de fotos solo tiene sentido al CREAR una cancha
+          // nueva. Al reclamar, las fotos ya vienen de Google y luego el dueño
+          // conecta sus redes (tras verificar), así que aquí se oculta.
+          if (!_esReclamo) ...[
+            _ZonaFoto(foto: _foto, onTap: _elegirFoto),
+            const SizedBox(height: 12),
+            if (_analizando)
+              Row(
+                children: const [
+                  SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2)),
+                  SizedBox(width: 10),
+                  Text('Analizando la foto con IA…'),
+                ],
+              )
+            else if (_deteccion != null)
+              _ResultadoIA(deteccion: _deteccion!),
+          ] else
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                  color: limaSuave, borderRadius: BorderRadius.circular(10)),
+              child: Text(
+                'Las fotos ya las trajimos de Google. Cuando verifiques que eres '
+                'el dueño, podrás conectar tus redes e importar más.',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: tinta),
+              ),
+            ),
           const SizedBox(height: 20),
           TextField(
             controller: _nombre,
@@ -329,36 +406,105 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
           ),
           const SizedBox(height: 14),
 
+          // DNI del reclamante (OBLIGATORIO): filtro de identidad. Dato personal
+          // (Ley 29733): con consentimiento, solo lo ve el equipo para validar y
+          // no se publica. Al completar 8 dígitos consulta sus datos (Factiliza).
+          TextField(
+            controller: _dni,
+            keyboardType: TextInputType.number,
+            maxLength: 8,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(8),
+            ],
+            onChanged: _consultarDni,
+            decoration: InputDecoration(
+              labelText: 'Tu DNI *',
+              hintText: '8 dígitos — validamos tu identidad',
+              prefixIcon: const Icon(Icons.badge_outlined, color: verdeCancha),
+              suffixIcon: _dniCargando
+                  ? const Padding(
+                      padding: EdgeInsets.all(14),
+                      child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child:
+                              CircularProgressIndicator(strokeWidth: 2)))
+                  : null,
+              counterText: '',
+              border: const OutlineInputBorder(),
+            ),
+          ),
+          if (_dniNombre != null)
+            _ResultadoConsulta(icono: Icons.check_circle, texto: _dniNombre!)
+          else
+            Padding(
+              padding: const EdgeInsets.only(top: 2, left: 4, bottom: 8),
+              child: Text(
+                'Tu DNI solo se usa para validar que eres el dueño. No se publica.',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: textoTenue, fontSize: 11),
+              ),
+            ),
+          const SizedBox(height: 8),
+
           // WhatsApp de contacto del dueño (OBLIGATORIO): por aquí el equipo de
           // Pichangol se comunica para validar el reclamo.
           TextField(
             controller: _contacto,
             keyboardType: TextInputType.phone,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(9),
+            ],
             decoration: const InputDecoration(
               labelText: 'Tu WhatsApp de contacto *',
-              hintText: 'Ej.: 987 654 321 — te escribiremos para validarte',
-              prefixIcon: Padding(
+              hintText: '987 654 321',
+              prefixIcon: _PrefijoPeru(),
+              prefixIconConstraints: BoxConstraints(minWidth: 76),
+              suffixIcon: Padding(
                 padding: EdgeInsets.all(12),
                 child: FaIcon(FontAwesomeIcons.whatsapp,
                     color: Color(0xFF25D366), size: 20),
               ),
-              prefixIconConstraints: BoxConstraints(minWidth: 44),
               border: OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 14),
 
-          // RUC opcional: refuerza la verificación de existencia (SUNAT).
+          // RUC opcional (solo si quiere ser cliente formal). Al completar 11
+          // dígitos consulta la razón social (Factiliza).
           TextField(
             controller: _ruc,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
+            maxLength: 11,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(11),
+            ],
+            onChanged: _consultarRuc,
+            decoration: InputDecoration(
               labelText: 'RUC del negocio (opcional)',
-              hintText: 'Confirma que el local existe (la propiedad se valida aparte)',
-              prefixIcon: Icon(Icons.verified_outlined, color: verdeCancha),
-              border: OutlineInputBorder(),
+              hintText: '11 dígitos — si quieres ser cliente formal',
+              prefixIcon:
+                  const Icon(Icons.verified_outlined, color: verdeCancha),
+              suffixIcon: _rucCargando
+                  ? const Padding(
+                      padding: EdgeInsets.all(14),
+                      child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child:
+                              CircularProgressIndicator(strokeWidth: 2)))
+                  : null,
+              counterText: '',
+              border: const OutlineInputBorder(),
             ),
           ),
+          if (_rucRazon != null)
+            _ResultadoConsulta(icono: Icons.store, texto: _rucRazon!),
           const SizedBox(height: 14),
 
           // Dirección + botón geocodificar (auto-ubica en el mapa).
@@ -458,12 +604,15 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
             width: double.infinity,
             child: FilledButton.icon(
               style: FilledButton.styleFrom(
-                backgroundColor: coral,
+                backgroundColor: bosque,
+                foregroundColor: lima,
                 padding: const EdgeInsets.symmetric(vertical: 15),
               ),
               onPressed: _publicar,
-              icon: const Icon(Icons.add_location_alt),
-              label: const Text('Publicar cancha'),
+              icon: Icon(_esReclamo ? Icons.verified_user : Icons.send),
+              label: Text(_esReclamo
+                  ? 'Reclamar cancha'
+                  : 'Enviar para validación'),
             ),
           ),
         ],
@@ -582,6 +731,50 @@ class _ResultadoIA extends StatelessWidget {
               'IA detectó: ${deteccion.deporte.etiqueta}  ·  $pct% de confianza',
               style: TextStyle(fontWeight: FontWeight.w600, color: color),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Prefijo de teléfono peruano: banderita 🇵🇪 + "+51".
+class _PrefijoPeru extends StatelessWidget {
+  const _PrefijoPeru();
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.only(left: 12, right: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('🇵🇪', style: TextStyle(fontSize: 18)),
+          SizedBox(width: 4),
+          Text('+51',
+              style: TextStyle(fontWeight: FontWeight.w800, color: tinta)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Línea verde con el dato traído de Factiliza (nombre / razón social).
+class _ResultadoConsulta extends StatelessWidget {
+  final IconData icono;
+  final String texto;
+  const _ResultadoConsulta({required this.icono, required this.texto});
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, left: 2, bottom: 6),
+      child: Row(
+        children: [
+          Icon(icono, color: sage, size: 16),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(texto,
+                style: const TextStyle(
+                    color: tinta, fontWeight: FontWeight.w700, fontSize: 12)),
           ),
         ],
       ),

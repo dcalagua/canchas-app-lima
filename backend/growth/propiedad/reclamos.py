@@ -25,7 +25,7 @@ import secrets
 
 import config
 from db.store import ReclamoPropiedad, ahora, como_dict, stores
-from propiedad import twilio_adapter, whatsapp_adapter
+from propiedad import identidad, twilio_adapter, whatsapp_adapter
 
 
 def _notificar_admin(texto: str) -> None:
@@ -56,8 +56,20 @@ def _distancia_m(lat1, lng1, lat2, lng2) -> float:
 
 def crear_reclamo(cancha_id: str, solicitante_id: str, nombre_local: str,
                   telefono_contacto: str | None = None,
+                  dni: str | None = None, ruc: str | None = None,
                   lat: float | None = None, lng: float | None = None) -> dict:
     codigo = f"{secrets.randbelow(1_000_000):06d}"
+    # Consultas autoritativas server-side (fail-safe): DNI=persona, RUC=negocio.
+    nombre_titular = None
+    if dni:
+        info = identidad.consultar_dni(dni)
+        if info.get("ok"):
+            nombre_titular = info.get("nombre_completo")
+    razon_social = None
+    if ruc:
+        info = identidad.consultar_ruc(ruc)
+        if info.get("ok"):
+            razon_social = info.get("razon_social")
     r = ReclamoPropiedad(
         id=stores.next_id("reclamo"),
         cancha_id=cancha_id,
@@ -67,6 +79,10 @@ def crear_reclamo(cancha_id: str, solicitante_id: str, nombre_local: str,
         estado="pendiente_triage",
         creado_en=ahora(),
         telefono_contacto=telefono_contacto,
+        dni=dni,
+        nombre_titular=nombre_titular,
+        ruc=ruc,
+        razon_social=razon_social,
         lat=lat,
         lng=lng,
     )
@@ -74,7 +90,9 @@ def crear_reclamo(cancha_id: str, solicitante_id: str, nombre_local: str,
     _notificar_admin(
         f"🟢 Nuevo reclamo de cancha en Pichangol\n"
         f"Local: {nombre_local}\n"
-        f"Cuenta: {solicitante_id}\n"
+        f"Titular (DNI {dni or 's/n'}): {nombre_titular or 's/d'}\n"
+        + (f"RUC {ruc}: {razon_social or 's/d'}\n" if ruc else "")
+        + f"Cuenta: {solicitante_id}\n"
         f"WhatsApp del dueño: {telefono_contacto or '⚠️ no dejó número'}\n"
         f"Código: {codigo}\n"
         f"Escríbele/llámalo por WhatsApp y, si lo verificas, apruébalo en el "

@@ -15,6 +15,34 @@ class PropiedadService {
 
   static bool get disponible => _baseUrl.isNotEmpty;
 
+  /// Consulta el DNI (identidad de la persona) vía backend → Factiliza.
+  /// Devuelve {ok, nombre_completo, ...} o null si no se pudo.
+  static Future<Map<String, dynamic>?> consultarDni(String dni) async {
+    if (!disponible) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/propiedad/dni/$dni');
+      final resp = await http.get(uri).timeout(const Duration(seconds: 12));
+      if (resp.statusCode != 200) return null;
+      return Map<String, dynamic>.from(jsonDecode(resp.body) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Consulta el RUC (negocio) vía backend → Factiliza.
+  /// Devuelve {ok, razon_social, ...} o null si no se pudo.
+  static Future<Map<String, dynamic>?> consultarRuc(String ruc) async {
+    if (!disponible) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/propiedad/ruc/$ruc');
+      final resp = await http.get(uri).timeout(const Duration(seconds: 12));
+      if (resp.statusCode != 200) return null;
+      return Map<String, dynamic>.from(jsonDecode(resp.body) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Crea una SOLICITUD DE RECLAMO (modelo concierge): avisa al admin de
   /// Pichangol por WhatsApp con un código para que vetee al reclamante antes de
   /// activar nada. Devuelve {ok, reclamo_id, codigo, estado} o null si falló.
@@ -23,6 +51,8 @@ class PropiedadService {
     required String solicitanteId,
     required String nombreLocal,
     String? telefonoContacto,
+    String? dni,
+    String? ruc,
     LatLng? ubicacion,
   }) async {
     if (!disponible) return null;
@@ -37,6 +67,8 @@ class PropiedadService {
                 'nombre_local': nombreLocal,
                 if (telefonoContacto != null && telefonoContacto.isNotEmpty)
                   'telefono_contacto': telefonoContacto,
+                if (dni != null && dni.isNotEmpty) 'dni': dni,
+                if (ruc != null && ruc.isNotEmpty) 'ruc': ruc,
                 if (ubicacion != null) 'lat': ubicacion.latitude,
                 if (ubicacion != null) 'lng': ubicacion.longitude,
               }))

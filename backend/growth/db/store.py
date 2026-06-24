@@ -148,6 +148,10 @@ class ReclamoPropiedad:
     estado: str  # pendiente_triage|aprobado_triage|pendiente_validacion|activada|rechazada
     creado_en: datetime
     telefono_contacto: str | None = None
+    dni: str | None = None
+    nombre_titular: str | None = None
+    ruc: str | None = None
+    razon_social: str | None = None
     lat: float | None = None
     lng: float | None = None
     decidido_en: datetime | None = None
@@ -335,6 +339,8 @@ def _reclamo_from(d: dict) -> ReclamoPropiedad:
         id=d["id"], cancha_id=d["cancha_id"], solicitante_id=d["solicitante_id"],
         nombre_local=d["nombre_local"], codigo=d["codigo"], estado=d["estado"],
         creado_en=_dt(d["creado_en"]), telefono_contacto=d.get("telefono_contacto"),
+        dni=d.get("dni"), nombre_titular=d.get("nombre_titular"),
+        ruc=d.get("ruc"), razon_social=d.get("razon_social"),
         lat=d.get("lat"), lng=d.get("lng"), decidido_en=_dt(d.get("decidido_en")),
         validado_en=_dt(d.get("validado_en")), validador=d.get("validador"),
         nota=d.get("nota"))

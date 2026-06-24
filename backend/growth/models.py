@@ -88,6 +88,8 @@ class ReclamoRequest(BaseModel):
     solicitante_id: str
     nombre_local: str
     telefono_contacto: str | None = None
+    dni: str | None = None
+    ruc: str | None = None
     lat: float | None = None
     lng: float | None = None
 
