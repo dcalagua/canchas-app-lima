@@ -34,7 +34,8 @@ def post_reclamo(req: ReclamoRequest) -> dict:
     """El dueño presiona 'Reclamar': avisa al admin por WhatsApp con un código."""
     return reclamos.crear_reclamo(
         req.cancha_id, req.solicitante_id, req.nombre_local,
-        req.telefono_contacto, req.dni, req.ruc, req.lat, req.lng)
+        req.telefono_contacto, req.dni, req.ruc, req.relacion,
+        req.lat, req.lng)
 
 
 @router.get("/reclamo/{cancha_id}")

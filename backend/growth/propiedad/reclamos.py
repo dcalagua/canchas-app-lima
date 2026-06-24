@@ -57,6 +57,7 @@ def _distancia_m(lat1, lng1, lat2, lng2) -> float:
 def crear_reclamo(cancha_id: str, solicitante_id: str, nombre_local: str,
                   telefono_contacto: str | None = None,
                   dni: str | None = None, ruc: str | None = None,
+                  relacion: str | None = None,
                   lat: float | None = None, lng: float | None = None) -> dict:
     codigo = f"{secrets.randbelow(1_000_000):06d}"
     # Consultas autoritativas server-side (fail-safe): DNI=persona, RUC=negocio.
@@ -83,6 +84,7 @@ def crear_reclamo(cancha_id: str, solicitante_id: str, nombre_local: str,
         nombre_titular=nombre_titular,
         ruc=ruc,
         razon_social=razon_social,
+        relacion=relacion,
         lat=lat,
         lng=lng,
     )
@@ -90,6 +92,7 @@ def crear_reclamo(cancha_id: str, solicitante_id: str, nombre_local: str,
     _notificar_admin(
         f"🟢 Nuevo reclamo de cancha en Pichangol\n"
         f"Local: {nombre_local}\n"
+        f"Relación: {relacion or 's/d'}\n"
         f"Titular (DNI {dni or 's/n'}): {nombre_titular or 's/d'}\n"
         + (f"RUC {ruc}: {razon_social or 's/d'}\n" if ruc else "")
         + f"Cuenta: {solicitante_id}\n"

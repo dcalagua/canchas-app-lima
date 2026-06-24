@@ -49,6 +49,17 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
   String? _rucRazon;
   bool _rucCargando = false;
 
+  // Relación del reclamante con la cancha (combo).
+  String _relacion = 'dueño';
+
+  /// Etiqueta con asterisco rojo para campos obligatorios.
+  Widget _lblReq(String s) => Text.rich(TextSpan(text: s, children: const [
+        TextSpan(
+            text: ' *',
+            style: TextStyle(
+                color: Color(0xFFD11F2E), fontWeight: FontWeight.w900)),
+      ]));
+
   Future<void> _consultarDni(String v) async {
     final d = v.replaceAll(RegExp(r'[^0-9]'), '');
     if (d.length != 8) {
@@ -333,6 +344,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
         telefonoContacto: contacto,
         dni: dni,
         ruc: _ruc.text.trim(),
+        relacion: _relacion,
         ubicacion: _ubicacion,
       );
     }
@@ -397,14 +409,10 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
               ),
             ),
           const SizedBox(height: 20),
-          TextField(
-            controller: _nombre,
-            decoration: const InputDecoration(
-              labelText: 'Nombre del local / cancha',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 14),
+
+          // ORDEN del reclamo: identidad primero (DNI, WhatsApp, relación, RUC),
+          // luego nombre, dirección y mapa. Los deportes/precio/redes se
+          // configuran DESPUÉS de aprobada la cancha.
 
           // DNI del reclamante (OBLIGATORIO): filtro de identidad. Dato personal
           // (Ley 29733): con consentimiento, solo lo ve el equipo para validar y
@@ -419,7 +427,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
             ],
             onChanged: _consultarDni,
             decoration: InputDecoration(
-              labelText: 'Tu DNI *',
+              label: _lblReq('Tu DNI'),
               hintText: '8 dígitos — validamos tu identidad',
               prefixIcon: const Icon(Icons.badge_outlined, color: verdeCancha),
               suffixIcon: _dniCargando
@@ -459,18 +467,38 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
               FilteringTextInputFormatter.digitsOnly,
               LengthLimitingTextInputFormatter(9),
             ],
-            decoration: const InputDecoration(
-              labelText: 'Tu WhatsApp de contacto *',
+            decoration: InputDecoration(
+              label: _lblReq('Tu WhatsApp de contacto'),
               hintText: '987 654 321',
-              prefixIcon: _PrefijoPeru(),
-              prefixIconConstraints: BoxConstraints(minWidth: 76),
-              suffixIcon: Padding(
+              prefixIcon: const _PrefijoPeru(),
+              prefixIconConstraints: const BoxConstraints(minWidth: 76),
+              suffixIcon: const Padding(
                 padding: EdgeInsets.all(12),
                 child: FaIcon(FontAwesomeIcons.whatsapp,
                     color: Color(0xFF25D366), size: 20),
               ),
-              border: OutlineInputBorder(),
+              border: const OutlineInputBorder(),
             ),
+          ),
+          const SizedBox(height: 14),
+
+          // Relación con la cancha (dueño / concesionario / arrendatario).
+          DropdownButtonFormField<String>(
+            value: _relacion,
+            decoration: InputDecoration(
+              label: _lblReq('Tu relación con la cancha'),
+              prefixIcon:
+                  const Icon(Icons.handshake_outlined, color: verdeCancha),
+              border: const OutlineInputBorder(),
+            ),
+            items: const [
+              DropdownMenuItem(value: 'dueño', child: Text('Dueño')),
+              DropdownMenuItem(
+                  value: 'concesionario', child: Text('Concesionario')),
+              DropdownMenuItem(
+                  value: 'arrendatario', child: Text('Arrendatario')),
+            ],
+            onChanged: (v) => setState(() => _relacion = v ?? 'dueño'),
           ),
           const SizedBox(height: 14),
 
@@ -507,13 +535,23 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
             _ResultadoConsulta(icono: Icons.store, texto: _rucRazon!),
           const SizedBox(height: 14),
 
+          // Nombre del local / cancha.
+          TextField(
+            controller: _nombre,
+            decoration: InputDecoration(
+              label: _lblReq('Nombre del local / cancha'),
+              border: const OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 14),
+
           // Dirección + botón geocodificar (auto-ubica en el mapa).
           TextField(
             controller: _direccion,
             textInputAction: TextInputAction.search,
             onSubmitted: (_) => _ubicarDireccion(),
             decoration: InputDecoration(
-              labelText: 'Dirección (calle y número, distrito)',
+              label: _lblReq('Dirección (calle y número, distrito)'),
               hintText: 'Ej.: Av. Aviación 2345, San Borja',
               prefixIcon: const Icon(Icons.place, color: coral),
               border: const OutlineInputBorder(),
@@ -554,51 +592,69 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
           ),
           const SizedBox(height: 18),
 
-          // Deportes del local (varios a la vez).
-          const Text('¿Qué deportes hay en este local?',
-              style: TextStyle(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 4),
-          const Text('Puedes marcar más de uno.',
-              style: TextStyle(color: Colors.grey, fontSize: 12)),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 10,
-            runSpacing: 8,
-            children: [
-              for (final d in Deporte.values)
-                FilterChip(
-                  avatar: Icon(iconoDeporte(d),
-                      size: 18,
-                      color: _deportes.contains(d)
-                          ? Colors.white
-                          : colorDeporte(d)),
-                  label: Text(d.etiqueta),
-                  selected: _deportes.contains(d),
-                  selectedColor: colorDeporte(d),
-                  checkmarkColor: Colors.white,
-                  labelStyle: TextStyle(
-                    color: _deportes.contains(d) ? Colors.white : tinta,
-                    fontWeight: FontWeight.w600,
+          // Deportes y precio: SOLO al crear una cancha nueva. Al reclamar, esto
+          // (más fotos y redes) se configura DESPUÉS de aprobada la cancha.
+          if (!_esReclamo) ...[
+            const Text('¿Qué deportes hay en este local?',
+                style: TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            const Text('Puedes marcar más de uno.',
+                style: TextStyle(color: Colors.grey, fontSize: 12)),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 10,
+              runSpacing: 8,
+              children: [
+                for (final d in Deporte.values)
+                  FilterChip(
+                    avatar: Icon(iconoDeporte(d),
+                        size: 18,
+                        color: _deportes.contains(d)
+                            ? Colors.white
+                            : colorDeporte(d)),
+                    label: Text(d.etiqueta),
+                    selected: _deportes.contains(d),
+                    selectedColor: colorDeporte(d),
+                    checkmarkColor: Colors.white,
+                    labelStyle: TextStyle(
+                      color: _deportes.contains(d) ? Colors.white : tinta,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    onSelected: (s) => setState(() {
+                      if (s) {
+                        _deportes.add(d);
+                      } else {
+                        _deportes.remove(d);
+                      }
+                    }),
                   ),
-                  onSelected: (s) => setState(() {
-                    if (s) {
-                      _deportes.add(d);
-                    } else {
-                      _deportes.remove(d);
-                    }
-                  }),
-                ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _precio,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: 'Precio por hora (S/)',
-              border: OutlineInputBorder(),
+              ],
             ),
-          ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _precio,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Precio por hora',
+                prefixText: 'S/ ',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ] else
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                  color: const Color(0xFFEAF6C2),
+                  borderRadius: BorderRadius.circular(10)),
+              child: Text(
+                'Los deportes, el precio y la conexión con tus redes los '
+                'configuras cuando aprobemos tu cancha.',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: tinta),
+              ),
+            ),
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,

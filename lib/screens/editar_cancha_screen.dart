@@ -392,7 +392,8 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
             controller: _precio,
             keyboardType: TextInputType.number,
             decoration: const InputDecoration(
-              labelText: 'Precio por hora (S/)',
+              labelText: 'Precio por hora',
+              prefixText: 'S/ ',
               border: OutlineInputBorder(),
             ),
           ),

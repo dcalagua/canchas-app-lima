@@ -53,6 +53,7 @@ class PropiedadService {
     String? telefonoContacto,
     String? dni,
     String? ruc,
+    String? relacion,
     LatLng? ubicacion,
   }) async {
     if (!disponible) return null;
@@ -69,6 +70,7 @@ class PropiedadService {
                   'telefono_contacto': telefonoContacto,
                 if (dni != null && dni.isNotEmpty) 'dni': dni,
                 if (ruc != null && ruc.isNotEmpty) 'ruc': ruc,
+                if (relacion != null && relacion.isNotEmpty) 'relacion': relacion,
                 if (ubicacion != null) 'lat': ubicacion.latitude,
                 if (ubicacion != null) 'lng': ubicacion.longitude,
               }))

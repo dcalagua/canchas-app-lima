@@ -90,6 +90,7 @@ class ReclamoRequest(BaseModel):
     telefono_contacto: str | None = None
     dni: str | None = None
     ruc: str | None = None
+    relacion: str | None = None  # dueño | concesionario | arrendatario
     lat: float | None = None
     lng: float | None = None
 

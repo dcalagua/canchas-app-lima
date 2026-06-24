@@ -183,6 +183,9 @@ class _ReclamoCard extends StatelessWidget {
           if ((reclamo['razon_social'] ?? '').toString().isNotEmpty)
             Text('🏢 ${reclamo['razon_social']}  ·  RUC ${reclamo['ruc'] ?? ''}',
                 style: t.bodySmall?.copyWith(color: textoTenue)),
+          if ((reclamo['relacion'] ?? '').toString().isNotEmpty)
+            Text('Relación: ${reclamo['relacion']}',
+                style: t.bodySmall?.copyWith(color: textoTenue)),
           Text('Solicitante: ${reclamo['solicitante_id'] ?? '—'}',
               style: t.bodySmall?.copyWith(color: textoTenue)),
           if ((reclamo['telefono_contacto'] ?? '').toString().isNotEmpty) ...[

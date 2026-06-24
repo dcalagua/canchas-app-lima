@@ -152,6 +152,7 @@ class ReclamoPropiedad:
     nombre_titular: str | None = None
     ruc: str | None = None
     razon_social: str | None = None
+    relacion: str | None = None
     lat: float | None = None
     lng: float | None = None
     decidido_en: datetime | None = None
@@ -341,6 +342,7 @@ def _reclamo_from(d: dict) -> ReclamoPropiedad:
         creado_en=_dt(d["creado_en"]), telefono_contacto=d.get("telefono_contacto"),
         dni=d.get("dni"), nombre_titular=d.get("nombre_titular"),
         ruc=d.get("ruc"), razon_social=d.get("razon_social"),
+        relacion=d.get("relacion"),
         lat=d.get("lat"), lng=d.get("lng"), decidido_en=_dt(d.get("decidido_en")),
         validado_en=_dt(d.get("validado_en")), validador=d.get("validador"),
         nota=d.get("nota"))
