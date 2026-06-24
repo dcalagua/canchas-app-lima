@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../services/propiedad_service.dart';
 import '../state/app_state.dart';
@@ -172,9 +174,14 @@ class _ReclamoCard extends StatelessWidget {
           const SizedBox(height: 6),
           Text('Solicitante: ${reclamo['solicitante_id'] ?? '—'}',
               style: t.bodySmall?.copyWith(color: textoTenue)),
-          if ((reclamo['telefono_contacto'] ?? '').toString().isNotEmpty)
-            Text('Contacto: ${reclamo['telefono_contacto']}',
-                style: t.bodySmall?.copyWith(color: textoTenue)),
+          if ((reclamo['telefono_contacto'] ?? '').toString().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _BotonWhatsApp(
+                telefono: reclamo['telefono_contacto'].toString(),
+                nombreLocal: reclamo['nombre_local']?.toString() ?? '',
+                codigo: reclamo['codigo']?.toString() ?? ''),
+          ],
+          const SizedBox(height: 4),
           Text('Estado: $estado',
               style: t.bodySmall?.copyWith(color: textoTenue)),
           if (pendiente) ...[
@@ -198,6 +205,63 @@ class _ReclamoCard extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// Botón para escribir al dueño por WhatsApp (abre wa.me con un mensaje
+/// pre-llenado que incluye el código del reclamo).
+class _BotonWhatsApp extends StatelessWidget {
+  const _BotonWhatsApp(
+      {required this.telefono, required this.nombreLocal, required this.codigo});
+  final String telefono;
+  final String nombreLocal;
+  final String codigo;
+
+  String get _e164 {
+    var d = telefono.replaceAll(RegExp(r'[^0-9]'), '');
+    if (d.length == 9 && d.startsWith('9')) d = '51$d';
+    return d;
+  }
+
+  Future<void> _abrir() async {
+    final msg = Uri.encodeComponent(
+        'Hola, te escribo de Pichangol por el reclamo de "$nombreLocal". '
+        'Tu código es $codigo. ¿Podemos validar que eres el dueño?');
+    final uri = Uri.parse('https://wa.me/$_e164?text=$msg');
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: _abrir,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: const Color(0xFFE7F8EE),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFFBBE8CF)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const FaIcon(FontAwesomeIcons.whatsapp,
+                color: Color(0xFF25D366), size: 18),
+            const SizedBox(width: 8),
+            Text(telefono,
+                style: const TextStyle(
+                    color: tinta, fontWeight: FontWeight.w700, fontSize: 13)),
+            const SizedBox(width: 8),
+            const Text('Escribir',
+                style: TextStyle(
+                    color: Color(0xFF1F8F4E),
+                    fontWeight: FontWeight.w800,
+                    fontSize: 12)),
+          ],
+        ),
       ),
     );
   }

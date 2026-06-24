@@ -27,6 +27,7 @@ import 'models/models.dart';
 const Color lima = Color(0xFFAEEA94);   // accent / CTA / realce
 const Color sage = Color(0xFF5AA97F);   // acento primario (web EBIM)
 const Color teal = Color(0xFF056769);   // acento de apoyo (teal)
+const Color amarillo = Color(0xFFF2C94C); // acento de energía (pelota, destacado)
 const Color verde = Color(0xFF2E8B66);  // medio
 const Color verdeProfundo = Color(0xFF3F8A66); // window bar / verde profundo
 const Color bosque = Color(0xFF14463A); // primary / superficies oscuras

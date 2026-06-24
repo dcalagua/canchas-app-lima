@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show Factory;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
@@ -336,7 +337,12 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
             decoration: const InputDecoration(
               labelText: 'Tu WhatsApp de contacto *',
               hintText: 'Ej.: 987 654 321 — te escribiremos para validarte',
-              prefixIcon: Icon(Icons.chat, color: verdeCancha),
+              prefixIcon: Padding(
+                padding: EdgeInsets.all(12),
+                child: FaIcon(FontAwesomeIcons.whatsapp,
+                    color: Color(0xFF25D366), size: 20),
+              ),
+              prefixIconConstraints: BoxConstraints(minWidth: 44),
               border: OutlineInputBorder(),
             ),
           ),

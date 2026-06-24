@@ -936,15 +936,15 @@ class _CanchaCard extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
-                            color: coral,
+                            color: amarillo,
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: const Text(
                             '★ Destacado',
                             style: TextStyle(
-                                color: Colors.white,
+                                color: tinta,
                                 fontSize: 10,
-                                fontWeight: FontWeight.w700),
+                                fontWeight: FontWeight.w800),
                           ),
                         ),
                       )

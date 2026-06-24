@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import '../models/models.dart';
 import '../services/propiedad_service.dart';
@@ -159,7 +160,12 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
             decoration: const InputDecoration(
               labelText: 'Teléfono del local (WhatsApp)',
               hintText: 'Ej.: 987 654 321',
-              prefixIcon: Icon(Icons.phone),
+              prefixIcon: Padding(
+                padding: EdgeInsets.all(12),
+                child: FaIcon(FontAwesomeIcons.whatsapp,
+                    color: Color(0xFF25D366), size: 20),
+              ),
+              prefixIconConstraints: BoxConstraints(minWidth: 44),
               border: OutlineInputBorder(),
             ),
           ),
