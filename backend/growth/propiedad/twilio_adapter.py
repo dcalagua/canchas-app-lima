@@ -86,12 +86,17 @@ def enviar_sms(telefono_e164: str, codigo: str) -> dict:
 def enviar_whatsapp(telefono_e164: str, codigo: str) -> dict:
     """Envía el código por WhatsApp vía Twilio (prefijo `whatsapp:`). El número
     de destino debe haberse unido al sandbox (en pruebas). Devuelve {ok, via}."""
+    return enviar_whatsapp_texto(telefono_e164, _cuerpo(codigo))
+
+
+def enviar_whatsapp_texto(telefono_e164: str, texto: str) -> dict:
+    """Envía un texto libre por WhatsApp vía Twilio. Para avisos al admin."""
     if not disponible_whatsapp():
         return {"ok": True, "via": "stub"}
     desde = _con_mas(config.TWILIO_WHATSAPP_FROM)
     datos = {
         "From": f"whatsapp:{desde}",
         "To": f"whatsapp:{_con_mas(telefono_e164)}",
-        "Body": _cuerpo(codigo),
+        "Body": texto,
     }
     return _post(datos, via="twilio_whatsapp")

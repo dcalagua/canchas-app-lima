@@ -41,6 +41,18 @@ TWILIO_WHATSAPP_FROM = os.getenv("TWILIO_WHATSAPP_FROM", "")
 # Canal preferido: "whatsapp" (Meta) | "twilio_whatsapp" | "sms".
 OTP_CANAL_PREFERIDO = os.getenv("OTP_CANAL_PREFERIDO", "whatsapp")
 
+# --- Reclamo de propiedad con intervención humana (concierge) ---------------
+# Número (E.164, ej. +51987654321) al que llegan los avisos de admin por WhatsApp
+# cuando alguien reclama una cancha y cuando un validador la confirma en sitio.
+PICHANGOL_ADMIN_WHATSAPP = os.getenv("PICHANGOL_ADMIN_WHATSAPP", "")
+# Si true, la validación en sitio del motorizado activa la cancha automáticamente
+# (y se avisa al admin). Si false, queda lista y el admin la activa a mano.
+VALIDADOR_ACTIVA_AUTOMATICO = os.getenv("VALIDADOR_ACTIVA_AUTOMATICO", "1") == "1"
+# Distancia máx (m) entre el GPS del validador y la ubicación de la cancha para
+# considerar que la visita "coincide".
+RECLAMO_VALIDACION_GPS_MAX_M = float(
+    os.getenv("RECLAMO_VALIDACION_GPS_MAX_M", "150"))
+
 # Distancia máx (m) entre la ubicación declarada y la del sitio para considerar
 # que la verificación física "coincide".
 COINCIDENCIA_MAX_M = float(os.getenv("VERIF_COINCIDENCIA_MAX_M", "200"))

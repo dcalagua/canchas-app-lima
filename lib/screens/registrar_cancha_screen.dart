@@ -14,7 +14,6 @@ import '../services/sport_detector.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'login_google_sheet.dart';
-import 'verificar_propiedad_screen.dart';
 
 /// Registrar una cancha escribiendo la dirección: se geocodifica y aparece en el
 /// mapa automáticamente (estilo eSupplier). Un local puede tener varias canchas
@@ -259,26 +258,27 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
     appState.verificarVenue(creadas,
         ruc: _ruc.text.trim(), razonSocial: nombre);
 
-    if (!mounted) return;
-    final n = deportes.length;
-
-    // Reclamar/registrar siempre te lleva a confirmar tu propiedad por código
-    // (WhatsApp/SMS): ahí aparece el campo del teléfono del local. Si el backend
-    // de verificación no está configurado, esa pantalla lo avisa con claridad.
+    // Modelo concierge: al reclamar/registrar se crea una SOLICITUD DE RECLAMO y
+    // le llega un WhatsApp al equipo de Pichangol con un código para vetear al
+    // dueño. Nada se activa hasta validarlo (revisión + visita en sitio).
     if (creadas.isNotEmpty) {
-      Navigator.of(context).pushReplacement(MaterialPageRoute(
-        builder: (_) => VerificarPropiedadScreen(cancha: creadas.first),
-      ));
-      return;
+      PropiedadService.crearReclamo(
+        canchaId: creadas.first.id,
+        solicitanteId: dueno,
+        nombreLocal: nombre,
+        ubicacion: _ubicacion,
+      );
     }
 
+    if (!mounted) return;
     Navigator.of(context).pop();
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
+      const SnackBar(
         backgroundColor: verdeCancha,
-        content: Text(n > 1
-            ? '✅ "$nombre" publicado con $n canchas. En revisión de propiedad.'
-            : '✅ "$nombre" publicada. En revisión de propiedad.'),
+        content: Text(
+            '✅ Reclamo enviado. En revisión: te contactaremos por WhatsApp '
+            'para validar que eres el dueño antes de activar la cancha.'),
+        duration: Duration(seconds: 5),
       ),
     );
   }

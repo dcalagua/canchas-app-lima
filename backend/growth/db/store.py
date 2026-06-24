@@ -134,6 +134,29 @@ class ConfirmacionPropiedad:
 
 
 @dataclass
+class ReclamoPropiedad:
+    """Solicitud de reclamo con intervención humana primero (modelo concierge):
+    el reclamante pide la cancha → Pichangol (admin) recibe un WhatsApp con el
+    código y lo vetea → tras aprobar, el dueño configura → al guardar queda
+    pendiente de validación EN SITIO por un motorizado que ingresa el código y
+    cuyo GPS debe coincidir con la cancha → recién ahí se activa."""
+    id: int
+    cancha_id: str
+    solicitante_id: str
+    nombre_local: str
+    codigo: str
+    estado: str  # pendiente_triage|aprobado_triage|pendiente_validacion|activada|rechazada
+    creado_en: datetime
+    telefono_contacto: str | None = None
+    lat: float | None = None
+    lng: float | None = None
+    decidido_en: datetime | None = None
+    validado_en: datetime | None = None
+    validador: str | None = None
+    nota: str | None = None
+
+
+@dataclass
 class CanchaEstado:
     """Estado relevante de una cancha para estos subsistemas (en producción es la
     fila de `pichangol_canchas`)."""
@@ -160,6 +183,7 @@ class Stores:
         # OTP de propiedad: transitorio, NO se persiste (uno activo por cancha).
         self.otps: dict[str, OtpPropiedad] = {}
         self.confirmaciones_propiedad: list[ConfirmacionPropiedad] = []
+        self.reclamos: list[ReclamoPropiedad] = []
         self._idem: dict[tuple[str, str], dict] = {}
         self._ids: dict[str, int] = {}
 
@@ -216,6 +240,7 @@ class Stores:
             "confirmaciones_propiedad": [
                 como_dict(c) for c in self.confirmaciones_propiedad
             ],
+            "reclamos": [como_dict(r) for r in self.reclamos],
         }
 
     def load_state(self, data: dict) -> None:
@@ -235,6 +260,7 @@ class Stores:
         self.confirmaciones_propiedad = [
             _conf_from(d) for d in data.get("confirmaciones_propiedad", [])
         ]
+        self.reclamos = [_reclamo_from(d) for d in data.get("reclamos", [])]
 
 
 # Singleton (en producción: repos contra Supabase).
@@ -301,6 +327,16 @@ def _conf_from(d: dict) -> ConfirmacionPropiedad:
         metodo=d["metodo"], estado=d["estado"],
         telefono_enmascarado=d.get("telefono_enmascarado"),
         creado_en=_dt(d["creado_en"]), decidido_en=_dt(d.get("decidido_en")),
+        nota=d.get("nota"))
+
+
+def _reclamo_from(d: dict) -> ReclamoPropiedad:
+    return ReclamoPropiedad(
+        id=d["id"], cancha_id=d["cancha_id"], solicitante_id=d["solicitante_id"],
+        nombre_local=d["nombre_local"], codigo=d["codigo"], estado=d["estado"],
+        creado_en=_dt(d["creado_en"]), telefono_contacto=d.get("telefono_contacto"),
+        lat=d.get("lat"), lng=d.get("lng"), decidido_en=_dt(d.get("decidido_en")),
+        validado_en=_dt(d.get("validado_en")), validador=d.get("validador"),
         nota=d.get("nota"))
 
 

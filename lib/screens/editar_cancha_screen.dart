@@ -12,7 +12,6 @@ import '../models/models.dart';
 import '../services/propiedad_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
-import 'verificar_propiedad_screen.dart';
 
 /// Edición de una cancha ya registrada por el dueño: cambiar nombre, precio,
 /// deporte, dirección/ubicación, agregar foto de portada o eliminarla.
@@ -182,32 +181,31 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
     // confirma que el local es real, pero NO te convierte en dueño: la cancha
     // queda en revisión de propiedad hasta validar al titular (código al teléfono
     // del local, aprobación manual o visita). Un RUC válido por sí solo no basta.
+    // Modelo concierge: al reclamar se crea una SOLICITUD DE RECLAMO y le llega
+    // un WhatsApp al equipo de Pichangol con un código para vetear al dueño. Nada
+    // se activa hasta validarlo (revisión + visita en sitio).
     if (eraReclamo) {
       appState.verificarCancha(actualizada, ruc: _ruc.text.trim());
+      PropiedadService.crearReclamo(
+        canchaId: actualizada.id,
+        solicitanteId: dueno,
+        nombreLocal: nombre,
+        ubicacion: _ubicacion,
+      );
     }
 
     if (!mounted) return;
     setState(() => _guardando = false);
-
-    // Al reclamar, llevamos al dueño directo a confirmar su propiedad por código
-    // (WhatsApp/SMS): ahí aparece el campo del teléfono del local. Si el backend
-    // no está configurado, esa pantalla lo avisa con claridad.
-    if (eraReclamo) {
-      Navigator.of(context).pushReplacement(MaterialPageRoute(
-        builder: (_) => VerificarPropiedadScreen(cancha: actualizada),
-      ));
-      return;
-    }
-
     Navigator.of(context).pop();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         backgroundColor: pino,
         content: Text(
             eraReclamo
-                ? '✅ "$nombre" reclamada. En revisión de propiedad: validaremos que eres el dueño antes de habilitar reservas.'
+                ? '✅ "$nombre" reclamada. En revisión: te contactaremos por WhatsApp para validarla antes de activarla.'
                 : '✅ "$nombre" actualizada.',
             style: const TextStyle(color: Colors.white)),
+        duration: const Duration(seconds: 5),
       ),
     );
   }

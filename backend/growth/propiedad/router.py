@@ -8,10 +8,57 @@ from models import (
     AprobarManualRequest,
     OtpConfirmarRequest,
     OtpSolicitarRequest,
+    ReclamoRequest,
+    TriageRequest,
+    ValidarReclamoRequest,
 )
-from propiedad import service, twilio_adapter, whatsapp_adapter
+from propiedad import reclamos, service, twilio_adapter, whatsapp_adapter
 
 router = APIRouter(prefix="/propiedad", tags=["propiedad"])
+
+
+# --- Reclamo con intervención humana + validación en sitio ---
+@router.post("/reclamo")
+def post_reclamo(req: ReclamoRequest) -> dict:
+    """El dueño presiona 'Reclamar': avisa al admin por WhatsApp con un código."""
+    return reclamos.crear_reclamo(
+        req.cancha_id, req.solicitante_id, req.nombre_local,
+        req.telefono_contacto, req.lat, req.lng)
+
+
+@router.get("/reclamo/{cancha_id}")
+def get_reclamo(cancha_id: str) -> dict:
+    return reclamos.estado(cancha_id)
+
+
+@router.post("/reclamo/{reclamo_id}/triage")
+def post_triage(reclamo_id: int, req: TriageRequest) -> dict:
+    """El admin vetea al reclamante y aprueba/rechaza (desbloquea el panel)."""
+    return reclamos.triage(reclamo_id, req.aprobado, req.revisor, req.nota)
+
+
+@router.post("/reclamo/{reclamo_id}/listo-para-validar")
+def post_listo(reclamo_id: int) -> dict:
+    """El dueño guardó su info: pasa a pendiente de validación en sitio."""
+    return reclamos.listo_para_validar(reclamo_id)
+
+
+@router.post("/reclamo/validar")
+def post_validar(req: ValidarReclamoRequest) -> dict:
+    """El motorizado ingresa el código en el sitio; su GPS debe coincidir."""
+    return reclamos.validar_en_sitio(
+        req.codigo, req.lat, req.lng, req.validador, req.fotos_urls)
+
+
+@router.post("/reclamo/{reclamo_id}/activar")
+def post_activar(reclamo_id: int) -> dict:
+    """Activación manual por el admin (si VALIDADOR_ACTIVA_AUTOMATICO=0)."""
+    return reclamos.activar_admin(reclamo_id)
+
+
+@router.get("/reclamos")
+def get_reclamos(estado: str | None = None) -> list[dict]:
+    return reclamos.listar(estado)
 
 
 @router.get("/estado/{cancha_id}")

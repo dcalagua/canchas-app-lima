@@ -82,6 +82,30 @@ class AprobarManualRequest(BaseModel):
     nota: str | None = None
 
 
+# --- Reclamo de propiedad (concierge + validación en sitio) ---
+class ReclamoRequest(BaseModel):
+    cancha_id: str
+    solicitante_id: str
+    nombre_local: str
+    telefono_contacto: str | None = None
+    lat: float | None = None
+    lng: float | None = None
+
+
+class TriageRequest(BaseModel):
+    aprobado: bool = True
+    revisor: str | None = None
+    nota: str | None = None
+
+
+class ValidarReclamoRequest(BaseModel):
+    codigo: str
+    lat: float
+    lng: float
+    validador: str | None = None
+    fotos_urls: list[str] = Field(default_factory=list)
+
+
 # --- Transversal ---
 class ConsentimientoRequest(BaseModel):
     sujeto_id: str
