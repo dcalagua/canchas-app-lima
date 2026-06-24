@@ -32,6 +32,29 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
   String _dia = 'Hoy';
   String? _hora;
 
+  @override
+  void initState() {
+    super.initState();
+    // Si la cancha está en revisión, pregunta al backend si el admin ya la
+    // aprobó y refresca el estado (quita el cartel "pendiente" en vivo).
+    if (_cancha.pendienteVerificacion) _refrescarPropiedad();
+  }
+
+  Future<void> _refrescarPropiedad() async {
+    await appState.sincronizarPropiedades();
+    if (!mounted) return;
+    Cancha? actualizada;
+    for (final c in appState.todasLasCanchas()) {
+      if (c.id == _cancha.id) {
+        actualizada = c;
+        break;
+      }
+    }
+    if (actualizada != null && actualizada.verificada != _cancha.verificada) {
+      setState(() => _cancha = actualizada!);
+    }
+  }
+
   Color get _color => colorDeporte(_cancha.deporte);
 
   bool _ocupada(String hora) => appState.reservas.any((r) =>

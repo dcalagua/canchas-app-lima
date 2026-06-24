@@ -310,7 +310,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
       final cancha = Cancha(
         id: 'u${ts}_${dep.name}',
         nombre: nombreCancha,
-        club: appState.nombreClub,
+        club: nombre, // el local es su propio club (nombre que escribió el dueño)
         distrito: distrito,
         deporte: dep,
         precioHora: precio,
