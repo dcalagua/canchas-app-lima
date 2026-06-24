@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/club.dart';
 import '../models/models.dart';
+import '../services/propiedad_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/court_lines.dart';
@@ -148,7 +149,8 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                   if (descubierta)
                     _PanelDescubierta(cancha: _cancha)
                   else if (pendiente)
-                    const _PanelPendiente()
+                    _PanelPendiente(
+                        cancha: _cancha, onActualizar: _refrescarPropiedad)
                   else ...[
                     // Selector "Elige cancha"
                     if (c.canchas.length > 1) ...[
@@ -473,8 +475,56 @@ class _PanelDescubierta extends StatelessWidget {
 
 /// Panel cuando la cancha está reclamada/registrada pero aún sin verificar la
 /// propiedad: no se puede reservar online hasta validar al dueño (anti-fraude).
-class _PanelPendiente extends StatelessWidget {
-  const _PanelPendiente();
+class _PanelPendiente extends StatefulWidget {
+  const _PanelPendiente({required this.cancha, this.onActualizar});
+  final Cancha cancha;
+  final Future<void> Function()? onActualizar;
+
+  @override
+  State<_PanelPendiente> createState() => _PanelPendienteState();
+}
+
+class _PanelPendienteState extends State<_PanelPendiente> {
+  bool _consultando = false;
+  String? _diag;
+
+  Future<void> _verificarAhora() async {
+    setState(() {
+      _consultando = true;
+      _diag = null;
+    });
+    if (!PropiedadService.disponible) {
+      setState(() {
+        _consultando = false;
+        _diag = '⚠️ La app no tiene backend configurado (GROWTH_API_URL vacío). '
+            'El reclamo no llega al servidor.';
+      });
+      return;
+    }
+    final est = await PropiedadService.estado(widget.cancha.id);
+    if (!mounted) return;
+    String msg;
+    if (est == null) {
+      msg = '⚠️ No se pudo consultar al servidor (sin respuesta). '
+          'ID consultado: ${widget.cancha.id}';
+    } else if (est['existe'] != true) {
+      msg = '❌ El servidor NO tiene un reclamo para esta cancha.\n'
+          'ID consultado: ${widget.cancha.id}\n'
+          'Esto significa que el reclamo no se creó en el backend.';
+    } else {
+      final estado = est['estado'] ?? '—';
+      final verif = est['verificada'] == true;
+      msg = 'Servidor → estado: "$estado", verificada: $verif\n'
+          'ID: ${widget.cancha.id}\n'
+          '${verif ? '✅ Aprobada: actualizando…' : '⏳ Aún no activada por el admin (aprueba en Reclamos admin o el panel web).'}';
+      if (verif) await widget.onActualizar?.call();
+    }
+    if (!mounted) return;
+    setState(() {
+      _consultando = false;
+      _diag = msg;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -507,6 +557,36 @@ class _PanelPendiente extends StatelessWidget {
             'se confirme la propiedad.',
             style: t.bodyMedium?.copyWith(color: textoTenue, height: 1.4),
           ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _consultando ? null : _verificarAhora,
+              icon: _consultando
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.sync, size: 18),
+              label: Text(_consultando
+                  ? 'Consultando al servidor…'
+                  : 'Verificar estado ahora'),
+            ),
+          ),
+          if (_diag != null) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF3EFE7),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(_diag!,
+                  style: t.bodySmall?.copyWith(
+                      color: tinta, height: 1.4, fontFamily: 'monospace')),
+            ),
+          ],
         ],
       ),
     );
