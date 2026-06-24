@@ -32,6 +32,8 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
       TextEditingController(text: widget.cancha.precioHora.toString());
   final TextEditingController _ruc =
       TextEditingController(); // opcional, refuerza la verificación al reclamar
+  final TextEditingController _contacto =
+      TextEditingController(); // WhatsApp del dueño al reclamar (obligatorio)
 
   late Deporte _deporte = widget.cancha.deporte;
   late LatLng _ubicacion = widget.cancha.ubicacion;
@@ -55,6 +57,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
     _direccion.dispose();
     _precio.dispose();
     _ruc.dispose();
+    _contacto.dispose();
     _map?.dispose();
     super.dispose();
   }
@@ -142,6 +145,13 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
       _avisar('Ponle un nombre a la cancha.');
       return;
     }
+    final esReclamo = widget.cancha.dueno.isEmpty;
+    final contacto = _contacto.text.trim();
+    if (esReclamo &&
+        contacto.replaceAll(RegExp(r'[^0-9]'), '').length < 9) {
+      _avisar('Pon tu WhatsApp de contacto para que el equipo te valide.');
+      return;
+    }
     setState(() => _guardando = true);
 
     // Sube las fotos nuevas y arma la galería final (existentes + nuevas).
@@ -190,6 +200,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
         canchaId: actualizada.id,
         solicitanteId: dueno,
         nombreLocal: nombre,
+        telefonoContacto: contacto,
         ubicacion: _ubicacion,
       );
     }
@@ -373,6 +384,19 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
               border: OutlineInputBorder(),
             ),
           ),
+          if (widget.cancha.dueno.isEmpty) ...[
+            const SizedBox(height: 16),
+            TextField(
+              controller: _contacto,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                labelText: 'Tu WhatsApp de contacto *',
+                hintText: 'Ej.: 987 654 321 — te escribiremos para validarte',
+                prefixIcon: Icon(Icons.chat, color: pino),
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
           if (!widget.cancha.verificada) ...[
             const SizedBox(height: 16),
             TextField(

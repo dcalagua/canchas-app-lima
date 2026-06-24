@@ -35,6 +35,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
   final _direccion = TextEditingController();
   final _precio = TextEditingController(text: '120');
   final _ruc = TextEditingController(); // opcional: refuerza la verificación
+  final _contacto = TextEditingController(); // WhatsApp del dueño (obligatorio)
 
   // Deportes del local (varios a la vez). Fútbol viene marcado por defecto.
   final Set<Deporte> _deportes = {Deporte.futbol};
@@ -76,6 +77,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
     _direccion.dispose();
     _precio.dispose();
     _ruc.dispose();
+    _contacto.dispose();
     _map?.dispose();
     super.dispose();
   }
@@ -196,6 +198,11 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
       _avisar('Elige al menos un deporte.');
       return;
     }
+    final contacto = _contacto.text.trim();
+    if (contacto.replaceAll(RegExp(r'[^0-9]'), '').length < 9) {
+      _avisar('Pon tu WhatsApp de contacto para que el equipo te valide.');
+      return;
+    }
     // Anti-fraude: para registrar/reclamar hay que identificarse con Google, así
     // la cancha queda atada a una cuenta real y pasa a verificación.
     if (!appState.logueado) {
@@ -266,6 +273,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
         canchaId: creadas.first.id,
         solicitanteId: dueno,
         nombreLocal: nombre,
+        telefonoContacto: contacto,
         ubicacion: _ubicacion,
       );
     }
@@ -315,6 +323,20 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
             controller: _nombre,
             decoration: const InputDecoration(
               labelText: 'Nombre del local / cancha',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          // WhatsApp de contacto del dueño (OBLIGATORIO): por aquí el equipo de
+          // Pichangol se comunica para validar el reclamo.
+          TextField(
+            controller: _contacto,
+            keyboardType: TextInputType.phone,
+            decoration: const InputDecoration(
+              labelText: 'Tu WhatsApp de contacto *',
+              hintText: 'Ej.: 987 654 321 — te escribiremos para validarte',
+              prefixIcon: Icon(Icons.chat, color: verdeCancha),
               border: OutlineInputBorder(),
             ),
           ),

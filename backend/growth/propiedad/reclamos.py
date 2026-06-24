@@ -74,10 +74,11 @@ def crear_reclamo(cancha_id: str, solicitante_id: str, nombre_local: str,
     _notificar_admin(
         f"🟢 Nuevo reclamo de cancha en Pichangol\n"
         f"Local: {nombre_local}\n"
-        f"Solicitante: {solicitante_id}\n"
-        f"Contacto: {telefono_contacto or 's/n'}\n"
+        f"Cuenta: {solicitante_id}\n"
+        f"WhatsApp del dueño: {telefono_contacto or '⚠️ no dejó número'}\n"
         f"Código: {codigo}\n"
-        f"Llámalo/escríbele y, si lo verificas, apruébalo en el panel.")
+        f"Escríbele/llámalo por WhatsApp y, si lo verificas, apruébalo en el "
+        f"panel de Reclamos.")
     return {"ok": True, "reclamo_id": r.id, "codigo": codigo, "estado": r.estado}
 
 
