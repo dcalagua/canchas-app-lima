@@ -194,6 +194,28 @@ def validar_en_sitio(codigo: str, lat: float, lng: float,
             "distancia_m": round(dist) if dist is not None else None}
 
 
+def aprobar_directo(reclamo_id: int, revisor: str | None = None) -> dict:
+    """Piloto (panel web): el admin aprueba y la cancha queda ACTIVA al instante.
+    Equivale a triage(aprobado) + activación, SIN validación en sitio todavía.
+    Marca verificada=True con método 'panel_admin' (no es verificación en persona,
+    así que verificada_en_persona queda en False)."""
+    r = _por_id(reclamo_id)
+    if r is None:
+        return {"ok": False, "error": "reclamo_no_existe"}
+    r.estado = "activada"
+    r.decidido_en = ahora()
+    r.validado_en = ahora()
+    r.validador = revisor
+    r.nota = f"Aprobación directa (panel) por {revisor or 'admin'}.".strip()
+    c = stores.cancha(r.cancha_id)
+    c.verificada = True
+    c.metodo_verificacion = "panel_admin"
+    _notificar_admin(
+        f"✅ Cancha ACTIVADA por aprobación directa (panel)\n"
+        f"Local: {r.nombre_local}\nAdmin: {revisor or 's/n'}")
+    return {"ok": True, "estado": "activada", "verificada": True}
+
+
 def activar_admin(reclamo_id: int) -> dict:
     """Activación manual por el admin (cuando VALIDADOR_ACTIVA_AUTOMATICO=0)."""
     r = _por_id(reclamo_id)

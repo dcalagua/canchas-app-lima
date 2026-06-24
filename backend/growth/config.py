@@ -51,6 +51,10 @@ OTP_CANAL_PREFERIDO = os.getenv("OTP_CANAL_PREFERIDO", "whatsapp")
 # Número (E.164, ej. +51987654321) al que llegan los avisos de admin por WhatsApp
 # cuando alguien reclama una cancha y cuando un validador la confirma en sitio.
 PICHANGOL_ADMIN_WHATSAPP = os.getenv("PICHANGOL_ADMIN_WHATSAPP", "")
+# Token que protege el PANEL WEB de administración (/admin). Sin token, el panel
+# queda deshabilitado (503). No viaja en la URL: la página lo guarda en el
+# navegador y lo envía en la cabecera X-Admin-Token.
+ADMIN_PANEL_TOKEN = os.getenv("ADMIN_PANEL_TOKEN", "")
 # Si true, la validación en sitio del motorizado activa la cancha automáticamente
 # (y se avisa al admin). Si false, queda lista y el admin la activa a mano.
 VALIDADOR_ACTIVA_AUTOMATICO = os.getenv("VALIDADOR_ACTIVA_AUTOMATICO", "1") == "1"
