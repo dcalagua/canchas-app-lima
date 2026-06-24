@@ -72,33 +72,50 @@ _HTML = r"""<!DOCTYPE html>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800;900&display=swap" rel="stylesheet">
 <style>
+  /* Paleta oficial EBIM (handoff v2) — co-marca Pichangol + EBIM, solo web admin */
   :root{
-    --bg:#F3F5F5; --card:#fff; --border:#E2E8E7; --text:#0F1B1C; --muted:#5C6B6C;
-    --verde:#AEEA94; --bosque:#14463A; --accent:#5AA97F; --teal:#056769;
-    --amarillo:#F2C94C; --limaSuave:#E9F4EE; --rojo:#D11F2E;
+    --bg:#F4F6F1; --card:#fff; --border:#E0E5DB; --text:#123D2D; --muted:#7C8A80;
+    --lima:#AEEA94; --sage:#5AA97F; --verde:#2E8B66; --bosque:#14463A;
+    --teal:#056769; --amarillo:#F2C94C; --limaSuave:#EFF8E4; --rojo:#D11F2E;
   }
   *{box-sizing:border-box}
   body{margin:0;font-family:'DM Sans',system-ui,sans-serif;background:var(--bg);color:var(--text)}
+  /* Wordmark "pichang(o)l" con la "o" = pelota (anillo + punto lima) */
+  .wm{font-weight:800;letter-spacing:-.02em;display:inline-flex;align-items:center}
+  .wm .ball{display:inline-block;width:.74em;height:.74em;border-radius:50%;
+    border:.16em solid currentColor;position:relative;margin:0 .02em;
+    transform:translateY(.04em)}
+  .wm .ball::after{content:"";position:absolute;inset:0;margin:auto;width:.2em;height:.2em;
+    border-radius:50%;background:var(--lima)}
+  /* Lockup EBIM (respaldo, marca endosante) */
+  .ebim{font-weight:900;letter-spacing:.06em;color:var(--teal);text-transform:lowercase}
   header{position:sticky;top:0;z-index:5;background:var(--bosque);color:#fff;
     padding:14px 20px;display:flex;align-items:center;gap:12px;
     box-shadow:0 2px 8px rgba(0,0,0,.08)}
-  header .pin{width:30px;height:30px;border-radius:50%;background:var(--verde);
+  header .pin{width:30px;height:30px;border-radius:50%;background:var(--lima);
     display:flex;align-items:center;justify-content:center;font-size:16px}
-  header h1{font-size:17px;font-weight:900;margin:0;letter-spacing:-.3px}
+  header .brand{display:flex;align-items:center;gap:10px}
+  header .wm{font-size:18px;color:#fff}
+  header .div{width:1px;height:20px;background:rgba(255,255,255,.25)}
+  header .ebim{font-size:13px;color:var(--lima)}
+  header .sub{font-size:11px;color:rgba(255,255,255,.6);font-weight:600;margin-left:2px}
   header .sp{flex:1}
-  header button{background:rgba(255,255,255,.14);color:#fff;border:0;border-radius:10px;
+  header button{background:rgba(255,255,255,.14);color:#fff;border:0;border-radius:12px;
     padding:8px 12px;font-family:inherit;font-weight:700;cursor:pointer;font-size:13px}
   header button:hover{background:rgba(255,255,255,.24)}
-  .wrap{max-width:760px;margin:0 auto;padding:18px 16px 60px}
+  .wrap{max-width:760px;margin:0 auto;padding:18px 16px 30px}
+  footer{max-width:760px;margin:0 auto;padding:8px 16px 50px;text-align:center;
+    color:var(--muted);font-size:12px;font-weight:600}
+  footer .ebim{font-size:12px}
   .tabs{display:flex;gap:8px;overflow:auto;padding:4px 0 14px}
   .tab{white-space:nowrap;border:1px solid var(--border);background:#fff;color:var(--text);
     border-radius:999px;padding:8px 14px;font-weight:700;font-size:13px;cursor:pointer}
-  .tab.on{background:var(--bosque);color:var(--verde);border-color:var(--bosque)}
+  .tab.on{background:var(--bosque);color:var(--lima);border-color:var(--bosque)}
   .tab .n{display:inline-block;margin-left:6px;background:var(--limaSuave);color:var(--bosque);
     border-radius:999px;padding:0 7px;font-size:11px;font-weight:900}
   .tab.on .n{background:rgba(255,255,255,.2);color:#fff}
-  .card{background:var(--card);border:1px solid var(--border);border-radius:16px;
-    padding:16px;margin-bottom:12px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:20px;
+    padding:16px;margin-bottom:14px;box-shadow:0 6px 20px -12px rgba(0,0,0,.20)}
   .card .top{display:flex;align-items:flex-start;gap:10px}
   .card h3{margin:0;font-size:16px;font-weight:800;flex:1}
   .cod{background:#EAF6C2;color:var(--bosque);font-weight:900;font-size:12px;
@@ -116,9 +133,9 @@ _HTML = r"""<!DOCTYPE html>
     background:#E7F8EE;border:1px solid #BBE8CF;border-radius:10px;padding:8px 12px;
     color:#1F8F4E;font-weight:800;font-size:13px}
   .actions{display:flex;gap:10px;margin-top:14px}
-  .actions button{flex:1;border-radius:12px;padding:11px;font-family:inherit;
+  .actions button{flex:1;border-radius:16px;padding:11px;font-family:inherit;
     font-weight:800;font-size:14px;cursor:pointer;border:1px solid var(--border)}
-  .btn-ap{background:var(--bosque);color:var(--verde);border-color:var(--bosque)}
+  .btn-ap{background:var(--bosque);color:var(--lima);border-color:var(--bosque)}
   .btn-rc{background:#fff;color:var(--rojo);border-color:#F3C9CE}
   .btn-ap:disabled,.btn-rc:disabled{opacity:.5;cursor:default}
   .empty{text-align:center;color:var(--muted);padding:50px 10px}
@@ -130,13 +147,13 @@ _HTML = r"""<!DOCTYPE html>
     justify-content:center;padding:24px;z-index:30}
   .gate .box{background:#fff;border:1px solid var(--border);border-radius:18px;
     padding:28px 24px;max-width:380px;width:100%;text-align:center}
-  .gate .pin{width:54px;height:54px;border-radius:50%;background:var(--verde);
+  .gate .pin{width:54px;height:54px;border-radius:50%;background:var(--lima);
     display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 14px}
   .gate h2{margin:0 0 4px;font-weight:900}
   .gate p{margin:0 0 18px;color:var(--muted);font-size:14px}
   .gate input{width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:10px;
     font-family:inherit;font-size:15px;margin-bottom:12px}
-  .gate button{width:100%;background:var(--bosque);color:var(--verde);border:0;
+  .gate button{width:100%;background:var(--bosque);color:var(--lima);border:0;
     border-radius:12px;padding:13px;font-family:inherit;font-weight:800;font-size:15px;cursor:pointer}
   .gate .err{color:var(--rojo);font-size:13px;font-weight:700;min-height:18px;margin-bottom:8px}
 </style>
@@ -145,17 +162,25 @@ _HTML = r"""<!DOCTYPE html>
 <div class="gate" id="gate">
   <div class="box">
     <div class="pin">📍</div>
-    <h2>Pichangol</h2>
+    <h2><span class="wm" style="font-size:24px">pichang<span class="ball"></span>l</span></h2>
     <p>Panel de administración de canchas</p>
     <div class="err" id="gateErr"></div>
     <input id="tok" type="password" placeholder="Token de administrador" autocomplete="off">
     <button onclick="entrar()">Entrar</button>
+    <div style="margin-top:16px;color:var(--muted);font-size:12px;font-weight:600">
+      Una solución de <span class="ebim">ebim</span>
+    </div>
   </div>
 </div>
 
 <header style="display:none" id="hdr">
   <div class="pin">📍</div>
-  <h1>Pichangol · Canchas</h1>
+  <div class="brand">
+    <span class="wm">pichang<span class="ball"></span>l</span>
+    <span class="div"></span>
+    <span class="ebim">ebim</span>
+    <span class="sub">admin</span>
+  </div>
   <div class="sp"></div>
   <button onclick="cargar()">↻ Actualizar</button>
   <button onclick="salir()">Salir</button>
@@ -165,6 +190,9 @@ _HTML = r"""<!DOCTYPE html>
   <div class="tabs" id="tabs"></div>
   <div id="lista"></div>
 </div>
+<footer id="ftr" style="display:none">
+  Pichangol · una solución de <span class="ebim">ebim</span> — grupoebim.com
+</footer>
 
 <script>
 const FILTROS = [
@@ -199,6 +227,7 @@ function mostrarApp(){
   document.getElementById('gate').style.display='none';
   document.getElementById('hdr').style.display='flex';
   document.getElementById('app').style.display='block';
+  document.getElementById('ftr').style.display='block';
   renderTabs();
   cargar();
 }

@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../data/sample_data.dart';
 import '../models/models.dart';
@@ -1190,6 +1191,20 @@ class _MenuSheet extends StatelessWidget {
                   title: const Text('Reclamos (admin)'),
                   subtitle: const Text('Vetea y aprueba a los dueños'),
                   onTap: onReclamos,
+                ),
+              if (PropiedadService.disponible)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.open_in_new, color: verdeCancha),
+                  title: const Text('Panel web (admin)'),
+                  subtitle: const Text('Aprueba canchas desde el navegador'),
+                  onTap: () {
+                    final url = PropiedadService.panelUrl;
+                    if (url.isNotEmpty) {
+                      launchUrl(Uri.parse(url),
+                          mode: LaunchMode.externalApplication);
+                    }
+                  },
                 ),
               const Divider(),
               if (u == null)

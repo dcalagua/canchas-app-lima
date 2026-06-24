@@ -15,6 +15,10 @@ class PropiedadService {
 
   static bool get disponible => _baseUrl.isNotEmpty;
 
+  /// URL del panel web de administración (Pichangol + EBIM) donde el admin
+  /// aprueba las canchas desde el navegador. Vacía si el backend no está activo.
+  static String get panelUrl => disponible ? '$_baseUrl/admin' : '';
+
   /// Consulta el DNI (identidad de la persona) vía backend → Factiliza.
   /// Devuelve {ok, nombre_completo, ...} o null si no se pudo.
   static Future<Map<String, dynamic>?> consultarDni(String dni) async {
