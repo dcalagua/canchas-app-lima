@@ -34,6 +34,9 @@ class AppState extends ChangeNotifier {
   final List<Cancha> canchasExtra = []; // canchas registradas en este dispositivo
   final List<Cancha> canchasRemotas = []; // canchas traídas de Supabase
   final List<Cancha> canchasDescubiertas = []; // reales de Google Places (sin registrar)
+  // IDs de canchas que el dueño eliminó: se respetan SIEMPRE, aunque Supabase
+  // vuelva a devolverlas (borrado durable en el dispositivo).
+  final Set<String> canchasEliminadas = {};
   bool descubriendo = false; // true mientras se traen canchas cercanas (feedback UI)
 
   /// Todas las canchas (descubiertas + semilla + remotas + locales), sin duplicar
@@ -52,6 +55,7 @@ class AppState extends ChangeNotifier {
     for (final c in canchasExtra) {
       map[c.id] = c;
     }
+    canchasEliminadas.forEach(map.remove); // borrados durables
     return _dedupPorLugar(map.values.toList());
   }
 
@@ -182,7 +186,7 @@ class AppState extends ChangeNotifier {
     if (remotas.isNotEmpty) {
       canchasRemotas
         ..clear()
-        ..addAll(remotas);
+        ..addAll(remotas.where((c) => !canchasEliminadas.contains(c.id)));
       notifyListeners();
     }
   }
@@ -190,6 +194,7 @@ class AppState extends ChangeNotifier {
   /// Registra una cancha nueva (desde el flujo con detección por IA).
   /// Queda local (se ve al toque) y se sube a Supabase para compartirla.
   void agregarCancha(Cancha c) {
+    canchasEliminadas.remove(c.id); // si se re-registra, deja de estar eliminada
     canchasExtra.insert(0, c);
     notifyListeners();
     _persistirDatos();
@@ -214,12 +219,14 @@ class AppState extends ChangeNotifier {
     for (final c in canchasExtra) {
       map[c.id] = c;
     }
+    canchasEliminadas.forEach(map.remove); // no mostrar lo eliminado
     return map.values.toList();
   }
 
   /// Edita una cancha del dueño (local + nube). Funciona aunque la cancha venga
   /// solo de Supabase (tras reinstalar): la refleja también en `canchasRemotas`.
   void actualizarCancha(Cancha c) {
+    canchasEliminadas.remove(c.id); // editar/reclamar una cancha la "revive"
     final i = canchasExtra.indexWhere((x) => x.id == c.id);
     if (i >= 0) {
       canchasExtra[i] = c;
@@ -340,11 +347,12 @@ class AppState extends ChangeNotifier {
   /// Elimina una cancha del dueño (local + nube). Quita también de la lista
   /// remota para que desaparezca al instante aunque viniera solo de Supabase.
   void eliminarCancha(String id) {
+    canchasEliminadas.add(id); // tombstone durable (sobrevive reinicios y re-fetch)
     canchasExtra.removeWhere((x) => x.id == id);
     canchasRemotas.removeWhere((x) => x.id == id);
     notifyListeners();
     _persistirDatos();
-    CanchasRepo.eliminar(id); // best-effort
+    CanchasRepo.eliminar(id); // best-effort en la nube; el tombstone es la garantía
   }
 
   // Saldo prepago del club (modelo inDrive): con saldo aparece destacado y
@@ -403,6 +411,7 @@ class AppState extends ChangeNotifier {
   static const _kMovs = 'movimientos_json';
   static const _kMisReservas = 'mis_reservas_json';
   static const _kCanchas = 'canchas_extra_json';
+  static const _kEliminadas = 'canchas_eliminadas_json';
 
   /// Carga la sesión y los datos persistidos (al arrancar la app).
   Future<void> cargarSesion() async {
@@ -438,6 +447,13 @@ class AppState extends ChangeNotifier {
           ..addAll(list);
       }
 
+      final elimRaw = prefs.getString(_kEliminadas);
+      if (elimRaw != null) {
+        canchasEliminadas
+          ..clear()
+          ..addAll((jsonDecode(elimRaw) as List).map((e) => e.toString()));
+      }
+
       final misRaw = prefs.getString(_kMisReservas);
       if (misRaw != null) {
         final list = (jsonDecode(misRaw) as List)
@@ -466,6 +482,8 @@ class AppState extends ChangeNotifier {
           jsonEncode(misReservas.map((r) => r.toJson()).toList()));
       await prefs.setString(
           _kCanchas, jsonEncode(canchasExtra.map((c) => c.toJson()).toList()));
+      await prefs.setString(
+          _kEliminadas, jsonEncode(canchasEliminadas.toList()));
     } catch (_) {}
   }
 
