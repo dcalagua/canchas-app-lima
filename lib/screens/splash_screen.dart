@@ -25,7 +25,8 @@ class _SplashScreenState extends State<SplashScreen> {
   Future<void> _arrancar() async {
     // Carga la sesión guardada y decide la primera pantalla.
     await appState.cargarSesion();
-    appState.cargarCanchasRemotas(); // canchas compartidas (best-effort)
+    appState.cargarCanchasRemotas() // canchas compartidas (best-effort)
+        .then((_) => appState.sincronizarPropiedades()); // ¿el admin ya aprobó?
     appState.cargarReservasRemotas(); // reservas compartidas (best-effort)
     bool onboardingVisto = true;
     try {

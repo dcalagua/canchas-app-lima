@@ -47,6 +47,21 @@ class PropiedadService {
     }
   }
 
+  /// Consulta el ESTADO del reclamo/propiedad de una cancha en el backend.
+  /// Devuelve {existe, estado, panel_desbloqueado, verificada, ...} o null.
+  /// Sirve para que la app "se entere" cuando el admin aprueba en el panel.
+  static Future<Map<String, dynamic>?> estado(String canchaId) async {
+    if (!disponible) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/propiedad/reclamo/$canchaId');
+      final resp = await http.get(uri).timeout(const Duration(seconds: 12));
+      if (resp.statusCode != 200) return null;
+      return Map<String, dynamic>.from(jsonDecode(resp.body) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Crea una SOLICITUD DE RECLAMO (modelo concierge): avisa al admin de
   /// Pichangol por WhatsApp con un código para que vetee al reclamante antes de
   /// activar nada. Devuelve {ok, reclamo_id, codigo, estado} o null si falló.

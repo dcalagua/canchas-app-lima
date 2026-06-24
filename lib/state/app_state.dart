@@ -13,6 +13,7 @@ import '../services/auth_service.dart';
 import '../services/places_service.dart';
 import '../services/verificacion_service.dart';
 import '../services/growth_service.dart';
+import '../services/propiedad_service.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 /// Instancia única del estado para toda la app (sin paquetes extra de DI).
@@ -187,6 +188,40 @@ class AppState extends ChangeNotifier {
       canchasRemotas
         ..clear()
         ..addAll(remotas.where((c) => !canchasEliminadas.contains(c.id)));
+      notifyListeners();
+    }
+  }
+
+  /// Sincroniza la PROPIEDAD con el backend: para cada cancha mía que sigue
+  /// "pendiente de verificación", pregunta al growth si el admin ya la aprobó
+  /// (estado activada / verificada). Si sí, la marca verificada en el dispositivo
+  /// y en Supabase, con lo que se quita el cartel "pendiente" y se habilitan las
+  /// reservas. Es el puente que faltaba entre el panel del admin y la app.
+  /// Fail-safe: si el backend no responde, no cambia nada.
+  Future<void> sincronizarPropiedades() async {
+    if (!PropiedadService.disponible) return;
+    var cambio = false;
+    // Candidatas: mis canchas reclamadas que aún no están verificadas.
+    final pendientes = [
+      for (final c in misCanchas)
+        if (!c.verificada && !canchasEliminadas.contains(c.id)) c,
+    ];
+    for (final c in pendientes) {
+      final est = await PropiedadService.estado(c.id);
+      if (est == null) continue;
+      final verificada = est['verificada'] == true;
+      if (verificada) {
+        final actualizada = c.copyWith(verificada: true);
+        final i = canchasExtra.indexWhere((x) => x.id == c.id);
+        if (i >= 0) canchasExtra[i] = actualizada;
+        final j = canchasRemotas.indexWhere((x) => x.id == c.id);
+        if (j >= 0) canchasRemotas[j] = actualizada;
+        CanchasRepo.actualizar(actualizada); // refleja en la nube (best-effort)
+        cambio = true;
+      }
+    }
+    if (cambio) {
+      _persistirDatos();
       notifyListeners();
     }
   }
