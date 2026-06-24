@@ -7,6 +7,7 @@ import '../data/canchas_repo.dart';
 import '../services/growth_service.dart';
 import '../services/location_service.dart';
 import '../theme.dart';
+import 'validar_reclamo_screen.dart';
 
 /// Mini-app del VERIFICADOR: cola de visitas (priorizada por demanda), captura de
 /// fotos GEO del sitio + ubicación + firma → confirma la cancha por carril físico.
@@ -65,6 +66,18 @@ class _VerificadorScreenState extends State<VerificadorScreen> {
                 Text('La cancha más pedida sale primero.',
                     style: t.bodySmall?.copyWith(color: textoTenue)),
                 const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                          builder: (_) => const ValidarReclamoScreen()),
+                    ),
+                    icon: const Icon(Icons.pin_drop),
+                    label: const Text('Validar reclamo por código'),
+                  ),
+                ),
+                const SizedBox(height: 12),
                 SizedBox(
                   height: 38,
                   child: ListView(
