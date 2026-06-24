@@ -166,6 +166,31 @@ class PropiedadService {
     }
   }
 
+  /// Aprobación DIRECTA del admin (piloto): aprueba y ACTIVA la cancha al
+  /// instante (verificada=True), sin validación en sitio. Mismo efecto que el
+  /// botón "Aprobar y activar" del panel web.
+  static Future<Map<String, dynamic>?> aprobarDirecto({
+    required int reclamoId,
+    String? revisor,
+  }) async {
+    if (!disponible) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/propiedad/reclamo/$reclamoId/aprobar');
+      final resp = await http
+          .post(uri,
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'aprobado': true,
+                if (revisor != null) 'revisor': revisor,
+              }))
+          .timeout(const Duration(seconds: 12));
+      if (resp.statusCode != 200) return null;
+      return Map<String, dynamic>.from(jsonDecode(resp.body) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// El motorizado valida un reclamo EN SITIO: ingresa el código y manda su GPS.
   /// El servidor exige que la ubicación coincida con la de la cancha.
   static Future<Map<String, dynamic>?> validarReclamo({

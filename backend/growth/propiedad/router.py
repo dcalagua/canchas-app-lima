@@ -49,6 +49,14 @@ def post_triage(reclamo_id: int, req: TriageRequest) -> dict:
     return reclamos.triage(reclamo_id, req.aprobado, req.revisor, req.nota)
 
 
+@router.post("/reclamo/{reclamo_id}/aprobar")
+def post_aprobar_directo(reclamo_id: int, req: TriageRequest) -> dict:
+    """Aprobación DIRECTA (piloto): el admin aprueba y la cancha queda ACTIVA al
+    instante (verificada=True), sin validación en sitio. Mismo efecto que el
+    botón 'Aprobar y activar' del panel web."""
+    return reclamos.aprobar_directo(reclamo_id, req.revisor)
+
+
 @router.post("/reclamo/{reclamo_id}/listo-para-validar")
 def post_listo(reclamo_id: int) -> dict:
     """El dueño guardó su info: pasa a pendiente de validación en sitio."""

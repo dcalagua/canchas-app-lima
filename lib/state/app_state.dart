@@ -209,7 +209,8 @@ class AppState extends ChangeNotifier {
     for (final c in pendientes) {
       final est = await PropiedadService.estado(c.id);
       if (est == null) continue;
-      final verificada = est['verificada'] == true;
+      final verificada =
+          est['verificada'] == true || est['estado'] == 'activada';
       if (verificada) {
         final actualizada = c.copyWith(verificada: true);
         final i = canchasExtra.indexWhere((x) => x.id == c.id);

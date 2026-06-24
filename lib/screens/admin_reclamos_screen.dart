@@ -46,17 +46,21 @@ class _AdminReclamosScreenState extends State<AdminReclamosScreen> {
   }
 
   Future<void> _decidir(Map<String, dynamic> r, bool aprobado) async {
-    final res = await PropiedadService.triageReclamo(
-      reclamoId: (r['id'] as num).toInt(),
-      aprobado: aprobado,
-      revisor: appState.usuario?.email ?? 'admin',
-    );
+    final id = (r['id'] as num).toInt();
+    final revisor = appState.usuario?.email ?? 'admin';
+    // Aprobar = aprobación DIRECTA (activa la cancha al instante). Rechazar = triage.
+    final res = aprobado
+        ? await PropiedadService.aprobarDirecto(reclamoId: id, revisor: revisor)
+        : await PropiedadService.triageReclamo(
+            reclamoId: id, aprobado: false, revisor: revisor);
     if (!mounted) return;
     if (res != null && res['ok'] == true) {
+      // Refleja la activación en la app del dueño (quita "pendiente" al sincronizar).
+      if (aprobado) appState.sincronizarPropiedades();
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         backgroundColor: aprobado ? bosque : clayOscuro,
         content: Text(aprobado
-            ? '✅ Reclamo aprobado. El dueño ya puede configurar su cancha.'
+            ? '✅ Cancha aprobada y ACTIVADA. Ya es reservable.'
             : '❌ Reclamo rechazado.',
             style: const TextStyle(color: Colors.white)),
       ));

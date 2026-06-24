@@ -87,3 +87,26 @@ def test_pagina_panel_se_sirve(client):
     r = client.get("/admin")
     assert r.status_code == 200
     assert "Pichangol" in r.text and "Panel de administración" in r.text
+
+
+def test_endpoint_aprobar_directo_de_la_app_activa(client):
+    """El boton 'Aprobar' del panel admin DENTRO de la app activa la cancha
+    (verificada=True), igual que el panel web. Sin token (uso interno app)."""
+    r = _reclamo()
+    res = client.post(f"/propiedad/reclamo/{r['reclamo_id']}/aprobar",
+                      json={"aprobado": True, "revisor": "dennis"})
+    assert res.status_code == 200 and res.json()["estado"] == "activada"
+    assert stores.cancha("c1").verificada is True
+    # Y el estado que consulta la app refleja verificada=True.
+    est = client.get("/propiedad/reclamo/c1")
+    assert est.status_code == 200 and est.json()["verificada"] is True
+
+
+def test_triage_solo_no_activa(client):
+    """Contraste: el triage clasico aprueba pero NO activa (verificada sigue
+    False). Por eso el boton de la app ahora usa /aprobar, no /triage."""
+    r = _reclamo()
+    res = client.post(f"/propiedad/reclamo/{r['reclamo_id']}/triage",
+                      json={"aprobado": True, "revisor": "dennis"})
+    assert res.status_code == 200 and res.json()["estado"] == "aprobado_triage"
+    assert stores.cancha("c1").verificada is False
