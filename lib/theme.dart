@@ -24,16 +24,30 @@ import 'models/models.dart';
 // Requiere en pubspec.yaml → dependencies: google_fonts: ^6.2.1
 // ─────────────────────────────────────────────────────────────────────────
 
-const Color lima = Color(0xFFAEEA94);   // accent / CTA
-const Color sage = Color(0xFF5AA97F);   // hero / base EBIM
+const Color lima = Color(0xFFAEEA94);   // accent / CTA / realce
+const Color sage = Color(0xFF5AA97F);   // acento primario (web EBIM)
+const Color teal = Color(0xFF056769);   // acento de apoyo (teal)
 const Color verde = Color(0xFF2E8B66);  // medio
-const Color bosque = Color(0xFF14463A); // primary
-const Color tinta = Color(0xFF123D2D);  // texto (verde profundo, NO negro)
-const Color papel = Color(0xFFF4F6F1);  // fondo app
+const Color verdeProfundo = Color(0xFF3F8A66); // window bar / verde profundo
+const Color bosque = Color(0xFF14463A); // primary / superficies oscuras
+const Color tinta = Color(0xFF0F1B1C);  // texto (tinta del sistema)
+const Color papel = Color(0xFFF3F5F5);  // fondo app (page)
 const Color papelCalido = Color(0xFFECF0E8); // fondo panel del club
-const Color trazo = Color(0xFFE0E5DB);  // bordes / divisores
-const Color textoTenue = Color(0xFF7C8A80);
-const Color limaSuave = Color(0xFFEFF8E4); // fondos de chips/avisos
+const Color trazo = Color(0xFFE2E8E7);  // bordes / divisores
+const Color textoTenue = Color(0xFF5C6B6C); // muted
+const Color limaSuave = Color(0xFFE9F4EE); // verde soft (tint)
+
+// ── Colores de estado (chips) — sistema de diseño ─────────────────────────
+const Color estadoOkBg = Color(0xFFE9F4EE);
+const Color estadoOkFg = Color(0xFF1F6E49);
+const Color estadoWarnBg = Color(0xFFFDF2D6);
+const Color estadoWarnFg = Color(0xFF946200);
+const Color estadoBadBg = Color(0xFFFBE7E7);
+const Color estadoBadFg = Color(0xFFC0392B);
+const Color estadoInfoBg = Color(0xFFE7F0FB);
+const Color estadoInfoFg = Color(0xFF1E5FB0);
+const Color estadoNeutroBg = Color(0xFFEEF1F1);
+const Color estadoNeutroFg = Color(0xFF5C6B6C);
 
 // ── Alias de compatibilidad con el tema anterior ──────────────────────────
 const Color pino = bosque;
@@ -110,22 +124,44 @@ ThemeData buildTheme() {
     cardTheme: CardTheme(
       elevation: 0, color: Colors.white, surfaceTintColor: Colors.white,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(12),
         side: const BorderSide(color: trazo),
       ),
     ),
     // CTA principal = bosque con texto lima (botón "Reservar" / "Pagar seña").
+    // Radio 12 (sistema de diseño, look ERP-grade más sobrio).
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         backgroundColor: bosque, foregroundColor: lima,
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 17),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
       ),
     ),
+    // Inputs consistentes: blanco, borde del sistema, foco sage, radio 10.
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: Colors.white,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: trazo),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: trazo),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: sage, width: 1.6),
+      ),
+      labelStyle: const TextStyle(color: textoTenue),
+      hintStyle: const TextStyle(color: textoTenue),
+    ),
     chipTheme: ChipThemeData(
-      backgroundColor: const Color(0xFFEDF1EA),
-      labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: Color(0xFF5C6B62)),
+      backgroundColor: estadoNeutroBg,
+      labelStyle: const TextStyle(
+          fontWeight: FontWeight.w700, fontSize: 12, color: estadoNeutroFg),
       side: BorderSide.none,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
     ),

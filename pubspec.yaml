@@ -46,19 +46,19 @@ flutter:
     - assets/icon/
     - assets/splash/
 
-# Ícono de app (pin de ubicación + pelota, marca Pichangol).
+# Ícono de app (pelota Pichangol sobre verde de marca).
 flutter_launcher_icons:
   android: true
   ios: true
   remove_alpha_ios: true
   image_path: "assets/icon/app_icon.png"
-  adaptive_icon_background: "#0B6B45"
+  adaptive_icon_background: "#14463A"
   adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
 
-# Splash nativo (arranque en frío) — fondo verde de marca + logo.
+# Splash nativo (arranque en frío) — fondo VERDE CLARO + pelota Pichangol.
 flutter_native_splash:
-  color: "#0B6B45"
+  color: "#AEEA94"
   image: assets/splash/logo.png
   android_12:
-    color: "#0B6B45"
+    color: "#AEEA94"
     image: assets/splash/logo.png
