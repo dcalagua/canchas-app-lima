@@ -337,8 +337,10 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
     // Modelo concierge: al reclamar/registrar se crea una SOLICITUD DE RECLAMO y
     // le llega un WhatsApp al equipo de Pichangol con un código para vetear al
     // dueño. Nada se activa hasta validarlo (revisión + visita en sitio).
+    // Se ESPERA la respuesta para confirmar que el reclamo quedó en el servidor.
+    bool reclamoOk = true;
     if (creadas.isNotEmpty) {
-      PropiedadService.crearReclamo(
+      final r = await PropiedadService.crearReclamo(
         canchaId: creadas.first.id,
         solicitanteId: dueno,
         nombreLocal: nombre,
@@ -348,17 +350,21 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
         relacion: _relacion,
         ubicacion: _ubicacion,
       );
+      reclamoOk = r != null && r['ok'] == true;
     }
 
     if (!mounted) return;
     Navigator.of(context).pop();
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        backgroundColor: verdeCancha,
+      SnackBar(
+        backgroundColor: reclamoOk ? verdeCancha : const Color(0xFFB4471F),
         content: Text(
-            '✅ Reclamo enviado. En revisión: te contactaremos por WhatsApp '
-            'para validar que eres el dueño antes de activar la cancha.'),
-        duration: Duration(seconds: 5),
+            reclamoOk
+                ? '✅ Reclamo enviado. En revisión: te contactaremos por WhatsApp '
+                    'para validar que eres el dueño antes de activar la cancha.'
+                : '⚠️ Cancha registrada, pero la solicitud no llegó al servidor. '
+                    'Ábrela y toca "Reenviar solicitud de verificación".'),
+        duration: const Duration(seconds: 5),
       ),
     );
   }

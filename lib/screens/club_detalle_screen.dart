@@ -486,7 +486,41 @@ class _PanelPendiente extends StatefulWidget {
 
 class _PanelPendienteState extends State<_PanelPendiente> {
   bool _consultando = false;
+  bool _reenviando = false;
   String? _diag;
+
+  Future<void> _reenviar() async {
+    setState(() {
+      _reenviando = true;
+      _diag = null;
+    });
+    final c = widget.cancha;
+    final email = c.dueno.isNotEmpty ? c.dueno : (appState.usuario?.email ?? '');
+    if (!PropiedadService.disponible) {
+      setState(() {
+        _reenviando = false;
+        _diag = '⚠️ La app no tiene backend configurado (GROWTH_API_URL vacío).';
+      });
+      return;
+    }
+    final res = await PropiedadService.crearReclamo(
+      canchaId: c.id,
+      solicitanteId: email,
+      nombreLocal: c.nombre,
+      ubicacion: c.ubicacion,
+    );
+    if (!mounted) return;
+    setState(() {
+      _reenviando = false;
+      _diag = (res != null && res['ok'] == true)
+          ? '✅ Solicitud reenviada al servidor.\n'
+              'Código: ${res['codigo'] ?? '—'}\n'
+              'Ahora ve a "Reclamos (admin)" y pulsa Aprobar; luego vuelve aquí '
+              'y toca "Verificar estado ahora".'
+          : '⚠️ No se pudo crear el reclamo en el servidor. Reintenta en un momento '
+              '(el backend puede estar reiniciándose).';
+    });
+  }
 
   Future<void> _verificarAhora() async {
     setState(() {
@@ -571,6 +605,25 @@ class _PanelPendienteState extends State<_PanelPendiente> {
               label: Text(_consultando
                   ? 'Consultando al servidor…'
                   : 'Verificar estado ahora'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                  backgroundColor: bosque, foregroundColor: lima),
+              onPressed: _reenviando ? null : _reenviar,
+              icon: _reenviando
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: lima))
+                  : const Icon(Icons.send, size: 18),
+              label: Text(_reenviando
+                  ? 'Reenviando…'
+                  : 'Reenviar solicitud de verificación'),
             ),
           ),
           if (_diag != null) ...[
