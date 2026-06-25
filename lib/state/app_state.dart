@@ -241,7 +241,11 @@ class AppState extends ChangeNotifier {
       final verificada =
           est['verificada'] == true || est['estado'] == 'activada';
       if (verificada) {
-        final actualizada = c.copyWith(verificada: true);
+        // Al activarse queda atada a su dueño (si no tenía, al usuario actual).
+        final actualizada = c.copyWith(
+          verificada: true,
+          dueno: c.dueno.isEmpty ? (usuario?.email ?? c.dueno) : c.dueno,
+        );
         final i = canchasExtra.indexWhere((x) => x.id == c.id);
         if (i >= 0) canchasExtra[i] = actualizada;
         final j = canchasRemotas.indexWhere((x) => x.id == c.id);
@@ -266,23 +270,26 @@ class AppState extends ChangeNotifier {
     CanchasRepo.insertar(c); // best-effort, compartir entre dispositivos
   }
 
-  /// Canchas del dueño para "Mis canchas". Combina:
-  ///  - las registradas en ESTE dispositivo (`canchasExtra`), y
-  ///  - las que están en la nube y son mías: `dueno == mi correo`, o de
-  ///    **legado sin dueño** (registradas antes de atar la cancha a una cuenta,
-  ///    p. ej. CEANDE), para poder editarlas/eliminarlas/reclamarlas.
-  /// Así, tras reinstalar, el dueño recupera sus canchas desde Supabase.
+  /// Canchas del dueño para "Mis canchas" (su panel de control). Reglas de
+  /// PROPIEDAD:
+  ///  - Es mía si `dueno == mi correo`.
+  ///  - "Legado reclamable": registrada, SIN dueño y **aún no verificada** →
+  ///    visible para que cualquiera la pueda reclamar/editar.
+  ///  - Una vez **verificada/activada**, queda atada a su dueño: ningún otro
+  ///    usuario ve su panel de control.
   List<Cancha> get misCanchas {
     final email = usuario?.email ?? '';
-    final map = <String, Cancha>{};
-    for (final c in canchasRemotas) {
-      final mia = email.isNotEmpty && c.dueno == email;
-      final legadoSinDueno = c.dueno.isEmpty && c.registrada;
-      if (mia || legadoSinDueno) map[c.id] = c;
+    bool visible(Cancha c) {
+      if (email.isNotEmpty && c.dueno == email) return true; // es mía
+      if (email.isEmpty && c.dueno.isEmpty) return true; // sin sesión, alta local
+      // Legado: sin dueño, registrada y todavía NO verificada (reclamable).
+      if (c.dueno.isEmpty && c.registrada && !c.verificada) return true;
+      return false;
     }
-    // Las locales de este dispositivo siempre son mías (ganan ante colisión).
-    for (final c in canchasExtra) {
-      map[c.id] = c;
+
+    final map = <String, Cancha>{};
+    for (final c in [...canchasRemotas, ...canchasExtra]) {
+      if (visible(c)) map[c.id] = c;
     }
     canchasEliminadas.forEach(map.remove); // no mostrar lo eliminado
     return map.values.toList();
