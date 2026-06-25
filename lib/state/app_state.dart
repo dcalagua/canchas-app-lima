@@ -188,8 +188,37 @@ class AppState extends ChangeNotifier {
       canchasRemotas
         ..clear()
         ..addAll(remotas.where((c) => !canchasEliminadas.contains(c.id)));
+      _repararClubLegado();
       notifyListeners();
     }
+  }
+
+  /// Repara datos viejos: canchas registradas por el dueño que quedaron con el
+  /// nombre del club DEMO ("Club Raqueta San Borja") por un bug anterior. Les
+  /// pone como club su propio nombre (base, sin el sufijo de deporte) para que
+  /// dejen de agruparse/mostrarse con el club de muestra. Persiste el arreglo.
+  bool _repararClubLegado() {
+    String base(String nombre) =>
+        nombre.split(RegExp(r'\s[·\-–]\s')).first.trim();
+    var cambio = false;
+    for (var i = 0; i < canchasExtra.length; i++) {
+      final c = canchasExtra[i];
+      if (c.club == SampleData.clubActivo) {
+        canchasExtra[i] = c.copyWith(club: base(c.nombre));
+        cambio = true;
+      }
+    }
+    for (var i = 0; i < canchasRemotas.length; i++) {
+      final c = canchasRemotas[i];
+      if (c.club == SampleData.clubActivo && c.dueno.isNotEmpty) {
+        final fixed = c.copyWith(club: base(c.nombre));
+        canchasRemotas[i] = fixed;
+        CanchasRepo.actualizar(fixed); // persiste el arreglo en la nube
+        cambio = true;
+      }
+    }
+    if (cambio) _persistirDatos();
+    return cambio;
   }
 
   /// Sincroniza la PROPIEDAD con el backend: para cada cancha mía que sigue
@@ -481,6 +510,7 @@ class AppState extends ChangeNotifier {
         canchasExtra
           ..clear()
           ..addAll(list);
+        _repararClubLegado(); // sana nombres de club de datos viejos
       }
 
       final elimRaw = prefs.getString(_kEliminadas);
