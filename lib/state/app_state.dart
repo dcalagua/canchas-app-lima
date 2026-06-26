@@ -424,7 +424,7 @@ class AppState extends ChangeNotifier {
     canchasRemotas.removeWhere((x) => x.id == id);
     notifyListeners();
     _persistirDatos();
-    CanchasRepo.eliminar(id); // best-effort en la nube; el tombstone es la garantía
+    CanchasRepo.eliminar(id); // borrado lógico durable en la nube (sobrevive reinstalar)
   }
 
   // Saldo prepago del club (modelo inDrive): con saldo aparece destacado y

@@ -18,6 +18,7 @@ class CanchasRepo {
       final rows = await SupabaseService.client.from(_tabla).select();
       return (rows as List)
           .map((r) => _fromRow(r as Map<String, dynamic>))
+          .where((c) => !c.eliminada) // borrado lógico durable en la nube
           .toList();
     } catch (_) {
       return [];
@@ -27,7 +28,9 @@ class CanchasRepo {
   static Future<void> insertar(Cancha c) async {
     if (!SupabaseService.disponible) return;
     try {
-      await SupabaseService.client.from(_tabla).insert(_toRow(c));
+      // upsert: si la cancha ya existía (p. ej. se re-registra una que estaba
+      // borrada) la revive en vez de fallar por id duplicado.
+      await SupabaseService.client.from(_tabla).upsert(_toRow(c));
     } catch (_) {}
   }
 
@@ -42,11 +45,16 @@ class CanchasRepo {
     } catch (_) {}
   }
 
-  /// Elimina una cancha. Fail-safe.
+  /// Borra una cancha de forma DURABLE en la nube. Usa borrado lógico
+  /// (`eliminada = true`) en vez de DELETE físico: el DELETE suele estar
+  /// bloqueado por RLS y, sobre todo, así el borrado sobrevive a reinstalar la
+  /// app (no depende de la "lápida" local). Fail-safe.
   static Future<void> eliminar(String id) async {
     if (!SupabaseService.disponible) return;
     try {
-      await SupabaseService.client.from(_tabla).delete().eq('id', id);
+      await SupabaseService.client
+          .from(_tabla)
+          .update({'eliminada': true}).eq('id', id);
     } catch (_) {}
   }
 
@@ -91,6 +99,7 @@ class CanchasRepo {
         'hora_apertura': c.horaApertura,
         'hora_cierre': c.horaCierre,
         'duracion_slot_min': c.duracionSlotMin,
+        'eliminada': c.eliminada,
       };
 
   static Cancha _fromRow(Map<String, dynamic> r) => Cancha(
@@ -116,6 +125,7 @@ class CanchasRepo {
         horaApertura: (r['hora_apertura'] ?? '07:00') as String,
         horaCierre: (r['hora_cierre'] ?? '23:00') as String,
         duracionSlotMin: ((r['duracion_slot_min'] ?? 60) as num).toInt(),
+        eliminada: (r['eliminada'] ?? false) as bool,
       );
 
   static Distrito _enumDistrito(String? s) {

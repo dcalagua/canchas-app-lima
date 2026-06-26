@@ -9,11 +9,14 @@ alter table public.pichangol_reservas
   add column if not exists fecha  text,
   add column if not exists pagado boolean not null default false;
 
--- 2) Canchas: horario de atención y duración de slot POR cancha (1h/1.5h/2h).
+-- 2) Canchas: horario de atención y duración de slot POR cancha (1h/1.5h/2h),
+--    y borrado lógico DURABLE (el borrado sobrevive a reinstalar la app; el
+--    DELETE fisico suele estar bloqueado por RLS, por eso se usa una bandera).
 alter table public.pichangol_canchas
   add column if not exists hora_apertura     text    not null default '07:00',
   add column if not exists hora_cierre       text    not null default '23:00',
-  add column if not exists duracion_slot_min integer not null default 60;
+  add column if not exists duracion_slot_min integer not null default 60,
+  add column if not exists eliminada         boolean not null default false;
 
 -- 3) (Opcional, recomendado) Empezar el piloto con reservas limpias: las
 --    reservas demo viejas no tienen `fecha`. Descomenta para borrarlas:
