@@ -15,6 +15,7 @@ import '../services/propiedad_service.dart';
 import '../services/sport_detector.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/selector_horario.dart';
 import 'login_google_sheet.dart';
 
 /// Registrar una cancha escribiendo la dirección: se geocodifica y aparece en el
@@ -96,6 +97,11 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
 
   // Deportes del local (varios a la vez). Fútbol viene marcado por defecto.
   final Set<Deporte> _deportes = {Deporte.futbol};
+
+  // Horario de atención y duración de turno (se aplican a las canchas creadas).
+  String _apertura = '07:00';
+  String _cierre = '23:00';
+  int _duracion = 60;
 
   GoogleMapController? _map;
   LatLng? _ubicacion; // null hasta geocodificar o tocar el mapa
@@ -256,6 +262,11 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
       _avisar('Elige al menos un deporte.');
       return;
     }
+    final aMin = horaEnMinutos(_apertura), cMin = horaEnMinutos(_cierre);
+    if (aMin == null || cMin == null || cMin <= aMin) {
+      _avisar('El cierre debe ser después de la apertura.');
+      return;
+    }
     final contacto = _contacto.text.trim();
     if (contacto.replaceAll(RegExp(r'[^0-9]'), '').length < 9) {
       _avisar('Pon tu WhatsApp de contacto para que el equipo te valide.');
@@ -322,6 +333,9 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
         fotos: fotos,
         dueno: dueno,
         verificada: false, // pendiente de verificación hasta validar al dueño
+        horaApertura: _apertura,
+        horaCierre: _cierre,
+        duracionSlotMin: _duracion,
       );
       creadas.add(cancha);
       appState.agregarCancha(cancha);
@@ -646,6 +660,15 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
                 prefixText: 'S/ ',
                 border: OutlineInputBorder(),
               ),
+            ),
+            const SizedBox(height: 18),
+            SelectorHorario(
+              apertura: _apertura,
+              cierre: _cierre,
+              duracionMin: _duracion,
+              onApertura: (v) => setState(() => _apertura = v),
+              onCierre: (v) => setState(() => _cierre = v),
+              onDuracion: (v) => setState(() => _duracion = v),
             ),
           ] else
             Container(
