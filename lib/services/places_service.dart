@@ -59,47 +59,63 @@ class PlacesService {
 
     if (!disponible) return [];
     final uri = Uri.https('places.googleapis.com', '/v1/places:searchText');
+    // Las consultas se lanzan EN PARALELO (antes iban en serie: 11 × hasta 8s).
+    // Así el tiempo total ≈ la consulta más lenta, no la suma de todas.
+    final listas = await Future.wait(
+      _consultas.map((q) => _consultaUna(uri, q, centro, radioMetros)),
+    );
     final porId = <String, Cancha>{};
-    for (final q in _consultas) {
-      try {
-        final resp = await http
-            .post(
-              uri,
-              headers: {
-                'Content-Type': 'application/json',
-                'X-Goog-Api-Key': _key,
-                'X-Goog-FieldMask':
-                    'places.id,places.displayName,places.location,'
-                        'places.formattedAddress,places.types,places.photos',
-              },
-              body: jsonEncode({
-                'textQuery': q,
-                'languageCode': 'es',
-                'regionCode': 'PE',
-                'maxResultCount': 20,
-                'locationBias': {
-                  'circle': {
-                    'center': {
-                      'latitude': centro.latitude,
-                      'longitude': centro.longitude,
-                    },
-                    'radius': radioMetros,
-                  },
-                },
-              }),
-            )
-            .timeout(const Duration(seconds: 8));
-        if (resp.statusCode != 200) continue; // p.ej. API no habilitada / key
-        final body = jsonDecode(resp.body) as Map<String, dynamic>;
-        for (final p in (body['places'] as List? ?? [])) {
-          final c = _aCancha(p as Map<String, dynamic>);
-          if (c != null) porId[c.id] = c;
-        }
-      } catch (_) {
-        // fail-safe: ignora esta consulta y sigue
+    for (final lista in listas) {
+      for (final c in lista) {
+        porId[c.id] = c;
       }
     }
     return porId.values.toList();
+  }
+
+  /// Una sola consulta de texto a Places (New). Fail-safe: ante error/timeout
+  /// devuelve lista vacía para no frenar a las demás (corren en paralelo).
+  static Future<List<Cancha>> _consultaUna(
+      Uri uri, String q, LatLng centro, double radioMetros) async {
+    try {
+      final resp = await http
+          .post(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Goog-Api-Key': _key,
+              'X-Goog-FieldMask':
+                  'places.id,places.displayName,places.location,'
+                      'places.formattedAddress,places.types,places.photos',
+            },
+            body: jsonEncode({
+              'textQuery': q,
+              'languageCode': 'es',
+              'regionCode': 'PE',
+              'maxResultCount': 20,
+              'locationBias': {
+                'circle': {
+                  'center': {
+                    'latitude': centro.latitude,
+                    'longitude': centro.longitude,
+                  },
+                  'radius': radioMetros,
+                },
+              },
+            }),
+          )
+          .timeout(const Duration(seconds: 6));
+      if (resp.statusCode != 200) return const []; // API no habilitada / key
+      final body = jsonDecode(resp.body) as Map<String, dynamic>;
+      final out = <Cancha>[];
+      for (final p in (body['places'] as List? ?? [])) {
+        final c = _aCancha(p as Map<String, dynamic>);
+        if (c != null) out.add(c);
+      }
+      return out;
+    } catch (_) {
+      return const []; // fail-safe
+    }
   }
 
   /// Intenta vía Edge Function de Supabase. Devuelve la lista (posiblemente

@@ -15,9 +15,10 @@ class LocationService {
     }
   }
 
-  /// Posición actual con precisión **media** (más rápida que `high`, suficiente
-  /// para "canchas cerca") y un límite de tiempo para no colgar la UI. Si falla o
-  /// expira, cae a la última conocida.
+  /// Posición actual con precisión **baja** (suficiente para "canchas cerca" en
+  /// un radio de varios km, y bastante más rápida que `medium`/`high`) y un
+  /// límite de tiempo corto para no colgar la UI. Si falla o expira, cae a la
+  /// última conocida.
   static Future<LatLng?> ubicacionActual() async {
     try {
       if (!await Geolocator.isLocationServiceEnabled()) return ultimaConocida();
@@ -30,12 +31,14 @@ class LocationService {
         return null;
       }
       final pos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.medium, // más rápido que high
-        timeLimit: const Duration(seconds: 8),
+        // 'low' (~500 m) basta para ordenar canchas cercanas y llega mucho
+        // antes que un fix preciso; el GPS fino no aporta a este caso de uso.
+        desiredAccuracy: LocationAccuracy.low,
+        timeLimit: const Duration(seconds: 5),
       );
       return LatLng(pos.latitude, pos.longitude);
     } catch (_) {
-      // Timeout o error del fix preciso: usa lo último conocido para no esperar.
+      // Timeout o error del fix: usa lo último conocido para no hacer esperar.
       return ultimaConocida();
     }
   }
