@@ -36,6 +36,9 @@ class Cancha {
   final List<String> fotos; // galería de fotos (URLs en Supabase Storage)
   final String dueno; // correo del dueño (para "Mis canchas" entre dispositivos)
   final bool verificada; // true = propiedad verificada; false = reclamo pendiente
+  final String horaApertura; // inicio de atención, ej. "07:00"
+  final String horaCierre; // fin de atención, ej. "23:00"
+  final int duracionSlotMin; // duración del bloque reservable (60 / 90 / 120 min)
 
   const Cancha({
     required this.id,
@@ -53,6 +56,9 @@ class Cancha {
     this.fotos = const [],
     this.dueno = '',
     this.verificada = true,
+    this.horaApertura = '07:00',
+    this.horaCierre = '23:00',
+    this.duracionSlotMin = 60,
   });
 
   /// Se puede reservar online solo si está en Pichangol y su propiedad fue
@@ -77,6 +83,30 @@ class Cancha {
     }
   }
 
+  /// Horas de INICIO reservables entre apertura y cierre, en pasos de
+  /// [duracionSlotMin]. Ej. apertura 07:00, cierre 23:00, slot 90 min →
+  /// 07:00, 08:30, 10:00, … Solo se incluye un slot si cabe completo antes
+  /// del cierre. Fuente de la grilla que ve el jugador (reemplaza el array fijo).
+  List<String> horariosSlots() {
+    final ini = horaEnMinutos(horaApertura);
+    final fin = horaEnMinutos(horaCierre);
+    final paso = duracionSlotMin <= 0 ? 60 : duracionSlotMin;
+    if (ini == null || fin == null || fin <= ini) return const [];
+    final slots = <String>[];
+    for (var m = ini; m + paso <= fin; m += paso) {
+      slots.add(minutosEnHora(m));
+    }
+    return slots;
+  }
+
+  /// Hora de fin de un slot que arranca en [inicio] (= inicio + duración).
+  String horaFinDe(String inicio) {
+    final m = horaEnMinutos(inicio);
+    if (m == null) return inicio;
+    final paso = duracionSlotMin <= 0 ? 60 : duracionSlotMin;
+    return minutosEnHora(m + paso);
+  }
+
   Cancha copyWith({
     String? nombre,
     String? club,
@@ -89,6 +119,9 @@ class Cancha {
     List<String>? fotos,
     String? dueno,
     bool? verificada,
+    String? horaApertura,
+    String? horaCierre,
+    int? duracionSlotMin,
   }) {
     return Cancha(
       id: id,
@@ -106,6 +139,9 @@ class Cancha {
       fotos: fotos ?? this.fotos,
       dueno: dueno ?? this.dueno,
       verificada: verificada ?? this.verificada,
+      horaApertura: horaApertura ?? this.horaApertura,
+      horaCierre: horaCierre ?? this.horaCierre,
+      duracionSlotMin: duracionSlotMin ?? this.duracionSlotMin,
     );
   }
 
@@ -126,6 +162,9 @@ class Cancha {
         'fotos': fotos,
         'dueno': dueno,
         'verificada': verificada,
+        'horaApertura': horaApertura,
+        'horaCierre': horaCierre,
+        'duracionSlotMin': duracionSlotMin,
       };
 
   factory Cancha.fromJson(Map<String, dynamic> j) => Cancha(
@@ -146,7 +185,27 @@ class Cancha {
             const [],
         dueno: (j['dueno'] ?? '') as String,
         verificada: (j['verificada'] ?? true) as bool,
+        horaApertura: (j['horaApertura'] ?? '07:00') as String,
+        horaCierre: (j['horaCierre'] ?? '23:00') as String,
+        duracionSlotMin: ((j['duracionSlotMin'] ?? 60) as num).toInt(),
       );
+}
+
+/// Convierte "HH:MM" a minutos desde medianoche (null si no parsea).
+int? horaEnMinutos(String hhmm) {
+  final partes = hhmm.split(':');
+  if (partes.length < 2) return null;
+  final h = int.tryParse(partes[0]);
+  final m = int.tryParse(partes[1]);
+  if (h == null || m == null) return null;
+  return h * 60 + m;
+}
+
+/// Convierte minutos desde medianoche a "HH:MM".
+String minutosEnHora(int min) {
+  final h = (min ~/ 60).toString().padLeft(2, '0');
+  final m = (min % 60).toString().padLeft(2, '0');
+  return '$h:$m';
 }
 
 enum EstadoReserva {
@@ -165,13 +224,15 @@ class Reserva {
   final String canchaId;
   final String jugador;
   final String nivel; // ej. "Intermedio 3.5" (ángulo social / por nivel)
-  final String dia; // ej. "Hoy", "Mañana", "Lun 22"
+  final String fecha; // fuente de verdad del día reservado, ISO "2026-06-27"
+  final String dia; // etiqueta visible ("Hoy", "Mañana", "Lun 22")
   final String horaInicio; // "07:00"
   final String horaFin; // "08:00"
   final EstadoReserva estado;
   final bool traidaPorApp; // true = reserva nueva (genera comisión en Fase 2)
   final int precio;
   final int sena; // monto de seña/garantía con tarjeta (anti no-show)
+  final bool pagado; // el dueño confirmó el pago (efectivo en cancha)
   final String usuario; // correo del jugador (para "mis reservas" entre dispositivos)
 
   const Reserva({
@@ -179,6 +240,7 @@ class Reserva {
     required this.canchaId,
     required this.jugador,
     required this.nivel,
+    this.fecha = '',
     required this.dia,
     required this.horaInicio,
     required this.horaFin,
@@ -186,14 +248,33 @@ class Reserva {
     required this.traidaPorApp,
     required this.precio,
     required this.sena,
+    this.pagado = false,
     this.usuario = '',
   });
+
+  Reserva copyWith({EstadoReserva? estado, bool? pagado}) => Reserva(
+        id: id,
+        canchaId: canchaId,
+        jugador: jugador,
+        nivel: nivel,
+        fecha: fecha,
+        dia: dia,
+        horaInicio: horaInicio,
+        horaFin: horaFin,
+        estado: estado ?? this.estado,
+        traidaPorApp: traidaPorApp,
+        precio: precio,
+        sena: sena,
+        pagado: pagado ?? this.pagado,
+        usuario: usuario,
+      );
 
   Map<String, dynamic> toJson() => {
         'id': id,
         'canchaId': canchaId,
         'jugador': jugador,
         'nivel': nivel,
+        'fecha': fecha,
         'dia': dia,
         'horaInicio': horaInicio,
         'horaFin': horaFin,
@@ -201,6 +282,7 @@ class Reserva {
         'traidaPorApp': traidaPorApp,
         'precio': precio,
         'sena': sena,
+        'pagado': pagado,
         'usuario': usuario,
       };
 
@@ -209,6 +291,7 @@ class Reserva {
         canchaId: j['canchaId'] as String,
         jugador: j['jugador'] as String,
         nivel: j['nivel'] as String,
+        fecha: (j['fecha'] ?? '') as String,
         dia: j['dia'] as String,
         horaInicio: j['horaInicio'] as String,
         horaFin: j['horaFin'] as String,
@@ -216,6 +299,7 @@ class Reserva {
         traidaPorApp: j['traidaPorApp'] as bool,
         precio: j['precio'] as int,
         sena: j['sena'] as int,
+        pagado: (j['pagado'] ?? false) as bool,
         usuario: (j['usuario'] ?? '') as String,
       );
 }

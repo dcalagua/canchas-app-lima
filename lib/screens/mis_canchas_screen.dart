@@ -7,6 +7,7 @@ import '../theme.dart';
 import '../widgets/court_lines.dart';
 import 'editar_cancha_screen.dart';
 import 'registrar_cancha_screen.dart';
+import 'reservas_dueno_screen.dart';
 import 'verificar_propiedad_screen.dart';
 
 /// Canchas del dueño (locales de este dispositivo + las suyas en la nube,
@@ -31,7 +32,18 @@ class _MisCanchasScreenState extends State<MisCanchasScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: papel,
-      appBar: AppBar(title: const Text('Mis canchas')),
+      appBar: AppBar(
+        title: const Text('Mis canchas'),
+        actions: [
+          IconButton(
+            tooltip: 'Reservas',
+            icon: const Icon(Icons.event_note),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const ReservasDuenoScreen()),
+            ),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: pino,
         foregroundColor: lima,

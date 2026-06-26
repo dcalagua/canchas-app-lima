@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../data/reservas_repo.dart';
 import '../models/club.dart';
 import '../models/models.dart';
 import '../services/propiedad_service.dart';
@@ -8,7 +9,6 @@ import '../theme.dart';
 import '../widgets/court_lines.dart';
 import '../widgets/marca.dart';
 import 'login_google_sheet.dart';
-import 'pago_sheet.dart';
 import 'registrar_cancha_screen.dart';
 
 /// Ficha de CLUB (rediseño): un local con varias canchas. Selector "Elige
@@ -24,14 +24,21 @@ class ClubDetalleScreen extends StatefulWidget {
 }
 
 class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
-  static const _horas = [
-    '07:00', '08:00', '09:00', '10:00', '11:00',
-    '16:00', '17:00', '18:00', '19:00', '20:00',
-  ];
-
   late Cancha _cancha = widget.canchaInicial ?? widget.club.canchas.first;
   String _dia = 'Hoy';
   String? _hora;
+
+  /// Horas reservables reales de la cancha elegida (apertura→cierre, paso = duración).
+  List<String> get _horas => _cancha.horariosSlots();
+
+  /// Fecha real (ISO) según el día elegido; "Hoy/Mañana" es solo la etiqueta.
+  String get _fechaIso {
+    final base = DateTime.now();
+    final d = _dia == 'Mañana' ? base.add(const Duration(days: 1)) : base;
+    return '${d.year.toString().padLeft(4, '0')}-'
+        '${d.month.toString().padLeft(2, '0')}-'
+        '${d.day.toString().padLeft(2, '0')}';
+  }
 
   @override
   void initState() {
@@ -59,7 +66,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
   Color get _color => colorDeporte(_cancha.deporte);
 
   bool _ocupada(String hora) => appState.reservas.any((r) =>
-      r.canchaId == _cancha.id && r.dia == _dia && r.horaInicio == hora);
+      r.canchaId == _cancha.id && r.fecha == _fechaIso && r.horaInicio == hora);
 
   bool _esValle(String hora) => hora.compareTo('12:00') < 0;
 
@@ -71,16 +78,20 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
       final ok = await LoginGoogleSheet.mostrar(context);
       if (!ok || !mounted) return;
     }
-    final sena = (_cancha.precioHora * 0.3).round();
     final messenger = ScaffoldMessenger.of(context);
     final nav = Navigator.of(context);
-    final pago = await PagoSheet.mostrar(
-      context,
-      monto: sena,
-      concepto: 'Seña · ${_cancha.nombre}',
-    );
-    if (pago == null || !pago.exito) return;
-    appState.agregarReservaJugador(_cancha, _dia, hora);
+    // Piloto: pago en cancha (efectivo), sin seña con tarjeta.
+    final res =
+        await appState.agregarReservaJugador(_cancha, _fechaIso, _dia, hora);
+    if (!mounted) return;
+    if (res == ResultadoReserva.ocupado) {
+      setState(() => _hora = null); // libera selección; la grilla se refresca
+      messenger.showSnackBar(const SnackBar(
+        backgroundColor: Colors.redAccent,
+        content: Text('Ese horario acaba de tomarse. Elige otro, por favor.'),
+      ));
+      return;
+    }
     nav.pop();
     messenger.showSnackBar(
       SnackBar(

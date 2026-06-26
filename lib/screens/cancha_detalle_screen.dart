@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../data/reservas_repo.dart';
 import '../models/models.dart';
-import '../services/payments_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/court_lines.dart';
 import 'login_google_sheet.dart';
-import 'pago_sheet.dart';
 import 'registrar_cancha_screen.dart';
 
 /// Detalle de una cancha (estilo ficha de Airbnb) con selección de día/hora y
@@ -20,20 +19,28 @@ class CanchaDetalleScreen extends StatefulWidget {
 }
 
 class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
-  static const _horas = [
-    '07:00', '08:00', '09:00', '10:00', '11:00',
-    '16:00', '17:00', '18:00', '19:00', '20:00',
-  ];
-
   String _dia = 'Hoy';
   String? _hora;
 
   Cancha get cancha => widget.cancha;
   Color get _color => colorDeporte(cancha.deporte);
 
+  /// Horas reservables reales de ESTA cancha (apertura→cierre, paso = duración).
+  List<String> get _horas => cancha.horariosSlots();
+
+  /// Fecha real (ISO) según el día elegido. Es la fuente de verdad de la reserva
+  /// y del anti-doble-reserva; "Hoy/Mañana" es solo la etiqueta visible.
+  String get _fechaIso {
+    final base = DateTime.now();
+    final d = _dia == 'Mañana' ? base.add(const Duration(days: 1)) : base;
+    return '${d.year.toString().padLeft(4, '0')}-'
+        '${d.month.toString().padLeft(2, '0')}-'
+        '${d.day.toString().padLeft(2, '0')}';
+  }
+
   bool _ocupada(String hora) {
     return appState.reservas.any((r) =>
-        r.canchaId == cancha.id && r.dia == _dia && r.horaInicio == hora);
+        r.canchaId == cancha.id && r.fecha == _fechaIso && r.horaInicio == hora);
   }
 
   Future<void> _reservar() async {
@@ -46,9 +53,8 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
       if (!ok || !mounted) return;
     }
 
-    final sena = (cancha.precioHora * 0.3).round();
-
-    showDialog<void>(
+    final total = cancha.precioHora * cancha.duracionSlotMin / 60;
+    final confirmar = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Confirmar reserva'),
@@ -58,51 +64,55 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
           children: [
             Text('${cancha.nombre} · ${cancha.club}'),
             const SizedBox(height: 8),
-            Text('$_dia a las $hora'),
+            Text('$_dia · $hora a ${cancha.horaFinDe(hora)}'),
             const SizedBox(height: 8),
-            Text('Precio: S/ ${cancha.precioHora.toStringAsFixed(2)}'),
-            Text('Seña con tarjeta: S/ $sena',
-                style: const TextStyle(color: arena, fontWeight: FontWeight.w600)),
+            Text('Total: S/ ${total.toStringAsFixed(2)}',
+                style: const TextStyle(
+                    color: verdeCancha, fontWeight: FontWeight.w700)),
             const SizedBox(height: 8),
             const Text(
-              'La seña reduce los plantones y se descuenta del total.',
+              'Reservas ahora y pagas en la cancha (efectivo). El club confirma '
+              'tu pago al llegar.',
               style: TextStyle(fontSize: 12, color: Colors.grey),
             ),
           ],
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
+            onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('Cancelar'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: coral),
-            onPressed: () async {
-              final messenger = ScaffoldMessenger.of(context);
-              final nav = Navigator.of(context);
-              Navigator.of(ctx).pop(); // cierra diálogo de confirmación
-              // Cobro de la seña antes de confirmar la reserva.
-              final pago = await PagoSheet.mostrar(
-                context,
-                monto: sena,
-                concepto: 'Seña · ${cancha.nombre}',
-              );
-              if (pago == null || !pago.exito) return;
-              appState.agregarReservaJugador(cancha, _dia, hora);
-              nav.pop(); // vuelve al mapa
-              messenger.showSnackBar(
-                SnackBar(
-                  backgroundColor: verdeCancha,
-                  content: Text(
-                      '✅ Reserva confirmada en ${cancha.nombre} · $_dia $hora'),
-                ),
-              );
-            },
+            onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('Reservar'),
           ),
         ],
       ),
     );
+    if (confirmar != true || !mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    final nav = Navigator.of(context);
+    final res =
+        await appState.agregarReservaJugador(cancha, _fechaIso, _dia, hora);
+    if (!mounted) return;
+
+    if (res == ResultadoReserva.ocupado) {
+      setState(() => _hora = null); // libera la selección; la grilla se refresca
+      messenger.showSnackBar(const SnackBar(
+        backgroundColor: Colors.redAccent,
+        content: Text('Ese horario acaba de tomarse. Elige otro, por favor.'),
+      ));
+      return;
+    }
+
+    nav.pop(); // vuelve al mapa
+    messenger.showSnackBar(SnackBar(
+      backgroundColor: verdeCancha,
+      content:
+          Text('✅ Reserva confirmada en ${cancha.nombre} · $_dia $hora'),
+    ));
   }
 
   @override
@@ -183,7 +193,7 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
                     Text(
                       'Cancha de ${cancha.deporte.etiqueta.toLowerCase()} en ${cancha.distrito.etiqueta}. '
                       'Reserva tu hora y juega con quien quieras, a tu nivel. '
-                      'Pagas una seña con tarjeta para asegurar tu cancha.',
+                      'Reservas online y pagas en la cancha (efectivo).',
                       style: const TextStyle(height: 1.4),
                     ),
                     const SizedBox(height: 24),
@@ -414,7 +424,7 @@ class _PanelDescubierta extends StatelessWidget {
           const Text(
             'Todavía no está activa en Pichangol, así que aún no se puede '
             'reservar online. ¿Es tuya? Regístrala y empieza a recibir '
-            'reservas con seña.',
+            'reservas.',
             style: TextStyle(height: 1.4),
           ),
           const SizedBox(height: 14),

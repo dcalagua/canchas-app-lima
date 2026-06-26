@@ -542,6 +542,9 @@ class AppState extends ChangeNotifier {
       }
 
       notifyListeners();
+      // Trae la disponibilidad compartida (reservas de otros dispositivos) para
+      // que el anti-doble-reserva y el panel del dueño arranquen al día. Best-effort.
+      cargarReservasRemotas();
     } catch (_) {}
   }
 
@@ -593,35 +596,78 @@ class AppState extends ChangeNotifier {
   }
 
   /// Registra una reserva hecha por un jugador desde el detalle de cancha.
-  /// Aparece como reserva nueva (traída por la app) y, si la cancha es del club
-  /// activo, también ocupa el bloque en su agenda.
-  Reserva agregarReservaJugador(Cancha cancha, String dia, String hora) {
+  /// [fecha] es la fecha real ISO ("2026-06-27"); [diaLabel] es solo la etiqueta
+  /// visible ("Hoy"/"Mañana"). Devuelve el resultado: si otro jugador ganó el
+  /// mismo slot, Supabase rechaza el INSERT (UNIQUE) y se devuelve `ocupado`.
+  ///
+  /// Piloto: pago EN CANCHA, sin seña con tarjeta (sena = 0). El dueño confirma
+  /// el cobro luego con [marcarPago]. El precio se calcula por la duración del
+  /// slot de la cancha (1h, 1.5h, 2h).
+  Future<ResultadoReserva> agregarReservaJugador(
+      Cancha cancha, String fecha, String diaLabel, String hora) async {
+    // Chequeo local rápido (doble toque / feedback inmediato sin conexión).
+    final yaLocal = reservas.any((r) =>
+        r.canchaId == cancha.id && r.fecha == fecha && r.horaInicio == hora);
+    if (yaLocal) return ResultadoReserva.ocupado;
+
+    final precio = (cancha.precioHora * cancha.duracionSlotMin / 60).round();
     final reserva = Reserva(
       id: 'jug_${DateTime.now().millisecondsSinceEpoch}_${_contadorJugador++}',
       canchaId: cancha.id,
       jugador: usuario?.nombre ?? 'Jugador',
       nivel: 'Intermedio 3.5',
-      dia: dia,
+      fecha: fecha,
+      dia: diaLabel,
       horaInicio: hora,
-      horaFin: _siguienteHora(hora),
+      horaFin: cancha.horaFinDe(hora),
       estado: EstadoReserva.confirmada,
       traidaPorApp: true,
-      precio: cancha.precioHora.round(),
-      sena: (cancha.precioHora * 0.3).round(),
+      precio: precio,
+      sena: 0, // piloto: pago en cancha, sin seña con tarjeta
       usuario: usuario?.email ?? '',
     );
+
+    // Fuente de verdad anti-doble-reserva: Supabase con
+    // UNIQUE(cancha_id, fecha, hora_inicio). Si otro ganó el slot → ocupado.
+    final res = await ReservasRepo.insertarSegura(reserva);
+    if (res == ResultadoReserva.ocupado) return res;
+
+    // ok / sinConexion / error → se guarda local igual (fail-safe offline).
     reservas.insert(0, reserva); // visible para el dueño en su panel
     misReservas.insert(0, reserva); // visible para el jugador en "Mis reservas"
-    if (dia == 'Hoy') {
+    if (diaLabel == 'Hoy') {
       final i = agenda.indexWhere(
           (b) => b.canchaId == cancha.id && b.hora == hora);
       if (i >= 0) agenda[i] = agenda[i].copyWith(reservaId: reserva.id);
     }
-    _consumirComision(cancha);
     notifyListeners();
     _persistirDatos();
-    ReservasRepo.insertar(reserva); // best-effort, compartir disponibilidad
-    return reserva;
+    return res == ResultadoReserva.ok ? ResultadoReserva.ok : res;
+  }
+
+  /// El dueño confirma (o revierte) que el jugador pagó en efectivo en la cancha.
+  Future<void> marcarPago(Reserva r, {bool pagado = true}) async {
+    final upd = r.copyWith(pagado: pagado);
+    _reemplazarReserva(upd);
+    notifyListeners();
+    _persistirDatos();
+    ReservasRepo.actualizar(upd); // best-effort
+  }
+
+  /// El dueño marca que el jugador no se presentó.
+  Future<void> marcarNoShow(Reserva r) async {
+    final upd = r.copyWith(estado: EstadoReserva.noShow);
+    _reemplazarReserva(upd);
+    notifyListeners();
+    _persistirDatos();
+    ReservasRepo.actualizar(upd); // best-effort
+  }
+
+  void _reemplazarReserva(Reserva r) {
+    final i = reservas.indexWhere((x) => x.id == r.id);
+    if (i >= 0) reservas[i] = r;
+    final j = misReservas.indexWhere((x) => x.id == r.id);
+    if (j >= 0) misReservas[j] = r;
   }
 
   String siguienteHora(String hora) => _siguienteHora(hora);

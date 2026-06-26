@@ -88,6 +88,9 @@ class CanchasRepo {
         'fotos': c.fotos,
         'dueno': c.dueno,
         'verificada': c.verificada,
+        'hora_apertura': c.horaApertura,
+        'hora_cierre': c.horaCierre,
+        'duracion_slot_min': c.duracionSlotMin,
       };
 
   static Cancha _fromRow(Map<String, dynamic> r) => Cancha(
@@ -110,6 +113,9 @@ class CanchasRepo {
             const [],
         dueno: (r['dueno'] ?? '') as String,
         verificada: (r['verificada'] ?? true) as bool,
+        horaApertura: (r['hora_apertura'] ?? '07:00') as String,
+        horaCierre: (r['hora_cierre'] ?? '23:00') as String,
+        duracionSlotMin: ((r['duracion_slot_min'] ?? 60) as num).toInt(),
       );
 
   static Distrito _enumDistrito(String? s) {
