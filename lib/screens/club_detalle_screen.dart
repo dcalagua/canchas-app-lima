@@ -29,7 +29,15 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
   String? _hora;
 
   /// Horas reservables reales de la cancha elegida (apertura→cierre, paso = duración).
-  List<String> get _horas => _cancha.horariosSlots();
+  /// Para "Hoy" se omiten las horas que ya pasaron.
+  List<String> get _horas {
+    int? desde;
+    if (_dia == 'Hoy') {
+      final n = DateTime.now();
+      desde = n.hour * 60 + n.minute;
+    }
+    return _cancha.horariosSlots(desdeMinutos: desde);
+  }
 
   /// Fecha real (ISO) según el día elegido; "Hoy/Mañana" es solo la etiqueta.
   String get _fechaIso {
@@ -249,20 +257,28 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                     Text('Las mañanas (valle) suelen estar más libres.',
                         style: t.bodySmall?.copyWith(color: textoTenue)),
                     const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 9,
-                      runSpacing: 9,
-                      children: [
-                        for (final h in _horas)
-                          _SlotChip(
-                            hora: h,
-                            ocupada: _ocupada(h),
-                            valle: _esValle(h),
-                            seleccionada: _hora == h,
-                            onTap: () => setState(() => _hora = h),
-                          ),
-                      ],
-                    ),
+                    if (_horas.isEmpty)
+                      Text(
+                        _dia == 'Hoy'
+                            ? 'No quedan horarios para hoy. Elige "Mañana".'
+                            : 'Sin horarios disponibles.',
+                        style: t.bodyMedium?.copyWith(color: textoTenue),
+                      )
+                    else
+                      Wrap(
+                        spacing: 9,
+                        runSpacing: 9,
+                        children: [
+                          for (final h in _horas)
+                            _SlotChip(
+                              hora: h,
+                              ocupada: _ocupada(h),
+                              valle: _esValle(h),
+                              seleccionada: _hora == h,
+                              onTap: () => setState(() => _hora = h),
+                            ),
+                        ],
+                      ),
                   ],
                 ],
               ),

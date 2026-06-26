@@ -26,7 +26,15 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
   Color get _color => colorDeporte(cancha.deporte);
 
   /// Horas reservables reales de ESTA cancha (apertura→cierre, paso = duración).
-  List<String> get _horas => cancha.horariosSlots();
+  /// Para "Hoy" se omiten las horas que ya pasaron.
+  List<String> get _horas {
+    int? desde;
+    if (_dia == 'Hoy') {
+      final n = DateTime.now();
+      desde = n.hour * 60 + n.minute;
+    }
+    return cancha.horariosSlots(desdeMinutos: desde);
+  }
 
   /// Fecha real (ISO) según el día elegido. Es la fuente de verdad de la reserva
   /// y del anti-doble-reserva; "Hoy/Mañana" es solo la etiqueta visible.
@@ -226,19 +234,27 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
                       style: TextStyle(color: Colors.grey, fontSize: 12),
                     ),
                     const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: [
-                        for (final h in _horas)
-                          _HoraChip(
-                            hora: h,
-                            ocupada: _ocupada(h),
-                            seleccionada: _hora == h,
-                            onTap: () => setState(() => _hora = h),
-                          ),
-                      ],
-                    ),
+                    if (_horas.isEmpty)
+                      Text(
+                        _dia == 'Hoy'
+                            ? 'No quedan horarios para hoy. Elige "Mañana".'
+                            : 'Sin horarios disponibles.',
+                        style: const TextStyle(color: Colors.grey),
+                      )
+                    else
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: [
+                          for (final h in _horas)
+                            _HoraChip(
+                              hora: h,
+                              ocupada: _ocupada(h),
+                              seleccionada: _hora == h,
+                              onTap: () => setState(() => _hora = h),
+                            ),
+                        ],
+                      ),
                   ],
                   const SizedBox(height: 100),
                 ],

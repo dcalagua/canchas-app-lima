@@ -87,13 +87,18 @@ class Cancha {
   /// [duracionSlotMin]. Ej. apertura 07:00, cierre 23:00, slot 90 min →
   /// 07:00, 08:30, 10:00, … Solo se incluye un slot si cabe completo antes
   /// del cierre. Fuente de la grilla que ve el jugador (reemplaza el array fijo).
-  List<String> horariosSlots() {
+  ///
+  /// Si se pasa [desdeMinutos] (minutos desde medianoche), se omiten los slots
+  /// cuyo inicio ya pasó — se usa para el día de HOY, para no ofrecer horas
+  /// pasadas.
+  List<String> horariosSlots({int? desdeMinutos}) {
     final ini = horaEnMinutos(horaApertura);
     final fin = horaEnMinutos(horaCierre);
     final paso = duracionSlotMin <= 0 ? 60 : duracionSlotMin;
     if (ini == null || fin == null || fin <= ini) return const [];
     final slots = <String>[];
     for (var m = ini; m + paso <= fin; m += paso) {
+      if (desdeMinutos != null && m < desdeMinutos) continue; // ya pasó
       slots.add(minutosEnHora(m));
     }
     return slots;
