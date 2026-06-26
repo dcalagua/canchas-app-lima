@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+import re
+import urllib.parse
+from xml.sax.saxutils import escape as _xml_esc
 
+from fastapi import APIRouter, Request, Response
+
+import config
 from models import (
     AprobarManualRequest,
     OtpConfirmarRequest,
@@ -106,6 +111,77 @@ def post_aprobar_manual(req: AprobarManualRequest) -> dict:
     """Aprobación/rechazo manual de propiedad (uso interno del equipo)."""
     return service.aprobar_manual(
         req.cancha_id, req.solicitante_id, req.aprobado, req.revisor, req.nota)
+
+
+# --- Webhook ENTRANTE de WhatsApp (Twilio): aprobar/rechazar respondiendo ---
+_PAT_CODIGO = re.compile(r"\d{6}")
+
+
+def _norm_tel(t: str) -> str:
+    return "".join(ch for ch in t if ch.isdigit())
+
+
+@router.post("/webhook/whatsapp")
+async def webhook_whatsapp(request: Request) -> Response:
+    """El admin APRUEBA/RECHAZA un reclamo respondiendo el WhatsApp del aviso.
+
+    Responde 'APROBAR <código>' o 'RECHAZAR <código>'. Triple barrera de
+    seguridad: (1) firma X-Twilio-Signature válida, (2) remitente ==
+    PICHANGOL_ADMIN_WHATSAPP, (3) código existente. Contesta por el mismo chat
+    con TwiML.
+    """
+    # Twilio envía application/x-www-form-urlencoded. Parseamos el cuerpo crudo
+    # (sin depender de python-multipart).
+    raw = (await request.body()).decode("utf-8", "ignore")
+    parsed = urllib.parse.parse_qs(raw, keep_blank_values=True)
+    params = {k: v[0] for k, v in parsed.items()}
+
+    # 1) Firma de Twilio (varias URLs candidatas por el proxy de Railway).
+    firma = request.headers.get("X-Twilio-Signature", "")
+    su = str(request.url)
+    urls = [config.TWILIO_WEBHOOK_URL, su]
+    if su.startswith("http://"):
+        urls.append("https://" + su[len("http://"):])
+    if not twilio_adapter.validar_firma_multi(urls, params, firma):
+        return Response(status_code=403)
+
+    # 2) El remitente debe ser el admin configurado.
+    de = _norm_tel(params.get("From", "").replace("whatsapp:", ""))
+    admin = _norm_tel(config.PICHANGOL_ADMIN_WHATSAPP or "")
+    if not admin or de != admin:
+        return Response(status_code=403)
+
+    def _twiml(msg: str) -> Response:
+        xml = ('<?xml version="1.0" encoding="UTF-8"?>'
+               f"<Response><Message>{msg}</Message></Response>")
+        return Response(content=xml, media_type="application/xml")
+
+    # 3) Parseo del comando.
+    texto = (params.get("Body") or "").strip()
+    up = texto.upper()
+    m = _PAT_CODIGO.search(texto)
+    if m is None:
+        return _twiml("Responde: APROBAR <código> o RECHAZAR <código> "
+                      "(el código de 6 dígitos del aviso).")
+    codigo = m.group(0)
+
+    if "RECHAZ" in up:
+        r = reclamos.rechazar_por_codigo(codigo, revisor="admin_whatsapp")
+        if not r.get("ok"):
+            return _twiml(f"No encontré un reclamo con el código {codigo}.")
+        return _twiml(f'❌ Reclamo de "{_xml_esc(r.get("nombre_local", ""))}" '
+                      f"RECHAZADO.")
+
+    if any(k in up for k in ("APROB", "APRUEB", "OK", "SI", "SÍ", "ACTIVA")):
+        r = reclamos.aprobar_por_codigo(codigo, revisor="admin_whatsapp")
+        if not r.get("ok"):
+            return _twiml(f"No encontré un reclamo con el código {codigo}.")
+        nombre = _xml_esc(r.get("nombre_local", ""))
+        if r.get("ya"):
+            return _twiml(f'"{nombre}" ya estaba activa. ✅')
+        return _twiml(f'✅ "{nombre}" ACTIVADA. Ya acepta reservas.')
+
+    return _twiml("No entendí. Responde: APROBAR <código> o RECHAZAR <código>.")
 
 
 @router.get("/canal")

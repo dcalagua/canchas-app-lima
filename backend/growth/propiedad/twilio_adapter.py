@@ -12,10 +12,37 @@ Fail-safe: sin `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN` el adapter queda inactiv
 from __future__ import annotations
 
 import base64
+import hashlib
+import hmac
 import urllib.parse
 import urllib.request
 
 import config
+
+
+def validar_firma(url: str, params: dict, firma: str) -> bool:
+    """Valida la X-Twilio-Signature de un webhook entrante.
+
+    Twilio firma HMAC-SHA1(auth_token, url + concat(k+v por cada param ordenado))
+    y lo manda en base64 en la cabecera. Reconstruimos lo mismo y comparamos.
+    Fail-safe: sin token o sin firma devuelve False.
+    """
+    if not config.TWILIO_AUTH_TOKEN or not firma:
+        return False
+    base = url + "".join(f"{k}{params[k]}" for k in sorted(params))
+    mac = hmac.new(
+        config.TWILIO_AUTH_TOKEN.encode("utf-8"),
+        base.encode("utf-8"),
+        hashlib.sha1,
+    )
+    esperado = base64.b64encode(mac.digest()).decode("ascii")
+    return hmac.compare_digest(esperado, firma)
+
+
+def validar_firma_multi(urls: list[str], params: dict, firma: str) -> bool:
+    """Valida la firma contra varias URLs candidatas (útil tras un proxy que
+    cambia esquema/host). Acepta si alguna coincide."""
+    return any(validar_firma(u, params, firma) for u in urls if u)
 
 
 def _creds_ok() -> bool:

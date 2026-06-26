@@ -98,13 +98,44 @@ def crear_reclamo(cancha_id: str, solicitante_id: str, nombre_local: str,
         + f"Cuenta: {solicitante_id}\n"
         f"WhatsApp del dueño: {telefono_contacto or '⚠️ no dejó número'}\n"
         f"Código: {codigo}\n"
-        f"Escríbele/llámalo por WhatsApp y, si lo verificas, apruébalo en el "
-        f"panel de Reclamos.")
+        f"Verifícalo y, para activarla, responde aquí: APROBAR {codigo}  "
+        f"(o RECHAZAR {codigo}). También puedes usar el panel de Reclamos.")
     return {"ok": True, "reclamo_id": r.id, "codigo": codigo, "estado": r.estado}
 
 
 def _por_id(reclamo_id: int) -> ReclamoPropiedad | None:
     return next((r for r in stores.reclamos if r.id == reclamo_id), None)
+
+
+def _por_codigo(codigo: str) -> ReclamoPropiedad | None:
+    """Reclamo más reciente con ese código (los códigos son de 6 dígitos)."""
+    rs = [r for r in stores.reclamos if r.codigo == codigo]
+    return rs[-1] if rs else None
+
+
+def aprobar_por_codigo(codigo: str, revisor: str | None = None) -> dict:
+    """Aprueba (activa) un reclamo a partir de su CÓDIGO. Usado por el webhook de
+    WhatsApp: el admin responde 'APROBAR <código>'. Idempotente si ya estaba activa."""
+    r = _por_codigo(codigo)
+    if r is None:
+        return {"ok": False, "error": "codigo_invalido"}
+    if r.estado == "activada":
+        return {"ok": True, "ya": True, "estado": "activada",
+                "nombre_local": r.nombre_local}
+    res = aprobar_directo(r.id, revisor)
+    res["nombre_local"] = r.nombre_local
+    return res
+
+
+def rechazar_por_codigo(codigo: str, revisor: str | None = None) -> dict:
+    """Rechaza un reclamo a partir de su CÓDIGO (webhook de WhatsApp)."""
+    r = _por_codigo(codigo)
+    if r is None:
+        return {"ok": False, "error": "codigo_invalido"}
+    r.estado = "rechazada"
+    r.decidido_en = ahora()
+    r.nota = f"Rechazado por WhatsApp ({revisor or 'admin'}).".strip()
+    return {"ok": True, "estado": "rechazada", "nombre_local": r.nombre_local}
 
 
 def estado(cancha_id: str) -> dict:

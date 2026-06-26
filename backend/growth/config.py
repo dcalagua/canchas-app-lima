@@ -44,6 +44,10 @@ TWILIO_MESSAGING_SERVICE_SID = os.getenv("TWILIO_MESSAGING_SERVICE_SID", "")
 # "+14155238886" (sandbox). Si está, se puede mandar el OTP por WhatsApp vía
 # Twilio SIN depender de la aprobación de Meta.
 TWILIO_WHATSAPP_FROM = os.getenv("TWILIO_WHATSAPP_FROM", "")
+# URL pública EXACTA del webhook entrante de WhatsApp (la que se configura en la
+# consola de Twilio, ej. https://<backend>/propiedad/webhook/whatsapp). Se usa
+# para validar la firma X-Twilio-Signature de forma confiable detrás del proxy.
+TWILIO_WEBHOOK_URL = os.getenv("TWILIO_WEBHOOK_URL", "")
 # Canal preferido: "whatsapp" (Meta) | "twilio_whatsapp" | "sms".
 OTP_CANAL_PREFERIDO = os.getenv("OTP_CANAL_PREFERIDO", "whatsapp")
 
