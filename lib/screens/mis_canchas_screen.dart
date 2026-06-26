@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
 
+import '../models/club.dart';
 import '../models/models.dart';
-import '../services/propiedad_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
-import '../widgets/court_lines.dart';
+import 'agregar_cancha_screen.dart';
 import 'editar_cancha_screen.dart';
 import 'registrar_cancha_screen.dart';
 import 'reservas_dueno_screen.dart';
-import 'verificar_propiedad_screen.dart';
 
-/// Canchas del dueño (locales de este dispositivo + las suyas en la nube,
-/// recuperadas por su correo tras reinstalar), con acceso a editarlas/eliminarlas.
+/// Canchas del dueño agrupadas por LOCAL (un local = varias canchas, posibles
+/// de distintos deportes). Cada local permite agregar más canchas y editar las
+/// existentes (precio, deporte, horario, fotos).
 class MisCanchasScreen extends StatefulWidget {
   const MisCanchasScreen({super.key});
 
@@ -51,30 +51,30 @@ class _MisCanchasScreenState extends State<MisCanchasScreen> {
           MaterialPageRoute(builder: (_) => const RegistrarCanchaScreen()),
         ),
         icon: const Icon(Icons.add_location_alt),
-        label: const Text('Registrar otra'),
+        label: const Text('Nuevo local'),
       ),
       body: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
           final canchas = appState.misCanchas;
           final hayPendientes = canchas.any((c) => c.pendienteVerificacion);
+          final locales = Club.agrupar(canchas);
           return RefreshIndicator(
             onRefresh: () => appState.sincronizarPropiedades(),
             child: canchas.isEmpty
-                ? ListView(
-                    children: const [SizedBox(height: 120), _Vacio()])
-                : ListView.separated(
+                ? ListView(children: const [SizedBox(height: 120), _Vacio()])
+                : ListView(
                     padding: const EdgeInsets.fromLTRB(18, 16, 18, 90),
-                    itemCount: canchas.length + (hayPendientes ? 1 : 0),
-                    separatorBuilder: (_, __) => const SizedBox(height: 12),
-                    itemBuilder: (_, i) {
-                      if (hayPendientes && i == 0) {
-                        return const _AvisoPendiente();
-                      }
-                      final cancha =
-                          canchas[i - (hayPendientes ? 1 : 0)];
-                      return _CanchaItem(cancha: cancha);
-                    },
+                    children: [
+                      if (hayPendientes) ...[
+                        const _AvisoPendiente(),
+                        const SizedBox(height: 14),
+                      ],
+                      for (final local in locales) ...[
+                        _LocalCard(local: local),
+                        const SizedBox(height: 14),
+                      ],
+                    ],
                   ),
           );
         },
@@ -83,8 +83,7 @@ class _MisCanchasScreenState extends State<MisCanchasScreen> {
   }
 }
 
-/// Aviso para el dueño cuando tiene canchas en revisión: explica el siguiente
-/// paso y que puede deslizar para actualizar el estado tras la aprobación.
+/// Aviso para el dueño cuando tiene canchas en revisión.
 class _AvisoPendiente extends StatelessWidget {
   const _AvisoPendiente();
 
@@ -112,9 +111,9 @@ class _AvisoPendiente extends StatelessWidget {
                         fontWeight: FontWeight.w800, color: clayOscuro)),
                 const SizedBox(height: 3),
                 Text(
-                  'Ya puedes editar precio, deporte y fotos tocando la cancha. '
-                  'Cuando el equipo apruebe la propiedad se habilitan las reservas. '
-                  'Desliza hacia abajo para actualizar el estado.',
+                  'Ya puedes editar precio, deporte, horario y fotos tocando la '
+                  'cancha. Cuando el equipo apruebe la propiedad se habilitan las '
+                  'reservas. Desliza hacia abajo para actualizar el estado.',
                   style:
                       t.bodySmall?.copyWith(color: textoTenue, height: 1.35),
                 ),
@@ -127,138 +126,131 @@ class _AvisoPendiente extends StatelessWidget {
   }
 }
 
-class _CanchaItem extends StatelessWidget {
-  const _CanchaItem({required this.cancha});
+/// Tarjeta de un LOCAL: cabecera + sus canchas (editar al tocar) + botón para
+/// agregar otra cancha al mismo local.
+class _LocalCard extends StatelessWidget {
+  const _LocalCard({required this.local});
+  final Club local;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final n = local.canchas.length;
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: trazo),
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.storefront, color: pino, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(local.nombre,
+                    style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
+              ),
+              Text('$n ${n == 1 ? 'cancha' : 'canchas'}',
+                  style: t.bodySmall?.copyWith(color: textoTenue)),
+            ],
+          ),
+          if (local.direccion != null) ...[
+            const SizedBox(height: 3),
+            Text(local.direccion!,
+                style: t.bodySmall?.copyWith(color: textoTenue),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis),
+          ],
+          const SizedBox(height: 8),
+          for (final c in local.canchas) _FilaCancha(cancha: c),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                    builder: (_) => AgregarCanchaScreen(local: local.principal)),
+              ),
+              icon: const Icon(Icons.add, color: pino, size: 20),
+              label: const Text('Agregar cancha',
+                  style:
+                      TextStyle(color: pino, fontWeight: FontWeight.w700)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Una cancha dentro del local: punto del deporte, nombre, deporte/precio/horario
+/// y acceso a editar. Marca "⏳" si está pendiente de verificación.
+class _FilaCancha extends StatelessWidget {
+  const _FilaCancha({required this.cancha});
   final Cancha cancha;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => EditarCanchaScreen(cancha: cancha)),
-        ),
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: trazo),
-          ),
-          child: Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: SizedBox(
-                  width: 64,
-                  height: 64,
-                  child: cancha.fotoUrl != null
-                      ? Image.network(cancha.fotoUrl!, fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => _gradiente())
-                      : _gradiente(),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(cancha.nombre,
-                        style: t.titleSmall
-                            ?.copyWith(fontWeight: FontWeight.w700),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 2),
-                    Text(
-                      cancha.direccion ??
-                          '${cancha.deporte.etiqueta} · ${cancha.distrito.etiqueta}',
-                      style: t.bodySmall?.copyWith(color: textoTenue),
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => EditarCanchaScreen(cancha: cancha)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 9),
+        child: Row(
+          children: [
+            Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(
+                  color: colorDeporte(cancha.deporte),
+                  borderRadius: BorderRadius.circular(3)),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(cancha.nombre,
+                      style:
+                          t.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
                       maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                              color: colorDeporte(cancha.deporte),
-                              borderRadius: BorderRadius.circular(999)),
-                          child: Text(cancha.deporte.etiqueta,
-                              style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700)),
-                        ),
-                        const SizedBox(width: 8),
-                        Text('S/ ${cancha.precioHora.toStringAsFixed(2)} /h',
-                            style: t.bodySmall?.copyWith(
-                                color: tinta, fontWeight: FontWeight.w700)),
-                        if (cancha.pendienteVerificacion) ...[
-                          const SizedBox(width: 8),
-                          if (PropiedadService.disponible)
-                            InkWell(
-                              borderRadius: BorderRadius.circular(999),
-                              onTap: () => Navigator.of(context).push(
-                                MaterialPageRoute(
-                                    builder: (_) => VerificarPropiedadScreen(
-                                        cancha: cancha)),
-                              ),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 9, vertical: 3),
-                                decoration: BoxDecoration(
-                                    color: bosque,
-                                    borderRadius: BorderRadius.circular(999)),
-                                child: const Text('Verificar propiedad',
-                                    style: TextStyle(
-                                        color: lima,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w800)),
-                              ),
-                            )
-                          else
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 7, vertical: 2),
-                              decoration: BoxDecoration(
-                                  color: const Color(0xFFFBEAD2),
-                                  borderRadius: BorderRadius.circular(999)),
-                              child: const Text('⏳ Por verificar',
-                                  style: TextStyle(
-                                      color: clayOscuro,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w700)),
-                            ),
-                        ],
-                      ],
-                    ),
-                  ],
-                ),
+                      overflow: TextOverflow.ellipsis),
+                  Text(
+                    '${cancha.deporte.etiqueta} · S/ ${cancha.precioHora.toStringAsFixed(2)}/h · '
+                    '${cancha.horaApertura}–${cancha.horaCierre}',
+                    style: t.bodySmall?.copyWith(color: textoTenue),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ),
-              const Icon(Icons.edit, color: pino, size: 20),
-            ],
-          ),
+            ),
+            if (cancha.pendienteVerificacion)
+              Container(
+                margin: const EdgeInsets.only(right: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                    color: const Color(0xFFFBEAD2),
+                    borderRadius: BorderRadius.circular(999)),
+                child: const Text('⏳ Por verificar',
+                    style: TextStyle(
+                        color: clayOscuro,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700)),
+              ),
+            const Icon(Icons.chevron_right, color: textoTenue),
+          ],
         ),
       ),
-    );
-  }
-
-  Widget _gradiente() {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        DecoratedBox(
-            decoration: BoxDecoration(gradient: gradienteDeporte(cancha.deporte))),
-        const CourtLines(opacity: 0.5),
-        Center(
-            child: Icon(iconoDeporte(cancha.deporte),
-                color: Colors.white, size: 24)),
-      ],
     );
   }
 }
@@ -281,8 +273,8 @@ class _Vacio extends StatelessWidget {
                 style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
             const SizedBox(height: 6),
             Text(
-              'Registra tu cancha para que aparezca en el mapa y puedas editarla '
-              'cuando quieras.',
+              'Registra tu local para que aparezca en el mapa; luego puedes '
+              'agregarle todas las canchas que tengas.',
               textAlign: TextAlign.center,
               style: t.bodyMedium?.copyWith(color: textoTenue),
             ),
@@ -295,7 +287,7 @@ class _Vacio extends StatelessWidget {
                     builder: (_) => const RegistrarCanchaScreen()),
               ),
               icon: const Icon(Icons.add_location_alt),
-              label: const Text('Registrar mi cancha'),
+              label: const Text('Registrar mi local'),
             ),
           ],
         ),

@@ -14,9 +14,10 @@ import '../models/models.dart';
 import '../services/propiedad_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/selector_horario.dart';
 
 /// Edición de una cancha ya registrada por el dueño: cambiar nombre, precio,
-/// deporte, dirección/ubicación, agregar foto de portada o eliminarla.
+/// deporte, horario/duración, dirección/ubicación, agregar foto o eliminarla.
 class EditarCanchaScreen extends StatefulWidget {
   const EditarCanchaScreen({super.key, required this.cancha});
   final Cancha cancha;
@@ -40,6 +41,9 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
       TextEditingController(); // DNI del reclamante (obligatorio al reclamar)
 
   late Deporte _deporte = widget.cancha.deporte;
+  late String _apertura = widget.cancha.horaApertura;
+  late String _cierre = widget.cancha.horaCierre;
+  late int _duracion = widget.cancha.duracionSlotMin;
   late LatLng _ubicacion = widget.cancha.ubicacion;
   GoogleMapController? _map;
 
@@ -195,6 +199,9 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
       fotoUrl: fotoUrl,
       dueno: dueno,
       verificada: verificada,
+      horaApertura: _apertura,
+      horaCierre: _cierre,
+      duracionSlotMin: _duracion,
     );
     appState.actualizarCancha(actualizada);
 
@@ -397,6 +404,15 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
               prefixText: 'S/ ',
               border: OutlineInputBorder(),
             ),
+          ),
+          const SizedBox(height: 18),
+          SelectorHorario(
+            apertura: _apertura,
+            cierre: _cierre,
+            duracionMin: _duracion,
+            onApertura: (v) => setState(() => _apertura = v),
+            onCierre: (v) => setState(() => _cierre = v),
+            onDuracion: (v) => setState(() => _duracion = v),
           ),
           if (widget.cancha.dueno.isEmpty) ...[
             const SizedBox(height: 16),

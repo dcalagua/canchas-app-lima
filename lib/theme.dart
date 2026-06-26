@@ -74,12 +74,14 @@ Color colorDeporte(Deporte d) => switch (d) {
       Deporte.tenis => bosque,
       Deporte.padel => sage,
       Deporte.futbol => verde,
+      Deporte.pickleball => const Color(0xFF2F8F8F), // teal verdoso
     };
 
 IconData iconoDeporte(Deporte d) => switch (d) {
       Deporte.tenis => Icons.sports_tennis,
       Deporte.padel => Icons.sports_handball,
       Deporte.futbol => Icons.sports_soccer,
+      Deporte.pickleball => Icons.sports_tennis, // raqueta (lo más cercano)
     };
 
 /// Gradiente de "superficie de cancha" — degradado sage→bosque (hero EBIM).

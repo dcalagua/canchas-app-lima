@@ -13,7 +13,8 @@ enum Distrito {
 enum Deporte {
   tenis('Tenis'),
   padel('Pádel'),
-  futbol('Fútbol');
+  futbol('Fútbol'),
+  pickleball('Pickleball');
 
   final String etiqueta;
   const Deporte(this.etiqueta);
@@ -82,6 +83,8 @@ class Cancha {
         return 90;
       case Deporte.tenis:
         return 70;
+      case Deporte.pickleball:
+        return 80;
     }
   }
 
