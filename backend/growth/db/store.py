@@ -33,7 +33,14 @@ CONFIG_DEFAULT: dict[str, str] = {
     "tope_solicitudes_usuario_mes": "5",
     # umbral de score de la IA para verificar SIN visita
     "umbral_ia_verificacion": "70",
+    # modo GLOBAL de aprobación de canchas: "marcha_blanca" (aprobación directa
+    # del admin, activa al instante) | "nuevo_flujo" (exige validación en sitio
+    # antes de activar). Se puede sobreescribir por cancha (modo_aprobacion_overrides).
+    "modo_aprobacion": "marcha_blanca",
 }
+
+# Modos de aprobación válidos.
+MODOS_APROBACION = ("marcha_blanca", "nuevo_flujo")
 
 
 @dataclass
@@ -189,6 +196,9 @@ class Stores:
         self.otps: dict[str, OtpPropiedad] = {}
         self.confirmaciones_propiedad: list[ConfirmacionPropiedad] = []
         self.reclamos: list[ReclamoPropiedad] = []
+        # Override del modo de aprobación POR cancha: {cancha_id: modo}. Si una
+        # cancha no está aquí, usa el modo global (config["modo_aprobacion"]).
+        self.modo_aprobacion_overrides: dict[str, str] = {}
         self._idem: dict[tuple[str, str], dict] = {}
         self._ids: dict[str, int] = {}
 
@@ -205,6 +215,18 @@ class Stores:
             return int(float(self.cfg(clave)))
         except ValueError:
             return 0
+
+    def modo_aprobacion(self, cancha_id: str | None = None) -> str:
+        """Modo de aprobación efectivo: el override de la cancha si existe, si no
+        el global. Siempre devuelve un modo válido."""
+        glob = self.cfg("modo_aprobacion")
+        if glob not in MODOS_APROBACION:
+            glob = "marcha_blanca"
+        if cancha_id and cancha_id in self.modo_aprobacion_overrides:
+            ov = self.modo_aprobacion_overrides[cancha_id]
+            if ov in MODOS_APROBACION:
+                return ov
+        return glob
 
     def cancha(self, cancha_id: str) -> CanchaEstado:
         c = self.canchas.get(cancha_id)
@@ -246,6 +268,7 @@ class Stores:
                 como_dict(c) for c in self.confirmaciones_propiedad
             ],
             "reclamos": [como_dict(r) for r in self.reclamos],
+            "modo_aprobacion_overrides": dict(self.modo_aprobacion_overrides),
         }
 
     def load_state(self, data: dict) -> None:
@@ -266,6 +289,8 @@ class Stores:
             _conf_from(d) for d in data.get("confirmaciones_propiedad", [])
         ]
         self.reclamos = [_reclamo_from(d) for d in data.get("reclamos", [])]
+        self.modo_aprobacion_overrides = dict(
+            data.get("modo_aprobacion_overrides") or {})
 
 
 # Singleton (en producción: repos contra Supabase).

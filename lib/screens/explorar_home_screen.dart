@@ -25,6 +25,7 @@ import 'mis_canchas_screen.dart';
 import 'registrar_cancha_screen.dart';
 import 'verificador_screen.dart';
 import 'admin_reclamos_screen.dart';
+import 'configuracion_aprobacion_screen.dart';
 import '../services/growth_service.dart';
 import '../services/propiedad_service.dart';
 
@@ -352,6 +353,13 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
           Navigator.of(sheetContext).pop();
           Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const AdminReclamosScreen()),
+          );
+        },
+        onConfigAprobacion: () {
+          Navigator.of(sheetContext).pop();
+          Navigator.of(context).push(
+            MaterialPageRoute(
+                builder: (_) => const ConfiguracionAprobacionScreen()),
           );
         },
         onLogin: () async {
@@ -1067,6 +1075,7 @@ class _MenuSheet extends StatelessWidget {
   final VoidCallback onMisCanchas;
   final VoidCallback onVerificador;
   final VoidCallback onReclamos;
+  final VoidCallback onConfigAprobacion;
   final Future<void> Function() onLogin;
   final Future<void> Function() onLogout;
   const _MenuSheet({
@@ -1076,6 +1085,7 @@ class _MenuSheet extends StatelessWidget {
     required this.onMisCanchas,
     required this.onVerificador,
     required this.onReclamos,
+    required this.onConfigAprobacion,
     required this.onLogin,
     required this.onLogout,
   });
@@ -1191,6 +1201,14 @@ class _MenuSheet extends StatelessWidget {
                   title: const Text('Reclamos (admin)'),
                   subtitle: const Text('Vetea y aprueba a los dueños'),
                   onTap: onReclamos,
+                ),
+              if (PropiedadService.disponible)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.tune, color: verdeCancha),
+                  title: const Text('Aprobación de canchas'),
+                  subtitle: const Text('Marcha blanca / nuevo flujo'),
+                  onTap: onConfigAprobacion,
                 ),
               if (PropiedadService.disponible)
                 ListTile(

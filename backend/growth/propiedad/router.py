@@ -86,6 +86,25 @@ def get_reclamos(estado: str | None = None) -> list[dict]:
     return reclamos.listar(estado)
 
 
+# --- Configuración del MODO de aprobación (marcha_blanca | nuevo_flujo) ---
+@router.get("/config/modo")
+def get_modo() -> dict:
+    """Modo de aprobación: global + overrides por cancha + modos válidos."""
+    return reclamos.config_modo()
+
+
+@router.put("/config/modo")
+def put_modo_global(req: dict) -> dict:
+    """Cambia el modo GLOBAL (aplica a todas las canchas sin override)."""
+    return reclamos.set_modo_global(str(req.get("modo", "")))
+
+
+@router.put("/config/modo/cancha")
+def put_modo_cancha(req: dict) -> dict:
+    """Fija o limpia el override de una cancha. modo=null/'' limpia el override."""
+    return reclamos.set_modo_cancha(str(req.get("cancha_id", "")), req.get("modo"))
+
+
 @router.get("/estado/{cancha_id}")
 def get_estado(cancha_id: str) -> dict:
     return service.estado(cancha_id)

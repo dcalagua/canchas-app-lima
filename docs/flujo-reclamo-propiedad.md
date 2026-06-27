@@ -186,6 +186,25 @@ límite.
 - [ ] **Rate-limit** por DNI/cuenta.
 - [ ] **Sellos por nivel** + checklist de expediente en la UI.
 
+## Modo de aprobación configurable (implementado)
+
+Para no romper la operación de pruebas mientras se introduce el flujo nuevo, el
+modo es **configurable** (admin → "Aprobación de canchas"):
+
+- **Marcha blanca:** el admin aprueba y la cancha queda **activa al instante**
+  (modelo actual del piloto). Es el **default**.
+- **Nuevo flujo:** tras aprobar, la cancha queda **pendiente de validación en
+  sitio** (código + GPS) antes de habilitar reservas.
+
+El modo es **global** y se puede **sobreescribir por cancha** (por defecto, todas
+usan el global). Backend: `config["modo_aprobacion"]` +
+`modo_aprobacion_overrides`; `aprobar_directo` respeta el modo efectivo.
+Endpoints `GET/PUT /propiedad/config/modo[/cancha]`.
+
+> El "nuevo flujo" v1 reusa la **validación en sitio** existente como prueba de
+> control; las señales ricas (reto en zona de control, selfie, evidencia,
+> score) se irán enchufando detrás de este mismo switch.
+
 ## Roadmap de implementación
 
 - **Fase 1 (piloto, ya):** N1 (DNI + WhatsApp) + aprobación concierge. ✅

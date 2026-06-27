@@ -24,8 +24,37 @@ import math
 import secrets
 
 import config
-from db.store import ReclamoPropiedad, ahora, como_dict, stores
+from db.store import MODOS_APROBACION, ReclamoPropiedad, ahora, como_dict, stores
 from propiedad import identidad, twilio_adapter, whatsapp_adapter
+
+
+def config_modo() -> dict:
+    """Configuración del modo de aprobación: global + overrides por cancha."""
+    return {
+        "global": stores.cfg("modo_aprobacion"),
+        "overrides": dict(stores.modo_aprobacion_overrides),
+        "modos": list(MODOS_APROBACION),
+    }
+
+
+def set_modo_global(modo: str) -> dict:
+    if modo not in MODOS_APROBACION:
+        return {"ok": False, "error": "modo_invalido",
+                "modos": list(MODOS_APROBACION)}
+    stores.config["modo_aprobacion"] = modo
+    return {"ok": True, "global": modo}
+
+
+def set_modo_cancha(cancha_id: str, modo: str | None) -> dict:
+    """Fija (o limpia, si modo es None/'') el override de una cancha."""
+    if not modo:
+        stores.modo_aprobacion_overrides.pop(cancha_id, None)
+        return {"ok": True, "cancha_id": cancha_id, "modo": None}
+    if modo not in MODOS_APROBACION:
+        return {"ok": False, "error": "modo_invalido",
+                "modos": list(MODOS_APROBACION)}
+    stores.modo_aprobacion_overrides[cancha_id] = modo
+    return {"ok": True, "cancha_id": cancha_id, "modo": modo}
 
 
 def _notificar_admin(texto: str) -> None:
@@ -226,13 +255,30 @@ def validar_en_sitio(codigo: str, lat: float, lng: float,
 
 
 def aprobar_directo(reclamo_id: int, revisor: str | None = None) -> dict:
-    """Piloto (panel web): el admin aprueba y la cancha queda ACTIVA al instante.
-    Equivale a triage(aprobado) + activación, SIN validación en sitio todavía.
-    Marca verificada=True con método 'panel_admin' (no es verificación en persona,
-    así que verificada_en_persona queda en False)."""
+    """Aprobación del admin. Su efecto depende del MODO de la cancha:
+
+    - "marcha_blanca" (piloto): aprueba y ACTIVA al instante (verificada=True),
+      sin validación en sitio. Método 'panel_admin'.
+    - "nuevo_flujo": aprueba el triage pero NO activa; deja la cancha pendiente
+      de VALIDACIÓN EN SITIO (código + GPS) antes de habilitar reservas.
+    """
     r = _por_id(reclamo_id)
     if r is None:
         return {"ok": False, "error": "reclamo_no_existe"}
+
+    modo = stores.modo_aprobacion(r.cancha_id)
+    if modo == "nuevo_flujo":
+        r.estado = "pendiente_validacion"
+        r.decidido_en = ahora()
+        r.nota = (f"Aprobado en triage (nuevo flujo) por {revisor or 'admin'}: "
+                  f"requiere validación en sitio.").strip()
+        _notificar_admin(
+            f'🟡 "{r.nombre_local}" aprobada en triage (nuevo flujo).\n'
+            f"Falta VALIDACIÓN EN SITIO. Código: {r.codigo}")
+        return {"ok": True, "estado": "pendiente_validacion", "verificada": False,
+                "requiere_validacion_sitio": True, "modo": modo}
+
+    # marcha_blanca: activa al instante (comportamiento del piloto).
     r.estado = "activada"
     r.decidido_en = ahora()
     r.validado_en = ahora()
@@ -244,7 +290,7 @@ def aprobar_directo(reclamo_id: int, revisor: str | None = None) -> dict:
     _notificar_admin(
         f"✅ Cancha ACTIVADA por aprobación directa (panel)\n"
         f"Local: {r.nombre_local}\nAdmin: {revisor or 's/n'}")
-    return {"ok": True, "estado": "activada", "verificada": True}
+    return {"ok": True, "estado": "activada", "verificada": True, "modo": modo}
 
 
 def activar_admin(reclamo_id: int) -> dict:

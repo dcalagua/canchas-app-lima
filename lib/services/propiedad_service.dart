@@ -221,6 +221,57 @@ class PropiedadService {
     }
   }
 
+  /// Lee la configuración del MODO de aprobación de canchas.
+  /// Devuelve {global, overrides: {cancha_id: modo}, modos: [...]} o null.
+  static Future<Map<String, dynamic>?> configModo() async {
+    if (!disponible) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/propiedad/config/modo');
+      final resp = await http.get(uri).timeout(const Duration(seconds: 12));
+      if (resp.statusCode != 200) return null;
+      return Map<String, dynamic>.from(jsonDecode(resp.body) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Cambia el modo GLOBAL de aprobación (aplica a todas las canchas sin override).
+  static Future<bool> setModoGlobal(String modo) async {
+    if (!disponible) return false;
+    try {
+      final uri = Uri.parse('$_baseUrl/propiedad/config/modo');
+      final resp = await http
+          .put(uri,
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({'modo': modo}))
+          .timeout(const Duration(seconds: 12));
+      if (resp.statusCode != 200) return false;
+      final r = jsonDecode(resp.body);
+      return r is Map && r['ok'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Fija el override de una cancha. `modo == null` limpia el override (vuelve
+  /// al global).
+  static Future<bool> setModoCancha(String canchaId, String? modo) async {
+    if (!disponible) return false;
+    try {
+      final uri = Uri.parse('$_baseUrl/propiedad/config/modo/cancha');
+      final resp = await http
+          .put(uri,
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({'cancha_id': canchaId, 'modo': modo}))
+          .timeout(const Duration(seconds: 12));
+      if (resp.statusCode != 200) return false;
+      final r = jsonDecode(resp.body);
+      return r is Map && r['ok'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Confirma el código. Si `estado == 'confirmada'`, la propiedad quedó probada.
   /// `telefonoPublico` (opcional) es el teléfono del local que trajo Google/redes;
   /// si se manda y coincide con el del OTP, la confirmación es automática.
