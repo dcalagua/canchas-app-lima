@@ -79,6 +79,42 @@ expediente y aprueba/rechaza (panel web, "Reclamos (admin)" in-app o WhatsApp).
 6. **Ley 29733.** El DNI es dato personal: se usa solo para validar al dueño,
    **no se publica**, y se conserva lo mínimo.
 
+## Cuando NO hay teléfono público (la realidad del informal)
+
+El OTP al teléfono público es la señal más fuerte, **pero gran parte del informal
+no tiene ficha de Google, o el número está deshabilitado/errado, y el dueño no
+sabe dónde editarlo.** Por eso el teléfono público **nunca puede ser
+obligatorio**: es una señal más, no LA prueba.
+
+**Regla de oro: verificación MULTI-RUTA.** Ninguna señal es única; el dueño
+completa las que puede y el score (o el concierge) decide. Rutas de control
+alternativas, por costo/fuerza:
+
+1. **Selfie georreferenciada en la cancha (auto-validación en sitio).** El dueño,
+   parado en su cancha, toma una foto desde la app; el GPS debe coincidir con la
+   ubicación (≤ N m). Prueba presencia física. Barata, escalable, NO depende de
+   Google. Reusa la lógica de `validar_en_sitio` (código + GPS), con peso medio
+   y revisión humana (presencia ≠ propiedad por sí sola).
+2. **Recibo de servicios / contrato / licencia del local.** El informal suele
+   tener recibo de luz/agua aunque no tenga Google. Foto del documento.
+3. **Reto físico (código en cartel / QR en sitio).** Le damos un código; lo
+   muestra escrito en la cancha y manda foto, o escanea un QR que dejamos pegado.
+4. **Visita del motorizado (N3).** Para alto valor o casos dudosos.
+5. **Verificación comunitaria / referido.** Un dueño ya verificado o un embajador
+   de la zona da fe; o reputación por reservas reales cumplidas.
+
+**El giro estratégico — convertir el reto en valor:** el informal no sabe
+gestionar su presencia digital → **Pichangol se la arma**. En el onboarding le
+ayudamos a crear/corregir su ficha de Google Business (número, fotos, horario).
+Resuelve la verificación a futuro Y es un diferenciador de retención ("te pongo
+en Google y te lleno la cancha").
+
+**Red de seguridad:** en el piloto, el **concierge humano** revisa el expediente
+y decide; la tecnología asiste, no reemplaza. El **contra-reclamo + ventana de
+impugnación** cubren el riesgo residual (si aparece el dueño real, recupera su
+cancha). A escala, el score automatiza los casos claros y deja a revisión los
+límite.
+
 ## Diferencias por tipo de reclamante
 
 - **Dueño:** título / recibo de servicios a su nombre, o RUC del negocio.
