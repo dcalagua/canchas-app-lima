@@ -33,6 +33,10 @@ class DecidirRequest(BaseModel):
     revisor: str | None = None
 
 
+class ModoRequest(BaseModel):
+    modo: str
+
+
 @router.get("/admin/api/sesion")
 def sesion(x_admin_token: str | None = Header(default=None)) -> dict:
     """Valida el token (lo usa la pantalla de login del panel)."""
@@ -55,6 +59,21 @@ def decidir(reclamo_id: int, req: DecidirRequest,
     if req.aprobado:
         return reclamos.aprobar_directo(reclamo_id, req.revisor)
     return reclamos.triage(reclamo_id, False, req.revisor)
+
+
+@router.get("/admin/api/modo")
+def get_modo_admin(x_admin_token: str | None = Header(default=None)) -> dict:
+    """Modo de aprobación de canchas (torre de control)."""
+    _check(x_admin_token)
+    return reclamos.config_modo()
+
+
+@router.post("/admin/api/modo")
+def set_modo_admin(req: ModoRequest,
+                   x_admin_token: str | None = Header(default=None)) -> dict:
+    """Cambia el modo GLOBAL de aprobación (marcha_blanca | nuevo_flujo)."""
+    _check(x_admin_token)
+    return reclamos.set_modo_global(req.modo)
 
 
 @router.get("/admin", response_class=HTMLResponse)
@@ -138,6 +157,8 @@ _HTML = r"""<!DOCTYPE html>
   .btn-ap{background:var(--bosque);color:var(--lima);border-color:var(--bosque)}
   .btn-rc{background:#fff;color:var(--rojo);border-color:#F3C9CE}
   .btn-ap:disabled,.btn-rc:disabled{opacity:.5;cursor:default}
+  .actions .seg{background:#fff;color:var(--text)}
+  .actions .seg.on{background:var(--bosque);color:var(--lima);border-color:var(--bosque)}
   .empty{text-align:center;color:var(--muted);padding:50px 10px}
   .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);
     background:var(--bosque);color:#fff;padding:12px 18px;border-radius:12px;
@@ -187,6 +208,7 @@ _HTML = r"""<!DOCTYPE html>
 </header>
 
 <div class="wrap" id="app" style="display:none">
+  <div id="modo"></div>
   <div class="tabs" id="tabs"></div>
   <div id="lista"></div>
 </div>
@@ -229,7 +251,35 @@ function mostrarApp(){
   document.getElementById('app').style.display='block';
   document.getElementById('ftr').style.display='block';
   renderTabs();
+  cargarModo();
   cargar();
+}
+
+const MODO_DESC = {
+  marcha_blanca:'Aprobar ACTIVA la cancha al instante (modo de pruebas / piloto).',
+  nuevo_flujo:'Tras aprobar, la cancha exige validación EN SITIO (código + GPS) antes de habilitar reservas.'
+};
+async function cargarModo(){
+  const r = await fetch('/admin/api/modo',{headers:headers()});
+  if(!r.ok) return;
+  const j = await r.json();
+  renderModo(j.global);
+}
+function renderModo(g){
+  document.getElementById('modo').innerHTML =
+    `<div class="card"><div class="top"><h3>Modo de aprobación de canchas</h3></div>
+      <div class="row" id="modoDesc">${esc(MODO_DESC[g]||'')}</div>
+      <div class="actions">
+        <button class="seg ${g==='marcha_blanca'?'on':''}" onclick="setModo('marcha_blanca')">Marcha blanca</button>
+        <button class="seg ${g==='nuevo_flujo'?'on':''}" onclick="setModo('nuevo_flujo')">Nuevo flujo</button>
+      </div></div>`;
+}
+async function setModo(m){
+  const r = await fetch('/admin/api/modo',{method:'POST',headers:headers(),body:JSON.stringify({modo:m})});
+  if(r.status===401){ salir(); return; }
+  const j = await r.json();
+  if(j.ok){ toast('Modo: '+(m==='marcha_blanca'?'Marcha blanca':'Nuevo flujo')); renderModo(m); }
+  else toast('No se pudo cambiar el modo');
 }
 function toast(msg){
   const d=document.createElement('div'); d.className='toast'; d.textContent=msg;

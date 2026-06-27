@@ -2,7 +2,6 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../data/sample_data.dart';
 import '../models/models.dart';
@@ -24,10 +23,7 @@ import 'mis_reservas_screen.dart';
 import 'mis_canchas_screen.dart';
 import 'registrar_cancha_screen.dart';
 import 'verificador_screen.dart';
-import 'admin_reclamos_screen.dart';
-import 'configuracion_aprobacion_screen.dart';
 import '../services/growth_service.dart';
-import '../services/propiedad_service.dart';
 
 /// Pantalla de inicio estilo Airbnb: mapa de Google a pantalla completa con
 /// barra de búsqueda flotante, filtros por deporte y un carrusel de canchas
@@ -347,19 +343,6 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
           Navigator.of(sheetContext).pop();
           Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const VerificadorScreen()),
-          );
-        },
-        onReclamos: () {
-          Navigator.of(sheetContext).pop();
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const AdminReclamosScreen()),
-          );
-        },
-        onConfigAprobacion: () {
-          Navigator.of(sheetContext).pop();
-          Navigator.of(context).push(
-            MaterialPageRoute(
-                builder: (_) => const ConfiguracionAprobacionScreen()),
           );
         },
         onLogin: () async {
@@ -1074,8 +1057,6 @@ class _MenuSheet extends StatelessWidget {
   final VoidCallback onRegistrar;
   final VoidCallback onMisCanchas;
   final VoidCallback onVerificador;
-  final VoidCallback onReclamos;
-  final VoidCallback onConfigAprobacion;
   final Future<void> Function() onLogin;
   final Future<void> Function() onLogout;
   const _MenuSheet({
@@ -1084,8 +1065,6 @@ class _MenuSheet extends StatelessWidget {
     required this.onRegistrar,
     required this.onMisCanchas,
     required this.onVerificador,
-    required this.onReclamos,
-    required this.onConfigAprobacion,
     required this.onLogin,
     required this.onLogout,
   });
@@ -1193,36 +1172,6 @@ class _MenuSheet extends StatelessWidget {
                   title: const Text('Verificador'),
                   subtitle: const Text('Visitas: foto, GPS y firma'),
                   onTap: onVerificador,
-                ),
-              if (PropiedadService.disponible)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.fact_check, color: verdeCancha),
-                  title: const Text('Reclamos (admin)'),
-                  subtitle: const Text('Vetea y aprueba a los dueños'),
-                  onTap: onReclamos,
-                ),
-              if (PropiedadService.disponible)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.tune, color: verdeCancha),
-                  title: const Text('Aprobación de canchas'),
-                  subtitle: const Text('Marcha blanca / nuevo flujo'),
-                  onTap: onConfigAprobacion,
-                ),
-              if (PropiedadService.disponible)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.open_in_new, color: verdeCancha),
-                  title: const Text('Panel web (admin)'),
-                  subtitle: const Text('Aprueba canchas desde el navegador'),
-                  onTap: () {
-                    final url = PropiedadService.panelUrl;
-                    if (url.isNotEmpty) {
-                      launchUrl(Uri.parse(url),
-                          mode: LaunchMode.externalApplication);
-                    }
-                  },
                 ),
               const Divider(),
               if (u == null)
