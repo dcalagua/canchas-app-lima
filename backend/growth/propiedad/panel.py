@@ -37,6 +37,11 @@ class ModoRequest(BaseModel):
     modo: str
 
 
+class ModoCanchaRequest(BaseModel):
+    cancha_id: str
+    modo: str | None = None
+
+
 @router.get("/admin/api/sesion")
 def sesion(x_admin_token: str | None = Header(default=None)) -> dict:
     """Valida el token (lo usa la pantalla de login del panel)."""
@@ -74,6 +79,14 @@ def set_modo_admin(req: ModoRequest,
     """Cambia el modo GLOBAL de aprobación (marcha_blanca | nuevo_flujo)."""
     _check(x_admin_token)
     return reclamos.set_modo_global(req.modo)
+
+
+@router.post("/admin/api/modo/cancha")
+def set_modo_cancha_admin(req: ModoCanchaRequest,
+                          x_admin_token: str | None = Header(default=None)) -> dict:
+    """Fija/limpia el override de UNA cancha (modo=null vuelve al global)."""
+    _check(x_admin_token)
+    return reclamos.set_modo_cancha(req.cancha_id, req.modo)
 
 
 @router.get("/admin", response_class=HTMLResponse)
@@ -159,6 +172,8 @@ _HTML = r"""<!DOCTYPE html>
   .btn-ap:disabled,.btn-rc:disabled{opacity:.5;cursor:default}
   .actions .seg{background:#fff;color:var(--text)}
   .actions .seg.on{background:var(--bosque);color:var(--lima);border-color:var(--bosque)}
+  .modosel{font-family:inherit;font-size:12px;padding:5px 8px;border:1px solid var(--border);
+    border-radius:8px;margin-left:6px;background:#fff;color:var(--text)}
   .empty{text-align:center;color:var(--muted);padding:50px 10px}
   .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);
     background:var(--bosque);color:#fff;padding:12px 18px;border-radius:12px;
@@ -225,6 +240,8 @@ const FILTROS = [
 ];
 let filtro = 'pendiente_triage';
 let cache = [];
+let modoGlobal = 'marcha_blanca';
+let overrides = {};
 
 function tok(){ return localStorage.getItem('pichangol_admin_tok') || ''; }
 function headers(){ return {'Content-Type':'application/json','X-Admin-Token':tok()}; }
@@ -263,8 +280,22 @@ async function cargarModo(){
   const r = await fetch('/admin/api/modo',{headers:headers()});
   if(!r.ok) return;
   const j = await r.json();
-  renderModo(j.global);
+  modoGlobal = j.global || 'marcha_blanca';
+  overrides = j.overrides || {};
+  renderModo(modoGlobal);
+  render();
 }
+async function setModoCancha(canchaId, modo){
+  const r = await fetch('/admin/api/modo/cancha',{method:'POST',headers:headers(),
+    body:JSON.stringify({cancha_id:canchaId, modo:modo||null})});
+  if(r.status===401){ salir(); return; }
+  const j = await r.json();
+  if(j.ok){
+    if(modo) overrides[canchaId]=modo; else delete overrides[canchaId];
+    toast('Modo de la cancha actualizado');
+  } else toast('No se pudo cambiar el modo de la cancha');
+}
+function modoNombre(m){ return m==='nuevo_flujo'?'Nuevo flujo':'Marcha blanca'; }
 function renderModo(g){
   document.getElementById('modo').innerHTML =
     `<div class="card"><div class="top"><h3>Modo de aprobación de canchas</h3></div>
@@ -327,6 +358,13 @@ function render(){
         <button class="btn-rc" onclick="decidir(${r.id},false,this)">Rechazar</button>
         <button class="btn-ap" onclick="decidir(${r.id},true,this)">Aprobar y activar</button>
       </div>` : '';
+    const ov = overrides[r.cancha_id];
+    const sel = `<div class="row" style="margin-top:10px">Modo de esta cancha:
+      <select class="modosel" onchange="setModoCancha('${esc(r.cancha_id)}', this.value)">
+        <option value="" ${ov?'':'selected'}>Usar global (${esc(modoNombre(modoGlobal))})</option>
+        <option value="marcha_blanca" ${ov==='marcha_blanca'?'selected':''}>Marcha blanca</option>
+        <option value="nuevo_flujo" ${ov==='nuevo_flujo'?'selected':''}>Nuevo flujo</option>
+      </select></div>`;
     return `<div class="card">
       <div class="top">
         <h3>${esc(r.nombre_local||'Local')}</h3>
@@ -336,6 +374,7 @@ function render(){
       <div class="row">Solicitante: ${esc(r.solicitante_id||'—')}</div>
       ${wa}
       <div><span class="chip est-${esc(r.estado)}">${esc(r.estado)}</span></div>
+      ${sel}
       ${acc}
     </div>`;
   }).join('');

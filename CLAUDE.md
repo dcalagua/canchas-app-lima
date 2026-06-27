@@ -104,9 +104,17 @@ off → redeploy inmediato en cada push). URL pública:
   validar en sitio), `service.py` (OTP), `identidad.py` (Factiliza DNI/RUC),
   `twilio_adapter.py` + `whatsapp_adapter.py` (OTP multicanal), `router.py`,
   `panel.py` (panel web admin).
-- **Panel web `/admin`:** página HTML self-contained, co-marca **Pichangol +
-  EBIM** (solo aquí), protegida por **`ADMIN_PANEL_TOKEN`** (header `X-Admin-Token`,
-  no viaja en URL). Endpoints `/admin/api/*`. Aprobar = aprobación directa.
+- **Panel web `/admin` = TORRE DE CONTROL del operador (SaaS).** Página HTML
+  self-contained, co-marca **Pichangol + EBIM** (solo aquí), protegida por
+  **`ADMIN_PANEL_TOKEN`** (header `X-Admin-Token`, no viaja en URL). Endpoints
+  `/admin/api/*`. Aquí el operador aprueba/rechaza reclamos y configura el **modo
+  de aprobación**: `marcha_blanca` (aprobar activa al instante) | `nuevo_flujo`
+  (exige validación en sitio). Global + override por cancha (`/admin/api/modo`,
+  `/admin/api/modo/cancha`; lógica en `reclamos` + `stores.modo_aprobacion`).
+  Ver `docs/flujo-reclamo-propiedad.md`.
+  > **Separación de responsabilidades:** el **APK** es para **jugadores y dueños
+  > de cancha** (+ rol de campo "Verificador"); **toda la administración del SaaS**
+  > (aprobaciones, configuración) vive en la **torre de control web**, no en el APK.
 - **Config (env, `config.py`):** `ADMIN_PANEL_TOKEN`, `FACTILIZA_API_TOKEN`,
   `PICHANGOL_ADMIN_WHATSAPP`, `TWILIO_*`, `WHATSAPP_*`, `OTP_CANAL_PREFERIDO`
   (`whatsapp|twilio_whatsapp|sms`), `VALIDADOR_ACTIVA_AUTOMATICO`,
