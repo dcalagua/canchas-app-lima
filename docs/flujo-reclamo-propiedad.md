@@ -103,6 +103,37 @@ alternativas, por costo/fuerza:
 5. **Verificación comunitaria / referido.** Un dueño ya verificado o un embajador
    de la zona da fe; o reputación por reservas reales cumplidas.
 
+### Presencia ≠ control: por qué una selfie sola NO aprueba
+
+Una selfie+GPS solo prueba que *alguien* está en la cancha — un jugador
+cualquiera también coincidiría. Por eso la presencia **nunca aprueba sola**; se
+combina con señales de **acceso/control exclusivo** que un jugador no tiene:
+
+- **Reto en zona de control:** mostrar un código (enviado a su WhatsApp) escrito
+  a mano en un punto que solo el operador maneja: la oficina/caja, el tablero de
+  luces, la puerta con candado. Liga identidad + presencia + control en una foto.
+- **Foto de "trastienda":** llaves del local, tablero eléctrico, caja, almacén,
+  vestuarios — no solo el campo. El jugador solo accede al campo.
+- **Prueba con el local cerrado:** pedir la validación a hora de cierre
+  (temprano/noche); quien está adentro con todo cerrado controla el acceso.
+- **Documento del local:** recibo de servicios/contrato a su nombre o del
+  negocio (el jugador no lo tiene).
+- **Liveness + identidad:** foto en vivo (no de galería) ligada al DNI ya
+  validado (a futuro, match biométrico cara↔DNI).
+
+### El filtro definitivo: el control se demuestra OPERANDO (y el fraude no paga)
+
+- **El que controla la cancha es el que COBRA.** Con pago en cancha, el dinero lo
+  recibe quien opera; un impostor no puede monetizar una cancha ajena.
+- **Operar en el tiempo** (gestionar reservas reales, que los jugadores asistan y
+  paguen) es la prueba más difícil de falsificar. La activación inicial es
+  reversible.
+- **Sin incentivo:** reclamar una cancha ajena no rinde (no cobras) y arriesga tu
+  DNI real (responsabilidad). Diseñamos para que el fraude **cueste más de lo que
+  da**.
+- **Contra-reclamo + impugnación + concierge:** el dueño real recupera su cancha;
+  el humano decide en la duda.
+
 **El giro estratégico — convertir el reto en valor:** el informal no sabe
 gestionar su presencia digital → **Pichangol se la arma**. En el onboarding le
 ayudamos a crear/corregir su ficha de Google Business (número, fotos, horario).
