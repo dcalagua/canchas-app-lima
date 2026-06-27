@@ -191,7 +191,6 @@ class _FormYape extends StatelessWidget {
         labelText: 'Número de celular Yape',
         hintText: '9XX XXX XXX',
         prefixIcon: Icon(Icons.phone_iphone),
-        border: OutlineInputBorder(),
       ),
     );
   }
@@ -210,7 +209,6 @@ class _FormTarjeta extends StatelessWidget {
             labelText: 'Número de tarjeta',
             hintText: '4111 1111 1111 1111',
             prefixIcon: Icon(Icons.credit_card),
-            border: OutlineInputBorder(),
           ),
         ),
         SizedBox(height: 12),
@@ -218,8 +216,7 @@ class _FormTarjeta extends StatelessWidget {
           children: [
             Expanded(
               child: TextField(
-                decoration: InputDecoration(
-                    labelText: 'MM/AA', border: OutlineInputBorder()),
+                decoration: InputDecoration(labelText: 'MM/AA'),
               ),
             ),
             SizedBox(width: 12),
@@ -227,8 +224,7 @@ class _FormTarjeta extends StatelessWidget {
               child: TextField(
                 keyboardType: TextInputType.number,
                 obscureText: true,
-                decoration: InputDecoration(
-                    labelText: 'CVV', border: OutlineInputBorder()),
+                decoration: InputDecoration(labelText: 'CVV'),
               ),
             ),
           ],

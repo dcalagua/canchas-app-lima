@@ -333,7 +333,6 @@ class _CapturaScreenState extends State<_CapturaScreen> {
             controller: _firma,
             decoration: const InputDecoration(
               labelText: 'Firma (tu nombre)',
-              border: OutlineInputBorder(),
             ),
           ),
           if (_msg != null) ...[

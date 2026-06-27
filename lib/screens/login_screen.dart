@@ -60,7 +60,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   controller: _ctrl,
                   decoration: const InputDecoration(
                     labelText: 'Nombre del club',
-                    border: OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 16),

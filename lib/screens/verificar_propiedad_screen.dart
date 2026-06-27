@@ -166,7 +166,6 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
                     color: Color(0xFF25D366), size: 20),
               ),
               prefixIconConstraints: BoxConstraints(minWidth: 44),
-              border: OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 14),
@@ -201,7 +200,6 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
               decoration: const InputDecoration(
                 labelText: 'Código de 6 dígitos',
                 prefixIcon: Icon(Icons.lock_outline),
-                border: OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 6),

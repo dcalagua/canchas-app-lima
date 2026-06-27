@@ -461,7 +461,6 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
                               CircularProgressIndicator(strokeWidth: 2)))
                   : null,
               counterText: '',
-              border: const OutlineInputBorder(),
             ),
           ),
           if (_dniNombre != null)
@@ -498,7 +497,6 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
                 child: FaIcon(FontAwesomeIcons.whatsapp,
                     color: Color(0xFF25D366), size: 20),
               ),
-              border: const OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 14),
@@ -510,7 +508,6 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
               label: _lblReq('Tu relación con la cancha'),
               prefixIcon:
                   const Icon(Icons.handshake_outlined, color: verdeCancha),
-              border: const OutlineInputBorder(),
             ),
             items: const [
               DropdownMenuItem(value: 'dueño', child: Text('Dueño')),
@@ -549,7 +546,6 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
                               CircularProgressIndicator(strokeWidth: 2)))
                   : null,
               counterText: '',
-              border: const OutlineInputBorder(),
             ),
           ),
           if (_rucRazon != null)
@@ -561,7 +557,6 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
             controller: _nombre,
             decoration: InputDecoration(
               label: _lblReq('Nombre del local / cancha'),
-              border: const OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 14),
@@ -575,7 +570,6 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
               label: _lblReq('Dirección (calle y número, distrito)'),
               hintText: 'Ej.: Av. Aviación 2345, San Borja',
               prefixIcon: const Icon(Icons.place, color: coral),
-              border: const OutlineInputBorder(),
               suffixIcon: _geocodificando
                   ? const Padding(
                       padding: EdgeInsets.all(12),
@@ -658,7 +652,6 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
               decoration: const InputDecoration(
                 labelText: 'Precio por hora',
                 prefixText: 'S/ ',
-                border: OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 18),

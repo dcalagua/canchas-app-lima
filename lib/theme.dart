@@ -176,5 +176,58 @@ ThemeData buildTheme() {
       iconTheme: WidgetStateProperty.resolveWith((s) => IconThemeData(
         color: s.contains(WidgetState.selected) ? bosque : const Color(0xFF9AA89E))),
     ),
+    // Botón secundario (outline): borde bosque, texto bosque, radio 12.
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: bosque,
+        side: const BorderSide(color: bosque, width: 1.4),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+      ),
+    ),
+    // Botón terciario (texto): acción discreta, color de marca.
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        foregroundColor: bosque,
+        textStyle: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+    ),
+    // Elevated = mismo lenguaje del CTA (bosque + lima) por si alguna pantalla
+    // lo usa en vez de FilledButton.
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: bosque, foregroundColor: lima, elevation: 0,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+      ),
+    ),
+    floatingActionButtonTheme: const FloatingActionButtonThemeData(
+      backgroundColor: bosque, foregroundColor: lima,
+    ),
+    // Diálogos: superficie blanca, esquinas suaves, tipografía del sistema.
+    dialogTheme: DialogTheme(
+      backgroundColor: Colors.white, surfaceTintColor: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      titleTextStyle: textTheme.titleLarge,
+      contentTextStyle: textTheme.bodyMedium,
+    ),
+    // SnackBars flotantes y de marca (las pantallas pueden sobreescribir color).
+    snackBarTheme: SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: bosque,
+      contentTextStyle: const TextStyle(
+          color: Colors.white, fontWeight: FontWeight.w600),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ),
+    dividerTheme: const DividerThemeData(color: trazo, thickness: 1, space: 24),
+    listTileTheme: const ListTileThemeData(iconColor: bosque, textColor: tinta),
+    switchTheme: SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith((s) =>
+          s.contains(WidgetState.selected) ? bosque : Colors.white),
+      trackColor: WidgetStateProperty.resolveWith((s) =>
+          s.contains(WidgetState.selected) ? lima : const Color(0xFFCFD8D2)),
+    ),
   );
 }

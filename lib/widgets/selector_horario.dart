@@ -77,7 +77,6 @@ class SelectorHorario extends StatelessWidget {
       isExpanded: true,
       decoration: InputDecoration(
         labelText: label,
-        border: const OutlineInputBorder(),
       ),
       items: [
         for (final h in _horas) DropdownMenuItem(value: h, child: Text(h)),

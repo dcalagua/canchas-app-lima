@@ -131,7 +131,6 @@ class _ValidarReclamoScreenState extends State<ValidarReclamoScreen> {
             decoration: const InputDecoration(
               labelText: 'Código del reclamo',
               prefixIcon: Icon(Icons.pin),
-              border: OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 6),

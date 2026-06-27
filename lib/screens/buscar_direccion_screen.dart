@@ -102,8 +102,6 @@ class _BuscarDireccionScreenState extends State<BuscarDireccionScreen> {
               decoration: InputDecoration(
                 hintText: 'Dirección, avenida o distrito',
                 prefixIcon: const Icon(Icons.search, color: coral),
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14)),
                 suffixIcon: _buscando
                     ? const Padding(
                         padding: EdgeInsets.all(12),

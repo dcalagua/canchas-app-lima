@@ -310,7 +310,6 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
             controller: _nombre,
             decoration: const InputDecoration(
               labelText: 'Nombre de la cancha',
-              border: OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 14),
@@ -321,7 +320,6 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
             decoration: InputDecoration(
               labelText: 'Dirección',
               prefixIcon: const Icon(Icons.place, color: clay),
-              border: const OutlineInputBorder(),
               suffixIcon: _geocodificando
                   ? const Padding(
                       padding: EdgeInsets.all(12),
@@ -402,7 +400,6 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
             decoration: const InputDecoration(
               labelText: 'Precio por hora',
               prefixText: 'S/ ',
-              border: OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 18),
@@ -429,7 +426,6 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
                 hintText: '8 dígitos — validamos tu identidad',
                 prefixIcon: Icon(Icons.badge_outlined, color: pino),
                 counterText: '',
-                border: OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 12),
@@ -450,7 +446,6 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
                   child: FaIcon(FontAwesomeIcons.whatsapp,
                       color: Color(0xFF25D366), size: 20),
                 ),
-                border: OutlineInputBorder(),
               ),
             ),
           ],
@@ -463,7 +458,6 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
                 labelText: 'RUC del negocio (opcional)',
                 hintText: 'Ayuda a confirmar que el local existe (no reemplaza la validación del dueño)',
                 prefixIcon: Icon(Icons.verified_outlined, color: pino),
-                border: OutlineInputBorder(),
               ),
             ),
           ],

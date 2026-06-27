@@ -119,7 +119,6 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
             controller: _nombre,
             decoration: const InputDecoration(
               labelText: 'Nombre de la cancha (ej. Cancha 2)',
-              border: OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 16),
@@ -150,7 +149,6 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
             decoration: const InputDecoration(
               labelText: 'Precio por hora',
               prefixText: 'S/ ',
-              border: OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 18),
