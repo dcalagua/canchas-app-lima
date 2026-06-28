@@ -25,7 +25,8 @@ class PlacesService {
 
   /// Consultas de texto que cubren los deportes del marketplace en Lima.
   /// Incluye jerga peruana (pichanga, fulbito, grass/loza, fútbol 5/6/7) para
-  /// no perder canchas informales.
+  /// no perder canchas informales, y términos de CLUBES deportivos (country
+  /// club, polideportivo, racquet) para que también entren al radar.
   static const _consultas = [
     'canchas de fútbol',
     'cancha sintética de fútbol',
@@ -38,6 +39,11 @@ class PlacesService {
     'cancha de tenis',
     'cancha de pádel',
     'club de pádel',
+    'cancha de pickleball',
+    'club deportivo',
+    'polideportivo',
+    'country club',
+    'racquet club',
   ];
 
   /// Busca canchas cerca de [centro] dentro de [radioMetros].
@@ -232,8 +238,16 @@ class PlacesService {
     if (_palabrasExcluidas.any(n.contains)) return null;
 
     // 2) Señal positiva por deporte en el nombre.
+    if (n.contains('pickleball') || n.contains('pickle')) {
+      return Deporte.pickleball;
+    }
     if (n.contains('pádel') || n.contains('padel')) return Deporte.padel;
-    if (n.contains('tenis') || n.contains('tennis')) return Deporte.tenis;
+    if (n.contains('tenis') ||
+        n.contains('tennis') ||
+        n.contains('raqueta') ||
+        n.contains('racquet')) {
+      return Deporte.tenis;
+    }
     if (n.contains('fútbol') ||
         n.contains('futbol') ||
         n.contains('pichang') ||      // pichanga / pichanguita (jerga PE)
@@ -250,14 +264,24 @@ class PlacesService {
         n.contains('complejo deportivo') ||
         n.contains('club deportivo') ||
         n.contains('centro deportivo') ||
+        n.contains('polideportivo') ||
+        n.contains('country club') ||
+        n.contains('club de campo') ||
+        n.contains('club campestre') ||
         n.contains('estadio')) {
       return Deporte.futbol;
     }
 
-    // 3) Sin señal en el nombre: solo si Google lo marca como recinto deportivo.
+    // 3) Sin señal en el nombre: si Google lo marca como recinto deportivo o
+    //    club, lo damos por reclamable (deporte genérico; el dueño lo precisa).
     if (tipos.contains('stadium') ||
+        tipos.contains('arena') ||
         tipos.contains('sports_complex') ||
-        tipos.contains('athletic_field')) {
+        tipos.contains('sports_club') ||
+        tipos.contains('sports_activity_location') ||
+        tipos.contains('recreation_center') ||
+        tipos.contains('athletic_field') ||
+        tipos.contains('country_club')) {
       return Deporte.futbol;
     }
     return null; // por defecto, no lo metemos (evita falsos positivos)
