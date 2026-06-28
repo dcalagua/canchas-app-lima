@@ -40,13 +40,17 @@ jugador es 100% Pichangol, EBIM solo aparece discreto como respaldo).
   `"Club Raqueta San Borja"`), `canchas_repo.dart` (Supabase tabla
   `pichangol_canchas`, fail-safe), `reservas_repo.dart`.
 - **Servicios:** `propiedad_service.dart` (reclamo/OTP/estado/aprobar contra el
-  backend growth), `growth_service.dart`, `places_service.dart` (Google Places),
+  backend growth), `growth_service.dart`, `places_service.dart` (Google Places;
+  heurística de detección en `docs/heuristica-deteccion-canchas.md`),
   `supabase_service.dart`, `auth_service.dart` (Google Sign-In).
-- **Pantallas clave:** `explorar_home_screen.dart` (mapa, menú con accesos admin),
+- **Pantallas clave:** `explorar_home_screen.dart` (mapa + menú jugador/dueño),
   `club_detalle_screen.dart` (ficha pública + panel pendiente con diagnóstico),
-  `mis_canchas_screen.dart` (panel del dueño), `registrar_cancha_screen.dart`,
-  `editar_cancha_screen.dart`, `admin_reclamos_screen.dart` (admin in-app),
+  `mis_canchas_screen.dart` (panel del dueño, agrupado por local),
+  `agregar_cancha_screen.dart`, `registrar_cancha_screen.dart`,
+  `editar_cancha_screen.dart`, `reservas_dueno_screen.dart` (cobros del dueño),
   `verificar_propiedad_screen.dart` (OTP), `validar_reclamo_screen.dart` (motorizado).
+  > La administración del SaaS (reclamos, modo de aprobación) NO está en el APK:
+  > vive en la **torre de control web** `/admin` (ver backend growth).
 - **Tema:** `lib/theme.dart` (tokens del handoff EBIM: lima `#AEEA94`, bosque
   `#14463A`, etc., DM Sans). `lib/brand.dart` (nombre, eslogan, respaldo EBIM).
 - **dart-defines (secrets de GitHub Actions):** `GROWTH_API_URL`
