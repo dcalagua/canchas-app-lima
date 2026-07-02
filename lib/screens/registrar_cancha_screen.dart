@@ -53,6 +53,11 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
   // Relación del reclamante con la cancha (combo).
   String _relacion = 'dueño';
 
+  /// Evita doble-envío (doble tap / red lenta): sin esto, cada envío genera un
+  /// id de cancha nuevo (basado en timestamp) y por lo tanto un reclamo
+  /// duplicado en el panel de administración.
+  bool _enviando = false;
+
   /// Etiqueta con asterisco rojo para campos obligatorios.
   Widget _lblReq(String s) => Text.rich(TextSpan(text: s, children: const [
         TextSpan(
@@ -249,6 +254,16 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
   }
 
   Future<void> _publicar() async {
+    if (_enviando) return;
+    setState(() => _enviando = true);
+    try {
+      await _publicarInterno();
+    } finally {
+      if (mounted) setState(() => _enviando = false);
+    }
+  }
+
+  Future<void> _publicarInterno() async {
     final nombre = _nombre.text.trim();
     if (nombre.isEmpty) {
       _avisar('Ponle un nombre al local / cancha.');
@@ -687,11 +702,19 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
                 foregroundColor: lima,
                 padding: const EdgeInsets.symmetric(vertical: 15),
               ),
-              onPressed: _publicar,
-              icon: Icon(_esReclamo ? Icons.verified_user : Icons.send),
-              label: Text(_esReclamo
-                  ? 'Reclamar cancha'
-                  : 'Enviar para validación'),
+              onPressed: _enviando ? null : _publicar,
+              icon: _enviando
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : Icon(_esReclamo ? Icons.verified_user : Icons.send),
+              label: Text(_enviando
+                  ? 'Enviando...'
+                  : (_esReclamo
+                      ? 'Reclamar cancha'
+                      : 'Enviar para validación')),
             ),
           ),
         ],
