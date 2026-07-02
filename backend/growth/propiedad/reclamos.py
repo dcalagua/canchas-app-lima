@@ -83,11 +83,35 @@ def _distancia_m(lat1, lng1, lat2, lng2) -> float:
     return r * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
+_ESTADOS_TERMINALES = ("activada", "rechazada")
+
+
 def crear_reclamo(cancha_id: str, solicitante_id: str, nombre_local: str,
                   telefono_contacto: str | None = None,
                   dni: str | None = None, ruc: str | None = None,
                   relacion: str | None = None,
                   lat: float | None = None, lng: float | None = None) -> dict:
+    # Idempotente: si ya hay un reclamo NO terminal para esta cancha, no crear
+    # otro (evita duplicados en el panel por reintentos/"reenviar solicitud").
+    existente = next((r for r in stores.reclamos
+                       if r.cancha_id == cancha_id
+                       and r.estado not in _ESTADOS_TERMINALES), None)
+    if existente is not None:
+        existente.telefono_contacto = telefono_contacto or existente.telefono_contacto
+        existente.dni = dni or existente.dni
+        existente.ruc = ruc or existente.ruc
+        existente.relacion = relacion or existente.relacion
+        existente.lat = lat if lat is not None else existente.lat
+        existente.lng = lng if lng is not None else existente.lng
+        if existente.estado == "pendiente_triage":
+            _notificar_admin(
+                f"🔁 Recordatorio de reclamo pendiente\n"
+                f"Local: {existente.nombre_local}\n"
+                f"Código: {existente.codigo}\n"
+                f"(el reclamante reenvió la solicitud, sigue esperando tu revisión)")
+        return {"ok": True, "reclamo_id": existente.id, "codigo": existente.codigo,
+                "estado": existente.estado, "reenviado": True}
+
     codigo = f"{secrets.randbelow(1_000_000):06d}"
     # Consultas autoritativas server-side (fail-safe): DNI=persona, RUC=negocio.
     nombre_titular = None
@@ -130,6 +154,18 @@ def crear_reclamo(cancha_id: str, solicitante_id: str, nombre_local: str,
         f"Verifícalo y, para activarla, responde aquí: APROBAR {codigo}  "
         f"(o RECHAZAR {codigo}). También puedes usar el panel de Reclamos.")
     return {"ok": True, "reclamo_id": r.id, "codigo": codigo, "estado": r.estado}
+
+
+def _cerrar_duplicados(r: ReclamoPropiedad) -> None:
+    """Al avanzar un reclamo hacia su activación, rechaza otros reclamos NO
+    terminales de la misma cancha (duplicados por reintentos previos a la
+    idempotencia de crear_reclamo)."""
+    for otro in stores.reclamos:
+        if otro.id != r.id and otro.cancha_id == r.cancha_id \
+                and otro.estado not in _ESTADOS_TERMINALES:
+            otro.estado = "rechazada"
+            otro.decidido_en = ahora()
+            otro.nota = f"Duplicado: la cancha ya fue activada por el reclamo #{r.id}."
 
 
 def _por_id(reclamo_id: int) -> ReclamoPropiedad | None:
@@ -231,6 +267,7 @@ def validar_en_sitio(codigo: str, lat: float, lng: float,
 
     r.validado_en = ahora()
     r.validador = validador
+    _cerrar_duplicados(r)
 
     if config.VALIDADOR_ACTIVA_AUTOMATICO:
         r.estado = "activada"
@@ -266,6 +303,7 @@ def aprobar_directo(reclamo_id: int, revisor: str | None = None) -> dict:
     if r is None:
         return {"ok": False, "error": "reclamo_no_existe"}
 
+    _cerrar_duplicados(r)
     modo = stores.modo_aprobacion(r.cancha_id)
     if modo == "nuevo_flujo":
         r.estado = "pendiente_validacion"
@@ -298,6 +336,7 @@ def activar_admin(reclamo_id: int) -> dict:
     r = _por_id(reclamo_id)
     if r is None:
         return {"ok": False, "error": "reclamo_no_existe"}
+    _cerrar_duplicados(r)
     r.estado = "activada"
     c = stores.cancha(r.cancha_id)
     c.verificada = True

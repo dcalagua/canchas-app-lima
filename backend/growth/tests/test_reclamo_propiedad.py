@@ -9,7 +9,7 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import config  # noqa: E402
-from db.store import stores  # noqa: E402
+from db.store import ReclamoPropiedad, ahora, stores  # noqa: E402
 from propiedad import reclamos  # noqa: E402
 
 # Cancha de referencia en Lima (Ate, cerca de "La Pichanga").
@@ -89,6 +89,34 @@ def test_modo_manual_no_activa_hasta_admin(monkeypatch):
     # El admin activa.
     reclamos.activar_admin(r["reclamo_id"])
     assert stores.cancha("c1").verificada is True
+
+
+def test_crear_reclamo_duplicado_reutiliza_el_pendiente():
+    """No debe ser posible tener dos reclamos pendientes para la misma cancha
+    (p. ej. por 'reenviar solicitud' o un reintento de red)."""
+    r1 = _crear()
+    r2 = _crear()
+    assert r2["reclamo_id"] == r1["reclamo_id"]
+    assert r2["codigo"] == r1["codigo"]
+    assert r2.get("reenviado") is True
+    assert len([r for r in stores.reclamos if r.cancha_id == "c1"]) == 1
+
+
+def test_aprobar_uno_cierra_duplicados_preexistentes():
+    """Si ya existían dos reclamos pendientes para la misma cancha (datos de
+    antes de la idempotencia), aprobar uno rechaza automáticamente al otro."""
+    r1 = _crear()
+    duplicado = ReclamoPropiedad(
+        id=stores.next_id("reclamo"), cancha_id="c1", solicitante_id="due@x.com",
+        nombre_local="La Pichanga", codigo="999999", estado="pendiente_triage",
+        creado_en=ahora())
+    stores.reclamos.append(duplicado)
+
+    reclamos.aprobar_directo(r1["reclamo_id"], revisor="dennis")
+
+    dup_actualizado = next(r for r in stores.reclamos if r.id == duplicado.id)
+    assert dup_actualizado.estado == "rechazada"
+    assert "Duplicado" in (dup_actualizado.nota or "")
 
 
 def test_reclamo_se_persiste_en_snapshot():
