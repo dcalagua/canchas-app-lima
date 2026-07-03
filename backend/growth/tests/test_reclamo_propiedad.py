@@ -158,3 +158,18 @@ def test_reclamo_rechazado_libera_la_cancha():
     reclamos.triage(r1["reclamo_id"], aprobado=False)  # queda 'rechazada'
     r2 = reclamos.crear_reclamo("c1", "due2@x.com", "L", lat=LAT, lng=LNG)
     assert r2["ok"] is True  # ya no bloquea
+
+
+def test_lugar_reclamado_para_bloquear_el_boton():
+    reclamos.crear_reclamo("c1", "due1@x.com", "L", lat=LAT, lng=LNG)
+    # Otro usuario consulta el MISMO lugar con id distinto (cancha de Google).
+    r = reclamos.lugar_reclamado(LAT, LNG, cancha_id="gp_x",
+                                 solicitante="due2@x.com")
+    assert r["reclamada"] is True and r["por_mi"] is False
+    # El mismo dueño → por_mi True.
+    r2 = reclamos.lugar_reclamado(LAT, LNG, cancha_id="gp_x",
+                                  solicitante="due1@x.com")
+    assert r2["reclamada"] is True and r2["por_mi"] is True
+    # Otro lugar lejano → libre.
+    r3 = reclamos.lugar_reclamado(LAT + 0.02, LNG, cancha_id="gp_y")
+    assert r3["reclamada"] is False

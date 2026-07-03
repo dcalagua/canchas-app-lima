@@ -62,6 +62,32 @@ class PropiedadService {
     }
   }
 
+  /// ¿Este lugar (lat/lng, o [canchaId]) ya tiene un reclamo activo? Devuelve
+  /// {reclamada, estado, por_mi} o null. Sirve para bloquear el botón "Reclamar"
+  /// de una cancha descubierta si ya la reclamó otro usuario.
+  static Future<Map<String, dynamic>?> lugarReclamado({
+    required double lat,
+    required double lng,
+    String canchaId = '',
+    String solicitante = '',
+  }) async {
+    if (!disponible) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/propiedad/lugar-reclamado')
+          .replace(queryParameters: {
+        'lat': '$lat',
+        'lng': '$lng',
+        if (canchaId.isNotEmpty) 'cancha_id': canchaId,
+        if (solicitante.isNotEmpty) 'solicitante': solicitante,
+      });
+      final resp = await http.get(uri).timeout(const Duration(seconds: 10));
+      if (resp.statusCode != 200) return null;
+      return Map<String, dynamic>.from(jsonDecode(resp.body) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Crea una SOLICITUD DE RECLAMO (modelo concierge): avisa al admin de
   /// Pichangol por WhatsApp con un código para que vetee al reclamante antes de
   /// activar nada. Devuelve {ok, reclamo_id, codigo, estado} o null si falló.

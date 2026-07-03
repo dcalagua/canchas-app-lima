@@ -48,6 +48,15 @@ def get_reclamo(cancha_id: str) -> dict:
     return reclamos.estado(cancha_id)
 
 
+@router.get("/lugar-reclamado")
+def get_lugar_reclamado(lat: float, lng: float, cancha_id: str = "",
+                        solicitante: str = "") -> dict:
+    """¿El lugar (lat/lng, o cancha_id) ya tiene un reclamo activo? Para que la
+    ficha de una cancha descubierta bloquee el botón "Reclamar" si ya la
+    reclamaron."""
+    return reclamos.lugar_reclamado(lat, lng, cancha_id, solicitante or None)
+
+
 @router.post("/reclamo/{reclamo_id}/triage")
 def post_triage(reclamo_id: int, req: TriageRequest) -> dict:
     """El admin vetea al reclamante y aprueba/rechaza (desbloquea el panel)."""

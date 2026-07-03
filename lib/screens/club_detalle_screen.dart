@@ -448,9 +448,47 @@ class _SlotChip extends StatelessWidget {
   }
 }
 
-class _PanelDescubierta extends StatelessWidget {
+/// Panel de una cancha descubierta en Google. Antes de ofrecer "Reclamar",
+/// consulta al backend si ese lugar ya tiene un reclamo activo de OTRO usuario;
+/// si es así, bloquea el botón y avisa que ya fue reclamada.
+class _PanelDescubierta extends StatefulWidget {
   const _PanelDescubierta({required this.cancha});
   final Cancha cancha;
+
+  @override
+  State<_PanelDescubierta> createState() => _PanelDescubiertaState();
+}
+
+class _PanelDescubiertaState extends State<_PanelDescubierta> {
+  bool _cargando = true;
+  bool _reclamadaPorOtro = false;
+
+  Cancha get cancha => widget.cancha;
+
+  @override
+  void initState() {
+    super.initState();
+    _consultar();
+  }
+
+  Future<void> _consultar() async {
+    if (!PropiedadService.disponible) {
+      if (mounted) setState(() => _cargando = false);
+      return;
+    }
+    final r = await PropiedadService.lugarReclamado(
+      lat: cancha.ubicacion.latitude,
+      lng: cancha.ubicacion.longitude,
+      canchaId: cancha.id,
+      solicitante: appState.usuario?.email ?? '',
+    );
+    if (!mounted) return;
+    setState(() {
+      _cargando = false;
+      _reclamadaPorOtro =
+          r != null && r['reclamada'] == true && r['por_mi'] != true;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -462,7 +500,35 @@ class _PanelDescubierta extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: trazo),
       ),
-      child: Column(
+      child: _reclamadaPorOtro ? _yaReclamada(t) : _reclamable(t),
+    );
+  }
+
+  Widget _yaReclamada(TextTheme t) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.lock_clock, color: clayOscuro),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Cancha ya reclamada',
+                    style:
+                        t.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Esta cancha ya fue reclamada por otro usuario y está en revisión. '
+            'No se puede reclamar dos veces. Si crees que es tuya, escríbenos '
+            'para resolverlo.',
+            style: t.bodyMedium?.copyWith(color: textoTenue, height: 1.4),
+          ),
+        ],
+      );
+
+  Widget _reclamable(TextTheme t) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
@@ -471,8 +537,8 @@ class _PanelDescubierta extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text('Encontramos esta cancha en Google Maps',
-                    style: t.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w700)),
+                    style:
+                        t.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
               ),
             ],
           ),
@@ -486,18 +552,26 @@ class _PanelDescubierta extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                    builder: (_) => RegistrarCanchaScreen(base: cancha)),
-              ),
-              icon: const Icon(Icons.add_location_alt),
-              label: const Text('Reclamar / registrar esta cancha'),
+              onPressed: _cargando
+                  ? null
+                  : () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                            builder: (_) =>
+                                RegistrarCanchaScreen(base: cancha)),
+                      ),
+              icon: _cargando
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.add_location_alt),
+              label: Text(_cargando
+                  ? 'Verificando disponibilidad…'
+                  : 'Reclamar / registrar esta cancha'),
             ),
           ),
         ],
-      ),
-    );
-  }
+      );
 }
 
 /// Panel cuando la cancha está reclamada/registrada pero aún sin verificar la

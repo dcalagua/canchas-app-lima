@@ -112,6 +112,20 @@ def _reclamo_activo_del_lugar(cancha_id: str, lat: float | None,
     return None
 
 
+def lugar_reclamado(lat: float | None, lng: float | None, cancha_id: str = "",
+                    solicitante: str | None = None) -> dict:
+    """¿Este lugar ya tiene un reclamo ACTIVO? La app lo consulta para bloquear el
+    botón "Reclamar" ANTES de intentarlo (si ya lo reclamó otro usuario)."""
+    activo = _reclamo_activo_del_lugar(cancha_id, lat, lng)
+    if activo is None:
+        return {"reclamada": False}
+    return {
+        "reclamada": True,
+        "estado": activo.estado,
+        "por_mi": bool(solicitante) and activo.solicitante_id == solicitante,
+    }
+
+
 def crear_reclamo(cancha_id: str, solicitante_id: str, nombre_local: str,
                   telefono_contacto: str | None = None,
                   dni: str | None = None, ruc: str | None = None,
