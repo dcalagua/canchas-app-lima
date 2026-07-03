@@ -24,8 +24,9 @@ def _limpio(monkeypatch):
 
 
 def _crear(cancha_id="c1"):
-    return reclamos.crear_reclamo(cancha_id, "due@x.com", "La Pichanga",
-                                  lat=LAT, lng=LNG)
+    # Sin lat/lng: cada cancha_id es un lugar distinto (este test es sobre el
+    # modo de aprobación, no sobre la ubicación).
+    return reclamos.crear_reclamo(cancha_id, "due@x.com", "La Pichanga")
 
 
 def test_default_es_marcha_blanca():

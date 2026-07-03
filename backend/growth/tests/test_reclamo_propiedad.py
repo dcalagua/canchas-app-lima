@@ -126,3 +126,35 @@ def test_reclamo_se_persiste_en_snapshot():
     # Roundtrip.
     stores.load_state(estado)
     assert len(stores.reclamos) == 1
+
+
+# --- Anti doble-reclamo: una cancha reclamada no la reclama otro ---
+def test_otro_usuario_no_puede_reclamar_la_misma_cancha():
+    r1 = reclamos.crear_reclamo("c1", "due1@x.com", "La Pichanga",
+                                lat=LAT, lng=LNG)
+    assert r1["ok"]
+    r2 = reclamos.crear_reclamo("c1", "due2@x.com", "La Pichanga",
+                                lat=LAT, lng=LNG)
+    assert r2["ok"] is False and r2["error"] == "ya_reclamada"
+
+
+def test_mismo_lugar_bloquea_aunque_el_id_sea_distinto():
+    reclamos.crear_reclamo("cA", "due1@x.com", "Local", lat=LAT, lng=LNG)
+    # Otro cancha_id pero a ~5 m → es el mismo lugar físico.
+    r = reclamos.crear_reclamo("cB", "due2@x.com", "Local",
+                               lat=LAT + 0.00005, lng=LNG)
+    assert r["ok"] is False and r["error"] == "ya_reclamada"
+
+
+def test_mismo_usuario_reclamo_es_idempotente():
+    r1 = reclamos.crear_reclamo("c1", "due1@x.com", "L", lat=LAT, lng=LNG)
+    r2 = reclamos.crear_reclamo("c1", "due1@x.com", "L", lat=LAT, lng=LNG)
+    assert r2["ok"] and r2.get("ya_existia") is True
+    assert r2["reclamo_id"] == r1["reclamo_id"]
+
+
+def test_reclamo_rechazado_libera_la_cancha():
+    r1 = reclamos.crear_reclamo("c1", "due1@x.com", "L", lat=LAT, lng=LNG)
+    reclamos.triage(r1["reclamo_id"], aprobado=False)  # queda 'rechazada'
+    r2 = reclamos.crear_reclamo("c1", "due2@x.com", "L", lat=LAT, lng=LNG)
+    assert r2["ok"] is True  # ya no bloquea

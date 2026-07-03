@@ -368,6 +368,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
     // dueño. Nada se activa hasta validarlo (revisión + visita en sitio).
     // Se ESPERA la respuesta para confirmar que el reclamo quedó en el servidor.
     bool reclamoOk = true;
+    bool yaReclamada = false;
     if (creadas.isNotEmpty) {
       final r = await PropiedadService.crearReclamo(
         canchaId: creadas.first.id,
@@ -380,19 +381,33 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
         ubicacion: _ubicacion,
       );
       reclamoOk = r != null && r['ok'] == true;
+      yaReclamada = r != null && r['error'] == 'ya_reclamada';
+    }
+
+    // Si OTRO usuario ya reclamó esta cancha (o el mismo lugar), no puedes
+    // reclamarla: revierte las canchas locales recién creadas.
+    if (yaReclamada) {
+      for (final c in creadas) {
+        appState.eliminarCancha(c.id);
+      }
     }
 
     if (!mounted) return;
     Navigator.of(context).pop();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        backgroundColor: reclamoOk ? verdeCancha : const Color(0xFFB4471F),
+        backgroundColor: (reclamoOk && !yaReclamada)
+            ? verdeCancha
+            : const Color(0xFFB4471F),
         content: Text(
-            reclamoOk
-                ? '✅ Reclamo enviado. En revisión: te contactaremos por WhatsApp '
-                    'para validar que eres el dueño antes de activar la cancha.'
-                : '⚠️ Cancha registrada, pero la solicitud no llegó al servidor. '
-                    'Ábrela y toca "Reenviar solicitud de verificación".'),
+            yaReclamada
+                ? '⚠️ Esta cancha ya fue reclamada por otro usuario y está en '
+                    'revisión. No puedes reclamarla.'
+                : reclamoOk
+                    ? '✅ Reclamo enviado. En revisión: te contactaremos por '
+                        'WhatsApp para validar que eres el dueño antes de activarla.'
+                    : '⚠️ Cancha registrada, pero la solicitud no llegó al '
+                        'servidor. Ábrela y toca "Reenviar solicitud de verificación".'),
         duration: const Duration(seconds: 5),
       ),
     );

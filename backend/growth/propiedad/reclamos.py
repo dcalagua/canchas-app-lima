@@ -85,32 +85,62 @@ def _distancia_m(lat1, lng1, lat2, lng2) -> float:
 
 _ESTADOS_TERMINALES = ("activada", "rechazada")
 
+# Estados en los que un reclamo "ocupa" la cancha e impide un segundo reclamo de
+# OTRO usuario. (Un reclamo 'rechazada' NO bloquea: vuelve a ser reclamable.)
+_ESTADOS_BLOQUEANTES = (
+    "pendiente_triage", "aprobado_triage", "pendiente_validacion",
+    "validada_pendiente_admin", "activada",
+)
+# Radio (m) para considerar que dos reclamos son del MISMO lugar aunque tengan
+# distinto cancha_id (p. ej. dos personas reclamando la misma cancha de Google).
+_MISMO_LUGAR_M = 80.0
+
+
+def _reclamo_activo_del_lugar(cancha_id: str, lat: float | None,
+                              lng: float | None) -> ReclamoPropiedad | None:
+    """Devuelve el reclamo ACTIVO que ya ocupa esta cancha: por mismo cancha_id,
+    o por ubicación muy cercana (mismo lugar físico). None si está libre."""
+    for r in stores.reclamos:
+        if r.estado not in _ESTADOS_BLOQUEANTES:
+            continue
+        if r.cancha_id == cancha_id:
+            return r
+        if (lat is not None and lng is not None
+                and r.lat is not None and r.lng is not None
+                and _distancia_m(r.lat, r.lng, lat, lng) <= _MISMO_LUGAR_M):
+            return r
+    return None
+
 
 def crear_reclamo(cancha_id: str, solicitante_id: str, nombre_local: str,
                   telefono_contacto: str | None = None,
                   dni: str | None = None, ruc: str | None = None,
                   relacion: str | None = None,
                   lat: float | None = None, lng: float | None = None) -> dict:
-    # Idempotente: si ya hay un reclamo NO terminal para esta cancha, no crear
-    # otro (evita duplicados en el panel por reintentos/"reenviar solicitud").
-    existente = next((r for r in stores.reclamos
-                       if r.cancha_id == cancha_id
-                       and r.estado not in _ESTADOS_TERMINALES), None)
-    if existente is not None:
-        existente.telefono_contacto = telefono_contacto or existente.telefono_contacto
-        existente.dni = dni or existente.dni
-        existente.ruc = ruc or existente.ruc
-        existente.relacion = relacion or existente.relacion
-        existente.lat = lat if lat is not None else existente.lat
-        existente.lng = lng if lng is not None else existente.lng
-        if existente.estado == "pendiente_triage":
+    # Anti doble-reclamo. Si esta cancha (por id) o el MISMO lugar (ubicación
+    # cercana) ya tiene un reclamo ACTIVO:
+    #  - de OTRO usuario → se rechaza ("ya_reclamada").
+    #  - del MISMO solicitante → idempotente: actualiza datos y devuelve el
+    #    existente (cubre "reenviar solicitud" y reintentos de red).
+    activo = _reclamo_activo_del_lugar(cancha_id, lat, lng)
+    if activo is not None:
+        if activo.solicitante_id != solicitante_id:
+            return {"ok": False, "error": "ya_reclamada", "estado": activo.estado,
+                    "cancha_id": activo.cancha_id}
+        activo.telefono_contacto = telefono_contacto or activo.telefono_contacto
+        activo.dni = dni or activo.dni
+        activo.ruc = ruc or activo.ruc
+        activo.relacion = relacion or activo.relacion
+        activo.lat = lat if lat is not None else activo.lat
+        activo.lng = lng if lng is not None else activo.lng
+        if activo.estado == "pendiente_triage":
             _notificar_admin(
                 f"🔁 Recordatorio de reclamo pendiente\n"
-                f"Local: {existente.nombre_local}\n"
-                f"Código: {existente.codigo}\n"
+                f"Local: {activo.nombre_local}\n"
+                f"Código: {activo.codigo}\n"
                 f"(el reclamante reenvió la solicitud, sigue esperando tu revisión)")
-        return {"ok": True, "reclamo_id": existente.id, "codigo": existente.codigo,
-                "estado": existente.estado, "reenviado": True}
+        return {"ok": True, "reclamo_id": activo.id, "codigo": activo.codigo,
+                "estado": activo.estado, "reenviado": True, "ya_existia": True}
 
     codigo = f"{secrets.randbelow(1_000_000):06d}"
     # Consultas autoritativas server-side (fail-safe): DNI=persona, RUC=negocio.
