@@ -106,3 +106,38 @@ create table if not exists consentimientos_growth (
   fecha      timestamptz not null default now(),
   unique (sujeto_id, tipo)
 );
+
+-- =========================================================================
+-- E. CONVOCATORIAS ("pichangas" programadas con cupos + lista de espera)
+--    Reparto de cupos por 3 modos configurables: orden_llegada|sorteo|equidad.
+-- =========================================================================
+create table if not exists convocatorias (
+  id              bigserial primary key,
+  club_id         text not null,
+  titulo          text not null,
+  deporte         text not null default 'futbol',
+  cupos           integer not null default 14,
+  estado          text not null default 'abierta' check (estado in ('abierta','cerrada')),
+  categoria       text,                 -- master|menor|libre
+  fecha_partido   text,                 -- ISO/texto del partido (display)
+  apertura        timestamptz,          -- desde cuándo se puede inscribir
+  cierre          timestamptz,          -- hasta cuándo (y cuándo se resuelve)
+  modo_asignacion text check (modo_asignacion in ('orden_llegada','sorteo','equidad')),
+  semilla         text,                 -- fijada al cerrar (sorteo reproducible)
+  creado_por      text,
+  creado_en       timestamptz not null default now(),
+  cerrado_en      timestamptz
+);
+
+create table if not exists inscripciones_convocatoria (
+  id              bigserial primary key,
+  convocatoria_id bigint not null references convocatorias,
+  socio_id        text not null,
+  socio_nombre    text not null,
+  estado          text not null default 'pendiente'
+                  check (estado in ('pendiente','confirmado','lista_espera','cancelado')),
+  posicion        integer,              -- congelada al cerrar
+  asistio         boolean,              -- marcada por el admin tras el partido
+  creado_en       timestamptz not null default now(),
+  unique (convocatoria_id, socio_id)
+);
