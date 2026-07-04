@@ -53,46 +53,73 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
   @override
   void initState() {
     super.initState();
-    // Si la cancha está en revisión, pregunta al backend si el admin ya la
-    // aprobó y refresca el estado (quita el cartel "pendiente" en vivo).
-    if (_cancha.pendienteVerificacion) _refrescarPropiedad();
+    // Al abrir la ficha, sincroniza el estado REAL de la cancha con el backend:
+    // - pendiente → puede pasar a verificada (quita el cartel "pendiente").
+    // - verificada → puede DEGRADARSE si el admin la rechazó/revocó (quita los
+    //   horarios). Antes solo se sincronizaba si estaba pendiente, así que una
+    //   cancha rechazada seguía mostrándose reservable.
+    if (_cancha.registrada) _sincronizarFicha();
+    // Refresca las reservas de la nube para que la grilla no muestre libre un
+    // horario que otro dispositivo ya tomó (integridad la garantiza el UNIQUE,
+    // esto es solo para que se vea al día).
+    appState.cargarReservasRemotas();
+  }
+
+  /// Sincroniza la cancha mostrada (sea mía o no) y refleja el cambio en vivo.
+  Future<void> _sincronizarFicha() async {
+    final act = await appState.sincronizarCanchaMostrada(_cancha);
+    if (!mounted || act == null) return;
+    setState(() => _cancha = act);
   }
 
   Future<void> _refrescarPropiedad() async {
     await appState.sincronizarPropiedades();
     if (!mounted) return;
-    Cancha? actualizada;
-    for (final c in appState.todasLasCanchas()) {
-      if (c.id == _cancha.id) {
-        actualizada = c;
-        break;
-      }
-    }
-    if (actualizada != null && actualizada.verificada != _cancha.verificada) {
-      setState(() => _cancha = actualizada!);
-    }
+    await _sincronizarFicha();
   }
 
-  /// Tras reclamar una cancha descubierta se crea una cancha NUEVA (id distinto)
-  /// en el mismo lugar, así que la re-resolución por id no la encuentra.
-  /// Re-resolvemos por proximidad y preferimos la que ya está registrada, para
-  /// que la ficha pase de "descubierta" (botón Reclamar) a "pendiente de
-  /// verificación" al volver del registro.
-  Future<void> _refrescarDescubierta() async {
+  /// Pull-to-refresh: recarga canchas y reservas de la nube + re-sincroniza el
+  /// estado de esta cancha (para que un rechazo/aprobación del admin se vea sin
+  /// reiniciar la app).
+  Future<void> _pullRefresh() async {
+    await appState.cargarCanchasRemotas();
+    await appState.cargarReservasRemotas();
+    if (!mounted) return;
+    await _sincronizarFicha();
+  }
+
+  /// Al volver del registro, re-resolvemos la cancha que se muestra. Preferimos
+  /// la cancha RECIÉN CREADA por su ID EXACTO (no "saltar" a otra cancha del
+  /// mismo lugar, que podría estar verificada por otro dueño). Si el reclamo se
+  /// revirtió (creada == null), re-resolvemos por proximidad pero SOLO a una
+  /// cancha MÍA (nunca a una verificada ajena).
+  Future<void> _refrescarDescubierta(Cancha? creada) async {
     await appState.sincronizarPropiedades();
     if (!mounted) return;
-    Cancha? mejor;
-    double mejorD = double.infinity;
-    for (final c in appState.todasLasCanchas()) {
-      final d = _metros(c.ubicacion.latitude, c.ubicacion.longitude,
-          _cancha.ubicacion.latitude, _cancha.ubicacion.longitude);
-      if (c.registrada && d <= 80 && d < mejorD) {
-        mejorD = d;
-        mejor = c;
+    Cancha? destino;
+    if (creada != null) {
+      for (final c in appState.todasLasCanchas()) {
+        if (c.id == creada.id) {
+          destino = c;
+          break;
+        }
+      }
+      destino ??= creada; // si el dedup la ocultó, muestro la creada (pendiente).
+    } else {
+      final email = appState.usuario?.email ?? '';
+      double mejorD = double.infinity;
+      for (final c in appState.todasLasCanchas()) {
+        if (!c.registrada || c.dueno != email) continue;
+        final d = _metros(c.ubicacion.latitude, c.ubicacion.longitude,
+            _cancha.ubicacion.latitude, _cancha.ubicacion.longitude);
+        if (d <= 80 && d < mejorD) {
+          mejorD = d;
+          destino = c;
+        }
       }
     }
-    if (mejor != null && mejor.id != _cancha.id) {
-      setState(() => _cancha = mejor!);
+    if (destino != null && destino.id != _cancha.id) {
+      setState(() => _cancha = destino!);
     }
   }
 
@@ -138,10 +165,19 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
       return;
     }
     nav.pop();
+    // Solo es "confirmada" si llegó a Supabase (fuente de verdad anti-doble
+    // reserva). Con sinConexion/error se guarda local pero NO está garantizada.
+    final confirmada = res == ResultadoReserva.ok;
     messenger.showSnackBar(
       SnackBar(
-        backgroundColor: pino,
-        content: Text('✅ Reserva confirmada en ${_cancha.nombre} · $_dia $hora',
+        backgroundColor: confirmada ? pino : const Color(0xFFB4471F),
+        duration: const Duration(seconds: 5),
+        content: Text(
+            confirmada
+                ? '✅ Reserva confirmada en ${_cancha.nombre} · $_dia $hora'
+                : '⚠️ Guardamos tu reserva, pero no pudimos confirmarla con el '
+                    'servidor. Otra persona podría tomar el mismo horario; '
+                    'reconéctate para asegurarla.',
             style: const TextStyle(color: Colors.white)),
       ),
     );
@@ -155,7 +191,9 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     final pendiente = _cancha.pendienteVerificacion;
     return Scaffold(
       backgroundColor: papel,
-      body: CustomScrollView(
+      body: RefreshIndicator(
+        onRefresh: _pullRefresh,
+        child: CustomScrollView(
         slivers: [
           SliverAppBar(
             expandedHeight: 280,
@@ -323,6 +361,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
             ),
           ),
         ],
+        ),
       ),
       bottomNavigationBar: (descubierta || pendiente)
           ? null
@@ -493,9 +532,10 @@ class _PanelDescubierta extends StatefulWidget {
   const _PanelDescubierta({required this.cancha, this.onReclamada});
   final Cancha cancha;
 
-  /// Se invoca al volver del registro para que la ficha re-resuelva la cancha
-  /// (de "descubierta" a "pendiente de verificación" o "ya reclamada").
-  final Future<void> Function()? onReclamada;
+  /// Se invoca al volver del registro con la cancha creada (o null si se revirtió)
+  /// para que la ficha re-resuelva por ID exacto y pase a "pendiente de
+  /// verificación" o "ya reclamada".
+  final Future<void> Function(Cancha? creada)? onReclamada;
 
   @override
   State<_PanelDescubierta> createState() => _PanelDescubiertaState();
@@ -533,14 +573,20 @@ class _PanelDescubiertaState extends State<_PanelDescubierta> {
   }
 
   Future<void> _reclamar() async {
-    await Navigator.of(context).push(
+    // Pedimos login ANTES de abrir el formulario: así el reclamo nace con dueño
+    // definido y el usuario no cae en otra pantalla tras loguearse a mitad.
+    if (!appState.logueado) {
+      final ok = await LoginGoogleSheet.mostrar(context);
+      if (!ok || !mounted) return;
+    }
+    final creada = await Navigator.of(context).push<Cancha?>(
       MaterialPageRoute(builder: (_) => RegistrarCanchaScreen(base: cancha)),
     );
     if (!mounted) return;
-    // Al volver del registro: la ficha re-resuelve la cancha (si el reclamo
-    // prosperó, pasa a "pendiente de verificación"); si no, re-consultamos por
-    // si otro usuario la reclamó mientras tanto.
-    await widget.onReclamada?.call();
+    // Al volver: re-resuelve por la cancha creada (ID exacto). Si prosperó, la
+    // ficha pasa a "pendiente de verificación"; si no, re-consultamos por si
+    // otro usuario la reclamó mientras tanto.
+    await widget.onReclamada?.call(creada);
     if (!mounted) return;
     await _consultar();
   }

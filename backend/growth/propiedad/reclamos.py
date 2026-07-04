@@ -314,17 +314,16 @@ def estado(cancha_id: str) -> dict:
     r = rs[-1]
     c = stores.canchas.get(cancha_id)
     verificada = bool(c and c.verificada)
-    # Auto-reparación: si el último reclamo quedó RECHAZADO y no hay ningún otro
-    # reclamo activo para la cancha, ésta no debe seguir verificada (repara datos
-    # anteriores al revoque-en-rechazo y mantiene coherente lo que ve la app).
+    # REPORTE coherente (sin efectos secundarios: es un GET idempotente). Si el
+    # último reclamo quedó RECHAZADO y no hay otro reclamo activo, la cancha no
+    # debe reportarse verificada aunque el flag quedara colgado (datos previos al
+    # revoque-en-rechazo). La corrección durable del flag ocurre en la transición
+    # de rechazo (_revocar_cancha_al_rechazar), que sí persiste.
     if r.estado == "rechazada" and verificada:
         otro_activo = any(
             o.cancha_id == cancha_id and o.estado in _ESTADOS_BLOQUEANTES
             for o in stores.reclamos)
-        if not otro_activo and c is not None:
-            c.verificada = False
-            c.verificada_en_persona = False
-            c.metodo_verificacion = None
+        if not otro_activo:
             verificada = False
     return {
         "existe": True,
@@ -342,6 +341,13 @@ def triage(reclamo_id: int, aprobado: bool, revisor: str | None = None,
     r = _por_id(reclamo_id)
     if r is None:
         return {"ok": False, "error": "reclamo_no_existe"}
+    # Guarda de estado: no se puede APROBAR un reclamo ya terminal (rechazado o
+    # activado); habría que re-reclamar. Rechazar sí se permite desde cualquier
+    # estado no-rechazado (permite REVOCAR una cancha ya activada).
+    if aprobado and r.estado in _ESTADOS_TERMINALES:
+        return {"ok": False, "error": "estado_invalido", "estado": r.estado}
+    if not aprobado and r.estado == "rechazada":
+        return {"ok": True, "estado": "rechazada", "ya": True}
     r.estado = "aprobado_triage" if aprobado else "rechazada"
     r.decidido_en = ahora()
     r.nota = f"Triage por {revisor or 'admin'}. {nota or ''}".strip()
@@ -410,6 +416,22 @@ def validar_en_sitio(codigo: str, lat: float, lng: float,
             "distancia_m": round(dist) if dist is not None else None}
 
 
+def _gate_ubicacion(r: ReclamoPropiedad) -> dict | None:
+    """Si el admin exige ubicación coincidente, valida el GPS del reclamante
+    contra la cancha. Devuelve el dict de error si NO pasa, o None si pasa/no se
+    exige. Se aplica en TODA activación (aprobar_directo y activar_admin)."""
+    if not exigir_ubicacion():
+        return None
+    co = _coincidencia_ubicacion(r)
+    if not co["tiene_ubicacion"]:
+        return {"ok": False, "error": "sin_ubicacion_solicitante"}
+    if not co["coincide"]:
+        return {"ok": False, "error": "ubicacion_no_coincide",
+                "distancia_m": co["distancia_m"],
+                "max_m": config.RECLAMO_UBICACION_MAX_M}
+    return None
+
+
 def aprobar_directo(reclamo_id: int, revisor: str | None = None) -> dict:
     """Aprobación del admin. Su efecto depende del MODO de la cancha:
 
@@ -421,17 +443,14 @@ def aprobar_directo(reclamo_id: int, revisor: str | None = None) -> dict:
     r = _por_id(reclamo_id)
     if r is None:
         return {"ok": False, "error": "reclamo_no_existe"}
+    # Guarda de estado: no se aprueba un reclamo ya terminal (rechazado/activado).
+    # Reactivar un rechazado saltándose el flujo era un bug de seguridad.
+    if r.estado in _ESTADOS_TERMINALES:
+        return {"ok": False, "error": "estado_invalido", "estado": r.estado}
 
-    # Anti-fraude opcional: si se exige, el GPS del dispositivo del reclamante
-    # debe coincidir con la ubicación de la cancha para poder aprobar.
-    if exigir_ubicacion():
-        co = _coincidencia_ubicacion(r)
-        if not co["tiene_ubicacion"]:
-            return {"ok": False, "error": "sin_ubicacion_solicitante"}
-        if not co["coincide"]:
-            return {"ok": False, "error": "ubicacion_no_coincide",
-                    "distancia_m": co["distancia_m"],
-                    "max_m": config.RECLAMO_UBICACION_MAX_M}
+    err = _gate_ubicacion(r)
+    if err is not None:
+        return err
 
     _cerrar_duplicados(r)
     modo = stores.modo_aprobacion(r.cancha_id)
@@ -466,6 +485,11 @@ def activar_admin(reclamo_id: int) -> dict:
     r = _por_id(reclamo_id)
     if r is None:
         return {"ok": False, "error": "reclamo_no_existe"}
+    if r.estado in _ESTADOS_TERMINALES:
+        return {"ok": False, "error": "estado_invalido", "estado": r.estado}
+    err = _gate_ubicacion(r)  # mismo anti-fraude que aprobar_directo
+    if err is not None:
+        return err
     _cerrar_duplicados(r)
     r.estado = "activada"
     c = stores.cancha(r.cancha_id)

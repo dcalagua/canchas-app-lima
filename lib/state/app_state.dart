@@ -271,6 +271,36 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// Sincroniza el estado de UNA cancha concreta (la que se está mostrando),
+  /// aunque no sea "mía". Sirve para que la ficha de una cancha ya verificada se
+  /// DEGRADE si el admin la rechazó/revocó (la corrección a5d4e00 solo cubría
+  /// `misCanchas`, dejando la ficha de terceros mostrando horarios de una cancha
+  /// rechazada). Devuelve la cancha actualizada si cambió, o null. No auto-asigna
+  /// dueño (evita apropiación por quien sincroniza).
+  Future<Cancha?> sincronizarCanchaMostrada(Cancha c) async {
+    if (!PropiedadService.disponible || !c.registrada) return null;
+    if (canchasEliminadas.contains(c.id)) return null;
+    final est = await PropiedadService.estado(c.id);
+    if (est == null || est['existe'] != true) return null;
+    final verificada = est['verificada'] == true || est['estado'] == 'activada';
+    final rechazada = est['estado'] == 'rechazada';
+    Cancha? actualizada;
+    if (verificada && !c.verificada) {
+      actualizada = c.copyWith(verificada: true);
+    } else if ((rechazada || !verificada) && c.verificada) {
+      actualizada = c.copyWith(verificada: false);
+    }
+    if (actualizada == null) return null;
+    final i = canchasExtra.indexWhere((x) => x.id == c.id);
+    if (i >= 0) canchasExtra[i] = actualizada;
+    final j = canchasRemotas.indexWhere((x) => x.id == c.id);
+    if (j >= 0) canchasRemotas[j] = actualizada;
+    CanchasRepo.actualizar(actualizada); // propaga a Supabase (best-effort)
+    _persistirDatos();
+    notifyListeners();
+    return actualizada;
+  }
+
   /// Registra una cancha nueva (desde el flujo con detección por IA).
   /// Queda local (se ve al toque) y se sube a Supabase para compartirla.
   void agregarCancha(Cancha c) {

@@ -203,7 +203,22 @@ async def webhook_whatsapp(request: Request) -> Response:
     if any(k in up for k in ("APROB", "APRUEB", "OK", "SI", "SÍ", "ACTIVA")):
         r = reclamos.aprobar_por_codigo(codigo, revisor="admin_whatsapp")
         if not r.get("ok"):
-            return _twiml(f"No encontré un reclamo con el código {codigo}.")
+            err = r.get("error", "")
+            if err == "codigo_invalido":
+                return _twiml(f"No encontré un reclamo con el código {codigo}.")
+            if err == "estado_invalido":
+                return _twiml(
+                    f"No se pudo aprobar: el reclamo {codigo} ya está "
+                    f'"{r.get("estado", "")}". Si quieres, pide un nuevo reclamo.')
+            if err == "sin_ubicacion_solicitante":
+                return _twiml("No se pudo aprobar: no hay ubicación del "
+                              "reclamante para validar que estaba en la cancha.")
+            if err == "ubicacion_no_coincide":
+                return _twiml(
+                    f"No se pudo aprobar: el reclamante estuvo a "
+                    f'{r.get("distancia_m", "?")} m de la cancha (máx '
+                    f'{r.get("max_m", "?")} m).')
+            return _twiml(f"No se pudo aprobar el reclamo {codigo}.")
         nombre = _xml_esc(r.get("nombre_local", ""))
         if r.get("ya"):
             return _twiml(f'"{nombre}" ya estaba activa. ✅')

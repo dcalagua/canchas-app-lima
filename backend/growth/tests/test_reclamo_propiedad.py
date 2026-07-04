@@ -238,14 +238,48 @@ def test_rechazar_por_whatsapp_revoca():
     assert stores.cancha("c1").verificada is False
 
 
-def test_estado_autorepara_cancha_verificada_con_reclamo_rechazado():
-    # Simula datos previos al fix: reclamo rechazado pero cancha aún verificada.
+def test_estado_reporta_no_verificada_si_reclamo_rechazado():
+    # Datos colgados (flag en True) sin pasar por el revoque: estado() REPORTA
+    # coherente (no reservable) sin mutar en un GET.
     r = _crear()
     reclamos.triage(r["reclamo_id"], aprobado=False)
-    stores.cancha("c1").verificada = True  # estado inconsistente heredado
+    stores.cancha("c1").verificada = True  # flag heredado inconsistente
     est = reclamos.estado("c1")
-    assert est["verificada"] is False
-    assert stores.cancha("c1").verificada is False  # se reparó de raíz
+    assert est["verificada"] is False  # reporte coherente
+
+
+def test_no_se_puede_aprobar_un_reclamo_rechazado():
+    r = _crear()
+    reclamos.triage(r["reclamo_id"], aprobado=False)  # rechazada
+    out = reclamos.aprobar_directo(r["reclamo_id"], revisor="dennis")
+    assert out["ok"] is False and out["error"] == "estado_invalido"
+    assert stores.cancha("c1").verificada is False  # NO se reactivó
+
+
+def test_reaprobar_reclamo_viejo_no_revoca_al_competidor_activo():
+    # A reclama y es rechazado; B reclama el mismo lugar y se activa.
+    a = reclamos.crear_reclamo("cA", "a@x.com", "L", lat=LAT, lng=LNG)
+    reclamos.triage(a["reclamo_id"], aprobado=False)
+    b = reclamos.crear_reclamo("cB", "b@x.com", "L", lat=LAT, lng=LNG)
+    reclamos.aprobar_directo(b["reclamo_id"])
+    assert stores.cancha("cB").verificada is True
+    # Reaprobar el reclamo VIEJO de A debe fallar y NO tumbar a B.
+    out = reclamos.aprobar_directo(a["reclamo_id"])
+    assert out["ok"] is False and out["error"] == "estado_invalido"
+    b_reclamo = next(x for x in stores.reclamos if x.id == b["reclamo_id"])
+    assert b_reclamo.estado == "activada"
+
+
+def test_activar_admin_respeta_gate_de_ubicacion(monkeypatch):
+    monkeypatch.setattr(config, "VALIDADOR_ACTIVA_AUTOMATICO", False)
+    reclamos.set_exigir_ubicacion(True)
+    # Reclamo aprobado en triage pero sin GPS del solicitante y lejos.
+    r = reclamos.crear_reclamo("c1", "d@x.com", "L", lat=LAT, lng=LNG)
+    reclamos.triage(r["reclamo_id"], aprobado=True)
+    reclamos.listo_para_validar(r["reclamo_id"])
+    out = reclamos.activar_admin(r["reclamo_id"])
+    assert out["ok"] is False and out["error"] == "sin_ubicacion_solicitante"
+    assert stores.cancha("c1").verificada is False
 
 
 def test_lugar_reclamado_para_bloquear_el_boton():

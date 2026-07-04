@@ -398,7 +398,10 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
     }
 
     if (!mounted) return;
-    Navigator.of(context).pop();
+    // Devuelve la cancha creada (si no fue revertida) para que la ficha anterior
+    // la re-resuelva por ID EXACTO y no "salte" a otra cancha del mismo lugar.
+    Navigator.of(context)
+        .pop(creadas.isNotEmpty && !yaReclamada ? creadas.first : null);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         backgroundColor: (reclamoOk && !yaReclamada)
