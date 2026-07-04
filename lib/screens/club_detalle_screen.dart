@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../data/reservas_repo.dart';
@@ -69,6 +71,41 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     if (actualizada != null && actualizada.verificada != _cancha.verificada) {
       setState(() => _cancha = actualizada!);
     }
+  }
+
+  /// Tras reclamar una cancha descubierta se crea una cancha NUEVA (id distinto)
+  /// en el mismo lugar, así que la re-resolución por id no la encuentra.
+  /// Re-resolvemos por proximidad y preferimos la que ya está registrada, para
+  /// que la ficha pase de "descubierta" (botón Reclamar) a "pendiente de
+  /// verificación" al volver del registro.
+  Future<void> _refrescarDescubierta() async {
+    await appState.sincronizarPropiedades();
+    if (!mounted) return;
+    Cancha? mejor;
+    double mejorD = double.infinity;
+    for (final c in appState.todasLasCanchas()) {
+      final d = _metros(c.ubicacion.latitude, c.ubicacion.longitude,
+          _cancha.ubicacion.latitude, _cancha.ubicacion.longitude);
+      if (c.registrada && d <= 80 && d < mejorD) {
+        mejorD = d;
+        mejor = c;
+      }
+    }
+    if (mejor != null && mejor.id != _cancha.id) {
+      setState(() => _cancha = mejor!);
+    }
+  }
+
+  static double _metros(
+      double lat1, double lng1, double lat2, double lng2) {
+    const r = 6371000.0;
+    final dLat = (lat2 - lat1) * math.pi / 180;
+    final dLng = (lng2 - lng1) * math.pi / 180;
+    final la1 = lat1 * math.pi / 180;
+    final la2 = lat2 * math.pi / 180;
+    final h = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(la1) * math.cos(la2) * math.sin(dLng / 2) * math.sin(dLng / 2);
+    return 2 * r * math.asin(math.sqrt(h));
   }
 
   Color get _color => colorDeporte(_cancha.deporte);
@@ -166,7 +203,8 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                   const SizedBox(height: 20),
 
                   if (descubierta)
-                    _PanelDescubierta(cancha: _cancha)
+                    _PanelDescubierta(
+                        cancha: _cancha, onReclamada: _refrescarDescubierta)
                   else if (pendiente)
                     _PanelPendiente(
                         cancha: _cancha, onActualizar: _refrescarPropiedad)
@@ -452,8 +490,12 @@ class _SlotChip extends StatelessWidget {
 /// consulta al backend si ese lugar ya tiene un reclamo activo de OTRO usuario;
 /// si es así, bloquea el botón y avisa que ya fue reclamada.
 class _PanelDescubierta extends StatefulWidget {
-  const _PanelDescubierta({required this.cancha});
+  const _PanelDescubierta({required this.cancha, this.onReclamada});
   final Cancha cancha;
+
+  /// Se invoca al volver del registro para que la ficha re-resuelva la cancha
+  /// (de "descubierta" a "pendiente de verificación" o "ya reclamada").
+  final Future<void> Function()? onReclamada;
 
   @override
   State<_PanelDescubierta> createState() => _PanelDescubiertaState();
@@ -488,6 +530,19 @@ class _PanelDescubiertaState extends State<_PanelDescubierta> {
       _reclamadaPorOtro =
           r != null && r['reclamada'] == true && r['por_mi'] != true;
     });
+  }
+
+  Future<void> _reclamar() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => RegistrarCanchaScreen(base: cancha)),
+    );
+    if (!mounted) return;
+    // Al volver del registro: la ficha re-resuelve la cancha (si el reclamo
+    // prosperó, pasa a "pendiente de verificación"); si no, re-consultamos por
+    // si otro usuario la reclamó mientras tanto.
+    await widget.onReclamada?.call();
+    if (!mounted) return;
+    await _consultar();
   }
 
   @override
@@ -552,13 +607,7 @@ class _PanelDescubiertaState extends State<_PanelDescubierta> {
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
-              onPressed: _cargando
-                  ? null
-                  : () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                            builder: (_) =>
-                                RegistrarCanchaScreen(base: cancha)),
-                      ),
+              onPressed: _cargando ? null : _reclamar,
               icon: _cargando
                   ? const SizedBox(
                       width: 18,
