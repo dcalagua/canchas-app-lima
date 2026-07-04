@@ -2,40 +2,52 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 
-/// La "o"-pelota del logo: anillo + punto lima (parece una 'o' y una pelota).
-class OPelota extends StatelessWidget {
+/// Rojo del pin de ubicación (identidad: la 'o' de Pichangol es un pin de mapa).
+const Color rojoPin = Color(0xFFE5372B);
+
+/// La 'o' de la marca convertida en PIN DE UBICACIÓN (pin rojo con punto blanco
+/// en la cabeza, como un marcador de Google Maps). Sustituye a la vieja pelota.
+class PinUbicacion extends StatelessWidget {
   final double size;
-  final Color anillo;
-  final Color punto;
-  const OPelota({super.key, required this.size, this.anillo = bosque, this.punto = lima});
+  final Color color;   // color del pin
+  final Color punto;   // punto interior (cabeza del pin)
+  const PinUbicacion(
+      {super.key, required this.size, this.color = rojoPin, this.punto = Colors.white});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SizedBox(
       width: size,
       height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(color: anillo, width: size * 0.16),
-      ),
-      child: Center(
-        child: Container(
-          width: size * 0.30,
-          height: size * 0.30,
-          decoration: BoxDecoration(shape: BoxShape.circle, color: punto),
-        ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Icon(Icons.location_on, size: size, color: color),
+          // Punto en la cabeza del pin (queda en el tercio superior del ícono).
+          Positioned(
+            top: size * 0.20,
+            child: Container(
+              width: size * 0.26,
+              height: size * 0.26,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: punto),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-/// Wordmark de marca: **pichang[o]l** con la 'o' convertida en pelota.
+/// Wordmark de marca: **Pichang[o]l** (P mayúscula) con la 'o' convertida en un
+/// pin de ubicación rojo.
 class PichangolWordmark extends StatelessWidget {
   final double fontSize;
   final Color color;   // color de las letras
-  final Color pelota;  // punto de la 'o'-pelota
+  final Color pin;     // color del pin de la 'o'
+  final Color punto;   // punto interior del pin
   const PichangolWordmark(
-      {super.key, this.fontSize = 26, this.color = bosque, this.pelota = lima});
+      {super.key, this.fontSize = 26, this.color = bosque,
+      this.pin = rojoPin, this.punto = Colors.white});
 
   @override
   Widget build(BuildContext context) {
@@ -47,10 +59,15 @@ class PichangolWordmark extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Text('pichang', style: style),
+        Text('Pichang', style: style),
         Padding(
-          padding: EdgeInsets.symmetric(horizontal: fontSize * 0.04),
-          child: OPelota(size: fontSize * 0.80, anillo: color, punto: pelota),
+          padding: EdgeInsets.symmetric(horizontal: fontSize * 0.02),
+          // El pin va un poco más grande que la letra para leerse como marcador,
+          // y baja un pelín para asentar la 'o' en la línea del texto.
+          child: Transform.translate(
+            offset: Offset(0, fontSize * 0.08),
+            child: PinUbicacion(size: fontSize * 0.98, color: pin, punto: punto),
+          ),
         ),
         Text('l', style: style),
       ],
@@ -58,7 +75,8 @@ class PichangolWordmark extends StatelessWidget {
   }
 }
 
-/// Logo cuadrado (login / app icon): cuadrado bosque con la 'o'-pelota lima.
+/// Logo cuadrado (login / app icon): cuadrado bosque con el pin de ubicación
+/// rojo en el centro.
 class LogoCuadrado extends StatelessWidget {
   final double size;
   const LogoCuadrado({super.key, this.size = 60});
@@ -73,7 +91,7 @@ class LogoCuadrado extends StatelessWidget {
         color: bosque,
         borderRadius: BorderRadius.circular(size * 0.30),
       ),
-      child: OPelota(size: size * 0.52, anillo: lima, punto: lima),
+      child: PinUbicacion(size: size * 0.58, color: rojoPin, punto: Colors.white),
     );
   }
 }
