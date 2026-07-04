@@ -35,6 +35,11 @@ def patch(path, fn):
 
 
 APP_LABEL = "Pichangol"
+# Identidad PERMANENTE de la app en Google Play / App Store. NO cambiar una vez
+# publicada la primera versión (el applicationId es inmutable en la tienda).
+# El paquete de código Dart sigue siendo `canchas_lima`; esto sólo fija el
+# applicationId (Android) y el bundle id (iOS) que ve la tienda.
+APPLICATION_ID = "pe.ebim.pichangol"
 
 
 def android_manifest(text):
@@ -263,6 +268,50 @@ def configurar_compile_sdk_global():
     print("  compileSdk global aplicado a subproyectos Android")
 
 
+def configurar_application_id():
+    """Fija el applicationId de Android a APPLICATION_ID (identidad en Play Store).
+    `flutter create --org pe.ebim` genera `pe.ebim.canchas_lima`; aquí lo
+    sobreescribimos. El namespace del código se deja intacto (puede diferir del
+    applicationId sin problema)."""
+    path = "android/app/build.gradle"
+    if not os.path.exists(path):
+        return
+    with open(path, "r", encoding="utf-8") as f:
+        text = f.read()
+    nuevo = re.sub(
+        r'(applicationId\s*=?\s*")[^"]*(")',
+        rf"\g<1>{APPLICATION_ID}\g<2>",
+        text,
+        count=1,
+    )
+    if nuevo != text:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(nuevo)
+        print(f"  applicationId Android → {APPLICATION_ID}")
+    else:
+        print("  applicationId Android: sin cambios (no se encontró el patrón)")
+
+
+def configurar_bundle_id_ios():
+    """Fija el PRODUCT_BUNDLE_IDENTIFIER de iOS a APPLICATION_ID (para App Store /
+    Google Sign-In). El proyecto lo genera como pe.ebim.canchasLima."""
+    path = "ios/Runner.xcodeproj/project.pbxproj"
+    if not os.path.exists(path):
+        return
+    with open(path, "r", encoding="utf-8") as f:
+        text = f.read()
+    # Sólo el bundle base (evita tocar el de RunnerTests, que lleva sufijo).
+    nuevo = re.sub(
+        r"(PRODUCT_BUNDLE_IDENTIFIER = )pe\.ebim\.canchasLima(;)",
+        rf"\g<1>{APPLICATION_ID}\g<2>",
+        text,
+    )
+    if nuevo != text:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(nuevo)
+        print(f"  bundle id iOS → {APPLICATION_ID}")
+
+
 def configurar_min_sdk():
     """Sube minSdk a 23 (lo exige passkeys_android de supabase_flutter)."""
     path = "android/app/build.gradle"
@@ -284,6 +333,8 @@ def configurar_min_sdk():
 def main():
     print(f"Configurando plataformas (MAPS_API_KEY {'definida' if KEY != 'YOUR_MAPS_API_KEY_HERE' else 'placeholder'})")
     configurar_min_sdk()
+    configurar_application_id()
+    configurar_bundle_id_ios()
     patch("android/app/src/main/AndroidManifest.xml", android_manifest)
     patch("ios/Runner/AppDelegate.swift", ios_appdelegate)
     patch("ios/Runner/Info.plist", ios_infoplist)
