@@ -66,6 +66,11 @@ VALIDADOR_ACTIVA_AUTOMATICO = os.getenv("VALIDADOR_ACTIVA_AUTOMATICO", "1") == "
 # considerar que la visita "coincide".
 RECLAMO_VALIDACION_GPS_MAX_M = float(
     os.getenv("RECLAMO_VALIDACION_GPS_MAX_M", "150"))
+# Distancia máx (m) entre el GPS del DISPOSITIVO del reclamante (desde dónde envió
+# la solicitud) y la ubicación de la cancha, para considerar que "está en el
+# lugar". Sólo se exige si el admin activa el modo (config exigir_ubicacion_reclamo).
+RECLAMO_UBICACION_MAX_M = float(
+    os.getenv("RECLAMO_UBICACION_MAX_M", "150"))
 
 # Distancia máx (m) entre la ubicación declarada y la del sitio para considerar
 # que la verificación física "coincide".

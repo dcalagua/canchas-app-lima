@@ -115,6 +115,11 @@ off → redeploy inmediato en cada push). URL pública:
   de aprobación**: `marcha_blanca` (aprobar activa al instante) | `nuevo_flujo`
   (exige validación en sitio). Global + override por cancha (`/admin/api/modo`,
   `/admin/api/modo/cancha`; lógica en `reclamos` + `stores.modo_aprobacion`).
+  Cada tarjeta muestra **fecha/hora** y un **mapa de desde dónde se envió la
+  solicitud** (GPS del dispositivo). El operador puede **exigir ubicación al
+  reclamar** (`/admin/api/ubicacion`, `config.exigir_ubicacion_reclamo`): si se
+  activa, sólo se puede **Aprobar** cuando ese GPS está a ≤
+  `RECLAMO_UBICACION_MAX_M` (150 m) de la cancha (anti-fraude "estás en el lugar").
   Ver `docs/flujo-reclamo-propiedad.md`.
   > **Separación de responsabilidades:** el **APK** es para **jugadores y dueños
   > de cancha** (+ rol de campo "Verificador"); **toda la administración del SaaS**
@@ -122,7 +127,7 @@ off → redeploy inmediato en cada push). URL pública:
 - **Config (env, `config.py`):** `ADMIN_PANEL_TOKEN`, `FACTILIZA_API_TOKEN`,
   `PICHANGOL_ADMIN_WHATSAPP`, `TWILIO_*`, `WHATSAPP_*`, `OTP_CANAL_PREFERIDO`
   (`whatsapp|twilio_whatsapp|sms`), `VALIDADOR_ACTIVA_AUTOMATICO`,
-  `RECLAMO_VALIDACION_GPS_MAX_M=150`, `DATABASE_URL`.
+  `RECLAMO_VALIDACION_GPS_MAX_M=150`, `RECLAMO_UBICACION_MAX_M=150`, `DATABASE_URL`.
 - **Tests:** `cd backend/growth && python3 -m pytest -q` (deben pasar todos).
   Cumplimiento Ley 29733 (DNI = dato personal: solo validar dueño, no publicar).
 

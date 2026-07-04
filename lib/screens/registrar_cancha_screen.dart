@@ -11,6 +11,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../data/canchas_repo.dart';
 import '../models/models.dart';
+import '../services/location_service.dart';
 import '../services/propiedad_service.dart';
 import '../services/sport_detector.dart';
 import '../state/app_state.dart';
@@ -370,6 +371,9 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
     bool reclamoOk = true;
     bool yaReclamada = false;
     if (creadas.isNotEmpty) {
+      // GPS del dispositivo AL reclamar: el admin puede exigir (torre de control)
+      // que coincida con la cancha para aprobar (anti-fraude "estás en el lugar").
+      final desdeAqui = await LocationService.ubicacionPrecisa();
       final r = await PropiedadService.crearReclamo(
         canchaId: creadas.first.id,
         solicitanteId: dueno,
@@ -379,6 +383,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
         ruc: _ruc.text.trim(),
         relacion: _relacion,
         ubicacion: _ubicacion,
+        solicitanteUbicacion: desdeAqui,
       );
       reclamoOk = r != null && r['ok'] == true;
       yaReclamada = r != null && r['error'] == 'ya_reclamada';

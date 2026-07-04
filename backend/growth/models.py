@@ -91,8 +91,12 @@ class ReclamoRequest(BaseModel):
     dni: str | None = None
     ruc: str | None = None
     relacion: str | None = None  # dueño | concesionario | arrendatario
-    lat: float | None = None
+    lat: float | None = None     # ubicación de la cancha (pin / Google)
     lng: float | None = None
+    # GPS del dispositivo desde donde se envía la solicitud (para contrastar que
+    # el reclamante está en el lugar).
+    solicitante_lat: float | None = None
+    solicitante_lng: float | None = None
 
 
 class TriageRequest(BaseModel):

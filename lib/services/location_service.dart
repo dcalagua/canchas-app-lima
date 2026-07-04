@@ -42,4 +42,28 @@ class LocationService {
       return ultimaConocida();
     }
   }
+
+  /// Posición actual con precisión **alta** para el anti-fraude del reclamo
+  /// ("¿estás en la cancha?"). Aquí sí importa el fix fino (radio ~150 m), así
+  /// que pedimos `high` con un timeout mayor. Si falla, cae a la última conocida.
+  static Future<LatLng?> ubicacionPrecisa() async {
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) return ultimaConocida();
+      var permiso = await Geolocator.checkPermission();
+      if (permiso == LocationPermission.denied) {
+        permiso = await Geolocator.requestPermission();
+      }
+      if (permiso == LocationPermission.denied ||
+          permiso == LocationPermission.deniedForever) {
+        return null;
+      }
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 10),
+      );
+      return LatLng(pos.latitude, pos.longitude);
+    } catch (_) {
+      return ultimaConocida();
+    }
+  }
 }

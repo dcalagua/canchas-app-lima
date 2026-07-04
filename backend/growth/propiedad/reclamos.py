@@ -45,6 +45,19 @@ def set_modo_global(modo: str) -> dict:
     return {"ok": True, "global": modo}
 
 
+def exigir_ubicacion() -> bool:
+    """¿El admin exige que el reclamante esté en la cancha (GPS coincidente)
+    para poder aprobar?"""
+    return stores.cfg("exigir_ubicacion_reclamo") == "1"
+
+
+def set_exigir_ubicacion(activo: bool) -> dict:
+    """Activa/desactiva la exigencia de ubicación coincidente para aprobar."""
+    stores.config["exigir_ubicacion_reclamo"] = "1" if activo else "0"
+    return {"ok": True, "exigir_ubicacion_reclamo": exigir_ubicacion(),
+            "max_m": config.RECLAMO_UBICACION_MAX_M}
+
+
 def set_modo_cancha(cancha_id: str, modo: str | None) -> dict:
     """Fija (o limpia, si modo es None/'') el override de una cancha."""
     if not modo:
@@ -130,7 +143,9 @@ def crear_reclamo(cancha_id: str, solicitante_id: str, nombre_local: str,
                   telefono_contacto: str | None = None,
                   dni: str | None = None, ruc: str | None = None,
                   relacion: str | None = None,
-                  lat: float | None = None, lng: float | None = None) -> dict:
+                  lat: float | None = None, lng: float | None = None,
+                  solicitante_lat: float | None = None,
+                  solicitante_lng: float | None = None) -> dict:
     # Anti doble-reclamo. Si esta cancha (por id) o el MISMO lugar (ubicación
     # cercana) ya tiene un reclamo ACTIVO:
     #  - de OTRO usuario → se rechaza ("ya_reclamada").
@@ -147,6 +162,10 @@ def crear_reclamo(cancha_id: str, solicitante_id: str, nombre_local: str,
         activo.relacion = relacion or activo.relacion
         activo.lat = lat if lat is not None else activo.lat
         activo.lng = lng if lng is not None else activo.lng
+        activo.solicitante_lat = (
+            solicitante_lat if solicitante_lat is not None else activo.solicitante_lat)
+        activo.solicitante_lng = (
+            solicitante_lng if solicitante_lng is not None else activo.solicitante_lng)
         if activo.estado == "pendiente_triage":
             _notificar_admin(
                 f"🔁 Recordatorio de reclamo pendiente\n"
@@ -184,6 +203,8 @@ def crear_reclamo(cancha_id: str, solicitante_id: str, nombre_local: str,
         relacion=relacion,
         lat=lat,
         lng=lng,
+        solicitante_lat=solicitante_lat,
+        solicitante_lng=solicitante_lng,
     )
     stores.reclamos.append(r)
     _notificar_admin(
@@ -198,6 +219,25 @@ def crear_reclamo(cancha_id: str, solicitante_id: str, nombre_local: str,
         f"Verifícalo y, para activarla, responde aquí: APROBAR {codigo}  "
         f"(o RECHAZAR {codigo}). También puedes usar el panel de Reclamos.")
     return {"ok": True, "reclamo_id": r.id, "codigo": codigo, "estado": r.estado}
+
+
+def _coincidencia_ubicacion(r: ReclamoPropiedad) -> dict:
+    """Contrasta el GPS del dispositivo del reclamante contra la ubicación de la
+    cancha. Devuelve la distancia y si "coincide" (dentro del radio permitido)."""
+    if (r.solicitante_lat is None or r.solicitante_lng is None
+            or r.lat is None or r.lng is None):
+        return {"tiene_ubicacion": False, "distancia_m": None, "coincide": False}
+    dist = _distancia_m(r.lat, r.lng, r.solicitante_lat, r.solicitante_lng)
+    return {"tiene_ubicacion": True, "distancia_m": round(dist),
+            "coincide": dist <= config.RECLAMO_UBICACION_MAX_M}
+
+
+def _enriquecer(r: ReclamoPropiedad) -> dict:
+    """Serializa el reclamo + datos derivados para el panel (fecha/hora ya va en
+    creado_en; sumamos la coincidencia de ubicación)."""
+    d = como_dict(r)
+    d.update(_coincidencia_ubicacion(r))
+    return d
 
 
 def _cerrar_duplicados(r: ReclamoPropiedad) -> None:
@@ -347,6 +387,17 @@ def aprobar_directo(reclamo_id: int, revisor: str | None = None) -> dict:
     if r is None:
         return {"ok": False, "error": "reclamo_no_existe"}
 
+    # Anti-fraude opcional: si se exige, el GPS del dispositivo del reclamante
+    # debe coincidir con la ubicación de la cancha para poder aprobar.
+    if exigir_ubicacion():
+        co = _coincidencia_ubicacion(r)
+        if not co["tiene_ubicacion"]:
+            return {"ok": False, "error": "sin_ubicacion_solicitante"}
+        if not co["coincide"]:
+            return {"ok": False, "error": "ubicacion_no_coincide",
+                    "distancia_m": co["distancia_m"],
+                    "max_m": config.RECLAMO_UBICACION_MAX_M}
+
     _cerrar_duplicados(r)
     modo = stores.modo_aprobacion(r.cancha_id)
     if modo == "nuevo_flujo":
@@ -393,4 +444,4 @@ def listar(estado_filtro: str | None = None) -> list[dict]:
     rs = stores.reclamos
     if estado_filtro:
         rs = [r for r in rs if r.estado == estado_filtro]
-    return [como_dict(r) for r in rs]
+    return [_enriquecer(r) for r in rs]

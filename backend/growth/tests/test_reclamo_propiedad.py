@@ -160,6 +160,65 @@ def test_reclamo_rechazado_libera_la_cancha():
     assert r2["ok"] is True  # ya no bloquea
 
 
+# --- Verificación de ubicación del reclamante (desde dónde envió la solicitud) ---
+def test_listar_expone_fecha_y_coincidencia_de_ubicacion():
+    # Reclamante A ~30 m de la cancha (coincide).
+    reclamos.crear_reclamo("c1", "due@x.com", "L", lat=LAT, lng=LNG,
+                           solicitante_lat=LAT + 0.0003, solicitante_lng=LNG)
+    d = reclamos.listar()[0]
+    assert d["creado_en"]  # fecha/hora para el panel
+    assert d["tiene_ubicacion"] is True
+    assert d["coincide"] is True and d["distancia_m"] <= 150
+
+
+def test_sin_ubicacion_del_dispositivo_no_coincide():
+    reclamos.crear_reclamo("c1", "due@x.com", "L", lat=LAT, lng=LNG)
+    d = reclamos.listar()[0]
+    assert d["tiene_ubicacion"] is False and d["coincide"] is False
+
+
+def test_exigir_ubicacion_bloquea_aprobar_si_esta_lejos():
+    reclamos.set_exigir_ubicacion(True)
+    # Reclamante a varios km de la cancha.
+    r = reclamos.crear_reclamo("c1", "due@x.com", "L", lat=LAT, lng=LNG,
+                               solicitante_lat=LAT + 0.05, solicitante_lng=LNG)
+    out = reclamos.aprobar_directo(r["reclamo_id"], revisor="dennis")
+    assert out["ok"] is False and out["error"] == "ubicacion_no_coincide"
+    assert stores.cancha("c1").verificada is False
+
+
+def test_exigir_ubicacion_bloquea_si_no_hay_ubicacion():
+    reclamos.set_exigir_ubicacion(True)
+    r = reclamos.crear_reclamo("c1", "due@x.com", "L", lat=LAT, lng=LNG)
+    out = reclamos.aprobar_directo(r["reclamo_id"])
+    assert out["ok"] is False and out["error"] == "sin_ubicacion_solicitante"
+
+
+def test_exigir_ubicacion_permite_aprobar_si_coincide():
+    reclamos.set_exigir_ubicacion(True)
+    r = reclamos.crear_reclamo("c1", "due@x.com", "L", lat=LAT, lng=LNG,
+                               solicitante_lat=LAT + 0.0003, solicitante_lng=LNG)
+    out = reclamos.aprobar_directo(r["reclamo_id"], revisor="dennis")
+    assert out["ok"] is True and out["estado"] == "activada"
+    assert stores.cancha("c1").verificada is True
+
+
+def test_sin_exigir_aprueba_aunque_no_haya_ubicacion():
+    # Por defecto (piloto) no se exige: aprueba igual.
+    r = reclamos.crear_reclamo("c1", "due@x.com", "L", lat=LAT, lng=LNG)
+    out = reclamos.aprobar_directo(r["reclamo_id"])
+    assert out["ok"] is True and out["estado"] == "activada"
+
+
+def test_reclamo_con_ubicacion_roundtrip_snapshot():
+    reclamos.crear_reclamo("c1", "due@x.com", "L", lat=LAT, lng=LNG,
+                           solicitante_lat=LAT + 0.0003, solicitante_lng=LNG)
+    st = stores.to_state()
+    stores.load_state(st)
+    r = stores.reclamos[0]
+    assert r.solicitante_lat is not None and r.solicitante_lng is not None
+
+
 def test_lugar_reclamado_para_bloquear_el_boton():
     reclamos.crear_reclamo("c1", "due1@x.com", "L", lat=LAT, lng=LNG)
     # Otro usuario consulta el MISMO lugar con id distinto (cancha de Google).

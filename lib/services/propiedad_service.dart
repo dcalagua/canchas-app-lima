@@ -100,6 +100,7 @@ class PropiedadService {
     String? ruc,
     String? relacion,
     LatLng? ubicacion,
+    LatLng? solicitanteUbicacion,
   }) async {
     if (!disponible) return null;
     try {
@@ -118,6 +119,10 @@ class PropiedadService {
                 if (relacion != null && relacion.isNotEmpty) 'relacion': relacion,
                 if (ubicacion != null) 'lat': ubicacion.latitude,
                 if (ubicacion != null) 'lng': ubicacion.longitude,
+                if (solicitanteUbicacion != null)
+                  'solicitante_lat': solicitanteUbicacion.latitude,
+                if (solicitanteUbicacion != null)
+                  'solicitante_lng': solicitanteUbicacion.longitude,
               }))
           .timeout(const Duration(seconds: 15));
       if (resp.statusCode != 200) return null;

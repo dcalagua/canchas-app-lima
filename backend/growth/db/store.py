@@ -37,6 +37,10 @@ CONFIG_DEFAULT: dict[str, str] = {
     # del admin, activa al instante) | "nuevo_flujo" (exige validación en sitio
     # antes de activar). Se puede sobreescribir por cancha (modo_aprobacion_overrides).
     "modo_aprobacion": "marcha_blanca",
+    # Si "1", el admin sólo puede APROBAR un reclamo si el GPS del dispositivo
+    # desde donde se envió coincide con la ubicación de la cancha (anti-fraude
+    # ligero: "estar en el lugar" al reclamar). "0" = no se exige (piloto).
+    "exigir_ubicacion_reclamo": "0",
 }
 
 # Modos de aprobación válidos.
@@ -160,8 +164,12 @@ class ReclamoPropiedad:
     ruc: str | None = None
     razon_social: str | None = None
     relacion: str | None = None
-    lat: float | None = None
+    lat: float | None = None      # ubicación de la CANCHA (del pin / Google)
     lng: float | None = None
+    # Ubicación del DISPOSITIVO desde donde se envió la solicitud (GPS del
+    # reclamante al reclamar). Sirve para contrastar que estaba en el lugar.
+    solicitante_lat: float | None = None
+    solicitante_lng: float | None = None
     decidido_en: datetime | None = None
     validado_en: datetime | None = None
     validador: str | None = None
@@ -368,7 +376,10 @@ def _reclamo_from(d: dict) -> ReclamoPropiedad:
         dni=d.get("dni"), nombre_titular=d.get("nombre_titular"),
         ruc=d.get("ruc"), razon_social=d.get("razon_social"),
         relacion=d.get("relacion"),
-        lat=d.get("lat"), lng=d.get("lng"), decidido_en=_dt(d.get("decidido_en")),
+        lat=d.get("lat"), lng=d.get("lng"),
+        solicitante_lat=d.get("solicitante_lat"),
+        solicitante_lng=d.get("solicitante_lng"),
+        decidido_en=_dt(d.get("decidido_en")),
         validado_en=_dt(d.get("validado_en")), validador=d.get("validador"),
         nota=d.get("nota"))
 

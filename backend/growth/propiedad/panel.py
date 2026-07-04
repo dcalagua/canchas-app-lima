@@ -42,6 +42,10 @@ class ModoCanchaRequest(BaseModel):
     modo: str | None = None
 
 
+class ExigirUbicacionRequest(BaseModel):
+    exigir: bool
+
+
 @router.get("/admin/api/sesion")
 def sesion(x_admin_token: str | None = Header(default=None)) -> dict:
     """Valida el token (lo usa la pantalla de login del panel)."""
@@ -87,6 +91,22 @@ def set_modo_cancha_admin(req: ModoCanchaRequest,
     """Fija/limpia el override de UNA cancha (modo=null vuelve al global)."""
     _check(x_admin_token)
     return reclamos.set_modo_cancha(req.cancha_id, req.modo)
+
+
+@router.get("/admin/api/ubicacion")
+def get_ubicacion_admin(x_admin_token: str | None = Header(default=None)) -> dict:
+    """¿Se exige que el reclamante esté en la cancha (GPS) para aprobar?"""
+    _check(x_admin_token)
+    return {"exigir": reclamos.exigir_ubicacion(),
+            "max_m": config.RECLAMO_UBICACION_MAX_M}
+
+
+@router.post("/admin/api/ubicacion")
+def set_ubicacion_admin(req: ExigirUbicacionRequest,
+                        x_admin_token: str | None = Header(default=None)) -> dict:
+    """Activa/desactiva la exigencia de ubicación coincidente para aprobar."""
+    _check(x_admin_token)
+    return reclamos.set_exigir_ubicacion(req.exigir)
 
 
 @router.get("/admin", response_class=HTMLResponse)
@@ -174,6 +194,29 @@ _HTML = r"""<!DOCTYPE html>
   .actions .seg.on{background:var(--bosque);color:var(--lima);border-color:var(--bosque)}
   .modosel{font-family:inherit;font-size:12px;padding:5px 8px;border:1px solid var(--border);
     border-radius:8px;margin-left:6px;background:#fff;color:var(--text)}
+  .fecha{font-size:12px;color:var(--muted);font-weight:700;margin-top:6px;
+    display:flex;align-items:center;gap:6px}
+  .mapbox{margin-top:12px;border:1px solid var(--border);border-radius:14px;
+    overflow:hidden;background:#EEF1EC}
+  .mapbox iframe{display:block;width:100%;height:180px;border:0}
+  .maphead{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    padding:9px 12px;font-size:12px;font-weight:700;color:var(--text);
+    border-bottom:1px solid var(--border);background:#F7F9F5}
+  .maphead .lnk{margin-left:auto;color:var(--teal);text-decoration:none;font-weight:800}
+  .badge-ubi{border-radius:999px;padding:2px 9px;font-size:11px;font-weight:800}
+  .ubi-ok{background:#D7F5E3;color:#1F8F4E}
+  .ubi-no{background:#FAD7DB;color:#9A1722}
+  .ubi-sd{background:#F0ECE2;color:#7C6F5C}
+  .nomap{padding:12px;font-size:12px;color:var(--muted);font-weight:700}
+  /* switch */
+  .sw{display:inline-flex;align-items:center;gap:10px;cursor:pointer;margin-top:12px}
+  .sw input{display:none}
+  .sw .track{width:46px;height:26px;border-radius:999px;background:#CDD5CB;
+    position:relative;transition:.15s}
+  .sw .knob{position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;
+    background:#fff;transition:.15s;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+  .sw input:checked + .track{background:var(--verde)}
+  .sw input:checked + .track .knob{left:23px}
   .empty{text-align:center;color:var(--muted);padding:50px 10px}
   .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);
     background:var(--bosque);color:#fff;padding:12px 18px;border-radius:12px;
@@ -224,6 +267,7 @@ _HTML = r"""<!DOCTYPE html>
 
 <div class="wrap" id="app" style="display:none">
   <div id="modo"></div>
+  <div id="ubic"></div>
   <div class="tabs" id="tabs"></div>
   <div id="lista"></div>
 </div>
@@ -242,6 +286,8 @@ let filtro = 'pendiente_triage';
 let cache = [];
 let modoGlobal = 'marcha_blanca';
 let overrides = {};
+let exigirUbic = false;   // ¿se exige GPS coincidente para aprobar?
+let ubicMaxM = 150;
 
 function tok(){ return localStorage.getItem('pichangol_admin_tok') || ''; }
 function headers(){ return {'Content-Type':'application/json','X-Admin-Token':tok()}; }
@@ -269,7 +315,41 @@ function mostrarApp(){
   document.getElementById('ftr').style.display='block';
   renderTabs();
   cargarModo();
+  cargarUbicacion();
   cargar();
+}
+
+async function cargarUbicacion(){
+  const r = await fetch('/admin/api/ubicacion',{headers:headers()});
+  if(!r.ok) return;
+  const j = await r.json();
+  exigirUbic = !!j.exigir;
+  ubicMaxM = j.max_m || 150;
+  renderUbicacion();
+  render();
+}
+function renderUbicacion(){
+  document.getElementById('ubic').innerHTML =
+    `<div class="card"><div class="top"><h3>Verificación de ubicación al reclamar</h3></div>
+      <div class="row">Muestra en el mapa desde dónde se envió cada solicitud. Si lo
+        activas, sólo podrás <b>Aprobar</b> cuando el reclamante estuvo dentro de
+        ${ubicMaxM} m de la cancha (evita reclamos a distancia).</div>
+      <label class="sw">
+        <input type="checkbox" ${exigirUbic?'checked':''} onchange="setExigir(this.checked)">
+        <span class="track"><span class="knob"></span></span>
+        <span style="font-weight:800;font-size:14px">${exigirUbic?'Exigir ubicación coincidente':'No exigir (piloto)'}</span>
+      </label></div>`;
+}
+async function setExigir(v){
+  const r = await fetch('/admin/api/ubicacion',{method:'POST',headers:headers(),
+    body:JSON.stringify({exigir:v})});
+  if(r.status===401){ salir(); return; }
+  const j = await r.json();
+  if(j.ok){
+    exigirUbic = !!j.exigir_ubicacion_reclamo;
+    toast(exigirUbic?'Ahora se exige ubicación coincidente':'Ya no se exige ubicación');
+    renderUbicacion(); render();
+  } else toast('No se pudo cambiar la configuración');
 }
 
 const MODO_DESC = {
@@ -343,6 +423,34 @@ function waLink(tel,nombre,cod){
   return 'https://wa.me/'+d+'?text='+msg;
 }
 
+function fmtFecha(iso){
+  if(!iso) return '—';
+  try{
+    const d = new Date(iso);
+    return d.toLocaleString('es-PE',{day:'2-digit',month:'short',year:'numeric',
+      hour:'2-digit',minute:'2-digit',hour12:true});
+  }catch(e){ return iso; }
+}
+function mapaUbic(r){
+  if(r.solicitante_lat==null || r.solicitante_lng==null){
+    return `<div class="mapbox"><div class="nomap">📍 El reclamante no compartió su
+      ubicación al enviar la solicitud (app antigua o permiso denegado).</div></div>`;
+  }
+  const la=r.solicitante_lat, ln=r.solicitante_lng;
+  let badge;
+  if(!r.tiene_ubicacion) badge='<span class="badge-ubi ubi-sd">sin ubicación de la cancha</span>';
+  else if(r.coincide) badge=`<span class="badge-ubi ubi-ok">✔ coincide · ${r.distancia_m} m</span>`;
+  else badge=`<span class="badge-ubi ubi-no">✘ lejos · ${r.distancia_m} m</span>`;
+  const q = la.toFixed(6)+','+ln.toFixed(6);
+  return `<div class="mapbox">
+    <div class="maphead">📍 Solicitó desde aquí ${badge}
+      <a class="lnk" href="https://www.google.com/maps?q=${q}" target="_blank" rel="noopener">Abrir en Maps ↗</a>
+    </div>
+    <iframe loading="lazy" referrerpolicy="no-referrer-when-downgrade"
+      src="https://maps.google.com/maps?q=${q}&z=17&output=embed"></iframe>
+  </div>`;
+}
+
 function render(){
   const items = filtro==='' ? cache : cache.filter(r=>r.estado===filtro);
   const cont = document.getElementById('lista');
@@ -354,9 +462,16 @@ function render(){
     const razon = r.razon_social ? `<div class="row">🏢 ${esc(r.razon_social)} · RUC ${esc(r.ruc||'')}</div>` : '';
     const rel = r.relacion ? `<div class="row">Relación: <b>${esc(r.relacion)}</b></div>` : '';
     const wa = r.telefono_contacto ? `<a class="wa" href="${waLink(r.telefono_contacto,r.nombre_local,r.codigo)}" target="_blank" rel="noopener">💬 ${esc(r.telefono_contacto)} · Escribir</a>` : '';
-    const acc = pend ? `<div class="actions">
+    const bloqueaUbic = exigirUbic && !r.coincide;
+    const apDis = bloqueaUbic
+      ? 'disabled title="El reclamante no estuvo en la cancha; no se puede aprobar con esta configuración."'
+      : '';
+    const aviso = (pend && bloqueaUbic)
+      ? `<div class="row" style="color:#9A1722;font-weight:700;margin-top:8px">🔒 No se puede aprobar: ${r.solicitante_lat==null?'sin ubicación del reclamante':'la ubicación no coincide con la cancha'}.</div>`
+      : '';
+    const acc = pend ? `${aviso}<div class="actions">
         <button class="btn-rc" onclick="decidir(${r.id},false,this)">Rechazar</button>
-        <button class="btn-ap" onclick="decidir(${r.id},true,this)">Aprobar y activar</button>
+        <button class="btn-ap" onclick="decidir(${r.id},true,this)" ${apDis}>Aprobar y activar</button>
       </div>` : '';
     const ov = overrides[r.cancha_id];
     const sel = `<div class="row" style="margin-top:10px">Modo de esta cancha:
@@ -370,10 +485,12 @@ function render(){
         <h3>${esc(r.nombre_local||'Local')}</h3>
         <span class="cod">cód. ${esc(r.codigo||'------')}</span>
       </div>
+      <div class="fecha">🕒 ${fmtFecha(r.creado_en)}</div>
       ${titular}${razon}${rel}
       <div class="row">Solicitante: ${esc(r.solicitante_id||'—')}</div>
       ${wa}
-      <div><span class="chip est-${esc(r.estado)}">${esc(r.estado)}</span></div>
+      ${mapaUbic(r)}
+      <div style="margin-top:8px"><span class="chip est-${esc(r.estado)}">${esc(r.estado)}</span></div>
       ${sel}
       ${acc}
     </div>`;
@@ -393,7 +510,13 @@ async function decidir(id, aprobado, btn){
     toast(aprobado?'✅ Cancha aprobada y activada':'❌ Reclamo rechazado');
     cargar();
   } else {
-    toast('No se pudo: '+(j.error||'error'));
+    let msg;
+    if(j.error==='ubicacion_no_coincide')
+      msg='🔒 No se aprobó: el reclamante estuvo a '+(j.distancia_m||'?')+' m (máx '+(j.max_m||ubicMaxM)+' m).';
+    else if(j.error==='sin_ubicacion_solicitante')
+      msg='🔒 No se aprobó: no hay ubicación del reclamante para validar.';
+    else msg='No se pudo: '+(j.error||'error');
+    toast(msg);
     card.querySelectorAll('button').forEach(b=>b.disabled=false);
   }
 }
