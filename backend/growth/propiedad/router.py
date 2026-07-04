@@ -58,8 +58,8 @@ def post_reclamo(req: ReclamoRequest) -> dict:
 
 
 @router.get("/reclamo/{cancha_id}")
-def get_reclamo(cancha_id: str) -> dict:
-    return reclamos.estado(cancha_id)
+def get_reclamo(cancha_id: str, solicitante: str = "") -> dict:
+    return reclamos.estado(cancha_id, solicitante or None)
 
 
 @router.get("/lugar-reclamado")

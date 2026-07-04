@@ -57,6 +57,18 @@ class ReservasRepo {
     } catch (_) {}
   }
 
+  /// Elimina TODAS las reservas de una cancha (p. ej. cuando el admin rechaza/
+  /// revoca la cancha y deja de ser reservable). Libera los slots. Fail-safe.
+  static Future<void> eliminarDeCancha(String canchaId) async {
+    if (!SupabaseService.disponible) return;
+    try {
+      await SupabaseService.client
+          .from(_tabla)
+          .delete()
+          .eq('cancha_id', canchaId);
+    } catch (_) {}
+  }
+
   /// Actualiza una reserva existente (estado / pago) por id. Fail-safe.
   static Future<void> actualizar(Reserva r) async {
     if (!SupabaseService.disponible) return;

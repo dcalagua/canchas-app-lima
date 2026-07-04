@@ -50,10 +50,16 @@ class PropiedadService {
   /// Consulta el ESTADO del reclamo/propiedad de una cancha en el backend.
   /// Devuelve {existe, estado, panel_desbloqueado, verificada, ...} o null.
   /// Sirve para que la app "se entere" cuando el admin aprueba en el panel.
-  static Future<Map<String, dynamic>?> estado(String canchaId) async {
+  /// [solicitante] (opcional): si se pasa, el backend responde `es_mio` = si el
+  /// reclamo es de ese correo (para asignar dueño sin apropiaciones).
+  static Future<Map<String, dynamic>?> estado(String canchaId,
+      {String? solicitante}) async {
     if (!disponible) return null;
     try {
-      final uri = Uri.parse('$_baseUrl/propiedad/reclamo/$canchaId');
+      var uri = Uri.parse('$_baseUrl/propiedad/reclamo/$canchaId');
+      if (solicitante != null && solicitante.isNotEmpty) {
+        uri = uri.replace(queryParameters: {'solicitante': solicitante});
+      }
       final resp = await http.get(uri).timeout(const Duration(seconds: 12));
       if (resp.statusCode != 200) return null;
       return Map<String, dynamic>.from(jsonDecode(resp.body) as Map);

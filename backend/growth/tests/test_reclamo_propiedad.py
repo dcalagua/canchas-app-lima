@@ -248,6 +248,15 @@ def test_estado_reporta_no_verificada_si_reclamo_rechazado():
     assert est["verificada"] is False  # reporte coherente
 
 
+def test_estado_es_mio_para_asignar_dueno_sin_apropiacion():
+    reclamos.crear_reclamo("c1", "due@x.com", "L", lat=LAT, lng=LNG)
+    # El reclamante ve es_mio=True; otro usuario, es_mio=False.
+    assert reclamos.estado("c1", "due@x.com")["es_mio"] is True
+    assert reclamos.estado("c1", "otro@x.com")["es_mio"] is False
+    # Sin solicitante no afirma propiedad.
+    assert reclamos.estado("c1")["es_mio"] is False
+
+
 def test_no_se_puede_aprobar_un_reclamo_rechazado():
     r = _crear()
     reclamos.triage(r["reclamo_id"], aprobado=False)  # rechazada

@@ -307,7 +307,7 @@ def rechazar_por_codigo(codigo: str, revisor: str | None = None) -> dict:
     return {"ok": True, "estado": "rechazada", "nombre_local": r.nombre_local}
 
 
-def estado(cancha_id: str) -> dict:
+def estado(cancha_id: str, solicitante: str | None = None) -> dict:
     rs = [r for r in stores.reclamos if r.cancha_id == cancha_id]
     if not rs:
         return {"existe": False}
@@ -333,6 +333,9 @@ def estado(cancha_id: str) -> dict:
             "aprobado_triage", "pendiente_validacion", "activada"),
         "verificada": verificada,
         "verificada_en_persona": bool(c and c.verificada_en_persona),
+        # ¿el reclamo es del que pregunta? (para que la app asigne dueño sin que
+        # un tercero se apropie de una cancha de "legado" al sincronizar).
+        "es_mio": bool(solicitante) and r.solicitante_id == solicitante,
     }
 
 

@@ -238,7 +238,8 @@ class AppState extends ChangeNotifier {
         if (c.registrada && !canchasEliminadas.contains(c.id)) c,
     ];
     for (final c in candidatas) {
-      final est = await PropiedadService.estado(c.id);
+      final est =
+          await PropiedadService.estado(c.id, solicitante: usuario?.email);
       if (est == null || est['existe'] != true) continue;
       final verificada =
           est['verificada'] == true || est['estado'] == 'activada';
@@ -246,15 +247,19 @@ class AppState extends ChangeNotifier {
 
       Cancha? actualizada;
       if (verificada && !c.verificada) {
-        // Al activarse queda atada a su dueño (si no tenía, al usuario actual).
-        actualizada = c.copyWith(
-          verificada: true,
-          dueno: c.dueno.isEmpty ? (usuario?.email ?? c.dueno) : c.dueno,
-        );
+        // Al activarse queda atada a su dueño. Solo me asigno como dueño si el
+        // backend confirma que YO soy el reclamante (est['es_mio']); así una
+        // cancha de "legado" no la apropia quien sincroniza primero.
+        final nuevoDueno = c.dueno.isNotEmpty
+            ? c.dueno
+            : (est['es_mio'] == true ? (usuario?.email ?? '') : '');
+        actualizada = c.copyWith(verificada: true, dueno: nuevoDueno);
       } else if ((rechazada || !verificada) && c.verificada) {
         // El admin rechazó/revocó el reclamo: la cancha vuelve a NO verificada
-        // (se cae "Verificada" y se deshabilitan las reservas online).
+        // (se cae "Verificada", se deshabilitan las reservas) y se CANCELAN las
+        // reservas ya tomadas (la cancha dejó de ser válida).
         actualizada = c.copyWith(verificada: false);
+        _cancelarReservasDeCancha(c.id);
       }
       if (actualizada == null) continue;
 
@@ -289,6 +294,7 @@ class AppState extends ChangeNotifier {
       actualizada = c.copyWith(verificada: true);
     } else if ((rechazada || !verificada) && c.verificada) {
       actualizada = c.copyWith(verificada: false);
+      _cancelarReservasDeCancha(c.id); // cancha rechazada: cancela sus reservas
     }
     if (actualizada == null) return null;
     final i = canchasExtra.indexWhere((x) => x.id == c.id);
@@ -299,6 +305,18 @@ class AppState extends ChangeNotifier {
     _persistirDatos();
     notifyListeners();
     return actualizada;
+  }
+
+  /// Cancela (elimina) las reservas de una cancha degradada/rechazada: se libera
+  /// el slot y desaparecen de "Mis reservas" y del panel del dueño. Best-effort
+  /// en la nube (borra en Supabase).
+  void _cancelarReservasDeCancha(String canchaId) {
+    final habia = reservas.any((r) => r.canchaId == canchaId) ||
+        misReservas.any((r) => r.canchaId == canchaId);
+    if (!habia) return;
+    reservas.removeWhere((r) => r.canchaId == canchaId);
+    misReservas.removeWhere((r) => r.canchaId == canchaId);
+    ReservasRepo.eliminarDeCancha(canchaId); // borra en Supabase (best-effort)
   }
 
   /// Registra una cancha nueva (desde el flujo con detección por IA).
