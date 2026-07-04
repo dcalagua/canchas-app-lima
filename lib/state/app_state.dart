@@ -230,29 +230,40 @@ class AppState extends ChangeNotifier {
   Future<void> sincronizarPropiedades() async {
     if (!PropiedadService.disponible) return;
     var cambio = false;
-    // Candidatas: mis canchas reclamadas que aún no están verificadas.
-    final pendientes = [
+    // Candidatas: TODAS mis canchas reclamadas (registradas, no eliminadas). Se
+    // consultan en ambos sentidos: promover (aprobada → verificada) y degradar
+    // (rechazada → deja de estar verificada, se quitan las reservas).
+    final candidatas = [
       for (final c in misCanchas)
-        if (!c.verificada && !canchasEliminadas.contains(c.id)) c,
+        if (c.registrada && !canchasEliminadas.contains(c.id)) c,
     ];
-    for (final c in pendientes) {
+    for (final c in candidatas) {
       final est = await PropiedadService.estado(c.id);
-      if (est == null) continue;
+      if (est == null || est['existe'] != true) continue;
       final verificada =
           est['verificada'] == true || est['estado'] == 'activada';
-      if (verificada) {
+      final rechazada = est['estado'] == 'rechazada';
+
+      Cancha? actualizada;
+      if (verificada && !c.verificada) {
         // Al activarse queda atada a su dueño (si no tenía, al usuario actual).
-        final actualizada = c.copyWith(
+        actualizada = c.copyWith(
           verificada: true,
           dueno: c.dueno.isEmpty ? (usuario?.email ?? c.dueno) : c.dueno,
         );
-        final i = canchasExtra.indexWhere((x) => x.id == c.id);
-        if (i >= 0) canchasExtra[i] = actualizada;
-        final j = canchasRemotas.indexWhere((x) => x.id == c.id);
-        if (j >= 0) canchasRemotas[j] = actualizada;
-        CanchasRepo.actualizar(actualizada); // refleja en la nube (best-effort)
-        cambio = true;
+      } else if ((rechazada || !verificada) && c.verificada) {
+        // El admin rechazó/revocó el reclamo: la cancha vuelve a NO verificada
+        // (se cae "Verificada" y se deshabilitan las reservas online).
+        actualizada = c.copyWith(verificada: false);
       }
+      if (actualizada == null) continue;
+
+      final i = canchasExtra.indexWhere((x) => x.id == c.id);
+      if (i >= 0) canchasExtra[i] = actualizada;
+      final j = canchasRemotas.indexWhere((x) => x.id == c.id);
+      if (j >= 0) canchasRemotas[j] = actualizada;
+      CanchasRepo.actualizar(actualizada); // refleja en la nube (best-effort)
+      cambio = true;
     }
     if (cambio) {
       _persistirDatos();

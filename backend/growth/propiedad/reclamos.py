@@ -240,6 +240,25 @@ def _enriquecer(r: ReclamoPropiedad) -> dict:
     return d
 
 
+def _revocar_cancha_al_rechazar(r: ReclamoPropiedad) -> None:
+    """Al RECHAZAR un reclamo, la cancha deja de estar verificada/activa (si ese
+    reclamo era el que la sostenía). Así el rechazo se refleja en la app: se quita
+    "Verificada" y se deshabilitan las reservas. No revoca si aún queda OTRO
+    reclamo activo (bloqueante) para la misma cancha."""
+    otro_activo = any(
+        o.id != r.id and o.cancha_id == r.cancha_id
+        and o.estado in _ESTADOS_BLOQUEANTES
+        for o in stores.reclamos
+    )
+    if otro_activo:
+        return
+    c = stores.canchas.get(r.cancha_id)
+    if c is not None:
+        c.verificada = False
+        c.verificada_en_persona = False
+        c.metodo_verificacion = None
+
+
 def _cerrar_duplicados(r: ReclamoPropiedad) -> None:
     """Al avanzar un reclamo hacia su activación, rechaza otros reclamos NO
     terminales de la misma cancha (duplicados por reintentos previos a la
@@ -284,6 +303,7 @@ def rechazar_por_codigo(codigo: str, revisor: str | None = None) -> dict:
     r.estado = "rechazada"
     r.decidido_en = ahora()
     r.nota = f"Rechazado por WhatsApp ({revisor or 'admin'}).".strip()
+    _revocar_cancha_al_rechazar(r)
     return {"ok": True, "estado": "rechazada", "nombre_local": r.nombre_local}
 
 
@@ -293,13 +313,26 @@ def estado(cancha_id: str) -> dict:
         return {"existe": False}
     r = rs[-1]
     c = stores.canchas.get(cancha_id)
+    verificada = bool(c and c.verificada)
+    # Auto-reparación: si el último reclamo quedó RECHAZADO y no hay ningún otro
+    # reclamo activo para la cancha, ésta no debe seguir verificada (repara datos
+    # anteriores al revoque-en-rechazo y mantiene coherente lo que ve la app).
+    if r.estado == "rechazada" and verificada:
+        otro_activo = any(
+            o.cancha_id == cancha_id and o.estado in _ESTADOS_BLOQUEANTES
+            for o in stores.reclamos)
+        if not otro_activo and c is not None:
+            c.verificada = False
+            c.verificada_en_persona = False
+            c.metodo_verificacion = None
+            verificada = False
     return {
         "existe": True,
         "reclamo_id": r.id,
         "estado": r.estado,
         "panel_desbloqueado": r.estado in (
             "aprobado_triage", "pendiente_validacion", "activada"),
-        "verificada": bool(c and c.verificada),
+        "verificada": verificada,
         "verificada_en_persona": bool(c and c.verificada_en_persona),
     }
 
@@ -312,6 +345,8 @@ def triage(reclamo_id: int, aprobado: bool, revisor: str | None = None,
     r.estado = "aprobado_triage" if aprobado else "rechazada"
     r.decidido_en = ahora()
     r.nota = f"Triage por {revisor or 'admin'}. {nota or ''}".strip()
+    if not aprobado:
+        _revocar_cancha_al_rechazar(r)
     return {"ok": True, "estado": r.estado}
 
 

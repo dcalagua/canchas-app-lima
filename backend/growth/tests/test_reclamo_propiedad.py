@@ -219,6 +219,35 @@ def test_reclamo_con_ubicacion_roundtrip_snapshot():
     assert r.solicitante_lat is not None and r.solicitante_lng is not None
 
 
+# --- Rechazar revoca la verificación de la cancha (no debe quedar reservable) ---
+def test_rechazar_revoca_la_verificacion():
+    r = _crear()
+    reclamos.aprobar_directo(r["reclamo_id"])  # marcha_blanca: queda verificada
+    assert stores.cancha("c1").verificada is True
+    # El admin la rechaza después.
+    reclamos.triage(r["reclamo_id"], aprobado=False, revisor="dennis")
+    assert stores.cancha("c1").verificada is False
+    est = reclamos.estado("c1")
+    assert est["estado"] == "rechazada" and est["verificada"] is False
+
+
+def test_rechazar_por_whatsapp_revoca():
+    r = _crear()
+    reclamos.aprobar_directo(r["reclamo_id"])
+    reclamos.rechazar_por_codigo(r["codigo"], revisor="admin_whatsapp")
+    assert stores.cancha("c1").verificada is False
+
+
+def test_estado_autorepara_cancha_verificada_con_reclamo_rechazado():
+    # Simula datos previos al fix: reclamo rechazado pero cancha aún verificada.
+    r = _crear()
+    reclamos.triage(r["reclamo_id"], aprobado=False)
+    stores.cancha("c1").verificada = True  # estado inconsistente heredado
+    est = reclamos.estado("c1")
+    assert est["verificada"] is False
+    assert stores.cancha("c1").verificada is False  # se reparó de raíz
+
+
 def test_lugar_reclamado_para_bloquear_el_boton():
     reclamos.crear_reclamo("c1", "due1@x.com", "L", lat=LAT, lng=LNG)
     # Otro usuario consulta el MISMO lugar con id distinto (cancha de Google).
