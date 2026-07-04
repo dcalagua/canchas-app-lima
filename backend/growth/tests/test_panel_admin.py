@@ -89,24 +89,41 @@ def test_pagina_panel_se_sirve(client):
     assert "Pichangol" in r.text and "Panel de administración" in r.text
 
 
-def test_endpoint_aprobar_directo_de_la_app_activa(client):
-    """El boton 'Aprobar' del panel admin DENTRO de la app activa la cancha
-    (verificada=True), igual que el panel web. Sin token (uso interno app)."""
+def test_aprobar_por_http_exige_token_admin(client):
+    """La administración vive en la torre de control web (no en el APK): aprobar
+    por /propiedad exige X-Admin-Token. Sin token NO activa (era un hueco de
+    seguridad: cualquiera se auto-aprobaba)."""
     r = _reclamo()
+    # Sin token -> 401 y la cancha NO se activa.
     res = client.post(f"/propiedad/reclamo/{r['reclamo_id']}/aprobar",
-                      json={"aprobado": True, "revisor": "dennis"})
+                      json={"aprobado": True, "revisor": "x"})
+    assert res.status_code == 401
+    assert stores.cancha("c1").verificada is False
+    # Con token -> activa.
+    res = client.post(f"/propiedad/reclamo/{r['reclamo_id']}/aprobar",
+                      json={"aprobado": True, "revisor": "dennis"},
+                      headers={"X-Admin-Token": TOKEN})
     assert res.status_code == 200 and res.json()["estado"] == "activada"
     assert stores.cancha("c1").verificada is True
-    # Y el estado que consulta la app refleja verificada=True.
+    # El GET de estado que consulta la app SIGUE público.
     est = client.get("/propiedad/reclamo/c1")
     assert est.status_code == 200 and est.json()["verificada"] is True
 
 
+def test_reclamos_con_datos_personales_exige_token(client):
+    """GET /propiedad/reclamos expone DNI/teléfono/GPS: debe exigir token
+    (Ley 29733). Sin token -> 401."""
+    _reclamo()
+    assert client.get("/propiedad/reclamos").status_code == 401
+    r = client.get("/propiedad/reclamos", headers={"X-Admin-Token": TOKEN})
+    assert r.status_code == 200 and len(r.json()) == 1
+
+
 def test_triage_solo_no_activa(client):
-    """Contraste: el triage clasico aprueba pero NO activa (verificada sigue
-    False). Por eso el boton de la app ahora usa /aprobar, no /triage."""
+    """Contraste: el triage clásico aprueba pero NO activa. Ahora exige token."""
     r = _reclamo()
     res = client.post(f"/propiedad/reclamo/{r['reclamo_id']}/triage",
-                      json={"aprobado": True, "revisor": "dennis"})
+                      json={"aprobado": True, "revisor": "dennis"},
+                      headers={"X-Admin-Token": TOKEN})
     assert res.status_code == 200 and res.json()["estado"] == "aprobado_triage"
     assert stores.cancha("c1").verificada is False

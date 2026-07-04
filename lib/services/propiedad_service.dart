@@ -153,74 +153,10 @@ class PropiedadService {
     }
   }
 
-  /// Lista los reclamos (para el panel admin). `estado` opcional para filtrar
-  /// (p. ej. 'pendiente_triage').
-  static Future<List<Map<String, dynamic>>> listarReclamos({String? estado}) async {
-    if (!disponible) return [];
-    try {
-      final q = estado != null && estado.isNotEmpty ? '?estado=$estado' : '';
-      final uri = Uri.parse('$_baseUrl/propiedad/reclamos$q');
-      final resp = await http.get(uri).timeout(const Duration(seconds: 12));
-      if (resp.statusCode != 200) return [];
-      final data = jsonDecode(resp.body);
-      if (data is! List) return [];
-      return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-    } catch (_) {
-      return [];
-    }
-  }
-
-  /// El admin aprueba o rechaza un reclamo (triage). Al aprobar, el dueño puede
-  /// configurar su cancha.
-  static Future<Map<String, dynamic>?> triageReclamo({
-    required int reclamoId,
-    required bool aprobado,
-    String? revisor,
-    String? nota,
-  }) async {
-    if (!disponible) return null;
-    try {
-      final uri = Uri.parse('$_baseUrl/propiedad/reclamo/$reclamoId/triage');
-      final resp = await http
-          .post(uri,
-              headers: {'Content-Type': 'application/json'},
-              body: jsonEncode({
-                'aprobado': aprobado,
-                if (revisor != null) 'revisor': revisor,
-                if (nota != null) 'nota': nota,
-              }))
-          .timeout(const Duration(seconds: 12));
-      if (resp.statusCode != 200) return null;
-      return Map<String, dynamic>.from(jsonDecode(resp.body) as Map);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  /// Aprobación DIRECTA del admin (piloto): aprueba y ACTIVA la cancha al
-  /// instante (verificada=True), sin validación en sitio. Mismo efecto que el
-  /// botón "Aprobar y activar" del panel web.
-  static Future<Map<String, dynamic>?> aprobarDirecto({
-    required int reclamoId,
-    String? revisor,
-  }) async {
-    if (!disponible) return null;
-    try {
-      final uri = Uri.parse('$_baseUrl/propiedad/reclamo/$reclamoId/aprobar');
-      final resp = await http
-          .post(uri,
-              headers: {'Content-Type': 'application/json'},
-              body: jsonEncode({
-                'aprobado': true,
-                if (revisor != null) 'revisor': revisor,
-              }))
-          .timeout(const Duration(seconds: 12));
-      if (resp.statusCode != 200) return null;
-      return Map<String, dynamic>.from(jsonDecode(resp.body) as Map);
-    } catch (_) {
-      return null;
-    }
-  }
+  // NOTA: la administración de reclamos (listar/triage/aprobar/rechazar y el
+  // modo de aprobación) NO vive en el APK — es la TORRE DE CONTROL web /admin
+  // (protegida por token) + aprobación por WhatsApp. Sus endpoints /propiedad/*
+  // exigen X-Admin-Token en el backend; la app del dueño no los usa.
 
   /// El motorizado valida un reclamo EN SITIO: ingresa el código y manda su GPS.
   /// El servidor exige que la ubicación coincida con la de la cancha.
@@ -249,57 +185,6 @@ class PropiedadService {
       return Map<String, dynamic>.from(jsonDecode(resp.body) as Map);
     } catch (_) {
       return null;
-    }
-  }
-
-  /// Lee la configuración del MODO de aprobación de canchas.
-  /// Devuelve {global, overrides: {cancha_id: modo}, modos: [...]} o null.
-  static Future<Map<String, dynamic>?> configModo() async {
-    if (!disponible) return null;
-    try {
-      final uri = Uri.parse('$_baseUrl/propiedad/config/modo');
-      final resp = await http.get(uri).timeout(const Duration(seconds: 12));
-      if (resp.statusCode != 200) return null;
-      return Map<String, dynamic>.from(jsonDecode(resp.body) as Map);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  /// Cambia el modo GLOBAL de aprobación (aplica a todas las canchas sin override).
-  static Future<bool> setModoGlobal(String modo) async {
-    if (!disponible) return false;
-    try {
-      final uri = Uri.parse('$_baseUrl/propiedad/config/modo');
-      final resp = await http
-          .put(uri,
-              headers: {'Content-Type': 'application/json'},
-              body: jsonEncode({'modo': modo}))
-          .timeout(const Duration(seconds: 12));
-      if (resp.statusCode != 200) return false;
-      final r = jsonDecode(resp.body);
-      return r is Map && r['ok'] == true;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  /// Fija el override de una cancha. `modo == null` limpia el override (vuelve
-  /// al global).
-  static Future<bool> setModoCancha(String canchaId, String? modo) async {
-    if (!disponible) return false;
-    try {
-      final uri = Uri.parse('$_baseUrl/propiedad/config/modo/cancha');
-      final resp = await http
-          .put(uri,
-              headers: {'Content-Type': 'application/json'},
-              body: jsonEncode({'cancha_id': canchaId, 'modo': modo}))
-          .timeout(const Duration(seconds: 12));
-      if (resp.statusCode != 200) return false;
-      final r = jsonDecode(resp.body);
-      return r is Map && r['ok'] == true;
-    } catch (_) {
-      return false;
     }
   }
 

@@ -124,6 +124,13 @@ off → redeploy inmediato en cada push). URL pública:
   > **Separación de responsabilidades:** el **APK** es para **jugadores y dueños
   > de cancha** (+ rol de campo "Verificador"); **toda la administración del SaaS**
   > (aprobaciones, configuración) vive en la **torre de control web**, no en el APK.
+  > **Auth:** los endpoints ADMIN de `propiedad/router.py` (`/reclamo/{id}/triage`,
+  > `/aprobar`, `/activar`, `GET /reclamos`, `/config/modo*`, `/aprobar-manual`) y
+  > `PUT /config/incentivos/{clave}` exigen **`X-Admin-Token`** (`_require_admin`,
+  > fail-closed 503 sin token). Público (app del dueño): `POST /reclamo`,
+  > `GET /reclamo/{cancha_id}` (estado), `/lugar-reclamado`, `/otp/*`,
+  > `/reclamo/validar` (validador, protegido por código+GPS). Aprobación por
+  > WhatsApp usa `aprobar_por_codigo` (firma Twilio), no el endpoint HTTP.
 - **Config (env, `config.py`):** `ADMIN_PANEL_TOKEN`, `FACTILIZA_API_TOKEN`,
   `PICHANGOL_ADMIN_WHATSAPP`, `TWILIO_*`, `WHATSAPP_*`, `OTP_CANAL_PREFERIDO`
   (`whatsapp|twilio_whatsapp|sms`), `VALIDADOR_ACTIVA_AUTOMATICO`,

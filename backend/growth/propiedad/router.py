@@ -6,7 +6,7 @@ import re
 import urllib.parse
 from xml.sax.saxutils import escape as _xml_esc
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 
 import config
 from models import (
@@ -20,6 +20,20 @@ from models import (
 from propiedad import identidad, reclamos, service, twilio_adapter, whatsapp_adapter
 
 router = APIRouter(prefix="/propiedad", tags=["propiedad"])
+
+
+def _require_admin(x_admin_token: str | None = Header(default=None)) -> None:
+    """Auth de operador (torre de control). Protege los endpoints ADMINISTRATIVOS
+    de propiedad para que sólo el equipo (con ADMIN_PANEL_TOKEN) apruebe/rechace/
+    configure y vea datos personales. Sin token configurado, fail-closed (503).
+    La app del dueño NO usa estos endpoints; usa /reclamo, /estado, /otp, etc."""
+    if not config.ADMIN_PANEL_TOKEN:
+        raise HTTPException(status_code=503, detail="admin_no_configurado")
+    if x_admin_token != config.ADMIN_PANEL_TOKEN:
+        raise HTTPException(status_code=401, detail="token_invalido")
+
+
+_ADMIN = [Depends(_require_admin)]
 
 
 # --- Consulta de identidad (DNI persona / RUC negocio) vía Factiliza ---
@@ -57,13 +71,13 @@ def get_lugar_reclamado(lat: float, lng: float, cancha_id: str = "",
     return reclamos.lugar_reclamado(lat, lng, cancha_id, solicitante or None)
 
 
-@router.post("/reclamo/{reclamo_id}/triage")
+@router.post("/reclamo/{reclamo_id}/triage", dependencies=_ADMIN)
 def post_triage(reclamo_id: int, req: TriageRequest) -> dict:
     """El admin vetea al reclamante y aprueba/rechaza (desbloquea el panel)."""
     return reclamos.triage(reclamo_id, req.aprobado, req.revisor, req.nota)
 
 
-@router.post("/reclamo/{reclamo_id}/aprobar")
+@router.post("/reclamo/{reclamo_id}/aprobar", dependencies=_ADMIN)
 def post_aprobar_directo(reclamo_id: int, req: TriageRequest) -> dict:
     """Aprobación DIRECTA (piloto): el admin aprueba y la cancha queda ACTIVA al
     instante (verificada=True), sin validación en sitio. Mismo efecto que el
@@ -84,31 +98,33 @@ def post_validar(req: ValidarReclamoRequest) -> dict:
         req.codigo, req.lat, req.lng, req.validador, req.fotos_urls)
 
 
-@router.post("/reclamo/{reclamo_id}/activar")
+@router.post("/reclamo/{reclamo_id}/activar", dependencies=_ADMIN)
 def post_activar(reclamo_id: int) -> dict:
     """Activación manual por el admin (si VALIDADOR_ACTIVA_AUTOMATICO=0)."""
     return reclamos.activar_admin(reclamo_id)
 
 
-@router.get("/reclamos")
+@router.get("/reclamos", dependencies=_ADMIN)
 def get_reclamos(estado: str | None = None) -> list[dict]:
+    """ADMIN: lista completa (incluye datos personales del reclamante). Protegido
+    por token para no exponer DNI/teléfono/GPS (Ley 29733)."""
     return reclamos.listar(estado)
 
 
 # --- Configuración del MODO de aprobación (marcha_blanca | nuevo_flujo) ---
-@router.get("/config/modo")
+@router.get("/config/modo", dependencies=_ADMIN)
 def get_modo() -> dict:
     """Modo de aprobación: global + overrides por cancha + modos válidos."""
     return reclamos.config_modo()
 
 
-@router.put("/config/modo")
+@router.put("/config/modo", dependencies=_ADMIN)
 def put_modo_global(req: dict) -> dict:
     """Cambia el modo GLOBAL (aplica a todas las canchas sin override)."""
     return reclamos.set_modo_global(str(req.get("modo", "")))
 
 
-@router.put("/config/modo/cancha")
+@router.put("/config/modo/cancha", dependencies=_ADMIN)
 def put_modo_cancha(req: dict) -> dict:
     """Fija o limpia el override de una cancha. modo=null/'' limpia el override."""
     return reclamos.set_modo_cancha(str(req.get("cancha_id", "")), req.get("modo"))
@@ -134,7 +150,7 @@ def post_confirmar(req: OtpConfirmarRequest) -> dict:
         req.cancha_id, req.codigo, req.solicitante_id, req.telefono_publico)
 
 
-@router.post("/aprobar-manual")
+@router.post("/aprobar-manual", dependencies=_ADMIN)
 def post_aprobar_manual(req: AprobarManualRequest) -> dict:
     """Aprobación/rechazo manual de propiedad (uso interno del equipo)."""
     return service.aprobar_manual(

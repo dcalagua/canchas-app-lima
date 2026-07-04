@@ -711,8 +711,8 @@ class _PanelPendienteState extends State<_PanelPendiente> {
       _diag = (res != null && res['ok'] == true)
           ? '✅ Solicitud reenviada al servidor.\n'
               'Código: ${res['codigo'] ?? '—'}\n'
-              'Ahora ve a "Reclamos (admin)" y pulsa Aprobar; luego vuelve aquí '
-              'y toca "Verificar estado ahora".'
+              'El equipo la aprueba desde la torre de control web (o por '
+              'WhatsApp); luego vuelve aquí y toca "Verificar estado ahora".'
           : '⚠️ No se pudo crear el reclamo en el servidor. Reintenta en un momento '
               '(el backend puede estar reiniciándose).';
     });

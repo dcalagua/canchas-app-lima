@@ -7,13 +7,14 @@ Ejecutar (desde este directorio):
 
 from __future__ import annotations
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 
 from compliance.consent import consent_store
 from db import pg
 from db.store import seed_verificadores, stores
 from models import ConfigRequest, ConsentimientoRequest
 from propiedad.panel import router as panel_router
+from propiedad.router import _require_admin
 from propiedad.router import router as propiedad_router
 from puntos.router import router as puntos_router
 from solicitudes.router import router as solicitudes_router
@@ -62,8 +63,11 @@ def get_config() -> dict:
     return dict(stores.config)
 
 
-@app.put("/config/incentivos/{clave}")
+@app.put("/config/incentivos/{clave}", dependencies=[Depends(_require_admin)])
 def put_config(clave: str, req: ConfigRequest) -> dict:
+    """ADMIN: reescribe una clave de config (modo_aprobacion, exigir_ubicacion,
+    topes de puntos, etc.). Protegido por token: mutar esto sin auth permitía a
+    cualquiera cambiar reglas del sistema."""
     stores.config[clave] = req.valor
     return {"clave": clave, "valor": req.valor}
 
