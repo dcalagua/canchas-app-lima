@@ -96,9 +96,30 @@ Postgres (`db/pg.py`, tabla `growth_state`). Tablas lógicas de referencia en
 (cubre los 3 modos, lista de espera, cancelación con auto-promoción, ranking y
 persistencia por snapshot).
 
+## UI Flutter
+
+Ya integrada dentro de Pichangol (sin app aparte):
+
+- **Modelo:** `lib/models/convocatoria.dart` (`Convocatoria`, `Inscripcion`,
+  `ConvocatoriaDetalle`, enums `ModoAsignacion`/`EstadoSocio`).
+- **Servicio:** `lib/services/convocatorias_service.dart` (cliente HTTP, mismo
+  `GROWTH_API_URL`, fail-safe; `slugClub` para el `club_id`).
+- **Pantallas:**
+  - `convocatorias_screen.dart` — listado del club (barra de cupos, chips de modo/
+    estado). FAB "Nueva pichanga" + acceso al ranking si eres dueño.
+  - `convocatoria_detalle_screen.dart` — mi estado (confirmado/espera/en la bolsa),
+    botón **Anotarme**/Cancelar (pide login Google), listas de confirmados y espera,
+    y **panel del dueño** (cerrar, reabrir, marcar asistencia).
+  - `crear_convocatoria_screen.dart` — formulario con **selector de los 3 modos**.
+  - `ranking_socios_screen.dart` — ranking de recurrencia (trazabilidad).
+- **Entrada:** ítem **"Pichangas"** en el menú de `explorar_home_screen`. El admin
+  del club es el rol **dueño** (`appState.sesionIniciada`); no usa token de la
+  torre de control.
+
 ## Pendiente (siguiente fase)
 
-- UI Flutter: sección "Pichangas" en la ficha del club (`club_detalle_screen`) y
-  panel del dueño (`mis_pichangas_screen`), + `ConvocatoriasState` con SharedPreferences.
+- Botón directo a las pichangas desde la ficha pública del club
+  (`club_detalle_screen`) y selección de club para jugadores multi-club.
+- `ConvocatoriasState` con caché local (SharedPreferences) para modo offline.
 - Recordatorio por WhatsApp (Twilio) 10 min antes de abrir la inscripción.
 - Armado automático de equipos y sub-categorías.

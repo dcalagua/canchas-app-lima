@@ -23,7 +23,9 @@ import 'mis_reservas_screen.dart';
 import 'mis_canchas_screen.dart';
 import 'registrar_cancha_screen.dart';
 import 'verificador_screen.dart';
+import 'convocatorias_screen.dart';
 import '../services/growth_service.dart';
+import '../services/convocatorias_service.dart';
 
 /// Pantalla de inicio estilo Airbnb: mapa de Google a pantalla completa con
 /// barra de búsqueda flotante, filtros por deporte y un carrusel de canchas
@@ -337,6 +339,18 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
           Navigator.of(sheetContext).pop();
           Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const MisCanchasScreen()),
+          );
+        },
+        onPichangas: () {
+          Navigator.of(sheetContext).pop();
+          final club = appState.nombreClub;
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => ConvocatoriasScreen(
+                clubId: ConvocatoriasService.slugClub(club),
+                clubNombre: club,
+              ),
+            ),
           );
         },
         onVerificador: () {
@@ -1057,6 +1071,7 @@ class _MenuSheet extends StatelessWidget {
   final VoidCallback onRegistrar;
   final VoidCallback onMisCanchas;
   final VoidCallback onVerificador;
+  final VoidCallback onPichangas;
   final Future<void> Function() onLogin;
   final Future<void> Function() onLogout;
   const _MenuSheet({
@@ -1065,6 +1080,7 @@ class _MenuSheet extends StatelessWidget {
     required this.onRegistrar,
     required this.onMisCanchas,
     required this.onVerificador,
+    required this.onPichangas,
     required this.onLogin,
     required this.onLogout,
   });
@@ -1143,6 +1159,13 @@ class _MenuSheet extends StatelessWidget {
                 leading: const Icon(Icons.event_available, color: verdeCancha),
                 title: const Text('Mis reservas'),
                 onTap: onMisReservas,
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.groups, color: verdeCancha),
+                title: const Text('Pichangas'),
+                subtitle: const Text('Anótate a las convocatorias del club'),
+                onTap: onPichangas,
               ),
               ListTile(
                 contentPadding: EdgeInsets.zero,
