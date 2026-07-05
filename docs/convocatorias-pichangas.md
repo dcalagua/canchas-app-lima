@@ -84,6 +84,21 @@ Sólo el **default global** del modo va con `X-Admin-Token` (config SaaS):
 - `GET /convocatorias/config/modo`
 - `PUT /convocatorias/config/modo` — `{ "modo": "orden_llegada|sorteo|equidad" }`
 
+**Seguridad (X-App-Key):** igual que los endpoints públicos de propiedad, todos
+los endpoints de convocatorias exigen la cabecera `X-App-Key` (= `APP_API_KEY`)
+para que sólo el APK oficial pueda llamarlos. Si `APP_API_KEY` no está
+configurada, no se exige (despliegue gradual). El APK la envía desde un
+`--dart-define` del build.
+
+## Integración web (torre de control `/admin`)
+
+El panel web `/admin` incorpora una tarjeta **"Modo de asignación de pichangas"**
+(junto a "Modo de aprobación de canchas"), que configura el **default global** de
+los 3 modos desde el navegador. Endpoints: `GET`/`POST /admin/api/pichangas/modo`
+(protegidos con `X-Admin-Token`). El día a día del club (crear/cerrar/asistencia)
+lo hace el **dueño desde el APK**; la torre de control sólo fija el default y
+supervisa.
+
 ## Persistencia
 
 Igual que el resto del backend growth: stores en memoria + snapshot JSON a

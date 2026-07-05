@@ -16,6 +16,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 import config
+from convocatorias import service as convocatorias_service
 from propiedad import reclamos
 
 router = APIRouter(tags=["panel"])
@@ -107,6 +108,21 @@ def set_ubicacion_admin(req: ExigirUbicacionRequest,
     """Activa/desactiva la exigencia de ubicación coincidente para aprobar."""
     _check(x_admin_token)
     return reclamos.set_exigir_ubicacion(req.exigir)
+
+
+@router.get("/admin/api/pichangas/modo")
+def get_pichangas_modo(x_admin_token: str | None = Header(default=None)) -> dict:
+    """Modo GLOBAL de asignación de cupos de las pichangas (convocatorias)."""
+    _check(x_admin_token)
+    return convocatorias_service.config_modo()
+
+
+@router.post("/admin/api/pichangas/modo")
+def set_pichangas_modo(req: ModoRequest,
+                       x_admin_token: str | None = Header(default=None)) -> dict:
+    """Cambia el modo GLOBAL de asignación (orden_llegada | sorteo | equidad)."""
+    _check(x_admin_token)
+    return convocatorias_service.set_modo_global(req.modo)
 
 
 @router.get("/admin", response_class=HTMLResponse)
@@ -267,6 +283,7 @@ _HTML = r"""<!DOCTYPE html>
 
 <div class="wrap" id="app" style="display:none">
   <div id="modo"></div>
+  <div id="pichangaModo"></div>
   <div id="ubic"></div>
   <div class="tabs" id="tabs"></div>
   <div id="lista"></div>
@@ -315,6 +332,7 @@ function mostrarApp(){
   document.getElementById('ftr').style.display='block';
   renderTabs();
   cargarModo();
+  cargarPichangaModo();
   cargarUbicacion();
   cargar();
 }
@@ -392,6 +410,42 @@ async function setModo(m){
   if(j.ok){ toast('Modo: '+(m==='marcha_blanca'?'Marcha blanca':'Nuevo flujo')); renderModo(m); }
   else toast('No se pudo cambiar el modo');
 }
+// --- Pichangas: modo global de asignación de cupos (convocatorias) ---------
+let pichangaModo = 'orden_llegada';
+const PICHANGA_MODO_DESC = {
+  orden_llegada:'El que se anota primero entra; confirma al instante (como el chat de WhatsApp, pero ordenado).',
+  sorteo:'Ventana de inscripción; al cerrar se sortea de forma justa y reproducible.',
+  equidad:'Al cerrar prioriza a quien más veces quedó fuera y mejor asiste; penaliza al no-show.'
+};
+const PICHANGA_MODO_NOMBRE = {
+  orden_llegada:'Orden de llegada', sorteo:'Sorteo', equidad:'Equidad'
+};
+async function cargarPichangaModo(){
+  const r = await fetch('/admin/api/pichangas/modo',{headers:headers()});
+  if(!r.ok) return;
+  const j = await r.json();
+  pichangaModo = j.global || 'orden_llegada';
+  renderPichangaModo(pichangaModo);
+}
+function renderPichangaModo(g){
+  const modos = ['orden_llegada','sorteo','equidad'];
+  document.getElementById('pichangaModo').innerHTML =
+    `<div class="card"><div class="top"><h3>Modo de asignación de pichangas</h3></div>
+      <div class="row">Cómo se reparten los cupos de las convocatorias cuando una no
+        fija su propio modo. El dueño puede elegir uno distinto en cada pichanga.</div>
+      <div class="row" id="pichangaModoDesc" style="font-weight:600">${esc(PICHANGA_MODO_DESC[g]||'')}</div>
+      <div class="actions">
+        ${modos.map(m=>`<button class="seg ${g===m?'on':''}" onclick="setPichangaModo('${m}')">${PICHANGA_MODO_NOMBRE[m]}</button>`).join('')}
+      </div></div>`;
+}
+async function setPichangaModo(m){
+  const r = await fetch('/admin/api/pichangas/modo',{method:'POST',headers:headers(),body:JSON.stringify({modo:m})});
+  if(r.status===401){ salir(); return; }
+  const j = await r.json();
+  if(j.ok){ pichangaModo=m; toast('Pichangas: '+PICHANGA_MODO_NOMBRE[m]); renderPichangaModo(m); }
+  else toast('No se pudo cambiar el modo de pichangas');
+}
+
 function toast(msg){
   const d=document.createElement('div'); d.className='toast'; d.textContent=msg;
   document.body.appendChild(d); setTimeout(()=>d.remove(),2600);

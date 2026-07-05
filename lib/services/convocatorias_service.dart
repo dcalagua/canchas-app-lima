@@ -9,10 +9,18 @@ import '../models/convocatoria.dart';
 /// definida, el servicio queda inactivo (fail-safe) y la UI muestra un aviso.
 class ConvocatoriasService {
   static const _baseUrl = String.fromEnvironment('GROWTH_API_URL');
+  // Clave compartida app↔backend (viene de --dart-define en el build). El backend
+  // solo acepta llamadas del APK oficial que la traiga en X-App-Key.
+  static const _appKey = String.fromEnvironment('APP_API_KEY');
 
   static bool get disponible => _baseUrl.isNotEmpty;
 
-  static const _headers = {'Content-Type': 'application/json'};
+  /// Cabeceras para el backend: envía la clave de app (si está compilada) y, en
+  /// los POST, Content-Type JSON.
+  static Map<String, String> _appHeaders({bool json = false}) => {
+        if (_appKey.isNotEmpty) 'X-App-Key': _appKey,
+        if (json) 'Content-Type': 'application/json',
+      };
 
   /// Convierte el nombre de un club en un id estable (slug) para agrupar sus
   /// convocatorias. Debe ser consistente entre crear y listar.
@@ -37,7 +45,7 @@ class ConvocatoriasService {
         'club_id': clubId,
         if (estado != null && estado.isNotEmpty) 'estado': estado,
       });
-      final resp = await http.get(uri).timeout(const Duration(seconds: 12));
+      final resp = await http.get(uri, headers: _appHeaders()).timeout(const Duration(seconds: 12));
       if (resp.statusCode != 200) return [];
       final data = jsonDecode(resp.body);
       if (data is! List) return [];
@@ -56,7 +64,7 @@ class ConvocatoriasService {
       final uri = Uri.parse('$_baseUrl/convocatorias/$convId').replace(
           queryParameters:
               (socio != null && socio.isNotEmpty) ? {'socio': socio} : null);
-      final resp = await http.get(uri).timeout(const Duration(seconds: 12));
+      final resp = await http.get(uri, headers: _appHeaders()).timeout(const Duration(seconds: 12));
       if (resp.statusCode != 200) return null;
       final j = Map<String, dynamic>.from(jsonDecode(resp.body) as Map);
       if (j['ok'] != true) return null;
@@ -83,7 +91,7 @@ class ConvocatoriasService {
       final uri = Uri.parse('$_baseUrl/convocatorias');
       final resp = await http
           .post(uri,
-              headers: _headers,
+              headers: _appHeaders(json: true),
               body: jsonEncode({
                 'club_id': clubId,
                 'titulo': titulo,
@@ -146,7 +154,7 @@ class ConvocatoriasService {
     try {
       final uri = Uri.parse('$_baseUrl/convocatorias/ranking')
           .replace(queryParameters: {'club_id': clubId});
-      final resp = await http.get(uri).timeout(const Duration(seconds: 12));
+      final resp = await http.get(uri, headers: _appHeaders()).timeout(const Duration(seconds: 12));
       if (resp.statusCode != 200) return [];
       final data = jsonDecode(resp.body);
       if (data is! List) return [];
@@ -161,7 +169,7 @@ class ConvocatoriasService {
     if (!disponible) return null;
     try {
       final resp = await http
-          .post(Uri.parse(url), headers: _headers, body: jsonEncode(body))
+          .post(Uri.parse(url), headers: _appHeaders(json: true), body: jsonEncode(body))
           .timeout(const Duration(seconds: 12));
       if (resp.statusCode != 200) return null;
       return Map<String, dynamic>.from(jsonDecode(resp.body) as Map);

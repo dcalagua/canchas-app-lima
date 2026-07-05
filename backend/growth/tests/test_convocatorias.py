@@ -9,6 +9,7 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+import config  # noqa: E402
 from convocatorias import service  # noqa: E402
 from db.store import stores  # noqa: E402
 
@@ -175,6 +176,41 @@ def test_ranking_recurrencia():
     assert top["inscripciones"] == 2 and top["jugo"] == 2
     beto = next(x for x in r if x["socio_id"] == "b@x.com")
     assert beto["lista_espera"] == 1  # quedó fuera en la fecha 2
+
+
+# --- seguridad (X-App-Key) + integración web (panel) ----------------------
+def test_endpoints_publicos_exigen_app_key(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setattr(config, "APP_API_KEY", "appsecret")
+    import main
+    c = TestClient(main.app)
+    body = {"club_id": CLUB, "titulo": "Fulbito", "cupos": 2}
+    # Sin la cabecera del APK oficial -> 401.
+    assert c.post("/convocatorias", json=body).status_code == 401
+    # Con la clave correcta -> 200.
+    ok = c.post("/convocatorias", json=body, headers={"X-App-Key": "appsecret"})
+    assert ok.status_code == 200
+
+
+def test_panel_web_configura_modo_pichangas(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setattr(config, "ADMIN_PANEL_TOKEN", "admintok")
+    monkeypatch.setattr(config, "APP_API_KEY", "")
+    import main
+    c = TestClient(main.app)
+    h = {"X-Admin-Token": "admintok"}
+    # Lee el modo global desde la torre de control.
+    r = c.get("/admin/api/pichangas/modo", headers=h)
+    assert r.status_code == 200 and "orden_llegada" in r.json()["modos"]
+    # Lo cambia a equidad.
+    r2 = c.post("/admin/api/pichangas/modo", json={"modo": "equidad"}, headers=h)
+    assert r2.status_code == 200 and r2.json()["global"] == "equidad"
+    # Sin token admin -> 401.
+    assert c.post("/admin/api/pichangas/modo", json={"modo": "sorteo"}).status_code == 401
+    # La página del panel incluye la tarjeta de pichangas.
+    assert "Modo de asignación de pichangas" in c.get("/admin").text
 
 
 # --- persistencia ----------------------------------------------------------
