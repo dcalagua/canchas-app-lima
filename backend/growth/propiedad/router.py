@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import re
+import time
 import urllib.parse
+from collections import defaultdict, deque
 from xml.sax.saxutils import escape as _xml_esc
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
@@ -50,6 +52,38 @@ def _require_app_key(x_app_key: str | None = Header(default=None)) -> None:
 _APP = [Depends(_require_app_key)]
 
 
+# Rate-limit en memoria por IP (anti-spam). Ventana deslizante simple; suficiente
+# para el piloto (una sola instancia). Se resetea si el proceso reinicia.
+_rate_hits: dict[str, "deque[float]"] = defaultdict(deque)
+
+
+def _client_ip(request: Request) -> str:
+    xff = request.headers.get("x-forwarded-for", "")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "?"
+
+
+def _rate_limit(request: Request) -> None:
+    """Limita las solicitudes por IP a los endpoints con efecto externo."""
+    limite = config.RECLAMO_RATE_LIMIT
+    if limite <= 0:
+        return
+    ventana = config.RECLAMO_RATE_WINDOW_S
+    ip = _client_ip(request)
+    ahora = time.monotonic()
+    dq = _rate_hits[ip]
+    while dq and (ahora - dq[0]) > ventana:
+        dq.popleft()
+    if len(dq) >= limite:
+        raise HTTPException(status_code=429, detail="demasiadas_solicitudes")
+    dq.append(ahora)
+
+
+# App key + rate-limit (para POST con efecto externo: reclamo, OTP).
+_APP_RL = [Depends(_require_app_key), Depends(_rate_limit)]
+
+
 # --- Consulta de identidad (DNI persona / RUC negocio) vía Factiliza ---
 @router.get("/dni/{dni}", dependencies=_APP)
 def get_dni(dni: str) -> dict:
@@ -62,7 +96,7 @@ def get_ruc(ruc: str) -> dict:
 
 
 # --- Reclamo con intervención humana + validación en sitio ---
-@router.post("/reclamo", dependencies=_APP)
+@router.post("/reclamo", dependencies=_APP_RL)
 def post_reclamo(req: ReclamoRequest) -> dict:
     """El dueño presiona 'Reclamar': avisa al admin por WhatsApp con un código."""
     return reclamos.crear_reclamo(
@@ -149,7 +183,7 @@ def get_estado(cancha_id: str) -> dict:
     return service.estado(cancha_id)
 
 
-@router.post("/otp/solicitar", dependencies=_APP)
+@router.post("/otp/solicitar", dependencies=_APP_RL)
 def post_solicitar(req: OtpSolicitarRequest) -> dict:
     """Envía un código al teléfono del local. Si WhatsApp no está configurado,
     corre en modo stub (no envía nada real)."""

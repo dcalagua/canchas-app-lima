@@ -65,6 +65,12 @@ ADMIN_PANEL_TOKEN = os.getenv("ADMIN_PANEL_TOKEN", "")
 # VACÍA, no se exige (permite un despliegue gradual sin romper apps ya instaladas);
 # una vez configurada aquí y en el APK, un curl externo sin la clave recibe 401.
 APP_API_KEY = os.getenv("APP_API_KEY", "")
+# Rate-limit anti-spam de los endpoints con efecto externo (crear reclamo, OTP):
+# máx RECLAMO_RATE_LIMIT solicitudes por IP en una ventana de RATE_WINDOW segundos.
+# 0 = desactivado. Protege el backend (y el costo de Factiliza/WhatsApp) si la URL
+# vuelve a quedar expuesta.
+RECLAMO_RATE_LIMIT = int(os.getenv("RECLAMO_RATE_LIMIT", "10"))
+RECLAMO_RATE_WINDOW_S = int(os.getenv("RECLAMO_RATE_WINDOW_S", "600"))
 # Si true, la validación en sitio del motorizado activa la cancha automáticamente
 # (y se avisa al admin). Si false, queda lista y el admin la activa a mano.
 VALIDADOR_ACTIVA_AUTOMATICO = os.getenv("VALIDADOR_ACTIVA_AUTOMATICO", "1") == "1"

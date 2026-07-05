@@ -18,7 +18,9 @@ TOKEN = "secreto-piloto"
 
 @pytest.fixture(autouse=True)
 def _limpio(monkeypatch):
+    from propiedad import router as _router
     stores.reset()
+    _router._rate_hits.clear()  # aísla el rate-limit entre tests
     monkeypatch.setattr(config, "PICHANGOL_ADMIN_WHATSAPP", "")  # no envía nada
     monkeypatch.setattr(config, "ADMIN_PANEL_TOKEN", TOKEN)
     yield
@@ -138,6 +140,17 @@ def test_sin_app_key_configurada_no_se_exige(client, monkeypatch):
     monkeypatch.setattr(config, "APP_API_KEY", "")
     body = {"cancha_id": "cY", "solicitante_id": "d@x.com", "nombre_local": "L"}
     assert client.post("/propiedad/reclamo", json=body).status_code == 200
+
+
+def test_rate_limit_corta_el_spam_de_reclamos(client, monkeypatch):
+    """Con un límite bajo, tras N reclamos desde la misma IP el siguiente da 429."""
+    monkeypatch.setattr(config, "RECLAMO_RATE_LIMIT", 3)
+    monkeypatch.setattr(config, "APP_API_KEY", "")  # no exige clave en este test
+    body = {"cancha_id": "c", "solicitante_id": "d@x.com", "nombre_local": "L"}
+    codes = [client.post("/propiedad/reclamo", json={**body, "cancha_id": f"c{i}"})
+             .status_code for i in range(4)]
+    assert codes[:3] == [200, 200, 200]
+    assert codes[3] == 429
 
 
 def test_triage_solo_no_activa(client):
