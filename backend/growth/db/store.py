@@ -41,10 +41,28 @@ CONFIG_DEFAULT: dict[str, str] = {
     # desde donde se envió coincide con la ubicación de la cancha (anti-fraude
     # ligero: "estar en el lugar" al reclamar). "0" = no se exige (piloto).
     "exigir_ubicacion_reclamo": "0",
+    # --- CONVOCATORIAS ("pichangas" programadas) ---------------------------
+    # Modo GLOBAL de asignación de cupos cuando una convocatoria no fija el suyo
+    # (se puede sobreescribir por convocatoria). Los 3 modos son configurables por
+    # el admin del club: "orden_llegada" (el que se anota primero entra, feedback
+    # inmediato) | "sorteo" (ventana de inscripción y sorteo al cerrar) |
+    # "equidad" (al cerrar prioriza a quien más quedó fuera y mejor asiste).
+    "convocatoria_modo_asignacion": "orden_llegada",
+    # Pesos del puntaje de EQUIDAD (todo configurable, nada hardcodeado):
+    # sube quien más semanas quedó en lista de espera; baja quien ya jugó en las
+    # últimas fechas y quien no se presentó (no-show).
+    "convocatoria_equidad_peso_espera": "3",
+    "convocatoria_equidad_peso_jugo": "2",
+    "convocatoria_equidad_peso_noshow": "5",
+    # Cuántas convocatorias cerradas recientes cuentan como "jugó reciente".
+    "convocatoria_equidad_ventana": "4",
 }
 
 # Modos de aprobación válidos.
 MODOS_APROBACION = ("marcha_blanca", "nuevo_flujo")
+
+# Modos de asignación de cupos de una convocatoria válidos.
+MODOS_ASIGNACION = ("orden_llegada", "sorteo", "equidad")
 
 
 @dataclass
@@ -190,6 +208,45 @@ class CanchaEstado:
     zona: str | None = None
 
 
+@dataclass
+class Convocatoria:
+    """Una 'pichanga' programada de un club: partido con cupos, ventana de
+    inscripción y un modo de asignación (orden_llegada|sorteo|equidad). Resuelve
+    el caos del chat de WhatsApp de los jueves con lista de espera y reparto
+    justo. `modo_asignacion=None` usa el modo global del club/config."""
+    id: int
+    club_id: str
+    titulo: str
+    deporte: str
+    cupos: int
+    estado: str                       # abierta | cerrada
+    creado_en: datetime
+    categoria: str | None = None      # master | menor | libre
+    fecha_partido: str | None = None  # ISO/texto del partido (display)
+    apertura: datetime | None = None  # desde cuándo se puede inscribir
+    cierre: datetime | None = None    # hasta cuándo (y cuándo se resuelve)
+    modo_asignacion: str | None = None
+    semilla: str | None = None        # fijada al cerrar (sorteo reproducible)
+    creado_por: str = ""
+    cerrado_en: datetime | None = None
+
+
+@dataclass
+class Inscripcion:
+    """Un socio anotado a una convocatoria. `creado_en` es la marca de tiempo de
+    inscripción (clave para orden_llegada). `posicion` y el estado final se
+    congelan al cerrar; `asistio` lo marca el admin tras el partido (alimenta el
+    puntaje de equidad)."""
+    id: int
+    convocatoria_id: int
+    socio_id: str
+    socio_nombre: str
+    estado: str                       # pendiente | confirmado | lista_espera | cancelado
+    creado_en: datetime
+    posicion: int | None = None
+    asistio: bool | None = None
+
+
 class Stores:
     def __init__(self) -> None:
         self.config: dict[str, str] = dict(CONFIG_DEFAULT)
@@ -207,6 +264,9 @@ class Stores:
         # Override del modo de aprobación POR cancha: {cancha_id: modo}. Si una
         # cancha no está aquí, usa el modo global (config["modo_aprobacion"]).
         self.modo_aprobacion_overrides: dict[str, str] = {}
+        # Convocatorias ("pichangas" programadas) y sus inscripciones.
+        self.convocatorias: list[Convocatoria] = []
+        self.inscripciones: list[Inscripcion] = []
         self._idem: dict[tuple[str, str], dict] = {}
         self._ids: dict[str, int] = {}
 
@@ -235,6 +295,14 @@ class Stores:
             if ov in MODOS_APROBACION:
                 return ov
         return glob
+
+    def modo_asignacion(self, override: str | None = None) -> str:
+        """Modo de asignación efectivo de una convocatoria: el override de la
+        convocatoria si es válido, si no el global. Siempre devuelve válido."""
+        if override in MODOS_ASIGNACION:
+            return override
+        glob = self.cfg("convocatoria_modo_asignacion")
+        return glob if glob in MODOS_ASIGNACION else "orden_llegada"
 
     def cancha(self, cancha_id: str) -> CanchaEstado:
         c = self.canchas.get(cancha_id)
@@ -277,6 +345,8 @@ class Stores:
             ],
             "reclamos": [como_dict(r) for r in self.reclamos],
             "modo_aprobacion_overrides": dict(self.modo_aprobacion_overrides),
+            "convocatorias": [como_dict(c) for c in self.convocatorias],
+            "inscripciones": [como_dict(i) for i in self.inscripciones],
         }
 
     def load_state(self, data: dict) -> None:
@@ -299,6 +369,8 @@ class Stores:
         self.reclamos = [_reclamo_from(d) for d in data.get("reclamos", [])]
         self.modo_aprobacion_overrides = dict(
             data.get("modo_aprobacion_overrides") or {})
+        self.convocatorias = [_conv_from(d) for d in data.get("convocatorias", [])]
+        self.inscripciones = [_insc_from(d) for d in data.get("inscripciones", [])]
 
 
 # Singleton (en producción: repos contra Supabase).
@@ -382,6 +454,25 @@ def _reclamo_from(d: dict) -> ReclamoPropiedad:
         decidido_en=_dt(d.get("decidido_en")),
         validado_en=_dt(d.get("validado_en")), validador=d.get("validador"),
         nota=d.get("nota"))
+
+
+def _conv_from(d: dict) -> Convocatoria:
+    return Convocatoria(
+        id=d["id"], club_id=d["club_id"], titulo=d["titulo"],
+        deporte=d["deporte"], cupos=d["cupos"], estado=d["estado"],
+        creado_en=_dt(d["creado_en"]), categoria=d.get("categoria"),
+        fecha_partido=d.get("fecha_partido"), apertura=_dt(d.get("apertura")),
+        cierre=_dt(d.get("cierre")), modo_asignacion=d.get("modo_asignacion"),
+        semilla=d.get("semilla"), creado_por=d.get("creado_por", ""),
+        cerrado_en=_dt(d.get("cerrado_en")))
+
+
+def _insc_from(d: dict) -> Inscripcion:
+    return Inscripcion(
+        id=d["id"], convocatoria_id=d["convocatoria_id"],
+        socio_id=d["socio_id"], socio_nombre=d["socio_nombre"],
+        estado=d["estado"], creado_en=_dt(d["creado_en"]),
+        posicion=d.get("posicion"), asistio=d.get("asistio"))
 
 
 def _vf_from(d: dict) -> VerificacionFisica:

@@ -113,6 +113,46 @@ class ValidarReclamoRequest(BaseModel):
     fotos_urls: list[str] = Field(default_factory=list)
 
 
+# --- E. Convocatorias ("pichangas" programadas con cupos + 3 modos) ---
+class CrearConvocatoriaRequest(BaseModel):
+    club_id: str
+    titulo: str
+    deporte: str = "futbol"
+    cupos: int = 14
+    categoria: str | None = None
+    fecha_partido: str | None = None    # ISO/texto del partido (display)
+    apertura: str | None = None         # ISO; si vacío, abre al crear
+    cierre: str | None = None           # ISO; si vacío, no cierra por tiempo
+    modo_asignacion: str | None = None  # orden_llegada|sorteo|equidad (None=global)
+    creado_por: str = ""
+
+
+class InscribirRequest(BaseModel):
+    socio_id: str
+    socio_nombre: str = ""
+
+
+class CancelarInscripcionRequest(BaseModel):
+    socio_id: str
+
+
+class CerrarConvocatoriaRequest(BaseModel):
+    semilla: str | None = None          # opcional; fija el sorteo
+
+
+class AsistenciaItem(BaseModel):
+    socio_id: str
+    asistio: bool
+
+
+class AsistenciaRequest(BaseModel):
+    asistencias: list[AsistenciaItem] = Field(default_factory=list)
+
+
+class ModoAsignacionRequest(BaseModel):
+    modo: str                           # orden_llegada|sorteo|equidad
+
+
 # --- Transversal ---
 class ConsentimientoRequest(BaseModel):
     sujeto_id: str

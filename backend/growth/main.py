@@ -10,6 +10,7 @@ from __future__ import annotations
 from fastapi import Depends, FastAPI, Request
 
 from compliance.consent import consent_store
+from convocatorias.router import router as convocatorias_router
 from db import pg
 from db.store import seed_verificadores, stores
 from models import ConfigRequest, ConsentimientoRequest
@@ -50,6 +51,7 @@ app.include_router(solicitudes_router)
 app.include_router(vf_router)
 app.include_router(propiedad_router)
 app.include_router(panel_router)
+app.include_router(convocatorias_router)
 
 
 @app.get("/health")
