@@ -544,6 +544,8 @@ class _PanelDescubierta extends StatefulWidget {
 class _PanelDescubiertaState extends State<_PanelDescubierta> {
   bool _cargando = true;
   bool _reclamadaPorOtro = false;
+  bool _reclamadaPorMi = false;
+  String _estadoReclamo = '';
 
   Cancha get cancha => widget.cancha;
 
@@ -567,8 +569,14 @@ class _PanelDescubiertaState extends State<_PanelDescubierta> {
     if (!mounted) return;
     setState(() {
       _cargando = false;
-      _reclamadaPorOtro =
-          r != null && r['reclamada'] == true && r['por_mi'] != true;
+      final reclamada = r != null && r['reclamada'] == true;
+      final porMi = r != null && r['por_mi'] == true;
+      // Ya reclamada por OTRO → bloqueo. Ya reclamada por MÍ → no re-reclamar:
+      // aviso que ya la reclamé (en revisión o ya activa), sin volver a caer en
+      // la página de reserva.
+      _reclamadaPorOtro = reclamada && !porMi;
+      _reclamadaPorMi = reclamada && porMi;
+      _estadoReclamo = (r?['estado'] ?? '').toString();
     });
   }
 
@@ -601,7 +609,39 @@ class _PanelDescubiertaState extends State<_PanelDescubierta> {
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: trazo),
       ),
-      child: _reclamadaPorOtro ? _yaReclamada(t) : _reclamable(t),
+      child: _reclamadaPorOtro
+          ? _yaReclamada(t)
+          : _reclamadaPorMi
+              ? _yaReclamadaPorMi(t)
+              : _reclamable(t),
+    );
+  }
+
+  Widget _yaReclamadaPorMi(TextTheme t) {
+    final activa = _estadoReclamo == 'activada';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(activa ? Icons.verified : Icons.hourglass_top, color: pino),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(activa ? 'Ya es tuya' : 'Tu reclamo está en revisión',
+                  style: t.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Text(
+          activa
+              ? 'Esta cancha ya está verificada y es tuya. Adminístrala desde '
+                  '"Mis canchas" (horarios, precios y cobros).'
+              : 'Ya enviaste tu solicitud para esta cancha. Está en revisión; te '
+                  'avisamos cuando se apruebe. No necesitas reclamarla otra vez.',
+          style: t.bodyMedium?.copyWith(color: textoTenue, height: 1.4),
+        ),
+      ],
     );
   }
 
