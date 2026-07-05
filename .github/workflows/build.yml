@@ -61,6 +61,7 @@ jobs:
           PLACES_API_KEY: ${{ secrets.PLACES_API_KEY }}
           VERIF_API_URL: ${{ secrets.VERIF_API_URL }}
           GROWTH_API_URL: ${{ secrets.GROWTH_API_URL }}
+          APP_API_KEY: ${{ secrets.APP_API_KEY }}
         run: |
           # --split-per-abi: un APK por arquitectura (mucho más liviano que el
           # universal). El arm64-v8a sirve a la gran mayoría de teléfonos.
@@ -71,7 +72,8 @@ jobs:
             --dart-define=MAPS_API_KEY="$MAPS_API_KEY" \
             --dart-define=PLACES_API_KEY="$PLACES_API_KEY" \
             --dart-define=VERIF_API_URL="$VERIF_API_URL" \
-            --dart-define=GROWTH_API_URL="$GROWTH_API_URL"
+            --dart-define=GROWTH_API_URL="$GROWTH_API_URL" \
+            --dart-define=APP_API_KEY="$APP_API_KEY"
 
       - name: Verificar firma del APK
         run: |
@@ -161,6 +163,7 @@ jobs:
           PLACES_API_KEY: ${{ secrets.PLACES_API_KEY }}
           VERIF_API_URL: ${{ secrets.VERIF_API_URL }}
           GROWTH_API_URL: ${{ secrets.GROWTH_API_URL }}
+          APP_API_KEY: ${{ secrets.APP_API_KEY }}
         run: |
           flutter build ios --release --no-codesign \
             --dart-define=SUPABASE_URL="$SUPABASE_URL" \
@@ -168,4 +171,5 @@ jobs:
             --dart-define=MAPS_API_KEY="$MAPS_API_KEY" \
             --dart-define=PLACES_API_KEY="$PLACES_API_KEY" \
             --dart-define=VERIF_API_URL="$VERIF_API_URL" \
-            --dart-define=GROWTH_API_URL="$GROWTH_API_URL"
+            --dart-define=GROWTH_API_URL="$GROWTH_API_URL" \
+            --dart-define=APP_API_KEY="$APP_API_KEY"

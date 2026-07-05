@@ -119,6 +119,27 @@ def test_reclamos_con_datos_personales_exige_token(client):
     assert r.status_code == 200 and len(r.json()) == 1
 
 
+def test_app_key_gatea_endpoints_publicos(client, monkeypatch):
+    """Con APP_API_KEY configurada, los endpoints públicos exigen X-App-Key
+    (solo el APK oficial): un cliente externo sin la clave recibe 401."""
+    monkeypatch.setattr(config, "APP_API_KEY", "clave-app")
+    body = {"cancha_id": "cX", "solicitante_id": "d@x.com", "nombre_local": "L"}
+    # Sin clave -> 401.
+    assert client.post("/propiedad/reclamo", json=body).status_code == 401
+    # Con clave -> 200.
+    r = client.post("/propiedad/reclamo", json=body,
+                    headers={"X-App-Key": "clave-app"})
+    assert r.status_code == 200 and r.json()["ok"] is True
+
+
+def test_sin_app_key_configurada_no_se_exige(client, monkeypatch):
+    """Rollout gradual: si APP_API_KEY está vacía, no se exige (no rompe apps
+    ya instaladas que aún no mandan la clave)."""
+    monkeypatch.setattr(config, "APP_API_KEY", "")
+    body = {"cancha_id": "cY", "solicitante_id": "d@x.com", "nombre_local": "L"}
+    assert client.post("/propiedad/reclamo", json=body).status_code == 200
+
+
 def test_triage_solo_no_activa(client):
     """Contraste: el triage clásico aprueba pero NO activa. Ahora exige token."""
     r = _reclamo()

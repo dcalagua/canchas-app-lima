@@ -12,8 +12,18 @@ import 'package:http/http.dart' as http;
 /// está configurada, el servicio queda inactivo (fail-safe).
 class PropiedadService {
   static const _baseUrl = String.fromEnvironment('GROWTH_API_URL');
+  // Clave compartida app↔backend (viene de --dart-define en el build). El backend
+  // solo acepta llamadas del APK oficial que la traiga en X-App-Key.
+  static const _appKey = String.fromEnvironment('APP_API_KEY');
 
   static bool get disponible => _baseUrl.isNotEmpty;
+
+  /// Cabeceras para el backend: envía la clave de app (si está compilada) y, en
+  /// los POST, Content-Type JSON.
+  static Map<String, String> _appHeaders({bool json = false}) => {
+        if (_appKey.isNotEmpty) 'X-App-Key': _appKey,
+        if (json) 'Content-Type': 'application/json',
+      };
 
   /// URL del panel web de administración (Pichangol + EBIM) donde el admin
   /// aprueba las canchas desde el navegador. Vacía si el backend no está activo.
@@ -25,7 +35,7 @@ class PropiedadService {
     if (!disponible) return null;
     try {
       final uri = Uri.parse('$_baseUrl/propiedad/dni/$dni');
-      final resp = await http.get(uri).timeout(const Duration(seconds: 12));
+      final resp = await http.get(uri, headers: _appHeaders()).timeout(const Duration(seconds: 12));
       if (resp.statusCode != 200) return null;
       return Map<String, dynamic>.from(jsonDecode(resp.body) as Map);
     } catch (_) {
@@ -39,7 +49,7 @@ class PropiedadService {
     if (!disponible) return null;
     try {
       final uri = Uri.parse('$_baseUrl/propiedad/ruc/$ruc');
-      final resp = await http.get(uri).timeout(const Duration(seconds: 12));
+      final resp = await http.get(uri, headers: _appHeaders()).timeout(const Duration(seconds: 12));
       if (resp.statusCode != 200) return null;
       return Map<String, dynamic>.from(jsonDecode(resp.body) as Map);
     } catch (_) {
@@ -60,7 +70,7 @@ class PropiedadService {
       if (solicitante != null && solicitante.isNotEmpty) {
         uri = uri.replace(queryParameters: {'solicitante': solicitante});
       }
-      final resp = await http.get(uri).timeout(const Duration(seconds: 12));
+      final resp = await http.get(uri, headers: _appHeaders()).timeout(const Duration(seconds: 12));
       if (resp.statusCode != 200) return null;
       return Map<String, dynamic>.from(jsonDecode(resp.body) as Map);
     } catch (_) {
@@ -86,7 +96,7 @@ class PropiedadService {
         if (canchaId.isNotEmpty) 'cancha_id': canchaId,
         if (solicitante.isNotEmpty) 'solicitante': solicitante,
       });
-      final resp = await http.get(uri).timeout(const Duration(seconds: 10));
+      final resp = await http.get(uri, headers: _appHeaders()).timeout(const Duration(seconds: 10));
       if (resp.statusCode != 200) return null;
       return Map<String, dynamic>.from(jsonDecode(resp.body) as Map);
     } catch (_) {
@@ -113,7 +123,7 @@ class PropiedadService {
       final uri = Uri.parse('$_baseUrl/propiedad/reclamo');
       final resp = await http
           .post(uri,
-              headers: {'Content-Type': 'application/json'},
+              headers: _appHeaders(json: true),
               body: jsonEncode({
                 'cancha_id': canchaId,
                 'solicitante_id': solicitanteId,
@@ -149,7 +159,7 @@ class PropiedadService {
       final uri = Uri.parse('$_baseUrl/propiedad/otp/solicitar');
       final resp = await http
           .post(uri,
-              headers: {'Content-Type': 'application/json'},
+              headers: _appHeaders(json: true),
               body: jsonEncode({'cancha_id': canchaId, 'telefono': telefono}))
           .timeout(const Duration(seconds: 15));
       if (resp.statusCode != 200) return null;
@@ -178,7 +188,7 @@ class PropiedadService {
       final uri = Uri.parse('$_baseUrl/propiedad/reclamo/validar');
       final resp = await http
           .post(uri,
-              headers: {'Content-Type': 'application/json'},
+              headers: _appHeaders(json: true),
               body: jsonEncode({
                 'codigo': codigo,
                 'lat': lat,
@@ -208,7 +218,7 @@ class PropiedadService {
       final uri = Uri.parse('$_baseUrl/propiedad/otp/confirmar');
       final resp = await http
           .post(uri,
-              headers: {'Content-Type': 'application/json'},
+              headers: _appHeaders(json: true),
               body: jsonEncode({
                 'cancha_id': canchaId,
                 'codigo': codigo,

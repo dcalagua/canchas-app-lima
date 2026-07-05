@@ -36,19 +36,33 @@ def _require_admin(x_admin_token: str | None = Header(default=None)) -> None:
 _ADMIN = [Depends(_require_admin)]
 
 
+def _require_app_key(x_app_key: str | None = Header(default=None)) -> None:
+    """Gatea los endpoints PÚBLICOS de la app: solo el APK oficial (que envía
+    X-App-Key) puede llamarlos. Evita que un cliente externo (curl) cree reclamos
+    o consulte identidad contra el backend público. Si APP_API_KEY no está
+    configurada, no se exige (despliegue gradual)."""
+    if not config.APP_API_KEY:
+        return
+    if x_app_key != config.APP_API_KEY:
+        raise HTTPException(status_code=401, detail="app_key_invalida")
+
+
+_APP = [Depends(_require_app_key)]
+
+
 # --- Consulta de identidad (DNI persona / RUC negocio) vía Factiliza ---
-@router.get("/dni/{dni}")
+@router.get("/dni/{dni}", dependencies=_APP)
 def get_dni(dni: str) -> dict:
     return identidad.consultar_dni(dni)
 
 
-@router.get("/ruc/{ruc}")
+@router.get("/ruc/{ruc}", dependencies=_APP)
 def get_ruc(ruc: str) -> dict:
     return identidad.consultar_ruc(ruc)
 
 
 # --- Reclamo con intervención humana + validación en sitio ---
-@router.post("/reclamo")
+@router.post("/reclamo", dependencies=_APP)
 def post_reclamo(req: ReclamoRequest) -> dict:
     """El dueño presiona 'Reclamar': avisa al admin por WhatsApp con un código."""
     return reclamos.crear_reclamo(
@@ -57,12 +71,12 @@ def post_reclamo(req: ReclamoRequest) -> dict:
         req.lat, req.lng, req.solicitante_lat, req.solicitante_lng)
 
 
-@router.get("/reclamo/{cancha_id}")
+@router.get("/reclamo/{cancha_id}", dependencies=_APP)
 def get_reclamo(cancha_id: str, solicitante: str = "") -> dict:
     return reclamos.estado(cancha_id, solicitante or None)
 
 
-@router.get("/lugar-reclamado")
+@router.get("/lugar-reclamado", dependencies=_APP)
 def get_lugar_reclamado(lat: float, lng: float, cancha_id: str = "",
                         solicitante: str = "") -> dict:
     """¿El lugar (lat/lng, o cancha_id) ya tiene un reclamo activo? Para que la
@@ -85,13 +99,13 @@ def post_aprobar_directo(reclamo_id: int, req: TriageRequest) -> dict:
     return reclamos.aprobar_directo(reclamo_id, req.revisor)
 
 
-@router.post("/reclamo/{reclamo_id}/listo-para-validar")
+@router.post("/reclamo/{reclamo_id}/listo-para-validar", dependencies=_APP)
 def post_listo(reclamo_id: int) -> dict:
     """El dueño guardó su info: pasa a pendiente de validación en sitio."""
     return reclamos.listo_para_validar(reclamo_id)
 
 
-@router.post("/reclamo/validar")
+@router.post("/reclamo/validar", dependencies=_APP)
 def post_validar(req: ValidarReclamoRequest) -> dict:
     """El motorizado ingresa el código en el sitio; su GPS debe coincidir."""
     return reclamos.validar_en_sitio(
@@ -130,19 +144,19 @@ def put_modo_cancha(req: dict) -> dict:
     return reclamos.set_modo_cancha(str(req.get("cancha_id", "")), req.get("modo"))
 
 
-@router.get("/estado/{cancha_id}")
+@router.get("/estado/{cancha_id}", dependencies=_APP)
 def get_estado(cancha_id: str) -> dict:
     return service.estado(cancha_id)
 
 
-@router.post("/otp/solicitar")
+@router.post("/otp/solicitar", dependencies=_APP)
 def post_solicitar(req: OtpSolicitarRequest) -> dict:
     """Envía un código al teléfono del local. Si WhatsApp no está configurado,
     corre en modo stub (no envía nada real)."""
     return service.solicitar(req.cancha_id, req.telefono)
 
 
-@router.post("/otp/confirmar")
+@router.post("/otp/confirmar", dependencies=_APP)
 def post_confirmar(req: OtpConfirmarRequest) -> dict:
     """Valida el código. Si coincide (y el número prueba propiedad), marca la
     cancha como verificada por su dueño."""

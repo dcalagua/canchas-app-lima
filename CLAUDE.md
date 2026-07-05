@@ -56,7 +56,8 @@ jugador es 100% Pichangol, EBIM solo aparece discreto como respaldo).
 - **dart-defines (secrets de GitHub Actions):** `GROWTH_API_URL`
   (= `https://pg-backend-production-c176.up.railway.app`), `VERIF_API_URL`
   (= `https://eexpense-production.up.railway.app`, módulo de existencia),
-  `MAPS_API_KEY`, `PLACES_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`.
+  `MAPS_API_KEY`, `PLACES_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`,
+  `APP_API_KEY` (secreto app↔backend; el APK lo manda en `X-App-Key`).
   **OJO:** `GROWTH_API_URL` ≠ `VERIF_API_URL` (servicios distintos).
 
 ## Flujo de PROPIEDAD (clave del producto)
@@ -134,7 +135,11 @@ off → redeploy inmediato en cada push). URL pública:
 - **Config (env, `config.py`):** `ADMIN_PANEL_TOKEN`, `FACTILIZA_API_TOKEN`,
   `PICHANGOL_ADMIN_WHATSAPP`, `TWILIO_*`, `WHATSAPP_*`, `OTP_CANAL_PREFERIDO`
   (`whatsapp|twilio_whatsapp|sms`), `VALIDADOR_ACTIVA_AUTOMATICO`,
-  `RECLAMO_VALIDACION_GPS_MAX_M=150`, `RECLAMO_UBICACION_MAX_M=150`, `DATABASE_URL`.
+  `RECLAMO_VALIDACION_GPS_MAX_M=150`, `RECLAMO_UBICACION_MAX_M=150`, `DATABASE_URL`,
+  `APP_API_KEY` (clave app↔backend: si está seteada, los endpoints PÚBLICOS de
+  `propiedad/router.py` exigen la cabecera `X-App-Key` — solo el APK oficial la
+  trae; vacía = no se exige, para rollout gradual). Debe coincidir con el
+  dart-define `APP_API_KEY` del APK.
 - **Tests:** `cd backend/growth && python3 -m pytest -q` (deben pasar todos).
   Cumplimiento Ley 29733 (DNI = dato personal: solo validar dueño, no publicar).
 

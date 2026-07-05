@@ -59,6 +59,12 @@ PICHANGOL_ADMIN_WHATSAPP = os.getenv("PICHANGOL_ADMIN_WHATSAPP", "")
 # queda deshabilitado (503). No viaja en la URL: la página lo guarda en el
 # navegador y lo envía en la cabecera X-Admin-Token.
 ADMIN_PANEL_TOKEN = os.getenv("ADMIN_PANEL_TOKEN", "")
+# Clave compartida APP↔BACKEND para que SOLO el APK oficial pueda llamar a los
+# endpoints públicos del dueño (crear reclamo, estado, OTP, identidad…). El APK la
+# envía en la cabecera X-App-Key (viene de un --dart-define en el build). Si está
+# VACÍA, no se exige (permite un despliegue gradual sin romper apps ya instaladas);
+# una vez configurada aquí y en el APK, un curl externo sin la clave recibe 401.
+APP_API_KEY = os.getenv("APP_API_KEY", "")
 # Si true, la validación en sitio del motorizado activa la cancha automáticamente
 # (y se avisa al admin). Si false, queda lista y el admin la activa a mano.
 VALIDADOR_ACTIVA_AUTOMATICO = os.getenv("VALIDADOR_ACTIVA_AUTOMATICO", "1") == "1"
