@@ -31,12 +31,12 @@ const Color amarillo = Color(0xFFF2C94C); // acento de energía (pelota, destaca
 const Color verde = Color(0xFF2E8B66);  // medio
 const Color verdeProfundo = Color(0xFF3F8A66); // window bar / verde profundo
 const Color bosque = Color(0xFF14463A); // primary / superficies oscuras
-const Color tinta = Color(0xFF0F1B1C);  // texto (tinta del sistema)
-const Color papel = Color(0xFFF3F5F5);  // fondo app (page)
+const Color tinta = Color(0xFF123D2D);  // texto (verde profundo, NO negro — handoff)
+const Color papel = Color(0xFFF4F6F1);  // fondo app (page)
 const Color papelCalido = Color(0xFFECF0E8); // fondo panel del club
-const Color trazo = Color(0xFFE2E8E7);  // bordes / divisores
-const Color textoTenue = Color(0xFF5C6B6C); // muted
-const Color limaSuave = Color(0xFFE9F4EE); // verde soft (tint)
+const Color trazo = Color(0xFFE0E5DB);  // bordes / divisores
+const Color textoTenue = Color(0xFF7C8A80); // muted
+const Color limaSuave = Color(0xFFEFF8E4); // verde soft (tint)
 
 // ── Colores de estado (chips) — sistema de diseño ─────────────────────────
 const Color estadoOkBg = Color(0xFFE9F4EE);
@@ -124,20 +124,23 @@ ThemeData buildTheme() {
       backgroundColor: papel, foregroundColor: tinta,
       surfaceTintColor: papel, elevation: 0, centerTitle: false,
     ),
+    // Tarjetas premium del handoff: radio 20, borde sutil + sombra suave
+    // (0 6px 20px -12px rgba(0,0,0,.20) → aprox. con elevation baja).
     cardTheme: CardTheme(
-      elevation: 0, color: Colors.white, surfaceTintColor: Colors.white,
+      elevation: 3, color: Colors.white, surfaceTintColor: Colors.white,
+      shadowColor: Colors.black.withOpacity(0.18),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(20),
         side: const BorderSide(color: trazo),
       ),
     ),
     // CTA principal = bosque con texto lima (botón "Reservar" / "Pagar seña").
-    // Radio 12 (sistema de diseño, look ERP-grade más sobrio).
+    // Radio 16 (handoff premium).
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         backgroundColor: bosque, foregroundColor: lima,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 17),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
       ),
     ),
@@ -147,15 +150,15 @@ ThemeData buildTheme() {
       fillColor: Colors.white,
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(14),
         borderSide: const BorderSide(color: trazo),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(14),
         borderSide: const BorderSide(color: trazo),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(14),
         borderSide: const BorderSide(color: sage, width: 1.6),
       ),
       labelStyle: const TextStyle(color: textoTenue),
@@ -181,8 +184,8 @@ ThemeData buildTheme() {
       style: OutlinedButton.styleFrom(
         foregroundColor: bosque,
         side: const BorderSide(color: bosque, width: 1.4),
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
       ),
     ),
@@ -198,8 +201,8 @@ ThemeData buildTheme() {
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
         backgroundColor: bosque, foregroundColor: lima, elevation: 0,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 17),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
       ),
     ),
