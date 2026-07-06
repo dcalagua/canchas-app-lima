@@ -44,6 +44,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
   late String _apertura = widget.cancha.horaApertura;
   late String _cierre = widget.cancha.horaCierre;
   late int _duracion = widget.cancha.duracionSlotMin;
+  late final Set<String> _amenidades = {...widget.cancha.amenidades};
   late LatLng _ubicacion = widget.cancha.ubicacion;
   GoogleMapController? _map;
 
@@ -202,6 +203,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
       horaApertura: _apertura,
       horaCierre: _cierre,
       duracionSlotMin: _duracion,
+      amenidades: _amenidades.toList(),
     );
     appState.actualizarCancha(actualizada);
 
@@ -410,6 +412,41 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
             onApertura: (v) => setState(() => _apertura = v),
             onCierre: (v) => setState(() => _cierre = v),
             onDuracion: (v) => setState(() => _duracion = v),
+          ),
+          const SizedBox(height: 18),
+          const Text('Servicios',
+              style: TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 2),
+          Text('Marca lo que ofrece tu cancha. Se muestra en la ficha.',
+              style: TextStyle(color: textoTenue, fontSize: 12)),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              for (final a in amenidadesCatalogo)
+                FilterChip(
+                  avatar: Icon(a.icono,
+                      size: 18,
+                      color: _amenidades.contains(a.clave)
+                          ? bosque
+                          : textoTenue),
+                  label: Text(a.etiqueta),
+                  selected: _amenidades.contains(a.clave),
+                  selectedColor: limaSuave,
+                  checkmarkColor: bosque,
+                  labelStyle: TextStyle(
+                      color: _amenidades.contains(a.clave) ? bosque : tinta,
+                      fontWeight: FontWeight.w600),
+                  onSelected: (sel) => setState(() {
+                    if (sel) {
+                      _amenidades.add(a.clave);
+                    } else {
+                      _amenidades.remove(a.clave);
+                    }
+                  }),
+                ),
+            ],
           ),
           if (widget.cancha.dueno.isEmpty) ...[
             const SizedBox(height: 16),

@@ -288,6 +288,11 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                     // Strip de confianza (handoff): garantías reales del producto.
                     const _StripConfianza(),
                     const SizedBox(height: 20),
+                    // Servicios (amenities) que el dueño marcó para esta cancha.
+                    if (_cancha.amenidades.isNotEmpty) ...[
+                      _FilaAmenities(claves: _cancha.amenidades),
+                      const SizedBox(height: 20),
+                    ],
                     // Selector "Elige cancha"
                     if (c.canchas.length > 1) ...[
                       Text('Elige cancha',
@@ -564,17 +569,11 @@ class _StripConfianza extends StatelessWidget {
   Widget build(BuildContext context) {
     return const Row(
       children: [
-        Expanded(
-            child: _Garantia(
-                titulo: '✓ Verificada', sub: 'por Pichangol')),
+        Expanded(child: _Garantia(titulo: '✓ Verificada', sub: 'por Pichangol')),
         SizedBox(width: 10),
-        Expanded(
-            child: _Garantia(
-                titulo: 'Pago seguro', sub: 'seña protegida')),
+        Expanded(child: _Garantia(titulo: 'Pago seguro', sub: 'seña protegida')),
         SizedBox(width: 10),
-        Expanded(
-            child: _Garantia(
-                titulo: 'Soporte', sub: 'todos los días')),
+        Expanded(child: _Garantia(titulo: 'Soporte', sub: 'todos los días')),
       ],
     );
   }
@@ -606,6 +605,57 @@ class _Garantia extends StatelessWidget {
               style: t.bodySmall?.copyWith(color: verde, fontSize: 11)),
         ],
       ),
+    );
+  }
+}
+
+/// Fila de servicios (amenities) de la cancha: ícono + etiqueta por cada uno
+/// que el dueño marcó. Solo se muestra si hay al menos uno.
+class _FilaAmenities extends StatelessWidget {
+  const _FilaAmenities({required this.claves});
+  final List<String> claves;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final items = [
+      for (final k in claves)
+        if (amenidadPorClave(k) != null) amenidadPorClave(k)!,
+    ];
+    if (items.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Servicios',
+            style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 11),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            for (final a in items)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: trazo),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(a.icono, size: 17, color: bosque),
+                    const SizedBox(width: 7),
+                    Text(a.etiqueta,
+                        style: t.bodySmall?.copyWith(
+                            fontWeight: FontWeight.w600, color: tinta)),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ],
     );
   }
 }

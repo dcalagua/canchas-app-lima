@@ -84,6 +84,35 @@ IconData iconoDeporte(Deporte d) => switch (d) {
       Deporte.pickleball => Icons.sports_tennis, // raqueta (lo más cercano)
     };
 
+// ── Amenities / servicios de la cancha (editable por el dueño) ────────────
+/// Catálogo de servicios que el dueño puede marcar en su cancha. Se guarda por
+/// `clave` en `Cancha.amenidades`; aquí viven la etiqueta y el ícono.
+class AmenidadInfo {
+  final String clave;
+  final String etiqueta;
+  final IconData icono;
+  const AmenidadInfo(this.clave, this.etiqueta, this.icono);
+}
+
+const List<AmenidadInfo> amenidadesCatalogo = [
+  AmenidadInfo('vestuario', 'Vestuario', Icons.checkroom),
+  AmenidadInfo('duchas', 'Duchas', Icons.shower),
+  AmenidadInfo('parking', 'Parking', Icons.local_parking),
+  AmenidadInfo('luces', 'Luces', Icons.lightbulb_outline),
+  AmenidadInfo('techado', 'Techado', Icons.roofing),
+  AmenidadInfo('cafeteria', 'Cafetería', Icons.local_cafe),
+  AmenidadInfo('wifi', 'Wi-Fi', Icons.wifi),
+  AmenidadInfo('alquiler', 'Alquiler de equipo', Icons.sports_tennis),
+];
+
+/// Datos (etiqueta/ícono) de una amenity por su clave; null si no existe.
+AmenidadInfo? amenidadPorClave(String clave) {
+  for (final a in amenidadesCatalogo) {
+    if (a.clave == clave) return a;
+  }
+  return null;
+}
+
 /// Gradiente de "superficie de cancha" — degradado sage→bosque (hero EBIM).
 LinearGradient gradienteDeporte(Deporte d) => const LinearGradient(
       begin: Alignment.topLeft,

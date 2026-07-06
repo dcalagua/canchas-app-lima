@@ -31,7 +31,15 @@ class CanchasRepo {
       // upsert: si la cancha ya existía (p. ej. se re-registra una que estaba
       // borrada) la revive en vez de fallar por id duplicado.
       await SupabaseService.client.from(_tabla).upsert(_toRow(c));
-    } catch (_) {}
+    } catch (_) {
+      // Reintento sin columnas nuevas (p. ej. `amenidades` aún no migrada en la
+      // BD): así el guardado del resto no se pierde por una columna faltante.
+      try {
+        await SupabaseService.client
+            .from(_tabla)
+            .upsert(_toRow(c, conAmenidades: false));
+      } catch (_) {}
+    }
   }
 
   /// Actualiza una cancha existente (edición del dueño). Fail-safe.
@@ -42,7 +50,14 @@ class CanchasRepo {
           .from(_tabla)
           .update(_toRow(c))
           .eq('id', c.id);
-    } catch (_) {}
+    } catch (_) {
+      try {
+        await SupabaseService.client
+            .from(_tabla)
+            .update(_toRow(c, conAmenidades: false))
+            .eq('id', c.id);
+      } catch (_) {}
+    }
   }
 
   /// Borra una cancha de forma DURABLE en la nube. Usa borrado lógico
@@ -79,7 +94,7 @@ class CanchasRepo {
     }
   }
 
-  static Map<String, dynamic> _toRow(Cancha c) => {
+  static Map<String, dynamic> _toRow(Cancha c, {bool conAmenidades = true}) => {
         'id': c.id,
         'nombre': c.nombre,
         'club': c.club,
@@ -100,6 +115,7 @@ class CanchasRepo {
         'hora_cierre': c.horaCierre,
         'duracion_slot_min': c.duracionSlotMin,
         'eliminada': c.eliminada,
+        if (conAmenidades) 'amenidades': c.amenidades,
       };
 
   static Cancha _fromRow(Map<String, dynamic> r) => Cancha(
@@ -126,6 +142,9 @@ class CanchasRepo {
         horaCierre: (r['hora_cierre'] ?? '23:00') as String,
         duracionSlotMin: ((r['duracion_slot_min'] ?? 60) as num).toInt(),
         eliminada: (r['eliminada'] ?? false) as bool,
+        amenidades:
+            (r['amenidades'] as List?)?.map((e) => e.toString()).toList() ??
+                const [],
       );
 
   static Distrito _enumDistrito(String? s) {

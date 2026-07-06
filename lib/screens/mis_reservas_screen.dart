@@ -184,7 +184,8 @@ class _ReservaDestacada extends StatelessWidget {
               ),
               const Spacer(),
               Text(_estadoLabel(reserva.estado),
-                  style: t.bodySmall?.copyWith(color: Colors.white.withOpacity(0.7))),
+                  style: t.bodySmall
+                      ?.copyWith(color: Colors.white.withOpacity(0.7))),
             ],
           ),
           const SizedBox(height: 14),
@@ -302,8 +303,8 @@ class _ReservaCard extends StatelessWidget {
             ),
           ),
           Text('S/${reserva.precio}',
-              style:
-                  t.titleMedium?.copyWith(fontWeight: FontWeight.w700, color: tinta)),
+              style: t.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700, color: tinta)),
         ],
       ),
     );
@@ -327,8 +328,8 @@ class _EstadoChip extends StatelessWidget {
       decoration:
           BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
       child: Text(_estadoLabel(estado),
-          style: TextStyle(
-              color: fg, fontSize: 11, fontWeight: FontWeight.w700)),
+          style:
+              TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.w700)),
     );
   }
 }
@@ -337,7 +338,6 @@ String _estadoLabel(EstadoReserva e) => switch (e) {
       EstadoReserva.confirmada || EstadoReserva.nueva => 'Confirmada',
       EstadoReserva.completada => 'Jugada',
       EstadoReserva.noShow => 'No-show',
-      _ => e.etiqueta,
     };
 
 class _Vacio extends StatelessWidget {
@@ -354,7 +354,8 @@ class _Vacio extends StatelessWidget {
           children: [
             const Icon(Icons.sports_soccer, size: 64, color: verdeClaro),
             const SizedBox(height: 16),
-            Text(historial ? 'Sin reservas anteriores' : 'Aún no tienes reservas',
+            Text(
+                historial ? 'Sin reservas anteriores' : 'Aún no tienes reservas',
                 style: const TextStyle(
                     fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 6),
