@@ -318,3 +318,36 @@ def test_lugar_reclamado_para_bloquear_el_boton():
     # Otro lugar lejano → libre.
     r3 = reclamos.lugar_reclamado(LAT + 0.02, LNG, cancha_id="gp_y")
     assert r3["reclamada"] is False
+
+
+def test_estado_reclamo_vigente_gana_a_rechazo_viejo_mismo_lugar():
+    """Un reclamo VIGENTE del mismo lugar (aunque con distinto cancha_id) no debe
+    quedar oculto tras un rechazo VIEJO. Reproduce el caso del panel que mostraba
+    'SOLICITUD RECHAZADA' pese a existir un reclamo nuevo pendiente."""
+    # Reclamo viejo (id X) que fue rechazado.
+    viejo = reclamos.crear_reclamo("viejo", "due@x.com", "Sabor Golazo",
+                                   lat=LAT, lng=LNG)
+    reclamos.triage(viejo["reclamo_id"], aprobado=False, revisor="admin")
+    assert reclamos.estado("viejo")["estado"] == "rechazada"
+
+    # El mismo dueño vuelve a reclamar el MISMO lugar, pero se registra con OTRO
+    # cancha_id (cancha re-descubierta / duplicada), a pocos metros.
+    nuevo = reclamos.crear_reclamo("nuevo", "due@x.com", "Sabor Golazo",
+                                   lat=LAT + 0.0002, lng=LNG)
+    assert nuevo["ok"] and nuevo["estado"] == "pendiente_triage"
+
+    # Consultar por CUALQUIERA de los dos ids debe reportar el reclamo VIGENTE,
+    # no el rechazo viejo.
+    for cid in ("viejo", "nuevo"):
+        est = reclamos.estado(cid, solicitante="due@x.com")
+        assert est["estado"] == "pendiente_triage", cid
+        assert est["es_mio"] is True, cid
+
+
+def test_estado_sin_vigente_devuelve_rechazo_del_solicitante():
+    """Si NO hay reclamo vigente, el reclamante ve su propio rechazo (flujo A:
+    'Solicitud no aprobada' + volver a solicitar)."""
+    r = reclamos.crear_reclamo("c1", "due@x.com", "La Pichanga", lat=LAT, lng=LNG)
+    reclamos.triage(r["reclamo_id"], aprobado=False, revisor="admin")
+    est = reclamos.estado("c1", solicitante="due@x.com")
+    assert est["estado"] == "rechazada" and est["es_mio"] is True

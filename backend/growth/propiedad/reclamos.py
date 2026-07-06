@@ -307,12 +307,53 @@ def rechazar_por_codigo(codigo: str, revisor: str | None = None) -> dict:
     return {"ok": True, "estado": "rechazada", "nombre_local": r.nombre_local}
 
 
-def estado(cancha_id: str, solicitante: str | None = None) -> dict:
-    rs = [r for r in stores.reclamos if r.cancha_id == cancha_id]
-    if not rs:
-        return {"existe": False}
-    r = rs[-1]
+def _reclamos_del_lugar(cancha_id: str) -> list[ReclamoPropiedad]:
+    """Reclamos que corresponden a ESTA cancha: por mismo cancha_id, o por
+    ubicación muy cercana (mismo lugar físico con distinto id, p. ej. tras
+    re-descubrir/duplicar la misma cancha de Google). Evita que un reclamo VIEJO
+    con distinto id 'secuestre' la ficha cuando ya hay uno nuevo del mismo lugar."""
+    directos = [r for r in stores.reclamos if r.cancha_id == cancha_id]
+    # Coordenadas de referencia del lugar: las de la cancha registrada y las de
+    # sus propios reclamos directos.
+    refs: list[tuple[float, float]] = []
     c = stores.canchas.get(cancha_id)
+    if c is not None and c.lat_declarada is not None and c.lng_declarada is not None:
+        refs.append((c.lat_declarada, c.lng_declarada))
+    for r in directos:
+        if r.lat is not None and r.lng is not None:
+            refs.append((r.lat, r.lng))
+    if not refs:
+        return directos
+    vistos = {id(r) for r in directos}
+    pool = list(directos)
+    for r in stores.reclamos:
+        if id(r) in vistos or r.lat is None or r.lng is None:
+            continue
+        if any(_distancia_m(la, lo, r.lat, r.lng) <= _MISMO_LUGAR_M for la, lo in refs):
+            pool.append(r)
+    return pool
+
+
+def estado(cancha_id: str, solicitante: str | None = None) -> dict:
+    pool = _reclamos_del_lugar(cancha_id)
+    if not pool:
+        return {"existe": False}
+    # Elegimos el reclamo REPRESENTATIVO del lugar (los ids crecen monótonos, así
+    # que id mayor = más reciente):
+    #  1. el reclamo VIGENTE (activo/bloqueante) más reciente — un reclamo vivo
+    #     nunca debe quedar oculto tras un rechazo viejo del mismo lugar;
+    #  2. si ninguno está vigente y quien pregunta tiene reclamo, el suyo más
+    #     reciente (para que vea SU estado, no el de un tercero);
+    #  3. en última instancia, el más reciente.
+    activos = [r for r in pool if r.estado in _ESTADOS_BLOQUEANTES]
+    if activos:
+        r = max(activos, key=lambda x: x.id)
+    elif solicitante and any(x.solicitante_id == solicitante for x in pool):
+        r = max((x for x in pool if x.solicitante_id == solicitante),
+                key=lambda x: x.id)
+    else:
+        r = max(pool, key=lambda x: x.id)
+    c = stores.canchas.get(r.cancha_id)
     # 'verificada' para la APP = HABILITAR RESERVAS = PROPIEDAD aprobada, es decir
     # el reclamo llegó a "activada". NO se deriva de la bandera CanchaEstado.
     # verificada cruda, porque el subsistema de VERIFICACIÓN DE EXISTENCIA (IA)
