@@ -40,14 +40,14 @@ class AppState extends ChangeNotifier {
   final Set<String> canchasEliminadas = {};
   bool descubriendo = false; // true mientras se traen canchas cercanas (feedback UI)
 
-  /// Todas las canchas (descubiertas + semilla + remotas + locales), sin duplicar
-  /// por id. Las registradas se ponen después para que ganen ante una colisión.
+  /// Todas las canchas (descubiertas + remotas + locales), sin duplicar por id.
+  /// Las registradas se ponen después para que ganen ante una colisión.
+  /// NOTA: las canchas demo (SampleData.canchas) ya NO se muestran en el mapa —
+  /// el explorador enseña solo canchas reales (Google Places + Supabase + las que
+  /// registra el dueño). SampleData queda solo para el panel-demo legado.
   List<Cancha> todasLasCanchas() {
     final map = <String, Cancha>{};
     for (final c in canchasDescubiertas) {
-      map[c.id] = c;
-    }
-    for (final c in SampleData.canchas) {
       map[c.id] = c;
     }
     for (final c in canchasRemotas) {
