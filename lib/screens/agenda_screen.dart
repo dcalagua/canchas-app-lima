@@ -131,7 +131,12 @@ class _HeaderClub extends StatelessWidget {
       padding: EdgeInsets.fromLTRB(
           22, 18 + MediaQuery.of(context).padding.top, 22, 20),
       decoration: const BoxDecoration(
-        color: pino,
+        // Header sage en degradado (handoff): superficie hero de EBIM.
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [sage, verde, bosque],
+        ),
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
       ),
       child: Column(
