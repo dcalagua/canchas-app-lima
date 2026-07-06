@@ -16,7 +16,8 @@ alter table public.pichangol_canchas
   add column if not exists hora_apertura     text    not null default '07:00',
   add column if not exists hora_cierre       text    not null default '23:00',
   add column if not exists duracion_slot_min integer not null default 60,
-  add column if not exists eliminada         boolean not null default false;
+  add column if not exists eliminada         boolean not null default false,
+  add column if not exists amenidades        jsonb   not null default '[]'::jsonb;
 
 -- 3) (Opcional, recomendado) Empezar el piloto con reservas limpias: las
 --    reservas demo viejas no tienen `fecha`. Descomenta para borrarlas:

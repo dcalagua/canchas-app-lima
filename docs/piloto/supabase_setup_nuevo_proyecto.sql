@@ -28,7 +28,8 @@ create table if not exists public.pichangol_canchas (
   hora_apertura     text    not null default '07:00',
   hora_cierre       text    not null default '23:00',
   duracion_slot_min integer not null default 60,
-  eliminada         boolean not null default false
+  eliminada         boolean not null default false,
+  amenidades        jsonb   not null default '[]'::jsonb  -- servicios (vestuario, parking, luces…)
 );
 
 -- 2) RESERVAS ---------------------------------------------------------
