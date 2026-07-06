@@ -397,7 +397,13 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
               'Arrastra el pin o toca el mapa: la dirección se actualiza sola.',
               style: TextStyle(color: textoTenue, fontSize: 12)),
           const SizedBox(height: 16),
-          const Text('Deporte', style: TextStyle(fontWeight: FontWeight.w700)),
+          const Text('Deporte de esta cancha',
+              style: TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 2),
+          const Text(
+              'Cada cancha es de un solo deporte. Para ofrecer otro deporte, '
+              'agrega otra cancha al local.',
+              style: TextStyle(color: textoTenue, fontSize: 12)),
           const SizedBox(height: 8),
           Wrap(
             spacing: 10,
