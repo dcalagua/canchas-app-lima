@@ -43,8 +43,12 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
     // siguiente número dentro del local ("Fútbol 2", "Tenis 1"…).
     var nombre = _nombre.text.trim();
     if (nombre.isEmpty) {
-      final n =
-          widget.local.canchas.where((c) => c.deporte == _deporte).length + 1;
+      // Cuenta las canchas del MISMO local y deporte para el siguiente número.
+      final n = appState.misCanchas
+              .where((c) =>
+                  c.club == widget.local.club && c.deporte == _deporte)
+              .length +
+          1;
       nombre = '${_deporte.etiqueta} $n';
     }
     final precio = double.tryParse(_precio.text.trim().replaceAll(',', '.'));
