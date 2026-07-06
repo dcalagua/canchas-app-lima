@@ -622,7 +622,7 @@ class _BarraBusqueda extends StatelessWidget {
                                 ? 'Canchas cerca de tu zona'
                                 : 'Tenis · Pádel · Fútbol · Lima',
                             style: const TextStyle(
-                                color: Colors.grey, fontSize: 12),
+                                color: textoTenue, fontSize: 12),
                           ),
                         ],
                       ),
@@ -815,7 +815,7 @@ class _FiltrosDeporte extends StatelessWidget {
                 Text(
                   texto,
                   style: TextStyle(
-                    color: activo ? Colors.white : Colors.black87,
+                    color: activo ? Colors.white : tinta,
                     fontWeight: FontWeight.w600,
                     fontSize: 13,
                   ),
@@ -858,11 +858,11 @@ class _CanchaCard extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
       child: Material(
         elevation: 6,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(20),
         color: Colors.white,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(20),
           child: Padding(
           padding: const EdgeInsets.all(10),
           child: Row(
@@ -995,7 +995,7 @@ class _CanchaCard extends StatelessWidget {
                     Text(
                       cancha.direccion ??
                           '${cancha.club} · ${cancha.distrito.etiqueta}',
-                      style: const TextStyle(color: Colors.grey, fontSize: 12),
+                      style: const TextStyle(color: textoTenue, fontSize: 12),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -1032,7 +1032,7 @@ class _CanchaCard extends StatelessWidget {
                               ),
                               const Text(' /h',
                                   style: TextStyle(
-                                      color: Colors.grey, fontSize: 12)),
+                                      color: textoTenue, fontSize: 12)),
                             ],
                           )
                         else
@@ -1049,7 +1049,7 @@ class _CanchaCard extends StatelessWidget {
                               ),
                               const Text(' /h ref.',
                                   style: TextStyle(
-                                      color: Colors.grey, fontSize: 12)),
+                                      color: textoTenue, fontSize: 12)),
                             ],
                           ),
                       ],
@@ -1150,7 +1150,7 @@ class _MenuSheet extends StatelessWidget {
                         ),
                         Text(
                           u?.email ?? 'Inicia sesión para reservar',
-                          style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                          style: const TextStyle(color: textoTenue, fontSize: 13),
                         ),
                       ],
                     ),

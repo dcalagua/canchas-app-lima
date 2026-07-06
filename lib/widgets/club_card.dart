@@ -82,24 +82,11 @@ class ClubCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(club.nombre,
-                            style: t.titleMedium
-                                ?.copyWith(fontWeight: FontWeight.w700),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis),
-                      ),
-                      if (!desc) ...[
-                        const SizedBox(width: 8),
-                        Text('★ ${club.rating.toStringAsFixed(1)}',
-                            style: t.bodyMedium
-                                ?.copyWith(fontWeight: FontWeight.w700)),
-                      ],
-                    ],
-                  ),
+                  Text(club.nombre,
+                      style:
+                          t.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
                   const SizedBox(height: 2),
                   Text(
                     club.direccion ??
