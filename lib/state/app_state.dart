@@ -57,7 +57,20 @@ class AppState extends ChangeNotifier {
       map[c.id] = c;
     }
     canchasEliminadas.forEach(map.remove); // borrados durables
-    return _dedupPorLugar(map.values.toList());
+    return _quitarDescubiertasReclamadas(_dedupPorLugar(map.values.toList()));
+  }
+
+  /// Quita las canchas DESCUBIERTAS (Google) que coinciden en UBICACIÓN con una
+  /// cancha ya REGISTRADA (mismo lugar, ya reclamado, aunque el nombre haya
+  /// cambiado). Evita que el mismo sitio aparezca dos veces (el pin de Google +
+  /// la cancha reclamada) cuando el dueño renombró su cancha.
+  List<Cancha> _quitarDescubiertasReclamadas(List<Cancha> canchas) {
+    final registradas = canchas.where((c) => c.registrada).toList();
+    if (registradas.isEmpty) return canchas;
+    return canchas.where((c) {
+      if (c.registrada) return true;
+      return !registradas.any((r) => _cercaDe(r.ubicacion, c.ubicacion, 0.07));
+    }).toList();
   }
 
   /// Colapsa canchas que son el MISMO lugar pero llegaron por fuentes distintas

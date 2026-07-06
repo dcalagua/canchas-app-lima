@@ -136,21 +136,23 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
   }
 
   Future<void> _rebuildMarkers() async {
-    final list = _filtradas();
+    // Un pin por LOCAL (club), no por cancha: un local con varias canchas es un
+    // solo punto en el mapa; adentro se elige la cancha.
+    final clubs = _clubs();
     final markers = <Marker>{};
-    for (var i = 0; i < list.length; i++) {
-      final c = list[i];
+    for (var i = 0; i < clubs.length; i++) {
+      final cl = clubs[i];
       final sel = i == _selected;
-      // Las reclamadas muestran su precio real; las descubiertas en Google aún
-      // no tienen precio, así que mostramos un estimado por deporte con "~".
-      final etiqueta = c.registrada
-          ? 'S/ ${c.precioHora.toStringAsFixed(2)}'
-          : '~S/ ${c.precioReferencial.toStringAsFixed(2)}';
+      // Precio "desde" del local; si aún no tiene precio (solo Google), estima.
+      final precio = cl.precioDesde;
+      final etiqueta = precio != null
+          ? 'S/ ${precio.toStringAsFixed(2)}'
+          : '~S/ ${cl.principal.precioReferencial.toStringAsFixed(2)}';
       final icon = await _pinPrecio(etiqueta, seleccionado: sel);
       markers.add(
         Marker(
-          markerId: MarkerId(c.id),
-          position: c.ubicacion,
+          markerId: MarkerId(cl.id),
+          position: cl.ubicacion,
           icon: icon,
           zIndex: sel ? 2 : 1,
           onTap: () => _pageController.animateToPage(
@@ -234,8 +236,10 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
 
   void _onPage(int i) {
     setState(() => _selected = i);
-    final c = _filtradas()[i];
-    _controller?.animateCamera(CameraUpdate.newLatLng(c.ubicacion));
+    final clubs = _clubs();
+    if (i < clubs.length) {
+      _controller?.animateCamera(CameraUpdate.newLatLng(clubs[i].ubicacion));
+    }
     _rebuildMarkers();
   }
 
@@ -245,9 +249,9 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
       _selected = 0;
     });
     if (_pageController.hasClients) _pageController.jumpToPage(0);
-    final list = _filtradas();
-    if (list.isNotEmpty) {
-      _controller?.animateCamera(CameraUpdate.newLatLng(list.first.ubicacion));
+    final clubs = _clubs();
+    if (clubs.isNotEmpty) {
+      _controller?.animateCamera(CameraUpdate.newLatLng(clubs.first.ubicacion));
     }
     _rebuildMarkers();
   }
@@ -505,7 +509,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                     if (_centroBusqueda == null && _ubicando) {
                       return const _CarruselSkeleton();
                     }
-                    final lista = _filtradas();
+                    final lista = _clubs(); // un card por LOCAL
                     // Con ubicación pero sin canchas cerca: si seguimos buscando,
                     // skeleton; si ya terminó, mensaje claro.
                     if (lista.isEmpty) {
@@ -517,11 +521,9 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                       controller: _pageController,
                       itemCount: lista.length,
                       onPageChanged: _onPage,
-                      itemBuilder: (context, i) => _CanchaCard(
-                        cancha: lista[i],
-                        destacado: lista[i].club == SampleData.clubActivo &&
-                            appState.destacadoActivo,
-                        onTap: () => _abrirDetalle(lista[i]),
+                      itemBuilder: (context, i) => _LocalCarruselCard(
+                        club: lista[i],
+                        onTap: () => _abrirDetalle(lista[i].principal),
                       ),
                     );
                   },
@@ -841,16 +843,19 @@ class _FiltrosDeporte extends StatelessWidget {
   }
 }
 
-class _CanchaCard extends StatelessWidget {
-  final Cancha cancha;
-  final bool destacado;
+/// Tarjeta de LOCAL para el carrusel del mapa (un local = varias canchas).
+/// Muestra el nombre del local, sus deportes y el precio "desde"; al tocar abre
+/// la ficha del local donde se elige la cancha.
+class _LocalCarruselCard extends StatelessWidget {
+  final Club club;
   final VoidCallback onTap;
-  const _CanchaCard(
-      {required this.cancha, this.destacado = false, required this.onTap});
+  const _LocalCarruselCard({required this.club, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final color = colorDeporte(cancha.deporte);
+    final principal = club.principal;
+    final desc = !club.registrada;
+    final precio = club.precioDesde;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
       child: Material(
@@ -861,204 +866,140 @@ class _CanchaCard extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(20),
           child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Row(
-            children: [
-              // “Foto” simulada con gradiente + ícono del deporte
-              Container(
-                width: 110,
-                height: 130,
-                clipBehavior: Clip.antiAlias,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  gradient: gradienteDeporte(cancha.deporte),
-                ),
-                child: Stack(
-                  children: [
-                    if (cancha.fotoUrl != null)
-                      Positioned.fill(
-                        child: Image.network(cancha.fotoUrl!,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) =>
-                                const SizedBox.shrink()),
-                      )
-                    else ...[
-                      const Positioned.fill(child: CourtLines(opacity: 0.5)),
-                      Center(
-                        child: Icon(
-                          iconoDeporte(cancha.deporte),
-                          color: Colors.white,
-                          size: 44,
+            padding: const EdgeInsets.all(10),
+            child: Row(
+              children: [
+                // "Foto" del local: gradiente del deporte principal + líneas.
+                Container(
+                  width: 110,
+                  height: 130,
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    gradient: gradienteDeporte(principal.deporte),
+                  ),
+                  child: Stack(
+                    children: [
+                      if (principal.fotoUrl != null)
+                        Positioned.fill(
+                          child: Image.network(principal.fotoUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) =>
+                                  const SizedBox.shrink()),
+                        )
+                      else
+                        const Positioned.fill(child: CourtLines(opacity: 0.5)),
+                      if (desc)
+                        const Positioned(
+                          top: 8,
+                          left: 8,
+                          child: _MiniBadge('◎ En Google',
+                              bg: Colors.black54, fg: Colors.white),
+                        )
+                      else if (club.clubFundador)
+                        const Positioned(
+                          top: 8,
+                          left: 8,
+                          child: _MiniBadge('★ Fundador',
+                              bg: arena, fg: Colors.white),
                         ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(club.nombre,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold, fontSize: 16),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis),
+                          ),
+                          if (club.verificada) ...[
+                            const SizedBox(width: 6),
+                            const Icon(Icons.verified, size: 16, color: verde),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        club.direccion ??
+                            '${club.barrio} · ${club.canchas.length} ${club.canchas.length == 1 ? 'cancha' : 'canchas'}',
+                        style: const TextStyle(color: textoTenue, fontSize: 12),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 9),
+                      Row(
+                        children: [
+                          for (final d in club.deportes.take(4)) ...[
+                            Container(
+                              width: 9,
+                              height: 9,
+                              decoration: BoxDecoration(
+                                  color: colorDeporte(d),
+                                  borderRadius: BorderRadius.circular(2)),
+                            ),
+                            const SizedBox(width: 5),
+                          ],
+                          const Spacer(),
+                          if (precio != null)
+                            Text.rich(
+                              TextSpan(children: [
+                                const TextSpan(
+                                    text: 'desde ',
+                                    style: TextStyle(
+                                        color: textoTenue, fontSize: 12)),
+                                TextSpan(
+                                    text: 'S/ ${precio.toStringAsFixed(2)}',
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                        color: verdeCancha)),
+                              ]),
+                            )
+                          else
+                            Text(
+                                '~S/ ${principal.precioReferencial.toStringAsFixed(2)}',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                    color: verdeCancha)),
+                        ],
                       ),
                     ],
-                    if (!cancha.registrada)
-                      Positioned(
-                        top: 8,
-                        left: 8,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: Colors.black54,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: const Text(
-                            '◎ En Google',
-                            style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700),
-                          ),
-                        ),
-                      )
-                    else if (cancha.pendienteVerificacion)
-                      Positioned(
-                        top: 8,
-                        left: 8,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: clayOscuro,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: const Text(
-                            '⏳ Por verificar',
-                            style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700),
-                          ),
-                        ),
-                      )
-                    else if (destacado)
-                      Positioned(
-                        top: 8,
-                        left: 8,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: amarillo,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: const Text(
-                            '★ Destacado',
-                            style: TextStyle(
-                                color: tinta,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w800),
-                          ),
-                        ),
-                      )
-                    else if (cancha.clubFundador)
-                      Positioned(
-                        top: 8,
-                        left: 8,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: arena,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: const Text(
-                            '★ Fundador',
-                            style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700),
-                          ),
-                        ),
-                      ),
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      cancha.nombre,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 16),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      cancha.direccion ??
-                          '${cancha.club} · ${cancha.distrito.etiqueta}',
-                      style: const TextStyle(color: textoTenue, fontSize: 12),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: color,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            cancha.deporte.etiqueta,
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600),
-                          ),
-                        ),
-                        const Spacer(),
-                        if (cancha.registrada)
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.baseline,
-                            textBaseline: TextBaseline.alphabetic,
-                            children: [
-                              Text(
-                                'S/ ${cancha.precioHora.toStringAsFixed(2)}',
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                    color: verdeCancha),
-                              ),
-                              const Text(' /h',
-                                  style: TextStyle(
-                                      color: textoTenue, fontSize: 12)),
-                            ],
-                          )
-                        else
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.baseline,
-                            textBaseline: TextBaseline.alphabetic,
-                            children: [
-                              Text(
-                                '~S/ ${cancha.precioReferencial.toStringAsFixed(2)}',
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                    color: verdeCancha),
-                              ),
-                              const Text(' /h ref.',
-                                  style: TextStyle(
-                                      color: textoTenue, fontSize: 12)),
-                            ],
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
-        ),
       ),
+    );
+  }
+}
+
+class _MiniBadge extends StatelessWidget {
+  const _MiniBadge(this.texto, {required this.bg, required this.fg});
+  final String texto;
+  final Color bg;
+  final Color fg;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration:
+          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+      child: Text(texto,
+          style: TextStyle(
+              color: fg, fontSize: 10, fontWeight: FontWeight.w700)),
     );
   }
 }
