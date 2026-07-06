@@ -257,6 +257,20 @@ def test_estado_es_mio_para_asignar_dueno_sin_apropiacion():
     assert reclamos.estado("c1")["es_mio"] is False
 
 
+def test_existencia_no_confiere_propiedad():
+    """La verificación de EXISTENCIA (IA) escribe CanchaEstado.verificada, pero
+    eso NO debe hacer reservable un reclamo pendiente: existir ≠ ser dueño. La app
+    solo debe ver verificada=True cuando el reclamo llega a 'activada'."""
+    r = _crear()  # pendiente_triage
+    stores.cancha("c1").verificada = True  # simula IA de existencia
+    est = reclamos.estado("c1")
+    assert est["estado"] == "pendiente_triage"
+    assert est["verificada"] is False
+    # Recién al aprobar la PROPIEDAD reporta verificada.
+    reclamos.aprobar_directo(r["reclamo_id"])
+    assert reclamos.estado("c1")["verificada"] is True
+
+
 def test_no_se_puede_aprobar_un_reclamo_rechazado():
     r = _crear()
     reclamos.triage(r["reclamo_id"], aprobado=False)  # rechazada

@@ -313,18 +313,14 @@ def estado(cancha_id: str, solicitante: str | None = None) -> dict:
         return {"existe": False}
     r = rs[-1]
     c = stores.canchas.get(cancha_id)
-    verificada = bool(c and c.verificada)
-    # REPORTE coherente (sin efectos secundarios: es un GET idempotente). Si el
-    # último reclamo quedó RECHAZADO y no hay otro reclamo activo, la cancha no
-    # debe reportarse verificada aunque el flag quedara colgado (datos previos al
-    # revoque-en-rechazo). La corrección durable del flag ocurre en la transición
-    # de rechazo (_revocar_cancha_al_rechazar), que sí persiste.
-    if r.estado == "rechazada" and verificada:
-        otro_activo = any(
-            o.cancha_id == cancha_id and o.estado in _ESTADOS_BLOQUEANTES
-            for o in stores.reclamos)
-        if not otro_activo:
-            verificada = False
+    # 'verificada' para la APP = HABILITAR RESERVAS = PROPIEDAD aprobada, es decir
+    # el reclamo llegó a "activada". NO se deriva de la bandera CanchaEstado.
+    # verificada cruda, porque el subsistema de VERIFICACIÓN DE EXISTENCIA (IA)
+    # también la escribe cuando el lugar existe — y existir ≠ ser dueño. Si se
+    # leyera esa bandera, un reclamo recién creado (pendiente) aparecería como
+    # verificado solo porque la cancha existe en Google. La propiedad se confiere
+    # únicamente al aprobar/validar el reclamo (que deja estado="activada").
+    verificada = (r.estado == "activada")
     return {
         "existe": True,
         "reclamo_id": r.id,
