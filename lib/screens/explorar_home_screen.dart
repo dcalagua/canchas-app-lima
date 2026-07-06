@@ -320,6 +320,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
+      isScrollControlled: true, // que quepan y se desplacen todas las opciones
       builder: (sheetContext) => _MenuSheet(
         onMisReservas: () {
           Navigator.of(sheetContext).pop();
@@ -1096,11 +1097,15 @@ class _MenuSheet extends StatelessWidget {
             color: Colors.white,
             borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           ),
-          padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+          constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.85),
+          child: SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(
+                20, 14, 20, 28 + MediaQuery.of(context).padding.bottom),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
               Center(
                 child: Container(
                   width: 44,
@@ -1223,6 +1228,7 @@ class _MenuSheet extends StatelessWidget {
                 ),
               ],
             ],
+            ),
           ),
         );
       },
