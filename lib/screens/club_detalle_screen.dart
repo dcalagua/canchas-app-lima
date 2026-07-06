@@ -285,6 +285,9 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                         onEditar: _editar,
                         onVerReservas: _verReservas)
                   else ...[
+                    // Strip de confianza (handoff): garantías reales del producto.
+                    const _StripConfianza(),
+                    const SizedBox(height: 20),
                     // Selector "Elige cancha"
                     if (c.canchas.length > 1) ...[
                       Text('Elige cancha',
@@ -546,6 +549,61 @@ class _DatoDueno extends StatelessWidget {
           Text(valor,
               style: t.titleMedium
                   ?.copyWith(fontWeight: FontWeight.w700, color: tinta)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Strip de confianza del handoff: tres garantías reales del producto en
+/// tarjetitas lima suave (Verificada · Pago seguro · Soporte).
+class _StripConfianza extends StatelessWidget {
+  const _StripConfianza();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Row(
+      children: [
+        Expanded(
+            child: _Garantia(
+                titulo: '✓ Verificada', sub: 'por Pichangol')),
+        SizedBox(width: 10),
+        Expanded(
+            child: _Garantia(
+                titulo: 'Pago seguro', sub: 'seña protegida')),
+        SizedBox(width: 10),
+        Expanded(
+            child: _Garantia(
+                titulo: 'Soporte', sub: 'todos los días')),
+      ],
+    );
+  }
+}
+
+class _Garantia extends StatelessWidget {
+  const _Garantia({required this.titulo, required this.sub});
+  final String titulo;
+  final String sub;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      decoration: BoxDecoration(
+        color: limaSuave,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        children: [
+          Text(titulo,
+              textAlign: TextAlign.center,
+              style: t.bodyMedium
+                  ?.copyWith(fontWeight: FontWeight.w700, color: bosque)),
+          const SizedBox(height: 2),
+          Text(sub,
+              textAlign: TextAlign.center,
+              style: t.bodySmall?.copyWith(color: verde, fontSize: 11)),
         ],
       ),
     );
