@@ -27,7 +27,8 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
   late Cancha _cancha = widget.canchaInicial ?? widget.club.canchas.first;
   String _dia = 'Hoy';
   String? _hora;
-  bool _reclamoRechazado = false; // el reclamo de esta cancha fue rechazado
+  bool _reclamoRechazado = false; // MI reclamo de esta cancha fue rechazado
+  bool _reclamablePorRechazo = false; // reclamo AJENO rechazado → libre para reclamar
 
   /// Horas reservables reales de la cancha elegida (apertura→cierre, paso = duración).
   /// Para "Hoy" se omiten las horas que ya pasaron.
@@ -57,11 +58,28 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     // - verificada → puede DEGRADARSE si el admin la rechazó/revocó (quita los
     //   horarios). Antes solo se sincronizaba si estaba pendiente, así que una
     //   cancha rechazada seguía mostrándose reservable.
-    if (_cancha.registrada) _sincronizarFicha();
+    if (_cancha.registrada) {
+      _sincronizarFicha();
+      _evaluarReclamoRechazado();
+    }
     // Refresca las reservas de la nube para que la grilla no muestre libre un
     // horario que otro dispositivo ya tomó (integridad la garantiza el UNIQUE,
     // esto es solo para que se vea al día).
     appState.cargarReservasRemotas();
+  }
+
+  /// Si el (último) reclamo de esta cancha fue RECHAZADO y NO es mío, la cancha
+  /// vuelve a estar LIBRE: se muestra como reclamable (el dueño real, u otro,
+  /// puede reclamarla). El que fue rechazado ve su propio panel "no aprobada".
+  Future<void> _evaluarReclamoRechazado() async {
+    if (!PropiedadService.disponible) return;
+    if (!_cancha.registrada || _cancha.verificada) return;
+    final est = await PropiedadService.estado(_cancha.id,
+        solicitante: appState.usuario?.email);
+    if (!mounted || est == null) return;
+    if (est['estado'] == 'rechazada' && est['es_mio'] != true) {
+      setState(() => _reclamablePorRechazo = true);
+    }
   }
 
   /// Sincroniza la cancha mostrada (sea mía o no) y refleja el cambio en vivo.
@@ -158,8 +176,12 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     final c = widget.club;
-    final descubierta = !_cancha.registrada;
-    final pendiente = _cancha.pendienteVerificacion;
+    // Una cancha con reclamo AJENO rechazado se trata como DESCUBIERTA (libre
+    // para reclamar), no como pendiente.
+    final descubierta = !_cancha.registrada || _reclamablePorRechazo;
+    final pendiente = _cancha.registrada &&
+        !_cancha.verificada &&
+        !_reclamablePorRechazo;
     return Scaffold(
       backgroundColor: papel,
       body: RefreshIndicator(
