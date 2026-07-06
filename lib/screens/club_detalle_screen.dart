@@ -27,6 +27,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
   late Cancha _cancha = widget.canchaInicial ?? widget.club.canchas.first;
   String _dia = 'Hoy';
   String? _hora;
+  bool _reclamoRechazado = false; // el reclamo de esta cancha fue rechazado
 
   /// Horas reservables reales de la cancha elegida (apertura→cierre, paso = duración).
   /// Para "Hoy" se omiten las horas que ya pasaron.
@@ -188,6 +189,9 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                       if (descubierta)
                         const _Badge('◎ EN GOOGLE',
                             bg: Color(0xFF3A352E), fg: Colors.white)
+                      else if (_reclamoRechazado)
+                        const _Badge('⛔ SOLICITUD RECHAZADA',
+                            bg: Color(0xFFFBE7E7), fg: Color(0xFF8A1A17))
                       else if (pendiente)
                         const _Badge('⏳ PENDIENTE DE VERIFICACIÓN',
                             bg: Color(0xFFFBEAD2), fg: clayOscuro)
@@ -215,7 +219,11 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                         cancha: _cancha, onReclamada: _refrescarDescubierta)
                   else if (pendiente)
                     _PanelPendiente(
-                        cancha: _cancha, onActualizar: _refrescarPropiedad)
+                        cancha: _cancha,
+                        onActualizar: _refrescarPropiedad,
+                        onRechazado: (v) {
+                          if (mounted) setState(() => _reclamoRechazado = v);
+                        })
                   else ...[
                     // Selector "Elige cancha"
                     if (c.canchas.length > 1) ...[
@@ -682,9 +690,12 @@ class _PanelDescubiertaState extends State<_PanelDescubierta> {
 /// Panel cuando la cancha está reclamada/registrada pero aún sin verificar la
 /// propiedad: no se puede reservar online hasta validar al dueño (anti-fraude).
 class _PanelPendiente extends StatefulWidget {
-  const _PanelPendiente({required this.cancha, this.onActualizar});
+  const _PanelPendiente(
+      {required this.cancha, this.onActualizar, this.onRechazado});
   final Cancha cancha;
   final Future<void> Function()? onActualizar;
+  // Notifica al padre si el reclamo está rechazado (para el badge de la ficha).
+  final void Function(bool rechazado)? onRechazado;
 
   @override
   State<_PanelPendiente> createState() => _PanelPendienteState();
@@ -709,7 +720,10 @@ class _PanelPendienteState extends State<_PanelPendiente> {
     if (!PropiedadService.disponible) return;
     final est = await PropiedadService.estado(widget.cancha.id);
     if (!mounted || est == null) return;
-    if (est['estado'] == 'rechazada') setState(() => _rechazada = true);
+    if (est['estado'] == 'rechazada') {
+      setState(() => _rechazada = true);
+      widget.onRechazado?.call(true);
+    }
   }
 
   Future<void> _reenviar() async {
@@ -734,6 +748,7 @@ class _PanelPendienteState extends State<_PanelPendiente> {
     );
     if (!mounted) return;
     final ok = res != null && res['ok'] == true;
+    if (ok) widget.onRechazado?.call(false); // el badge vuelve a "pendiente"
     setState(() {
       _reenviando = false;
       // Si prosperó, la solicitud vuelve a estar EN REVISIÓN: salimos del estado
@@ -774,6 +789,7 @@ class _PanelPendienteState extends State<_PanelPendiente> {
       final verif = est['verificada'] == true;
       if (estado == 'rechazada') {
         _rechazada = true;
+        widget.onRechazado?.call(true);
         msg = '';
       } else if (verif) {
         msg = '✅ ¡Aprobada! Habilitando tus reservas…';
