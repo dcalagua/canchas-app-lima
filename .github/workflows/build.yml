@@ -48,6 +48,12 @@ jobs:
       - name: pub get
         run: flutter pub get
 
+      # Verifica el código ANTES de compilar: si hay errores (tipos, params,
+      # símbolos), falla aquí y NO se publica un APK roto. Solo bloquea por
+      # ERRORES, no por lints de estilo (warnings/infos).
+      - name: Analizar (flutter analyze)
+        run: flutter analyze --no-fatal-warnings --no-fatal-infos
+
       - name: Generar ícono y splash de marca
         run: |
           dart run flutter_launcher_icons
