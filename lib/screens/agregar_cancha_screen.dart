@@ -39,10 +39,13 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
   }
 
   Future<void> _guardar() async {
-    final nombre = _nombre.text.trim();
+    // Nombre opcional: si se deja vacío, se nombra sola por deporte con el
+    // siguiente número dentro del local ("Fútbol 2", "Tenis 1"…).
+    var nombre = _nombre.text.trim();
     if (nombre.isEmpty) {
-      _avisar('Ponle un nombre a la cancha (ej. Cancha 2).');
-      return;
+      final n =
+          widget.local.canchas.where((c) => c.deporte == _deporte).length + 1;
+      nombre = '${_deporte.etiqueta} $n';
     }
     final precio = double.tryParse(_precio.text.trim().replaceAll(',', '.'));
     if (precio == null || precio <= 0) {
@@ -118,7 +121,7 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
           TextField(
             controller: _nombre,
             decoration: const InputDecoration(
-              labelText: 'Nombre de la cancha (ej. Cancha 2)',
+              labelText: 'Nombre de la cancha (opcional)',
             ),
           ),
           const SizedBox(height: 16),

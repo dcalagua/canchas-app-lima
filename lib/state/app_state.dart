@@ -404,6 +404,28 @@ class AppState extends ChangeNotifier {
     CanchasRepo.actualizar(c); // best-effort
   }
 
+  /// Renombra el LOCAL: cambia `club` en TODAS las canchas del dueño que tenían
+  /// el nombre anterior, para que sigan agrupadas bajo el nuevo nombre. Así,
+  /// renombrar el local no separa sus canchas. Best-effort en la nube.
+  void renombrarLocal(String clubAnterior, String clubNuevo) {
+    final nuevo = clubNuevo.trim();
+    if (nuevo.isEmpty || nuevo == clubAnterior) return;
+    void aplicar(List<Cancha> lista) {
+      for (var i = 0; i < lista.length; i++) {
+        if (lista[i].club == clubAnterior) {
+          final f = lista[i].copyWith(club: nuevo);
+          lista[i] = f;
+          CanchasRepo.actualizar(f); // persiste en la nube
+        }
+      }
+    }
+
+    aplicar(canchasExtra);
+    aplicar(canchasRemotas);
+    notifyListeners();
+    _persistirDatos();
+  }
+
   /// Verifica la EXISTENCIA de una cancha contra el backend. **Importante:**
   /// existencia ≠ propiedad. Que un RUC sea válido en SUNAT (o que la IA confirme
   /// que el local existe) sólo prueba que el establecimiento es real, **no** que

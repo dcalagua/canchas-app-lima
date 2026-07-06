@@ -35,7 +35,8 @@ class RegistrarCanchaScreen extends StatefulWidget {
 }
 
 class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
-  final _nombre = TextEditingController();
+  final _nombre = TextEditingController(); // nombre del LOCAL (club)
+  final _nombreCancha = TextEditingController(); // nombre de la cancha (opcional)
   final _direccion = TextEditingController();
   final _precio = TextEditingController(text: '120.00');
   final _ruc = TextEditingController(); // opcional: refuerza la verificación
@@ -143,6 +144,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
   @override
   void dispose() {
     _nombre.dispose();
+    _nombreCancha.dispose();
     _direccion.dispose();
     _precio.dispose();
     _ruc.dispose();
@@ -330,10 +332,14 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
 
     // Un local con varias canchas = una Cancha por deporte, mismo punto y dirección.
     final deportes = _deportes.toList();
+    final nombreCanchaInput = _nombreCancha.text.trim();
     final creadas = <Cancha>[];
     for (final dep in deportes) {
-      final nombreCancha =
-          deportes.length > 1 ? '$nombre · ${dep.etiqueta}' : nombre;
+      // Nombre de la cancha: si el dueño escribió uno y es de un solo deporte,
+      // se respeta; si no, se nombra sola por deporte ("Fútbol 1", "Tenis 1").
+      final nombreCancha = (deportes.length == 1 && nombreCanchaInput.isNotEmpty)
+          ? nombreCanchaInput
+          : '${dep.etiqueta} 1';
       final cancha = Cancha(
         id: 'u${ts}_${dep.name}',
         nombre: nombreCancha,
@@ -590,11 +596,23 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
             _ResultadoConsulta(icono: Icons.store, texto: _rucRazon!),
           const SizedBox(height: 14),
 
-          // Nombre del local / cancha.
+          // Nombre del LOCAL (el negocio: agrupa todas sus canchas).
           TextField(
             controller: _nombre,
             decoration: InputDecoration(
-              label: _lblReq('Nombre del local / cancha'),
+              label: _lblReq('Nombre del local'),
+              hintText: 'Ej.: Campo Deportivo Machuca',
+            ),
+          ),
+          const SizedBox(height: 14),
+          // Nombre de la CANCHA (opcional). Si se deja vacío, se nombra sola por
+          // deporte ("Fútbol 1", "Tenis 1"…). Con varios deportes se ignora y
+          // cada cancha se nombra por su deporte.
+          TextField(
+            controller: _nombreCancha,
+            decoration: const InputDecoration(
+              labelText: 'Nombre de la cancha (opcional)',
+              hintText: 'Ej.: Cancha 1 — si lo dejas vacío la nombramos sola',
             ),
           ),
           const SizedBox(height: 14),

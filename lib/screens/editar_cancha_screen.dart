@@ -27,6 +27,8 @@ class EditarCanchaScreen extends StatefulWidget {
 }
 
 class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
+  late final TextEditingController _local =
+      TextEditingController(text: widget.cancha.club);
   late final TextEditingController _nombre =
       TextEditingController(text: widget.cancha.nombre);
   late final TextEditingController _direccion =
@@ -62,6 +64,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
 
   @override
   void dispose() {
+    _local.dispose();
     _nombre.dispose();
     _direccion.dispose();
     _precio.dispose();
@@ -189,8 +192,15 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
         eraReclamo ? (appState.usuario?.email ?? '') : widget.cancha.dueno;
     final verificada = eraReclamo ? false : widget.cancha.verificada;
 
+    // Nombre del LOCAL: si el dueño lo cambió, se propaga a TODAS sus canchas
+    // (para que sigan agrupadas). Si lo dejó vacío, conserva el actual.
+    final nuevoLocal = _local.text.trim();
+    final club =
+        nuevoLocal.isEmpty ? widget.cancha.club : nuevoLocal;
+
     final actualizada = widget.cancha.copyWith(
       nombre: nombre,
+      club: club,
       precioHora: double.tryParse(_precio.text.trim().replaceAll(',', '.')) ??
           widget.cancha.precioHora,
       deporte: _deporte,
@@ -206,6 +216,9 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
       amenidades: _amenidades.toList(),
     );
     appState.actualizarCancha(actualizada);
+    if (club != widget.cancha.club) {
+      appState.renombrarLocal(widget.cancha.club, club); // renombra el local entero
+    }
 
     // Al reclamar, dispara la verificación de EXISTENCIA en segundo plano. Esto
     // confirma que el local es real, pero NO te convierte en dueño: la cancha
@@ -309,9 +322,18 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
           ),
           const SizedBox(height: 16),
           TextField(
+            controller: _local,
+            decoration: const InputDecoration(
+              labelText: 'Nombre del local',
+              helperText: 'El negocio; agrupa todas sus canchas.',
+            ),
+          ),
+          const SizedBox(height: 14),
+          TextField(
             controller: _nombre,
             decoration: const InputDecoration(
               labelText: 'Nombre de la cancha',
+              helperText: 'Ej.: Fútbol 1, Tenis 1, Pádel 2…',
             ),
           ),
           const SizedBox(height: 14),
