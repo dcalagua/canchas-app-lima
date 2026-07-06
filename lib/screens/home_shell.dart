@@ -2,26 +2,31 @@ import 'package:flutter/material.dart';
 
 import 'agenda_screen.dart';
 import 'cuenta_screen.dart';
-import 'disponibilidad_screen.dart';
+import 'mis_canchas_screen.dart';
 import 'reportes_screen.dart';
-import 'reservas_screen.dart';
+import 'reservas_dueno_screen.dart';
 
+/// Panel del DUEÑO unificado: un solo lugar con TODO lo del dueño en pestañas,
+/// con el mismo estilo premium. "Mis canchas" (reales) es la pestaña principal.
 class HomeShell extends StatefulWidget {
-  const HomeShell({super.key});
+  const HomeShell({super.key, this.initialIndex = 0});
+
+  /// Pestaña inicial (0 = Mis canchas).
+  final int initialIndex;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
 }
 
 class _HomeShellState extends State<HomeShell> {
-  int _index = 0;
+  late int _index = widget.initialIndex;
 
   static const _paginas = <Widget>[
-    AgendaScreen(),
-    DisponibilidadScreen(),
-    ReservasScreen(),
-    ReportesScreen(),
-    CuentaScreen(),
+    MisCanchasScreen(),     // tus canchas reales (editar precio/horarios/servicios)
+    AgendaScreen(),         // agenda de hoy
+    ReservasDuenoScreen(),  // reservas reales de tus canchas + caja
+    ReportesScreen(),       // reportes / KPIs
+    CuentaScreen(),         // saldo prepago
   ];
 
   @override
@@ -33,11 +38,11 @@ class _HomeShellState extends State<HomeShell> {
         onDestinationSelected: (i) => setState(() => _index = i),
         destinations: const [
           NavigationDestination(
+              icon: Icon(Icons.sports_soccer), label: 'Mis canchas'),
+          NavigationDestination(
               icon: Icon(Icons.calendar_month), label: 'Agenda'),
           NavigationDestination(
-              icon: Icon(Icons.schedule), label: 'Horarios'),
-          NavigationDestination(
-              icon: Icon(Icons.list_alt), label: 'Reservas'),
+              icon: Icon(Icons.event_note), label: 'Reservas'),
           NavigationDestination(
               icon: Icon(Icons.bar_chart), label: 'Reportes'),
           NavigationDestination(

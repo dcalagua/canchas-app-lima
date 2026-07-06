@@ -17,10 +17,8 @@ import '../utils/geo.dart';
 import 'buscar_direccion_screen.dart';
 import 'club_detalle_screen.dart';
 import 'login_google_sheet.dart';
-import 'login_screen.dart';
 import 'home_shell.dart';
 import 'mis_reservas_screen.dart';
-import 'mis_canchas_screen.dart';
 import 'registrar_cancha_screen.dart';
 import 'verificador_screen.dart';
 import 'convocatorias_screen.dart';
@@ -296,12 +294,17 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     );
   }
 
-  void _abrirPanel() {
+  /// Abre el Panel del Dueño unificado (Mis canchas · Agenda · Reservas ·
+  /// Reportes · Cuenta). Requiere sesión de Google porque "Mis canchas" trabaja
+  /// sobre las canchas del dueño (dueno == tu correo).
+  Future<void> _abrirPanel() async {
+    if (!appState.logueado) {
+      final ok = await LoginGoogleSheet.mostrar(context);
+      if (!ok || !mounted) return;
+    }
+    if (!mounted) return;
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) =>
-            appState.sesionIniciada ? const HomeShell() : const LoginScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const HomeShell()),
     );
   }
 
@@ -338,9 +341,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
         },
         onMisCanchas: () {
           Navigator.of(sheetContext).pop();
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const MisCanchasScreen()),
-          );
+          _abrirPanel(); // panel del dueño unificado (Mis canchas es su 1ª pestaña)
         },
         onPichangas: () {
           Navigator.of(sheetContext).pop();
@@ -1193,7 +1194,7 @@ class _MenuSheet extends StatelessWidget {
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.storefront, color: verdeCancha),
                 title: const Text('Soy dueño de cancha'),
-                subtitle: const Text('Panel del club'),
+                subtitle: const Text('Tu panel: canchas, agenda, reservas'),
                 onTap: onPanel,
               ),
               ListTile(
@@ -1207,7 +1208,7 @@ class _MenuSheet extends StatelessWidget {
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.sports_soccer, color: verdeCancha),
                 title: const Text('Mis canchas'),
-                subtitle: const Text('Edita precio, fotos y ubicación'),
+                subtitle: const Text('Edita precio, horarios, servicios y fotos'),
                 onTap: onMisCanchas,
               ),
               if (GrowthService.disponible)

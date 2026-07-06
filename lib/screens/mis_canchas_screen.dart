@@ -7,7 +7,6 @@ import '../theme.dart';
 import 'agregar_cancha_screen.dart';
 import 'editar_cancha_screen.dart';
 import 'registrar_cancha_screen.dart';
-import 'reservas_dueno_screen.dart';
 
 /// Canchas del dueño agrupadas por LOCAL (un local = varias canchas, posibles
 /// de distintos deportes). Cada local permite agregar más canchas y editar las
@@ -32,18 +31,6 @@ class _MisCanchasScreenState extends State<MisCanchasScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: papel,
-      appBar: AppBar(
-        title: const Text('Mis canchas'),
-        actions: [
-          IconButton(
-            tooltip: 'Reservas',
-            icon: const Icon(Icons.event_note),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const ReservasDuenoScreen()),
-            ),
-          ),
-        ],
-      ),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: pino,
         foregroundColor: lima,
@@ -59,25 +46,75 @@ class _MisCanchasScreenState extends State<MisCanchasScreen> {
           final canchas = appState.misCanchas;
           final hayPendientes = canchas.any((c) => c.pendienteVerificacion);
           final locales = Club.agrupar(canchas);
-          return RefreshIndicator(
-            onRefresh: () => appState.sincronizarPropiedades(),
-            child: canchas.isEmpty
-                ? ListView(children: const [SizedBox(height: 120), _Vacio()])
-                : ListView(
-                    padding: const EdgeInsets.fromLTRB(18, 16, 18, 90),
-                    children: [
-                      if (hayPendientes) ...[
-                        const _AvisoPendiente(),
-                        const SizedBox(height: 14),
-                      ],
-                      for (final local in locales) ...[
-                        _LocalCard(local: local),
-                        const SizedBox(height: 14),
-                      ],
-                    ],
-                  ),
+          return Column(
+            children: [
+              _HeaderMisCanchas(
+                  nLocales: locales.length, nCanchas: canchas.length),
+              Expanded(
+                child: RefreshIndicator(
+                  onRefresh: () => appState.sincronizarPropiedades(),
+                  child: canchas.isEmpty
+                      ? ListView(
+                          children: const [SizedBox(height: 60), _Vacio()])
+                      : ListView(
+                          padding: const EdgeInsets.fromLTRB(18, 16, 18, 90),
+                          children: [
+                            if (hayPendientes) ...[
+                              const _AvisoPendiente(),
+                              const SizedBox(height: 14),
+                            ],
+                            for (final local in locales) ...[
+                              _LocalCard(local: local),
+                              const SizedBox(height: 14),
+                            ],
+                          ],
+                        ),
+                ),
+              ),
+            ],
           );
         },
+      ),
+    );
+  }
+}
+
+/// Header premium (degradado sage) del panel "Mis canchas", igual que la Agenda.
+class _HeaderMisCanchas extends StatelessWidget {
+  const _HeaderMisCanchas({required this.nLocales, required this.nCanchas});
+  final int nLocales;
+  final int nCanchas;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(
+          22, 18 + MediaQuery.of(context).padding.top, 22, 20),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [sage, verde, bosque],
+        ),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Mis canchas',
+              style: t.headlineSmall
+                  ?.copyWith(color: Colors.white, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 2),
+          Text(
+            nCanchas == 0
+                ? 'Registra o reclama tu primer local'
+                : '$nLocales ${nLocales == 1 ? 'local' : 'locales'} · '
+                    '$nCanchas ${nCanchas == 1 ? 'cancha' : 'canchas'}',
+            style: t.bodyMedium?.copyWith(color: Colors.white70),
+          ),
+        ],
       ),
     );
   }
