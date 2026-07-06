@@ -1152,6 +1152,23 @@ class _MenuSheet extends StatelessWidget {
                   ),
                 ],
               ),
+              // Login PROMINENTE arriba cuando no hay sesión (antes estaba al
+              // fondo del menú y no se encontraba).
+              if (u == null) ...[
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                        backgroundColor: verdeCancha,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14)),
+                    onPressed: onLogin,
+                    icon: const Icon(Icons.login),
+                    label: const Text('Iniciar sesión con Google'),
+                  ),
+                ),
+              ],
               const SizedBox(height: 10),
               const Divider(),
               ListTile(
@@ -1196,21 +1213,15 @@ class _MenuSheet extends StatelessWidget {
                   subtitle: const Text('Visitas: foto, GPS y firma'),
                   onTap: onVerificador,
                 ),
-              const Divider(),
-              if (u == null)
-                FilledButton.icon(
-                  style: FilledButton.styleFrom(backgroundColor: coral),
-                  onPressed: onLogin,
-                  icon: const Icon(Icons.login),
-                  label: const Text('Iniciar sesión con Google'),
-                )
-              else
+              if (u != null) ...[
+                const Divider(),
                 TextButton.icon(
                   onPressed: onLogout,
                   icon: const Icon(Icons.logout, color: Colors.redAccent),
                   label: const Text('Cerrar sesión',
                       style: TextStyle(color: Colors.redAccent)),
                 ),
+              ],
             ],
           ),
         );
