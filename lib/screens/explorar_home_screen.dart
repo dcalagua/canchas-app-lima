@@ -329,10 +329,6 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
           Navigator.of(sheetContext).pop();
           _abrirMisReservas();
         },
-        onPanel: () {
-          Navigator.of(sheetContext).pop();
-          _abrirPanel();
-        },
         onRegistrar: () {
           Navigator.of(sheetContext).pop();
           Navigator.of(context).push(
@@ -1069,7 +1065,6 @@ class _CanchaCard extends StatelessWidget {
 
 class _MenuSheet extends StatelessWidget {
   final VoidCallback onMisReservas;
-  final VoidCallback onPanel;
   final VoidCallback onRegistrar;
   final VoidCallback onMisCanchas;
   final VoidCallback onVerificador;
@@ -1078,7 +1073,6 @@ class _MenuSheet extends StatelessWidget {
   final Future<void> Function() onLogout;
   const _MenuSheet({
     required this.onMisReservas,
-    required this.onPanel,
     required this.onRegistrar,
     required this.onMisCanchas,
     required this.onVerificador,
@@ -1193,9 +1187,10 @@ class _MenuSheet extends StatelessWidget {
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.storefront, color: verdeCancha),
-                title: const Text('Soy dueño de cancha'),
-                subtitle: const Text('Tu panel: canchas, agenda, reservas'),
-                onTap: onPanel,
+                title: const Text('Mis canchas'),
+                subtitle:
+                    const Text('Tu panel: canchas, agenda, reservas y cobros'),
+                onTap: onMisCanchas,
               ),
               ListTile(
                 contentPadding: EdgeInsets.zero,
@@ -1203,13 +1198,6 @@ class _MenuSheet extends StatelessWidget {
                 title: const Text('Registrar mi cancha'),
                 subtitle: const Text('La IA detecta el deporte por foto'),
                 onTap: onRegistrar,
-              ),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.sports_soccer, color: verdeCancha),
-                title: const Text('Mis canchas'),
-                subtitle: const Text('Edita precio, horarios, servicios y fotos'),
-                onTap: onMisCanchas,
               ),
               if (GrowthService.disponible)
                 ListTile(
