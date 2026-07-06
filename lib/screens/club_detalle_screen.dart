@@ -9,8 +9,10 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/court_lines.dart';
 import '../widgets/marca.dart';
+import 'editar_cancha_screen.dart';
 import 'login_google_sheet.dart';
 import 'registrar_cancha_screen.dart';
+import 'reservas_dueno_screen.dart';
 
 /// Ficha de CLUB (rediseño): un local con varias canchas. Selector "Elige
 /// cancha" + horarios de la cancha elegida + reserva con seña.
@@ -123,6 +125,36 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     // Reclamo revertido (creada == null): solo re-sincroniza el estado por si
     // otro usuario reclamó el lugar; el panel de descubierta se re-consulta solo.
     await appState.sincronizarPropiedades();
+  }
+
+  /// ¿El usuario logueado es el DUEÑO de esta cancha? (para mostrarle el panel
+  /// de administración en vez de la vista pública de "Reservar").
+  bool get _soyDueno {
+    final email = appState.usuario?.email ?? '';
+    return email.isNotEmpty && _cancha.dueno == email;
+  }
+
+  /// Abre la edición de la cancha (precio, horarios, deporte…) y, al volver,
+  /// re-resuelve la cancha mostrada para reflejar los cambios al instante.
+  Future<void> _editar() async {
+    final nav = Navigator.of(context);
+    await nav.push(MaterialPageRoute(
+        builder: (_) => EditarCanchaScreen(cancha: _cancha)));
+    if (!mounted) return;
+    Cancha? act;
+    for (final x in appState.todasLasCanchas()) {
+      if (x.id == _cancha.id) {
+        act = x;
+        break;
+      }
+    }
+    if (act != null) setState(() => _cancha = act!);
+  }
+
+  /// Abre el panel de reservas/cobros del dueño.
+  void _verReservas() {
+    Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const ReservasDuenoScreen()));
   }
 
   Color get _color => colorDeporte(_cancha.deporte);
@@ -247,6 +279,11 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                         onRechazado: (v) {
                           if (mounted) setState(() => _reclamoRechazado = v);
                         })
+                  else if (_soyDueno)
+                    _PanelDueno(
+                        cancha: _cancha,
+                        onEditar: _editar,
+                        onVerReservas: _verReservas)
                   else ...[
                     // Selector "Elige cancha"
                     if (c.canchas.length > 1) ...[
@@ -364,13 +401,153 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         ],
         ),
       ),
-      bottomNavigationBar: (descubierta || pendiente)
+      bottomNavigationBar: (descubierta || pendiente || _soyDueno)
           ? null
           : _ReservarBar(
               precio: _cancha.precioHora,
               hora: _hora,
               onReservar: _hora == null ? null : _reservar,
             ),
+    );
+  }
+}
+
+/// Panel que ve el DUEÑO al abrir la ficha de SU cancha (ya verificada): en vez
+/// de la vista pública de "Reservar", administra su cancha desde aquí (editar
+/// precio/horarios y ver sus reservas/cobros).
+class _PanelDueno extends StatelessWidget {
+  const _PanelDueno(
+      {required this.cancha,
+      required this.onEditar,
+      required this.onVerReservas});
+  final Cancha cancha;
+  final VoidCallback onEditar;
+  final VoidCallback onVerReservas;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: trazo),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                    color: const Color(0xFFEAF6C2),
+                    borderRadius: BorderRadius.circular(10)),
+                child: const Icon(Icons.verified_user, size: 19, color: pino),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Text('Administras esta cancha',
+                    style: t.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w700, color: tinta)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Eres el dueño registrado. Los jugadores la ven y reservan; tú '
+            'ajustas aquí el precio y los horarios.',
+            style: t.bodySmall?.copyWith(color: textoTenue),
+          ),
+          const SizedBox(height: 16),
+          // Resumen de precio y horario.
+          Row(
+            children: [
+              Expanded(
+                child: _DatoDueno(
+                    etiqueta: 'Precio por hora',
+                    valor: 'S/${cancha.precioHora.toStringAsFixed(2)}'),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _DatoDueno(
+                    etiqueta: 'Atención',
+                    valor:
+                        '${cancha.horaApertura}–${cancha.horaCierre}'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          _DatoDueno(
+              etiqueta: 'Duración por reserva',
+              valor: '${cancha.duracionSlotMin} min'),
+          const SizedBox(height: 18),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: onEditar,
+              style: FilledButton.styleFrom(
+                backgroundColor: pino,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 15),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+              ),
+              icon: const Icon(Icons.edit, size: 19),
+              label: const Text('Editar precio y horarios',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: onVerReservas,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: pino,
+                side: const BorderSide(color: pino, width: 1.5),
+                padding: const EdgeInsets.symmetric(vertical: 15),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+              ),
+              icon: const Icon(Icons.receipt_long, size: 19),
+              label: const Text('Ver reservas y cobros',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DatoDueno extends StatelessWidget {
+  const _DatoDueno({required this.etiqueta, required this.valor});
+  final String etiqueta;
+  final String valor;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+      decoration: BoxDecoration(
+        color: papel,
+        borderRadius: BorderRadius.circular(11),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(etiqueta, style: t.bodySmall?.copyWith(color: textoTenue)),
+          const SizedBox(height: 3),
+          Text(valor,
+              style: t.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700, color: tinta)),
+        ],
+      ),
     );
   }
 }
