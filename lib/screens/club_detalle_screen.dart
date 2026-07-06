@@ -705,11 +705,20 @@ class _PanelPendienteState extends State<_PanelPendiente> {
   bool _consultando = false;
   bool _reenviando = false;
   bool _rechazada = false; // el admin no aprobó la solicitud de este usuario
+  bool _esMio = false; // ¿el que mira la ficha es quien reclamó / el dueño?
   String? _diag;
+
+  /// Es "mío" si mi correo coincide con el dueño local de la cancha (fiable sin
+  /// backend). Se confirma con es_mio del servidor en la consulta inicial.
+  bool get _duenoLocal {
+    final email = appState.usuario?.email ?? '';
+    return email.isNotEmpty && widget.cancha.dueno == email;
+  }
 
   @override
   void initState() {
     super.initState();
+    _esMio = _duenoLocal;
     _consultarInicial();
   }
 
@@ -721,9 +730,11 @@ class _PanelPendienteState extends State<_PanelPendiente> {
     final est = await PropiedadService.estado(widget.cancha.id,
         solicitante: appState.usuario?.email);
     if (!mounted || est == null) return;
+    final mio = est['es_mio'] == true;
+    setState(() => _esMio = _esMio || mio);
     // El estado "rechazada" SOLO lo ve quien reclamó (es_mio). Un usuario sin
     // sesión o con otra cuenta ve la ficha pendiente normal, no el rechazo.
-    if (est['estado'] == 'rechazada' && est['es_mio'] == true) {
+    if (est['estado'] == 'rechazada' && mio) {
       setState(() => _rechazada = true);
       widget.onRechazado?.call(true);
     }
@@ -899,47 +910,53 @@ class _PanelPendienteState extends State<_PanelPendiente> {
           ),
           const SizedBox(height: 10),
           Text(
-            'Alguien la registró como suya y estamos validando que sea el dueño '
-            'real. Por seguridad, las reservas online se habilitan recién cuando '
-            'se confirme la propiedad.',
+            _esMio
+                ? 'Tu solicitud está en revisión. Por seguridad, las reservas '
+                    'online se habilitan recién cuando confirmemos la propiedad.'
+                : 'Esta cancha aún no está activa en Pichangol; todavía no se '
+                    'puede reservar online.',
             style: t.bodyMedium?.copyWith(color: textoTenue, height: 1.4),
           ),
-          const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: _consultando ? null : _verificarAhora,
-              icon: _consultando
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.sync, size: 18),
-              label: Text(_consultando
-                  ? 'Consultando al servidor…'
-                  : 'Verificar estado ahora'),
+          // Los controles del reclamo SOLO los ve quien reclamó (dueño). Un
+          // usuario sin sesión o ajeno no ve "Verificar"/"Reenviar".
+          if (_esMio) ...[
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _consultando ? null : _verificarAhora,
+                icon: _consultando
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.sync, size: 18),
+                label: Text(_consultando
+                    ? 'Consultando al servidor…'
+                    : 'Verificar estado ahora'),
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              style: FilledButton.styleFrom(
-                  backgroundColor: bosque, foregroundColor: lima),
-              onPressed: _reenviando ? null : _reenviar,
-              icon: _reenviando
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: lima))
-                  : const Icon(Icons.send, size: 18),
-              label: Text(_reenviando
-                  ? 'Reenviando…'
-                  : 'Reenviar solicitud de verificación'),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                    backgroundColor: bosque, foregroundColor: lima),
+                onPressed: _reenviando ? null : _reenviar,
+                icon: _reenviando
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: lima))
+                    : const Icon(Icons.send, size: 18),
+                label: Text(_reenviando
+                    ? 'Reenviando…'
+                    : 'Reenviar solicitud de verificación'),
+              ),
             ),
-          ),
-          _diagBox(t),
+            _diagBox(t),
+          ],
         ],
       );
 }
