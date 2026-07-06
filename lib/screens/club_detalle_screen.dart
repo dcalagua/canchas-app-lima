@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/reservas_repo.dart';
 import '../models/club.dart';
 import '../models/models.dart';
+import '../services/location_service.dart';
 import '../services/propiedad_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -776,11 +777,17 @@ class _PanelPendienteState extends State<_PanelPendiente> {
       });
       return;
     }
+    // Ubicación del DISPOSITIVO al re-reclamar: el admin necesita ver desde
+    // dónde se está enviando nuevamente la solicitud (anti-fraude "estás en el
+    // lugar"). Si el permiso está denegado, queda null y el panel lo indica.
+    final desdeAqui = await LocationService.ubicacionPrecisa();
+    if (!mounted) return;
     final res = await PropiedadService.crearReclamo(
       canchaId: c.id,
       solicitanteId: email,
       nombreLocal: c.nombre,
       ubicacion: c.ubicacion,
+      solicitanteUbicacion: desdeAqui,
     );
     if (!mounted) return;
     final ok = res != null && res['ok'] == true;
