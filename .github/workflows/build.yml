@@ -1,4 +1,4 @@
-name: Build app (Android + iOS)
+name: Build app (Android)
 
 on:
   push:
@@ -127,55 +127,6 @@ jobs:
           files: dist/pichangol-*.apk
           fail_on_unmatched_files: true
 
-  ios:
-    name: iOS (compilación, sin firma)
-    runs-on: macos-14
-    # Best-effort: valida que el código es iOS-ready. Un instalable .ipa requiere
-    # firma con cuenta Apple Developer, así que este job no bloquea el APK.
-    continue-on-error: true
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          cache: true
-
-      - name: Generar carpetas de plataforma
-        run: flutter create --org pe.ebim --project-name canchas_lima --platforms=android,ios .
-
-      - name: Configurar plataforma (Maps + Google Sign-In)
-        env:
-          MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
-          GOOGLE_IOS_CLIENT_ID: ${{ secrets.GOOGLE_IOS_CLIENT_ID }}
-        run: python3 tool/configure_platforms.py
-
-      - name: pub get
-        run: flutter pub get
-
-      - name: Generar ícono y splash de marca
-        run: |
-          dart run flutter_launcher_icons
-          dart run flutter_native_splash:create
-
-      - name: Build iOS (sin firma)
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
-          PLACES_API_KEY: ${{ secrets.PLACES_API_KEY }}
-          VERIF_API_URL: ${{ secrets.VERIF_API_URL }}
-          GROWTH_API_URL: ${{ secrets.GROWTH_API_URL }}
-          APP_API_KEY: ${{ secrets.APP_API_KEY }}
-        run: |
-          flutter build ios --release --no-codesign \
-            --dart-define=SUPABASE_URL="$SUPABASE_URL" \
-            --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
-            --dart-define=MAPS_API_KEY="$MAPS_API_KEY" \
-            --dart-define=PLACES_API_KEY="$PLACES_API_KEY" \
-            --dart-define=VERIF_API_URL="$VERIF_API_URL" \
-            --dart-define=GROWTH_API_URL="$GROWTH_API_URL" \
-            --dart-define=APP_API_KEY="$APP_API_KEY"
+  # NOTA: el job de iOS (macOS, ×10 minutos) se retiró para ahorrar minutos de
+  # GitHub Actions durante el piloto. No hacía falta: un .ipa instalable requiere
+  # firma con cuenta Apple Developer. Cuando se vaya a TestFlight, se re-agrega.
