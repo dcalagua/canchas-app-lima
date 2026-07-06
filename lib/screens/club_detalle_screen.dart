@@ -718,9 +718,12 @@ class _PanelPendienteState extends State<_PanelPendiente> {
   /// reclamó; para el resto la cancha queda libre para reclamar).
   Future<void> _consultarInicial() async {
     if (!PropiedadService.disponible) return;
-    final est = await PropiedadService.estado(widget.cancha.id);
+    final est = await PropiedadService.estado(widget.cancha.id,
+        solicitante: appState.usuario?.email);
     if (!mounted || est == null) return;
-    if (est['estado'] == 'rechazada') {
+    // El estado "rechazada" SOLO lo ve quien reclamó (es_mio). Un usuario sin
+    // sesión o con otra cuenta ve la ficha pendiente normal, no el rechazo.
+    if (est['estado'] == 'rechazada' && est['es_mio'] == true) {
       setState(() => _rechazada = true);
       widget.onRechazado?.call(true);
     }
@@ -774,20 +777,19 @@ class _PanelPendienteState extends State<_PanelPendiente> {
       });
       return;
     }
-    final est = await PropiedadService.estado(widget.cancha.id);
+    final est = await PropiedadService.estado(widget.cancha.id,
+        solicitante: appState.usuario?.email);
     if (!mounted) return;
     String msg;
     if (est == null) {
-      msg = '⚠️ No se pudo consultar al servidor (sin respuesta). '
-          'ID consultado: ${widget.cancha.id}';
+      msg = '⚠️ No se pudo consultar al servidor. Reintenta en un momento.';
     } else if (est['existe'] != true) {
-      msg = '❌ El servidor NO tiene un reclamo para esta cancha.\n'
-          'ID consultado: ${widget.cancha.id}\n'
-          'Esto significa que el reclamo no se creó en el backend.';
+      msg = '⏳ Tu solicitud sigue en revisión. Te avisamos cuando se apruebe.';
     } else {
       final estado = est['estado'] ?? '—';
       final verif = est['verificada'] == true;
-      if (estado == 'rechazada') {
+      // El rechazo solo se muestra al que reclamó (es_mio).
+      if (estado == 'rechazada' && est['es_mio'] == true) {
         _rechazada = true;
         widget.onRechazado?.call(true);
         msg = '';
