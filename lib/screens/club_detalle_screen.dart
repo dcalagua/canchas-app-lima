@@ -693,7 +693,24 @@ class _PanelPendiente extends StatefulWidget {
 class _PanelPendienteState extends State<_PanelPendiente> {
   bool _consultando = false;
   bool _reenviando = false;
+  bool _rechazada = false; // el admin no aprobó la solicitud de este usuario
   String? _diag;
+
+  @override
+  void initState() {
+    super.initState();
+    _consultarInicial();
+  }
+
+  /// Al abrir la ficha pendiente, consulta el backend: si el reclamo fue
+  /// RECHAZADO, mostramos el panel de "Solicitud no aprobada" (solo lo ve quien
+  /// reclamó; para el resto la cancha queda libre para reclamar).
+  Future<void> _consultarInicial() async {
+    if (!PropiedadService.disponible) return;
+    final est = await PropiedadService.estado(widget.cancha.id);
+    if (!mounted || est == null) return;
+    if (est['estado'] == 'rechazada') setState(() => _rechazada = true);
+  }
 
   Future<void> _reenviar() async {
     setState(() {
@@ -716,15 +733,16 @@ class _PanelPendienteState extends State<_PanelPendiente> {
       ubicacion: c.ubicacion,
     );
     if (!mounted) return;
+    final ok = res != null && res['ok'] == true;
     setState(() {
       _reenviando = false;
-      _diag = (res != null && res['ok'] == true)
-          ? '✅ Solicitud reenviada al servidor.\n'
-              'Código: ${res['codigo'] ?? '—'}\n'
-              'El equipo la aprueba desde la torre de control web (o por '
-              'WhatsApp); luego vuelve aquí y toca "Verificar estado ahora".'
-          : '⚠️ No se pudo crear el reclamo en el servidor. Reintenta en un momento '
-              '(el backend puede estar reiniciándose).';
+      // Si prosperó, la solicitud vuelve a estar EN REVISIÓN: salimos del estado
+      // "rechazada" y mostramos de nuevo el panel pendiente.
+      if (ok) _rechazada = false;
+      _diag = ok
+          ? '✅ Solicitud enviada. Está en revisión; te avisamos cuando se '
+              'apruebe.'
+          : '⚠️ No se pudo enviar la solicitud. Reintenta en un momento.';
     });
   }
 
@@ -754,15 +772,20 @@ class _PanelPendienteState extends State<_PanelPendiente> {
     } else {
       final estado = est['estado'] ?? '—';
       final verif = est['verificada'] == true;
-      msg = 'Servidor → estado: "$estado", verificada: $verif\n'
-          'ID: ${widget.cancha.id}\n'
-          '${verif ? '✅ Aprobada: actualizando…' : '⏳ Aún no activada por el admin (aprueba en Reclamos admin o el panel web).'}';
-      if (verif) await widget.onActualizar?.call();
+      if (estado == 'rechazada') {
+        _rechazada = true;
+        msg = '';
+      } else if (verif) {
+        msg = '✅ ¡Aprobada! Habilitando tus reservas…';
+        await widget.onActualizar?.call();
+      } else {
+        msg = '⏳ Tu solicitud sigue en revisión. Te avisamos cuando se apruebe.';
+      }
     }
     if (!mounted) return;
     setState(() {
       _consultando = false;
-      _diag = msg;
+      _diag = msg.isEmpty ? null : msg;
     });
   }
 
@@ -772,11 +795,77 @@ class _PanelPendienteState extends State<_PanelPendiente> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFFDF6EC),
+        color: _rechazada ? const Color(0xFFFBE7E7) : const Color(0xFFFDF6EC),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE9D9C2)),
+        border: Border.all(
+            color: _rechazada
+                ? const Color(0xFFE9C2C2)
+                : const Color(0xFFE9D9C2)),
       ),
-      child: Column(
+      child: _rechazada ? _panelRechazada(t) : _panelPendiente(t),
+    );
+  }
+
+  Widget _diagBox(TextTheme t) => (_diag == null)
+      ? const SizedBox.shrink()
+      : Padding(
+          padding: const EdgeInsets.only(top: 10),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF3EFE7),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(_diag!,
+                style: t.bodySmall?.copyWith(color: tinta, height: 1.4)),
+          ),
+        );
+
+  Widget _panelRechazada(TextTheme t) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.cancel_outlined, color: Color(0xFFB4231F)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Solicitud no aprobada',
+                    style: t.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF8A1A17))),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'No pudimos confirmar que seas el dueño de esta cancha, así que tu '
+            'solicitud no fue aprobada. Si crees que es un error, vuelve a '
+            'enviarla con tus datos correctos o escríbenos para resolverlo.',
+            style: t.bodyMedium?.copyWith(color: textoTenue, height: 1.4),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                  backgroundColor: bosque, foregroundColor: lima),
+              onPressed: _reenviando ? null : _reenviar,
+              icon: _reenviando
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: lima))
+                  : const Icon(Icons.refresh, size: 18),
+              label: Text(_reenviando ? 'Enviando…' : 'Volver a solicitar'),
+            ),
+          ),
+          _diagBox(t),
+        ],
+      );
+
+  Widget _panelPendiente(TextTheme t) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
@@ -832,24 +921,9 @@ class _PanelPendienteState extends State<_PanelPendiente> {
                   : 'Reenviar solicitud de verificación'),
             ),
           ),
-          if (_diag != null) ...[
-            const SizedBox(height: 10),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF3EFE7),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(_diag!,
-                  style: t.bodySmall?.copyWith(
-                      color: tinta, height: 1.4, fontFamily: 'monospace')),
-            ),
-          ],
+          _diagBox(t),
         ],
-      ),
-    );
-  }
+      );
 }
 
 /// Hero con galería de fotos deslizable (puntos indicadores). Si no hay fotos,
