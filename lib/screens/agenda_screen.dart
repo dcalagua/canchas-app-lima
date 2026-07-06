@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
-import '../data/sample_data.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 
-/// Agenda del panel del club (rediseño): header pino con saldo + mini-KPIs,
-/// selector de cancha (un local con varias canchas) y franjas del día.
+/// Agenda REAL del dueño: las franjas del día de SUS canchas con las reservas
+/// reales. Selector de cancha (sus locales) + Hoy/Mañana + mini-KPIs calculados
+/// sobre datos reales (no demo).
 class AgendaScreen extends StatefulWidget {
   const AgendaScreen({super.key});
 
@@ -15,89 +15,134 @@ class AgendaScreen extends StatefulWidget {
 }
 
 class _AgendaScreenState extends State<AgendaScreen> {
-  late Cancha _cancha = SampleData.canchasDelClubActivo().first;
+  Cancha? _cancha;
+  String _dia = 'Hoy';
+
+  static String _isoDe(String dia) {
+    final base = DateTime.now();
+    final d = dia == 'Mañana' ? base.add(const Duration(days: 1)) : base;
+    return '${d.year.toString().padLeft(4, '0')}-'
+        '${d.month.toString().padLeft(2, '0')}-'
+        '${d.day.toString().padLeft(2, '0')}';
+  }
+
+  Reserva? _reservaEn(String canchaId, String iso, String hora) {
+    for (final r in appState.reservas) {
+      if (r.canchaId == canchaId && r.fecha == iso && r.horaInicio == hora) {
+        return r;
+      }
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
-    final canchas = SampleData.canchasDelClubActivo();
     return Scaffold(
       backgroundColor: papelCalido,
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          final res = appState.simularReservaEntrante();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(res != null
-                  ? '⚡ ¡Entró una reserva! $res'
-                  : 'No quedan horas libres abiertas'),
-            ),
-          );
-        },
-        backgroundColor: clay,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.bolt),
-        label: const Text('Simular reserva'),
-      ),
       body: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
-          final bloques = appState.bloquesDe(_cancha.id);
+          final canchas = appState.misCanchas;
+          if (canchas.isEmpty) return const _VacioAgenda();
+
+          // Mantén una selección válida aunque cambien las canchas.
+          if (_cancha == null || !canchas.any((c) => c.id == _cancha!.id)) {
+            _cancha = canchas.first;
+          }
+          final cancha = _cancha!;
+          final iso = _isoDe(_dia);
+          final horas = cancha.horariosSlots();
+
           return Column(
             children: [
-              _HeaderClub(canchas: canchas),
-              // Selector de cancha (multi-deporte)
+              _HeaderAgenda(canchas: canchas, iso: iso),
+              // Día: Hoy / Mañana
               Padding(
-                padding: const EdgeInsets.fromLTRB(18, 16, 18, 8),
-                child: SizedBox(
-                  height: 40,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: canchas.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 8),
-                    itemBuilder: (_, i) {
-                      final c = canchas[i];
-                      final sel = c.id == _cancha.id;
-                      return GestureDetector(
-                        onTap: () => setState(() => _cancha = c),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: sel ? tinta : Colors.white,
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(color: sel ? tinta : trazo),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 9,
-                                height: 9,
-                                decoration: BoxDecoration(
-                                    color: colorDeporte(c.deporte),
-                                    borderRadius: BorderRadius.circular(2)),
-                              ),
-                              const SizedBox(width: 7),
-                              Text(c.nombre,
-                                  style: TextStyle(
-                                      color: sel ? Colors.white : tinta,
-                                      fontWeight: sel
-                                          ? FontWeight.w700
-                                          : FontWeight.w600)),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+                padding: const EdgeInsets.fromLTRB(18, 14, 18, 4),
+                child: Row(
+                  children: [
+                    for (final d in const ['Hoy', 'Mañana']) ...[
+                      _Pildora(
+                        texto: d,
+                        activo: _dia == d,
+                        onTap: () => setState(() => _dia = d),
+                      ),
+                      const SizedBox(width: 10),
+                    ],
+                  ],
                 ),
               ),
-              Expanded(
-                child: ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(18, 8, 18, 90),
-                  itemCount: bloques.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 9),
-                  itemBuilder: (_, i) => _AgendaRow(bloque: bloques[i]),
+              // Selector de cancha (los locales del dueño)
+              if (canchas.length > 1)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 6, 18, 4),
+                  child: SizedBox(
+                    height: 40,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: canchas.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 8),
+                      itemBuilder: (_, i) {
+                        final c = canchas[i];
+                        final sel = c.id == cancha.id;
+                        return GestureDetector(
+                          onTap: () => setState(() => _cancha = c),
+                          child: Container(
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 14),
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: sel ? tinta : Colors.white,
+                              borderRadius: BorderRadius.circular(999),
+                              border:
+                                  Border.all(color: sel ? tinta : trazo),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 9,
+                                  height: 9,
+                                  decoration: BoxDecoration(
+                                      color: colorDeporte(c.deporte),
+                                      borderRadius: BorderRadius.circular(2)),
+                                ),
+                                const SizedBox(width: 7),
+                                Text(c.nombre,
+                                    style: TextStyle(
+                                        color: sel ? Colors.white : tinta,
+                                        fontWeight: sel
+                                            ? FontWeight.w700
+                                            : FontWeight.w600)),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
                 ),
+              Expanded(
+                child: horas.isEmpty
+                    ? Center(
+                        child: Text('Esta cancha no tiene horarios configurados.',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(color: textoTenue)),
+                      )
+                    : ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(18, 8, 18, 90),
+                        itemCount: horas.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 9),
+                        itemBuilder: (_, i) {
+                          final hora = horas[i];
+                          return _AgendaRow(
+                            hora: hora,
+                            valle: hora.compareTo('12:00') < 0,
+                            reserva: _reservaEn(cancha.id, iso, hora),
+                          );
+                        },
+                      ),
               ),
             ],
           );
@@ -107,31 +152,35 @@ class _AgendaScreenState extends State<AgendaScreen> {
   }
 }
 
-class _HeaderClub extends StatelessWidget {
-  const _HeaderClub({required this.canchas});
+class _HeaderAgenda extends StatelessWidget {
+  const _HeaderAgenda({required this.canchas, required this.iso});
   final List<Cancha> canchas;
+  final String iso;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     final barrio = canchas.isEmpty ? 'Lima' : canchas.first.distrito.etiqueta;
+    final local = canchas.isEmpty ? 'Mis canchas' : canchas.first.club;
 
-    // Mini-KPIs de hoy.
-    final idsClub = canchas.map((c) => c.id).toSet();
-    final reservasHoy = appState.reservas
-        .where((r) => r.dia == 'Hoy' && idsClub.contains(r.canchaId))
+    // KPIs REALES del día sobre TODAS las canchas del dueño.
+    final ids = canchas.map((c) => c.id).toSet();
+    final delDia = appState.reservas
+        .where((r) => ids.contains(r.canchaId) && r.fecha == iso)
         .toList();
-    final bloquesHoy = appState.agenda.length;
-    final ocupados = appState.agenda.where((b) => b.reservaId != null).length;
-    final ocupacion = bloquesHoy == 0 ? 0 : (ocupados * 100) ~/ bloquesHoy;
-    final porApp = reservasHoy.where((r) => r.traidaPorApp).length;
+    final totalSlots =
+        canchas.fold<int>(0, (s, c) => s + c.horariosSlots().length);
+    final ocupacion =
+        totalSlots == 0 ? 0 : (delDia.length * 100) ~/ totalSlots;
+    final porCobrar = delDia
+        .where((r) => !r.pagado && r.estado != EstadoReserva.noShow)
+        .fold<int>(0, (s, r) => s + r.precio);
 
     return Container(
       width: double.infinity,
       padding: EdgeInsets.fromLTRB(
           22, 18 + MediaQuery.of(context).padding.top, 22, 20),
       decoration: const BoxDecoration(
-        // Header sage en degradado (handoff): superficie hero de EBIM.
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -142,59 +191,19 @@ class _HeaderClub extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              GestureDetector(
-                onTap: () => Navigator.of(context).maybePop(),
-                child: const Padding(
-                  padding: EdgeInsets.only(right: 12, top: 2),
-                  child: Icon(Icons.arrow_back_ios_new,
-                      color: Colors.white, size: 20),
-                ),
-              ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Buenas, $barrio',
-                        style: t.bodyMedium
-                            ?.copyWith(color: Colors.white70)),
-                    Text(appState.nombreClub,
-                        style: t.titleLarge?.copyWith(
-                            color: Colors.white, fontWeight: FontWeight.w700)),
-                  ],
-                ),
-              ),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: lima.withOpacity(0.16),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: lima.withOpacity(0.4)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text('Saldo', style: t.bodySmall?.copyWith(color: lima)),
-                    Text('S/${appState.saldoClub}',
-                        style: t.titleMedium?.copyWith(
-                            color: lima, fontWeight: FontWeight.w700)),
-                  ],
-                ),
-              ),
-            ],
-          ),
+          Text('Buenas, $barrio',
+              style: t.bodyMedium?.copyWith(color: Colors.white70)),
+          Text(local,
+              style: t.titleLarge
+                  ?.copyWith(color: Colors.white, fontWeight: FontWeight.w700)),
           const SizedBox(height: 18),
           Row(
             children: [
-              _MiniKpi('${reservasHoy.length}', 'Reservas hoy'),
+              _MiniKpi('${delDia.length}', 'Reservas'),
               const SizedBox(width: 10),
               _MiniKpi('$ocupacion%', 'Ocupación'),
               const SizedBox(width: 10),
-              _MiniKpi('+$porApp', 'Por la app', accent: true),
+              _MiniKpi('S/$porCobrar', 'Por cobrar', accent: true),
             ],
           ),
         ],
@@ -226,8 +235,7 @@ class _MiniKpi extends StatelessWidget {
                 style: t.titleLarge?.copyWith(
                     color: accent ? lima : Colors.white,
                     fontWeight: FontWeight.w700)),
-            Text(label,
-                style: t.bodySmall?.copyWith(color: Colors.white70)),
+            Text(label, style: t.bodySmall?.copyWith(color: Colors.white70)),
           ],
         ),
       ),
@@ -235,18 +243,45 @@ class _MiniKpi extends StatelessWidget {
   }
 }
 
+class _Pildora extends StatelessWidget {
+  const _Pildora(
+      {required this.texto, required this.activo, required this.onTap});
+  final String texto;
+  final bool activo;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
+        decoration: BoxDecoration(
+          color: activo ? tinta : Colors.white,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: activo ? tinta : trazo),
+        ),
+        child: Text(texto,
+            style: TextStyle(
+                color: activo ? Colors.white : textoTenue,
+                fontWeight: FontWeight.w700)),
+      ),
+    );
+  }
+}
+
 class _AgendaRow extends StatelessWidget {
-  const _AgendaRow({required this.bloque});
-  final BloqueHorario bloque;
+  const _AgendaRow(
+      {required this.hora, required this.valle, required this.reserva});
+  final String hora;
+  final bool valle;
+  final Reserva? reserva;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    final reserva =
-        bloque.reservaId != null ? appState.reservaPorId(bloque.reservaId!) : null;
-    final esNuevaApp =
-        reserva != null && reserva.traidaPorApp && reserva.estado == EstadoReserva.nueva;
-    final esFija = reserva != null && !reserva.traidaPorApp;
+    final r = reserva;
+    final ocupada = r != null;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(15, 13, 15, 13),
@@ -255,9 +290,10 @@ class _AgendaRow extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         border: Border(
             left: BorderSide(
-                color: esNuevaApp ? lima : Colors.transparent, width: 4)),
+                color: ocupada ? lima : Colors.transparent, width: 4)),
         boxShadow: const [
-          BoxShadow(color: Color(0x14000000), blurRadius: 16, offset: Offset(0, 4)),
+          BoxShadow(
+              color: Color(0x14000000), blurRadius: 16, offset: Offset(0, 4)),
         ],
       ),
       child: Row(
@@ -267,80 +303,96 @@ class _AgendaRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(bloque.hora,
-                    style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-                if (bloque.esHoraValle)
+                Text(hora,
+                    style:
+                        t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                if (valle)
                   Text('VALLE',
                       style: t.labelSmall?.copyWith(
                           color: clayOscuro, fontWeight: FontWeight.w700)),
               ],
             ),
           ),
-          Container(width: 1, height: 38, color: trazo,
+          Container(
+              width: 1,
+              height: 38,
+              color: trazo,
               margin: const EdgeInsets.symmetric(horizontal: 12)),
           Expanded(
-            child: reserva == null
-                ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Disponible',
-                          style: t.bodyMedium?.copyWith(
-                              color: const Color(0xFFB5AFA3),
-                              fontWeight: FontWeight.w600)),
-                      Text(bloque.disponible
-                          ? 'Abierta en la app'
-                          : 'Cerrada en la app',
-                          style: t.bodySmall
-                              ?.copyWith(color: const Color(0xFFC2BCB0))),
-                    ],
-                  )
+            child: !ocupada
+                ? Text('Libre',
+                    style: t.bodyMedium?.copyWith(
+                        color: const Color(0xFFB5AFA3),
+                        fontWeight: FontWeight.w600))
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(reserva.jugador,
+                      Text(r.jugador.isEmpty ? 'Reservado' : r.jugador,
                           style: t.bodyMedium
                               ?.copyWith(fontWeight: FontWeight.w700)),
                       Text(
-                        '${reserva.traidaPorApp ? "Por la app" : "Cliente de siempre"} · ${reserva.horaInicio}–${reserva.horaFin}',
+                        '${r.horaInicio}–${r.horaFin} · '
+                        '${r.pagado ? 'Pagado' : 'Por cobrar'} S/${r.precio}',
                         style: t.bodySmall?.copyWith(color: textoTenue),
                       ),
                     ],
                   ),
           ),
-          if (reserva == null)
-            Switch(
-              value: bloque.disponible,
-              activeColor: pino,
-              activeTrackColor: lima,
-              onChanged: (_) => appState.alternarDisponibilidad(bloque),
-            )
-          else if (esNuevaApp)
-            const _Badge('NUEVA · APP', bg: lima, fg: pinoOscuro)
-          else if (esFija)
-            const _Badge('FIJO', bg: Color(0xFFF0ECE2), fg: Color(0xFF5C574E))
-          else
-            const _Badge('APP', bg: Color(0xFFEAF6C2), fg: pinoOscuro),
+          if (ocupada) _ChipEstado(estado: r.estado),
         ],
       ),
     );
   }
 }
 
-class _Badge extends StatelessWidget {
-  const _Badge(this.texto, {required this.bg, required this.fg});
-  final String texto;
-  final Color bg;
-  final Color fg;
+class _ChipEstado extends StatelessWidget {
+  const _ChipEstado({required this.estado});
+  final EstadoReserva estado;
 
   @override
   Widget build(BuildContext context) {
+    final (bg, fg, txt) = switch (estado) {
+      EstadoReserva.confirmada => (estadoOkBg, estadoOkFg, 'Confirmada'),
+      EstadoReserva.nueva => (const Color(0xFFEAF6C2), pinoOscuro, 'Nueva'),
+      EstadoReserva.completada => (estadoNeutroBg, estadoNeutroFg, 'Jugada'),
+      EstadoReserva.noShow => (estadoBadBg, estadoBadFg, 'No-show'),
+    };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration:
           BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
-      child: Text(texto,
+      child: Text(txt,
           style: TextStyle(
               color: fg, fontSize: 11, fontWeight: FontWeight.w700, height: 1)),
+    );
+  }
+}
+
+class _VacioAgenda extends StatelessWidget {
+  const _VacioAgenda();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.calendar_month, size: 60, color: verdeClaro),
+            const SizedBox(height: 14),
+            Text('Aún no tienes canchas',
+                style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 6),
+            Text(
+              'Registra o reclama una cancha para ver aquí su agenda del día.',
+              textAlign: TextAlign.center,
+              style: t.bodyMedium?.copyWith(color: textoTenue),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
