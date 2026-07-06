@@ -94,6 +94,7 @@ class AppState extends ChangeNotifier {
 
   int _puntajeCancha(Cancha c) {
     var p = 0;
+    if (c.verificada) p += 5; // la verificada/activada representa mejor el lugar
     if (c.registrada) p += 4;
     if (c.dueno.isNotEmpty) p += 2;
     if (c.fotos.isNotEmpty) p += 1;
@@ -230,13 +231,21 @@ class AppState extends ChangeNotifier {
   Future<void> sincronizarPropiedades() async {
     if (!PropiedadService.disponible) return;
     var cambio = false;
-    // Candidatas: TODAS mis canchas reclamadas (registradas, no eliminadas). Se
-    // consultan en ambos sentidos: promover (aprobada → verificada) y degradar
-    // (rechazada → deja de estar verificada, se quitan las reservas).
-    final candidatas = [
-      for (final c in misCanchas)
-        if (c.registrada && !canchasEliminadas.contains(c.id)) c,
-    ];
+    // Candidatas: TODAS mis canchas reclamadas + legado reclamable (registradas,
+    // no eliminadas). Se toman de las listas CRUDAS (no de misCanchas, que
+    // deduplica) para procesar también los DUPLICADOS del mismo lugar en una sola
+    // pasada. Se consultan en ambos sentidos: promover (aprobada → verificada) y
+    // degradar (rechazada → deja de ser mía / se quitan las reservas).
+    final email = usuario?.email ?? '';
+    final vistos = <String>{};
+    final candidatas = <Cancha>[];
+    for (final c in [...canchasExtra, ...canchasRemotas]) {
+      if (!c.registrada || canchasEliminadas.contains(c.id)) continue;
+      final mia = email.isNotEmpty && c.dueno == email;
+      final legado = c.dueno.isEmpty && !c.verificada;
+      if (!(mia || legado)) continue;
+      if (vistos.add(c.id)) candidatas.add(c);
+    }
     for (final c in candidatas) {
       final est =
           await PropiedadService.estado(c.id, solicitante: usuario?.email);
@@ -246,7 +255,16 @@ class AppState extends ChangeNotifier {
       final rechazada = est['estado'] == 'rechazada';
 
       Cancha? actualizada;
-      if (verificada && !c.verificada) {
+      if (rechazada && est['es_mio'] == true) {
+        // MI reclamo fue RECHAZADO y no hay uno vigente del mismo lugar (el
+        // backend prioriza un reclamo activo por encima de un rechazo viejo): la
+        // cancha deja de ser mía y VUELVE A SER DESCUBIERTA (como si nadie la
+        // hubiera reclamado). Sale de "Mis canchas" pero sigue en el mapa,
+        // reclamable de nuevo. Se cancelan sus reservas.
+        actualizada =
+            c.copyWith(registrada: false, verificada: false, dueno: '');
+        _cancelarReservasDeCancha(c.id);
+      } else if (verificada && !c.verificada) {
         // Al activarse queda atada a su dueño. Solo me asigno como dueño si el
         // backend confirma que YO soy el reclamante (est['es_mio']); así una
         // cancha de "legado" no la apropia quien sincroniza primero.
@@ -351,7 +369,9 @@ class AppState extends ChangeNotifier {
       if (visible(c)) map[c.id] = c;
     }
     canchasEliminadas.forEach(map.remove); // no mostrar lo eliminado
-    return map.values.toList();
+    // Colapsa duplicados del MISMO lugar (varios ids por re-registrar/re-reclamar
+    // la misma cancha en pruebas): que no aparezca "Sabor Golazo" 3 veces.
+    return _dedupPorLugar(map.values.toList());
   }
 
   /// Edita una cancha del dueño (local + nube). Funciona aunque la cancha venga
