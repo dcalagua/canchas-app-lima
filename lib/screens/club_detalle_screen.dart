@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import '../data/reservas_repo.dart';
@@ -94,45 +92,17 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
   /// revirtió (creada == null), re-resolvemos por proximidad pero SOLO a una
   /// cancha MÍA (nunca a una verificada ajena).
   Future<void> _refrescarDescubierta(Cancha? creada) async {
-    await appState.sincronizarPropiedades();
-    if (!mounted) return;
-    Cancha? destino;
+    // Tras reclamar, MOSTRAR SIEMPRE la cancha recién creada (pendiente de
+    // verificación). NO re-resolvemos por proximidad/dedup: una cancha
+    // "verificada" cacheada localmente (de pruebas viejas, sin registro en el
+    // backend) podía secuestrar la ficha y mostrar la página de reserva.
     if (creada != null) {
-      for (final c in appState.todasLasCanchas()) {
-        if (c.id == creada.id) {
-          destino = c;
-          break;
-        }
-      }
-      destino ??= creada; // si el dedup la ocultó, muestro la creada (pendiente).
-    } else {
-      final email = appState.usuario?.email ?? '';
-      double mejorD = double.infinity;
-      for (final c in appState.todasLasCanchas()) {
-        if (!c.registrada || c.dueno != email) continue;
-        final d = _metros(c.ubicacion.latitude, c.ubicacion.longitude,
-            _cancha.ubicacion.latitude, _cancha.ubicacion.longitude);
-        if (d <= 80 && d < mejorD) {
-          mejorD = d;
-          destino = c;
-        }
-      }
+      if (creada.id != _cancha.id) setState(() => _cancha = creada);
+      return;
     }
-    if (destino != null && destino.id != _cancha.id) {
-      setState(() => _cancha = destino!);
-    }
-  }
-
-  static double _metros(
-      double lat1, double lng1, double lat2, double lng2) {
-    const r = 6371000.0;
-    final dLat = (lat2 - lat1) * math.pi / 180;
-    final dLng = (lng2 - lng1) * math.pi / 180;
-    final la1 = lat1 * math.pi / 180;
-    final la2 = lat2 * math.pi / 180;
-    final h = math.sin(dLat / 2) * math.sin(dLat / 2) +
-        math.cos(la1) * math.cos(la2) * math.sin(dLng / 2) * math.sin(dLng / 2);
-    return 2 * r * math.asin(math.sqrt(h));
+    // Reclamo revertido (creada == null): solo re-sincroniza el estado por si
+    // otro usuario reclamó el lugar; el panel de descubierta se re-consulta solo.
+    await appState.sincronizarPropiedades();
   }
 
   Color get _color => colorDeporte(_cancha.deporte);
