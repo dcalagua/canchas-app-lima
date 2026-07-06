@@ -15,6 +15,7 @@ import '../services/propiedad_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/selector_horario.dart';
+import 'agregar_cancha_screen.dart';
 
 /// Edición de una cancha ya registrada por el dueño: cambiar nombre, precio,
 /// deporte, horario/duración, dirección/ubicación, agregar foto o eliminarla.
@@ -42,7 +43,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
   final TextEditingController _dni =
       TextEditingController(); // DNI del reclamante (obligatorio al reclamar)
 
-  late Deporte _deporte = widget.cancha.deporte;
+  late final Deporte _deporte = widget.cancha.deporte; // fijo: no se cambia aquí
   late String _apertura = widget.cancha.horaApertura;
   late String _cierre = widget.cancha.horaCierre;
   late int _duracion = widget.cancha.duracionSlotMin;
@@ -287,6 +288,15 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
   void _avisar(String msg) => ScaffoldMessenger.of(context)
       .showSnackBar(SnackBar(content: Text(msg)));
 
+  /// Abre "Agregar cancha" para sumar otra cancha al MISMO local (otra de este
+  /// deporte o de uno distinto). La nueva hereda dueño y estado del local.
+  void _agregarOtraCancha() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+          builder: (_) => AgregarCanchaScreen(local: widget.cancha)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -405,23 +415,37 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
               'agrega otra cancha al local.',
               style: TextStyle(color: textoTenue, fontSize: 12)),
           const SizedBox(height: 8),
-          Wrap(
-            spacing: 10,
-            children: [
-              for (final d in Deporte.values)
-                ChoiceChip(
-                  avatar: Icon(iconoDeporte(d),
-                      size: 18,
-                      color: _deporte == d ? Colors.white : colorDeporte(d)),
-                  label: Text(d.etiqueta),
-                  selected: _deporte == d,
-                  selectedColor: colorDeporte(d),
-                  labelStyle: TextStyle(
-                      color: _deporte == d ? Colors.white : tinta,
-                      fontWeight: FontWeight.w600),
-                  onSelected: (_) => setState(() => _deporte = d),
-                ),
-            ],
+          // Deporte FIJO de la cancha (el detectado / elegido al crearla). No se
+          // cambia aquí: para otro deporte se agrega OTRA cancha al local.
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+              decoration: BoxDecoration(
+                color: colorDeporte(_deporte),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(iconoDeporte(_deporte), size: 18, color: Colors.white),
+                  const SizedBox(width: 7),
+                  Text(_deporte.etiqueta,
+                      style: const TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.w700)),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Agregar otra cancha al MISMO local: otra de fútbol, o de otro deporte.
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _guardando ? null : _agregarOtraCancha,
+              icon: const Icon(Icons.add_circle_outline, size: 20),
+              label: const Text('Agregar otra cancha a este local'),
+            ),
           ),
           const SizedBox(height: 16),
           TextField(
