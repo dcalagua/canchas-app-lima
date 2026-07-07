@@ -51,7 +51,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     return clubs;
   }
 
-  static const double _radioKm = 8.0; // canchas "cercanas" a la zona buscada
+  static const double _radioKm = 12.0; // canchas "cercanas" (zona Chosica dispersa)
 
   List<Cancha> _filtradas() {
     // Pádel retirado del piloto: nunca aparece en el mapa ni en la lista.

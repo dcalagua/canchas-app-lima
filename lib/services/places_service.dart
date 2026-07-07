@@ -59,7 +59,7 @@ class PlacesService {
   /// La app vuelve a llamar con `conFotos: true` para enriquecer las fotos luego.
   static Future<List<Cancha>> canchasCerca(
     LatLng centro, {
-    double radioMetros = 4000,
+    double radioMetros = 12000, // 12 km: en Chosica los clubes están dispersos
     bool conFotos = false,
   }) async {
     final viaFuncion = await _viaEdgeFunction(centro, radioMetros, conFotos);
