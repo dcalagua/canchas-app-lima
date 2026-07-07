@@ -65,6 +65,11 @@ class AppState extends ChangeNotifier {
   /// registra el dueño). SampleData queda solo para el panel-demo legado.
   List<Cancha> todasLasCanchas() {
     final map = <String, Cancha>{};
+    // Clubes sembrados del piloto (van primero: cualquier versión reclamada
+    // que llegue después gana por id/lugar).
+    for (final c in SampleData.sembradas) {
+      map[c.id] = c;
+    }
     for (final c in canchasDescubiertas) {
       map[c.id] = c;
     }

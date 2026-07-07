@@ -10,6 +10,27 @@ import '../models/models.dart';
 class SampleData {
   static const String clubActivo = 'Club Raqueta San Borja';
 
+  /// Clubes SEMBRADOS del piloto: lugares reales que Google no siempre devuelve
+  /// en la búsqueda de texto (indexación pobre en la zona). Se inyectan como
+  /// "descubiertos" (reclamables) para que aparezcan siempre en el corredor de
+  /// Chosica, sin depender de Places. Al reclamarlos, la versión registrada los
+  /// reemplaza (dedup por ubicación).
+  static const List<Cancha> sembradas = [
+    Cancha(
+      id: 'seed_regatas_chosica',
+      nombre: 'Club de Regatas Lima – Chosica',
+      club: 'Club de Regatas Lima – Chosica',
+      distrito: Distrito.laMolina, // referencial (Chosica no está en el enum)
+      deporte: Deporte.futbol, // genérico; el dueño precisa al reclamar
+      precioHora: 0,
+      ubicacion: LatLng(-11.950372837472894, -76.7055048427175),
+      clubFundador: false,
+      digitalizada: false,
+      direccion: 'Carretera Central, Lurigancho-Chosica',
+      registrada: false, // reclamable, como un lugar descubierto
+    ),
+  ];
+
   static const List<Cancha> canchas = [
     // --- Canchas del club que inicia sesión (panel del dueño) ---
     Cancha(
