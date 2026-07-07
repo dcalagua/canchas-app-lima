@@ -286,26 +286,23 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
 
   /// Abre un LOCAL desde su card. Si el usuario es su DUEÑO, va directo a su
   /// panel (Mis canchas); si no, a la ficha pública para reservar.
+  ///
+  /// IMPORTANTE: la ficha recibe el club TAL CUAL viene del card, con sus
+  /// canchas YA FILTRADAS por el deporte elegido (el card se arma desde
+  /// `_clubs()` = `Club.agrupar(_filtradas())`). Así, si buscas FÚTBOL y abres
+  /// Machuca, "Elige la cancha" muestra solo sus canchas de fútbol; si buscas
+  /// TENIS, solo la de tenis. Con filtro "Todos" se ven todas.
   void _abrirClub(Club club) {
     final email = appState.usuario?.email ?? '';
     final esMio = email.isNotEmpty && club.canchas.any((c) => c.dueno == email);
     if (esMio) {
       _abrirPanel(); // panel del dueño (Mis canchas)
-    } else {
-      _abrirDetalle(club.principal);
+      return;
     }
-  }
-
-  void _abrirDetalle(Cancha cancha) {
-    // Construye el club de esa cancha (un local puede tener varias) y abre su ficha.
-    final clubs = Club.agrupar(appState.todasLasCanchas());
-    final club = clubs.firstWhere(
-      (cl) => cl.canchas.any((c) => c.id == cancha.id),
-      orElse: () => Club(id: cancha.id, nombre: cancha.club, canchas: [cancha]),
-    );
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ClubDetalleScreen(club: club, canchaInicial: cancha),
+        builder: (_) =>
+            ClubDetalleScreen(club: club, canchaInicial: club.principal),
       ),
     );
   }
