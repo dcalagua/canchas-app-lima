@@ -10,6 +10,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../data/canchas_repo.dart';
+import '../services/supabase_service.dart';
 import '../models/models.dart';
 import '../services/propiedad_service.dart';
 import '../state/app_state.dart';
@@ -199,7 +200,27 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
       setState(() => _guardando = false);
       final motivo = CanchasRepo.ultimoErrorFoto ??
           'No se pudieron subir las fotos.';
-      _avisar('$motivo No se guardaron los cambios de fotos.');
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('No se subieron las fotos'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(motivo),
+              const SizedBox(height: 12),
+              Text('Proyecto Supabase del APK:\n${SupabaseService.proyecto}',
+                  style: const TextStyle(fontSize: 12, color: textoTenue)),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Entendido')),
+          ],
+        ),
+      );
       return;
     }
     final fotoUrl = fotos.isNotEmpty ? fotos.first : null;

@@ -20,4 +20,12 @@ class SupabaseService {
   }
 
   static SupabaseClient get client => Supabase.instance.client;
+
+  /// Host del proyecto al que apunta el APK (p. ej. `abcd1234.supabase.co`),
+  /// SIN la anon key. Sirve para diagnosticar: confirma que estás configurando
+  /// el MISMO proyecto que usa la app. Vacío = Supabase sin configurar.
+  static String get proyecto {
+    if (_url.isEmpty) return 'sin configurar';
+    return Uri.tryParse(_url)?.host ?? _url;
+  }
 }
