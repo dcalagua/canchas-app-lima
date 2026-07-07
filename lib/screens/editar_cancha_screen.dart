@@ -175,14 +175,31 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
     setState(() => _guardando = true);
 
     // Sube las fotos nuevas y arma la galería final (existentes + nuevas).
+    // Si alguna subida falla (bucket no configurado / sin red), lo contamos
+    // para avisar al dueño: guardar la cancha "sin fotos" y decir ✅ sería un
+    // falso éxito (por eso antes "no cargaban" al verlas como usuario).
     final fotos = List<String>.of(_fotosUrl);
+    var fallidas = 0;
     for (var i = 0; i < _fotosNuevas.length; i++) {
       final url = await CanchasRepo.subirFoto(
         widget.cancha.id,
         _fotosNuevas[i],
         sufijo: '${DateTime.now().millisecondsSinceEpoch}_$i',
       );
-      if (url != null) fotos.add(url);
+      if (url != null) {
+        fotos.add(url);
+      } else {
+        fallidas++;
+      }
+    }
+    // Si NINGUNA foto nueva subió (y no quedan URLs previas), no hay galería que
+    // guardar: aborta y avisa, para no pisar el estado con una cancha sin fotos.
+    if (fallidas > 0 && fotos.isEmpty) {
+      if (!mounted) return;
+      setState(() => _guardando = false);
+      _avisar('No se pudieron subir las fotos (revisa tu conexión). '
+          'Inténtalo de nuevo; no se guardaron cambios de fotos.');
+      return;
     }
     final fotoUrl = fotos.isNotEmpty ? fotos.first : null;
 
@@ -248,14 +265,15 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
     if (!mounted) return;
     setState(() => _guardando = false);
     Navigator.of(context).pop();
+    final aviso = eraReclamo
+        ? '✅ "$nombre" reclamada. En revisión: te contactaremos por WhatsApp para validarla antes de activarla.'
+        : fallidas > 0
+            ? '⚠️ "$nombre" actualizada, pero $fallidas foto(s) no se pudieron subir. Reintenta con mejor conexión.'
+            : '✅ "$nombre" actualizada.';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        backgroundColor: pino,
-        content: Text(
-            eraReclamo
-                ? '✅ "$nombre" reclamada. En revisión: te contactaremos por WhatsApp para validarla antes de activarla.'
-                : '✅ "$nombre" actualizada.',
-            style: const TextStyle(color: Colors.white)),
+        backgroundColor: fallidas > 0 ? clayOscuro : pino,
+        content: Text(aviso, style: const TextStyle(color: Colors.white)),
         duration: const Duration(seconds: 5),
       ),
     );
