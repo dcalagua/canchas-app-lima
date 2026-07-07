@@ -290,6 +290,62 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
+                  // Elige la cancha/deporte: la foto y la info de arriba cambian
+                  // según la cancha elegida (cada una tiene sus fotos y precio).
+                  if (!descubierta && !pendiente && c.canchas.length > 1) ...[
+                    Text('Elige la cancha',
+                        style: t.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      height: 44,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: c.canchas.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 8),
+                        itemBuilder: (_, i) {
+                          final cc = c.canchas[i];
+                          final sel = cc.id == _cancha.id;
+                          return GestureDetector(
+                            onTap: () => setState(() {
+                              _cancha = cc;
+                              _hora = null;
+                            }),
+                            child: Container(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 14),
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: sel
+                                    ? const Color(0xFFEAF6C2)
+                                    : Colors.white,
+                                borderRadius: BorderRadius.circular(999),
+                                border: Border.all(
+                                    color:
+                                        sel ? pino : const Color(0xFFE3DECF),
+                                    width: 1.5),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(iconoDeporte(cc.deporte),
+                                      size: 16,
+                                      color: colorDeporte(cc.deporte)),
+                                  const SizedBox(width: 7),
+                                  Text(cc.nombre,
+                                      style: t.bodyMedium?.copyWith(
+                                          fontWeight: sel
+                                              ? FontWeight.w700
+                                              : FontWeight.w600,
+                                          color: tinta)),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                   Row(
                     children: [
                       if (c.clubFundador)
@@ -343,68 +399,6 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                       _FilaAmenities(claves: _cancha.amenidades),
                       const SizedBox(height: 20),
                     ],
-                    // Selector "Elige cancha"
-                    if (c.canchas.length > 1) ...[
-                      Text('Elige cancha',
-                          style: t.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 11),
-                      SizedBox(
-                        height: 44,
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: c.canchas.length,
-                          separatorBuilder: (_, __) => const SizedBox(width: 8),
-                          itemBuilder: (_, i) {
-                            final cc = c.canchas[i];
-                            final sel = cc.id == _cancha.id;
-                            return GestureDetector(
-                              onTap: () => setState(() {
-                                _cancha = cc;
-                                _hora = null;
-                              }),
-                              child: Container(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 14),
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  color: sel
-                                      ? const Color(0xFFEAF6C2)
-                                      : Colors.white,
-                                  borderRadius: BorderRadius.circular(999),
-                                  border: Border.all(
-                                      color: sel
-                                          ? pino
-                                          : const Color(0xFFE3DECF),
-                                      width: 1.5),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      width: 9,
-                                      height: 9,
-                                      decoration: BoxDecoration(
-                                          color: colorDeporte(cc.deporte),
-                                          borderRadius:
-                                              BorderRadius.circular(2)),
-                                    ),
-                                    const SizedBox(width: 7),
-                                    Text(cc.nombre,
-                                        style: t.bodyMedium?.copyWith(
-                                            fontWeight: sel
-                                                ? FontWeight.w700
-                                                : FontWeight.w600,
-                                            color: tinta)),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                    ],
-
                     // Día
                     Text('Elige el día',
                         style: t.titleMedium
