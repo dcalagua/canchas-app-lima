@@ -28,6 +28,12 @@ class _BuscarDireccionScreenState extends State<BuscarDireccionScreen> {
   String? _error;
   late double _radioKm = appState.radioBusquedaKm; // radio de búsqueda (km)
 
+  // Zonas cercanas al usuario (dinámicas, por GPS). Si no hay ubicación, se
+  // usa la lista fija de abajo como respaldo.
+  List<_Zona> _zonas = const [];
+  bool _cargandoZonas = true;
+
+  // Respaldo (sin GPS): distritos populares de Lima central.
   static const _distritos = <String, LatLng>{
     'San Borja': LatLng(-12.108, -76.999),
     'Surco': LatLng(-12.135, -76.992),
@@ -35,6 +41,56 @@ class _BuscarDireccionScreenState extends State<BuscarDireccionScreen> {
     'Miraflores': LatLng(-12.121, -77.029),
     'San Isidro': LatLng(-12.097, -77.036),
   };
+
+  @override
+  void initState() {
+    super.initState();
+    _cargarZonasCercanas();
+  }
+
+  /// Deriva zonas cercanas geocodificando la ubicación del usuario y unos
+  /// puntos a su alrededor (N/S/E/O ~4 km). Fail-safe: si falla, deja la lista
+  /// de respaldo.
+  Future<void> _cargarZonasCercanas() async {
+    final centro = await LocationService.ultimaConocida() ??
+        await LocationService.ubicacionActual();
+    if (centro == null) {
+      if (mounted) setState(() => _cargandoZonas = false);
+      return;
+    }
+    const off = 0.035; // ~3.9 km
+    final puntos = <LatLng>[
+      centro,
+      LatLng(centro.latitude + off, centro.longitude),
+      LatLng(centro.latitude - off, centro.longitude),
+      LatLng(centro.latitude, centro.longitude + off),
+      LatLng(centro.latitude, centro.longitude - off),
+    ];
+    final encontradas = <String, LatLng>{};
+    for (final p in puntos) {
+      try {
+        final marks = await placemarkFromCoordinates(p.latitude, p.longitude);
+        if (marks.isEmpty) continue;
+        final m = marks.first;
+        final nombre = (m.subLocality?.trim().isNotEmpty == true
+                ? m.subLocality
+                : (m.locality?.trim().isNotEmpty == true
+                    ? m.locality
+                    : m.subAdministrativeArea)) ??
+            '';
+        if (nombre.trim().isEmpty) continue;
+        encontradas.putIfAbsent(nombre.trim(), () => p);
+      } catch (_) {
+        // ignora este punto
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _zonas =
+          encontradas.entries.map((e) => _Zona(e.key, e.value)).toList();
+      _cargandoZonas = false;
+    });
+  }
 
   @override
   void dispose() {
@@ -189,28 +245,60 @@ class _BuscarDireccionScreenState extends State<BuscarDireccionScreen> {
               ],
             ),
             const SizedBox(height: 22),
-            Text('Distritos populares',
+            Text(_zonas.isNotEmpty ? 'Zonas cerca de ti' : 'Distritos populares',
                 style: Theme.of(context)
                     .textTheme
                     .titleSmall
                     ?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                for (final e in _distritos.entries)
-                  ActionChip(
-                    avatar: const Icon(Icons.place, size: 18, color: verdeCancha),
-                    label: Text(e.key),
-                    onPressed: () => Navigator.of(context)
-                        .pop(ResultadoBusqueda(e.value, e.key)),
-                  ),
-              ],
-            ),
+            if (_cargandoZonas)
+              Row(
+                children: const [
+                  SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2)),
+                  SizedBox(width: 10),
+                  Text('Buscando zonas cerca de ti…',
+                      style: TextStyle(color: textoTenue)),
+                ],
+              )
+            else
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  // Dinámicas (GPS) si hay; si no, la lista de respaldo.
+                  if (_zonas.isNotEmpty)
+                    for (final z in _zonas)
+                      ActionChip(
+                        avatar: const Icon(Icons.place,
+                            size: 18, color: verdeCancha),
+                        label: Text(z.nombre),
+                        onPressed: () => Navigator.of(context)
+                            .pop(ResultadoBusqueda(z.centro, z.nombre)),
+                      )
+                  else
+                    for (final e in _distritos.entries)
+                      ActionChip(
+                        avatar: const Icon(Icons.place,
+                            size: 18, color: verdeCancha),
+                        label: Text(e.key),
+                        onPressed: () => Navigator.of(context)
+                            .pop(ResultadoBusqueda(e.value, e.key)),
+                      ),
+                ],
+              ),
           ],
         ),
       ),
     );
   }
+}
+
+/// Una zona cercana derivada por GPS: nombre (distrito/localidad) + su punto.
+class _Zona {
+  final String nombre;
+  final LatLng centro;
+  const _Zona(this.nombre, this.centro);
 }
