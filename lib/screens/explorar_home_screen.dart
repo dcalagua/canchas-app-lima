@@ -284,6 +284,18 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     _rebuildMarkers();
   }
 
+  /// Abre un LOCAL desde su card. Si el usuario es su DUEÑO, va directo a su
+  /// panel (Mis canchas); si no, a la ficha pública para reservar.
+  void _abrirClub(Club club) {
+    final email = appState.usuario?.email ?? '';
+    final esMio = email.isNotEmpty && club.canchas.any((c) => c.dueno == email);
+    if (esMio) {
+      _abrirPanel(); // panel del dueño (Mis canchas)
+    } else {
+      _abrirDetalle(club.principal);
+    }
+  }
+
   void _abrirDetalle(Cancha cancha) {
     // Construye el club de esa cancha (un local puede tener varias) y abre su ficha.
     final clubs = Club.agrupar(appState.todasLasCanchas());
@@ -431,7 +443,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                           final club = clubs[i - 1];
                           return ClubCard(
                             club: club,
-                            onTap: () => _abrirDetalle(club.principal),
+                            onTap: () => _abrirClub(club),
                           );
                         },
                       );
@@ -523,7 +535,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                       onPageChanged: _onPage,
                       itemBuilder: (context, i) => _LocalCarruselCard(
                         club: lista[i],
-                        onTap: () => _abrirDetalle(lista[i].principal),
+                        onTap: () => _abrirClub(lista[i]),
                       ),
                     );
                   },
