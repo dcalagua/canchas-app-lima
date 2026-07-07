@@ -886,33 +886,43 @@ class _FiltrosDeporte extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget chip(String texto, IconData icono,
+    // Píldora estilo Airbnb: fondo blanco, emoji + etiqueta; al seleccionar,
+    // borde oscuro + sombra más marcada y texto en negrita.
+    Widget chip(String emoji, String texto,
         {required bool activo, required VoidCallback onTap}) {
       return Padding(
-        padding: const EdgeInsets.only(right: 8),
+        padding: const EdgeInsets.only(right: 10),
         child: GestureDetector(
           onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
             decoration: BoxDecoration(
-              color: activo ? verdeCancha : Colors.white,
+              color: Colors.white,
               borderRadius: BorderRadius.circular(30),
-              boxShadow: const [
-                BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2)),
+              border: Border.all(
+                color: activo ? tinta : const Color(0xFFE6E4DD),
+                width: activo ? 1.6 : 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(activo ? 0.12 : 0.05),
+                  blurRadius: activo ? 8 : 4,
+                  offset: const Offset(0, 2),
+                ),
               ],
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(icono,
-                    size: 16, color: activo ? Colors.white : verdeCancha),
-                const SizedBox(width: 6),
+                Text(emoji, style: const TextStyle(fontSize: 16)),
+                const SizedBox(width: 7),
                 Text(
                   texto,
                   style: TextStyle(
-                    color: activo ? Colors.white : tinta,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
+                    color: tinta,
+                    fontWeight: activo ? FontWeight.w800 : FontWeight.w600,
+                    fontSize: 14,
                   ),
                 ),
               ],
@@ -928,17 +938,16 @@ class _FiltrosDeporte extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
-            chip('Todos', Icons.sports,
+            chip('🏟️', 'Todos',
                 activo: !soloClubes && seleccion == null,
                 onTap: () => onSeleccion(null)),
-            chip('Fútbol', Icons.sports_soccer,
+            chip('⚽', 'Fútbol',
                 activo: !soloClubes && seleccion == Deporte.futbol,
                 onTap: () => onSeleccion(Deporte.futbol)),
-            chip('Tenis', Icons.sports_tennis,
+            chip('🎾', 'Tenis',
                 activo: !soloClubes && seleccion == Deporte.tenis,
                 onTap: () => onSeleccion(Deporte.tenis)),
-            chip('Clubes', Icons.apartment,
-                activo: soloClubes, onTap: onClubes),
+            chip('🏛️', 'Clubes', activo: soloClubes, onTap: onClubes),
           ],
         ),
       ),
