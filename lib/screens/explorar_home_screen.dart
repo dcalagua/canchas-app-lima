@@ -51,7 +51,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     return clubs;
   }
 
-  static const double _radioKm = 12.0; // canchas "cercanas" (zona Chosica dispersa)
+  static const double _radioKm = 20.0; // cubre corredor Ñaña–Chosica–Ricardo Palma
 
   List<Cancha> _filtradas() {
     // Pádel retirado del piloto: nunca aparece en el mapa ni en la lista.
