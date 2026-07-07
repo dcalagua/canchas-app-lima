@@ -20,6 +20,15 @@ enum Deporte {
   const Deporte(this.etiqueta);
 }
 
+/// Deportes que la app OFRECE al usuario (selectores, filtros, secciones).
+/// Pádel se retiró del piloto: sigue en el enum para no romper datos antiguos
+/// al cargarlos, pero no se muestra ni se puede elegir. Foco: fútbol y tenis.
+const List<Deporte> deportesActivos = [
+  Deporte.futbol,
+  Deporte.tenis,
+  Deporte.pickleball,
+];
+
 /// Una cancha en el marketplace.
 class Cancha {
   final String id;

@@ -22,6 +22,31 @@ class Club {
   bool get clubFundador => canchas.any((c) => c.clubFundador);
   bool get registrada => canchas.any((c) => c.registrada);
 
+  /// Palabras que delatan un CLUB formal (membresía / country club) en el
+  /// nombre del local. Sirve para separarlos de las canchas de alquiler suelto.
+  static const _palabrasClub = [
+    'club',
+    'country',
+    'villa',
+    'lawn',
+    'golf',
+    'regatas',
+    'campestre',
+    'terrazas',
+    'racquet',
+    'raqueta',
+    'polo',
+  ];
+
+  /// ¿Es un CLUB formal (Country Club El Bosque, Villa Club, Regatas…)? Se
+  /// agrupa aparte del alquiler suelto. Regla: nombre con palabra de club, o
+  /// varios deportes, o club fundador del piloto.
+  bool get esClubFormal {
+    final n = nombre.toLowerCase();
+    if (_palabrasClub.any(n.contains)) return true;
+    return deportes.length > 1 || clubFundador;
+  }
+
   /// Club verificado: está en Pichangol y al menos una de sus canchas pasó la
   /// verificación. Habilita el sello público "✓ Verificada".
   bool get verificada => registrada && canchas.any((c) => c.verificada);

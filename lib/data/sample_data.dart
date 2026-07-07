@@ -22,11 +22,6 @@ class SampleData {
       distrito: Distrito.sanBorja, deporte: Deporte.tenis, precioHora: 65,
       ubicacion: LatLng(-12.1090, -76.9985), clubFundador: true, digitalizada: true,
     ),
-    Cancha(
-      id: 'c3', nombre: 'Pádel 1', club: clubActivo,
-      distrito: Distrito.sanBorja, deporte: Deporte.padel, precioHora: 90,
-      ubicacion: LatLng(-12.1082, -76.9994), clubFundador: true, digitalizada: true,
-    ),
 
     // --- Otras canchas de la zona piloto (pipeline / mapa del explorador) ---
     Cancha(
@@ -35,29 +30,14 @@ class SampleData {
       ubicacion: LatLng(-12.1110, -77.0020), clubFundador: false, digitalizada: false,
     ),
     Cancha(
-      id: 'c5', nombre: 'Pádel Surco Park', club: 'Surco Pádel Park',
-      distrito: Distrito.surco, deporte: Deporte.padel, precioHora: 95,
-      ubicacion: LatLng(-12.1355, -76.9925), clubFundador: false, digitalizada: false,
-    ),
-    Cancha(
       id: 'c6', nombre: 'Cancha 1 - Los Cedros', club: 'Club Los Cedros',
       distrito: Distrito.surco, deporte: Deporte.tenis, precioHora: 68,
       ubicacion: LatLng(-12.1402, -76.9880), clubFundador: false, digitalizada: false,
     ),
     Cancha(
-      id: 'c7', nombre: 'Pádel Molina Indoor', club: 'Molina Indoor',
-      distrito: Distrito.laMolina, deporte: Deporte.padel, precioHora: 100,
-      ubicacion: LatLng(-12.0795, -76.9480), clubFundador: false, digitalizada: false,
-    ),
-    Cancha(
       id: 'c8', nombre: 'Tenis La Planicie', club: 'La Planicie Tenis',
       distrito: Distrito.laMolina, deporte: Deporte.tenis, precioHora: 75,
       ubicacion: LatLng(-12.0760, -76.9410), clubFundador: false, digitalizada: false,
-    ),
-    Cancha(
-      id: 'c9', nombre: 'Pádel Camino Real', club: 'Camino Real Club',
-      distrito: Distrito.laMolina, deporte: Deporte.padel, precioHora: 92,
-      ubicacion: LatLng(-12.0820, -76.9445), clubFundador: false, digitalizada: false,
     ),
 
     // --- Fútbol sintético (nuevo deporte) ---

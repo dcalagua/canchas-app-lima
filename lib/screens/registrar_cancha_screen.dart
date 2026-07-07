@@ -676,7 +676,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
               spacing: 10,
               runSpacing: 8,
               children: [
-                for (final d in Deporte.values)
+                for (final d in deportesActivos)
                   FilterChip(
                     avatar: Icon(iconoDeporte(d),
                         size: 18,

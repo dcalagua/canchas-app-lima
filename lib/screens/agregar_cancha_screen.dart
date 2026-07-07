@@ -137,7 +137,7 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
           Wrap(
             spacing: 10,
             children: [
-              for (final d in Deporte.values)
+              for (final d in deportesActivos)
                 ChoiceChip(
                   avatar: Icon(iconoDeporte(d),
                       size: 18,

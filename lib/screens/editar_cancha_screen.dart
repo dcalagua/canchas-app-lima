@@ -387,7 +387,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
             controller: _nombre,
             decoration: const InputDecoration(
               labelText: 'Nombre de la cancha',
-              helperText: 'Ej.: Fútbol 1, Tenis 1, Pádel 2…',
+              helperText: 'Ej.: Fútbol 1, Tenis 1, Cancha 2…',
             ),
           ),
           const SizedBox(height: 14),

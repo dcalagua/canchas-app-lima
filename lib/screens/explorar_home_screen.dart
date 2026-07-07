@@ -34,6 +34,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
       PageController(viewportFraction: 0.88);
 
   Deporte? _filtro = Deporte.futbol; // por defecto: Fútbol
+  bool _soloClubes = false; // pestaña "Clubes": solo clubes formales (country…)
   int _selected = 0;
   Set<Marker> _markers = {};
 
@@ -43,13 +44,23 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
   bool _ubicando = true; // true mientras se resuelve la ubicación inicial
 
   /// Clubes derivados de las canchas filtradas (un local = varias canchas).
-  List<Club> _clubs() => Club.agrupar(_filtradas());
+  /// En la pestaña "Clubes" solo quedan los clubes formales (country clubs…).
+  List<Club> _clubs() {
+    final clubs = Club.agrupar(_filtradas());
+    if (_soloClubes) return clubs.where((c) => c.esClubFormal).toList();
+    return clubs;
+  }
 
   static const double _radioKm = 8.0; // canchas "cercanas" a la zona buscada
 
   List<Cancha> _filtradas() {
-    final base = appState.todasLasCanchas();
-    var lista = _filtro == null
+    // Pádel retirado del piloto: nunca aparece en el mapa ni en la lista.
+    final base = appState
+        .todasLasCanchas()
+        .where((c) => c.deporte != Deporte.padel)
+        .toList();
+    // En "Clubes" no se filtra por deporte (un club puede tener varios).
+    var lista = (_filtro == null || _soloClubes)
         ? base
         : base.where((c) => c.deporte == _filtro).toList();
 
@@ -239,8 +250,22 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
   void _cambiarFiltro(Deporte? f) {
     setState(() {
       _filtro = f;
+      _soloClubes = false; // elegir un deporte sale de la pestaña "Clubes"
       _selected = 0;
     });
+    _reencuadrar();
+  }
+
+  /// Activa la pestaña "Clubes": solo clubes formales (country clubs, etc.).
+  void _activarClubes() {
+    setState(() {
+      _soloClubes = true;
+      _selected = 0;
+    });
+    _reencuadrar();
+  }
+
+  void _reencuadrar() {
     if (_pageController.hasClients) _pageController.jumpToPage(0);
     final clubs = _clubs();
     if (clubs.isNotEmpty) {
@@ -367,12 +392,12 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                           ),
                         );
                       }
-                      // Clasificar: CLUBES = locales formales (varios deportes o
-                      // club fundador). El resto se agrupa por su deporte.
+                      // Clasificar: CLUBES = locales formales (country clubs,
+                      // varios deportes, fundador). El resto, por su deporte.
                       final clubesFormales = <Club>[];
                       final porDeporte = <Deporte, List<Club>>{};
                       for (final cl in clubs) {
-                        if (cl.deportes.length > 1 || cl.clubFundador) {
+                        if (cl.esClubFormal) {
                           clubesFormales.add(cl);
                         } else {
                           porDeporte
@@ -396,7 +421,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                             child: ClubCard(
                                 club: cl, onTap: () => _abrirClub(cl)),
                           );
-                      for (final d in Deporte.values) {
+                      for (final d in deportesActivos) {
                         final lista = porDeporte[d] ?? const <Club>[];
                         if (lista.isEmpty) continue;
                         hijos.add(_SeccionHeader(
@@ -433,7 +458,9 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                   const SizedBox(height: 10),
                   _FiltrosDeporte(
                     seleccion: _filtro,
+                    soloClubes: _soloClubes,
                     onSeleccion: _cambiarFiltro,
+                    onClubes: _activarClubes,
                   ),
                   // Feedback mientras la app trae canchas reales cerca (Places).
                   ListenableBuilder(
@@ -596,7 +623,7 @@ class _BarraBusqueda extends StatelessWidget {
                           Text(
                             buscando
                                 ? 'Canchas cerca de tu zona'
-                                : 'Tenis · Pádel · Fútbol · Lima',
+                                : 'Fútbol · Tenis · Clubes · Lima',
                             style: const TextStyle(
                                 color: textoTenue, fontSize: 12),
                           ),
@@ -748,17 +775,24 @@ class _SinCanchasCerca extends StatelessWidget {
 
 class _FiltrosDeporte extends StatelessWidget {
   final Deporte? seleccion;
+  final bool soloClubes;
   final ValueChanged<Deporte?> onSeleccion;
-  const _FiltrosDeporte({required this.seleccion, required this.onSeleccion});
+  final VoidCallback onClubes;
+  const _FiltrosDeporte({
+    required this.seleccion,
+    required this.soloClubes,
+    required this.onSeleccion,
+    required this.onClubes,
+  });
 
   @override
   Widget build(BuildContext context) {
-    Widget chip(String texto, Deporte? valor, IconData icono) {
-      final activo = seleccion == valor;
+    Widget chip(String texto, IconData icono,
+        {required bool activo, required VoidCallback onTap}) {
       return Padding(
         padding: const EdgeInsets.only(right: 8),
         child: GestureDetector(
-          onTap: () => onSeleccion(valor),
+          onTap: onTap,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
             decoration: BoxDecoration(
@@ -795,10 +829,17 @@ class _FiltrosDeporte extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
-            chip('Todos', null, Icons.sports),
-            chip('Fútbol', Deporte.futbol, Icons.sports_soccer),
-            chip('Tenis', Deporte.tenis, Icons.sports_tennis),
-            chip('Pádel', Deporte.padel, Icons.sports_handball),
+            chip('Todos', Icons.sports,
+                activo: !soloClubes && seleccion == null,
+                onTap: () => onSeleccion(null)),
+            chip('Fútbol', Icons.sports_soccer,
+                activo: !soloClubes && seleccion == Deporte.futbol,
+                onTap: () => onSeleccion(Deporte.futbol)),
+            chip('Tenis', Icons.sports_tennis,
+                activo: !soloClubes && seleccion == Deporte.tenis,
+                onTap: () => onSeleccion(Deporte.tenis)),
+            chip('Clubes', Icons.apartment,
+                activo: soloClubes, onTap: onClubes),
           ],
         ),
       ),
