@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../brand.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
-import 'explorar_home_screen.dart';
+import 'app_shell.dart';
 import 'onboarding_screen.dart';
 
 /// Splash de marca: gancho visual de 1.8s antes de entrar al mapa.
@@ -40,7 +40,7 @@ class _SplashScreenState extends State<SplashScreen> {
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 500),
         pageBuilder: (_, __, ___) =>
-            onboardingVisto ? const ExplorarHomeScreen() : const OnboardingScreen(),
+            onboardingVisto ? const AppShell() : const OnboardingScreen(),
         transitionsBuilder: (_, anim, __, child) =>
             FadeTransition(opacity: anim, child: child),
       ),

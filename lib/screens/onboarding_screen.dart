@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../brand.dart';
 import '../theme.dart';
-import 'explorar_home_screen.dart';
+import 'app_shell.dart';
 
 const String kPrefOnboardingVisto = 'onboarding_visto';
 
@@ -48,7 +48,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     } catch (_) {}
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const ExplorarHomeScreen()),
+      MaterialPageRoute(builder: (_) => const AppShell()),
     );
   }
 
