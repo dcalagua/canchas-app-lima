@@ -157,8 +157,6 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         MaterialPageRoute(builder: (_) => const ReservasDuenoScreen()));
   }
 
-  Color get _color => colorDeporte(_cancha.deporte);
-
   bool _ocupada(String hora) => appState.reservas.any((r) =>
       r.canchaId == _cancha.id && r.fecha == _fechaIso && r.horaInicio == hora);
 
@@ -221,28 +219,59 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         onRefresh: _pullRefresh,
         child: CustomScrollView(
         slivers: [
+          // Cabecera FIJA en degradado sage (no se mueve al hacer scroll),
+          // igual al estilo del panel "Mis canchas". La foto va en una card
+          // dentro del contenido.
           SliverAppBar(
-            expandedHeight: 300,
             pinned: true,
-            backgroundColor: _color,
-            foregroundColor: Colors.white,
+            toolbarHeight: 86,
             automaticallyImplyLeading: false,
-            leadingWidth: 60,
-            leading: Padding(
-              padding: const EdgeInsets.only(left: 12, top: 8, bottom: 8),
-              child: _CircBtn(
-                  icon: Icons.arrow_back,
-                  onTap: () => Navigator.of(context).maybePop()),
+            backgroundColor: sage,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            flexibleSpace: const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [sage, verde, bosque],
+                ),
+                borderRadius: BorderRadius.vertical(bottom: Radius.circular(22)),
+              ),
+            ),
+            leadingWidth: 52,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back, color: Colors.white),
+              onPressed: () => Navigator.of(context).maybePop(),
+            ),
+            titleSpacing: 0,
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(c.nombre,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.titleLarge?.copyWith(
+                        color: Colors.white, fontWeight: FontWeight.w700)),
+                Text(
+                  c.direccion ??
+                      '${c.barrio} · ${c.canchas.length} ${c.canchas.length == 1 ? 'cancha' : 'canchas'} · ${c.deportes.map((d) => d.etiqueta).join(' · ')}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: t.bodySmall?.copyWith(color: Colors.white70),
+                ),
+              ],
             ),
             actions: [
-              _CircBtn(icon: Icons.ios_share, onTap: () {}),
-              const SizedBox(width: 8),
-              _CircBtn(icon: Icons.favorite_border, onTap: () {}),
-              const SizedBox(width: 12),
+              IconButton(
+                  icon: const Icon(Icons.ios_share, color: Colors.white),
+                  onPressed: () {}),
+              IconButton(
+                  icon: const Icon(Icons.favorite_border, color: Colors.white),
+                  onPressed: () {}),
+              const SizedBox(width: 6),
             ],
-            flexibleSpace: FlexibleSpaceBar(
-              background: _HeroGaleria(cancha: _cancha),
-            ),
           ),
           SliverToBoxAdapter(
             child: Padding(
@@ -252,6 +281,15 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Foto de la cancha (card redondeada con carrusel + contador).
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: SizedBox(
+                      height: 200,
+                      child: _HeroGaleria(cancha: _cancha),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   Row(
                     children: [
                       if (c.clubFundador)
@@ -275,15 +313,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                       ],
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  Text(c.nombre, style: t.headlineSmall),
-                  const SizedBox(height: 3),
-                  Text(
-                    c.direccion ??
-                        '${c.barrio} · ${c.canchas.length} ${c.canchas.length == 1 ? 'cancha' : 'canchas'} · ${c.deportes.map((d) => d.etiqueta).join(' · ')}',
-                    style: t.bodyMedium?.copyWith(color: textoTenue),
-                  ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
 
                   if (descubierta)
                     _PanelDescubierta(
@@ -1344,7 +1374,7 @@ class _HeroGaleriaState extends State<_HeroGaleria> {
             ),
             if (fotos.length > 1)
               Positioned(
-                bottom: 40,
+                bottom: 12,
                 left: 0,
                 right: 0,
                 child: Row(
@@ -1367,27 +1397,11 @@ class _HeroGaleriaState extends State<_HeroGaleria> {
                 ),
               ),
           ],
-          // Scrim superior: los botones circulares se ven sobre fotos claras.
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: Container(
-              height: 110,
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Color(0x55000000), Colors.transparent],
-                ),
-              ),
-            ),
-          ),
-          // Contador de fotos "1 / N" (estilo Airbnb).
+          // Contador de fotos "1 / N" (sobre la foto, abajo a la derecha).
           if (fotos.length > 1)
             Positioned(
-              bottom: 40,
-              right: 14,
+              bottom: 12,
+              right: 12,
               child: Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -1402,48 +1416,7 @@ class _HeroGaleriaState extends State<_HeroGaleria> {
                         fontWeight: FontWeight.w700)),
               ),
             ),
-          // "Labio" redondeado papel al fondo del hero: hace que la hoja de
-          // contenido MONTE sobre la foto con esquinas curvas (look Airbnb).
-          const Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: SizedBox(
-              height: 28,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: papel,
-                  borderRadius:
-                      BorderRadius.vertical(top: Radius.circular(26)),
-                ),
-              ),
-            ),
-          ),
         ],
-      ),
-    );
-  }
-}
-
-/// Botón circular blanco para el hero (volver / compartir / guardar).
-class _CircBtn extends StatelessWidget {
-  const _CircBtn({required this.icon, required this.onTap});
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      shape: const CircleBorder(),
-      elevation: 2,
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(8),
-          child: Icon(icon, size: 20, color: tinta),
-        ),
       ),
     );
   }
