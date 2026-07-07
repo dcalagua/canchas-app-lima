@@ -103,7 +103,7 @@ class Club {
   /// Radio para considerar que un pin de Google es parte del MISMO recinto que
   /// un club formal (un country club ocupa varias hectáreas y aparece en Google
   /// como varios lugares: el club + sus canchas + atracciones).
-  static const double _fusionRadioKm = 0.3; // 300 m
+  static const double _fusionRadioKm = 0.5; // 500 m (country clubs son grandes)
 
   /// Absorbe lugares DESCUBIERTOS (Google, aún sin reclamar) dentro de un CLUB
   /// formal cercano, para que un mismo recinto no salga como varias tarjetas.
