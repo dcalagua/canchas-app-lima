@@ -228,6 +228,9 @@ class PlacesService {
     'gimnasio', 'gym', 'tienda', 'store', 'colegio',
     'universidad', 'federación', 'federacion', 'crossfit', 'spinning',
     'natación', 'natacion', 'piscina', 'billar', 'bowling',
+    // Atracciones/servicios DENTRO de un club que no son canchas de alquiler:
+    'laguna', 'acuático', 'acuatico', 'waterpark', 'parque acuático',
+    'restaurante', 'hotel', 'spa', 'juegos para niños', 'zoológico', 'zoologico',
   ];
 
   /// Heurística de deporte por nombre/tipos del lugar. Devuelve null si no
