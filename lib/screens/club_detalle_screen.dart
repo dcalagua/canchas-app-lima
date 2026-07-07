@@ -245,14 +245,10 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
             ),
           ),
           SliverToBoxAdapter(
-            // Hoja blanca redondeada que "monta" sobre la foto (look Airbnb).
-            child: Container(
-              transform: Matrix4.translationValues(0, -24, 0),
-              decoration: const BoxDecoration(
-                color: papel,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
-              ),
-              padding: const EdgeInsets.fromLTRB(22, 22, 22, 96),
+            child: Padding(
+              // El "labio" redondeado que monta sobre la foto lo dibuja el hero
+              // (ver _HeroGaleria); aquí el contenido sigue seamless sobre papel.
+              padding: const EdgeInsets.fromLTRB(22, 14, 22, 110),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1348,7 +1344,7 @@ class _HeroGaleriaState extends State<_HeroGaleria> {
             ),
             if (fotos.length > 1)
               Positioned(
-                bottom: 14,
+                bottom: 40,
                 left: 0,
                 right: 0,
                 child: Row(
@@ -1390,7 +1386,7 @@ class _HeroGaleriaState extends State<_HeroGaleria> {
           // Contador de fotos "1 / N" (estilo Airbnb).
           if (fotos.length > 1)
             Positioned(
-              bottom: 14,
+              bottom: 40,
               right: 14,
               child: Container(
                 padding:
@@ -1406,6 +1402,23 @@ class _HeroGaleriaState extends State<_HeroGaleria> {
                         fontWeight: FontWeight.w700)),
               ),
             ),
+          // "Labio" redondeado papel al fondo del hero: hace que la hoja de
+          // contenido MONTE sobre la foto con esquinas curvas (look Airbnb).
+          const Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: SizedBox(
+              height: 28,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: papel,
+                  borderRadius:
+                      BorderRadius.vertical(top: Radius.circular(26)),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
