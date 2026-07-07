@@ -40,6 +40,34 @@ class AppState extends ChangeNotifier {
   final Set<String> canchasEliminadas = {};
   bool descubriendo = false; // true mientras se traen canchas cercanas (feedback UI)
 
+  /// Copia runtime de los clubes sembrados (SampleData.sembradas). Se enriquece
+  /// con fotos reales de Google en `enriquecerSembradas()` sin tocar el const.
+  final List<Cancha> _sembradas = List.of(SampleData.sembradas);
+
+  /// Trae las FOTOS reales de Google para los clubes sembrados (que no pasan por
+  /// el descubrimiento normal) y las inyecta. Best-effort: si Places no
+  /// responde, los sembrados quedan con su placeholder.
+  Future<void> enriquecerSembradas() async {
+    if (!PlacesService.disponible) return;
+    var cambio = false;
+    for (var i = 0; i < _sembradas.length; i++) {
+      final s = _sembradas[i];
+      if (s.fotos.isNotEmpty) continue; // ya tiene
+      // Consulta = nombre sin el sufijo de sede (tras "–"/"-").
+      final query = s.nombre.split(RegExp(r'[–-]')).first.trim();
+      try {
+        final fotos = await PlacesService.fotosDeLugar(query, s.ubicacion);
+        if (fotos.isNotEmpty) {
+          _sembradas[i] = s.copyWith(fotos: fotos, fotoUrl: fotos.first);
+          cambio = true;
+        }
+      } catch (_) {
+        // sin fotos: se queda con el placeholder
+      }
+    }
+    if (cambio) notifyListeners();
+  }
+
   /// Radio de búsqueda (km) que el usuario elige: define hasta dónde se
   /// descubren y muestran canchas. Persistente. En el piloto de Chosica el
   /// corredor es largo (Ñaña–Ricardo Palma), por eso el default es amplio.
@@ -66,8 +94,8 @@ class AppState extends ChangeNotifier {
   List<Cancha> todasLasCanchas() {
     final map = <String, Cancha>{};
     // Clubes sembrados del piloto (van primero: cualquier versión reclamada
-    // que llegue después gana por id/lugar).
-    for (final c in SampleData.sembradas) {
+    // que llegue después gana por id/lugar). Se enriquecen con fotos reales.
+    for (final c in _sembradas) {
       map[c.id] = c;
     }
     for (final c in canchasDescubiertas) {

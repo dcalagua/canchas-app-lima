@@ -28,6 +28,7 @@ class _SplashScreenState extends State<SplashScreen> {
     appState.cargarCanchasRemotas() // canchas compartidas (best-effort)
         .then((_) => appState.sincronizarPropiedades()); // ¿el admin ya aprobó?
     appState.cargarReservasRemotas(); // reservas compartidas (best-effort)
+    appState.enriquecerSembradas(); // fotos reales de los clubes sembrados
     bool onboardingVisto = true;
     try {
       final prefs = await SharedPreferences.getInstance();
