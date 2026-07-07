@@ -273,97 +273,17 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     _rebuildMarkers();
   }
 
-  /// Hoja para que el usuario elija su radio de búsqueda (km).
-  void _abrirRadio() {
-    double km = appState.radioBusquedaKm;
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheet) => Padding(
-          padding: EdgeInsets.fromLTRB(
-              20, 18, 20, 20 + MediaQuery.of(ctx).padding.bottom),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Radio de búsqueda',
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
-              const SizedBox(height: 4),
-              const Text(
-                  'Muestra canchas hasta esta distancia de tu ubicación.',
-                  style: TextStyle(color: textoTenue, fontSize: 13)),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  const Icon(Icons.my_location, size: 20, color: verdeCancha),
-                  const SizedBox(width: 8),
-                  Text('${km.round()} km',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w800, fontSize: 24)),
-                ],
-              ),
-              Slider(
-                value: km,
-                min: AppState.radioMinKm,
-                max: AppState.radioMaxKm,
-                divisions: (AppState.radioMaxKm - AppState.radioMinKm).round(),
-                label: '${km.round()} km',
-                activeColor: verdeCancha,
-                onChanged: (v) => setSheet(() => km = v),
-              ),
-              Wrap(
-                spacing: 8,
-                children: [
-                  for (final p in const [5.0, 10.0, 20.0, 30.0])
-                    ChoiceChip(
-                      label: Text('${p.round()} km'),
-                      selected: km.round() == p.round(),
-                      selectedColor: limaSuave,
-                      onSelected: (_) => setSheet(() => km = p),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  style: FilledButton.styleFrom(
-                      backgroundColor: verdeCancha,
-                      padding: const EdgeInsets.symmetric(vertical: 14)),
-                  onPressed: () {
-                    Navigator.of(ctx).pop();
-                    _aplicarRadio(km);
-                  },
-                  child: const Text('Aplicar'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _aplicarRadio(double km) {
-    final cambio = appState.setRadioBusqueda(km);
-    if (!cambio) return;
-    // Re-descubre con el nuevo radio y refresca lista/pines.
-    if (_centroBusqueda != null) {
-      appState.descubrirCanchasCerca(_centroBusqueda!);
-    }
-    setState(() {});
-    _rebuildMarkers();
-  }
-
   Future<void> _abrirBuscar() async {
     final res = await Navigator.of(context).push<ResultadoBusqueda>(
       MaterialPageRoute(builder: (_) => const BuscarDireccionScreen()),
     );
-    if (res == null || !mounted) return;
+    if (!mounted) return;
+    if (res == null) {
+      // Pudo cambiar solo el radio (sin elegir zona): refresca lista y pines.
+      setState(() {});
+      _rebuildMarkers();
+      return;
+    }
     setState(() {
       _centroBusqueda = res.centro;
       _labelBusqueda = res.etiqueta;
@@ -541,25 +461,11 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                     onClear: _limpiarBusqueda,
                   ),
                   const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _FiltrosDeporte(
-                          seleccion: _filtro,
-                          soloClubes: _soloClubes,
-                          onSeleccion: _cambiarFiltro,
-                          onClubes: _activarClubes,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      ListenableBuilder(
-                        listenable: appState,
-                        builder: (_, __) => _RadioPill(
-                          km: appState.radioBusquedaKm,
-                          onTap: _abrirRadio,
-                        ),
-                      ),
-                    ],
+                  _FiltrosDeporte(
+                    seleccion: _filtro,
+                    soloClubes: _soloClubes,
+                    onSeleccion: _cambiarFiltro,
+                    onClubes: _activarClubes,
                   ),
                   // Feedback mientras la app trae canchas reales cerca (Places).
                   ListenableBuilder(
@@ -948,40 +854,6 @@ class _FiltrosDeporte extends StatelessWidget {
                 activo: !soloClubes && seleccion == Deporte.tenis,
                 onTap: () => onSeleccion(Deporte.tenis)),
             chip('🏛️', 'Clubes', activo: soloClubes, onTap: onClubes),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Píldora que muestra el radio de búsqueda actual y abre el selector al tocar.
-class _RadioPill extends StatelessWidget {
-  final double km;
-  final VoidCallback onTap;
-  const _RadioPill({required this.km, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(30),
-          boxShadow: const [
-            BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2)),
-          ],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.tune, size: 16, color: verdeCancha),
-            const SizedBox(width: 6),
-            Text('${km.round()} km',
-                style: const TextStyle(
-                    color: tinta, fontWeight: FontWeight.w700, fontSize: 13)),
           ],
         ),
       ),

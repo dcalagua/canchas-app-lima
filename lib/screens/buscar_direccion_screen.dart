@@ -3,6 +3,7 @@ import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../services/location_service.dart';
+import '../state/app_state.dart';
 import '../theme.dart';
 
 /// Resultado de la búsqueda: centro geográfico + etiqueta para mostrar.
@@ -25,6 +26,7 @@ class _BuscarDireccionScreenState extends State<BuscarDireccionScreen> {
   final _ctrl = TextEditingController();
   bool _buscando = false;
   String? _error;
+  late double _radioKm = appState.radioBusquedaKm; // radio de búsqueda (km)
 
   static const _distritos = <String, LatLng>{
     'San Borja': LatLng(-12.108, -76.999),
@@ -89,7 +91,7 @@ class _BuscarDireccionScreenState extends State<BuscarDireccionScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('¿Dónde quieres jugar?')),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -140,6 +142,51 @@ class _BuscarDireccionScreenState extends State<BuscarDireccionScreen> {
                   ),
                 ),
               ),
+            ),
+            const SizedBox(height: 22),
+            Text('¿Hasta qué distancia?',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleSmall
+                    ?.copyWith(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 2),
+            const Text('Muestra canchas dentro de este radio de tu ubicación.',
+                style: TextStyle(color: textoTenue, fontSize: 12)),
+            Row(
+              children: [
+                const Icon(Icons.social_distance, size: 20, color: verdeCancha),
+                const SizedBox(width: 8),
+                Text('${_radioKm.round()} km',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800, fontSize: 20)),
+              ],
+            ),
+            Slider(
+              value: _radioKm,
+              min: AppState.radioMinKm,
+              max: AppState.radioMaxKm,
+              divisions: (AppState.radioMaxKm - AppState.radioMinKm).round(),
+              label: '${_radioKm.round()} km',
+              activeColor: verdeCancha,
+              onChanged: (v) => setState(() {
+                _radioKm = v;
+                appState.setRadioBusqueda(v);
+              }),
+            ),
+            Wrap(
+              spacing: 8,
+              children: [
+                for (final p in const [5.0, 10.0, 20.0, 30.0])
+                  ChoiceChip(
+                    label: Text('${p.round()} km'),
+                    selected: _radioKm.round() == p.round(),
+                    selectedColor: limaSuave,
+                    onSelected: (_) => setState(() {
+                      _radioKm = p;
+                      appState.setRadioBusqueda(p);
+                    }),
+                  ),
+              ],
             ),
             const SizedBox(height: 22),
             Text('Distritos populares',
