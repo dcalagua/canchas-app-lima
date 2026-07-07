@@ -24,6 +24,12 @@ const CONSULTAS = [
   "cancha de tenis",
   "cancha de pádel",
   "club de pádel",
+  // Clubes formales (traen country clubs / sedes de clubes al radar).
+  "club deportivo",
+  "polideportivo",
+  "country club",
+  "club de regatas",
+  "club campestre",
 ];
 
 // Cuántos lugares y fotos resolvemos (control de latencia/cuota).

@@ -44,6 +44,8 @@ class PlacesService {
     'polideportivo',
     'country club',
     'racquet club',
+    'club de regatas',
+    'club campestre',
   ];
 
   /// Busca canchas cerca de [centro] dentro de [radioMetros].
@@ -268,6 +270,13 @@ class PlacesService {
         n.contains('country club') ||
         n.contains('club de campo') ||
         n.contains('club campestre') ||
+        n.contains('regatas') ||       // Club de Regatas Lima (sedes)
+        n.contains('villa club') ||
+        n.contains('golf club') ||
+        n.contains('club de golf') ||
+        n.contains('polo club') ||
+        n.contains('lawn tennis') ||
+        n.contains('sporting') ||
         n.contains('estadio')) {
       return Deporte.futbol;
     }
