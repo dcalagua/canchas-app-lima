@@ -32,8 +32,9 @@ class CanchasRepo {
       // borrada) la revive en vez de fallar por id duplicado.
       await SupabaseService.client.from(_tabla).upsert(_toRow(c));
     } catch (_) {
-      // Reintento sin columnas nuevas (p. ej. `amenidades` aún no migrada en la
-      // BD): así el guardado del resto no se pierde por una columna faltante.
+      // Reintento sin columnas nuevas (p. ej. `amenidades`/`superficie` aún no
+      // migradas en la BD): así el guardado del resto no se pierde por una
+      // columna faltante.
       try {
         await SupabaseService.client
             .from(_tabla)
@@ -116,6 +117,7 @@ class CanchasRepo {
         'duracion_slot_min': c.duracionSlotMin,
         'eliminada': c.eliminada,
         if (conAmenidades) 'amenidades': c.amenidades,
+        if (conAmenidades) 'superficie': c.superficie,
       };
 
   static Cancha _fromRow(Map<String, dynamic> r) => Cancha(
@@ -145,6 +147,7 @@ class CanchasRepo {
         amenidades:
             (r['amenidades'] as List?)?.map((e) => e.toString()).toList() ??
                 const [],
+        superficie: (r['superficie'] ?? '') as String,
       );
 
   static Distrito _enumDistrito(String? s) {

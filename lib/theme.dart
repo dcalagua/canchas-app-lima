@@ -113,6 +113,47 @@ AmenidadInfo? amenidadPorClave(String clave) {
   return null;
 }
 
+// ── Superficie / tipo de piso de la cancha (editable por el dueño) ────────
+/// Tipos de piso disponibles según el deporte. Se guarda como texto libre
+/// (la etiqueta) en `Cancha.superficie`. Sirve para categorizar en la lista
+/// (loza vs arcilla, etc.) y mostrar un chip en la ficha.
+List<String> superficiesDe(Deporte d) => switch (d) {
+      Deporte.futbol => const [
+          'Grass sintético',
+          'Loza',
+          'Grass natural',
+        ],
+      Deporte.tenis => const [
+          'Arcilla',
+          'Dura',
+          'Césped',
+          'Loza',
+        ],
+      Deporte.padel => const [
+          'Cristal',
+          'Muro',
+        ],
+      Deporte.pickleball => const [
+          'Dura',
+          'Loza',
+        ],
+    };
+
+/// Ícono representativo de una superficie (por palabra clave). Fallback: grid.
+IconData iconoSuperficie(String superficie) {
+  final s = superficie.toLowerCase();
+  if (s.contains('arcilla')) return Icons.terrain;
+  if (s.contains('grass') || s.contains('césped') || s.contains('cesped')) {
+    return Icons.grass;
+  }
+  if (s.contains('loza') || s.contains('dura') || s.contains('cemento')) {
+    return Icons.grid_4x4;
+  }
+  if (s.contains('cristal')) return Icons.window;
+  if (s.contains('muro')) return Icons.fence;
+  return Icons.grid_view;
+}
+
 /// Gradiente de "superficie de cancha" — degradado sage→bosque (hero EBIM).
 LinearGradient gradienteDeporte(Deporte d) => const LinearGradient(
       begin: Alignment.topLeft,

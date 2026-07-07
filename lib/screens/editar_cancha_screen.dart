@@ -48,6 +48,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
   late String _cierre = widget.cancha.horaCierre;
   late int _duracion = widget.cancha.duracionSlotMin;
   late final Set<String> _amenidades = {...widget.cancha.amenidades};
+  late String _superficie = widget.cancha.superficie; // tipo de piso (opcional)
   late LatLng _ubicacion = widget.cancha.ubicacion;
   GoogleMapController? _map;
 
@@ -215,6 +216,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
       horaCierre: _cierre,
       duracionSlotMin: _duracion,
       amenidades: _amenidades.toList(),
+      superficie: _superficie,
     );
     appState.actualizarCancha(actualizada);
     if (club != widget.cancha.club) {
@@ -457,6 +459,35 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
               labelText: 'Precio por hora',
               prefixText: 'S/ ',
             ),
+          ),
+          const SizedBox(height: 18),
+          const Text('Tipo de piso',
+              style: TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 2),
+          Text(
+              'La superficie de esta cancha (según el deporte). Ayuda a que el '
+              'jugador la encuentre por tipo.',
+              style: TextStyle(color: textoTenue, fontSize: 12)),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              for (final s in superficiesDe(_deporte))
+                ChoiceChip(
+                  avatar: Icon(iconoSuperficie(s),
+                      size: 18,
+                      color: _superficie == s ? bosque : textoTenue),
+                  label: Text(s),
+                  selected: _superficie == s,
+                  labelStyle: TextStyle(
+                      color: _superficie == s ? bosque : tinta,
+                      fontWeight: FontWeight.w600),
+                  selectedColor: limaSuave,
+                  onSelected: (sel) =>
+                      setState(() => _superficie = sel ? s : ''),
+                ),
+            ],
           ),
           const SizedBox(height: 18),
           SelectorHorario(

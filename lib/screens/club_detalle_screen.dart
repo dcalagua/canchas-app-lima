@@ -1447,6 +1447,8 @@ class _FilaDatos extends StatelessWidget {
       runSpacing: 10,
       children: [
         dato(iconoDeporte(cancha.deporte), cancha.deporte.etiqueta),
+        if (cancha.superficie.isNotEmpty)
+          dato(iconoSuperficie(cancha.superficie), cancha.superficie),
         dato(Icons.schedule, '${cancha.horaApertura}–${cancha.horaCierre}'),
         dato(Icons.timer_outlined, _dur),
         dato(Icons.payments_outlined,

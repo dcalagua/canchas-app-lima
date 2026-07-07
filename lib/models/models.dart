@@ -42,6 +42,7 @@ class Cancha {
   final int duracionSlotMin; // duración del bloque reservable (60 / 90 / 120 min)
   final bool eliminada; // borrado lógico durable en la nube (sobrevive reinstalar)
   final List<String> amenidades; // claves de servicios (vestuario, parking…), editable por el dueño
+  final String superficie; // tipo de piso: arcilla, loza, grass sintético… (según deporte)
 
   const Cancha({
     required this.id,
@@ -64,6 +65,7 @@ class Cancha {
     this.duracionSlotMin = 60,
     this.eliminada = false,
     this.amenidades = const [],
+    this.superficie = '',
   });
 
   /// Se puede reservar online solo si está en Pichangol y su propiedad fue
@@ -137,6 +139,7 @@ class Cancha {
     int? duracionSlotMin,
     bool? eliminada,
     List<String>? amenidades,
+    String? superficie,
   }) {
     return Cancha(
       id: id,
@@ -159,6 +162,7 @@ class Cancha {
       duracionSlotMin: duracionSlotMin ?? this.duracionSlotMin,
       eliminada: eliminada ?? this.eliminada,
       amenidades: amenidades ?? this.amenidades,
+      superficie: superficie ?? this.superficie,
     );
   }
 
@@ -184,6 +188,7 @@ class Cancha {
         'duracionSlotMin': duracionSlotMin,
         'eliminada': eliminada,
         'amenidades': amenidades,
+        'superficie': superficie,
       };
 
   factory Cancha.fromJson(Map<String, dynamic> j) => Cancha(
@@ -210,6 +215,7 @@ class Cancha {
         eliminada: (j['eliminada'] ?? false) as bool,
         amenidades: (j['amenidades'] as List?)?.map((e) => e.toString()).toList() ??
             const [],
+        superficie: (j['superficie'] ?? '') as String,
       );
 }
 

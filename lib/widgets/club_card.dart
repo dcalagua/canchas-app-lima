@@ -110,6 +110,8 @@ class ClubCard extends StatelessWidget {
                         _Badge(d.etiqueta,
                             bg: const Color(0xFFF0ECE2),
                             fg: const Color(0xFF5C574E)),
+                      for (final s in _superficies(club))
+                        _BadgeIcono(s, iconoSuperficie(s)),
                     ],
                   ),
                   const SizedBox(height: 12),
@@ -156,6 +158,48 @@ class ClubCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Superficies (tipos de piso) presentes en el local, sin repetir y en orden.
+List<String> _superficies(Club club) {
+  final vistas = <String>{};
+  final orden = <String>[];
+  for (final c in club.canchas) {
+    final s = c.superficie;
+    if (s.isNotEmpty && vistas.add(s)) orden.add(s);
+  }
+  return orden;
+}
+
+/// Badge con ícono (para superficie: piso de la cancha).
+class _BadgeIcono extends StatelessWidget {
+  const _BadgeIcono(this.texto, this.icono);
+  final String texto;
+  final IconData icono;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        color: limaSuave,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icono, size: 13, color: bosque),
+          const SizedBox(width: 4),
+          Text(texto,
+              style: const TextStyle(
+                  color: bosque,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  height: 1)),
+        ],
       ),
     );
   }

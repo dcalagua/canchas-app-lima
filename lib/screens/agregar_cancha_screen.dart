@@ -26,6 +26,7 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
   late final TextEditingController _precio =
       TextEditingController(text: widget.local.precioHora.toStringAsFixed(2));
   Deporte _deporte = Deporte.futbol;
+  String _superficie = ''; // tipo de piso (opcional, según deporte)
   late String _apertura = widget.local.horaApertura;
   late String _cierre = widget.local.horaCierre;
   late int _duracion = widget.local.duracionSlotMin;
@@ -84,6 +85,7 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
       horaCierre: _cierre,
       duracionSlotMin: _duracion,
       amenidades: l.amenidades, // los servicios son del local: se heredan
+      superficie: _superficie,
     );
     appState.agregarCancha(cancha);
     if (!mounted) return;
@@ -146,7 +148,34 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
                   labelStyle: TextStyle(
                       color: _deporte == d ? Colors.white : tinta,
                       fontWeight: FontWeight.w600),
-                  onSelected: (_) => setState(() => _deporte = d),
+                  onSelected: (_) => setState(() {
+                    _deporte = d;
+                    _superficie = ''; // cambia el catálogo de pisos
+                  }),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const Text('Tipo de piso',
+              style: TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              for (final s in superficiesDe(_deporte))
+                ChoiceChip(
+                  avatar: Icon(iconoSuperficie(s),
+                      size: 18,
+                      color: _superficie == s ? bosque : textoTenue),
+                  label: Text(s),
+                  selected: _superficie == s,
+                  labelStyle: TextStyle(
+                      color: _superficie == s ? bosque : tinta,
+                      fontWeight: FontWeight.w600),
+                  selectedColor: limaSuave,
+                  onSelected: (sel) =>
+                      setState(() => _superficie = sel ? s : ''),
                 ),
             ],
           ),
