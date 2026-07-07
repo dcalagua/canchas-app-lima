@@ -220,6 +220,8 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
     if (club != widget.cancha.club) {
       appState.renombrarLocal(widget.cancha.club, club); // renombra el local entero
     }
+    // Los servicios son del LOCAL: se aplican a TODAS sus canchas.
+    appState.actualizarServiciosLocal(club, _amenidades.toList());
 
     // Al reclamar, dispara la verificación de EXISTENCIA en segundo plano. Esto
     // confirma que el local es real, pero NO te convierte en dueño: la cancha
@@ -466,10 +468,12 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
             onDuracion: (v) => setState(() => _duracion = v),
           ),
           const SizedBox(height: 18),
-          const Text('Servicios',
+          const Text('Servicios del local',
               style: TextStyle(fontWeight: FontWeight.w700)),
           const SizedBox(height: 2),
-          Text('Marca lo que ofrece tu cancha. Se muestra en la ficha.',
+          Text(
+              'Son del LOCAL: aplican a todas sus canchas (no solo a esta). '
+              'Se muestran en la ficha.',
               style: TextStyle(color: textoTenue, fontSize: 12)),
           const SizedBox(height: 10),
           Wrap(

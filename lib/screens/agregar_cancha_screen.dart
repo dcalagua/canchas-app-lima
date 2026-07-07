@@ -83,6 +83,7 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
       horaApertura: _apertura,
       horaCierre: _cierre,
       duracionSlotMin: _duracion,
+      amenidades: l.amenidades, // los servicios son del local: se heredan
     );
     appState.agregarCancha(cancha);
     if (!mounted) return;

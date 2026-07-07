@@ -426,6 +426,27 @@ class AppState extends ChangeNotifier {
     _persistirDatos();
   }
 
+  /// Los SERVICIOS (amenities: vestuario, parking, luces…) son del LOCAL, no de
+  /// una cancha puntual: se aplican a TODAS las canchas del local. Best-effort
+  /// en la nube.
+  void actualizarServiciosLocal(String club, List<String> amenidades) {
+    final lista = List<String>.of(amenidades);
+    void aplicar(List<Cancha> canchas) {
+      for (var i = 0; i < canchas.length; i++) {
+        if (canchas[i].club == club) {
+          final f = canchas[i].copyWith(amenidades: lista);
+          canchas[i] = f;
+          CanchasRepo.actualizar(f);
+        }
+      }
+    }
+
+    aplicar(canchasExtra);
+    aplicar(canchasRemotas);
+    notifyListeners();
+    _persistirDatos();
+  }
+
   /// Verifica la EXISTENCIA de una cancha contra el backend. **Importante:**
   /// existencia ≠ propiedad. Que un RUC sea válido en SUNAT (o que la IA confirme
   /// que el local existe) sólo prueba que el establecimiento es real, **no** que
