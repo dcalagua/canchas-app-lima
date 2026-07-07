@@ -46,7 +46,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
 
   LatLng? _centroBusqueda; // zona buscada por el usuario (estilo Airbnb)
   String? _labelBusqueda;
-  bool _lista = false; // vista lista de clubes (toggle estilo Airbnb)
+  bool _lista = true; // arranca en LISTA (categorizada); toggle a Mapa
   bool _ubicando = true; // true mientras se resuelve la ubicación inicial
 
   /// Clubes derivados de las canchas filtradas (un local = varias canchas).
@@ -421,31 +421,67 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                     listenable: appState,
                     builder: (context, _) {
                       final clubs = _clubs();
-                      return ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(18, 16, 18, 28),
-                        itemCount: clubs.length + 1,
-                        separatorBuilder: (_, __) => const SizedBox(height: 14),
-                        itemBuilder: (context, i) {
-                          if (i == 0) {
-                            final nCanchas = clubs.fold<int>(
-                                0, (a, c) => a + c.canchas.length);
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 2),
-                              child: Text(
-                                '${clubs.length} clubes · $nCanchas canchas',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodyMedium
-                                    ?.copyWith(color: textoTenue),
-                              ),
-                            );
-                          }
-                          final club = clubs[i - 1];
-                          return ClubCard(
-                            club: club,
-                            onTap: () => _abrirClub(club),
+                      if (clubs.isEmpty) {
+                        return Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(32),
+                            child: Text(
+                              'No hay canchas cerca. Mueve el mapa o busca otra '
+                              'zona.',
+                              textAlign: TextAlign.center,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(color: textoTenue),
+                            ),
+                          ),
+                        );
+                      }
+                      // Clasificar: CLUBES = locales formales (varios deportes o
+                      // club fundador). El resto se agrupa por su deporte.
+                      final clubesFormales = <Club>[];
+                      final porDeporte = <Deporte, List<Club>>{};
+                      for (final cl in clubs) {
+                        if (cl.deportes.length > 1 || cl.clubFundador) {
+                          clubesFormales.add(cl);
+                        } else {
+                          porDeporte
+                              .putIfAbsent(cl.principal.deporte, () => [])
+                              .add(cl);
+                        }
+                      }
+                      final nCanchas = clubs.fold<int>(
+                          0, (a, c) => a + c.canchas.length);
+                      final hijos = <Widget>[
+                        Text(
+                          '${clubs.length} ${clubs.length == 1 ? 'lugar' : 'lugares'} · $nCanchas canchas',
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodyMedium
+                              ?.copyWith(color: textoTenue),
+                        ),
+                      ];
+                      Widget card(Club cl) => Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: ClubCard(
+                                club: cl, onTap: () => _abrirClub(cl)),
                           );
-                        },
+                      for (final d in Deporte.values) {
+                        final lista = porDeporte[d] ?? const <Club>[];
+                        if (lista.isEmpty) continue;
+                        hijos.add(_SeccionHeader(
+                            d.etiqueta, lista.length, colorDeporte(d),
+                            iconoDeporte(d)));
+                        hijos.addAll(lista.map(card));
+                      }
+                      if (clubesFormales.isNotEmpty) {
+                        hijos.add(_SeccionHeader('Clubes',
+                            clubesFormales.length, bosque, Icons.apartment));
+                        hijos.addAll(clubesFormales.map(card));
+                      }
+                      return ListView(
+                        padding: const EdgeInsets.fromLTRB(18, 16, 18, 28),
+                        children: hijos,
                       );
                     },
                   ),
@@ -1012,6 +1048,42 @@ class _MiniBadge extends StatelessWidget {
       child: Text(texto,
           style: TextStyle(
               color: fg, fontSize: 10, fontWeight: FontWeight.w700)),
+    );
+  }
+}
+
+/// Encabezado de sección de la lista (por deporte o "Clubes"): ícono + título +
+/// contador.
+class _SeccionHeader extends StatelessWidget {
+  const _SeccionHeader(this.titulo, this.n, this.color, this.icono);
+  final String titulo;
+  final int n;
+  final Color color;
+  final IconData icono;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 20, bottom: 2),
+      child: Row(
+        children: [
+          Icon(icono, size: 20, color: color),
+          const SizedBox(width: 8),
+          Text(titulo,
+              style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+                color: color.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(999)),
+            child: Text('$n',
+                style: TextStyle(
+                    color: color, fontWeight: FontWeight.w700, fontSize: 12)),
+          ),
+        ],
+      ),
     );
   }
 }
