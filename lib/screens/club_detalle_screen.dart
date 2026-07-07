@@ -222,17 +222,37 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         child: CustomScrollView(
         slivers: [
           SliverAppBar(
-            expandedHeight: 280,
+            expandedHeight: 300,
             pinned: true,
             backgroundColor: _color,
             foregroundColor: Colors.white,
+            automaticallyImplyLeading: false,
+            leadingWidth: 60,
+            leading: Padding(
+              padding: const EdgeInsets.only(left: 12, top: 8, bottom: 8),
+              child: _CircBtn(
+                  icon: Icons.arrow_back,
+                  onTap: () => Navigator.of(context).maybePop()),
+            ),
+            actions: [
+              _CircBtn(icon: Icons.ios_share, onTap: () {}),
+              const SizedBox(width: 8),
+              _CircBtn(icon: Icons.favorite_border, onTap: () {}),
+              const SizedBox(width: 12),
+            ],
             flexibleSpace: FlexibleSpaceBar(
               background: _HeroGaleria(cancha: _cancha),
             ),
           ),
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(22, 18, 22, 120),
+            // Hoja blanca redondeada que "monta" sobre la foto (look Airbnb).
+            child: Container(
+              transform: Matrix4.translationValues(0, -24, 0),
+              decoration: const BoxDecoration(
+                color: papel,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+              ),
+              padding: const EdgeInsets.fromLTRB(22, 22, 22, 96),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -285,6 +305,10 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                         onEditar: _editar,
                         onVerReservas: _verReservas)
                   else ...[
+                    // Fila de datos clave (estilo Airbnb): deporte · horario ·
+                    // duración · precio, con íconos.
+                    _FilaDatos(cancha: _cancha),
+                    const SizedBox(height: 18),
                     // Strip de confianza (handoff): garantías reales del producto.
                     const _StripConfianza(),
                     const SizedBox(height: 20),
@@ -1347,8 +1371,107 @@ class _HeroGaleriaState extends State<_HeroGaleria> {
                 ),
               ),
           ],
+          // Scrim superior: los botones circulares se ven sobre fotos claras.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: Container(
+              height: 110,
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0x55000000), Colors.transparent],
+                ),
+              ),
+            ),
+          ),
+          // Contador de fotos "1 / N" (estilo Airbnb).
+          if (fotos.length > 1)
+            Positioned(
+              bottom: 14,
+              right: 14,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.55),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text('${_pagina + 1} / ${fotos.length}',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700)),
+              ),
+            ),
         ],
       ),
+    );
+  }
+}
+
+/// Botón circular blanco para el hero (volver / compartir / guardar).
+class _CircBtn extends StatelessWidget {
+  const _CircBtn({required this.icon, required this.onTap});
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      shape: const CircleBorder(),
+      elevation: 2,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Icon(icon, size: 20, color: tinta),
+        ),
+      ),
+    );
+  }
+}
+
+/// Fila de datos clave de la cancha (deporte · horario · duración · precio),
+/// con íconos, al estilo de la ficha de Airbnb.
+class _FilaDatos extends StatelessWidget {
+  const _FilaDatos({required this.cancha});
+  final Cancha cancha;
+
+  String get _dur {
+    final m = cancha.duracionSlotMin;
+    if (m % 60 == 0) return '${m ~/ 60} h';
+    if (m == 90) return '1 h 30';
+    return '$m min';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    Widget dato(IconData ic, String txt) => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(ic, size: 18, color: bosque),
+            const SizedBox(width: 6),
+            Text(txt,
+                style: t.bodyMedium
+                    ?.copyWith(color: tinta, fontWeight: FontWeight.w600)),
+          ],
+        );
+    return Wrap(
+      spacing: 16,
+      runSpacing: 10,
+      children: [
+        dato(iconoDeporte(cancha.deporte), cancha.deporte.etiqueta),
+        dato(Icons.schedule, '${cancha.horaApertura}–${cancha.horaCierre}'),
+        dato(Icons.timer_outlined, _dur),
+        dato(Icons.payments_outlined,
+            'S/${cancha.precioHora.toStringAsFixed(0)} /h'),
+      ],
     );
   }
 }
