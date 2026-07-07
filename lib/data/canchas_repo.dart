@@ -74,12 +74,21 @@ class CanchasRepo {
     } catch (_) {}
   }
 
+  /// Motivo del último fallo de [subirFoto], en texto legible para el dueño.
+  /// Lo usa la UI para distinguir "sin red" de "bucket no configurado" en vez
+  /// de mostrar siempre "revise su conexión".
+  static String? ultimoErrorFoto;
+
   /// Sube una foto al bucket `canchas` y devuelve su URL pública. Si [sufijo]
   /// es null usa una ruta fija (portada, se sobreescribe); con [sufijo] crea
   /// rutas únicas para una galería. Requiere un bucket público `canchas`.
+  /// En caso de fallo devuelve null y deja el motivo en [ultimoErrorFoto].
   static Future<String?> subirFoto(String canchaId, Uint8List bytes,
       {String? sufijo}) async {
-    if (!SupabaseService.disponible) return null;
+    if (!SupabaseService.disponible) {
+      ultimoErrorFoto = 'Supabase no está configurado en esta app.';
+      return null;
+    }
     try {
       final ruta = sufijo == null ? '$canchaId.jpg' : '$canchaId/$sufijo.jpg';
       final storage = SupabaseService.client.storage.from('canchas');
@@ -89,10 +98,34 @@ class CanchasRepo {
         fileOptions: const FileOptions(upsert: true),
       );
       final base = storage.getPublicUrl(ruta);
+      ultimoErrorFoto = null;
       return '$base?v=${DateTime.now().millisecondsSinceEpoch}';
-    } catch (_) {
+    } catch (e) {
+      ultimoErrorFoto = _motivoFoto(e);
       return null;
     }
+  }
+
+  /// Traduce el error de Storage a una pista accionable para el dueño.
+  static String _motivoFoto(Object e) {
+    final s = e.toString().toLowerCase();
+    if (s.contains('not found') || s.contains('bucket')) {
+      return 'Falta el bucket "canchas" en Supabase Storage (créalo público).';
+    }
+    if (s.contains('row-level') ||
+        s.contains('policy') ||
+        s.contains('unauthorized') ||
+        s.contains('403') ||
+        s.contains('permission')) {
+      return 'El bucket "canchas" no permite subir fotos (falta la política de subida).';
+    }
+    if (s.contains('socket') ||
+        s.contains('timeout') ||
+        s.contains('connection') ||
+        s.contains('failed host')) {
+      return 'Sin conexión: revisa tu internet e inténtalo de nuevo.';
+    }
+    return 'No se pudo subir la foto. Detalle: $e';
   }
 
   static Map<String, dynamic> _toRow(Cancha c, {bool conAmenidades = true}) => {

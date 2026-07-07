@@ -197,8 +197,9 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
     if (fallidas > 0 && fotos.isEmpty) {
       if (!mounted) return;
       setState(() => _guardando = false);
-      _avisar('No se pudieron subir las fotos (revisa tu conexión). '
-          'Inténtalo de nuevo; no se guardaron cambios de fotos.');
+      final motivo = CanchasRepo.ultimoErrorFoto ??
+          'No se pudieron subir las fotos.';
+      _avisar('$motivo No se guardaron los cambios de fotos.');
       return;
     }
     final fotoUrl = fotos.isNotEmpty ? fotos.first : null;
