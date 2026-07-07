@@ -11,19 +11,12 @@ import '../brand.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/court_lines.dart';
-import '../widgets/marca.dart';
 import '../services/location_service.dart';
 import '../utils/geo.dart';
 import 'buscar_direccion_screen.dart';
 import 'club_detalle_screen.dart';
 import 'login_google_sheet.dart';
 import 'home_shell.dart';
-import 'mis_reservas_screen.dart';
-import 'registrar_cancha_screen.dart';
-import 'verificador_screen.dart';
-import 'convocatorias_screen.dart';
-import '../services/growth_service.dart';
-import '../services/convocatorias_service.dart';
 
 /// Pantalla de inicio estilo Airbnb: mapa de Google a pantalla completa con
 /// barra de búsqueda flotante, filtros por deporte y un carrusel de canchas
@@ -321,66 +314,6 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     );
   }
 
-  Future<void> _abrirMisReservas() async {
-    if (!appState.logueado) {
-      final ok = await LoginGoogleSheet.mostrar(context);
-      if (!ok || !mounted) return;
-    }
-    if (!mounted) return;
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const MisReservasScreen()),
-    );
-  }
-
-  void _abrirMenu() {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true, // que quepan y se desplacen todas las opciones
-      builder: (sheetContext) => _MenuSheet(
-        onMisReservas: () {
-          Navigator.of(sheetContext).pop();
-          _abrirMisReservas();
-        },
-        onRegistrar: () {
-          Navigator.of(sheetContext).pop();
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const RegistrarCanchaScreen()),
-          );
-        },
-        onMisCanchas: () {
-          Navigator.of(sheetContext).pop();
-          _abrirPanel(); // panel del dueño unificado (Mis canchas es su 1ª pestaña)
-        },
-        onPichangas: () {
-          Navigator.of(sheetContext).pop();
-          final club = appState.nombreClub;
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => ConvocatoriasScreen(
-                clubId: ConvocatoriasService.slugClub(club),
-                clubNombre: club,
-              ),
-            ),
-          );
-        },
-        onVerificador: () {
-          Navigator.of(sheetContext).pop();
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const VerificadorScreen()),
-          );
-        },
-        onLogin: () async {
-          Navigator.of(sheetContext).pop();
-          await LoginGoogleSheet.mostrar(context);
-        },
-        onLogout: () async {
-          await appState.cerrarSesionUsuario();
-          if (mounted) Navigator.of(sheetContext).pop();
-        },
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -493,7 +426,6 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
               child: Column(
                 children: [
                   _BarraBusqueda(
-                    onAvatar: _abrirMenu,
                     onBuscar: _abrirBuscar,
                     label: _labelBusqueda,
                     onClear: _limpiarBusqueda,
@@ -618,12 +550,10 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
 }
 
 class _BarraBusqueda extends StatelessWidget {
-  final VoidCallback onAvatar;
   final VoidCallback onBuscar;
   final VoidCallback onClear;
   final String? label;
   const _BarraBusqueda({
-    required this.onAvatar,
     required this.onBuscar,
     required this.onClear,
     this.label,
@@ -632,6 +562,8 @@ class _BarraBusqueda extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final buscando = label != null;
+    // El acceso al perfil vive en la pestaña "Perfil" de la barra inferior;
+    // por eso el buscador ya no lleva avatar (se evita el doble acceso).
     return Row(
       children: [
         Expanded(
@@ -679,20 +611,6 @@ class _BarraBusqueda extends StatelessWidget {
                   ],
                 ),
               ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 10),
-        InkWell(
-          onTap: onAvatar,
-          borderRadius: BorderRadius.circular(30),
-          child: Material(
-            elevation: 4,
-            shape: const CircleBorder(),
-            color: Colors.white,
-            child: const Padding(
-              padding: EdgeInsets.all(12),
-              child: Icon(Icons.person_outline, color: verdeCancha),
             ),
           ),
         ),
@@ -1081,168 +999,6 @@ class _SeccionHeader extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _MenuSheet extends StatelessWidget {
-  final VoidCallback onMisReservas;
-  final VoidCallback onRegistrar;
-  final VoidCallback onMisCanchas;
-  final VoidCallback onVerificador;
-  final VoidCallback onPichangas;
-  final Future<void> Function() onLogin;
-  final Future<void> Function() onLogout;
-  const _MenuSheet({
-    required this.onMisReservas,
-    required this.onRegistrar,
-    required this.onMisCanchas,
-    required this.onVerificador,
-    required this.onPichangas,
-    required this.onLogin,
-    required this.onLogout,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: appState,
-      builder: (context, _) {
-        final u = appState.usuario;
-        return Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.85),
-          child: SingleChildScrollView(
-            padding: EdgeInsets.fromLTRB(
-                20, 14, 20, 28 + MediaQuery.of(context).padding.bottom),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-              Center(
-                child: Container(
-                  width: 44,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: Colors.black12,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Center(child: PichangolWordmark(fontSize: 24)),
-              const SizedBox(height: 2),
-              Center(
-                child: Text(kBrandEslogan,
-                    style: TextStyle(
-                        color: textoTenue, fontWeight: FontWeight.w600)),
-              ),
-              const SizedBox(height: 18),
-              // Cabecera de perfil
-              Row(
-                children: [
-                  CircleAvatar(
-                    radius: 26,
-                    backgroundColor: verdeClaro,
-                    backgroundImage: (u?.fotoUrl != null)
-                        ? NetworkImage(u!.fotoUrl!)
-                        : null,
-                    child: (u?.fotoUrl == null)
-                        ? const Icon(Icons.person, color: Colors.white)
-                        : null,
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          u?.nombre ?? 'Invitado',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 17),
-                        ),
-                        Text(
-                          u?.email ?? 'Inicia sesión para reservar',
-                          style: const TextStyle(color: textoTenue, fontSize: 13),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              // Login PROMINENTE arriba cuando no hay sesión (antes estaba al
-              // fondo del menú y no se encontraba).
-              if (u == null) ...[
-                const SizedBox(height: 14),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                        backgroundColor: verdeCancha,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14)),
-                    onPressed: onLogin,
-                    icon: const Icon(Icons.login),
-                    label: const Text('Iniciar sesión con Google'),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 10),
-              const Divider(),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.event_available, color: verdeCancha),
-                title: const Text('Mis reservas'),
-                onTap: onMisReservas,
-              ),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.groups, color: verdeCancha),
-                title: const Text('Pichangas'),
-                subtitle: const Text('Anótate a las convocatorias del club'),
-                onTap: onPichangas,
-              ),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.storefront, color: verdeCancha),
-                title: const Text('Mis canchas'),
-                subtitle:
-                    const Text('Tu panel: canchas, agenda, reservas y cobros'),
-                onTap: onMisCanchas,
-              ),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.add_a_photo, color: verdeCancha),
-                title: const Text('Registrar mi cancha'),
-                subtitle: const Text('La IA detecta el deporte por foto'),
-                onTap: onRegistrar,
-              ),
-              if (GrowthService.disponible)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.verified_user, color: verdeCancha),
-                  title: const Text('Verificador'),
-                  subtitle: const Text('Visitas: foto, GPS y firma'),
-                  onTap: onVerificador,
-                ),
-              if (u != null) ...[
-                const Divider(),
-                TextButton.icon(
-                  onPressed: onLogout,
-                  icon: const Icon(Icons.logout, color: Colors.redAccent),
-                  label: const Text('Cerrar sesión',
-                      style: TextStyle(color: Colors.redAccent)),
-                ),
-              ],
-            ],
-            ),
-          ),
-        );
-      },
     );
   }
 }
