@@ -40,6 +40,24 @@ class AppState extends ChangeNotifier {
   final Set<String> canchasEliminadas = {};
   bool descubriendo = false; // true mientras se traen canchas cercanas (feedback UI)
 
+  /// Radio de búsqueda (km) que el usuario elige: define hasta dónde se
+  /// descubren y muestran canchas. Persistente. En el piloto de Chosica el
+  /// corredor es largo (Ñaña–Ricardo Palma), por eso el default es amplio.
+  double radioBusquedaKm = 20;
+  static const double radioMinKm = 2;
+  static const double radioMaxKm = 30;
+
+  /// Cambia el radio de búsqueda (lo redondea a los límites), persiste y avisa.
+  /// Devuelve true si cambió (para que la pantalla vuelva a descubrir).
+  bool setRadioBusqueda(double km) {
+    final v = km.clamp(radioMinKm, radioMaxKm).toDouble();
+    if (v == radioBusquedaKm) return false;
+    radioBusquedaKm = v;
+    notifyListeners();
+    _persistirDatos();
+    return true;
+  }
+
   /// Todas las canchas (descubiertas + remotas + locales), sin duplicar por id.
   /// Las registradas se ponen después para que ganen ante una colisión.
   /// NOTA: las canchas demo (SampleData.canchas) ya NO se muestran en el mapa —
@@ -131,7 +149,8 @@ class AppState extends ChangeNotifier {
     notifyListeners(); // muestra el indicador "Buscando canchas cerca de ti…"
     // Fase 1: canchas SIN fotos → respuesta rápida, las tarjetas salen al toque.
     try {
-      final rapidas = await PlacesService.canchasCerca(centro, conFotos: false);
+      final rapidas = await PlacesService.canchasCerca(centro,
+          conFotos: false, radioMetros: radioBusquedaKm * 1000);
       _agregarDescubiertas(rapidas);
     } catch (_) {
       // fail-safe: si Places no responde, no cambia nada
@@ -141,8 +160,8 @@ class AppState extends ChangeNotifier {
     }
     // Fase 2: vuelve a pedir CON fotos y las pinta encima (segundo plano).
     try {
-      final conFotos =
-          await PlacesService.canchasCerca(centro, conFotos: true);
+      final conFotos = await PlacesService.canchasCerca(centro,
+          conFotos: true, radioMetros: radioBusquedaKm * 1000);
       _fusionarFotos(conFotos);
     } catch (_) {
       // sin fotos, las canchas igual quedan visibles (placeholder de deporte)
@@ -619,6 +638,7 @@ class AppState extends ChangeNotifier {
   static const _kMisReservas = 'mis_reservas_json';
   static const _kCanchas = 'canchas_extra_json';
   static const _kEliminadas = 'canchas_eliminadas_json';
+  static const _kRadio = 'radio_busqueda_km';
 
   /// Carga la sesión y los datos persistidos (al arrancar la app).
   Future<void> cargarSesion() async {
@@ -632,6 +652,12 @@ class AppState extends ChangeNotifier {
 
       if (prefs.containsKey(_kSaldo)) {
         saldoClub = prefs.getInt(_kSaldo) ?? saldoClub;
+      }
+
+      if (prefs.containsKey(_kRadio)) {
+        radioBusquedaKm = (prefs.getDouble(_kRadio) ?? radioBusquedaKm)
+            .clamp(radioMinKm, radioMaxKm)
+            .toDouble();
       }
 
       final movsRaw = prefs.getString(_kMovs);
@@ -695,6 +721,7 @@ class AppState extends ChangeNotifier {
           _kCanchas, jsonEncode(canchasExtra.map((c) => c.toJson()).toList()));
       await prefs.setString(
           _kEliminadas, jsonEncode(canchasEliminadas.toList()));
+      await prefs.setDouble(_kRadio, radioBusquedaKm);
     } catch (_) {}
   }
 
