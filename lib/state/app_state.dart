@@ -44,6 +44,7 @@ class AppState extends ChangeNotifier {
   final List<Academia> academias = [];
   final List<Alumno> alumnos = [];
   final List<Cuota> cuotas = [];
+  final List<Asistencia> asistencias = [];
   bool descubriendo = false; // true mientras se traen canchas cercanas (feedback UI)
 
   /// Copia runtime de los clubes sembrados (SampleData.sembradas). Se enriquece
@@ -102,6 +103,7 @@ class AppState extends ChangeNotifier {
     academias.removeWhere((a) => a.id == id);
     alumnos.removeWhere((al) => al.academiaId == id);
     cuotas.removeWhere((c) => c.academiaId == id);
+    asistencias.removeWhere((a) => a.academiaId == id);
     notifyListeners();
     _persistirDatos();
   }
@@ -118,6 +120,7 @@ class AppState extends ChangeNotifier {
   void eliminarAlumno(String alumnoId) {
     alumnos.removeWhere((a) => a.id == alumnoId);
     cuotas.removeWhere((c) => c.alumnoId == alumnoId);
+    asistencias.removeWhere((a) => a.alumnoId == alumnoId);
     notifyListeners();
     _persistirDatos();
   }
@@ -172,6 +175,34 @@ class AppState extends ChangeNotifier {
     final i = cuotas.indexWhere((c) => c.id == cuotaId);
     if (i < 0) return;
     cuotas[i] = cuotas[i].copyWith(pagada: pagada);
+    notifyListeners();
+    _persistirDatos();
+  }
+
+  /// ¿El alumno está marcado presente ese día?
+  bool asistio(String alumnoId, String dia) => asistencias
+      .any((a) => a.alumnoId == alumnoId && a.dia == dia && a.presente);
+
+  /// Cuántas clases (días distintos) asistió el alumno.
+  int clasesAsistidas(String alumnoId) => asistencias
+      .where((a) => a.alumnoId == alumnoId && a.presente)
+      .length;
+
+  /// Marca/actualiza la asistencia de un alumno un día (upsert por alumno+día).
+  void marcarAsistencia(String academiaId, String alumnoId, String dia,
+      bool presente) {
+    final i = asistencias
+        .indexWhere((a) => a.alumnoId == alumnoId && a.dia == dia);
+    final reg = Asistencia(
+        academiaId: academiaId,
+        alumnoId: alumnoId,
+        dia: dia,
+        presente: presente);
+    if (i >= 0) {
+      asistencias[i] = reg;
+    } else {
+      asistencias.add(reg);
+    }
     notifyListeners();
     _persistirDatos();
   }
@@ -792,6 +823,7 @@ class AppState extends ChangeNotifier {
   static const _kAcademias = 'academias_json';
   static const _kAlumnos = 'alumnos_json';
   static const _kCuotas = 'cuotas_json';
+  static const _kAsistencias = 'asistencias_json';
 
   /// Carga la sesión y los datos persistidos (al arrancar la app).
   Future<void> cargarSesion() async {
@@ -858,6 +890,7 @@ class AppState extends ChangeNotifier {
       _cargarLista(prefs, _kAcademias, academias, Academia.fromJson);
       _cargarLista(prefs, _kAlumnos, alumnos, Alumno.fromJson);
       _cargarLista(prefs, _kCuotas, cuotas, Cuota.fromJson);
+      _cargarLista(prefs, _kAsistencias, asistencias, Asistencia.fromJson);
 
       notifyListeners();
       // Trae la disponibilidad compartida (reservas de otros dispositivos) para
@@ -900,6 +933,8 @@ class AppState extends ChangeNotifier {
           _kAlumnos, jsonEncode(alumnos.map((a) => a.toJson()).toList()));
       await prefs.setString(
           _kCuotas, jsonEncode(cuotas.map((c) => c.toJson()).toList()));
+      await prefs.setString(_kAsistencias,
+          jsonEncode(asistencias.map((a) => a.toJson()).toList()));
     } catch (_) {}
   }
 

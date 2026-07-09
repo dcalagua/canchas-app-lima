@@ -4,6 +4,7 @@ import '../models/academia.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'asistencia_screen.dart';
 import 'crear_academia_screen.dart';
 
 /// Panel del PROFE: su academia, alumnos y cobros (Fase 1). Sin pasarela: marca
@@ -194,6 +195,15 @@ class _Header extends StatelessWidget {
                         color: Colors.white, fontWeight: FontWeight.w800)),
               ),
               IconButton(
+                tooltip: 'Asistencia',
+                icon: const Icon(Icons.fact_check_outlined,
+                    color: Colors.white),
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) =>
+                        AsistenciaScreen(academiaId: academia.id))),
+              ),
+              IconButton(
+                tooltip: 'Editar',
                 icon: const Icon(Icons.edit, color: Colors.white),
                 onPressed: () => Navigator.of(context).push(MaterialPageRoute(
                     builder: (_) => CrearAcademiaScreen(academia: academia))),

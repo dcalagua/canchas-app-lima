@@ -216,3 +216,39 @@ class Cuota {
         pagada: (j['pagada'] ?? false) as bool,
       );
 }
+
+/// Registro de ASISTENCIA de un alumno a una clase de un día. La clave lógica
+/// es (alumnoId + día): marcar/desmarcar presente. [dia] es "YYYY-MM-DD".
+class Asistencia {
+  final String academiaId;
+  final String alumnoId;
+  final String dia; // 'YYYY-MM-DD'
+  final bool presente;
+
+  const Asistencia({
+    required this.academiaId,
+    required this.alumnoId,
+    required this.dia,
+    this.presente = true,
+  });
+
+  /// "YYYY-MM-DD" de una fecha (clave de día).
+  static String claveDia(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
+
+  Map<String, dynamic> toJson() => {
+        'academiaId': academiaId,
+        'alumnoId': alumnoId,
+        'dia': dia,
+        'presente': presente,
+      };
+
+  factory Asistencia.fromJson(Map<String, dynamic> j) => Asistencia(
+        academiaId: (j['academiaId'] ?? '') as String,
+        alumnoId: (j['alumnoId'] ?? '') as String,
+        dia: (j['dia'] ?? '') as String,
+        presente: (j['presente'] ?? true) as bool,
+      );
+}
