@@ -478,7 +478,13 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                       Widget card(Club cl) => Padding(
                             padding: const EdgeInsets.only(top: 12),
                             child: ClubCard(
-                                club: cl, onTap: () => _abrirClub(cl)),
+                              club: cl,
+                              onTap: () => _abrirClub(cl),
+                              distanciaKm: _centroBusqueda == null
+                                  ? null
+                                  : distanciaKm(
+                                      _centroBusqueda!, cl.ubicacion),
+                            ),
                           );
                       for (final d in deportesActivos) {
                         final lista = porDeporte[d] ?? const <Club>[];
