@@ -1,6 +1,11 @@
-import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'dart:typed_data';
 
+import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:image_picker/image_picker.dart';
+
+import '../data/canchas_repo.dart';
 import '../models/academia.dart';
 import '../models/club.dart';
 import '../models/models.dart';
@@ -31,6 +36,29 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
   late Deporte _deporte = widget.academia?.deporte ?? Deporte.tenis;
   late final List<Plan> _planes = [...(widget.academia?.planes ?? const [])];
 
+  // Id fijo (para crear/editar y para la ruta del logo).
+  late final String _id =
+      widget.academia?.id ?? 'ac_${DateTime.now().microsecondsSinceEpoch}';
+  String? _logoUrl = widget.academia?.logoUrl;
+  Uint8List? _logoNueva; // logo recién elegido (aún sin subir)
+  bool _guardando = false;
+
+  // Redes sociales que puede poner el profe.
+  static const _redesCatalogo = <(String, String, IconData)>[
+    ('instagram', 'Instagram', FontAwesomeIcons.instagram),
+    ('facebook', 'Facebook', FontAwesomeIcons.facebook),
+    ('tiktok', 'TikTok', FontAwesomeIcons.tiktok),
+    ('youtube', 'YouTube', FontAwesomeIcons.youtube),
+    ('web', 'Web', FontAwesomeIcons.globe),
+  ];
+  late final Map<String, TextEditingController> _redesCtrl = {
+    for (final r in _redesCatalogo)
+      r.$1: TextEditingController(text: widget.academia?.redes[r.$1] ?? '')
+  };
+  late final Set<String> _redesSel = {
+    ...(widget.academia?.redes.keys ?? const <String>[])
+  };
+
   // Sedes conocidas (locales de la lista) para el autocompletable. Al elegir
   // una, se guarda también su ubicación; si escribe una nueva, queda sin ubic.
   late final Map<String, LatLng> _sedes = _cargarSedes();
@@ -50,7 +78,19 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
     _whatsapp.dispose();
     _sede.dispose();
     _desc.dispose();
+    for (final c in _redesCtrl.values) {
+      c.dispose();
+    }
     super.dispose();
+  }
+
+  Future<void> _elegirLogo() async {
+    final f = await ImagePicker()
+        .pickImage(source: ImageSource.gallery, maxWidth: 512);
+    if (f == null) return;
+    final bytes = await f.readAsBytes();
+    if (!mounted) return;
+    setState(() => _logoNueva = bytes);
   }
 
   void _avisar(String m) =>
@@ -69,7 +109,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
     if (plan != null) setState(() => _planes.add(plan));
   }
 
-  void _guardar() {
+  Future<void> _guardar() async {
     final nombre = _nombre.text.trim();
     if (nombre.isEmpty) {
       _avisar('Ponle un nombre a tu academia.');
@@ -79,14 +119,36 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       _avisar('Pon un WhatsApp de contacto válido.');
       return;
     }
+    setState(() => _guardando = true);
+
+    // Sube el logo nuevo (si eligió uno) y toma su URL pública.
+    if (_logoNueva != null) {
+      final url = await CanchasRepo.subirFoto('academia_$_id', _logoNueva!,
+          sufijo: 'logo');
+      if (url != null) {
+        _logoUrl = url;
+      } else {
+        _avisar(
+            'No se pudo subir el logo (${CanchasRepo.ultimoErrorFoto ?? 'sin red'}). Guardo el resto.');
+      }
+    }
+
+    // Recolecta las redes seleccionadas con dato escrito.
+    final redes = <String, String>{};
+    for (final clave in _redesSel) {
+      final v = _redesCtrl[clave]?.text.trim() ?? '';
+      if (v.isNotEmpty) redes[clave] = v;
+    }
+
     final dueno = appState.usuario?.email ?? '';
     final base = widget.academia;
-    final academia = (base ?? Academia(
-      id: 'ac_${DateTime.now().microsecondsSinceEpoch}',
-      nombre: nombre,
-      deporte: _deporte,
-      dueno: dueno,
-    ))
+    final academia = (base ??
+            Academia(
+              id: _id,
+              nombre: nombre,
+              deporte: _deporte,
+              dueno: dueno,
+            ))
         .copyWith(
       nombre: nombre,
       deporte: _deporte,
@@ -95,8 +157,12 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       sedeUbicacion: _sedes[_sede.text.trim()] ?? _sedeUbic,
       descripcion: _desc.text.trim(),
       planes: _planes,
+      logoUrl: _logoUrl,
+      redes: redes,
     );
     appState.guardarAcademia(academia);
+    if (!mounted) return;
+    setState(() => _guardando = false);
     Navigator.of(context).pop();
     _avisar('✅ Academia guardada.');
   }
@@ -112,13 +178,14 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       body: ListView(
         padding: const EdgeInsets.all(18),
         children: [
-          TextField(
-            controller: _nombre,
-            decoration: const InputDecoration(
-                labelText: 'Nombre de la academia',
-                hintText: 'Ej.: Academia de Tenis Baseline'),
-          ),
-          const SizedBox(height: 16),
+          // Logo (opcional): avatar circular con lo que ya tenga o lo recién elegido.
+          Center(child: _LogoPicker(
+            bytes: _logoNueva,
+            url: _logoUrl,
+            deporte: _deporte,
+            onTap: _elegirLogo,
+          )),
+          const SizedBox(height: 20),
           const Text('Deporte', style: TextStyle(fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
           Wrap(
@@ -138,6 +205,13 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                   onSelected: (_) => setState(() => _deporte = d),
                 ),
             ],
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _nombre,
+            decoration: const InputDecoration(
+                labelText: 'Nombre de la academia',
+                hintText: 'Ej.: Academia de Tenis Baseline'),
           ),
           const SizedBox(height: 16),
           Autocomplete<String>(
@@ -209,6 +283,55 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                 hintText: 'Niveles, horarios, para quién es…'),
           ),
           const SizedBox(height: 22),
+          const Text('Redes sociales (opcional)',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+          const SizedBox(height: 4),
+          const Text('Elige las que usas y pon tu usuario o enlace.',
+              style: TextStyle(color: textoTenue, fontSize: 13)),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final r in _redesCatalogo)
+                FilterChip(
+                  avatar: Icon(r.$3,
+                      size: 16,
+                      color: _redesSel.contains(r.$1) ? Colors.white : bosque),
+                  label: Text(r.$2),
+                  selected: _redesSel.contains(r.$1),
+                  selectedColor: bosque,
+                  labelStyle: TextStyle(
+                      color: _redesSel.contains(r.$1) ? Colors.white : tinta,
+                      fontWeight: FontWeight.w600),
+                  onSelected: (s) => setState(() {
+                    if (s) {
+                      _redesSel.add(r.$1);
+                    } else {
+                      _redesSel.remove(r.$1);
+                    }
+                  }),
+                ),
+            ],
+          ),
+          for (final r in _redesCatalogo)
+            if (_redesSel.contains(r.$1)) ...[
+              const SizedBox(height: 10),
+              TextField(
+                controller: _redesCtrl[r.$1],
+                decoration: InputDecoration(
+                  labelText: r.$2,
+                  prefixIcon: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: FaIcon(r.$3, size: 18, color: bosque),
+                  ),
+                  hintText: r.$1 == 'web'
+                      ? 'https://tuacademia.com'
+                      : '@tuusuario o enlace',
+                ),
+              ),
+            ],
+          const SizedBox(height: 22),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -245,8 +368,15 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                   backgroundColor: pino,
                   foregroundColor: lima,
                   padding: const EdgeInsets.symmetric(vertical: 15)),
-              onPressed: _guardar,
-              child: const Text('Guardar academia'),
+              onPressed: _guardando ? null : _guardar,
+              child: _guardando
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2.4, color: lima),
+                    )
+                  : const Text('Guardar academia'),
             ),
           ),
         ],
@@ -260,6 +390,65 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
     }
     return '${p.tipo.etiqueta} · ${p.meses} ${p.meses == 1 ? 'mes' : 'meses'} · '
         'S/ ${p.precioMes.toStringAsFixed(2)}/mes · Total S/ ${p.total.toStringAsFixed(2)}';
+  }
+}
+
+/// Avatar circular para elegir/mostrar el logo de la academia. Prioriza el logo
+/// recién elegido ([bytes]); si no, el ya guardado ([url]); si no, un ícono del
+/// deporte como marcador de posición.
+class _LogoPicker extends StatelessWidget {
+  const _LogoPicker({
+    required this.bytes,
+    required this.url,
+    required this.deporte,
+    required this.onTap,
+  });
+
+  final Uint8List? bytes;
+  final String? url;
+  final Deporte deporte;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    ImageProvider? img;
+    if (bytes != null) {
+      img = MemoryImage(bytes!);
+    } else if (url != null && url!.isNotEmpty) {
+      img = NetworkImage(url!);
+    }
+    return Column(
+      children: [
+        GestureDetector(
+          onTap: onTap,
+          child: Stack(
+            alignment: Alignment.bottomRight,
+            children: [
+              CircleAvatar(
+                radius: 46,
+                backgroundColor: limaSuave,
+                backgroundImage: img,
+                child: img == null
+                    ? Icon(iconoDeporte(deporte),
+                        size: 34, color: colorDeporte(deporte))
+                    : null,
+              ),
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: const BoxDecoration(
+                    color: pino, shape: BoxShape.circle),
+                child: const Icon(Icons.photo_camera,
+                    size: 16, color: Colors.white),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(img == null ? 'Agregar logo' : 'Cambiar logo',
+            style: const TextStyle(
+                color: textoTenue, fontSize: 13, fontWeight: FontWeight.w600)),
+      ],
+    );
   }
 }
 

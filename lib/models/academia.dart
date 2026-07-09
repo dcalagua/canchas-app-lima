@@ -64,6 +64,8 @@ class Academia {
   final String sedeClub; // dónde entrena AHORA (nombre del club/local)
   final LatLng? sedeUbicacion;
   final List<Plan> planes;
+  final String? logoUrl; // logo de la academia (si tiene)
+  final Map<String, String> redes; // red → handle/url (instagram, tiktok…)
 
   const Academia({
     required this.id,
@@ -75,6 +77,8 @@ class Academia {
     this.sedeClub = '',
     this.sedeUbicacion,
     this.planes = const [],
+    this.logoUrl,
+    this.redes = const {},
   });
 
   Academia copyWith({
@@ -85,6 +89,8 @@ class Academia {
     String? sedeClub,
     LatLng? sedeUbicacion,
     List<Plan>? planes,
+    String? logoUrl,
+    Map<String, String>? redes,
   }) =>
       Academia(
         id: id,
@@ -96,6 +102,8 @@ class Academia {
         sedeClub: sedeClub ?? this.sedeClub,
         sedeUbicacion: sedeUbicacion ?? this.sedeUbicacion,
         planes: planes ?? this.planes,
+        logoUrl: logoUrl ?? this.logoUrl,
+        redes: redes ?? this.redes,
       );
 
   Map<String, dynamic> toJson() => {
@@ -109,6 +117,8 @@ class Academia {
         if (sedeUbicacion != null) 'lat': sedeUbicacion!.latitude,
         if (sedeUbicacion != null) 'lng': sedeUbicacion!.longitude,
         'planes': planes.map((p) => p.toJson()).toList(),
+        if (logoUrl != null) 'logoUrl': logoUrl,
+        'redes': redes,
       };
 
   factory Academia.fromJson(Map<String, dynamic> j) => Academia(
@@ -127,6 +137,10 @@ class Academia {
                 ?.map((e) => Plan.fromJson(e as Map<String, dynamic>))
                 .toList() ??
             const [],
+        logoUrl: j['logoUrl'] as String?,
+        redes: (j['redes'] as Map?)
+                ?.map((k, v) => MapEntry(k.toString(), v.toString())) ??
+            const {},
       );
 }
 

@@ -1,10 +1,41 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/academia.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/ubicacion_share.dart';
+
+/// Ícono de cada red social (mismo catálogo que el editor de academia).
+const _iconoRed = <String, IconData>{
+  'instagram': FontAwesomeIcons.instagram,
+  'facebook': FontAwesomeIcons.facebook,
+  'tiktok': FontAwesomeIcons.tiktok,
+  'youtube': FontAwesomeIcons.youtube,
+  'web': FontAwesomeIcons.globe,
+};
+
+/// Convierte el usuario/enlace guardado en una URL abrible.
+Uri? _urlRed(String clave, String valor) {
+  final v = valor.trim();
+  if (v.isEmpty) return null;
+  if (v.startsWith('http://') || v.startsWith('https://')) return Uri.tryParse(v);
+  final u = v.startsWith('@') ? v.substring(1) : v;
+  switch (clave) {
+    case 'instagram':
+      return Uri.parse('https://instagram.com/$u');
+    case 'facebook':
+      return Uri.parse('https://facebook.com/$u');
+    case 'tiktok':
+      return Uri.parse('https://tiktok.com/@$u');
+    case 'youtube':
+      return Uri.parse('https://youtube.com/@$u');
+    default:
+      return Uri.tryParse(v.contains('.') ? 'https://$v' : v);
+  }
+}
 
 /// Directorio público de academias (Fase 1, opción "libre"): el jugador ve las
 /// academias, su deporte, dónde entrenan ahora y sus planes; contacta por
@@ -74,8 +105,15 @@ class _TarjetaAcademia extends StatelessWidget {
                 CircleAvatar(
                   radius: 22,
                   backgroundColor: colorDeporte(academia.deporte),
-                  child: Icon(iconoDeporte(academia.deporte),
-                      color: Colors.white),
+                  backgroundImage: (academia.logoUrl != null &&
+                          academia.logoUrl!.isNotEmpty)
+                      ? NetworkImage(academia.logoUrl!)
+                      : null,
+                  child: (academia.logoUrl != null &&
+                          academia.logoUrl!.isNotEmpty)
+                      ? null
+                      : Icon(iconoDeporte(academia.deporte),
+                          color: Colors.white),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -98,6 +136,29 @@ class _TarjetaAcademia extends StatelessWidget {
               const SizedBox(height: 10),
               Text(academia.descripcion,
                   style: t.bodyMedium?.copyWith(color: tinta)),
+            ],
+            if (academia.redes.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  for (final e in academia.redes.entries)
+                    if (_urlRed(e.key, e.value) != null)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: IconButton(
+                          tooltip: e.key,
+                          visualDensity: VisualDensity.compact,
+                          constraints:
+                              const BoxConstraints.tightFor(width: 36, height: 36),
+                          padding: EdgeInsets.zero,
+                          icon: FaIcon(_iconoRed[e.key] ?? FontAwesomeIcons.globe,
+                              size: 18, color: bosque),
+                          onPressed: () => launchUrl(_urlRed(e.key, e.value)!,
+                              mode: LaunchMode.externalApplication),
+                        ),
+                      ),
+                ],
+              ),
             ],
             if (academia.planes.isNotEmpty) ...[
               const SizedBox(height: 10),
