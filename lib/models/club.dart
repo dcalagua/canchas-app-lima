@@ -41,11 +41,13 @@ class Club {
 
   /// ¿Es un CLUB formal (Country Club El Bosque, Villa Club, Regatas…)? Se
   /// agrupa aparte del alquiler suelto. Regla: nombre con palabra de club, o
-  /// varios deportes, o club fundador del piloto.
+  /// club fundador del piloto. OJO: tener varios deportes NO basta para ser
+  /// "club" (p. ej. "Campo Deportivo Machuca" alquila fútbol y tenis, pero no es
+  /// un club de membresía). Solo cuenta el nombre o el sello fundador.
   bool get esClubFormal {
     final n = nombre.toLowerCase();
     if (_palabrasClub.any(n.contains)) return true;
-    return deportes.length > 1 || clubFundador;
+    return clubFundador;
   }
 
   /// Club verificado: está en Pichangol y al menos una de sus canchas pasó la
