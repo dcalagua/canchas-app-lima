@@ -1,3 +1,5 @@
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+
 import 'models.dart';
 
 /// Tipo de plan que ofrece una academia.
