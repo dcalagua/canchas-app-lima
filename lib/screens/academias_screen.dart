@@ -4,6 +4,7 @@ import '../models/academia.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../utils/ubicacion_share.dart';
 
 /// Directorio público de academias (Fase 1, opción "libre"): el jugador ve las
 /// academias, su deporte, dónde entrenan ahora y sus planes; contacta por
@@ -133,16 +134,31 @@ class _TarjetaAcademia extends StatelessWidget {
                           ?.copyWith(color: bosque, fontWeight: FontWeight.w800))
                 else
                   const SizedBox.shrink(),
-                FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                      backgroundColor: verde, foregroundColor: Colors.white),
-                  onPressed: academia.whatsapp.isEmpty
-                      ? null
-                      : () => WhatsAppLink.abrir(
-                          academia.whatsapp,
-                          'Hola, vi ${academia.nombre} en Pichangol y quiero info de las clases.'),
-                  icon: const Icon(Icons.chat, size: 18),
-                  label: const Text('Contactar'),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (academia.sedeUbicacion != null)
+                      IconButton(
+                        tooltip: 'Ubicación',
+                        icon: const Icon(Icons.place_outlined,
+                            color: verdeCancha),
+                        onPressed: () => UbicacionShare.menu(context,
+                            punto: academia.sedeUbicacion!,
+                            titulo: academia.nombre),
+                      ),
+                    FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                          backgroundColor: verde,
+                          foregroundColor: Colors.white),
+                      onPressed: academia.whatsapp.isEmpty
+                          ? null
+                          : () => WhatsAppLink.abrir(
+                              academia.whatsapp,
+                              'Hola, vi ${academia.nombre} en Pichangol y quiero info de las clases.'),
+                      icon: const Icon(Icons.chat, size: 18),
+                      label: const Text('Contactar'),
+                    ),
+                  ],
                 ),
               ],
             ),

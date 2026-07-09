@@ -11,6 +11,7 @@ import '../widgets/court_lines.dart';
 import '../widgets/marca.dart';
 import 'editar_cancha_screen.dart';
 import '../utils/moneda.dart';
+import '../utils/ubicacion_share.dart';
 import 'login_google_sheet.dart';
 import 'pago_sheet.dart';
 import 'registrar_cancha_screen.dart';
@@ -275,8 +276,11 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
             ),
             actions: [
               IconButton(
+                  tooltip: 'Compartir ubicación',
                   icon: const Icon(Icons.ios_share, color: Colors.white),
-                  onPressed: () {}),
+                  onPressed: () => UbicacionShare.menu(context,
+                      punto: _cancha.ubicacion,
+                      titulo: c.nombre)),
               IconButton(
                   icon: const Icon(Icons.favorite_border, color: Colors.white),
                   onPressed: () {}),
