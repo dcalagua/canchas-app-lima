@@ -11,6 +11,7 @@ import '../widgets/court_lines.dart';
 import '../widgets/marca.dart';
 import 'editar_cancha_screen.dart';
 import 'login_google_sheet.dart';
+import 'pago_sheet.dart';
 import 'registrar_cancha_screen.dart';
 import 'reservas_dueno_screen.dart';
 
@@ -170,9 +171,17 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
       final ok = await LoginGoogleSheet.mostrar(context);
       if (!ok || !mounted) return;
     }
+    // Pago (SIMULADO en el piloto): cierra el ciclo de reserva. Si el usuario
+    // cancela o el pago no fue exitoso, no se reserva. La pasarela real
+    // (Culqi/Yape) se conecta en la fase de pagos sin tocar este flujo.
+    final pago = await PagoSheet.mostrar(
+      context,
+      monto: _cancha.precioHora.round(),
+      concepto: 'Reserva · ${_cancha.nombre} · $_dia $hora',
+    );
+    if (pago == null || !pago.exito || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     final nav = Navigator.of(context);
-    // Piloto: pago en cancha (efectivo), sin seña con tarjeta.
     final res =
         await appState.agregarReservaJugador(_cancha, _fechaIso, _dia, hora);
     if (!mounted) return;
@@ -194,7 +203,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         duration: const Duration(seconds: 5),
         content: Text(
             confirmada
-                ? '✅ Reserva confirmada en ${_cancha.nombre} · $_dia $hora'
+                ? '✅ Pago OK · Reserva confirmada en ${_cancha.nombre} · $_dia $hora'
                 : '⚠️ Guardamos tu reserva, pero no pudimos confirmarla con el '
                     'servidor. Otra persona podría tomar el mismo horario; '
                     'reconéctate para asegurarla.',
