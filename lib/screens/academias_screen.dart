@@ -185,41 +185,51 @@ class _TarjetaAcademia extends StatelessWidget {
                 ],
               ),
             ],
-            const SizedBox(height: 12),
+            if (desde != null) ...[
+              const SizedBox(height: 12),
+              Text('desde S/ ${desde.toStringAsFixed(2)}',
+                  style: t.titleSmall
+                      ?.copyWith(color: bosque, fontWeight: FontWeight.w800)),
+            ],
+            const SizedBox(height: 14),
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                if (desde != null)
-                  Text('desde S/ ${desde.toStringAsFixed(2)}',
-                      style: t.titleSmall
-                          ?.copyWith(color: bosque, fontWeight: FontWeight.w800))
-                else
-                  const SizedBox.shrink(),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (academia.sedeUbicacion != null)
-                      IconButton(
-                        tooltip: 'Ubicación',
-                        icon: const Icon(Icons.place_outlined,
-                            color: verdeCancha),
-                        onPressed: () => UbicacionShare.menu(context,
-                            punto: academia.sedeUbicacion!,
-                            titulo: academia.nombre),
+                if (academia.sedeUbicacion != null) ...[
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: bosque,
+                        side: const BorderSide(color: bosque, width: 1.4),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14)),
                       ),
-                    FilledButton.icon(
-                      style: FilledButton.styleFrom(
-                          backgroundColor: verde,
-                          foregroundColor: Colors.white),
-                      onPressed: academia.whatsapp.isEmpty
-                          ? null
-                          : () => WhatsAppLink.abrir(
-                              academia.whatsapp,
-                              'Hola, vi ${academia.nombre} en Pichangol y quiero info de las clases.'),
-                      icon: const Icon(Icons.chat, size: 18),
-                      label: const Text('Contactar'),
+                      onPressed: () => UbicacionShare.menu(context,
+                          punto: academia.sedeUbicacion!,
+                          titulo: academia.nombre),
+                      icon: const Icon(Icons.share_location, size: 20),
+                      label: const Text('Ubicación'),
                     ),
-                  ],
+                  ),
+                  const SizedBox(width: 10),
+                ],
+                Expanded(
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: verde,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                    ),
+                    onPressed: academia.whatsapp.isEmpty
+                        ? null
+                        : () => WhatsAppLink.abrir(
+                            academia.whatsapp,
+                            'Hola, vi ${academia.nombre} en Pichangol y quiero info de las clases.'),
+                    icon: const Icon(Icons.chat, size: 18),
+                    label: const Text('Contactar'),
+                  ),
                 ),
               ],
             ),

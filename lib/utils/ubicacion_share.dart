@@ -42,14 +42,43 @@ class UbicacionShare {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            const SizedBox(height: 10),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: trazo, borderRadius: BorderRadius.circular(999)),
+            ),
             const SizedBox(height: 14),
-            Text('Ubicación de $titulo',
-                style: const TextStyle(
-                    fontWeight: FontWeight.w800, fontSize: 16)),
-            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                children: [
+                  const Icon(Icons.place, color: verdeCancha),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Compartir ubicación',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w800, fontSize: 16)),
+                        Text(titulo,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                color: textoTenue, fontSize: 13)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 6),
             ListTile(
               leading: const Icon(Icons.directions, color: verdeCancha),
-              title: const Text('Cómo llegar (Google Maps)'),
+              title: const Text('Cómo llegar'),
+              subtitle: const Text('Abre la ruta en Google Maps'),
               onTap: () {
                 Navigator.pop(ctx);
                 abrirMapa(punto);
@@ -57,7 +86,8 @@ class UbicacionShare {
             ),
             ListTile(
               leading: const Icon(Icons.chat, color: verde),
-              title: const Text('Compartir por WhatsApp'),
+              title: const Text('Enviar por WhatsApp'),
+              subtitle: const Text('Comparte el punto con un contacto'),
               onTap: () {
                 Navigator.pop(ctx);
                 compartirWhatsApp(punto, titulo);
@@ -66,6 +96,7 @@ class UbicacionShare {
             ListTile(
               leading: const Icon(Icons.link, color: bosque),
               title: const Text('Copiar enlace'),
+              subtitle: const Text('Pégalo donde quieras'),
               onTap: () {
                 Navigator.pop(ctx);
                 Clipboard.setData(
