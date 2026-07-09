@@ -295,6 +295,9 @@ class PlacesService {
     // Atracciones/servicios DENTRO de un club que no son canchas de alquiler:
     'laguna', 'acuático', 'acuatico', 'waterpark', 'parque acuático',
     'restaurante', 'hotel', 'spa', 'juegos para niños', 'zoológico', 'zoologico',
+    // Edificios administrativos/religiosos de un club (no son canchas):
+    'asociación', 'asociacion', 'oficina', 'administración', 'administracion',
+    'capilla', 'parroquia', 'iglesia',
   ];
 
   /// Heurística de deporte por nombre/tipos del lugar. Devuelve null si no
