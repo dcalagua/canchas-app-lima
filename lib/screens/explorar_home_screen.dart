@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../data/sample_data.dart';
@@ -95,6 +96,13 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     }
   }
 
+  /// Re-identifica la ubicación a pedido (botón): limpia el nombre de zona para
+  /// que se resuelva de nuevo y re-centra en el usuario.
+  Future<void> _reubicar() async {
+    setState(() => _labelBusqueda = null);
+    await _autoUbicar();
+  }
+
   Future<void> _autoUbicar() async {
     if (mounted) setState(() => _ubicando = true);
     try {
@@ -121,13 +129,38 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
   void _aplicarUbicacion(LatLng pos, {bool descubrir = true}) {
     setState(() {
       _centroBusqueda = pos;
-      _labelBusqueda = 'Tu ubicación';
+      _labelBusqueda ??= 'Tu ubicación'; // provisional hasta resolver la zona
       _selected = 0;
     });
     if (_pageController.hasClients) _pageController.jumpToPage(0);
     _controller?.animateCamera(CameraUpdate.newLatLngZoom(pos, 13.5));
     _rebuildMarkers();
+    _resolverNombreZona(pos); // identifica el nombre real de la zona (distrito)
     if (descubrir) appState.descubrirCanchasCerca(pos); // canchas reales (Places)
+  }
+
+  /// Reverse-geocode: pone el nombre real de la zona (distrito/localidad) en la
+  /// barra, para que se vea que la app identificó tu ubicación. Fail-safe.
+  Future<void> _resolverNombreZona(LatLng pos) async {
+    try {
+      final marks = await placemarkFromCoordinates(pos.latitude, pos.longitude);
+      if (!mounted || marks.isEmpty) return;
+      final m = marks.first;
+      final n = (m.subLocality?.trim().isNotEmpty == true
+              ? m.subLocality
+              : (m.locality?.trim().isNotEmpty == true
+                  ? m.locality
+                  : m.subAdministrativeArea)) ??
+          '';
+      // Solo si la barra sigue mostrando la ubicación automática (no una
+      // búsqueda manual que el usuario hizo entre tanto).
+      if (n.trim().isNotEmpty &&
+          (_labelBusqueda == 'Tu ubicación' || _labelBusqueda == null)) {
+        setState(() => _labelBusqueda = n.trim());
+      }
+    } catch (_) {
+      // sin nombre: se queda "Tu ubicación"
+    }
   }
 
   @override
@@ -382,11 +415,32 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                     builder: (context, _) {
                       final clubs = _clubs();
                       if (clubs.isEmpty) {
+                        // Sin ubicación (permiso/GPS) → invita a activarla.
+                        if (_centroBusqueda == null && !_ubicando) {
+                          return _SinUbicacion(onUsar: _reubicar);
+                        }
+                        if (_ubicando) {
+                          return const Center(
+                            child: Padding(
+                              padding: EdgeInsets.all(32),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  CircularProgressIndicator(
+                                      strokeWidth: 2, color: verdeCancha),
+                                  SizedBox(height: 14),
+                                  Text('Detectando tu ubicación…',
+                                      style: TextStyle(color: textoTenue)),
+                                ],
+                              ),
+                            ),
+                          );
+                        }
                         return Center(
                           child: Padding(
                             padding: const EdgeInsets.all(32),
                             child: Text(
-                              'No hay canchas cerca. Mueve el mapa o busca otra '
+                              'No hay canchas cerca. Amplía el radio o busca otra '
                               'zona.',
                               textAlign: TextAlign.center,
                               style: Theme.of(context)
@@ -482,21 +536,27 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
             ),
           ),
 
-          // Botón "mi ubicación" (sobre el carrusel)
-          if (!_lista)
-            Positioned(
+          // Botón "mi ubicación" — en mapa (sobre el carrusel) y en lista
+          // (sobre el toggle Mapa/Lista), para re-identificar la zona.
+          Positioned(
             right: 16,
-            bottom: 188,
+            bottom: _lista ? 78 : 188,
             child: Material(
               elevation: 4,
               shape: const CircleBorder(),
               color: Colors.white,
               child: InkWell(
                 customBorder: const CircleBorder(),
-                onTap: _autoUbicar,
-                child: const Padding(
-                  padding: EdgeInsets.all(12),
-                  child: Icon(Icons.my_location, color: verdeCancha),
+                onTap: _reubicar,
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: _ubicando
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: verdeCancha))
+                      : const Icon(Icons.my_location, color: verdeCancha),
                 ),
               ),
             ),
@@ -770,6 +830,47 @@ class _SinCanchasCerca extends StatelessWidget {
                 'No encontramos canchas cerca de ti. Mueve el mapa o busca otra zona.',
                 style: TextStyle(color: tinta, fontWeight: FontWeight.w600),
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Estado de la lista cuando no hay ubicación (permiso denegado / GPS off):
+/// invita a activarla con un toque.
+class _SinUbicacion extends StatelessWidget {
+  const _SinUbicacion({required this.onUsar});
+  final VoidCallback onUsar;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.location_off, size: 56, color: textoTenue),
+            const SizedBox(height: 14),
+            const Text('Activa tu ubicación',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+            const SizedBox(height: 6),
+            const Text(
+                'La usamos para mostrarte las canchas más cercanas. También '
+                'puedes buscar una zona a mano.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: textoTenue)),
+            const SizedBox(height: 18),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(
+                  backgroundColor: verdeCancha,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
+              onPressed: onUsar,
+              icon: const Icon(Icons.my_location),
+              label: const Text('Usar mi ubicación'),
             ),
           ],
         ),
