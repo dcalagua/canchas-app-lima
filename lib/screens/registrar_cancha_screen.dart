@@ -104,6 +104,8 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
 
   // Deportes del local (varios a la vez). Fútbol viene marcado por defecto.
   final Set<Deporte> _deportes = {Deporte.futbol};
+  // Tipo de piso por deporte (obligatorio al crear cancha nueva).
+  final Map<Deporte, String> _superficies = {};
 
   // Horario de atención y duración de turno (se aplican a las canchas creadas).
   String _apertura = '07:00';
@@ -280,6 +282,17 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
       _avisar('Elige al menos un deporte.');
       return;
     }
+    // Tipo de piso OBLIGATORIO por deporte (solo al crear cancha nueva; al
+    // reclamar, el piso se define después en Editar).
+    if (!_esReclamo) {
+      final faltan =
+          _deportes.where((d) => (_superficies[d] ?? '').isEmpty).toList();
+      if (faltan.isNotEmpty) {
+        _avisar(
+            'Marca el tipo de piso de: ${faltan.map((d) => d.etiqueta).join(', ')}.');
+        return;
+      }
+    }
     final aMin = horaEnMinutos(_apertura), cMin = horaEnMinutos(_cierre);
     if (aMin == null || cMin == null || cMin <= aMin) {
       _avisar('El cierre debe ser después de la apertura.');
@@ -358,6 +371,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
         horaApertura: _apertura,
         horaCierre: _cierre,
         duracionSlotMin: _duracion,
+        superficie: _superficies[dep] ?? '',
       );
       creadas.add(cancha);
       appState.agregarCancha(cancha);
@@ -696,12 +710,53 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
                         _deportes.add(d);
                       } else {
                         _deportes.remove(d);
+                        _superficies.remove(d); // se limpia su piso
                       }
                     }),
                   ),
               ],
             ),
             const SizedBox(height: 16),
+            // Tipo de piso OBLIGATORIO por cada deporte marcado.
+            const Text('Tipo de piso de cada cancha',
+                style: TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 2),
+            const Text('Obligatorio: elige la superficie de cada deporte.',
+                style: TextStyle(color: Colors.grey, fontSize: 12)),
+            const SizedBox(height: 10),
+            for (final d in deportesActivos.where(_deportes.contains)) ...[
+              Row(
+                children: [
+                  Icon(iconoDeporte(d), size: 16, color: colorDeporte(d)),
+                  const SizedBox(width: 6),
+                  Text(d.etiqueta,
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final s in superficiesDe(d))
+                    ChoiceChip(
+                      avatar: Icon(iconoSuperficie(s),
+                          size: 16,
+                          color: _superficies[d] == s ? bosque : textoTenue),
+                      label: Text(s),
+                      selected: _superficies[d] == s,
+                      selectedColor: limaSuave,
+                      labelStyle: TextStyle(
+                          color: _superficies[d] == s ? bosque : tinta,
+                          fontWeight: FontWeight.w600),
+                      onSelected: (sel) => setState(
+                          () => _superficies[d] = sel ? s : ''),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+            ],
+            const SizedBox(height: 4),
             TextField(
               controller: _precio,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),

@@ -161,6 +161,12 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
       _avisar('Ponle un nombre a la cancha.');
       return;
     }
+    // Tipo de piso OBLIGATORIO: al reclamar/gestionar tu cancha debes indicar la
+    // superficie (para poder categorizar por piso más adelante).
+    if (_superficie.trim().isEmpty) {
+      _avisar('Marca el tipo de piso de la cancha (obligatorio).');
+      return;
+    }
     final esReclamo = widget.cancha.dueno.isEmpty;
     final contacto = _contacto.text.trim();
     final dni = _dni.text.replaceAll(RegExp(r'[^0-9]'), '');
@@ -501,12 +507,12 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
             ),
           ),
           const SizedBox(height: 18),
-          const Text('Tipo de piso',
+          const Text('Tipo de piso *',
               style: TextStyle(fontWeight: FontWeight.w700)),
           const SizedBox(height: 2),
           Text(
-              'La superficie de esta cancha (según el deporte). Ayuda a que el '
-              'jugador la encuentre por tipo.',
+              'Obligatorio: la superficie de esta cancha (según el deporte). '
+              'Sirve para categorizar por tipo de piso.',
               style: TextStyle(color: textoTenue, fontSize: 12)),
           const SizedBox(height: 10),
           Wrap(

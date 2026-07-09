@@ -52,6 +52,10 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
           1;
       nombre = '${_deporte.etiqueta} $n';
     }
+    if (_superficie.trim().isEmpty) {
+      _avisar('Marca el tipo de piso de la cancha (obligatorio).');
+      return;
+    }
     final precio = double.tryParse(_precio.text.trim().replaceAll(',', '.'));
     if (precio == null || precio <= 0) {
       _avisar('Pon un precio por hora válido.');
@@ -156,7 +160,7 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          const Text('Tipo de piso',
+          const Text('Tipo de piso *',
               style: TextStyle(fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
           Wrap(
