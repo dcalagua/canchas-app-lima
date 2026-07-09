@@ -156,6 +156,39 @@ class AppState extends ChangeNotifier {
     _persistirDatos();
   }
 
+  /// Matrícula del JUGADOR desde el directorio: crea al alumno, lo inscribe en
+  /// el plan y marca **pagada** su primera cuota (acaba de pagar la matrícula).
+  /// Devuelve el alumno creado.
+  Alumno matricular({
+    required String academiaId,
+    required String nombre,
+    required String whatsapp,
+    required Plan plan,
+  }) {
+    final alumno = Alumno(
+      id: 'al_${DateTime.now().microsecondsSinceEpoch}',
+      academiaId: academiaId,
+      nombre: nombre,
+      whatsapp: whatsapp,
+    );
+    alumnos.add(alumno);
+    if (plan.tipo == TipoPlan.porClase) {
+      agregarClaseSuelta(alumno, plan.precioMes,
+          concepto: '${plan.nombre} (matrícula)');
+    } else {
+      inscribir(alumno, plan);
+    }
+    // Da por pagada la primera cuota (la más próxima) = pago de matrícula.
+    final suyas = cuotasDeAlumno(alumno.id);
+    if (suyas.isNotEmpty) {
+      final i = cuotas.indexWhere((c) => c.id == suyas.first.id);
+      if (i >= 0) cuotas[i] = cuotas[i].copyWith(pagada: true);
+    }
+    notifyListeners();
+    _persistirDatos();
+    return alumno;
+  }
+
   /// Registra una CLASE SUELTA (drop-in) como cuota por cobrar.
   void agregarClaseSuelta(Alumno alumno, double monto, {String? concepto}) {
     final hoy = DateTime.now();

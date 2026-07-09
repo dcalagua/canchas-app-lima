@@ -43,6 +43,10 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
   Uint8List? _logoNueva; // logo recién elegido (aún sin subir)
   bool _guardando = false;
 
+  // Feed propio: fotos ya guardadas (URLs) + fotos nuevas por subir.
+  late final List<String> _fotos = [...(widget.academia?.fotos ?? const [])];
+  final List<Uint8List> _fotosNuevas = [];
+
   // Redes sociales que puede poner el profe.
   static const _redesCatalogo = <(String, String, IconData)>[
     ('instagram', 'Instagram', FontAwesomeIcons.instagram),
@@ -93,6 +97,15 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
     setState(() => _logoNueva = bytes);
   }
 
+  Future<void> _agregarFoto() async {
+    final f = await ImagePicker()
+        .pickImage(source: ImageSource.gallery, maxWidth: 1280);
+    if (f == null) return;
+    final bytes = await f.readAsBytes();
+    if (!mounted) return;
+    setState(() => _fotosNuevas.add(bytes));
+  }
+
   void _avisar(String m) =>
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
 
@@ -133,6 +146,14 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       }
     }
 
+    // Sube las fotos nuevas del feed y las agrega a las ya guardadas.
+    final fotos = [..._fotos];
+    for (var i = 0; i < _fotosNuevas.length; i++) {
+      final url = await CanchasRepo.subirFoto('academia_$_id', _fotosNuevas[i],
+          sufijo: 'foto_${DateTime.now().microsecondsSinceEpoch}_$i');
+      if (url != null) fotos.add(url);
+    }
+
     // Recolecta las redes seleccionadas con dato escrito.
     final redes = <String, String>{};
     for (final clave in _redesSel) {
@@ -159,6 +180,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       planes: _planes,
       logoUrl: _logoUrl,
       redes: redes,
+      fotos: fotos,
     );
     appState.guardarAcademia(academia);
     if (!mounted) return;
@@ -281,6 +303,55 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
             decoration: const InputDecoration(
                 labelText: 'Descripción (opcional)',
                 hintText: 'Niveles, horarios, para quién es…'),
+          ),
+          const SizedBox(height: 22),
+          const Text('Fotos (feed de tu academia)',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+          const SizedBox(height: 4),
+          const Text('Se muestran dentro de Pichangol, sin salir a Instagram.',
+              style: TextStyle(color: textoTenue, fontSize: 13)),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 96,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                // Botón agregar.
+                GestureDetector(
+                  onTap: _agregarFoto,
+                  child: Container(
+                    width: 96,
+                    margin: const EdgeInsets.only(right: 10),
+                    decoration: BoxDecoration(
+                      color: limaSuave,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: trazo),
+                    ),
+                    child: const Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.add_a_photo_outlined, color: bosque),
+                        SizedBox(height: 4),
+                        Text('Agregar',
+                            style: TextStyle(color: bosque, fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                ),
+                // Fotos ya guardadas (URL).
+                for (var i = 0; i < _fotos.length; i++)
+                  _MiniFoto(
+                    imagen: NetworkImage(_fotos[i]),
+                    onQuitar: () => setState(() => _fotos.removeAt(i)),
+                  ),
+                // Fotos nuevas (aún sin subir).
+                for (var i = 0; i < _fotosNuevas.length; i++)
+                  _MiniFoto(
+                    imagen: MemoryImage(_fotosNuevas[i]),
+                    onQuitar: () => setState(() => _fotosNuevas.removeAt(i)),
+                  ),
+              ],
+            ),
           ),
           const SizedBox(height: 22),
           const Text('Redes sociales (opcional)',
@@ -448,6 +519,43 @@ class _LogoPicker extends StatelessWidget {
             style: const TextStyle(
                 color: textoTenue, fontSize: 13, fontWeight: FontWeight.w600)),
       ],
+    );
+  }
+}
+
+/// Miniatura de una foto del feed con botón para quitarla.
+class _MiniFoto extends StatelessWidget {
+  const _MiniFoto({required this.imagen, required this.onQuitar});
+  final ImageProvider imagen;
+  final VoidCallback onQuitar;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 96,
+      margin: const EdgeInsets.only(right: 10),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image(image: imagen, fit: BoxFit.cover),
+          ),
+          Positioned(
+            top: 4,
+            right: 4,
+            child: GestureDetector(
+              onTap: onQuitar,
+              child: Container(
+                padding: const EdgeInsets.all(3),
+                decoration: const BoxDecoration(
+                    color: Colors.black54, shape: BoxShape.circle),
+                child: const Icon(Icons.close, size: 15, color: Colors.white),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

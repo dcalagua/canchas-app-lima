@@ -1,100 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../models/academia.dart';
-import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
-import '../utils/ubicacion_share.dart';
+import '../utils/redes.dart';
+import 'academia_detalle_screen.dart';
 
-/// Ícono de cada red social (mismo catálogo que el editor de academia).
-const _iconoRed = <String, IconData>{
-  'instagram': FontAwesomeIcons.instagram,
-  'facebook': FontAwesomeIcons.facebook,
-  'tiktok': FontAwesomeIcons.tiktok,
-  'youtube': FontAwesomeIcons.youtube,
-  'web': FontAwesomeIcons.globe,
-};
-
-/// Color sólido de marca de cada red (Instagram usa degradado aparte).
-const _colorRed = <String, Color>{
-  'facebook': Color(0xFF1877F2),
-  'tiktok': Color(0xFF010101),
-  'youtube': Color(0xFFFF0000),
-  'web': bosque,
-};
-
-/// Degradado oficial de Instagram (solo para su badge).
-const _gradInstagram = LinearGradient(
-  begin: Alignment.bottomLeft,
-  end: Alignment.topRight,
-  colors: [
-    Color(0xFFFEDA75),
-    Color(0xFFFA7E1E),
-    Color(0xFFD62976),
-    Color(0xFF962FBF),
-    Color(0xFF4F5BD5),
-  ],
-);
-
-/// Badge circular con el color/ícono real de la red, clicable.
-class _RedBadge extends StatelessWidget {
-  const _RedBadge({required this.clave, required this.valor});
-  final String clave;
-  final String valor;
-
-  @override
-  Widget build(BuildContext context) {
-    final url = _urlRed(clave, valor);
-    return Padding(
-      padding: const EdgeInsets.only(right: 10),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(999),
-        onTap: url == null
-            ? null
-            : () => launchUrl(url, mode: LaunchMode.externalApplication),
-        child: Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: clave == 'instagram' ? _gradInstagram : null,
-            color: clave == 'instagram' ? null : (_colorRed[clave] ?? bosque),
-          ),
-          child: Center(
-            child: FaIcon(_iconoRed[clave] ?? FontAwesomeIcons.globe,
-                size: 19, color: Colors.white),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Convierte el usuario/enlace guardado en una URL abrible.
-Uri? _urlRed(String clave, String valor) {
-  final v = valor.trim();
-  if (v.isEmpty) return null;
-  if (v.startsWith('http://') || v.startsWith('https://')) return Uri.tryParse(v);
-  final u = v.startsWith('@') ? v.substring(1) : v;
-  switch (clave) {
-    case 'instagram':
-      return Uri.parse('https://instagram.com/$u');
-    case 'facebook':
-      return Uri.parse('https://facebook.com/$u');
-    case 'tiktok':
-      return Uri.parse('https://tiktok.com/@$u');
-    case 'youtube':
-      return Uri.parse('https://youtube.com/@$u');
-    default:
-      return Uri.tryParse(v.contains('.') ? 'https://$v' : v);
-  }
-}
-
-/// Directorio público de academias (Fase 1, opción "libre"): el jugador ve las
-/// academias, su deporte, dónde entrenan ahora y sus planes; contacta por
-/// WhatsApp. La reserva/pago online es Fase 2.
+/// Directorio público de academias (Fase 1): el jugador ve las academias, su
+/// deporte, dónde entrenan y sus planes. Al tocar una entra a la ficha, donde
+/// ve el feed de fotos, se matricula (pago simulado) y sigue sus redes.
 class AcademiasScreen extends StatelessWidget {
   const AcademiasScreen({super.key});
 
@@ -140,8 +54,9 @@ class _TarjetaAcademia extends StatelessWidget {
       final v = p.precioMes;
       if (desde == null || v < desde) desde = v;
     }
+    final portada = academia.fotos.isNotEmpty ? academia.fotos.first : null;
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 14),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
@@ -150,130 +65,88 @@ class _TarjetaAcademia extends StatelessWidget {
           BoxShadow(color: Color(0x14000000), blurRadius: 14, offset: Offset(0, 5)),
         ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => AcademiaDetalleScreen(academiaId: academia.id))),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  radius: 22,
-                  backgroundColor: colorDeporte(academia.deporte),
-                  backgroundImage: (academia.logoUrl != null &&
-                          academia.logoUrl!.isNotEmpty)
-                      ? NetworkImage(academia.logoUrl!)
-                      : null,
-                  child: (academia.logoUrl != null &&
-                          academia.logoUrl!.isNotEmpty)
-                      ? null
-                      : Icon(iconoDeporte(academia.deporte),
-                          color: Colors.white),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            // Portada del feed (si el profe subió fotos).
+            if (portada != null)
+              AspectRatio(
+                aspectRatio: 16 / 9,
+                child: Image.network(portada, fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) =>
+                        Container(color: limaSuave)),
+              ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     children: [
-                      Text(academia.nombre,
-                          style: t.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.w800)),
-                      Text(
-                          '${academia.deporte.etiqueta}'
-                          '${academia.sedeClub.isNotEmpty ? ' · ${academia.sedeClub}' : ''}',
-                          style: t.bodySmall?.copyWith(color: textoTenue)),
+                      CircleAvatar(
+                        radius: 22,
+                        backgroundColor: colorDeporte(academia.deporte),
+                        backgroundImage: (academia.logoUrl != null &&
+                                academia.logoUrl!.isNotEmpty)
+                            ? NetworkImage(academia.logoUrl!)
+                            : null,
+                        child: (academia.logoUrl != null &&
+                                academia.logoUrl!.isNotEmpty)
+                            ? null
+                            : Icon(iconoDeporte(academia.deporte),
+                                color: Colors.white),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(academia.nombre,
+                                style: t.titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.w800)),
+                            Text(
+                                '${academia.deporte.etiqueta}'
+                                '${academia.sedeClub.isNotEmpty ? ' · ${academia.sedeClub}' : ''}',
+                                style:
+                                    t.bodySmall?.copyWith(color: textoTenue)),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.chevron_right, color: textoTenue),
                     ],
                   ),
-                ),
-              ],
-            ),
-            if (academia.descripcion.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Text(academia.descripcion,
-                  style: t.bodyMedium?.copyWith(color: tinta)),
-            ],
-            if (academia.redes.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  for (final e in academia.redes.entries)
-                    if (_urlRed(e.key, e.value) != null)
-                      _RedBadge(clave: e.key, valor: e.value),
+                  if (academia.redes.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        for (final e in academia.redes.entries)
+                          if (urlRed(e.key, e.value) != null)
+                            RedBadge(
+                                clave: e.key, valor: e.value, size: 34),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      if (desde != null)
+                        Text('desde S/ ${desde.toStringAsFixed(2)}',
+                            style: t.titleSmall?.copyWith(
+                                color: bosque, fontWeight: FontWeight.w800))
+                      else
+                        const SizedBox.shrink(),
+                      Text('Ver y matricularme',
+                          style: t.labelLarge?.copyWith(
+                              color: bosque, fontWeight: FontWeight.w800)),
+                    ],
+                  ),
                 ],
               ),
-            ],
-            if (academia.planes.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  for (final p in academia.planes.take(4))
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 9, vertical: 4),
-                      decoration: BoxDecoration(
-                          color: limaSuave,
-                          borderRadius: BorderRadius.circular(999)),
-                      child: Text(
-                          p.tipo == TipoPlan.porClase
-                              ? '${p.nombre} S/${p.precioMes.toStringAsFixed(0)}'
-                              : '${p.nombre} S/${p.precioMes.toStringAsFixed(0)}/mes',
-                          style: const TextStyle(
-                              color: bosque,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700)),
-                    ),
-                ],
-              ),
-            ],
-            if (desde != null) ...[
-              const SizedBox(height: 12),
-              Text('desde S/ ${desde.toStringAsFixed(2)}',
-                  style: t.titleSmall
-                      ?.copyWith(color: bosque, fontWeight: FontWeight.w800)),
-            ],
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                if (academia.sedeUbicacion != null) ...[
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: bosque,
-                        side: const BorderSide(color: bosque, width: 1.4),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14)),
-                      ),
-                      onPressed: () => UbicacionShare.menu(context,
-                          punto: academia.sedeUbicacion!,
-                          titulo: academia.nombre),
-                      icon: const Icon(Icons.share_location, size: 20),
-                      label: const Text('Ubicación'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                ],
-                Expanded(
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: verde,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14)),
-                    ),
-                    onPressed: academia.whatsapp.isEmpty
-                        ? null
-                        : () => WhatsAppLink.abrir(
-                            academia.whatsapp,
-                            'Hola, vi ${academia.nombre} en Pichangol y quiero info de las clases.'),
-                    icon: const Icon(Icons.chat, size: 18),
-                    label: const Text('Contactar'),
-                  ),
-                ),
-              ],
             ),
           ],
         ),

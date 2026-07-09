@@ -66,6 +66,7 @@ class Academia {
   final List<Plan> planes;
   final String? logoUrl; // logo de la academia (si tiene)
   final Map<String, String> redes; // red → handle/url (instagram, tiktok…)
+  final List<String> fotos; // feed propio (URLs de fotos subidas por el profe)
 
   const Academia({
     required this.id,
@@ -79,6 +80,7 @@ class Academia {
     this.planes = const [],
     this.logoUrl,
     this.redes = const {},
+    this.fotos = const [],
   });
 
   Academia copyWith({
@@ -91,6 +93,7 @@ class Academia {
     List<Plan>? planes,
     String? logoUrl,
     Map<String, String>? redes,
+    List<String>? fotos,
   }) =>
       Academia(
         id: id,
@@ -104,6 +107,7 @@ class Academia {
         planes: planes ?? this.planes,
         logoUrl: logoUrl ?? this.logoUrl,
         redes: redes ?? this.redes,
+        fotos: fotos ?? this.fotos,
       );
 
   Map<String, dynamic> toJson() => {
@@ -119,6 +123,7 @@ class Academia {
         'planes': planes.map((p) => p.toJson()).toList(),
         if (logoUrl != null) 'logoUrl': logoUrl,
         'redes': redes,
+        'fotos': fotos,
       };
 
   factory Academia.fromJson(Map<String, dynamic> j) => Academia(
@@ -141,6 +146,8 @@ class Academia {
         redes: (j['redes'] as Map?)
                 ?.map((k, v) => MapEntry(k.toString(), v.toString())) ??
             const {},
+        fotos: (j['fotos'] as List?)?.map((e) => e.toString()).toList() ??
+            const [],
       );
 }
 
