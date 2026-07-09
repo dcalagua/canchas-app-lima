@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../models/academia.dart';
+import '../models/club.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -28,6 +30,19 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       TextEditingController(text: widget.academia?.descripcion ?? '');
   late Deporte _deporte = widget.academia?.deporte ?? Deporte.tenis;
   late final List<Plan> _planes = [...(widget.academia?.planes ?? const [])];
+
+  // Sedes conocidas (locales de la lista) para el autocompletable. Al elegir
+  // una, se guarda también su ubicación; si escribe una nueva, queda sin ubic.
+  late final Map<String, LatLng> _sedes = _cargarSedes();
+  late LatLng? _sedeUbic = widget.academia?.sedeUbicacion;
+
+  Map<String, LatLng> _cargarSedes() {
+    final m = <String, LatLng>{};
+    for (final c in Club.agrupar(appState.todasLasCanchas())) {
+      if (c.nombre.trim().isNotEmpty) m.putIfAbsent(c.nombre, () => c.ubicacion);
+    }
+    return m;
+  }
 
   @override
   void dispose() {
@@ -77,6 +92,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       deporte: _deporte,
       whatsapp: _whatsapp.text.trim(),
       sedeClub: _sede.text.trim(),
+      sedeUbicacion: _sedes[_sede.text.trim()] ?? _sedeUbic,
       descripcion: _desc.text.trim(),
       planes: _planes,
     );
@@ -124,11 +140,58 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          TextField(
-            controller: _sede,
-            decoration: const InputDecoration(
-                labelText: '¿Dónde entrenas ahora? (sede actual)',
-                hintText: 'Ej.: Club CEANDE'),
+          Autocomplete<String>(
+            initialValue: TextEditingValue(text: _sede.text),
+            optionsBuilder: (v) {
+              final q = v.text.trim().toLowerCase();
+              if (q.isEmpty) return const Iterable<String>.empty();
+              return _sedes.keys
+                  .where((n) => n.toLowerCase().contains(q))
+                  .take(6);
+            },
+            onSelected: (sel) {
+              _sede.text = sel;
+              _sedeUbic = _sedes[sel]; // captura la ubicación del local elegido
+            },
+            fieldViewBuilder: (context, controller, focus, onSubmit) {
+              return TextField(
+                controller: controller,
+                focusNode: focus,
+                onChanged: (v) {
+                  _sede.text = v;
+                  _sedeUbic = _sedes[v]; // null si es un nombre nuevo (no de lista)
+                },
+                decoration: const InputDecoration(
+                  labelText: '¿Dónde entrenas ahora? (sede actual)',
+                  hintText: 'Escribe y elige de la lista, o pon una nueva',
+                  prefixIcon: Icon(Icons.place_outlined),
+                ),
+              );
+            },
+            optionsViewBuilder: (context, onSelected, options) => Align(
+              alignment: Alignment.topLeft,
+              child: Material(
+                elevation: 4,
+                borderRadius: BorderRadius.circular(12),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 240, maxWidth: 360),
+                  child: ListView(
+                    padding: EdgeInsets.zero,
+                    shrinkWrap: true,
+                    children: [
+                      for (final o in options)
+                        ListTile(
+                          dense: true,
+                          leading: const Icon(Icons.place,
+                              size: 18, color: verdeCancha),
+                          title: Text(o),
+                          onTap: () => onSelected(o),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
           const SizedBox(height: 16),
           TextField(
