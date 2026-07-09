@@ -14,6 +14,7 @@ import '../theme.dart';
 import '../widgets/court_lines.dart';
 import '../services/location_service.dart';
 import '../utils/geo.dart';
+import '../utils/moneda.dart';
 import 'buscar_direccion_screen.dart';
 import 'club_detalle_screen.dart';
 import 'login_google_sheet.dart';
@@ -146,6 +147,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
       final marks = await placemarkFromCoordinates(pos.latitude, pos.longitude);
       if (!mounted || marks.isEmpty) return;
       final m = marks.first;
+      setMonedaPorPais(m.isoCountryCode); // S/ · Bs · $ según el país
       final n = (m.subLocality?.trim().isNotEmpty == true
               ? m.subLocality
               : (m.locality?.trim().isNotEmpty == true
@@ -182,8 +184,8 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
       // Precio "desde" del local; si aún no tiene precio (solo Google), estima.
       final precio = cl.precioDesde;
       final etiqueta = precio != null
-          ? 'S/ ${precio.toStringAsFixed(2)}'
-          : '~S/ ${cl.principal.precioReferencial.toStringAsFixed(2)}';
+          ? '$monedaSimbolo ${precio.toStringAsFixed(2)}'
+          : '~$monedaSimbolo ${cl.principal.precioReferencial.toStringAsFixed(2)}';
       final icon = await _pinPrecio(etiqueta, seleccionado: sel);
       markers.add(
         Marker(
@@ -1082,7 +1084,7 @@ class _LocalCarruselCard extends StatelessWidget {
                                     style: TextStyle(
                                         color: textoTenue, fontSize: 12)),
                                 TextSpan(
-                                    text: 'S/ ${precio.toStringAsFixed(2)}',
+                                    text: '$monedaSimbolo ${precio.toStringAsFixed(2)}',
                                     style: const TextStyle(
                                         fontWeight: FontWeight.bold,
                                         fontSize: 16,
@@ -1091,7 +1093,7 @@ class _LocalCarruselCard extends StatelessWidget {
                             )
                           else
                             Text(
-                                '~S/ ${principal.precioReferencial.toStringAsFixed(2)}',
+                                '~$monedaSimbolo ${principal.precioReferencial.toStringAsFixed(2)}',
                                 style: const TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 15,

@@ -10,6 +10,7 @@ import '../theme.dart';
 import '../widgets/court_lines.dart';
 import '../widgets/marca.dart';
 import 'editar_cancha_screen.dart';
+import '../utils/moneda.dart';
 import 'login_google_sheet.dart';
 import 'pago_sheet.dart';
 import 'registrar_cancha_screen.dart';
@@ -530,7 +531,7 @@ class _PanelDueno extends StatelessWidget {
               Expanded(
                 child: _DatoDueno(
                     etiqueta: 'Precio por hora',
-                    valor: 'S/${cancha.precioHora.toStringAsFixed(2)}'),
+                    valor: '$monedaSimbolo${cancha.precioHora.toStringAsFixed(2)}'),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -742,7 +743,7 @@ class _ReservarBar extends StatelessWidget {
                     style: t.bodySmall?.copyWith(color: textoTenue),
                     children: [
                       TextSpan(
-                        text: 'S/${precio.toStringAsFixed(2)}',
+                        text: '$monedaSimbolo${precio.toStringAsFixed(2)}',
                         style: t.titleLarge?.copyWith(
                             color: tinta, fontWeight: FontWeight.w700),
                       ),
@@ -1461,7 +1462,7 @@ class _FilaDatos extends StatelessWidget {
         dato(Icons.schedule, '${cancha.horaApertura}–${cancha.horaCierre}'),
         dato(Icons.timer_outlined, _dur),
         dato(Icons.payments_outlined,
-            'S/${cancha.precioHora.toStringAsFixed(0)} /h'),
+            '$monedaSimbolo${cancha.precioHora.toStringAsFixed(0)} /h'),
       ],
     );
   }

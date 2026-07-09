@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/payments_service.dart';
 import '../theme.dart';
+import '../utils/moneda.dart';
 
 const Color _yape = Color(0xFF6E2A8C);
 
@@ -78,7 +79,7 @@ class _PagoSheetState extends State<PagoSheet> {
           Text(widget.concepto,
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
           const SizedBox(height: 2),
-          Text('S/ ${widget.monto}',
+          Text('$monedaSimbolo ${widget.monto}',
               style: const TextStyle(
                   fontSize: 32, fontWeight: FontWeight.bold, color: verdeCancha)),
           const SizedBox(height: 18),
@@ -123,7 +124,7 @@ class _PagoSheetState extends State<PagoSheet> {
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: Colors.white),
                     )
-                  : Text('Pagar S/ ${widget.monto}'),
+                  : Text('Pagar $monedaSimbolo ${widget.monto}'),
             ),
           ),
           const SizedBox(height: 10),

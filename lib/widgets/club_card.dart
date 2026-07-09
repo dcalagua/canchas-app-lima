@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/club.dart';
 import '../models/models.dart';
 import '../theme.dart';
+import '../utils/moneda.dart';
 import 'court_lines.dart';
 import 'marca.dart';
 
@@ -146,7 +147,7 @@ class ClubCard extends StatelessWidget {
                             children: [
                               const TextSpan(text: 'desde '),
                               TextSpan(
-                                text: 'S/${club.precioDesde?.toStringAsFixed(2) ?? '--'}',
+                                text: '$monedaSimbolo${club.precioDesde?.toStringAsFixed(2) ?? '--'}',
                                 style: t.titleMedium?.copyWith(
                                     color: tinta, fontWeight: FontWeight.w700),
                               ),
