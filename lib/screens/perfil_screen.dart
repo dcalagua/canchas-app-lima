@@ -4,8 +4,11 @@ import '../brand.dart';
 import '../services/growth_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'academias_screen.dart';
+import 'crear_academia_screen.dart';
 import 'home_shell.dart';
 import 'login_google_sheet.dart';
+import 'mi_academia_screen.dart';
 import 'registrar_cancha_screen.dart';
 import 'verificador_screen.dart';
 
@@ -22,6 +25,19 @@ class PerfilScreen extends StatelessWidget {
     if (!context.mounted) return;
     Navigator.of(context)
         .push(MaterialPageRoute(builder: (_) => const HomeShell()));
+  }
+
+  /// Panel del profe: exige sesión. Si ya tiene academia → panel; si no → crear.
+  Future<void> _abrirMiAcademia(BuildContext context) async {
+    if (!appState.logueado) {
+      final ok = await LoginGoogleSheet.mostrar(context);
+      if (!ok || !context.mounted) return;
+    }
+    if (!context.mounted) return;
+    final tiene = appState.miAcademia != null;
+    Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) =>
+            tiene ? const MiAcademiaScreen() : const CrearAcademiaScreen()));
   }
 
   @override
@@ -117,6 +133,19 @@ class PerfilScreen extends StatelessWidget {
                       subtitle: 'Súmala al mapa (la IA detecta el deporte)',
                       onTap: () => Navigator.of(context).push(MaterialPageRoute(
                           builder: (_) => const RegistrarCanchaScreen())),
+                    ),
+                    _Tile(
+                      icon: Icons.school,
+                      title: 'Academias',
+                      subtitle: 'Clases de tenis, fútbol y más cerca de ti',
+                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => const AcademiasScreen())),
+                    ),
+                    _Tile(
+                      icon: Icons.sports,
+                      title: 'Mi academia',
+                      subtitle: 'Soy profe: alumnos, cuotas y cobros',
+                      onTap: () => _abrirMiAcademia(context),
                     ),
                     if (GrowthService.disponible)
                       _Tile(

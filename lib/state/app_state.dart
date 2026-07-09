@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../data/canchas_repo.dart';
 import '../data/reservas_repo.dart';
 import '../data/sample_data.dart';
+import '../models/academia.dart';
 import '../models/models.dart';
 import '../models/usuario.dart';
 import '../services/auth_service.dart';
@@ -38,6 +39,11 @@ class AppState extends ChangeNotifier {
   // IDs de canchas que el dueño eliminó: se respetan SIEMPRE, aunque Supabase
   // vuelva a devolverlas (borrado durable en el dispositivo).
   final Set<String> canchasEliminadas = {};
+
+  // ── Academias (Fase 1) ────────────────────────────────────────────────────
+  final List<Academia> academias = [];
+  final List<Alumno> alumnos = [];
+  final List<Cuota> cuotas = [];
   bool descubriendo = false; // true mientras se traen canchas cercanas (feedback UI)
 
   /// Copia runtime de los clubes sembrados (SampleData.sembradas). Se enriquece
@@ -66,6 +72,117 @@ class AppState extends ChangeNotifier {
       }
     }
     if (cambio) notifyListeners();
+  }
+
+  // ── Academias (Fase 1) ────────────────────────────────────────────────────
+
+  /// La academia del profe logueado (por correo), si existe.
+  Academia? get miAcademia {
+    final email = usuario?.email ?? '';
+    if (email.isEmpty) return null;
+    for (final a in academias) {
+      if (a.dueno == email) return a;
+    }
+    return null;
+  }
+
+  /// Crea o actualiza una academia (upsert por id).
+  void guardarAcademia(Academia a) {
+    final i = academias.indexWhere((x) => x.id == a.id);
+    if (i >= 0) {
+      academias[i] = a;
+    } else {
+      academias.add(a);
+    }
+    notifyListeners();
+    _persistirDatos();
+  }
+
+  void eliminarAcademia(String id) {
+    academias.removeWhere((a) => a.id == id);
+    alumnos.removeWhere((al) => al.academiaId == id);
+    cuotas.removeWhere((c) => c.academiaId == id);
+    notifyListeners();
+    _persistirDatos();
+  }
+
+  List<Alumno> alumnosDe(String academiaId) =>
+      alumnos.where((a) => a.academiaId == academiaId).toList();
+
+  void agregarAlumno(Alumno a) {
+    alumnos.add(a);
+    notifyListeners();
+    _persistirDatos();
+  }
+
+  void eliminarAlumno(String alumnoId) {
+    alumnos.removeWhere((a) => a.id == alumnoId);
+    cuotas.removeWhere((c) => c.alumnoId == alumnoId);
+    notifyListeners();
+    _persistirDatos();
+  }
+
+  List<Cuota> cuotasDe(String academiaId) => cuotas
+      .where((c) => c.academiaId == academiaId)
+      .toList()
+    ..sort((a, b) => a.vencimiento.compareTo(b.vencimiento));
+
+  List<Cuota> cuotasDeAlumno(String alumnoId) => cuotas
+      .where((c) => c.alumnoId == alumnoId)
+      .toList()
+    ..sort((a, b) => a.vencimiento.compareTo(b.vencimiento));
+
+  /// Inscribe a un alumno en un plan: genera las cuotas mensuales (mensual /
+  /// prepago). Para [TipoPlan.porClase] no genera nada (se cobra por clase).
+  void inscribir(Alumno alumno, Plan plan, {DateTime? inicio}) {
+    if (plan.tipo == TipoPlan.porClase) return;
+    final base = inicio ?? DateTime.now();
+    final meses = plan.meses < 1 ? 1 : plan.meses;
+    for (var i = 0; i < meses; i++) {
+      final venc = DateTime(base.year, base.month + i, base.day);
+      cuotas.add(Cuota(
+        id: 'cu_${DateTime.now().microsecondsSinceEpoch}_$i',
+        academiaId: alumno.academiaId,
+        alumnoId: alumno.id,
+        concepto: '${plan.nombre} · ${_mesNombre(venc)}',
+        monto: plan.precioMes,
+        vencimiento: venc,
+      ));
+    }
+    notifyListeners();
+    _persistirDatos();
+  }
+
+  /// Registra una CLASE SUELTA (drop-in) como cuota por cobrar.
+  void agregarClaseSuelta(Alumno alumno, double monto, {String? concepto}) {
+    final hoy = DateTime.now();
+    cuotas.add(Cuota(
+      id: 'cu_${hoy.microsecondsSinceEpoch}',
+      academiaId: alumno.academiaId,
+      alumnoId: alumno.id,
+      concepto: concepto ?? 'Clase suelta ${hoy.day}/${hoy.month}',
+      monto: monto,
+      vencimiento: hoy,
+    ));
+    notifyListeners();
+    _persistirDatos();
+  }
+
+  void marcarCuotaPagada(String cuotaId, {bool pagada = true}) {
+    final i = cuotas.indexWhere((c) => c.id == cuotaId);
+    if (i < 0) return;
+    cuotas[i] = cuotas[i].copyWith(pagada: pagada);
+    notifyListeners();
+    _persistirDatos();
+  }
+
+  static String _mesNombre(DateTime d) {
+    const meses = [
+      'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio',
+      'Agosto', 'Setiembre', 'Octubre', 'Noviembre', 'Diciembre'
+    ];
+    final i = (d.month - 1).clamp(0, 11);
+    return '${meses[i]} ${d.year}';
   }
 
   /// Radio de búsqueda (km) que el usuario elige: define hasta dónde se
@@ -672,6 +789,9 @@ class AppState extends ChangeNotifier {
   static const _kCanchas = 'canchas_extra_json';
   static const _kEliminadas = 'canchas_eliminadas_json';
   static const _kRadio = 'radio_busqueda_km';
+  static const _kAcademias = 'academias_json';
+  static const _kAlumnos = 'alumnos_json';
+  static const _kCuotas = 'cuotas_json';
 
   /// Carga la sesión y los datos persistidos (al arrancar la app).
   Future<void> cargarSesion() async {
@@ -735,10 +855,29 @@ class AppState extends ChangeNotifier {
         }
       }
 
+      _cargarLista(prefs, _kAcademias, academias, Academia.fromJson);
+      _cargarLista(prefs, _kAlumnos, alumnos, Alumno.fromJson);
+      _cargarLista(prefs, _kCuotas, cuotas, Cuota.fromJson);
+
       notifyListeners();
       // Trae la disponibilidad compartida (reservas de otros dispositivos) para
       // que el anti-doble-reserva y el panel del dueño arranquen al día. Best-effort.
       cargarReservasRemotas();
+    } catch (_) {}
+  }
+
+  /// Carga una lista JSON persistida en [destino] (fail-safe).
+  void _cargarLista<T>(SharedPreferences prefs, String clave, List<T> destino,
+      T Function(Map<String, dynamic>) desde) {
+    final raw = prefs.getString(clave);
+    if (raw == null) return;
+    try {
+      final list = (jsonDecode(raw) as List)
+          .map((e) => desde(e as Map<String, dynamic>))
+          .toList();
+      destino
+        ..clear()
+        ..addAll(list);
     } catch (_) {}
   }
 
@@ -755,6 +894,12 @@ class AppState extends ChangeNotifier {
       await prefs.setString(
           _kEliminadas, jsonEncode(canchasEliminadas.toList()));
       await prefs.setDouble(_kRadio, radioBusquedaKm);
+      await prefs.setString(
+          _kAcademias, jsonEncode(academias.map((a) => a.toJson()).toList()));
+      await prefs.setString(
+          _kAlumnos, jsonEncode(alumnos.map((a) => a.toJson()).toList()));
+      await prefs.setString(
+          _kCuotas, jsonEncode(cuotas.map((c) => c.toJson()).toList()));
     } catch (_) {}
   }
 

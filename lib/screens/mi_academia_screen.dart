@@ -1,0 +1,526 @@
+import 'package:flutter/material.dart';
+
+import '../models/academia.dart';
+import '../services/whatsapp_link.dart';
+import '../state/app_state.dart';
+import '../theme.dart';
+import 'crear_academia_screen.dart';
+
+/// Panel del PROFE: su academia, alumnos y cobros (Fase 1). Sin pasarela: marca
+/// pagos en efectivo y manda recordatorios por WhatsApp.
+class MiAcademiaScreen extends StatelessWidget {
+  const MiAcademiaScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: papel,
+      body: ListenableBuilder(
+        listenable: appState,
+        builder: (context, _) {
+          final ac = appState.miAcademia;
+          if (ac == null) {
+            return const _SinAcademia();
+          }
+          final alumnos = appState.alumnosDe(ac.id);
+          final hoy = DateTime.now();
+          double porCobrar = 0, vencido = 0;
+          for (final c in appState.cuotasDe(ac.id)) {
+            if (!c.pagada) {
+              porCobrar += c.monto;
+              if (c.vencidaAl(hoy)) vencido += c.monto;
+            }
+          }
+          return ListView(
+            padding: EdgeInsets.zero,
+            children: [
+              _Header(academia: ac),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                        child: _Metrica(
+                            'Por cobrar',
+                            'S/ ${porCobrar.toStringAsFixed(2)}',
+                            bosque)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                        child: _Metrica('Vencido',
+                            'S/ ${vencido.toStringAsFixed(2)}', clayOscuro)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                        child: _Metrica(
+                            'Alumnos', '${alumnos.length}', verdeCancha)),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 8, 18, 4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Alumnos',
+                        style:
+                            TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+                    TextButton.icon(
+                      onPressed: () => _agregarAlumno(context, ac),
+                      icon: const Icon(Icons.person_add_alt_1),
+                      label: const Text('Agregar'),
+                    ),
+                  ],
+                ),
+              ),
+              if (alumnos.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text(
+                      'Aún no tienes alumnos. Agrégalos y ellos verán sus cuotas.',
+                      style: TextStyle(color: textoTenue)),
+                ),
+              for (final al in alumnos)
+                _TarjetaAlumno(alumno: al),
+              const SizedBox(height: 30),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  static Future<void> _agregarAlumno(
+      BuildContext context, Academia ac) async {
+    final nombre = TextEditingController();
+    final whats = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Nuevo alumno'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+                controller: nombre,
+                decoration: const InputDecoration(labelText: 'Nombre')),
+            TextField(
+                controller: whats,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                    labelText: 'WhatsApp', prefixText: '+51 ')),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Agregar')),
+        ],
+      ),
+    );
+    if (ok == true && nombre.text.trim().isNotEmpty) {
+      appState.agregarAlumno(Alumno(
+        id: 'al_${DateTime.now().microsecondsSinceEpoch}',
+        academiaId: ac.id,
+        nombre: nombre.text.trim(),
+        whatsapp: whats.text.trim(),
+      ));
+    }
+  }
+}
+
+class _SinAcademia extends StatelessWidget {
+  const _SinAcademia();
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.school_outlined, size: 64, color: verdeCancha),
+            const SizedBox(height: 14),
+            const Text('Aún no tienes una academia',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+            const SizedBox(height: 6),
+            const Text(
+                'Créala y empieza a gestionar tus alumnos y cobros sin perseguir a nadie.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: textoTenue)),
+            const SizedBox(height: 18),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(backgroundColor: pino, foregroundColor: lima),
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const CrearAcademiaScreen())),
+              icon: const Icon(Icons.add),
+              label: const Text('Crear mi academia'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Header extends StatelessWidget {
+  const _Header({required this.academia});
+  final Academia academia;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(
+          22, 20 + MediaQuery.of(context).padding.top, 22, 22),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [sage, verde, bosque],
+        ),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(academia.nombre,
+                    style: t.headlineSmall?.copyWith(
+                        color: Colors.white, fontWeight: FontWeight.w800)),
+              ),
+              IconButton(
+                icon: const Icon(Icons.edit, color: Colors.white),
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => CrearAcademiaScreen(academia: academia))),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Row(
+            children: [
+              const Icon(Icons.place, size: 16, color: Colors.white70),
+              const SizedBox(width: 4),
+              Text(
+                  academia.sedeClub.isEmpty
+                      ? 'Sin sede definida'
+                      : academia.sedeClub,
+                  style: t.bodyMedium?.copyWith(color: Colors.white70)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Metrica extends StatelessWidget {
+  const _Metrica(this.titulo, this.valor, this.color);
+  final String titulo;
+  final String valor;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: trazo),
+      ),
+      child: Column(
+        children: [
+          Text(valor,
+              style: TextStyle(
+                  fontWeight: FontWeight.w800, fontSize: 16, color: color)),
+          const SizedBox(height: 2),
+          Text(titulo,
+              style: const TextStyle(color: textoTenue, fontSize: 12)),
+        ],
+      ),
+    );
+  }
+}
+
+class _TarjetaAlumno extends StatelessWidget {
+  const _TarjetaAlumno({required this.alumno});
+  final Alumno alumno;
+
+  @override
+  Widget build(BuildContext context) {
+    final cuotas = appState.cuotasDeAlumno(alumno.id);
+    final pend =
+        cuotas.where((c) => !c.pagada).fold<double>(0, (s, c) => s + c.monto);
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 18, vertical: 5),
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: verdeClaro,
+          child: Text(
+              alumno.nombre.isNotEmpty ? alumno.nombre[0].toUpperCase() : '?',
+              style: const TextStyle(color: Colors.white)),
+        ),
+        title: Text(alumno.nombre,
+            style: const TextStyle(fontWeight: FontWeight.w700)),
+        subtitle: Text(pend > 0
+            ? 'Debe S/ ${pend.toStringAsFixed(2)}'
+            : 'Al día'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => AlumnoDetalleScreen(alumnoId: alumno.id))),
+      ),
+    );
+  }
+}
+
+/// Detalle de un alumno: inscribir a un plan, clase suelta, y sus cuotas
+/// (marcar pagada / recordar por WhatsApp).
+class AlumnoDetalleScreen extends StatelessWidget {
+  const AlumnoDetalleScreen({super.key, required this.alumnoId});
+  final String alumnoId;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: papel,
+      appBar: AppBar(title: const Text('Alumno')),
+      body: ListenableBuilder(
+        listenable: appState,
+        builder: (context, _) {
+          Alumno? alumno;
+          for (final a in appState.alumnos) {
+            if (a.id == alumnoId) alumno = a;
+          }
+          if (alumno == null) {
+            return const Center(child: Text('Alumno no encontrado'));
+          }
+          final al = alumno;
+          final ac = appState.miAcademia;
+          final cuotas = appState.cuotasDeAlumno(al.id);
+          final hoy = DateTime.now();
+          return ListView(
+            padding: const EdgeInsets.all(18),
+            children: [
+              Text(al.nombre,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w800, fontSize: 22)),
+              if (al.whatsapp.isNotEmpty)
+                Text('WhatsApp: ${al.whatsapp}',
+                    style: const TextStyle(color: textoTenue)),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: ac == null
+                          ? null
+                          : () => _inscribir(context, al, ac.planes),
+                      icon: const Icon(Icons.assignment_add),
+                      label: const Text('Inscribir a plan'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _claseSuelta(context, al),
+                      icon: const Icon(Icons.add),
+                      label: const Text('Clase suelta'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              const Text('Cuotas',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+              const SizedBox(height: 6),
+              if (cuotas.isEmpty)
+                const Text('Sin cuotas. Inscríbelo a un plan o agrega una clase.',
+                    style: TextStyle(color: textoTenue)),
+              for (final c in cuotas)
+                _FilaCuota(cuota: c, alumno: al, hoy: hoy),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _inscribir(
+      BuildContext context, Alumno al, List<Plan> planes) async {
+    if (planes.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Primero crea planes en tu academia (editar).')));
+      return;
+    }
+    final plan = await showModalBottomSheet<Plan>(
+      context: context,
+      backgroundColor: Colors.white,
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('Elige el plan',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+            ),
+            for (final p in planes)
+              ListTile(
+                title: Text(p.nombre),
+                subtitle: Text(p.tipo == TipoPlan.porClase
+                    ? 'Por clase · S/ ${p.precioMes.toStringAsFixed(2)}'
+                    : '${p.meses} ${p.meses == 1 ? 'mes' : 'meses'} · Total S/ ${p.total.toStringAsFixed(2)}'),
+                onTap: () => Navigator.pop(context, p),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (plan == null) return;
+    if (plan.tipo == TipoPlan.porClase) {
+      appState.agregarClaseSuelta(al, plan.precioMes, concepto: plan.nombre);
+    } else {
+      appState.inscribir(al, plan);
+    }
+  }
+
+  Future<void> _claseSuelta(BuildContext context, Alumno al) async {
+    final monto = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Clase suelta'),
+        content: TextField(
+          controller: monto,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(labelText: 'Monto', prefixText: 'S/ '),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Registrar')),
+        ],
+      ),
+    );
+    if (ok == true) {
+      final m = double.tryParse(monto.text.trim().replaceAll(',', '.'));
+      if (m != null && m > 0) appState.agregarClaseSuelta(al, m);
+    }
+  }
+}
+
+class _FilaCuota extends StatelessWidget {
+  const _FilaCuota(
+      {required this.cuota, required this.alumno, required this.hoy});
+  final dynamic cuota; // Cuota
+  final Alumno alumno;
+  final DateTime hoy;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = cuota;
+    final vencida = c.vencidaAl(hoy);
+    final Color estadoColor = c.pagada
+        ? verde
+        : vencida
+            ? clayOscuro
+            : textoTenue;
+    final String estado = c.pagada
+        ? 'Pagada'
+        : vencida
+            ? 'Vencida'
+            : 'Pendiente';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: trazo),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(c.concepto,
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
+              ),
+              Text('S/ ${c.monto.toStringAsFixed(2)}',
+                  style: const TextStyle(fontWeight: FontWeight.w800)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Text(
+                  'Vence ${c.vencimiento.day}/${c.vencimiento.month}/${c.vencimiento.year}',
+                  style: const TextStyle(color: textoTenue, fontSize: 12)),
+              const SizedBox(width: 8),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                    color: estadoColor.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(999)),
+                child: Text(estado,
+                    style: TextStyle(
+                        color: estadoColor,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              if (!c.pagada) ...[
+                TextButton.icon(
+                  onPressed: () => _recordar(context, c),
+                  icon: const Icon(Icons.chat, size: 18, color: verde),
+                  label: const Text('Recordar'),
+                ),
+                const SizedBox(width: 4),
+              ],
+              FilledButton(
+                style: FilledButton.styleFrom(
+                    backgroundColor: c.pagada ? Colors.grey : verdeCancha,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 8)),
+                onPressed: () =>
+                    appState.marcarCuotaPagada(c.id, pagada: !c.pagada),
+                child: Text(c.pagada ? 'Marcar impaga' : 'Marcar pagada'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _recordar(BuildContext context, dynamic c) async {
+    if (alumno.whatsapp.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Este alumno no tiene WhatsApp registrado.')));
+      return;
+    }
+    final msg =
+        'Hola ${alumno.nombre}, te recuerdo el pago de "${c.concepto}" '
+        'por S/ ${c.monto.toStringAsFixed(2)}. ¡Gracias!';
+    final ok = await WhatsAppLink.abrir(alumno.whatsapp, msg);
+    if (!ok && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No pude abrir WhatsApp.')));
+    }
+  }
+}
