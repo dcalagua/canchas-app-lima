@@ -134,14 +134,60 @@ class PlacesService {
   /// error o si no hay key de Places en el cliente.
   static Future<List<String>> fotosDeLugar(String nombre, LatLng centro) async {
     if (!disponible) return const [];
-    final uri = Uri.https('places.googleapis.com', '/v1/places:searchText');
-    final res = await _consultaUna(uri, nombre, centro, 3000);
-    if (res.isEmpty) return const [];
-    res.sort((a, b) => distanciaKm(centro, a.ubicacion)
-        .compareTo(distanciaKm(centro, b.ubicacion)));
-    final mejor = res.first;
-    if (distanciaKm(centro, mejor.ubicacion) > 1.5) return const [];
-    return mejor.fotos;
+    try {
+      final uri = Uri.https('places.googleapis.com', '/v1/places:searchText');
+      final resp = await http
+          .post(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Goog-Api-Key': _key,
+              'X-Goog-FieldMask':
+                  'places.id,places.displayName,places.location,places.photos',
+            },
+            body: jsonEncode({
+              'textQuery': nombre,
+              'languageCode': 'es',
+              'regionCode': 'PE',
+              'maxResultCount': 10,
+              // Sesgo FUERTE al punto sembrado para que gane la sede local
+              // (no el club principal homónimo, que suele estar lejos).
+              'locationBias': {
+                'circle': {
+                  'center': {
+                    'latitude': centro.latitude,
+                    'longitude': centro.longitude,
+                  },
+                  'radius': 1500,
+                },
+              },
+            }),
+          )
+          .timeout(const Duration(seconds: 6));
+      if (resp.statusCode != 200) return const [];
+      final body = jsonDecode(resp.body) as Map<String, dynamic>;
+      final places = (body['places'] as List?) ?? const [];
+      // Toma el lugar MÁS CERCANO al punto esperado (≤2 km), sin filtrar por
+      // deporte: solo queremos sus fotos para enriquecer el club sembrado.
+      Map<String, dynamic>? mejor;
+      double mejorKm = 1e9;
+      for (final p in places) {
+        final loc = (p as Map)['location'] as Map?;
+        if (loc == null) continue;
+        final d = distanciaKm(
+            centro,
+            LatLng((loc['latitude'] as num).toDouble(),
+                (loc['longitude'] as num).toDouble()));
+        if (d < mejorKm) {
+          mejorKm = d;
+          mejor = p.cast<String, dynamic>();
+        }
+      }
+      if (mejor == null || mejorKm > 2.0) return const [];
+      return _fotosDe(mejor);
+    } catch (_) {
+      return const [];
+    }
   }
 
   /// Intenta vía Edge Function de Supabase. Devuelve la lista (posiblemente
