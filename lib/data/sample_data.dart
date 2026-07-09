@@ -30,6 +30,34 @@ class SampleData {
       registrada: false, // reclamable, como un lugar descubierto
       verificada: false, // aún no reclamada → no verificada
     ),
+    Cancha(
+      id: 'seed_esmon',
+      nombre: 'ESMON',
+      club: 'ESMON',
+      distrito: Distrito.laMolina,
+      deporte: Deporte.tenis, // clubes que alquilan a academias (tenis/fútbol)
+      precioHora: 0,
+      ubicacion: LatLng(-11.943985233021179, -76.71577897498123),
+      clubFundador: false,
+      digitalizada: false,
+      direccion: 'Lurigancho-Chosica',
+      registrada: false,
+      verificada: false,
+    ),
+    Cancha(
+      id: 'seed_ceande',
+      nombre: 'CEANDE',
+      club: 'CEANDE',
+      distrito: Distrito.laMolina,
+      deporte: Deporte.tenis,
+      precioHora: 0,
+      ubicacion: LatLng(-11.959962965453006, -76.72790551915534),
+      clubFundador: false,
+      digitalizada: false,
+      direccion: 'Lurigancho-Chosica',
+      registrada: false,
+      verificada: false,
+    ),
   ];
 
   static const List<Cancha> canchas = [
