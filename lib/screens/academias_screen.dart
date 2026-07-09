@@ -17,6 +17,61 @@ const _iconoRed = <String, IconData>{
   'web': FontAwesomeIcons.globe,
 };
 
+/// Color sólido de marca de cada red (Instagram usa degradado aparte).
+const _colorRed = <String, Color>{
+  'facebook': Color(0xFF1877F2),
+  'tiktok': Color(0xFF010101),
+  'youtube': Color(0xFFFF0000),
+  'web': bosque,
+};
+
+/// Degradado oficial de Instagram (solo para su badge).
+const _gradInstagram = LinearGradient(
+  begin: Alignment.bottomLeft,
+  end: Alignment.topRight,
+  colors: [
+    Color(0xFFFEDA75),
+    Color(0xFFFA7E1E),
+    Color(0xFFD62976),
+    Color(0xFF962FBF),
+    Color(0xFF4F5BD5),
+  ],
+);
+
+/// Badge circular con el color/ícono real de la red, clicable.
+class _RedBadge extends StatelessWidget {
+  const _RedBadge({required this.clave, required this.valor});
+  final String clave;
+  final String valor;
+
+  @override
+  Widget build(BuildContext context) {
+    final url = _urlRed(clave, valor);
+    return Padding(
+      padding: const EdgeInsets.only(right: 10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: url == null
+            ? null
+            : () => launchUrl(url, mode: LaunchMode.externalApplication),
+        child: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: clave == 'instagram' ? _gradInstagram : null,
+            color: clave == 'instagram' ? null : (_colorRed[clave] ?? bosque),
+          ),
+          child: Center(
+            child: FaIcon(_iconoRed[clave] ?? FontAwesomeIcons.globe,
+                size: 19, color: Colors.white),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Convierte el usuario/enlace guardado en una URL abrible.
 Uri? _urlRed(String clave, String valor) {
   final v = valor.trim();
@@ -138,25 +193,12 @@ class _TarjetaAcademia extends StatelessWidget {
                   style: t.bodyMedium?.copyWith(color: tinta)),
             ],
             if (academia.redes.isNotEmpty) ...[
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
               Row(
                 children: [
                   for (final e in academia.redes.entries)
                     if (_urlRed(e.key, e.value) != null)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 6),
-                        child: IconButton(
-                          tooltip: e.key,
-                          visualDensity: VisualDensity.compact,
-                          constraints:
-                              const BoxConstraints.tightFor(width: 36, height: 36),
-                          padding: EdgeInsets.zero,
-                          icon: FaIcon(_iconoRed[e.key] ?? FontAwesomeIcons.globe,
-                              size: 18, color: bosque),
-                          onPressed: () => launchUrl(_urlRed(e.key, e.value)!,
-                              mode: LaunchMode.externalApplication),
-                        ),
-                      ),
+                      _RedBadge(clave: e.key, valor: e.value),
                 ],
               ),
             ],
