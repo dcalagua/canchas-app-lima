@@ -363,7 +363,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                       else
                         const _Badge('DIGITALIZADA',
                             bg: Color(0xFFF0ECE2), fg: Color(0xFF5C574E)),
-                      if (_cancha.verificada) ...[
+                      if (!descubierta && _cancha.verificada) ...[
                         const SizedBox(width: 6),
                         const SelloVerificada(),
                       ],

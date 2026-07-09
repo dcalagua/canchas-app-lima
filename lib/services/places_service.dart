@@ -251,6 +251,7 @@ class PlacesService {
       digitalizada: false,
       direccion: p['formattedAddress'] as String?,
       registrada: false, // descubierta en Google, aún no en Pichangol
+      verificada: false, // sin reclamar: NO es verificada (default del modelo es true)
       fotoUrl: fotos.isNotEmpty ? fotos.first : null,
       fotos: fotos,
     );

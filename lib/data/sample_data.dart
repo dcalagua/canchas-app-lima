@@ -28,6 +28,7 @@ class SampleData {
       digitalizada: false,
       direccion: 'Carretera Central, Lurigancho-Chosica',
       registrada: false, // reclamable, como un lugar descubierto
+      verificada: false, // aún no reclamada → no verificada
     ),
   ];
 
