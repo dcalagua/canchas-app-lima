@@ -39,7 +39,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
   // Id fijo (para crear/editar y para la ruta del logo).
   late final String _id =
       widget.academia?.id ?? 'ac_${DateTime.now().microsecondsSinceEpoch}';
-  String? _logoUrl = widget.academia?.logoUrl;
+  late String? _logoUrl = widget.academia?.logoUrl;
   Uint8List? _logoNueva; // logo recién elegido (aún sin subir)
   bool _guardando = false;
 
