@@ -103,6 +103,58 @@ def crear_cargo(
     }
 
 
+def crear_customer(*, email: str, nombre: str = "", apellido: str = "",
+                   telefono: str = "") -> dict:
+    """Crea un cliente Culqi (necesario para guardar tarjetas / One Click).
+    Devuelve {ok, customer_id} o {ok:false, error}."""
+    if not disponible():
+        return {"ok": False, "error": "culqi_no_configurado"}
+    body = {
+        "first_name": (nombre or "Cliente").strip()[:50] or "Cliente",
+        "last_name": (apellido or "Pichangol").strip()[:50] or "Pichangol",
+        "email": email,
+        "address": "Lima",
+        "address_city": "Lima",
+        "country_code": "PE",
+        "phone_number": (telefono or "999999999").strip()[:15],
+    }
+    r = _request("POST", "/customers", body)
+    if not r["ok"]:
+        return r
+    return {"ok": True, "customer_id": r["data"].get("id")}
+
+
+def crear_card(*, customer_id: str, token: str) -> dict:
+    """Guarda una tarjeta (token temporal → tarjeta permanente `crd_...`) contra
+    un customer. Devuelve {ok, card_id, marca, ultimos4}."""
+    if not disponible():
+        return {"ok": False, "error": "culqi_no_configurado"}
+    r = _request("POST", "/cards",
+                 {"customer_id": customer_id, "token_id": token})
+    if not r["ok"]:
+        return r
+    data = r["data"]
+    source = data.get("source") or {}
+    iin = source.get("iin") or {}
+    ultimos = source.get("last_four") or ""
+    if not ultimos:
+        num = str(source.get("card_number") or "")
+        ultimos = num[-4:] if len(num) >= 4 else ""
+    return {
+        "ok": True,
+        "card_id": data.get("id"),
+        "marca": iin.get("card_brand") or source.get("card_brand") or "Tarjeta",
+        "ultimos4": ultimos,
+    }
+
+
+def eliminar_card(card_id: str) -> dict:
+    if not disponible():
+        return {"ok": False, "error": "culqi_no_configurado"}
+    r = _request("DELETE", f"/cards/{card_id}")
+    return {"ok": r["ok"], "error": r.get("error")}
+
+
 def obtener_cargo(charge_id: str) -> dict:
     """Re-consulta un cargo (fuente de verdad para el webhook). Devuelve
     {ok, charge_id, capturado, monto_centimos, metadata, raw}."""

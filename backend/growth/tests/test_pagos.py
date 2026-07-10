@@ -31,6 +31,17 @@ class _FakeCulqi:
     def request(self, metodo, path, body=None):
         if self.forzar_error:
             return {"ok": False, "status": 402, "error": "Tarjeta rechazada"}
+        if metodo == "POST" and path == "/customers":
+            self.n += 1
+            return {"ok": True, "data": {"id": f"cus_test_{self.n}"}}
+        if metodo == "POST" and path == "/cards":
+            self.n += 1
+            return {"ok": True, "data": {
+                "id": f"crd_test_{self.n}",
+                "source": {"last_four": "1111", "iin": {"card_brand": "Visa"}},
+            }}
+        if metodo == "DELETE" and path.startswith("/cards/"):
+            return {"ok": True, "data": {}}
         if metodo == "POST" and path == "/charges":
             self.n += 1
             cid = f"chr_test_{self.n}"
@@ -145,3 +156,28 @@ def test_comision_calculo():
     from pagos.router import comision_centimos
     assert comision_centimos(60) == 300     # 5% de 60 = 3.00
     assert comision_centimos(20) == 200      # 5% de 20 = 1.00 → mínimo 2.00
+
+
+def test_guardar_metodo_de_pago():
+    r = client.post("/pagos/metodos", json={
+        "token": "tkn_1", "user_id": "juan@x.com", "email": "juan@x.com",
+        "nombre": "Juan", "apellido": "Perez"}).json()
+    assert r["ok"] is True
+    assert r["metodo"]["ultimos4"] == "1111"
+    assert r["metodo"]["marca"] == "Visa"
+    assert r["metodo"]["id"].startswith("crd_")
+    # Reusa el mismo customer en la 2da tarjeta.
+    client.post("/pagos/metodos", json={
+        "token": "tkn_2", "user_id": "juan@x.com", "email": "juan@x.com"})
+    lst = client.get("/pagos/metodos/juan@x.com").json()["metodos"]
+    assert len(lst) == 2
+    assert len(stores.customers) == 1  # un solo customer
+
+
+def test_eliminar_metodo_de_pago():
+    client.post("/pagos/metodos", json={
+        "token": "t", "user_id": "ana@x.com", "email": "ana@x.com"})
+    cid = client.get("/pagos/metodos/ana@x.com").json()["metodos"][0]["id"]
+    client.delete("/pagos/metodos/ana@x.com/$cid".replace("$cid", cid))
+    lst = client.get("/pagos/metodos/ana@x.com").json()["metodos"]
+    assert lst == []

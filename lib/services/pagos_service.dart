@@ -166,6 +166,70 @@ class PagosService {
     }
   }
 
+  // --- 4) Métodos de pago guardados (Culqi One Click) ---------------------
+  /// Lista las tarjetas guardadas del usuario: [{id, marca, ultimos4}].
+  static Future<List<Map<String, dynamic>>> metodos(String userId) async {
+    if (!disponible) return [];
+    try {
+      final uri = Uri.parse('$_baseUrl/pagos/metodos/$userId');
+      final r = await http.get(uri, headers: _appHeaders())
+          .timeout(const Duration(seconds: 12));
+      if (r.statusCode != 200) return [];
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      return ((j['metodos'] as List?) ?? [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Guarda una tarjeta (token temporal → tarjeta permanente en Culqi).
+  /// {ok, metodo} o {ok:false, error}.
+  static Future<Map<String, dynamic>> guardarMetodo({
+    required String token,
+    required String userId,
+    required String email,
+    String nombre = '',
+    String apellido = '',
+  }) async {
+    if (!disponible) return {'ok': false, 'error': 'Pagos no disponibles.'};
+    try {
+      final r = await http.post(
+        Uri.parse('$_baseUrl/pagos/metodos'),
+        headers: _appHeaders(json: true),
+        body: jsonEncode({
+          'token': token,
+          'user_id': userId,
+          'email': email,
+          'nombre': nombre,
+          'apellido': apellido,
+        }),
+      ).timeout(const Duration(seconds: 25));
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      if (r.statusCode == 200 && j['ok'] == true) {
+        return {'ok': true, 'metodo': j['metodo']};
+      }
+      return {'ok': false, 'error': j['error'] ?? 'No se pudo guardar la tarjeta.'};
+    } catch (e) {
+      return {'ok': false, 'error': 'Sin conexión con el servidor de pagos.'};
+    }
+  }
+
+  /// Elimina una tarjeta guardada. Devuelve true si se borró.
+  static Future<bool> eliminarMetodo(String userId, String cardId) async {
+    if (!disponible) return false;
+    try {
+      final r = await http.delete(
+        Uri.parse('$_baseUrl/pagos/metodos/$userId/$cardId'),
+        headers: _appHeaders(),
+      ).timeout(const Duration(seconds: 15));
+      return r.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Saldo actual del dueño (en soles). Null si no se pudo.
   static Future<double?> saldo(String duenoId) async {
     if (!disponible) return null;

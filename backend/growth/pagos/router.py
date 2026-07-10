@@ -68,6 +68,15 @@ class FeeReq(BaseModel):
     reserva_id: str | None = None
 
 
+class MetodoReq(BaseModel):
+    token: str                 # token temporal (tkn_) de tokenizar la tarjeta
+    user_id: str               # a quién pertenece (correo del jugador)
+    email: str
+    nombre: str = ""
+    apellido: str = ""
+    telefono: str = ""
+
+
 @router.get("/config")
 def get_config() -> dict:
     """Datos públicos para el APK (nunca la llave secreta)."""
@@ -141,6 +150,48 @@ def get_checkout(amount: int, email: str, title: str = "Pichangol",
 def get_saldo(dueno_id: str) -> dict:
     c = stores.saldo_centimos(dueno_id)
     return {"dueno_id": dueno_id, "saldo_centimos": c, "saldo_soles": c / 100.0}
+
+
+# --- Métodos de pago guardados (Culqi One Click) -------------------------
+@router.get("/metodos/{user_id}", dependencies=_APP)
+def get_metodos(user_id: str) -> dict:
+    return {"metodos": stores.metodos.get(user_id, [])}
+
+
+@router.post("/metodos", dependencies=_APP)
+def post_metodo(req: MetodoReq) -> dict:
+    """Guarda una tarjeta del usuario (One Click). Crea/reusa el customer Culqi y
+    convierte el token temporal en una tarjeta permanente (crd_...). Sólo guarda
+    marca + últimos 4 (nunca el número completo)."""
+    if not culqi.disponible():
+        raise HTTPException(status_code=503, detail="pagos_no_configurados")
+    cus = stores.customers.get(req.user_id)
+    if not cus:
+        rc = culqi.crear_customer(
+            email=req.email, nombre=req.nombre, apellido=req.apellido,
+            telefono=req.telefono)
+        if not rc["ok"]:
+            return {"ok": False, "error": rc.get("error", "no_se_pudo_crear_cliente")}
+        cus = rc["customer_id"]
+        stores.customers[req.user_id] = cus
+    rcard = culqi.crear_card(customer_id=cus, token=req.token)
+    if not rcard["ok"]:
+        return {"ok": False, "error": rcard.get("error", "no_se_pudo_guardar_tarjeta")}
+    metodo = {
+        "id": rcard["card_id"],
+        "marca": rcard["marca"],
+        "ultimos4": rcard["ultimos4"],
+    }
+    stores.metodos.setdefault(req.user_id, []).append(metodo)
+    return {"ok": True, "metodo": metodo}
+
+
+@router.delete("/metodos/{user_id}/{card_id}", dependencies=_APP)
+def del_metodo(user_id: str, card_id: str) -> dict:
+    culqi.eliminar_card(card_id)  # best-effort en Culqi
+    lst = stores.metodos.get(user_id, [])
+    stores.metodos[user_id] = [m for m in lst if m.get("id") != card_id]
+    return {"ok": True}
 
 
 @router.post("/recarga", dependencies=_APP)

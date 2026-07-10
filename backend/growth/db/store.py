@@ -289,6 +289,10 @@ class Stores:
         # PAGOS (Culqi): saldo prepago por dueño (céntimos) + libro de pagos.
         self.saldos: dict[str, int] = {}          # dueno_id -> céntimos
         self.pagos: list[PagoRegistro] = []
+        # Métodos de pago guardados (One Click). NO se guarda la tarjeta, sólo el
+        # token permanente de Culqi (crd_...) + marca y últimos 4 para mostrar.
+        self.customers: dict[str, str] = {}       # user_id -> cus_id de Culqi
+        self.metodos: dict[str, list[dict]] = {}  # user_id -> [{id, marca, ultimos4, creado_en}]
         self._idem: dict[tuple[str, str], dict] = {}
         self._ids: dict[str, int] = {}
 
@@ -393,6 +397,8 @@ class Stores:
             "inscripciones": [como_dict(i) for i in self.inscripciones],
             "saldos": dict(self.saldos),
             "pagos": [como_dict(p) for p in self.pagos],
+            "customers": dict(self.customers),
+            "metodos": {k: list(v) for k, v in self.metodos.items()},
         }
 
     def load_state(self, data: dict) -> None:
@@ -419,6 +425,10 @@ class Stores:
         self.inscripciones = [_insc_from(d) for d in data.get("inscripciones", [])]
         self.saldos = {k: int(v) for k, v in (data.get("saldos") or {}).items()}
         self.pagos = [_pago_from(d) for d in data.get("pagos", [])]
+        self.customers = dict(data.get("customers") or {})
+        self.metodos = {
+            k: list(v) for k, v in (data.get("metodos") or {}).items()
+        }
 
 
 # Singleton (en producción: repos contra Supabase).

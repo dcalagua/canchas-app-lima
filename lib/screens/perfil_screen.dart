@@ -8,6 +8,7 @@ import 'academias_screen.dart';
 import 'crear_academia_screen.dart';
 import 'home_shell.dart';
 import 'login_google_sheet.dart';
+import 'metodos_pago_screen.dart';
 import 'mi_academia_screen.dart';
 import 'registrar_cancha_screen.dart';
 import 'verificador_screen.dart';
@@ -147,6 +148,14 @@ class PerfilScreen extends StatelessWidget {
                       subtitle: 'Soy profe: alumnos, cuotas y cobros',
                       onTap: () => _abrirMiAcademia(context),
                     ),
+                    if (u != null)
+                      _Tile(
+                        icon: Icons.credit_card,
+                        title: 'Métodos de pago',
+                        subtitle: 'Tus tarjetas guardadas para pagar rápido',
+                        onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => const MetodosPagoScreen())),
+                      ),
                     if (GrowthService.disponible)
                       _Tile(
                         icon: Icons.verified_user,
