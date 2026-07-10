@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../models/models.dart';
+import '../services/pagos_service.dart';
 import '../services/payments_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'pago_sheet.dart';
+import 'recargar_saldo_screen.dart';
 
 /// Cuenta del club: saldo prepago (modelo inDrive), recargas y movimientos.
 class CuentaScreen extends StatelessWidget {
@@ -84,7 +86,22 @@ class CuentaScreen extends StatelessWidget {
     );
   }
 
-  void _abrirRecarga(BuildContext context) {
+  Future<void> _abrirRecarga(BuildContext context) async {
+    // Con backend de pagos disponible → flujo REAL con Culqi (tarjeta/Yape).
+    if (PagosService.disponible) {
+      final monto = await Navigator.of(context).push<int>(
+          MaterialPageRoute(builder: (_) => const RecargarSaldoScreen()));
+      if (monto != null && monto > 0) {
+        appState.recargar(monto); // refleja el saldo en la UI (autoritativo: backend)
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: pino,
+          content: Text('✅ Recargaste S/$monto. ¡Ya apareces destacado!'),
+        ));
+      }
+      return;
+    }
+    // Fallback (demo sin backend): pasarela simulada.
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,

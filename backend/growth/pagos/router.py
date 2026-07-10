@@ -15,7 +15,10 @@ La llave secreta vive sólo en el backend. Los POST del APK exigen X-App-Key
 
 from __future__ import annotations
 
+import html as _html
+
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 import config
@@ -75,6 +78,63 @@ def get_config() -> dict:
         "comision_porc": config.COMISION_PORC,
         "comision_min_soles": config.COMISION_MIN_SOLES,
     }
+
+
+@router.get("/checkout", response_class=HTMLResponse)
+def get_checkout(amount: int, email: str, title: str = "Pichangol",
+                 desc: str = "Pago") -> HTMLResponse:
+    """Sirve la página de Culqi Checkout (culqi.js v4) desde el propio backend,
+    con la llave PÚBLICA inyectada del lado servidor. El APK la abre en un
+    WebView; al generarse el token, la página redirige a un esquema propio
+    `pichangol://culqi?...` que el APK intercepta (no expone el token en red)."""
+    pk = config.CULQI_PUBLIC_KEY or ""
+    amount = max(int(amount), 100)  # mínimo S/ 1.00
+    title_s = _html.escape(title)[:40]
+    desc_s = _html.escape(desc)[:80]
+    email_s = _html.escape(email)[:120]
+    page = f"""<!doctype html><html lang="es"><head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Pago Pichangol</title>
+<style>
+ html,body{{margin:0;height:100%;background:#F4F6F1;font-family:system-ui,Segoe UI,Roboto,sans-serif;color:#14463A}}
+ .c{{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:14px;padding:20px;text-align:center}}
+ .b{{background:#14463A;color:#AEEA94;border:none;padding:14px 22px;border-radius:14px;font-size:16px;font-weight:700}}
+ .m{{color:#7C8A80;font-size:14px}}
+</style></head><body>
+<div class="c">
+  <div id="msg" class="m">Cargando pago seguro…</div>
+  <button class="b" id="pay" style="display:none" onclick="abrir()">Pagar</button>
+</div>
+<script src="https://checkout.culqi.com/js/v4"></script>
+<script>
+  function volver(qs){{ window.location.href = "pichangol://culqi?" + qs; }}
+  try {{ Culqi.publicKey = "{pk}"; }} catch(e) {{}}
+  function config(){{
+    Culqi.settings({{ title: "{title_s}", currency: "PEN", amount: {amount}, description: "{desc_s}" }});
+    Culqi.options({{
+      lang: "es",
+      installments: false,
+      paymentMethods: {{ tarjeta: true, yape: true, bancaMovil: false, agente: false, billetera: false, cuotealo: false }},
+      style: {{ buttonBackground: "#14463A", menuColor: "#14463A", buttonText: "Pagar" }}
+    }});
+  }}
+  window.culqi = function(){{
+    if (Culqi.token && Culqi.token.id) {{
+      volver("status=ok&token=" + encodeURIComponent(Culqi.token.id));
+    }} else if (Culqi.error) {{
+      volver("status=error&msg=" + encodeURIComponent(Culqi.error.user_message || "error"));
+    }}
+  }};
+  function abrir(){{ try {{ config(); Culqi.open(); }} catch(e) {{ volver("status=error&msg=" + encodeURIComponent(String(e))); }} }}
+  // Autoabre; si Culqi aún no cargó, muestra el botón para reintentar.
+  var t = setInterval(function(){{
+    if (window.Culqi) {{ clearInterval(t); document.getElementById('msg').textContent = 'Elige tu método de pago'; document.getElementById('pay').style.display='block'; abrir(); }}
+  }}, 300);
+  setTimeout(function(){{ if(!window.Culqi){{ document.getElementById('msg').textContent='No se pudo cargar el pago. Revisa tu conexión.'; }} }}, 8000);
+</script>
+</body></html>"""
+    # No cachear (la página lleva parámetros del cobro).
+    return HTMLResponse(content=page, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/saldo/{dueno_id}", dependencies=_APP)
