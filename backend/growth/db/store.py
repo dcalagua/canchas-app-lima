@@ -247,6 +247,25 @@ class Inscripcion:
     asistio: bool | None = None
 
 
+@dataclass
+class PagoRegistro:
+    """Un movimiento de pasarela (Culqi). Es plata: autoritativo en el backend.
+    - tipo=recarga → acredita saldo del dueño (dueno_id).
+    - tipo=fee_reserva → comisión que el jugador paga a Pichangol (saldo cero);
+      NO acredita saldo de nadie, es ingreso de Pichangol.
+    monto_centimos en céntimos de sol (entero), como maneja Culqi."""
+    id: int
+    tipo: str                    # recarga | fee_reserva
+    monto_centimos: int
+    moneda: str                  # PEN
+    estado: str                  # aprobado | rechazado
+    creado_en: datetime
+    dueno_id: str | None = None
+    culqi_charge_id: str | None = None
+    email: str | None = None
+    concepto: str | None = None
+
+
 class Stores:
     def __init__(self) -> None:
         self.config: dict[str, str] = dict(CONFIG_DEFAULT)
@@ -267,6 +286,9 @@ class Stores:
         # Convocatorias ("pichangas" programadas) y sus inscripciones.
         self.convocatorias: list[Convocatoria] = []
         self.inscripciones: list[Inscripcion] = []
+        # PAGOS (Culqi): saldo prepago por dueño (céntimos) + libro de pagos.
+        self.saldos: dict[str, int] = {}          # dueno_id -> céntimos
+        self.pagos: list[PagoRegistro] = []
         self._idem: dict[tuple[str, str], dict] = {}
         self._ids: dict[str, int] = {}
 
@@ -303,6 +325,28 @@ class Stores:
             return override
         glob = self.cfg("convocatoria_modo_asignacion")
         return glob if glob in MODOS_ASIGNACION else "orden_llegada"
+
+    # --- pagos / saldo prepago (Culqi) --------------------------------------
+    def saldo_centimos(self, dueno_id: str) -> int:
+        return self.saldos.get(dueno_id, 0)
+
+    def acreditar(self, dueno_id: str, centimos: int) -> int:
+        """Suma [centimos] al saldo del dueño y devuelve el nuevo saldo."""
+        self.saldos[dueno_id] = self.saldos.get(dueno_id, 0) + int(centimos)
+        return self.saldos[dueno_id]
+
+    def pago_por_charge(self, charge_id: str | None) -> "PagoRegistro | None":
+        if not charge_id:
+            return None
+        for p in self.pagos:
+            if p.culqi_charge_id == charge_id:
+                return p
+        return None
+
+    def registrar_pago(self, **kw) -> "PagoRegistro":
+        p = PagoRegistro(id=self.next_id("pago"), creado_en=ahora(), **kw)
+        self.pagos.append(p)
+        return p
 
     def cancha(self, cancha_id: str) -> CanchaEstado:
         c = self.canchas.get(cancha_id)
@@ -347,6 +391,8 @@ class Stores:
             "modo_aprobacion_overrides": dict(self.modo_aprobacion_overrides),
             "convocatorias": [como_dict(c) for c in self.convocatorias],
             "inscripciones": [como_dict(i) for i in self.inscripciones],
+            "saldos": dict(self.saldos),
+            "pagos": [como_dict(p) for p in self.pagos],
         }
 
     def load_state(self, data: dict) -> None:
@@ -371,6 +417,8 @@ class Stores:
             data.get("modo_aprobacion_overrides") or {})
         self.convocatorias = [_conv_from(d) for d in data.get("convocatorias", [])]
         self.inscripciones = [_insc_from(d) for d in data.get("inscripciones", [])]
+        self.saldos = {k: int(v) for k, v in (data.get("saldos") or {}).items()}
+        self.pagos = [_pago_from(d) for d in data.get("pagos", [])]
 
 
 # Singleton (en producción: repos contra Supabase).
@@ -465,6 +513,15 @@ def _conv_from(d: dict) -> Convocatoria:
         cierre=_dt(d.get("cierre")), modo_asignacion=d.get("modo_asignacion"),
         semilla=d.get("semilla"), creado_por=d.get("creado_por", ""),
         cerrado_en=_dt(d.get("cerrado_en")))
+
+
+def _pago_from(d: dict) -> PagoRegistro:
+    return PagoRegistro(
+        id=d["id"], tipo=d["tipo"], monto_centimos=int(d["monto_centimos"]),
+        moneda=d.get("moneda", "PEN"), estado=d["estado"],
+        creado_en=_dt(d["creado_en"]), dueno_id=d.get("dueno_id"),
+        culqi_charge_id=d.get("culqi_charge_id"), email=d.get("email"),
+        concepto=d.get("concepto"))
 
 
 def _insc_from(d: dict) -> Inscripcion:

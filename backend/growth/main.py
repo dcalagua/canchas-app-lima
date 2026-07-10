@@ -14,6 +14,7 @@ from convocatorias.router import router as convocatorias_router
 from db import pg
 from db.store import seed_verificadores, stores
 from models import ConfigRequest, ConsentimientoRequest
+from pagos.router import router as pagos_router
 from propiedad.panel import router as panel_router
 from propiedad.router import _require_admin
 from propiedad.router import router as propiedad_router
@@ -52,6 +53,7 @@ app.include_router(vf_router)
 app.include_router(propiedad_router)
 app.include_router(panel_router)
 app.include_router(convocatorias_router)
+app.include_router(pagos_router)
 
 
 @app.get("/health")

@@ -88,6 +88,22 @@ RECLAMO_UBICACION_MAX_M = float(
 # que la verificación física "coincide".
 COINCIDENCIA_MAX_M = float(os.getenv("VERIF_COINCIDENCIA_MAX_M", "200"))
 
+# --- Culqi (pasarela de pagos: recargas del dueño + fee de reserva) ---------
+# La llave SECRETA (sk_...) SÓLO vive aquí (variable de Railway); jamás en el APK
+# ni en el repo. Con ella el backend crea los cargos. La llave PÚBLICA (pk_...) sí
+# puede ir en el APK (tokeniza tarjeta/Yape en el celular). Sin CULQI_SECRET_KEY,
+# el módulo de pagos queda inactivo (fail-safe 503).
+CULQI_SECRET_KEY = os.getenv("CULQI_SECRET_KEY", "")
+CULQI_PUBLIC_KEY = os.getenv("CULQI_PUBLIC_KEY", "")
+CULQI_API_BASE = os.getenv("CULQI_API_BASE", "https://api.culqi.com/v2")
+# Token compartido opcional para el webhook de Culqi: se pasa como ?t=<token> en
+# la URL registrada en el panel de Culqi. Filtro ligero anti-ruido; la fuente de
+# verdad es re-consultar el cargo a Culqi con la sk. Vacío = no se exige.
+CULQI_WEBHOOK_TOKEN = os.getenv("CULQI_WEBHOOK_TOKEN", "")
+# Comisión de Pichangol por reserva (modelo inDrive). 5% con mínimo S/2.
+COMISION_PORC = float(os.getenv("COMISION_PORC", "5"))
+COMISION_MIN_SOLES = float(os.getenv("COMISION_MIN_SOLES", "2"))
+
 ZONAS = ("lima_norte", "lima_sur", "lima_este", "lima_moderna", "callao")
 
 # Mapeo distrito -> zona (parcial; lo no mapeado cae a 'lima_moderna').
