@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/marcas_pago.dart';
+import '../widgets/pago_procesando.dart';
 
 /// Recarga de saldo del dueño con Culqi (tarjeta o Yape). Tokeniza con la llave
 /// pública en el celular y confirma el cobro contra el backend. Devuelve el monto
@@ -22,7 +24,6 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
   int _monto = 50;
   _Metodo _metodo = _Metodo.yape;
   bool _cargando = true;
-  bool _procesando = false;
   String? _pk;
   String? _error;
 
@@ -73,57 +74,71 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
       setState(() => _error = 'Pagos no configurados en el servidor.');
       return;
     }
+    // Validación de campos ANTES de mostrar la caja de cobro.
     final centimos = PagosService.solesACentimos(_monto.toDouble());
-
-    // 1) Tokeniza según el método.
-    setState(() => _procesando = true);
-    Map<String, dynamic> tok;
+    final cel = _celular.text.replaceAll(RegExp(r'[^0-9]'), '');
+    final otp = _otp.text.replaceAll(RegExp(r'[^0-9]'), '');
+    final numero = _num.text.replaceAll(' ', '');
     if (_metodo == _Metodo.yape) {
-      final cel = _celular.text.replaceAll(RegExp(r'[^0-9]'), '');
-      final otp = _otp.text.replaceAll(RegExp(r'[^0-9]'), '');
       if (cel.length != 9) {
-        return _fallo('Pon tu número de celular Yape (9 dígitos).');
+        return setState(() => _error = 'Pon tu número de celular Yape (9 dígitos).');
       }
       if (otp.length < 6) {
-        return _fallo('Ingresa el código de aprobación de Yape (6 dígitos).');
+        return setState(() => _error = 'Ingresa el código de aprobación de Yape (6 dígitos).');
       }
-      tok = await PagosService.tokenizarYape(
-        publicKey: _pk!, celular: cel, otp: otp, montoCentimos: centimos);
     } else {
-      final numero = _num.text.replaceAll(' ', '');
-      final exp = _exp.text.split('/');
-      if (numero.length < 15) return _fallo('Número de tarjeta inválido.');
-      if (exp.length != 2) return _fallo('Vencimiento inválido (MM/AA).');
-      if (_cvv.text.length < 3) return _fallo('CVV inválido.');
-      final mes = int.tryParse(exp[0].trim()) ?? 0;
-      var anio = int.tryParse(exp[1].trim()) ?? 0;
-      if (anio < 100) anio += 2000;
-      tok = await PagosService.tokenizarTarjeta(
-        publicKey: _pk!, numero: numero, cvv: _cvv.text.trim(),
-        mesExp: mes, anioExp: anio, email: _email);
+      if (numero.length < 15) {
+        return setState(() => _error = 'Número de tarjeta inválido.');
+      }
+      if (_exp.text.split('/').length != 2) {
+        return setState(() => _error = 'Vencimiento inválido (MM/AA).');
+      }
+      if (_cvv.text.length < 3) {
+        return setState(() => _error = 'CVV inválido.');
+      }
     }
-    if (!mounted) return;
-    if (tok['ok'] != true) return _fallo(tok['error']?.toString() ?? 'No se pudo validar el pago.');
 
-    // 2) Cobra en el backend (crea el cargo con la sk y acredita saldo).
-    final res = await PagosService.recargar(
-      token: tok['token'].toString(),
-      duenoId: _email,
-      email: _email,
-      montoSoles: _monto.toDouble(),
+    // Acción de pago: tokeniza (Yape/tarjeta) y cobra en el backend.
+    Future<Map<String, dynamic>> accion() async {
+      Map<String, dynamic> tok;
+      if (_metodo == _Metodo.yape) {
+        tok = await PagosService.tokenizarYape(
+            publicKey: _pk!, celular: cel, otp: otp, montoCentimos: centimos);
+      } else {
+        final exp = _exp.text.split('/');
+        final mes = int.tryParse(exp[0].trim()) ?? 0;
+        var anio = int.tryParse(exp[1].trim()) ?? 0;
+        if (anio < 100) anio += 2000;
+        tok = await PagosService.tokenizarTarjeta(
+            publicKey: _pk!, numero: numero, cvv: _cvv.text.trim(),
+            mesExp: mes, anioExp: anio, email: _email);
+      }
+      if (tok['ok'] != true) {
+        return {'ok': false, 'error': tok['error']?.toString() ?? 'No se pudo validar el pago.'};
+      }
+      final res = await PagosService.recargar(
+        token: tok['token'].toString(),
+        duenoId: _email,
+        email: _email,
+        montoSoles: _monto.toDouble(),
+      );
+      if (res['ok'] != true) {
+        return {'ok': false, 'error': res['error']?.toString() ?? 'No se pudo acreditar.'};
+      }
+      return {
+        'ok': true,
+        'detalle': 'Se acreditaron S/ $_monto a tu saldo.',
+      };
+    }
+
+    final ok = await PagoProcesando.mostrar(
+      context,
+      titulo: 'Cobrando S/ $_monto',
+      exitoTitulo: '¡Recarga exitosa!',
+      exitoDetalle: 'Se acreditaron S/ $_monto a tu saldo.',
+      accion: accion,
     );
-    if (!mounted) return;
-    if (res['ok'] != true) return _fallo(res['error']?.toString() ?? 'No se pudo acreditar.');
-
-    Navigator.of(context).pop(_monto);
-  }
-
-  void _fallo(String msg) {
-    if (!mounted) return;
-    setState(() {
-      _procesando = false;
-      _error = msg;
-    });
+    if (ok == true && mounted) Navigator.of(context).pop(_monto);
   }
 
   @override
@@ -162,16 +177,15 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
                 const SizedBox(height: 10),
                 Row(
                   children: [
-                    _MetodoChip(
-                      label: 'Yape',
-                      icon: Icons.phone_android,
+                    _MetodoBoton(
+                      marca: const YapeBadge(alto: 30),
                       sel: _metodo == _Metodo.yape,
                       onTap: () => setState(() => _metodo = _Metodo.yape),
                     ),
-                    const SizedBox(width: 10),
-                    _MetodoChip(
-                      label: 'Tarjeta',
-                      icon: Icons.credit_card,
+                    const SizedBox(width: 12),
+                    _MetodoBoton(
+                      marca: const MarcasTarjeta(),
+                      etiqueta: 'Tarjeta',
                       sel: _metodo == _Metodo.tarjeta,
                       onTap: () => setState(() => _metodo = _Metodo.tarjeta),
                     ),
@@ -206,14 +220,8 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
                         backgroundColor: pino,
                         foregroundColor: lima,
                         padding: const EdgeInsets.symmetric(vertical: 15)),
-                    onPressed: _procesando ? null : _pagar,
-                    child: _procesando
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2.4, color: lima))
-                        : Text('Pagar S/ $_monto'),
+                    onPressed: _pagar,
+                    child: Text('Pagar S/ $_monto'),
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -301,14 +309,17 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
   }
 }
 
-class _MetodoChip extends StatelessWidget {
-  const _MetodoChip(
-      {required this.label,
-      required this.icon,
-      required this.sel,
-      required this.onTap});
-  final String label;
-  final IconData icon;
+/// Botón de método de pago: muestra la MARCA real (logo Yape / Visa-Mastercard)
+/// siempre a color; al seleccionar resalta con borde verde + tinte lima + check.
+class _MetodoBoton extends StatelessWidget {
+  const _MetodoBoton({
+    required this.marca,
+    required this.sel,
+    required this.onTap,
+    this.etiqueta,
+  });
+  final Widget marca;
+  final String? etiqueta;
   final bool sel;
   final VoidCallback onTap;
 
@@ -317,22 +328,43 @@ class _MetodoChip extends StatelessWidget {
     return Expanded(
       child: GestureDetector(
         onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 14),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          height: 62,
           decoration: BoxDecoration(
-            color: sel ? bosque : Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: sel ? bosque : trazo, width: 1.4),
+            color: sel ? limaSuave : Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+                color: sel ? bosque : const Color(0xFFE4E4E4),
+                width: sel ? 2 : 1),
+            boxShadow: const [
+              BoxShadow(
+                  color: Color(0x0F000000), blurRadius: 6, offset: Offset(0, 2)),
+            ],
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+          child: Stack(
+            alignment: Alignment.center,
             children: [
-              Icon(icon, size: 20, color: sel ? Colors.white : bosque),
-              const SizedBox(width: 8),
-              Text(label,
-                  style: TextStyle(
-                      color: sel ? Colors.white : tinta,
-                      fontWeight: FontWeight.w700)),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  marca,
+                  if (etiqueta != null) ...[
+                    const SizedBox(width: 10),
+                    Text(etiqueta!,
+                        style: const TextStyle(
+                            color: tinta,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15)),
+                  ],
+                ],
+              ),
+              if (sel)
+                const Positioned(
+                  top: 6,
+                  right: 8,
+                  child: Icon(Icons.check_circle, color: bosque, size: 18),
+                ),
             ],
           ),
         ),
