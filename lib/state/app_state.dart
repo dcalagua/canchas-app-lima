@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../data/academias_repo.dart';
 import '../data/canchas_repo.dart';
 import '../data/reservas_repo.dart';
 import '../data/sample_data.dart';
@@ -87,7 +88,8 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
-  /// Crea o actualiza una academia (upsert por id).
+  /// Crea o actualiza una academia (upsert por id). Persiste local + nube
+  /// (Supabase) para que sobreviva a reinstalar el APK.
   void guardarAcademia(Academia a) {
     final i = academias.indexWhere((x) => x.id == a.id);
     if (i >= 0) {
@@ -97,6 +99,7 @@ class AppState extends ChangeNotifier {
     }
     notifyListeners();
     _persistirDatos();
+    AcademiasRepo.guardar(a); // best-effort: comparte y sobrevive reinstalación
   }
 
   void eliminarAcademia(String id) {
@@ -106,6 +109,28 @@ class AppState extends ChangeNotifier {
     asistencias.removeWhere((a) => a.academiaId == id);
     notifyListeners();
     _persistirDatos();
+    AcademiasRepo.eliminar(id); // borrado lógico durable en la nube
+  }
+
+  /// Trae las academias de la nube y las fusiona con las locales (por id). Así,
+  /// al reinstalar el APK, las academias del profe reaparecen. Best-effort.
+  Future<void> cargarAcademiasRemotas() async {
+    final remotas = await AcademiasRepo.fetchRemotas();
+    if (remotas.isEmpty) return;
+    var cambio = false;
+    for (final a in remotas) {
+      final i = academias.indexWhere((x) => x.id == a.id);
+      if (i >= 0) {
+        academias[i] = a;
+      } else {
+        academias.add(a);
+      }
+      cambio = true;
+    }
+    if (cambio) {
+      notifyListeners();
+      _persistirDatos();
+    }
   }
 
   List<Alumno> alumnosDe(String academiaId) =>
