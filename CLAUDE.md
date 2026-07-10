@@ -166,6 +166,19 @@ lima). Splash en verde claro `#AEEA94` con el pin + amarillo `#F2C94C` donde
 aporta. Eslogan: "Reserva, juega, repite." La co-marca con EBIM solo en el panel
 web admin; la app del jugador es 100% Pichangol.
 
+**Estándar de UI/UX: estilo Airbnb (siempre).** Toda pantalla/componente nuevo
+sigue el lenguaje Airbnb sobre la paleta EBIM:
+- **Pastillas/chips:** blancas, borde gris muy suave (`#E4E4E4`), relieve leve
+  (sombra `0x0F000000`), esquinas muy redondeadas. Seleccionado = relleno gris
+  plomo (`#EBEBEB`) o tinte lima, **nunca borde negro**.
+- **Tarjetas:** fondo blanco, radio 16–18, sombra sutil, sin bordes duros.
+- **Tipografía:** DM Sans (equivalente a Cereal), jerarquía clara, tamaños
+  generosos (títulos 15–19+, texto charcoal `#222`).
+- **Fondos** claros; acentos con lima/bosque, no saturar.
+- **Pagos/estados:** caja centrada animada (procesando → check), logos de marca
+  reales (Yape morado, Visa/Mastercard). Ver `widgets/marcas_pago.dart`,
+  `widgets/pago_procesando.dart`.
+
 ## Pendientes / backlog
 
 - Conexión con redes sociales (Fase 1): stub, **habilitado solo tras verificar
