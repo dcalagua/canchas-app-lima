@@ -901,8 +901,9 @@ class _FiltrosDeporte extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Píldora estilo Airbnb: fondo blanco, emoji + etiqueta; al seleccionar,
-    // borde oscuro + sombra más marcada y texto en negrita.
+    // Píldora estilo Airbnb: pastilla blanca con borde gris muy suave y un
+    // relieve leve (sombra). Al seleccionar NO se pone marco negro: se rellena
+    // de gris plomo (como el "Todo" de Airbnb) y el texto va en negrita.
     Widget chip(String emoji, String texto,
         {required bool activo, required VoidCallback onTap}) {
       return Padding(
@@ -911,18 +912,18 @@ class _FiltrosDeporte extends StatelessWidget {
           onTap: onTap,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 160),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: activo ? const Color(0xFFEBEBEB) : Colors.white,
               borderRadius: BorderRadius.circular(30),
               border: Border.all(
-                color: activo ? tinta : const Color(0xFFE6E4DD),
-                width: activo ? 1.6 : 1,
+                color: activo ? const Color(0xFFD6D6D6) : const Color(0xFFE4E4E4),
+                width: 1,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(activo ? 0.12 : 0.05),
-                  blurRadius: activo ? 8 : 4,
+                  color: Colors.black.withOpacity(0.06),
+                  blurRadius: 6,
                   offset: const Offset(0, 2),
                 ),
               ],
@@ -930,14 +931,15 @@ class _FiltrosDeporte extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(emoji, style: const TextStyle(fontSize: 16)),
-                const SizedBox(width: 7),
+                Text(emoji, style: const TextStyle(fontSize: 17)),
+                const SizedBox(width: 8),
                 Text(
                   texto,
                   style: TextStyle(
-                    color: tinta,
-                    fontWeight: activo ? FontWeight.w800 : FontWeight.w600,
-                    fontSize: 14,
+                    color: const Color(0xFF222222),
+                    fontWeight: activo ? FontWeight.w700 : FontWeight.w500,
+                    fontSize: 15,
+                    letterSpacing: -0.1,
                   ),
                 ),
               ],
