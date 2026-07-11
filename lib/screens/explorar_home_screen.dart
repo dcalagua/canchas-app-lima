@@ -8,6 +8,7 @@ import '../data/sample_data.dart';
 import '../models/models.dart';
 import '../models/club.dart';
 import '../widgets/club_card.dart';
+import '../widgets/pin_cargando.dart';
 import '../brand.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -425,16 +426,8 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                           return const Center(
                             child: Padding(
                               padding: EdgeInsets.all(32),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  CircularProgressIndicator(
-                                      strokeWidth: 2, color: verdeCancha),
-                                  SizedBox(height: 14),
-                                  Text('Detectando tu ubicación…',
-                                      style: TextStyle(color: textoTenue)),
-                                ],
-                              ),
+                              child: PinCargando(
+                                  texto: 'Detectando tu ubicación…'),
                             ),
                           );
                         }
