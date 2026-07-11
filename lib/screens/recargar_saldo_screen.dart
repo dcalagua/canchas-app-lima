@@ -26,7 +26,10 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
   _Metodo _metodo = _Metodo.yape;
   bool _cargando = true;
   String? _pk;
+  String _modo = 'off'; // test | live | off (de /pagos/config)
   String? _error;
+
+  bool get _esTest => _modo == 'test';
 
   // Yape
   final _celular = TextEditingController();
@@ -51,6 +54,9 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
       _cargando = false;
       if (cfg != null && cfg['disponible'] == true) {
         _pk = (cfg['public_key'] ?? '') as String;
+        _modo = (cfg['modo'] ?? 'off').toString();
+        // En modo prueba Yape no valida (Culqi sandbox); arranca en Tarjeta.
+        if (_esTest) _metodo = _Metodo.tarjeta;
       }
     });
   }
@@ -239,6 +245,27 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (_esTest)
+          Container(
+            padding: const EdgeInsets.all(12),
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+                color: const Color(0xFFFFF4E5),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFF2C94C))),
+            child: const Row(
+              children: [
+                Icon(Icons.info_outline, color: Color(0xFFB8860B), size: 20),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                      'En modo prueba, Yape no valida (limitación de Culqi). '
+                      'Para probar usa la pestaña Tarjeta con una tarjeta de test.',
+                      style: TextStyle(fontSize: 13, color: Color(0xFF7A5B00))),
+                ),
+              ],
+            ),
+          ),
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
