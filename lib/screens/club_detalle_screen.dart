@@ -13,7 +13,7 @@ import 'editar_cancha_screen.dart';
 import '../utils/moneda.dart';
 import '../utils/ubicacion_share.dart';
 import 'login_google_sheet.dart';
-import 'pago_sheet.dart';
+import '../widgets/pago_tarjeta_sheet.dart';
 import 'registrar_cancha_screen.dart';
 import 'reservas_dueno_screen.dart';
 
@@ -173,15 +173,16 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
       final ok = await LoginGoogleSheet.mostrar(context);
       if (!ok || !mounted) return;
     }
-    // Pago (SIMULADO en el piloto): cierra el ciclo de reserva. Si el usuario
-    // cancela o el pago no fue exitoso, no se reserva. La pasarela real
-    // (Culqi/Yape) se conecta en la fase de pagos sin tocar este flujo.
-    final pago = await PagoSheet.mostrar(
+    // Pago con tarjeta (Culqi). Cobra el precio de la reserva; si el usuario
+    // cancela o el pago falla, no se reserva. Si Culqi no está configurado, el
+    // sheet cae a la pasarela simulada (demo).
+    final pagado = await PagoTarjeta.cobrar(
       context,
       monto: _cancha.precioHora.round(),
       concepto: 'Reserva · ${_cancha.nombre} · $_dia $hora',
+      email: appState.usuario?.email ?? '',
     );
-    if (pago == null || !pago.exito || !mounted) return;
+    if (!pagado || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     final nav = Navigator.of(context);
     final res =

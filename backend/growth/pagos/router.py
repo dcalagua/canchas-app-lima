@@ -68,6 +68,14 @@ class FeeReq(BaseModel):
     reserva_id: str | None = None
 
 
+class CobroReq(BaseModel):
+    token: str                 # tkn_ (tarjeta nueva) o crd_ (tarjeta guardada)
+    email: str
+    monto_soles: float
+    concepto: str = "Pago Pichangol"
+    tipo: str = "cobro"        # reserva | academia | cobro
+
+
 class MetodoReq(BaseModel):
     token: str                 # token temporal (tkn_) de tokenizar la tarjeta
     user_id: str               # a quién pertenece (correo del jugador)
@@ -150,6 +158,38 @@ def get_checkout(amount: int, email: str, title: str = "Pichangol",
 def get_saldo(dueno_id: str) -> dict:
     c = stores.saldo_centimos(dueno_id)
     return {"dueno_id": dueno_id, "saldo_centimos": c, "saldo_soles": c / 100.0}
+
+
+# --- Cobro genérico al jugador (reservas, academias) ---------------------
+@router.post("/cobrar", dependencies=_APP)
+def post_cobrar(req: CobroReq) -> dict:
+    """Cobra [monto_soles] al jugador (tarjeta nueva tkn_ o guardada crd_) a la
+    cuenta de Pichangol. Sirve para reservas y matrículas de academia."""
+    if not culqi.disponible():
+        raise HTTPException(status_code=503, detail="pagos_no_configurados")
+    centimos = _soles_a_centimos(req.monto_soles)
+    if centimos < 100:
+        raise HTTPException(status_code=400, detail="monto_minimo_1_sol")
+    r = culqi.crear_cargo(
+        token=req.token,
+        monto_centimos=centimos,
+        email=req.email,
+        descripcion=req.concepto,
+    )
+    if not r["ok"]:
+        return {
+            "ok": False,
+            "error": r.get("error", "cargo_rechazado"),
+            "codigo": r.get("codigo"),
+            "merchant": r.get("merchant"),
+        }
+    charge_id = r["charge_id"]
+    if stores.pago_por_charge(charge_id) is None:
+        stores.registrar_pago(
+            tipo=req.tipo, monto_centimos=centimos, moneda="PEN",
+            estado="aprobado", email=req.email, culqi_charge_id=charge_id,
+            concepto=req.concepto)
+    return {"ok": True, "charge_id": charge_id}
 
 
 # --- Métodos de pago guardados (Culqi One Click) -------------------------

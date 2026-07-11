@@ -6,7 +6,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/redes.dart';
 import '../utils/ubicacion_share.dart';
-import 'pago_sheet.dart';
+import '../widgets/pago_tarjeta_sheet.dart';
 
 /// Ficha pública de una academia: feed de fotos propio (no Instagram embebido),
 /// planes con matrícula en el mismo app (pago simulado) y redes para seguir.
@@ -359,14 +359,16 @@ class _TarjetaPlan extends StatelessWidget {
     if (datos == null) return;
     final (nombre, whatsapp) = datos;
 
-    // 2) Pago simulado del primer mes / de la clase.
+    // 2) Pago del primer mes / de la clase con tarjeta (Culqi). Si Culqi no
+    // está configurado, el sheet cae a la pasarela simulada (demo).
     if (!context.mounted) return;
-    final pago = await PagoSheet.mostrar(
+    final pagado = await PagoTarjeta.cobrar(
       context,
       monto: plan.precioMes.round(),
       concepto: 'Matrícula ${academia.nombre} · ${plan.nombre}',
+      email: appState.usuario?.email ?? '',
     );
-    if (pago == null || !pago.exito) return;
+    if (!pagado) return;
 
     // 3) Registra la matrícula (crea alumno + cuotas, primera pagada).
     appState.matricular(

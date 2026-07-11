@@ -158,6 +158,15 @@ def test_comision_calculo():
     assert comision_centimos(20) == 200      # 5% de 20 = 1.00 → mínimo 2.00
 
 
+def test_cobrar_generico():
+    r = client.post("/pagos/cobrar", json={
+        "token": "tkn_1", "email": "j@x.com", "monto_soles": 60,
+        "concepto": "Reserva cancha", "tipo": "reserva"}).json()
+    assert r["ok"] is True
+    assert r["charge_id"].startswith("chr_")
+    assert any(p.tipo == "reserva" for p in stores.pagos)
+
+
 def test_guardar_metodo_de_pago():
     r = client.post("/pagos/metodos", json={
         "token": "tkn_1", "user_id": "juan@x.com", "email": "juan@x.com",

@@ -163,6 +163,54 @@ class PagosService {
     }
   }
 
+  /// Cobra al jugador [montoSoles] (tarjeta nueva tkn_ o guardada crd_) a la
+  /// cuenta de Pichangol. Para reservas y matrículas. {ok, chargeId} o {ok:false}.
+  static Future<Map<String, dynamic>> cobrar({
+    required String token,
+    required String email,
+    required double montoSoles,
+    required String concepto,
+    String tipo = 'cobro',
+  }) async {
+    if (!disponible) return {'ok': false, 'error': 'Falta GROWTH_API_URL en el APK.'};
+    try {
+      final r = await http.post(
+        Uri.parse('$_baseUrl/pagos/cobrar'),
+        headers: _appHeaders(json: true),
+        body: jsonEncode({
+          'token': token,
+          'email': email,
+          'monto_soles': montoSoles,
+          'concepto': concepto,
+          'tipo': tipo,
+        }),
+      ).timeout(const Duration(seconds: 40));
+      Map<String, dynamic> j = {};
+      try {
+        j = jsonDecode(r.body) as Map<String, dynamic>;
+      } catch (_) {}
+      if (r.statusCode == 200 && j['ok'] == true) {
+        return {'ok': true, 'chargeId': j['charge_id']};
+      }
+      final det = (j['error'] ?? j['detail'] ?? '').toString();
+      final code = (j['codigo'] ?? '').toString();
+      final merch = (j['merchant'] ?? '').toString();
+      final extra = [
+        if (code.isNotEmpty) 'cód: $code',
+        if (merch.isNotEmpty && merch != det) merch,
+      ].join(' · ');
+      return {
+        'ok': false,
+        'error': 'HTTP ${r.statusCode}: ${det.isEmpty ? '(sin detalle)' : det}'
+            '${extra.isEmpty ? '' : '\n$extra'}',
+      };
+    } on TimeoutException {
+      return {'ok': false, 'error': 'El servidor de pagos no respondió (timeout).'};
+    } catch (e) {
+      return {'ok': false, 'error': 'No se pudo contactar el backend [${e.runtimeType}].'};
+    }
+  }
+
   /// Cobra al jugador solo la comisión (fallback saldo cero). {ok, chargeId}.
   static Future<Map<String, dynamic>> feeReserva({
     required String token,
