@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../utils/input_formatos.dart';
 import '../widgets/marcas_pago.dart';
 
 /// Métodos de pago del usuario: tarjetas guardadas (Culqi One Click). El usuario
@@ -288,9 +289,11 @@ class _AgregarTarjetaSheetState extends State<_AgregarTarjetaSheet> {
           TextField(
             controller: _num,
             keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(19)],
+            inputFormatters: [TarjetaNumeroFormatter()],
             decoration: const InputDecoration(
-                labelText: 'Número de tarjeta', prefixIcon: Icon(Icons.credit_card)),
+                labelText: 'Número de tarjeta',
+                hintText: '1234 5678 9012 3456',
+                prefixIcon: Icon(Icons.credit_card)),
           ),
           const SizedBox(height: 12),
           Row(
@@ -299,9 +302,9 @@ class _AgregarTarjetaSheetState extends State<_AgregarTarjetaSheet> {
                 child: TextField(
                   controller: _exp,
                   keyboardType: TextInputType.number,
-                  inputFormatters: [LengthLimitingTextInputFormatter(5)],
+                  inputFormatters: [VencimientoFormatter()],
                   decoration: const InputDecoration(
-                      labelText: 'Vence (MM/AA)', hintText: '08/28'),
+                      labelText: 'Vence (MM/AA)', hintText: '09/28'),
                 ),
               ),
               const SizedBox(width: 12),
