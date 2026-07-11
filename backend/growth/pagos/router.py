@@ -215,7 +215,12 @@ def post_recarga(req: RecargaReq) -> dict:
             tipo="recarga", monto_centimos=centimos, moneda="PEN",
             estado="rechazado", dueno_id=req.dueno_id, email=req.email,
             concepto="Recarga (rechazada)")
-        return {"ok": False, "error": r.get("error", "cargo_rechazado")}
+        return {
+            "ok": False,
+            "error": r.get("error", "cargo_rechazado"),
+            "codigo": r.get("codigo"),
+            "merchant": r.get("merchant"),
+        }
 
     charge_id = r["charge_id"]
     # Idempotencia: si el webhook ya acreditó este cargo, no dupliques.

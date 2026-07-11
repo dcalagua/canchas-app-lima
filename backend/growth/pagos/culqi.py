@@ -60,6 +60,7 @@ def _request(metodo: str, path: str, body: dict | None = None) -> dict:
             "error": err.get("user_message") or err.get("merchant_message")
             or f"culqi_http_{e.code}",
             "codigo": err.get("code") or err.get("type"),
+            "merchant": err.get("merchant_message"),
         }
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": str(e)[:160]}
@@ -81,12 +82,19 @@ def crear_cargo(
         return {"ok": False, "error": "culqi_no_configurado"}
     if monto_centimos < 100:  # Culqi exige mínimo S/ 1.00 (100 céntimos)
         return {"ok": False, "error": "monto_minimo_1_sol"}
+    # Antifraude: Culqi suele rechazar con "Contáctate con soporte" si no recibe
+    # estos datos. Se derivan del correo (best-effort) para no pedir más campos.
+    local = (email.split("@")[0] if "@" in email else "cliente")[:50] or "cliente"
     body = {
         "amount": int(monto_centimos),
         "currency_code": moneda,
         "email": email,
         "source_id": token,
         "description": descripcion[:80],
+        "antifraud_details": {
+            "first_name": local,
+            "last_name": "Pichangol",
+        },
     }
     if metadata:
         # Culqi acepta metadata con valores string.

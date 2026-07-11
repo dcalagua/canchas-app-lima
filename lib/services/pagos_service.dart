@@ -143,11 +143,18 @@ class PagosService {
       if (r.statusCode == 200 && j['ok'] == true) {
         return {'ok': true, 'saldoSoles': (j['saldo_soles'] as num?)?.toDouble() ?? 0};
       }
-      // Mensaje preciso: código HTTP + detalle del backend para diagnosticar.
+      // Mensaje preciso: detalle del backend + código/merchant de Culqi.
       final det = (j['error'] ?? j['detail'] ?? '').toString();
+      final code = (j['codigo'] ?? '').toString();
+      final merch = (j['merchant'] ?? '').toString();
+      final extra = [
+        if (code.isNotEmpty) 'cód: $code',
+        if (merch.isNotEmpty && merch != det) merch,
+      ].join(' · ');
       return {
         'ok': false,
-        'error': 'Backend HTTP ${r.statusCode}${det.isEmpty ? '' : ': $det'}',
+        'error': 'HTTP ${r.statusCode}: ${det.isEmpty ? '(sin detalle)' : det}'
+            '${extra.isEmpty ? '' : '\n$extra'}',
       };
     } on TimeoutException {
       return {'ok': false, 'error': 'El servidor de pagos no respondió (timeout). Reintenta.'};
