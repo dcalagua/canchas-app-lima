@@ -76,8 +76,11 @@ class _PagoTarjetaSheet extends StatefulWidget {
   State<_PagoTarjetaSheet> createState() => _PagoTarjetaSheetState();
 }
 
+enum _Metodo { yape, tarjeta }
+
 class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
   bool _cargando = true;
+  _Metodo _metodo = _Metodo.tarjeta;
   List<Map<String, dynamic>> _guardadas = [];
   String? _cardSel; // id de la tarjeta guardada elegida; null = nueva
   bool _nueva = false; // mostrando el formulario de tarjeta nueva
@@ -86,6 +89,8 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
   final _num = TextEditingController();
   final _exp = TextEditingController();
   final _cvv = TextEditingController();
+  final _cel = TextEditingController(); // Yape
+  final _otp = TextEditingController(); // Yape
 
   @override
   void initState() {
@@ -112,14 +117,47 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
     _num.dispose();
     _exp.dispose();
     _cvv.dispose();
+    _cel.dispose();
+    _otp.dispose();
     super.dispose();
   }
 
   Future<void> _pagar() async {
     setState(() => _error = null);
-    String? token = (!_nueva && _cardSel != null) ? _cardSel : null;
+    final centimos = widget.monto * 100;
 
-    // Tarjeta nueva: validar campos antes.
+    // --- YAPE ---
+    if (_metodo == _Metodo.yape) {
+      final cel = _cel.text.replaceAll(RegExp(r'[^0-9]'), '');
+      final otp = _otp.text.replaceAll(RegExp(r'[^0-9]'), '');
+      if (cel.length != 9) {
+        return setState(() => _error = 'Pon tu celular Yape (9 dígitos).');
+      }
+      if (otp.length < 6) {
+        return setState(() => _error = 'Ingresa el código de aprobación de Yape (6 dígitos).');
+      }
+      Future<Map<String, dynamic>> accionYape() async {
+        final t = await PagosService.tokenizarYape(
+            publicKey: widget.pk, celular: cel, otp: otp, montoCentimos: centimos);
+        if (t['ok'] != true) {
+          return {'ok': false, 'error': t['error']?.toString() ?? 'No se pudo validar el Yape.'};
+        }
+        final res = await PagosService.cobrar(
+            token: t['token'].toString(), email: widget.email,
+            montoSoles: widget.monto.toDouble(), concepto: widget.concepto);
+        return res['ok'] == true
+            ? {'ok': true, 'detalle': 'Pago de S/ ${widget.monto} aprobado.'}
+            : {'ok': false, 'error': res['error']?.toString() ?? 'No se pudo cobrar.'};
+      }
+      final ok = await PagoProcesando.mostrar(context,
+          titulo: 'Cobrando S/ ${widget.monto}', exitoTitulo: '¡Pago aprobado!',
+          accion: accionYape);
+      if (ok == true && mounted) Navigator.of(context).pop(true);
+      return;
+    }
+
+    // --- TARJETA ---
+    String? token = (!_nueva && _cardSel != null) ? _cardSel : null;
     final numero = _num.text.replaceAll(' ', '');
     int mes = 0;
     int anio = 0;
@@ -194,7 +232,77 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
                     style: const TextStyle(color: textoTenue, fontSize: 13)),
                 const SizedBox(height: 16),
 
-                // Tarjetas guardadas.
+                // Selector de método: Yape o Tarjeta.
+                Row(
+                  children: [
+                    _MetodoMini(
+                      marca: const YapeBadge(alto: 26),
+                      sel: _metodo == _Metodo.yape,
+                      onTap: () => setState(() => _metodo = _Metodo.yape),
+                    ),
+                    const SizedBox(width: 10),
+                    _MetodoMini(
+                      marca: const MarcasTarjeta(),
+                      etiqueta: 'Tarjeta',
+                      sel: _metodo == _Metodo.tarjeta,
+                      onTap: () => setState(() => _metodo = _Metodo.tarjeta),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+
+                // --- YAPE ---
+                if (_metodo == _Metodo.yape) ...[
+                  if (widget.esTest)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                          color: const Color(0xFFFFF4E5),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFF2C94C))),
+                      child: const Text(
+                          'En modo prueba, Yape no valida (limitación de Culqi). '
+                          'Para probar usa Tarjeta.',
+                          style: TextStyle(fontSize: 13, color: Color(0xFF7A5B00))),
+                    ),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                        color: limaSuave, borderRadius: BorderRadius.circular(12)),
+                    child: const Text(
+                        'Abre Yape → "Código de aprobación", genera el código de '
+                        '6 dígitos y ponlo aquí con tu celular.',
+                        style: TextStyle(fontSize: 13, color: bosque)),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _cel,
+                    keyboardType: TextInputType.phone,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(9)
+                    ],
+                    decoration: const InputDecoration(
+                        labelText: 'Celular Yape', prefixText: '+51 ',
+                        prefixIcon: Icon(Icons.phone_android)),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _otp,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(6)
+                    ],
+                    decoration: const InputDecoration(
+                        labelText: 'Código de aprobación (6 dígitos)',
+                        prefixIcon: Icon(Icons.password)),
+                  ),
+                ],
+
+                // --- TARJETA (guardadas + nueva) ---
+                if (_metodo == _Metodo.tarjeta) ...[
                 for (final m in _guardadas)
                   _FilaCard(
                     marca: (m['marca'] ?? 'Tarjeta').toString(),
@@ -205,8 +313,6 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
                       _cardSel = m['id'].toString();
                     }),
                   ),
-
-                // Opción tarjeta nueva.
                 _FilaNueva(
                   sel: _nueva,
                   onTap: () => setState(() => _nueva = true),
@@ -262,6 +368,7 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
                         label: const Text('Usar tarjeta de prueba (Culqi)'),
                       ),
                     ),
+                ],
                 ],
 
                 if (_error != null) ...[
@@ -336,6 +443,56 @@ class _FilaCard extends StatelessWidget {
             ),
             if (sel) const Icon(Icons.check_circle, color: bosque, size: 20),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Botón mini de método (Yape / Tarjeta) con la marca real y check al elegir.
+class _MetodoMini extends StatelessWidget {
+  const _MetodoMini(
+      {required this.marca, required this.sel, required this.onTap, this.etiqueta});
+  final Widget marca;
+  final String? etiqueta;
+  final bool sel;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          height: 56,
+          decoration: BoxDecoration(
+            color: sel ? limaSuave : Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+                color: sel ? bosque : const Color(0xFFE4E4E4), width: sel ? 2 : 1),
+          ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  marca,
+                  if (etiqueta != null) ...[
+                    const SizedBox(width: 8),
+                    Text(etiqueta!,
+                        style: const TextStyle(
+                            color: tinta, fontWeight: FontWeight.w700)),
+                  ],
+                ],
+              ),
+              if (sel)
+                const Positioned(
+                    top: 4,
+                    right: 6,
+                    child: Icon(Icons.check_circle, color: bosque, size: 16)),
+            ],
+          ),
         ),
       ),
     );
