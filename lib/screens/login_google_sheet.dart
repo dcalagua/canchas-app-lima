@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../brand.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/google_logo.dart';
 import '../widgets/marca.dart';
 
 /// Hoja de login con Google (rediseño premium). Se muestra cuando un invitado
@@ -62,14 +63,27 @@ class _LoginGoogleSheetState extends State<LoginGoogleSheet> {
               ),
             ),
           ),
-          // Marca: logo cuadrado bosque con la "o"-pelota + wordmark + eslogan.
-          const LogoCuadrado(size: 60),
-          const SizedBox(height: 14),
-          const PichangolWordmark(fontSize: 26),
-          const SizedBox(height: 4),
-          Text(kBrandEslogan,
-              style: t.bodyMedium?.copyWith(
-                  color: textoTenue, fontWeight: FontWeight.w600)),
+          // Marca: logo cuadrado (pin) + nombre limpio + eslogan.
+          Row(
+            children: [
+              const LogoCuadrado(size: 52),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Pichangol',
+                      style: t.headlineSmall?.copyWith(
+                          color: bosque,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.5)),
+                  Text(kBrandEslogan,
+                      style: t.bodySmall?.copyWith(
+                          color: textoTenue, fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ],
+          ),
           const SizedBox(height: 18),
           Text('Inicia sesión para\nreservar tu cancha',
               style: t.headlineSmall),
@@ -94,7 +108,7 @@ class _LoginGoogleSheetState extends State<LoginGoogleSheet> {
                           borderRadius: BorderRadius.circular(16)),
                       foregroundColor: tinta,
                     ),
-                    icon: const _GoogleG(),
+                    icon: const GoogleLogo(size: 22),
                     label: Text('Continuar con Google',
                         style: t.titleMedium?.copyWith(
                             fontWeight: FontWeight.w700, color: tinta)),
@@ -121,23 +135,3 @@ class _LoginGoogleSheetState extends State<LoginGoogleSheet> {
   }
 }
 
-class _GoogleG extends StatelessWidget {
-  const _GoogleG();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 22,
-      height: 22,
-      alignment: Alignment.center,
-      child: const Text(
-        'G',
-        style: TextStyle(
-          fontWeight: FontWeight.w800,
-          fontSize: 18,
-          color: Color(0xFF4285F4),
-        ),
-      ),
-    );
-  }
-}

@@ -1,45 +1,18 @@
 import 'package:flutter/material.dart';
 
 import '../brand.dart';
-import '../services/growth_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'academias_screen.dart';
-import 'crear_academia_screen.dart';
-import 'home_shell.dart';
+import 'anfitrion_screen.dart';
 import 'login_google_sheet.dart';
 import 'metodos_pago_screen.dart';
-import 'mi_academia_screen.dart';
-import 'registrar_cancha_screen.dart';
-import 'verificador_screen.dart';
 
-/// Pestaña PERFIL del jugador: sesión (login/logout), acceso al panel del dueño,
-/// registrar cancha y verificador. Mismo estilo (header sage) que Mis canchas.
+/// Pestaña PERFIL del jugador: sesión (login/logout), lo del jugador (academias,
+/// métodos de pago) y el acceso a **Modo anfitrión** (todo lo del anfitrión va
+/// ahí, estilo Airbnb).
 class PerfilScreen extends StatelessWidget {
   const PerfilScreen({super.key});
-
-  Future<void> _abrirPanel(BuildContext context) async {
-    if (!appState.logueado) {
-      final ok = await LoginGoogleSheet.mostrar(context);
-      if (!ok || !context.mounted) return;
-    }
-    if (!context.mounted) return;
-    Navigator.of(context)
-        .push(MaterialPageRoute(builder: (_) => const HomeShell()));
-  }
-
-  /// Panel del profe: exige sesión. Si ya tiene academia → panel; si no → crear.
-  Future<void> _abrirMiAcademia(BuildContext context) async {
-    if (!appState.logueado) {
-      final ok = await LoginGoogleSheet.mostrar(context);
-      if (!ok || !context.mounted) return;
-    }
-    if (!context.mounted) return;
-    final tiene = appState.miAcademia != null;
-    Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) =>
-            tiene ? const MiAcademiaScreen() : const CrearAcademiaScreen()));
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -53,7 +26,7 @@ class PerfilScreen extends StatelessWidget {
           return ListView(
             padding: EdgeInsets.zero,
             children: [
-              // Header sage (igual a Mis canchas) con la ficha del usuario.
+              // Header sage con la ficha del usuario.
               Container(
                 width: double.infinity,
                 padding: EdgeInsets.fromLTRB(
@@ -120,33 +93,16 @@ class PerfilScreen extends StatelessWidget {
                           label: const Text('Iniciar sesión con Google'),
                         ),
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 12),
                     ],
-                    _Tile(
-                      icon: Icons.storefront,
-                      title: 'Mis canchas',
-                      subtitle: 'Panel del dueño: canchas, agenda, reservas',
-                      onTap: () => _abrirPanel(context),
-                    ),
-                    _Tile(
-                      icon: Icons.add_a_photo,
-                      title: 'Registrar mi cancha',
-                      subtitle: 'Súmala al mapa (la IA detecta el deporte)',
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => const RegistrarCanchaScreen())),
-                    ),
+
+                    // --- Jugador ---
                     _Tile(
                       icon: Icons.school,
                       title: 'Academias',
                       subtitle: 'Clases de tenis, fútbol y más cerca de ti',
                       onTap: () => Navigator.of(context).push(MaterialPageRoute(
                           builder: (_) => const AcademiasScreen())),
-                    ),
-                    _Tile(
-                      icon: Icons.sports,
-                      title: 'Mi academia',
-                      subtitle: 'Soy profe: alumnos, cuotas y cobros',
-                      onTap: () => _abrirMiAcademia(context),
                     ),
                     if (u != null)
                       _Tile(
@@ -156,17 +112,16 @@ class PerfilScreen extends StatelessWidget {
                         onTap: () => Navigator.of(context).push(MaterialPageRoute(
                             builder: (_) => const MetodosPagoScreen())),
                       ),
-                    if (GrowthService.disponible)
-                      _Tile(
-                        icon: Icons.verified_user,
-                        title: 'Verificador',
-                        subtitle: 'Visitas: foto, GPS y firma',
-                        onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                                builder: (_) => const VerificadorScreen())),
-                      ),
+
+                    const SizedBox(height: 8),
+                    // --- Modo anfitrión (Airbnb-style) ---
+                    _ModoAnfitrion(
+                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => const AnfitrionScreen())),
+                    ),
+
                     if (u != null) ...[
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 10),
                       Align(
                         alignment: Alignment.centerLeft,
                         child: TextButton.icon(
@@ -195,6 +150,56 @@ class PerfilScreen extends StatelessWidget {
   }
 }
 
+/// Tarjeta destacada para entrar al Modo anfitrión (estilo "cambiar a anfitrión"
+/// de Airbnb): fondo bosque, invita a publicar cancha/academia.
+class _ModoAnfitrion extends StatelessWidget {
+  const _ModoAnfitrion({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Material(
+      color: bosque,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                    color: lima.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12)),
+                child: const Icon(Icons.real_estate_agent, color: lima),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Modo anfitrión',
+                        style: t.titleMedium?.copyWith(
+                            color: Colors.white, fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 2),
+                    Text('Publica tu cancha o academia y recibe reservas',
+                        style: t.bodySmall?.copyWith(color: Colors.white70)),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: lima),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _Tile extends StatelessWidget {
   const _Tile(
       {required this.icon,
@@ -215,9 +220,16 @@ class _Tile extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: trazo),
+        boxShadow: const [
+          BoxShadow(color: Color(0x0F000000), blurRadius: 8, offset: Offset(0, 3)),
+        ],
       ),
       child: ListTile(
-        leading: Icon(icon, color: bosque),
+        leading: CircleAvatar(
+          radius: 20,
+          backgroundColor: limaSuave,
+          child: Icon(icon, color: bosque, size: 20),
+        ),
         title: Text(title,
             style: t.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
         subtitle: Text(subtitle,
