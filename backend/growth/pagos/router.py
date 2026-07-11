@@ -207,8 +207,9 @@ def post_recarga(req: RecargaReq) -> dict:
         token=req.token,
         monto_centimos=centimos,
         email=req.email,
-        descripcion=f"Recarga saldo Pichangol · {req.dueno_id}",
-        metadata={"tipo": "recarga", "dueno_id": req.dueno_id},
+        descripcion="Recarga Pichangol",
+        # Sin metadata por ahora: la recarga acredita de forma síncrona (no
+        # depende del webhook). Se aísla un posible parameter_error de Culqi.
     )
     if not r["ok"]:
         stores.registrar_pago(
