@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -121,7 +122,9 @@ class PagosService {
     required String email,
     required double montoSoles,
   }) async {
-    if (!disponible) return {'ok': false, 'error': 'Pagos no disponibles.'};
+    if (!disponible) {
+      return {'ok': false, 'error': 'Falta GROWTH_API_URL en el APK.'};
+    }
     try {
       final r = await http.post(
         Uri.parse('$_baseUrl/pagos/recarga'),
@@ -132,14 +135,24 @@ class PagosService {
           'email': email,
           'monto_soles': montoSoles,
         }),
-      ).timeout(const Duration(seconds: 25));
-      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      ).timeout(const Duration(seconds: 40));
+      Map<String, dynamic> j = {};
+      try {
+        j = jsonDecode(r.body) as Map<String, dynamic>;
+      } catch (_) {}
       if (r.statusCode == 200 && j['ok'] == true) {
         return {'ok': true, 'saldoSoles': (j['saldo_soles'] as num?)?.toDouble() ?? 0};
       }
-      return {'ok': false, 'error': j['error'] ?? 'No se pudo acreditar la recarga.'};
+      // Mensaje preciso: código HTTP + detalle del backend para diagnosticar.
+      final det = (j['error'] ?? j['detail'] ?? '').toString();
+      return {
+        'ok': false,
+        'error': 'Backend HTTP ${r.statusCode}${det.isEmpty ? '' : ': $det'}',
+      };
+    } on TimeoutException {
+      return {'ok': false, 'error': 'El servidor de pagos no respondió (timeout). Reintenta.'};
     } catch (e) {
-      return {'ok': false, 'error': 'Sin conexión con el servidor de pagos.'};
+      return {'ok': false, 'error': 'No se pudo contactar el backend [${e.runtimeType}].'};
     }
   }
 
