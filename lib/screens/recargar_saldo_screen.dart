@@ -184,12 +184,16 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
                 const SizedBox(height: 10),
                 Row(
                   children: [
-                    _MetodoBoton(
-                      marca: const YapeBadge(alto: 30),
-                      sel: _metodo == _Metodo.yape,
-                      onTap: () => setState(() => _metodo = _Metodo.yape),
-                    ),
-                    const SizedBox(width: 12),
+                    // En modo prueba Yape no valida (sandbox Culqi): se oculta
+                    // para forzar el pago con tarjeta de test.
+                    if (!_esTest) ...[
+                      _MetodoBoton(
+                        marca: const YapeBadge(alto: 30),
+                        sel: _metodo == _Metodo.yape,
+                        onTap: () => setState(() => _metodo = _Metodo.yape),
+                      ),
+                      const SizedBox(width: 12),
+                    ],
                     _MetodoBoton(
                       marca: const MarcasTarjeta(),
                       etiqueta: 'Tarjeta',
@@ -198,8 +202,16 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
                     ),
                   ],
                 ),
+                if (_esTest) ...[
+                  const SizedBox(height: 8),
+                  const Text('Modo prueba: solo tarjeta. Yape se habilita en producción.',
+                      style: TextStyle(color: textoTenue, fontSize: 12)),
+                ],
                 const SizedBox(height: 18),
-                if (_metodo == _Metodo.yape) _formYape() else _formTarjeta(),
+                if (_metodo == _Metodo.yape && !_esTest)
+                  _formYape()
+                else
+                  _formTarjeta(),
                 if (_pk == null || _pk!.isEmpty) ...[
                   const SizedBox(height: 14),
                   Container(
@@ -333,6 +345,21 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
             ),
           ],
         ),
+        if (_esTest) ...[
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => setState(() {
+                _num.text = '4111 1111 1111 1111';
+                _exp.text = '09/28';
+                _cvv.text = '123';
+              }),
+              icon: const Icon(Icons.auto_fix_high, size: 18),
+              label: const Text('Usar tarjeta de prueba (Culqi)'),
+            ),
+          ),
+        ],
       ],
     );
   }
