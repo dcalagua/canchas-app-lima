@@ -97,8 +97,11 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
       if (numero.length < 15) {
         return setState(() => _error = 'Número de tarjeta inválido.');
       }
-      if (_exp.text.split('/').length != 2) {
-        return setState(() => _error = 'Vencimiento inválido (MM/AA).');
+      final partes = _exp.text.split('/');
+      final mesN = partes.isNotEmpty ? (int.tryParse(partes[0].trim()) ?? 0) : 0;
+      if (partes.length != 2 || mesN < 1 || mesN > 12) {
+        return setState(() =>
+            _error = 'Fecha inválida. Escribe MES/AÑO (el mes va primero), ej. 09/28.');
       }
       if (_cvv.text.length < 3) {
         return setState(() => _error = 'CVV inválido.');
