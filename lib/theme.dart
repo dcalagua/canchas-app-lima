@@ -24,19 +24,22 @@ import 'models/models.dart';
 // Requiere en pubspec.yaml → dependencies: google_fonts: ^6.2.1
 // ─────────────────────────────────────────────────────────────────────────
 
-const Color lima = Color(0xFFAEEA94);   // accent / CTA / realce
-const Color sage = Color(0xFF5AA97F);   // acento primario (web EBIM)
-const Color teal = Color(0xFF056769);   // acento de apoyo (teal)
-const Color amarillo = Color(0xFFF2C94C); // acento de energía (pelota, destacado)
-const Color verde = Color(0xFF2E8B66);  // medio
-const Color verdeProfundo = Color(0xFF3F8A66); // window bar / verde profundo
-const Color bosque = Color(0xFF14463A); // primary / superficies oscuras
-const Color tinta = Color(0xFF123D2D);  // texto (verde profundo, NO negro — handoff)
-const Color papel = Color(0xFFF4F6F1);  // fondo app (page)
-const Color papelCalido = Color(0xFFECF0E8); // fondo panel del club
-const Color trazo = Color(0xFFE0E5DB);  // bordes / divisores
-const Color textoTenue = Color(0xFF7C8A80); // muted
-const Color limaSuave = Color(0xFFEFF8E4); // verde soft (tint)
+// ── Identidad "Cancha nocturna": índigo profundo + lima eléctrica + ámbar.
+// (Se mantienen los NOMBRES de los tokens; solo cambian sus valores, así toda
+// la app adopta la identidad sin tocar cada pantalla.)
+const Color lima = Color(0xFFC4F542);   // accent / CTA / realce (lima eléctrica)
+const Color sage = Color(0xFF3A4066);   // índigo medio (degradado de headers)
+const Color teal = Color(0xFF2A2F52);   // índigo de apoyo
+const Color amarillo = Color(0xFFFFB020); // acento de energía (ámbar)
+const Color verde = Color(0xFF2A2F52);  // índigo medio
+const Color verdeProfundo = Color(0xFF1F2340); // índigo profundo
+const Color bosque = Color(0xFF171B34); // primary / superficies oscuras (índigo)
+const Color tinta = Color(0xFF14172B);  // texto (casi negro índigo)
+const Color papel = Color(0xFFF4F5FA);  // fondo app (page, frío)
+const Color papelCalido = Color(0xFFECEEF6); // fondo panel del club
+const Color trazo = Color(0xFFE3E5EE);  // bordes / divisores
+const Color textoTenue = Color(0xFF6E7386); // muted (gris frío)
+const Color limaSuave = Color(0xFFEEF6D6); // tinte lima suave
 
 // ── Colores de estado (chips) — sistema de diseño ─────────────────────────
 const Color estadoOkBg = Color(0xFFE9F4EE);
@@ -64,10 +67,10 @@ const Color arena = verde;      // antes tono "arena"; ahora verde EBIM
 const Color naranjaFutbol = lima;
 const Color fondoApp = papel;
 
-// Superficies de cancha por deporte: degradados verdes EBIM (sin azul/coral).
-const Color arcillaTenis = Color(0xFF5AA97F);
-const Color azulPadel = Color(0xFF2E8B66);
-const Color verdeFutbol = Color(0xFFAEEA94);
+// Superficies de cancha por deporte (armonizan con la identidad nocturna).
+const Color arcillaTenis = Color(0xFF3A4066);
+const Color azulPadel = Color(0xFF2A2F52);
+const Color verdeFutbol = Color(0xFFC4F542);
 
 /// Tinte por deporte (punto del selector de cancha, chips).
 Color colorDeporte(Deporte d) => switch (d) {

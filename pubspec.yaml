@@ -54,13 +54,13 @@ flutter_launcher_icons:
   ios: true
   remove_alpha_ios: true
   image_path: "assets/icon/app_icon.png"
-  adaptive_icon_background: "#FFC400"
+  adaptive_icon_background: "#171B34"
   adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
 
-# Splash nativo (arranque en frío) — fondo AMARILLO FUERTE + pin Pichangol.
+# Splash nativo (arranque en frío) — fondo ÍNDIGO nocturna + pin lima.
 flutter_native_splash:
-  color: "#FFC400"
+  color: "#171B34"
   image: assets/splash/logo.png
   android_12:
-    color: "#FFC400"
+    color: "#171B34"
     image: assets/splash/logo.png

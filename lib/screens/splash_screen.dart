@@ -9,11 +9,11 @@ import '../theme.dart';
 import 'app_shell.dart';
 import 'onboarding_screen.dart';
 
-const _amarillo = Color(0xFFFFC400); // amarillo fuerte (energía)
+const _indigo = Color(0xFF171B34); // índigo nocturna (fondo)
 
-/// Splash de marca ENERGÉTICO: fondo amarillo fuerte + una pelota que va
-/// cambiando de deporte (fútbol, tenis, básquet, vóley…) con rebote, la marca
-/// Pichangol y un "Cargando…". Gancho visual de ~1.8s antes del mapa.
+/// Splash de marca ENERGÉTICO (identidad Cancha nocturna): fondo índigo + una
+/// pelota LIMA que va cambiando de deporte (fútbol, tenis, básquet, vóley…) con
+/// rebote, la marca Pichangol y un "Cargando…". Gancho visual de ~1.8s.
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -82,7 +82,7 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _amarillo,
+      backgroundColor: _indigo,
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -98,12 +98,12 @@ class _SplashScreenState extends State<SplashScreen>
                 width: 118,
                 height: 118,
                 decoration: const BoxDecoration(
-                  color: bosque,
+                  color: lima,
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                        color: Color(0x33000000),
-                        blurRadius: 18,
+                        color: Color(0x55000000),
+                        blurRadius: 20,
                         offset: Offset(0, 10)),
                   ],
                 ),
@@ -117,7 +117,7 @@ class _SplashScreenState extends State<SplashScreen>
                     child: Icon(
                       _deportes[_i],
                       key: ValueKey(_i),
-                      color: _amarillo,
+                      color: _indigo,
                       size: 58,
                     ),
                   ),
@@ -128,7 +128,7 @@ class _SplashScreenState extends State<SplashScreen>
             Text(
               kBrandName,
               style: const TextStyle(
-                color: bosque,
+                color: lima,
                 fontSize: 42,
                 fontWeight: FontWeight.w900,
                 letterSpacing: -0.5,
@@ -139,7 +139,7 @@ class _SplashScreenState extends State<SplashScreen>
               kBrandTagline,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: bosque.withOpacity(0.75),
+                color: Colors.white.withOpacity(0.72),
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
               ),
@@ -149,12 +149,12 @@ class _SplashScreenState extends State<SplashScreen>
             const SizedBox(
               width: 26,
               height: 26,
-              child: CircularProgressIndicator(strokeWidth: 3, color: bosque),
+              child: CircularProgressIndicator(strokeWidth: 3, color: lima),
             ),
             const SizedBox(height: 12),
             Text('Cargando…',
                 style: TextStyle(
-                    color: bosque.withOpacity(0.7),
+                    color: Colors.white.withOpacity(0.7),
                     fontWeight: FontWeight.w700,
                     fontSize: 13)),
           ],
