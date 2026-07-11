@@ -67,10 +67,18 @@ class PagosService {
       if (r.statusCode == 200 || r.statusCode == 201) {
         return {'ok': true, 'token': j['id']};
       }
-      return {'ok': false, 'error': j['user_message'] ?? j['merchant_message'] ?? 'Tarjeta rechazada'};
+      return {'ok': false, 'error': _errCulqi(j, 'Tarjeta rechazada')};
     } catch (e) {
       return {'ok': false, 'error': 'No se pudo procesar la tarjeta.'};
     }
+  }
+
+  /// Arma un mensaje de error legible con la pista técnica de Culqi (code) para
+  /// poder diagnosticar (ej. yape no habilitado vs código inválido).
+  static String _errCulqi(Map<String, dynamic> j, String fallback) {
+    final msg = (j['user_message'] ?? j['merchant_message'] ?? fallback).toString();
+    final code = (j['code'] ?? j['type'] ?? '').toString();
+    return code.isEmpty ? msg : '$msg  [$code]';
   }
 
   /// Tokeniza un pago YAPE. El usuario genera un código en su app Yape (Yape →
@@ -99,7 +107,7 @@ class PagosService {
       if (r.statusCode == 200 || r.statusCode == 201) {
         return {'ok': true, 'token': j['id']};
       }
-      return {'ok': false, 'error': j['user_message'] ?? j['merchant_message'] ?? 'No se pudo validar el Yape'};
+      return {'ok': false, 'error': _errCulqi(j, 'No se pudo validar el Yape')};
     } catch (e) {
       return {'ok': false, 'error': 'No se pudo procesar el Yape.'};
     }
