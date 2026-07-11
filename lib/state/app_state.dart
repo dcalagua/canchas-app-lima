@@ -281,6 +281,18 @@ class AppState extends ChangeNotifier {
   static const double radioMinKm = 2;
   static const double radioMaxKm = 30;
 
+  /// Modo de tema (claro/oscuro/automático). Persistente. Lo consume
+  /// `MaterialApp.themeMode` en main.dart vía ListenableBuilder(appState).
+  ThemeMode temaModo = ThemeMode.system;
+
+  /// Cambia el modo de tema, persiste y avisa a la app para redibujar.
+  void setTemaModo(ThemeMode modo) {
+    if (modo == temaModo) return;
+    temaModo = modo;
+    notifyListeners();
+    _persistirDatos();
+  }
+
   /// Cambia el radio de búsqueda (lo redondea a los límites), persiste y avisa.
   /// Devuelve true si cambió (para que la pantalla vuelva a descubrir).
   bool setRadioBusqueda(double km) {
@@ -878,6 +890,7 @@ class AppState extends ChangeNotifier {
   static const _kCanchas = 'canchas_extra_json';
   static const _kEliminadas = 'canchas_eliminadas_json';
   static const _kRadio = 'radio_busqueda_km';
+  static const _kTema = 'tema_modo'; // 0=system, 1=light, 2=dark
   static const _kAcademias = 'academias_json';
   static const _kAlumnos = 'alumnos_json';
   static const _kCuotas = 'cuotas_json';
@@ -901,6 +914,14 @@ class AppState extends ChangeNotifier {
         radioBusquedaKm = (prefs.getDouble(_kRadio) ?? radioBusquedaKm)
             .clamp(radioMinKm, radioMaxKm)
             .toDouble();
+      }
+
+      if (prefs.containsKey(_kTema)) {
+        temaModo = switch (prefs.getInt(_kTema)) {
+          1 => ThemeMode.light,
+          2 => ThemeMode.dark,
+          _ => ThemeMode.system,
+        };
       }
 
       final movsRaw = prefs.getString(_kMovs);
@@ -985,6 +1006,11 @@ class AppState extends ChangeNotifier {
       await prefs.setString(
           _kEliminadas, jsonEncode(canchasEliminadas.toList()));
       await prefs.setDouble(_kRadio, radioBusquedaKm);
+      await prefs.setInt(_kTema, switch (temaModo) {
+        ThemeMode.light => 1,
+        ThemeMode.dark => 2,
+        ThemeMode.system => 0,
+      });
       await prefs.setString(
           _kAcademias, jsonEncode(academias.map((a) => a.toJson()).toList()));
       await prefs.setString(

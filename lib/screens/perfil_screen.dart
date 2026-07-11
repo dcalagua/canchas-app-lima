@@ -4,6 +4,7 @@ import '../brand.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'academias_screen.dart';
+import 'ajustes_screen.dart';
 import 'anfitrion_screen.dart';
 import 'login_google_sheet.dart';
 import 'metodos_pago_screen.dart';
@@ -112,6 +113,15 @@ class PerfilScreen extends StatelessWidget {
                         onTap: () => Navigator.of(context).push(MaterialPageRoute(
                             builder: (_) => const MetodosPagoScreen())),
                       ),
+
+                    // --- Ajustes (tema claro/oscuro) ---
+                    _Tile(
+                      icon: Icons.tune,
+                      title: 'Ajustes',
+                      subtitle: 'Tema claro u oscuro y preferencias',
+                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => const AjustesScreen())),
+                    ),
 
                     const SizedBox(height: 8),
                     // --- Modo anfitrión (Airbnb-style) ---

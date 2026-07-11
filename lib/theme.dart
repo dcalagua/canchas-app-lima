@@ -307,3 +307,150 @@ ThemeData buildTheme() {
     ),
   );
 }
+
+// ── Tema OSCURO "Cancha nocturna" ─────────────────────────────────────────
+// Fondo índigo casi negro, superficies un escalón más claras, lima eléctrica
+// como acento y texto claro. Comparte lenguaje con el tema claro (radios,
+// tipografía DM Sans, CTA lima). Se activa con `appState.temaModo`.
+
+// Tokens del tema oscuro (privados; el resto de la app sigue usando los tokens
+// claros salvo donde ya se lee del ColorScheme).
+const Color _oscFondo = Color(0xFF0F1226);      // page (índigo casi negro)
+const Color _oscSuperficie = Color(0xFF191D38); // tarjetas / appbar
+const Color _oscSuperficie2 = Color(0xFF20264A); // inputs / chips
+const Color _oscTrazo = Color(0xFF2E3457);      // bordes / divisores
+const Color _oscTexto = Color(0xFFEDEFF8);       // texto principal
+const Color _oscTenue = Color(0xFF9AA0C0);       // texto muted
+
+ThemeData buildThemeOscuro() {
+  final scheme = ColorScheme.fromSeed(
+    seedColor: bosque,
+    primary: lima,           // en oscuro el acento manda como primary
+    onPrimary: _oscFondo,    // texto oscuro sobre lima
+    secondary: lima,
+    onSecondary: _oscFondo,
+    tertiary: sage,
+    onTertiary: _oscTexto,
+    surface: _oscSuperficie,
+    onSurface: _oscTexto,
+    brightness: Brightness.dark,
+  );
+
+  final base = ThemeData(useMaterial3: true, colorScheme: scheme);
+  final dm = GoogleFonts.dmSansTextTheme(base.textTheme);
+  final textTheme = dm.copyWith(
+    displayLarge: dm.displayLarge?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -0.5),
+    displayMedium: dm.displayMedium?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -0.5),
+    headlineSmall: dm.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+    titleLarge: dm.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+  ).apply(bodyColor: _oscTexto, displayColor: _oscTexto);
+
+  return ThemeData(
+    useMaterial3: true,
+    colorScheme: scheme,
+    scaffoldBackgroundColor: _oscFondo,
+    textTheme: textTheme,
+    appBarTheme: const AppBarTheme(
+      backgroundColor: _oscFondo, foregroundColor: _oscTexto,
+      surfaceTintColor: _oscFondo, elevation: 0, centerTitle: false,
+    ),
+    cardTheme: CardTheme(
+      elevation: 0, color: _oscSuperficie, surfaceTintColor: _oscSuperficie,
+      shadowColor: Colors.black.withOpacity(0.4),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: const BorderSide(color: _oscTrazo),
+      ),
+    ),
+    // CTA principal = lima con texto índigo (alto contraste en oscuro).
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: lima, foregroundColor: _oscFondo,
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 17),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+      ),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: _oscSuperficie2,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: _oscTrazo),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: _oscTrazo),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: lima, width: 1.6),
+      ),
+      labelStyle: const TextStyle(color: _oscTenue),
+      hintStyle: const TextStyle(color: _oscTenue),
+    ),
+    chipTheme: ChipThemeData(
+      backgroundColor: _oscSuperficie2,
+      labelStyle: const TextStyle(
+          fontWeight: FontWeight.w700, fontSize: 12, color: _oscTexto),
+      side: BorderSide.none,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+    ),
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: _oscSuperficie, surfaceTintColor: _oscSuperficie,
+      indicatorColor: lima.withOpacity(0.28),
+      labelTextStyle: WidgetStateProperty.all(
+        const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _oscTexto)),
+      iconTheme: WidgetStateProperty.resolveWith((s) => IconThemeData(
+        color: s.contains(WidgetState.selected) ? lima : _oscTenue)),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: _oscTexto,
+        side: const BorderSide(color: _oscTrazo, width: 1.4),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        foregroundColor: lima,
+        textStyle: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+    ),
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: lima, foregroundColor: _oscFondo, elevation: 0,
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 17),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+      ),
+    ),
+    floatingActionButtonTheme: const FloatingActionButtonThemeData(
+      backgroundColor: lima, foregroundColor: _oscFondo,
+    ),
+    dialogTheme: DialogTheme(
+      backgroundColor: _oscSuperficie, surfaceTintColor: _oscSuperficie,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      titleTextStyle: textTheme.titleLarge,
+      contentTextStyle: textTheme.bodyMedium,
+    ),
+    snackBarTheme: SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: _oscSuperficie2,
+      contentTextStyle: const TextStyle(
+          color: _oscTexto, fontWeight: FontWeight.w600),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ),
+    dividerTheme: const DividerThemeData(color: _oscTrazo, thickness: 1, space: 24),
+    listTileTheme: const ListTileThemeData(iconColor: lima, textColor: _oscTexto),
+    switchTheme: SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith((s) =>
+          s.contains(WidgetState.selected) ? _oscFondo : _oscTenue),
+      trackColor: WidgetStateProperty.resolveWith((s) =>
+          s.contains(WidgetState.selected) ? lima : _oscSuperficie2),
+    ),
+  );
+}
