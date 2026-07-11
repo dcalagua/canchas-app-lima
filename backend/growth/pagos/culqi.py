@@ -82,19 +82,18 @@ def crear_cargo(
         return {"ok": False, "error": "culqi_no_configurado"}
     if monto_centimos < 100:  # Culqi exige mínimo S/ 1.00 (100 céntimos)
         return {"ok": False, "error": "monto_minimo_1_sol"}
-    # Antifraude: Culqi suele rechazar con "Contáctate con soporte" si no recibe
-    # estos datos. Se derivan del correo (best-effort) para no pedir más campos.
-    local = (email.split("@")[0] if "@" in email else "cliente")[:50] or "cliente"
+    # Descripción SOLO ASCII y de largo válido (Culqi exige 5–80 chars): evita
+    # que caracteres especiales o textos cortos generen errores.
+    desc = "".join(c for c in descripcion if 32 <= ord(c) < 127).strip()
+    if len(desc) < 5:
+        desc = "Pago Pichangol"
+    desc = desc[:80]
     body = {
         "amount": int(monto_centimos),
         "currency_code": moneda,
         "email": email,
         "source_id": token,
-        "description": descripcion[:80],
-        "antifraud_details": {
-            "first_name": local,
-            "last_name": "Pichangol",
-        },
+        "description": desc,
     }
     if metadata:
         # Culqi acepta metadata con valores string.
