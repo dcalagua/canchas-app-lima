@@ -1,3 +1,5 @@
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+
 import 'models.dart';
 
 /// Formato de un campeonato de academia.
@@ -17,21 +19,50 @@ extension FormatoTorneoX on FormatoTorneo {
 
 /// Un participante del campeonato: jugador (tenis individual), pareja ("A / B")
 /// o equipo (fútbol). Modelo genérico para cubrir ambos deportes.
+///
+/// [email] no vacío = **participante-app**: se inscribió desde la app con su
+/// cuenta. Vacío = lo agregó el profe a mano. Menores: [apoderadoNombre] no
+/// vacío ⇒ el participante es un niño bajo un apoderado (la cuenta es del padre).
 class Participante {
   final String id;
   final String nombre;
-  final String contacto; // WhatsApp/email opcional (para avisos)
+  final String contacto; // WhatsApp opcional (para avisos)
+  final String email; // cuenta-app que lo inscribió ('' si manual)
+  final String? fotoUrl;
+  final String apoderadoNombre; // '' si es adulto
+  final int? edad;
 
-  const Participante(
-      {required this.id, required this.nombre, this.contacto = ''});
+  const Participante({
+    required this.id,
+    required this.nombre,
+    this.contacto = '',
+    this.email = '',
+    this.fotoUrl,
+    this.apoderadoNombre = '',
+    this.edad,
+  });
 
-  Map<String, dynamic> toJson() =>
-      {'id': id, 'nombre': nombre, 'contacto': contacto};
+  bool get esApp => email.isNotEmpty;
+  bool get esMenor => apoderadoNombre.isNotEmpty;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'nombre': nombre,
+        'contacto': contacto,
+        'email': email,
+        if (fotoUrl != null) 'fotoUrl': fotoUrl,
+        'apoderadoNombre': apoderadoNombre,
+        if (edad != null) 'edad': edad,
+      };
 
   factory Participante.fromJson(Map<String, dynamic> j) => Participante(
         id: j['id'] as String,
         nombre: (j['nombre'] ?? '') as String,
         contacto: (j['contacto'] ?? '') as String,
+        email: (j['email'] ?? '') as String,
+        fotoUrl: j['fotoUrl'] as String?,
+        apoderadoNombre: (j['apoderadoNombre'] ?? '') as String,
+        edad: (j['edad'] as num?)?.toInt(),
       );
 }
 
@@ -119,8 +150,10 @@ class Campeonato {
   final FormatoTorneo formato;
   final String categoria; // texto libre: "Sub-10", "Libre", "Damas B"…
   final String sede;
-  final String fechas; // texto libre: "Sáb 12 y Dom 13 de julio"
+  final LatLng? sedeUbicacion; // coordenadas de la sede (para mapa/compartir)
+  final String fechas; // texto legible: "12–13 jul 2026"
   final double costoInscripcion; // S/ (0 = gratis)
+  final bool inscripcionAbierta; // ¿los jugadores pueden inscribirse solos?
   final List<Participante> participantes;
   final List<PartidoTorneo> partidos; // fixture generado (vacío = aún no)
   final bool cerrado;
@@ -134,8 +167,10 @@ class Campeonato {
     this.formato = FormatoTorneo.eliminacion,
     this.categoria = '',
     this.sede = '',
+    this.sedeUbicacion,
     this.fechas = '',
     this.costoInscripcion = 0,
+    this.inscripcionAbierta = true,
     this.participantes = const [],
     this.partidos = const [],
     this.cerrado = false,
@@ -148,8 +183,10 @@ class Campeonato {
     FormatoTorneo? formato,
     String? categoria,
     String? sede,
+    LatLng? sedeUbicacion,
     String? fechas,
     double? costoInscripcion,
+    bool? inscripcionAbierta,
     List<Participante>? participantes,
     List<PartidoTorneo>? partidos,
     bool? cerrado,
@@ -163,8 +200,10 @@ class Campeonato {
         formato: formato ?? this.formato,
         categoria: categoria ?? this.categoria,
         sede: sede ?? this.sede,
+        sedeUbicacion: sedeUbicacion ?? this.sedeUbicacion,
         fechas: fechas ?? this.fechas,
         costoInscripcion: costoInscripcion ?? this.costoInscripcion,
+        inscripcionAbierta: inscripcionAbierta ?? this.inscripcionAbierta,
         participantes: participantes ?? this.participantes,
         partidos: partidos ?? this.partidos,
         cerrado: cerrado ?? this.cerrado,
@@ -187,8 +226,11 @@ class Campeonato {
         'formato': formato.clave,
         'categoria': categoria,
         'sede': sede,
+        if (sedeUbicacion != null) 'sedeLat': sedeUbicacion!.latitude,
+        if (sedeUbicacion != null) 'sedeLng': sedeUbicacion!.longitude,
         'fechas': fechas,
         'costoInscripcion': costoInscripcion,
+        'inscripcionAbierta': inscripcionAbierta,
         'participantes': participantes.map((p) => p.toJson()).toList(),
         'partidos': partidos.map((p) => p.toJson()).toList(),
         'cerrado': cerrado,
@@ -204,8 +246,13 @@ class Campeonato {
         formato: FormatoTorneoX.desde(j['formato'] as String?),
         categoria: (j['categoria'] ?? '') as String,
         sede: (j['sede'] ?? '') as String,
+        sedeUbicacion: (j['sedeLat'] != null && j['sedeLng'] != null)
+            ? LatLng((j['sedeLat'] as num).toDouble(),
+                (j['sedeLng'] as num).toDouble())
+            : null,
         fechas: (j['fechas'] ?? '') as String,
         costoInscripcion: ((j['costoInscripcion'] ?? 0) as num).toDouble(),
+        inscripcionAbierta: (j['inscripcionAbierta'] ?? true) as bool,
         participantes: (j['participantes'] as List?)
                 ?.map((e) => Participante.fromJson(Map<String, dynamic>.from(e as Map)))
                 .toList() ??

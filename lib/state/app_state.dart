@@ -137,6 +137,7 @@ class AppState extends ChangeNotifier {
     required FormatoTorneo formato,
     String categoria = '',
     String sede = '',
+    LatLng? sedeUbicacion,
     String fechas = '',
     double costoInscripcion = 0,
   }) {
@@ -149,6 +150,7 @@ class AppState extends ChangeNotifier {
       formato: formato,
       categoria: categoria,
       sede: sede,
+      sedeUbicacion: sedeUbicacion,
       fechas: fechas,
       costoInscripcion: costoInscripcion,
     );
@@ -197,6 +199,57 @@ class AppState extends ChangeNotifier {
     guardarCampeonato(c.copyWith(
         participantes:
             c.participantes.where((p) => p.id != partId).toList()));
+  }
+
+  /// El JUGADOR se inscribe a un campeonato desde la app (queda como
+  /// participante-app vinculado a su cuenta). Si [nombreParticipante] viene, es
+  /// un MENOR representado por el usuario (apoderado). Requiere sesión.
+  ({bool ok, String mensaje}) inscribirseCampeonato(
+    String campId, {
+    String? nombreParticipante, // nombre del niño/equipo si aplica
+    int? edad,
+    String? apoderadoWhatsapp,
+  }) {
+    final u = usuario;
+    if (u == null) {
+      return (ok: false, mensaje: 'Inicia sesión para inscribirte.');
+    }
+    final c = campeonatoPorId(campId);
+    if (c == null) return (ok: false, mensaje: 'Campeonato no encontrado.');
+    if (c.cerrado || !c.inscripcionAbierta) {
+      return (ok: false, mensaje: 'Las inscripciones están cerradas.');
+    }
+    if (c.fixtureGenerado) {
+      return (
+        ok: false,
+        mensaje: 'El fixture ya fue generado; escribe al organizador.'
+      );
+    }
+    final esMenor =
+        nombreParticipante != null && nombreParticipante.trim().isNotEmpty;
+    final nombre = esMenor ? nombreParticipante!.trim() : u.nombre;
+    final ya = c.participantes.any((p) =>
+        p.email.toLowerCase() == u.email.toLowerCase() &&
+        p.nombre.toLowerCase() == nombre.toLowerCase());
+    if (ya) {
+      return (ok: true, mensaje: '"$nombre" ya está inscrito en ${c.nombre}.');
+    }
+    final p = Participante(
+      id: 'part_${DateTime.now().microsecondsSinceEpoch}',
+      nombre: nombre,
+      contacto: esMenor ? (apoderadoWhatsapp?.trim() ?? '') : '',
+      email: u.email,
+      fotoUrl: esMenor ? null : u.fotoUrl,
+      apoderadoNombre: esMenor ? u.nombre : '',
+      edad: edad,
+    );
+    guardarCampeonato(c.copyWith(participantes: [...c.participantes, p]));
+    return (
+      ok: true,
+      mensaje: esMenor
+          ? 'Inscribiste a "$nombre" en ${c.nombre}. 🏆'
+          : 'Te inscribiste en ${c.nombre}. 🏆'
+    );
   }
 
   /// (Re)genera el fixture del campeonato según su formato. Borra resultados.

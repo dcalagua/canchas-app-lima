@@ -4,6 +4,9 @@ import '../models/campeonato.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../utils/ubicacion_share.dart';
+import '../widgets/pago_tarjeta_sheet.dart';
+import 'login_google_sheet.dart';
 
 /// Detalle de un campeonato: participantes, fixture (llave o tabla), carga de
 /// resultados y compartir por WhatsApp. Los controles de edición se muestran
@@ -26,10 +29,40 @@ class CampeonatoDetalleScreen extends StatelessWidget {
           final u = appState.usuario;
           final esDueno =
               u != null && c.dueno.toLowerCase() == u.email.toLowerCase();
+          final puedeInscribirse = !esDueno &&
+              !c.cerrado &&
+              c.inscripcionAbierta &&
+              !c.fixtureGenerado;
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 30),
             children: [
               _Cabecera(campeonato: c),
+              if (c.sedeUbicacion != null) ...[
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => UbicacionShare.menu(context,
+                        punto: c.sedeUbicacion!,
+                        titulo: c.sede.isEmpty ? c.nombre : c.sede),
+                    icon: const Icon(Icons.place),
+                    label: const Text('Ubicación · cómo llegar / compartir'),
+                  ),
+                ),
+              ],
+              if (puedeInscribirse) ...[
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () => _inscribirme(context, c),
+                    icon: const Icon(Icons.how_to_reg),
+                    label: Text(c.costoInscripcion > 0
+                        ? 'Inscribirme · S/ ${c.costoInscripcion.toStringAsFixed(2)}'
+                        : 'Inscribirme'),
+                  ),
+                ),
+              ],
               const SizedBox(height: 14),
               _Participantes(campeonato: c, esDueno: esDueno),
               const SizedBox(height: 18),
@@ -101,6 +134,161 @@ class CampeonatoDetalleScreen extends StatelessWidget {
     if (!ok && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('No pude abrir WhatsApp.')));
+    }
+  }
+
+  /// El jugador se inscribe (queda como participante-app). Pregunta si compite
+  /// él o un hijo (apoderado) y cobra la inscripción si tiene costo.
+  Future<void> _inscribirme(BuildContext context, Campeonato c) async {
+    if (appState.usuario == null) {
+      await LoginGoogleSheet.mostrar(context);
+      if (appState.usuario == null) return;
+    }
+    if (!context.mounted) return;
+    final nombreNino = TextEditingController();
+    final edad = TextEditingController();
+    final wa = TextEditingController();
+    var paraHijo = false;
+    var consiente = false;
+    final esFutbol = c.deporte.name == 'futbol';
+
+    final datos = await showDialog<
+        ({bool hijo, String nombre, int? edad, String wa, bool consiente})>(
+      context: context,
+      builder: (dctx) => StatefulBuilder(
+        builder: (dctx, setSB) => AlertDialog(
+          title: Text('Inscribirme · ${c.nombre}'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('¿Quién va a competir?',
+                    style: TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ChoiceChip(
+                        label: const Center(child: Text('Yo')),
+                        selected: !paraHijo,
+                        onSelected: (_) => setSB(() => paraHijo = false),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ChoiceChip(
+                        label: const Center(child: Text('Mi hijo(a)')),
+                        selected: paraHijo,
+                        onSelected: (_) => setSB(() => paraHijo = true),
+                      ),
+                    ),
+                  ],
+                ),
+                if (paraHijo) ...[
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: nombreNino,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: InputDecoration(
+                        labelText: esFutbol
+                            ? 'Nombre del equipo'
+                            : 'Nombre del alumno (niño/a)'),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: edad,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                              labelText: 'Edad (opcional)'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: wa,
+                          keyboardType: TextInputType.phone,
+                          decoration: const InputDecoration(
+                              labelText: 'Tu WhatsApp', prefixText: '+51 '),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    dense: true,
+                    value: consiente,
+                    onChanged: (v) => setSB(() => consiente = v ?? false),
+                    title: const Text(
+                        'Soy el apoderado y autorizo el registro del menor.',
+                        style: TextStyle(fontSize: 12)),
+                  ),
+                ],
+                if (c.costoInscripcion > 0) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                      'Inscripción: S/ ${c.costoInscripcion.toStringAsFixed(2)}',
+                      style: const TextStyle(color: textoTenue)),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(dctx),
+                child: const Text('Cancelar')),
+            FilledButton(
+              onPressed: () => Navigator.pop(dctx, (
+                hijo: paraHijo,
+                nombre: nombreNino.text.trim(),
+                edad: int.tryParse(edad.text.trim()),
+                wa: wa.text.trim(),
+                consiente: consiente,
+              )),
+              child: Text(
+                  c.costoInscripcion > 0 ? 'Continuar al pago' : 'Inscribirme'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (datos == null || !context.mounted) return;
+    if (datos.hijo && datos.nombre.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Escribe el nombre del participante.')));
+      return;
+    }
+    if (datos.hijo && !datos.consiente) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Confirma que eres el apoderado del menor.')));
+      return;
+    }
+    // Cobro de inscripción (si tiene costo).
+    if (c.costoInscripcion > 0) {
+      final pagado = await PagoTarjeta.cobrar(
+        context,
+        monto: c.costoInscripcion.round(),
+        concepto: 'Inscripción ${c.nombre}',
+        email: appState.usuario?.email ?? '',
+      );
+      if (!pagado) return;
+    }
+    final res = appState.inscribirseCampeonato(
+      c.id,
+      nombreParticipante: datos.hijo ? datos.nombre : null,
+      edad: datos.hijo ? datos.edad : null,
+      apoderadoWhatsapp: datos.hijo ? datos.wa : null,
+    );
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(res.mensaje),
+        backgroundColor: res.ok ? bosque : null,
+      ));
     }
   }
 
@@ -282,6 +470,7 @@ class _Participantes extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = campeonato;
+    final cs = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -311,7 +500,20 @@ class _Participantes extends StatelessWidget {
           children: [
             for (final p in c.participantes)
               InputChip(
-                label: Text(p.nombre),
+                avatar: p.esApp
+                    ? (p.fotoUrl != null && p.fotoUrl!.isNotEmpty
+                        ? CircleAvatar(
+                            backgroundImage: NetworkImage(p.fotoUrl!))
+                        : Icon(
+                            p.esMenor
+                                ? Icons.child_care
+                                : Icons.verified_user,
+                            size: 18,
+                            color: cs.primary))
+                    : null,
+                label: Text(p.esMenor
+                    ? '${p.nombre} · apod. ${p.apoderadoNombre}'
+                    : p.nombre),
                 onDeleted: esDueno
                     ? () => appState.eliminarParticipante(c.id, p.id)
                     : null,
