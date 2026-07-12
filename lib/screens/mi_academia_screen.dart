@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/academia.dart';
+import '../models/invitacion.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -67,10 +68,20 @@ class MiAcademiaScreen extends StatelessWidget {
                     const Text('Alumnos',
                         style:
                             TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
-                    TextButton.icon(
-                      onPressed: () => _agregarAlumno(context, ac),
-                      icon: const Icon(Icons.person_add_alt_1),
-                      label: const Text('Agregar'),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextButton.icon(
+                          onPressed: () => _invitarAlumno(context, ac),
+                          icon: const Icon(Icons.mail_outline, size: 20),
+                          label: const Text('Invitar'),
+                        ),
+                        TextButton.icon(
+                          onPressed: () => _agregarAlumno(context, ac),
+                          icon: const Icon(Icons.person_add_alt_1, size: 20),
+                          label: const Text('Agregar'),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -79,11 +90,13 @@ class MiAcademiaScreen extends StatelessWidget {
                 const Padding(
                   padding: EdgeInsets.all(24),
                   child: Text(
-                      'Aún no tienes alumnos. Agrégalos y ellos verán sus cuotas.',
+                      'Aún no tienes alumnos. Invítalos por correo o WhatsApp, o '
+                      'agrégalos a mano y ellos verán sus cuotas.',
                       style: TextStyle(color: textoTenue)),
                 ),
               for (final al in alumnos)
                 _TarjetaAlumno(alumno: al),
+              _SeccionInvitaciones(academia: ac),
               const SizedBox(height: 30),
             ],
           );
@@ -131,6 +144,203 @@ class MiAcademiaScreen extends StatelessWidget {
         whatsapp: whats.text.trim(),
       ));
     }
+  }
+
+  /// Invita a un alumno por CORREO (le aparece solo al entrar a la app) y/o por
+  /// WhatsApp (le llega el código de la academia). Con uno basta.
+  static Future<void> _invitarAlumno(BuildContext context, Academia ac) async {
+    final nombre = TextEditingController();
+    final email = TextEditingController();
+    final tel = TextEditingController();
+    final res = await showDialog<({bool ok, String mensaje, String telWa})>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Invitar alumno'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                  'Por correo le aparece sola al entrar a la app; por WhatsApp le '
+                  'llega el código. Con uno basta.',
+                  style: TextStyle(fontSize: 13, color: textoTenue)),
+              const SizedBox(height: 12),
+              TextField(
+                  controller: nombre,
+                  textCapitalization: TextCapitalization.words,
+                  decoration:
+                      const InputDecoration(labelText: 'Nombre (opcional)')),
+              TextField(
+                  controller: email,
+                  keyboardType: TextInputType.emailAddress,
+                  autocorrect: false,
+                  decoration: const InputDecoration(
+                      labelText: 'Correo (Gmail)',
+                      hintText: 'alumno@gmail.com')),
+              TextField(
+                  controller: tel,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(
+                      labelText: 'WhatsApp', prefixText: '+51 ')),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancelar')),
+          FilledButton(
+            onPressed: () {
+              final inv = appState.crearInvitacion(
+                academia: ac,
+                nombre: nombre.text,
+                email: email.text,
+                telefono: tel.text,
+              );
+              if (inv == null) {
+                Navigator.pop(ctx, (
+                  ok: false,
+                  mensaje: 'Escribe un correo o un WhatsApp.',
+                  telWa: ''
+                ));
+                return;
+              }
+              Navigator.pop(ctx, (
+                ok: true,
+                mensaje: inv.email.isNotEmpty
+                    ? 'Invitación creada. Le aparecerá al entrar con ${inv.email}.'
+                    : 'Invitación creada. Se la mandamos por WhatsApp.',
+                telWa: inv.telefono,
+              ));
+            },
+            child: const Text('Invitar'),
+          ),
+        ],
+      ),
+    );
+    if (res == null || !context.mounted) return;
+    if (res.telWa.isNotEmpty) {
+      await WhatsAppLink.abrir(
+          res.telWa, _mensajeInvitacion(ac, nombre.text.trim()));
+    }
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(res.mensaje), backgroundColor: res.ok ? bosque : null));
+    }
+  }
+}
+
+const _kReleaseUrl =
+    'https://github.com/dcalagua/canchas-app-lima/releases/tag/v0.1.0';
+
+/// Mensaje de invitación por WhatsApp (con el código de la academia).
+String _mensajeInvitacion(Academia ac, String nombre) {
+  final saludo = nombre.isNotEmpty ? '¡Hola $nombre!' : '¡Hola!';
+  return '$saludo Te invito a mi academia "${ac.nombre}" en Pichangol 🎾\n\n'
+      '1) Descarga la app: $_kReleaseUrl\n'
+      '2) Entra a Academias → "Unirme con código"\n'
+      '3) Ingresa el código: ${ac.codigo}\n\n'
+      'Ahí verás tus clases y pagos. ¡Nos vemos en la cancha!';
+}
+
+/// Lista de invitaciones que el profe creó (pendientes/aceptadas), con acciones
+/// para reenviar por WhatsApp o cancelar.
+class _SeccionInvitaciones extends StatelessWidget {
+  const _SeccionInvitaciones({required this.academia});
+  final Academia academia;
+
+  @override
+  Widget build(BuildContext context) {
+    final invs = appState.invitacionesDe(academia.id);
+    if (invs.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(18, 20, 18, 4),
+          child: Text('Invitaciones',
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+        ),
+        for (final inv in invs)
+          _TarjetaInvitacion(inv: inv, academia: academia),
+      ],
+    );
+  }
+}
+
+class _TarjetaInvitacion extends StatelessWidget {
+  const _TarjetaInvitacion({required this.inv, required this.academia});
+  final Invitacion inv;
+  final Academia academia;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final aceptada = inv.estado == EstadoInvitacion.aceptada;
+    final color = aceptada ? cs.primary : textoTenue;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(18, 8, 18, 0),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: trazo),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 18,
+            backgroundColor: color.withOpacity(0.14),
+            child: Icon(
+                inv.email.isNotEmpty
+                    ? Icons.mail_outline
+                    : Icons.chat_bubble_outline,
+                size: 18,
+                color: color),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                    inv.nombreSugerido.isNotEmpty
+                        ? inv.nombreSugerido
+                        : inv.destino,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700, color: cs.onSurface)),
+                Text('${inv.destino} · ${inv.estado.etiqueta}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: textoTenue, fontSize: 12)),
+              ],
+            ),
+          ),
+          if (aceptada)
+            Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: Icon(Icons.check_circle, color: cs.primary, size: 22),
+            )
+          else ...[
+            if (inv.telefono.isNotEmpty)
+              IconButton(
+                tooltip: 'Reenviar por WhatsApp',
+                icon: const Icon(Icons.share, color: Color(0xFF25D366)),
+                onPressed: () => WhatsAppLink.abrir(
+                    inv.telefono, _mensajeInvitacion(academia, inv.nombreSugerido)),
+              ),
+            IconButton(
+              tooltip: 'Cancelar',
+              icon: const Icon(Icons.close, color: textoTenue),
+              onPressed: () => appState.cancelarInvitacion(inv.id),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 }
 

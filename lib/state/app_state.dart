@@ -7,11 +7,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../data/academias_repo.dart';
 import '../data/campeonatos_repo.dart';
 import '../data/canchas_repo.dart';
+import '../data/invitaciones_repo.dart';
 import '../data/matriculas_repo.dart';
 import '../data/reservas_repo.dart';
 import '../data/sample_data.dart';
 import '../models/academia.dart';
 import '../models/campeonato.dart';
+import '../models/invitacion.dart';
 import '../models/models.dart';
 import '../models/usuario.dart';
 import '../services/auth_service.dart';
@@ -50,6 +52,7 @@ class AppState extends ChangeNotifier {
   final List<Alumno> alumnos = [];
   final List<Cuota> cuotas = [];
   final List<Asistencia> asistencias = [];
+  final List<Invitacion> invitaciones = []; // invitaciones profe → alumno
 
   // ── Campeonatos de academias ──────────────────────────────────────────────
   final List<Campeonato> campeonatos = [];
@@ -393,6 +396,17 @@ class AppState extends ChangeNotifier {
       edad: edad,
     );
     alumnos.add(alumno);
+    // Si tenía una invitación por correo pendiente a esta academia, márcala
+    // aceptada para que el profe la vea resuelta (y no como pendiente).
+    for (var k = 0; k < invitaciones.length; k++) {
+      final inv = invitaciones[k];
+      if (inv.academiaId == academia.id &&
+          inv.estado == EstadoInvitacion.pendiente &&
+          inv.coincideEmail(u.email)) {
+        invitaciones[k] = inv.copyWith(estado: EstadoInvitacion.aceptada);
+        InvitacionesRepo.guardar(invitaciones[k]);
+      }
+    }
     notifyListeners();
     _persistirDatos();
     MatriculasRepo.guardar(alumno);
@@ -428,6 +442,171 @@ class AppState extends ChangeNotifier {
         alumnos[i] = al;
       } else {
         alumnos.add(al);
+      }
+      cambio = true;
+    }
+    if (cambio) {
+      notifyListeners();
+      _persistirDatos();
+    }
+  }
+
+  // ── Invitaciones (invitar por correo / teléfono) ──────────────────────────
+
+  /// Invitaciones que el profe creó para una academia (excluye canceladas), de
+  /// la más reciente a la más antigua.
+  List<Invitacion> invitacionesDe(String academiaId) => invitaciones
+      .where((i) =>
+          i.academiaId == academiaId &&
+          i.estado != EstadoInvitacion.cancelada)
+      .toList()
+    ..sort((a, b) => b.creada.compareTo(a.creada));
+
+  /// Invitaciones PENDIENTES dirigidas al usuario logueado (por correo) a
+  /// academias en las que aún NO está matriculado. Es lo que ve el alumno como
+  /// "te invitaron".
+  List<Invitacion> misInvitacionesPendientes() {
+    final email = usuario?.email;
+    if (email == null || email.isEmpty) return [];
+    final mail = Invitacion.normalizarEmail(email);
+    return invitaciones.where((i) {
+      if (i.estado != EstadoInvitacion.pendiente) return false;
+      if (!i.coincideEmail(mail)) return false;
+      // Ya matriculado en esa academia con esta cuenta → no molestar.
+      final ya = alumnos.any((al) =>
+          al.academiaId == i.academiaId &&
+          al.email.toLowerCase() == mail);
+      return !ya;
+    }).toList()
+      ..sort((a, b) => b.creada.compareTo(a.creada));
+  }
+
+  /// El profe crea una invitación por correo y/o teléfono. Devuelve la
+  /// invitación creada (o null si no dio ni correo ni teléfono válidos).
+  Invitacion? crearInvitacion({
+    required Academia academia,
+    String nombre = '',
+    String email = '',
+    String telefono = '',
+  }) {
+    final mail = Invitacion.normalizarEmail(email);
+    final tel = Invitacion.normalizarTelefono(telefono);
+    if (mail.isEmpty && tel.isEmpty) return null;
+    // Dedup: si ya hay una invitación pendiente al mismo destino, reúsala.
+    final existente = invitaciones.where((i) =>
+        i.academiaId == academia.id &&
+        i.estado == EstadoInvitacion.pendiente &&
+        ((mail.isNotEmpty && i.email == mail) ||
+            (tel.isNotEmpty && i.telefono == tel)));
+    if (existente.isNotEmpty) return existente.first;
+    final inv = Invitacion(
+      id: 'inv_${DateTime.now().microsecondsSinceEpoch}',
+      academiaId: academia.id,
+      academiaNombre: academia.nombre,
+      deporte: academia.deporte.name,
+      email: mail,
+      telefono: tel,
+      nombreSugerido: nombre.trim(),
+      estado: EstadoInvitacion.pendiente,
+      creada: DateTime.now(),
+    );
+    invitaciones.add(inv);
+    notifyListeners();
+    _persistirDatos();
+    InvitacionesRepo.guardar(inv); // cross-device
+    return inv;
+  }
+
+  /// El profe cancela una invitación (borrado lógico durable en la nube).
+  void cancelarInvitacion(String id) {
+    final i = invitaciones.indexWhere((x) => x.id == id);
+    if (i < 0) return;
+    invitaciones[i] = invitaciones[i].copyWith(
+        estado: EstadoInvitacion.cancelada);
+    notifyListeners();
+    _persistirDatos();
+    InvitacionesRepo.guardar(invitaciones[i]);
+  }
+
+  /// El alumno ACEPTA una invitación: se matricula (queda como alumno-app) y la
+  /// invitación pasa a aceptada. Requiere sesión iniciada.
+  ({bool ok, String mensaje}) aceptarInvitacion(Invitacion inv) {
+    final u = usuario;
+    if (u == null) {
+      return (ok: false, mensaje: 'Inicia sesión para aceptar la invitación.');
+    }
+    Academia? academia;
+    for (final a in academias) {
+      if (a.id == inv.academiaId) {
+        academia = a;
+        break;
+      }
+    }
+    final nombre = inv.nombreSugerido.isNotEmpty ? inv.nombreSugerido : u.nombre;
+    // Dedup por (academia + cuenta): no duplicar si ya se unió.
+    final ya = alumnos.any((al) =>
+        al.academiaId == inv.academiaId &&
+        al.email.toLowerCase() == u.email.toLowerCase());
+    if (!ya) {
+      alumnos.add(Alumno(
+        id: 'al_${DateTime.now().microsecondsSinceEpoch}',
+        academiaId: inv.academiaId,
+        nombre: nombre,
+        email: u.email,
+        fotoUrl: u.fotoUrl,
+      ));
+      MatriculasRepo.guardar(alumnos.last);
+    }
+    _marcarInvitacionAceptada(inv);
+    notifyListeners();
+    _persistirDatos();
+    final nom = academia?.nombre ?? inv.academiaNombre;
+    return (ok: true, mensaje: 'Te uniste a $nom. ¡Listo! 🎾');
+  }
+
+  /// El alumno rechaza una invitación (no vuelve a aparecer).
+  void rechazarInvitacion(Invitacion inv) {
+    final i = invitaciones.indexWhere((x) => x.id == inv.id);
+    if (i < 0) return;
+    invitaciones[i] = invitaciones[i].copyWith(
+        estado: EstadoInvitacion.rechazada);
+    notifyListeners();
+    _persistirDatos();
+    InvitacionesRepo.guardar(invitaciones[i]);
+  }
+
+  void _marcarInvitacionAceptada(Invitacion inv) {
+    final i = invitaciones.indexWhere((x) => x.id == inv.id);
+    if (i < 0) return;
+    invitaciones[i] = invitaciones[i].copyWith(
+        estado: EstadoInvitacion.aceptada);
+    InvitacionesRepo.guardar(invitaciones[i]);
+  }
+
+  /// Trae de la nube las invitaciones relevantes: las que creó el profe (por sus
+  /// academias) y las dirigidas al correo del usuario. Las fusiona por id.
+  /// Best-effort.
+  Future<void> cargarInvitacionesRemotas() async {
+    final u = usuario;
+    final misAcademiaIds = <String>[
+      for (final a in academias)
+        if (u != null && a.dueno.toLowerCase() == u.email.toLowerCase()) a.id,
+    ];
+    final remotas = <Invitacion>[];
+    if (misAcademiaIds.isNotEmpty) {
+      remotas.addAll(await InvitacionesRepo.deAcademias(misAcademiaIds));
+    }
+    if (u != null) {
+      remotas.addAll(await InvitacionesRepo.paraEmail(u.email));
+    }
+    if (remotas.isEmpty) return;
+    var cambio = false;
+    for (final inv in remotas) {
+      final i = invitaciones.indexWhere((x) => x.id == inv.id);
+      if (i >= 0) {
+        invitaciones[i] = inv;
+      } else {
+        invitaciones.add(inv);
       }
       cambio = true;
     }
@@ -1229,6 +1408,7 @@ class AppState extends ChangeNotifier {
   static const _kCuotas = 'cuotas_json';
   static const _kAsistencias = 'asistencias_json';
   static const _kCampeonatos = 'campeonatos_json';
+  static const _kInvitaciones = 'invitaciones_json';
 
   /// Carga la sesión y los datos persistidos (al arrancar la app).
   Future<void> cargarSesion() async {
@@ -1305,6 +1485,7 @@ class AppState extends ChangeNotifier {
       _cargarLista(prefs, _kCuotas, cuotas, Cuota.fromJson);
       _cargarLista(prefs, _kAsistencias, asistencias, Asistencia.fromJson);
       _cargarLista(prefs, _kCampeonatos, campeonatos, Campeonato.fromJson);
+      _cargarLista(prefs, _kInvitaciones, invitaciones, Invitacion.fromJson);
 
       notifyListeners();
       // Trae la disponibilidad compartida (reservas de otros dispositivos) para
@@ -1356,6 +1537,8 @@ class AppState extends ChangeNotifier {
           jsonEncode(asistencias.map((a) => a.toJson()).toList()));
       await prefs.setString(_kCampeonatos,
           jsonEncode(campeonatos.map((c) => c.toJson()).toList()));
+      await prefs.setString(_kInvitaciones,
+          jsonEncode(invitaciones.map((i) => i.toJson()).toList()));
     } catch (_) {}
   }
 
@@ -1370,6 +1553,7 @@ class AppState extends ChangeNotifier {
     cargarReservasRemotas(); // best-effort refresco
     sincronizarSaldo(); // saldo real del backend (sobrevive reinstalar)
     cargarMatriculasRemotas(); // sus academias/matrículas vinculadas
+    cargarInvitacionesRemotas(); // ¿lo invitaron a alguna academia por correo?
     return true;
   }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/academia.dart';
+import '../models/invitacion.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/redes.dart';
@@ -24,6 +25,7 @@ class AcademiasScreen extends StatelessWidget {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              const _MisInvitaciones(),
               const _UnirmeConCodigo(),
               const SizedBox(height: 16),
               if (academias.isEmpty)
@@ -239,6 +241,97 @@ class _UnirmeConCodigo extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Invitaciones pendientes dirigidas al usuario (por correo): "te invitaron a
+/// tal academia". Un toque las acepta y lo matricula como alumno-app.
+class _MisInvitaciones extends StatelessWidget {
+  const _MisInvitaciones();
+
+  @override
+  Widget build(BuildContext context) {
+    final invs = appState.misInvitacionesPendientes();
+    if (invs.isEmpty) return const SizedBox.shrink();
+    return Column(
+      children: [
+        for (final inv in invs) _TarjetaInvitacionRecibida(inv: inv),
+      ],
+    );
+  }
+}
+
+class _TarjetaInvitacionRecibida extends StatelessWidget {
+  const _TarjetaInvitacionRecibida({required this.inv});
+  final Invitacion inv;
+
+  Future<void> _aceptar(BuildContext context) async {
+    final res = appState.aceptarInvitacion(inv);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(res.mensaje), backgroundColor: res.ok ? bosque : null));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: lima.withOpacity(0.9), width: 1.4),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                    color: lima.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12)),
+                child: Icon(Icons.mark_email_unread_outlined, color: cs.primary),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Te invitaron a ${inv.academiaNombre}',
+                        style: t.titleSmall
+                            ?.copyWith(fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 2),
+                    Text('Acepta para ver tus clases y pagos.',
+                        style: t.bodySmall?.copyWith(color: textoTenue)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              TextButton(
+                onPressed: () => appState.rechazarInvitacion(inv),
+                child: const Text('Ahora no'),
+              ),
+              const Spacer(),
+              FilledButton.icon(
+                onPressed: () => _aceptar(context),
+                icon: const Icon(Icons.check, size: 18),
+                label: const Text('Aceptar'),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
