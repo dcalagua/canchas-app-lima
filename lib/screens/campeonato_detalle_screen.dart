@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/campeonato.dart';
+import '../services/supabase_service.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -50,6 +52,26 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                   ),
                 ),
               ],
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _compartir(context, c),
+                      icon: const Icon(Icons.share, size: 18),
+                      label: const Text('Compartir'),
+                    ),
+                  ),
+                  if (SupabaseService.paginaCampeonato(c.id) != null) ...[
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      onPressed: () => _copiarEnlace(context, c),
+                      icon: const Icon(Icons.link, size: 18),
+                      label: const Text('Enlace'),
+                    ),
+                  ],
+                ],
+              ),
               if (puedeInscribirse) ...[
                 const SizedBox(height: 12),
                 SizedBox(
@@ -67,22 +89,12 @@ class CampeonatoDetalleScreen extends StatelessWidget {
               _Participantes(campeonato: c, esDueno: esDueno),
               const SizedBox(height: 18),
               if (c.fixtureGenerado) ...[
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                        c.formato == FormatoTorneo.liga
-                            ? 'Tabla y partidos'
-                            : 'Llave',
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w800, fontSize: 17)),
-                    TextButton.icon(
-                      onPressed: () => _compartir(context, c),
-                      icon: const Icon(Icons.share, size: 18),
-                      label: const Text('Compartir'),
-                    ),
-                  ],
-                ),
+                Text(
+                    c.formato == FormatoTorneo.liga
+                        ? 'Tabla y partidos'
+                        : 'Llave',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800, fontSize: 17)),
                 const SizedBox(height: 8),
                 if (c.formato == FormatoTorneo.liga)
                   _Liga(campeonato: c, esDueno: esDueno)
@@ -134,6 +146,16 @@ class CampeonatoDetalleScreen extends StatelessWidget {
     if (!ok && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('No pude abrir WhatsApp.')));
+    }
+  }
+
+  Future<void> _copiarEnlace(BuildContext context, Campeonato c) async {
+    final link = SupabaseService.paginaCampeonato(c.id);
+    if (link == null) return;
+    await Clipboard.setData(ClipboardData(text: link));
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Enlace de la página copiado. ¡Pégalo donde quieras!')));
     }
   }
 
@@ -318,6 +340,8 @@ class CampeonatoDetalleScreen extends StatelessWidget {
         sb.writeln('$a ${m.marcadorA}-${m.marcadorB} $b');
       }
     }
+    final link = SupabaseService.paginaCampeonato(c.id);
+    if (link != null) sb.writeln('\n👉 Míralo aquí: $link');
     sb.writeln('\nvía Pichangol');
     return sb.toString();
   }

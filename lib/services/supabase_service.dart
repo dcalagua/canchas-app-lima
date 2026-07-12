@@ -28,4 +28,16 @@ class SupabaseService {
     if (_url.isEmpty) return 'sin configurar';
     return Uri.tryParse(_url)?.host ?? _url;
   }
+
+  /// URL pública de una Edge Function (`.../functions/v1/<nombre>`), o null si
+  /// Supabase no está configurado.
+  static String? funcionUrl(String nombre) =>
+      _url.isEmpty ? null : '$_url/functions/v1/$nombre';
+
+  /// Enlace público (web) de un campeonato, para compartir a quien no tiene la
+  /// app. Null si Supabase no está configurado.
+  static String? paginaCampeonato(String id) {
+    final base = funcionUrl('campeonato-web');
+    return base == null ? null : '$base?id=$id';
+  }
 }
