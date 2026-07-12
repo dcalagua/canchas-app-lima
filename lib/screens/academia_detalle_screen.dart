@@ -8,6 +8,7 @@ import '../utils/redes.dart';
 import '../utils/ubicacion_share.dart';
 import '../widgets/pago_tarjeta_sheet.dart';
 import 'campeonatos_screen.dart';
+import 'chat_screen.dart';
 
 /// Ficha pública de una academia: feed de fotos propio (no Instagram embebido),
 /// planes con matrícula en el mismo app (pago simulado) y redes para seguir.
@@ -191,6 +192,62 @@ class _Contenido extends StatelessWidget {
                 else
                   for (final p in academia.planes)
                     _TarjetaPlan(academia: academia, plan: p),
+                // Chat con el profe (solo si el usuario está matriculado aquí).
+                Builder(builder: (context) {
+                  final email = appState.usuario?.email;
+                  if (email == null || email.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+                  final matriculado = appState.alumnos.any((al) =>
+                      al.academiaId == academia.id &&
+                      al.email.toLowerCase() == email.toLowerCase());
+                  if (!matriculado) return const SizedBox.shrink();
+                  final cs = Theme.of(context).colorScheme;
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 22),
+                    child: Material(
+                      color: cs.surface,
+                      borderRadius: BorderRadius.circular(16),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                                builder: (_) => ChatScreen(
+                                      academiaId: academia.id,
+                                      cuentaEmail: email,
+                                      titulo: academia.nombre,
+                                      soyProfe: false,
+                                    ))),
+                        child: Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: trazo)),
+                          child: Row(
+                            children: [
+                              Icon(Icons.forum_outlined, color: cs.primary),
+                              const SizedBox(width: 12),
+                              const Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('Chatear con el profe',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.w800)),
+                                    Text('Dudas de horarios, pagos y clases',
+                                        style: TextStyle(
+                                            color: textoTenue, fontSize: 12)),
+                                  ],
+                                ),
+                              ),
+                              Icon(Icons.chevron_right, color: cs.primary),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }),
                 // Acceso a los campeonatos de la academia (llaves/tabla).
                 const SizedBox(height: 22),
                 Builder(builder: (context) {

@@ -8,6 +8,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import 'asistencia_screen.dart';
 import 'campeonatos_screen.dart';
+import 'chats_academia_screen.dart';
 import 'crear_academia_screen.dart';
 import 'reporte_academia_screen.dart';
 
@@ -501,8 +502,17 @@ class _Header extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(academia.nombre,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: t.headlineSmall?.copyWith(
                         color: Colors.white, fontWeight: FontWeight.w800)),
+              ),
+              IconButton(
+                tooltip: 'Mensajes',
+                icon: const Icon(Icons.forum_outlined, color: Colors.white),
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) =>
+                        ChatsAcademiaScreen(academiaId: academia.id))),
               ),
               IconButton(
                 tooltip: 'Reporte de pagos',

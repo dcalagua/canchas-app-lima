@@ -54,6 +54,10 @@ class AppState extends ChangeNotifier {
   final List<Asistencia> asistencias = [];
   final List<Invitacion> invitaciones = []; // invitaciones profe → alumno
 
+  // Última vez que el usuario abrió cada hilo de chat (hilo → ISO). Sirve para
+  // el contador de "no leídos" (Etapa A del chat).
+  final Map<String, String> chatLecturas = {};
+
   // ── Campeonatos de academias ──────────────────────────────────────────────
   final List<Campeonato> campeonatos = [];
   bool descubriendo = false; // true mientras se traen canchas cercanas (feedback UI)
@@ -614,6 +618,21 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       _persistirDatos();
     }
+  }
+
+  // ── Chat (Etapa A) ────────────────────────────────────────────────────────
+
+  /// Marca un hilo como leído hasta ahora (limpia el contador de no leídos).
+  void marcarChatLeido(String hilo) {
+    chatLecturas[hilo] = DateTime.now().toIso8601String();
+    notifyListeners();
+    _persistirDatos();
+  }
+
+  /// Cuándo se leyó por última vez un hilo (null si nunca).
+  DateTime? chatUltimaLectura(String hilo) {
+    final iso = chatLecturas[hilo];
+    return iso == null ? null : DateTime.tryParse(iso);
   }
 
   List<Cuota> cuotasDe(String academiaId) => cuotas
@@ -1409,6 +1428,7 @@ class AppState extends ChangeNotifier {
   static const _kAsistencias = 'asistencias_json';
   static const _kCampeonatos = 'campeonatos_json';
   static const _kInvitaciones = 'invitaciones_json';
+  static const _kChatLecturas = 'chat_lecturas_json';
 
   /// Carga la sesión y los datos persistidos (al arrancar la app).
   Future<void> cargarSesion() async {
@@ -1487,6 +1507,16 @@ class AppState extends ChangeNotifier {
       _cargarLista(prefs, _kCampeonatos, campeonatos, Campeonato.fromJson);
       _cargarLista(prefs, _kInvitaciones, invitaciones, Invitacion.fromJson);
 
+      final lecturasRaw = prefs.getString(_kChatLecturas);
+      if (lecturasRaw != null) {
+        try {
+          final m = jsonDecode(lecturasRaw) as Map<String, dynamic>;
+          chatLecturas
+            ..clear()
+            ..addAll(m.map((k, v) => MapEntry(k, v.toString())));
+        } catch (_) {}
+      }
+
       notifyListeners();
       // Trae la disponibilidad compartida (reservas de otros dispositivos) para
       // que el anti-doble-reserva y el panel del dueño arranquen al día. Best-effort.
@@ -1539,6 +1569,7 @@ class AppState extends ChangeNotifier {
           jsonEncode(campeonatos.map((c) => c.toJson()).toList()));
       await prefs.setString(_kInvitaciones,
           jsonEncode(invitaciones.map((i) => i.toJson()).toList()));
+      await prefs.setString(_kChatLecturas, jsonEncode(chatLecturas));
     } catch (_) {}
   }
 
