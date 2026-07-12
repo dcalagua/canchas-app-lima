@@ -24,22 +24,22 @@ import 'models/models.dart';
 // Requiere en pubspec.yaml → dependencies: google_fonts: ^6.2.1
 // ─────────────────────────────────────────────────────────────────────────
 
-// ── Identidad "Cancha nocturna": índigo profundo + lima eléctrica + ámbar.
+// ── Identidad AIRBNB: coral Rausch + negro Hof + blancos/grises + teal Babu.
 // (Se mantienen los NOMBRES de los tokens; solo cambian sus valores, así toda
-// la app adopta la identidad sin tocar cada pantalla.)
-const Color lima = Color(0xFFC4F542);   // accent / CTA / realce (lima eléctrica)
-const Color sage = Color(0xFF3A4066);   // índigo medio (degradado de headers)
-const Color teal = Color(0xFF2A2F52);   // índigo de apoyo
-const Color amarillo = Color(0xFFFFB020); // acento de energía (ámbar)
-const Color verde = Color(0xFF2A2F52);  // índigo medio
-const Color verdeProfundo = Color(0xFF1F2340); // índigo profundo
-const Color bosque = Color(0xFF171B34); // primary / superficies oscuras (índigo)
-const Color tinta = Color(0xFF14172B);  // texto (casi negro índigo)
-const Color papel = Color(0xFFF4F5FA);  // fondo app (page, frío)
-const Color papelCalido = Color(0xFFECEEF6); // fondo panel del club
-const Color trazo = Color(0xFFE3E5EE);  // bordes / divisores
-const Color textoTenue = Color(0xFF6E7386); // muted (gris frío)
-const Color limaSuave = Color(0xFFEEF6D6); // tinte lima suave
+// la app adopta el look Airbnb sin tocar cada pantalla.)
+const Color lima = Color(0xFFFF385C);   // Rausch — CTA / acento principal
+const Color sage = Color(0xFF484848);   // charcoal (degradado de headers)
+const Color teal = Color(0xFF008489);   // Babu — acento secundario (teal)
+const Color amarillo = Color(0xFFFFB400); // dorado (calificaciones/energía)
+const Color verde = Color(0xFF484848);  // charcoal medio
+const Color verdeProfundo = Color(0xFF333333); // charcoal profundo
+const Color bosque = Color(0xFF222222); // Hof — texto / superficies oscuras
+const Color tinta = Color(0xFF222222);  // texto (Hof near-black)
+const Color papel = Color(0xFFF7F7F7);  // fondo app (gris muy claro Airbnb)
+const Color papelCalido = Color(0xFFF7F7F7); // fondo panel
+const Color trazo = Color(0xFFDDDDDD);  // bordes / divisores (Airbnb)
+const Color textoTenue = Color(0xFF717171); // muted (Foggy)
+const Color limaSuave = Color(0xFFFFF0F2); // tinte coral suave
 
 // ── Colores de estado (chips) — sistema de diseño ─────────────────────────
 const Color estadoOkBg = Color(0xFFE9F4EE);
@@ -59,11 +59,11 @@ const Color pinoOscuro = tinta;
 const Color verdeCancha = bosque;
 const Color verdeClaro = sage;
 const Color verdeOscuro = tinta;
-const Color clay = sage;        // ya no hay coral; "valle" usa verdes
-const Color clayOscuro = verde;
-const Color coral = sage;
-const Color coralOscuro = verde;
-const Color arena = verde;      // antes tono "arena"; ahora verde EBIM
+const Color clay = textoTenue;  // neutro (gris Foggy)
+const Color clayOscuro = Color(0xFFC13515); // rojo Airbnb (estados/vencido)
+const Color coral = lima;       // coral Rausch real
+const Color coralOscuro = Color(0xFFC13515);
+const Color arena = textoTenue;
 const Color naranjaFutbol = lima;
 const Color fondoApp = papel;
 
@@ -72,12 +72,12 @@ const Color arcillaTenis = Color(0xFF3A4066);
 const Color azulPadel = Color(0xFF2A2F52);
 const Color verdeFutbol = Color(0xFFC4F542);
 
-/// Tinte por deporte (punto del selector de cancha, chips).
+/// Tinte por deporte (punto del selector de cancha, chips). Paleta Airbnb.
 Color colorDeporte(Deporte d) => switch (d) {
-      Deporte.tenis => bosque,
-      Deporte.padel => sage,
-      Deporte.futbol => verde,
-      Deporte.pickleball => const Color(0xFF2F8F8F), // teal verdoso
+      Deporte.tenis => teal,        // Babu
+      Deporte.padel => textoTenue,  // Foggy (gris)
+      Deporte.futbol => bosque,     // Hof (negro)
+      Deporte.pickleball => lima,   // Rausch (coral)
     };
 
 IconData iconoDeporte(Deporte d) => switch (d) {
@@ -161,17 +161,17 @@ IconData iconoSuperficie(String superficie) {
 LinearGradient gradienteDeporte(Deporte d) => const LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
-      colors: [Color(0xFF80C68A), sage, Color(0xFF4E9B72)],
+      colors: [Color(0xFF5A5A5A), sage, Color(0xFF2B2B2B)],
     );
 
 ThemeData buildTheme() {
   final scheme = ColorScheme.fromSeed(
-    seedColor: bosque,
-    primary: bosque,
-    onPrimary: lima,        // texto/íconos lima sobre bosque (no usar negro)
-    secondary: lima,
-    onSecondary: bosque,
-    tertiary: sage,
+    seedColor: lima,
+    primary: lima,           // coral Rausch = acento/CTA principal
+    onPrimary: Colors.white, // texto blanco sobre coral
+    secondary: bosque,       // negro Hof
+    onSecondary: Colors.white,
+    tertiary: teal,          // Babu
     onTertiary: Colors.white,
     surface: Colors.white,
     onSurface: tinta,
@@ -207,80 +207,80 @@ ThemeData buildTheme() {
         side: const BorderSide(color: trazo),
       ),
     ),
-    // CTA principal = bosque con texto lima (botón "Reservar" / "Pagar seña").
-    // Radio 16 (handoff premium).
+    // CTA principal Airbnb = coral Rausch con texto blanco. Radio 12.
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        backgroundColor: bosque, foregroundColor: lima,
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 17),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: lima, foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
       ),
     ),
-    // Inputs consistentes: blanco, borde del sistema, foco sage, radio 10.
+    // Inputs Airbnb: blanco, borde #DDDDDD, foco negro Hof, radio 12.
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: Colors.white,
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         borderSide: const BorderSide(color: trazo),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         borderSide: const BorderSide(color: trazo),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: sage, width: 1.6),
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: bosque, width: 1.6),
       ),
       labelStyle: const TextStyle(color: textoTenue),
       hintStyle: const TextStyle(color: textoTenue),
     ),
     chipTheme: ChipThemeData(
-      backgroundColor: estadoNeutroBg,
+      backgroundColor: const Color(0xFFF7F7F7),
       labelStyle: const TextStyle(
-          fontWeight: FontWeight.w700, fontSize: 12, color: estadoNeutroFg),
-      side: BorderSide.none,
+          fontWeight: FontWeight.w700, fontSize: 12, color: bosque),
+      side: const BorderSide(color: trazo),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
     ),
     navigationBarTheme: NavigationBarThemeData(
       backgroundColor: Colors.white, surfaceTintColor: Colors.white,
-      indicatorColor: lima.withOpacity(0.45),
-      labelTextStyle: WidgetStateProperty.all(
-        const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: bosque)),
+      indicatorColor: lima.withOpacity(0.12),
+      labelTextStyle: WidgetStateProperty.resolveWith((s) => TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: s.contains(WidgetState.selected) ? bosque : textoTenue)),
       iconTheme: WidgetStateProperty.resolveWith((s) => IconThemeData(
-        color: s.contains(WidgetState.selected) ? bosque : const Color(0xFF9AA89E))),
+          color: s.contains(WidgetState.selected) ? lima : textoTenue)),
     ),
-    // Botón secundario (outline): borde bosque, texto bosque, radio 12.
+    // Botón secundario (outline) Airbnb: borde/texto negro Hof, radio 12.
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
         foregroundColor: bosque,
-        side: const BorderSide(color: bosque, width: 1.4),
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        side: const BorderSide(color: bosque, width: 1.3),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
       ),
     ),
-    // Botón terciario (texto): acción discreta, color de marca.
+    // Botón terciario (texto): negro Hof.
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
         foregroundColor: bosque,
         textStyle: const TextStyle(fontWeight: FontWeight.w700),
       ),
     ),
-    // Elevated = mismo lenguaje del CTA (bosque + lima) por si alguna pantalla
-    // lo usa en vez de FilledButton.
+    // Elevated = mismo CTA coral+blanco por si alguna pantalla lo usa.
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
-        backgroundColor: bosque, foregroundColor: lima, elevation: 0,
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 17),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: lima, foregroundColor: Colors.white, elevation: 0,
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
       ),
     ),
     floatingActionButtonTheme: const FloatingActionButtonThemeData(
-      backgroundColor: bosque, foregroundColor: lima,
+      backgroundColor: lima, foregroundColor: Colors.white,
     ),
     // Diálogos: superficie blanca, esquinas suaves, tipografía del sistema.
     dialogTheme: DialogTheme(
@@ -300,10 +300,11 @@ ThemeData buildTheme() {
     dividerTheme: const DividerThemeData(color: trazo, thickness: 1, space: 24),
     listTileTheme: const ListTileThemeData(iconColor: bosque, textColor: tinta),
     switchTheme: SwitchThemeData(
-      thumbColor: WidgetStateProperty.resolveWith((s) =>
-          s.contains(WidgetState.selected) ? bosque : Colors.white),
+      thumbColor: WidgetStateProperty.all(Colors.white),
       trackColor: WidgetStateProperty.resolveWith((s) =>
-          s.contains(WidgetState.selected) ? lima : const Color(0xFFCFD8D2)),
+          s.contains(WidgetState.selected) ? lima : const Color(0xFFDDDDDD)),
+      trackOutlineColor: WidgetStateProperty.resolveWith((s) =>
+          s.contains(WidgetState.selected) ? lima : const Color(0xFFB0B0B0)),
     ),
   );
 }
@@ -315,22 +316,22 @@ ThemeData buildTheme() {
 
 // Tokens del tema oscuro (privados; el resto de la app sigue usando los tokens
 // claros salvo donde ya se lee del ColorScheme).
-const Color _oscFondo = Color(0xFF0F1226);      // page (índigo casi negro)
-const Color _oscSuperficie = Color(0xFF191D38); // tarjetas / appbar
-const Color _oscSuperficie2 = Color(0xFF20264A); // inputs / chips
-const Color _oscTrazo = Color(0xFF2E3457);      // bordes / divisores
-const Color _oscTexto = Color(0xFFEDEFF8);       // texto principal
-const Color _oscTenue = Color(0xFF9AA0C0);       // texto muted
+const Color _oscFondo = Color(0xFF1A1A1A);      // page (negro Airbnb)
+const Color _oscSuperficie = Color(0xFF242424); // tarjetas / appbar
+const Color _oscSuperficie2 = Color(0xFF2E2E2E); // inputs / chips
+const Color _oscTrazo = Color(0xFF3A3A3A);      // bordes / divisores
+const Color _oscTexto = Color(0xFFF2F2F2);       // texto principal
+const Color _oscTenue = Color(0xFFA0A0A0);       // texto muted
 
 ThemeData buildThemeOscuro() {
   final scheme = ColorScheme.fromSeed(
-    seedColor: bosque,
-    primary: lima,           // en oscuro el acento manda como primary
-    onPrimary: _oscFondo,    // texto oscuro sobre lima
+    seedColor: lima,
+    primary: lima,           // coral Rausch como acento/CTA
+    onPrimary: Colors.white, // texto blanco sobre coral
     secondary: lima,
-    onSecondary: _oscFondo,
-    tertiary: sage,
-    onTertiary: _oscTexto,
+    onSecondary: Colors.white,
+    tertiary: teal,
+    onTertiary: Colors.white,
     surface: _oscSuperficie,
     onSurface: _oscTexto,
     brightness: Brightness.dark,
@@ -362,12 +363,12 @@ ThemeData buildThemeOscuro() {
         side: const BorderSide(color: _oscTrazo),
       ),
     ),
-    // CTA principal = lima con texto índigo (alto contraste en oscuro).
+    // CTA principal = coral con texto blanco.
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        backgroundColor: lima, foregroundColor: _oscFondo,
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 17),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: lima, foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
       ),
     ),
@@ -422,14 +423,14 @@ ThemeData buildThemeOscuro() {
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
-        backgroundColor: lima, foregroundColor: _oscFondo, elevation: 0,
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 17),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: lima, foregroundColor: Colors.white, elevation: 0,
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
       ),
     ),
     floatingActionButtonTheme: const FloatingActionButtonThemeData(
-      backgroundColor: lima, foregroundColor: _oscFondo,
+      backgroundColor: lima, foregroundColor: Colors.white,
     ),
     dialogTheme: DialogTheme(
       backgroundColor: _oscSuperficie, surfaceTintColor: _oscSuperficie,
@@ -447,10 +448,11 @@ ThemeData buildThemeOscuro() {
     dividerTheme: const DividerThemeData(color: _oscTrazo, thickness: 1, space: 24),
     listTileTheme: const ListTileThemeData(iconColor: lima, textColor: _oscTexto),
     switchTheme: SwitchThemeData(
-      thumbColor: WidgetStateProperty.resolveWith((s) =>
-          s.contains(WidgetState.selected) ? _oscFondo : _oscTenue),
+      thumbColor: WidgetStateProperty.all(Colors.white),
       trackColor: WidgetStateProperty.resolveWith((s) =>
           s.contains(WidgetState.selected) ? lima : _oscSuperficie2),
+      trackOutlineColor: WidgetStateProperty.resolveWith((s) =>
+          s.contains(WidgetState.selected) ? lima : _oscTrazo),
     ),
   );
 }

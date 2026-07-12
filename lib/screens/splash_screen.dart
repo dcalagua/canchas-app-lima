@@ -9,7 +9,7 @@ import '../theme.dart';
 import 'app_shell.dart';
 import 'onboarding_screen.dart';
 
-const _indigo = Color(0xFF171B34); // índigo nocturna (fondo)
+const _indigo = Color(0xFFFFFFFF); // fondo del splash (blanco, look Airbnb)
 
 /// Splash de marca ENERGÉTICO (identidad Cancha nocturna): fondo índigo + una
 /// pelota LIMA que va cambiando de deporte (fútbol, tenis, básquet, vóley…) con
@@ -143,8 +143,8 @@ class _SplashScreenState extends State<SplashScreen>
             Text(
               kBrandTagline,
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.72),
+              style: const TextStyle(
+                color: textoTenue,
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
               ),
@@ -159,7 +159,7 @@ class _SplashScreenState extends State<SplashScreen>
             const SizedBox(height: 12),
             Text('Cargando…',
                 style: TextStyle(
-                    color: Colors.white.withOpacity(0.7),
+                    color: textoTenue.withOpacity(0.9),
                     fontWeight: FontWeight.w700,
                     fontSize: 13)),
           ],
