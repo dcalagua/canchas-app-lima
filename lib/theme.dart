@@ -243,14 +243,22 @@ ThemeData buildTheme() {
       side: const BorderSide(color: trazo),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
     ),
+    // Barra inferior EXACTA a Airbnb: SIN pastilla de fondo al seleccionar.
+    // El tab activo se distingue solo por color coral (ícono + texto); el resto
+    // en gris Foggy. Nada de sombreado rosa detrás del ítem.
     navigationBarTheme: NavigationBarThemeData(
       backgroundColor: Colors.white, surfaceTintColor: Colors.white,
-      indicatorColor: lima.withOpacity(0.12),
+      elevation: 0,
+      height: 64,
+      indicatorColor: Colors.transparent, // ← sin pastilla (look Airbnb)
+      indicatorShape: const RoundedRectangleBorder(),
+      labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
       labelTextStyle: WidgetStateProperty.resolveWith((s) => TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: s.contains(WidgetState.selected) ? bosque : textoTenue)),
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: s.contains(WidgetState.selected) ? lima : textoTenue)),
       iconTheme: WidgetStateProperty.resolveWith((s) => IconThemeData(
+          size: 26,
           color: s.contains(WidgetState.selected) ? lima : textoTenue)),
     ),
     // Botón secundario (outline) Airbnb: borde/texto negro Hof, radio 12.
@@ -398,13 +406,21 @@ ThemeData buildThemeOscuro() {
       side: BorderSide.none,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
     ),
+    // Barra inferior oscura, mismo criterio Airbnb: sin pastilla; activo coral.
     navigationBarTheme: NavigationBarThemeData(
       backgroundColor: _oscSuperficie, surfaceTintColor: _oscSuperficie,
-      indicatorColor: lima.withOpacity(0.28),
-      labelTextStyle: WidgetStateProperty.all(
-        const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _oscTexto)),
+      elevation: 0,
+      height: 64,
+      indicatorColor: Colors.transparent,
+      indicatorShape: const RoundedRectangleBorder(),
+      labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+      labelTextStyle: WidgetStateProperty.resolveWith((s) => TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: s.contains(WidgetState.selected) ? lima : _oscTenue)),
       iconTheme: WidgetStateProperty.resolveWith((s) => IconThemeData(
-        color: s.contains(WidgetState.selected) ? lima : _oscTenue)),
+          size: 26,
+          color: s.contains(WidgetState.selected) ? lima : _oscTenue)),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
