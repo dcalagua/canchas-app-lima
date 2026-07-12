@@ -24,10 +24,11 @@ import 'models/models.dart';
 // Requiere en pubspec.yaml → dependencies: google_fonts: ^6.2.1
 // ─────────────────────────────────────────────────────────────────────────
 
-// ── Identidad AIRBNB: coral Rausch + negro Hof + blancos/grises + teal Babu.
-// (Se mantienen los NOMBRES de los tokens; solo cambian sus valores, así toda
-// la app adopta el look Airbnb sin tocar cada pantalla.)
-const Color lima = Color(0xFFFF385C);   // Rausch — CTA / acento principal
+// ── Identidad: estructura AIRBNB (negro Hof + blancos/grises) pero el color de
+// ACENTO es el VERDE de WhatsApp (#128C7E), no el coral. Se mantienen los
+// NOMBRES de los tokens; solo cambia el valor de `lima`, así todo el acento de
+// la app pasa a verde sin tocar cada pantalla.
+const Color lima = Color(0xFF128C7E);   // Verde WhatsApp — CTA / acento principal
 const Color sage = Color(0xFF484848);   // charcoal (degradado de headers)
 const Color teal = Color(0xFF008489);   // Babu — acento secundario (teal)
 const Color amarillo = Color(0xFFFFB400); // dorado (calificaciones/energía)
@@ -39,7 +40,7 @@ const Color papel = Color(0xFFF7F7F7);  // fondo app (gris muy claro Airbnb)
 const Color papelCalido = Color(0xFFF7F7F7); // fondo panel
 const Color trazo = Color(0xFFDDDDDD);  // bordes / divisores (Airbnb)
 const Color textoTenue = Color(0xFF717171); // muted (Foggy)
-const Color limaSuave = Color(0xFFFFF0F2); // tinte coral suave
+const Color limaSuave = Color(0xFFE3F2EF); // tinte verde WhatsApp suave
 
 // ── Colores de estado (chips) — sistema de diseño ─────────────────────────
 const Color estadoOkBg = Color(0xFFE9F4EE);
