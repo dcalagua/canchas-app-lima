@@ -159,8 +159,10 @@ class PerfilScreen extends StatelessWidget {
   }
 }
 
-/// Tarjeta destacada para entrar al Modo anfitrión (estilo "cambiar a anfitrión"
-/// de Airbnb): fondo bosque, invita a publicar cancha/academia.
+/// Tarjeta DESTACADA para entrar al Modo anfitrión (estilo "cambiar a anfitrión"
+/// de Airbnb): resalta como acción principal sin ser un bloque negro.
+/// Claro: lima suave + verde bosque (liviano, premium). Oscuro: superficie del
+/// tema con acento lima. Theme-aware.
 class _ModoAnfitrion extends StatelessWidget {
   const _ModoAnfitrion({required this.onTap});
   final VoidCallback onTap;
@@ -168,21 +170,33 @@ class _ModoAnfitrion extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final oscuro = Theme.of(context).brightness == Brightness.dark;
+    final fondo = oscuro ? cs.surface : limaSuave;
+    final borde =
+        oscuro ? cs.outlineVariant.withOpacity(0.4) : lima.withOpacity(0.7);
+    final acento = oscuro ? lima : bosque; // título + chevron
     return Material(
-      color: bosque,
+      color: fondo,
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(18),
-        child: Padding(
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: borde),
+          ),
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
+              // Chip de marca: cuadrado bosque con ícono lima (resalta en claro
+              // y en oscuro).
               Container(
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                    color: lima.withOpacity(0.2),
+                    color: oscuro ? lima.withOpacity(0.2) : bosque,
                     borderRadius: BorderRadius.circular(12)),
                 child: const Icon(Icons.real_estate_agent, color: lima),
               ),
@@ -193,14 +207,17 @@ class _ModoAnfitrion extends StatelessWidget {
                   children: [
                     Text('Modo anfitrión',
                         style: t.titleMedium?.copyWith(
-                            color: Colors.white, fontWeight: FontWeight.w800)),
+                            color: acento, fontWeight: FontWeight.w800)),
                     const SizedBox(height: 2),
                     Text('Publica tu cancha o academia y recibe reservas',
-                        style: t.bodySmall?.copyWith(color: Colors.white70)),
+                        style: t.bodySmall?.copyWith(
+                            color: oscuro
+                                ? cs.onSurface.withOpacity(0.7)
+                                : bosque.withOpacity(0.7))),
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right, color: lima),
+              Icon(Icons.chevron_right, color: acento),
             ],
           ),
         ),
