@@ -355,6 +355,24 @@ class _Metrica extends StatelessWidget {
   }
 }
 
+/// Pastilla que marca el tipo de alumno en el roster ("app" / "menor").
+class _EtiquetaAlumno extends StatelessWidget {
+  const _EtiquetaAlumno(this.texto);
+  final String texto;
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(left: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration:
+          BoxDecoration(color: limaSuave, borderRadius: BorderRadius.circular(999)),
+      child: Text(texto,
+          style: const TextStyle(
+              color: bosque, fontSize: 10, fontWeight: FontWeight.w800)),
+    );
+  }
+}
+
 class _TarjetaAlumno extends StatelessWidget {
   const _TarjetaAlumno({required this.alumno});
   final Alumno alumno;
@@ -386,25 +404,25 @@ class _TarjetaAlumno extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontWeight: FontWeight.w700)),
             ),
-            if (alumno.esApp) ...[
-              const SizedBox(width: 6),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                decoration: BoxDecoration(
-                    color: limaSuave, borderRadius: BorderRadius.circular(999)),
-                child: const Text('app',
-                    style: TextStyle(
-                        color: bosque,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800)),
-              ),
-            ],
+            if (alumno.esMenor)
+              const _EtiquetaAlumno('menor')
+            else if (alumno.esApp)
+              const _EtiquetaAlumno('app'),
           ],
         ),
-        subtitle: Text(pend > 0
-            ? 'Debe S/ ${pend.toStringAsFixed(2)}'
-            : (alumno.esApp ? 'Alumno vinculado · Al día' : 'Al día')),
+        subtitle: Text(
+          () {
+            final deuda = pend > 0
+                ? 'Debe S/ ${pend.toStringAsFixed(2)}'
+                : 'Al día';
+            if (alumno.esMenor) {
+              return 'Apoderado: ${alumno.apoderadoNombre} · $deuda';
+            }
+            return alumno.esApp ? 'Vinculado · $deuda' : deuda;
+          }(),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         trailing: const Icon(Icons.chevron_right),
         onTap: () => Navigator.of(context).push(MaterialPageRoute(
             builder: (_) => AlumnoDetalleScreen(alumnoId: alumno.id))),
@@ -443,8 +461,14 @@ class AlumnoDetalleScreen extends StatelessWidget {
               Text(al.nombre,
                   style: const TextStyle(
                       fontWeight: FontWeight.w800, fontSize: 22)),
-              if (al.whatsapp.isNotEmpty)
-                Text('WhatsApp: ${al.whatsapp}',
+              if (al.esMenor)
+                Text(
+                    'Apoderado: ${al.apoderadoNombre}'
+                    '${al.edad != null ? ' · ${al.edad} años' : ''}',
+                    style: const TextStyle(color: textoTenue)),
+              if (al.whatsappContacto.isNotEmpty)
+                Text(
+                    '${al.esMenor ? 'WhatsApp apoderado' : 'WhatsApp'}: ${al.whatsappContacto}',
                     style: const TextStyle(color: textoTenue)),
               const SizedBox(height: 16),
               Row(
@@ -643,15 +667,18 @@ class _FilaCuota extends StatelessWidget {
   }
 
   Future<void> _recordar(BuildContext context, dynamic c) async {
-    if (alumno.whatsapp.isEmpty) {
+    final tel = alumno.whatsappContacto;
+    if (tel.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Este alumno no tiene WhatsApp registrado.')));
+          content: Text('No hay WhatsApp registrado para recordar el pago.')));
       return;
     }
-    final msg =
-        'Hola ${alumno.nombre}, te recuerdo el pago de "${c.concepto}" '
+    // Si es menor, el mensaje va al apoderado y menciona al alumno.
+    final saludo = alumno.esMenor ? alumno.apoderadoNombre : alumno.nombre;
+    final deQuien = alumno.esMenor ? ' de ${alumno.nombre}' : '';
+    final msg = 'Hola $saludo, te recuerdo el pago$deQuien de "${c.concepto}" '
         'por S/ ${c.monto.toStringAsFixed(2)}. ¡Gracias!';
-    final ok = await WhatsAppLink.abrir(alumno.whatsapp, msg);
+    final ok = await WhatsAppLink.abrir(tel, msg);
     if (!ok && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('No pude abrir WhatsApp.')));

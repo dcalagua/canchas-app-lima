@@ -153,10 +153,17 @@ class AppState extends ChangeNotifier {
     MatriculasRepo.eliminar(alumnoId); // borrado lógico durable en la nube
   }
 
-  /// El alumno se une a una academia con su CÓDIGO (desde la app). Crea un
-  /// alumno-app (con su correo y foto reales) vinculado a la academia y lo
-  /// sube a la nube para que el profe lo vea. Requiere sesión iniciada.
-  ({bool ok, String mensaje}) matricularConCodigo(String codigoIngresado) {
+  /// El alumno se une a una academia con su CÓDIGO (desde la app). La cuenta
+  /// siempre es de un ADULTO: si [nombreAlumno] viene, es un MENOR representado
+  /// por el usuario (apoderado); si no, el alumno es el propio adulto. Crea el
+  /// alumno vinculado a la cuenta y lo sube a la nube para que el profe lo vea.
+  /// Requiere sesión iniciada.
+  ({bool ok, String mensaje}) matricularConCodigo(
+    String codigoIngresado, {
+    String? nombreAlumno, // nombre del niño si es un menor
+    int? edad,
+    String? apoderadoWhatsapp,
+  }) {
     final u = usuario;
     if (u == null) {
       return (ok: false, mensaje: 'Inicia sesión para unirte a una academia.');
@@ -176,24 +183,42 @@ class AppState extends ChangeNotifier {
       return (ok: false, mensaje: 'No encontramos una academia con ese código.');
     }
     final academia = encontrada; // promovido a non-null
+    final esMenor = nombreAlumno != null && nombreAlumno.trim().isNotEmpty;
+    final nombre = esMenor ? nombreAlumno!.trim() : u.nombre;
+    // Dedup por (academia + cuenta + nombre): así un apoderado puede inscribir a
+    // VARIOS hijos, pero no duplica al mismo alumno.
     final ya = alumnos.any((al) =>
         al.academiaId == academia.id &&
-        al.email.toLowerCase() == u.email.toLowerCase());
+        al.email.toLowerCase() == u.email.toLowerCase() &&
+        al.nombre.toLowerCase() == nombre.toLowerCase());
     if (ya) {
-      return (ok: true, mensaje: 'Ya estás matriculado en ${academia.nombre}.');
+      return (
+        ok: true,
+        mensaje: esMenor
+            ? '"$nombre" ya está matriculado en ${academia.nombre}.'
+            : 'Ya estás matriculado en ${academia.nombre}.'
+      );
     }
     final alumno = Alumno(
       id: 'al_${DateTime.now().microsecondsSinceEpoch}',
       academiaId: academia.id,
-      nombre: u.nombre,
+      nombre: nombre,
       email: u.email,
-      fotoUrl: u.fotoUrl,
+      fotoUrl: esMenor ? null : u.fotoUrl,
+      apoderadoNombre: esMenor ? u.nombre : '',
+      apoderadoWhatsapp: esMenor ? (apoderadoWhatsapp?.trim() ?? '') : '',
+      edad: edad,
     );
     alumnos.add(alumno);
     notifyListeners();
     _persistirDatos();
     MatriculasRepo.guardar(alumno);
-    return (ok: true, mensaje: 'Te uniste a ${academia.nombre}. ¡Listo! 🎾');
+    return (
+      ok: true,
+      mensaje: esMenor
+          ? 'Inscribiste a "$nombre" en ${academia.nombre}. 🎾'
+          : 'Te uniste a ${academia.nombre}. ¡Listo! 🎾'
+    );
   }
 
   /// Trae de la nube las matrículas relevantes: las de las academias que el

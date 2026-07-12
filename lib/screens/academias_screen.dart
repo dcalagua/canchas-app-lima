@@ -50,51 +50,141 @@ class _UnirmeConCodigo extends StatelessWidget {
   const _UnirmeConCodigo();
 
   Future<void> _abrir(BuildContext context) async {
-    // Unirse requiere sesión (queda como alumno-app con su perfil real).
+    // Unirse requiere sesión (la cuenta es siempre de un adulto).
     if (appState.usuario == null) {
       await LoginGoogleSheet.mostrar(context);
       if (appState.usuario == null) return; // canceló el login
     }
     if (!context.mounted) return;
-    final ctrl = TextEditingController();
+    final codigo = TextEditingController();
+    final nombreNino = TextEditingController();
+    final edad = TextEditingController();
+    final waApoderado = TextEditingController();
+    var paraHijo = false;
+    var consiente = false;
+
     final res = await showDialog<({bool ok, String mensaje})>(
       context: context,
-      builder: (dctx) => AlertDialog(
-        title: const Text('Unirme a una academia'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-                'Ingresa el código de 6 caracteres que te dio tu profesor.'),
-            const SizedBox(height: 14),
-            TextField(
-              controller: ctrl,
-              autofocus: true,
-              textCapitalization: TextCapitalization.characters,
-              textAlign: TextAlign.center,
-              maxLength: 8,
-              style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 4),
-              decoration: const InputDecoration(
-                hintText: 'RAQ4X2',
-                counterText: '',
-              ),
+      builder: (dctx) => StatefulBuilder(
+        builder: (dctx, setSB) => AlertDialog(
+          title: const Text('Unirme a una academia'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Ingresa el código de 6 caracteres del profesor.'),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: codigo,
+                  autofocus: true,
+                  textCapitalization: TextCapitalization.characters,
+                  textAlign: TextAlign.center,
+                  maxLength: 8,
+                  style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 4),
+                  decoration:
+                      const InputDecoration(hintText: 'RAQ4X2', counterText: ''),
+                ),
+                const SizedBox(height: 8),
+                const Text('¿Quién va a entrenar?',
+                    style: TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ChoiceChip(
+                        label: const Center(child: Text('Yo')),
+                        selected: !paraHijo,
+                        onSelected: (_) => setSB(() => paraHijo = false),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ChoiceChip(
+                        label: const Center(child: Text('Mi hijo(a)')),
+                        selected: paraHijo,
+                        onSelected: (_) => setSB(() => paraHijo = true),
+                      ),
+                    ),
+                  ],
+                ),
+                if (paraHijo) ...[
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: nombreNino,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(
+                        labelText: 'Nombre del alumno (niño/a)'),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: edad,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                              labelText: 'Edad (opcional)'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: waApoderado,
+                          keyboardType: TextInputType.phone,
+                          decoration: const InputDecoration(
+                              labelText: 'Tu WhatsApp', prefixText: '+51 '),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    dense: true,
+                    value: consiente,
+                    onChanged: (v) => setSB(() => consiente = v ?? false),
+                    title: const Text(
+                        'Soy el apoderado y autorizo el registro del menor.',
+                        style: TextStyle(fontSize: 12)),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.of(dctx).pop(),
+                child: const Text('Cancelar')),
+            FilledButton(
+              onPressed: () {
+                if (paraHijo && nombreNino.text.trim().isEmpty) {
+                  Navigator.of(dctx).pop(
+                      (ok: false, mensaje: 'Escribe el nombre del alumno.'));
+                  return;
+                }
+                if (paraHijo && !consiente) {
+                  Navigator.of(dctx).pop((
+                    ok: false,
+                    mensaje: 'Confirma que eres el apoderado del menor.'
+                  ));
+                  return;
+                }
+                Navigator.of(dctx).pop(appState.matricularConCodigo(
+                  codigo.text,
+                  nombreAlumno: paraHijo ? nombreNino.text : null,
+                  edad: paraHijo ? int.tryParse(edad.text.trim()) : null,
+                  apoderadoWhatsapp: paraHijo ? waApoderado.text : null,
+                ));
+              },
+              child: const Text('Unirme'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.of(dctx).pop(),
-              child: const Text('Cancelar')),
-          FilledButton(
-            onPressed: () =>
-                Navigator.of(dctx).pop(appState.matricularConCodigo(ctrl.text)),
-            child: const Text('Unirme'),
-          ),
-        ],
       ),
     );
     if (res != null && context.mounted) {

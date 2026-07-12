@@ -185,16 +185,23 @@ class Academia {
 
 /// Un alumno inscrito en una academia.
 ///
-/// [email] no vacío = **alumno-app**: se unió con el código de la academia desde
-/// la app (usuario real, con [fotoUrl] de su perfil). Vacío = **alumno manual**
-/// (el profe lo agregó por nombre/WhatsApp; aún no usa la app).
+/// [email] no vacío = **alumno-app**: se unió con el código desde la app (la
+/// cuenta que lo administra: el propio adulto o un apoderado).
+///
+/// Menores: un niño NO tiene cuenta propia (Ley 29733). Se registra bajo un
+/// **apoderado** (adulto con cuenta): [apoderadoNombre] no vacío ⇒ el alumno es
+/// un menor; [nombre] es el nombre del niño y el contacto/pagos van al
+/// apoderado ([apoderadoWhatsapp] / [email]).
 class Alumno {
   final String id;
   final String academiaId;
-  final String nombre;
-  final String whatsapp;
-  final String email; // correo del usuario-app; '' si es manual
-  final String? fotoUrl; // foto del perfil (si es alumno-app)
+  final String nombre; // nombre del alumno (adulto o niño)
+  final String whatsapp; // WhatsApp del alumno adulto (si aplica)
+  final String email; // cuenta-app que lo administra ('' si manual)
+  final String? fotoUrl; // foto del perfil (si el alumno es el adulto)
+  final String apoderadoNombre; // '' si el alumno es un adulto; nombre del padre si es menor
+  final String apoderadoWhatsapp; // WhatsApp del apoderado (recordatorios de pago)
+  final int? edad; // edad del alumno (opcional; útil para menores)
 
   const Alumno({
     required this.id,
@@ -203,10 +210,20 @@ class Alumno {
     this.whatsapp = '',
     this.email = '',
     this.fotoUrl,
+    this.apoderadoNombre = '',
+    this.apoderadoWhatsapp = '',
+    this.edad,
   });
 
   /// ¿Es un alumno que usa la app (se unió con código)?
   bool get esApp => email.isNotEmpty;
+
+  /// ¿Es un menor representado por un apoderado?
+  bool get esMenor => apoderadoNombre.isNotEmpty;
+
+  /// WhatsApp para contactarlo/recordar pagos: el del apoderado si es menor.
+  String get whatsappContacto =>
+      esMenor && apoderadoWhatsapp.isNotEmpty ? apoderadoWhatsapp : whatsapp;
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -215,6 +232,9 @@ class Alumno {
         'whatsapp': whatsapp,
         'email': email,
         if (fotoUrl != null) 'fotoUrl': fotoUrl,
+        'apoderadoNombre': apoderadoNombre,
+        'apoderadoWhatsapp': apoderadoWhatsapp,
+        if (edad != null) 'edad': edad,
       };
 
   factory Alumno.fromJson(Map<String, dynamic> j) => Alumno(
@@ -224,6 +244,9 @@ class Alumno {
         whatsapp: (j['whatsapp'] ?? '') as String,
         email: (j['email'] ?? '') as String,
         fotoUrl: j['fotoUrl'] as String?,
+        apoderadoNombre: (j['apoderadoNombre'] ?? '') as String,
+        apoderadoWhatsapp: (j['apoderadoWhatsapp'] ?? '') as String,
+        edad: (j['edad'] as num?)?.toInt(),
       );
 }
 
