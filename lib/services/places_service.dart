@@ -34,7 +34,6 @@ class PlacesService {
     'pichanga',
     'grass sintético',
     'fútbol 7',
-    'loza deportiva',
     'complejo deportivo',
     'club de tenis',
     'cancha de tenis',
@@ -299,14 +298,20 @@ class PlacesService {
     // Edificios administrativos/religiosos de un club (no son canchas):
     'asociación', 'asociacion', 'oficina', 'administración', 'administracion',
     'capilla', 'parroquia', 'iglesia',
+    // Lozas deportivas: canchas públicas municipales de barrio, no locales
+    // reclamables/alquilables → fuera del marketplace.
+    'loza deportiva', 'losa deportiva', 'loza multideportiva',
+    'losa multideportiva', 'loza recreativa', 'losa recreativa',
+    'loza multiuso', 'losa multiuso',
   ];
 
   // Términos en el NOMBRE que gritan "recinto deportivo" con tanta fuerza que un
   // tipo mal puesto por Google (school/university/gym) no debe tumbarlos: muchos
-  // complejos/lozas de barrio están dentro de un colegio o quedan mal etiquetados.
+  // complejos deportivos de barrio están dentro de un colegio o mal etiquetados.
+  // (Las lozas deportivas municipales se excluyen aparte: ver _palabrasExcluidas.)
   static const _nombreFuerteDeportivo = [
     'complejo deportivo', 'polideportivo', 'centro deportivo', 'club deportivo',
-    'loza deportiva', 'losa deportiva', 'campo deportivo', 'villa deportiva',
+    'campo deportivo', 'villa deportiva',
     'estadio', 'cancha', 'canchita', 'grass sintétic', 'grass sintetic',
   ];
 
@@ -350,8 +355,6 @@ class PlacesService {
         n.contains('sintétic') ||
         n.contains('sintetic') ||
         n.contains('grass') ||
-        n.contains('loza deportiva') ||
-        n.contains('losa deportiva') ||
         n.contains('complejo deportivo') ||
         n.contains('club deportivo') ||
         n.contains('centro deportivo') ||
