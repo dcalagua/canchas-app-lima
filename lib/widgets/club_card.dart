@@ -164,9 +164,9 @@ class ClubCard extends StatelessWidget {
                           borderRadius: BorderRadius.circular(9),
                         ),
                         child: Text(
-                          desc ? 'En el mapa' : 'Disponible hoy',
+                          desc ? 'En Google' : 'Disponible hoy',
                           style: t.bodySmall?.copyWith(
-                              color: pinoOscuro, fontWeight: FontWeight.w700),
+                              color: Colors.white, fontWeight: FontWeight.w700),
                         ),
                       ),
                     ],

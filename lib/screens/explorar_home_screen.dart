@@ -1,10 +1,7 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart' show LatLng;
 
-import '../data/sample_data.dart';
 import '../models/models.dart';
 import '../models/club.dart';
 import '../widgets/club_card.dart';
@@ -12,7 +9,6 @@ import '../widgets/pin_cargando.dart';
 import '../brand.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
-import '../widgets/court_lines.dart';
 import '../services/location_service.dart';
 import '../utils/geo.dart';
 import '../utils/moneda.dart';
@@ -22,9 +18,9 @@ import 'club_detalle_screen.dart';
 import 'login_google_sheet.dart';
 import 'home_shell.dart';
 
-/// Pantalla de inicio estilo Airbnb: mapa de Google a pantalla completa con
-/// barra de búsqueda flotante, filtros por deporte y un carrusel de canchas
-/// sincronizado con pines de precio en el mapa.
+/// Pantalla de inicio estilo Airbnb: LISTA de canchas/locales (sin mapa) con
+/// barra de búsqueda flotante y filtros por deporte. La ubicación se usa para
+/// ordenar y descubrir canchas cercanas, pero no se muestra ningún mapa.
 class ExplorarHomeScreen extends StatefulWidget {
   const ExplorarHomeScreen({super.key});
 
@@ -33,18 +29,11 @@ class ExplorarHomeScreen extends StatefulWidget {
 }
 
 class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
-  GoogleMapController? _controller;
-  final PageController _pageController =
-      PageController(viewportFraction: 0.88);
-
   Deporte? _filtro = Deporte.futbol; // por defecto: Fútbol
   bool _soloClubes = false; // pestaña "Clubes": solo clubes formales (country…)
-  int _selected = 0;
-  Set<Marker> _markers = {};
 
   LatLng? _centroBusqueda; // zona buscada por el usuario (estilo Airbnb)
   String? _labelBusqueda;
-  bool _lista = true; // arranca en LISTA (categorizada); toggle a Mapa
   bool _ubicando = true; // true mientras se resuelve la ubicación inicial
 
   /// Clubes derivados de las canchas filtradas (un local = varias canchas).
@@ -56,7 +45,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
   }
 
   List<Cancha> _filtradas() {
-    // Pádel retirado del piloto: nunca aparece en el mapa ni en la lista.
+    // Pádel retirado del piloto: nunca aparece en la lista.
     final base = appState
         .todasLasCanchas()
         .where((c) => c.deporte != Deporte.padel)
@@ -87,7 +76,6 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     super.initState();
     _numCanchas = appState.todasLasCanchas().length;
     appState.addListener(_onStateChange);
-    _rebuildMarkers();
     _autoUbicar(); // autodetecta la ubicación al abrir
   }
 
@@ -95,7 +83,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     final n = appState.todasLasCanchas().length;
     if (n != _numCanchas) {
       _numCanchas = n;
-      _rebuildMarkers(); // refresca los pines al registrar una cancha nueva
+      if (mounted) setState(() {}); // refresca la lista al registrar una cancha
     }
   }
 
@@ -109,7 +97,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
   Future<void> _autoUbicar() async {
     if (mounted) setState(() => _ubicando = true);
     try {
-      // 1) Ubicación INSTANTÁNEA con la última conocida: centra los cards en la
+      // 1) Ubicación INSTANTÁNEA con la última conocida: reordena la lista a la
       //    zona del usuario de inmediato (sin esperar el GPS) y dispara la
       //    búsqueda de canchas reales cerca. Evita mostrar canchas lejanas.
       final rapida = await LocationService.ultimaConocida();
@@ -127,17 +115,13 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     }
   }
 
-  /// Aplica una ubicación: centra el mapa, reordena los cards a lo cercano y
-  /// (opcionalmente) descubre canchas reales alrededor.
+  /// Aplica una ubicación: reordena la lista a lo cercano y (opcionalmente)
+  /// descubre canchas reales alrededor.
   void _aplicarUbicacion(LatLng pos, {bool descubrir = true}) {
     setState(() {
       _centroBusqueda = pos;
       _labelBusqueda ??= 'Tu ubicación'; // provisional hasta resolver la zona
-      _selected = 0;
     });
-    if (_pageController.hasClients) _pageController.jumpToPage(0);
-    _controller?.animateCamera(CameraUpdate.newLatLngZoom(pos, 13.5));
-    _rebuildMarkers();
     _resolverNombreZona(pos); // identifica el nombre real de la zona (distrito)
     if (descubrir) appState.descubrirCanchasCerca(pos); // canchas reales (Places)
   }
@@ -170,147 +154,19 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
   @override
   void dispose() {
     appState.removeListener(_onStateChange);
-    _pageController.dispose();
-    _controller?.dispose();
     super.dispose();
-  }
-
-  Future<void> _rebuildMarkers() async {
-    // Un pin por LOCAL (club), no por cancha: un local con varias canchas es un
-    // solo punto en el mapa; adentro se elige la cancha.
-    final clubs = _clubs();
-    final markers = <Marker>{};
-    for (var i = 0; i < clubs.length; i++) {
-      final cl = clubs[i];
-      final sel = i == _selected;
-      // Precio "desde" del local; si aún no tiene precio (solo Google), estima.
-      final precio = cl.precioDesde;
-      final etiqueta = precio != null
-          ? '$monedaSimbolo ${precio.toStringAsFixed(2)}'
-          : '~$monedaSimbolo ${cl.principal.precioReferencial.toStringAsFixed(2)}';
-      final icon = await _pinPrecio(etiqueta, seleccionado: sel);
-      markers.add(
-        Marker(
-          markerId: MarkerId(cl.id),
-          position: cl.ubicacion,
-          icon: icon,
-          zIndex: sel ? 2 : 1,
-          onTap: () => _pageController.animateToPage(
-            i,
-            duration: const Duration(milliseconds: 350),
-            curve: Curves.easeOut,
-          ),
-        ),
-      );
-    }
-    if (_centroBusqueda != null) {
-      markers.add(
-        Marker(
-          markerId: const MarkerId('_busqueda'),
-          position: _centroBusqueda!,
-          icon: BitmapDescriptor.defaultMarkerWithHue(
-              BitmapDescriptor.hueRose),
-          infoWindow: InfoWindow(title: _labelBusqueda ?? 'Tu zona'),
-          zIndex: 0,
-        ),
-      );
-    }
-    if (mounted) setState(() => _markers = markers);
-  }
-
-  /// Dibuja un pin con forma de “píldora de precio” (estilo Airbnb).
-  Future<BitmapDescriptor> _pinPrecio(String texto,
-      {required bool seleccionado}) async {
-    const ratio = 3.0;
-    final colorTexto = seleccionado
-        ? Colors.white
-        : Theme.of(context).colorScheme.primary;
-    final colorFondo =
-        seleccionado ? verdeCancha : Theme.of(context).colorScheme.surface;
-
-    final tp = TextPainter(
-      text: TextSpan(
-        text: texto,
-        style: TextStyle(
-          fontSize: 13 * ratio,
-          fontWeight: FontWeight.w700,
-          color: colorTexto,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-
-    final hPad = 12.0 * ratio;
-    final vPad = 7.0 * ratio;
-    final w = tp.width + hPad * 2;
-    final h = tp.height + vPad * 2;
-
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-    final rrect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(0, 0, w, h),
-      Radius.circular(h / 2),
-    );
-    // sombra
-    canvas.drawRRect(
-      rrect.shift(const Offset(0, 3)),
-      Paint()
-        ..color = Colors.black26
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
-    );
-    // relleno
-    canvas.drawRRect(rrect, Paint()..color = colorFondo);
-    // borde
-    canvas.drawRRect(
-      rrect,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.5 * ratio
-        ..color = verdeCancha,
-    );
-    tp.paint(canvas, Offset(hPad, vPad));
-
-    final img = await recorder
-        .endRecording()
-        .toImage(w.ceil(), h.ceil());
-    final bytes = await img.toByteData(format: ui.ImageByteFormat.png);
-    return BitmapDescriptor.fromBytes(bytes!.buffer.asUint8List());
-  }
-
-  void _onPage(int i) {
-    setState(() => _selected = i);
-    final clubs = _clubs();
-    if (i < clubs.length) {
-      _controller?.animateCamera(CameraUpdate.newLatLng(clubs[i].ubicacion));
-    }
-    _rebuildMarkers();
   }
 
   void _cambiarFiltro(Deporte? f) {
     setState(() {
       _filtro = f;
       _soloClubes = false; // elegir un deporte sale de la pestaña "Clubes"
-      _selected = 0;
     });
-    _reencuadrar();
   }
 
   /// Activa la pestaña "Clubes": solo clubes formales (country clubs, etc.).
   void _activarClubes() {
-    setState(() {
-      _soloClubes = true;
-      _selected = 0;
-    });
-    _reencuadrar();
-  }
-
-  void _reencuadrar() {
-    if (_pageController.hasClients) _pageController.jumpToPage(0);
-    final clubs = _clubs();
-    if (clubs.isNotEmpty) {
-      _controller?.animateCamera(CameraUpdate.newLatLng(clubs.first.ubicacion));
-    }
-    _rebuildMarkers();
+    setState(() => _soloClubes = true);
   }
 
   Future<void> _abrirBuscar() async {
@@ -319,19 +175,14 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     );
     if (!mounted) return;
     if (res == null) {
-      // Pudo cambiar solo el radio (sin elegir zona): refresca lista y pines.
+      // Pudo cambiar solo el radio (sin elegir zona): refresca la lista.
       setState(() {});
-      _rebuildMarkers();
       return;
     }
     setState(() {
       _centroBusqueda = res.centro;
       _labelBusqueda = res.etiqueta;
-      _selected = 0;
     });
-    if (_pageController.hasClients) _pageController.jumpToPage(0);
-    _controller?.animateCamera(CameraUpdate.newLatLngZoom(res.centro, 13.5));
-    _rebuildMarkers();
     appState.descubrirCanchasCerca(res.centro); // canchas reales cerca de la zona
   }
 
@@ -339,12 +190,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     setState(() {
       _centroBusqueda = null;
       _labelBusqueda = null;
-      _selected = 0;
     });
-    if (_pageController.hasClients) _pageController.jumpToPage(0);
-    _controller?.animateCamera(
-        CameraUpdate.newLatLngZoom(SampleData.centroPiloto, 12.5));
-    _rebuildMarkers();
   }
 
   /// Abre un LOCAL desde su card. Si el usuario es su DUEÑO, va directo a su
@@ -384,135 +230,109 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     );
   }
 
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Stack(
         children: [
-          GoogleMap(
-            initialCameraPosition: const CameraPosition(
-              target: SampleData.centroPiloto,
-              zoom: 12.5,
-            ),
-            markers: _markers,
-            myLocationButtonEnabled: false,
-            zoomControlsEnabled: false,
-            mapToolbarEnabled: false,
-            onMapCreated: (c) {
-              _controller = c;
-              if (_centroBusqueda != null) {
-                c.animateCamera(
-                    CameraUpdate.newLatLngZoom(_centroBusqueda!, 13.5));
-              }
-            },
-            padding: const EdgeInsets.only(bottom: 180, top: 120),
-          ),
-
-          // Vista LISTA de clubes (overlay sobre el mapa)
-          if (_lista)
-            Positioned.fill(
-              top: 0,
-              child: Padding(
-                padding: const EdgeInsets.only(top: 160),
-                child: Container(
-                  color: Theme.of(context).scaffoldBackgroundColor,
-                  child: ListenableBuilder(
-                    listenable: appState,
-                    builder: (context, _) {
-                      final clubs = _clubs();
-                      if (clubs.isEmpty) {
-                        // Sin ubicación (permiso/GPS) → invita a activarla.
-                        if (_centroBusqueda == null && !_ubicando) {
-                          return _SinUbicacion(onUsar: _reubicar);
-                        }
-                        if (_ubicando) {
-                          return const Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(32),
-                              child: PinCargando(
-                                  texto: 'Detectando tu ubicación…'),
-                            ),
-                          );
-                        }
-                        return Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(32),
-                            child: Text(
-                              'No hay canchas cerca. Amplía el radio o busca otra '
-                              'zona.',
-                              textAlign: TextAlign.center,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodyMedium
-                                  ?.copyWith(color: textoTenue),
-                            ),
-                          ),
-                        );
-                      }
-                      // Clasificar: CLUBES = locales formales (country clubs,
-                      // varios deportes, fundador). El resto, por su deporte.
-                      final clubesFormales = <Club>[];
-                      final porDeporte = <Deporte, List<Club>>{};
-                      for (final cl in clubs) {
-                        if (cl.esClubFormal) {
-                          clubesFormales.add(cl);
-                        } else {
-                          porDeporte
-                              .putIfAbsent(cl.principal.deporte, () => [])
-                              .add(cl);
-                        }
-                      }
-                      final nCanchas = clubs.fold<int>(
-                          0, (a, c) => a + c.canchas.length);
-                      final hijos = <Widget>[
-                        Text(
-                          '${clubs.length} ${clubs.length == 1 ? 'lugar' : 'lugares'} · $nCanchas canchas',
+          // LISTA de clubes/canchas (deja hueco arriba para la barra flotante).
+          Positioned.fill(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 160),
+              child: ListenableBuilder(
+                listenable: appState,
+                builder: (context, _) {
+                  final clubs = _clubs();
+                  if (clubs.isEmpty) {
+                    // Sin ubicación (permiso/GPS) → invita a activarla.
+                    if (_centroBusqueda == null && !_ubicando) {
+                      return _SinUbicacion(onUsar: _reubicar);
+                    }
+                    if (_ubicando) {
+                      return const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(32),
+                          child: PinCargando(texto: 'Detectando tu ubicación…'),
+                        ),
+                      );
+                    }
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Text(
+                          'No hay canchas cerca. Amplía el radio o busca otra '
+                          'zona.',
+                          textAlign: TextAlign.center,
                           style: Theme.of(context)
                               .textTheme
                               .bodyMedium
                               ?.copyWith(color: textoTenue),
                         ),
-                      ];
-                      Widget card(Club cl) => Padding(
-                            padding: const EdgeInsets.only(top: 12),
-                            child: ClubCard(
-                              club: cl,
-                              onTap: () => _abrirClub(cl),
-                              distanciaKm: _centroBusqueda == null
-                                  ? null
-                                  : distanciaKm(
-                                      _centroBusqueda!, cl.ubicacion),
-                            ),
-                          );
-                      for (final d in deportesActivos) {
-                        final lista = porDeporte[d] ?? const <Club>[];
-                        if (lista.isEmpty) continue;
-                        hijos.add(_SeccionHeader(
-                            d.etiqueta, lista.length, colorDeporte(d),
-                            iconoDeporte(d)));
-                        hijos.addAll(lista.map(card));
-                      }
-                      if (clubesFormales.isNotEmpty) {
-                        hijos.add(_SeccionHeader(
-                            'Clubes',
-                            clubesFormales.length,
-                            Theme.of(context).colorScheme.primary,
-                            Icons.apartment));
-                        hijos.addAll(clubesFormales.map(card));
-                      }
-                      return ListView(
-                        padding: const EdgeInsets.fromLTRB(18, 16, 18, 28),
-                        children: hijos,
+                      ),
+                    );
+                  }
+                  // Clasificar: CLUBES = locales formales (country clubs,
+                  // varios deportes, fundador). El resto, por su deporte.
+                  final clubesFormales = <Club>[];
+                  final porDeporte = <Deporte, List<Club>>{};
+                  for (final cl in clubs) {
+                    if (cl.esClubFormal) {
+                      clubesFormales.add(cl);
+                    } else {
+                      porDeporte
+                          .putIfAbsent(cl.principal.deporte, () => [])
+                          .add(cl);
+                    }
+                  }
+                  final nCanchas =
+                      clubs.fold<int>(0, (a, c) => a + c.canchas.length);
+                  final hijos = <Widget>[
+                    Text(
+                      '${clubs.length} ${clubs.length == 1 ? 'lugar' : 'lugares'} · $nCanchas canchas',
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodyMedium
+                          ?.copyWith(color: textoTenue),
+                    ),
+                  ];
+                  Widget card(Club cl) => Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: ClubCard(
+                          club: cl,
+                          onTap: () => _abrirClub(cl),
+                          distanciaKm: _centroBusqueda == null
+                              ? null
+                              : distanciaKm(_centroBusqueda!, cl.ubicacion),
+                        ),
                       );
-                    },
-                  ),
-                ),
+                  for (final d in deportesActivos) {
+                    final lista = porDeporte[d] ?? const <Club>[];
+                    if (lista.isEmpty) continue;
+                    hijos.add(_SeccionHeader(
+                        d.etiqueta, lista.length, colorDeporte(d),
+                        iconoDeporte(d)));
+                    hijos.addAll(lista.map(card));
+                  }
+                  if (clubesFormales.isNotEmpty) {
+                    hijos.add(_SeccionHeader(
+                        'Clubes',
+                        clubesFormales.length,
+                        Theme.of(context).colorScheme.primary,
+                        Icons.apartment));
+                    hijos.addAll(clubesFormales.map(card));
+                  }
+                  return ListView(
+                    padding: const EdgeInsets.fromLTRB(18, 16, 18, 28),
+                    children: hijos,
+                  );
+                },
               ),
             ),
+          ),
 
           // Barra de búsqueda + filtros (overlay superior)
           SafeArea(
+            bottom: false,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
               child: Column(
@@ -544,12 +364,10 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
             ),
           ),
 
-          // Botón "mi ubicación" — en mapa (sobre el carrusel) y en lista
-          // (sobre el toggle Mapa/Lista), para re-identificar la zona.
           // Asistente Pichangol (IA): concierge de reservas en lenguaje natural.
           Positioned(
             right: 16,
-            bottom: _lista ? 138 : 248,
+            bottom: 92,
             child: Material(
               elevation: 4,
               shape: const CircleBorder(),
@@ -557,18 +375,18 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
               child: InkWell(
                 customBorder: const CircleBorder(),
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) =>
-                        AsistenteScreen(centro: _centroBusqueda))),
+                    builder: (_) => AsistenteScreen(centro: _centroBusqueda))),
                 child: const Padding(
                   padding: EdgeInsets.all(12),
-                  child: Icon(Icons.auto_awesome, color: bosque),
+                  child: Icon(Icons.auto_awesome, color: Colors.white),
                 ),
               ),
             ),
           ),
+          // Botón "mi ubicación": re-identifica la zona y reordena la lista.
           Positioned(
             right: 16,
-            bottom: _lista ? 78 : 188,
+            bottom: 32,
             child: Material(
               elevation: 4,
               shape: const CircleBorder(),
@@ -587,80 +405,6 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                               color: Theme.of(context).colorScheme.primary))
                       : Icon(Icons.my_location,
                           color: Theme.of(context).colorScheme.primary),
-                ),
-              ),
-            ),
-          ),
-
-          // Carrusel de canchas (overlay inferior). ListenableBuilder para que
-          // el badge "Destacado" reaccione al saldo del club.
-          if (!_lista)
-            Align(
-            alignment: Alignment.bottomCenter,
-            child: SafeArea(
-              child: SizedBox(
-                height: 168,
-                child: ListenableBuilder(
-                  listenable: appState,
-                  builder: (context, _) {
-                    // Mientras se resuelve la ubicación: skeleton desde el primer
-                    // frame (evita el parpadeo de canchas lejanas con el GPS).
-                    if (_centroBusqueda == null && _ubicando) {
-                      return const _CarruselSkeleton();
-                    }
-                    final lista = _clubs(); // un card por LOCAL
-                    // Con ubicación pero sin canchas cerca: si seguimos buscando,
-                    // skeleton; si ya terminó, mensaje claro.
-                    if (lista.isEmpty) {
-                      return appState.descubriendo
-                          ? const _CarruselSkeleton()
-                          : const _SinCanchasCerca();
-                    }
-                    return PageView.builder(
-                      controller: _pageController,
-                      itemCount: lista.length,
-                      onPageChanged: _onPage,
-                      itemBuilder: (context, i) => _LocalCarruselCard(
-                        club: lista[i],
-                        onTap: () => _abrirClub(lista[i]),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
-          ),
-
-          // Toggle Mapa ⇄ Lista (píldora centrada, estilo Airbnb)
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: SafeArea(
-              child: Padding(
-                padding: EdgeInsets.only(bottom: _lista ? 16 : 184),
-                child: Material(
-                  color: tinta,
-                  borderRadius: BorderRadius.circular(999),
-                  elevation: 6,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(999),
-                    onTap: () => setState(() => _lista = !_lista),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 12),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(_lista ? Icons.map : Icons.view_list,
-                              color: lima, size: 18),
-                          const SizedBox(width: 8),
-                          Text(_lista ? 'Mapa' : 'Lista',
-                              style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w700)),
-                        ],
-                      ),
-                    ),
-                  ),
                 ),
               ),
             ),
@@ -773,99 +517,6 @@ class _BuscandoCerca extends StatelessWidget {
             const SizedBox(width: 10),
             const Text('Buscando canchas cerca de ti…',
                 style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Tarjetas "fantasma" mientras se cargan las canchas cercanas (percepción de
-/// rapidez estilo Airbnb), en vez de mostrar canchas lejanas o un hueco vacío.
-class _CarruselSkeleton extends StatelessWidget {
-  const _CarruselSkeleton();
-
-  Widget _bloque(double w, double h, {double radius = 8}) => Container(
-        width: w,
-        height: h,
-        decoration: BoxDecoration(
-            color: const Color(0xFFEDEAE2),
-            borderRadius: BorderRadius.circular(radius)),
-      );
-
-  @override
-  Widget build(BuildContext context) {
-    final ancho = MediaQuery.of(context).size.width * 0.82;
-    return ListView.separated(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      itemCount: 3,
-      separatorBuilder: (_, __) => const SizedBox(width: 12),
-      itemBuilder: (_, __) => Container(
-        width: ancho,
-        margin: const EdgeInsets.symmetric(vertical: 6),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: const [
-            BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4)),
-          ],
-        ),
-        child: Row(
-          children: [
-            _bloque(86, 86, radius: 14),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _bloque(double.infinity, 14),
-                  const SizedBox(height: 8),
-                  _bloque(140, 12),
-                  const SizedBox(height: 14),
-                  _bloque(90, 20, radius: 999),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Mensaje cuando ya se terminó de buscar y no hay canchas en el radio cercano.
-class _SinCanchasCerca extends StatelessWidget {
-  const _SinCanchasCerca();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16),
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: const [
-            BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4)),
-          ],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.location_off, color: textoTenue),
-            const SizedBox(width: 10),
-            Flexible(
-              child: Text(
-                'No encontramos canchas cerca de ti. Mueve el mapa o busca otra zona.',
-                style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurface,
-                    fontWeight: FontWeight.w600),
-              ),
-            ),
           ],
         ),
       ),
@@ -995,171 +646,6 @@ class _FiltrosDeporte extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-/// Tarjeta de LOCAL para el carrusel del mapa (un local = varias canchas).
-/// Muestra el nombre del local, sus deportes y el precio "desde"; al tocar abre
-/// la ficha del local donde se elige la cancha.
-class _LocalCarruselCard extends StatelessWidget {
-  final Club club;
-  final VoidCallback onTap;
-  const _LocalCarruselCard({required this.club, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final principal = club.principal;
-    final desc = !club.registrada;
-    final precio = club.precioDesde;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-      child: Material(
-        elevation: 6,
-        borderRadius: BorderRadius.circular(20),
-        color: Theme.of(context).colorScheme.surface,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(20),
-          child: Padding(
-            padding: const EdgeInsets.all(10),
-            child: Row(
-              children: [
-                // "Foto" del local: gradiente del deporte principal + líneas.
-                Container(
-                  width: 110,
-                  height: 130,
-                  clipBehavior: Clip.antiAlias,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(14),
-                    gradient: gradienteDeporte(principal.deporte),
-                  ),
-                  child: Stack(
-                    children: [
-                      if (principal.fotoUrl != null)
-                        Positioned.fill(
-                          child: Image.network(principal.fotoUrl!,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) =>
-                                  const SizedBox.shrink()),
-                        )
-                      else
-                        const Positioned.fill(child: CourtLines(opacity: 0.5)),
-                      if (desc)
-                        const Positioned(
-                          top: 8,
-                          left: 8,
-                          child: _MiniBadge('◎ En Google',
-                              bg: Colors.black54, fg: Colors.white),
-                        )
-                      else if (club.clubFundador)
-                        const Positioned(
-                          top: 8,
-                          left: 8,
-                          child: _MiniBadge('★ Fundador',
-                              bg: arena, fg: Colors.white),
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(club.nombre,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold, fontSize: 16),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis),
-                          ),
-                          if (club.verificada) ...[
-                            const SizedBox(width: 6),
-                            const Icon(Icons.verified, size: 16, color: verde),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        club.direccion ??
-                            '${club.barrio} · ${club.canchas.length} ${club.canchas.length == 1 ? 'cancha' : 'canchas'}',
-                        style: const TextStyle(color: textoTenue, fontSize: 12),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 9),
-                      Row(
-                        children: [
-                          for (final d in club.deportes.take(4)) ...[
-                            Container(
-                              width: 9,
-                              height: 9,
-                              decoration: BoxDecoration(
-                                  color: colorDeporte(d),
-                                  borderRadius: BorderRadius.circular(2)),
-                            ),
-                            const SizedBox(width: 5),
-                          ],
-                          const Spacer(),
-                          if (precio != null)
-                            Text.rich(
-                              TextSpan(children: [
-                                const TextSpan(
-                                    text: 'desde ',
-                                    style: TextStyle(
-                                        color: textoTenue, fontSize: 12)),
-                                TextSpan(
-                                    text: '$monedaSimbolo ${precio.toStringAsFixed(2)}',
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .primary)),
-                              ]),
-                            )
-                          else
-                            Text(
-                                '~$monedaSimbolo ${principal.precioReferencial.toStringAsFixed(2)}',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 15,
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .primary)),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MiniBadge extends StatelessWidget {
-  const _MiniBadge(this.texto, {required this.bg, required this.fg});
-  final String texto;
-  final Color bg;
-  final Color fg;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration:
-          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
-      child: Text(texto,
-          style: TextStyle(
-              color: fg, fontSize: 10, fontWeight: FontWeight.w700)),
     );
   }
 }
