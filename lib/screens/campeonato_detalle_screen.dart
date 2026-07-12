@@ -172,6 +172,7 @@ class CampeonatoDetalleScreen extends StatelessWidget {
     final wa = TextEditingController();
     var paraHijo = false;
     var consiente = false;
+    String? error; // mensaje de validación DENTRO del popup
     final esFutbol = c.deporte.name == 'futbol';
 
     final datos = await showDialog<
@@ -257,6 +258,14 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                       'Inscripción: S/ ${c.costoInscripcion.toStringAsFixed(2)}',
                       style: const TextStyle(color: textoTenue)),
                 ],
+                if (error != null) ...[
+                  const SizedBox(height: 10),
+                  Text(error!,
+                      style: const TextStyle(
+                          color: Colors.redAccent,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600)),
+                ],
               ],
             ),
           ),
@@ -265,13 +274,28 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                 onPressed: () => Navigator.pop(dctx),
                 child: const Text('Cancelar')),
             FilledButton(
-              onPressed: () => Navigator.pop(dctx, (
-                hijo: paraHijo,
-                nombre: nombreNino.text.trim(),
-                edad: int.tryParse(edad.text.trim()),
-                wa: wa.text.trim(),
-                consiente: consiente,
-              )),
+              onPressed: () {
+                final nombre = nombreNino.text.trim();
+                // Validación DENTRO del popup: muestra el error y NO cierra.
+                if (paraHijo && nombre.isEmpty) {
+                  setSB(() => error = esFutbol
+                      ? 'Escribe el nombre del equipo.'
+                      : 'Escribe el nombre del alumno.');
+                  return;
+                }
+                if (paraHijo && !consiente) {
+                  setSB(() =>
+                      error = 'Marca la casilla: confirma que eres el apoderado.');
+                  return;
+                }
+                Navigator.pop(dctx, (
+                  hijo: paraHijo,
+                  nombre: nombre,
+                  edad: int.tryParse(edad.text.trim()),
+                  wa: wa.text.trim(),
+                  consiente: consiente,
+                ));
+              },
               child: Text(
                   c.costoInscripcion > 0 ? 'Continuar al pago' : 'Inscribirme'),
             ),
@@ -279,17 +303,8 @@ class CampeonatoDetalleScreen extends StatelessWidget {
         ),
       ),
     );
+    // El diálogo sólo devuelve datos ya validados (nombre + consentimiento).
     if (datos == null || !context.mounted) return;
-    if (datos.hijo && datos.nombre.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Escribe el nombre del participante.')));
-      return;
-    }
-    if (datos.hijo && !datos.consiente) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Confirma que eres el apoderado del menor.')));
-      return;
-    }
     // Cobro de inscripción (si tiene costo).
     if (c.costoInscripcion > 0) {
       final pagado = await PagoTarjeta.cobrar(
