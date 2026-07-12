@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../brand.dart';
+import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/google_logo.dart';
@@ -128,6 +129,14 @@ class PerfilScreen extends StatelessWidget {
                           builder: (_) => const AjustesScreen())),
                     ),
 
+                    // --- Compartir la app ---
+                    _Tile(
+                      icon: Icons.ios_share,
+                      title: 'Comparte Pichangol',
+                      subtitle: 'Invita a tus amigos a reservar y jugar',
+                      onTap: () => _compartirApp(context),
+                    ),
+
                     const SizedBox(height: 8),
                     // --- Modo anfitrión (Airbnb-style) ---
                     _ModoAnfitrion(
@@ -162,6 +171,22 @@ class PerfilScreen extends StatelessWidget {
         },
       ),
     );
+  }
+}
+
+const _kReleaseUrl =
+    'https://github.com/dcalagua/canchas-app-lima/releases/tag/v0.1.0';
+
+/// Comparte la app (link de descarga) por WhatsApp — el canal que más usa la
+/// gente en Perú. Mismo mecanismo que compartir el código de una academia.
+Future<void> _compartirApp(BuildContext context) async {
+  final msg = '¡Descárgate $kBrandName! 🎾⚽ Reserva canchas de fútbol, tenis y '
+      'más en Lima, y únete a academias y campeonatos.\n\n'
+      'Bájala aquí: $_kReleaseUrl';
+  final ok = await WhatsAppLink.compartir(msg);
+  if (!ok && context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('No pude abrir WhatsApp para compartir.')));
   }
 }
 
