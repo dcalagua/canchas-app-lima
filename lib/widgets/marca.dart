@@ -75,8 +75,8 @@ class PichangolWordmark extends StatelessWidget {
   }
 }
 
-/// Logo cuadrado (login / app icon): cuadrado bosque con el pin de ubicación
-/// rojo en el centro.
+/// Logo cuadrado (login / app icon): cuadrado índigo (bosque) con el pin de
+/// ubicación LIMA en el centro — igual que el ícono de la app.
 class LogoCuadrado extends StatelessWidget {
   final double size;
   const LogoCuadrado({super.key, this.size = 60});
@@ -91,7 +91,7 @@ class LogoCuadrado extends StatelessWidget {
         color: bosque,
         borderRadius: BorderRadius.circular(size * 0.30),
       ),
-      child: PinUbicacion(size: size * 0.58, color: rojoPin, punto: Colors.white),
+      child: PinUbicacion(size: size * 0.58, color: lima, punto: bosque),
     );
   }
 }

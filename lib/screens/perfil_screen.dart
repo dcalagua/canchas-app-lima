@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../brand.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/google_logo.dart';
 import 'academias_screen.dart';
 import 'ajustes_screen.dart';
 import 'anfitrion_screen.dart';
@@ -89,7 +90,12 @@ class PerfilScreen extends StatelessWidget {
                         width: double.infinity,
                         child: FilledButton.icon(
                           onPressed: () => LoginGoogleSheet.mostrar(context),
-                          icon: const Icon(Icons.login),
+                          icon: Container(
+                            padding: const EdgeInsets.all(3),
+                            decoration: const BoxDecoration(
+                                color: Colors.white, shape: BoxShape.circle),
+                            child: const GoogleLogo(size: 18),
+                          ),
                           label: const Text('Iniciar sesión con Google'),
                         ),
                       ),
