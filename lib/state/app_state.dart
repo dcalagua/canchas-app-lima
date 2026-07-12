@@ -5,11 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/academias_repo.dart';
+import '../data/campeonatos_repo.dart';
 import '../data/canchas_repo.dart';
 import '../data/matriculas_repo.dart';
 import '../data/reservas_repo.dart';
 import '../data/sample_data.dart';
 import '../models/academia.dart';
+import '../models/campeonato.dart';
 import '../models/models.dart';
 import '../models/usuario.dart';
 import '../services/auth_service.dart';
@@ -47,6 +49,9 @@ class AppState extends ChangeNotifier {
   final List<Alumno> alumnos = [];
   final List<Cuota> cuotas = [];
   final List<Asistencia> asistencias = [];
+
+  // ── Campeonatos de academias ──────────────────────────────────────────────
+  final List<Campeonato> campeonatos = [];
   bool descubriendo = false; // true mientras se traen canchas cercanas (feedback UI)
 
   /// Copia runtime de los clubes sembrados (SampleData.sembradas). Se enriquece
@@ -111,6 +116,130 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     _persistirDatos();
     AcademiasRepo.eliminar(id); // borrado lógico durable en la nube
+  }
+
+  // ── Campeonatos ────────────────────────────────────────────────────────────
+  List<Campeonato> campeonatosDe(String academiaId) =>
+      campeonatos.where((c) => c.academiaId == academiaId).toList();
+
+  Campeonato? campeonatoPorId(String id) {
+    for (final c in campeonatos) {
+      if (c.id == id) return c;
+    }
+    return null;
+  }
+
+  /// Crea un campeonato para una academia y lo comparte (nube). Devuelve el id.
+  Campeonato crearCampeonato({
+    required String academiaId,
+    required String nombre,
+    required Deporte deporte,
+    required FormatoTorneo formato,
+    String categoria = '',
+    String sede = '',
+    String fechas = '',
+    double costoInscripcion = 0,
+  }) {
+    final c = Campeonato(
+      id: 'camp_${DateTime.now().microsecondsSinceEpoch}',
+      academiaId: academiaId,
+      dueno: usuario?.email ?? '',
+      nombre: nombre,
+      deporte: deporte,
+      formato: formato,
+      categoria: categoria,
+      sede: sede,
+      fechas: fechas,
+      costoInscripcion: costoInscripcion,
+    );
+    campeonatos.add(c);
+    notifyListeners();
+    _persistirDatos();
+    CampeonatosRepo.guardar(c);
+    return c;
+  }
+
+  /// Reemplaza un campeonato (por id), persiste y sube a la nube.
+  void guardarCampeonato(Campeonato c) {
+    final i = campeonatos.indexWhere((x) => x.id == c.id);
+    if (i >= 0) {
+      campeonatos[i] = c;
+    } else {
+      campeonatos.add(c);
+    }
+    notifyListeners();
+    _persistirDatos();
+    CampeonatosRepo.guardar(c);
+  }
+
+  void eliminarCampeonato(String id) {
+    campeonatos.removeWhere((c) => c.id == id);
+    notifyListeners();
+    _persistirDatos();
+    CampeonatosRepo.eliminar(id);
+  }
+
+  /// Agrega un participante (jugador/pareja/equipo). Si ya hay fixture, no lo
+  /// regenera (hay que rehacerlo manualmente para no romper resultados).
+  void agregarParticipante(String campId, String nombre, {String contacto = ''}) {
+    final c = campeonatoPorId(campId);
+    if (c == null || nombre.trim().isEmpty) return;
+    final p = Participante(
+        id: 'part_${DateTime.now().microsecondsSinceEpoch}',
+        nombre: nombre.trim(),
+        contacto: contacto.trim());
+    guardarCampeonato(c.copyWith(participantes: [...c.participantes, p]));
+  }
+
+  void eliminarParticipante(String campId, String partId) {
+    final c = campeonatoPorId(campId);
+    if (c == null) return;
+    guardarCampeonato(c.copyWith(
+        participantes:
+            c.participantes.where((p) => p.id != partId).toList()));
+  }
+
+  /// (Re)genera el fixture del campeonato según su formato. Borra resultados.
+  void generarFixture(String campId) {
+    final c = campeonatoPorId(campId);
+    if (c == null) return;
+    final partidos = TorneoFixture.generar(c.formato, c.participantes);
+    guardarCampeonato(c.copyWith(partidos: partidos));
+  }
+
+  /// Carga el marcador de un partido. En eliminación, propaga el ganador a la
+  /// siguiente ronda.
+  void setResultado(String campId, String partidoId, int a, int b) {
+    final c = campeonatoPorId(campId);
+    if (c == null) return;
+    var partidos = [
+      for (final p in c.partidos)
+        p.id == partidoId ? p.conMarcador(a, b) : p
+    ];
+    if (c.formato == FormatoTorneo.eliminacion) {
+      partidos = TorneoFixture.recomputarLlave(partidos);
+    }
+    guardarCampeonato(c.copyWith(partidos: partidos));
+  }
+
+  /// Trae los campeonatos de la nube y los fusiona por id. Best-effort.
+  Future<void> cargarCampeonatosRemotos() async {
+    final remotos = await CampeonatosRepo.fetchRemotos();
+    if (remotos.isEmpty) return;
+    var cambio = false;
+    for (final c in remotos) {
+      final i = campeonatos.indexWhere((x) => x.id == c.id);
+      if (i >= 0) {
+        campeonatos[i] = c;
+      } else {
+        campeonatos.add(c);
+      }
+      cambio = true;
+    }
+    if (cambio) {
+      notifyListeners();
+      _persistirDatos();
+    }
   }
 
   /// Trae las academias de la nube y las fusiona con las locales (por id). Así,
@@ -1002,6 +1131,7 @@ class AppState extends ChangeNotifier {
   static const _kAlumnos = 'alumnos_json';
   static const _kCuotas = 'cuotas_json';
   static const _kAsistencias = 'asistencias_json';
+  static const _kCampeonatos = 'campeonatos_json';
 
   /// Carga la sesión y los datos persistidos (al arrancar la app).
   Future<void> cargarSesion() async {
@@ -1077,6 +1207,7 @@ class AppState extends ChangeNotifier {
       _cargarLista(prefs, _kAlumnos, alumnos, Alumno.fromJson);
       _cargarLista(prefs, _kCuotas, cuotas, Cuota.fromJson);
       _cargarLista(prefs, _kAsistencias, asistencias, Asistencia.fromJson);
+      _cargarLista(prefs, _kCampeonatos, campeonatos, Campeonato.fromJson);
 
       notifyListeners();
       // Trae la disponibilidad compartida (reservas de otros dispositivos) para
@@ -1126,6 +1257,8 @@ class AppState extends ChangeNotifier {
           _kCuotas, jsonEncode(cuotas.map((c) => c.toJson()).toList()));
       await prefs.setString(_kAsistencias,
           jsonEncode(asistencias.map((a) => a.toJson()).toList()));
+      await prefs.setString(_kCampeonatos,
+          jsonEncode(campeonatos.map((c) => c.toJson()).toList()));
     } catch (_) {}
   }
 

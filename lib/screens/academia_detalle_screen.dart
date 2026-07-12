@@ -7,6 +7,7 @@ import '../theme.dart';
 import '../utils/redes.dart';
 import '../utils/ubicacion_share.dart';
 import '../widgets/pago_tarjeta_sheet.dart';
+import 'campeonatos_screen.dart';
 
 /// Ficha pública de una academia: feed de fotos propio (no Instagram embebido),
 /// planes con matrícula en el mismo app (pago simulado) y redes para seguir.
@@ -190,6 +191,52 @@ class _Contenido extends StatelessWidget {
                 else
                   for (final p in academia.planes)
                     _TarjetaPlan(academia: academia, plan: p),
+                // Acceso a los campeonatos de la academia (llaves/tabla).
+                const SizedBox(height: 22),
+                Builder(builder: (context) {
+                  final n = appState.campeonatosDe(academia.id).length;
+                  final cs = Theme.of(context).colorScheme;
+                  return Material(
+                    color: cs.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(16),
+                      onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                              builder: (_) => CampeonatosScreen(
+                                  academiaId: academia.id))),
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: trazo)),
+                        child: Row(
+                          children: [
+                            Icon(Icons.emoji_events, color: cs.primary),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('Campeonatos',
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.w800)),
+                                  Text(
+                                      n == 0
+                                          ? 'Aún sin campeonatos'
+                                          : '$n campeonato${n == 1 ? '' : 's'} · llaves y tabla',
+                                      style: const TextStyle(
+                                          color: textoTenue, fontSize: 12)),
+                                ],
+                              ),
+                            ),
+                            Icon(Icons.chevron_right, color: cs.primary),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }),
                 // Galería completa del feed.
                 if (academia.fotos.length > 1) ...[
                   const SizedBox(height: 26),

@@ -6,6 +6,7 @@ import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'asistencia_screen.dart';
+import 'campeonatos_screen.dart';
 import 'crear_academia_screen.dart';
 
 /// Panel del PROFE: su academia, alumnos y cobros (Fase 1). Sin pasarela: marca
@@ -291,6 +292,14 @@ class _Header extends StatelessWidget {
                 child: Text(academia.nombre,
                     style: t.headlineSmall?.copyWith(
                         color: Colors.white, fontWeight: FontWeight.w800)),
+              ),
+              IconButton(
+                tooltip: 'Campeonatos',
+                icon: const Icon(Icons.emoji_events_outlined,
+                    color: Colors.white),
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) =>
+                        CampeonatosScreen(academiaId: academia.id))),
               ),
               IconButton(
                 tooltip: 'Asistencia',
