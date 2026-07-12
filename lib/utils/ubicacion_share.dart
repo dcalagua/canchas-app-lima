@@ -34,81 +34,84 @@ class UbicacionShare {
       {required LatLng punto, required String titulo}) {
     return showModalBottomSheet<void>(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 10),
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                  color: trazo, borderRadius: BorderRadius.circular(999)),
-            ),
-            const SizedBox(height: 14),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                children: [
-                  const Icon(Icons.place, color: verdeCancha),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Compartir ubicación',
-                            style: TextStyle(
-                                fontWeight: FontWeight.w800, fontSize: 16)),
-                        Text(titulo,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                color: textoTenue, fontSize: 13)),
-                      ],
-                    ),
-                  ),
-                ],
+      builder: (ctx) {
+        final acento = Theme.of(ctx).colorScheme.primary;
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 10),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                    color: trazo, borderRadius: BorderRadius.circular(999)),
               ),
-            ),
-            const SizedBox(height: 6),
-            ListTile(
-              leading: const Icon(Icons.directions, color: verdeCancha),
-              title: const Text('Cómo llegar'),
-              subtitle: const Text('Abre la ruta en Google Maps'),
-              onTap: () {
-                Navigator.pop(ctx);
-                abrirMapa(punto);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.chat, color: verde),
-              title: const Text('Enviar por WhatsApp'),
-              subtitle: const Text('Comparte el punto con un contacto'),
-              onTap: () {
-                Navigator.pop(ctx);
-                compartirWhatsApp(punto, titulo);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.link, color: bosque),
-              title: const Text('Copiar enlace'),
-              subtitle: const Text('Pégalo donde quieras'),
-              onTap: () {
-                Navigator.pop(ctx);
-                Clipboard.setData(
-                    ClipboardData(text: '$titulo\n${enlace(punto)}'));
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('Enlace de ubicación copiado.')));
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
+              const SizedBox(height: 14),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    Icon(Icons.place, color: acento),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Compartir ubicación',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w800, fontSize: 16)),
+                          Text(titulo,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  color: textoTenue, fontSize: 13)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 6),
+              ListTile(
+                leading: Icon(Icons.directions, color: acento),
+                title: const Text('Cómo llegar'),
+                subtitle: const Text('Abre la ruta en Google Maps'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  abrirMapa(punto);
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.chat, color: acento),
+                title: const Text('Enviar por WhatsApp'),
+                subtitle: const Text('Comparte el punto con un contacto'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  compartirWhatsApp(punto, titulo);
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.link, color: acento),
+                title: const Text('Copiar enlace'),
+                subtitle: const Text('Pégalo donde quieras'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Clipboard.setData(
+                      ClipboardData(text: '$titulo\n${enlace(punto)}'));
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text('Enlace de ubicación copiado.')));
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
     );
   }
 }
