@@ -414,15 +414,21 @@ class AppState extends ChangeNotifier {
     _persistirDatos();
   }
 
-  /// Matrícula del JUGADOR desde el directorio: crea al alumno, lo inscribe en
-  /// el plan y marca **pagada** su primera cuota (acaba de pagar la matrícula).
-  /// Devuelve el alumno creado.
+  /// Matrícula del JUGADOR desde el directorio. [cantidad] es lo que el alumno
+  /// PAGA por adelantado según el plan:
+  /// - porClase: número de clases → 1 cuota de precio×cantidad.
+  /// - mensual: número de meses → esa cantidad de cuotas mensuales.
+  /// - prepago: número de paquetes → meses del paquete × cantidad cuotas.
+  /// Todas las cuotas generadas quedan **pagadas** (acaba de pagarlas). Devuelve
+  /// el alumno creado.
   Alumno matricular({
     required String academiaId,
     required String nombre,
     required String whatsapp,
     required Plan plan,
+    int cantidad = 1,
   }) {
+    final n = cantidad < 1 ? 1 : cantidad;
     final alumno = Alumno(
       id: 'al_${DateTime.now().microsecondsSinceEpoch}',
       academiaId: academiaId,
@@ -433,17 +439,32 @@ class AppState extends ChangeNotifier {
     );
     alumnos.add(alumno);
     MatriculasRepo.guardar(alumno); // cross-device + sobrevive reinstalar
+    final hoy = DateTime.now();
     if (plan.tipo == TipoPlan.porClase) {
-      agregarClaseSuelta(alumno, plan.precioMes,
-          concepto: '${plan.nombre} (matrícula)');
+      cuotas.add(Cuota(
+        id: 'cu_${hoy.microsecondsSinceEpoch}',
+        academiaId: academiaId,
+        alumnoId: alumno.id,
+        concepto:
+            '$n clase${n == 1 ? '' : 's'} particular${n == 1 ? '' : 'es'} · ${plan.nombre}',
+        monto: plan.precioMes * n,
+        vencimiento: hoy,
+        pagada: true,
+      ));
     } else {
-      inscribir(alumno, plan);
-    }
-    // Da por pagada la primera cuota (la más próxima) = pago de matrícula.
-    final suyas = cuotasDeAlumno(alumno.id);
-    if (suyas.isNotEmpty) {
-      final i = cuotas.indexWhere((c) => c.id == suyas.first.id);
-      if (i >= 0) cuotas[i] = cuotas[i].copyWith(pagada: true);
+      final meses = (plan.tipo == TipoPlan.mensual ? 1 : plan.meses) * n;
+      for (var i = 0; i < meses; i++) {
+        final venc = DateTime(hoy.year, hoy.month + i, hoy.day);
+        cuotas.add(Cuota(
+          id: 'cu_${hoy.microsecondsSinceEpoch}_$i',
+          academiaId: academiaId,
+          alumnoId: alumno.id,
+          concepto: '${plan.nombre} · ${_mesNombre(venc)}',
+          monto: plan.precioMes,
+          vencimiento: venc,
+          pagada: true,
+        ));
+      }
     }
     notifyListeners();
     _persistirDatos();

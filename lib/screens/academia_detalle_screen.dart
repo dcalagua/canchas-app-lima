@@ -395,8 +395,8 @@ class _TarjetaPlan extends StatelessWidget {
   }
 
   Future<void> _matricular(BuildContext context) async {
-    // 1) Datos del alumno (prellena nombre del usuario logueado).
-    final datos = await showModalBottomSheet<(String, String)>(
+    // 1) Datos del alumno + CANTIDAD (clases/meses/paquetes que paga).
+    final datos = await showModalBottomSheet<(String, String, int)>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Theme.of(context).colorScheme.surface,
@@ -406,29 +406,31 @@ class _TarjetaPlan extends StatelessWidget {
       builder: (_) => _HojaDatosAlumno(
         nombreInicial: appState.usuario?.nombre ?? '',
         academia: academia.nombre,
-        plan: plan.nombre,
+        planObj: plan,
       ),
     );
     if (datos == null) return;
-    final (nombre, whatsapp) = datos;
+    final (nombre, whatsapp, cantidad) = datos;
+    final monto = (plan.total * cantidad).round();
 
-    // 2) Pago del primer mes / de la clase con tarjeta (Culqi). Si Culqi no
-    // está configurado, el sheet cae a la pasarela simulada (demo).
+    // 2) Pago del total elegido con tarjeta/Yape (Culqi). Si Culqi no está
+    // configurado, el sheet cae a la pasarela simulada (demo).
     if (!context.mounted) return;
     final pagado = await PagoTarjeta.cobrar(
       context,
-      monto: plan.precioMes.round(),
+      monto: monto,
       concepto: 'Matrícula ${academia.nombre} · ${plan.nombre}',
       email: appState.usuario?.email ?? '',
     );
     if (!pagado) return;
 
-    // 3) Registra la matrícula (crea alumno + cuotas, primera pagada).
+    // 3) Registra la matrícula (crea alumno + cuotas pagadas por la cantidad).
     appState.matricular(
       academiaId: academia.id,
       nombre: nombre,
       whatsapp: whatsapp,
       plan: plan,
+      cantidad: cantidad,
     );
 
     if (!context.mounted) return;
@@ -461,16 +463,17 @@ class _TarjetaPlan extends StatelessWidget {
   }
 }
 
-/// Hoja para capturar nombre + WhatsApp del alumno antes de pagar.
+/// Hoja para capturar nombre + WhatsApp del alumno y la CANTIDAD (clases/meses/
+/// paquetes) antes de pagar.
 class _HojaDatosAlumno extends StatefulWidget {
   const _HojaDatosAlumno({
     required this.nombreInicial,
     required this.academia,
-    required this.plan,
+    required this.planObj,
   });
   final String nombreInicial;
   final String academia;
-  final String plan;
+  final Plan planObj;
 
   @override
   State<_HojaDatosAlumno> createState() => _HojaDatosAlumnoState();
@@ -480,6 +483,23 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
   late final TextEditingController _nombre =
       TextEditingController(text: widget.nombreInicial);
   final _whatsapp = TextEditingController();
+  int _cantidad = 1;
+
+  Plan get _plan => widget.planObj;
+
+  String get _labelCantidad => switch (_plan.tipo) {
+        TipoPlan.porClase => '¿Cuántas clases pagarás?',
+        TipoPlan.mensual => '¿Cuántos meses pagarás?',
+        TipoPlan.prepago => '¿Cuántos paquetes de ${_plan.meses} meses?',
+      };
+
+  String get _unidad => switch (_plan.tipo) {
+        TipoPlan.porClase => _cantidad == 1 ? 'clase' : 'clases',
+        TipoPlan.mensual => _cantidad == 1 ? 'mes' : 'meses',
+        TipoPlan.prepago => _cantidad == 1 ? 'paquete' : 'paquetes',
+      };
+
+  double get _total => _plan.total * _cantidad;
 
   @override
   void dispose() {
@@ -493,14 +513,15 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
     return Padding(
       padding: EdgeInsets.fromLTRB(
           20, 18, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
-      child: Column(
+      child: SingleChildScrollView(
+        child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Matricularme en ${widget.academia}',
               style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
           const SizedBox(height: 4),
-          Text('Plan: ${widget.plan}',
+          Text('Plan: ${_plan.nombre}',
               style: const TextStyle(color: textoTenue, fontSize: 13)),
           const SizedBox(height: 16),
           TextField(
@@ -518,7 +539,41 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
                 prefixText: '+51 ',
                 prefixIcon: Icon(Icons.chat_outlined)),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 18),
+          Text(_labelCantidad,
+              style: const TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              _StepBtn(
+                  icon: Icons.remove,
+                  onTap: _cantidad > 1
+                      ? () => setState(() => _cantidad--)
+                      : null),
+              Expanded(
+                child: Text('$_cantidad $_unidad',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800, fontSize: 16)),
+              ),
+              _StepBtn(
+                  icon: Icons.add,
+                  onTap: _cantidad < 36
+                      ? () => setState(() => _cantidad++)
+                      : null),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+                color: limaSuave, borderRadius: BorderRadius.circular(12)),
+            child: Text('Pagarás ahora: S/ ${_total.toStringAsFixed(2)}',
+                style: const TextStyle(
+                    color: bosque, fontWeight: FontWeight.w800, fontSize: 15)),
+          ),
+          const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
             child: FilledButton(
@@ -534,12 +589,41 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
                       content: Text('Pon el nombre y un WhatsApp válido.')));
                   return;
                 }
-                Navigator.of(context).pop((n, _whatsapp.text.trim()));
+                Navigator.of(context).pop((n, _whatsapp.text.trim(), _cantidad));
               },
-              child: const Text('Continuar al pago'),
+              child: Text('Pagar S/ ${_total.toStringAsFixed(2)}'),
             ),
           ),
         ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Botón +/- para el selector de cantidad.
+class _StepBtn extends StatelessWidget {
+  const _StepBtn({required this.icon, required this.onTap});
+  final IconData icon;
+  final VoidCallback? onTap;
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final activo = onTap != null;
+    return Material(
+      color: activo ? limaSuave : cs.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: trazo),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Icon(icon,
+              color: activo ? bosque : textoTenue, size: 22),
+        ),
       ),
     );
   }
