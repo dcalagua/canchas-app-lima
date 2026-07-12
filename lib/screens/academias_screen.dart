@@ -64,6 +64,7 @@ class _UnirmeConCodigo extends StatelessWidget {
     final waApoderado = TextEditingController();
     var paraHijo = false;
     var consiente = false;
+    String? error; // validación DENTRO del popup
 
     final res = await showDialog<({bool ok, String mensaje})>(
       context: context,
@@ -155,6 +156,14 @@ class _UnirmeConCodigo extends StatelessWidget {
                         style: TextStyle(fontSize: 12)),
                   ),
                 ],
+                if (error != null) ...[
+                  const SizedBox(height: 10),
+                  Text(error!,
+                      style: const TextStyle(
+                          color: Colors.redAccent,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600)),
+                ],
               ],
             ),
           ),
@@ -164,24 +173,28 @@ class _UnirmeConCodigo extends StatelessWidget {
                 child: const Text('Cancelar')),
             FilledButton(
               onPressed: () {
+                // Validación DENTRO del popup: muestra el error y NO cierra.
                 if (paraHijo && nombreNino.text.trim().isEmpty) {
-                  Navigator.of(dctx).pop(
-                      (ok: false, mensaje: 'Escribe el nombre del alumno.'));
+                  setSB(() => error = 'Escribe el nombre del alumno.');
                   return;
                 }
                 if (paraHijo && !consiente) {
-                  Navigator.of(dctx).pop((
-                    ok: false,
-                    mensaje: 'Confirma que eres el apoderado del menor.'
-                  ));
+                  setSB(() => error =
+                      'Marca la casilla: confirma que eres el apoderado.');
                   return;
                 }
-                Navigator.of(dctx).pop(appState.matricularConCodigo(
+                final r = appState.matricularConCodigo(
                   codigo.text,
                   nombreAlumno: paraHijo ? nombreNino.text : null,
                   edad: paraHijo ? int.tryParse(edad.text.trim()) : null,
                   apoderadoWhatsapp: paraHijo ? waApoderado.text : null,
-                ));
+                );
+                // Código inválido / no encontrado → error inline, sigue abierto.
+                if (!r.ok) {
+                  setSB(() => error = r.mensaje);
+                  return;
+                }
+                Navigator.of(dctx).pop(r);
               },
               child: const Text('Unirme'),
             ),

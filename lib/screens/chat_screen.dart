@@ -30,8 +30,14 @@ class _ChatScreenState extends State<ChatScreen> {
   final _texto = TextEditingController();
   final _scroll = ScrollController();
   bool _enviando = false;
+  String _ultimoVisto = ''; // id del último mensaje ya procesado
 
   String get _hilo => Mensaje.hiloDe(widget.academiaId, widget.cuentaEmail);
+
+  // Stream creado UNA sola vez: si se recreara en cada build (p. ej. al enviar,
+  // que hace setState), el StreamBuilder volvería al spinner y la pantalla
+  // parpadearía. Por eso es un campo late, no una llamada dentro de build().
+  late final Stream<List<Mensaje>> _stream = MensajesRepo.streamHilo(_hilo);
 
   @override
   void initState() {
@@ -94,14 +100,17 @@ class _ChatScreenState extends State<ChatScreen> {
           Expanded(
             child: MensajesRepo.disponible
                 ? StreamBuilder<List<Mensaje>>(
-                    stream: MensajesRepo.streamHilo(_hilo),
+                    stream: _stream,
                     builder: (context, snap) {
                       if (snap.connectionState == ConnectionState.waiting) {
                         return const Center(child: CircularProgressIndicator());
                       }
                       final msgs = snap.data ?? const <Mensaje>[];
-                      if (msgs.isNotEmpty) {
-                        // Fuera de la fase de build (evita notifyListeners en build).
+                      // Solo reaccionar cuando LLEGA un mensaje nuevo (no en cada
+                      // rebuild): marca leído + baja al final una vez.
+                      final ultimo = msgs.isNotEmpty ? msgs.last.id : '';
+                      if (ultimo.isNotEmpty && ultimo != _ultimoVisto) {
+                        _ultimoVisto = ultimo;
                         WidgetsBinding.instance.addPostFrameCallback((_) {
                           if (mounted) appState.marcarChatLeido(_hilo);
                         });
