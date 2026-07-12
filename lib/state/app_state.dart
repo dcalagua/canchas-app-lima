@@ -15,6 +15,7 @@ import '../models/campeonato.dart';
 import '../models/models.dart';
 import '../models/usuario.dart';
 import '../services/auth_service.dart';
+import '../services/pagos_service.dart';
 import '../services/places_service.dart';
 import '../services/verificacion_service.dart';
 import '../services/growth_service.dart';
@@ -1157,6 +1158,24 @@ class AppState extends ChangeNotifier {
     return c < 2 ? 2 : c;
   }
 
+  /// Sincroniza el saldo con el BACKEND (fuente de verdad de los pagos reales).
+  /// El saldo local solo vive en el teléfono, así que en una instalación limpia
+  /// se pierde; el backend guarda las recargas por dueño (email). Best-effort:
+  /// si el backend no responde o no hay sesión, conserva el saldo local.
+  Future<void> sincronizarSaldo() async {
+    final email = usuario?.email;
+    if (email == null || email.isEmpty) return;
+    if (!PagosService.disponible) return;
+    final s = await PagosService.saldo(email);
+    if (s == null) return; // backend no disponible → deja el local
+    final nuevo = s.round();
+    if (nuevo != saldoClub) {
+      saldoClub = nuevo;
+      notifyListeners();
+      _persistirDatos();
+    }
+  }
+
   /// Recarga el saldo prepago del club.
   void recargar(int monto) {
     if (monto <= 0) return;
@@ -1345,6 +1364,8 @@ class AppState extends ChangeNotifier {
     _recomputarMisReservas(); // recupera sus reservas de otros dispositivos
     notifyListeners();
     cargarReservasRemotas(); // best-effort refresco
+    sincronizarSaldo(); // saldo real del backend (sobrevive reinstalar)
+    cargarMatriculasRemotas(); // sus academias/matrículas vinculadas
     return true;
   }
 
