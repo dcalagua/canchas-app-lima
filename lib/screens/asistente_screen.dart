@@ -9,10 +9,10 @@ import '../theme.dart';
 import '../utils/geo.dart';
 import 'cancha_detalle_screen.dart';
 
-/// Asistente Pichangol (primer agente de IA): el jugador escribe en lenguaje
-/// natural ("fútbol mañana 8pm por Surco") y el concierge le sugiere canchas.
-/// La IA corre en el backend; aquí sólo se manda el mensaje + las canchas
-/// visibles y se pintan las sugerencias.
+/// Asistente Pichangol (primer agente de IA): chat estilo WhatsApp donde el
+/// jugador escribe en lenguaje natural ("fútbol mañana 8pm por Surco") y el
+/// concierge le sugiere canchas. La IA corre en el backend; aquí se cuida el
+/// look & feel (header con identidad, burbujas, "escribiendo…", tarjetas ricas).
 class AsistenteScreen extends StatefulWidget {
   const AsistenteScreen({super.key, this.centro});
 
@@ -43,17 +43,17 @@ class _AsistenteScreenState extends State<AsistenteScreen> {
   bool _pensando = false;
 
   static const _ejemplos = [
-    'Fútbol hoy a las 8pm cerca',
-    'Cancha de tenis por Surco',
-    'Algo barato para la tarde',
+    '⚽ Fútbol hoy 8pm',
+    '🎾 Tenis por Surco',
+    '💸 Algo barato cerca',
   ];
 
   @override
   void initState() {
     super.initState();
     _turnos.add(_Turno.bot(
-        '¡Hola! Soy tu asistente de reservas. Dime qué quieres jugar, cuándo y '
-        'por dónde, y te busco cancha. 🎾⚽'));
+        '¡Hola! 👋 Soy tu asistente de reservas.\n\n'
+        'Dime qué quieres jugar, cuándo y por dónde, y te busco cancha al toque. 🎾⚽🏓'));
   }
 
   @override
@@ -77,7 +77,7 @@ class _AsistenteScreenState extends State<AsistenteScreen> {
       setState(() {
         _pensando = false;
         _turnos.add(_Turno.bot(
-            'El asistente necesita conexión con el servidor. Intenta más tarde.'));
+            'Ups, necesito conexión con el servidor para responder. Intenta en un ratito. 🙏'));
       });
       _alFinal();
       return;
@@ -107,12 +107,10 @@ class _AsistenteScreenState extends State<AsistenteScreen> {
       _pensando = false;
       if (res == null) {
         _turnos.add(_Turno.bot(
-            'No pude conectarme ahora. Revisa tu internet y vuelve a intentar.'));
+            'No pude conectarme ahora. 😕 Revisa tu internet y vuelve a intentar.'));
       } else {
         _turnos.add(_Turno.bot(
-            res.respuesta.isEmpty
-                ? 'Esto es lo que encontré:'
-                : res.respuesta,
+            res.respuesta.isEmpty ? '¡Esto es lo que encontré! 👇' : res.respuesta,
             res.sugerencias,
             centro));
       }
@@ -124,7 +122,7 @@ class _AsistenteScreenState extends State<AsistenteScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scroll.hasClients) {
         _scroll.animateTo(_scroll.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 240), curve: Curves.easeOut);
+            duration: const Duration(milliseconds: 260), curve: Curves.easeOut);
       }
     });
   }
@@ -132,83 +130,117 @@ class _AsistenteScreenState extends State<AsistenteScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final oscuro = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Asistente Pichangol'),
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView.builder(
-              controller: _scroll,
-              padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
-              itemCount: _turnos.length + (_pensando ? 1 : 0),
-              itemBuilder: (context, i) {
-                if (i >= _turnos.length) return const _Escribiendo();
-                return _BurbujaTurno(
-                    turno: _turnos[i],
-                    centro: _turnos[i].centro ?? widget.centro);
-              },
+        toolbarHeight: 66,
+        foregroundColor: Colors.white,
+        backgroundColor: bosque,
+        surfaceTintColor: Colors.transparent,
+        titleSpacing: 4,
+        elevation: 4,
+        flexibleSpace: const DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [sage, bosque],
             ),
           ),
-          if (_turnos.length <= 1)
-            SizedBox(
-              height: 44,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                children: [
-                  for (final e in _ejemplos)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: ActionChip(
-                        label: Text(e),
-                        onPressed: () => _enviar(e),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          SafeArea(
-            top: false,
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+        ),
+        title: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
-                color: cs.surface,
-                border: Border(top: BorderSide(color: trazo)),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _texto,
-                      minLines: 1,
-                      maxLines: 4,
-                      textCapitalization: TextCapitalization.sentences,
-                      decoration: InputDecoration(
-                        hintText: 'Escribe qué quieres jugar…',
-                        filled: true,
-                        fillColor: Theme.of(context).scaffoldBackgroundColor,
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 10),
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(22),
-                            borderSide: BorderSide.none),
-                      ),
-                      onSubmitted: (_) => _enviar(),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  IconButton.filled(
-                    onPressed: _pensando ? null : () => _enviar(),
-                    icon: const Icon(Icons.send),
-                  ),
+                color: lima,
+                shape: BoxShape.circle,
+                boxShadow: const [
+                  BoxShadow(
+                      color: Color(0x40000000),
+                      blurRadius: 6,
+                      offset: Offset(0, 2)),
                 ],
               ),
+              child: const Icon(Icons.auto_awesome, color: bosque, size: 21),
             ),
+            const SizedBox(width: 11),
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Asistente Pichangol',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16.5,
+                        fontWeight: FontWeight.w800)),
+                Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                          color: Color(0xFF3DDC84), shape: BoxShape.circle),
+                    ),
+                    const SizedBox(width: 6),
+                    Text('en línea · te busco cancha',
+                        style: TextStyle(
+                            color: Colors.white.withOpacity(0.85),
+                            fontSize: 11.5)),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: oscuro
+                ? [cs.surface.withOpacity(0.35), Theme.of(context).scaffoldBackgroundColor]
+                : const [Color(0xFFF1F4F8), Color(0xFFF7F5EF)],
           ),
-        ],
+        ),
+        child: Column(
+          children: [
+            Expanded(
+              child: ListView.builder(
+                controller: _scroll,
+                padding: const EdgeInsets.fromLTRB(12, 16, 12, 10),
+                itemCount: _turnos.length + (_pensando ? 1 : 0),
+                itemBuilder: (context, i) {
+                  if (i >= _turnos.length) return const _Escribiendo();
+                  return _BurbujaTurno(
+                      turno: _turnos[i],
+                      centro: _turnos[i].centro ?? widget.centro);
+                },
+              ),
+            ),
+            if (_turnos.length <= 1)
+              SizedBox(
+                height: 46,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  children: [
+                    for (final e in _ejemplos)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: _ChipEjemplo(texto: e, onTap: () => _enviar(e)),
+                      ),
+                  ],
+                ),
+              ),
+            _BarraEntrada(
+                controller: _texto,
+                pensando: _pensando,
+                onEnviar: () => _enviar()),
+          ],
+        ),
       ),
     );
   }
@@ -222,37 +254,92 @@ class _BurbujaTurno extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final oscuro = Theme.of(context).brightness == Brightness.dark;
     final mio = turno.mio;
-    return Column(
-      crossAxisAlignment:
-          mio ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-      children: [
-        Align(
-          alignment: mio ? Alignment.centerRight : Alignment.centerLeft,
-          child: Container(
-            constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.8),
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
-            decoration: BoxDecoration(
-              color: mio ? cs.primary : cs.surface,
-              borderRadius: BorderRadius.only(
-                topLeft: const Radius.circular(16),
-                topRight: const Radius.circular(16),
-                bottomLeft: Radius.circular(mio ? 16 : 4),
-                bottomRight: Radius.circular(mio ? 4 : 16),
+    final bg = mio
+        ? (oscuro ? cs.primary : limaSuave)
+        : (oscuro ? cs.surface : Colors.white);
+    final fg = mio
+        ? (oscuro ? cs.onPrimary : tinta)
+        : (oscuro ? cs.onSurface : tinta);
+
+    // Animación suave de entrada (fade + leve subida) al aparecer.
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOut,
+      builder: (context, t, child) => Opacity(
+        opacity: t,
+        child: Transform.translate(offset: Offset(0, (1 - t) * 8), child: child),
+      ),
+      child: Column(
+        crossAxisAlignment:
+            mio ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment:
+                mio ? MainAxisAlignment.end : MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (!mio) ...[
+                const _AvatarBot(),
+                const SizedBox(width: 8),
+              ],
+              Flexible(
+                child: Container(
+                  constraints: BoxConstraints(
+                      maxWidth: MediaQuery.of(context).size.width * 0.76),
+                  margin: const EdgeInsets.only(bottom: 4),
+                  padding: const EdgeInsets.fromLTRB(13, 10, 13, 10),
+                  decoration: BoxDecoration(
+                    color: bg,
+                    borderRadius: BorderRadius.only(
+                      topLeft: const Radius.circular(18),
+                      topRight: const Radius.circular(18),
+                      bottomLeft: Radius.circular(mio ? 18 : 5),
+                      bottomRight: Radius.circular(mio ? 5 : 18),
+                    ),
+                    boxShadow: const [
+                      BoxShadow(
+                          color: Color(0x14000000),
+                          blurRadius: 6,
+                          offset: Offset(0, 2)),
+                    ],
+                    border: (!mio && !oscuro)
+                        ? Border.all(color: trazo.withOpacity(0.6))
+                        : null,
+                  ),
+                  child: Text(turno.texto,
+                      style: TextStyle(
+                          color: fg, fontSize: 15, height: 1.32)),
+                ),
               ),
-              border: mio ? null : Border.all(color: trazo),
-            ),
-            child: Text(turno.texto,
-                style: TextStyle(
-                    color: mio ? cs.onPrimary : cs.onSurface, fontSize: 15)),
+            ],
           ),
-        ),
-        for (final s in turno.sugerencias)
-          _TarjetaSugerencia(sugerencia: s, centro: centro),
-        if (turno.sugerencias.isNotEmpty) const SizedBox(height: 6),
-      ],
+          if (turno.sugerencias.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            for (final s in turno.sugerencias)
+              Padding(
+                padding: const EdgeInsets.only(left: 40, bottom: 8),
+                child: _TarjetaSugerencia(sugerencia: s, centro: centro),
+              ),
+          ],
+          const SizedBox(height: 6),
+        ],
+      ),
+    );
+  }
+}
+
+class _AvatarBot extends StatelessWidget {
+  const _AvatarBot();
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 32,
+      height: 32,
+      decoration: const BoxDecoration(color: bosque, shape: BoxShape.circle),
+      child: const Icon(Icons.auto_awesome, color: lima, size: 17),
     );
   }
 }
@@ -262,73 +349,119 @@ class _TarjetaSugerencia extends StatelessWidget {
   final SugerenciaConcierge sugerencia;
   final LatLng? centro;
 
+  void _abrir(BuildContext context) => Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => CanchaDetalleScreen(cancha: sugerencia.cancha)));
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final oscuro = Theme.of(context).brightness == Brightness.dark;
     final c = sugerencia.cancha;
-    final dist = centro == null
-        ? null
-        : distanciaKm(centro!, c.ubicacion);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: trazo),
-      ),
-      clipBehavior: Clip.antiAlias,
+    final dist = centro == null ? null : distanciaKm(centro!, c.ubicacion);
+    final tieneFoto = c.fotoUrl != null && c.fotoUrl!.isNotEmpty;
+    return Material(
+      color: oscuro ? cs.surface : Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      elevation: 0,
       child: InkWell(
-        onTap: () => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => CanchaDetalleScreen(cancha: c))),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () => _abrir(context),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: trazo.withOpacity(oscuro ? 0.5 : 1)),
+            boxShadow: const [
+              BoxShadow(
+                  color: Color(0x12000000), blurRadius: 10, offset: Offset(0, 4)),
+            ],
+          ),
+          padding: const EdgeInsets.all(10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              CircleAvatar(
-                radius: 22,
-                backgroundColor: colorDeporte(c.deporte),
-                child: Icon(iconoDeporte(c.deporte), color: Colors.white),
+              Row(
+                children: [
+                  // Thumbnail: foto real o círculo del deporte.
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: SizedBox(
+                      width: 54,
+                      height: 54,
+                      child: tieneFoto
+                          ? Image.network(c.fotoUrl!, fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => _IconoDeporte(c: c))
+                          : _IconoDeporte(c: c),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(c.nombre,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w800, fontSize: 15)),
+                        const SizedBox(height: 5),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: [
+                            _Pill(iconoDeporte(c.deporte), c.deporte.etiqueta),
+                            _Pill(Icons.place_outlined, c.distrito.etiqueta),
+                            if (dist != null)
+                              _Pill(Icons.directions_walk,
+                                  '${dist.toStringAsFixed(1)} km'),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
+              if (sugerencia.motivo.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(c.nombre,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w800, fontSize: 15)),
-                    const SizedBox(height: 2),
-                    Text(
-                        '${c.deporte.etiqueta} · ${c.distrito.etiqueta}'
-                        '${dist != null ? ' · ${dist.toStringAsFixed(1)} km' : ''}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            color: textoTenue, fontSize: 12)),
-                    if (sugerencia.motivo.isNotEmpty) ...[
-                      const SizedBox(height: 3),
-                      Text(sugerencia.motivo,
+                    const Text('✨ ', style: TextStyle(fontSize: 12)),
+                    Expanded(
+                      child: Text(sugerencia.motivo,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                               color: cs.primary,
-                              fontSize: 12,
+                              fontSize: 12.5,
                               fontWeight: FontWeight.w600)),
-                    ],
+                    ),
                   ],
                 ),
-              ),
-              const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
+              ],
+              const SizedBox(height: 10),
+              Row(
                 children: [
                   Text('S/ ${c.precioHora.toStringAsFixed(2)}',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w800, color: cs.onSurface)),
-                  const Text('/ hora',
-                      style: TextStyle(color: textoTenue, fontSize: 11)),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w900, fontSize: 16)),
+                  Text('  /hora',
+                      style: const TextStyle(
+                          color: textoTenue, fontSize: 12)),
+                  const Spacer(),
+                  FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: lima,
+                      foregroundColor: bosque,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 18, vertical: 8),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      textStyle: const TextStyle(
+                          fontWeight: FontWeight.w800, fontSize: 13.5),
+                    ),
+                    onPressed: () => _abrir(context),
+                    child: const Text('Reservar'),
+                  ),
                 ],
               ),
             ],
@@ -339,25 +472,230 @@ class _TarjetaSugerencia extends StatelessWidget {
   }
 }
 
-class _Escribiendo extends StatelessWidget {
-  const _Escribiendo();
+class _IconoDeporte extends StatelessWidget {
+  const _IconoDeporte({required this.c});
+  final Cancha c;
+  @override
+  Widget build(BuildContext context) => Container(
+        color: colorDeporte(c.deporte),
+        alignment: Alignment.center,
+        child: Icon(iconoDeporte(c.deporte), color: Colors.white, size: 26),
+      );
+}
+
+class _Pill extends StatelessWidget {
+  const _Pill(this.icono, this.texto);
+  final IconData icono;
+  final String texto;
+  @override
+  Widget build(BuildContext context) {
+    final oscuro = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: oscuro
+            ? Colors.white.withOpacity(0.06)
+            : const Color(0xFFF1F4F0),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icono, size: 13, color: textoTenue),
+          const SizedBox(width: 4),
+          Text(texto,
+              style: const TextStyle(
+                  fontSize: 11.5,
+                  color: textoTenue,
+                  fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+}
+
+class _ChipEjemplo extends StatelessWidget {
+  const _ChipEjemplo({required this.texto, required this.onTap});
+  final String texto;
+  final VoidCallback onTap;
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: trazo),
+    final oscuro = Theme.of(context).brightness == Brightness.dark;
+    return Material(
+      color: oscuro ? cs.surface : Colors.white,
+      borderRadius: BorderRadius.circular(22),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(22),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: lima.withOpacity(0.8)),
+          ),
+          alignment: Alignment.center,
+          child: Text(texto,
+              style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13.5,
+                  color: oscuro ? cs.onSurface : tinta)),
         ),
-        child: const SizedBox(
-          width: 18,
-          height: 18,
-          child: CircularProgressIndicator(strokeWidth: 2),
+      ),
+    );
+  }
+}
+
+/// Indicador "escribiendo…" con tres puntitos que rebotan (estilo mensajería).
+class _Escribiendo extends StatefulWidget {
+  const _Escribiendo();
+  @override
+  State<_Escribiendo> createState() => _EscribiendoState();
+}
+
+class _EscribiendoState extends State<_Escribiendo>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1000))
+    ..repeat();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final oscuro = Theme.of(context).brightness == Brightness.dark;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          const _AvatarBot(),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            decoration: BoxDecoration(
+              color: oscuro ? cs.surface : Colors.white,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(18),
+                topRight: Radius.circular(18),
+                bottomLeft: Radius.circular(5),
+                bottomRight: Radius.circular(18),
+              ),
+              border: oscuro ? null : Border.all(color: trazo.withOpacity(0.6)),
+              boxShadow: const [
+                BoxShadow(
+                    color: Color(0x14000000),
+                    blurRadius: 6,
+                    offset: Offset(0, 2)),
+              ],
+            ),
+            child: AnimatedBuilder(
+              animation: _c,
+              builder: (context, _) => Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (var i = 0; i < 3; i++) _punto(i),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _punto(int i) {
+    // Cada punto rebota con un desfase.
+    final t = (_c.value + i * 0.2) % 1.0;
+    final dy = -4 * (t < 0.5 ? (t * 2) : (2 - t * 2)); // sube y baja
+    return Padding(
+      padding: EdgeInsets.only(right: i == 2 ? 0 : 5),
+      child: Transform.translate(
+        offset: Offset(0, dy),
+        child: Container(
+          width: 8,
+          height: 8,
+          decoration:
+              const BoxDecoration(color: textoTenue, shape: BoxShape.circle),
+        ),
+      ),
+    );
+  }
+}
+
+class _BarraEntrada extends StatelessWidget {
+  const _BarraEntrada(
+      {required this.controller,
+      required this.pensando,
+      required this.onEnviar});
+  final TextEditingController controller;
+  final bool pensando;
+  final VoidCallback onEnviar;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final oscuro = Theme.of(context).brightness == Brightness.dark;
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: oscuro ? cs.surface : Colors.white,
+                  borderRadius: BorderRadius.circular(26),
+                  border: Border.all(color: trazo.withOpacity(oscuro ? 0.5 : 1)),
+                  boxShadow: const [
+                    BoxShadow(
+                        color: Color(0x0F000000),
+                        blurRadius: 8,
+                        offset: Offset(0, 2)),
+                  ],
+                ),
+                child: TextField(
+                  controller: controller,
+                  minLines: 1,
+                  maxLines: 4,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(
+                    hintText: 'Escribe qué quieres jugar…',
+                    border: InputBorder.none,
+                    contentPadding:
+                        EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                  ),
+                  onSubmitted: (_) => onEnviar(),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: pensando ? null : onEnviar,
+              child: Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: pensando ? textoTenue.withOpacity(0.4) : lima,
+                  shape: BoxShape.circle,
+                  boxShadow: const [
+                    BoxShadow(
+                        color: Color(0x33000000),
+                        blurRadius: 6,
+                        offset: Offset(0, 2)),
+                  ],
+                ),
+                child: const Icon(Icons.send_rounded, color: bosque, size: 22),
+              ),
+            ),
+          ],
         ),
       ),
     );
