@@ -504,6 +504,7 @@ class AppState extends ChangeNotifier {
         monto: plan.precioMes * n,
         vencimiento: hoy,
         pagada: true,
+        fechaPago: hoy,
       ));
     } else {
       final meses = (plan.tipo == TipoPlan.mensual ? 1 : plan.meses) * n;
@@ -517,6 +518,7 @@ class AppState extends ChangeNotifier {
           monto: plan.precioMes,
           vencimiento: venc,
           pagada: true,
+          fechaPago: hoy,
         ));
       }
     }
@@ -543,7 +545,9 @@ class AppState extends ChangeNotifier {
   void marcarCuotaPagada(String cuotaId, {bool pagada = true}) {
     final i = cuotas.indexWhere((c) => c.id == cuotaId);
     if (i < 0) return;
-    cuotas[i] = cuotas[i].copyWith(pagada: pagada);
+    cuotas[i] = pagada
+        ? cuotas[i].copyWith(pagada: true, fechaPago: DateTime.now())
+        : cuotas[i].copyWith(pagada: false, limpiarFechaPago: true);
     notifyListeners();
     _persistirDatos();
   }

@@ -260,6 +260,7 @@ class Cuota {
   final double monto;
   final DateTime vencimiento;
   final bool pagada;
+  final DateTime? fechaPago; // cuándo se cobró (para reportes por fecha)
 
   const Cuota({
     required this.id,
@@ -269,13 +270,15 @@ class Cuota {
     required this.monto,
     required this.vencimiento,
     this.pagada = false,
+    this.fechaPago,
   });
 
   /// Vencida = no pagada y ya pasó su fecha de vencimiento.
   bool vencidaAl(DateTime hoy) =>
       !pagada && vencimiento.isBefore(DateTime(hoy.year, hoy.month, hoy.day));
 
-  Cuota copyWith({bool? pagada}) => Cuota(
+  Cuota copyWith({bool? pagada, DateTime? fechaPago, bool limpiarFechaPago = false}) =>
+      Cuota(
         id: id,
         academiaId: academiaId,
         alumnoId: alumnoId,
@@ -283,6 +286,7 @@ class Cuota {
         monto: monto,
         vencimiento: vencimiento,
         pagada: pagada ?? this.pagada,
+        fechaPago: limpiarFechaPago ? null : (fechaPago ?? this.fechaPago),
       );
 
   Map<String, dynamic> toJson() => {
@@ -293,6 +297,7 @@ class Cuota {
         'monto': monto,
         'vencimiento': vencimiento.toIso8601String(),
         'pagada': pagada,
+        if (fechaPago != null) 'fechaPago': fechaPago!.toIso8601String(),
       };
 
   factory Cuota.fromJson(Map<String, dynamic> j) => Cuota(
@@ -305,6 +310,9 @@ class Cuota {
             DateTime.tryParse((j['vencimiento'] ?? '') as String) ??
                 DateTime.now(),
         pagada: (j['pagada'] ?? false) as bool,
+        fechaPago: j['fechaPago'] != null
+            ? DateTime.tryParse(j['fechaPago'] as String)
+            : null,
       );
 }
 

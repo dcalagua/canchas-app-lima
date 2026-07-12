@@ -8,6 +8,7 @@ import '../theme.dart';
 import 'asistencia_screen.dart';
 import 'campeonatos_screen.dart';
 import 'crear_academia_screen.dart';
+import 'reporte_academia_screen.dart';
 
 /// Panel del PROFE: su academia, alumnos y cobros (Fase 1). Sin pasarela: marca
 /// pagos en efectivo y manda recordatorios por WhatsApp.
@@ -292,6 +293,13 @@ class _Header extends StatelessWidget {
                 child: Text(academia.nombre,
                     style: t.headlineSmall?.copyWith(
                         color: Colors.white, fontWeight: FontWeight.w800)),
+              ),
+              IconButton(
+                tooltip: 'Reporte de pagos',
+                icon: const Icon(Icons.insights_outlined, color: Colors.white),
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) =>
+                        ReporteAcademiaScreen(academiaId: academia.id))),
               ),
               IconButton(
                 tooltip: 'Campeonatos',
