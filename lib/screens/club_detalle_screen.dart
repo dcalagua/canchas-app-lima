@@ -218,6 +218,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     final c = widget.club;
     // Una cancha con reclamo AJENO rechazado se trata como DESCUBIERTA (libre
     // para reclamar), no como pendiente.
@@ -226,7 +227,6 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         !_cancha.verificada &&
         !_reclamablePorRechazo;
     return Scaffold(
-      backgroundColor: papel,
       body: RefreshIndicator(
         onRefresh: _pullRefresh,
         child: CustomScrollView(
@@ -333,7 +333,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                               decoration: BoxDecoration(
                                 color: sel
                                     ? const Color(0xFFEAF6C2)
-                                    : Colors.white,
+                                    : cs.surface,
                                 borderRadius: BorderRadius.circular(999),
                                 border: Border.all(
                                     color:
@@ -351,7 +351,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                                           fontWeight: sel
                                               ? FontWeight.w700
                                               : FontWeight.w600,
-                                          color: tinta)),
+                                          color: sel ? tinta : cs.onSurface)),
                                 ],
                               ),
                             ),
@@ -494,11 +494,12 @@ class _PanelDueno extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: trazo),
       ),
@@ -519,7 +520,7 @@ class _PanelDueno extends StatelessWidget {
               Expanded(
                 child: Text('Administras esta cancha',
                     style: t.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w700, color: tinta)),
+                        ?.copyWith(fontWeight: FontWeight.w700, color: cs.onSurface)),
               ),
             ],
           ),
@@ -677,6 +678,7 @@ class _FilaAmenities extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     final items = [
       for (final k in claves)
         if (amenidadPorClave(k) != null) amenidadPorClave(k)!,
@@ -697,7 +699,7 @@ class _FilaAmenities extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: cs.surface,
                   borderRadius: BorderRadius.circular(999),
                   border: Border.all(color: trazo),
                 ),
@@ -708,7 +710,7 @@ class _FilaAmenities extends StatelessWidget {
                     const SizedBox(width: 7),
                     Text(a.etiqueta,
                         style: t.bodySmall?.copyWith(
-                            fontWeight: FontWeight.w600, color: tinta)),
+                            fontWeight: FontWeight.w600, color: cs.onSurface)),
                   ],
                 ),
               ),
@@ -729,12 +731,13 @@ class _ReservarBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     return Container(
       padding: EdgeInsets.fromLTRB(
           22, 12, 22, 16 + MediaQuery.of(context).padding.bottom),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: trazo)),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        border: const Border(top: BorderSide(color: trazo)),
       ),
       child: Row(
         children: [
@@ -750,7 +753,7 @@ class _ReservarBar extends StatelessWidget {
                       TextSpan(
                         text: '$monedaSimbolo${precio.toStringAsFixed(2)}',
                         style: t.titleLarge?.copyWith(
-                            color: tinta, fontWeight: FontWeight.w700),
+                            color: cs.onSurface, fontWeight: FontWeight.w700),
                       ),
                       const TextSpan(text: ' /hora'),
                     ],
@@ -784,18 +787,19 @@ class _DiaChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
         decoration: BoxDecoration(
-          color: activo ? pino : Colors.white,
+          color: activo ? pino : cs.surface,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: activo ? pino : trazo),
         ),
         child: Text(texto,
             style: TextStyle(
-                color: activo ? lima : tinta, fontWeight: FontWeight.w700)),
+                color: activo ? lima : cs.onSurface, fontWeight: FontWeight.w700)),
       ),
     );
   }
@@ -817,6 +821,7 @@ class _SlotChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     if (ocupada) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
@@ -835,12 +840,12 @@ class _SlotChip extends StatelessWidget {
         : valle
             ? clay
             : trazo;
-    final Color fondo = seleccionada ? tinta : Colors.white;
+    final Color fondo = seleccionada ? tinta : cs.surface;
     final Color texto = seleccionada
         ? Colors.white
         : valle
             ? clayOscuro
-            : tinta;
+            : cs.onSurface;
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -947,10 +952,11 @@ class _PanelDescubiertaState extends State<_PanelDescubierta> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: trazo),
       ),

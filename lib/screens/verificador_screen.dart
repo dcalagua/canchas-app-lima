@@ -45,8 +45,8 @@ class _VerificadorScreenState extends State<VerificadorScreen> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: papel,
       appBar: AppBar(title: const Text('Verificador')),
       body: Column(
         children: [
@@ -91,7 +91,7 @@ class _VerificadorScreenState extends State<VerificadorScreen> {
                             selected: _zona == z,
                             selectedColor: bosque,
                             labelStyle: TextStyle(
-                                color: _zona == z ? lima : tinta,
+                                color: _zona == z ? lima : cs.onSurface,
                                 fontWeight: FontWeight.w700),
                             onSelected: (_) {
                               setState(() => _zona = z);
@@ -151,7 +151,7 @@ class _VisitaCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     return Material(
-      color: Colors.white,
+      color: Theme.of(context).colorScheme.surface,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
@@ -298,7 +298,6 @@ class _CapturaScreenState extends State<_CapturaScreen> {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     return Scaffold(
-      backgroundColor: papel,
       appBar:
           AppBar(title: Text('Verificar cancha ${widget.visita['cancha_id']}')),
       body: ListView(

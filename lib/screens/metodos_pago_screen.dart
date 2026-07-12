@@ -49,7 +49,7 @@ class _MetodosPagoScreenState extends State<MetodosPagoScreen> {
     final ok = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -87,7 +87,6 @@ class _MetodosPagoScreenState extends State<MetodosPagoScreen> {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     return Scaffold(
-      backgroundColor: papel,
       appBar: AppBar(title: const Text('Métodos de pago')),
       body: _cargando
           ? const Center(child: CircularProgressIndicator())
@@ -107,7 +106,7 @@ class _MetodosPagoScreenState extends State<MetodosPagoScreen> {
                       Container(
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                            color: Colors.white,
+                            color: Theme.of(context).colorScheme.surface,
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(color: trazo)),
                         child: Column(
@@ -163,11 +162,12 @@ class _TarjetaGuardada extends StatelessWidget {
     final marca = (m['marca'] ?? 'Tarjeta').toString();
     final esVisa = marca.toLowerCase().contains('visa');
     final esMaster = marca.toLowerCase().contains('master');
+    final cs = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: trazo),
         boxShadow: const [
@@ -190,8 +190,8 @@ class _TarjetaGuardada extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('$marca ···· ${m['ultimos4'] ?? ''}',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w700, color: tinta)),
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700, color: cs.onSurface)),
                 const Text('Guardada para 1 toque',
                     style: TextStyle(color: textoTenue, fontSize: 12)),
               ],

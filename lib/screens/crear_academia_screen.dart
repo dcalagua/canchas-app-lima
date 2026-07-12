@@ -113,7 +113,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
     final plan = await showModalBottomSheet<Plan>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -192,7 +192,6 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: papel,
       appBar: AppBar(
           title: Text(widget.academia == null
               ? 'Crear academia'
@@ -222,7 +221,9 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                   selected: _deporte == d,
                   selectedColor: colorDeporte(d),
                   labelStyle: TextStyle(
-                      color: _deporte == d ? Colors.white : tinta,
+                      color: _deporte == d
+                          ? Colors.white
+                          : Theme.of(context).colorScheme.onSurface,
                       fontWeight: FontWeight.w600),
                   onSelected: (_) => setState(() => _deporte = d),
                 ),
@@ -373,7 +374,9 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                   selected: _redesSel.contains(r.$1),
                   selectedColor: bosque,
                   labelStyle: TextStyle(
-                      color: _redesSel.contains(r.$1) ? Colors.white : tinta,
+                      color: _redesSel.contains(r.$1)
+                          ? Colors.white
+                          : Theme.of(context).colorScheme.onSurface,
                       fontWeight: FontWeight.w600),
                   onSelected: (s) => setState(() {
                     if (s) {

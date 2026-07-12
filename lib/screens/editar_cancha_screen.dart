@@ -349,8 +349,8 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: papel,
       appBar: AppBar(
         title: const Text('Editar cancha'),
         actions: [
@@ -527,7 +527,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
                   label: Text(s),
                   selected: _superficie == s,
                   labelStyle: TextStyle(
-                      color: _superficie == s ? bosque : tinta,
+                      color: _superficie == s ? bosque : cs.onSurface,
                       fontWeight: FontWeight.w600),
                   selectedColor: limaSuave,
                   onSelected: (sel) =>
@@ -569,7 +569,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
                   selectedColor: limaSuave,
                   checkmarkColor: bosque,
                   labelStyle: TextStyle(
-                      color: _amenidades.contains(a.clave) ? bosque : tinta,
+                      color: _amenidades.contains(a.clave) ? bosque : cs.onSurface,
                       fontWeight: FontWeight.w600),
                   onSelected: (sel) => setState(() {
                     if (sel) {
@@ -782,15 +782,17 @@ class _PrefijoPeruEditar extends StatelessWidget {
   const _PrefijoPeruEditar();
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.only(left: 12, right: 4),
+    return Padding(
+      padding: const EdgeInsets.only(left: 12, right: 4),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('🇵🇪', style: TextStyle(fontSize: 18)),
-          SizedBox(width: 4),
+          const Text('🇵🇪', style: TextStyle(fontSize: 18)),
+          const SizedBox(width: 4),
           Text('+51',
-              style: TextStyle(fontWeight: FontWeight.w800, color: tinta)),
+              style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: Theme.of(context).colorScheme.onSurface)),
         ],
       ),
     );

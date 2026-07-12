@@ -222,7 +222,8 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
       {required bool seleccionado}) async {
     const ratio = 3.0;
     final colorTexto = seleccionado ? Colors.white : verdeCancha;
-    final colorFondo = seleccionado ? verdeCancha : Colors.white;
+    final colorFondo =
+        seleccionado ? verdeCancha : Theme.of(context).colorScheme.surface;
 
     final tp = TextPainter(
       text: TextSpan(
@@ -412,7 +413,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
               child: Padding(
                 padding: const EdgeInsets.only(top: 160),
                 child: Container(
-                  color: papel,
+                  color: Theme.of(context).scaffoldBackgroundColor,
                   child: ListenableBuilder(
                     listenable: appState,
                     builder: (context, _) {
@@ -545,7 +546,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
             child: Material(
               elevation: 4,
               shape: const CircleBorder(),
-              color: Colors.white,
+              color: Theme.of(context).colorScheme.surface,
               child: InkWell(
                 customBorder: const CircleBorder(),
                 onTap: _reubicar,
@@ -655,6 +656,7 @@ class _BarraBusqueda extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final buscando = label != null;
+    final cs = Theme.of(context).colorScheme;
     // El acceso al perfil vive en la pestaña "Perfil" de la barra inferior;
     // por eso el buscador ya no lleva avatar (se evita el doble acceso).
     return Row(
@@ -663,7 +665,7 @@ class _BarraBusqueda extends StatelessWidget {
           child: Material(
             elevation: 4,
             borderRadius: BorderRadius.circular(30),
-            color: Colors.white,
+            color: cs.surface,
             child: InkWell(
               onTap: onBuscar,
               borderRadius: BorderRadius.circular(30),
@@ -724,7 +726,7 @@ class _BuscandoCerca extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(999),
           boxShadow: const [
             BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 2)),
@@ -774,7 +776,7 @@ class _CarruselSkeleton extends StatelessWidget {
         margin: const EdgeInsets.symmetric(vertical: 6),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(20),
           boxShadow: const [
             BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4)),
@@ -815,7 +817,7 @@ class _SinCanchasCerca extends StatelessWidget {
         margin: const EdgeInsets.symmetric(horizontal: 16),
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(18),
           boxShadow: const [
             BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4)),
@@ -823,13 +825,15 @@ class _SinCanchasCerca extends StatelessWidget {
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
-          children: const [
-            Icon(Icons.location_off, color: textoTenue),
-            SizedBox(width: 10),
+          children: [
+            const Icon(Icons.location_off, color: textoTenue),
+            const SizedBox(width: 10),
             Flexible(
               child: Text(
                 'No encontramos canchas cerca de ti. Mueve el mapa o busca otra zona.',
-                style: TextStyle(color: tinta, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface,
+                    fontWeight: FontWeight.w600),
               ),
             ),
           ],
@@ -983,7 +987,7 @@ class _LocalCarruselCard extends StatelessWidget {
       child: Material(
         elevation: 6,
         borderRadius: BorderRadius.circular(20),
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(20),

@@ -39,7 +39,7 @@ class PagoTarjeta {
     final ok = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -223,8 +223,10 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
                 ),
                 const SizedBox(height: 16),
                 Text('Pagar S/ ${widget.monto}',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w800, fontSize: 20, color: tinta)),
+                    style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 20,
+                        color: Theme.of(context).colorScheme.onSurface)),
                 const SizedBox(height: 2),
                 Text(widget.concepto,
                     maxLines: 2,
@@ -421,7 +423,7 @@ class _FilaCard extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: sel ? limaSuave : Colors.white,
+          color: sel ? limaSuave : Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
               color: sel ? bosque : const Color(0xFFE4E4E4), width: sel ? 2 : 1),
@@ -439,7 +441,9 @@ class _FilaCard extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: Text('$marca ···· $ultimos4',
-                  style: const TextStyle(fontWeight: FontWeight.w700, color: tinta)),
+                  style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Theme.of(context).colorScheme.onSurface)),
             ),
             if (sel) const Icon(Icons.check_circle, color: bosque, size: 20),
           ],
@@ -466,7 +470,7 @@ class _MetodoMini extends StatelessWidget {
         child: Container(
           height: 56,
           decoration: BoxDecoration(
-            color: sel ? limaSuave : Colors.white,
+            color: sel ? limaSuave : Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
                 color: sel ? bosque : const Color(0xFFE4E4E4), width: sel ? 2 : 1),
@@ -481,8 +485,9 @@ class _MetodoMini extends StatelessWidget {
                   if (etiqueta != null) ...[
                     const SizedBox(width: 8),
                     Text(etiqueta!,
-                        style: const TextStyle(
-                            color: tinta, fontWeight: FontWeight.w700)),
+                        style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurface,
+                            fontWeight: FontWeight.w700)),
                   ],
                 ],
               ),
@@ -511,7 +516,7 @@ class _FilaNueva extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: sel ? limaSuave : Colors.white,
+          color: sel ? limaSuave : Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
               color: sel ? bosque : const Color(0xFFE4E4E4), width: sel ? 2 : 1),
@@ -520,9 +525,11 @@ class _FilaNueva extends StatelessWidget {
           children: [
             const Icon(Icons.add_card, color: bosque),
             const SizedBox(width: 12),
-            const Expanded(
+            Expanded(
               child: Text('Usar otra tarjeta',
-                  style: TextStyle(fontWeight: FontWeight.w700, color: tinta)),
+                  style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Theme.of(context).colorScheme.onSurface)),
             ),
             if (sel) const Icon(Icons.check_circle, color: bosque, size: 20),
           ],

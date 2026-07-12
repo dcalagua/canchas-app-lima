@@ -702,7 +702,9 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
                     selectedColor: colorDeporte(d),
                     checkmarkColor: Colors.white,
                     labelStyle: TextStyle(
-                      color: _deportes.contains(d) ? Colors.white : tinta,
+                      color: _deportes.contains(d)
+                          ? Colors.white
+                          : Theme.of(context).colorScheme.onSurface,
                       fontWeight: FontWeight.w600,
                     ),
                     onSelected: (s) => setState(() {
@@ -747,7 +749,9 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
                       selected: _superficies[d] == s,
                       selectedColor: limaSuave,
                       labelStyle: TextStyle(
-                          color: _superficies[d] == s ? bosque : tinta,
+                          color: _superficies[d] == s
+                              ? bosque
+                              : Theme.of(context).colorScheme.onSurface,
                           fontWeight: FontWeight.w600),
                       onSelected: (sel) => setState(
                           () => _superficies[d] = sel ? s : ''),
@@ -941,15 +945,17 @@ class _PrefijoPeru extends StatelessWidget {
   const _PrefijoPeru();
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.only(left: 12, right: 4),
+    return Padding(
+      padding: const EdgeInsets.only(left: 12, right: 4),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('🇵🇪', style: TextStyle(fontSize: 18)),
-          SizedBox(width: 4),
+          const Text('🇵🇪', style: TextStyle(fontSize: 18)),
+          const SizedBox(width: 4),
           Text('+51',
-              style: TextStyle(fontWeight: FontWeight.w800, color: tinta)),
+              style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: Theme.of(context).colorScheme.onSurface)),
         ],
       ),
     );
@@ -971,8 +977,10 @@ class _ResultadoConsulta extends StatelessWidget {
           const SizedBox(width: 6),
           Expanded(
             child: Text(texto,
-                style: const TextStyle(
-                    color: tinta, fontWeight: FontWeight.w700, fontSize: 12)),
+                style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12)),
           ),
         ],
       ),

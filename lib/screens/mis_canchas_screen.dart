@@ -30,7 +30,6 @@ class _MisCanchasScreenState extends State<MisCanchasScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: papel,
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: pino,
         foregroundColor: lima,
@@ -175,7 +174,7 @@ class _LocalCard extends StatelessWidget {
     final n = local.canchas.length;
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: trazo),
       ),

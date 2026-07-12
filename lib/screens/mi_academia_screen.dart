@@ -15,7 +15,6 @@ class MiAcademiaScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: papel,
       body: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
@@ -239,7 +238,7 @@ class _Metrica extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: trazo),
       ),
@@ -297,7 +296,6 @@ class AlumnoDetalleScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: papel,
       appBar: AppBar(title: const Text('Alumno')),
       body: ListenableBuilder(
         listenable: appState,
@@ -369,7 +367,7 @@ class AlumnoDetalleScreen extends StatelessWidget {
     }
     final plan = await showModalBottomSheet<Plan>(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       builder: (_) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -452,7 +450,7 @@ class _FilaCuota extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: trazo),
       ),

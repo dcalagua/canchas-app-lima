@@ -23,6 +23,7 @@ class ClubCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     final portada = club.principal.deporte;
     final desc = !club.registrada;
     final fotos = _fotosClub(club);
@@ -30,7 +31,7 @@ class ClubCard extends StatelessWidget {
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: cs.surface,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: const Color(0xFFEEEAE0)),
           boxShadow: const [
@@ -149,7 +150,7 @@ class ClubCard extends StatelessWidget {
                               TextSpan(
                                 text: '$monedaSimbolo${club.precioDesde?.toStringAsFixed(2) ?? '--'}',
                                 style: t.titleMedium?.copyWith(
-                                    color: tinta, fontWeight: FontWeight.w700),
+                                    color: cs.onSurface, fontWeight: FontWeight.w700),
                               ),
                               const TextSpan(text: ' /hora'),
                             ],

@@ -27,7 +27,9 @@ class ReportesScreen extends StatelessWidget {
     final claveMes = _iso(ahora).substring(0, 7); // 'YYYY-MM'
 
     return Scaffold(
-      backgroundColor: papelCalido,
+      backgroundColor: Theme.of(context).brightness == Brightness.dark
+          ? Theme.of(context).scaffoldBackgroundColor
+          : papelCalido,
       body: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
@@ -128,7 +130,7 @@ class ReportesScreen extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(18),
                   border: Border.all(color: trazo),
                 ),
@@ -250,7 +252,7 @@ class _MetricCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: trazo),
       ),
@@ -258,8 +260,9 @@ class _MetricCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(valor,
-              style: t.headlineSmall
-                  ?.copyWith(fontWeight: FontWeight.w700, color: tinta)),
+              style: t.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: Theme.of(context).colorScheme.onSurface)),
           const SizedBox(height: 4),
           Text(label, style: t.bodySmall?.copyWith(color: textoTenue)),
         ],

@@ -109,8 +109,8 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: papel,
       appBar: AppBar(title: const Text('Agregar cancha')),
       body: ListView(
         padding: const EdgeInsets.all(18),
@@ -150,7 +150,7 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
                   selected: _deporte == d,
                   selectedColor: colorDeporte(d),
                   labelStyle: TextStyle(
-                      color: _deporte == d ? Colors.white : tinta,
+                      color: _deporte == d ? Colors.white : cs.onSurface,
                       fontWeight: FontWeight.w600),
                   onSelected: (_) => setState(() {
                     _deporte = d;
@@ -175,7 +175,7 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
                   label: Text(s),
                   selected: _superficie == s,
                   labelStyle: TextStyle(
-                      color: _superficie == s ? bosque : tinta,
+                      color: _superficie == s ? bosque : cs.onSurface,
                       fontWeight: FontWeight.w600),
                   selectedColor: limaSuave,
                   onSelected: (sel) =>

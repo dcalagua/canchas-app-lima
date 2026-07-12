@@ -26,7 +26,6 @@ class ReservasDuenoScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: papel,
       appBar: AppBar(title: const Text('Reservas')),
       body: ListenableBuilder(
         listenable: appState,
@@ -144,7 +143,7 @@ class _ReservaCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: trazo),
       ),
@@ -178,7 +177,8 @@ class _ReservaCard extends StatelessWidget {
           const SizedBox(height: 2),
           Text('S/ ${reserva.precio}',
               style: t.bodyMedium?.copyWith(
-                  color: tinta, fontWeight: FontWeight.w700)),
+                  color: Theme.of(context).colorScheme.onSurface,
+                  fontWeight: FontWeight.w700)),
           if (!noShow) ...[
             const SizedBox(height: 12),
             Row(

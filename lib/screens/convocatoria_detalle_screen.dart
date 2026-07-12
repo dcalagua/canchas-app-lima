@@ -132,7 +132,7 @@ class _ConvocatoriaDetalleScreenState extends State<ConvocatoriaDetalleScreen> {
     final resultado = await showModalBottomSheet<Map<String, bool>>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => _AsistenciaSheet(

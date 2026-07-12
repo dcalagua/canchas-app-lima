@@ -43,7 +43,6 @@ class _AsistenciaScreenState extends State<AsistenciaScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: papel,
       body: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
@@ -201,7 +200,7 @@ class _FilaAsistencia extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: presente ? verde : trazo),
       ),

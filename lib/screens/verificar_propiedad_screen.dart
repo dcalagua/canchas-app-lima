@@ -125,7 +125,6 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     return Scaffold(
-      backgroundColor: papel,
       appBar: const _AppBar(),
       body: ListView(
         padding: const EdgeInsets.all(20),

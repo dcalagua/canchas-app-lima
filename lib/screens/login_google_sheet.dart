@@ -42,9 +42,9 @@ class _LoginGoogleSheetState extends State<LoginGoogleSheet> {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     return Container(
-      decoration: const BoxDecoration(
-        color: papel,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
       ),
       padding: EdgeInsets.fromLTRB(
           26, 18, 26, 36 + MediaQuery.of(context).viewInsets.bottom),

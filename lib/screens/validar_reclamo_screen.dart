@@ -111,7 +111,6 @@ class _ValidarReclamoScreenState extends State<ValidarReclamoScreen> {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     return Scaffold(
-      backgroundColor: papel,
       appBar: AppBar(title: const Text('Validar por código')),
       body: ListView(
         padding: const EdgeInsets.all(18),

@@ -17,7 +17,6 @@ class AcademiaDetalleScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: papel,
       body: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
@@ -112,7 +111,9 @@ class _Contenido extends StatelessWidget {
                 if (academia.descripcion.isNotEmpty) ...[
                   const SizedBox(height: 14),
                   Text(academia.descripcion,
-                      style: t.bodyMedium?.copyWith(color: tinta, height: 1.4)),
+                      style: t.bodyMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurface,
+                          height: 1.4)),
                 ],
                 // Redes: "Síguenos" (secundario, con color de marca).
                 if (academia.redes.isNotEmpty) ...[
@@ -307,7 +308,7 @@ class _TarjetaPlan extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: trazo),
       ),
@@ -315,8 +316,10 @@ class _TarjetaPlan extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(plan.nombre,
-              style: const TextStyle(
-                  fontWeight: FontWeight.w800, fontSize: 15, color: tinta)),
+              style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                  color: Theme.of(context).colorScheme.onSurface)),
           const SizedBox(height: 4),
           Text(_detalle, style: const TextStyle(color: textoTenue, fontSize: 13)),
           const SizedBox(height: 12),
@@ -346,7 +349,7 @@ class _TarjetaPlan extends StatelessWidget {
     final datos = await showModalBottomSheet<(String, String)>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),

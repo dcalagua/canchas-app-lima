@@ -19,7 +19,6 @@ class PerfilScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     return Scaffold(
-      backgroundColor: papel,
       body: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
@@ -227,7 +226,7 @@ class _Tile extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: trazo),
         boxShadow: const [

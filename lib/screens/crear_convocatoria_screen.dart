@@ -88,6 +88,7 @@ class _CrearConvocatoriaScreenState extends State<CrearConvocatoriaScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('Nueva pichanga')),
       body: Form(
@@ -154,7 +155,7 @@ class _CrearConvocatoriaScreenState extends State<CrearConvocatoriaScreen> {
                 ),
                 child: Text(_fechaTexto() ?? 'Elegir fecha',
                     style: TextStyle(
-                        color: _fecha == null ? textoTenue : tinta)),
+                        color: _fecha == null ? textoTenue : cs.onSurface)),
               ),
             ),
             const SizedBox(height: 24),
@@ -217,7 +218,7 @@ class _ModoOption extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: seleccionado ? limaSuave : Colors.white,
+            color: seleccionado ? limaSuave : Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: seleccionado ? sage : trazo,

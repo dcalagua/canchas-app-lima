@@ -15,7 +15,6 @@ class AcademiasScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: papel,
       appBar: AppBar(title: const Text('Academias')),
       body: ListenableBuilder(
         listenable: appState,
@@ -58,7 +57,7 @@ class _TarjetaAcademia extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: trazo),
         boxShadow: const [

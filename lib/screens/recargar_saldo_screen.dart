@@ -154,8 +154,8 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: papel,
       appBar: AppBar(title: const Text('Recargar saldo')),
       body: _cargando
           ? const Center(child: CircularProgressIndicator())
@@ -176,7 +176,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
                         selectedColor: lima,
                         labelStyle: TextStyle(
                             fontWeight: FontWeight.w800,
-                            color: _monto == m ? pinoOscuro : tinta),
+                            color: _monto == m ? pinoOscuro : cs.onSurface),
                         onSelected: (_) => setState(() => _monto = m),
                       ),
                   ],
@@ -379,7 +379,7 @@ class _MetodoBoton extends StatelessWidget {
           duration: const Duration(milliseconds: 140),
           height: 62,
           decoration: BoxDecoration(
-            color: sel ? limaSuave : Colors.white,
+            color: sel ? limaSuave : Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
                 color: sel ? bosque : const Color(0xFFE4E4E4),
@@ -399,8 +399,8 @@ class _MetodoBoton extends StatelessWidget {
                   if (etiqueta != null) ...[
                     const SizedBox(width: 10),
                     Text(etiqueta!,
-                        style: const TextStyle(
-                            color: tinta,
+                        style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurface,
                             fontWeight: FontWeight.w700,
                             fontSize: 15)),
                   ],

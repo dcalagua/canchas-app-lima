@@ -48,7 +48,6 @@ class _MisReservasScreenState extends State<MisReservasScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: papel,
       appBar: AppBar(title: const Text('Mis reservas')),
       body: ListenableBuilder(
         listenable: appState,
@@ -138,7 +137,7 @@ class _SegChip extends StatelessWidget {
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         decoration: BoxDecoration(
-          color: activo ? bosque : Colors.white,
+          color: activo ? bosque : Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(999),
           border: Border.all(color: activo ? bosque : trazo),
         ),
@@ -269,7 +268,7 @@ class _ReservaCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: trazo),
       ),
@@ -303,8 +302,9 @@ class _ReservaCard extends StatelessWidget {
             ),
           ),
           Text('S/${reserva.precio}',
-              style: t.titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700, color: tinta)),
+              style: t.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: Theme.of(context).colorScheme.onSurface)),
         ],
       ),
     );

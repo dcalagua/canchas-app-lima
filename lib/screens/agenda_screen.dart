@@ -38,7 +38,9 @@ class _AgendaScreenState extends State<AgendaScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: papelCalido,
+      backgroundColor: Theme.of(context).brightness == Brightness.dark
+          ? Theme.of(context).scaffoldBackgroundColor
+          : papelCalido,
       body: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
@@ -286,7 +288,7 @@ class _AgendaRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(15, 13, 15, 13),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border(
             left: BorderSide(
