@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../models/models.dart';
 import '../services/location_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../utils/geo.dart';
 
 /// Resultado de la búsqueda: centro geográfico + etiqueta para mostrar.
 class ResultadoBusqueda {
@@ -98,6 +100,17 @@ class _BuscarDireccionScreenState extends State<BuscarDireccionScreen> {
     super.dispose();
   }
 
+  /// Normaliza para comparar sin acentos ni mayúsculas.
+  static String _norm(String s) {
+    var r = s.toLowerCase();
+    const from = 'áàäâãéèëêíìïîóòöôõúùüûñ';
+    const to = 'aaaaaeeeeiiiiooooouuuun';
+    for (var i = 0; i < from.length; i++) {
+      r = r.replaceAll(from[i], to[i]);
+    }
+    return r;
+  }
+
   Future<void> _buscar() async {
     final q = _ctrl.text.trim();
     if (q.isEmpty) return;
@@ -105,19 +118,60 @@ class _BuscarDireccionScreenState extends State<BuscarDireccionScreen> {
       _buscando = true;
       _error = null;
     });
+
+    // Ubicación del usuario (para elegir el match MÁS CERCANO, no un homónimo
+    // lejano).
+    final yo = await LocationService.ultimaConocida() ??
+        await LocationService.ubicacionActual();
+
+    // 1) ¿Coincide con el NOMBRE de una cancha/club/sembrada conocida? Elige la
+    //    más cercana a ti y salta a ella. (Así "mariscal castilla" te lleva a la
+    //    cancha, no a una avenida homónima al otro lado de Lima.)
+    final nq = _norm(q);
+    Cancha? mejorCancha;
+    double mejorKm = double.infinity;
+    for (final c in appState.todasLasCanchas()) {
+      final texto = _norm('${c.nombre} ${c.club} ${c.direccion ?? ''}');
+      if (!texto.contains(nq)) continue;
+      final km = yo == null ? 0.0 : distanciaKm(yo, c.ubicacion);
+      if (km < mejorKm) {
+        mejorKm = km;
+        mejorCancha = c;
+      }
+    }
+    if (mejorCancha != null) {
+      if (!mounted) return;
+      Navigator.of(context).pop(
+          ResultadoBusqueda(mejorCancha.ubicacion, mejorCancha.nombre));
+      return;
+    }
+
+    // 2) Fallback: geocodifica la dirección. El geocoder puede devolver VARIOS
+    //    homónimos en Lima; elige el MÁS CERCANO al usuario (no el primero).
     try {
       final locs = await locationFromAddress('$q, Lima, Perú');
       if (locs.isEmpty) {
         setState(() {
           _buscando = false;
-          _error = 'No encontré esa dirección. Prueba con otra o elige un distrito.';
+          _error =
+              'No encontré esa dirección. Prueba con otra o elige un distrito.';
         });
         return;
       }
-      final l = locs.first;
+      var elegido = locs.first;
+      if (yo != null && locs.length > 1) {
+        var best = double.infinity;
+        for (final l in locs) {
+          final km = distanciaKm(yo, LatLng(l.latitude, l.longitude));
+          if (km < best) {
+            best = km;
+            elegido = l;
+          }
+        }
+      }
       if (!mounted) return;
-      Navigator.of(context)
-          .pop(ResultadoBusqueda(LatLng(l.latitude, l.longitude), q));
+      Navigator.of(context).pop(
+          ResultadoBusqueda(LatLng(elegido.latitude, elegido.longitude), q));
     } catch (_) {
       setState(() {
         _buscando = false;
