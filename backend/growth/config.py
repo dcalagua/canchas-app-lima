@@ -8,6 +8,15 @@ import os
 # URL del módulo de existencia (Capa IA). Si está vacío, se usa el stub.
 EXISTENCIA_API_URL = os.getenv("EXISTENCIA_API_URL", "")
 
+# --- Concierge de reservas (primer agente de IA) ----------------------------
+# API key de Anthropic (Claude). Nunca va en el APK; se lee aquí como secret de
+# Railway. Sin key, el concierge cae a una heurística (filtra por deporte +
+# ordena por distancia), así la función sigue viva.
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+# Modelo del concierge. Por defecto Opus 4.8; para bajar costo en alto volumen
+# se puede poner claude-haiku-4-5.
+CONCIERGE_MODEL = os.getenv("CONCIERGE_MODEL", "claude-opus-4-8")
+
 # --- Factiliza (consulta de DNI = identidad del reclamante) -----------------
 # El token nunca va en el APK; se lee aquí. Sin token, la consulta queda
 # inactiva (fail-safe) y el flujo sigue con validación humana.
