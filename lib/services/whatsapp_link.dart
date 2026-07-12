@@ -16,6 +16,19 @@ class WhatsAppLink {
     }
   }
 
+  /// Comparte un mensaje SIN destinatario fijo: abre WhatsApp para que el
+  /// usuario elija a quién enviárselo (útil para pasar el código de la
+  /// academia a un alumno).
+  static Future<bool> compartir(String mensaje) async {
+    final uri =
+        Uri.parse('https://wa.me/?text=${Uri.encodeComponent(mensaje)}');
+    try {
+      return await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Normaliza a formato internacional. Si son 9 dígitos y empieza en 9, asume
   /// Perú (+51). Si ya trae código de país, lo respeta.
   static String _normalizar(String t) {

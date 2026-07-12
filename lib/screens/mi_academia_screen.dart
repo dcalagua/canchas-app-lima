@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/academia.dart';
 import '../services/whatsapp_link.dart';
@@ -35,6 +36,7 @@ class MiAcademiaScreen extends StatelessWidget {
             padding: EdgeInsets.zero,
             children: [
               _Header(academia: ac),
+              _CodigoCard(academia: ac),
               Padding(
                 padding: const EdgeInsets.fromLTRB(18, 16, 18, 8),
                 child: Row(
@@ -165,6 +167,102 @@ class _SinAcademia extends StatelessWidget {
   }
 }
 
+/// Tarjeta con el CÓDIGO de la academia: el profe lo comparte por WhatsApp para
+/// que sus alumnos se unan desde la app y queden vinculados (alumno-app).
+class _CodigoCard extends StatelessWidget {
+  const _CodigoCard({required this.academia});
+  final Academia academia;
+
+  static const _releaseUrl =
+      'https://github.com/dcalagua/canchas-app-lima/releases/tag/v0.1.0';
+
+  Future<void> _compartir(BuildContext context) async {
+    final msg = '¡Hola! Te invito a mi academia "${academia.nombre}" en '
+        'Pichangol 🎾\n\n'
+        '1) Descarga la app: $_releaseUrl\n'
+        '2) Entra a Academias → "Unirme con código"\n'
+        '3) Ingresa el código: ${academia.codigo}\n\n'
+        'Ahí verás tus clases y pagos. ¡Nos vemos en la cancha!';
+    final ok = await WhatsAppLink.compartir(msg);
+    if (!ok && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No pude abrir WhatsApp.')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final t = Theme.of(context).textTheme;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(18, 16, 18, 0),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: lima.withOpacity(0.7)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(Icons.qr_code_2, color: cs.primary, size: 20),
+            const SizedBox(width: 8),
+            Text('Código de tu academia',
+                style: t.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+          ]),
+          const SizedBox(height: 4),
+          Text('Compártelo para que tus alumnos se unan desde la app.',
+              style: t.bodySmall?.copyWith(color: textoTenue)),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: limaSuave,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(academia.codigo,
+                      style: const TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 6,
+                          color: bosque)),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                tooltip: 'Copiar código',
+                icon: Icon(Icons.copy, color: cs.primary),
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: academia.codigo));
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text('Código copiado')));
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF25D366),
+                  foregroundColor: Colors.white),
+              onPressed: () => _compartir(context),
+              icon: const Icon(Icons.share),
+              label: const Text('Compartir por WhatsApp'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _Header extends StatelessWidget {
   const _Header({required this.academia});
   final Academia academia;
@@ -266,20 +364,47 @@ class _TarjetaAlumno extends StatelessWidget {
     final cuotas = appState.cuotasDeAlumno(alumno.id);
     final pend =
         cuotas.where((c) => !c.pagada).fold<double>(0, (s, c) => s + c.monto);
+    final tieneFoto = alumno.fotoUrl != null && alumno.fotoUrl!.isNotEmpty;
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 18, vertical: 5),
       child: ListTile(
         leading: CircleAvatar(
           backgroundColor: verdeClaro,
-          child: Text(
-              alumno.nombre.isNotEmpty ? alumno.nombre[0].toUpperCase() : '?',
-              style: const TextStyle(color: Colors.white)),
+          backgroundImage: tieneFoto ? NetworkImage(alumno.fotoUrl!) : null,
+          child: tieneFoto
+              ? null
+              : Text(
+                  alumno.nombre.isNotEmpty
+                      ? alumno.nombre[0].toUpperCase()
+                      : '?',
+                  style: const TextStyle(color: Colors.white)),
         ),
-        title: Text(alumno.nombre,
-            style: const TextStyle(fontWeight: FontWeight.w700)),
+        title: Row(
+          children: [
+            Flexible(
+              child: Text(alumno.nombre,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
+            ),
+            if (alumno.esApp) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                    color: limaSuave, borderRadius: BorderRadius.circular(999)),
+                child: const Text('app',
+                    style: TextStyle(
+                        color: bosque,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800)),
+              ),
+            ],
+          ],
+        ),
         subtitle: Text(pend > 0
             ? 'Debe S/ ${pend.toStringAsFixed(2)}'
-            : 'Al día'),
+            : (alumno.esApp ? 'Alumno vinculado · Al día' : 'Al día')),
         trailing: const Icon(Icons.chevron_right),
         onTap: () => Navigator.of(context).push(MaterialPageRoute(
             builder: (_) => AlumnoDetalleScreen(alumnoId: alumno.id))),

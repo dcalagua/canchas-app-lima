@@ -51,7 +51,9 @@ class _SplashScreenState extends State<SplashScreen>
     appState.cargarCanchasRemotas() // canchas compartidas (best-effort)
         .then((_) => appState.sincronizarPropiedades()); // ¿el admin ya aprobó?
     appState.cargarReservasRemotas(); // reservas compartidas (best-effort)
-    appState.cargarAcademiasRemotas(); // academias (sobreviven reinstalación)
+    appState
+        .cargarAcademiasRemotas() // academias (sobreviven reinstalación)
+        .then((_) => appState.cargarMatriculasRemotas()); // alumnos-app vinculados
     appState.enriquecerSembradas(); // fotos reales de los clubes sembrados
     bool onboardingVisto = true;
     try {

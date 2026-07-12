@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/academias_repo.dart';
 import '../data/canchas_repo.dart';
+import '../data/matriculas_repo.dart';
 import '../data/reservas_repo.dart';
 import '../data/sample_data.dart';
 import '../models/academia.dart';
@@ -140,6 +141,7 @@ class AppState extends ChangeNotifier {
     alumnos.add(a);
     notifyListeners();
     _persistirDatos();
+    MatriculasRepo.guardar(a); // best-effort: cross-device + sobrevive reinstalar
   }
 
   void eliminarAlumno(String alumnoId) {
@@ -148,6 +150,83 @@ class AppState extends ChangeNotifier {
     asistencias.removeWhere((a) => a.alumnoId == alumnoId);
     notifyListeners();
     _persistirDatos();
+    MatriculasRepo.eliminar(alumnoId); // borrado lógico durable en la nube
+  }
+
+  /// El alumno se une a una academia con su CÓDIGO (desde la app). Crea un
+  /// alumno-app (con su correo y foto reales) vinculado a la academia y lo
+  /// sube a la nube para que el profe lo vea. Requiere sesión iniciada.
+  ({bool ok, String mensaje}) matricularConCodigo(String codigoIngresado) {
+    final u = usuario;
+    if (u == null) {
+      return (ok: false, mensaje: 'Inicia sesión para unirte a una academia.');
+    }
+    final code = Academia.normalizarCodigo(codigoIngresado);
+    if (code.length < 6) {
+      return (ok: false, mensaje: 'El código tiene 6 caracteres. Revísalo.');
+    }
+    Academia? encontrada;
+    for (final a in academias) {
+      if (a.codigo == code) {
+        encontrada = a;
+        break;
+      }
+    }
+    if (encontrada == null) {
+      return (ok: false, mensaje: 'No encontramos una academia con ese código.');
+    }
+    final academia = encontrada; // promovido a non-null
+    final ya = alumnos.any((al) =>
+        al.academiaId == academia.id &&
+        al.email.toLowerCase() == u.email.toLowerCase());
+    if (ya) {
+      return (ok: true, mensaje: 'Ya estás matriculado en ${academia.nombre}.');
+    }
+    final alumno = Alumno(
+      id: 'al_${DateTime.now().microsecondsSinceEpoch}',
+      academiaId: academia.id,
+      nombre: u.nombre,
+      email: u.email,
+      fotoUrl: u.fotoUrl,
+    );
+    alumnos.add(alumno);
+    notifyListeners();
+    _persistirDatos();
+    MatriculasRepo.guardar(alumno);
+    return (ok: true, mensaje: 'Te uniste a ${academia.nombre}. ¡Listo! 🎾');
+  }
+
+  /// Trae de la nube las matrículas relevantes: las de las academias que el
+  /// usuario administra (rol profe) y las suyas como alumno-app. Las fusiona por
+  /// id. Best-effort (sin romper si Supabase no está).
+  Future<void> cargarMatriculasRemotas() async {
+    final u = usuario;
+    final misAcademiaIds = <String>[
+      for (final a in academias)
+        if (u != null && a.dueno.toLowerCase() == u.email.toLowerCase()) a.id,
+    ];
+    final remotas = <Alumno>[];
+    if (misAcademiaIds.isNotEmpty) {
+      remotas.addAll(await MatriculasRepo.deAcademias(misAcademiaIds));
+    }
+    if (u != null) {
+      remotas.addAll(await MatriculasRepo.deAlumno(u.email));
+    }
+    if (remotas.isEmpty) return;
+    var cambio = false;
+    for (final al in remotas) {
+      final i = alumnos.indexWhere((x) => x.id == al.id);
+      if (i >= 0) {
+        alumnos[i] = al;
+      } else {
+        alumnos.add(al);
+      }
+      cambio = true;
+    }
+    if (cambio) {
+      notifyListeners();
+      _persistirDatos();
+    }
   }
 
   List<Cuota> cuotasDe(String academiaId) => cuotas
@@ -195,8 +274,11 @@ class AppState extends ChangeNotifier {
       academiaId: academiaId,
       nombre: nombre,
       whatsapp: whatsapp,
+      email: usuario?.email ?? '', // si hay sesión, queda como alumno-app
+      fotoUrl: usuario?.fotoUrl,
     );
     alumnos.add(alumno);
+    MatriculasRepo.guardar(alumno); // cross-device + sobrevive reinstalar
     if (plan.tipo == TipoPlan.porClase) {
       agregarClaseSuelta(alumno, plan.precioMes,
           concepto: '${plan.nombre} (matrícula)');

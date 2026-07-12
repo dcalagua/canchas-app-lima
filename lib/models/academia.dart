@@ -83,6 +83,38 @@ class Academia {
     this.fotos = const [],
   });
 
+  /// Código corto y ESTABLE para que un alumno se una desde la app
+  /// ("Unirme con código"). Se deriva del [id] (hash FNV-1a → base32), así que
+  /// no necesita almacenarse ni migrarse y es el mismo en todos los
+  /// dispositivos. 6 caracteres sin ambiguos (sin 0/O/1/I).
+  String get codigo => _codigoDeId(id);
+
+  static const _alfabeto = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ'; // 32 símbolos
+
+  static String _codigoDeId(String id) {
+    var h = 0x811c9dc5; // FNV-1a 32-bit offset basis
+    for (final c in id.codeUnits) {
+      h = (h ^ c) & 0xFFFFFFFF;
+      h = (h * 0x01000193) & 0xFFFFFFFF; // FNV prime
+    }
+    final sb = StringBuffer();
+    for (var i = 0; i < 6; i++) {
+      sb.write(_alfabeto[(h >> (i * 5)) & 31]);
+    }
+    return sb.toString();
+  }
+
+  /// Normaliza un código tecleado por el alumno para compararlo con [codigo]:
+  /// mayúsculas y conserva solo los símbolos válidos del alfabeto (descarta
+  /// espacios, guiones y ambiguos 0/O/1/I que el usuario pudiera teclear).
+  static String normalizarCodigo(String entrada) {
+    final sb = StringBuffer();
+    for (final ch in entrada.toUpperCase().split('')) {
+      if (_alfabeto.contains(ch)) sb.write(ch);
+    }
+    return sb.toString();
+  }
+
   Academia copyWith({
     String? nombre,
     Deporte? deporte,
@@ -152,24 +184,37 @@ class Academia {
 }
 
 /// Un alumno inscrito en una academia.
+///
+/// [email] no vacío = **alumno-app**: se unió con el código de la academia desde
+/// la app (usuario real, con [fotoUrl] de su perfil). Vacío = **alumno manual**
+/// (el profe lo agregó por nombre/WhatsApp; aún no usa la app).
 class Alumno {
   final String id;
   final String academiaId;
   final String nombre;
   final String whatsapp;
+  final String email; // correo del usuario-app; '' si es manual
+  final String? fotoUrl; // foto del perfil (si es alumno-app)
 
   const Alumno({
     required this.id,
     required this.academiaId,
     required this.nombre,
     this.whatsapp = '',
+    this.email = '',
+    this.fotoUrl,
   });
+
+  /// ¿Es un alumno que usa la app (se unió con código)?
+  bool get esApp => email.isNotEmpty;
 
   Map<String, dynamic> toJson() => {
         'id': id,
         'academiaId': academiaId,
         'nombre': nombre,
         'whatsapp': whatsapp,
+        'email': email,
+        if (fotoUrl != null) 'fotoUrl': fotoUrl,
       };
 
   factory Alumno.fromJson(Map<String, dynamic> j) => Alumno(
@@ -177,6 +222,8 @@ class Alumno {
         academiaId: (j['academiaId'] ?? '') as String,
         nombre: (j['nombre'] ?? '') as String,
         whatsapp: (j['whatsapp'] ?? '') as String,
+        email: (j['email'] ?? '') as String,
+        fotoUrl: j['fotoUrl'] as String?,
       );
 }
 
