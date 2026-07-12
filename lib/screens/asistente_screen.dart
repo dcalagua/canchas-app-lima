@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../models/models.dart';
@@ -26,10 +27,13 @@ class _Turno {
   final bool mio;
   final String texto;
   final List<SugerenciaConcierge> sugerencias;
+  final LatLng? centro; // centro usado para este resultado (zona o ubicación)
   _Turno.usuario(this.texto)
       : mio = true,
-        sugerencias = const [];
-  _Turno.bot(this.texto, [this.sugerencias = const []]) : mio = false;
+        sugerencias = const [],
+        centro = null;
+  _Turno.bot(this.texto, [this.sugerencias = const [], this.centro])
+      : mio = false;
 }
 
 class _AsistenteScreenState extends State<AsistenteScreen> {
@@ -79,9 +83,25 @@ class _AsistenteScreenState extends State<AsistenteScreen> {
       return;
     }
 
+    // Si mencionas una zona ("por Surco"), la geolocalizamos y BUSCAMOS canchas
+    // ahí (no solo cerca de ti), y ordenamos por cercanía a esa zona.
+    var centro = widget.centro;
+    final zona = _zonaEn(msg);
+    if (zona != null) {
+      try {
+        final locs = await locationFromAddress('$zona, Lima, Perú');
+        if (locs.isNotEmpty) {
+          centro = LatLng(locs.first.latitude, locs.first.longitude);
+          await appState.descubrirCanchasCerca(centro);
+        }
+      } catch (_) {
+        // sin geocodificación: seguimos con el centro que teníamos
+      }
+    }
+    if (!mounted) return;
+
     final canchas = appState.todasLasCanchas();
-    final res =
-        await ConciergeService.recomendar(msg, canchas, centro: widget.centro);
+    final res = await ConciergeService.recomendar(msg, canchas, centro: centro);
     if (!mounted) return;
     setState(() {
       _pensando = false;
@@ -93,7 +113,8 @@ class _AsistenteScreenState extends State<AsistenteScreen> {
             res.respuesta.isEmpty
                 ? 'Esto es lo que encontré:'
                 : res.respuesta,
-            res.sugerencias));
+            res.sugerencias,
+            centro));
       }
     });
     _alFinal();
@@ -124,7 +145,9 @@ class _AsistenteScreenState extends State<AsistenteScreen> {
               itemCount: _turnos.length + (_pensando ? 1 : 0),
               itemBuilder: (context, i) {
                 if (i >= _turnos.length) return const _Escribiendo();
-                return _BurbujaTurno(turno: _turnos[i], centro: widget.centro);
+                return _BurbujaTurno(
+                    turno: _turnos[i],
+                    centro: _turnos[i].centro ?? widget.centro);
               },
             ),
           ),
@@ -339,4 +362,53 @@ class _Escribiendo extends StatelessWidget {
       ),
     );
   }
+}
+
+// ── Detección de zona en el mensaje ─────────────────────────────────────────
+
+/// Zonas/distritos de Lima detectables en el mensaje (display → palabras clave).
+/// El display se usa para geolocalizar ("<display>, Lima, Perú").
+const Map<String, List<String>> _kZonas = {
+  'Surco': ['surco'],
+  'La Molina': ['la molina', 'molina'],
+  'San Borja': ['san borja'],
+  'Miraflores': ['miraflores'],
+  'San Isidro': ['san isidro'],
+  'Barranco': ['barranco'],
+  'Chorrillos': ['chorrillos'],
+  'San Miguel': ['san miguel'],
+  'Jesús María': ['jesus maria'],
+  'Magdalena': ['magdalena'],
+  'Pueblo Libre': ['pueblo libre'],
+  'Lince': ['lince'],
+  'Surquillo': ['surquillo'],
+  'La Victoria': ['la victoria'],
+  'Ate': ['ate ', 'santa clara'],
+  'Chaclacayo': ['chaclacayo'],
+  'Chosica': ['chosica', 'lurigancho'],
+  'San Juan de Lurigancho': ['san juan de lurigancho', 'sjl'],
+  'San Juan de Miraflores': ['san juan de miraflores', 'sjm'],
+  'Los Olivos': ['los olivos'],
+  'Comas': ['comas'],
+  'Callao': ['callao'],
+};
+
+String _normaZona(String s) {
+  const acento = 'áàäéèíìóòúùñ';
+  const plano = 'aaaeeiioouun';
+  final b = StringBuffer();
+  for (final ch in s.toLowerCase().split('')) {
+    final i = acento.indexOf(ch);
+    b.write(i >= 0 ? plano[i] : ch);
+  }
+  return b.toString();
+}
+
+/// Nombre de la zona mencionada en [msg] (para geolocalizar), o null.
+String? _zonaEn(String msg) {
+  final t = '${_normaZona(msg)} '; // espacio final: ayuda a 'ate '
+  for (final e in _kZonas.entries) {
+    if (e.value.any((k) => t.contains(k))) return e.key;
+  }
+  return null;
 }

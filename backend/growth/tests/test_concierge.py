@@ -67,6 +67,25 @@ def test_deporte_detecta_pichanga():
     assert service._deporte_en("hola") is None
 
 
+def test_zona_detecta_surco_y_prioriza_distrito(client):
+    canchas = [
+        {"id": "m1", "nombre": "Tenis Molina", "deporte": "tenis",
+         "distrito": "La Molina", "distanciaKm": 2.0},
+        {"id": "s1", "nombre": "Tenis Surco", "deporte": "tenis",
+         "distrito": "Surco", "distanciaKm": 6.0},
+    ]
+    r = client.post(
+        "/concierge/reservas",
+        json={"mensaje": "cancha de tenis por Surco", "canchas": canchas},
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert data["intencion"]["zona"] == "Surco"
+    # Aunque la de La Molina está más cerca del centro, se prioriza el distrito Surco.
+    assert data["sugerencias"][0]["canchaId"] == "s1"
+    assert "Surco" in data["sugerencias"][0]["motivo"]
+
+
 def test_app_key_exigida_si_configurada(client, monkeypatch):
     monkeypatch.setattr(config, "APP_API_KEY", "clave-app")
     # Sin la cabecera → 401.

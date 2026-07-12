@@ -51,6 +51,34 @@ _DEPORTES = {
     "voley": ["voley", "voleibol", "volley"],
 }
 
+# Zonas/distritos de Lima → palabras clave para detectarlas en el mensaje.
+# El display (clave) se usa en la respuesta; las claves sirven para detectar y
+# para preferir canchas cuyo distrito coincida.
+_ZONAS = {
+    "Surco": ["surco"],
+    "La Molina": ["la molina", "molina"],
+    "San Borja": ["san borja"],
+    "Miraflores": ["miraflores"],
+    "San Isidro": ["san isidro"],
+    "Barranco": ["barranco"],
+    "Chorrillos": ["chorrillos"],
+    "San Miguel": ["san miguel"],
+    "Jesús María": ["jesus maria"],
+    "Magdalena": ["magdalena"],
+    "Pueblo Libre": ["pueblo libre"],
+    "Lince": ["lince"],
+    "Surquillo": ["surquillo"],
+    "La Victoria": ["la victoria"],
+    "Ate": ["ate", "santa clara"],
+    "Chaclacayo": ["chaclacayo"],
+    "Chosica": ["chosica", "lurigancho"],
+    "SJL": ["san juan de lurigancho", "sjl"],
+    "SJM": ["san juan de miraflores", "sjm"],
+    "Los Olivos": ["los olivos"],
+    "Comas": ["comas"],
+    "Callao": ["callao"],
+}
+
 
 def _norm(s: Any) -> str:
     t = unicodedata.normalize("NFD", str(s or "").lower())
@@ -62,6 +90,15 @@ def _deporte_en(texto: str) -> str | None:
     for dep, claves in _DEPORTES.items():
         if any(k in t for k in claves):
             return dep
+    return None
+
+
+def _zona_en(texto: str) -> tuple[str, list[str]] | None:
+    """Detecta una zona/distrito en el mensaje. Devuelve (display, claves)."""
+    t = _norm(texto)
+    for zona, claves in _ZONAS.items():
+        if any(k in t for k in claves):
+            return zona, claves
     return None
 
 
@@ -148,13 +185,23 @@ def _parsear_json(texto: str) -> Any:
 
 
 def _fallback(mensaje: str, canchas: list[dict]) -> dict:
-    """Sin IA: filtra por deporte detectado y ordena por distancia."""
+    """Sin IA: filtra por deporte + zona detectados y ordena por distancia."""
     dep = _deporte_en(mensaje)
+    zona = _zona_en(mensaje)
+    zona_nombre = zona[0] if zona else ""
     cands = list(canchas)
     if dep:
         filtradas = [c for c in cands if _norm(c.get("deporte")) == dep]
         if filtradas:
             cands = filtradas
+    # Si se mencionó una zona y hay canchas de ese distrito, priorízalas.
+    if zona:
+        del_distrito = [
+            c for c in cands
+            if any(k in _norm(c.get("distrito")) for k in zona[1])
+        ]
+        if del_distrito:
+            cands = del_distrito
 
     def _dist(c: dict) -> float:
         d = c.get("distanciaKm")
@@ -164,18 +211,25 @@ def _fallback(mensaje: str, canchas: list[dict]) -> dict:
     top = cands[:4]
     if not top:
         respuesta = (
-            "No encontré canchas que calcen con tu pedido. Prueba ampliando la "
-            "zona o cambiando de deporte."
+            f"No encontré canchas{' de ' + dep if dep else ''}"
+            f"{' por ' + zona_nombre if zona_nombre else ''}. Prueba ampliando "
+            "la zona o cambiando de deporte."
         )
-    elif dep:
-        respuesta = f"Te muestro las canchas de {dep} más cercanas para tu pedido."
     else:
-        respuesta = "Estas son las canchas más cercanas para lo que buscas."
+        que = f"canchas de {dep}" if dep else "canchas"
+        donde = f" cerca de {zona_nombre}" if zona_nombre else " más cercanas"
+        respuesta = f"Estas son las {que}{donde} para tu pedido."
+    motivo = f"Cerca de {zona_nombre}" if zona_nombre else "Cercana"
     return {
         "respuesta": respuesta,
-        "intencion": {"deporte": dep or "", "dia": "", "hora": "", "zona": ""},
+        "intencion": {
+            "deporte": dep or "",
+            "dia": "",
+            "hora": "",
+            "zona": zona_nombre,
+        },
         "sugerencias": [
-            {"canchaId": c.get("id"), "motivo": "Cercana a ti"} for c in top
+            {"canchaId": c.get("id"), "motivo": motivo} for c in top
         ],
         "via": "heuristica",
     }
