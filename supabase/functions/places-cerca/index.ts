@@ -18,16 +18,17 @@ const CONSULTAS = [
   "pichanga",
   "grass sintético",
   "fútbol 7",
-  "loza deportiva",
   "complejo deportivo",
   "club de tenis",
   "cancha de tenis",
   "cancha de pádel",
   "club de pádel",
+  "cancha de pickleball",
   // Clubes formales (traen country clubs / sedes de clubes al radar).
   "club deportivo",
   "polideportivo",
   "country club",
+  "racquet club",
   "club de regatas",
   "club campestre",
 ];
@@ -111,6 +112,9 @@ serve(async (req) => {
             languageCode: "es",
             regionCode: "PE",
             maxResultCount: 20,
+            // Rankear por DISTANCIA: devuelve las canchas MÁS CERCANAS primero
+            // (no las más "populares"), para que salga la cancha del barrio.
+            rankPreference: "DISTANCE",
             locationBias: {
               circle: {
                 center: { latitude: lat, longitude: lng },

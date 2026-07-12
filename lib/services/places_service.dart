@@ -101,6 +101,10 @@ class PlacesService {
               'languageCode': 'es',
               'regionCode': 'PE',
               'maxResultCount': 20,
+              // Rankear por DISTANCIA (no relevancia): así Google devuelve las
+              // canchas MÁS CERCANAS al usuario primero, en vez de las más
+              // "populares". Clave para que salga la cancha del barrio.
+              'rankPreference': 'DISTANCE',
               'locationBias': {
                 'circle': {
                   'center': {
