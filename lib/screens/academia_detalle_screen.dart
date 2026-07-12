@@ -138,8 +138,11 @@ class _Contenido extends StatelessWidget {
                       Expanded(
                         child: OutlinedButton.icon(
                           style: OutlinedButton.styleFrom(
-                            foregroundColor: bosque,
-                            side: const BorderSide(color: bosque, width: 1.4),
+                            foregroundColor:
+                                Theme.of(context).colorScheme.primary,
+                            side: BorderSide(
+                                color: Theme.of(context).colorScheme.primary,
+                                width: 1.4),
                             padding: const EdgeInsets.symmetric(vertical: 12),
                             shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(14)),
@@ -327,8 +330,8 @@ class _TarjetaPlan extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text('S/ ${plan.total.toStringAsFixed(2)}',
-                  style: const TextStyle(
-                      color: bosque,
+                  style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
                       fontWeight: FontWeight.w800,
                       fontSize: 18)),
               FilledButton(

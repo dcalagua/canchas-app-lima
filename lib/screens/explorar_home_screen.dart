@@ -221,7 +221,9 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
   Future<BitmapDescriptor> _pinPrecio(String texto,
       {required bool seleccionado}) async {
     const ratio = 3.0;
-    final colorTexto = seleccionado ? Colors.white : verdeCancha;
+    final colorTexto = seleccionado
+        ? Colors.white
+        : Theme.of(context).colorScheme.primary;
     final colorFondo =
         seleccionado ? verdeCancha : Theme.of(context).colorScheme.surface;
 
@@ -491,8 +493,11 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                         hijos.addAll(lista.map(card));
                       }
                       if (clubesFormales.isNotEmpty) {
-                        hijos.add(_SeccionHeader('Clubes',
-                            clubesFormales.length, bosque, Icons.apartment));
+                        hijos.add(_SeccionHeader(
+                            'Clubes',
+                            clubesFormales.length,
+                            Theme.of(context).colorScheme.primary,
+                            Icons.apartment));
                         hijos.addAll(clubesFormales.map(card));
                       }
                       return ListView(
@@ -553,12 +558,14 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: _ubicando
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 22,
                           height: 22,
                           child: CircularProgressIndicator(
-                              strokeWidth: 2, color: verdeCancha))
-                      : const Icon(Icons.my_location, color: verdeCancha),
+                              strokeWidth: 2,
+                              color: Theme.of(context).colorScheme.primary))
+                      : Icon(Icons.my_location,
+                          color: Theme.of(context).colorScheme.primary),
                 ),
               ),
             ),
@@ -734,14 +741,16 @@ class _BuscandoCerca extends StatelessWidget {
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
-          children: const [
+          children: [
             SizedBox(
               width: 16,
               height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2, color: verdeCancha),
+              child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Theme.of(context).colorScheme.primary),
             ),
-            SizedBox(width: 10),
-            Text('Buscando canchas cerca de ti…',
+            const SizedBox(width: 10),
+            const Text('Buscando canchas cerca de ti…',
                 style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
           ],
         ),
@@ -1084,19 +1093,23 @@ class _LocalCarruselCard extends StatelessWidget {
                                         color: textoTenue, fontSize: 12)),
                                 TextSpan(
                                     text: '$monedaSimbolo ${precio.toStringAsFixed(2)}',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                         fontWeight: FontWeight.bold,
                                         fontSize: 16,
-                                        color: verdeCancha)),
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .primary)),
                               ]),
                             )
                           else
                             Text(
                                 '~$monedaSimbolo ${principal.precioReferencial.toStringAsFixed(2)}',
-                                style: const TextStyle(
+                                style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 15,
-                                    color: verdeCancha)),
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .primary)),
                         ],
                       ),
                     ],

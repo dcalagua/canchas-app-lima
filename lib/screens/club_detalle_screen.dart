@@ -706,7 +706,7 @@ class _FilaAmenities extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(a.icono, size: 17, color: bosque),
+                    Icon(a.icono, size: 17, color: cs.primary),
                     const SizedBox(width: 7),
                     Text(a.etiqueta,
                         style: t.bodySmall?.copyWith(
@@ -975,7 +975,8 @@ class _PanelDescubiertaState extends State<_PanelDescubierta> {
       children: [
         Row(
           children: [
-            Icon(activa ? Icons.verified : Icons.hourglass_top, color: pino),
+            Icon(activa ? Icons.verified : Icons.hourglass_top,
+                color: Theme.of(context).colorScheme.primary),
             const SizedBox(width: 8),
             Expanded(
               child: Text(activa ? 'Ya es tuya' : 'Tu reclamo está en revisión',
@@ -1025,7 +1026,8 @@ class _PanelDescubiertaState extends State<_PanelDescubierta> {
         children: [
           Row(
             children: [
-              const Icon(Icons.travel_explore, color: pino),
+              Icon(Icons.travel_explore,
+                  color: Theme.of(context).colorScheme.primary),
               const SizedBox(width: 8),
               Expanded(
                 child: Text('Encontramos esta cancha en Google Maps',
@@ -1453,14 +1455,15 @@ class _FilaDatos extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     Widget dato(IconData ic, String txt) => Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(ic, size: 18, color: bosque),
+            Icon(ic, size: 18, color: cs.primary),
             const SizedBox(width: 6),
             Text(txt,
                 style: t.bodyMedium
-                    ?.copyWith(color: tinta, fontWeight: FontWeight.w600)),
+                    ?.copyWith(color: cs.onSurface, fontWeight: FontWeight.w600)),
           ],
         );
     return Wrap(

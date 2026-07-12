@@ -508,7 +508,8 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
             decoration: InputDecoration(
               label: _lblReq('Tu DNI'),
               hintText: '8 dígitos — validamos tu identidad',
-              prefixIcon: const Icon(Icons.badge_outlined, color: verdeCancha),
+              prefixIcon: Icon(Icons.badge_outlined,
+                  color: Theme.of(context).colorScheme.primary),
               suffixIcon: _dniCargando
                   ? const Padding(
                       padding: EdgeInsets.all(14),
@@ -564,8 +565,8 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
             value: _relacion,
             decoration: InputDecoration(
               label: _lblReq('Tu relación con la cancha'),
-              prefixIcon:
-                  const Icon(Icons.handshake_outlined, color: verdeCancha),
+              prefixIcon: Icon(Icons.handshake_outlined,
+                  color: Theme.of(context).colorScheme.primary),
             ),
             items: const [
               DropdownMenuItem(value: 'dueño', child: Text('Dueño')),
@@ -592,8 +593,8 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
             decoration: InputDecoration(
               labelText: 'RUC del negocio (opcional)',
               hintText: '11 dígitos — si quieres ser cliente formal',
-              prefixIcon:
-                  const Icon(Icons.verified_outlined, color: verdeCancha),
+              prefixIcon: Icon(Icons.verified_outlined,
+                  color: Theme.of(context).colorScheme.primary),
               suffixIcon: _rucCargando
                   ? const Padding(
                       padding: EdgeInsets.all(14),
@@ -650,7 +651,8 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
                     )
                   : IconButton(
                       tooltip: 'Ubicar en el mapa',
-                      icon: const Icon(Icons.search, color: verdeCancha),
+                      icon: Icon(Icons.search,
+                          color: Theme.of(context).colorScheme.primary),
                       onPressed: _ubicarDireccion,
                     ),
             ),

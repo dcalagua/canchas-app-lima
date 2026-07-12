@@ -110,6 +110,7 @@ class _ValidarReclamoScreenState extends State<ValidarReclamoScreen> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('Validar por código')),
       body: ListView(
@@ -158,7 +159,7 @@ class _ValidarReclamoScreenState extends State<ValidarReclamoScreen> {
             const SizedBox(height: 16),
             Text(_msg!,
                 style: TextStyle(
-                    color: _ok ? bosque : clayOscuro,
+                    color: _ok ? cs.primary : clayOscuro,
                     fontWeight: FontWeight.w700)),
           ],
           const SizedBox(height: 20),

@@ -48,6 +48,7 @@ class _TarjetaAcademia extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     double? desde;
     for (final p in academia.planes) {
       final v = p.precioMes;
@@ -136,12 +137,12 @@ class _TarjetaAcademia extends StatelessWidget {
                       if (desde != null)
                         Text('desde S/ ${desde.toStringAsFixed(2)}',
                             style: t.titleSmall?.copyWith(
-                                color: bosque, fontWeight: FontWeight.w800))
+                                color: cs.primary, fontWeight: FontWeight.w800))
                       else
                         const SizedBox.shrink(),
                       Text('Ver y matricularme',
                           style: t.labelLarge?.copyWith(
-                              color: bosque, fontWeight: FontWeight.w800)),
+                              color: cs.primary, fontWeight: FontWeight.w800)),
                     ],
                   ),
                 ],

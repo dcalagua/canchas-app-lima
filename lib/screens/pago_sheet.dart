@@ -56,9 +56,10 @@ class _PagoSheetState extends State<PagoSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
+        color: cs.surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       padding: EdgeInsets.fromLTRB(
@@ -80,8 +81,8 @@ class _PagoSheetState extends State<PagoSheet> {
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
           const SizedBox(height: 2),
           Text('$monedaSimbolo ${widget.monto}',
-              style: const TextStyle(
-                  fontSize: 32, fontWeight: FontWeight.bold, color: verdeCancha)),
+              style: TextStyle(
+                  fontSize: 32, fontWeight: FontWeight.bold, color: cs.primary)),
           const SizedBox(height: 18),
           Row(
             children: [

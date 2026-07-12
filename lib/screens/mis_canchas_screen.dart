@@ -171,6 +171,7 @@ class _LocalCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     final n = local.canchas.length;
     return Container(
       decoration: BoxDecoration(
@@ -184,7 +185,7 @@ class _LocalCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.storefront, color: pino, size: 20),
+              Icon(Icons.storefront, color: cs.primary, size: 20),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(local.nombre,
@@ -212,10 +213,10 @@ class _LocalCard extends StatelessWidget {
                 MaterialPageRoute(
                     builder: (_) => AgregarCanchaScreen(local: local.principal)),
               ),
-              icon: const Icon(Icons.add, color: pino, size: 20),
-              label: const Text('Agregar cancha',
+              icon: Icon(Icons.add, color: cs.primary, size: 20),
+              label: Text('Agregar cancha',
                   style:
-                      TextStyle(color: pino, fontWeight: FontWeight.w700)),
+                      TextStyle(color: cs.primary, fontWeight: FontWeight.w700)),
             ),
           ),
         ],

@@ -279,8 +279,9 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                       for (final o in options)
                         ListTile(
                           dense: true,
-                          leading: const Icon(Icons.place,
-                              size: 18, color: verdeCancha),
+                          leading: Icon(Icons.place,
+                              size: 18,
+                              color: Theme.of(context).colorScheme.primary),
                           title: Text(o),
                           onTap: () => onSelected(o),
                         ),
@@ -369,7 +370,9 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                 FilterChip(
                   avatar: Icon(r.$3,
                       size: 16,
-                      color: _redesSel.contains(r.$1) ? Colors.white : bosque),
+                      color: _redesSel.contains(r.$1)
+                          ? Colors.white
+                          : Theme.of(context).colorScheme.primary),
                   label: Text(r.$2),
                   selected: _redesSel.contains(r.$1),
                   selectedColor: bosque,
@@ -397,7 +400,8 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                   labelText: r.$2,
                   prefixIcon: Padding(
                     padding: const EdgeInsets.all(12),
-                    child: FaIcon(r.$3, size: 18, color: bosque),
+                    child: FaIcon(r.$3,
+                        size: 18, color: Theme.of(context).colorScheme.primary),
                   ),
                   hintText: r.$1 == 'web'
                       ? 'https://tuacademia.com'

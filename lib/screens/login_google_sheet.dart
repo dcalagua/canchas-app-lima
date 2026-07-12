@@ -41,9 +41,10 @@ class _LoginGoogleSheetState extends State<LoginGoogleSheet> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
+        color: cs.surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
       ),
       padding: EdgeInsets.fromLTRB(
@@ -74,7 +75,7 @@ class _LoginGoogleSheetState extends State<LoginGoogleSheet> {
                 children: [
                   Text('Pichangol',
                       style: t.headlineSmall?.copyWith(
-                          color: bosque,
+                          color: cs.primary,
                           fontWeight: FontWeight.w800,
                           letterSpacing: -0.5)),
                   Text(kBrandEslogan,
@@ -98,7 +99,7 @@ class _LoginGoogleSheetState extends State<LoginGoogleSheet> {
             width: double.infinity,
             height: 58,
             child: _cargando
-                ? const Center(child: CircularProgressIndicator(color: pino))
+                ? Center(child: CircularProgressIndicator(color: cs.primary))
                 : OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
                       backgroundColor: Colors.white,

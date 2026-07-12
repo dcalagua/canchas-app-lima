@@ -301,13 +301,31 @@ class PlacesService {
     'capilla', 'parroquia', 'iglesia',
   ];
 
+  // Términos en el NOMBRE que gritan "recinto deportivo" con tanta fuerza que un
+  // tipo mal puesto por Google (school/university/gym) no debe tumbarlos: muchos
+  // complejos/lozas de barrio están dentro de un colegio o quedan mal etiquetados.
+  static const _nombreFuerteDeportivo = [
+    'complejo deportivo', 'polideportivo', 'centro deportivo', 'club deportivo',
+    'loza deportiva', 'losa deportiva', 'campo deportivo', 'villa deportiva',
+    'estadio', 'cancha', 'canchita', 'grass sintétic', 'grass sintetic',
+  ];
+
   /// Heurística de deporte por nombre/tipos del lugar. Devuelve null si no
   /// parece una cancha de alquiler (gimnasios, tiendas, etc. quedan fuera).
   static Deporte? _deporteDe(String nombre, List<String> tipos) {
     final n = nombre.toLowerCase();
+    final nombreEsDeportivoFuerte = _nombreFuerteDeportivo.any(n.contains);
 
-    // 1) Descartes duros por tipo o por nombre.
-    if (tipos.any(_tiposExcluidos.contains)) return null;
+    // 1) Descartes duros por tipo o por nombre. Si el NOMBRE ya grita "deportivo"
+    //    (complejo, polideportivo, estadio, loza…), NO dejamos que los tipos
+    //    "gym"/"school"/"university" de Google lo descarten (falso negativo
+    //    típico: la única cancha del barrio está en un colegio). Los tipos
+    //    claramente no deportivos (tienda, restaurante, hospital…) SÍ siguen
+    //    excluyendo aunque el nombre sea deportivo.
+    final tiposExcluidosEfectivos = nombreEsDeportivoFuerte
+        ? _tiposExcluidos.difference(const {'gym', 'school', 'university'})
+        : _tiposExcluidos;
+    if (tipos.any(tiposExcluidosEfectivos.contains)) return null;
     if (_palabrasExcluidas.any(n.contains)) return null;
 
     // 2) Señal positiva por deporte en el nombre.

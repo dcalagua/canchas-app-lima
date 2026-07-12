@@ -124,6 +124,7 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: const _AppBar(),
       body: ListView(
@@ -222,7 +223,7 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
             const SizedBox(height: 12),
             Text(_msg!,
                 style: TextStyle(
-                    color: _msg!.startsWith('✅') ? bosque : clayOscuro,
+                    color: _msg!.startsWith('✅') ? cs.primary : clayOscuro,
                     fontWeight: FontWeight.w600)),
           ],
           const SizedBox(height: 24),

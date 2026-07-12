@@ -86,6 +86,7 @@ class _MetodosPagoScreenState extends State<MetodosPagoScreen> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('Métodos de pago')),
       body: _cargando
@@ -131,8 +132,8 @@ class _MetodosPagoScreenState extends State<MetodosPagoScreen> {
                     const SizedBox(height: 16),
                     OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: bosque,
-                        side: const BorderSide(color: bosque, width: 1.4),
+                        foregroundColor: cs.primary,
+                        side: BorderSide(color: cs.primary, width: 1.4),
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(14)),
@@ -182,7 +183,7 @@ class _TarjetaGuardada extends StatelessWidget {
                 ? const VisaMark(alto: 16)
                 : esMaster
                     ? const MastercardMark(alto: 24)
-                    : const Icon(Icons.credit_card, color: bosque),
+                    : Icon(Icons.credit_card, color: cs.primary),
           ),
           const SizedBox(width: 14),
           Expanded(

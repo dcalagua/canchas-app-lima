@@ -43,15 +43,15 @@ class MiAcademiaScreen extends StatelessWidget {
                         child: _Metrica(
                             'Por cobrar',
                             'S/ ${porCobrar.toStringAsFixed(2)}',
-                            bosque)),
+                            Theme.of(context).colorScheme.primary)),
                     const SizedBox(width: 10),
                     Expanded(
                         child: _Metrica('Vencido',
                             'S/ ${vencido.toStringAsFixed(2)}', clayOscuro)),
                     const SizedBox(width: 10),
                     Expanded(
-                        child: _Metrica(
-                            'Alumnos', '${alumnos.length}', verdeCancha)),
+                        child: _Metrica('Alumnos', '${alumnos.length}',
+                            Theme.of(context).colorScheme.primary)),
                   ],
                 ),
               ),
@@ -140,7 +140,8 @@ class _SinAcademia extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.school_outlined, size: 64, color: verdeCancha),
+            Icon(Icons.school_outlined,
+                size: 64, color: Theme.of(context).colorScheme.primary),
             const SizedBox(height: 14),
             const Text('Aún no tienes una academia',
                 style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),

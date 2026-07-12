@@ -414,7 +414,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
                     )
                   : IconButton(
                       tooltip: 'Ubicar en el mapa',
-                      icon: const Icon(Icons.search, color: pino),
+                      icon: Icon(Icons.search, color: cs.primary),
                       onPressed: _ubicarDireccion,
                     ),
             ),
@@ -591,10 +591,10 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
                 FilteringTextInputFormatter.digitsOnly,
                 LengthLimitingTextInputFormatter(8),
               ],
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Tu DNI *',
                 hintText: '8 dígitos — validamos tu identidad',
-                prefixIcon: Icon(Icons.badge_outlined, color: pino),
+                prefixIcon: Icon(Icons.badge_outlined, color: cs.primary),
                 counterText: '',
               ),
             ),
@@ -624,10 +624,10 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
             TextField(
               controller: _ruc,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'RUC del negocio (opcional)',
                 hintText: 'Ayuda a confirmar que el local existe (no reemplaza la validación del dueño)',
-                prefixIcon: Icon(Icons.verified_outlined, color: pino),
+                prefixIcon: Icon(Icons.verified_outlined, color: cs.primary),
               ),
             ),
           ],

@@ -101,12 +101,12 @@ class ClubCard extends StatelessWidget {
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.near_me,
-                                size: 13, color: verdeCancha),
+                            Icon(Icons.near_me,
+                                size: 13, color: cs.primary),
                             const SizedBox(width: 3),
                             Text(_distanciaTxt(distanciaKm!),
                                 style: t.bodySmall?.copyWith(
-                                    color: verdeCancha,
+                                    color: cs.primary,
                                     fontWeight: FontWeight.w700)),
                           ],
                         ),

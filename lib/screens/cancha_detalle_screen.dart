@@ -75,8 +75,9 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
             Text('$_dia · $hora a ${cancha.horaFinDe(hora)}'),
             const SizedBox(height: 8),
             Text('Total: S/ ${total.toStringAsFixed(2)}',
-                style: const TextStyle(
-                    color: verdeCancha, fontWeight: FontWeight.w700)),
+                style: TextStyle(
+                    color: Theme.of(ctx).colorScheme.primary,
+                    fontWeight: FontWeight.w700)),
             const SizedBox(height: 8),
             const Text(
               'Reservas ahora y pagas en la cancha (efectivo). El club confirma '
@@ -179,10 +180,10 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
                       if (cancha.registrada) ...[
                         Text(
                           'S/ ${cancha.precioHora.toStringAsFixed(2)}',
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 22,
-                              color: verdeCancha),
+                              color: Theme.of(context).colorScheme.primary),
                         ),
                         const Text(' /hora',
                             style: TextStyle(color: Colors.grey)),
@@ -289,12 +290,13 @@ class _BarraReserva extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8)],
+      decoration: BoxDecoration(
+        color: cs.surface,
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8)],
       ),
       child: Row(
         children: [
@@ -304,7 +306,7 @@ class _BarraReserva extends StatelessWidget {
                   ? 'Reservar $dia · $textoHora'
                   : 'Elige una hora disponible',
               style: TextStyle(
-                color: habilitado ? Colors.black87 : Colors.grey,
+                color: habilitado ? cs.onSurface : Colors.grey,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -332,19 +334,20 @@ class _DiaChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
         decoration: BoxDecoration(
-          color: activo ? verdeCancha : Colors.white,
+          color: activo ? verdeCancha : cs.surface,
           borderRadius: BorderRadius.circular(30),
           border: Border.all(color: verdeCancha),
         ),
         child: Text(
           texto,
           style: TextStyle(
-            color: activo ? Colors.white : verdeCancha,
+            color: activo ? Colors.white : cs.primary,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -383,12 +386,13 @@ class _HoraChip extends StatelessWidget {
         ),
       );
     }
+    final cs = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
         decoration: BoxDecoration(
-          color: seleccionada ? verdeCancha : Colors.white,
+          color: seleccionada ? verdeCancha : cs.surface,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
               color: seleccionada ? verdeCancha : const Color(0xFFCDD8D1)),
@@ -396,7 +400,7 @@ class _HoraChip extends StatelessWidget {
         child: Text(
           hora,
           style: TextStyle(
-            color: seleccionada ? Colors.white : Colors.black87,
+            color: seleccionada ? Colors.white : cs.onSurface,
             fontWeight: FontWeight.w600,
           ),
         ),

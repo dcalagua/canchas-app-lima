@@ -436,7 +436,8 @@ class _FilaCard extends StatelessWidget {
                   ? const VisaMark(alto: 15)
                   : esMaster
                       ? const MastercardMark(alto: 22)
-                      : const Icon(Icons.credit_card, color: bosque),
+                      : Icon(Icons.credit_card,
+                          color: Theme.of(context).colorScheme.primary),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -523,7 +524,7 @@ class _FilaNueva extends StatelessWidget {
         ),
         child: Row(
           children: [
-            const Icon(Icons.add_card, color: bosque),
+            Icon(Icons.add_card, color: Theme.of(context).colorScheme.primary),
             const SizedBox(width: 12),
             Expanded(
               child: Text('Usar otra tarjeta',

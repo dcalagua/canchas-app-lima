@@ -32,10 +32,11 @@ class CuentaScreen extends StatelessWidget {
                 children: [
                   GestureDetector(
                     onTap: () => Navigator.of(context).maybePop(),
-                    child: const Padding(
-                      padding: EdgeInsets.only(right: 10),
-                      child:
-                          Icon(Icons.arrow_back_ios_new, color: tinta, size: 20),
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 10),
+                      child: Icon(Icons.arrow_back_ios_new,
+                          color: Theme.of(context).colorScheme.onSurface,
+                          size: 20),
                     ),
                   ),
                   Text('Mi cuenta', style: t.headlineSmall),
