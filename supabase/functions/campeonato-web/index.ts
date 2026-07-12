@@ -10,7 +10,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
-const URL = Deno.env.get("SUPABASE_URL") ?? "";
+const SB_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 
 const LIMA = "#AEEA94";
@@ -197,14 +197,14 @@ serve(async (req) => {
       status: 400, headers,
     });
   }
-  if (!URL || !ANON) {
+  if (!SB_URL || !ANON) {
     return new Response(htmlSimple("Sin conexión", "Servidor no configurado."), {
       status: 500, headers,
     });
   }
   try {
     const r = await fetch(
-      `${URL}/rest/v1/pichangol_campeonatos?id=eq.${encodeURIComponent(id)}&select=data,eliminado`,
+      `${SB_URL}/rest/v1/pichangol_campeonatos?id=eq.${encodeURIComponent(id)}&select=data,eliminado`,
       { headers: { apikey: ANON, Authorization: `Bearer ${ANON}` } },
     );
     const rows = await r.json();
