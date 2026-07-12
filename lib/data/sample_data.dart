@@ -100,6 +100,22 @@ class SampleData {
       registrada: false,
       verificada: false,
     ),
+    // Complejo municipal de Ñaña: alquila canchas sintéticas (fútbol). Google
+    // no siempre lo devuelve, por eso se siembra. Coordenadas del usuario.
+    Cancha(
+      id: 'seed_mariscal_castilla',
+      nombre: 'Complejo Deportivo Mariscal Castilla',
+      club: 'Complejo Deportivo Mariscal Castilla',
+      distrito: Distrito.laMolina, // referencial (Ñaña no está en el enum)
+      deporte: Deporte.futbol,
+      precioHora: 0,
+      ubicacion: LatLng(-11.987139254760843, -76.81921864614549),
+      clubFundador: false,
+      digitalizada: false,
+      direccion: 'Ñaña, Lurigancho-Chosica',
+      registrada: false,
+      verificada: false,
+    ),
   ];
 
   static const List<Cancha> canchas = [
