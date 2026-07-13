@@ -5,7 +5,8 @@ import '../state/app_state.dart';
 import '../theme.dart';
 
 /// Agenda REAL del dueño: las franjas del día de SUS canchas con las reservas
-/// reales. Selector de cancha (sus locales) + Hoy/Mañana + mini-KPIs calculados
+/// reales. Se trabaja dentro de UN local: selector de local (si tiene varios) +
+/// selector de cancha de ese local + Hoy/Mañana + mini-KPIs del local, todo
 /// sobre datos reales (no demo).
 class AgendaScreen extends StatefulWidget {
   const AgendaScreen({super.key});
@@ -52,12 +53,25 @@ class _AgendaScreenState extends State<AgendaScreen> {
             _cancha = canchas.first;
           }
           final cancha = _cancha!;
+
+          // Locales del dueño (distintos), en orden de aparición. La agenda se
+          // trabaja SIEMPRE dentro de UN local: header, KPIs y el selector de
+          // cancha se limitan al local de la cancha elegida, para no mezclar
+          // canchas de otro local (p. ej. "Fútbol 1" de Joga Bonito bajo
+          // "Campo Deportivo Machuca").
+          final locales = <String>[];
+          for (final c in canchas) {
+            if (!locales.contains(c.club)) locales.add(c.club);
+          }
+          final localSel = cancha.club;
+          final delLocal = canchas.where((c) => c.club == localSel).toList();
+
           final iso = _isoDe(_dia);
           final horas = cancha.horariosSlots();
 
           return Column(
             children: [
-              _HeaderAgenda(canchas: canchas, iso: iso),
+              _HeaderAgenda(canchas: delLocal, iso: iso),
               // Día: Hoy / Mañana
               Padding(
                 padding: const EdgeInsets.fromLTRB(18, 14, 18, 4),
@@ -74,18 +88,68 @@ class _AgendaScreenState extends State<AgendaScreen> {
                   ],
                 ),
               ),
-              // Selector de cancha (los locales del dueño)
-              if (canchas.length > 1)
+              // Selector de LOCAL (si el dueño administra más de uno). Deja
+              // claro a qué local pertenece la agenda que estás viendo.
+              if (locales.length > 1)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 6, 18, 0),
+                  child: SizedBox(
+                    height: 38,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: locales.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 8),
+                      itemBuilder: (_, i) {
+                        final nom = locales[i];
+                        final sel = nom == localSel;
+                        return GestureDetector(
+                          onTap: () {
+                            // Al cambiar de local, salta a su primera cancha.
+                            final primera =
+                                canchas.firstWhere((c) => c.club == nom);
+                            setState(() => _cancha = primera);
+                          },
+                          child: Container(
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 14),
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: sel ? limaSuave : Colors.white,
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(color: sel ? lima : trazo),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.storefront,
+                                    size: 15,
+                                    color: sel ? lima : textoTenue),
+                                const SizedBox(width: 6),
+                                Text(nom,
+                                    style: TextStyle(
+                                        color: sel ? tinta : textoTenue,
+                                        fontWeight: sel
+                                            ? FontWeight.w800
+                                            : FontWeight.w600)),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              // Selector de cancha DENTRO del local seleccionado
+              if (delLocal.length > 1)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(18, 6, 18, 4),
                   child: SizedBox(
                     height: 40,
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
-                      itemCount: canchas.length,
+                      itemCount: delLocal.length,
                       separatorBuilder: (_, __) => const SizedBox(width: 8),
                       itemBuilder: (_, i) {
-                        final c = canchas[i];
+                        final c = delLocal[i];
                         final sel = c.id == cancha.id;
                         return GestureDetector(
                           onTap: () => setState(() => _cancha = c),
@@ -165,7 +229,7 @@ class _HeaderAgenda extends StatelessWidget {
     final barrio = canchas.isEmpty ? 'Lima' : canchas.first.distrito.etiqueta;
     final local = canchas.isEmpty ? 'Mis canchas' : canchas.first.club;
 
-    // KPIs REALES del día sobre TODAS las canchas del dueño.
+    // KPIs REALES del día sobre las canchas del LOCAL seleccionado.
     final ids = canchas.map((c) => c.id).toSet();
     final delDia = appState.reservas
         .where((r) => ids.contains(r.canchaId) && r.fecha == iso)
