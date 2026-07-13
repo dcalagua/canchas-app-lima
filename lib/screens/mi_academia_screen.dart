@@ -10,6 +10,7 @@ import 'asistencia_screen.dart';
 import 'campeonatos_screen.dart';
 import 'chats_academia_screen.dart';
 import 'crear_academia_screen.dart';
+import 'recargar_saldo_screen.dart';
 import 'reporte_academia_screen.dart';
 
 /// Panel del PROFE: su academia, alumnos y cobros (Fase 1). Sin pasarela: marca
@@ -41,6 +42,7 @@ class MiAcademiaScreen extends StatelessWidget {
             children: [
               _Header(academia: ac),
               _CodigoCard(academia: ac),
+              _DestacarCard(academia: ac),
               Padding(
                 padding: const EdgeInsets.fromLTRB(18, 16, 18, 8),
                 child: Row(
@@ -339,6 +341,92 @@ class _TarjetaInvitacion extends StatelessWidget {
               onPressed: () => appState.cancelarInvitacion(inv.id),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+/// "Destaca tu academia": prepago que pone la academia arriba en la lista (con
+/// estrella), reusando la recarga de Culqi. Más saldo = más visibilidad, igual
+/// que las canchas. El saldo de la academia va aparte del de las canchas.
+class _DestacarCard extends StatefulWidget {
+  const _DestacarCard({required this.academia});
+  final Academia academia;
+  @override
+  State<_DestacarCard> createState() => _DestacarCardState();
+}
+
+class _DestacarCardState extends State<_DestacarCard> {
+  @override
+  void initState() {
+    super.initState();
+    appState.sincronizarSaldoAcademia(widget.academia.id);
+    appState.cargarDestacados();
+  }
+
+  Future<void> _recargar() async {
+    final monto = await Navigator.of(context).push<int>(MaterialPageRoute(
+      builder: (_) => RecargarSaldoScreen(
+          duenoId: widget.academia.id, titulo: 'Destacar academia'),
+    ));
+    if (monto != null && mounted) {
+      await appState.sincronizarSaldoAcademia(widget.academia.id);
+      await appState.cargarDestacados();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final saldo = appState.saldoAcademiaDe(widget.academia.id);
+    final destacada = appState.esDestacadaAcademia(widget.academia);
+    return Container(
+      margin: const EdgeInsets.fromLTRB(18, 12, 18, 4),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF128C7E), Color(0xFF075E54)],
+        ),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(destacada ? Icons.star : Icons.trending_up,
+                  color: Colors.white, size: 20),
+              const SizedBox(width: 8),
+              Text(destacada ? 'Academia destacada' : 'Destaca tu academia',
+                  style: t.titleMedium
+                      ?.copyWith(color: Colors.white, fontWeight: FontWeight.w800)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            destacada
+                ? 'Apareces primero en la lista de academias. Saldo: S/ $saldo.'
+                : 'Pon saldo y tu academia aparece destacada (arriba y con '
+                    'estrella) para que más alumnos la encuentren.',
+            style: t.bodySmall
+                ?.copyWith(color: Colors.white.withOpacity(0.92), height: 1.3),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                  backgroundColor: Colors.white, foregroundColor: lima),
+              onPressed: _recargar,
+              icon: const Icon(Icons.add),
+              label: Text(saldo > 0
+                  ? 'Recargar saldo (S/ $saldo)'
+                  : 'Poner saldo y destacar'),
+            ),
+          ),
         ],
       ),
     );

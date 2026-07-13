@@ -12,7 +12,13 @@ import '../widgets/pago_procesando.dart';
 /// pública en el celular y confirma el cobro contra el backend. Devuelve el monto
 /// recargado (int soles) por Navigator.pop, o null si se canceló/falló.
 class RecargarSaldoScreen extends StatefulWidget {
-  const RecargarSaldoScreen({super.key});
+  /// Por defecto recarga el saldo del DUEÑO logueado (su correo). Para destacar
+  /// una ACADEMIA se pasa [duenoId] = id de la academia (su saldo va aparte del
+  /// de las canchas). El cobro Culqi siempre usa el correo del pagador.
+  const RecargarSaldoScreen({super.key, this.duenoId, this.titulo});
+
+  final String? duenoId;
+  final String? titulo;
 
   @override
   State<RecargarSaldoScreen> createState() => _RecargarSaldoScreenState();
@@ -128,7 +134,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
       }
       final res = await PagosService.recargar(
         token: tok['token'].toString(),
-        duenoId: _email,
+        duenoId: widget.duenoId ?? _email, // academia = su id; si no, el correo
         email: _email,
         montoSoles: _monto.toDouble(),
       );
@@ -156,7 +162,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
     final t = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('Recargar saldo')),
+      appBar: AppBar(title: Text(widget.titulo ?? 'Recargar saldo')),
       body: _cargando
           ? const Center(child: CircularProgressIndicator())
           : ListView(

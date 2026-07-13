@@ -21,7 +21,11 @@ class AcademiasScreen extends StatelessWidget {
       body: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
-          final academias = appState.academias;
+          // Destacadas primero (más saldo = más visibilidad), luego el resto.
+          final academias = [...appState.academias]
+            ..sort((a, b) => appState
+                .nivelDestacadoAcademia(b)
+                .compareTo(appState.nivelDestacadoAcademia(a)));
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -37,7 +41,9 @@ class AcademiasScreen extends StatelessWidget {
                       style: TextStyle(color: textoTenue)),
                 )
               else
-                for (final a in academias) _TarjetaAcademia(academia: a),
+                for (final a in academias)
+                  _TarjetaAcademia(
+                      academia: a, destacada: appState.esDestacadaAcademia(a)),
             ],
           );
         },
@@ -351,8 +357,11 @@ class _TarjetaInvitacionRecibida extends StatelessWidget {
 }
 
 class _TarjetaAcademia extends StatelessWidget {
-  const _TarjetaAcademia({required this.academia});
+  const _TarjetaAcademia({required this.academia, this.destacada = false});
   final Academia academia;
+
+  /// Academia DESTACADA (su dueño puso saldo): badge "★ Destacado" + va arriba.
+  final bool destacada;
 
   @override
   Widget build(BuildContext context) {
@@ -414,6 +423,20 @@ class _TarjetaAcademia extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            if (destacada)
+                              Container(
+                                margin: const EdgeInsets.only(bottom: 3),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                    color: lima,
+                                    borderRadius: BorderRadius.circular(999)),
+                                child: const Text('★ DESTACADO',
+                                    style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w800)),
+                              ),
                             Text(academia.nombre,
                                 style: t.titleMedium
                                     ?.copyWith(fontWeight: FontWeight.w800)),

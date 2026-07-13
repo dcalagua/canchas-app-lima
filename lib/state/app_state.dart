@@ -1369,6 +1369,30 @@ class AppState extends ChangeNotifier {
 
   bool esDestacada(Cancha c) => nivelDestacado(c) > 0;
 
+  /// Nivel de destacado de una ACADEMIA (por su propio saldo prepago, guardado
+  /// en el backend con la academia como dueno_id). 0 = no destacada.
+  int nivelDestacadoAcademia(Academia a) {
+    final id = a.id.toLowerCase().trim();
+    if (id.isEmpty) return 0;
+    return _destacadosPorDueno[id] ?? 0;
+  }
+
+  bool esDestacadaAcademia(Academia a) => nivelDestacadoAcademia(a) > 0;
+
+  // Saldo prepago por academia (cache para mostrar en "Mi academia").
+  final Map<String, int> _saldoAcademia = {};
+  int saldoAcademiaDe(String academiaId) => _saldoAcademia[academiaId] ?? 0;
+
+  /// Sincroniza el saldo de una academia desde el backend (best-effort).
+  Future<void> sincronizarSaldoAcademia(String academiaId) async {
+    if (!PagosService.disponible || academiaId.isEmpty) return;
+    final s = await PagosService.saldo(academiaId);
+    if (s != null) {
+      _saldoAcademia[academiaId] = s.round();
+      notifyListeners();
+    }
+  }
+
   /// Trae del backend el conjunto de dueños destacados (best-effort). Si el
   /// dueño logueado tiene saldo, se asegura de incluirse aunque el backend
   /// tarde en propagar (para que vea su propia cancha destacada al instante).
