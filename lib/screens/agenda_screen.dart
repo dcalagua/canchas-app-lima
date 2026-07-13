@@ -194,7 +194,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
                             style: Theme.of(context)
                                 .textTheme
                                 .bodyMedium
-                                ?.copyWith(color: textoTenue)),
+                                ?.copyWith(color: textoTenueDe(context))),
                       )
                     : ListView.separated(
                         padding: const EdgeInsets.fromLTRB(18, 8, 18, 90),
@@ -417,7 +417,7 @@ class _AgendaRow extends StatelessWidget {
                       Text(
                         '${r.horaInicio}–${r.horaFin} · '
                         '${r.pagado ? 'Pagado' : 'Por cobrar'} S/${r.precio}',
-                        style: t.bodySmall?.copyWith(color: textoTenue),
+                        style: t.bodySmall?.copyWith(color: textoTenueDe(context)),
                       ),
                     ],
                   ),
@@ -472,7 +472,7 @@ class _VacioAgenda extends StatelessWidget {
             Text(
               'Registra o reclama una cancha para ver aquí su agenda del día.',
               textAlign: TextAlign.center,
-              style: t.bodyMedium?.copyWith(color: textoTenue),
+              style: t.bodyMedium?.copyWith(color: textoTenueDe(context)),
             ),
           ],
         ),

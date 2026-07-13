@@ -426,7 +426,7 @@ class _CodigoCard extends StatelessWidget {
           ]),
           const SizedBox(height: 4),
           Text('Compártelo para que tus alumnos se unan desde la app.',
-              style: t.bodySmall?.copyWith(color: textoTenue)),
+              style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
           const SizedBox(height: 12),
           Row(
             children: [

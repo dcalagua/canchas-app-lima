@@ -266,7 +266,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                           style: Theme.of(context)
                               .textTheme
                               .bodyMedium
-                              ?.copyWith(color: textoTenue),
+                              ?.copyWith(color: textoTenueDe(context)),
                         ),
                       ),
                     );
@@ -292,7 +292,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                       style: Theme.of(context)
                           .textTheme
                           .bodyMedium
-                          ?.copyWith(color: textoTenue),
+                          ?.copyWith(color: textoTenueDe(context)),
                     ),
                   ];
                   Widget card(Club cl) => Padding(

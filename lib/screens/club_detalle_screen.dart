@@ -434,14 +434,14 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                             ?.copyWith(fontWeight: FontWeight.w700)),
                     const SizedBox(height: 4),
                     Text('Las mañanas (valle) suelen estar más libres.',
-                        style: t.bodySmall?.copyWith(color: textoTenue)),
+                        style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
                     const SizedBox(height: 12),
                     if (_horas.isEmpty)
                       Text(
                         _dia == 'Hoy'
                             ? 'No quedan horarios para hoy. Elige "Mañana".'
                             : 'Sin horarios disponibles.',
-                        style: t.bodyMedium?.copyWith(color: textoTenue),
+                        style: t.bodyMedium?.copyWith(color: textoTenueDe(context)),
                       )
                     else
                       Wrap(
@@ -526,7 +526,7 @@ class _PanelDueno extends StatelessWidget {
           Text(
             'Eres el dueño registrado. Los jugadores la ven y reservan; tú '
             'ajustas aquí el precio y los horarios.',
-            style: t.bodySmall?.copyWith(color: textoTenue),
+            style: t.bodySmall?.copyWith(color: textoTenueDe(context)),
           ),
           const SizedBox(height: 16),
           // Resumen de precio y horario.
@@ -746,7 +746,7 @@ class _ReservarBar extends StatelessWidget {
               children: [
                 RichText(
                   text: TextSpan(
-                    style: t.bodySmall?.copyWith(color: textoTenue),
+                    style: t.bodySmall?.copyWith(color: textoTenueDe(context)),
                     children: [
                       TextSpan(
                         text: '$monedaSimbolo${precio.toStringAsFixed(2)}',
@@ -758,7 +758,7 @@ class _ReservarBar extends StatelessWidget {
                   ),
                 ),
                 Text(hora == null ? 'Elige una hora' : 'Hora $hora',
-                    style: t.bodySmall?.copyWith(color: textoTenue)),
+                    style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
               ],
             ),
           ),

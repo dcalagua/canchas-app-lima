@@ -79,7 +79,7 @@ class CuentaScreen extends StatelessWidget {
               const SizedBox(height: 10),
               if (appState.movimientos.isEmpty)
                 Text('Aún no hay movimientos.',
-                    style: t.bodyMedium?.copyWith(color: textoTenue))
+                    style: t.bodyMedium?.copyWith(color: textoTenueDe(context)))
               else
                 ...appState.movimientos.map((m) => _FilaMovimiento(m)),
             ],
@@ -253,7 +253,7 @@ class _FilaMovimiento extends StatelessWidget {
                 Text(m.concepto,
                     style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
                 Text(m.cuando,
-                    style: t.bodySmall?.copyWith(color: textoTenue)),
+                    style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
               ],
             ),
           ),
@@ -298,7 +298,7 @@ class _RecargaSheet extends StatelessWidget {
           Text('Elige cuánto recargar', style: t.titleLarge),
           const SizedBox(height: 4),
           Text('Mientras tengas saldo, tu club aparece destacado en el mapa.',
-              style: t.bodySmall?.copyWith(color: textoTenue)),
+              style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
           const SizedBox(height: 16),
           GridView.count(
             crossAxisCount: 2,

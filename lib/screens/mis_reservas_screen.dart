@@ -294,7 +294,7 @@ class _ReservaCard extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   '${cancha?.club ?? ''} · ${reserva.dia} ${reserva.horaInicio}–${reserva.horaFin}',
-                  style: t.bodySmall?.copyWith(color: textoTenue),
+                  style: t.bodySmall?.copyWith(color: textoTenueDe(context)),
                 ),
                 const SizedBox(height: 6),
                 _EstadoChip(estado: reserva.estado),

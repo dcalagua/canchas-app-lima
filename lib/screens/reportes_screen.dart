@@ -80,7 +80,7 @@ class ReportesScreen extends StatelessWidget {
               Text('Reportes · $mes', style: t.headlineSmall),
               const SizedBox(height: 4),
               Text('Tu cuaderno, en tiempo real: lo que cobras en tus canchas.',
-                  style: t.bodySmall?.copyWith(color: textoTenue)),
+                  style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
               const SizedBox(height: 16),
 
               // Ingresos del mes (cobrado) + gráfico real de 7 días
@@ -264,7 +264,7 @@ class _MetricCard extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                   color: Theme.of(context).colorScheme.onSurface)),
           const SizedBox(height: 4),
-          Text(label, style: t.bodySmall?.copyWith(color: textoTenue)),
+          Text(label, style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
         ],
       ),
     );

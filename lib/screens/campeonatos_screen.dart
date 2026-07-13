@@ -106,7 +106,7 @@ class _CampeonatoCard extends StatelessWidget {
             '${campeonato.formato.etiqueta} · '
             '${campeonato.participantes.length} inscritos'
             '${campeonato.categoria.isNotEmpty ? ' · ${campeonato.categoria}' : ''}',
-            style: t.bodySmall?.copyWith(color: textoTenue)),
+            style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
         trailing: const Icon(Icons.chevron_right, color: textoTenue),
         onTap: () => Navigator.of(context).push(MaterialPageRoute(
             builder: (_) =>

@@ -136,7 +136,7 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
           Text(
               'Te enviaremos un código por WhatsApp o SMS al teléfono del local. '
               'Solo quien lo recibe puede activar la cancha para recibir reservas.',
-              style: t.bodyMedium?.copyWith(color: textoTenue)),
+              style: t.bodyMedium?.copyWith(color: textoTenueDe(context))),
           if (!PropiedadService.disponible) ...[
             const SizedBox(height: 16),
             Container(
@@ -191,7 +191,7 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
                         ? 'Modo prueba (envío real aún no configurado).'
                         : 'Código enviado a $_telefonoEnmascarado'
                             ' por ${_via == 'sms' ? 'SMS' : 'WhatsApp'}.',
-                    style: t.bodySmall?.copyWith(color: textoTenue)),
+                    style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
               ),
             TextField(
               controller: _codigo,

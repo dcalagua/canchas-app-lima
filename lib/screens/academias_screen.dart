@@ -246,7 +246,7 @@ class _UnirmeConCodigo extends StatelessWidget {
                             ?.copyWith(fontWeight: FontWeight.w800)),
                     const SizedBox(height: 2),
                     Text('Únete a su academia y sigue tus clases y pagos.',
-                        style: t.bodySmall?.copyWith(color: textoTenue)),
+                        style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
                   ],
                 ),
               ),
@@ -323,7 +323,7 @@ class _TarjetaInvitacionRecibida extends StatelessWidget {
                             ?.copyWith(fontWeight: FontWeight.w800)),
                     const SizedBox(height: 2),
                     Text('Acepta para ver tus clases y pagos.',
-                        style: t.bodySmall?.copyWith(color: textoTenue)),
+                        style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
                   ],
                 ),
               ),
@@ -421,7 +421,7 @@ class _TarjetaAcademia extends StatelessWidget {
                                 '${academia.deporte.etiqueta}'
                                 '${academia.sedeClub.isNotEmpty ? ' · ${academia.sedeClub}' : ''}',
                                 style:
-                                    t.bodySmall?.copyWith(color: textoTenue)),
+                                    t.bodySmall?.copyWith(color: textoTenueDe(context))),
                           ],
                         ),
                       ),

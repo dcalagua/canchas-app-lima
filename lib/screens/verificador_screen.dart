@@ -64,7 +64,7 @@ class _VerificadorScreenState extends State<VerificadorScreen> {
                 Text('Visitas pendientes',
                     style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
                 Text('La cancha más pedida sale primero.',
-                    style: t.bodySmall?.copyWith(color: textoTenue)),
+                    style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
                 const SizedBox(height: 10),
                 SizedBox(
                   width: double.infinity,
@@ -173,7 +173,7 @@ class _VisitaCard extends StatelessWidget {
                             ?.copyWith(fontWeight: FontWeight.w800)),
                     const SizedBox(height: 2),
                     Text('${visita['estado']} · ${visita['motivo'] ?? ''}',
-                        style: t.bodySmall?.copyWith(color: textoTenue)),
+                        style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
                   ],
                 ),
               ),
@@ -305,7 +305,7 @@ class _CapturaScreenState extends State<_CapturaScreen> {
         children: [
           Text(
               'Zona ${widget.visita['zona'] ?? ''} · demanda ${widget.visita['demanda'] ?? 0}',
-              style: t.bodyMedium?.copyWith(color: textoTenue)),
+              style: t.bodyMedium?.copyWith(color: textoTenueDe(context))),
           const SizedBox(height: 16),
           FilledButton.icon(
             onPressed: _enviando ? null : _tomarFoto,

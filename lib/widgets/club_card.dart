@@ -91,7 +91,7 @@ class ClubCard extends StatelessWidget {
                         child: Text(
                           club.direccion ??
                               '${club.barrio} · ${club.canchas.length} ${club.canchas.length == 1 ? 'cancha' : 'canchas'}',
-                          style: t.bodySmall?.copyWith(color: textoTenue),
+                          style: t.bodySmall?.copyWith(color: textoTenueDe(context)),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -144,7 +144,7 @@ class ClubCard extends StatelessWidget {
                       else
                         RichText(
                           text: TextSpan(
-                            style: t.bodySmall?.copyWith(color: textoTenue),
+                            style: t.bodySmall?.copyWith(color: textoTenueDe(context)),
                             children: [
                               const TextSpan(text: 'desde '),
                               TextSpan(

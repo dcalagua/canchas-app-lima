@@ -172,7 +172,7 @@ class _ReservaCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             '${cancha.nombre} · $fechaLabel · ${reserva.horaInicio}–${reserva.horaFin}',
-            style: t.bodySmall?.copyWith(color: textoTenue),
+            style: t.bodySmall?.copyWith(color: textoTenueDe(context)),
           ),
           const SizedBox(height: 2),
           Text('S/ ${reserva.precio}',
@@ -287,7 +287,7 @@ class _Vacio extends StatelessWidget {
               'Cuando un jugador reserve una de tus canchas la verás aquí y '
               'podrás registrar el pago en efectivo.',
               textAlign: TextAlign.center,
-              style: t.bodyMedium?.copyWith(color: textoTenue),
+              style: t.bodyMedium?.copyWith(color: textoTenueDe(context)),
             ),
           ],
         ),

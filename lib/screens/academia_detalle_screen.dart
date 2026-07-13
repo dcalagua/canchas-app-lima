@@ -104,7 +104,7 @@ class _Contenido extends StatelessWidget {
                               '${academia.deporte.etiqueta}'
                               '${academia.sedeClub.isNotEmpty ? ' · ${academia.sedeClub}' : ''}',
                               style:
-                                  t.bodyMedium?.copyWith(color: textoTenue)),
+                                  t.bodyMedium?.copyWith(color: textoTenueDe(context))),
                         ],
                       ),
                     ),

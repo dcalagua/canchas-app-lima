@@ -163,7 +163,7 @@ class PerfilScreen extends StatelessWidget {
               const SizedBox(height: 22),
               Center(
                 child: Text(kBrandEslogan,
-                    style: t.bodySmall?.copyWith(color: textoTenue)),
+                    style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
               ),
               const SizedBox(height: 30),
             ],
@@ -290,7 +290,7 @@ class _Tile extends StatelessWidget {
         title: Text(title,
             style: t.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
         subtitle: Text(subtitle,
-            style: t.bodySmall?.copyWith(color: textoTenue)),
+            style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
         trailing: const Icon(Icons.chevron_right, color: textoTenue),
         onTap: onTap,
       ),

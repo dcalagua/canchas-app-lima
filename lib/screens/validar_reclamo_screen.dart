@@ -122,7 +122,7 @@ class _ValidarReclamoScreenState extends State<ValidarReclamoScreen> {
           Text(
               'Ingresa el código del reclamo estando EN el local. Tu GPS debe '
               'coincidir con la ubicación de la cancha.',
-              style: t.bodyMedium?.copyWith(color: textoTenue)),
+              style: t.bodyMedium?.copyWith(color: textoTenueDe(context))),
           const SizedBox(height: 18),
           TextField(
             controller: _codigo,
