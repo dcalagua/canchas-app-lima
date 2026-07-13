@@ -85,15 +85,17 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
   }
 
   List<Cancha> _filtradas() {
-    // Pádel retirado del piloto: nunca aparece en la lista.
+    // Pádel retirado del piloto: nunca aparece en la lista. Con multideporte,
+    // basta que la cancha ofrezca ALGO distinto de pádel para mostrarla.
     final base = appState
         .todasLasCanchas()
-        .where((c) => c.deporte != Deporte.padel)
+        .where((c) => c.deportesJugables.any((d) => d != Deporte.padel))
         .toList();
-    // En "Clubes" no se filtra por deporte (un club puede tener varios).
+    // En "Clubes" no se filtra por deporte (un club puede tener varios). Una
+    // loza multiuso aparece en el filtro de CADA deporte que ofrece (`ofrece`).
     var lista = (_filtro == null || _soloClubes)
         ? base
-        : base.where((c) => c.deporte == _filtro).toList();
+        : base.where((c) => c.ofrece(_filtro!)).toList();
 
     if (_centroBusqueda != null) {
       final centro = _centroBusqueda!;
@@ -320,8 +322,11 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                     if (cl.esClubFormal) {
                       clubesFormales.add(cl);
                     } else {
+                      // Con un deporte filtrado, agrupa bajo ese deporte (una
+                      // loza multiuso cae en la sección del deporte pedido); sin
+                      // filtro, bajo su deporte principal.
                       porDeporte
-                          .putIfAbsent(cl.principal.deporte, () => [])
+                          .putIfAbsent(_filtro ?? cl.principal.deporte, () => [])
                           .add(cl);
                     }
                   }

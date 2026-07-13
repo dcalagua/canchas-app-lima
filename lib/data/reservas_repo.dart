@@ -42,6 +42,22 @@ class ReservasRepo {
     } on PostgrestException catch (e) {
       // 23505 = unique_violation → el slot ya estaba tomado.
       if (e.code == '23505') return ResultadoReserva.ocupado;
+      // 42703 = columna inexistente (p. ej. `deporte` aún sin migrar en la BD):
+      // reintenta sin ella para NO perder la garantía anti-doble-reserva.
+      if (_columnaFaltante(e)) {
+        try {
+          await SupabaseService.client
+              .from(_tabla)
+              .insert(_toRow(r, conDeporte: false));
+          return ResultadoReserva.ok;
+        } on PostgrestException catch (e2) {
+          return e2.code == '23505'
+              ? ResultadoReserva.ocupado
+              : ResultadoReserva.error;
+        } catch (_) {
+          return ResultadoReserva.error;
+        }
+      }
       return ResultadoReserva.error;
     } catch (_) {
       return ResultadoReserva.error;
@@ -54,8 +70,20 @@ class ReservasRepo {
     if (!SupabaseService.disponible) return;
     try {
       await SupabaseService.client.from(_tabla).insert(_toRow(r));
-    } catch (_) {}
+    } catch (_) {
+      try {
+        await SupabaseService.client
+            .from(_tabla)
+            .insert(_toRow(r, conDeporte: false));
+      } catch (_) {}
+    }
   }
+
+  /// ¿El error es por columna inexistente en la tabla? (42703 undefined_column).
+  static bool _columnaFaltante(PostgrestException e) =>
+      e.code == '42703' ||
+      (e.message.toLowerCase().contains('column') &&
+          e.message.toLowerCase().contains('deporte'));
 
   /// Elimina TODAS las reservas de una cancha (p. ej. cuando el admin rechaza/
   /// revoca la cancha y deja de ser reservable). Libera los slots. Fail-safe.
@@ -77,10 +105,17 @@ class ReservasRepo {
           .from(_tabla)
           .update(_toRow(r))
           .eq('id', r.id);
-    } catch (_) {}
+    } catch (_) {
+      try {
+        await SupabaseService.client
+            .from(_tabla)
+            .update(_toRow(r, conDeporte: false))
+            .eq('id', r.id);
+      } catch (_) {}
+    }
   }
 
-  static Map<String, dynamic> _toRow(Reserva r) => {
+  static Map<String, dynamic> _toRow(Reserva r, {bool conDeporte = true}) => {
         'id': r.id,
         'cancha_id': r.canchaId,
         'jugador': r.jugador,
@@ -95,6 +130,8 @@ class ReservasRepo {
         'sena': r.sena,
         'pagado': r.pagado,
         'usuario': r.usuario,
+        // Columna nueva (loza multiuso): deporte elegido para el slot.
+        if (conDeporte) 'deporte': r.deporte,
       };
 
   static Reserva _fromRow(Map<String, dynamic> r) => Reserva(
@@ -112,6 +149,7 @@ class ReservasRepo {
         sena: ((r['sena'] ?? 0) as num).toInt(),
         pagado: (r['pagado'] ?? false) as bool,
         usuario: (r['usuario'] ?? '') as String,
+        deporte: (r['deporte'] ?? '') as String,
       );
 
   static EstadoReserva _estado(String? s) {

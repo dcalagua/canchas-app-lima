@@ -87,8 +87,31 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
 
   // Deportes del local (varios a la vez). Fútbol viene marcado por defecto.
   final Set<Deporte> _deportes = {Deporte.futbol};
-  // Tipo de piso por deporte (obligatorio al crear cancha nueva).
+  // Tipo de piso por deporte (cuando son canchas SEPARADAS).
   final Map<Deporte, String> _superficies = {};
+  // ¿Los deportes marcados se juegan en la MISMA cancha (loza multiuso)? Por
+  // defecto sí (caso más común): una sola cancha con varios deportes y agenda
+  // compartida. Si es false, se crean canchas separadas (una por deporte).
+  bool _lozaMultiuso = true;
+  // Tipo de piso ÚNICO cuando es loza multiuso (o un solo deporte).
+  String _superficie = '';
+  // El deporte "principal" (ícono/color): el primero según el orden de catálogo.
+  Deporte get _deportePrincipal => deportesActivos.firstWhere(
+        (d) => _deportes.contains(d),
+        orElse: () => _deportes.isEmpty ? Deporte.futbol : _deportes.first,
+      );
+  // Superficies posibles para una loza multiuso: unión de las de cada deporte.
+  List<String> get _superficiesUnion {
+    final out = <String>[];
+    for (final d in deportesActivos.where(_deportes.contains)) {
+      for (final s in superficiesDe(d)) {
+        if (!out.contains(s)) out.add(s);
+      }
+    }
+    return out;
+  }
+  // ¿Se debe tratar como UNA sola cancha? (un solo deporte, o loza multiuso).
+  bool get _esCanchaUnica => _deportes.length == 1 || _lozaMultiuso;
 
   // Horario de atención y duración de turno (se aplican a las canchas creadas).
   String _apertura = '07:00';
@@ -264,15 +287,23 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
       _avisar('Elige al menos un deporte.');
       return;
     }
-    // Tipo de piso OBLIGATORIO por deporte (solo al crear cancha nueva; al
-    // reclamar, el piso se define después en Editar).
+    // Tipo de piso OBLIGATORIO (solo al crear cancha nueva; al reclamar, el piso
+    // se define después en Editar). Una sola superficie para loza multiuso /
+    // deporte único; una por deporte cuando son canchas separadas.
     if (!_esReclamo) {
-      final faltan =
-          _deportes.where((d) => (_superficies[d] ?? '').isEmpty).toList();
-      if (faltan.isNotEmpty) {
-        _avisar(
-            'Marca el tipo de piso de: ${faltan.map((d) => d.etiqueta).join(', ')}.');
-        return;
+      if (_esCanchaUnica) {
+        if (_superficie.isEmpty) {
+          _avisar('Marca el tipo de piso de la cancha.');
+          return;
+        }
+      } else {
+        final faltan =
+            _deportes.where((d) => (_superficies[d] ?? '').isEmpty).toList();
+        if (faltan.isNotEmpty) {
+          _avisar(
+              'Marca el tipo de piso de: ${faltan.map((d) => d.etiqueta).join(', ')}.');
+          return;
+        }
       }
     }
     final aMin = horaEnMinutos(_apertura), cMin = horaEnMinutos(_cierre);
@@ -324,22 +355,23 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
     // "Mis canchas" desde cualquier dispositivo.
     final dueno = appState.usuario?.email ?? '';
 
-    // Un local con varias canchas = una Cancha por deporte, mismo punto y dirección.
     final deportes = _deportes.toList();
     final nombreCanchaInput = _nombreCancha.text.trim();
     final creadas = <Cancha>[];
-    for (final dep in deportes) {
-      // Nombre de la cancha: si el dueño escribió uno y es de un solo deporte,
-      // se respeta; si no, se nombra sola por deporte ("Fútbol 1", "Tenis 1").
-      final nombreCancha = (deportes.length == 1 && nombreCanchaInput.isNotEmpty)
+    if (_esCanchaUnica) {
+      // UNA sola cancha: un deporte, o loza multiuso (varios deportes, misma
+      // superficie y AGENDA COMPARTIDA). El principal define ícono/color.
+      final principal = _deportePrincipal;
+      final nombreCancha = nombreCanchaInput.isNotEmpty
           ? nombreCanchaInput
-          : '${dep.etiqueta} 1';
+          : (deportes.length == 1 ? '${principal.etiqueta} 1' : 'Cancha 1');
       final cancha = Cancha(
-        id: 'u${ts}_${dep.name}',
+        id: 'u$ts',
         nombre: nombreCancha,
-        club: nombre, // el local es su propio club (nombre que escribió el dueño)
+        club: nombre,
         distrito: distrito,
-        deporte: dep,
+        deporte: principal,
+        deportes: deportes, // todos los deportes jugables en esta loza
         precioHora: precio,
         ubicacion: _ubicacion!,
         clubFundador: false,
@@ -348,14 +380,41 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
         fotoUrl: fotoUrl,
         fotos: fotos,
         dueno: dueno,
-        verificada: false, // pendiente de verificación hasta validar al dueño
+        verificada: false,
         horaApertura: _apertura,
         horaCierre: _cierre,
         duracionSlotMin: _duracion,
-        superficie: _superficies[dep] ?? '',
+        superficie: _superficie,
       );
       creadas.add(cancha);
       appState.agregarCancha(cancha);
+    } else {
+      // Canchas SEPARADAS: una Cancha por deporte (superficies y agendas propias).
+      for (final dep in deportes) {
+        final cancha = Cancha(
+          id: 'u${ts}_${dep.name}',
+          nombre: '${dep.etiqueta} 1',
+          club: nombre, // el local es su propio club
+          distrito: distrito,
+          deporte: dep,
+          deportes: [dep],
+          precioHora: precio,
+          ubicacion: _ubicacion!,
+          clubFundador: false,
+          digitalizada: true,
+          direccion: direccion.isEmpty ? null : direccion,
+          fotoUrl: fotoUrl,
+          fotos: fotos,
+          dueno: dueno,
+          verificada: false, // pendiente de verificación hasta validar al dueño
+          horaApertura: _apertura,
+          horaCierre: _cierre,
+          duracionSlotMin: _duracion,
+          superficie: _superficies[dep] ?? '',
+        );
+        creadas.add(cancha);
+        appState.agregarCancha(cancha);
+      }
     }
 
     // Verificación de EXISTENCIA en segundo plano (no bloquea el cierre). Confirma
@@ -582,47 +641,124 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
                   ),
               ],
             ),
-            const SizedBox(height: 16),
-            // Tipo de piso OBLIGATORIO por cada deporte marcado.
-            const Text('Tipo de piso de cada cancha',
-                style: TextStyle(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 2),
-            const Text('Obligatorio: elige la superficie de cada deporte.',
-                style: TextStyle(color: Colors.grey, fontSize: 12)),
-            const SizedBox(height: 10),
-            for (final d in deportesActivos.where(_deportes.contains)) ...[
-              Row(
+            // Si marcó VARIOS deportes: ¿es la misma cancha (loza multiuso) o
+            // canchas separadas? Define si se crea 1 cancha o N.
+            if (_deportes.length > 1) ...[
+              const SizedBox(height: 16),
+              const Text('¿Cómo son estas canchas?',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 10,
+                runSpacing: 8,
                 children: [
-                  Icon(iconoDeporte(d), size: 16, color: colorDeporte(d)),
-                  const SizedBox(width: 6),
-                  Text(d.etiqueta,
-                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                  ChoiceChip(
+                    label: const Text('Una loza multiuso'),
+                    selected: _lozaMultiuso,
+                    selectedColor: lima,
+                    labelStyle: TextStyle(
+                        color: _lozaMultiuso
+                            ? bosque
+                            : Theme.of(context).colorScheme.onSurface,
+                        fontWeight: FontWeight.w600),
+                    onSelected: (_) => setState(() => _lozaMultiuso = true),
+                  ),
+                  ChoiceChip(
+                    label: const Text('Canchas separadas'),
+                    selected: !_lozaMultiuso,
+                    selectedColor: lima,
+                    labelStyle: TextStyle(
+                        color: !_lozaMultiuso
+                            ? bosque
+                            : Theme.of(context).colorScheme.onSurface,
+                        fontWeight: FontWeight.w600),
+                    onSelected: (_) => setState(() => _lozaMultiuso = false),
+                  ),
                 ],
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 4),
+              Text(
+                  _lozaMultiuso
+                      ? 'Una sola cancha donde se juegan todos: misma superficie y '
+                          'una sola agenda (reservar ocupa la cancha para todos).'
+                      : 'Canchas físicas distintas: cada una con su superficie y '
+                          'su propia agenda.',
+                  style: const TextStyle(color: Colors.grey, fontSize: 12)),
+            ],
+            const SizedBox(height: 16),
+            // Superficie: ÚNICA para loza multiuso / deporte único; una por
+            // deporte cuando son canchas separadas.
+            if (_esCanchaUnica) ...[
+              const Text('Tipo de piso',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 2),
+              const Text('Obligatorio: la superficie de la cancha.',
+                  style: TextStyle(color: Colors.grey, fontSize: 12)),
+              const SizedBox(height: 10),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  for (final s in superficiesDe(d))
+                  for (final s in _superficiesUnion)
                     ChoiceChip(
                       avatar: Icon(iconoSuperficie(s),
                           size: 16,
-                          color: _superficies[d] == s ? bosque : textoTenue),
+                          color: _superficie == s ? bosque : textoTenue),
                       label: Text(s),
-                      selected: _superficies[d] == s,
+                      selected: _superficie == s,
                       selectedColor: lima,
                       labelStyle: TextStyle(
-                          color: _superficies[d] == s
+                          color: _superficie == s
                               ? bosque
                               : Theme.of(context).colorScheme.onSurface,
                           fontWeight: FontWeight.w600),
-                      onSelected: (sel) => setState(
-                          () => _superficies[d] = sel ? s : ''),
+                      onSelected: (sel) =>
+                          setState(() => _superficie = sel ? s : ''),
                     ),
                 ],
               ),
               const SizedBox(height: 12),
+            ] else ...[
+              const Text('Tipo de piso de cada cancha',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 2),
+              const Text('Obligatorio: elige la superficie de cada deporte.',
+                  style: TextStyle(color: Colors.grey, fontSize: 12)),
+              const SizedBox(height: 10),
+              for (final d in deportesActivos.where(_deportes.contains)) ...[
+                Row(
+                  children: [
+                    Icon(iconoDeporte(d), size: 16, color: colorDeporte(d)),
+                    const SizedBox(width: 6),
+                    Text(d.etiqueta,
+                        style: const TextStyle(fontWeight: FontWeight.w600)),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final s in superficiesDe(d))
+                      ChoiceChip(
+                        avatar: Icon(iconoSuperficie(s),
+                            size: 16,
+                            color: _superficies[d] == s ? bosque : textoTenue),
+                        label: Text(s),
+                        selected: _superficies[d] == s,
+                        selectedColor: lima,
+                        labelStyle: TextStyle(
+                            color: _superficies[d] == s
+                                ? bosque
+                                : Theme.of(context).colorScheme.onSurface,
+                            fontWeight: FontWeight.w600),
+                        onSelected: (sel) => setState(
+                            () => _superficies[d] = sel ? s : ''),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+              ],
             ],
             const SizedBox(height: 4),
             TextField(

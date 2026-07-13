@@ -13,7 +13,8 @@ create table if not exists public.pichangol_canchas (
   nombre            text not null default 'Cancha',
   club              text not null default '',
   distrito          text,                 -- sanBorja | surco | laMolina
-  deporte           text,                 -- futbol | padel | tenis | pickleball
+  deporte           text,                 -- PRINCIPAL: futbol|padel|tenis|pickleball|voley|basquet
+  deportes          jsonb   not null default '[]'::jsonb, -- loza multiuso: todos los deportes jugables
   precio_hora       numeric not null default 100,
   lat               double precision,
   lng               double precision,
@@ -48,10 +49,21 @@ create table if not exists public.pichangol_reservas (
   precio         numeric not null default 0,
   sena           integer not null default 0,
   pagado         boolean not null default false,
-  usuario        text not null default ''
+  usuario        text not null default '',
+  deporte        text not null default ''  -- deporte elegido para el slot (loza multiuso)
 );
 
--- Anti-doble-reserva: un único slot por (cancha, fecha, hora de inicio).
+-- Migración idempotente (proyectos ya creados): agrega las columnas nuevas de
+-- la loza multiuso si faltan. Sin esto, la app igual funciona (fail-safe: guarda
+-- sin la columna), pero no persiste el set de deportes / el deporte del slot.
+alter table public.pichangol_canchas
+  add column if not exists deportes jsonb not null default '[]'::jsonb;
+alter table public.pichangol_reservas
+  add column if not exists deporte text not null default '';
+
+-- Anti-doble-reserva: un único slot por (cancha, fecha, hora de inicio). La
+-- agenda es COMPARTIDA entre deportes (misma superficie): el UNIQUE NO incluye
+-- deporte, así reservar ocupa la cancha para todos los deportes.
 alter table public.pichangol_reservas
   drop constraint if exists uniq_slot_reserva;
 alter table public.pichangol_reservas

@@ -47,7 +47,13 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
   final TextEditingController _dni =
       TextEditingController(); // DNI del reclamante (obligatorio al reclamar)
 
-  late final Deporte _deporte = widget.cancha.deporte; // fijo: no se cambia aquí
+  // Deportes que se pueden jugar en ESTA cancha (loza multiuso: varios). El
+  // principal (ícono/color/superficie) es el primero según el orden de catálogo.
+  late final Set<Deporte> _deportes = {...widget.cancha.deportesJugables};
+  Deporte get _deporte => deportesActivos.firstWhere(
+        (d) => _deportes.contains(d),
+        orElse: () => _deportes.isEmpty ? Deporte.futbol : _deportes.first,
+      );
   late String _apertura = widget.cancha.horaApertura;
   late String _cierre = widget.cancha.horaCierre;
   late int _duracion = widget.cancha.duracionSlotMin;
@@ -257,6 +263,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
       precioHora: double.tryParse(_precio.text.trim().replaceAll(',', '.')) ??
           widget.cancha.precioHora,
       deporte: _deporte,
+      deportes: _deportes.toList(),
       ubicacion: _ubicacion,
       fotos: fotos,
       direccion: _direccion.text.trim().isEmpty ? null : _direccion.text.trim(),
@@ -468,33 +475,45 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
               style: TextStyle(fontWeight: FontWeight.w700)),
           const SizedBox(height: 2),
           const Text(
-              'Cada cancha es de un solo deporte. Para ofrecer otro deporte, '
-              'agrega otra cancha al local.',
+              'Marca todos los deportes que se pueden jugar en ESTA cancha. Si es '
+              'una loza multiuso, elige varios (ej. fútbol, vóley y básquet); la '
+              'agenda es la misma para todos.',
               style: TextStyle(color: textoTenue, fontSize: 12)),
-          const SizedBox(height: 8),
-          // Deporte FIJO de la cancha (el detectado / elegido al crearla). No se
-          // cambia aquí: para otro deporte se agrega OTRA cancha al local.
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-              decoration: BoxDecoration(
-                color: colorDeporte(_deporte),
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(iconoDeporte(_deporte), size: 18, color: Colors.white),
-                  const SizedBox(width: 7),
-                  Text(_deporte.etiqueta,
-                      style: const TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.w700)),
-                ],
-              ),
-            ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              for (final d in deportesActivos)
+                ChoiceChip(
+                  avatar: Icon(iconoDeporte(d),
+                      size: 18,
+                      color:
+                          _deportes.contains(d) ? Colors.white : colorDeporte(d)),
+                  label: Text(d.etiqueta),
+                  selected: _deportes.contains(d),
+                  selectedColor: colorDeporte(d),
+                  labelStyle: TextStyle(
+                      color: _deportes.contains(d)
+                          ? Colors.white
+                          : Theme.of(context).colorScheme.onSurface,
+                      fontWeight: FontWeight.w600),
+                  onSelected: (sel) => setState(() {
+                    if (sel) {
+                      _deportes.add(d);
+                    } else if (_deportes.length > 1) {
+                      _deportes.remove(d); // siempre queda al menos uno
+                    }
+                  }),
+                ),
+            ],
           ),
           const SizedBox(height: 12),
+          // Agregar OTRA cancha física distinta al mismo local (otra superficie).
+          const Text(
+              '¿Es otra cancha física distinta (otra superficie)? Agrégala aparte:',
+              style: TextStyle(color: textoTenue, fontSize: 12)),
+          const SizedBox(height: 6),
           // Agregar otra cancha al MISMO local: otra de fútbol, o de otro deporte.
           SizedBox(
             width: double.infinity,

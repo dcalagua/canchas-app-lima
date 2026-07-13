@@ -26,7 +26,13 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
   final _nombre = TextEditingController();
   late final TextEditingController _precio =
       TextEditingController(text: widget.local.precioHora.toStringAsFixed(2));
-  Deporte _deporte = Deporte.futbol;
+  // Deportes de esta cancha (loza multiuso: varios). El principal (para
+  // ícono/color/superficie) es el primero según el orden de catálogo.
+  final Set<Deporte> _deportes = {Deporte.futbol};
+  Deporte get _deporte => deportesActivos.firstWhere(
+        (d) => _deportes.contains(d),
+        orElse: () => _deportes.isEmpty ? Deporte.futbol : _deportes.first,
+      );
   String _superficie = ''; // tipo de piso (opcional, según deporte)
   late String _apertura = widget.local.horaApertura;
   late String _cierre = widget.local.horaCierre;
@@ -76,6 +82,7 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
       club: l.club, // mismo local
       distrito: l.distrito,
       deporte: _deporte,
+      deportes: _deportes.toList(),
       precioHora: precio,
       ubicacion: l.ubicacion,
       clubFundador: l.clubFundador,
@@ -137,25 +144,40 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          const Text('Deporte', style: TextStyle(fontWeight: FontWeight.w700)),
+          const Text('Deportes', style: TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 4),
+          const Text(
+              'Marca todos los que se juegan en esta cancha (loza multiuso = '
+              'varios). La agenda es compartida.',
+              style: TextStyle(color: textoTenue, fontSize: 12)),
           const SizedBox(height: 8),
           Wrap(
             spacing: 10,
+            runSpacing: 10,
             children: [
               for (final d in deportesActivos)
                 ChoiceChip(
                   avatar: Icon(iconoDeporte(d),
                       size: 18,
-                      color: _deporte == d ? Colors.white : colorDeporte(d)),
+                      color:
+                          _deportes.contains(d) ? Colors.white : colorDeporte(d)),
                   label: Text(d.etiqueta),
-                  selected: _deporte == d,
+                  selected: _deportes.contains(d),
                   selectedColor: colorDeporte(d),
                   labelStyle: TextStyle(
-                      color: _deporte == d ? Colors.white : cs.onSurface,
+                      color:
+                          _deportes.contains(d) ? Colors.white : cs.onSurface,
                       fontWeight: FontWeight.w600),
-                  onSelected: (_) => setState(() {
-                    _deporte = d;
-                    _superficie = ''; // cambia el catálogo de pisos
+                  onSelected: (sel) => setState(() {
+                    if (sel) {
+                      _deportes.add(d);
+                    } else if (_deportes.length > 1) {
+                      _deportes.remove(d);
+                    }
+                    // si el piso actual ya no aplica al principal, se resetea
+                    if (!superficiesDe(_deporte).contains(_superficie)) {
+                      _superficie = '';
+                    }
                   }),
                 ),
             ],

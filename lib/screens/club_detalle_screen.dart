@@ -31,6 +31,10 @@ class ClubDetalleScreen extends StatefulWidget {
 
 class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
   late Cancha _cancha = widget.canchaInicial ?? widget.club.canchas.first;
+  // Deporte elegido para reservar (solo si la cancha es multideporte). null =
+  // usa el principal de la cancha.
+  Deporte? _deporteSel;
+  Deporte get _deporteEfectivo => _deporteSel ?? _cancha.deporte;
   String _dia = 'Hoy';
   String? _hora;
   bool _reclamoRechazado = false; // MI reclamo de esta cancha fue rechazado
@@ -185,8 +189,9 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     if (!pagado || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     final nav = Navigator.of(context);
-    final res =
-        await appState.agregarReservaJugador(_cancha, _fechaIso, _dia, hora);
+    final res = await appState.agregarReservaJugador(
+        _cancha, _fechaIso, _dia, hora,
+        deporte: _deporteEfectivo);
     if (!mounted) return;
     if (res == ResultadoReserva.ocupado) {
       setState(() => _hora = null); // libera selección; la grilla se refresca
@@ -325,6 +330,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                             onTap: () => setState(() {
                               _cancha = cc;
                               _hora = null;
+                              _deporteSel = null; // se ajusta a la nueva cancha
                             }),
                             child: Container(
                               padding:
@@ -356,6 +362,40 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                           );
                         },
                       ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  // Cancha multideporte (loza multiuso): elegir qué se va a jugar.
+                  // No afecta la disponibilidad (agenda compartida), solo registra
+                  // el deporte de la reserva.
+                  if (!descubierta && !pendiente && _cancha.esMultideporte) ...[
+                    Text('¿Qué vas a jugar?',
+                        style: t.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final d in _cancha.deportesJugables)
+                          ChoiceChip(
+                            avatar: Icon(iconoDeporte(d),
+                                size: 16,
+                                color: _deporteEfectivo == d
+                                    ? Colors.white
+                                    : colorDeporte(d)),
+                            label: Text(d.etiqueta),
+                            selected: _deporteEfectivo == d,
+                            selectedColor: colorDeporte(d),
+                            labelStyle: TextStyle(
+                                color: _deporteEfectivo == d
+                                    ? Colors.white
+                                    : cs.onSurface,
+                                fontWeight: FontWeight.w600),
+                            onSelected: (_) =>
+                                setState(() => _deporteSel = d),
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 16),
                   ],

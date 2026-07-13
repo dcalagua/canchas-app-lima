@@ -151,6 +151,10 @@ class CanchasRepo {
         'eliminada': c.eliminada,
         if (conAmenidades) 'amenidades': c.amenidades,
         if (conAmenidades) 'superficie': c.superficie,
+        // Columna nueva (loza multiuso). Va bajo el mismo flag de retry: si la
+        // BD aún no tiene la columna `deportes`, el reintento la omite.
+        if (conAmenidades)
+          'deportes': c.deportesJugables.map((e) => e.name).toList(),
       };
 
   static Cancha _fromRow(Map<String, dynamic> r) => Cancha(
@@ -159,6 +163,11 @@ class CanchasRepo {
         club: (r['club'] ?? '') as String,
         distrito: _enumDistrito(r['distrito'] as String?),
         deporte: _enumDeporte(r['deporte'] as String?),
+        deportes: (r['deportes'] as List?)
+                ?.map((e) => deportePorNombre(e.toString()))
+                .whereType<Deporte>()
+                .toList() ??
+            const [],
         precioHora: ((r['precio_hora'] ?? 100) as num).toDouble(),
         ubicacion: LatLng(
           ((r['lat'] ?? -12.108) as num).toDouble(),

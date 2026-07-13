@@ -22,6 +22,15 @@ enum Deporte {
   const Deporte(this.etiqueta);
 }
 
+/// Parsea un nombre de `Deporte` de forma segura (null si no existe, p. ej. un
+/// valor viejo/desconocido en datos persistidos). Evita que `byName` reviente.
+Deporte? deportePorNombre(String? s) {
+  for (final d in Deporte.values) {
+    if (d.name == s) return d;
+  }
+  return null;
+}
+
 /// Deportes que la app OFRECE al usuario (selectores, filtros, secciones).
 /// Pádel se retiró del piloto: sigue en el enum para no romper datos antiguos
 /// al cargarlos, pero no se muestra ni se puede elegir. Muchos locales alquilan
@@ -40,7 +49,12 @@ class Cancha {
   final String nombre;
   final String club;
   final Distrito distrito;
-  final Deporte deporte;
+  final Deporte deporte; // deporte PRINCIPAL (ícono/color/categoría en el mapa)
+  /// Todos los deportes que se pueden jugar en ESTA cancha (loza multiuso). Si
+  /// está vacío, se asume que solo ofrece [deporte] (compat. con datos viejos).
+  /// La agenda es COMPARTIDA: reservar un slot ocupa la cancha para todos los
+  /// deportes (es la misma superficie física). Usar el getter [deportesJugables].
+  final List<Deporte> deportes;
   final double precioHora; // soles por hora (admite 2 decimales)
   final LatLng ubicacion;
   final bool clubFundador; // sello "Club Fundador" de su distrito
@@ -64,6 +78,7 @@ class Cancha {
     required this.club,
     required this.distrito,
     required this.deporte,
+    this.deportes = const [],
     required this.precioHora,
     required this.ubicacion,
     required this.clubFundador,
@@ -81,6 +96,18 @@ class Cancha {
     this.amenidades = const [],
     this.superficie = '',
   });
+
+  /// Deportes jugables en esta cancha, garantizando al menos el principal.
+  /// Es la fuente de verdad para filtros/visibilidad (una loza multiuso aparece
+  /// en cada deporte que ofrece) y para elegir deporte al reservar.
+  List<Deporte> get deportesJugables =>
+      deportes.isEmpty ? [deporte] : deportes;
+
+  /// ¿Esta cancha permite jugar [d]? (para filtros por deporte).
+  bool ofrece(Deporte d) => deportesJugables.contains(d);
+
+  /// ¿Es una cancha multideporte (loza multiuso con más de un deporte)?
+  bool get esMultideporte => deportesJugables.length > 1;
 
   /// Se puede reservar online solo si está en Pichangol y su propiedad fue
   /// verificada (evita reservas en canchas reclamadas por alguien sin validar).
@@ -144,6 +171,7 @@ class Cancha {
     String? club,
     Distrito? distrito,
     Deporte? deporte,
+    List<Deporte>? deportes,
     double? precioHora,
     LatLng? ubicacion,
     String? direccion,
@@ -165,6 +193,7 @@ class Cancha {
       club: club ?? this.club,
       distrito: distrito ?? this.distrito,
       deporte: deporte ?? this.deporte,
+      deportes: deportes ?? this.deportes,
       precioHora: precioHora ?? this.precioHora,
       ubicacion: ubicacion ?? this.ubicacion,
       clubFundador: clubFundador,
@@ -190,6 +219,7 @@ class Cancha {
         'club': club,
         'distrito': distrito.name,
         'deporte': deporte.name,
+        'deportes': deportesJugables.map((e) => e.name).toList(),
         'precioHora': precioHora,
         'lat': ubicacion.latitude,
         'lng': ubicacion.longitude,
@@ -215,6 +245,11 @@ class Cancha {
         club: j['club'] as String,
         distrito: Distrito.values.byName(j['distrito'] as String),
         deporte: Deporte.values.byName(j['deporte'] as String),
+        deportes: (j['deportes'] as List?)
+                ?.map((e) => deportePorNombre(e.toString()))
+                .whereType<Deporte>()
+                .toList() ??
+            const [],
         precioHora: (j['precioHora'] as num).toDouble(),
         ubicacion: LatLng(
             (j['lat'] as num).toDouble(), (j['lng'] as num).toDouble()),
@@ -280,6 +315,7 @@ class Reserva {
   final int sena; // monto de seña/garantía con tarjeta (anti no-show)
   final bool pagado; // el dueño confirmó el pago (efectivo en cancha)
   final String usuario; // correo del jugador (para "mis reservas" entre dispositivos)
+  final String deporte; // deporte elegido para este slot (Deporte.name); '' = el principal de la cancha
 
   const Reserva({
     required this.id,
@@ -296,6 +332,7 @@ class Reserva {
     required this.sena,
     this.pagado = false,
     this.usuario = '',
+    this.deporte = '',
   });
 
   Reserva copyWith({EstadoReserva? estado, bool? pagado}) => Reserva(
@@ -313,6 +350,7 @@ class Reserva {
         sena: sena,
         pagado: pagado ?? this.pagado,
         usuario: usuario,
+        deporte: deporte,
       );
 
   Map<String, dynamic> toJson() => {
@@ -330,6 +368,7 @@ class Reserva {
         'sena': sena,
         'pagado': pagado,
         'usuario': usuario,
+        'deporte': deporte,
       };
 
   factory Reserva.fromJson(Map<String, dynamic> j) => Reserva(
@@ -347,6 +386,7 @@ class Reserva {
         sena: j['sena'] as int,
         pagado: (j['pagado'] ?? false) as bool,
         usuario: (j['usuario'] ?? '') as String,
+        deporte: (j['deporte'] ?? '') as String,
       );
 }
 

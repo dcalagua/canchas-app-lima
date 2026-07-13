@@ -54,11 +54,14 @@ class Club {
   /// verificación. Habilita el sello público "✓ Verificada".
   bool get verificada => registrada && canchas.any((c) => c.verificada);
 
-  /// Deportes únicos del club, en orden de aparición.
+  /// Deportes únicos del club, en orden de aparición. Incluye TODOS los deportes
+  /// de cada cancha (una loza multiuso aporta fútbol + vóley + básquet).
   List<Deporte> get deportes {
     final vistos = <Deporte>[];
     for (final c in canchas) {
-      if (!vistos.contains(c.deporte)) vistos.add(c.deporte);
+      for (final d in c.deportesJugables) {
+        if (!vistos.contains(d)) vistos.add(d);
+      }
     }
     return vistos;
   }

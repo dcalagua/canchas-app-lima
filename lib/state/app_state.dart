@@ -1716,8 +1716,11 @@ class AppState extends ChangeNotifier {
   /// el cobro luego con [marcarPago]. El precio se calcula por la duración del
   /// slot de la cancha (1h, 1.5h, 2h).
   Future<ResultadoReserva> agregarReservaJugador(
-      Cancha cancha, String fecha, String diaLabel, String hora) async {
+      Cancha cancha, String fecha, String diaLabel, String hora,
+      {Deporte? deporte}) async {
     // Chequeo local rápido (doble toque / feedback inmediato sin conexión).
+    // La agenda es COMPARTIDA entre deportes: se ocupa por (cancha, fecha, hora),
+    // sin importar el deporte (es la misma superficie física).
     final yaLocal = reservas.any((r) =>
         r.canchaId == cancha.id && r.fecha == fecha && r.horaInicio == hora);
     if (yaLocal) return ResultadoReserva.ocupado;
@@ -1737,6 +1740,8 @@ class AppState extends ChangeNotifier {
       precio: precio,
       sena: 0, // piloto: pago en cancha, sin seña con tarjeta
       usuario: usuario?.email ?? '',
+      // Deporte elegido para este slot (loza multiuso). Default: el principal.
+      deporte: (deporte ?? cancha.deporte).name,
     );
 
     // Fuente de verdad anti-doble-reserva: Supabase con
