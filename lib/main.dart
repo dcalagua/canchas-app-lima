@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'brand.dart';
+import 'config/pais.dart';
 import 'screens/splash_screen.dart';
 import 'services/supabase_service.dart';
 import 'state/app_state.dart';
@@ -9,6 +10,9 @@ import 'theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Moneda correcta desde el primer frame (y offline): recupera el país
+  // detectado la última vez. El GPS luego lo confirma/actualiza al abrir Explorar.
+  await cargarPaisPersistido();
   await SupabaseService.init();
   runApp(const PichangolApp());
 }

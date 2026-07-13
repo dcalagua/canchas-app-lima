@@ -9,6 +9,7 @@ import '../utils/redes.dart';
 import '../widgets/responsive.dart';
 import 'academia_detalle_screen.dart';
 import 'login_google_sheet.dart';
+import '../utils/moneda.dart';
 
 /// Directorio público de academias (Fase 1): el jugador ve las academias, su
 /// deporte, dónde entrenan y sus planes. Al tocar una entra a la ficha, donde
@@ -499,7 +500,7 @@ class _TarjetaAcademia extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       if (desde != null)
-                        Text('desde S/ ${desde.toStringAsFixed(2)}',
+                        Text('desde $monedaSimbolo ${desde.toStringAsFixed(2)}',
                             style: t.titleSmall?.copyWith(
                                 color: cs.primary, fontWeight: FontWeight.w800))
                       else

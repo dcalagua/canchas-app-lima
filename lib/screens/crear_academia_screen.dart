@@ -12,6 +12,7 @@ import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/responsive.dart';
+import '../utils/moneda.dart';
 
 /// Crea o edita la academia del profe (marca independiente). Fase 1: nombre,
 /// deporte, sede actual (texto), WhatsApp, descripción y planes.
@@ -466,10 +467,10 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
 
   String _descPlan(Plan p) {
     if (p.tipo == TipoPlan.porClase) {
-      return 'Por clase · S/ ${p.precioMes.toStringAsFixed(2)} c/u';
+      return 'Por clase · $monedaSimbolo ${p.precioMes.toStringAsFixed(2)} c/u';
     }
     return '${p.tipo.etiqueta} · ${p.meses} ${p.meses == 1 ? 'mes' : 'meses'} · '
-        'S/ ${p.precioMes.toStringAsFixed(2)}/mes · Total S/ ${p.total.toStringAsFixed(2)}';
+        '$monedaSimbolo ${p.precioMes.toStringAsFixed(2)}/mes · Total $monedaSimbolo ${p.total.toStringAsFixed(2)}';
   }
 }
 
@@ -631,7 +632,7 @@ class _EditorPlanState extends State<_EditorPlan> {
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: InputDecoration(
                 labelText: porClase ? 'Precio por clase' : 'Precio por mes',
-                prefixText: 'S/ '),
+                prefixText: '$monedaSimbolo '),
           ),
           if (!porClase) ...[
             const SizedBox(height: 14),

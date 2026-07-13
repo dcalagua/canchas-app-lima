@@ -503,9 +503,9 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
           TextField(
             controller: _precio,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Precio por hora',
-              prefixText: 'S/ ',
+              prefixText: '$monedaSimbolo ',
             ),
           ),
           const SizedBox(height: 18),

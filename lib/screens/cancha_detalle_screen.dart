@@ -7,6 +7,7 @@ import '../theme.dart';
 import '../widgets/court_lines.dart';
 import 'login_google_sheet.dart';
 import 'registrar_cancha_screen.dart';
+import '../utils/moneda.dart';
 
 /// Detalle de una cancha (estilo ficha de Airbnb) con selección de día/hora y
 /// flujo de reserva. Demo sin backend: la reserva se guarda en memoria.
@@ -74,7 +75,7 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
             const SizedBox(height: 8),
             Text('$_dia · $hora a ${cancha.horaFinDe(hora)}'),
             const SizedBox(height: 8),
-            Text('Total: S/ ${total.toStringAsFixed(2)}',
+            Text('Total: $monedaSimbolo ${total.toStringAsFixed(2)}',
                 style: TextStyle(
                     color: Theme.of(ctx).colorScheme.primary,
                     fontWeight: FontWeight.w700)),
@@ -179,7 +180,7 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
                       const Spacer(),
                       if (cancha.registrada) ...[
                         Text(
-                          'S/ ${cancha.precioHora.toStringAsFixed(2)}',
+                          '$monedaSimbolo ${cancha.precioHora.toStringAsFixed(2)}',
                           style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 22,

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../utils/moneda.dart';
 
 /// Agenda REAL del dueño: las franjas del día de SUS canchas con las reservas
 /// reales. Se trabaja dentro de UN local: selector de local (si tiene varios) +
@@ -329,7 +330,7 @@ class _HeaderAgenda extends StatelessWidget {
               const SizedBox(width: 10),
               _MiniKpi('$ocupacion%', 'Ocupación'),
               const SizedBox(width: 10),
-              _MiniKpi('S/$porCobrar', 'Por cobrar', accent: true),
+              _MiniKpi('$monedaSimbolo$porCobrar', 'Por cobrar', accent: true),
             ],
           ),
         ],
@@ -513,7 +514,7 @@ class _AgendaRow extends StatelessWidget {
                               ?.copyWith(fontWeight: FontWeight.w700)),
                       Text(
                         '${r.horaInicio}–${r.horaFin} · '
-                        '${r.pagado ? 'Pagado' : 'Por cobrar'} S/${r.precio}',
+                        '${r.pagado ? 'Pagado' : 'Por cobrar'} $monedaSimbolo${r.precio}',
                         style: t.bodySmall?.copyWith(color: textoTenueDe(context)),
                       ),
                     ],

@@ -9,6 +9,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/geo.dart';
 import 'cancha_detalle_screen.dart';
+import '../utils/moneda.dart';
 
 /// Asistente Pichangol (primer agente de IA): chat estilo WhatsApp donde el
 /// jugador escribe en lenguaje natural ("fútbol mañana 8pm por Surco") y el
@@ -80,6 +81,7 @@ class _AsistenteScreenState extends State<AsistenteScreen> {
       final marks = await placemarkFromCoordinates(pos.latitude, pos.longitude);
       if (!mounted || marks.isEmpty) return;
       final m = marks.first;
+      setMonedaPorPais(m.isoCountryCode); // S/ · Bs · $ según el país donde estás
       final ciudad = (m.locality?.trim().isNotEmpty == true
               ? m.locality!
               : (m.subAdministrativeArea?.trim().isNotEmpty == true
@@ -487,7 +489,7 @@ class _TarjetaSugerencia extends StatelessWidget {
               const SizedBox(height: 10),
               Row(
                 children: [
-                  Text('S/ ${c.precioHora.toStringAsFixed(2)}',
+                  Text('$monedaSimbolo ${c.precioHora.toStringAsFixed(2)}',
                       style: const TextStyle(
                           fontWeight: FontWeight.w900, fontSize: 16)),
                   Text('  /hora',

@@ -7,6 +7,7 @@ import '../theme.dart';
 import '../utils/input_formatos.dart';
 import '../widgets/marcas_pago.dart';
 import '../widgets/pago_procesando.dart';
+import '../utils/moneda.dart';
 
 /// Recarga de saldo del dueño con Culqi (tarjeta o Yape). Tokeniza con la llave
 /// pública en el celular y confirma el cobro contra el backend. Devuelve el monto
@@ -143,15 +144,15 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
       }
       return {
         'ok': true,
-        'detalle': 'Se acreditaron S/ $_monto a tu saldo.',
+        'detalle': 'Se acreditaron $monedaSimbolo $_monto a tu saldo.',
       };
     }
 
     final ok = await PagoProcesando.mostrar(
       context,
-      titulo: 'Cobrando S/ $_monto',
+      titulo: 'Cobrando $monedaSimbolo $_monto',
       exitoTitulo: '¡Recarga exitosa!',
-      exitoDetalle: 'Se acreditaron S/ $_monto a tu saldo.',
+      exitoDetalle: 'Se acreditaron $monedaSimbolo $_monto a tu saldo.',
       accion: accion,
     );
     if (ok == true && mounted) Navigator.of(context).pop(_monto);
@@ -177,7 +178,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
                   children: [
                     for (final m in _montos)
                       ChoiceChip(
-                        label: Text('S/ $m'),
+                        label: Text('$monedaSimbolo $m'),
                         selected: _monto == m,
                         selectedColor: lima,
                         labelStyle: TextStyle(
@@ -237,7 +238,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
                         foregroundColor: lima,
                         padding: const EdgeInsets.symmetric(vertical: 15)),
                     onPressed: _pagar,
-                    child: Text('Pagar S/ $_monto'),
+                    child: Text('Pagar $monedaSimbolo $_monto'),
                   ),
                 ),
                 const SizedBox(height: 10),

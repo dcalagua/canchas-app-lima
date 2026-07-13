@@ -8,6 +8,7 @@ import '../theme.dart';
 import '../utils/input_formatos.dart';
 import 'marcas_pago.dart';
 import 'pago_procesando.dart';
+import '../utils/moneda.dart';
 
 /// Flujo de cobro reutilizable al jugador (reservas, matrículas). Deja elegir
 /// una **tarjeta guardada** (Culqi One Click) o **una nueva**, tokeniza, cobra
@@ -146,11 +147,11 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
             token: t['token'].toString(), email: widget.email,
             montoSoles: widget.monto.toDouble(), concepto: widget.concepto);
         return res['ok'] == true
-            ? {'ok': true, 'detalle': 'Pago de S/ ${widget.monto} aprobado.'}
+            ? {'ok': true, 'detalle': 'Pago de $monedaSimbolo ${widget.monto} aprobado.'}
             : {'ok': false, 'error': res['error']?.toString() ?? 'No se pudo cobrar.'};
       }
       final ok = await PagoProcesando.mostrar(context,
-          titulo: 'Cobrando S/ ${widget.monto}', exitoTitulo: '¡Pago aprobado!',
+          titulo: 'Cobrando $monedaSimbolo ${widget.monto}', exitoTitulo: '¡Pago aprobado!',
           accion: accionYape);
       if (ok == true && mounted) Navigator.of(context).pop(true);
       return;
@@ -188,13 +189,13 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
         token: tk, email: widget.email,
         montoSoles: widget.monto.toDouble(), concepto: widget.concepto);
       return res['ok'] == true
-          ? {'ok': true, 'detalle': 'Pago de S/ ${widget.monto} aprobado.'}
+          ? {'ok': true, 'detalle': 'Pago de $monedaSimbolo ${widget.monto} aprobado.'}
           : {'ok': false, 'error': res['error']?.toString() ?? 'No se pudo cobrar.'};
     }
 
     final ok = await PagoProcesando.mostrar(
       context,
-      titulo: 'Cobrando S/ ${widget.monto}',
+      titulo: 'Cobrando $monedaSimbolo ${widget.monto}',
       exitoTitulo: '¡Pago aprobado!',
       accion: accion,
     );
@@ -222,7 +223,7 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                Text('Pagar S/ ${widget.monto}',
+                Text('Pagar $monedaSimbolo ${widget.monto}',
                     style: TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 20,
@@ -388,7 +389,7 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
                         foregroundColor: lima,
                         padding: const EdgeInsets.symmetric(vertical: 15)),
                     onPressed: _pagar,
-                    child: Text('Pagar S/ ${widget.monto}'),
+                    child: Text('Pagar $monedaSimbolo ${widget.monto}'),
                   ),
                 ),
                 const SizedBox(height: 8),

@@ -201,9 +201,9 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
           TextField(
             controller: _costo,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
                 labelText: 'Costo de inscripción (opcional)',
-                prefixText: 'S/ '),
+                prefixText: '$monedaSimbolo '),
           ),
           const SizedBox(height: 24),
           SizedBox(

@@ -7,6 +7,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import 'pago_sheet.dart';
 import 'recargar_saldo_screen.dart';
+import '../utils/moneda.dart';
 
 /// Cuenta del club: saldo prepago (modelo inDrive), recargas y movimientos.
 class CuentaScreen extends StatelessWidget {
@@ -99,7 +100,7 @@ class CuentaScreen extends StatelessWidget {
         if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           backgroundColor: pino,
-          content: Text('✅ Recargaste S/$monto. ¡Ya apareces destacado!'),
+          content: Text('✅ Recargaste $monedaSimbolo$monto. ¡Ya apareces destacado!'),
         ));
       }
       return;
@@ -123,7 +124,7 @@ class CuentaScreen extends StatelessWidget {
               SnackBar(
                 backgroundColor: pino,
                 content: Text(
-                    '✅ Recargaste S/$monto. ¡Ya apareces destacado! (${res.referencia})'),
+                    '✅ Recargaste $monedaSimbolo$monto. ¡Ya apareces destacado! (${res.referencia})'),
               ),
             );
           }
@@ -192,7 +193,7 @@ class _TarjetaSaldo extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 14),
-          Text('S/ $saldo.00',
+          Text('$monedaSimbolo $saldo.00',
               style: t.displaySmall?.copyWith(
                   color: Colors.white, fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
@@ -257,7 +258,7 @@ class _FilaMovimiento extends StatelessWidget {
               ],
             ),
           ),
-          Text('${esRecarga ? '+' : '−'} S/${m.monto}',
+          Text('${esRecarga ? '+' : '−'} $monedaSimbolo${m.monto}',
               style: t.titleMedium
                   ?.copyWith(color: color, fontWeight: FontWeight.w700)),
         ],
@@ -343,7 +344,7 @@ class _BotonMonto extends StatelessWidget {
             border: Border.all(color: trazo),
           ),
           alignment: Alignment.center,
-          child: Text('S/ $monto',
+          child: Text('$monedaSimbolo $monto',
               style: const TextStyle(
                   color: pino, fontWeight: FontWeight.w800, fontSize: 20)),
         ),

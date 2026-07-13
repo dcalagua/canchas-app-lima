@@ -9,6 +9,7 @@ import '../theme.dart';
 import '../utils/ubicacion_share.dart';
 import '../widgets/pago_tarjeta_sheet.dart';
 import 'login_google_sheet.dart';
+import '../utils/moneda.dart';
 
 /// Detalle de un campeonato: participantes, fixture (llave o tabla), carga de
 /// resultados y compartir por WhatsApp. Los controles de edición se muestran
@@ -80,7 +81,7 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                     onPressed: () => _inscribirme(context, c),
                     icon: const Icon(Icons.how_to_reg),
                     label: Text(c.costoInscripcion > 0
-                        ? 'Inscribirme · S/ ${c.costoInscripcion.toStringAsFixed(2)}'
+                        ? 'Inscribirme · $monedaSimbolo ${c.costoInscripcion.toStringAsFixed(2)}'
                         : 'Inscribirme'),
                   ),
                 ),
@@ -255,7 +256,7 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                 if (c.costoInscripcion > 0) ...[
                   const SizedBox(height: 8),
                   Text(
-                      'Inscripción: S/ ${c.costoInscripcion.toStringAsFixed(2)}',
+                      'Inscripción: $monedaSimbolo ${c.costoInscripcion.toStringAsFixed(2)}',
                       style: const TextStyle(color: textoTenue)),
                 ],
                 if (error != null) ...[
@@ -377,7 +378,7 @@ class _Cabecera extends StatelessWidget {
       if (c.fechas.isNotEmpty) '📅 ${c.fechas}',
       if (c.sede.isNotEmpty) '📍 ${c.sede}',
       if (c.costoInscripcion > 0)
-        'Inscripción S/ ${c.costoInscripcion.toStringAsFixed(2)}',
+        'Inscripción $monedaSimbolo ${c.costoInscripcion.toStringAsFixed(2)}',
     ];
     return Container(
       padding: const EdgeInsets.all(16),

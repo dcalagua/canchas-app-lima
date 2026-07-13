@@ -9,6 +9,7 @@ import 'agregar_cancha_screen.dart';
 import 'editar_cancha_screen.dart';
 import 'recargar_saldo_screen.dart';
 import 'registrar_cancha_screen.dart';
+import '../utils/moneda.dart';
 
 /// Canchas del dueño agrupadas por LOCAL (un local = varias canchas, posibles
 /// de distintos deportes). Cada local permite agregar más canchas y editar las
@@ -158,11 +159,11 @@ class _DestacarCanchasCardState extends State<_DestacarCanchasCard> {
           const SizedBox(height: 6),
           Text(
             destacada
-                ? 'Tus canchas salen primero en Explorar. Saldo: S/ $saldo. '
-                    'Más saldo = mejor posición: Plata desde S/ 50, Oro desde S/ 200.'
+                ? 'Tus canchas salen primero en Explorar. Saldo: $monedaSimbolo $saldo. '
+                    'Más saldo = mejor posición: Plata desde $monedaSimbolo 50, Oro desde $monedaSimbolo 200.'
                 : 'Pon saldo y tus canchas aparecen destacadas (arriba y con '
                     'medalla) para que más jugadores las reserven. '
-                    'Bronce desde S/ 1, Plata S/ 50, Oro S/ 200.',
+                    'Bronce desde $monedaSimbolo 1, Plata $monedaSimbolo 50, Oro $monedaSimbolo 200.',
             style: t.bodySmall
                 ?.copyWith(color: Colors.white.withOpacity(0.92), height: 1.3),
           ),
@@ -191,7 +192,7 @@ class _DestacarCanchasCardState extends State<_DestacarCanchasCard> {
               onPressed: _recargar,
               icon: const Icon(Icons.add),
               label: Text(saldo > 0
-                  ? 'Recargar y destacar (S/ $saldo)'
+                  ? 'Recargar y destacar ($monedaSimbolo $saldo)'
                   : 'Poner saldo y destacar'),
             ),
           ),
@@ -405,7 +406,7 @@ class _FilaCancha extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis),
                   Text(
-                    '${cancha.deporte.etiqueta} · S/ ${cancha.precioHora.toStringAsFixed(2)}/h · '
+                    '${cancha.deporte.etiqueta} · $monedaSimbolo ${cancha.precioHora.toStringAsFixed(2)}/h · '
                     '${cancha.horaApertura}–${cancha.horaCierre}',
                     style: t.bodySmall?.copyWith(color: textoTenueDe(context)),
                     maxLines: 1,

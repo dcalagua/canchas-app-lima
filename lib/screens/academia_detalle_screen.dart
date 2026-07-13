@@ -9,6 +9,7 @@ import '../utils/ubicacion_share.dart';
 import '../widgets/pago_tarjeta_sheet.dart';
 import 'campeonatos_screen.dart';
 import 'chat_screen.dart';
+import '../utils/moneda.dart';
 
 /// Ficha pública de una academia: feed de fotos propio (no Instagram embebido),
 /// planes con matrícula en el mismo app (pago simulado) y redes para seguir.
@@ -402,11 +403,11 @@ class _TarjetaPlan extends StatelessWidget {
 
   String get _detalle {
     if (plan.tipo == TipoPlan.porClase) {
-      return 'Por clase · S/ ${plan.precioMes.toStringAsFixed(2)} c/u';
+      return 'Por clase · $monedaSimbolo ${plan.precioMes.toStringAsFixed(2)} c/u';
     }
     return '${plan.tipo.etiqueta} · ${plan.meses} '
         '${plan.meses == 1 ? 'mes' : 'meses'} · '
-        'S/ ${plan.precioMes.toStringAsFixed(2)}/mes';
+        '$monedaSimbolo ${plan.precioMes.toStringAsFixed(2)}/mes';
   }
 
   @override
@@ -433,7 +434,7 @@ class _TarjetaPlan extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('S/ ${plan.total.toStringAsFixed(2)}',
+              Text('$monedaSimbolo ${plan.total.toStringAsFixed(2)}',
                   style: TextStyle(
                       color: Theme.of(context).colorScheme.primary,
                       fontWeight: FontWeight.w800,
@@ -626,7 +627,7 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
                 color: limaSuave, borderRadius: BorderRadius.circular(12)),
-            child: Text('Pagarás ahora: S/ ${_total.toStringAsFixed(2)}',
+            child: Text('Pagarás ahora: $monedaSimbolo ${_total.toStringAsFixed(2)}',
                 style: const TextStyle(
                     color: bosque, fontWeight: FontWeight.w800, fontSize: 15)),
           ),
@@ -648,7 +649,7 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
                 }
                 Navigator.of(context).pop((n, _whatsapp.text.trim(), _cantidad));
               },
-              child: Text('Pagar S/ ${_total.toStringAsFixed(2)}'),
+              child: Text('Pagar $monedaSimbolo ${_total.toStringAsFixed(2)}'),
             ),
           ),
         ],

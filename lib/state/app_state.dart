@@ -23,6 +23,7 @@ import '../services/verificacion_service.dart';
 import '../services/growth_service.dart';
 import '../services/propiedad_service.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import '../utils/moneda.dart';
 
 /// Instancia única del estado para toda la app (sin paquetes extra de DI).
 final AppState appState = AppState();
@@ -1417,7 +1418,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Comisión que descuenta del saldo cada reserva nueva (5%, mínimo S/ 2).
+  /// Comisión que descuenta del saldo cada reserva nueva (5%, mínimo $monedaSimbolo 2).
   int comisionDe(num precio) {
     final c = (precio * 0.05).round();
     return c < 2 ? 2 : c;
@@ -1847,7 +1848,7 @@ class AppState extends ChangeNotifier {
     _consumirComision(cancha);
     notifyListeners();
     _persistirDatos();
-    return '${cancha.nombre} · ${nueva.horaInicio} · +S/ ${nueva.precio}';
+    return '${cancha.nombre} · ${nueva.horaInicio} · +$monedaSimbolo ${nueva.precio}';
   }
 
   String _siguienteHora(String hora) {

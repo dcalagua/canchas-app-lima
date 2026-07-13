@@ -13,6 +13,7 @@ import 'chats_academia_screen.dart';
 import 'crear_academia_screen.dart';
 import 'recargar_saldo_screen.dart';
 import 'reporte_academia_screen.dart';
+import '../utils/moneda.dart';
 
 /// Panel del PROFE: su academia, alumnos y cobros (Fase 1). Sin pasarela: marca
 /// pagos en efectivo y manda recordatorios por WhatsApp.
@@ -51,12 +52,12 @@ class MiAcademiaScreen extends StatelessWidget {
                     Expanded(
                         child: _Metrica(
                             'Por cobrar',
-                            'S/ ${porCobrar.toStringAsFixed(2)}',
+                            '$monedaSimbolo ${porCobrar.toStringAsFixed(2)}',
                             Theme.of(context).colorScheme.primary)),
                     const SizedBox(width: 10),
                     Expanded(
                         child: _Metrica('Vencido',
-                            'S/ ${vencido.toStringAsFixed(2)}', clayOscuro)),
+                            '$monedaSimbolo ${vencido.toStringAsFixed(2)}', clayOscuro)),
                     const SizedBox(width: 10),
                     Expanded(
                         child: _Metrica('Alumnos', '${alumnos.length}',
@@ -421,11 +422,11 @@ class _DestacarCardState extends State<_DestacarCard> {
           const SizedBox(height: 6),
           Text(
             destacada
-                ? 'Apareces primero en la lista de academias. Saldo: S/ $saldo. '
-                    'Más saldo = mejor posición: Plata desde S/ 50, Oro desde S/ 200.'
+                ? 'Apareces primero en la lista de academias. Saldo: $monedaSimbolo $saldo. '
+                    'Más saldo = mejor posición: Plata desde $monedaSimbolo 50, Oro desde $monedaSimbolo 200.'
                 : 'Pon saldo y tu academia aparece destacada (arriba y con '
                     'medalla) para que más alumnos la encuentren. '
-                    'Bronce desde S/ 1, Plata S/ 50, Oro S/ 200.',
+                    'Bronce desde $monedaSimbolo 1, Plata $monedaSimbolo 50, Oro $monedaSimbolo 200.',
             style: t.bodySmall
                 ?.copyWith(color: Colors.white.withOpacity(0.92), height: 1.3),
           ),
@@ -454,7 +455,7 @@ class _DestacarCardState extends State<_DestacarCard> {
               onPressed: _recargar,
               icon: const Icon(Icons.add),
               label: Text(saldo > 0
-                  ? 'Recargar saldo (S/ $saldo)'
+                  ? 'Recargar saldo ($monedaSimbolo $saldo)'
                   : 'Poner saldo y destacar'),
             ),
           ),
@@ -769,7 +770,7 @@ class _TarjetaAlumno extends StatelessWidget {
         subtitle: Text(
           () {
             final deuda = pend > 0
-                ? 'Debe S/ ${pend.toStringAsFixed(2)}'
+                ? 'Debe $monedaSimbolo ${pend.toStringAsFixed(2)}'
                 : 'Al día';
             if (alumno.esMenor) {
               return 'Apoderado: ${alumno.apoderadoNombre} · $deuda';
@@ -887,8 +888,8 @@ class AlumnoDetalleScreen extends StatelessWidget {
               ListTile(
                 title: Text(p.nombre),
                 subtitle: Text(p.tipo == TipoPlan.porClase
-                    ? 'Por clase · S/ ${p.precioMes.toStringAsFixed(2)}'
-                    : '${p.meses} ${p.meses == 1 ? 'mes' : 'meses'} · Total S/ ${p.total.toStringAsFixed(2)}'),
+                    ? 'Por clase · $monedaSimbolo ${p.precioMes.toStringAsFixed(2)}'
+                    : '${p.meses} ${p.meses == 1 ? 'mes' : 'meses'} · Total $monedaSimbolo ${p.total.toStringAsFixed(2)}'),
                 onTap: () => Navigator.pop(context, p),
               ),
           ],
@@ -912,7 +913,7 @@ class AlumnoDetalleScreen extends StatelessWidget {
         content: TextField(
           controller: monto,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(labelText: 'Monto', prefixText: 'S/ '),
+          decoration: InputDecoration(labelText: 'Monto', prefixText: '$monedaSimbolo '),
         ),
         actions: [
           TextButton(
@@ -969,7 +970,7 @@ class _FilaCuota extends StatelessWidget {
                 child: Text(c.concepto,
                     style: const TextStyle(fontWeight: FontWeight.w700)),
               ),
-              Text('S/ ${c.monto.toStringAsFixed(2)}',
+              Text('$monedaSimbolo ${c.monto.toStringAsFixed(2)}',
                   style: const TextStyle(fontWeight: FontWeight.w800)),
             ],
           ),
@@ -1033,7 +1034,7 @@ class _FilaCuota extends StatelessWidget {
     final saludo = alumno.esMenor ? alumno.apoderadoNombre : alumno.nombre;
     final deQuien = alumno.esMenor ? ' de ${alumno.nombre}' : '';
     final msg = 'Hola $saludo, te recuerdo el pago$deQuien de "${c.concepto}" '
-        'por S/ ${c.monto.toStringAsFixed(2)}. ¡Gracias!';
+        'por $monedaSimbolo ${c.monto.toStringAsFixed(2)}. ¡Gracias!';
     final ok = await WhatsAppLink.abrir(tel, msg);
     if (!ok && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

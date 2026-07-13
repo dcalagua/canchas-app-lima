@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../utils/moneda.dart';
 
 /// Reportes REALES del dueño: ingresos del mes (cobrado), reservas, por cobrar
 /// y ocupación de hoy, calculados sobre sus canchas y reservas reales. Sin
@@ -96,7 +97,7 @@ class ReportesScreen extends StatelessWidget {
                     Text('Ingresos del mes (cobrado)',
                         style: t.bodyMedium?.copyWith(color: Colors.white70)),
                     const SizedBox(height: 6),
-                    Text('S/ $ingresoMes',
+                    Text('$monedaSimbolo $ingresoMes',
                         style: t.displaySmall?.copyWith(
                             color: Colors.white, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 4),
@@ -119,7 +120,7 @@ class ReportesScreen extends StatelessWidget {
                   const SizedBox(width: 14),
                   Expanded(
                     child: _MetricCard(
-                        valor: 'S/ $porCobrarMes',
+                        valor: '$monedaSimbolo $porCobrarMes',
                         label: 'por cobrar este mes'),
                   ),
                 ],

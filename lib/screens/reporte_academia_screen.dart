@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/academia.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../utils/moneda.dart';
 
 /// Reporte de pagos de la academia: dashboard (cobrado / por cobrar / vencido),
 /// gráfico de ingresos por mes y lista de cuotas, con filtro por fecha.
@@ -201,7 +202,7 @@ class _Kpi extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Text('S/ ${monto.toStringAsFixed(0)}',
+          Text('$monedaSimbolo ${monto.toStringAsFixed(0)}',
               style: TextStyle(
                   fontWeight: FontWeight.w800, fontSize: 18, color: color)),
           const SizedBox(height: 2),
@@ -354,7 +355,7 @@ class _FilaPago extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text('S/ ${cuota.monto.toStringAsFixed(2)}',
+              Text('$monedaSimbolo ${cuota.monto.toStringAsFixed(2)}',
                   style: TextStyle(
                       fontWeight: FontWeight.w800, color: cs.onSurface)),
               Text('${ref.day} ${mesesCorto[ref.month - 1]}',

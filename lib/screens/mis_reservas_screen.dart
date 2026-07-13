@@ -4,6 +4,7 @@ import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/court_lines.dart';
+import '../utils/moneda.dart';
 
 /// Reservas hechas por el jugador logueado (rediseño premium, handoff v2):
 /// tabs Próximas/Historial + card destacada bosque de la próxima reserva.
@@ -215,7 +216,7 @@ class _ReservaDestacada extends StatelessWidget {
                           ?.copyWith(color: Colors.white.withOpacity(0.8)),
                     ),
                     if (reserva.sena > 0)
-                      Text('Seña pagada S/${reserva.sena}',
+                      Text('Seña pagada $monedaSimbolo${reserva.sena}',
                           style: t.bodySmall?.copyWith(color: lima)),
                   ],
                 ),
@@ -301,7 +302,7 @@ class _ReservaCard extends StatelessWidget {
               ],
             ),
           ),
-          Text('S/${reserva.precio}',
+          Text('$monedaSimbolo${reserva.precio}',
               style: t.titleMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                   color: Theme.of(context).colorScheme.onSurface)),

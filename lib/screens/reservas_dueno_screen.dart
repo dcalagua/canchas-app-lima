@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../utils/moneda.dart';
 
 /// Panel de RESERVAS del dueño (piloto): lista las reservas reales de sus
 /// canchas, con botones para registrar el pago en efectivo o marcar no-show,
@@ -122,7 +123,7 @@ class _Caja extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('Cobrado', style: t.bodySmall?.copyWith(color: lima)),
-                Text('S/ $cobrado',
+                Text('$monedaSimbolo $cobrado',
                     style: t.titleLarge?.copyWith(
                         color: Colors.white, fontWeight: FontWeight.w800)),
               ],
@@ -136,7 +137,7 @@ class _Caja extends StatelessWidget {
               children: [
                 Text('Por cobrar',
                     style: t.bodySmall?.copyWith(color: Colors.white70)),
-                Text('S/ $porCobrar',
+                Text('$monedaSimbolo $porCobrar',
                     style: t.titleLarge?.copyWith(
                         color: Colors.white, fontWeight: FontWeight.w800)),
               ],
@@ -197,7 +198,7 @@ class _ReservaCard extends StatelessWidget {
             style: t.bodySmall?.copyWith(color: textoTenueDe(context)),
           ),
           const SizedBox(height: 2),
-          Text('S/ ${reserva.precio}',
+          Text('$monedaSimbolo ${reserva.precio}',
               style: t.bodyMedium?.copyWith(
                   color: Theme.of(context).colorScheme.onSurface,
                   fontWeight: FontWeight.w700)),
