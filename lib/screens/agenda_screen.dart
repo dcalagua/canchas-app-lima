@@ -229,6 +229,15 @@ class _HeaderAgenda extends StatelessWidget {
     final barrio = canchas.isEmpty ? 'Lima' : canchas.first.distrito.etiqueta;
     final local = canchas.isEmpty ? 'Mis canchas' : canchas.first.club;
 
+    // Saludo por hora del día (+ nombre del dueño si hay sesión). Antes decía
+    // "Buenas, San Borja" — saludaba al distrito, que quedaba raro.
+    final hora = DateTime.now().hour;
+    final saludo = hora < 12
+        ? 'Buenos días'
+        : (hora < 19 ? 'Buenas tardes' : 'Buenas noches');
+    final nombre = (appState.usuario?.nombre ?? '').trim().split(' ').first;
+    final saludoTxt = nombre.isEmpty ? '$saludo 👋' : '$saludo, $nombre 👋';
+
     // KPIs REALES del día sobre las canchas del LOCAL seleccionado.
     final ids = canchas.map((c) => c.id).toSet();
     final delDia = appState.reservas
@@ -257,12 +266,21 @@ class _HeaderAgenda extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Buenas, $barrio',
+          Text(saludoTxt,
               style: t.bodyMedium?.copyWith(color: Colors.white70)),
           Text(local,
               style: t.titleLarge
                   ?.copyWith(color: Colors.white, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 18),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              const Icon(Icons.location_on, size: 14, color: Colors.white70),
+              const SizedBox(width: 4),
+              Text(barrio,
+                  style: t.bodySmall?.copyWith(color: Colors.white70)),
+            ],
+          ),
+          const SizedBox(height: 16),
           Row(
             children: [
               _MiniKpi('${delDia.length}', 'Reservas'),
