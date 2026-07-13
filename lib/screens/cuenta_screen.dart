@@ -216,7 +216,9 @@ class _FilaMovimiento extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     final esRecarga = m.tipo == TipoMovimiento.recarga;
-    final color = esRecarga ? verdeFutbol : clayOscuro;
+    // Congruencia con el acento de la app: ingresos en verde WhatsApp (lima),
+    // egresos en rojo. Antes usaba un lima brillante (#C4F542) que desentonaba.
+    final color = esRecarga ? lima : clayOscuro;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
