@@ -68,6 +68,30 @@ class _AgendaScreenState extends State<AgendaScreen> {
 
           final iso = _isoDe(_dia);
           final horas = cancha.horariosSlots();
+          final tablet = MediaQuery.of(context).size.width >= 720;
+
+          // Vista de la agenda del día (compartida por móvil y tablet).
+          final slotsView = horas.isEmpty
+              ? Center(
+                  child: Text('Esta cancha no tiene horarios configurados.',
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodyMedium
+                          ?.copyWith(color: textoTenueDe(context))),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(18, 8, 18, 90),
+                  itemCount: horas.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 9),
+                  itemBuilder: (_, i) {
+                    final hora = horas[i];
+                    return _AgendaRow(
+                      hora: hora,
+                      valle: hora.compareTo('12:00') < 0,
+                      reserva: _reservaEn(cancha.id, iso, hora),
+                    );
+                  },
+                );
 
           return Column(
             children: [
@@ -138,78 +162,96 @@ class _AgendaScreenState extends State<AgendaScreen> {
                     ),
                   ),
                 ),
-              // Selector de cancha DENTRO del local seleccionado
-              if (delLocal.length > 1)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 6, 18, 4),
-                  child: SizedBox(
-                    height: 40,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: delLocal.length,
-                      separatorBuilder: (_, __) => const SizedBox(width: 8),
-                      itemBuilder: (_, i) {
-                        final c = delLocal[i];
-                        final sel = c.id == cancha.id;
-                        return GestureDetector(
-                          onTap: () => setState(() => _cancha = c),
-                          child: Container(
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 14),
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: sel ? tinta : Colors.white,
-                              borderRadius: BorderRadius.circular(999),
-                              border:
-                                  Border.all(color: sel ? tinta : trazo),
+              // TABLET/LANDSCAPE: master-detail (canchas a la izquierda, agenda
+              // del día a la derecha, como un panel de control). MÓVIL: selector
+              // horizontal de cancha + la lista del día debajo.
+              if (tablet)
+                Expanded(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SizedBox(
+                        width: 264,
+                        child: ListView(
+                          padding: const EdgeInsets.fromLTRB(18, 10, 10, 24),
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 6, left: 4),
+                              child: Text('Canchas',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .labelLarge
+                                      ?.copyWith(
+                                          color: textoTenueDe(context),
+                                          fontWeight: FontWeight.w700)),
                             ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 9,
-                                  height: 9,
-                                  decoration: BoxDecoration(
-                                      color: colorDeporte(c.deporte),
-                                      borderRadius: BorderRadius.circular(2)),
-                                ),
-                                const SizedBox(width: 7),
-                                Text(c.nombre,
-                                    style: TextStyle(
-                                        color: sel ? Colors.white : tinta,
-                                        fontWeight: sel
-                                            ? FontWeight.w700
-                                            : FontWeight.w600)),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+                            for (final c in delLocal)
+                              _CanchaTile(
+                                cancha: c,
+                                seleccionada: c.id == cancha.id,
+                                onTap: () => setState(() => _cancha = c),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const VerticalDivider(width: 1),
+                      Expanded(child: slotsView),
+                    ],
                   ),
-                ),
-              Expanded(
-                child: horas.isEmpty
-                    ? Center(
-                        child: Text('Esta cancha no tiene horarios configurados.',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
-                                ?.copyWith(color: textoTenueDe(context))),
-                      )
-                    : ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(18, 8, 18, 90),
-                        itemCount: horas.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 9),
+                )
+              else ...[
+                // Selector de cancha DENTRO del local seleccionado (móvil).
+                if (delLocal.length > 1)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 6, 18, 4),
+                    child: SizedBox(
+                      height: 40,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: delLocal.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 8),
                         itemBuilder: (_, i) {
-                          final hora = horas[i];
-                          return _AgendaRow(
-                            hora: hora,
-                            valle: hora.compareTo('12:00') < 0,
-                            reserva: _reservaEn(cancha.id, iso, hora),
+                          final c = delLocal[i];
+                          final sel = c.id == cancha.id;
+                          return GestureDetector(
+                            onTap: () => setState(() => _cancha = c),
+                            child: Container(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 14),
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: sel ? tinta : Colors.white,
+                                borderRadius: BorderRadius.circular(999),
+                                border:
+                                    Border.all(color: sel ? tinta : trazo),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 9,
+                                    height: 9,
+                                    decoration: BoxDecoration(
+                                        color: colorDeporte(c.deporte),
+                                        borderRadius:
+                                            BorderRadius.circular(2)),
+                                  ),
+                                  const SizedBox(width: 7),
+                                  Text(c.nombre,
+                                      style: TextStyle(
+                                          color: sel ? Colors.white : tinta,
+                                          fontWeight: sel
+                                              ? FontWeight.w700
+                                              : FontWeight.w600)),
+                                ],
+                              ),
+                            ),
                           );
                         },
                       ),
-              ),
+                    ),
+                  ),
+                Expanded(child: slotsView),
+              ],
             ],
           );
         },
@@ -349,6 +391,61 @@ class _Pildora extends StatelessWidget {
             style: TextStyle(
                 color: activo ? Colors.white : textoTenue,
                 fontWeight: FontWeight.w700)),
+      ),
+    );
+  }
+}
+
+/// Fila de cancha del panel MASTER (columna izquierda en tablet/landscape):
+/// punto del deporte + nombre; resaltada cuando es la cancha seleccionada.
+class _CanchaTile extends StatelessWidget {
+  const _CanchaTile(
+      {required this.cancha,
+      required this.seleccionada,
+      required this.onTap});
+  final Cancha cancha;
+  final bool seleccionada;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: seleccionada ? tinta : Theme.of(context).colorScheme.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: seleccionada ? tinta : trazo),
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+            child: Row(
+              children: [
+                Container(
+                  width: 9,
+                  height: 9,
+                  decoration: BoxDecoration(
+                      color: colorDeporte(cancha.deporte),
+                      borderRadius: BorderRadius.circular(2)),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(cancha.nombre,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          color: seleccionada ? Colors.white : tinta,
+                          fontWeight: seleccionada
+                              ? FontWeight.w800
+                              : FontWeight.w600)),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

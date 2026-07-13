@@ -30,24 +30,61 @@ class _HomeShellState extends State<HomeShell> {
     CuentaScreen(),         // saldo prepago + recargar (Culqi)
   ];
 
+  // Íconos/etiquetas de las secciones (compartidos por barra inferior y rail).
+  static const _iconos = <IconData>[
+    Icons.sports_soccer,
+    Icons.calendar_month,
+    Icons.event_note,
+    Icons.bar_chart,
+    Icons.account_balance_wallet,
+  ];
+  static const _etiquetas = <String>[
+    'Mis canchas',
+    'Agenda',
+    'Reservas',
+    'Reportes',
+    'Cuenta',
+  ];
+
   @override
   Widget build(BuildContext context) {
+    final body = IndexedStack(index: _index, children: _paginas);
+    // Tablet / horizontal: navegación LATERAL (NavigationRail), como un panel de
+    // control cómodo en pantalla ancha. Móvil / vertical: barra inferior.
+    final tablet = MediaQuery.of(context).size.width >= 720;
+    if (tablet) {
+      return Scaffold(
+        body: SafeArea(
+          child: Row(
+            children: [
+              NavigationRail(
+                selectedIndex: _index,
+                onDestinationSelected: (i) => setState(() => _index = i),
+                labelType: NavigationRailLabelType.all,
+                groupAlignment: -0.85,
+                destinations: [
+                  for (var i = 0; i < _iconos.length; i++)
+                    NavigationRailDestination(
+                      icon: Icon(_iconos[i]),
+                      label: Text(_etiquetas[i]),
+                    ),
+                ],
+              ),
+              const VerticalDivider(width: 1),
+              Expanded(child: body),
+            ],
+          ),
+        ),
+      );
+    }
     return Scaffold(
-      body: IndexedStack(index: _index, children: _paginas),
+      body: body,
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (i) => setState(() => _index = i),
-        destinations: const [
-          NavigationDestination(
-              icon: Icon(Icons.sports_soccer), label: 'Mis canchas'),
-          NavigationDestination(
-              icon: Icon(Icons.calendar_month), label: 'Agenda'),
-          NavigationDestination(
-              icon: Icon(Icons.event_note), label: 'Reservas'),
-          NavigationDestination(
-              icon: Icon(Icons.bar_chart), label: 'Reportes'),
-          NavigationDestination(
-              icon: Icon(Icons.account_balance_wallet), label: 'Cuenta'),
+        destinations: [
+          for (var i = 0; i < _iconos.length; i++)
+            NavigationDestination(icon: Icon(_iconos[i]), label: _etiquetas[i]),
         ],
       ),
     );
