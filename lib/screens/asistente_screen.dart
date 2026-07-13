@@ -4,6 +4,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../models/models.dart';
 import '../services/concierge_service.dart';
+import '../services/location_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/geo.dart';
@@ -42,6 +43,10 @@ class _AsistenteScreenState extends State<AsistenteScreen> {
   final _turnos = <_Turno>[];
   bool _pensando = false;
 
+  // Ubicación real del usuario (GPS), para recomendar según dónde está (Lima,
+  // Juliaca, la ciudad que sea). Se resuelve al abrir el asistente.
+  LatLng? _ubicacion;
+
   // Ejemplos SIN distrito fijo: antes decía "Tenis por Surco" (Lima), que
   // confundía a quien está en otra ciudad (p. ej. Juliaca). Ahora se apoyan en
   // "cerca de mí" para buscar según tu ubicación real.
@@ -54,9 +59,46 @@ class _AsistenteScreenState extends State<AsistenteScreen> {
   @override
   void initState() {
     super.initState();
+    _ubicacion = widget.centro;
     _turnos.add(_Turno.bot(
         '¡Hola! 👋 Soy tu asistente de reservas.\n\n'
         'Dime qué quieres jugar, cuándo y por dónde, y te busco cancha al toque. 🎾⚽🏓'));
+    _resolverUbicacion();
+  }
+
+  /// Detecta la ubicación real del usuario (GPS) para recomendar según dónde
+  /// está —sea Lima, Juliaca o donde sea— y saluda nombrando su ciudad. Trae
+  /// además las canchas cercanas para tener qué recomendar. Fail-safe.
+  Future<void> _resolverUbicacion() async {
+    var pos = widget.centro;
+    pos ??= await LocationService.ultimaConocida();
+    pos ??= await LocationService.ubicacionActual();
+    if (pos == null || !mounted) return;
+    _ubicacion = pos;
+    appState.descubrirCanchasCerca(pos); // canchas cerca de donde estás
+    try {
+      final marks = await placemarkFromCoordinates(pos.latitude, pos.longitude);
+      if (!mounted || marks.isEmpty) return;
+      final m = marks.first;
+      final ciudad = (m.locality?.trim().isNotEmpty == true
+              ? m.locality!
+              : (m.subAdministrativeArea?.trim().isNotEmpty == true
+                  ? m.subAdministrativeArea!
+                  : (m.administrativeArea ?? '')))
+          .trim();
+      final distrito = (m.subLocality ?? '').trim();
+      if (ciudad.isEmpty) return;
+      final lugar = distrito.isNotEmpty && distrito != ciudad
+          ? '$distrito, $ciudad'
+          : ciudad;
+      setState(() {
+        _turnos[0] = _Turno.bot(
+            '¡Hola! 👋 Te ubico en $lugar.\n\n'
+            'Dime qué quieres jugar y cuándo, y te busco cancha cerca de ti. 🎾⚽🏓');
+      });
+    } catch (_) {
+      // sin nombre de ciudad: se queda el saludo genérico
+    }
   }
 
   @override
@@ -86,9 +128,10 @@ class _AsistenteScreenState extends State<AsistenteScreen> {
       return;
     }
 
-    // Si mencionas una zona ("por Surco"), la geolocalizamos y BUSCAMOS canchas
-    // ahí (no solo cerca de ti), y ordenamos por cercanía a esa zona.
-    var centro = widget.centro;
+    // Por defecto, recomendamos según DÓNDE ESTÁS (GPS real). Si además
+    // mencionas una zona de Lima ("por Surco"), la geolocalizamos y buscamos
+    // canchas ahí, ordenando por cercanía a esa zona.
+    var centro = _ubicacion ?? widget.centro;
     final zona = _zonaEn(msg);
     if (zona != null) {
       try {
@@ -219,7 +262,7 @@ class _AsistenteScreenState extends State<AsistenteScreen> {
                   if (i >= _turnos.length) return const _Escribiendo();
                   return _BurbujaTurno(
                       turno: _turnos[i],
-                      centro: _turnos[i].centro ?? widget.centro);
+                      centro: _turnos[i].centro ?? _ubicacion ?? widget.centro);
                 },
               ),
             ),
