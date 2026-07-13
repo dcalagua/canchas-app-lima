@@ -6,6 +6,7 @@ import '../models/models.dart';
 import '../models/club.dart';
 import '../widgets/club_card.dart';
 import '../widgets/pin_cargando.dart';
+import '../widgets/responsive.dart';
 import '../brand.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -346,6 +347,42 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                         ),
                       );
 
+                  // En tablet/landscape las tarjetas van en grilla de 2-3
+                  // columnas; en móvil, una debajo de otra.
+                  final tablet = esTablet(context);
+                  void agregarCards(List<Club> lista) {
+                    if (!tablet) {
+                      hijos.addAll(lista.map(card));
+                      return;
+                    }
+                    hijos.add(LayoutBuilder(builder: (context, cons) {
+                      final cols = columnasTablet(cons.maxWidth);
+                      final w = (cons.maxWidth - 14 * (cols - 1)) / cols;
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: Wrap(
+                          spacing: 14,
+                          runSpacing: 14,
+                          children: [
+                            for (final cl in lista)
+                              SizedBox(
+                                width: w,
+                                child: ClubCard(
+                                  club: cl,
+                                  nivelDestacado: _nivelClub(cl),
+                                  onTap: () => _abrirClub(cl),
+                                  distanciaKm: _centroBusqueda == null
+                                      ? null
+                                      : distanciaKm(
+                                          _centroBusqueda!, cl.ubicacion),
+                                ),
+                              ),
+                          ],
+                        ),
+                      );
+                    }));
+                  }
+
                   // DESTACADOS cerca de ti: locales cuyo dueño tiene saldo (más
                   // saldo = más visibilidad). Van arriba, ordenados por nivel y
                   // luego cercanía; también aparecen en su sección de deporte.
@@ -358,7 +395,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                   if (topDest.isNotEmpty) {
                     hijos.add(_SeccionHeader('Destacados cerca de ti',
                         topDest.length, lima, Icons.star));
-                    hijos.addAll(topDest.map(card));
+                    agregarCards(topDest);
                   }
 
                   for (final d in deportesActivos) {
@@ -367,7 +404,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                     hijos.add(_SeccionHeader(
                         d.etiqueta, lista.length, colorDeporte(d),
                         iconoDeporte(d)));
-                    hijos.addAll(lista.map(card));
+                    agregarCards(lista);
                   }
                   if (clubesFormales.isNotEmpty) {
                     hijos.add(_SeccionHeader(
@@ -375,7 +412,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                         clubesFormales.length,
                         Theme.of(context).colorScheme.primary,
                         Icons.apartment));
-                    hijos.addAll(clubesFormales.map(card));
+                    agregarCards(clubesFormales);
                   }
                   return ListView(
                     padding: const EdgeInsets.fromLTRB(18, 16, 18, 28),

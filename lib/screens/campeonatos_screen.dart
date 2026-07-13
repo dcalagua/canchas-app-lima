@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/campeonato.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/responsive.dart';
 import 'campeonato_detalle_screen.dart';
 import 'crear_campeonato_screen.dart';
 
@@ -71,7 +72,24 @@ class CampeonatosScreen extends StatelessWidget {
           }
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
-            children: [for (final c in lista) _CampeonatoCard(campeonato: c)],
+            children: [
+              // Tablet/landscape: campeonatos en grilla de 2-3 columnas.
+              if (esTablet(context))
+                LayoutBuilder(builder: (context, cons) {
+                  final cols = columnasTablet(cons.maxWidth);
+                  final w = (cons.maxWidth - 14 * (cols - 1)) / cols;
+                  return Wrap(
+                    spacing: 14,
+                    children: [
+                      for (final c in lista)
+                        SizedBox(
+                            width: w, child: _CampeonatoCard(campeonato: c)),
+                    ],
+                  );
+                })
+              else
+                for (final c in lista) _CampeonatoCard(campeonato: c),
+            ],
           );
         },
       ),

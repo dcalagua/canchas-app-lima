@@ -5,6 +5,7 @@ import '../models/invitacion.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/redes.dart';
+import '../widgets/responsive.dart';
 import 'academia_detalle_screen.dart';
 import 'login_google_sheet.dart';
 
@@ -40,6 +41,25 @@ class AcademiasScreen extends StatelessWidget {
                       textAlign: TextAlign.center,
                       style: TextStyle(color: textoTenue)),
                 )
+              else if (esTablet(context))
+                // Tablet/landscape: academias en grilla de 2-3 columnas.
+                LayoutBuilder(builder: (context, cons) {
+                  final cols = columnasTablet(cons.maxWidth);
+                  final w = (cons.maxWidth - 14 * (cols - 1)) / cols;
+                  return Wrap(
+                    spacing: 14,
+                    children: [
+                      for (final a in academias)
+                        SizedBox(
+                          width: w,
+                          child: _TarjetaAcademia(
+                              academia: a,
+                              nivelDestacado:
+                                  appState.nivelDestacadoAcademia(a)),
+                        ),
+                    ],
+                  );
+                })
               else
                 for (final a in academias)
                   _TarjetaAcademia(
