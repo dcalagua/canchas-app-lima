@@ -321,6 +321,32 @@ class PagosService {
     }
   }
 
+  /// Conjunto de dueños DESTACADOS (saldo prepago > 0) con su nivel (1-3).
+  /// El APK resalta las canchas de estos dueños en Explorar (más saldo = más
+  /// visibilidad). Devuelve {duenoId(lowercase): nivel} o null si no se pudo.
+  static Future<Map<String, int>?> destacados() async {
+    if (!disponible) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/pagos/destacados');
+      final r = await http.get(uri, headers: _appHeaders())
+          .timeout(const Duration(seconds: 12));
+      if (r.statusCode != 200) return null;
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      final lst = (j['destacados'] as List?) ?? const [];
+      final map = <String, int>{};
+      for (final e in lst) {
+        if (e is! Map) continue;
+        final id = (e['dueno_id'] as String?)?.toLowerCase().trim();
+        if (id != null && id.isNotEmpty) {
+          map[id] = (e['nivel'] as num?)?.toInt() ?? 1;
+        }
+      }
+      return map;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Historial de movimientos de saldo del dueño (recargas), del backend, del
   /// más reciente al más antiguo. Sobrevive a reinstalar la app (el local no).
   /// Cada item: {tipo, monto_soles, concepto, creado_en}. Null si no se pudo.

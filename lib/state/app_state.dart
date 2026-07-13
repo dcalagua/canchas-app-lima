@@ -1354,6 +1354,36 @@ class AppState extends ChangeNotifier {
   ];
   bool get destacadoActivo => saldoClub > 0;
 
+  // ── Dueños DESTACADOS (saldo prepago > 0) → nivel (1-3) ───────────────────
+  // Se resalta a sus canchas en Explorar: más saldo = más visibilidad (el
+  // beneficio que la plataforma le da al dueño). Se carga del backend; los
+  // demás usuarios lo leen para saber qué canchas van destacadas.
+  Map<String, int> _destacadosPorDueno = {};
+
+  /// Nivel de destacado de una cancha (por el saldo de su dueño). 0 = no.
+  int nivelDestacado(Cancha c) {
+    final d = c.dueno.toLowerCase().trim();
+    if (d.isEmpty) return 0;
+    return _destacadosPorDueno[d] ?? 0;
+  }
+
+  bool esDestacada(Cancha c) => nivelDestacado(c) > 0;
+
+  /// Trae del backend el conjunto de dueños destacados (best-effort). Si el
+  /// dueño logueado tiene saldo, se asegura de incluirse aunque el backend
+  /// tarde en propagar (para que vea su propia cancha destacada al instante).
+  Future<void> cargarDestacados() async {
+    if (!PagosService.disponible) return;
+    final m = await PagosService.destacados();
+    if (m == null) return;
+    final email = usuario?.email?.toLowerCase().trim();
+    if (email != null && email.isNotEmpty && saldoClub > 0) {
+      m.putIfAbsent(email, () => 1);
+    }
+    _destacadosPorDueno = m;
+    notifyListeners();
+  }
+
   /// Comisión que descuenta del saldo cada reserva nueva (5%, mínimo S/ 2).
   int comisionDe(num precio) {
     final c = (precio * 0.05).round();

@@ -150,6 +150,36 @@ def test_movimientos_vacio_si_no_hay_recargas():
     assert r["movimientos"] == []
 
 
+def test_destacados_lista_duenos_con_saldo_y_nivel():
+    # Tres dueños con distinto saldo → distintos niveles; uno con 0 no aparece.
+    client.post("/pagos/recarga", json={
+        "token": "t1", "dueno_id": "base@x.com", "email": "base@x.com",
+        "monto_soles": 20,   # nivel 1
+    })
+    client.post("/pagos/recarga", json={
+        "token": "t2", "dueno_id": "medio@x.com", "email": "medio@x.com",
+        "monto_soles": 80,   # nivel 2
+    })
+    client.post("/pagos/recarga", json={
+        "token": "t3", "dueno_id": "premium@x.com", "email": "premium@x.com",
+        "monto_soles": 300,  # nivel 3
+    })
+    r = client.get("/pagos/destacados").json()
+    porDueno = {d["dueno_id"]: d["nivel"] for d in r["destacados"]}
+    assert porDueno == {
+        "base@x.com": 1,
+        "medio@x.com": 2,
+        "premium@x.com": 3,
+    }
+    # No se expone el saldo exacto, solo el nivel.
+    assert all("saldo_soles" not in d and "saldo_centimos" not in d
+               for d in r["destacados"])
+
+
+def test_destacados_vacio_sin_saldos():
+    assert client.get("/pagos/destacados").json()["destacados"] == []
+
+
 def test_saldo_endpoint():
     client.post("/pagos/recarga", json={
         "token": "t", "dueno_id": "d", "email": "d@x.com", "monto_soles": 15})

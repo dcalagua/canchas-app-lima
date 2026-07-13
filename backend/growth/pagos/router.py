@@ -160,6 +160,32 @@ def get_saldo(dueno_id: str) -> dict:
     return {"dueno_id": dueno_id, "saldo_centimos": c, "saldo_soles": c / 100.0}
 
 
+def _nivel_destacado(centimos: int) -> int:
+    """Nivel de destacado según el saldo (más saldo = más visibilidad).
+    3 = premium, 2 = medio, 1 = base. Umbrales en soles (tunables)."""
+    s = centimos / 100.0
+    if s >= 200:
+        return 3
+    if s >= 50:
+        return 2
+    return 1
+
+
+@router.get("/destacados", dependencies=_APP)
+def get_destacados() -> dict:
+    """Conjunto de dueños DESTACADOS: los que tienen saldo prepago > 0. El APK
+    lo usa para resaltar sus canchas en 'Explorar' (más saldo = más visibilidad,
+    el beneficio que la plataforma le da al dueño). Se devuelve solo el id del
+    dueño y un NIVEL coarse (1-3), no el saldo exacto (no se expone la plata de
+    cada dueño a los demás usuarios)."""
+    destacados = [
+        {"dueno_id": d, "nivel": _nivel_destacado(c)}
+        for d, c in stores.saldos.items()
+        if c > 0
+    ]
+    return {"destacados": destacados}
+
+
 @router.get("/movimientos/{dueno_id}", dependencies=_APP)
 def get_movimientos(dueno_id: str) -> dict:
     """Historial de movimientos de saldo del dueño (recargas aprobadas), del más

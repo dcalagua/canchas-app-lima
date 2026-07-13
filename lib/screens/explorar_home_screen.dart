@@ -44,6 +44,17 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     return clubs;
   }
 
+  /// Nivel de "destacado" de un local (máximo entre sus canchas: si su dueño
+  /// tiene saldo, va destacado). 0 = no destacado.
+  int _nivelClub(Club cl) {
+    var mx = 0;
+    for (final c in cl.canchas) {
+      final n = appState.nivelDestacado(c);
+      if (n > mx) mx = n;
+    }
+    return mx;
+  }
+
   List<Cancha> _filtradas() {
     // Pádel retirado del piloto: nunca aparece en la lista.
     final base = appState
@@ -76,6 +87,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     super.initState();
     _numCanchas = appState.todasLasCanchas().length;
     appState.addListener(_onStateChange);
+    appState.cargarDestacados(); // refresca qué dueños van destacados (saldo>0)
     _autoUbicar(); // autodetecta la ubicación al abrir
   }
 
@@ -299,12 +311,34 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                         padding: const EdgeInsets.only(top: 12),
                         child: ClubCard(
                           club: cl,
+                          destacado: _nivelClub(cl) > 0,
                           onTap: () => _abrirClub(cl),
                           distanciaKm: _centroBusqueda == null
                               ? null
                               : distanciaKm(_centroBusqueda!, cl.ubicacion),
                         ),
                       );
+
+                  // DESTACADOS cerca de ti: locales cuyo dueño tiene saldo (más
+                  // saldo = más visibilidad). Van arriba, ordenados por nivel y
+                  // luego cercanía; también aparecen en su sección de deporte.
+                  final destacados = clubs
+                      .where((cl) => _nivelClub(cl) > 0)
+                      .toList()
+                    ..sort((a, b) {
+                      final na = _nivelClub(a), nb = _nivelClub(b);
+                      if (na != nb) return nb - na; // nivel desc
+                      if (_centroBusqueda == null) return 0;
+                      return distanciaKm(_centroBusqueda!, a.ubicacion)
+                          .compareTo(distanciaKm(_centroBusqueda!, b.ubicacion));
+                    });
+                  final topDest = destacados.take(6).toList();
+                  if (topDest.isNotEmpty) {
+                    hijos.add(_SeccionHeader('Destacados cerca de ti',
+                        topDest.length, lima, Icons.star));
+                    hijos.addAll(topDest.map(card));
+                  }
+
                   for (final d in deportesActivos) {
                     final lista = porDeporte[d] ?? const <Club>[];
                     if (lista.isEmpty) continue;

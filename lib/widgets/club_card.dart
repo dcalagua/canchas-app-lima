@@ -11,7 +11,11 @@ import 'marca.dart';
 /// cancha, badges, rating, chips de deportes y precio "desde".
 class ClubCard extends StatelessWidget {
   const ClubCard(
-      {super.key, required this.club, this.onTap, this.distanciaKm});
+      {super.key,
+      required this.club,
+      this.onTap,
+      this.distanciaKm,
+      this.destacado = false});
 
   final Club club;
   final VoidCallback? onTap;
@@ -19,6 +23,10 @@ class ClubCard extends StatelessWidget {
   /// Distancia (km) del usuario al local. Si viene, se muestra junto a la
   /// dirección ("a 2.3 km"). Null = no se muestra (sin ubicación).
   final double? distanciaKm;
+
+  /// Local DESTACADO (su dueño tiene saldo prepago): muestra el badge
+  /// "★ Destacado" — más visibilidad, el beneficio que paga el dueño.
+  final bool destacado;
 
   @override
   Widget build(BuildContext context) {
@@ -54,13 +62,16 @@ class ClubCard extends StatelessWidget {
                   Positioned(
                     top: 14,
                     left: 14,
-                    child: desc
-                        ? const _Badge('◎ EN GOOGLE',
-                            bg: Colors.black54, fg: Colors.white)
-                        : club.clubFundador
-                            ? const _Badge('CLUB FUNDADOR', bg: pino, fg: lima)
-                            : _Badge('${club.canchas.length} CANCHAS',
-                                bg: Colors.white, fg: tinta),
+                    child: destacado
+                        ? const _Badge('★ DESTACADO', bg: lima, fg: Colors.white)
+                        : desc
+                            ? const _Badge('◎ EN GOOGLE',
+                                bg: Colors.black54, fg: Colors.white)
+                            : club.clubFundador
+                                ? const _Badge('CLUB FUNDADOR',
+                                    bg: pino, fg: lima)
+                                : _Badge('${club.canchas.length} CANCHAS',
+                                    bg: Colors.white, fg: tinta),
                   ),
                   const Positioned(
                     top: 12,
