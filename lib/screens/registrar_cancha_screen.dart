@@ -16,6 +16,7 @@ import '../services/propiedad_service.dart';
 import '../services/sport_detector.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/responsive.dart';
 import '../widgets/selector_horario.dart';
 import 'login_google_sheet.dart';
 
@@ -422,7 +423,8 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
       appBar: AppBar(
           title: Text(_esReclamo ? 'Reclamar cancha' : 'Registrar cancha')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.fromLTRB(
+            ladoTablet(context, 16), 16, ladoTablet(context, 16), 16),
         children: [
           // La subida manual de fotos solo tiene sentido al CREAR una cancha
           // nueva. Al reclamar, las fotos ya vienen de Google y luego el dueño

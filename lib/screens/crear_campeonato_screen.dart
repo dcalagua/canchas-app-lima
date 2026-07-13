@@ -5,6 +5,7 @@ import '../models/campeonato.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/responsive.dart';
 
 /// Formulario para que el profe cree un campeonato de su academia.
 class CrearCampeonatoScreen extends StatefulWidget {
@@ -117,7 +118,8 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Nuevo campeonato')),
       body: ListView(
-        padding: const EdgeInsets.all(18),
+        padding: EdgeInsets.fromLTRB(
+            ladoTablet(context), 18, ladoTablet(context), 18),
         children: [
           TextField(
             controller: _nombre,

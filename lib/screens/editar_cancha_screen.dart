@@ -15,6 +15,7 @@ import '../models/models.dart';
 import '../services/propiedad_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/responsive.dart';
 import '../widgets/selector_horario.dart';
 import 'agregar_cancha_screen.dart';
 
@@ -362,7 +363,8 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.all(18),
+        padding: EdgeInsets.fromLTRB(
+            ladoTablet(context), 18, ladoTablet(context), 18),
         children: [
           Row(
             children: [

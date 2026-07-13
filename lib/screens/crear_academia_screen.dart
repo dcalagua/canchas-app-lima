@@ -11,6 +11,7 @@ import '../models/club.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/responsive.dart';
 
 /// Crea o edita la academia del profe (marca independiente). Fase 1: nombre,
 /// deporte, sede actual (texto), WhatsApp, descripción y planes.
@@ -197,7 +198,8 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
               ? 'Crear academia'
               : 'Editar academia')),
       body: ListView(
-        padding: const EdgeInsets.all(18),
+        padding: EdgeInsets.fromLTRB(
+            ladoTablet(context), 18, ladoTablet(context), 18),
         children: [
           // Logo (opcional): avatar circular con lo que ya tenga o lo recién elegido.
           Center(child: _LogoPicker(

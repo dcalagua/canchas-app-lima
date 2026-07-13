@@ -28,6 +28,15 @@ class AnchoTablet extends StatelessWidget {
   }
 }
 
+/// Padding lateral para centrar el contenido de un ListView/formulario en
+/// tablet sin envolver el widget: en móvil devuelve [movil]; en pantalla ancha,
+/// el margen que deja el contenido centrado a [maxAncho] dp.
+double ladoTablet(BuildContext context, [double movil = 18, double maxAncho = 760]) {
+  final w = MediaQuery.of(context).size.width;
+  if (w < kAnchoTablet) return movil;
+  return (w - maxAncho) / 2;
+}
+
 /// Número de columnas recomendado para una grilla de tarjetas según el ancho
 /// disponible: 1 (móvil), 2 (tablet) o 3 (pantallas muy anchas).
 int columnasTablet(double anchoDisponible) {
