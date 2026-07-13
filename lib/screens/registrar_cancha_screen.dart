@@ -20,6 +20,7 @@ import '../widgets/responsive.dart';
 import '../widgets/selector_horario.dart';
 import 'login_google_sheet.dart';
 import '../utils/moneda.dart';
+import '../config/pais.dart';
 
 /// Registrar una cancha escribiendo la dirección: se geocodifica y aparece en el
 /// mapa automáticamente (estilo eSupplier). Un local puede tener varias canchas
@@ -65,8 +66,11 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
       ]));
 
   Future<void> _consultarDni(String v) async {
+    // Solo Perú tiene consulta automática (RENIEC/Factiliza). En otros países
+    // el documento se ingresa sin verificación en línea.
+    if (!paisActual.consultaDoc) return;
     final d = v.replaceAll(RegExp(r'[^0-9]'), '');
-    if (d.length != 8) {
+    if (d.length != (paisActual.docLongitud ?? 8)) {
       setState(() => _dniNombre = null);
       return;
     }
@@ -167,7 +171,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
       _errorGeo = null;
     });
     try {
-      final locs = await locationFromAddress('$q, Lima, Perú');
+      final locs = await locationFromAddress('$q, ${paisActual.geocodeHint}');
       if (locs.isEmpty) {
         setState(() {
           _geocodificando = false;
@@ -277,15 +281,17 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
       return;
     }
     final contacto = _contacto.text.trim();
-    if (contacto.replaceAll(RegExp(r'[^0-9]'), '').length < 9) {
+    if (contacto.replaceAll(RegExp(r'[^0-9]'), '').length < paisActual.telLongitud) {
       _avisar('Pon tu WhatsApp de contacto para que el equipo te valide.');
       return;
     }
-    // DNI OPCIONAL: solo se valida el formato si el dueño lo escribió.
+    // Documento OPCIONAL: solo se valida el formato si el dueño lo escribió y el
+    // país tiene un largo fijo (el CI boliviano no lo tiene → no se valida largo).
     final dni = _dni.text.trim();
     final dniDigs = dni.replaceAll(RegExp(r'[^0-9]'), '');
-    if (dniDigs.isNotEmpty && dniDigs.length != 8) {
-      _avisar('Si pones tu DNI, debe tener 8 dígitos (o déjalo vacío).');
+    final docLen = paisActual.docLongitud;
+    if (docLen != null && dniDigs.isNotEmpty && dniDigs.length != docLen) {
+      _avisar('Si pones tu ${docIdActual}, debe tener $docLen dígitos (o déjalo vacío).');
       return;
     }
     // Anti-fraude: para registrar/reclamar hay que identificarse con Google, así
@@ -666,11 +672,11 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
             keyboardType: TextInputType.phone,
             inputFormatters: [
               FilteringTextInputFormatter.digitsOnly,
-              LengthLimitingTextInputFormatter(9),
+              LengthLimitingTextInputFormatter(paisActual.telLongitud),
             ],
             decoration: InputDecoration(
               label: _lblReq('Tu WhatsApp de contacto'),
-              hintText: '987 654 321',
+              hintText: 'Tu número de celular',
               prefixIcon: const _PrefijoPeru(),
               prefixIconConstraints: const BoxConstraints(minWidth: 76),
               suffixIcon: const Padding(
@@ -686,15 +692,17 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
           TextField(
             controller: _dni,
             keyboardType: TextInputType.number,
-            maxLength: 8,
+            maxLength: paisActual.docLongitud,
             inputFormatters: [
               FilteringTextInputFormatter.digitsOnly,
-              LengthLimitingTextInputFormatter(8),
+              LengthLimitingTextInputFormatter(paisActual.docLongitud ?? 20),
             ],
             onChanged: _consultarDni,
             decoration: InputDecoration(
-              labelText: 'Tu DNI (opcional)',
-              hintText: '8 dígitos — acelera la validación',
+              labelText: 'Tu ${docIdActual} (opcional)',
+              hintText: paisActual.consultaDoc
+                  ? '${paisActual.docLongitud} dígitos — acelera la validación'
+                  : 'Ayuda a validar que eres el dueño',
               prefixIcon: Icon(Icons.badge_outlined,
                   color: Theme.of(context).colorScheme.primary),
               suffixIcon: _dniCargando
@@ -714,7 +722,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
             Padding(
               padding: const EdgeInsets.only(top: 2, left: 4),
               child: Text(
-                'Tu DNI solo se usa para validar que eres el dueño. No se publica.',
+                'Tu ${docIdActual} solo se usa para validar que eres el dueño. No se publica.',
                 style: Theme.of(context)
                     .textTheme
                     .bodySmall
@@ -869,7 +877,7 @@ class _ResultadoIA extends StatelessWidget {
   }
 }
 
-/// Prefijo de teléfono peruano: banderita 🇵🇪 + "+51".
+/// Prefijo de teléfono según el país detectado: bandera + código (ej. 🇧🇴 +591).
 class _PrefijoPeru extends StatelessWidget {
   const _PrefijoPeru();
   @override
@@ -879,9 +887,9 @@ class _PrefijoPeru extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text('🇵🇪', style: TextStyle(fontSize: 18)),
+          Text(banderaActual, style: const TextStyle(fontSize: 18)),
           const SizedBox(width: 4),
-          Text('+51',
+          Text(codigoTelActual,
               style: TextStyle(
                   fontWeight: FontWeight.w800,
                   color: Theme.of(context).colorScheme.onSurface)),

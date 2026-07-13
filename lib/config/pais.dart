@@ -33,6 +33,30 @@ class PaisConfig {
   /// Nombre legible de la pasarela, para textos de diagnóstico/config.
   final String pasarelaNombre;
 
+  /// Código telefónico internacional SIN el "+": '51' (PE), '591' (BO).
+  final String codigoTel;
+
+  /// Emoji de la bandera, para el prefijo de teléfono: '🇵🇪', '🇧🇴'.
+  final String bandera;
+
+  /// Nombre corto del documento de identidad del país: 'DNI' (PE), 'CI' (BO).
+  final String docId;
+
+  /// Longitud EXACTA del celular local (sin código de país): 9 (PE), 8 (BO).
+  final int telLongitud;
+
+  /// Longitud EXACTA del documento de identidad, o null si es variable (en
+  /// Bolivia el CI no tiene largo fijo). Cuando es null no se valida el largo.
+  final int? docLongitud;
+
+  /// ¿Hay consulta automática del documento (RENIEC/Factiliza)? Solo Perú (DNI).
+  final bool consultaDoc;
+
+  /// Sufijo que se agrega al geocodificar una dirección escrita, para acotar la
+  /// búsqueda al país correcto (ej. "Lima, Perú" / "Bolivia"). Evita que una
+  /// dirección boliviana se resuelva en Perú.
+  final String geocodeHint;
+
   const PaisConfig({
     required this.iso,
     required this.nombre,
@@ -40,6 +64,13 @@ class PaisConfig {
     required this.monedaIso,
     required this.pasarela,
     required this.pasarelaNombre,
+    required this.codigoTel,
+    required this.bandera,
+    required this.docId,
+    required this.telLongitud,
+    required this.docLongitud,
+    required this.consultaDoc,
+    required this.geocodeHint,
   });
 }
 
@@ -52,6 +83,13 @@ const Map<String, PaisConfig> paisesSoportados = {
     monedaIso: 'PEN',
     pasarela: 'culqi',
     pasarelaNombre: 'Culqi (Yape · tarjeta)',
+    codigoTel: '51',
+    bandera: '🇵🇪',
+    docId: 'DNI',
+    telLongitud: 9,
+    docLongitud: 8, // DNI peruano = 8 dígitos exactos
+    consultaDoc: true, // consulta RENIEC vía Factiliza
+    geocodeHint: 'Lima, Perú',
   ),
   'BO': PaisConfig(
     iso: 'BO',
@@ -63,6 +101,13 @@ const Map<String, PaisConfig> paisesSoportados = {
     // 'manual' en la práctica; el identificador queda listo para activar.
     pasarela: 'libelula',
     pasarelaNombre: 'Libélula (QR · tarjeta · Tigo Money)',
+    codigoTel: '591',
+    bandera: '🇧🇴',
+    docId: 'CI', // Cédula de Identidad
+    telLongitud: 8, // celular boliviano = 8 dígitos (empieza en 6 o 7)
+    docLongitud: null, // el CI boliviano no tiene largo fijo
+    consultaDoc: false, // no hay consulta automática de CI
+    geocodeHint: 'Bolivia',
   ),
   'EC': PaisConfig(
     iso: 'EC',
@@ -71,6 +116,13 @@ const Map<String, PaisConfig> paisesSoportados = {
     monedaIso: 'USD',
     pasarela: 'manual',
     pasarelaNombre: 'Por definir',
+    codigoTel: '593',
+    bandera: '🇪🇨',
+    docId: 'Cédula',
+    telLongitud: 9, // celular ecuatoriano sin el 0 inicial = 9 dígitos
+    docLongitud: 10, // cédula ecuatoriana = 10 dígitos
+    consultaDoc: false,
+    geocodeHint: 'Ecuador',
   ),
 };
 
@@ -83,6 +135,13 @@ const PaisConfig _paisPorDefecto = PaisConfig(
   monedaIso: 'PEN',
   pasarela: 'culqi',
   pasarelaNombre: 'Culqi (Yape · tarjeta)',
+  codigoTel: '51',
+  bandera: '🇵🇪',
+  docId: 'DNI',
+  telLongitud: 9,
+  docLongitud: 8,
+  consultaDoc: true,
+  geocodeHint: 'Lima, Perú',
 );
 
 /// País actualmente activo. La UI de moneda lee de aquí (vía `monedaSimbolo`).
@@ -128,3 +187,14 @@ Future<void> cargarPaisPersistido() async {
     // Sin persistencia: se queda con el país por defecto.
   }
 }
+
+// ── Atajos de UI (leen del país actual) ──────────────────────────────────────
+
+/// Prefijo telefónico con "+": "+51" / "+591". Para prefixText de campos WhatsApp.
+String get codigoTelActual => '+${paisActual.codigoTel}';
+
+/// Emoji de la bandera del país actual: 🇵🇪 / 🇧🇴.
+String get banderaActual => paisActual.bandera;
+
+/// Nombre del documento de identidad del país actual: "DNI" / "CI".
+String get docIdActual => paisActual.docId;

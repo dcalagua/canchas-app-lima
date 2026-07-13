@@ -14,6 +14,7 @@ import 'crear_academia_screen.dart';
 import 'recargar_saldo_screen.dart';
 import 'reporte_academia_screen.dart';
 import '../utils/moneda.dart';
+import '../config/pais.dart';
 
 /// Panel del PROFE: su academia, alumnos y cobros (Fase 1). Sin pasarela: marca
 /// pagos en efectivo y manda recordatorios por WhatsApp.
@@ -127,8 +128,8 @@ class MiAcademiaScreen extends StatelessWidget {
             TextField(
                 controller: whats,
                 keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(
-                    labelText: 'WhatsApp', prefixText: '+51 ')),
+                decoration: InputDecoration(
+                    labelText: 'WhatsApp', prefixText: '$codigoTelActual ')),
           ],
         ),
         actions: [
@@ -186,8 +187,8 @@ class MiAcademiaScreen extends StatelessWidget {
               TextField(
                   controller: tel,
                   keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(
-                      labelText: 'WhatsApp', prefixText: '+51 ')),
+                  decoration: InputDecoration(
+                      labelText: 'WhatsApp', prefixText: '$codigoTelActual ')),
             ],
           ),
         ),

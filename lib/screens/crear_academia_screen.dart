@@ -13,6 +13,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/responsive.dart';
 import '../utils/moneda.dart';
+import '../config/pais.dart';
 
 /// Crea o edita la academia del profe (marca independiente). Fase 1: nombre,
 /// deporte, sede actual (texto), WhatsApp, descripción y planes.
@@ -298,8 +299,8 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
           TextField(
             controller: _whatsapp,
             keyboardType: TextInputType.phone,
-            decoration: const InputDecoration(
-                labelText: 'WhatsApp de contacto', prefixText: '+51 '),
+            decoration: InputDecoration(
+                labelText: 'WhatsApp de contacto', prefixText: '$codigoTelActual '),
           ),
           const SizedBox(height: 16),
           TextField(

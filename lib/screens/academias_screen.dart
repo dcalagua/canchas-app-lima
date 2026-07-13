@@ -10,6 +10,7 @@ import '../widgets/responsive.dart';
 import 'academia_detalle_screen.dart';
 import 'login_google_sheet.dart';
 import '../utils/moneda.dart';
+import '../config/pais.dart';
 
 /// Directorio público de academias (Fase 1): el jugador ve las academias, su
 /// deporte, dónde entrenan y sus planes. Al tocar una entra a la ficha, donde
@@ -175,8 +176,8 @@ class _UnirmeConCodigo extends StatelessWidget {
                         child: TextField(
                           controller: waApoderado,
                           keyboardType: TextInputType.phone,
-                          decoration: const InputDecoration(
-                              labelText: 'Tu WhatsApp', prefixText: '+51 '),
+                          decoration: InputDecoration(
+                              labelText: 'Tu WhatsApp', prefixText: '$codigoTelActual '),
                         ),
                       ),
                     ],

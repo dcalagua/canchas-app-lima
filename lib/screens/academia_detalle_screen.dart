@@ -10,6 +10,7 @@ import '../widgets/pago_tarjeta_sheet.dart';
 import 'campeonatos_screen.dart';
 import 'chat_screen.dart';
 import '../utils/moneda.dart';
+import '../config/pais.dart';
 
 /// Ficha pública de una academia: feed de fotos propio (no Instagram embebido),
 /// planes con matrícula en el mismo app (pago simulado) y redes para seguir.
@@ -592,9 +593,9 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
           TextField(
             controller: _whatsapp,
             keyboardType: TextInputType.phone,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
                 labelText: 'WhatsApp de contacto',
-                prefixText: '+51 ',
+                prefixText: '$codigoTelActual ',
                 prefixIcon: Icon(Icons.chat_outlined)),
           ),
           const SizedBox(height: 18),

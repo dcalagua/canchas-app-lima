@@ -19,6 +19,7 @@ import '../widgets/responsive.dart';
 import '../widgets/selector_horario.dart';
 import 'agregar_cancha_screen.dart';
 import '../utils/moneda.dart';
+import '../config/pais.dart';
 
 /// Edición de una cancha ya registrada por el dueño: cambiar nombre, precio,
 /// deporte, horario/duración, dirección/ubicación, agregar foto o eliminarla.
@@ -100,7 +101,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
       _errorGeo = null;
     });
     try {
-      final locs = await locationFromAddress('$q, Lima, Perú');
+      final locs = await locationFromAddress('$q, ${paisActual.geocodeHint}');
       if (locs.isEmpty) {
         setState(() {
           _geocodificando = false;
@@ -173,12 +174,15 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
     final contacto = _contacto.text.trim();
     final dni = _dni.text.replaceAll(RegExp(r'[^0-9]'), '');
     if (esReclamo &&
-        contacto.replaceAll(RegExp(r'[^0-9]'), '').length < 9) {
+        contacto.replaceAll(RegExp(r'[^0-9]'), '').length < paisActual.telLongitud) {
       _avisar('Pon tu WhatsApp de contacto para que el equipo te valide.');
       return;
     }
-    if (esReclamo && dni.length != 8) {
-      _avisar('Pon tu DNI (8 dígitos) para validar tu identidad.');
+    final docLen = paisActual.docLongitud;
+    if (esReclamo && (dni.isEmpty || (docLen != null && dni.length != docLen))) {
+      _avisar(docLen != null
+          ? 'Pon tu ${docIdActual} ($docLen dígitos) para validar tu identidad.'
+          : 'Pon tu ${docIdActual} para validar tu identidad.');
       return;
     }
     setState(() => _guardando = true);
@@ -589,14 +593,14 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
             TextField(
               controller: _dni,
               keyboardType: TextInputType.number,
-              maxLength: 8,
+              maxLength: paisActual.docLongitud,
               inputFormatters: [
                 FilteringTextInputFormatter.digitsOnly,
-                LengthLimitingTextInputFormatter(8),
+                LengthLimitingTextInputFormatter(paisActual.docLongitud ?? 20),
               ],
               decoration: InputDecoration(
-                labelText: 'Tu DNI *',
-                hintText: '8 dígitos — validamos tu identidad',
+                labelText: 'Tu ${docIdActual} *',
+                hintText: 'Validamos tu identidad',
                 prefixIcon: Icon(Icons.badge_outlined, color: cs.primary),
                 counterText: '',
               ),
@@ -607,11 +611,11 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
               keyboardType: TextInputType.phone,
               inputFormatters: [
                 FilteringTextInputFormatter.digitsOnly,
-                LengthLimitingTextInputFormatter(9),
+                LengthLimitingTextInputFormatter(paisActual.telLongitud),
               ],
               decoration: const InputDecoration(
                 labelText: 'Tu WhatsApp de contacto *',
-                hintText: '987 654 321',
+                hintText: 'Tu número de celular',
                 prefixIcon: _PrefijoPeruEditar(),
                 prefixIconConstraints: BoxConstraints(minWidth: 76),
                 suffixIcon: Padding(
@@ -780,7 +784,7 @@ class _Miniatura extends StatelessWidget {
   }
 }
 
-/// Prefijo de teléfono peruano: banderita 🇵🇪 + "+51".
+/// Prefijo de teléfono según el país detectado: bandera + código (ej. 🇧🇴 +591).
 class _PrefijoPeruEditar extends StatelessWidget {
   const _PrefijoPeruEditar();
   @override
@@ -790,9 +794,9 @@ class _PrefijoPeruEditar extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text('🇵🇪', style: TextStyle(fontSize: 18)),
+          Text(banderaActual, style: const TextStyle(fontSize: 18)),
           const SizedBox(width: 4),
-          Text('+51',
+          Text(codigoTelActual,
               style: TextStyle(
                   fontWeight: FontWeight.w800,
                   color: Theme.of(context).colorScheme.onSurface)),

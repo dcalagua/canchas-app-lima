@@ -10,6 +10,7 @@ import '../utils/ubicacion_share.dart';
 import '../widgets/pago_tarjeta_sheet.dart';
 import 'login_google_sheet.dart';
 import '../utils/moneda.dart';
+import '../config/pais.dart';
 
 /// Detalle de un campeonato: participantes, fixture (llave o tabla), carga de
 /// resultados y compartir por WhatsApp. Los controles de edición se muestran
@@ -235,8 +236,8 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                         child: TextField(
                           controller: wa,
                           keyboardType: TextInputType.phone,
-                          decoration: const InputDecoration(
-                              labelText: 'Tu WhatsApp', prefixText: '+51 '),
+                          decoration: InputDecoration(
+                              labelText: 'Tu WhatsApp', prefixText: '$codigoTelActual '),
                         ),
                       ),
                     ],
@@ -457,8 +458,8 @@ class _Participantes extends StatelessWidget {
             TextField(
               controller: wa,
               keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(
-                  labelText: 'WhatsApp (opcional)', prefixText: '+51 '),
+              decoration: InputDecoration(
+                  labelText: 'WhatsApp (opcional)', prefixText: '$codigoTelActual '),
             ),
           ],
         ),
