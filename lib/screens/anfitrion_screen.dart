@@ -7,7 +7,6 @@ import 'crear_academia_screen.dart';
 import 'home_shell.dart';
 import 'login_google_sheet.dart';
 import 'mi_academia_screen.dart';
-import 'registrar_cancha_screen.dart';
 import 'verificador_screen.dart';
 
 /// Modo anfitrión (estilo Airbnb): un solo lugar con todo lo del anfitrión —
@@ -91,15 +90,9 @@ class AnfitrionScreen extends StatelessWidget {
                 _Tile(
                   icon: Icons.storefront,
                   title: 'Mis canchas',
-                  subtitle: 'Panel del dueño: canchas, agenda, reservas, cuenta',
+                  subtitle:
+                      'Registra y administra: canchas, agenda, reservas, cuenta',
                   onTap: () => _abrirPanel(context),
-                ),
-                _Tile(
-                  icon: Icons.add_a_photo,
-                  title: 'Registrar mi cancha',
-                  subtitle: 'Súmala al mapa (la IA detecta el deporte)',
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => const RegistrarCanchaScreen())),
                 ),
                 _Tile(
                   icon: Icons.sports,
