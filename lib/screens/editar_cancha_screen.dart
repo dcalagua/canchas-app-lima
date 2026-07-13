@@ -18,6 +18,7 @@ import '../theme.dart';
 import '../widgets/responsive.dart';
 import '../widgets/selector_horario.dart';
 import 'agregar_cancha_screen.dart';
+import '../utils/moneda.dart';
 
 /// Edición de una cancha ya registrada por el dueño: cambiar nombre, precio,
 /// deporte, horario/duración, dirección/ubicación, agregar foto o eliminarla.

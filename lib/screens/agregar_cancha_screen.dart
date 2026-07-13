@@ -4,6 +4,7 @@ import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/selector_horario.dart';
+import '../utils/moneda.dart';
 
 /// Agrega una cancha individual a un LOCAL ya existente del dueño. Hereda del
 /// local su nombre de club, distrito, ubicación, dirección, dueño y estado de

@@ -6,6 +6,7 @@ import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/responsive.dart';
+import '../utils/moneda.dart';
 
 /// Formulario para que el profe cree un campeonato de su academia.
 class CrearCampeonatoScreen extends StatefulWidget {

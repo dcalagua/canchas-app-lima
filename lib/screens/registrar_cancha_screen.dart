@@ -19,6 +19,7 @@ import '../theme.dart';
 import '../widgets/responsive.dart';
 import '../widgets/selector_horario.dart';
 import 'login_google_sheet.dart';
+import '../utils/moneda.dart';
 
 /// Registrar una cancha escribiendo la dirección: se geocodifica y aparece en el
 /// mapa automáticamente (estilo eSupplier). Un local puede tener varias canchas
