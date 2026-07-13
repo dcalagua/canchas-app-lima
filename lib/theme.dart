@@ -52,6 +52,21 @@ Color textoTenueDe(BuildContext context) =>
         ? const Color(0xFFAEBAC1) // gris claro WhatsApp (dark)
         : textoTenue;
 
+// ── Niveles de destacado (por saldo del dueño): Bronce / Plata / Oro ───────
+/// Medalla del nivel de destacado (más saldo = mejor medalla). 0 = ninguno.
+String medallaDestacado(int nivel) => switch (nivel) {
+      >= 3 => '🥇',
+      2 => '🥈',
+      _ => '🥉',
+    };
+
+/// Etiqueta del nivel de destacado (Bronce / Plata / Oro).
+String etiquetaNivelDestacado(int nivel) => switch (nivel) {
+      >= 3 => 'Oro',
+      2 => 'Plata',
+      _ => 'Bronce',
+    };
+
 // ── Colores de estado (chips) — sistema de diseño ─────────────────────────
 const Color estadoOkBg = Color(0xFFE9F4EE);
 const Color estadoOkFg = Color(0xFF1F6E49);

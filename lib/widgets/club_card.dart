@@ -15,7 +15,7 @@ class ClubCard extends StatelessWidget {
       required this.club,
       this.onTap,
       this.distanciaKm,
-      this.destacado = false});
+      this.nivelDestacado = 0});
 
   final Club club;
   final VoidCallback? onTap;
@@ -24,9 +24,9 @@ class ClubCard extends StatelessWidget {
   /// dirección ("a 2.3 km"). Null = no se muestra (sin ubicación).
   final double? distanciaKm;
 
-  /// Local DESTACADO (su dueño tiene saldo prepago): muestra el badge
-  /// "★ Destacado" — más visibilidad, el beneficio que paga el dueño.
-  final bool destacado;
+  /// Nivel de DESTACADO del local (0 = no; 1 bronce, 2 plata, 3 oro). Su dueño
+  /// puso saldo → más visibilidad. Se muestra con medalla en el badge.
+  final int nivelDestacado;
 
   @override
   Widget build(BuildContext context) {
@@ -62,8 +62,10 @@ class ClubCard extends StatelessWidget {
                   Positioned(
                     top: 14,
                     left: 14,
-                    child: destacado
-                        ? const _Badge('★ DESTACADO', bg: lima, fg: Colors.white)
+                    child: nivelDestacado > 0
+                        ? _Badge(
+                            '${medallaDestacado(nivelDestacado)} DESTACADO',
+                            bg: lima, fg: Colors.white)
                         : desc
                             ? const _Badge('◎ EN GOOGLE',
                                 bg: Colors.black54, fg: Colors.white)

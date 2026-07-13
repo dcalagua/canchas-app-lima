@@ -55,6 +55,33 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     return mx;
   }
 
+  /// Score para ordenar "Destacados cerca de ti": el nivel (tier) manda, luego
+  /// la calidad (verificada, rating, fotos), la cercanía, y una rotación
+  /// anti-fatiga por hora para que no salga siempre el mismo entre parecidos.
+  double _scoreDestacado(Club cl) {
+    var s = _nivelClub(cl) * 1000.0;
+    if (cl.verificada) s += 60;
+    s += cl.rating * 12;
+    final tieneFotos =
+        cl.canchas.any((c) => c.fotos.isNotEmpty || c.fotoUrl != null);
+    if (tieneFotos) s += 25;
+    if (_centroBusqueda != null) {
+      s -= distanciaKm(_centroBusqueda!, cl.ubicacion) * 8;
+    }
+    s += _jitterRotacion(cl.id);
+    return s;
+  }
+
+  /// Rotación determinística por hora del día (0..39): rota el orden entre
+  /// destacados parecidos sin romper la estabilidad dentro de la sesión.
+  double _jitterRotacion(String id) {
+    var h = DateTime.now().hour;
+    for (final code in id.codeUnits) {
+      h = (h * 31 + code) & 0x7fffffff;
+    }
+    return (h % 40).toDouble();
+  }
+
   List<Cancha> _filtradas() {
     // Pádel retirado del piloto: nunca aparece en la lista.
     final base = appState
@@ -311,7 +338,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                         padding: const EdgeInsets.only(top: 12),
                         child: ClubCard(
                           club: cl,
-                          destacado: _nivelClub(cl) > 0,
+                          nivelDestacado: _nivelClub(cl),
                           onTap: () => _abrirClub(cl),
                           distanciaKm: _centroBusqueda == null
                               ? null
@@ -325,13 +352,8 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                   final destacados = clubs
                       .where((cl) => _nivelClub(cl) > 0)
                       .toList()
-                    ..sort((a, b) {
-                      final na = _nivelClub(a), nb = _nivelClub(b);
-                      if (na != nb) return nb - na; // nivel desc
-                      if (_centroBusqueda == null) return 0;
-                      return distanciaKm(_centroBusqueda!, a.ubicacion)
-                          .compareTo(distanciaKm(_centroBusqueda!, b.ubicacion));
-                    });
+                    ..sort((a, b) =>
+                        _scoreDestacado(b).compareTo(_scoreDestacado(a)));
                   final topDest = destacados.take(6).toList();
                   if (topDest.isNotEmpty) {
                     hijos.add(_SeccionHeader('Destacados cerca de ti',

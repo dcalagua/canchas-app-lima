@@ -43,7 +43,8 @@ class AcademiasScreen extends StatelessWidget {
               else
                 for (final a in academias)
                   _TarjetaAcademia(
-                      academia: a, destacada: appState.esDestacadaAcademia(a)),
+                      academia: a,
+                      nivelDestacado: appState.nivelDestacadoAcademia(a)),
             ],
           );
         },
@@ -357,11 +358,12 @@ class _TarjetaInvitacionRecibida extends StatelessWidget {
 }
 
 class _TarjetaAcademia extends StatelessWidget {
-  const _TarjetaAcademia({required this.academia, this.destacada = false});
+  const _TarjetaAcademia({required this.academia, this.nivelDestacado = 0});
   final Academia academia;
 
-  /// Academia DESTACADA (su dueño puso saldo): badge "★ Destacado" + va arriba.
-  final bool destacada;
+  /// Nivel de destacado (0 = no; 1 bronce, 2 plata, 3 oro). Su dueño puso
+  /// saldo → badge con medalla + va arriba en la lista.
+  final int nivelDestacado;
 
   @override
   Widget build(BuildContext context) {
@@ -423,7 +425,7 @@ class _TarjetaAcademia extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            if (destacada)
+                            if (nivelDestacado > 0)
                               Container(
                                 margin: const EdgeInsets.only(bottom: 3),
                                 padding: const EdgeInsets.symmetric(
@@ -431,8 +433,9 @@ class _TarjetaAcademia extends StatelessWidget {
                                 decoration: BoxDecoration(
                                     color: lima,
                                     borderRadius: BorderRadius.circular(999)),
-                                child: const Text('★ DESTACADO',
-                                    style: TextStyle(
+                                child: Text(
+                                    '${medallaDestacado(nivelDestacado)} DESTACADO',
+                                    style: const TextStyle(
                                         color: Colors.white,
                                         fontSize: 10,
                                         fontWeight: FontWeight.w800)),

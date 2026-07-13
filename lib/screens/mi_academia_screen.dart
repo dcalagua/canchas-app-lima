@@ -380,7 +380,8 @@ class _DestacarCardState extends State<_DestacarCard> {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     final saldo = appState.saldoAcademiaDe(widget.academia.id);
-    final destacada = appState.esDestacadaAcademia(widget.academia);
+    final nivel = appState.nivelDestacadoAcademia(widget.academia);
+    final destacada = nivel > 0;
     return Container(
       margin: const EdgeInsets.fromLTRB(18, 12, 18, 4),
       padding: const EdgeInsets.all(16),
@@ -400,7 +401,10 @@ class _DestacarCardState extends State<_DestacarCard> {
               Icon(destacada ? Icons.star : Icons.trending_up,
                   color: Colors.white, size: 20),
               const SizedBox(width: 8),
-              Text(destacada ? 'Academia destacada' : 'Destaca tu academia',
+              Text(
+                  destacada
+                      ? '${medallaDestacado(nivel)} Nivel ${etiquetaNivelDestacado(nivel)}'
+                      : 'Destaca tu academia',
                   style: t.titleMedium
                       ?.copyWith(color: Colors.white, fontWeight: FontWeight.w800)),
             ],
@@ -408,9 +412,11 @@ class _DestacarCardState extends State<_DestacarCard> {
           const SizedBox(height: 6),
           Text(
             destacada
-                ? 'Apareces primero en la lista de academias. Saldo: S/ $saldo.'
+                ? 'Apareces primero en la lista de academias. Saldo: S/ $saldo. '
+                    'Más saldo = mejor posición: Plata desde S/ 50, Oro desde S/ 200.'
                 : 'Pon saldo y tu academia aparece destacada (arriba y con '
-                    'estrella) para que más alumnos la encuentren.',
+                    'medalla) para que más alumnos la encuentren. '
+                    'Bronce desde S/ 1, Plata S/ 50, Oro S/ 200.',
             style: t.bodySmall
                 ?.copyWith(color: Colors.white.withOpacity(0.92), height: 1.3),
           ),
