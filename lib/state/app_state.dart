@@ -38,8 +38,11 @@ class AppState extends ChangeNotifier {
   Usuario? usuario;
   bool get logueado => usuario != null;
 
-  final List<Reserva> reservas = List.of(SampleData.reservas);
-  final List<BloqueHorario> agenda = List.of(SampleData.agendaHoy());
+  // Reservas y agenda REALES: arrancan vacías. Se llenan con lo que llega de
+  // Supabase (cargarReservasRemotas) y con las reservas que hacen los jugadores.
+  // (Antes se sembraban datos de demostración; el producto ya no los usa.)
+  final List<Reserva> reservas = [];
+  final List<BloqueHorario> agenda = [];
   final List<Reserva> misReservas = []; // reservas del jugador logueado
   final List<Cancha> canchasExtra = []; // canchas registradas en este dispositivo
   final List<Cancha> canchasRemotas = []; // canchas traídas de Supabase

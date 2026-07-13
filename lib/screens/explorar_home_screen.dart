@@ -97,17 +97,19 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
         ? base
         : base.where((c) => c.ofrece(_filtro!)).toList();
 
-    if (_centroBusqueda != null) {
-      final centro = _centroBusqueda!;
-      lista.sort((a, b) => distanciaKm(centro, a.ubicacion)
-          .compareTo(distanciaKm(centro, b.ubicacion)));
-      // Solo las que están de verdad cerca (radio). Si no hay ninguna, devuelve
-      // vacío en vez de mostrar canchas lejanas: la UI muestra "buscando…".
-      lista = lista
-          .where((c) =>
-              distanciaKm(centro, c.ubicacion) <= appState.radioBusquedaKm)
-          .toList();
-    }
+    // Producto real: SIEMPRE mostramos canchas CERCA del usuario. Mientras no
+    // haya ubicación (GPS sin resolver o sin permiso), NO se vuelca un listado
+    // global: así nunca aparecen canchas de otra ciudad/país. La UI muestra
+    // "buscando tu ubicación…" con la opción de reintentar.
+    final centro = _centroBusqueda;
+    if (centro == null) return const [];
+    lista.sort((a, b) => distanciaKm(centro, a.ubicacion)
+        .compareTo(distanciaKm(centro, b.ubicacion)));
+    // Solo las que están de verdad cerca (dentro del radio de búsqueda).
+    lista = lista
+        .where((c) =>
+            distanciaKm(centro, c.ubicacion) <= appState.radioBusquedaKm)
+        .toList();
     return lista;
   }
 

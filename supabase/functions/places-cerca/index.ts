@@ -82,6 +82,7 @@ serve(async (req) => {
     // poder probar pegando una URL en el navegador.
     let lat: number, lng: number, radius: number | undefined;
     let conFotos = false; // por defecto NO resuelve fotos (respuesta rápida)
+    let region = "PE"; // país para el regionCode de Google (lo manda el APK)
     if (req.method === "GET") {
       const u = new URL(req.url);
       lat = Number(u.searchParams.get("lat"));
@@ -89,12 +90,17 @@ serve(async (req) => {
       radius = Number(u.searchParams.get("radius")) || undefined;
       const f = u.searchParams.get("fotos");
       conFotos = f === "1" || f === "true";
+      const r = u.searchParams.get("region");
+      if (r && r.trim()) region = r.trim().toUpperCase();
     } else {
       const b = await req.json();
       lat = b.lat;
       lng = b.lng;
       radius = b.radius;
       conFotos = b.fotos === true;
+      if (typeof b.region === "string" && b.region.trim()) {
+        region = b.region.trim().toUpperCase();
+      }
     }
     // Las 4 consultas de texto salen en PARALELO (antes, secuenciales).
     const respuestas = await Promise.all(
@@ -110,7 +116,7 @@ serve(async (req) => {
           body: JSON.stringify({
             textQuery: q,
             languageCode: "es",
-            regionCode: "PE",
+            regionCode: region,
             maxResultCount: 20,
             // Rankear por DISTANCIA: devuelve las canchas MÁS CERCANAS primero
             // (no las más "populares"), para que salga la cancha del barrio.

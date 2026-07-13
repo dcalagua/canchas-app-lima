@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 
+import '../config/pais.dart';
 import '../models/models.dart';
 import '../utils/geo.dart';
 import 'supabase_service.dart';
@@ -101,7 +102,7 @@ class PlacesService {
             body: jsonEncode({
               'textQuery': q,
               'languageCode': 'es',
-              'regionCode': 'PE',
+              'regionCode': paisActual.iso, // país detectado (PE/BO/…), no fijo
               'maxResultCount': 20,
               // Rankear por DISTANCIA (no relevancia): así Google devuelve las
               // canchas MÁS CERCANAS al usuario primero, en vez de las más
@@ -153,7 +154,7 @@ class PlacesService {
             body: jsonEncode({
               'textQuery': nombre,
               'languageCode': 'es',
-              'regionCode': 'PE',
+              'regionCode': paisActual.iso, // país detectado (PE/BO/…), no fijo
               'maxResultCount': 10,
               // Sesgo FUERTE al punto sembrado para que gane la sede local
               // (no el club principal homónimo, que suele estar lejos).
@@ -209,6 +210,7 @@ class PlacesService {
           'lng': centro.longitude,
           'radius': radioMetros,
           'fotos': conFotos, // false = respuesta rápida sin resolver fotos
+          'region': paisActual.iso, // país detectado (PE/BO/…) para el regionCode
         },
       );
       final data = res.data;
