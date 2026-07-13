@@ -42,9 +42,12 @@ class _AsistenteScreenState extends State<AsistenteScreen> {
   final _turnos = <_Turno>[];
   bool _pensando = false;
 
+  // Ejemplos SIN distrito fijo: antes decía "Tenis por Surco" (Lima), que
+  // confundía a quien está en otra ciudad (p. ej. Juliaca). Ahora se apoyan en
+  // "cerca de mí" para buscar según tu ubicación real.
   static const _ejemplos = [
     '⚽ Fútbol hoy 8pm',
-    '🎾 Tenis por Surco',
+    '🎾 Tenis cerca de mí',
     '💸 Algo barato cerca',
   ];
 
