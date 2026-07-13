@@ -39,9 +39,8 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
   final _nombreCancha = TextEditingController(); // nombre de la cancha (opcional)
   final _direccion = TextEditingController();
   final _precio = TextEditingController(text: '120.00');
-  final _ruc = TextEditingController(); // opcional: refuerza la verificación
   final _contacto = TextEditingController(); // WhatsApp del dueño (obligatorio)
-  final _dni = TextEditingController(); // DNI del reclamante (obligatorio)
+  final _dni = TextEditingController(); // DNI del reclamante (OPCIONAL)
 
   /// true cuando se está RECLAMANDO una cancha descubierta en Google (trae base).
   bool get _esReclamo => widget.base != null;
@@ -49,11 +48,6 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
   // Resultado de la consulta a Factiliza (se muestra debajo del campo).
   String? _dniNombre;
   bool _dniCargando = false;
-  String? _rucRazon;
-  bool _rucCargando = false;
-
-  // Relación del reclamante con la cancha (combo).
-  String _relacion = 'dueño';
 
   /// Evita doble-envío (doble tap / red lenta): sin esto, cada envío genera un
   /// id de cancha nuevo (basado en timestamp) y por lo tanto un reclamo
@@ -81,23 +75,6 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
       _dniCargando = false;
       _dniNombre = (r != null && r['ok'] == true)
           ? (r['nombre_completo'] as String?)
-          : null;
-    });
-  }
-
-  Future<void> _consultarRuc(String v) async {
-    final d = v.replaceAll(RegExp(r'[^0-9]'), '');
-    if (d.length != 11) {
-      setState(() => _rucRazon = null);
-      return;
-    }
-    setState(() => _rucCargando = true);
-    final r = await PropiedadService.consultarRuc(d);
-    if (!mounted) return;
-    setState(() {
-      _rucCargando = false;
-      _rucRazon = (r != null && r['ok'] == true)
-          ? (r['razon_social'] as String?)
           : null;
     });
   }
@@ -149,7 +126,6 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
     _nombreCancha.dispose();
     _direccion.dispose();
     _precio.dispose();
-    _ruc.dispose();
     _contacto.dispose();
     _dni.dispose();
     _map?.dispose();
@@ -303,14 +279,11 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
       _avisar('Pon tu WhatsApp de contacto para que el equipo te valide.');
       return;
     }
+    // DNI OPCIONAL: solo se valida el formato si el dueño lo escribió.
     final dni = _dni.text.trim();
-    if (dni.replaceAll(RegExp(r'[^0-9]'), '').length != 8) {
-      _avisar('Pon tu DNI (8 dígitos) para validar tu identidad.');
-      return;
-    }
-    final rucDigs = _ruc.text.replaceAll(RegExp(r'[^0-9]'), '');
-    if (rucDigs.isNotEmpty && rucDigs.length != 11) {
-      _avisar('El RUC debe tener 11 dígitos (o déjalo vacío).');
+    final dniDigs = dni.replaceAll(RegExp(r'[^0-9]'), '');
+    if (dniDigs.isNotEmpty && dniDigs.length != 8) {
+      _avisar('Si pones tu DNI, debe tener 8 dígitos (o déjalo vacío).');
       return;
     }
     // Anti-fraude: para registrar/reclamar hay que identificarse con Google, así
@@ -381,8 +354,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
     // que el local es real, pero NO te da la propiedad: la cancha queda "en
     // revisión de propiedad" hasta validar al dueño (código al teléfono del local,
     // aprobación manual o visita). Recién ahí se habilitan reservas.
-    appState.verificarVenue(creadas,
-        ruc: _ruc.text.trim(), razonSocial: nombre);
+    appState.verificarVenue(creadas, razonSocial: nombre);
 
     // Modelo concierge: al reclamar/registrar se crea una SOLICITUD DE RECLAMO y
     // le llega un WhatsApp al equipo de Pichangol con un código para vetear al
@@ -399,9 +371,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
         solicitanteId: dueno,
         nombreLocal: nombre,
         telefonoContacto: contacto,
-        dni: dni,
-        ruc: _ruc.text.trim(),
-        relacion: _relacion,
+        dni: dni, // opcional (puede ir vacío)
         ubicacion: _ubicacion,
         solicitanteUbicacion: desdeAqui,
       );
@@ -432,8 +402,8 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
                 ? '⚠️ Esta cancha ya fue reclamada por otro usuario y está en '
                     'revisión. No puedes reclamarla.'
                 : reclamoOk
-                    ? '✅ Reclamo enviado. En revisión: te contactaremos por '
-                        'WhatsApp para validar que eres el dueño antes de activarla.'
+                    ? '✅ ¡Listo! Tu cancha quedó EN REVISIÓN. Nuestro equipo la '
+                        'valida y la activamos pronto; verás el estado en "Mis canchas".'
                     : '⚠️ Cancha registrada, pero la solicitud no llegó al '
                         'servidor. Ábrela y toca "Reenviar solicitud de verificación".'),
         duration: const Duration(seconds: 5),
@@ -489,127 +459,10 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
             ),
           const SizedBox(height: 20),
 
-          // ORDEN del reclamo: identidad primero (DNI, WhatsApp, relación, RUC),
-          // luego nombre, dirección y mapa. Los deportes/precio/redes se
-          // configuran DESPUÉS de aprobada la cancha.
-
-          // DNI del reclamante (OBLIGATORIO): filtro de identidad. Dato personal
-          // (Ley 29733): con consentimiento, solo lo ve el equipo para validar y
-          // no se publica. Al completar 8 dígitos consulta sus datos (Factiliza).
-          TextField(
-            controller: _dni,
-            keyboardType: TextInputType.number,
-            maxLength: 8,
-            inputFormatters: [
-              FilteringTextInputFormatter.digitsOnly,
-              LengthLimitingTextInputFormatter(8),
-            ],
-            onChanged: _consultarDni,
-            decoration: InputDecoration(
-              label: _lblReq('Tu DNI'),
-              hintText: '8 dígitos — validamos tu identidad',
-              prefixIcon: Icon(Icons.badge_outlined,
-                  color: Theme.of(context).colorScheme.primary),
-              suffixIcon: _dniCargando
-                  ? const Padding(
-                      padding: EdgeInsets.all(14),
-                      child: SizedBox(
-                          width: 16,
-                          height: 16,
-                          child:
-                              CircularProgressIndicator(strokeWidth: 2)))
-                  : null,
-              counterText: '',
-            ),
-          ),
-          if (_dniNombre != null)
-            _ResultadoConsulta(icono: Icons.check_circle, texto: _dniNombre!)
-          else
-            Padding(
-              padding: const EdgeInsets.only(top: 2, left: 4, bottom: 8),
-              child: Text(
-                'Tu DNI solo se usa para validar que eres el dueño. No se publica.',
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: textoTenue, fontSize: 11),
-              ),
-            ),
-          const SizedBox(height: 8),
-
-          // WhatsApp de contacto del dueño (OBLIGATORIO): por aquí el equipo de
-          // Pichangol se comunica para validar el reclamo.
-          TextField(
-            controller: _contacto,
-            keyboardType: TextInputType.phone,
-            inputFormatters: [
-              FilteringTextInputFormatter.digitsOnly,
-              LengthLimitingTextInputFormatter(9),
-            ],
-            decoration: InputDecoration(
-              label: _lblReq('Tu WhatsApp de contacto'),
-              hintText: '987 654 321',
-              prefixIcon: const _PrefijoPeru(),
-              prefixIconConstraints: const BoxConstraints(minWidth: 76),
-              suffixIcon: const Padding(
-                padding: EdgeInsets.all(12),
-                child: FaIcon(FontAwesomeIcons.whatsapp,
-                    color: Color(0xFF25D366), size: 20),
-              ),
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          // Relación con la cancha (dueño / concesionario / arrendatario).
-          DropdownButtonFormField<String>(
-            value: _relacion,
-            decoration: InputDecoration(
-              label: _lblReq('Tu relación con la cancha'),
-              prefixIcon: Icon(Icons.handshake_outlined,
-                  color: Theme.of(context).colorScheme.primary),
-            ),
-            items: const [
-              DropdownMenuItem(value: 'dueño', child: Text('Dueño')),
-              DropdownMenuItem(
-                  value: 'concesionario', child: Text('Concesionario')),
-              DropdownMenuItem(
-                  value: 'arrendatario', child: Text('Arrendatario')),
-            ],
-            onChanged: (v) => setState(() => _relacion = v ?? 'dueño'),
-          ),
-          const SizedBox(height: 14),
-
-          // RUC opcional (solo si quiere ser cliente formal). Al completar 11
-          // dígitos consulta la razón social (Factiliza).
-          TextField(
-            controller: _ruc,
-            keyboardType: TextInputType.number,
-            maxLength: 11,
-            inputFormatters: [
-              FilteringTextInputFormatter.digitsOnly,
-              LengthLimitingTextInputFormatter(11),
-            ],
-            onChanged: _consultarRuc,
-            decoration: InputDecoration(
-              labelText: 'RUC del negocio (opcional)',
-              hintText: '11 dígitos — si quieres ser cliente formal',
-              prefixIcon: Icon(Icons.verified_outlined,
-                  color: Theme.of(context).colorScheme.primary),
-              suffixIcon: _rucCargando
-                  ? const Padding(
-                      padding: EdgeInsets.all(14),
-                      child: SizedBox(
-                          width: 16,
-                          height: 16,
-                          child:
-                              CircularProgressIndicator(strokeWidth: 2)))
-                  : null,
-              counterText: '',
-            ),
-          ),
-          if (_rucRazon != null)
-            _ResultadoConsulta(icono: Icons.store, texto: _rucRazon!),
-          const SizedBox(height: 14),
+          // ORDEN estilo Airbnb: primero LO TUYO (nombre, dirección, mapa,
+          // deportes/precio) y al FINAL cómo te contactamos (WhatsApp + DNI
+          // opcional). Menos fricción: nada de trámite antes de describir tu
+          // cancha. La validación de propiedad la hace el operador (torre web).
 
           // Nombre del LOCAL (el negocio: agrupa todas sus canchas).
           TextField(
@@ -795,6 +648,77 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
                     ?.copyWith(color: tinta),
               ),
             ),
+          // ── Cómo te contactamos (al final, poca fricción) ─────────────────
+          const Divider(height: 34),
+          const Text('¿Cómo te contactamos?',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+          const SizedBox(height: 2),
+          const Text(
+              'El equipo usa tu WhatsApp para validar que la cancha es tuya.',
+              style: TextStyle(color: Colors.grey, fontSize: 12)),
+          const SizedBox(height: 12),
+          // WhatsApp de contacto del dueño (OBLIGATORIO).
+          TextField(
+            controller: _contacto,
+            keyboardType: TextInputType.phone,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(9),
+            ],
+            decoration: InputDecoration(
+              label: _lblReq('Tu WhatsApp de contacto'),
+              hintText: '987 654 321',
+              prefixIcon: const _PrefijoPeru(),
+              prefixIconConstraints: const BoxConstraints(minWidth: 76),
+              suffixIcon: const Padding(
+                padding: EdgeInsets.all(12),
+                child: FaIcon(FontAwesomeIcons.whatsapp,
+                    color: Color(0xFF25D366), size: 20),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          // DNI OPCIONAL: acelera la validación. Dato personal (Ley 29733): solo
+          // lo ve el equipo para validar y no se publica.
+          TextField(
+            controller: _dni,
+            keyboardType: TextInputType.number,
+            maxLength: 8,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(8),
+            ],
+            onChanged: _consultarDni,
+            decoration: InputDecoration(
+              labelText: 'Tu DNI (opcional)',
+              hintText: '8 dígitos — acelera la validación',
+              prefixIcon: Icon(Icons.badge_outlined,
+                  color: Theme.of(context).colorScheme.primary),
+              suffixIcon: _dniCargando
+                  ? const Padding(
+                      padding: EdgeInsets.all(14),
+                      child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2)))
+                  : null,
+              counterText: '',
+            ),
+          ),
+          if (_dniNombre != null)
+            _ResultadoConsulta(icono: Icons.check_circle, texto: _dniNombre!)
+          else
+            Padding(
+              padding: const EdgeInsets.only(top: 2, left: 4),
+              child: Text(
+                'Tu DNI solo se usa para validar que eres el dueño. No se publica.',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: textoTenue, fontSize: 11),
+              ),
+            ),
+
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
