@@ -614,7 +614,7 @@ class _EditorPlanState extends State<_EditorPlan> {
                 ChoiceChip(
                   label: Text(t.etiqueta),
                   selected: _tipo == t,
-                  selectedColor: limaSuave,
+                  selectedColor: lima,
                   onSelected: (_) => setState(() {
                     _tipo = t;
                     if (t == TipoPlan.mensual) _meses = 1;
@@ -643,7 +643,7 @@ class _EditorPlanState extends State<_EditorPlan> {
                     child: ChoiceChip(
                       label: Text('$m'),
                       selected: _meses == m,
-                      selectedColor: limaSuave,
+                      selectedColor: lima,
                       onSelected: (_) => setState(() => _meses = m),
                     ),
                   ),

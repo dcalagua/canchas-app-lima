@@ -146,7 +146,7 @@ class _ReporteAcademiaScreenState extends State<ReporteAcademiaScreen> {
     Widget chip(String t, _Rango r) => ChoiceChip(
           label: Text(t),
           selected: _sel == r,
-          selectedColor: limaSuave,
+          selectedColor: lima,
           onSelected: (_) => setState(() => _sel = r),
         );
     return Wrap(

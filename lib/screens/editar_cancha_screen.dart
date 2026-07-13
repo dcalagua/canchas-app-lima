@@ -529,7 +529,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
                   labelStyle: TextStyle(
                       color: _superficie == s ? bosque : cs.onSurface,
                       fontWeight: FontWeight.w600),
-                  selectedColor: limaSuave,
+                  selectedColor: lima,
                   onSelected: (sel) =>
                       setState(() => _superficie = sel ? s : ''),
                 ),
@@ -566,7 +566,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
                           : textoTenue),
                   label: Text(a.etiqueta),
                   selected: _amenidades.contains(a.clave),
-                  selectedColor: limaSuave,
+                  selectedColor: lima,
                   checkmarkColor: bosque,
                   labelStyle: TextStyle(
                       color: _amenidades.contains(a.clave) ? bosque : cs.onSurface,

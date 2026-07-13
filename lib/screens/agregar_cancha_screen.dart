@@ -177,7 +177,7 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
                   labelStyle: TextStyle(
                       color: _superficie == s ? bosque : cs.onSurface,
                       fontWeight: FontWeight.w600),
-                  selectedColor: limaSuave,
+                  selectedColor: lima,
                   onSelected: (sel) =>
                       setState(() => _superficie = sel ? s : ''),
                 ),

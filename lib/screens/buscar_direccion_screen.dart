@@ -290,7 +290,7 @@ class _BuscarDireccionScreenState extends State<BuscarDireccionScreen> {
                   ChoiceChip(
                     label: Text('${p.round()} km'),
                     selected: _radioKm.round() == p.round(),
-                    selectedColor: limaSuave,
+                    selectedColor: lima,
                     onSelected: (_) => setState(() {
                       _radioKm = p;
                       appState.setRadioBusqueda(p);

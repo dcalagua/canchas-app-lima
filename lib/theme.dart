@@ -251,6 +251,12 @@ ThemeData buildTheme() {
       backgroundColor: const Color(0xFFF7F7F7),
       labelStyle: const TextStyle(
           fontWeight: FontWeight.w700, fontSize: 12, color: bosque),
+      // Chip SELECCIONADO: verde sólido con texto/check blancos (legible en
+      // claro y oscuro; antes el verde claro dejaba el texto invisible).
+      selectedColor: lima,
+      secondaryLabelStyle: const TextStyle(
+          fontWeight: FontWeight.w700, fontSize: 12, color: Colors.white),
+      checkmarkColor: Colors.white,
       side: const BorderSide(color: trazo),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
     ),
@@ -414,6 +420,12 @@ ThemeData buildThemeOscuro() {
       backgroundColor: _oscSuperficie2,
       labelStyle: const TextStyle(
           fontWeight: FontWeight.w700, fontSize: 12, color: _oscTexto),
+      // Chip SELECCIONADO: verde sólido con texto/check blancos (legible sobre
+      // fondo oscuro; el verde claro dejaba el texto casi invisible).
+      selectedColor: lima,
+      secondaryLabelStyle: const TextStyle(
+          fontWeight: FontWeight.w700, fontSize: 12, color: Colors.white),
+      checkmarkColor: Colors.white,
       side: BorderSide.none,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
     ),

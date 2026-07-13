@@ -749,7 +749,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
                           color: _superficies[d] == s ? bosque : textoTenue),
                       label: Text(s),
                       selected: _superficies[d] == s,
-                      selectedColor: limaSuave,
+                      selectedColor: lima,
                       labelStyle: TextStyle(
                           color: _superficies[d] == s
                               ? bosque
