@@ -194,13 +194,13 @@ class _LocalCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis),
               ),
               Text('$n ${n == 1 ? 'cancha' : 'canchas'}',
-                  style: t.bodySmall?.copyWith(color: textoTenue)),
+                  style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
             ],
           ),
           if (local.direccion != null) ...[
             const SizedBox(height: 3),
             Text(local.direccion!,
-                style: t.bodySmall?.copyWith(color: textoTenue),
+                style: t.bodySmall?.copyWith(color: textoTenueDe(context)),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis),
           ],
@@ -263,7 +263,7 @@ class _FilaCancha extends StatelessWidget {
                   Text(
                     '${cancha.deporte.etiqueta} · S/ ${cancha.precioHora.toStringAsFixed(2)}/h · '
                     '${cancha.horaApertura}–${cancha.horaCierre}',
-                    style: t.bodySmall?.copyWith(color: textoTenue),
+                    style: t.bodySmall?.copyWith(color: textoTenueDe(context)),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -284,7 +284,7 @@ class _FilaCancha extends StatelessWidget {
                         fontSize: 10,
                         fontWeight: FontWeight.w700)),
               ),
-            const Icon(Icons.chevron_right, color: textoTenue),
+            Icon(Icons.chevron_right, color: textoTenueDe(context)),
           ],
         ),
       ),
@@ -310,10 +310,10 @@ class _Vacio extends StatelessWidget {
                 style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
             const SizedBox(height: 6),
             Text(
-              'Registra tu local para que aparezca en el mapa; luego puedes '
+              'Registra tu local para que aparezca en Pichangol; luego puedes '
               'agregarle todas las canchas que tengas.',
               textAlign: TextAlign.center,
-              style: t.bodyMedium?.copyWith(color: textoTenue),
+              style: t.bodyMedium?.copyWith(color: textoTenueDe(context)),
             ),
             const SizedBox(height: 18),
             FilledButton.icon(

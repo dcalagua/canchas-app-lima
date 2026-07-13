@@ -42,6 +42,16 @@ const Color trazo = Color(0xFFDDDDDD);  // bordes / divisores (Airbnb)
 const Color textoTenue = Color(0xFF717171); // muted (Foggy)
 const Color limaSuave = Color(0xFFE3F2EF); // tinte verde WhatsApp suave
 
+/// Gris de texto secundario ADAPTADO al tema: en claro es el Foggy #717171
+/// (bien sobre blanco); en oscuro un gris más claro/frío estilo WhatsApp para
+/// que las letras chicas (direcciones, precios, horarios) se lean sobre fondo
+/// oscuro. Úsalo en vez de `textoTenue` cuando el texto va sobre una superficie
+/// que cambia con el tema.
+Color textoTenueDe(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.dark
+        ? const Color(0xFFAEBAC1) // gris claro WhatsApp (dark)
+        : textoTenue;
+
 // ── Colores de estado (chips) — sistema de diseño ─────────────────────────
 const Color estadoOkBg = Color(0xFFE9F4EE);
 const Color estadoOkFg = Color(0xFF1F6E49);
