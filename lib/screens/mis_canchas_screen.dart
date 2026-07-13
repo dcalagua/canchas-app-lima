@@ -6,6 +6,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import 'agregar_cancha_screen.dart';
 import 'editar_cancha_screen.dart';
+import 'recargar_saldo_screen.dart';
 import 'registrar_cancha_screen.dart';
 
 /// Canchas del dueño agrupadas por LOCAL (un local = varias canchas, posibles
@@ -58,14 +59,20 @@ class _MisCanchasScreenState extends State<MisCanchasScreen> {
                       : ListView(
                           padding: const EdgeInsets.fromLTRB(18, 16, 18, 90),
                           children: [
+                            const _DestacarCanchasCard(),
+                            const SizedBox(height: 14),
                             if (hayPendientes) ...[
                               const _AvisoPendiente(),
                               const SizedBox(height: 14),
                             ],
-                            for (final local in locales) ...[
-                              _LocalCard(local: local),
-                              const SizedBox(height: 14),
-                            ],
+                            // Tablet/landscape: grilla de 2-3 columnas.
+                            if (MediaQuery.of(context).size.width >= 720)
+                              _GridLocales(locales: locales)
+                            else
+                              for (final local in locales) ...[
+                                _LocalCard(local: local),
+                                const SizedBox(height: 14),
+                              ],
                           ],
                         ),
                 ),
@@ -75,6 +82,116 @@ class _MisCanchasScreenState extends State<MisCanchasScreen> {
         },
       ),
     );
+  }
+}
+
+/// "Destaca tus canchas": prepago que pone tus canchas primero en Explorar (con
+/// medalla), igual que las academias. Más saldo = mejor nivel (Bronce/Plata/Oro).
+class _DestacarCanchasCard extends StatefulWidget {
+  const _DestacarCanchasCard();
+  @override
+  State<_DestacarCanchasCard> createState() => _DestacarCanchasCardState();
+}
+
+class _DestacarCanchasCardState extends State<_DestacarCanchasCard> {
+  @override
+  void initState() {
+    super.initState();
+    appState.sincronizarSaldo();
+    appState.cargarDestacados();
+  }
+
+  Future<void> _recargar() async {
+    final monto = await Navigator.of(context).push<int>(MaterialPageRoute(
+      builder: (_) => const RecargarSaldoScreen(titulo: 'Destacar mis canchas'),
+    ));
+    if (monto != null && mounted) {
+      appState.recargar(monto); // refleja el saldo al instante
+      await appState.sincronizarSaldo();
+      await appState.cargarDestacados();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final saldo = appState.saldoClub;
+    final nivel = appState.nivelDestacadoPropio;
+    final destacada = nivel > 0;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF128C7E), Color(0xFF075E54)],
+        ),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(destacada ? Icons.star : Icons.trending_up,
+                  color: Colors.white, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                  destacada
+                      ? '${medallaDestacado(nivel)} Nivel ${etiquetaNivelDestacado(nivel)}'
+                      : 'Destaca tus canchas',
+                  style: t.titleMedium?.copyWith(
+                      color: Colors.white, fontWeight: FontWeight.w800)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            destacada
+                ? 'Tus canchas salen primero en Explorar. Saldo: S/ $saldo. '
+                    'Más saldo = mejor posición: Plata desde S/ 50, Oro desde S/ 200.'
+                : 'Pon saldo y tus canchas aparecen destacadas (arriba y con '
+                    'medalla) para que más jugadores las reserven. '
+                    'Bronce desde S/ 1, Plata S/ 50, Oro S/ 200.',
+            style: t.bodySmall
+                ?.copyWith(color: Colors.white.withOpacity(0.92), height: 1.3),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                  backgroundColor: Colors.white, foregroundColor: lima),
+              onPressed: _recargar,
+              icon: const Icon(Icons.add),
+              label: Text(saldo > 0
+                  ? 'Recargar y destacar (S/ $saldo)'
+                  : 'Poner saldo y destacar'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Grilla de locales (2-3 columnas) para tablet/landscape.
+class _GridLocales extends StatelessWidget {
+  const _GridLocales({required this.locales});
+  final List<Club> locales;
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, cons) {
+      final cols = cons.maxWidth >= 1100 ? 3 : 2;
+      final w = (cons.maxWidth - 14 * (cols - 1)) / cols;
+      return Wrap(
+        spacing: 14,
+        runSpacing: 14,
+        children: [
+          for (final local in locales)
+            SizedBox(width: w, child: _LocalCard(local: local)),
+        ],
+      );
+    });
   }
 }
 

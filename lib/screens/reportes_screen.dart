@@ -73,7 +73,7 @@ class ReportesScreen extends StatelessWidget {
 
           final sinDatos = mias.isEmpty;
 
-          return ListView(
+          final contenido = ListView(
             padding: EdgeInsets.fromLTRB(
                 18, 18 + MediaQuery.of(context).padding.top, 18, 28),
             children: [
@@ -198,6 +198,13 @@ class ReportesScreen extends StatelessWidget {
               ],
             ],
           );
+          // Tablet/landscape: limita el ancho y centra (no estirar feo).
+          return MediaQuery.of(context).size.width >= 720
+              ? Center(
+                  child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 880),
+                      child: contenido))
+              : contenido;
         },
       ),
     );

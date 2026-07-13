@@ -61,15 +61,37 @@ class ReservasDuenoScreen extends StatelessWidget {
                     children: [
                       _Caja(cobrado: cobrado, porCobrar: porCobrar),
                       const SizedBox(height: 16),
-                      for (final r in reservas)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: _ReservaCard(
-                            reserva: r,
-                            cancha: mias[r.canchaId]!,
-                            fechaLabel: _fechaLabel(r.fecha),
+                      // Tablet/landscape: reservas en grilla de 2-3 columnas.
+                      if (MediaQuery.of(context).size.width >= 720)
+                        LayoutBuilder(builder: (context, cons) {
+                          final cols = cons.maxWidth >= 1100 ? 3 : 2;
+                          final w = (cons.maxWidth - 12 * (cols - 1)) / cols;
+                          return Wrap(
+                            spacing: 12,
+                            runSpacing: 12,
+                            children: [
+                              for (final r in reservas)
+                                SizedBox(
+                                  width: w,
+                                  child: _ReservaCard(
+                                    reserva: r,
+                                    cancha: mias[r.canchaId]!,
+                                    fechaLabel: _fechaLabel(r.fecha),
+                                  ),
+                                ),
+                            ],
+                          );
+                        })
+                      else
+                        for (final r in reservas)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _ReservaCard(
+                              reserva: r,
+                              cancha: mias[r.canchaId]!,
+                              fechaLabel: _fechaLabel(r.fecha),
+                            ),
                           ),
-                        ),
                     ],
                   ),
           );

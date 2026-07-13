@@ -1354,6 +1354,15 @@ class AppState extends ChangeNotifier {
   ];
   bool get destacadoActivo => saldoClub > 0;
 
+  /// Nivel de destacado del PROPIO dueño por su saldo (mismos umbrales que el
+  /// backend): 0 = no, 1 bronce (>0), 2 plata (>=50), 3 oro (>=200).
+  int get nivelDestacadoPropio {
+    if (saldoClub >= 200) return 3;
+    if (saldoClub >= 50) return 2;
+    if (saldoClub > 0) return 1;
+    return 0;
+  }
+
   // ── Dueños DESTACADOS (saldo prepago > 0) → nivel (1-3) ───────────────────
   // Se resalta a sus canchas en Explorar: más saldo = más visibilidad (el
   // beneficio que la plataforma le da al dueño). Se carga del backend; los
