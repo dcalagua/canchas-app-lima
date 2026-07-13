@@ -14,7 +14,9 @@ enum Deporte {
   tenis('Tenis'),
   padel('Pádel'),
   futbol('Fútbol'),
-  pickleball('Pickleball');
+  pickleball('Pickleball'),
+  voley('Vóley'),
+  basquet('Básquet');
 
   final String etiqueta;
   const Deporte(this.etiqueta);
@@ -22,11 +24,14 @@ enum Deporte {
 
 /// Deportes que la app OFRECE al usuario (selectores, filtros, secciones).
 /// Pádel se retiró del piloto: sigue en el enum para no romper datos antiguos
-/// al cargarlos, pero no se muestra ni se puede elegir. Foco: fútbol y tenis.
+/// al cargarlos, pero no se muestra ni se puede elegir. Muchos locales alquilan
+/// también vóley y básquet (misma loza multiuso), por eso entran al catálogo.
 const List<Deporte> deportesActivos = [
   Deporte.futbol,
   Deporte.tenis,
   Deporte.pickleball,
+  Deporte.voley,
+  Deporte.basquet,
 ];
 
 /// Una cancha en el marketplace.
@@ -98,6 +103,10 @@ class Cancha {
         return 70;
       case Deporte.pickleball:
         return 80;
+      case Deporte.voley:
+        return 80;
+      case Deporte.basquet:
+        return 90;
     }
   }
 

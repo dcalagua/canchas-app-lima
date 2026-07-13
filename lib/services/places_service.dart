@@ -40,6 +40,8 @@ class PlacesService {
     'cancha de pádel',
     'club de pádel',
     'cancha de pickleball',
+    'cancha de vóley',
+    'cancha de básquet',
     'club deportivo',
     'polideportivo',
     'country club',
@@ -285,7 +287,8 @@ class PlacesService {
 
   // Tipos de Google que NO son canchas (descartar aunque el nombre confunda).
   static const _tiposExcluidos = {
-    'gym', 'store', 'shopping_mall', 'clothing_store', 'school',
+    'gym', 'store', 'shopping_mall', 'clothing_store', 'shoe_store',
+    'sporting_goods_store', 'school',
     'university', 'lodging', 'gas_station', 'supermarket', 'restaurant',
     'bar', 'doctor', 'hospital', 'pharmacy', 'bank',
   };
@@ -296,6 +299,9 @@ class PlacesService {
     'gimnasio', 'gym', 'tienda', 'store', 'colegio',
     'universidad', 'federación', 'federacion', 'crossfit', 'spinning',
     'natación', 'natacion', 'piscina', 'billar', 'bowling',
+    // Zapaterías/ropa deportiva: "tenis" en jerga = zapatillas. NO son canchas.
+    'zapatilla', 'zapato', 'calzado', 'sneaker', 'sport wear', 'sportwear',
+    'deportes americano', 'ropa deportiva', 'boutique', 'outlet',
     // Atracciones/servicios DENTRO de un club que no son canchas de alquiler:
     'laguna', 'acuático', 'acuatico', 'waterpark', 'parque acuático',
     'restaurante', 'hotel', 'spa', 'juegos para niños', 'zoológico', 'zoologico',
@@ -337,15 +343,45 @@ class PlacesService {
     if (tipos.any(tiposExcluidosEfectivos.contains)) return null;
     if (_palabrasExcluidas.any(n.contains)) return null;
 
+    // Señales de que SÍ es un recinto (para desambiguar nombres tramposos).
+    final tiposDeportivos = tipos.any(const {
+      'stadium', 'arena', 'sports_complex', 'sports_club',
+      'sports_activity_location', 'recreation_center', 'athletic_field',
+      'country_club',
+    }.contains);
+    final coSenalCancha = nombreEsDeportivoFuerte ||
+        n.contains('club') ||
+        n.contains('academia') ||
+        n.contains('court') ||
+        n.contains('lawn') ||
+        n.contains('sede') ||
+        n.contains('country');
+
     // 2) Señal positiva por deporte en el nombre.
     if (n.contains('pickleball') || n.contains('pickle')) {
       return Deporte.pickleball;
     }
     if (n.contains('pádel') || n.contains('padel')) return Deporte.padel;
-    if (n.contains('tenis') ||
-        n.contains('tennis') ||
-        n.contains('raqueta') ||
-        n.contains('racquet')) {
+    if (n.contains('vóley') ||
+        n.contains('voley') ||
+        n.contains('voleibol') ||
+        n.contains('vóleibol') ||
+        n.contains('volley')) {
+      return Deporte.voley;
+    }
+    if (n.contains('básquet') ||
+        n.contains('basquet') ||
+        n.contains('básket') ||
+        n.contains('basket')) {
+      return Deporte.basquet;
+    }
+    // 'raqueta'/'racquet' son inequívocos (deporte de raqueta) → tenis directo.
+    if (n.contains('raqueta') || n.contains('racquet')) return Deporte.tenis;
+    // 'tenis'/'tennis' es AMBIGUO (en jerga = zapatillas): solo cuenta como
+    // cancha si además hay señal de recinto (club/cancha/academia/…) o un tipo
+    // deportivo de Google. Así una zapatería "Tenis Americanos" no entra.
+    if ((n.contains('tenis') || n.contains('tennis')) &&
+        (coSenalCancha || tiposDeportivos)) {
       return Deporte.tenis;
     }
     if (n.contains('fútbol') ||

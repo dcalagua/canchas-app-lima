@@ -104,6 +104,8 @@ Color colorDeporte(Deporte d) => switch (d) {
       Deporte.padel => textoTenue,  // Foggy (gris)
       Deporte.futbol => bosque,     // Hof (negro)
       Deporte.pickleball => lima,   // Rausch (coral)
+      Deporte.voley => const Color(0xFF3D8BC9),  // azul cielo
+      Deporte.basquet => const Color(0xFFE07A3E), // naranja balón
     };
 
 IconData iconoDeporte(Deporte d) => switch (d) {
@@ -111,6 +113,8 @@ IconData iconoDeporte(Deporte d) => switch (d) {
       Deporte.padel => Icons.sports_handball,
       Deporte.futbol => Icons.sports_soccer,
       Deporte.pickleball => Icons.sports_tennis, // raqueta (lo más cercano)
+      Deporte.voley => Icons.sports_volleyball,
+      Deporte.basquet => Icons.sports_basketball,
     };
 
 // ── Amenities / servicios de la cancha (editable por el dueño) ────────────
@@ -165,6 +169,16 @@ List<String> superficiesDe(Deporte d) => switch (d) {
       Deporte.pickleball => const [
           'Dura',
           'Loza',
+        ],
+      Deporte.voley => const [
+          'Loza',
+          'Arena',
+          'Parquet',
+        ],
+      Deporte.basquet => const [
+          'Loza',
+          'Parquet',
+          'Cemento',
         ],
     };
 
