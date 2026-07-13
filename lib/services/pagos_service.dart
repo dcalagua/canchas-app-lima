@@ -320,4 +320,22 @@ class PagosService {
       return null;
     }
   }
+
+  /// Historial de movimientos de saldo del dueño (recargas), del backend, del
+  /// más reciente al más antiguo. Sobrevive a reinstalar la app (el local no).
+  /// Cada item: {tipo, monto_soles, concepto, creado_en}. Null si no se pudo.
+  static Future<List<Map<String, dynamic>>?> movimientos(String duenoId) async {
+    if (!disponible) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/pagos/movimientos/$duenoId');
+      final r = await http.get(uri, headers: _appHeaders())
+          .timeout(const Duration(seconds: 12));
+      if (r.statusCode != 200) return null;
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      final lst = (j['movimientos'] as List?) ?? const [];
+      return lst.cast<Map<String, dynamic>>();
+    } catch (_) {
+      return null;
+    }
+  }
 }

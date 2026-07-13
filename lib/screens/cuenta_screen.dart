@@ -146,8 +146,19 @@ class _TarjetaSaldo extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        color: tinta,
+        // Degradado verde WhatsApp (antes era negro): look más cálido y de marca.
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF128C7E), Color(0xFF075E54)],
+        ),
         borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+              color: const Color(0xFF075E54).withOpacity(0.35),
+              blurRadius: 18,
+              offset: const Offset(0, 8)),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -161,19 +172,18 @@ class _TarjetaSaldo extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
-                  color: (destacado ? lima : Colors.white24).withOpacity(
-                      destacado ? 0.18 : 1),
+                  color: Colors.white.withOpacity(destacado ? 0.20 : 0.12),
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(destacado ? Icons.star : Icons.pause_circle_filled,
-                        color: destacado ? lima : Colors.white, size: 14),
+                        color: Colors.white, size: 14),
                     const SizedBox(width: 5),
                     Text(destacado ? 'Destacado' : 'Pausado',
-                        style: TextStyle(
-                            color: destacado ? lima : Colors.white,
+                        style: const TextStyle(
+                            color: Colors.white,
                             fontSize: 11,
                             fontWeight: FontWeight.w700)),
                   ],
@@ -193,8 +203,8 @@ class _TarjetaSaldo extends StatelessWidget {
             width: double.infinity,
             child: FilledButton.icon(
               style: FilledButton.styleFrom(
-                backgroundColor: lima,
-                foregroundColor: pinoOscuro,
+                backgroundColor: Colors.white,
+                foregroundColor: lima,
                 padding: const EdgeInsets.symmetric(vertical: 15),
               ),
               onPressed: onRecargar,

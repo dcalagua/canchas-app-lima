@@ -160,6 +160,33 @@ def get_saldo(dueno_id: str) -> dict:
     return {"dueno_id": dueno_id, "saldo_centimos": c, "saldo_soles": c / 100.0}
 
 
+@router.get("/movimientos/{dueno_id}", dependencies=_APP)
+def get_movimientos(dueno_id: str) -> dict:
+    """Historial de movimientos de saldo del dueño (recargas aprobadas), del más
+    reciente al más antiguo. El saldo vive en el backend, así que este historial
+    SOBREVIVE a reinstalar la app (a diferencia del historial local del teléfono).
+    """
+    recargas = [
+        p
+        for p in stores.pagos
+        if p.tipo == "recarga"
+        and p.dueno_id == dueno_id
+        and p.estado == "aprobado"
+    ]
+    movimientos = [
+        {
+            "tipo": "recarga",
+            "monto_soles": p.monto_centimos / 100.0,
+            "concepto": p.concepto or "Recarga de saldo",
+            "creado_en": p.creado_en.isoformat(),
+        }
+        # stores.pagos está en orden de inserción (viejo→nuevo); lo invertimos
+        # para mostrar el más reciente primero.
+        for p in reversed(recargas)
+    ]
+    return {"dueno_id": dueno_id, "movimientos": movimientos}
+
+
 # --- Cobro genérico al jugador (reservas, academias) ---------------------
 @router.post("/cobrar", dependencies=_APP)
 def post_cobrar(req: CobroReq) -> dict:

@@ -122,6 +122,34 @@ def test_fee_reserva_no_acredita_saldo():
     assert any(p.tipo == "fee_reserva" for p in stores.pagos)
 
 
+def test_movimientos_lista_recargas_recientes_primero():
+    # Dos recargas del mismo dueño → el historial las devuelve, la última primero.
+    client.post("/pagos/recarga", json={
+        "token": "tkn_a", "dueno_id": "due@x.com",
+        "email": "due@x.com", "monto_soles": 30,
+    })
+    client.post("/pagos/recarga", json={
+        "token": "tkn_b", "dueno_id": "due@x.com",
+        "email": "due@x.com", "monto_soles": 50,
+    })
+    # Recarga de OTRO dueño: no debe aparecer en el historial del primero.
+    client.post("/pagos/recarga", json={
+        "token": "tkn_c", "dueno_id": "otro@x.com",
+        "email": "otro@x.com", "monto_soles": 20,
+    })
+    r = client.get("/pagos/movimientos/due@x.com").json()
+    movs = r["movimientos"]
+    assert len(movs) == 2
+    assert movs[0]["monto_soles"] == 50.0  # la más reciente, primero
+    assert movs[1]["monto_soles"] == 30.0
+    assert all(m["tipo"] == "recarga" for m in movs)
+
+
+def test_movimientos_vacio_si_no_hay_recargas():
+    r = client.get("/pagos/movimientos/nadie@x.com").json()
+    assert r["movimientos"] == []
+
+
 def test_saldo_endpoint():
     client.post("/pagos/recarga", json={
         "token": "t", "dueno_id": "d", "email": "d@x.com", "monto_soles": 15})

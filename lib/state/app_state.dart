@@ -1369,13 +1369,48 @@ class AppState extends ChangeNotifier {
     if (email == null || email.isEmpty) return;
     if (!PagosService.disponible) return;
     final s = await PagosService.saldo(email);
-    if (s == null) return; // backend no disponible → deja el local
-    final nuevo = s.round();
-    if (nuevo != saldoClub) {
-      saldoClub = nuevo;
+    if (s != null) {
+      final nuevo = s.round();
+      if (nuevo != saldoClub) {
+        saldoClub = nuevo;
+        notifyListeners();
+        _persistirDatos();
+      }
+    }
+    // Historial de movimientos del backend (recargas): sobrevive a reinstalar,
+    // a diferencia del historial local del teléfono. Si el backend responde con
+    // recargas, reemplaza la lista local (que solo tenía la "Recarga inicial"
+    // de demo). Si no hay ninguna o el backend no responde, conserva lo local.
+    final movs = await PagosService.movimientos(email);
+    if (movs != null && movs.isNotEmpty) {
+      movimientos
+        ..clear()
+        ..addAll(movs.map((m) => MovimientoSaldo(
+              tipo: m['tipo'] == 'consumo'
+                  ? TipoMovimiento.consumo
+                  : TipoMovimiento.recarga,
+              monto: (m['monto_soles'] as num?)?.round() ?? 0,
+              concepto: (m['concepto'] as String?) ?? 'Recarga de saldo',
+              cuando: _fechaRelativa(m['creado_en'] as String?),
+            )));
       notifyListeners();
       _persistirDatos();
     }
+  }
+
+  /// Convierte una fecha ISO en una etiqueta corta para el historial de saldo:
+  /// "Hoy" / "Ayer" / "dd/mm". Vacío si no se puede parsear.
+  String _fechaRelativa(String? iso) {
+    if (iso == null || iso.isEmpty) return '';
+    final d = DateTime.tryParse(iso);
+    if (d == null) return '';
+    final hoy = DateTime.now();
+    final dia = DateTime(d.year, d.month, d.day);
+    final base = DateTime(hoy.year, hoy.month, hoy.day);
+    final diff = base.difference(dia).inDays;
+    if (diff <= 0) return 'Hoy';
+    if (diff == 1) return 'Ayer';
+    return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
   }
 
   /// Recarga el saldo prepago del club.
