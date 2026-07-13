@@ -347,6 +347,54 @@ class PagosService {
     }
   }
 
+  // Impresiones ya enviadas en esta sesión (dedup: no inflar el conteo).
+  static final Set<String> _vistasEnviadas = {};
+
+  /// Registra una IMPRESIÓN (vista de destacado) por cada id NUEVO en esta
+  /// sesión — dedup para no contar la misma vista dos veces. Fire-and-forget.
+  /// El id es el dueno (correo) para canchas o el id de la academia.
+  static Future<void> registrarVistasUnaVez(List<String> ids) async {
+    if (!disponible) return;
+    final nuevos = ids
+        .map((e) => e.toLowerCase().trim())
+        .where((e) => e.isNotEmpty && _vistasEnviadas.add(e))
+        .toList();
+    if (nuevos.isEmpty) return;
+    try {
+      await http
+          .post(Uri.parse('$_baseUrl/pagos/vistas/registrar'),
+              headers: _appHeaders(json: true),
+              body: jsonEncode({'ids': nuevos}))
+          .timeout(const Duration(seconds: 8));
+    } catch (_) {}
+  }
+
+  /// Resumen de impresiones de [ids] (dueño/academia): {semana, total}. Null si
+  /// no se pudo. Para "X jugadores vieron tu cancha destacada".
+  static Future<Map<String, int>?> resumenVistas(List<String> ids) async {
+    if (!disponible) return null;
+    final limpio = ids
+        .map((e) => e.toLowerCase().trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    if (limpio.isEmpty) return null;
+    try {
+      final r = await http
+          .post(Uri.parse('$_baseUrl/pagos/vistas/consultar'),
+              headers: _appHeaders(json: true),
+              body: jsonEncode({'ids': limpio}))
+          .timeout(const Duration(seconds: 10));
+      if (r.statusCode != 200) return null;
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      return {
+        'semana': (j['semana'] as num?)?.toInt() ?? 0,
+        'total': (j['total'] as num?)?.toInt() ?? 0,
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Historial de movimientos de saldo del dueño (recargas), del backend, del
   /// más reciente al más antiguo. Sobrevive a reinstalar la app (el local no).
   /// Cada item: {tipo, monto_soles, concepto, creado_en}. Null si no se pudo.

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/academia.dart';
 import '../models/invitacion.dart';
+import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/redes.dart';
@@ -27,6 +28,14 @@ class AcademiasScreen extends StatelessWidget {
             ..sort((a, b) => appState
                 .nivelDestacadoAcademia(b)
                 .compareTo(appState.nivelDestacadoAcademia(a)));
+          // Métrica de impacto: impresión por cada academia destacada mostrada.
+          final destacadasVistas = [
+            for (final a in academias)
+              if (appState.esDestacadaAcademia(a)) a.id
+          ];
+          if (destacadasVistas.isNotEmpty) {
+            PagosService.registrarVistasUnaVez(destacadasVistas);
+          }
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [

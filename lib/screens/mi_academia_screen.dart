@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../models/academia.dart';
 import '../models/invitacion.dart';
+import '../services/pagos_service.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -358,11 +359,19 @@ class _DestacarCard extends StatefulWidget {
 }
 
 class _DestacarCardState extends State<_DestacarCard> {
+  Map<String, int>? _vistas; // {semana, total} de impresiones de la academia
+
   @override
   void initState() {
     super.initState();
     appState.sincronizarSaldoAcademia(widget.academia.id);
     appState.cargarDestacados();
+    _cargarVistas();
+  }
+
+  Future<void> _cargarVistas() async {
+    final v = await PagosService.resumenVistas([widget.academia.id]);
+    if (mounted && v != null) setState(() => _vistas = v);
   }
 
   Future<void> _recargar() async {
@@ -420,6 +429,22 @@ class _DestacarCardState extends State<_DestacarCard> {
             style: t.bodySmall
                 ?.copyWith(color: Colors.white.withOpacity(0.92), height: 1.3),
           ),
+          if (_vistas != null && (_vistas!['semana'] ?? 0) > 0) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.16),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '👀 ${_vistas!['semana']} personas vieron tu academia esta semana'
+                '${(_vistas!['total'] ?? 0) > (_vistas!['semana'] ?? 0) ? ' · ${_vistas!['total']} en total' : ''}',
+                style: t.bodySmall
+                    ?.copyWith(color: Colors.white, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,

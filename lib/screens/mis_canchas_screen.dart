@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/club.dart';
 import '../models/models.dart';
+import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'agregar_cancha_screen.dart';
@@ -94,11 +95,21 @@ class _DestacarCanchasCard extends StatefulWidget {
 }
 
 class _DestacarCanchasCardState extends State<_DestacarCanchasCard> {
+  Map<String, int>? _vistas; // {semana, total} de impresiones de tus canchas
+
   @override
   void initState() {
     super.initState();
     appState.sincronizarSaldo();
     appState.cargarDestacados();
+    _cargarVistas();
+  }
+
+  Future<void> _cargarVistas() async {
+    final email = appState.usuario?.email;
+    if (email == null || email.isEmpty) return;
+    final v = await PagosService.resumenVistas([email]);
+    if (mounted && v != null) setState(() => _vistas = v);
   }
 
   Future<void> _recargar() async {
@@ -155,6 +166,22 @@ class _DestacarCanchasCardState extends State<_DestacarCanchasCard> {
             style: t.bodySmall
                 ?.copyWith(color: Colors.white.withOpacity(0.92), height: 1.3),
           ),
+          if (_vistas != null && (_vistas!['semana'] ?? 0) > 0) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.16),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '👀 ${_vistas!['semana']} jugadores vieron tus canchas esta semana'
+                '${(_vistas!['total'] ?? 0) > (_vistas!['semana'] ?? 0) ? ' · ${_vistas!['total']} en total' : ''}',
+                style: t.bodySmall
+                    ?.copyWith(color: Colors.white, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,

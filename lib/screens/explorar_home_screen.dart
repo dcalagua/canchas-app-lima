@@ -11,6 +11,7 @@ import '../brand.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../services/location_service.dart';
+import '../services/pagos_service.dart';
 import '../utils/geo.dart';
 import '../utils/moneda.dart';
 import 'asistente_screen.dart';
@@ -392,6 +393,20 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                     ..sort((a, b) =>
                         _scoreDestacado(b).compareTo(_scoreDestacado(a)));
                   final topDest = destacados.take(6).toList();
+                  // Métrica de impacto: registra una impresión por cada dueño
+                  // destacado mostrado (dedup por sesión en PagosService).
+                  if (destacados.isNotEmpty) {
+                    final duenosVistos = <String>{};
+                    for (final cl in destacados) {
+                      for (final c in cl.canchas) {
+                        if (appState.nivelDestacado(c) > 0 &&
+                            c.dueno.isNotEmpty) {
+                          duenosVistos.add(c.dueno);
+                        }
+                      }
+                    }
+                    PagosService.registrarVistasUnaVez(duenosVistos.toList());
+                  }
                   if (topDest.isNotEmpty) {
                     hijos.add(_SeccionHeader('Destacados cerca de ti',
                         topDest.length, lima, Icons.star));

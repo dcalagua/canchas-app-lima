@@ -186,6 +186,31 @@ def get_destacados() -> dict:
     return {"destacados": destacados}
 
 
+class VistasReq(BaseModel):
+    ids: list[str] = []
+
+
+@router.post("/vistas/registrar", dependencies=_APP)
+def post_vistas_registrar(req: VistasReq) -> dict:
+    """Registra una IMPRESIÓN (vista) por cada id mostrado como destacado
+    (dueno_id de canchas o id de academia). El APK lo llama cuando muestra los
+    destacados. Es la métrica de impacto del boost que paga el dueño."""
+    n = 0
+    for id_ in req.ids:
+        if id_:
+            stores.registrar_vista(id_)
+            n += 1
+    return {"ok": True, "registradas": n}
+
+
+@router.post("/vistas/consultar", dependencies=_APP)
+def post_vistas_consultar(req: VistasReq) -> dict:
+    """Impresiones agregadas de [ids]: {semana, total}. El dueño ve cuánta gente
+    vio sus canchas (o su academia) destacadas."""
+    r = stores.vistas_resumen([i for i in req.ids if i])
+    return {"ok": True, **r}
+
+
 @router.get("/movimientos/{dueno_id}", dependencies=_APP)
 def get_movimientos(dueno_id: str) -> dict:
     """Historial de movimientos de saldo del dueño (recargas aprobadas), del más

@@ -9,7 +9,7 @@ y testear sin base de datos ni servicios externos reales.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 
 def ahora() -> datetime:
@@ -289,6 +289,9 @@ class Stores:
         # PAGOS (Culqi): saldo prepago por dueño (céntimos) + libro de pagos.
         self.saldos: dict[str, int] = {}          # dueno_id -> céntimos
         self.pagos: list[PagoRegistro] = []
+        # VISTAS de destacados (métrica de impacto del boost): por id (dueno_id
+        # de canchas o id de academia) → {YYYY-MM-DD: nº impresiones ese día}.
+        self.vistas: dict[str, dict[str, int]] = {}
         # Métodos de pago guardados (One Click). NO se guarda la tarjeta, sólo el
         # token permanente de Culqi (crd_...) + marca y últimos 4 para mostrar.
         self.customers: dict[str, str] = {}       # user_id -> cus_id de Culqi
@@ -352,6 +355,29 @@ class Stores:
         self.pagos.append(p)
         return p
 
+    # --- vistas / impresiones de destacados (métrica de impacto del boost) ---
+    def registrar_vista(self, id_: str, dia: str | None = None, n: int = 1) -> None:
+        """Suma [n] impresiones a [id_] (dueno_id o academia_id) en [dia]
+        (YYYY-MM-DD; por defecto hoy UTC)."""
+        if not id_:
+            return
+        dia = dia or datetime.now(timezone.utc).date().isoformat()
+        d = self.vistas.setdefault(id_, {})
+        d[dia] = d.get(dia, 0) + int(n)
+
+    def vistas_resumen(self, ids: list[str]) -> dict:
+        """Impresiones agregadas de [ids]: total histórico y últimos 7 días."""
+        hoy = datetime.now(timezone.utc).date()
+        ventana = {(hoy - timedelta(days=i)).isoformat() for i in range(7)}
+        total = 0
+        semana = 0
+        for id_ in ids:
+            for dia, n in self.vistas.get(id_, {}).items():
+                total += n
+                if dia in ventana:
+                    semana += n
+        return {"semana": semana, "total": total}
+
     def cancha(self, cancha_id: str) -> CanchaEstado:
         c = self.canchas.get(cancha_id)
         if c is None:
@@ -397,6 +423,7 @@ class Stores:
             "inscripciones": [como_dict(i) for i in self.inscripciones],
             "saldos": dict(self.saldos),
             "pagos": [como_dict(p) for p in self.pagos],
+            "vistas": {k: dict(v) for k, v in self.vistas.items()},
             "customers": dict(self.customers),
             "metodos": {k: list(v) for k, v in self.metodos.items()},
         }
@@ -425,6 +452,10 @@ class Stores:
         self.inscripciones = [_insc_from(d) for d in data.get("inscripciones", [])]
         self.saldos = {k: int(v) for k, v in (data.get("saldos") or {}).items()}
         self.pagos = [_pago_from(d) for d in data.get("pagos", [])]
+        self.vistas = {
+            k: {d: int(n) for d, n in (v or {}).items()}
+            for k, v in (data.get("vistas") or {}).items()
+        }
         self.customers = dict(data.get("customers") or {})
         self.metodos = {
             k: list(v) for k, v in (data.get("metodos") or {}).items()

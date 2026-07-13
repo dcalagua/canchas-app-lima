@@ -180,6 +180,38 @@ def test_destacados_vacio_sin_saldos():
     assert client.get("/pagos/destacados").json()["destacados"] == []
 
 
+def test_vistas_registra_y_consulta():
+    # Registrar 3 impresiones para un dueño y 1 para otro.
+    client.post("/pagos/vistas/registrar",
+                json={"ids": ["due@x.com", "due@x.com", "otro@x.com"]})
+    client.post("/pagos/vistas/registrar", json={"ids": ["due@x.com"]})
+    r = client.post("/pagos/vistas/consultar",
+                    json={"ids": ["due@x.com"]}).json()
+    assert r["ok"] is True
+    assert r["total"] == 3  # 2 + 1
+    assert r["semana"] == 3  # todas hoy → entran en los últimos 7 días
+    # Consulta agregada de varios ids (p. ej. las canchas de un dueño).
+    r2 = client.post("/pagos/vistas/consultar",
+                     json={"ids": ["due@x.com", "otro@x.com"]}).json()
+    assert r2["total"] == 4
+
+
+def test_vistas_semana_excluye_dias_viejos():
+    from db.store import stores as _st
+    # Una impresión de hace 30 días (fuera de la ventana) + una de hoy.
+    _st.registrar_vista("club@x.com", dia="2020-01-01")
+    _st.registrar_vista("club@x.com")
+    r = client.post("/pagos/vistas/consultar",
+                    json={"ids": ["club@x.com"]}).json()
+    assert r["total"] == 2
+    assert r["semana"] == 1  # solo la de hoy
+
+
+def test_vistas_vacio():
+    r = client.post("/pagos/vistas/consultar", json={"ids": ["nadie"]}).json()
+    assert r["total"] == 0 and r["semana"] == 0
+
+
 def test_saldo_endpoint():
     client.post("/pagos/recarga", json={
         "token": "t", "dueno_id": "d", "email": "d@x.com", "monto_soles": 15})
