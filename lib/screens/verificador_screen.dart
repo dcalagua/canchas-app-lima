@@ -181,7 +181,7 @@ class _VisitaCard extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 decoration: BoxDecoration(
-                    color: const Color(0xFFEAF6C2),
+                    color: limaSuave,
                     borderRadius: BorderRadius.circular(10)),
                 child: Column(
                   children: [

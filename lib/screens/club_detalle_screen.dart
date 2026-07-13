@@ -331,9 +331,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                                   const EdgeInsets.symmetric(horizontal: 14),
                               alignment: Alignment.center,
                               decoration: BoxDecoration(
-                                color: sel
-                                    ? const Color(0xFFEAF6C2)
-                                    : cs.surface,
+                                color: sel ? limaSuave : cs.surface,
                                 borderRadius: BorderRadius.circular(999),
                                 border: Border.all(
                                     color:
@@ -512,7 +510,7 @@ class _PanelDueno extends StatelessWidget {
                 width: 34,
                 height: 34,
                 decoration: BoxDecoration(
-                    color: const Color(0xFFEAF6C2),
+                    color: limaSuave,
                     borderRadius: BorderRadius.circular(10)),
                 child: const Icon(Icons.verified_user, size: 19, color: pino),
               ),

@@ -230,7 +230,7 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-                color: const Color(0xFFEAF6C2),
+                color: limaSuave,
                 borderRadius: BorderRadius.circular(12)),
             child: Text(
               '¿No tienes acceso al teléfono del local? También puedes verificar '

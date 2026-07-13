@@ -248,7 +248,7 @@ class _EstadoChip extends StatelessWidget {
       fg = const Color(0xFF8A8175);
     } else if (reserva.pagado) {
       texto = 'PAGADO';
-      bg = const Color(0xFFEAF6C2);
+      bg = limaSuave;
       fg = pino;
     } else {
       texto = 'POR COBRAR';

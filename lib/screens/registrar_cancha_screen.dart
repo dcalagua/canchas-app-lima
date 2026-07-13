@@ -784,7 +784,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                  color: const Color(0xFFEAF6C2),
+                  color: limaSuave,
                   borderRadius: BorderRadius.circular(10)),
               child: Text(
                 'Los deportes, el precio y la conexión con tus redes los '

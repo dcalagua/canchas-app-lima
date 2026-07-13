@@ -437,7 +437,7 @@ class _ChipEstado extends StatelessWidget {
   Widget build(BuildContext context) {
     final (bg, fg, txt) = switch (estado) {
       EstadoReserva.confirmada => (estadoOkBg, estadoOkFg, 'Confirmada'),
-      EstadoReserva.nueva => (const Color(0xFFEAF6C2), pinoOscuro, 'Nueva'),
+      EstadoReserva.nueva => (lima, Colors.white, 'Nueva'),
       EstadoReserva.completada => (estadoNeutroBg, estadoNeutroFg, 'Jugada'),
       EstadoReserva.noShow => (estadoBadBg, estadoBadFg, 'No-show'),
     };
