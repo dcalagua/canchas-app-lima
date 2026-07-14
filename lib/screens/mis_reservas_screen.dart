@@ -5,6 +5,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/court_lines.dart';
 import '../utils/moneda.dart';
+import 'chat_screen.dart';
 
 /// Reservas hechas por el jugador logueado (rediseño premium, handoff v2):
 /// tabs Próximas/Historial + card destacada bosque de la próxima reserva.
@@ -306,9 +307,41 @@ class _ReservaCard extends StatelessWidget {
               style: t.titleMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                   color: Theme.of(context).colorScheme.onSurface)),
+          if (_puedeChatear(context))
+            IconButton(
+              icon: const Icon(Icons.chat_bubble_outline, size: 20),
+              tooltip: 'Mensaje al dueño',
+              visualDensity: VisualDensity.compact,
+              onPressed: () => _chatearConDueno(context),
+            ),
         ],
       ),
     );
+  }
+
+  bool _puedeChatear(BuildContext context) {
+    final owner = (cancha?.dueno ?? '').toLowerCase();
+    final me = (appState.usuario?.email ?? '').toLowerCase();
+    return owner.isNotEmpty && me.isNotEmpty && owner != me;
+  }
+
+  /// Abre el chat con el dueño de la cancha (conversación de cancha).
+  void _chatearConDueno(BuildContext context) {
+    final owner = cancha?.dueno ?? '';
+    final me = appState.usuario?.email ?? '';
+    if (owner.isEmpty || me.isEmpty) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ChatScreen(
+        academiaId: '',
+        cuentaEmail: me,
+        titulo: (cancha?.club.isNotEmpty ?? false)
+            ? cancha!.club
+            : (cancha?.nombre ?? 'Dueño'),
+        soyProfe: false,
+        tipo: 'cancha',
+        refId: owner,
+      ),
+    ));
   }
 }
 

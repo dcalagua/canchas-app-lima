@@ -4,6 +4,7 @@ import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/moneda.dart';
+import 'chat_screen.dart';
 
 /// Panel de RESERVAS del dueño (piloto): lista las reservas reales de sus
 /// canchas, con botones para registrar el pago en efectivo o marcar no-show,
@@ -196,6 +197,13 @@ class _ReservaCard extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis),
               ),
+              if (reserva.usuario.isNotEmpty)
+                IconButton(
+                  icon: const Icon(Icons.chat_bubble_outline, size: 20),
+                  tooltip: 'Mensaje al jugador',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => _chatearConJugador(context),
+                ),
               _EstadoChip(reserva: reserva),
             ],
           ),
@@ -238,6 +246,23 @@ class _ReservaCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// Abre el chat con el jugador (conversación de cancha: dueño ↔ jugador).
+  void _chatearConJugador(BuildContext context) {
+    final owner = appState.usuario?.email ?? '';
+    final player = reserva.usuario;
+    if (owner.isEmpty || player.isEmpty) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ChatScreen(
+        academiaId: '',
+        cuentaEmail: player,
+        titulo: reserva.jugador.isNotEmpty ? reserva.jugador : 'Jugador',
+        soyProfe: true,
+        tipo: 'cancha',
+        refId: owner,
+      ),
+    ));
   }
 
   Future<void> _confirmarNoShow(BuildContext context) async {

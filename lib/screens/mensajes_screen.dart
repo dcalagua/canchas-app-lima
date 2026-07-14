@@ -28,6 +28,8 @@ class _Conv {
     required this.soyProfe,
     required this.cuando,
     required this.noLeidos,
+    this.tipo = 'academia',
+    this.refId = '',
   });
   final String hilo;
   final String academiaId;
@@ -37,6 +39,8 @@ class _Conv {
   final bool soyProfe;
   final DateTime cuando;
   final int noLeidos;
+  final String tipo; // 'academia' | 'cancha'
+  final String refId; // canchaId/dueño para cancha
 }
 
 class _MensajesScreenState extends State<MensajesScreen> {
@@ -108,8 +112,50 @@ class _MensajesScreenState extends State<MensajesScreen> {
         soyProfe: esProfe,
         cuando: ultimo.creado,
         noLeidos: noLeidos,
+        tipo: 'academia',
+        refId: acId,
       ));
     });
+
+    // Conversaciones de CANCHA (dueño ↔ jugador). refId = email del dueño.
+    final msgsCancha = await MensajesRepo.mensajesCanchaDe(email);
+    final porHiloC = <String, List<Mensaje>>{};
+    for (final m in msgsCancha) {
+      porHiloC.putIfAbsent(m.hilo, () => []).add(m);
+    }
+    porHiloC.forEach((hilo, list) {
+      final owner = list.first.refEfectivo.toLowerCase();
+      final soyDueno = owner == email;
+      final ultimo = list.last;
+      final String titulo;
+      final String cuenta;
+      if (soyDueno) {
+        cuenta = list.first.cuentaEmail;
+        titulo = _nombreJugador(list, cuenta);
+      } else {
+        cuenta = email;
+        titulo = _nombreLocalDe(owner);
+      }
+      final leida = appState.chatUltimaLectura(hilo);
+      var noLeidos = 0;
+      for (final x in list) {
+        if (x.autorEmail.toLowerCase() == email) continue;
+        if (leida == null || x.creado.isAfter(leida)) noLeidos++;
+      }
+      convs.add(_Conv(
+        hilo: hilo,
+        academiaId: '',
+        cuentaEmail: cuenta,
+        titulo: titulo,
+        preview: ultimo.texto,
+        soyProfe: soyDueno,
+        cuando: ultimo.creado,
+        noLeidos: noLeidos,
+        tipo: 'cancha',
+        refId: owner,
+      ));
+    });
+
     convs.sort((a, b) => b.cuando.compareTo(a.cuando));
     if (!mounted) return;
     setState(() {
@@ -138,6 +184,27 @@ class _MensajesScreenState extends State<MensajesScreen> {
     return 'Academia';
   }
 
+  /// Nombre del jugador en una conversación de cancha (de sus mensajes).
+  String _nombreJugador(List<Mensaje> list, String cuenta) {
+    for (final m in list) {
+      if (m.autorEmail.toLowerCase() == cuenta.toLowerCase() &&
+          m.autorNombre.isNotEmpty) {
+        return m.autorNombre;
+      }
+    }
+    return cuenta;
+  }
+
+  /// Nombre del local para el jugador (por el email del dueño).
+  String _nombreLocalDe(String ownerEmail) {
+    for (final c in appState.todasLasCanchas()) {
+      if (c.dueno.toLowerCase() == ownerEmail) {
+        return c.club.isNotEmpty ? c.club : c.nombre;
+      }
+    }
+    return 'Dueño de cancha';
+  }
+
   void _abrir(_Conv c) {
     Navigator.of(context)
         .push(MaterialPageRoute(
@@ -146,6 +213,8 @@ class _MensajesScreenState extends State<MensajesScreen> {
             cuentaEmail: c.cuentaEmail,
             titulo: c.titulo,
             soyProfe: c.soyProfe,
+            tipo: c.tipo,
+            refId: c.refId,
           ),
         ))
         .then((_) => _cargar()); // al volver, refresca no-leídos/preview
