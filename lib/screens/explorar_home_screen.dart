@@ -447,21 +447,30 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                     agregarCards(topDest);
                   }
 
+                  // Los que ya se mostraron arriba en "Destacados" NO se repiten
+                  // en su sección de deporte/clubes (estilo Airbnb: destacado
+                  // arriba, el resto abajo, sin duplicar).
+                  final idsDest = topDest.map((c) => c.id).toSet();
                   for (final d in deportesActivos) {
-                    final lista = porDeporte[d] ?? const <Club>[];
+                    final lista = (porDeporte[d] ?? const <Club>[])
+                        .where((cl) => !idsDest.contains(cl.id))
+                        .toList();
                     if (lista.isEmpty) continue;
                     hijos.add(_SeccionHeader(
                         d.etiqueta, lista.length, colorDeporte(d),
                         iconoDeporte(d)));
                     agregarCards(_ordenarPorPrecio(lista));
                   }
-                  if (clubesFormales.isNotEmpty) {
+                  final formalesRestantes = clubesFormales
+                      .where((cl) => !idsDest.contains(cl.id))
+                      .toList();
+                  if (formalesRestantes.isNotEmpty) {
                     hijos.add(_SeccionHeader(
                         'Clubes',
-                        clubesFormales.length,
+                        formalesRestantes.length,
                         Theme.of(context).colorScheme.primary,
                         Icons.apartment));
-                    agregarCards(_ordenarPorPrecio(clubesFormales));
+                    agregarCards(_ordenarPorPrecio(formalesRestantes));
                   }
                   return ListView(
                     padding: const EdgeInsets.fromLTRB(18, 16, 18, 28),
