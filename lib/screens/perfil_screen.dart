@@ -34,10 +34,11 @@ class PerfilScreen extends StatelessWidget {
                 padding: EdgeInsets.fromLTRB(
                     22, 20 + MediaQuery.of(context).padding.top, 22, 22),
                 decoration: const BoxDecoration(
+                  // Cabecera VERDE WhatsApp (antes degradaba a charcoal/negro).
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [sage, verde, bosque],
+                    colors: [lima, teal],
                   ),
                   borderRadius:
                       BorderRadius.vertical(bottom: Radius.circular(24)),
@@ -201,12 +202,17 @@ class _ModoAnfitrion extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    final cs = Theme.of(context).colorScheme;
     final oscuro = Theme.of(context).brightness == Brightness.dark;
-    final fondo = oscuro ? cs.surface : limaSuave;
-    final borde =
-        oscuro ? cs.outlineVariant.withOpacity(0.4) : lima.withOpacity(0.7);
-    final acento = oscuro ? lima : bosque; // título + chevron
+    // En OSCURO se pintaba surface-sobre-surface y "no se notaba": ahora es una
+    // tarjeta verde WhatsApp sólida (resalta como acción principal, estilo Airbnb
+    // "cambiar a anfitrión"). En claro, el tinte lima suave premium.
+    final fondo = oscuro ? lima : limaSuave;
+    final borde = oscuro ? lima : lima.withOpacity(0.7);
+    final acento = oscuro ? Colors.white : bosque; // título + chevron
+    final chipBg = oscuro ? Colors.white.withOpacity(0.22) : bosque;
+    final chipIcon = oscuro ? Colors.white : lima;
+    final subColor =
+        oscuro ? Colors.white.withOpacity(0.9) : bosque.withOpacity(0.7);
     return Material(
       color: fondo,
       borderRadius: BorderRadius.circular(18),
@@ -227,9 +233,9 @@ class _ModoAnfitrion extends StatelessWidget {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                    color: oscuro ? lima.withOpacity(0.2) : bosque,
+                    color: chipBg,
                     borderRadius: BorderRadius.circular(12)),
-                child: const Icon(Icons.real_estate_agent, color: lima),
+                child: Icon(Icons.real_estate_agent, color: chipIcon),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -241,10 +247,7 @@ class _ModoAnfitrion extends StatelessWidget {
                             color: acento, fontWeight: FontWeight.w800)),
                     const SizedBox(height: 2),
                     Text('Publica tu cancha o academia y recibe reservas',
-                        style: t.bodySmall?.copyWith(
-                            color: oscuro
-                                ? cs.onSurface.withOpacity(0.7)
-                                : bosque.withOpacity(0.7))),
+                        style: t.bodySmall?.copyWith(color: subColor)),
                   ],
                 ),
               ),

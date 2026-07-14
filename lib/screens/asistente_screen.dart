@@ -180,7 +180,7 @@ class _AsistenteScreenState extends State<AsistenteScreen> {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [sage, bosque],
+              colors: [lima, teal], // verde WhatsApp
             ),
           ),
         ),

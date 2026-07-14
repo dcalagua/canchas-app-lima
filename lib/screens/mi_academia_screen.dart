@@ -612,7 +612,7 @@ class _Header extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [sage, verde, bosque],
+          colors: [lima, teal], // verde WhatsApp
         ),
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
       ),
