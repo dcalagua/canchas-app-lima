@@ -198,15 +198,11 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
       final ok = await LoginGoogleSheet.mostrar(context);
       if (!ok || !mounted) return;
     }
-    // Total "todo incluido": si el dueño tiene saldo (cancha destacada), la
-    // comisión de Pichangol sale de su saldo y el jugador paga solo el precio.
-    // Si NO tiene saldo, la comisión va sumada DENTRO del total, sin desglosar
-    // (el jugador nunca ve la palabra "comisión"). La comisión de la pasarela
-    // nunca se le muestra.
-    final precio = _cancha.precioHora;
-    final total = appState.esDestacada(_cancha)
-        ? precio
-        : precio + appState.comisionDe(precio);
+    // El jugador SIEMPRE paga el precio de la cancha (su precio de siempre),
+    // tenga o no saldo el dueño. La comisión de Pichangol es 100% del lado del
+    // dueño: sale de su saldo si tiene (recibe el precio completo) o se descuenta
+    // de su liquidación si no. Nunca se le suma al jugador; la del banco tampoco.
+    final total = _cancha.precioHora;
     // Resumen estilo Airbnb ANTES de pagar (confianza + claridad).
     final confirmar = await _mostrarResumen(hora, total);
     if (!confirmar || !mounted) return;
