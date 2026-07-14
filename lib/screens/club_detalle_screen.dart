@@ -169,11 +169,12 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
 
   bool _esValle(String hora) => hora.compareTo('12:00') < 0;
 
-  /// Hoja "Resumen de tu reserva" (estilo Airbnb) antes de abrir la pasarela.
-  /// Devuelve true si el usuario confirma. Muestra un ÚNICO total todo-incluido,
-  /// sin desglosar comisiones.
-  Future<bool> _mostrarResumen(String hora, num total) async {
-    final ok = await showModalBottomSheet<bool>(
+  /// Hoja "Resumen de tu reserva" (estilo Airbnb) antes de pagar. Devuelve el
+  /// método elegido: 'online' (Yape/Tarjeta) o 'cancha' (efectivo), o null si se
+  /// cancela. El efectivo SOLO se ofrece si el dueño tiene saldo (destacado): así
+  /// PCG cobra su comisión de ese saldo; sin saldo, solo online (comisión al pagar).
+  Future<String?> _mostrarResumen(String hora, num total) async {
+    return showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -185,9 +186,9 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         deporte: _deporteEfectivo,
         nombreCliente: appState.usuario?.nombre ?? '',
         total: total,
+        permiteEfectivo: appState.esDestacada(_cancha),
       ),
     );
-    return ok == true;
   }
 
   Future<void> _reservar() async {
@@ -203,20 +204,26 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     // dueño: sale de su saldo si tiene (recibe el precio completo) o se descuenta
     // de su liquidación si no. Nunca se le suma al jugador; la del banco tampoco.
     final total = _cancha.precioHora;
-    // Resumen estilo Airbnb ANTES de pagar (confianza + claridad).
-    final confirmar = await _mostrarResumen(hora, total);
-    if (!confirmar || !mounted) return;
-    // Pago con tarjeta (Culqi). Cobra el total de la reserva; si el usuario
-    // cancela o el pago falla, no se reserva. Si Culqi no está configurado, el
-    // sheet cae a la pasarela simulada (demo).
-    final pagado = await PagoTarjeta.cobrar(
-      context,
-      monto: total.round(),
-      concepto: 'Reserva · ${_cancha.nombre} · $_dia $hora',
-      email: appState.usuario?.email ?? '',
-      moneda: _cancha.monedaSimbolo,
-    );
-    if (!pagado || !mounted) return;
+    // Resumen estilo Airbnb ANTES de pagar (confianza + claridad). Devuelve el
+    // método: 'online' (Yape/Tarjeta) o 'cancha' (efectivo, solo si hay saldo).
+    final metodo = await _mostrarResumen(hora, total);
+    if (metodo == null || !mounted) return;
+    if (metodo == 'online') {
+      // Pago con tarjeta/Yape (Culqi). Si el usuario cancela o el pago falla, no
+      // se reserva. Si Culqi no está configurado, cae a la pasarela simulada.
+      final pagado = await PagoTarjeta.cobrar(
+        context,
+        monto: total.round(),
+        concepto: 'Reserva · ${_cancha.nombre} · $_dia $hora',
+        email: appState.usuario?.email ?? '',
+        moneda: _cancha.monedaSimbolo,
+      );
+      if (!pagado || !mounted) return;
+    }
+    // 'cancha' → sin pasarela: se reserva y el dueño cobra en efectivo (la
+    // comisión de PCG sale de su saldo, por eso el efectivo solo se ofrece con
+    // saldo). El pago se marca en el panel del dueño.
+    final pagoOnline = metodo == 'online';
     final messenger = ScaffoldMessenger.of(context);
     final nav = Navigator.of(context);
     final res = await appState.agregarReservaJugador(
@@ -241,7 +248,9 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         duration: const Duration(seconds: 5),
         content: Text(
             confirmada
-                ? '✅ Pago OK · Reserva confirmada en ${_cancha.nombre} · $_dia $hora'
+                ? (pagoOnline
+                    ? '✅ Pago OK · Reserva confirmada en ${_cancha.nombre} · $_dia $hora'
+                    : '✅ Reserva confirmada en ${_cancha.nombre} · $_dia $hora · pagas en la cancha')
                 : '⚠️ Guardamos tu reserva, pero no pudimos confirmarla con el '
                     'servidor. Otra persona podría tomar el mismo horario; '
                     'reconéctate para asegurarla.',
@@ -863,6 +872,7 @@ class _ResumenReserva extends StatelessWidget {
     required this.deporte,
     required this.nombreCliente,
     required this.total,
+    required this.permiteEfectivo,
   });
 
   final Cancha cancha;
@@ -872,6 +882,7 @@ class _ResumenReserva extends StatelessWidget {
   final Deporte deporte;
   final String nombreCliente;
   final num total;
+  final bool permiteEfectivo; // efectivo solo si el dueño tiene saldo
 
   String get _duracion {
     final min = cancha.duracionSlotMin <= 0 ? 60 : cancha.duracionSlotMin;
@@ -945,16 +956,35 @@ class _ResumenReserva extends StatelessWidget {
           const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
-            child: FilledButton(
+            child: FilledButton.icon(
               style: FilledButton.styleFrom(
                   backgroundColor: pino,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 15)),
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Confirmar y pagar',
+              onPressed: () => Navigator.of(context).pop('online'),
+              icon: const Icon(Icons.lock, size: 18),
+              label: const Text('Pagar ahora (Yape / Tarjeta)',
                   style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
             ),
           ),
+          // Efectivo/pago en cancha: SOLO si el dueño tiene saldo (así PCG cobra
+          // su comisión de ese saldo). Sin saldo, solo queda pagar online.
+          if (permiteEfectivo) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                    foregroundColor: pino,
+                    side: BorderSide(color: pino.withOpacity(0.5)),
+                    padding: const EdgeInsets.symmetric(vertical: 14)),
+                onPressed: () => Navigator.of(context).pop('cancha'),
+                icon: const Icon(Icons.payments_outlined, size: 18),
+                label: const Text('Pagar en la cancha (efectivo)',
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+              ),
+            ),
+          ],
         ],
       ),
     );
