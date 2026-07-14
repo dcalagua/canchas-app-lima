@@ -1358,8 +1358,14 @@ class AppState extends ChangeNotifier {
   // Moneda del saldo prepago del dueño: se congela con la primera recarga (el
   // país donde puso plata) y no cambia aunque el dueño abra la app en otro país.
   String monedaSaldo = '';
-  String get monedaSaldoSimbolo =>
-      monedaSaldo.isNotEmpty ? monedaSaldo : paisActual.moneda;
+  String get monedaSaldoSimbolo {
+    if (monedaSaldo.isNotEmpty) return monedaSaldo;
+    // Sin moneda congelada aún: usa la de las canchas del dueño (no la del GPS),
+    // así un dueño de Perú ve S/ aunque abra la app desde Bolivia.
+    final mis = misCanchas;
+    if (mis.isNotEmpty) return mis.first.monedaSimbolo;
+    return paisActual.moneda;
+  }
   final List<MovimientoSaldo> movimientos = [
     const MovimientoSaldo(
         tipo: TipoMovimiento.recarga, monto: 30, concepto: 'Recarga inicial', cuando: 'Ayer'),

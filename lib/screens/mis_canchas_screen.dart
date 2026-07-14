@@ -255,6 +255,11 @@ class _DestacarCanchasCardState extends State<_DestacarCanchasCard> {
     final saldo = appState.saldoClub;
     final nivel = appState.nivelDestacadoPropio;
     final destacada = nivel > 0;
+    // Moneda del saldo del dueño = la de sus canchas (no la del GPS). Un dueño
+    // de canchas en Perú ve S/ aunque abra la app desde Bolivia.
+    final mon = appState.misCanchas.isNotEmpty
+        ? appState.misCanchas.first.monedaSimbolo
+        : appState.monedaSaldoSimbolo;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -284,11 +289,11 @@ class _DestacarCanchasCardState extends State<_DestacarCanchasCard> {
           const SizedBox(height: 6),
           Text(
             destacada
-                ? 'Tus canchas salen primero en Explorar. Saldo: $monedaSimbolo $saldo. '
-                    'Más saldo = mejor posición: Plata desde $monedaSimbolo 50, Oro desde $monedaSimbolo 200.'
+                ? 'Tus canchas salen primero en Explorar. Saldo: $mon $saldo. '
+                    'Más saldo = mejor posición: Plata desde $mon 50, Oro desde $mon 200.'
                 : 'Pon saldo y tus canchas aparecen destacadas (arriba y con '
                     'medalla) para que más jugadores las reserven. '
-                    'Bronce desde $monedaSimbolo 1, Plata $monedaSimbolo 50, Oro $monedaSimbolo 200.',
+                    'Bronce desde $mon 1, Plata $mon 50, Oro $mon 200.',
             style: t.bodySmall
                 ?.copyWith(color: Colors.white.withOpacity(0.92), height: 1.3),
           ),
@@ -317,7 +322,7 @@ class _DestacarCanchasCardState extends State<_DestacarCanchasCard> {
               onPressed: _recargar,
               icon: const Icon(Icons.add),
               label: Text(saldo > 0
-                  ? 'Recargar y destacar ($monedaSimbolo $saldo)'
+                  ? 'Recargar y destacar ($mon $saldo)'
                   : 'Poner saldo y destacar'),
             ),
           ),
