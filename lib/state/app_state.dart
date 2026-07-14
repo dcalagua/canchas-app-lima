@@ -169,7 +169,12 @@ class AppState extends ChangeNotifier {
       sedeUbicacion: sedeUbicacion,
       fechas: fechas,
       costoInscripcion: costoInscripcion,
-      moneda: paisActual.moneda, // congela la moneda del país donde se crea
+      // Congela la moneda por el país de la SEDE (no el del dispositivo): un
+      // torneo en Lima queda en S/ aunque el profe lo cree desde Bolivia.
+      moneda: sedeUbicacion != null
+          ? monedaDeCoordenadas(
+              sedeUbicacion.latitude, sedeUbicacion.longitude)
+          : paisActual.moneda,
     );
     campeonatos.add(c);
     notifyListeners();

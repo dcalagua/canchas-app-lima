@@ -3,10 +3,10 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../models/campeonato.dart';
 import '../models/models.dart';
+import '../config/pais.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/responsive.dart';
-import '../utils/moneda.dart';
 
 /// Formulario para que el profe cree un campeonato de su academia.
 class CrearCampeonatoScreen extends StatefulWidget {
@@ -28,6 +28,13 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
   DateTimeRange? _rango;
   String _sedeNombre = '';
   LatLng? _sedeUbicacion;
+
+  /// Moneda del país de la SEDE del torneo (no la del dispositivo): el costo de
+  /// inscripción se muestra y congela en ella. Sin sede ubicada, cae al país
+  /// activo.
+  String get _monedaSede => _sedeUbicacion != null
+      ? monedaDeCoordenadas(_sedeUbicacion!.latitude, _sedeUbicacion!.longitude)
+      : paisActual.moneda;
 
   static const _meses = [
     'ene', 'feb', 'mar', 'abr', 'may', 'jun',
@@ -204,7 +211,7 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: InputDecoration(
                 labelText: 'Costo de inscripción (opcional)',
-                prefixText: '$monedaSimbolo '),
+                prefixText: '$_monedaSede '),
           ),
           const SizedBox(height: 24),
           SizedBox(

@@ -1,5 +1,6 @@
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../config/pais.dart';
 import 'models.dart';
 
 /// Formato de un campeonato de academia.
@@ -179,8 +180,16 @@ class Campeonato {
     this.moneda = '',
   });
 
-  /// Símbolo de moneda del campeonato (congelada al crearlo; default 'S/').
-  String get monedaSimbolo => moneda.isNotEmpty ? moneda : 'S/';
+  /// Símbolo de moneda del campeonato. La UBICACIÓN de la sede es la fuente de
+  /// verdad (un torneo en Lima cobra en S/, aunque el profe abra la app desde
+  /// Bolivia): se deriva del país donde cae la sede. Auto-corrige campeonatos
+  /// que quedaron con la moneda del dispositivo. Sin sede ubicada, cae a la
+  /// moneda congelada al crear y, por último, a 'S/'.
+  String get monedaSimbolo {
+    final u = sedeUbicacion;
+    if (u != null) return monedaDeCoordenadas(u.latitude, u.longitude);
+    return moneda.isNotEmpty ? moneda : 'S/';
+  }
 
   bool get fixtureGenerado => partidos.isNotEmpty;
 
