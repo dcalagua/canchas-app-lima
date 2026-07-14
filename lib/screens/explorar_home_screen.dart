@@ -14,7 +14,6 @@ import '../services/location_service.dart';
 import '../services/pagos_service.dart';
 import '../utils/geo.dart';
 import '../utils/moneda.dart';
-import 'asistente_screen.dart';
 import 'buscar_direccion_screen.dart';
 import 'club_detalle_screen.dart';
 import 'login_google_sheet.dart';
@@ -479,25 +478,6 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
             ),
           ),
 
-          // Asistente Pichangol (IA): concierge de reservas en lenguaje natural.
-          Positioned(
-            right: 16,
-            bottom: 92,
-            child: Material(
-              elevation: 4,
-              shape: const CircleBorder(),
-              color: lima,
-              child: InkWell(
-                customBorder: const CircleBorder(),
-                onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => AsistenteScreen(centro: _centroBusqueda))),
-                child: const Padding(
-                  padding: EdgeInsets.all(12),
-                  child: Icon(Icons.auto_awesome, color: Colors.white),
-                ),
-              ),
-            ),
-          ),
           // Botón "mi ubicación": re-identifica la zona y reordena la lista.
           Positioned(
             right: 16,
