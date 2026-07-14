@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../config/pais.dart';
 import '../models/models.dart';
-import '../services/concierge_service.dart';
+import '../services/busqueda_local.dart';
+import '../services/concierge_service.dart'; // tipos de sugerencia (UI)
 import '../services/location_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -11,10 +13,11 @@ import '../utils/geo.dart';
 import 'cancha_detalle_screen.dart';
 import '../utils/moneda.dart';
 
-/// Asistente Pichangol (primer agente de IA): chat estilo WhatsApp donde el
-/// jugador escribe en lenguaje natural ("fútbol mañana 8pm por Surco") y el
-/// concierge le sugiere canchas. La IA corre en el backend; aquí se cuida el
-/// look & feel (header con identidad, burbujas, "escribiendo…", tarjetas ricas).
+/// Asistente Pichangol: chat estilo WhatsApp donde el jugador escribe en
+/// lenguaje natural ("fútbol mañana 8pm por Surco") y se le sugieren canchas.
+/// La interpretación es LOCAL por reglas (`BusquedaLocal`) — sin IA/tokens, así
+/// no cuesta por consulta en un producto B2C. Aquí se cuida el look & feel
+/// (header con identidad, burbujas, "escribiendo…", tarjetas ricas).
 class AsistenteScreen extends StatefulWidget {
   const AsistenteScreen({super.key, this.centro});
 
@@ -120,24 +123,15 @@ class _AsistenteScreenState extends State<AsistenteScreen> {
     });
     _alFinal();
 
-    if (!ConciergeService.disponible) {
-      setState(() {
-        _pensando = false;
-        _turnos.add(_Turno.bot(
-            'Ups, necesito conexión con el servidor para responder. Intenta en un ratito. 🙏'));
-      });
-      _alFinal();
-      return;
-    }
-
-    // Por defecto, recomendamos según DÓNDE ESTÁS (GPS real). Si además
-    // mencionas una zona de Lima ("por Surco"), la geolocalizamos y buscamos
-    // canchas ahí, ordenando por cercanía a esa zona.
+    // Recomendación LOCAL por reglas (sin IA, costo cero). Por defecto según
+    // DÓNDE ESTÁS (GPS real). Si además mencionas una zona ("por Surco"), la
+    // geolocalizamos y buscamos canchas ahí, ordenando por cercanía a esa zona.
     var centro = _ubicacion ?? widget.centro;
     final zona = _zonaEn(msg);
     if (zona != null) {
       try {
-        final locs = await locationFromAddress('$zona, Lima, Perú');
+        final locs =
+            await locationFromAddress('$zona, ${paisActual.geocodeHint}');
         if (locs.isNotEmpty) {
           centro = LatLng(locs.first.latitude, locs.first.longitude);
           await appState.descubrirCanchasCerca(centro);
@@ -146,22 +140,16 @@ class _AsistenteScreenState extends State<AsistenteScreen> {
         // sin geocodificación: seguimos con el centro que teníamos
       }
     }
+    // Breve pausa para el efecto "escribiendo…" (la búsqueda es instantánea).
+    await Future.delayed(const Duration(milliseconds: 350));
     if (!mounted) return;
 
     final canchas = appState.todasLasCanchas();
-    final res = await ConciergeService.recomendar(msg, canchas, centro: centro);
+    final res = BusquedaLocal.recomendar(msg, canchas, centro: centro);
     if (!mounted) return;
     setState(() {
       _pensando = false;
-      if (res == null) {
-        _turnos.add(_Turno.bot(
-            'No pude conectarme ahora. 😕 Revisa tu internet y vuelve a intentar.'));
-      } else {
-        _turnos.add(_Turno.bot(
-            res.respuesta.isEmpty ? '¡Esto es lo que encontré! 👇' : res.respuesta,
-            res.sugerencias,
-            centro));
-      }
+      _turnos.add(_Turno.bot(res.respuesta, res.sugerencias, centro));
     });
     _alFinal();
   }
