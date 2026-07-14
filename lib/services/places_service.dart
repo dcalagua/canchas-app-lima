@@ -327,6 +327,22 @@ class PlacesService {
     'loza deportiva', 'losa deportiva', 'loza multideportiva',
     'losa multideportiva', 'loza recreativa', 'losa recreativa',
     'loza multiuso', 'losa multiuso',
+    // Gimnasios / fitness / entrenamiento: Google los etiqueta como
+    // "sports_activity_location" y se colaban como canchas de fútbol.
+    'fitness', 'wellness', 'entrenamiento funcional', 'funcional',
+    'aeróbic', 'aerobic', 'aerobicos', 'aeróbicos',
+    // Estudios de baile/danza (no son canchas reservables):
+    'baile', 'danza', 'dance', 'ballet', 'zumba', 'salsa', 'bachata',
+    // Yoga / pilates:
+    'yoga', 'pilates',
+    // Artes marciales / boxeo (dojos, no canchas de alquiler):
+    'artes marciales', 'karate', 'kárate', 'taekwondo', 'taek won do', 'judo',
+    'muay thai', 'muaythai', 'kickboxing', 'boxeo', 'box club', 'dojo',
+    'jiu jitsu', 'jiujitsu', 'mma',
+    // Hípica / ecuestre (clubes de equitación, no canchas del marketplace):
+    'ecuestre', 'equitación', 'equitacion', 'hípic', 'hipic', 'equino',
+    'equina', 'caballeriza', 'caballo', 'establo', 'club hipico', 'club hípico',
+    'polo y equitación', 'polo y equitacion',
   ];
 
   // Términos en el NOMBRE que gritan "recinto deportivo" con tanta fuerza que un
@@ -427,16 +443,27 @@ class PlacesService {
       return Deporte.futbol;
     }
 
-    // 3) Sin señal en el nombre: si Google lo marca como recinto deportivo o
-    //    club, lo damos por reclamable (deporte genérico; el dueño lo precisa).
+    // 3) Sin señal de deporte en el nombre.
+    // 3a) Tipos FUERTES de campo/cancha (estadio, arena, complejo, campo,
+    //     country club): son inequívocamente recintos de cancha → se aceptan
+    //     aunque el nombre no diga nada.
     if (tipos.contains('stadium') ||
         tipos.contains('arena') ||
         tipos.contains('sports_complex') ||
-        tipos.contains('sports_club') ||
-        tipos.contains('sports_activity_location') ||
-        tipos.contains('recreation_center') ||
         tipos.contains('athletic_field') ||
         tipos.contains('country_club')) {
+      return Deporte.futbol;
+    }
+    // 3b) Tipos GENÉRICOS (sports_activity_location / recreation_center /
+    //     sports_club): Google los usa para gimnasios, estudios de baile, artes
+    //     marciales, clubes ecuestres, etc. NO son canchas por sí solos. Solo se
+    //     aceptan si el NOMBRE además tiene señal de recinto (club/cancha/
+    //     academia/complejo deportivo…). Así "EquiBolivia" o "Burn Fitness
+    //     Center" quedan fuera, pero "Cancha X" o "Club Deportivo Y" entran.
+    if ((tipos.contains('sports_activity_location') ||
+            tipos.contains('recreation_center') ||
+            tipos.contains('sports_club')) &&
+        coSenalCancha) {
       return Deporte.futbol;
     }
     return null; // por defecto, no lo metemos (evita falsos positivos)
