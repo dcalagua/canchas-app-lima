@@ -54,6 +54,26 @@ class MensajesRepo {
     }
   }
 
+  /// Conversaciones de CANCHA del usuario (one-shot): mensajes donde es el dueño
+  /// (ref_id = su email) o el jugador (cuenta_email = su email). Para el inbox.
+  static Future<List<Mensaje>> mensajesCanchaDe(String email) async {
+    if (!SupabaseService.disponible || email.isEmpty) return const <Mensaje>[];
+    try {
+      final e = email.trim().toLowerCase();
+      final rows = await SupabaseService.client
+          .from(_tabla)
+          .select()
+          .eq('tipo', 'cancha')
+          .or('ref_id.eq.$e,cuenta_email.eq.$e')
+          .order('creado', ascending: true);
+      return (rows as List)
+          .map((r) => Mensaje.fromRow(r as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return const <Mensaje>[];
+    }
+  }
+
   /// Envía un mensaje (INSERT). Devuelve true si se guardó. Fail-safe.
   static Future<bool> enviar(Mensaje m) async {
     if (!SupabaseService.disponible) return false;

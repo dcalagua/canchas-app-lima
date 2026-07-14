@@ -35,12 +35,16 @@ class ChatScreen extends StatefulWidget {
     required this.cuentaEmail,
     required this.titulo,
     required this.soyProfe,
+    this.tipo = 'academia',
+    this.refId = '',
   });
 
   final String academiaId;
-  final String cuentaEmail;
+  final String cuentaEmail; // otra parte en 1:1 (alumno/jugador)
   final String titulo; // nombre de la contraparte (o de la academia)
-  final bool soyProfe;
+  final bool soyProfe; // true = soy el anfitrión (profe/dueño)
+  final String tipo; // 'academia' | 'cancha' | 'grupo'
+  final String refId; // canchaId/grupoId cuando no es academia
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -54,7 +58,19 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _emojis = false; // panel de emojis abierto
   String _ultimoVisto = ''; // id del último mensaje ya procesado
 
-  String get _hilo => Mensaje.hiloDe(widget.academiaId, widget.cuentaEmail);
+  String get _refId =>
+      widget.refId.isNotEmpty ? widget.refId : widget.academiaId;
+
+  String get _hilo {
+    switch (widget.tipo) {
+      case 'cancha':
+        return Mensaje.hiloCancha(_refId, widget.cuentaEmail);
+      case 'grupo':
+        return Mensaje.hiloGrupo(_refId);
+      default:
+        return Mensaje.hiloDe(widget.academiaId, widget.cuentaEmail);
+    }
+  }
 
   void _toggleEmojis() {
     setState(() => _emojis = !_emojis);
@@ -112,6 +128,8 @@ class _ChatScreenState extends State<ChatScreen> {
     final msg = Mensaje(
       id: 'msg_${DateTime.now().microsecondsSinceEpoch}',
       hilo: _hilo,
+      tipo: widget.tipo,
+      refId: _refId,
       academiaId: widget.academiaId,
       cuentaEmail: widget.cuentaEmail,
       autorEmail: u.email,
