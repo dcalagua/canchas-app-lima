@@ -4,6 +4,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'brand.dart';
 import 'config/pais.dart';
 import 'screens/splash_screen.dart';
+import 'services/push_service.dart';
 import 'services/supabase_service.dart';
 import 'state/app_state.dart';
 import 'theme.dart';
@@ -14,6 +15,9 @@ void main() async {
   // detectado la última vez. El GPS luego lo confirma/actualiza al abrir Explorar.
   await cargarPaisPersistido();
   await SupabaseService.init();
+  // Notificaciones push del chat (Etapa B). Fail-safe: sin config de Firebase
+  // queda desactivado y la app sigue igual.
+  await PushService.init();
   runApp(const PichangolApp());
 }
 

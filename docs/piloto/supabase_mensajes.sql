@@ -57,3 +57,36 @@ create policy mensajes_insert
   on public.pichangol_mensajes for insert
   to anon, authenticated
   with check (true);
+
+-- =====================================================================
+-- Pichangol · Push del chat (Etapa B: FCM)
+-- Tokens de dispositivo por cuenta (correo). La Edge Function `push-mensaje`
+-- los usa para enviar la notificación al DESTINATARIO cuando entra un mensaje.
+-- Un correo puede tener varios tokens (varios dispositivos); un token es único.
+-- =====================================================================
+
+create table if not exists public.pichangol_push_tokens (
+  token        text        primary key,
+  email        text        not null,
+  plataforma   text        not null default 'android',   -- android | ios
+  actualizado  timestamptz not null default now()
+);
+
+create index if not exists idx_push_tokens_email
+  on public.pichangol_push_tokens (email);
+
+alter table public.pichangol_push_tokens enable row level security;
+
+-- El APK (clave anónima) registra/actualiza/borra el token de SU dispositivo.
+drop policy if exists push_tokens_all on public.pichangol_push_tokens;
+create policy push_tokens_all
+  on public.pichangol_push_tokens for all
+  to anon, authenticated
+  using (true) with check (true);
+
+-- --------------------------------------------------------------------
+-- Webhook: al INSERT en pichangol_mensajes, dispara la Edge Function
+-- `push-mensaje`. Se configura desde el dashboard (Database → Webhooks):
+--   Tabla: pichangol_mensajes · Evento: INSERT · Tipo: Supabase Edge Functions
+--   Función: push-mensaje. (Ver docs/piloto/push_fcm_setup.md)
+-- --------------------------------------------------------------------

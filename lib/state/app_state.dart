@@ -18,6 +18,7 @@ import '../models/models.dart';
 import '../models/usuario.dart';
 import '../services/auth_service.dart';
 import '../services/pagos_service.dart';
+import '../services/push_service.dart';
 import '../services/places_service.dart';
 import '../services/verificacion_service.dart';
 import '../services/growth_service.dart';
@@ -1540,6 +1541,8 @@ class AppState extends ChangeNotifier {
       final raw = prefs.getString(_kUsuario);
       if (raw != null) {
         usuario = Usuario.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+        // Sesión restaurada: re-registra el token push de este dispositivo.
+        PushService.registrarParaUsuario(usuario?.email);
       }
 
       if (prefs.containsKey(_kSaldo)) {
@@ -1681,6 +1684,7 @@ class AppState extends ChangeNotifier {
     if (u == null) return false; // canceló
     usuario = u;
     await _persistirUsuario();
+    PushService.registrarParaUsuario(u.email); // push del chat a este dispositivo
     _recomputarMisReservas(); // recupera sus reservas de otros dispositivos
     notifyListeners();
     cargarReservasRemotas(); // best-effort refresco
@@ -1691,6 +1695,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> cerrarSesionUsuario() async {
+    await PushService.olvidar(); // deja de recibir push de esta cuenta
     await AuthService.salir();
     usuario = null;
     misReservas.clear(); // no mezclar reservas entre cuentas

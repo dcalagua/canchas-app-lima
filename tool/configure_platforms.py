@@ -330,6 +330,63 @@ def configurar_min_sdk():
         print("  minSdk forzado a 23")
 
 
+def configurar_firebase_android():
+    """Habilita FCM (notificaciones push del chat) en Android SOLO si hay config.
+
+    Requiere el `google-services.json` del proyecto Firebase (para el
+    applicationId `pe.ebim.pichangol`), pasado como secret base64
+    `GOOGLE_SERVICES_JSON_B64`. Si NO está, no se toca nada: el APK compila igual
+    y el push queda desactivado en runtime (PushService es fail-safe). Así el CI
+    sigue verde sin Firebase hasta que se configure."""
+    b64 = os.environ.get("GOOGLE_SERVICES_JSON_B64", "").strip()
+    if not b64:
+        print("  Firebase/FCM: desactivado (sin GOOGLE_SERVICES_JSON_B64)")
+        return
+    app_gradle = "android/app/build.gradle"
+    settings_gradle = "android/settings.gradle"
+    if not os.path.exists(app_gradle):
+        print("  Firebase/FCM: omitido (no hay android/app/build.gradle)")
+        return
+
+    # 1) Escribe el google-services.json donde el plugin lo busca.
+    try:
+        with open("android/app/google-services.json", "wb") as f:
+            f.write(base64.b64decode(b64))
+    except Exception as e:  # noqa: BLE001
+        print(f"  Firebase/FCM: no se pudo escribir google-services.json ({e})")
+        return
+
+    # 2) Declara el plugin en settings.gradle (apply false) si usa el bloque plugins.
+    if os.path.exists(settings_gradle):
+        with open(settings_gradle, "r", encoding="utf-8") as f:
+            s = f.read()
+        if "com.google.gms.google-services" not in s and "plugins {" in s:
+            s = s.replace(
+                "plugins {",
+                'plugins {\n    id "com.google.gms.google-services" version "4.4.2" apply false',
+                1,
+            )
+            with open(settings_gradle, "w", encoding="utf-8") as f:
+                f.write(s)
+
+    # 3) Aplica el plugin en el módulo app.
+    with open(app_gradle, "r", encoding="utf-8") as f:
+        g = f.read()
+    if "com.google.gms.google-services" not in g:
+        if 'id "dev.flutter.flutter-gradle-plugin"' in g:
+            g = g.replace(
+                'id "dev.flutter.flutter-gradle-plugin"',
+                'id "dev.flutter.flutter-gradle-plugin"\n'
+                '    id "com.google.gms.google-services"',
+                1,
+            )
+        else:  # fallback estilo apply plugin
+            g = g + '\napply plugin: "com.google.gms.google-services"\n'
+        with open(app_gradle, "w", encoding="utf-8") as f:
+            f.write(g)
+    print("  Firebase/FCM: ACTIVADO (google-services.json + plugin)")
+
+
 def main():
     print(f"Configurando plataformas (MAPS_API_KEY {'definida' if KEY != 'YOUR_MAPS_API_KEY_HERE' else 'placeholder'})")
     configurar_min_sdk()
@@ -340,6 +397,7 @@ def main():
     patch("ios/Runner/Info.plist", ios_infoplist)
     patch("ios/Podfile", ios_podfile)
     configurar_firma_android()
+    configurar_firebase_android()
     configurar_google_signin_ios()
 
 
