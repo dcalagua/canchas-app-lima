@@ -466,6 +466,7 @@ class _TarjetaPlan extends StatelessWidget {
         nombreInicial: appState.usuario?.nombre ?? '',
         academia: academia.nombre,
         planObj: plan,
+        moneda: academia.monedaSimbolo,
       ),
     );
     if (datos == null) return;
@@ -530,10 +531,12 @@ class _HojaDatosAlumno extends StatefulWidget {
     required this.nombreInicial,
     required this.academia,
     required this.planObj,
+    required this.moneda,
   });
   final String nombreInicial;
   final String academia;
   final Plan planObj;
+  final String moneda;
 
   @override
   State<_HojaDatosAlumno> createState() => _HojaDatosAlumnoState();
@@ -629,7 +632,7 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
                 color: limaSuave, borderRadius: BorderRadius.circular(12)),
-            child: Text('Pagarás ahora: ${academia.monedaSimbolo} ${_total.toStringAsFixed(2)}',
+            child: Text('Pagarás ahora: ${widget.moneda} ${_total.toStringAsFixed(2)}',
                 style: const TextStyle(
                     color: bosque, fontWeight: FontWeight.w800, fontSize: 15)),
           ),
@@ -651,7 +654,7 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
                 }
                 Navigator.of(context).pop((n, _whatsapp.text.trim(), _cantidad));
               },
-              child: Text('Pagar ${academia.monedaSimbolo} ${_total.toStringAsFixed(2)}'),
+              child: Text('Pagar ${widget.moneda} ${_total.toStringAsFixed(2)}'),
             ),
           ),
         ],
