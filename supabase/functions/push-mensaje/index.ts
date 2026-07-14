@@ -95,9 +95,14 @@ serve(async (req) => {
     const m = body.record ?? body; // webhook: {type, table, record}
     if (!m || !m.texto) return ok({ skip: "sin mensaje" });
 
-    // 1) Destinatario según quién escribió.
+    // 1) Destinatario según el tipo de conversación y quién escribió.
     let destino = "";
-    if (m.es_profe === true) {
+    if (m.tipo === "cancha") {
+      // Conversación de cancha: ref_id = email del dueño, cuenta_email = jugador.
+      // Si escribió el dueño (es_profe) → avisa al jugador; si no → al dueño.
+      destino = (m.es_profe === true ? (m.cuenta_email ?? "") : (m.ref_id ?? ""))
+        .toLowerCase();
+    } else if (m.es_profe === true) {
       destino = (m.cuenta_email ?? "").toLowerCase();
     } else {
       const acs = await sb(
@@ -122,7 +127,7 @@ serve(async (req) => {
     // 4) Envía a cada dispositivo.
     const titulo = m.autor_nombre?.trim()
       ? m.autor_nombre
-      : (m.es_profe ? "Tu profe" : "Nuevo mensaje");
+      : (m.tipo !== "cancha" && m.es_profe ? "Tu profe" : "Nuevo mensaje");
     const url = `https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`;
     const resultados = await Promise.all(
       tokens.map((token) =>
