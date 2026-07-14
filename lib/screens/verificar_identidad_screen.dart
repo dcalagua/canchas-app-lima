@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../config/pais.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 
@@ -95,7 +96,11 @@ class _VerificarIdentidadScreenState extends State<VerificarIdentidadScreen> {
             const SizedBox(height: 18),
             _Tile(
               titulo: 'Foto del documento',
-              subtitulo: 'DNI / carné (dato privado, no se publica)',
+              // Nombre del documento según el país (DNI/CI/Cédula) + pasaporte
+              // como opción para extranjeros. La verificación es igual en todos
+              // los países (no valida contra ningún registro nacional).
+              subtitulo:
+                  '$docIdActual, carné o pasaporte (dato privado, no se publica)',
               icono: Icons.badge_outlined,
               listo: _doc != null,
               onTap: () => _elegir(selfie: false),
