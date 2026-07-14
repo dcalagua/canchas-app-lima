@@ -63,12 +63,13 @@ class _ReservasDuenoScreenState extends State<ReservasDuenoScreen> {
           // Libro de caja del piloto (excluye no-shows del "por cobrar").
           final activas =
               reservas.where((r) => r.estado != EstadoReserva.noShow);
+          // Los totales incluyen los servicios extra (árbitro/pelotero…).
           final cobrado = activas
               .where((r) => r.pagado)
-              .fold<int>(0, (s, r) => s + r.precio);
+              .fold<int>(0, (s, r) => s + r.totalConExtras.round());
           final porCobrar = activas
               .where((r) => !r.pagado)
-              .fold<int>(0, (s, r) => s + r.precio);
+              .fold<int>(0, (s, r) => s + r.totalConExtras.round());
 
           return RefreshIndicator(
             onRefresh: () => appState.cargarReservasRemotas(),
@@ -240,10 +241,24 @@ class _ReservaCard extends StatelessWidget {
             style: t.bodySmall?.copyWith(color: textoTenueDe(context)),
           ),
           const SizedBox(height: 2),
-          Text('${reserva.monedaSimbolo} ${reserva.precio}',
-              style: t.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurface,
-                  fontWeight: FontWeight.w700)),
+          if (reserva.extras.isEmpty)
+            Text('${reserva.monedaSimbolo} ${reserva.precio}',
+                style: t.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurface,
+                    fontWeight: FontWeight.w700))
+          else ...[
+            Text('Cancha: ${reserva.monedaSimbolo} ${reserva.precio}',
+                style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
+            for (final s in reserva.extras)
+              Text(
+                  '+ ${s.nombre}: ${reserva.monedaSimbolo} ${s.precio.toStringAsFixed(2)}',
+                  style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
+            Text(
+                'Total: ${reserva.monedaSimbolo} ${reserva.totalConExtras.toStringAsFixed(2)}',
+                style: t.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurface,
+                    fontWeight: FontWeight.w800)),
+          ],
           if (!noShow) ...[
             const SizedBox(height: 12),
             Row(

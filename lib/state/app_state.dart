@@ -1861,7 +1861,7 @@ class AppState extends ChangeNotifier {
   /// slot de la cancha (1h, 1.5h, 2h).
   Future<ResultadoReserva> agregarReservaJugador(
       Cancha cancha, String fecha, String diaLabel, String hora,
-      {Deporte? deporte}) async {
+      {Deporte? deporte, List<ServicioExtra> extras = const []}) async {
     // Chequeo local rápido (doble toque / feedback inmediato sin conexión).
     // La agenda es COMPARTIDA entre deportes: se ocupa por (cancha, fecha, hora),
     // sin importar el deporte (es la misma superficie física).
@@ -1887,6 +1887,7 @@ class AppState extends ChangeNotifier {
       // Deporte elegido para este slot (loza multiuso). Default: el principal.
       deporte: (deporte ?? cancha.deporte).name,
       moneda: cancha.monedaSimbolo, // moneda de la cancha (Perú S/, Bolivia Bs…)
+      extras: extras, // servicios extra elegidos (árbitro/pelotero…)
     );
 
     // Fuente de verdad anti-doble-reserva: Supabase con

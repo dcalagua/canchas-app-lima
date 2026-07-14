@@ -130,9 +130,11 @@ class ReservasRepo {
         'sena': r.sena,
         'pagado': r.pagado,
         'usuario': r.usuario,
-        // Columnas nuevas: deporte del slot (loza multiuso) + moneda de la cancha.
+        // Columnas nuevas: deporte del slot (loza multiuso) + moneda de la
+        // cancha + servicios extra elegidos (árbitro/pelotero…, JSONB).
         if (conDeporte) 'deporte': r.deporte,
         if (conDeporte) 'moneda': r.moneda,
+        if (conDeporte) 'extras': r.extras.map((s) => s.toJson()).toList(),
       };
 
   static Reserva _fromRow(Map<String, dynamic> r) => Reserva(
@@ -152,6 +154,7 @@ class ReservasRepo {
         usuario: (r['usuario'] ?? '') as String,
         deporte: (r['deporte'] ?? '') as String,
         moneda: (r['moneda'] ?? '') as String,
+        extras: ServicioExtra.listaDe(r['extras']),
       );
 
   static EstadoReserva _estado(String? s) {

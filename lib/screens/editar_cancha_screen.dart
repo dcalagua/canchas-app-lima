@@ -59,6 +59,18 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
   late int _duracion = widget.cancha.duracionSlotMin;
   late final Set<String> _amenidades = {...widget.cancha.amenidades};
   late String _superficie = widget.cancha.superficie; // tipo de piso (opcional)
+  // Servicios extra DE PAGO (árbitro/pelotero…): clave → precio. El jugador los
+  // agrega al reservar y suman a su total.
+  late final Map<String, double> _servicios = {
+    for (final s in widget.cancha.serviciosExtra) s.clave: s.precio
+  };
+  late final Map<String, TextEditingController> _precioServicio = {
+    for (final clave in ServicioExtra.catalogo.keys)
+      clave: TextEditingController(
+          text: _servicios.containsKey(clave)
+              ? _servicios[clave]!.toStringAsFixed(2)
+              : '')
+  };
   late LatLng _ubicacion = widget.cancha.ubicacion;
   GoogleMapController? _map;
 
@@ -83,6 +95,9 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
     _ruc.dispose();
     _contacto.dispose();
     _dni.dispose();
+    for (final c in _precioServicio.values) {
+      c.dispose();
+    }
     _map?.dispose();
     super.dispose();
   }
@@ -275,6 +290,10 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
       duracionSlotMin: _duracion,
       amenidades: _amenidades.toList(),
       superficie: _superficie,
+      serviciosExtra: [
+        for (final e in _servicios.entries)
+          ServicioExtra(clave: e.key, precio: e.value),
+      ],
     );
     appState.actualizarCancha(actualizada);
     if (club != widget.cancha.club) {
@@ -608,6 +627,38 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
                 ),
             ],
           ),
+          const SizedBox(height: 18),
+          const Text('Servicios extra (de pago)',
+              style: TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 2),
+          Text(
+              'Opcionales: el jugador los agrega al reservar y suman a su total '
+              '(árbitro, pelotero, alquiler de pelota…). Pon el precio de cada uno.',
+              style: TextStyle(color: textoTenue, fontSize: 12)),
+          const SizedBox(height: 6),
+          for (final e in ServicioExtra.catalogo.entries)
+            _FilaServicioEditable(
+              clave: e.key,
+              nombre: e.value,
+              moneda: widget.cancha.monedaSimbolo,
+              activo: _servicios.containsKey(e.key),
+              precioCtrl: _precioServicio[e.key]!,
+              onToggle: (v) => setState(() {
+                if (v) {
+                  final txt = _precioServicio[e.key]!.text.trim();
+                  if (txt.isEmpty) _precioServicio[e.key]!.text = '20.00';
+                  _servicios[e.key] = double.tryParse(
+                          _precioServicio[e.key]!.text.replaceAll(',', '.')) ??
+                      20;
+                } else {
+                  _servicios.remove(e.key);
+                }
+              }),
+              onPrecio: (v) {
+                final p = double.tryParse(v.replaceAll(',', '.'));
+                if (p != null) _servicios[e.key] = p;
+              },
+            ),
           if (widget.cancha.dueno.isEmpty) ...[
             const SizedBox(height: 16),
             TextField(
@@ -820,6 +871,64 @@ class _PrefijoPeruEditar extends StatelessWidget {
               style: TextStyle(
                   fontWeight: FontWeight.w800,
                   color: Theme.of(context).colorScheme.onSurface)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Fila para activar un servicio extra de pago y ponerle precio (editor dueño).
+class _FilaServicioEditable extends StatelessWidget {
+  const _FilaServicioEditable({
+    required this.clave,
+    required this.nombre,
+    required this.moneda,
+    required this.activo,
+    required this.precioCtrl,
+    required this.onToggle,
+    required this.onPrecio,
+  });
+  final String clave;
+  final String nombre;
+  final String moneda;
+  final bool activo;
+  final TextEditingController precioCtrl;
+  final ValueChanged<bool> onToggle;
+  final ValueChanged<String> onPrecio;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: [
+          Checkbox(
+            value: activo,
+            activeColor: lima,
+            onChanged: (v) => onToggle(v ?? false),
+          ),
+          Expanded(
+            child: Text(nombre,
+                style: TextStyle(
+                    fontWeight:
+                        activo ? FontWeight.w700 : FontWeight.w500)),
+          ),
+          if (activo)
+            SizedBox(
+              width: 118,
+              child: TextField(
+                controller: precioCtrl,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                onChanged: onPrecio,
+                decoration: InputDecoration(
+                  isDense: true,
+                  prefixText: '$moneda ',
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 10),
+                ),
+              ),
+            ),
         ],
       ),
     );

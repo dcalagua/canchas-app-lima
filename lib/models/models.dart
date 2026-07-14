@@ -45,6 +45,48 @@ const List<Deporte> deportesActivos = [
   Deporte.basquet,
 ];
 
+/// Un servicio EXTRA de pago que una cancha ofrece como add-on de la reserva
+/// (árbitro, pelotero, alquiler de pelota, pecheras…). El jugador los elige al
+/// reservar y suman al total; el dueño los ve en sus cobros. Distinto de
+/// `amenidades` (servicios GRATIS del local, sin precio).
+class ServicioExtra {
+  final String clave;
+  final double precio;
+  const ServicioExtra({required this.clave, required this.precio});
+
+  /// Catálogo de servicios ofrecibles: clave → nombre visible. El ícono se
+  /// resuelve en la UI (el modelo no depende de Flutter/material).
+  static const catalogo = <String, String>{
+    'arbitro': 'Árbitro',
+    'pelotero': 'Pelotero (recoge pelotas)',
+    'pelota': 'Alquiler de pelota',
+    'pecheras': 'Petos / pecheras',
+    'hidratacion': 'Hidratación',
+    'parrilla': 'Parrilla / grill',
+  };
+
+  String get nombre => catalogo[clave] ?? clave;
+
+  ServicioExtra copyWith({double? precio}) =>
+      ServicioExtra(clave: clave, precio: precio ?? this.precio);
+
+  Map<String, dynamic> toJson() => {'clave': clave, 'precio': precio};
+
+  factory ServicioExtra.fromJson(Map<String, dynamic> j) => ServicioExtra(
+        clave: (j['clave'] ?? '').toString(),
+        precio: ((j['precio'] ?? 0) as num).toDouble(),
+      );
+
+  static List<ServicioExtra> listaDe(dynamic raw) {
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((e) => ServicioExtra.fromJson(Map<String, dynamic>.from(e)))
+        .where((s) => s.clave.isNotEmpty)
+        .toList();
+  }
+}
+
 /// Una cancha en el marketplace.
 class Cancha {
   final String id;
@@ -78,6 +120,9 @@ class Cancha {
   /// cambia aunque el dueño abra la app desde otro país. Vacío = 'S/' (todas las
   /// canchas del piloto nacieron en Perú). Usar el getter [monedaSimbolo].
   final String moneda;
+  /// Servicios EXTRA de pago que ofrece la cancha (árbitro, pelotero…). El
+  /// jugador los agrega al reservar. Vacío = la cancha no ofrece ninguno.
+  final List<ServicioExtra> serviciosExtra;
 
   const Cancha({
     required this.id,
@@ -103,6 +148,7 @@ class Cancha {
     this.amenidades = const [],
     this.superficie = '',
     this.moneda = '',
+    this.serviciosExtra = const [],
   });
 
   /// Símbolo de moneda de la cancha. La UBICACIÓN de la cancha es la fuente de
@@ -204,6 +250,7 @@ class Cancha {
     List<String>? amenidades,
     String? superficie,
     String? moneda,
+    List<ServicioExtra>? serviciosExtra,
   }) {
     return Cancha(
       id: id,
@@ -229,6 +276,7 @@ class Cancha {
       amenidades: amenidades ?? this.amenidades,
       superficie: superficie ?? this.superficie,
       moneda: moneda ?? this.moneda,
+      serviciosExtra: serviciosExtra ?? this.serviciosExtra,
     );
   }
 
@@ -257,6 +305,7 @@ class Cancha {
         'amenidades': amenidades,
         'superficie': superficie,
         'moneda': moneda,
+        'serviciosExtra': serviciosExtra.map((s) => s.toJson()).toList(),
       };
 
   factory Cancha.fromJson(Map<String, dynamic> j) => Cancha(
@@ -290,6 +339,7 @@ class Cancha {
             const [],
         superficie: (j['superficie'] ?? '') as String,
         moneda: (j['moneda'] ?? '') as String,
+        serviciosExtra: ServicioExtra.listaDe(j['serviciosExtra']),
       );
 }
 
@@ -338,9 +388,16 @@ class Reserva {
   final String usuario; // correo del jugador (para "mis reservas" entre dispositivos)
   final String deporte; // deporte elegido para este slot (Deporte.name); '' = el principal de la cancha
   final String moneda; // símbolo de moneda de la cancha al reservar ('' = 'S/')
+  final List<ServicioExtra> extras; // servicios extra elegidos al reservar
 
   /// Moneda de la reserva (default 'S/'), congelada de la cancha al reservar.
   String get monedaSimbolo => moneda.isNotEmpty ? moneda : 'S/';
+
+  /// Suma de los servicios extra elegidos (0 si ninguno).
+  double get extrasTotal => extras.fold(0.0, (a, s) => a + s.precio);
+
+  /// Total que paga el jugador: precio de la cancha + servicios extra.
+  double get totalConExtras => precio + extrasTotal;
 
   const Reserva({
     required this.id,
@@ -359,6 +416,7 @@ class Reserva {
     this.usuario = '',
     this.deporte = '',
     this.moneda = '',
+    this.extras = const [],
   });
 
   Reserva copyWith({EstadoReserva? estado, bool? pagado}) => Reserva(
@@ -378,6 +436,7 @@ class Reserva {
         usuario: usuario,
         deporte: deporte,
         moneda: moneda,
+        extras: extras,
       );
 
   Map<String, dynamic> toJson() => {
@@ -397,6 +456,7 @@ class Reserva {
         'usuario': usuario,
         'deporte': deporte,
         'moneda': moneda,
+        'extras': extras.map((s) => s.toJson()).toList(),
       };
 
   factory Reserva.fromJson(Map<String, dynamic> j) => Reserva(
@@ -416,6 +476,7 @@ class Reserva {
         usuario: (j['usuario'] ?? '') as String,
         deporte: (j['deporte'] ?? '') as String,
         moneda: (j['moneda'] ?? '') as String,
+        extras: ServicioExtra.listaDe(j['extras']),
       );
 }
 

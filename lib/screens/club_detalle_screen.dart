@@ -173,8 +173,8 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
   /// método elegido: 'online' (Yape/Tarjeta) o 'cancha' (efectivo), o null si se
   /// cancela. El efectivo SOLO se ofrece si el dueño tiene saldo (destacado): así
   /// PCG cobra su comisión de ese saldo; sin saldo, solo online (comisión al pagar).
-  Future<String?> _mostrarResumen(String hora, num total) async {
-    return showModalBottomSheet<String>(
+  Future<ResumenResultado?> _mostrarResumen(String hora, num total) async {
+    return showModalBottomSheet<ResumenResultado>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -203,11 +203,15 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     // tenga o no saldo el dueño. La comisión de Pichangol es 100% del lado del
     // dueño: sale de su saldo si tiene (recibe el precio completo) o se descuenta
     // de su liquidación si no. Nunca se le suma al jugador; la del banco tampoco.
-    final total = _cancha.precioHora;
+    final base = _cancha.precioHora;
     // Resumen estilo Airbnb ANTES de pagar (confianza + claridad). Devuelve el
-    // método: 'online' (Yape/Tarjeta) o 'cancha' (efectivo, solo si hay saldo).
-    final metodo = await _mostrarResumen(hora, total);
-    if (metodo == null || !mounted) return;
+    // método ('online'/'cancha') + los servicios extra elegidos (árbitro…).
+    final r = await _mostrarResumen(hora, base);
+    if (r == null || !mounted) return;
+    final metodo = r.metodo;
+    final extras = r.extras;
+    // El jugador paga el precio de la cancha + los servicios extra que eligió.
+    final total = base + extras.fold(0.0, (a, s) => a + s.precio);
     if (metodo == 'online') {
       // Pago con tarjeta/Yape (Culqi). Si el usuario cancela o el pago falla, no
       // se reserva. Si Culqi no está configurado, cae a la pasarela simulada.
@@ -228,7 +232,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     final nav = Navigator.of(context);
     final res = await appState.agregarReservaJugador(
         _cancha, _fechaIso, _dia, hora,
-        deporte: _deporteEfectivo);
+        deporte: _deporteEfectivo, extras: extras);
     if (!mounted) return;
     if (res == ResultadoReserva.ocupado) {
       setState(() => _hora = null); // libera selección; la grilla se refresca
@@ -861,9 +865,24 @@ class _ReservarBar extends StatelessWidget {
   }
 }
 
-/// Hoja "Resumen de tu reserva" (estilo Airbnb): detalle de la reserva + un
-/// ÚNICO total todo-incluido, sin desglosar comisiones. Devuelve true al pagar.
-class _ResumenReserva extends StatelessWidget {
+/// Resultado del resumen: método de pago elegido + servicios extra marcados.
+typedef ResumenResultado = ({String metodo, List<ServicioExtra> extras});
+
+/// Ícono para un servicio extra según su clave.
+IconData iconoServicio(String clave) => switch (clave) {
+      'arbitro' => Icons.sports,
+      'pelotero' => Icons.sports_handball,
+      'pelota' => Icons.sports_soccer,
+      'pecheras' => Icons.checkroom,
+      'hidratacion' => Icons.local_drink_outlined,
+      'parrilla' => Icons.outdoor_grill,
+      _ => Icons.add_circle_outline,
+    };
+
+/// Hoja "Resumen de tu reserva" (estilo Airbnb): detalle + servicios extra
+/// opcionales (árbitro/pelotero…) que suman al total, y un ÚNICO total (sin
+/// desglosar comisiones). Devuelve [ResumenResultado] al elegir método de pago.
+class _ResumenReserva extends StatefulWidget {
   const _ResumenReserva({
     required this.cancha,
     required this.dia,
@@ -881,8 +900,17 @@ class _ResumenReserva extends StatelessWidget {
   final String horaFin;
   final Deporte deporte;
   final String nombreCliente;
-  final num total;
+  final num total; // precio base de la cancha (sin extras)
   final bool permiteEfectivo; // efectivo solo si el dueño tiene saldo
+
+  @override
+  State<_ResumenReserva> createState() => _ResumenReservaState();
+}
+
+class _ResumenReservaState extends State<_ResumenReserva> {
+  final Set<String> _sel = {}; // claves de servicios extra elegidos
+
+  Cancha get cancha => widget.cancha;
 
   String get _duracion {
     final min = cancha.duracionSlotMin <= 0 ? 60 : cancha.duracionSlotMin;
@@ -892,12 +920,23 @@ class _ResumenReserva extends StatelessWidget {
     return m == 0 ? '$h h' : '$h h $m min';
   }
 
+  List<ServicioExtra> get _elegidos =>
+      cancha.serviciosExtra.where((s) => _sel.contains(s.clave)).toList();
+
+  double get _totalFinal =>
+      widget.total + _elegidos.fold(0.0, (a, s) => a + s.precio);
+
+  void _cerrar(String metodo) =>
+      Navigator.of(context).pop((metodo: metodo, extras: _elegidos));
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final t = Theme.of(context).textTheme;
     final dir = (cancha.direccion ?? '').trim();
-    final cliente = nombreCliente.trim().isEmpty ? 'Ti' : nombreCliente.trim();
+    final cliente =
+        widget.nombreCliente.trim().isEmpty ? 'Ti' : widget.nombreCliente.trim();
+    final mon = cancha.monedaSimbolo;
     return Container(
       decoration: BoxDecoration(
         color: cs.surface,
@@ -905,87 +944,106 @@ class _ResumenReserva extends StatelessWidget {
       ),
       padding: EdgeInsets.fromLTRB(
           20, 12, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Center(
-            child: Container(
-              width: 44,
-              height: 5,
-              decoration: BoxDecoration(
-                  color: Colors.black12, borderRadius: BorderRadius.circular(10)),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text('Resumen de tu reserva',
-              style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 14),
-          _fila(context, iconoDeporte(deporte), colorDeporte(deporte),
-              '${cancha.nombre} · ${deporte.etiqueta}'),
-          _fila(context, Icons.event, cs.primary,
-              '$dia · $hora–$horaFin  ($_duracion)'),
-          if (dir.isNotEmpty)
-            _fila(context, Icons.place_outlined, cs.primary, dir),
-          _fila(context, Icons.person_outline, cs.primary,
-              'A nombre de: $cliente'),
-          const SizedBox(height: 8),
-          Divider(color: trazo),
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              Expanded(
-                child: Text('Total a pagar',
-                    style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 44,
+                height: 5,
+                decoration: BoxDecoration(
+                    color: Colors.black12,
+                    borderRadius: BorderRadius.circular(10)),
               ),
-              Text('${cancha.monedaSimbolo} ${total.toStringAsFixed(2)}',
-                  style: t.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w800, color: cs.primary)),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.lock_outline, size: 15, color: textoTenue),
-              const SizedBox(width: 6),
-              Text('Pago seguro · Confirmación al instante',
-                  style: t.bodySmall?.copyWith(color: textoTenue)),
-            ],
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              style: FilledButton.styleFrom(
-                  backgroundColor: lima,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 15)),
-              onPressed: () => Navigator.of(context).pop('online'),
-              icon: const Icon(Icons.lock, size: 18),
-              label: const Text('Pagar ahora (Yape / Tarjeta)',
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
             ),
-          ),
-          // Efectivo/pago en cancha: SOLO si el dueño tiene saldo (así PCG cobra
-          // su comisión de ese saldo). Sin saldo, solo queda pagar online.
-          if (permiteEfectivo) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 16),
+            Text('Resumen de tu reserva',
+                style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 14),
+            _fila(context, iconoDeporte(widget.deporte),
+                colorDeporte(widget.deporte),
+                '${cancha.nombre} · ${widget.deporte.etiqueta}'),
+            _fila(context, Icons.event, cs.primary,
+                '${widget.dia} · ${widget.hora}–${widget.horaFin}  ($_duracion)'),
+            if (dir.isNotEmpty)
+              _fila(context, Icons.place_outlined, cs.primary, dir),
+            _fila(context, Icons.person_outline, cs.primary,
+                'A nombre de: $cliente'),
+            // Servicios extra (si la cancha ofrece): opcionales, suman al total.
+            if (cancha.serviciosExtra.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text('¿Agregar servicios?',
+                  style: t.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+              const SizedBox(height: 6),
+              for (final s in cancha.serviciosExtra)
+                _FilaServicio(
+                  servicio: s,
+                  moneda: mon,
+                  marcado: _sel.contains(s.clave),
+                  onTap: () => setState(() => _sel.contains(s.clave)
+                      ? _sel.remove(s.clave)
+                      : _sel.add(s.clave)),
+                ),
+            ],
+            const SizedBox(height: 8),
+            Divider(color: trazo),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Expanded(
+                  child: Text('Total a pagar',
+                      style:
+                          t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                ),
+                Text('$mon ${_totalFinal.toStringAsFixed(2)}',
+                    style: t.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w800, color: cs.primary)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.lock_outline, size: 15, color: textoTenue),
+                const SizedBox(width: 6),
+                Text('Pago seguro · Confirmación al instante',
+                    style: t.bodySmall?.copyWith(color: textoTenue)),
+              ],
+            ),
+            const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
-              child: OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                    foregroundColor: pino,
-                    side: BorderSide(color: pino.withOpacity(0.5)),
-                    padding: const EdgeInsets.symmetric(vertical: 14)),
-                onPressed: () => Navigator.of(context).pop('cancha'),
-                icon: const Icon(Icons.payments_outlined, size: 18),
-                label: const Text('Pagar en la cancha (efectivo)',
-                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                    backgroundColor: lima,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 15)),
+                onPressed: () => _cerrar('online'),
+                icon: const Icon(Icons.lock, size: 18),
+                label: const Text('Pagar ahora (Yape / Tarjeta)',
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
               ),
             ),
+            if (widget.permiteEfectivo) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                      foregroundColor: pino,
+                      side: BorderSide(color: pino.withOpacity(0.5)),
+                      padding: const EdgeInsets.symmetric(vertical: 14)),
+                  onPressed: () => _cerrar('cancha'),
+                  icon: const Icon(Icons.payments_outlined, size: 18),
+                  label: const Text('Pagar en la cancha (efectivo)',
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                ),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -1003,6 +1061,57 @@ class _ResumenReserva extends StatelessWidget {
                 style: const TextStyle(fontSize: 14.5, height: 1.3)),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Fila seleccionable de un servicio extra en el resumen de reserva.
+class _FilaServicio extends StatelessWidget {
+  const _FilaServicio({
+    required this.servicio,
+    required this.moneda,
+    required this.marcado,
+    required this.onTap,
+  });
+  final ServicioExtra servicio;
+  final String moneda;
+  final bool marcado;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          children: [
+            Icon(iconoServicio(servicio.clave),
+                size: 20, color: marcado ? cs.primary : textoTenue),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(servicio.nombre,
+                  style: TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: marcado ? FontWeight.w700 : FontWeight.w500)),
+            ),
+            Text('+$moneda ${servicio.precio.toStringAsFixed(2)}',
+                style: TextStyle(
+                    color: cs.primary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13.5)),
+            const SizedBox(width: 10),
+            Icon(
+                marcado
+                    ? Icons.check_circle
+                    : Icons.radio_button_unchecked,
+                color: marcado ? cs.primary : trazo,
+                size: 22),
+          ],
+        ),
       ),
     );
   }
