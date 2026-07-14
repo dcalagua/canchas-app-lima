@@ -10,8 +10,24 @@ import 'chat_screen.dart';
 /// canchas, con botones para registrar el pago en efectivo o marcar no-show,
 /// y un mini libro de caja (cobrado / por cobrar). Es la contraparte del flujo
 /// "pago en cancha": el jugador reserva y el dueño confirma el cobro aquí.
-class ReservasDuenoScreen extends StatelessWidget {
+class ReservasDuenoScreen extends StatefulWidget {
   const ReservasDuenoScreen({super.key});
+
+  @override
+  State<ReservasDuenoScreen> createState() => _ReservasDuenoScreenState();
+}
+
+class _ReservasDuenoScreenState extends State<ReservasDuenoScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Carga qué jugadores están verificados para mostrar la insignia.
+    final mias = appState.misCanchas.map((c) => c.id).toSet();
+    final emails = appState.reservas
+        .where((r) => mias.contains(r.canchaId))
+        .map((r) => r.usuario);
+    appState.sincronizarVerificados(emails);
+  }
 
   /// Etiqueta amigable de una fecha ISO ("Hoy"/"Mañana"/"2026-06-28").
   static String _fechaLabel(String iso) {
@@ -192,10 +208,21 @@ class _ReservaCard extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(reserva.jugador,
-                    style: t.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis),
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: Text(reserva.jugador,
+                          style: t.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
+                    ),
+                    if (appState.estaVerificado(reserva.usuario)) ...[
+                      const SizedBox(width: 4),
+                      const Icon(Icons.verified, size: 15, color: pino),
+                    ],
+                  ],
+                ),
               ),
               if (reserva.usuario.isNotEmpty)
                 IconButton(

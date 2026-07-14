@@ -50,6 +50,31 @@ class VerificacionRepo {
     }
   }
 
+  /// De un conjunto de correos, cuáles están VERIFICADOS. Para que el dueño vea
+  /// la insignia junto a cada jugador (reservas/chat).
+  static Future<Set<String>> verificados(List<String> emails) async {
+    if (!disponible || emails.isEmpty) return <String>{};
+    try {
+      final low = emails
+          .map((e) => e.trim().toLowerCase())
+          .where((e) => e.isNotEmpty)
+          .toSet()
+          .toList();
+      if (low.isEmpty) return <String>{};
+      final rows = await SupabaseService.client
+          .from(_tabla)
+          .select('email')
+          .eq('estado', 'verificado')
+          .inFilter('email', low);
+      return (rows as List)
+          .map((r) => ((r as Map)['email'] ?? '').toString().toLowerCase())
+          .where((e) => e.isNotEmpty)
+          .toSet();
+    } catch (_) {
+      return <String>{};
+    }
+  }
+
   /// Estado de verificación del usuario ('no' | 'en_revision' | 'verificado').
   static Future<String> estadoDe(String email) async {
     if (!disponible || email.trim().isEmpty) return 'no';

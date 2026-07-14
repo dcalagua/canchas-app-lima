@@ -1373,6 +1373,26 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  // Cache de qué correos de OTROS jugadores están verificados (para que el
+  // dueño vea la insignia junto a cada jugador en reservas/chat).
+  final Set<String> _verificados = {};
+  bool estaVerificado(String email) =>
+      _verificados.contains(email.trim().toLowerCase());
+
+  /// Consulta y cachea qué correos del conjunto están verificados.
+  Future<void> sincronizarVerificados(Iterable<String> emails) async {
+    final pedir = emails
+        .map((e) => e.trim().toLowerCase())
+        .where((e) => e.isNotEmpty)
+        .toSet();
+    if (pedir.isEmpty) return;
+    final set = await VerificacionRepo.verificados(pedir.toList());
+    if (set.isNotEmpty) {
+      _verificados.addAll(set);
+      notifyListeners();
+    }
+  }
+
   /// Envía doc + selfie para verificar la identidad. Devuelve true si quedó
   /// registrada (piloto: auto-aprobada).
   Future<bool> enviarVerificacion(Uint8List doc, Uint8List selfie) async {

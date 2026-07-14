@@ -107,10 +107,25 @@ class _ChatScreenState extends State<ChatScreen> {
     _focus.addListener(() {
       if (_focus.hasFocus && _emojis) setState(() => _emojis = false);
     });
+    // Chat de cancha, lado dueño: carga si el jugador está verificado (insignia).
+    if (widget.tipo == 'cancha' &&
+        widget.soyProfe &&
+        widget.cuentaEmail.isNotEmpty) {
+      appState.sincronizarVerificados([widget.cuentaEmail]).then((_) {
+        if (mounted) setState(() {});
+      });
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       appState.marcarChatLeido(_hilo);
     });
   }
+
+  /// ¿Muestro la insignia de "verificado" en la cabecera? Solo cuando soy el
+  /// dueño y el jugador (la contraparte) está verificado.
+  bool get _contraparteVerificada =>
+      widget.tipo == 'cancha' &&
+      widget.soyProfe &&
+      appState.estaVerificado(widget.cuentaEmail);
 
   @override
   void dispose() {
@@ -221,12 +236,17 @@ class _ChatScreenState extends State<ChatScreen> {
                       color: Colors.white, fontWeight: FontWeight.w800)),
             ),
             const SizedBox(width: 10),
-            Expanded(
+            Flexible(
               child: Text(widget.titulo,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontWeight: FontWeight.w700)),
             ),
+            if (_contraparteVerificada)
+              const Padding(
+                padding: EdgeInsets.only(left: 6),
+                child: Icon(Icons.verified, size: 18, color: Colors.white),
+              ),
           ],
         ),
       ),
