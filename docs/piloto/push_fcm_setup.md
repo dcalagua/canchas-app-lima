@@ -55,6 +55,49 @@ Supabase → **Database → Webhooks → Create a new hook**:
 - **Type:** `Supabase Edge Functions` → función `push-mensaje`
 - Guardar.
 
+## 6-bis) Alternativa: TRIGGER SQL (si el webhook da "schema supabase_functions does not exist")
+
+En algunos proyectos, el webhook del dashboard (paso 6) falla con
+`schema "supabase_functions" does not exist`. La vía robusta es un **trigger SQL**
+que llama a la Edge Function con `pg_net`. Pega esto en **SQL Editor**, cambiando
+`TU-PROYECTO` por el ref de tu proyecto y usando tu **anon key** (la pública, la
+misma del APK — NO hace falta el service role: la función usa su propio service
+role interno para consultar):
+
+```sql
+-- Extensión para llamar HTTP desde Postgres.
+create extension if not exists pg_net with schema extensions;
+
+create or replace function public.notificar_push_mensaje()
+returns trigger
+language plpgsql
+security definer
+as $$
+begin
+  perform net.http_post(
+    url     := 'https://TU-PROYECTO.supabase.co/functions/v1/push-mensaje',
+    headers := jsonb_build_object(
+      'Content-Type',  'application/json',
+      'Authorization', 'Bearer TU_ANON_KEY'
+    ),
+    body    := jsonb_build_object('record', to_jsonb(NEW))
+  );
+  return NEW;
+end;
+$$;
+
+drop trigger if exists trg_push_mensaje on public.pichangol_mensajes;
+create trigger trg_push_mensaje
+  after insert on public.pichangol_mensajes
+  for each row execute function public.notificar_push_mensaje();
+```
+
+Verificar: inserta un mensaje de prueba y revisa **Edge Functions → push-mensaje →
+Logs**: debe responder `200` (`{"enviados":N}` o `{"skip":"sin tokens"}` si aún no
+hay tokens registrados — ambos significan que el trigger llegó bien).
+> Si usaste el trigger, NO configures además el webhook del paso 6 (dispararía el
+> push dos veces).
+
 ## 7) Reconstruir el APK
 Cualquier push a la rama dispara el build. Con el secret del paso 2 ya presente,
 el APK sale con Firebase activo. Instálalo, inicia sesión (el token se guarda
