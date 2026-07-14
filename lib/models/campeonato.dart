@@ -157,6 +157,8 @@ class Campeonato {
   final List<Participante> participantes;
   final List<PartidoTorneo> partidos; // fixture generado (vacío = aún no)
   final bool cerrado;
+  /// Moneda del costo de inscripción, congelada al crear ('' = 'S/', Perú).
+  final String moneda;
 
   const Campeonato({
     required this.id,
@@ -174,7 +176,11 @@ class Campeonato {
     this.participantes = const [],
     this.partidos = const [],
     this.cerrado = false,
+    this.moneda = '',
   });
+
+  /// Símbolo de moneda del campeonato (congelada al crearlo; default 'S/').
+  String get monedaSimbolo => moneda.isNotEmpty ? moneda : 'S/';
 
   bool get fixtureGenerado => partidos.isNotEmpty;
 
@@ -190,6 +196,7 @@ class Campeonato {
     List<Participante>? participantes,
     List<PartidoTorneo>? partidos,
     bool? cerrado,
+    String? moneda,
   }) =>
       Campeonato(
         id: id,
@@ -207,6 +214,7 @@ class Campeonato {
         participantes: participantes ?? this.participantes,
         partidos: partidos ?? this.partidos,
         cerrado: cerrado ?? this.cerrado,
+        moneda: moneda ?? this.moneda,
       );
 
   Participante? participante(String? pid) {
@@ -234,6 +242,7 @@ class Campeonato {
         'participantes': participantes.map((p) => p.toJson()).toList(),
         'partidos': partidos.map((p) => p.toJson()).toList(),
         'cerrado': cerrado,
+        'moneda': moneda,
       };
 
   factory Campeonato.fromJson(Map<String, dynamic> j) => Campeonato(
@@ -262,6 +271,7 @@ class Campeonato {
                 .toList() ??
             const [],
         cerrado: (j['cerrado'] ?? false) as bool,
+        moneda: (j['moneda'] ?? '') as String,
       );
 }
 

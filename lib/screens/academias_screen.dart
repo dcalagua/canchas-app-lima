@@ -501,7 +501,7 @@ class _TarjetaAcademia extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       if (desde != null)
-                        Text('desde $monedaSimbolo ${desde.toStringAsFixed(2)}',
+                        Text('desde ${academia.monedaSimbolo} ${desde.toStringAsFixed(2)}',
                             style: t.titleSmall?.copyWith(
                                 color: cs.primary, fontWeight: FontWeight.w800))
                       else

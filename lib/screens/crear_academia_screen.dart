@@ -172,6 +172,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
               nombre: nombre,
               deporte: _deporte,
               dueno: dueno,
+              moneda: paisActual.moneda, // congela la moneda del país al crear
             ))
         .copyWith(
       nombre: nombre,

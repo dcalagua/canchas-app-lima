@@ -144,15 +144,15 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
       }
       return {
         'ok': true,
-        'detalle': 'Se acreditaron $monedaSimbolo $_monto a tu saldo.',
+        'detalle': 'Se acreditaron ${appState.monedaSaldoSimbolo} $_monto a tu saldo.',
       };
     }
 
     final ok = await PagoProcesando.mostrar(
       context,
-      titulo: 'Cobrando $monedaSimbolo $_monto',
+      titulo: 'Cobrando ${appState.monedaSaldoSimbolo} $_monto',
       exitoTitulo: '¡Recarga exitosa!',
-      exitoDetalle: 'Se acreditaron $monedaSimbolo $_monto a tu saldo.',
+      exitoDetalle: 'Se acreditaron ${appState.monedaSaldoSimbolo} $_monto a tu saldo.',
       accion: accion,
     );
     if (ok == true && mounted) Navigator.of(context).pop(_monto);
@@ -178,7 +178,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
                   children: [
                     for (final m in _montos)
                       ChoiceChip(
-                        label: Text('$monedaSimbolo $m'),
+                        label: Text('${appState.monedaSaldoSimbolo} $m'),
                         selected: _monto == m,
                         selectedColor: lima,
                         labelStyle: TextStyle(
@@ -238,7 +238,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
                         foregroundColor: lima,
                         padding: const EdgeInsets.symmetric(vertical: 15)),
                     onPressed: _pagar,
-                    child: Text('Pagar $monedaSimbolo $_monto'),
+                    child: Text('Pagar ${appState.monedaSaldoSimbolo} $_monto'),
                   ),
                 ),
                 const SizedBox(height: 10),

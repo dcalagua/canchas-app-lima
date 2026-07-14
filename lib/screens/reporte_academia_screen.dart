@@ -69,6 +69,10 @@ class _ReporteAcademiaScreenState extends State<ReporteAcademiaScreen> {
           final hoy = DateTime.now();
           final rango = _rangoActual();
           final todas = appState.cuotasDe(widget.academiaId);
+          var mon = monedaSimbolo;
+          for (final a in appState.academias) {
+            if (a.id == widget.academiaId) mon = a.monedaSimbolo;
+          }
           final enRango =
               todas.where((c) => _enRango(_ref(c), rango)).toList()
                 ..sort((a, b) => _ref(b).compareTo(_ref(a)));
@@ -97,11 +101,12 @@ class _ReporteAcademiaScreenState extends State<ReporteAcademiaScreen> {
                 children: [
                   Expanded(
                       child: _Kpi('Cobrado', cobrado,
-                          Theme.of(context).colorScheme.primary)),
+                          Theme.of(context).colorScheme.primary, mon)),
                   const SizedBox(width: 10),
-                  Expanded(child: _Kpi('Por cobrar', porCobrar, textoTenue)),
+                  Expanded(
+                      child: _Kpi('Por cobrar', porCobrar, textoTenue, mon)),
                   const SizedBox(width: 10),
-                  Expanded(child: _Kpi('Vencido', vencido, clayOscuro)),
+                  Expanded(child: _Kpi('Vencido', vencido, clayOscuro, mon)),
                 ],
               ),
               const SizedBox(height: 20),
@@ -135,7 +140,8 @@ class _ReporteAcademiaScreenState extends State<ReporteAcademiaScreen> {
                       alumno: nombres[c.alumnoId] ?? 'Alumno',
                       ref: _ref(c),
                       hoy: hoy,
-                      mesesCorto: _mesesCorto),
+                      mesesCorto: _mesesCorto,
+                      moneda: mon),
             ],
           );
         },
@@ -186,10 +192,11 @@ class _ReporteAcademiaScreenState extends State<ReporteAcademiaScreen> {
 }
 
 class _Kpi extends StatelessWidget {
-  const _Kpi(this.titulo, this.monto, this.color);
+  const _Kpi(this.titulo, this.monto, this.color, this.moneda);
   final String titulo;
   final double monto;
   final Color color;
+  final String moneda;
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -202,7 +209,7 @@ class _Kpi extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Text('$monedaSimbolo ${monto.toStringAsFixed(0)}',
+          Text('$moneda ${monto.toStringAsFixed(0)}',
               style: TextStyle(
                   fontWeight: FontWeight.w800, fontSize: 18, color: color)),
           const SizedBox(height: 2),
@@ -297,12 +304,14 @@ class _FilaPago extends StatelessWidget {
       required this.alumno,
       required this.ref,
       required this.hoy,
-      required this.mesesCorto});
+      required this.mesesCorto,
+      required this.moneda});
   final Cuota cuota;
   final String alumno;
   final DateTime ref;
   final DateTime hoy;
   final List<String> mesesCorto;
+  final String moneda;
 
   @override
   Widget build(BuildContext context) {
@@ -355,7 +364,7 @@ class _FilaPago extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text('$monedaSimbolo ${cuota.monto.toStringAsFixed(2)}',
+              Text('$moneda ${cuota.monto.toStringAsFixed(2)}',
                   style: TextStyle(
                       fontWeight: FontWeight.w800, color: cs.onSurface)),
               Text('${ref.day} ${mesesCorto[ref.month - 1]}',

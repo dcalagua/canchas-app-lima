@@ -23,6 +23,7 @@ class PagoTarjeta {
     required int monto,
     required String concepto,
     required String email,
+    String moneda = '',
   }) async {
     final cfg = await PagosService.config();
     final disponible = cfg != null && cfg['disponible'] == true;
@@ -30,7 +31,8 @@ class PagoTarjeta {
 
     if (!disponible) {
       // Demo: pasarela simulada.
-      final r = await PagoSheet.mostrar(context, monto: monto, concepto: concepto);
+      final r = await PagoSheet.mostrar(context,
+          monto: monto, concepto: concepto, moneda: moneda);
       return r != null && r.exito;
     }
 
@@ -51,6 +53,7 @@ class PagoTarjeta {
         userId: userId,
         pk: pk,
         esTest: esTest,
+        moneda: moneda,
       ),
     );
     return ok == true;
@@ -65,6 +68,7 @@ class _PagoTarjetaSheet extends StatefulWidget {
     required this.userId,
     required this.pk,
     required this.esTest,
+    this.moneda = '',
   });
   final int monto;
   final String concepto;
@@ -72,6 +76,7 @@ class _PagoTarjetaSheet extends StatefulWidget {
   final String userId;
   final String pk;
   final bool esTest;
+  final String moneda;
 
   @override
   State<_PagoTarjetaSheet> createState() => _PagoTarjetaSheetState();
@@ -80,6 +85,7 @@ class _PagoTarjetaSheet extends StatefulWidget {
 enum _Metodo { yape, tarjeta }
 
 class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
+  String get _mon => widget.moneda.isNotEmpty ? widget.moneda : monedaSimbolo;
   bool _cargando = true;
   _Metodo _metodo = _Metodo.tarjeta;
   List<Map<String, dynamic>> _guardadas = [];
@@ -147,11 +153,11 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
             token: t['token'].toString(), email: widget.email,
             montoSoles: widget.monto.toDouble(), concepto: widget.concepto);
         return res['ok'] == true
-            ? {'ok': true, 'detalle': 'Pago de $monedaSimbolo ${widget.monto} aprobado.'}
+            ? {'ok': true, 'detalle': 'Pago de $_mon ${widget.monto} aprobado.'}
             : {'ok': false, 'error': res['error']?.toString() ?? 'No se pudo cobrar.'};
       }
       final ok = await PagoProcesando.mostrar(context,
-          titulo: 'Cobrando $monedaSimbolo ${widget.monto}', exitoTitulo: '¡Pago aprobado!',
+          titulo: 'Cobrando $_mon ${widget.monto}', exitoTitulo: '¡Pago aprobado!',
           accion: accionYape);
       if (ok == true && mounted) Navigator.of(context).pop(true);
       return;
@@ -189,13 +195,13 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
         token: tk, email: widget.email,
         montoSoles: widget.monto.toDouble(), concepto: widget.concepto);
       return res['ok'] == true
-          ? {'ok': true, 'detalle': 'Pago de $monedaSimbolo ${widget.monto} aprobado.'}
+          ? {'ok': true, 'detalle': 'Pago de $_mon ${widget.monto} aprobado.'}
           : {'ok': false, 'error': res['error']?.toString() ?? 'No se pudo cobrar.'};
     }
 
     final ok = await PagoProcesando.mostrar(
       context,
-      titulo: 'Cobrando $monedaSimbolo ${widget.monto}',
+      titulo: 'Cobrando $_mon ${widget.monto}',
       exitoTitulo: '¡Pago aprobado!',
       accion: accion,
     );
@@ -223,7 +229,7 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                Text('Pagar $monedaSimbolo ${widget.monto}',
+                Text('Pagar $_mon ${widget.monto}',
                     style: TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 20,
@@ -389,7 +395,7 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
                         foregroundColor: lima,
                         padding: const EdgeInsets.symmetric(vertical: 15)),
                     onPressed: _pagar,
-                    child: Text('Pagar $monedaSimbolo ${widget.monto}'),
+                    child: Text('Pagar $_mon ${widget.monto}'),
                   ),
                 ),
                 const SizedBox(height: 8),

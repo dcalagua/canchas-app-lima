@@ -82,7 +82,7 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                     onPressed: () => _inscribirme(context, c),
                     icon: const Icon(Icons.how_to_reg),
                     label: Text(c.costoInscripcion > 0
-                        ? 'Inscribirme · $monedaSimbolo ${c.costoInscripcion.toStringAsFixed(2)}'
+                        ? 'Inscribirme · ${c.monedaSimbolo} ${c.costoInscripcion.toStringAsFixed(2)}'
                         : 'Inscribirme'),
                   ),
                 ),
@@ -257,7 +257,7 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                 if (c.costoInscripcion > 0) ...[
                   const SizedBox(height: 8),
                   Text(
-                      'Inscripción: $monedaSimbolo ${c.costoInscripcion.toStringAsFixed(2)}',
+                      'Inscripción: ${c.monedaSimbolo} ${c.costoInscripcion.toStringAsFixed(2)}',
                       style: const TextStyle(color: textoTenue)),
                 ],
                 if (error != null) ...[
@@ -314,6 +314,7 @@ class CampeonatoDetalleScreen extends StatelessWidget {
         monto: c.costoInscripcion.round(),
         concepto: 'Inscripción ${c.nombre}',
         email: appState.usuario?.email ?? '',
+        moneda: c.monedaSimbolo,
       );
       if (!pagado) return;
     }
@@ -379,7 +380,7 @@ class _Cabecera extends StatelessWidget {
       if (c.fechas.isNotEmpty) '📅 ${c.fechas}',
       if (c.sede.isNotEmpty) '📍 ${c.sede}',
       if (c.costoInscripcion > 0)
-        'Inscripción $monedaSimbolo ${c.costoInscripcion.toStringAsFixed(2)}',
+        'Inscripción ${c.monedaSimbolo} ${c.costoInscripcion.toStringAsFixed(2)}',
     ];
     return Container(
       padding: const EdgeInsets.all(16),

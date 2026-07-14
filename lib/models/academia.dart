@@ -67,6 +67,10 @@ class Academia {
   final String? logoUrl; // logo de la academia (si tiene)
   final Map<String, String> redes; // red → handle/url (instagram, tiktok…)
   final List<String> fotos; // feed propio (URLs de fotos subidas por el profe)
+  /// Moneda de la academia, congelada al crearla según el país ('' = 'S/', Perú).
+  /// Los precios de los planes se muestran en esta moneda sin importar el país
+  /// desde donde se abra la app.
+  final String moneda;
 
   const Academia({
     required this.id,
@@ -81,7 +85,11 @@ class Academia {
     this.logoUrl,
     this.redes = const {},
     this.fotos = const [],
+    this.moneda = '',
   });
+
+  /// Símbolo de moneda de la academia (default 'S/').
+  String get monedaSimbolo => moneda.isNotEmpty ? moneda : 'S/';
 
   /// Código corto y ESTABLE para que un alumno se una desde la app
   /// ("Unirme con código"). Se deriva del [id] (hash FNV-1a → base32), así que
@@ -126,6 +134,7 @@ class Academia {
     String? logoUrl,
     Map<String, String>? redes,
     List<String>? fotos,
+    String? moneda,
   }) =>
       Academia(
         id: id,
@@ -140,6 +149,7 @@ class Academia {
         logoUrl: logoUrl ?? this.logoUrl,
         redes: redes ?? this.redes,
         fotos: fotos ?? this.fotos,
+        moneda: moneda ?? this.moneda,
       );
 
   Map<String, dynamic> toJson() => {
@@ -156,6 +166,7 @@ class Academia {
         if (logoUrl != null) 'logoUrl': logoUrl,
         'redes': redes,
         'fotos': fotos,
+        'moneda': moneda,
       };
 
   factory Academia.fromJson(Map<String, dynamic> j) => Academia(
@@ -180,6 +191,7 @@ class Academia {
             const {},
         fotos: (j['fotos'] as List?)?.map((e) => e.toString()).toList() ??
             const [],
+        moneda: (j['moneda'] ?? '') as String,
       );
 }
 

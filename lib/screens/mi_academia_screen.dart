@@ -53,12 +53,12 @@ class MiAcademiaScreen extends StatelessWidget {
                     Expanded(
                         child: _Metrica(
                             'Por cobrar',
-                            '$monedaSimbolo ${porCobrar.toStringAsFixed(2)}',
+                            '${ac.monedaSimbolo} ${porCobrar.toStringAsFixed(2)}',
                             Theme.of(context).colorScheme.primary)),
                     const SizedBox(width: 10),
                     Expanded(
                         child: _Metrica('Vencido',
-                            '$monedaSimbolo ${vencido.toStringAsFixed(2)}', clayOscuro)),
+                            '${ac.monedaSimbolo} ${vencido.toStringAsFixed(2)}', clayOscuro)),
                     const SizedBox(width: 10),
                     Expanded(
                         child: _Metrica('Alumnos', '${alumnos.length}',
@@ -101,7 +101,7 @@ class MiAcademiaScreen extends StatelessWidget {
                       style: TextStyle(color: textoTenue)),
                 ),
               for (final al in alumnos)
-                _TarjetaAlumno(alumno: al),
+                _TarjetaAlumno(alumno: al, moneda: ac.monedaSimbolo),
               _SeccionInvitaciones(academia: ac),
               const SizedBox(height: 30),
             ],
@@ -423,11 +423,11 @@ class _DestacarCardState extends State<_DestacarCard> {
           const SizedBox(height: 6),
           Text(
             destacada
-                ? 'Apareces primero en la lista de academias. Saldo: $monedaSimbolo $saldo. '
-                    'Más saldo = mejor posición: Plata desde $monedaSimbolo 50, Oro desde $monedaSimbolo 200.'
+                ? 'Apareces primero en la lista de academias. Saldo: ${widget.academia.monedaSimbolo} $saldo. '
+                    'Más saldo = mejor posición: Plata desde ${widget.academia.monedaSimbolo} 50, Oro desde ${widget.academia.monedaSimbolo} 200.'
                 : 'Pon saldo y tu academia aparece destacada (arriba y con '
                     'medalla) para que más alumnos la encuentren. '
-                    'Bronce desde $monedaSimbolo 1, Plata $monedaSimbolo 50, Oro $monedaSimbolo 200.',
+                    'Bronce desde ${widget.academia.monedaSimbolo} 1, Plata ${widget.academia.monedaSimbolo} 50, Oro ${widget.academia.monedaSimbolo} 200.',
             style: t.bodySmall
                 ?.copyWith(color: Colors.white.withOpacity(0.92), height: 1.3),
           ),
@@ -456,7 +456,7 @@ class _DestacarCardState extends State<_DestacarCard> {
               onPressed: _recargar,
               icon: const Icon(Icons.add),
               label: Text(saldo > 0
-                  ? 'Recargar saldo ($monedaSimbolo $saldo)'
+                  ? 'Recargar saldo (${widget.academia.monedaSimbolo} $saldo)'
                   : 'Poner saldo y destacar'),
             ),
           ),
@@ -732,8 +732,9 @@ class _EtiquetaAlumno extends StatelessWidget {
 }
 
 class _TarjetaAlumno extends StatelessWidget {
-  const _TarjetaAlumno({required this.alumno});
+  const _TarjetaAlumno({required this.alumno, required this.moneda});
   final Alumno alumno;
+  final String moneda;
 
   @override
   Widget build(BuildContext context) {
@@ -771,7 +772,7 @@ class _TarjetaAlumno extends StatelessWidget {
         subtitle: Text(
           () {
             final deuda = pend > 0
-                ? 'Debe $monedaSimbolo ${pend.toStringAsFixed(2)}'
+                ? 'Debe $moneda ${pend.toStringAsFixed(2)}'
                 : 'Al día';
             if (alumno.esMenor) {
               return 'Apoderado: ${alumno.apoderadoNombre} · $deuda';
@@ -858,7 +859,11 @@ class AlumnoDetalleScreen extends StatelessWidget {
                 const Text('Sin cuotas. Inscríbelo a un plan o agrega una clase.',
                     style: TextStyle(color: textoTenue)),
               for (final c in cuotas)
-                _FilaCuota(cuota: c, alumno: al, hoy: hoy),
+                _FilaCuota(
+                    cuota: c,
+                    alumno: al,
+                    hoy: hoy,
+                    moneda: ac?.monedaSimbolo ?? monedaSimbolo),
             ],
           );
         },
@@ -873,6 +878,7 @@ class AlumnoDetalleScreen extends StatelessWidget {
           content: Text('Primero crea planes en tu academia (editar).')));
       return;
     }
+    final mon = appState.miAcademia?.monedaSimbolo ?? monedaSimbolo;
     final plan = await showModalBottomSheet<Plan>(
       context: context,
       backgroundColor: Theme.of(context).colorScheme.surface,
@@ -889,8 +895,8 @@ class AlumnoDetalleScreen extends StatelessWidget {
               ListTile(
                 title: Text(p.nombre),
                 subtitle: Text(p.tipo == TipoPlan.porClase
-                    ? 'Por clase · $monedaSimbolo ${p.precioMes.toStringAsFixed(2)}'
-                    : '${p.meses} ${p.meses == 1 ? 'mes' : 'meses'} · Total $monedaSimbolo ${p.total.toStringAsFixed(2)}'),
+                    ? 'Por clase · $mon ${p.precioMes.toStringAsFixed(2)}'
+                    : '${p.meses} ${p.meses == 1 ? 'mes' : 'meses'} · Total $mon ${p.total.toStringAsFixed(2)}'),
                 onTap: () => Navigator.pop(context, p),
               ),
           ],
@@ -906,6 +912,7 @@ class AlumnoDetalleScreen extends StatelessWidget {
   }
 
   Future<void> _claseSuelta(BuildContext context, Alumno al) async {
+    final mon = appState.miAcademia?.monedaSimbolo ?? monedaSimbolo;
     final monto = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
@@ -914,7 +921,7 @@ class AlumnoDetalleScreen extends StatelessWidget {
         content: TextField(
           controller: monto,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: InputDecoration(labelText: 'Monto', prefixText: '$monedaSimbolo '),
+          decoration: InputDecoration(labelText: 'Monto', prefixText: '$mon '),
         ),
         actions: [
           TextButton(
@@ -935,10 +942,14 @@ class AlumnoDetalleScreen extends StatelessWidget {
 
 class _FilaCuota extends StatelessWidget {
   const _FilaCuota(
-      {required this.cuota, required this.alumno, required this.hoy});
+      {required this.cuota,
+      required this.alumno,
+      required this.hoy,
+      required this.moneda});
   final dynamic cuota; // Cuota
   final Alumno alumno;
   final DateTime hoy;
+  final String moneda;
 
   @override
   Widget build(BuildContext context) {
@@ -971,7 +982,7 @@ class _FilaCuota extends StatelessWidget {
                 child: Text(c.concepto,
                     style: const TextStyle(fontWeight: FontWeight.w700)),
               ),
-              Text('$monedaSimbolo ${c.monto.toStringAsFixed(2)}',
+              Text('$moneda ${c.monto.toStringAsFixed(2)}',
                   style: const TextStyle(fontWeight: FontWeight.w800)),
             ],
           ),
@@ -1035,7 +1046,7 @@ class _FilaCuota extends StatelessWidget {
     final saludo = alumno.esMenor ? alumno.apoderadoNombre : alumno.nombre;
     final deQuien = alumno.esMenor ? ' de ${alumno.nombre}' : '';
     final msg = 'Hola $saludo, te recuerdo el pago$deQuien de "${c.concepto}" '
-        'por $monedaSimbolo ${c.monto.toStringAsFixed(2)}. ¡Gracias!';
+        'por $moneda ${c.monto.toStringAsFixed(2)}. ¡Gracias!';
     final ok = await WhatsAppLink.abrir(tel, msg);
     if (!ok && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

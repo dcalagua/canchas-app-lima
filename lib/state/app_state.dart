@@ -24,6 +24,7 @@ import '../services/verificacion_service.dart';
 import '../services/growth_service.dart';
 import '../services/propiedad_service.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import '../config/pais.dart';
 import '../utils/moneda.dart';
 
 /// Instancia única del estado para toda la app (sin paquetes extra de DI).
@@ -166,6 +167,7 @@ class AppState extends ChangeNotifier {
       sedeUbicacion: sedeUbicacion,
       fechas: fechas,
       costoInscripcion: costoInscripcion,
+      moneda: paisActual.moneda, // congela la moneda del país donde se crea
     );
     campeonatos.add(c);
     notifyListeners();
@@ -1353,6 +1355,11 @@ class AppState extends ChangeNotifier {
   // Saldo prepago del club (modelo inDrive): con saldo aparece destacado y
   // cada reserva nueva descuenta una comisión. Sin saldo, deja de destacarse.
   int saldoClub = 30;
+  // Moneda del saldo prepago del dueño: se congela con la primera recarga (el
+  // país donde puso plata) y no cambia aunque el dueño abra la app en otro país.
+  String monedaSaldo = '';
+  String get monedaSaldoSimbolo =>
+      monedaSaldo.isNotEmpty ? monedaSaldo : paisActual.moneda;
   final List<MovimientoSaldo> movimientos = [
     const MovimientoSaldo(
         tipo: TipoMovimiento.recarga, monto: 30, concepto: 'Recarga inicial', cuando: 'Ayer'),
@@ -1484,6 +1491,7 @@ class AppState extends ChangeNotifier {
   /// Recarga el saldo prepago del club.
   void recargar(int monto) {
     if (monto <= 0) return;
+    if (monedaSaldo.isEmpty) monedaSaldo = paisActual.moneda;
     saldoClub += monto;
     movimientos.insert(
       0,
@@ -1519,6 +1527,7 @@ class AppState extends ChangeNotifier {
 
   static const _kUsuario = 'usuario_json';
   static const _kSaldo = 'saldo_club';
+  static const _kMonedaSaldo = 'moneda_saldo';
   static const _kMovs = 'movimientos_json';
   static const _kMisReservas = 'mis_reservas_json';
   static const _kCanchas = 'canchas_extra_json';
@@ -1547,6 +1556,10 @@ class AppState extends ChangeNotifier {
 
       if (prefs.containsKey(_kSaldo)) {
         saldoClub = prefs.getInt(_kSaldo) ?? saldoClub;
+      }
+
+      if (prefs.containsKey(_kMonedaSaldo)) {
+        monedaSaldo = prefs.getString(_kMonedaSaldo) ?? monedaSaldo;
       }
 
       if (prefs.containsKey(_kRadio)) {
@@ -1648,6 +1661,7 @@ class AppState extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_kSaldo, saldoClub);
+      await prefs.setString(_kMonedaSaldo, monedaSaldo);
       await prefs.setString(
           _kMovs, jsonEncode(movimientos.map((m) => m.toJson()).toList()));
       await prefs.setString(_kMisReservas,

@@ -100,7 +100,7 @@ class CuentaScreen extends StatelessWidget {
         if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           backgroundColor: pino,
-          content: Text('✅ Recargaste $monedaSimbolo$monto. ¡Ya apareces destacado!'),
+          content: Text('✅ Recargaste ${appState.monedaSaldoSimbolo}$monto. ¡Ya apareces destacado!'),
         ));
       }
       return;
@@ -124,7 +124,7 @@ class CuentaScreen extends StatelessWidget {
               SnackBar(
                 backgroundColor: pino,
                 content: Text(
-                    '✅ Recargaste $monedaSimbolo$monto. ¡Ya apareces destacado! (${res.referencia})'),
+                    '✅ Recargaste ${appState.monedaSaldoSimbolo}$monto. ¡Ya apareces destacado! (${res.referencia})'),
               ),
             );
           }
@@ -193,7 +193,7 @@ class _TarjetaSaldo extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 14),
-          Text('$monedaSimbolo $saldo.00',
+          Text('${appState.monedaSaldoSimbolo} $saldo.00',
               style: t.displaySmall?.copyWith(
                   color: Colors.white, fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
@@ -258,7 +258,7 @@ class _FilaMovimiento extends StatelessWidget {
               ],
             ),
           ),
-          Text('${esRecarga ? '+' : '−'} $monedaSimbolo${m.monto}',
+          Text('${esRecarga ? '+' : '−'} ${appState.monedaSaldoSimbolo}${m.monto}',
               style: t.titleMedium
                   ?.copyWith(color: color, fontWeight: FontWeight.w700)),
         ],
@@ -344,7 +344,7 @@ class _BotonMonto extends StatelessWidget {
             border: Border.all(color: trazo),
           ),
           alignment: Alignment.center,
-          child: Text('$monedaSimbolo $monto',
+          child: Text('${appState.monedaSaldoSimbolo} $monto',
               style: const TextStyle(
                   color: pino, fontWeight: FontWeight.w800, fontSize: 20)),
         ),

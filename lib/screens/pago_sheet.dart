@@ -12,11 +12,13 @@ class PagoSheet extends StatefulWidget {
   final int monto;
   final String concepto;
   final bool esRecarga;
+  final String moneda;
   const PagoSheet({
     super.key,
     required this.monto,
     required this.concepto,
     this.esRecarga = false,
+    this.moneda = '',
   });
 
   static Future<PagoResult?> mostrar(
@@ -24,13 +26,17 @@ class PagoSheet extends StatefulWidget {
     required int monto,
     required String concepto,
     bool esRecarga = false,
+    String moneda = '',
   }) {
     return showModalBottomSheet<PagoResult>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) =>
-          PagoSheet(monto: monto, concepto: concepto, esRecarga: esRecarga),
+      builder: (_) => PagoSheet(
+          monto: monto,
+          concepto: concepto,
+          esRecarga: esRecarga,
+          moneda: moneda),
     );
   }
 
@@ -39,6 +45,7 @@ class PagoSheet extends StatefulWidget {
 }
 
 class _PagoSheetState extends State<PagoSheet> {
+  String get _mon => widget.moneda.isNotEmpty ? widget.moneda : monedaSimbolo;
   MetodoPago _metodo = MetodoPago.yape;
   bool _procesando = false;
 
@@ -80,7 +87,7 @@ class _PagoSheetState extends State<PagoSheet> {
           Text(widget.concepto,
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
           const SizedBox(height: 2),
-          Text('$monedaSimbolo ${widget.monto}',
+          Text('$_mon ${widget.monto}',
               style: TextStyle(
                   fontSize: 32, fontWeight: FontWeight.bold, color: cs.primary)),
           const SizedBox(height: 18),
@@ -125,7 +132,7 @@ class _PagoSheetState extends State<PagoSheet> {
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: Colors.white),
                     )
-                  : Text('Pagar $monedaSimbolo ${widget.monto}'),
+                  : Text('Pagar $_mon ${widget.monto}'),
             ),
           ),
           const SizedBox(height: 10),

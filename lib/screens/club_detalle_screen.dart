@@ -185,6 +185,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
       monto: _cancha.precioHora.round(),
       concepto: 'Reserva · ${_cancha.nombre} · $_dia $hora',
       email: appState.usuario?.email ?? '',
+      moneda: _cancha.monedaSimbolo,
     );
     if (!pagado || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
