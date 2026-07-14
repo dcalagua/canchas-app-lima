@@ -385,6 +385,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
         horaCierre: _cierre,
         duracionSlotMin: _duracion,
         superficie: _superficie,
+        moneda: paisActual.moneda, // congela la moneda del país donde se registra
       );
       creadas.add(cancha);
       appState.agregarCancha(cancha);
@@ -411,6 +412,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
           horaCierre: _cierre,
           duracionSlotMin: _duracion,
           superficie: _superficies[dep] ?? '',
+          moneda: paisActual.moneda, // moneda del país donde se registra
         );
         creadas.add(cancha);
         appState.agregarCancha(cancha);

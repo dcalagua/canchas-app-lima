@@ -151,10 +151,11 @@ class CanchasRepo {
         'eliminada': c.eliminada,
         if (conAmenidades) 'amenidades': c.amenidades,
         if (conAmenidades) 'superficie': c.superficie,
-        // Columna nueva (loza multiuso). Va bajo el mismo flag de retry: si la
-        // BD aún no tiene la columna `deportes`, el reintento la omite.
+        // Columnas nuevas. Van bajo el mismo flag de retry: si la BD aún no las
+        // tiene, el reintento las omite (la app conserva el valor local).
         if (conAmenidades)
           'deportes': c.deportesJugables.map((e) => e.name).toList(),
+        if (conAmenidades) 'moneda': c.moneda,
       };
 
   static Cancha _fromRow(Map<String, dynamic> r) => Cancha(
@@ -190,6 +191,7 @@ class CanchasRepo {
             (r['amenidades'] as List?)?.map((e) => e.toString()).toList() ??
                 const [],
         superficie: (r['superficie'] ?? '') as String,
+        moneda: (r['moneda'] ?? '') as String,
       );
 
   static Distrito _enumDistrito(String? s) {

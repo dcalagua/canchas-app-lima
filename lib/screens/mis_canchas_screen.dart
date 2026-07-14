@@ -406,7 +406,7 @@ class _FilaCancha extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis),
                   Text(
-                    '${cancha.deporte.etiqueta} · $monedaSimbolo ${cancha.precioHora.toStringAsFixed(2)}/h · '
+                    '${cancha.deporte.etiqueta} · ${cancha.monedaSimbolo} ${cancha.precioHora.toStringAsFixed(2)}/h · '
                     '${cancha.horaApertura}–${cancha.horaCierre}',
                     style: t.bodySmall?.copyWith(color: textoTenueDe(context)),
                     maxLines: 1,

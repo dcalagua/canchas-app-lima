@@ -71,6 +71,11 @@ class Cancha {
   final bool eliminada; // borrado lógico durable en la nube (sobrevive reinstalar)
   final List<String> amenidades; // claves de servicios (vestuario, parking…), editable por el dueño
   final String superficie; // tipo de piso: arcilla, loza, grass sintético… (según deporte)
+  /// Símbolo de moneda de ESTA cancha, congelado al registrarla según el país
+  /// donde se creó ('S/' Perú, 'Bs' Bolivia…). El precio vive en esta moneda: no
+  /// cambia aunque el dueño abra la app desde otro país. Vacío = 'S/' (todas las
+  /// canchas del piloto nacieron en Perú). Usar el getter [monedaSimbolo].
+  final String moneda;
 
   const Cancha({
     required this.id,
@@ -95,7 +100,12 @@ class Cancha {
     this.eliminada = false,
     this.amenidades = const [],
     this.superficie = '',
+    this.moneda = '',
   });
+
+  /// Símbolo de moneda de la cancha (default 'S/', Perú). El precio se muestra
+  /// SIEMPRE en esta moneda, sin importar desde qué país se abra la app.
+  String get monedaSimbolo => moneda.isNotEmpty ? moneda : 'S/';
 
   /// Deportes jugables en esta cancha, garantizando al menos el principal.
   /// Es la fuente de verdad para filtros/visibilidad (una loza multiuso aparece
@@ -186,6 +196,7 @@ class Cancha {
     bool? eliminada,
     List<String>? amenidades,
     String? superficie,
+    String? moneda,
   }) {
     return Cancha(
       id: id,
@@ -210,6 +221,7 @@ class Cancha {
       eliminada: eliminada ?? this.eliminada,
       amenidades: amenidades ?? this.amenidades,
       superficie: superficie ?? this.superficie,
+      moneda: moneda ?? this.moneda,
     );
   }
 
@@ -237,6 +249,7 @@ class Cancha {
         'eliminada': eliminada,
         'amenidades': amenidades,
         'superficie': superficie,
+        'moneda': moneda,
       };
 
   factory Cancha.fromJson(Map<String, dynamic> j) => Cancha(
@@ -269,6 +282,7 @@ class Cancha {
         amenidades: (j['amenidades'] as List?)?.map((e) => e.toString()).toList() ??
             const [],
         superficie: (j['superficie'] ?? '') as String,
+        moneda: (j['moneda'] ?? '') as String,
       );
 }
 
@@ -316,6 +330,10 @@ class Reserva {
   final bool pagado; // el dueño confirmó el pago (efectivo en cancha)
   final String usuario; // correo del jugador (para "mis reservas" entre dispositivos)
   final String deporte; // deporte elegido para este slot (Deporte.name); '' = el principal de la cancha
+  final String moneda; // símbolo de moneda de la cancha al reservar ('' = 'S/')
+
+  /// Moneda de la reserva (default 'S/'), congelada de la cancha al reservar.
+  String get monedaSimbolo => moneda.isNotEmpty ? moneda : 'S/';
 
   const Reserva({
     required this.id,
@@ -333,6 +351,7 @@ class Reserva {
     this.pagado = false,
     this.usuario = '',
     this.deporte = '',
+    this.moneda = '',
   });
 
   Reserva copyWith({EstadoReserva? estado, bool? pagado}) => Reserva(
@@ -351,6 +370,7 @@ class Reserva {
         pagado: pagado ?? this.pagado,
         usuario: usuario,
         deporte: deporte,
+        moneda: moneda,
       );
 
   Map<String, dynamic> toJson() => {
@@ -369,6 +389,7 @@ class Reserva {
         'pagado': pagado,
         'usuario': usuario,
         'deporte': deporte,
+        'moneda': moneda,
       };
 
   factory Reserva.fromJson(Map<String, dynamic> j) => Reserva(
@@ -387,6 +408,7 @@ class Reserva {
         pagado: (j['pagado'] ?? false) as bool,
         usuario: (j['usuario'] ?? '') as String,
         deporte: (j['deporte'] ?? '') as String,
+        moneda: (j['moneda'] ?? '') as String,
       );
 }
 

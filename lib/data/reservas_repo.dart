@@ -130,8 +130,9 @@ class ReservasRepo {
         'sena': r.sena,
         'pagado': r.pagado,
         'usuario': r.usuario,
-        // Columna nueva (loza multiuso): deporte elegido para el slot.
+        // Columnas nuevas: deporte del slot (loza multiuso) + moneda de la cancha.
         if (conDeporte) 'deporte': r.deporte,
+        if (conDeporte) 'moneda': r.moneda,
       };
 
   static Reserva _fromRow(Map<String, dynamic> r) => Reserva(
@@ -150,6 +151,7 @@ class ReservasRepo {
         pagado: (r['pagado'] ?? false) as bool,
         usuario: (r['usuario'] ?? '') as String,
         deporte: (r['deporte'] ?? '') as String,
+        moneda: (r['moneda'] ?? '') as String,
       );
 
   static EstadoReserva _estado(String? s) {

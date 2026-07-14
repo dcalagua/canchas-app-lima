@@ -89,7 +89,7 @@ class _ReservaCard extends StatelessWidget {
                   const Icon(Icons.credit_card, color: arena, size: 18),
                   const SizedBox(width: 4),
                   Text(
-                    'Seña $monedaSimbolo ${reserva.sena}',
+                    'Seña ${reserva.monedaSimbolo} ${reserva.sena}',
                     style: const TextStyle(
                       color: arena,
                       fontWeight: FontWeight.w600,
@@ -99,7 +99,7 @@ class _ReservaCard extends StatelessWidget {
                 ],
                 const Spacer(),
                 Text(
-                  '$monedaSimbolo ${reserva.precio}',
+                  '${reserva.monedaSimbolo} ${reserva.precio}',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.bold,
                         color: verdeCancha,

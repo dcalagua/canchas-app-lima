@@ -216,7 +216,7 @@ class _ReservaDestacada extends StatelessWidget {
                           ?.copyWith(color: Colors.white.withOpacity(0.8)),
                     ),
                     if (reserva.sena > 0)
-                      Text('Seña pagada $monedaSimbolo${reserva.sena}',
+                      Text('Seña pagada ${reserva.monedaSimbolo}${reserva.sena}',
                           style: t.bodySmall?.copyWith(color: lima)),
                   ],
                 ),
@@ -302,7 +302,7 @@ class _ReservaCard extends StatelessWidget {
               ],
             ),
           ),
-          Text('$monedaSimbolo${reserva.precio}',
+          Text('${reserva.monedaSimbolo}${reserva.precio}',
               style: t.titleMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                   color: Theme.of(context).colorScheme.onSurface)),

@@ -293,6 +293,8 @@ class _HeaderAgenda extends StatelessWidget {
     final porCobrar = delDia
         .where((r) => !r.pagado && r.estado != EstadoReserva.noShow)
         .fold<int>(0, (s, r) => s + r.precio);
+    // Moneda del local (sus canchas comparten país).
+    final moneda = canchas.isNotEmpty ? canchas.first.monedaSimbolo : 'S/';
 
     return Container(
       width: double.infinity,
@@ -330,7 +332,7 @@ class _HeaderAgenda extends StatelessWidget {
               const SizedBox(width: 10),
               _MiniKpi('$ocupacion%', 'Ocupación'),
               const SizedBox(width: 10),
-              _MiniKpi('$monedaSimbolo$porCobrar', 'Por cobrar', accent: true),
+              _MiniKpi('$moneda$porCobrar', 'Por cobrar', accent: true),
             ],
           ),
         ],
@@ -514,7 +516,7 @@ class _AgendaRow extends StatelessWidget {
                               ?.copyWith(fontWeight: FontWeight.w700)),
                       Text(
                         '${r.horaInicio}–${r.horaFin} · '
-                        '${r.pagado ? 'Pagado' : 'Por cobrar'} $monedaSimbolo${r.precio}',
+                        '${r.pagado ? 'Pagado' : 'Por cobrar'} ${r.monedaSimbolo}${r.precio}',
                         style: t.bodySmall?.copyWith(color: textoTenueDe(context)),
                       ),
                     ],

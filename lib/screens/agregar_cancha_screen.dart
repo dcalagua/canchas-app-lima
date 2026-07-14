@@ -98,6 +98,7 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
       duracionSlotMin: _duracion,
       amenidades: l.amenidades, // los servicios son del local: se heredan
       superficie: _superficie,
+      moneda: l.moneda, // hereda la moneda del local (mismo país)
     );
     appState.agregarCancha(cancha);
     if (!mounted) return;
@@ -212,7 +213,8 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: InputDecoration(
               labelText: 'Precio por hora',
-              prefixText: '$monedaSimbolo ',
+              // Moneda del local (misma que las otras canchas del local).
+              prefixText: '${widget.local.monedaSimbolo} ',
             ),
           ),
           const SizedBox(height: 18),

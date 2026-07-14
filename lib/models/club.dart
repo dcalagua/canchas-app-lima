@@ -73,6 +73,10 @@ class Club {
     return precios.reduce((a, b) => a < b ? a : b);
   }
 
+  /// Moneda del club (la de su cancha principal): todas las canchas del mismo
+  /// local comparten país, así que comparten moneda.
+  String get monedaSimbolo => principal.monedaSimbolo;
+
   /// Rating presentacional, determinístico por nombre (4.6–4.9) hasta tener
   /// reseñas reales. Los clubes descubiertos (sin registrar) no muestran rating.
   double get rating {

@@ -60,6 +60,13 @@ alter table public.pichangol_canchas
   add column if not exists deportes jsonb not null default '[]'::jsonb;
 alter table public.pichangol_reservas
   add column if not exists deporte text not null default '';
+-- Moneda por cancha (multi-país): se congela al registrar según el país. Las
+-- canchas viejas quedan con '' → la app las muestra como 'S/' (Perú). La reserva
+-- guarda la moneda de la cancha al reservar.
+alter table public.pichangol_canchas
+  add column if not exists moneda text not null default '';
+alter table public.pichangol_reservas
+  add column if not exists moneda text not null default '';
 
 -- Anti-doble-reserva: un único slot por (cancha, fecha, hora de inicio). La
 -- agenda es COMPARTIDA entre deportes (misma superficie): el UNIQUE NO incluye

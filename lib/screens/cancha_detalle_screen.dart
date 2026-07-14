@@ -75,7 +75,7 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
             const SizedBox(height: 8),
             Text('$_dia · $hora a ${cancha.horaFinDe(hora)}'),
             const SizedBox(height: 8),
-            Text('Total: $monedaSimbolo ${total.toStringAsFixed(2)}',
+            Text('Total: ${cancha.monedaSimbolo} ${total.toStringAsFixed(2)}',
                 style: TextStyle(
                     color: Theme.of(ctx).colorScheme.primary,
                     fontWeight: FontWeight.w700)),
@@ -180,7 +180,7 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
                       const Spacer(),
                       if (cancha.registrada) ...[
                         Text(
-                          '$monedaSimbolo ${cancha.precioHora.toStringAsFixed(2)}',
+                          '${cancha.monedaSimbolo} ${cancha.precioHora.toStringAsFixed(2)}',
                           style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 22,

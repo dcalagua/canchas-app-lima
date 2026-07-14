@@ -529,7 +529,8 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: InputDecoration(
               labelText: 'Precio por hora',
-              prefixText: '$monedaSimbolo ',
+              // Moneda de ESTA cancha (la de su registro), no la del país actual.
+              prefixText: '${widget.cancha.monedaSimbolo} ',
             ),
           ),
           const SizedBox(height: 18),

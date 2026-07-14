@@ -51,6 +51,9 @@ class ReportesScreen extends StatelessWidget {
           final porCobrarMes = delMes
               .where((r) => !r.pagado)
               .fold<int>(0, (a, r) => a + r.precio);
+          // Moneda del dueño (la de sus canchas; comparten país en el piloto).
+          final moneda =
+              canchas.isNotEmpty ? canchas.first.monedaSimbolo : 'S/';
 
           // --- Ingresos cobrados por día, últimos 7 días (gráfico real) ---
           final serie = <int>[];
@@ -97,7 +100,7 @@ class ReportesScreen extends StatelessWidget {
                     Text('Ingresos del mes (cobrado)',
                         style: t.bodyMedium?.copyWith(color: Colors.white70)),
                     const SizedBox(height: 6),
-                    Text('$monedaSimbolo $ingresoMes',
+                    Text('$moneda $ingresoMes',
                         style: t.displaySmall?.copyWith(
                             color: Colors.white, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 4),
@@ -120,7 +123,7 @@ class ReportesScreen extends StatelessWidget {
                   const SizedBox(width: 14),
                   Expanded(
                     child: _MetricCard(
-                        valor: '$monedaSimbolo $porCobrarMes',
+                        valor: '$moneda $porCobrarMes',
                         label: 'por cobrar este mes'),
                   ),
                 ],

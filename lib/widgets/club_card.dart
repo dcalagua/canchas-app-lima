@@ -161,7 +161,7 @@ class ClubCard extends StatelessWidget {
                             children: [
                               const TextSpan(text: 'desde '),
                               TextSpan(
-                                text: '$monedaSimbolo${club.precioDesde?.toStringAsFixed(2) ?? '--'}',
+                                text: '${club.monedaSimbolo}${club.precioDesde?.toStringAsFixed(2) ?? '--'}',
                                 style: t.titleMedium?.copyWith(
                                     color: cs.onSurface, fontWeight: FontWeight.w700),
                               ),

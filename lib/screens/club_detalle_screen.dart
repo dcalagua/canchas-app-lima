@@ -510,6 +510,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
           ? null
           : _ReservarBar(
               precio: _cancha.precioHora,
+              moneda: _cancha.monedaSimbolo,
               hora: _hora,
               onReservar: _hora == null ? null : _reservar,
             ),
@@ -575,7 +576,7 @@ class _PanelDueno extends StatelessWidget {
               Expanded(
                 child: _DatoDueno(
                     etiqueta: 'Precio por hora',
-                    valor: '$monedaSimbolo${cancha.precioHora.toStringAsFixed(2)}'),
+                    valor: '${cancha.monedaSimbolo}${cancha.precioHora.toStringAsFixed(2)}'),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -761,8 +762,12 @@ class _FilaAmenities extends StatelessWidget {
 
 class _ReservarBar extends StatelessWidget {
   const _ReservarBar(
-      {required this.precio, required this.hora, required this.onReservar});
+      {required this.precio,
+      required this.moneda,
+      required this.hora,
+      required this.onReservar});
   final double precio;
+  final String moneda;
   final String? hora;
   final VoidCallback? onReservar;
 
@@ -789,7 +794,7 @@ class _ReservarBar extends StatelessWidget {
                     style: t.bodySmall?.copyWith(color: textoTenueDe(context)),
                     children: [
                       TextSpan(
-                        text: '$monedaSimbolo${precio.toStringAsFixed(2)}',
+                        text: '$moneda${precio.toStringAsFixed(2)}',
                         style: t.titleLarge?.copyWith(
                             color: cs.onSurface, fontWeight: FontWeight.w700),
                       ),
@@ -1514,7 +1519,7 @@ class _FilaDatos extends StatelessWidget {
         dato(Icons.schedule, '${cancha.horaApertura}–${cancha.horaCierre}'),
         dato(Icons.timer_outlined, _dur),
         dato(Icons.payments_outlined,
-            '$monedaSimbolo${cancha.precioHora.toStringAsFixed(0)} /h'),
+            '${cancha.monedaSimbolo}${cancha.precioHora.toStringAsFixed(0)} /h'),
       ],
     );
   }

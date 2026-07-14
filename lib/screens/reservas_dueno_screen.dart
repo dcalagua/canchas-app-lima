@@ -60,7 +60,12 @@ class ReservasDuenoScreen extends StatelessWidget {
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(18, 16, 18, 90),
                     children: [
-                      _Caja(cobrado: cobrado, porCobrar: porCobrar),
+                      _Caja(
+                          cobrado: cobrado,
+                          porCobrar: porCobrar,
+                          moneda: mias.values.isNotEmpty
+                              ? mias.values.first.monedaSimbolo
+                              : 'S/'),
                       const SizedBox(height: 16),
                       // Tablet/landscape: reservas en grilla de 2-3 columnas.
                       if (MediaQuery.of(context).size.width >= 720)
@@ -103,9 +108,11 @@ class ReservasDuenoScreen extends StatelessWidget {
 }
 
 class _Caja extends StatelessWidget {
-  const _Caja({required this.cobrado, required this.porCobrar});
+  const _Caja(
+      {required this.cobrado, required this.porCobrar, required this.moneda});
   final int cobrado;
   final int porCobrar;
+  final String moneda;
 
   @override
   Widget build(BuildContext context) {
@@ -123,7 +130,7 @@ class _Caja extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('Cobrado', style: t.bodySmall?.copyWith(color: lima)),
-                Text('$monedaSimbolo $cobrado',
+                Text('$moneda $cobrado',
                     style: t.titleLarge?.copyWith(
                         color: Colors.white, fontWeight: FontWeight.w800)),
               ],
@@ -137,7 +144,7 @@ class _Caja extends StatelessWidget {
               children: [
                 Text('Por cobrar',
                     style: t.bodySmall?.copyWith(color: Colors.white70)),
-                Text('$monedaSimbolo $porCobrar',
+                Text('$moneda $porCobrar',
                     style: t.titleLarge?.copyWith(
                         color: Colors.white, fontWeight: FontWeight.w800)),
               ],
@@ -198,7 +205,7 @@ class _ReservaCard extends StatelessWidget {
             style: t.bodySmall?.copyWith(color: textoTenueDe(context)),
           ),
           const SizedBox(height: 2),
-          Text('$monedaSimbolo ${reserva.precio}',
+          Text('${reserva.monedaSimbolo} ${reserva.precio}',
               style: t.bodyMedium?.copyWith(
                   color: Theme.of(context).colorScheme.onSurface,
                   fontWeight: FontWeight.w700)),

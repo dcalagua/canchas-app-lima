@@ -477,7 +477,7 @@ class _TarjetaSugerencia extends StatelessWidget {
               const SizedBox(height: 10),
               Row(
                 children: [
-                  Text('$monedaSimbolo ${c.precioHora.toStringAsFixed(2)}',
+                  Text('${c.monedaSimbolo} ${c.precioHora.toStringAsFixed(2)}',
                       style: const TextStyle(
                           fontWeight: FontWeight.w900, fontSize: 16)),
                   Text('  /hora',

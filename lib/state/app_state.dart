@@ -1750,6 +1750,7 @@ class AppState extends ChangeNotifier {
       usuario: usuario?.email ?? '',
       // Deporte elegido para este slot (loza multiuso). Default: el principal.
       deporte: (deporte ?? cancha.deporte).name,
+      moneda: cancha.monedaSimbolo, // moneda de la cancha (Perú S/, Bolivia Bs…)
     );
 
     // Fuente de verdad anti-doble-reserva: Supabase con
