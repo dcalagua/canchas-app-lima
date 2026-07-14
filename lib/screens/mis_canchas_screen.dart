@@ -61,6 +61,8 @@ class _MisCanchasScreenState extends State<MisCanchasScreen> {
                       : ListView(
                           padding: const EdgeInsets.fromLTRB(18, 16, 18, 90),
                           children: [
+                            _GeneradoCard(canchas: canchas),
+                            const SizedBox(height: 14),
                             const _DestacarCanchasCard(),
                             const SizedBox(height: 14),
                             if (hayPendientes) ...[
@@ -83,6 +85,129 @@ class _MisCanchasScreenState extends State<MisCanchasScreen> {
           );
         },
       ),
+    );
+  }
+}
+
+/// Panel "Lo que Pichangol te generó": muestra las reservas y las ventas del MES
+/// que le llegaron al dueño por la app. Hace VISIBLE el valor de la plataforma
+/// (retención: la comisión se siente ganada, no cobrada).
+class _GeneradoCard extends StatelessWidget {
+  const _GeneradoCard({required this.canchas});
+  final List<Cancha> canchas;
+
+  static const _meses = [
+    'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
+  ];
+
+  String _miles(int n) {
+    final s = n.toString();
+    final b = StringBuffer();
+    for (var i = 0; i < s.length; i++) {
+      if (i > 0 && (s.length - i) % 3 == 0) b.write(',');
+      b.write(s[i]);
+    }
+    return b.toString();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ahora = DateTime.now();
+    final mesIso =
+        '${ahora.year}-${ahora.month.toString().padLeft(2, '0')}'; // "2026-07"
+    final ids = canchas.map((c) => c.id).toSet();
+    var nReservas = 0;
+    var ventas = 0;
+    for (final r in appState.reservas) {
+      if (!ids.contains(r.canchaId)) continue;
+      if (!r.fecha.startsWith(mesIso)) continue;
+      nReservas++;
+      ventas += r.precio;
+    }
+    final mon = canchas.isNotEmpty ? canchas.first.monedaSimbolo : monedaSimbolo;
+    final t = Theme.of(context).textTheme;
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        // Verde bosque→WhatsApp: es un "logro", se resalta con la marca.
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF128C7E), Color(0xFF075E54)],
+        ),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+              color: const Color(0xFF075E54).withOpacity(0.30),
+              blurRadius: 16,
+              offset: const Offset(0, 6)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.trending_up, color: Colors.white, size: 20),
+              const SizedBox(width: 8),
+              Text('Lo que Pichangol te generó',
+                  style: t.titleMedium?.copyWith(
+                      color: Colors.white, fontWeight: FontWeight.w800)),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Text('${_meses[ahora.month - 1]} ${ahora.year}',
+              style: t.bodySmall?.copyWith(color: Colors.white70)),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _Metrica(
+                    valor: '$nReservas',
+                    etiqueta: nReservas == 1 ? 'reserva' : 'reservas'),
+              ),
+              Container(width: 1, height: 40, color: Colors.white24),
+              Expanded(
+                child: _Metrica(
+                    valor: '$mon ${_miles(ventas)}', etiqueta: 'en ventas'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            nReservas == 0
+                ? 'Aún no tienes reservas este mes por la app. Cuando te lleguen, '
+                    'verás aquí cuánto te trae Pichangol.'
+                : 'Reservas que te llegaron por la app. ¡Sigue así! 🎉',
+            style: t.bodySmall?.copyWith(color: Colors.white70, height: 1.3),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Metrica extends StatelessWidget {
+  const _Metrica({required this.valor, required this.etiqueta});
+  final String valor;
+  final String etiqueta;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(valor,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: t.headlineSmall
+                ?.copyWith(color: Colors.white, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 2),
+        Text(etiqueta, style: t.bodySmall?.copyWith(color: Colors.white70)),
+      ],
     );
   }
 }
