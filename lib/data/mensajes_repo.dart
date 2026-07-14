@@ -35,6 +35,25 @@ class MensajesRepo {
         .map((rows) => rows.map((r) => Mensaje.fromRow(r)).toList());
   }
 
+  /// Trae (one-shot) todos los mensajes de un conjunto de academias, en orden
+  /// cronológico. Se usa para el inbox unificado "Mensajes" (agrupa por hilo).
+  /// Fail-safe: si no hay backend o falla, devuelve lista vacía.
+  static Future<List<Mensaje>> mensajesDeAcademias(List<String> ids) async {
+    if (!SupabaseService.disponible || ids.isEmpty) return const <Mensaje>[];
+    try {
+      final rows = await SupabaseService.client
+          .from(_tabla)
+          .select()
+          .inFilter('academia_id', ids)
+          .order('creado', ascending: true);
+      return (rows as List)
+          .map((r) => Mensaje.fromRow(r as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return const <Mensaje>[];
+    }
+  }
+
   /// Envía un mensaje (INSERT). Devuelve true si se guardó. Fail-safe.
   static Future<bool> enviar(Mensaje m) async {
     if (!SupabaseService.disponible) return false;

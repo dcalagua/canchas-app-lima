@@ -5,6 +5,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import 'convocatorias_screen.dart';
 import 'explorar_home_screen.dart';
+import 'mensajes_screen.dart';
 import 'mis_reservas_screen.dart';
 import 'perfil_screen.dart';
 
@@ -30,6 +31,7 @@ class _AppShellState extends State<AppShell> {
       ConvocatoriasScreen(
           clubId: ConvocatoriasService.slugClub(club), clubNombre: club),
       const MisReservasScreen(),
+      const MensajesScreen(),
       const PerfilScreen(),
     ];
   }
@@ -60,6 +62,10 @@ class _AppShellState extends State<AppShell> {
                   icon: Icon(Icons.event_note_outlined),
                   selectedIcon: Icon(Icons.event_note),
                   label: 'Reservas'),
+              const NavigationDestination(
+                  icon: Icon(Icons.chat_bubble_outline),
+                  selectedIcon: Icon(Icons.chat_bubble),
+                  label: 'Mensajes'),
               NavigationDestination(
                 icon: _PerfilIcono(fotoUrl: foto, seleccionado: false),
                 selectedIcon: _PerfilIcono(fotoUrl: foto, seleccionado: true),
