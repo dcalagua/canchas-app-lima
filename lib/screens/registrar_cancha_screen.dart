@@ -385,7 +385,11 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
         horaCierre: _cierre,
         duracionSlotMin: _duracion,
         superficie: _superficie,
-        moneda: paisActual.moneda, // congela la moneda del país donde se registra
+        // La moneda se congela por el país donde ESTÁ la cancha (su GPS), no por
+        // el país del dispositivo del dueño: una cancha en La Paz cobra en Bs
+        // aunque el dueño la registre desde Perú.
+        moneda: monedaDeCoordenadas(
+            _ubicacion!.latitude, _ubicacion!.longitude),
       );
       creadas.add(cancha);
       appState.agregarCancha(cancha);
@@ -412,7 +416,10 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
           horaCierre: _cierre,
           duracionSlotMin: _duracion,
           superficie: _superficies[dep] ?? '',
-          moneda: paisActual.moneda, // moneda del país donde se registra
+          // Moneda por la ubicación real de la cancha, no por el país del
+          // dispositivo del dueño (ver nota arriba).
+          moneda: monedaDeCoordenadas(
+              _ubicacion!.latitude, _ubicacion!.longitude),
         );
         creadas.add(cancha);
         appState.agregarCancha(cancha);

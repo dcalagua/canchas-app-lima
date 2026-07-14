@@ -1,5 +1,7 @@
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../config/pais.dart';
+
 /// Distritos del piloto (densidad geográfica antes que cobertura amplia).
 enum Distrito {
   sanBorja('San Borja'),
@@ -103,9 +105,14 @@ class Cancha {
     this.moneda = '',
   });
 
-  /// Símbolo de moneda de la cancha (default 'S/', Perú). El precio se muestra
-  /// SIEMPRE en esta moneda, sin importar desde qué país se abra la app.
-  String get monedaSimbolo => moneda.isNotEmpty ? moneda : 'S/';
+  /// Símbolo de moneda de la cancha. La UBICACIÓN de la cancha es la fuente de
+  /// verdad (una cancha en La Paz cobra en Bs, aunque el dueño la registrara
+  /// desde Perú): se deriva del país donde caen sus coordenadas. Esto además
+  /// auto-corrige canchas viejas que quedaron con la moneda del dispositivo del
+  /// dueño. Si por algún motivo no se puede derivar, cae a la moneda congelada
+  /// al registrarla y, en última instancia, a 'S/'.
+  String get monedaSimbolo =>
+      monedaDeCoordenadas(ubicacion.latitude, ubicacion.longitude);
 
   /// Deportes jugables en esta cancha, garantizando al menos el principal.
   /// Es la fuente de verdad para filtros/visibilidad (una loza multiuso aparece

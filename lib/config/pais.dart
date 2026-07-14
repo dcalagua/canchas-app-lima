@@ -188,6 +188,69 @@ Future<void> cargarPaisPersistido() async {
   }
 }
 
+// ── Detección de país por COORDENADAS ───────────────────────────────────────
+//
+// La moneda de una cancha se congela por el país donde ESTÁ FÍSICAMENTE la
+// cancha (una cancha en La Paz cobra en Bs aunque el dueño registre desde Perú),
+// no por `paisActual` (que sigue el GPS del dispositivo del dueño). Para eso
+// necesitamos mapear lat/lng → país.
+//
+// Estrategia: cajas (bounding boxes) por país; si el punto cae en UNA sola caja
+// se usa esa; si cae en varias (zona fronteriza) o en ninguna, se elige el país
+// soportado cuyo centro esté más cerca. Es una heurística suficiente para el
+// piloto (ciudades lejos de la frontera: Lima, La Paz, Santa Cruz, Quito).
+
+class _Caja {
+  final double latMin, latMax, lngMin, lngMax;
+  final double latC, lngC; // centro aproximado, para el desempate por cercanía
+  const _Caja(this.latMin, this.latMax, this.lngMin, this.lngMax, this.latC,
+      this.lngC);
+  bool contiene(double lat, double lng) =>
+      lat >= latMin && lat <= latMax && lng >= lngMin && lng <= lngMax;
+  double distancia(double lat, double lng) {
+    final dLat = lat - latC, dLng = lng - lngC;
+    return dLat * dLat + dLng * dLng; // cuadrado (solo para comparar)
+  }
+}
+
+// Cajas ajustadas para que la zona clara de cada país sea inequívoca. El borde
+// este de Perú (-68.6) y el oeste de Bolivia (-69.7) se solapan poco; puntos al
+// oeste de -69.7 (p. ej. Puno, -70.0) quedan sólo en Perú.
+const Map<String, _Caja> _cajasPais = {
+  'PE': _Caja(-18.4, 0.05, -81.4, -68.6, -9.19, -75.02),
+  'BO': _Caja(-23.0, -9.6, -69.7, -57.4, -16.29, -63.59),
+  'EC': _Caja(-5.1, 1.7, -81.1, -75.1, -1.83, -78.18),
+};
+
+/// País soportado al que corresponde una coordenada. Nunca es null: si el punto
+/// no cae en ninguna caja, devuelve el país cuyo centro esté más cerca (así una
+/// cancha siempre congela ALGUNA moneda coherente). Fuente de la moneda de una
+/// cancha por su ubicación real.
+PaisConfig paisDeCoordenadas(double lat, double lng) {
+  // 1) Países cuya caja contiene el punto.
+  final dentro = <String>[
+    for (final e in _cajasPais.entries)
+      if (e.value.contiene(lat, lng)) e.key,
+  ];
+  final candidatos = dentro.isNotEmpty ? dentro : _cajasPais.keys.toList();
+  // 2) Entre los candidatos, el de centro más cercano.
+  String mejor = candidatos.first;
+  double mejorDist = _cajasPais[mejor]!.distancia(lat, lng);
+  for (final iso in candidatos.skip(1)) {
+    final d = _cajasPais[iso]!.distancia(lat, lng);
+    if (d < mejorDist) {
+      mejorDist = d;
+      mejor = iso;
+    }
+  }
+  return paisesSoportados[mejor] ?? paisActual;
+}
+
+/// Símbolo de moneda ('S/', 'Bs', '$') que corresponde a una coordenada, para
+/// congelar `Cancha.moneda` por la ubicación real de la cancha.
+String monedaDeCoordenadas(double lat, double lng) =>
+    paisDeCoordenadas(lat, lng).moneda;
+
 // ── Atajos de UI (leen del país actual) ──────────────────────────────────────
 
 /// Prefijo telefónico con "+": "+51" / "+591". Para prefixText de campos WhatsApp.
