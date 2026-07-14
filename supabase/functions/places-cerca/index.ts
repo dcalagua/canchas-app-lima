@@ -24,6 +24,8 @@ const CONSULTAS = [
   "cancha de pádel",
   "club de pádel",
   "cancha de pickleball",
+  "cancha de vóley",
+  "cancha de básquet",
   // Clubes formales (traen country clubs / sedes de clubes al radar).
   "club deportivo",
   "polideportivo",
