@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 
-import '../services/convocatorias_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
-import 'convocatorias_screen.dart';
 import 'explorar_home_screen.dart';
 import 'mensajes_screen.dart';
 import 'mis_reservas_screen.dart';
+import 'partidos_screen.dart';
 import 'perfil_screen.dart';
 
 /// Shell del JUGADOR con barra inferior (estilo Airbnb): Explorar · Partidos ·
@@ -25,11 +24,9 @@ class _AppShellState extends State<AppShell> {
   @override
   void initState() {
     super.initState();
-    final club = appState.nombreClub;
     _paginas = [
       const ExplorarHomeScreen(),
-      ConvocatoriasScreen(
-          clubId: ConvocatoriasService.slugClub(club), clubNombre: club),
+      const PartidosScreen(), // "Match": partidos abiertos (+ pichangas de club)
       const MisReservasScreen(),
       const MensajesScreen(),
       const PerfilScreen(),

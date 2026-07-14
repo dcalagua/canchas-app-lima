@@ -1,0 +1,731 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+
+import '../config/pais.dart';
+import '../data/partidos_repo.dart';
+import '../models/club.dart';
+import '../models/models.dart';
+import '../models/partido.dart';
+import '../services/convocatorias_service.dart';
+import '../state/app_state.dart';
+import '../theme.dart';
+import 'chat_screen.dart';
+import 'convocatorias_screen.dart';
+import 'login_google_sheet.dart';
+
+/// "Partidos abiertos" — el **Match** del benchmark: cualquier jugador publica un
+/// partido con cupos ("busco 2 para completar fulbito el sábado") y otros se
+/// apuntan. Distinto de las pichangas de club (esas las organiza el dueño): esto
+/// es matchmaking entre jugadores. Cada partido tiene su chat de coordinación
+/// (reusa la infraestructura de grupos).
+class PartidosScreen extends StatefulWidget {
+  const PartidosScreen({super.key});
+
+  @override
+  State<PartidosScreen> createState() => _PartidosScreenState();
+}
+
+class _PartidosScreenState extends State<PartidosScreen> {
+  List<PartidoAbierto> _partidos = const [];
+  bool _cargando = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  Future<void> _cargar() async {
+    final lista = await PartidosRepo.abiertos();
+    if (!mounted) return;
+    // Filtro por país (como las academias): partidos del país donde estás; los
+    // que no tienen ubicación se muestran igual (no se puede discriminar).
+    final iso = paisActual.iso;
+    final filtrados = [
+      for (final p in lista)
+        if (p.ubicacion == null ||
+            paisDeCoordenadas(p.ubicacion!.latitude, p.ubicacion!.longitude)
+                    .iso ==
+                iso)
+          p
+    ];
+    setState(() {
+      _partidos = filtrados;
+      _cargando = false;
+    });
+  }
+
+  Future<void> _crear() async {
+    if (appState.usuario == null) {
+      await LoginGoogleSheet.mostrar(context);
+      if (appState.usuario == null) return;
+    }
+    if (!mounted) return;
+    final creado = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => const _CrearPartidoSheet(),
+    );
+    if (creado == true) {
+      _snack('¡Partido publicado! Ya pueden apuntarse.');
+      _cargar();
+    }
+  }
+
+  Future<void> _apuntarse(PartidoAbierto p) async {
+    if (appState.usuario == null) {
+      await LoginGoogleSheet.mostrar(context);
+      if (appState.usuario == null) return;
+    }
+    final u = appState.usuario!;
+    final ok = await PartidosRepo.apuntarse(p.id, u.email, u.nombre);
+    if (!mounted) return;
+    _snack(ok ? '¡Te apuntaste! Coordinen por el chat del partido.' : 'No se pudo apuntar.');
+    if (ok) _cargar();
+  }
+
+  Future<void> _bajarse(PartidoAbierto p) async {
+    final u = appState.usuario;
+    if (u == null) return;
+    final ok = await PartidosRepo.bajarse(p.id, u.email);
+    if (!mounted) return;
+    _snack(ok ? 'Te bajaste del partido.' : 'No se pudo.');
+    if (ok) _cargar();
+  }
+
+  Future<void> _eliminar(PartidoAbierto p) async {
+    final ok = await PartidosRepo.eliminar(p.id);
+    if (!mounted) return;
+    _snack(ok ? 'Partido eliminado.' : 'No se pudo eliminar.');
+    if (ok) _cargar();
+  }
+
+  void _coordinar(PartidoAbierto p) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ChatScreen(
+        academiaId: '',
+        cuentaEmail: '',
+        titulo: p.titulo,
+        soyProfe: false,
+        tipo: 'grupo',
+        refId: p.id,
+      ),
+    ));
+  }
+
+  void _pichangasDeClub() {
+    final club = appState.nombreClub;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ConvocatoriasScreen(
+          clubId: ConvocatoriasService.slugClub(club), clubNombre: club),
+    ));
+  }
+
+  void _snack(String m) => ScaffoldMessenger.of(context)
+      .showSnackBar(SnackBar(content: Text(m)));
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Scaffold(
+      floatingActionButton: FloatingActionButton.extended(
+        backgroundColor: lima,
+        foregroundColor: Colors.white,
+        onPressed: _crear,
+        icon: const Icon(Icons.add),
+        label: const Text('Crear partido'),
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Cabecera verde (lenguaje WhatsApp) con acceso a pichangas de club.
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(20, 18, 16, 18),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [lima, teal],
+                ),
+                borderRadius:
+                    BorderRadius.vertical(bottom: Radius.circular(22)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Partidos',
+                      style: t.headlineSmall?.copyWith(
+                          color: Colors.white, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 2),
+                  Text('Publica un partido y encuentra con quién jugar.',
+                      style: t.bodyMedium
+                          ?.copyWith(color: Colors.white.withOpacity(0.92))),
+                  const SizedBox(height: 12),
+                  InkWell(
+                    onTap: _pichangasDeClub,
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.18),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.event_available,
+                              color: Colors.white, size: 18),
+                          const SizedBox(width: 8),
+                          Text('Pichangas de mi club',
+                              style: t.bodySmall?.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700)),
+                          const SizedBox(width: 4),
+                          const Icon(Icons.chevron_right,
+                              color: Colors.white, size: 18),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: _cargar,
+                child: _cargando
+                    ? const Center(child: CircularProgressIndicator())
+                    : _partidos.isEmpty
+                        ? ListView(children: const [
+                            SizedBox(height: 80),
+                            _Vacio(),
+                          ])
+                        : ListView.builder(
+                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+                            itemCount: _partidos.length,
+                            itemBuilder: (_, i) => _PartidoCard(
+                              partido: _partidos[i],
+                              onApuntarse: () => _apuntarse(_partidos[i]),
+                              onBajarse: () => _bajarse(_partidos[i]),
+                              onCoordinar: () => _coordinar(_partidos[i]),
+                              onEliminar: () => _eliminar(_partidos[i]),
+                            ),
+                          ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Vacio extends StatelessWidget {
+  const _Vacio();
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 32),
+      child: Column(
+        children: [
+          Icon(Icons.sports_soccer, size: 56, color: lima.withOpacity(0.6)),
+          const SizedBox(height: 14),
+          const Text('Todavía no hay partidos abiertos',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+          const SizedBox(height: 6),
+          Text(
+              '¿Te falta gente para jugar? Publica tu partido con el botón '
+              '"Crear partido" y deja que otros se apunten.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: textoTenueDe(context), height: 1.35)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Formatea 'YYYY-MM-DD' + 'HH:mm' a algo legible: "vie 18 jul · 8:00 p.m.".
+String _fechaLegible(String fecha, String hora) {
+  const dias = ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'];
+  const meses = [
+    'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+    'jul', 'ago', 'set', 'oct', 'nov', 'dic'
+  ];
+  final d = DateTime.tryParse(fecha);
+  final base = d != null
+      ? '${dias[d.weekday - 1]} ${d.day} ${meses[d.month - 1]}'
+      : fecha;
+  return hora.isNotEmpty ? '$base · $hora' : base;
+}
+
+class _PartidoCard extends StatelessWidget {
+  const _PartidoCard({
+    required this.partido,
+    required this.onApuntarse,
+    required this.onBajarse,
+    required this.onCoordinar,
+    required this.onEliminar,
+  });
+  final PartidoAbierto partido;
+  final VoidCallback onApuntarse;
+  final VoidCallback onBajarse;
+  final VoidCallback onCoordinar;
+  final VoidCallback onEliminar;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final email = appState.usuario?.email;
+    final apuntado = partido.apuntado(email);
+    final esCreador = partido.esCreador(email);
+    final p = partido;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: trazo),
+        boxShadow: const [
+          BoxShadow(color: Color(0x14000000), blurRadius: 14, offset: Offset(0, 5)),
+        ],
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 22,
+                backgroundColor: colorDeporte(p.deporte),
+                child: Icon(iconoDeporte(p.deporte), color: Colors.white),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(p.titulo,
+                        style: t.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 2),
+                    Text(_fechaLegible(p.fecha, p.hora),
+                        style: t.bodySmall
+                            ?.copyWith(color: textoTenueDe(context))),
+                  ],
+                ),
+              ),
+              // Chip "faltan N" / "completo".
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: p.lleno ? const Color(0xFFEBEBEB) : limaSuave,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                    p.lleno ? 'Completo' : 'Faltan ${p.faltan}',
+                    style: TextStyle(
+                        color: p.lleno ? textoTenue : bosque,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (p.sedeNombre.isNotEmpty)
+            _Linea(Icons.place_outlined, p.sedeNombre),
+          _Linea(Icons.groups_outlined,
+              '${p.inscritos} de ${p.cupos} jugadores · ${p.deporte.etiqueta}'),
+          if (p.nota.isNotEmpty) _Linea(Icons.sticky_note_2_outlined, p.nota),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              if (apuntado) ...[
+                Expanded(
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                        backgroundColor: lima, foregroundColor: Colors.white),
+                    onPressed: onCoordinar,
+                    icon: const Icon(Icons.chat_bubble_outline, size: 18),
+                    label: const Text('Coordinar'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                if (esCreador)
+                  OutlinedButton(
+                    onPressed: onEliminar,
+                    style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFFC0392B)),
+                    child: const Text('Eliminar'),
+                  )
+                else
+                  OutlinedButton(
+                    onPressed: onBajarse,
+                    child: const Text('Salir'),
+                  ),
+              ] else
+                Expanded(
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                        backgroundColor: p.lleno ? const Color(0xFFBDBDBD) : lima,
+                        foregroundColor: Colors.white),
+                    onPressed: p.lleno ? null : onApuntarse,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: Text(p.lleno ? 'Completo' : 'Me apunto'),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Linea extends StatelessWidget {
+  const _Linea(this.icono, this.texto);
+  final IconData icono;
+  final String texto;
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icono, size: 16, color: textoTenueDe(context)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(texto,
+                style: TextStyle(
+                    color: textoTenueDe(context), fontSize: 13, height: 1.3)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Hoja para publicar un partido nuevo.
+class _CrearPartidoSheet extends StatefulWidget {
+  const _CrearPartidoSheet();
+  @override
+  State<_CrearPartidoSheet> createState() => _CrearPartidoSheetState();
+}
+
+class _CrearPartidoSheetState extends State<_CrearPartidoSheet> {
+  Deporte _deporte = Deporte.futbol;
+  final _titulo = TextEditingController();
+  final _sede = TextEditingController();
+  final _nota = TextEditingController();
+  DateTime? _fecha;
+  TimeOfDay? _hora;
+  int _cupos = 10;
+  bool _guardando = false;
+  LatLng? _sedeUbic;
+
+  late final Map<String, LatLng> _sedes = _cargarSedes();
+
+  Map<String, LatLng> _cargarSedes() {
+    final m = <String, LatLng>{};
+    for (final c in Club.agrupar(appState.todasLasCanchas())) {
+      if (c.nombre.trim().isNotEmpty) m.putIfAbsent(c.nombre, () => c.ubicacion);
+    }
+    return m;
+  }
+
+  @override
+  void dispose() {
+    _titulo.dispose();
+    _sede.dispose();
+    _nota.dispose();
+    super.dispose();
+  }
+
+  Future<void> _elegirFecha() async {
+    final hoy = DateTime.now();
+    final d = await showDatePicker(
+      context: context,
+      initialDate: _fecha ?? hoy,
+      firstDate: hoy,
+      lastDate: hoy.add(const Duration(days: 90)),
+    );
+    if (d != null) setState(() => _fecha = d);
+  }
+
+  Future<void> _elegirHora() async {
+    final h = await showTimePicker(
+      context: context,
+      initialTime: _hora ?? const TimeOfDay(hour: 20, minute: 0),
+    );
+    if (h != null) setState(() => _hora = h);
+  }
+
+  String _dosDig(int n) => n.toString().padLeft(2, '0');
+
+  Future<void> _publicar() async {
+    final u = appState.usuario;
+    if (u == null) return;
+    if (_fecha == null || _hora == null) {
+      _err('Elige la fecha y la hora del partido.');
+      return;
+    }
+    if (_sede.text.trim().isEmpty) {
+      _err('¿Dónde se juega? Pon la cancha o el lugar.');
+      return;
+    }
+    setState(() => _guardando = true);
+    final ubic = _sedes[_sede.text.trim()] ?? _sedeUbic;
+    final fechaIso =
+        '${_fecha!.year}-${_dosDig(_fecha!.month)}-${_dosDig(_fecha!.day)}';
+    final titulo = _titulo.text.trim().isNotEmpty
+        ? _titulo.text.trim()
+        : '${_deporte.etiqueta} · ${_sede.text.trim()}';
+    final partido = PartidoAbierto(
+      id: 'p_${DateTime.now().microsecondsSinceEpoch}',
+      creadorEmail: u.email,
+      creadorNombre: u.nombre,
+      deporte: _deporte,
+      titulo: titulo,
+      fecha: fechaIso,
+      hora: '${_dosDig(_hora!.hour)}:${_dosDig(_hora!.minute)}',
+      sedeNombre: _sede.text.trim(),
+      lat: ubic?.latitude,
+      lng: ubic?.longitude,
+      cupos: _cupos,
+      nota: _nota.text.trim(),
+      creado: DateTime.now(),
+    );
+    final ok = await PartidosRepo.crear(partido);
+    if (!mounted) return;
+    setState(() => _guardando = false);
+    if (ok) {
+      Navigator.of(context).pop(true);
+    } else {
+      _err('No se pudo publicar. Revisa tu conexión.');
+    }
+  }
+
+  void _err(String m) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+          20, 18, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Nuevo partido',
+                style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 14),
+            Text('Deporte', style: t.labelLarge),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final d in deportesActivos)
+                  ChoiceChip(
+                    label: Text(d.etiqueta),
+                    selected: _deporte == d,
+                    selectedColor: lima,
+                    labelStyle: TextStyle(
+                        color: _deporte == d ? Colors.white : cs.onSurface,
+                        fontWeight: FontWeight.w600),
+                    onSelected: (_) => setState(() => _deporte = d),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Autocomplete<String>(
+              optionsBuilder: (v) {
+                final q = v.text.trim().toLowerCase();
+                if (q.isEmpty) return const Iterable<String>.empty();
+                return _sedes.keys
+                    .where((n) => n.toLowerCase().contains(q))
+                    .take(6);
+              },
+              onSelected: (sel) {
+                _sede.text = sel;
+                _sedeUbic = _sedes[sel];
+              },
+              fieldViewBuilder: (ctx, ctrl, focus, _) {
+                return TextField(
+                  controller: ctrl,
+                  focusNode: focus,
+                  // Espeja lo tecleado en nuestro controller (lo leemos al
+                  // publicar); onSelected además captura la ubicación.
+                  onChanged: (v) => _sede.text = v,
+                  decoration: const InputDecoration(
+                      labelText: '¿Dónde se juega?',
+                      hintText: 'Cancha o lugar (ej.: La Molina)',
+                      prefixIcon: Icon(Icons.place_outlined)),
+                );
+              },
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: _SelectorCampo(
+                    icono: Icons.calendar_today,
+                    etiqueta: _fecha == null
+                        ? 'Fecha'
+                        : '${_fecha!.day}/${_dosDig(_fecha!.month)}',
+                    onTap: _elegirFecha,
+                    lleno: _fecha != null,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _SelectorCampo(
+                    icono: Icons.access_time,
+                    etiqueta: _hora == null
+                        ? 'Hora'
+                        : '${_dosDig(_hora!.hour)}:${_dosDig(_hora!.minute)}',
+                    onTap: _elegirHora,
+                    lleno: _hora != null,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text('Jugadores necesarios', style: t.labelLarge),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                _StepBtn(
+                    icon: Icons.remove,
+                    onTap: () =>
+                        setState(() => _cupos = (_cupos - 1).clamp(2, 30))),
+                Expanded(
+                  child: Center(
+                    child: Text('$_cupos',
+                        style: t.headlineSmall
+                            ?.copyWith(fontWeight: FontWeight.w800)),
+                  ),
+                ),
+                _StepBtn(
+                    icon: Icons.add,
+                    onTap: () =>
+                        setState(() => _cupos = (_cupos + 1).clamp(2, 30))),
+              ],
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _titulo,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(
+                  labelText: 'Título (opcional)',
+                  hintText: 'Ej.: Fulbito de los viernes'),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _nota,
+              maxLines: 2,
+              textCapitalization: TextCapitalization.sentences,
+              inputFormatters: [LengthLimitingTextInputFormatter(160)],
+              decoration: const InputDecoration(
+                  labelText: 'Nota (opcional)',
+                  hintText: 'Nivel, si traer pechera, cómo se paga la cancha…'),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                    backgroundColor: lima,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 15)),
+                onPressed: _guardando ? null : _publicar,
+                child: _guardando
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2.4, color: Colors.white))
+                    : const Text('Publicar partido'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SelectorCampo extends StatelessWidget {
+  const _SelectorCampo({
+    required this.icono,
+    required this.etiqueta,
+    required this.onTap,
+    required this.lleno,
+  });
+  final IconData icono;
+  final String etiqueta;
+  final VoidCallback onTap;
+  final bool lleno;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: lleno ? bosque : trazo),
+        ),
+        child: Row(
+          children: [
+            Icon(icono, size: 18, color: lleno ? bosque : textoTenue),
+            const SizedBox(width: 10),
+            Text(etiqueta,
+                style: TextStyle(
+                    color: lleno ? cs.onSurface : textoTenue,
+                    fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StepBtn extends StatelessWidget {
+  const _StepBtn({required this.icon, required this.onTap});
+  final IconData icon;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: limaSuave,
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Icon(icon, color: bosque),
+        ),
+      ),
+    );
+  }
+}
