@@ -73,6 +73,7 @@ mal), registrar el caso y ajustar:
 | Loza deportiva de barrio | Detectado (fútbol) | jerga informal |
 | Gimnasio / tienda deportiva | NO detectado | descarte por tipo/palabra |
 | **"Tenis Americanos" (zapatería)** | **NO detectado** | "tenis" en jerga = zapatillas; se descarta por tipo `shoe_store`/palabra de calzado, y porque `tenis` sin señal de recinto (club/cancha/academia) no basta |
+| **Pista de skate / patinaje** | **NO detectado** | skate/patineta/BMX/atletismo no son canchas reservables del marketplace (descarte por palabra) |
 
 ## Ambigüedad de "tenis" (importante)
 

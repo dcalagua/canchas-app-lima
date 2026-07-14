@@ -304,6 +304,10 @@ class PlacesService {
     // Zapaterías/ropa deportiva: "tenis" en jerga = zapatillas. NO son canchas.
     'zapatilla', 'zapato', 'calzado', 'sneaker', 'sport wear', 'sportwear',
     'deportes americano', 'ropa deportiva', 'boutique', 'outlet',
+    // Deportes que NO son de cancha reservable en el marketplace:
+    'skate', 'skatepark', 'patineta', 'patinaje', 'monopatín', 'monopatin',
+    'roller', 'bmx', 'ciclovía', 'ciclovia', 'pista atlética', 'pista atletica',
+    'atletismo', 'skatboard', 'patinódromo', 'patinodromo',
     // Atracciones/servicios DENTRO de un club que no son canchas de alquiler:
     'laguna', 'acuático', 'acuatico', 'waterpark', 'parque acuático',
     'restaurante', 'hotel', 'spa', 'juegos para niños', 'zoológico', 'zoologico',
