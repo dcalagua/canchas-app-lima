@@ -49,6 +49,18 @@ class _MisCanchasScreenState extends State<MisCanchasScreen> {
           final canchas = appState.misCanchas;
           final hayPendientes = canchas.any((c) => c.pendienteVerificacion);
           final locales = Club.agrupar(canchas);
+          // Agrupa los locales por PAÍS (según la ubicación real de cada uno)
+          // para que el dueño diferencie sus canchas de Perú, Bolivia, etc. El
+          // encabezado de país solo aparece si hay más de un país.
+          final porPais = <String, List<Club>>{};
+          for (final l in locales) {
+            final iso = paisDeCoordenadas(
+                    l.ubicacion.latitude, l.ubicacion.longitude)
+                .iso;
+            porPais.putIfAbsent(iso, () => []).add(l);
+          }
+          final isosPais = porPais.keys.toList();
+          final multiPais = isosPais.length > 1;
           return Column(
             children: [
               _HeaderMisCanchas(
@@ -70,14 +82,24 @@ class _MisCanchasScreenState extends State<MisCanchasScreen> {
                               const _AvisoPendiente(),
                               const SizedBox(height: 14),
                             ],
-                            // Tablet/landscape: grilla de 2-3 columnas.
-                            if (MediaQuery.of(context).size.width >= 720)
-                              _GridLocales(locales: locales)
-                            else
-                              for (final local in locales) ...[
-                                _LocalCard(local: local),
-                                const SizedBox(height: 14),
+                            // Locales agrupados por país (encabezado solo si el
+                            // dueño tiene canchas en más de un país). Tablet/
+                            // landscape: grilla de 2-3 columnas por país.
+                            for (final iso in isosPais) ...[
+                              if (multiPais) ...[
+                                _PaisSeccionHeader(
+                                    iso: iso, nLocales: porPais[iso]!.length),
+                                const SizedBox(height: 12),
                               ],
+                              if (MediaQuery.of(context).size.width >= 720)
+                                _GridLocales(locales: porPais[iso]!)
+                              else
+                                for (final local in porPais[iso]!) ...[
+                                  _LocalCard(local: local),
+                                  const SizedBox(height: 14),
+                                ],
+                              if (multiPais) const SizedBox(height: 8),
+                            ],
                           ],
                         ),
                 ),
@@ -401,6 +423,42 @@ class _PaisChip extends StatelessWidget {
                   fontSize: 13)),
         ),
       ),
+    );
+  }
+}
+
+/// Encabezado de sección por PAÍS en "Mis canchas" (bandera + nombre + conteo).
+/// Separa visualmente los locales de Perú, Bolivia, etc. para que el dueño con
+/// canchas en varios países las diferencie de un vistazo.
+class _PaisSeccionHeader extends StatelessWidget {
+  const _PaisSeccionHeader({required this.iso, required this.nLocales});
+  final String iso;
+  final int nLocales;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final p = paisesSoportados[iso];
+    final nombre = p?.nombre ?? iso;
+    final bandera = p?.bandera ?? '🏳️';
+    return Row(
+      children: [
+        Text(bandera, style: const TextStyle(fontSize: 22)),
+        const SizedBox(width: 8),
+        Text(nombre,
+            style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+        const SizedBox(width: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+              color: limaSuave, borderRadius: BorderRadius.circular(10)),
+          child: Text('$nLocales ${nLocales == 1 ? 'local' : 'locales'}',
+              style: t.labelSmall
+                  ?.copyWith(color: bosque, fontWeight: FontWeight.w700)),
+        ),
+        const SizedBox(width: 8),
+        const Expanded(child: Divider(height: 1, color: trazo)),
+      ],
     );
   }
 }
