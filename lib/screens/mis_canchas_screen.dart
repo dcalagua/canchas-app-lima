@@ -122,6 +122,7 @@ class _GeneradoCard extends StatelessWidget {
     for (final r in appState.reservas) {
       if (!ids.contains(r.canchaId)) continue;
       if (!r.fecha.startsWith(mesIso)) continue;
+      if (r.estado == EstadoReserva.noShow) continue; // no-show no es venta
       nReservas++;
       ventas += r.precio;
     }
@@ -171,7 +172,7 @@ class _GeneradoCard extends StatelessWidget {
               Container(width: 1, height: 40, color: Colors.white24),
               Expanded(
                 child: _Metrica(
-                    valor: '$mon ${_miles(ventas)}', etiqueta: 'en ventas'),
+                    valor: '$mon ${_miles(ventas)}', etiqueta: 'reservado'),
               ),
             ],
           ),
