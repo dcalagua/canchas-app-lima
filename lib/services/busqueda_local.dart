@@ -64,8 +64,9 @@ class BusquedaLocal {
   /// Deporte mencionado (con jerga PE). Null si no se reconoce ninguno.
   static Deporte? _deporteEn(String t) {
     if (t.contains('pickle')) return Deporte.pickleball;
+    // Vóley: incluye 'ecuavoley' (variante nacional de Ecuador, 3 vs 3).
     if (t.contains('voley') || t.contains('voleibol') || t.contains('volei') ||
-        t.contains('volley')) {
+        t.contains('volley') || t.contains('ecuavoley')) {
       return Deporte.voley;
     }
     if (t.contains('basquet') || t.contains('basket') ||
@@ -75,10 +76,12 @@ class BusquedaLocal {
     if (t.contains('tenis') || t.contains('tennis') || t.contains('raqueta')) {
       return Deporte.tenis;
     }
-    // Fútbol y su jerga (sin 'cancha', que es genérico y no implica deporte).
+    // Fútbol y su jerga por país (sin 'cancha', que es genérico):
+    //  PE: pichanga/pichanguita/fulbito · BO: picho · EC: indor/picadito.
     if (t.contains('futbol') || t.contains('futsal') || t.contains('fulbito') ||
-        t.contains('pichang') || t.contains('grass') || t.contains('sintetic') ||
-        t.contains('fut ')) {
+        t.contains('pichang') || t.contains('picho') || t.contains('indor') ||
+        t.contains('picadito') || t.contains('grass') ||
+        t.contains('sintetic') || t.contains('fut ')) {
       return Deporte.futbol;
     }
     return null;
