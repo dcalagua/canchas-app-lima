@@ -74,6 +74,26 @@ class MensajesRepo {
     }
   }
 
+  /// Mensajes de un conjunto de GRUPOS (one-shot), para el inbox.
+  static Future<List<Mensaje>> mensajesDeGrupos(List<String> grupoIds) async {
+    if (!SupabaseService.disponible || grupoIds.isEmpty) {
+      return const <Mensaje>[];
+    }
+    try {
+      final rows = await SupabaseService.client
+          .from(_tabla)
+          .select()
+          .eq('tipo', 'grupo')
+          .inFilter('ref_id', grupoIds)
+          .order('creado', ascending: true);
+      return (rows as List)
+          .map((r) => Mensaje.fromRow(r as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return const <Mensaje>[];
+    }
+  }
+
   /// Envía un mensaje (INSERT). Devuelve true si se guardó. Fail-safe.
   static Future<bool> enviar(Mensaje m) async {
     if (!SupabaseService.disponible) return false;

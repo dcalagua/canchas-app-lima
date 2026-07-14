@@ -95,29 +95,41 @@ serve(async (req) => {
     const m = body.record ?? body; // webhook: {type, table, record}
     if (!m || !m.texto) return ok({ skip: "sin mensaje" });
 
-    // 1) Destinatario según el tipo de conversación y quién escribió.
-    let destino = "";
-    if (m.tipo === "cancha") {
-      // Conversación de cancha: ref_id = email del dueño, cuenta_email = jugador.
-      // Si escribió el dueño (es_profe) → avisa al jugador; si no → al dueño.
-      destino = (m.es_profe === true ? (m.cuenta_email ?? "") : (m.ref_id ?? ""))
-        .toLowerCase();
+    // 1) Destinatarios según el tipo de conversación.
+    let destinos: string[] = [];
+    if (m.tipo === "grupo") {
+      // Grupo: avisa a todos los miembros menos el autor.
+      const mm = await sb(
+        `pichangol_grupo_miembros?grupo_id=eq.${encodeURIComponent(m.ref_id)}&select=email`,
+      );
+      const autor = (m.autor_email ?? "").toLowerCase();
+      destinos = mm
+        .map((x) => (x.email ?? "").toLowerCase())
+        .filter((e) => e && e !== autor);
+    } else if (m.tipo === "cancha") {
+      // Cancha: ref_id = email del dueño, cuenta_email = jugador.
+      destinos = [
+        (m.es_profe === true ? (m.cuenta_email ?? "") : (m.ref_id ?? ""))
+          .toLowerCase(),
+      ];
     } else if (m.es_profe === true) {
-      destino = (m.cuenta_email ?? "").toLowerCase();
+      destinos = [(m.cuenta_email ?? "").toLowerCase()];
     } else {
       const acs = await sb(
         `pichangol_academias?id=eq.${encodeURIComponent(m.academia_id)}&select=dueno`,
       );
-      destino = (acs[0]?.dueno ?? "").toLowerCase();
+      destinos = [(acs[0]?.dueno ?? "").toLowerCase()];
     }
-    if (!destino) return ok({ skip: "sin destinatario" });
+    destinos = destinos.filter(Boolean);
+    if (destinos.length === 0) return ok({ skip: "sin destinatario" });
 
-    // 2) Tokens del destinatario (puede tener varios dispositivos).
+    // 2) Tokens de todos los destinatarios (cada uno puede tener varios).
+    const inList = destinos.map((e) => encodeURIComponent(e)).join(",");
     const filas = await sb(
-      `pichangol_push_tokens?email=eq.${encodeURIComponent(destino)}&select=token`,
+      `pichangol_push_tokens?email=in.(${inList})&select=token`,
     );
     const tokens: string[] = filas.map((f) => f.token).filter(Boolean);
-    if (tokens.length === 0) return ok({ skip: "sin tokens", destino });
+    if (tokens.length === 0) return ok({ skip: "sin tokens", destinos });
 
     // 3) Access token FCM.
     const sa = JSON.parse(SA_RAW);

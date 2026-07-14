@@ -217,8 +217,16 @@ class _ChatScreenState extends State<ChatScreen> {
                         itemCount: msgs.length,
                         itemBuilder: (_, i) {
                           final m = msgs[i];
-                          final mio = m.esProfe == widget.soyProfe;
-                          return _Burbuja(mensaje: m, mio: mio, wa: wa);
+                          final esGrupo = widget.tipo == 'grupo';
+                          final mio = esGrupo
+                              ? m.autorEmail.toLowerCase() ==
+                                  (appState.usuario?.email ?? '').toLowerCase()
+                              : m.esProfe == widget.soyProfe;
+                          return _Burbuja(
+                              mensaje: m,
+                              mio: mio,
+                              wa: wa,
+                              mostrarAutor: esGrupo && !mio);
                         },
                       );
                     },
@@ -242,10 +250,15 @@ class _ChatScreenState extends State<ChatScreen> {
 }
 
 class _Burbuja extends StatelessWidget {
-  const _Burbuja({required this.mensaje, required this.mio, required this.wa});
+  const _Burbuja(
+      {required this.mensaje,
+      required this.mio,
+      required this.wa,
+      this.mostrarAutor = false});
   final Mensaje mensaje;
   final bool mio;
   final _WA wa;
+  final bool mostrarAutor; // en grupos: nombre del autor sobre el mensaje
 
   @override
   Widget build(BuildContext context) {
@@ -275,7 +288,19 @@ class _Burbuja extends StatelessWidget {
           ],
         ),
         // Wrap: el texto fluye y la hora se acomoda al final, estilo WhatsApp.
-        child: Wrap(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (mostrarAutor && mensaje.autorNombre.trim().isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Text(mensaje.autorNombre,
+                    style: TextStyle(
+                        color: wa.send,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700)),
+              ),
+            Wrap(
           alignment: WrapAlignment.end,
           crossAxisAlignment: WrapCrossAlignment.end,
           children: [
@@ -300,6 +325,8 @@ class _Burbuja extends StatelessWidget {
                   ],
                 ],
               ),
+            ),
+          ],
             ),
           ],
         ),

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../data/grupos_repo.dart';
 import '../data/mensajes_repo.dart';
 import '../models/mensaje.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'chat_screen.dart';
+import 'crear_grupo_screen.dart';
 
 /// Inbox unificado "Mensajes": junta en UN solo lugar todas las conversaciones
 /// del usuario logueado (como profe de sus academias y como alumno de las que
@@ -156,6 +158,43 @@ class _MensajesScreenState extends State<MensajesScreen> {
       ));
     });
 
+    // Conversaciones de GRUPO (usuarios registrados).
+    final grupos = await GruposRepo.gruposDe(email);
+    final grupoIds = grupos.map((g) => g.id).toList();
+    final msgsGrupo = await MensajesRepo.mensajesDeGrupos(grupoIds);
+    final porGrupo = <String, List<Mensaje>>{};
+    for (final m in msgsGrupo) {
+      porGrupo.putIfAbsent(m.refEfectivo, () => []).add(m);
+    }
+    for (final g in grupos) {
+      final list = porGrupo[g.id] ?? const <Mensaje>[];
+      final ultimo = list.isNotEmpty ? list.last : null;
+      final hilo = Mensaje.hiloGrupo(g.id);
+      final leida = appState.chatUltimaLectura(hilo);
+      var noLeidos = 0;
+      for (final x in list) {
+        if (x.autorEmail.toLowerCase() == email) continue;
+        if (leida == null || x.creado.isAfter(leida)) noLeidos++;
+      }
+      final preview = ultimo != null
+          ? (ultimo.autorNombre.isNotEmpty
+              ? '${ultimo.autorNombre}: ${ultimo.texto}'
+              : ultimo.texto)
+          : '${g.miembros.length} miembros · toca para escribir';
+      convs.add(_Conv(
+        hilo: hilo,
+        academiaId: '',
+        cuentaEmail: '',
+        titulo: g.nombre,
+        preview: preview,
+        soyProfe: false,
+        cuando: ultimo?.creado ?? DateTime.now(),
+        noLeidos: noLeidos,
+        tipo: 'grupo',
+        refId: g.id,
+      ));
+    }
+
     convs.sort((a, b) => b.cuando.compareTo(a.cuando));
     if (!mounted) return;
     setState(() {
@@ -224,6 +263,16 @@ class _MensajesScreenState extends State<MensajesScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Mensajes')),
+      floatingActionButton: appState.logueado
+          ? FloatingActionButton.extended(
+              onPressed: () => Navigator.of(context)
+                  .push(MaterialPageRoute(
+                      builder: (_) => const CrearGrupoScreen()))
+                  .then((_) => _cargar()),
+              icon: const Icon(Icons.group_add),
+              label: const Text('Nuevo grupo'),
+            )
+          : null,
       body: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
