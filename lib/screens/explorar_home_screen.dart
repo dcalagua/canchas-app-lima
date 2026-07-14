@@ -32,6 +32,17 @@ class ExplorarHomeScreen extends StatefulWidget {
 class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
   Deporte? _filtro = Deporte.futbol; // por defecto: Fútbol
   bool _soloClubes = false; // pestaña "Clubes": solo clubes formales (country…)
+  bool _porPrecio = false; // orden de la lista: false = cercanía, true = precio
+
+  /// Ordena una sección por precio "desde" (más barato primero) si el usuario
+  /// eligió ordenar por precio; si no, respeta el orden por cercanía.
+  List<Club> _ordenarPorPrecio(List<Club> l) {
+    if (!_porPrecio) return l;
+    final copia = [...l];
+    copia.sort((a, b) => (a.precioDesde ?? double.infinity)
+        .compareTo(b.precioDesde ?? double.infinity));
+    return copia;
+  }
 
   LatLng? _centroBusqueda; // zona buscada por el usuario (estilo Airbnb)
   String? _labelBusqueda;
@@ -334,12 +345,29 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                   final nCanchas =
                       clubs.fold<int>(0, (a, c) => a + c.canchas.length);
                   final hijos = <Widget>[
-                    Text(
-                      '${clubs.length} ${clubs.length == 1 ? 'lugar' : 'lugares'} · $nCanchas canchas',
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodyMedium
-                          ?.copyWith(color: textoTenueDe(context)),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${clubs.length} ${clubs.length == 1 ? 'lugar' : 'lugares'} · $nCanchas canchas',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(color: textoTenueDe(context)),
+                          ),
+                        ),
+                        _OrdenChip(
+                            texto: 'Cerca',
+                            icono: Icons.near_me,
+                            activo: !_porPrecio,
+                            onTap: () => setState(() => _porPrecio = false)),
+                        const SizedBox(width: 6),
+                        _OrdenChip(
+                            texto: 'Precio',
+                            icono: Icons.sell_outlined,
+                            activo: _porPrecio,
+                            onTap: () => setState(() => _porPrecio = true)),
+                      ],
                     ),
                   ];
                   Widget card(Club cl) => Padding(
@@ -425,7 +453,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                     hijos.add(_SeccionHeader(
                         d.etiqueta, lista.length, colorDeporte(d),
                         iconoDeporte(d)));
-                    agregarCards(lista);
+                    agregarCards(_ordenarPorPrecio(lista));
                   }
                   if (clubesFormales.isNotEmpty) {
                     hijos.add(_SeccionHeader(
@@ -433,7 +461,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                         clubesFormales.length,
                         Theme.of(context).colorScheme.primary,
                         Icons.apartment));
-                    agregarCards(clubesFormales);
+                    agregarCards(_ordenarPorPrecio(clubesFormales));
                   }
                   return ListView(
                     padding: const EdgeInsets.fromLTRB(18, 16, 18, 28),
@@ -653,6 +681,49 @@ class _SinUbicacion extends StatelessWidget {
               icon: const Icon(Icons.my_location),
               label: const Text('Usar mi ubicación'),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Chip compacto del selector de orden (Cerca / Precio), estilo Airbnb.
+class _OrdenChip extends StatelessWidget {
+  const _OrdenChip({
+    required this.texto,
+    required this.icono,
+    required this.activo,
+    required this.onTap,
+  });
+  final String texto;
+  final IconData icono;
+  final bool activo;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final color = activo ? cs.primary : textoTenueDe(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+        decoration: BoxDecoration(
+          color: activo ? cs.primary.withOpacity(0.12) : Colors.transparent,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+              color: activo ? cs.primary : const Color(0xFFE4E4E4)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icono, size: 14, color: color),
+            const SizedBox(width: 4),
+            Text(texto,
+                style: TextStyle(
+                    fontSize: 12.5, fontWeight: FontWeight.w700, color: color)),
           ],
         ),
       ),
