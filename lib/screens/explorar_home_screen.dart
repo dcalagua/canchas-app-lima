@@ -674,7 +674,7 @@ class _SinUbicacion extends StatelessWidget {
             const SizedBox(height: 18),
             FilledButton.icon(
               style: FilledButton.styleFrom(
-                  backgroundColor: verdeCancha,
+                  backgroundColor: lima,
                   padding:
                       const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
               onPressed: onUsar,

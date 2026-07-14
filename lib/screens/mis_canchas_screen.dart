@@ -35,8 +35,8 @@ class _MisCanchasScreenState extends State<MisCanchasScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: pino,
-        foregroundColor: lima,
+        backgroundColor: lima,
+        foregroundColor: Colors.white,
         onPressed: () => Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => const RegistrarCanchaScreen()),
         ),
@@ -724,7 +724,7 @@ class _Vacio extends StatelessWidget {
             const SizedBox(height: 18),
             FilledButton.icon(
               style: FilledButton.styleFrom(
-                  backgroundColor: pino, foregroundColor: lima),
+                  backgroundColor: lima, foregroundColor: Colors.white),
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute(
                     builder: (_) => const RegistrarCanchaScreen()),

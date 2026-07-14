@@ -160,7 +160,7 @@ class _CrearGrupoScreenState extends State<CrearGrupoScreen> {
             width: double.infinity,
             child: FilledButton.icon(
               style: FilledButton.styleFrom(
-                  backgroundColor: pino,
+                  backgroundColor: lima,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 15)),
               onPressed: _creando ? null : _crear,

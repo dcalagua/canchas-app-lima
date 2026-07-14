@@ -253,8 +253,8 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
                   width: double.infinity,
                   child: FilledButton(
                     style: FilledButton.styleFrom(
-                        backgroundColor: pino,
-                        foregroundColor: lima,
+                        backgroundColor: lima,
+                        foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 15)),
                     onPressed: _pagar,
                     child: Text('Pagar $_mon $_monto'),

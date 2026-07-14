@@ -488,7 +488,7 @@ class _SinAcademia extends StatelessWidget {
                 style: TextStyle(color: textoTenue)),
             const SizedBox(height: 18),
             FilledButton.icon(
-              style: FilledButton.styleFrom(backgroundColor: pino, foregroundColor: lima),
+              style: FilledButton.styleFrom(backgroundColor: lima, foregroundColor: Colors.white),
               onPressed: () => Navigator.of(context).push(MaterialPageRoute(
                   builder: (_) => const CrearAcademiaScreen())),
               icon: const Icon(Icons.add),

@@ -880,8 +880,8 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
             width: double.infinity,
             child: FilledButton.icon(
               style: FilledButton.styleFrom(
-                backgroundColor: bosque,
-                foregroundColor: lima,
+                backgroundColor: lima,
+                foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 15),
               ),
               onPressed: _enviando ? null : _publicar,

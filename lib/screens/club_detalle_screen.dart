@@ -636,7 +636,7 @@ class _PanelDueno extends StatelessWidget {
             child: FilledButton.icon(
               onPressed: onEditar,
               style: FilledButton.styleFrom(
-                backgroundColor: pino,
+                backgroundColor: lima,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 15),
                 shape: RoundedRectangleBorder(
@@ -848,8 +848,8 @@ class _ReservarBar extends StatelessWidget {
           ),
           FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: pino,
-              foregroundColor: lima,
+              backgroundColor: lima,
+              foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 16),
             ),
             onPressed: onReservar,
@@ -958,7 +958,7 @@ class _ResumenReserva extends StatelessWidget {
             width: double.infinity,
             child: FilledButton.icon(
               style: FilledButton.styleFrom(
-                  backgroundColor: pino,
+                  backgroundColor: lima,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 15)),
               onPressed: () => Navigator.of(context).pop('online'),
@@ -1488,14 +1488,14 @@ class _PanelPendienteState extends State<_PanelPendiente> {
             width: double.infinity,
             child: FilledButton.icon(
               style: FilledButton.styleFrom(
-                  backgroundColor: bosque, foregroundColor: lima),
+                  backgroundColor: lima, foregroundColor: Colors.white),
               onPressed: _reenviando ? null : _reenviar,
               icon: _reenviando
                   ? const SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: lima))
+                          strokeWidth: 2, color: Colors.white))
                   : const Icon(Icons.refresh, size: 18),
               label: Text(_reenviando ? 'Enviando…' : 'Volver a solicitar'),
             ),
@@ -1551,14 +1551,14 @@ class _PanelPendienteState extends State<_PanelPendiente> {
               width: double.infinity,
               child: FilledButton.icon(
                 style: FilledButton.styleFrom(
-                    backgroundColor: bosque, foregroundColor: lima),
+                    backgroundColor: lima, foregroundColor: Colors.white),
                 onPressed: _reenviando ? null : _reenviar,
                 icon: _reenviando
                     ? const SizedBox(
                         width: 16,
                         height: 16,
                         child: CircularProgressIndicator(
-                            strokeWidth: 2, color: lima))
+                            strokeWidth: 2, color: Colors.white))
                     : const Icon(Icons.send, size: 18),
                 label: Text(_reenviando
                     ? 'Reenviando…'

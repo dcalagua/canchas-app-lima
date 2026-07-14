@@ -448,8 +448,8 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
             width: double.infinity,
             child: FilledButton(
               style: FilledButton.styleFrom(
-                  backgroundColor: pino,
-                  foregroundColor: lima,
+                  backgroundColor: lima,
+                  foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 15)),
               onPressed: _guardando ? null : _guardar,
               child: _guardando
@@ -457,7 +457,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                       height: 20,
                       width: 20,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2.4, color: lima),
+                          strokeWidth: 2.4, color: Colors.white),
                     )
                   : const Text('Guardar academia'),
             ),
@@ -660,7 +660,7 @@ class _EditorPlanState extends State<_EditorPlan> {
             width: double.infinity,
             child: FilledButton(
               style: FilledButton.styleFrom(
-                  backgroundColor: verdeCancha,
+                  backgroundColor: lima,
                   padding: const EdgeInsets.symmetric(vertical: 14)),
               onPressed: () {
                 final nombre = _nombre.text.trim();

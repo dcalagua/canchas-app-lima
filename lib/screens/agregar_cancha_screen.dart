@@ -231,8 +231,8 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
             width: double.infinity,
             child: FilledButton.icon(
               style: FilledButton.styleFrom(
-                  backgroundColor: pino,
-                  foregroundColor: lima,
+                  backgroundColor: lima,
+                  foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 15)),
               onPressed: _guardando ? null : _guardar,
               icon: _guardando
@@ -240,7 +240,7 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
                       width: 18,
                       height: 18,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: lima))
+                          strokeWidth: 2, color: Colors.white))
                   : const Icon(Icons.add),
               label: Text(_guardando ? 'Agregando…' : 'Agregar cancha'),
             ),

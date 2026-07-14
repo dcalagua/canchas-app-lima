@@ -113,7 +113,7 @@ class _VerificarIdentidadScreenState extends State<VerificarIdentidadScreen> {
               width: double.infinity,
               child: FilledButton.icon(
                 style: FilledButton.styleFrom(
-                    backgroundColor: pino,
+                    backgroundColor: lima,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 15)),
                 onPressed:

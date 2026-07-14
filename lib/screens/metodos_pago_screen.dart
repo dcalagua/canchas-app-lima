@@ -339,15 +339,15 @@ class _AgregarTarjetaSheetState extends State<_AgregarTarjetaSheet> {
             width: double.infinity,
             child: FilledButton(
               style: FilledButton.styleFrom(
-                  backgroundColor: pino,
-                  foregroundColor: lima,
+                  backgroundColor: lima,
+                  foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 14)),
               onPressed: _guardando ? null : _guardar,
               child: _guardando
                   ? const SizedBox(
                       height: 20,
                       width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2.4, color: lima))
+                      child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
                   : const Text('Guardar tarjeta'),
             ),
           ),

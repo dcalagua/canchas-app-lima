@@ -442,7 +442,7 @@ class _TarjetaPlan extends StatelessWidget {
                       fontSize: 18)),
               FilledButton(
                 style: FilledButton.styleFrom(
-                    backgroundColor: pino, foregroundColor: lima),
+                    backgroundColor: lima, foregroundColor: Colors.white),
                 onPressed: () => _matricular(context),
                 child: const Text('Matricularme'),
               ),
@@ -641,8 +641,8 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
             width: double.infinity,
             child: FilledButton(
               style: FilledButton.styleFrom(
-                  backgroundColor: pino,
-                  foregroundColor: lima,
+                  backgroundColor: lima,
+                  foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 14)),
               onPressed: () {
                 final n = _nombre.text.trim();

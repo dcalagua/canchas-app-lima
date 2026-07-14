@@ -314,8 +314,8 @@ class _BarraReserva extends StatelessWidget {
           ),
           FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: pino,
-              foregroundColor: lima,
+              backgroundColor: lima,
+              foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
             ),
             onPressed: habilitado ? onReservar : null,
