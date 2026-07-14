@@ -1,5 +1,6 @@
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../config/pais.dart';
 import 'models.dart';
 
 /// Tipo de plan que ofrece una academia.
@@ -88,8 +89,23 @@ class Academia {
     this.moneda = '',
   });
 
-  /// Símbolo de moneda de la academia (default 'S/').
-  String get monedaSimbolo => moneda.isNotEmpty ? moneda : 'S/';
+  /// Símbolo de moneda de la academia. La UBICACIÓN de la sede es la fuente de
+  /// verdad (una academia en Lima cobra en S/, aunque el profe abra la app desde
+  /// Bolivia): se deriva del país donde cae la sede. Esto auto-corrige academias
+  /// que quedaron con la moneda del dispositivo del profe. Si no hay sede
+  /// ubicada, cae a la moneda congelada al crear y, por último, a 'S/'.
+  String get monedaSimbolo {
+    final u = sedeUbicacion;
+    if (u != null) return monedaDeCoordenadas(u.latitude, u.longitude);
+    return moneda.isNotEmpty ? moneda : 'S/';
+  }
+
+  /// País (config) de la academia según su sede; si no hay sede ubicada, cae al
+  /// país activo. Fuente del prefijo telefónico y la moneda en el editor.
+  PaisConfig get pais {
+    final u = sedeUbicacion;
+    return u != null ? paisDeCoordenadas(u.latitude, u.longitude) : paisActual;
+  }
 
   /// Código corto y ESTABLE para que un alumno se una desde la app
   /// ("Unirme con código"). Se deriva del [id] (hash FNV-1a → base32), así que

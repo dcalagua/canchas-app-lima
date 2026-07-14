@@ -12,7 +12,6 @@ import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/responsive.dart';
-import '../utils/moneda.dart';
 import '../config/pais.dart';
 
 /// Crea o edita la academia del profe (marca independiente). Fase 1: nombre,
@@ -77,6 +76,18 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       if (c.nombre.trim().isNotEmpty) m.putIfAbsent(c.nombre, () => c.ubicacion);
     }
     return m;
+  }
+
+  /// Ubicación de la sede elegida (de la lista) o la que ya traía la academia.
+  LatLng? get _ubicSede => _sedes[_sede.text.trim()] ?? _sedeUbic;
+
+  /// País (config) de la academia = el de su SEDE, no el del dispositivo. Define
+  /// la moneda de los planes y el prefijo del WhatsApp. Si aún no hay sede
+  /// ubicada, cae al país activo. Así una academia en Lima queda en S/ y +51
+  /// aunque el profe la edite desde Bolivia.
+  PaisConfig get _paisAcademia {
+    final u = _ubicSede;
+    return u != null ? paisDeCoordenadas(u.latitude, u.longitude) : paisActual;
   }
 
   @override
@@ -172,7 +183,8 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
               nombre: nombre,
               deporte: _deporte,
               dueno: dueno,
-              moneda: paisActual.moneda, // congela la moneda del país al crear
+              // Congela la moneda por el país de la SEDE (no el del dispositivo).
+              moneda: _paisAcademia.moneda,
             ))
         .copyWith(
       nombre: nombre,
@@ -301,7 +313,10 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
             controller: _whatsapp,
             keyboardType: TextInputType.phone,
             decoration: InputDecoration(
-                labelText: 'WhatsApp de contacto', prefixText: '$codigoTelActual '),
+                labelText: 'WhatsApp de contacto',
+                // Prefijo del país de la SEDE (+51 Perú, +591 Bolivia…), no el
+                // del dispositivo del profe.
+                prefixText: '+${_paisAcademia.codigoTel} '),
           ),
           const SizedBox(height: 16),
           TextField(
@@ -468,11 +483,12 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
   }
 
   String _descPlan(Plan p) {
+    final mon = _paisAcademia.moneda; // moneda del país de la sede
     if (p.tipo == TipoPlan.porClase) {
-      return 'Por clase · $monedaSimbolo ${p.precioMes.toStringAsFixed(2)} c/u';
+      return 'Por clase · $mon ${p.precioMes.toStringAsFixed(2)} c/u';
     }
     return '${p.tipo.etiqueta} · ${p.meses} ${p.meses == 1 ? 'mes' : 'meses'} · '
-        '$monedaSimbolo ${p.precioMes.toStringAsFixed(2)}/mes · Total $monedaSimbolo ${p.total.toStringAsFixed(2)}';
+        '$mon ${p.precioMes.toStringAsFixed(2)}/mes · Total $mon ${p.total.toStringAsFixed(2)}';
   }
 }
 
@@ -634,7 +650,8 @@ class _EditorPlanState extends State<_EditorPlan> {
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: InputDecoration(
                 labelText: porClase ? 'Precio por clase' : 'Precio por mes',
-                prefixText: '$monedaSimbolo '),
+                // Moneda del país de la sede de la academia (no la del device).
+                prefixText: '${_paisAcademia.moneda} '),
           ),
           if (!porClase) ...[
             const SizedBox(height: 14),

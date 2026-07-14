@@ -9,7 +9,6 @@ import '../utils/redes.dart';
 import '../widgets/responsive.dart';
 import 'academia_detalle_screen.dart';
 import 'login_google_sheet.dart';
-import '../utils/moneda.dart';
 import '../config/pais.dart';
 
 /// Directorio público de academias (Fase 1): el jugador ve las academias, su
@@ -25,11 +24,25 @@ class AcademiasScreen extends StatelessWidget {
       body: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
-          // Destacadas primero (más saldo = más visibilidad), luego el resto.
-          final academias = [...appState.academias]
-            ..sort((a, b) => appState
-                .nivelDestacadoAcademia(b)
-                .compareTo(appState.nivelDestacadoAcademia(a)));
+          // Filtro por PAÍS: el directorio muestra solo academias del país donde
+          // está el jugador (por la ubicación de su sede). Una academia de Lima
+          // no le aparece a un usuario en Bolivia. Excepciones: la academia sin
+          // sede ubicada (no se puede discriminar) y la propia del dueño (para
+          // que siempre pueda verla/gestionarla).
+          final iso = paisActual.iso;
+          final email = appState.usuario?.email.toLowerCase();
+          final academias = [
+            for (final a in appState.academias)
+              if (email != null && a.dueno.toLowerCase() == email ||
+                  a.sedeUbicacion == null ||
+                  paisDeCoordenadas(a.sedeUbicacion!.latitude,
+                          a.sedeUbicacion!.longitude)
+                          .iso ==
+                      iso)
+                a
+          ]..sort((a, b) => appState
+              .nivelDestacadoAcademia(b)
+              .compareTo(appState.nivelDestacadoAcademia(a)));
           // Métrica de impacto: impresión por cada academia destacada mostrada.
           final destacadasVistas = [
             for (final a in academias)
