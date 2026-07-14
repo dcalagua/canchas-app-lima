@@ -59,6 +59,15 @@ def android_manifest(text):
             text,
             count=1,
         )
+    # Cámara: para adjuntar/tomar fotos en el chat (image_picker source camera).
+    if "android.permission.CAMERA" not in text:
+        text = re.sub(
+            r"(<manifest[^>]*>)",
+            r'\1\n    <uses-permission android:name="android.permission.CAMERA"/>'
+            r'\n    <uses-feature android:name="android.hardware.camera" android:required="false"/>',
+            text,
+            count=1,
+        )
     if "com.google.android.geo.API_KEY" not in text:
         meta = (
             '        <meta-data android:name="com.google.android.geo.API_KEY" '

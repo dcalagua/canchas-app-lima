@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../data/mensajes_repo.dart';
 import '../models/mensaje.dart';
@@ -149,6 +150,46 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  /// Adjunta/toma una foto y la envía como mensaje con imagen.
+  Future<void> _enviarFoto(ImageSource source) async {
+    final u = appState.usuario;
+    if (u == null || _enviando) return;
+    try {
+      final XFile? file = await ImagePicker()
+          .pickImage(source: source, maxWidth: 1600, imageQuality: 80);
+      if (file == null || !mounted) return;
+      setState(() => _enviando = true);
+      final bytes = await file.readAsBytes();
+      final url = await MensajesRepo.subirFoto(_hilo, bytes);
+      if (url == null) {
+        if (!mounted) return;
+        setState(() => _enviando = false);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('No se pudo subir la foto. Revisa tu conexión.')));
+        return;
+      }
+      final msg = Mensaje(
+        id: 'msg_${DateTime.now().microsecondsSinceEpoch}',
+        hilo: _hilo,
+        tipo: widget.tipo,
+        refId: _refId,
+        academiaId: widget.academiaId,
+        cuentaEmail: widget.cuentaEmail,
+        autorEmail: u.email,
+        autorNombre: u.nombre,
+        esProfe: widget.soyProfe,
+        texto: '📷 Foto',
+        mediaUrl: url,
+        creado: DateTime.now(),
+      );
+      await MensajesRepo.enviar(msg);
+    } catch (_) {
+      // ignora: fail-safe
+    } finally {
+      if (mounted) setState(() => _enviando = false);
+    }
+  }
+
   void _alFinal() {
     if (!_scroll.hasClients) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -240,6 +281,8 @@ class _ChatScreenState extends State<ChatScreen> {
             onEnviar: _enviar,
             emojisAbiertos: _emojis,
             onToggleEmojis: _toggleEmojis,
+            onGaleria: () => _enviarFoto(ImageSource.gallery),
+            onCamara: () => _enviarFoto(ImageSource.camera),
             wa: wa,
           ),
           if (_emojis) _EmojiPanel(onSelect: _insertarEmoji, wa: wa),
@@ -300,13 +343,37 @@ class _Burbuja extends StatelessWidget {
                         fontSize: 12.5,
                         fontWeight: FontWeight.w700)),
               ),
+            if (mensaje.tieneFoto)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.network(
+                    mensaje.mediaUrl,
+                    width: 220,
+                    fit: BoxFit.cover,
+                    loadingBuilder: (c, child, prog) => prog == null
+                        ? child
+                        : const SizedBox(
+                            width: 220,
+                            height: 150,
+                            child: Center(child: CircularProgressIndicator())),
+                    errorBuilder: (c, e, s) => const SizedBox(
+                        width: 220,
+                        height: 90,
+                        child: Icon(Icons.broken_image_outlined, size: 32)),
+                  ),
+                ),
+              ),
             Wrap(
           alignment: WrapAlignment.end,
           crossAxisAlignment: WrapCrossAlignment.end,
           children: [
-            Text(mensaje.texto,
-                style: TextStyle(
-                    color: mio ? wa.textoMio : wa.textoOtro, fontSize: 15.5)),
+            if (mensaje.texto.isNotEmpty &&
+                !(mensaje.tieneFoto && mensaje.texto == '📷 Foto'))
+              Text(mensaje.texto,
+                  style: TextStyle(
+                      color: mio ? wa.textoMio : wa.textoOtro, fontSize: 15.5)),
             const SizedBox(width: 8),
             Padding(
               padding: const EdgeInsets.only(top: 3),
@@ -343,6 +410,8 @@ class _Barra extends StatelessWidget {
     required this.onEnviar,
     required this.emojisAbiertos,
     required this.onToggleEmojis,
+    required this.onGaleria,
+    required this.onCamara,
     required this.wa,
   });
   final TextEditingController controller;
@@ -351,6 +420,8 @@ class _Barra extends StatelessWidget {
   final VoidCallback onEnviar;
   final bool emojisAbiertos;
   final VoidCallback onToggleEmojis;
+  final VoidCallback onGaleria;
+  final VoidCallback onCamara;
   final _WA wa;
 
   @override
@@ -402,6 +473,18 @@ class _Barra extends StatelessWidget {
                         ),
                         onSubmitted: (_) => onEnviar(),
                       ),
+                    ),
+                    IconButton(
+                      onPressed: enviando ? null : onGaleria,
+                      icon: Icon(Icons.attach_file, color: wa.hora),
+                      splashRadius: 20,
+                      tooltip: 'Adjuntar foto',
+                    ),
+                    IconButton(
+                      onPressed: enviando ? null : onCamara,
+                      icon: Icon(Icons.photo_camera_outlined, color: wa.hora),
+                      splashRadius: 20,
+                      tooltip: 'Cámara',
                     ),
                   ],
                 ),

@@ -1,3 +1,7 @@
+import 'dart:typed_data';
+
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../models/mensaje.dart';
 import '../services/supabase_service.dart';
 
@@ -91,6 +95,25 @@ class MensajesRepo {
           .toList();
     } catch (_) {
       return const <Mensaje>[];
+    }
+  }
+
+  /// Sube una foto del chat al bucket `chat` de Storage y devuelve su URL
+  /// pública (o null si falla). El path agrupa por hilo.
+  static Future<String?> subirFoto(String hilo, Uint8List bytes) async {
+    if (!SupabaseService.disponible) return null;
+    try {
+      final carpeta = hilo.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+      final path = '$carpeta/${DateTime.now().microsecondsSinceEpoch}.jpg';
+      await SupabaseService.client.storage.from('chat').uploadBinary(
+            path,
+            bytes,
+            fileOptions:
+                const FileOptions(contentType: 'image/jpeg', upsert: true),
+          );
+      return SupabaseService.client.storage.from('chat').getPublicUrl(path);
+    } catch (_) {
+      return null;
     }
   }
 

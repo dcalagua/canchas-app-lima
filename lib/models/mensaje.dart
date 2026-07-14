@@ -22,6 +22,7 @@ class Mensaje {
   final String autorNombre;
   final bool esProfe; // true = lo escribió el anfitrión (profe/dueño)
   final String texto;
+  final String mediaUrl; // URL de la foto adjunta ('' = solo texto)
   final DateTime creado;
 
   const Mensaje({
@@ -36,7 +37,10 @@ class Mensaje {
     this.refId = '',
     this.academiaId = '',
     this.cuentaEmail = '',
+    this.mediaUrl = '',
   });
+
+  bool get tieneFoto => mediaUrl.isNotEmpty;
 
   bool get esCancha => tipo == 'cancha';
   bool get esGrupo => tipo == 'grupo';
@@ -69,6 +73,7 @@ class Mensaje {
         'autor_nombre': autorNombre,
         'es_profe': esProfe,
         'texto': texto,
+        if (mediaUrl.isNotEmpty) 'media_url': mediaUrl,
       };
 
   /// Mapea una fila de Supabase (columnas snake_case).
@@ -83,6 +88,7 @@ class Mensaje {
         autorNombre: (r['autor_nombre'] ?? '').toString(),
         esProfe: (r['es_profe'] ?? false) as bool,
         texto: (r['texto'] ?? '').toString(),
+        mediaUrl: (r['media_url'] ?? '').toString(),
         creado: DateTime.tryParse((r['creado'] ?? '').toString())?.toLocal() ??
             DateTime.now(),
       );
