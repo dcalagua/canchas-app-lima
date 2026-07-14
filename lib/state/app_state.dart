@@ -1424,6 +1424,46 @@ class AppState extends ChangeNotifier {
   ];
   bool get destacadoActivo => saldoClub > 0;
 
+  // ── Saldo por PAÍS (destacar multi-país) ──────────────────────────────────
+  // Un dueño puede tener canchas en Perú y Bolivia a la vez. El saldo no se
+  // puede mezclar (S/ ≠ Bs): cada país lleva su propia bolsa y se destaca con la
+  // de ese país. Perú vive en `saldoClub` (respaldado por el backend Culqi);
+  // los demás países viven aquí hasta enchufar su pasarela (#35 Libélula).
+  final Map<String, int> _saldoOtrosPaises = {};
+
+  /// Países (ISO) donde el dueño tiene canchas, según la ubicación REAL de cada
+  /// una (no el GPS del dispositivo). Ordenados por cantidad de canchas (el país
+  /// con más, primero). Alimenta el selector de "Recargar y destacar".
+  List<String> get paisesDeMisCanchas {
+    final conteo = <String, int>{};
+    for (final c in misCanchas) {
+      final iso =
+          paisDeCoordenadas(c.ubicacion.latitude, c.ubicacion.longitude).iso;
+      conteo[iso] = (conteo[iso] ?? 0) + 1;
+    }
+    final isos = conteo.keys.toList()
+      ..sort((a, b) => conteo[b]!.compareTo(conteo[a]!));
+    return isos;
+  }
+
+  /// Saldo prepago del dueño en un país (ISO). Perú = `saldoClub` (backend);
+  /// otros países = su bolsa local (0 hasta integrar su pasarela).
+  int saldoDePais(String iso) =>
+      iso == 'PE' ? saldoClub : (_saldoOtrosPaises[iso] ?? 0);
+
+  /// Recarga el saldo del país indicado con la pasarela que le corresponde.
+  /// Perú pasa por Culqi (`recargar`); los demás acreditan en su bolsa local.
+  void recargarPais(String iso, int monto) {
+    if (monto <= 0) return;
+    if (iso == 'PE') {
+      recargar(monto);
+      return;
+    }
+    _saldoOtrosPaises[iso] = (_saldoOtrosPaises[iso] ?? 0) + monto;
+    notifyListeners();
+    _persistirDatos();
+  }
+
   /// Nivel de destacado del PROPIO dueño por su saldo (mismos umbrales que el
   /// backend): 0 = no, 1 bronce (>0), 2 plata (>=50), 3 oro (>=200).
   int get nivelDestacadoPropio {
@@ -1585,6 +1625,7 @@ class AppState extends ChangeNotifier {
 
   static const _kUsuario = 'usuario_json';
   static const _kSaldo = 'saldo_club';
+  static const _kSaldoOtros = 'saldo_otros_paises_json';
   static const _kMonedaSaldo = 'moneda_saldo';
   static const _kVerif = 'verificacion_estado';
   static const _kMovs = 'movimientos_json';
@@ -1615,6 +1656,16 @@ class AppState extends ChangeNotifier {
 
       if (prefs.containsKey(_kSaldo)) {
         saldoClub = prefs.getInt(_kSaldo) ?? saldoClub;
+      }
+
+      final saldoOtrosRaw = prefs.getString(_kSaldoOtros);
+      if (saldoOtrosRaw != null) {
+        try {
+          final m = jsonDecode(saldoOtrosRaw) as Map<String, dynamic>;
+          _saldoOtrosPaises
+            ..clear()
+            ..addAll(m.map((k, v) => MapEntry(k, (v as num).round())));
+        } catch (_) {}
       }
 
       if (prefs.containsKey(_kMonedaSaldo)) {
@@ -1725,6 +1776,7 @@ class AppState extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_kSaldo, saldoClub);
+      await prefs.setString(_kSaldoOtros, jsonEncode(_saldoOtrosPaises));
       await prefs.setString(_kMonedaSaldo, monedaSaldo);
       await prefs.setString(_kVerif, estadoVerificacion);
       await prefs.setString(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../config/pais.dart';
 import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -16,10 +17,17 @@ class RecargarSaldoScreen extends StatefulWidget {
   /// Por defecto recarga el saldo del DUEÑO logueado (su correo). Para destacar
   /// una ACADEMIA se pasa [duenoId] = id de la academia (su saldo va aparte del
   /// de las canchas). El cobro Culqi siempre usa el correo del pagador.
-  const RecargarSaldoScreen({super.key, this.duenoId, this.titulo});
+  const RecargarSaldoScreen(
+      {super.key, this.duenoId, this.titulo, this.pais});
 
   final String? duenoId;
   final String? titulo;
+
+  /// País del saldo que se recarga. Define la MONEDA mostrada y la PASARELA:
+  /// Perú (Culqi) usa el formulario Yape/tarjeta; los demás países aún no tienen
+  /// pasarela integrada (#35 Libélula) y muestran un aviso "próximamente".
+  /// Si es null, se asume el flujo Culqi de Perú (comportamiento histórico).
+  final PaisConfig? pais;
 
   @override
   State<RecargarSaldoScreen> createState() => _RecargarSaldoScreenState();
@@ -47,6 +55,15 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
   final _cvv = TextEditingController();
 
   String get _email => appState.usuario?.email ?? '';
+
+  /// Moneda a mostrar: la del país del saldo si se pasó, si no la del saldo del
+  /// dueño (histórico Perú).
+  String get _mon => widget.pais?.moneda ?? appState.monedaSaldoSimbolo;
+
+  /// ¿La pasarela del país está integrada? Hoy sólo Culqi (Perú). Los demás
+  /// países muestran el aviso "próximamente" en vez del formulario de cobro.
+  bool get _pasarelaLista =>
+      widget.pais == null || widget.pais!.pasarela == 'culqi';
 
   @override
   void initState() {
@@ -144,15 +161,15 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
       }
       return {
         'ok': true,
-        'detalle': 'Se acreditaron ${appState.monedaSaldoSimbolo} $_monto a tu saldo.',
+        'detalle': 'Se acreditaron $_mon $_monto a tu saldo.',
       };
     }
 
     final ok = await PagoProcesando.mostrar(
       context,
-      titulo: 'Cobrando ${appState.monedaSaldoSimbolo} $_monto',
+      titulo: 'Cobrando $_mon $_monto',
       exitoTitulo: '¡Recarga exitosa!',
-      exitoDetalle: 'Se acreditaron ${appState.monedaSaldoSimbolo} $_monto a tu saldo.',
+      exitoDetalle: 'Se acreditaron $_mon $_monto a tu saldo.',
       accion: accion,
     );
     if (ok == true && mounted) Navigator.of(context).pop(_monto);
@@ -164,7 +181,9 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: Text(widget.titulo ?? 'Recargar saldo')),
-      body: _cargando
+      body: !_pasarelaLista
+          ? _pasarelaProximamente()
+          : _cargando
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               padding: const EdgeInsets.all(18),
@@ -178,7 +197,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
                   children: [
                     for (final m in _montos)
                       ChoiceChip(
-                        label: Text('${appState.monedaSaldoSimbolo} $m'),
+                        label: Text('$_mon $m'),
                         selected: _monto == m,
                         selectedColor: lima,
                         labelStyle: TextStyle(
@@ -238,7 +257,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
                         foregroundColor: lima,
                         padding: const EdgeInsets.symmetric(vertical: 15)),
                     onPressed: _pagar,
-                    child: Text('Pagar ${appState.monedaSaldoSimbolo} $_monto'),
+                    child: Text('Pagar $_mon $_monto'),
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -248,6 +267,67 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
                 ),
               ],
             ),
+    );
+  }
+
+  /// Estado "pasarela próximamente" para países cuya integración de cobro aún no
+  /// está lista (hoy: Bolivia → Libélula, #35). Muestra la moneda y la pasarela
+  /// que corresponderá, para que el dueño sepa que su país está contemplado.
+  Widget _pasarelaProximamente() {
+    final p = widget.pais!;
+    final t = Theme.of(context).textTheme;
+    return ListView(
+      padding: const EdgeInsets.all(22),
+      children: [
+        const SizedBox(height: 10),
+        Center(
+          child: Container(
+            width: 84,
+            height: 84,
+            decoration: BoxDecoration(
+                color: limaSuave, shape: BoxShape.circle),
+            child: const Icon(Icons.schedule, size: 40, color: bosque),
+          ),
+        ),
+        const SizedBox(height: 18),
+        Text('${p.bandera}  ${p.nombre}',
+            textAlign: TextAlign.center,
+            style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+        const SizedBox(height: 8),
+        Text(
+          'Estamos integrando la pasarela de pago de ${p.nombre} '
+          '(${p.pasarelaNombre}) para que puedas recargar y destacar tus '
+          'canchas en $_mon. Muy pronto quedará habilitada aquí mismo.',
+          textAlign: TextAlign.center,
+          style: t.bodyMedium?.copyWith(color: textoTenueDe(context), height: 1.35),
+        ),
+        const SizedBox(height: 22),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+              color: limaSuave, borderRadius: BorderRadius.circular(14)),
+          child: Row(
+            children: [
+              const Icon(Icons.info_outline, color: bosque, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                    'Mientras tanto, tus canchas de ${p.nombre} ya aparecen en '
+                    'el mapa y reciben reservas con normalidad.',
+                    style: t.bodySmall?.copyWith(color: bosque, height: 1.3)),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 22),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton(
+            onPressed: () => Navigator.of(context).maybePop(),
+            child: const Text('Entendido'),
+          ),
+        ),
+      ],
     );
   }
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../config/pais.dart';
 import '../models/club.dart';
 import '../models/models.dart';
 import '../services/pagos_service.dart';
@@ -223,6 +224,7 @@ class _DestacarCanchasCard extends StatefulWidget {
 
 class _DestacarCanchasCardState extends State<_DestacarCanchasCard> {
   Map<String, int>? _vistas; // {semana, total} de impresiones de tus canchas
+  String? _paisSel; // ISO del país seleccionado para destacar (multi-país)
 
   @override
   void initState() {
@@ -239,12 +241,24 @@ class _DestacarCanchasCardState extends State<_DestacarCanchasCard> {
     if (mounted && v != null) setState(() => _vistas = v);
   }
 
-  Future<void> _recargar() async {
+  /// Nivel de destacado (0-3) según un monto de saldo. Mismos umbrales que el
+  /// backend: >0 bronce, >=50 plata, >=200 oro.
+  int _nivelDe(int saldo) {
+    if (saldo >= 200) return 3;
+    if (saldo >= 50) return 2;
+    if (saldo > 0) return 1;
+    return 0;
+  }
+
+  Future<void> _recargar(String iso) async {
     final monto = await Navigator.of(context).push<int>(MaterialPageRoute(
-      builder: (_) => const RecargarSaldoScreen(titulo: 'Destacar mis canchas'),
+      builder: (_) => RecargarSaldoScreen(
+        titulo: 'Destacar mis canchas',
+        pais: paisesSoportados[iso],
+      ),
     ));
     if (monto != null && mounted) {
-      appState.recargar(monto); // refleja el saldo al instante
+      appState.recargarPais(iso, monto); // refleja el saldo del país al instante
       await appState.sincronizarSaldo();
       await appState.cargarDestacados();
     }
@@ -253,14 +267,20 @@ class _DestacarCanchasCardState extends State<_DestacarCanchasCard> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    final saldo = appState.saldoClub;
-    final nivel = appState.nivelDestacadoPropio;
+    // Países donde el dueño tiene canchas (por la ubicación real de cada una).
+    final paises = appState.paisesDeMisCanchas;
+    // País seleccionado: el elegido, o el primero (donde tiene más canchas).
+    final iso = (_paisSel != null && paises.contains(_paisSel))
+        ? _paisSel!
+        : (paises.isNotEmpty ? paises.first : 'PE');
+    final saldo = appState.saldoDePais(iso);
+    final nivel = _nivelDe(saldo);
     final destacada = nivel > 0;
-    // Moneda del saldo del dueño = la de sus canchas (no la del GPS). Un dueño
-    // de canchas en Perú ve S/ aunque abra la app desde Bolivia.
-    final mon = appState.misCanchas.isNotEmpty
-        ? appState.misCanchas.first.monedaSimbolo
-        : appState.monedaSaldoSimbolo;
+    // Moneda del país seleccionado (S/ Perú, Bs Bolivia…), no la del GPS.
+    final mon = paisesSoportados[iso]?.moneda ??
+        (appState.misCanchas.isNotEmpty
+            ? appState.misCanchas.first.monedaSimbolo
+            : appState.monedaSaldoSimbolo);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -314,13 +334,34 @@ class _DestacarCanchasCardState extends State<_DestacarCanchasCard> {
               ),
             ),
           ],
+          // Selector de PAÍS: sólo si el dueño tiene canchas en más de un país.
+          // Cada país lleva su propio saldo/moneda y su propia pasarela.
+          if (paises.length > 1) ...[
+            const SizedBox(height: 12),
+            Text('¿Dónde quieres destacar?',
+                style: t.bodySmall?.copyWith(
+                    color: Colors.white.withOpacity(0.92),
+                    fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              children: [
+                for (final p in paises)
+                  _PaisChip(
+                    iso: p,
+                    sel: p == iso,
+                    onTap: () => setState(() => _paisSel = p),
+                  ),
+              ],
+            ),
+          ],
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
               style: FilledButton.styleFrom(
                   backgroundColor: Colors.white, foregroundColor: lima),
-              onPressed: _recargar,
+              onPressed: () => _recargar(iso),
               icon: const Icon(Icons.add),
               label: Text(saldo > 0
                   ? 'Recargar y destacar ($mon $saldo)'
@@ -328,6 +369,37 @@ class _DestacarCanchasCardState extends State<_DestacarCanchasCard> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Chip de país para el selector de "dónde destacar" (bandera + nombre). Sobre
+/// el fondo verde de la tarjeta: seleccionado = blanco sólido, resto translúcido.
+class _PaisChip extends StatelessWidget {
+  const _PaisChip({required this.iso, required this.sel, required this.onTap});
+  final String iso;
+  final bool sel;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = paisesSoportados[iso];
+    final etiqueta = p != null ? '${p.bandera} ${p.nombre}' : iso;
+    return Material(
+      color: sel ? Colors.white : Colors.white.withOpacity(0.18),
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          child: Text(etiqueta,
+              style: TextStyle(
+                  color: sel ? const Color(0xFF075E54) : Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13)),
+        ),
       ),
     );
   }
