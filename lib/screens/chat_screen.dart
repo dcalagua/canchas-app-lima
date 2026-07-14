@@ -5,6 +5,26 @@ import '../models/mensaje.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 
+// ── Paleta estilo WhatsApp (theme-aware) ─────────────────────────────────────
+// Se calcula según el brillo del tema. Fondo del chat, burbujas y barra imitan
+// la app de WhatsApp sobre la marca Pichangol (verde bosque/lima).
+class _WA {
+  final bool dark;
+  const _WA(this.dark);
+
+  Color get appBar => dark ? const Color(0xFF1F2C34) : const Color(0xFF008069);
+  Color get fondo => dark ? const Color(0xFF0B141A) : const Color(0xFFECE5DD);
+  Color get burbujaMia => dark ? const Color(0xFF005C4B) : const Color(0xFFD9FDD3);
+  Color get burbujaOtro => dark ? const Color(0xFF202C33) : Colors.white;
+  Color get textoMio => dark ? const Color(0xFFE9EDEF) : const Color(0xFF111B21);
+  Color get textoOtro => dark ? const Color(0xFFE9EDEF) : const Color(0xFF111B21);
+  Color get hora => dark ? Colors.white54 : Colors.black38;
+  Color get barra => dark ? const Color(0xFF111B21) : const Color(0xFFF0F2F5);
+  Color get pill => dark ? const Color(0xFF1F2C34) : Colors.white;
+  Color get pillTexto => dark ? const Color(0xFFE9EDEF) : const Color(0xFF111B21);
+  Color get send => const Color(0xFF00A884);
+}
+
 /// Conversación 1:1 profe ↔ alumno de una academia (Etapa A: Realtime, sin
 /// push). Se usa igual desde el lado del profe ([soyProfe] = true) que del
 /// alumno ([soyProfe] = false); [cuentaEmail] identifica el lado alumno.
@@ -29,6 +49,7 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final _texto = TextEditingController();
   final _scroll = ScrollController();
+  final _focus = FocusNode();
   bool _enviando = false;
   String _ultimoVisto = ''; // id del último mensaje ya procesado
 
@@ -52,6 +73,7 @@ class _ChatScreenState extends State<ChatScreen> {
     appState.marcarChatLeido(_hilo);
     _texto.dispose();
     _scroll.dispose();
+    _focus.dispose();
     super.dispose();
   }
 
@@ -93,8 +115,35 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final wa = _WA(Theme.of(context).brightness == Brightness.dark);
+    final inicial = widget.titulo.trim().isNotEmpty
+        ? widget.titulo.characters.first.toUpperCase()
+        : '?';
     return Scaffold(
-      appBar: AppBar(title: Text(widget.titulo)),
+      backgroundColor: wa.fondo,
+      appBar: AppBar(
+        backgroundColor: wa.appBar,
+        foregroundColor: Colors.white,
+        titleSpacing: 0,
+        title: Row(
+          children: [
+            CircleAvatar(
+              radius: 17,
+              backgroundColor: Colors.white24,
+              child: Text(inicial,
+                  style: const TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.w800)),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(widget.titulo,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
+            ),
+          ],
+        ),
+      ),
       body: Column(
         children: [
           Expanded(
@@ -119,12 +168,12 @@ class _ChatScreenState extends State<ChatScreen> {
                       if (msgs.isEmpty) return const _Vacio();
                       return ListView.builder(
                         controller: _scroll,
-                        padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+                        padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
                         itemCount: msgs.length,
                         itemBuilder: (_, i) {
                           final m = msgs[i];
                           final mio = m.esProfe == widget.soyProfe;
-                          return _Burbuja(mensaje: m, mio: mio);
+                          return _Burbuja(mensaje: m, mio: mio, wa: wa);
                         },
                       );
                     },
@@ -132,7 +181,12 @@ class _ChatScreenState extends State<ChatScreen> {
                 : const _SinBackend(),
           ),
           _Barra(
-              controller: _texto, enviando: _enviando, onEnviar: _enviar),
+            controller: _texto,
+            focus: _focus,
+            enviando: _enviando,
+            onEnviar: _enviar,
+            wa: wa,
+          ),
         ],
       ),
     );
@@ -140,46 +194,65 @@ class _ChatScreenState extends State<ChatScreen> {
 }
 
 class _Burbuja extends StatelessWidget {
-  const _Burbuja({required this.mensaje, required this.mio});
+  const _Burbuja({required this.mensaje, required this.mio, required this.wa});
   final Mensaje mensaje;
   final bool mio;
+  final _WA wa;
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final hora = TimeOfDay.fromDateTime(mensaje.creado);
     final hh = hora.hour.toString().padLeft(2, '0');
     final mm = hora.minute.toString().padLeft(2, '0');
     return Align(
       alignment: mio ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 0.76),
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.fromLTRB(12, 9, 12, 7),
+        constraints:
+            BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.80),
+        margin: const EdgeInsets.symmetric(vertical: 3, horizontal: 2),
+        padding: const EdgeInsets.fromLTRB(10, 7, 10, 6),
         decoration: BoxDecoration(
-          color: mio ? cs.primary : cs.surface,
+          color: mio ? wa.burbujaMia : wa.burbujaOtro,
           borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(16),
-            topRight: const Radius.circular(16),
-            bottomLeft: Radius.circular(mio ? 16 : 4),
-            bottomRight: Radius.circular(mio ? 4 : 16),
+            topLeft: const Radius.circular(12),
+            topRight: const Radius.circular(12),
+            bottomLeft: Radius.circular(mio ? 12 : 3),
+            bottomRight: Radius.circular(mio ? 3 : 12),
           ),
-          border: mio ? null : Border.all(color: trazo),
+          boxShadow: [
+            BoxShadow(
+                color: Colors.black.withOpacity(0.12),
+                blurRadius: 1,
+                offset: const Offset(0, 1)),
+          ],
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        // Wrap: el texto fluye y la hora se acomoda al final, estilo WhatsApp.
+        child: Wrap(
+          alignment: WrapAlignment.end,
+          crossAxisAlignment: WrapCrossAlignment.end,
           children: [
             Text(mensaje.texto,
                 style: TextStyle(
-                    color: mio ? cs.onPrimary : cs.onSurface, fontSize: 15)),
-            const SizedBox(height: 2),
-            Text('$hh:$mm',
-                style: TextStyle(
-                    fontSize: 10,
-                    color: mio
-                        ? cs.onPrimary.withOpacity(0.8)
-                        : textoTenue)),
+                    color: mio ? wa.textoMio : wa.textoOtro, fontSize: 15.5)),
+            const SizedBox(width: 8),
+            Padding(
+              padding: const EdgeInsets.only(top: 3),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('$hh:$mm',
+                      style: TextStyle(fontSize: 10.5, color: wa.hora)),
+                  if (mio) ...[
+                    const SizedBox(width: 3),
+                    Icon(Icons.done_all,
+                        size: 14,
+                        color: wa.dark
+                            ? const Color(0xFF53BDEB)
+                            : const Color(0xFF34B7F1)),
+                  ],
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -188,56 +261,89 @@ class _Burbuja extends StatelessWidget {
 }
 
 class _Barra extends StatelessWidget {
-  const _Barra(
-      {required this.controller,
-      required this.enviando,
-      required this.onEnviar});
+  const _Barra({
+    required this.controller,
+    required this.focus,
+    required this.enviando,
+    required this.onEnviar,
+    required this.wa,
+  });
   final TextEditingController controller;
+  final FocusNode focus;
   final bool enviando;
   final VoidCallback onEnviar;
+  final _WA wa;
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return SafeArea(
       top: false,
       child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-        decoration: BoxDecoration(
-          color: cs.surface,
-          border: Border(top: BorderSide(color: trazo)),
-        ),
+        color: wa.barra,
+        padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
+            // Pastilla con emoji + campo de texto (los emojis salen del teclado
+            // del sistema; el botón carita solo abre/enfoca el teclado).
             Expanded(
-              child: TextField(
-                controller: controller,
-                minLines: 1,
-                maxLines: 5,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: InputDecoration(
-                  hintText: 'Escribe un mensaje…',
-                  filled: true,
-                  fillColor: Theme.of(context).scaffoldBackgroundColor,
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(22),
-                      borderSide: BorderSide.none),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: wa.pill,
+                  borderRadius: BorderRadius.circular(24),
                 ),
-                onSubmitted: (_) => onEnviar(),
+                padding: const EdgeInsets.only(left: 4, right: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    IconButton(
+                      onPressed: () => focus.requestFocus(),
+                      icon: Icon(Icons.sentiment_satisfied_outlined,
+                          color: wa.hora),
+                      splashRadius: 20,
+                    ),
+                    Expanded(
+                      child: TextField(
+                        controller: controller,
+                        focusNode: focus,
+                        minLines: 1,
+                        maxLines: 5,
+                        textCapitalization: TextCapitalization.sentences,
+                        style: TextStyle(color: wa.pillTexto, fontSize: 16),
+                        decoration: InputDecoration(
+                          hintText: 'Mensaje',
+                          hintStyle: TextStyle(color: wa.hora),
+                          isDense: true,
+                          border: InputBorder.none,
+                          contentPadding:
+                              const EdgeInsets.symmetric(vertical: 10),
+                        ),
+                        onSubmitted: (_) => onEnviar(),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
             const SizedBox(width: 6),
-            IconButton.filled(
-              onPressed: enviando ? null : onEnviar,
-              icon: enviando
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.send),
+            // Botón de envío circular verde WhatsApp.
+            Material(
+              color: wa.send,
+              shape: const CircleBorder(),
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: enviando ? null : onEnviar,
+                child: Padding(
+                  padding: const EdgeInsets.all(11),
+                  child: enviando
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.send, color: Colors.white, size: 22),
+                ),
+              ),
             ),
           ],
         ),

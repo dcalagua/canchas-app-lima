@@ -16,7 +16,10 @@ class MensajesRepo {
         .from(_tabla)
         .stream(primaryKey: ['id'])
         .eq('hilo', hilo)
-        .order('creado')
+        // ascending: true → orden cronológico real (el más nuevo abajo, estilo
+        // WhatsApp). Por defecto Supabase ordena DESC, que dejaba el reciente
+        // arriba y confundía cuál era el último mensaje.
+        .order('creado', ascending: true)
         .map((rows) => rows.map((r) => Mensaje.fromRow(r)).toList());
   }
 
@@ -28,7 +31,7 @@ class MensajesRepo {
         .from(_tabla)
         .stream(primaryKey: ['id'])
         .eq('academia_id', academiaId)
-        .order('creado')
+        .order('creado', ascending: true) // cronológico: el inbox se apoya en esto
         .map((rows) => rows.map((r) => Mensaje.fromRow(r)).toList());
   }
 
