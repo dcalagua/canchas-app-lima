@@ -461,6 +461,48 @@ class Stores:
             k: list(v) for k, v in (data.get("metodos") or {}).items()
         }
 
+    # --- normalización a TABLAS SQL (fase 1: saldos/pagos/vistas/reclamos) ----
+    # Estas colecciones (plata + impacto + reclamos) migran a tablas propias en
+    # Supabase (ver db/pg.py). Los mapeos van/vienen como filas simples y son
+    # PUROS (testables sin BD). Las fechas se manejan como ISO (str), igual que
+    # en el snapshot, para reusar los mismos parsers (`_pago_from`, etc.).
+    def saldos_rows(self) -> list[tuple]:
+        return [(k, int(v)) for k, v in self.saldos.items()]
+
+    def cargar_saldos_rows(self, rows) -> None:
+        self.saldos = {r[0]: int(r[1]) for r in rows}
+
+    def pagos_rows(self) -> list[dict]:
+        return [como_dict(p) for p in self.pagos]
+
+    def cargar_pagos_rows(self, rows) -> None:
+        self.pagos = [_pago_from(r) for r in rows]
+        if self.pagos:  # mantiene el contador de ids coherente
+            self._ids["pago"] = max(
+                self._ids.get("pago", 0), max(p.id for p in self.pagos))
+
+    def vistas_rows(self) -> list[tuple]:
+        out: list[tuple] = []
+        for id_, dias in self.vistas.items():
+            for dia, n in dias.items():
+                out.append((id_, dia, int(n)))
+        return out
+
+    def cargar_vistas_rows(self, rows) -> None:
+        v: dict[str, dict[str, int]] = {}
+        for id_, dia, n in rows:
+            v.setdefault(id_, {})[str(dia)] = int(n)
+        self.vistas = v
+
+    def reclamos_rows(self) -> list[dict]:
+        return [como_dict(r) for r in self.reclamos]
+
+    def cargar_reclamos_rows(self, rows) -> None:
+        self.reclamos = [_reclamo_from(r) for r in rows]
+        if self.reclamos:
+            self._ids["reclamo"] = max(
+                self._ids.get("reclamo", 0), max(r.id for r in self.reclamos))
+
 
 # Singleton (en producción: repos contra Supabase).
 stores = Stores()

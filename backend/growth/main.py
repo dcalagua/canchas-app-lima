@@ -29,21 +29,34 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# Persistencia: carga el snapshot guardado (si hay BD) y siembra verificadores.
+# Persistencia: carga el snapshot y, encima, las tablas normalizadas (saldos/
+# pagos/vistas/reclamos) que ganan si tienen datos. En el primer deploy las
+# tablas están vacías → se conserva el snapshot y se hace *backfill* a las tablas.
 _snapshot = pg.init_y_cargar()
 if _snapshot:
     stores.load_state(_snapshot)
+pg.cargar_normalizado(stores)   # tablas reales = fuente de verdad de lo crítico
+if pg.habilitado:               # backfill inicial (snapshot -> tablas) idempotente
+    try:
+        pg.guardar_normalizado(stores)
+    except Exception:  # noqa: BLE001
+        pass
 if not stores.verificadores:
     seed_verificadores()
 
 
 @app.middleware("http")
 async def _persistir(request: Request, call_next):
-    """Tras cada request que muta estado, guarda el snapshot (fail-safe)."""
+    """Tras cada request que muta estado, guarda el snapshot completo (respaldo)
+    y vuelca lo crítico a sus tablas normalizadas. Todo fail-safe."""
     response = await call_next(request)
     if pg.habilitado and request.method in ("POST", "PUT", "DELETE"):
         try:
             pg.guardar(stores.to_state())
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            pg.guardar_normalizado(stores)
         except Exception:  # noqa: BLE001
             pass
     return response
