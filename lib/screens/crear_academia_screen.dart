@@ -131,7 +131,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (_) => const _EditorPlan(),
+      builder: (_) => _EditorPlan(moneda: _paisAcademia.moneda),
     );
     if (plan != null) setState(() => _planes.add(plan));
   }
@@ -590,7 +590,10 @@ class _MiniFoto extends StatelessWidget {
 
 /// Hoja para crear un plan (nombre, tipo, precio/mes, meses).
 class _EditorPlan extends StatefulWidget {
-  const _EditorPlan();
+  const _EditorPlan({required this.moneda});
+
+  /// Símbolo de moneda del país de la sede de la academia ('S/', 'Bs', '$').
+  final String moneda;
 
   @override
   State<_EditorPlan> createState() => _EditorPlanState();
@@ -651,7 +654,7 @@ class _EditorPlanState extends State<_EditorPlan> {
             decoration: InputDecoration(
                 labelText: porClase ? 'Precio por clase' : 'Precio por mes',
                 // Moneda del país de la sede de la academia (no la del device).
-                prefixText: '${_paisAcademia.moneda} '),
+                prefixText: '${widget.moneda} '),
           ),
           if (!porClase) ...[
             const SizedBox(height: 14),
