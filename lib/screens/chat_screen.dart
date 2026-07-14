@@ -51,9 +51,32 @@ class _ChatScreenState extends State<ChatScreen> {
   final _scroll = ScrollController();
   final _focus = FocusNode();
   bool _enviando = false;
+  bool _emojis = false; // panel de emojis abierto
   String _ultimoVisto = ''; // id del último mensaje ya procesado
 
   String get _hilo => Mensaje.hiloDe(widget.academiaId, widget.cuentaEmail);
+
+  void _toggleEmojis() {
+    setState(() => _emojis = !_emojis);
+    if (_emojis) {
+      _focus.unfocus(); // esconde el teclado (como WhatsApp)
+    } else {
+      _focus.requestFocus();
+    }
+  }
+
+  /// Inserta el emoji en la posición del cursor.
+  void _insertarEmoji(String e) {
+    final sel = _texto.selection;
+    final base = _texto.text;
+    final start = sel.start >= 0 ? sel.start : base.length;
+    final end = sel.end >= 0 ? sel.end : base.length;
+    final nuevo = base.replaceRange(start, end, e);
+    _texto.value = TextEditingValue(
+      text: nuevo,
+      selection: TextSelection.collapsed(offset: start + e.length),
+    );
+  }
 
   // Stream creado UNA sola vez: si se recreara en cada build (p. ej. al enviar,
   // que hace setState), el StreamBuilder volvería al spinner y la pantalla
@@ -63,6 +86,10 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    // Al abrir el teclado, cierra el panel de emojis (no ambos a la vez).
+    _focus.addListener(() {
+      if (_focus.hasFocus && _emojis) setState(() => _emojis = false);
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       appState.marcarChatLeido(_hilo);
     });
@@ -185,8 +212,11 @@ class _ChatScreenState extends State<ChatScreen> {
             focus: _focus,
             enviando: _enviando,
             onEnviar: _enviar,
+            emojisAbiertos: _emojis,
+            onToggleEmojis: _toggleEmojis,
             wa: wa,
           ),
+          if (_emojis) _EmojiPanel(onSelect: _insertarEmoji, wa: wa),
         ],
       ),
     );
@@ -266,12 +296,16 @@ class _Barra extends StatelessWidget {
     required this.focus,
     required this.enviando,
     required this.onEnviar,
+    required this.emojisAbiertos,
+    required this.onToggleEmojis,
     required this.wa,
   });
   final TextEditingController controller;
   final FocusNode focus;
   final bool enviando;
   final VoidCallback onEnviar;
+  final bool emojisAbiertos;
+  final VoidCallback onToggleEmojis;
   final _WA wa;
 
   @override
@@ -297,8 +331,11 @@ class _Barra extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     IconButton(
-                      onPressed: () => focus.requestFocus(),
-                      icon: Icon(Icons.sentiment_satisfied_outlined,
+                      onPressed: onToggleEmojis,
+                      icon: Icon(
+                          emojisAbiertos
+                              ? Icons.keyboard_outlined
+                              : Icons.sentiment_satisfied_outlined,
                           color: wa.hora),
                       splashRadius: 20,
                     ),
@@ -347,6 +384,43 @@ class _Barra extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Panel de emojis propio (sin paquete): grilla de los más usados. Al tocar uno
+/// se inserta en el texto. Se muestra en vez del teclado, como WhatsApp.
+class _EmojiPanel extends StatelessWidget {
+  const _EmojiPanel({required this.onSelect, required this.wa});
+  final void Function(String) onSelect;
+  final _WA wa;
+
+  static const _emojis = [
+    '😀','😁','😂','🤣','😊','😍','😘','😎','🤩','🥳',
+    '😅','😉','🙂','😇','🤔','😐','😴','😢','😭','😡',
+    '👍','👎','👏','🙏','💪','🤝','👌','✌️','🤙','👋',
+    '🔥','⭐','✨','🎉','❤️','💚','💙','💯','⚡','🏆',
+    '⚽','🏀','🎾','🏐','🏓','🏸','🥅','⛳','🎯','🥇',
+    '🏃','🚴','⏰','📍','📅','✅','❌','💰','😱','🤑',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 240,
+      color: wa.barra,
+      child: GridView.count(
+        crossAxisCount: 8,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        children: [
+          for (final e in _emojis)
+            InkWell(
+              onTap: () => onSelect(e),
+              borderRadius: BorderRadius.circular(8),
+              child: Center(child: Text(e, style: const TextStyle(fontSize: 26))),
+            ),
+        ],
       ),
     );
   }
