@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -11,6 +12,7 @@ import '../data/invitaciones_repo.dart';
 import '../data/matriculas_repo.dart';
 import '../data/reservas_repo.dart';
 import '../data/sample_data.dart';
+import '../data/verificacion_repo.dart';
 import '../models/academia.dart';
 import '../models/campeonato.dart';
 import '../models/invitacion.dart';
@@ -1355,6 +1357,36 @@ class AppState extends ChangeNotifier {
   // Saldo prepago del club (modelo inDrive): con saldo aparece destacado y
   // cada reserva nueva descuenta una comisión. Sin saldo, deja de destacarse.
   int saldoClub = 30;
+  // Verificación de identidad del jugador: 'no' | 'en_revision' | 'verificado'.
+  String estadoVerificacion = 'no';
+  bool get jugadorVerificado => estadoVerificacion == 'verificado';
+
+  /// Sincroniza el estado de verificación desde el backend (best-effort).
+  Future<void> sincronizarVerificacion() async {
+    final email = usuario?.email;
+    if (email == null || email.isEmpty) return;
+    final st = await VerificacionRepo.estadoDe(email);
+    if (st != estadoVerificacion) {
+      estadoVerificacion = st;
+      notifyListeners();
+      _persistirDatos();
+    }
+  }
+
+  /// Envía doc + selfie para verificar la identidad. Devuelve true si quedó
+  /// registrada (piloto: auto-aprobada).
+  Future<bool> enviarVerificacion(Uint8List doc, Uint8List selfie) async {
+    final u = usuario;
+    if (u == null) return false;
+    final st = await VerificacionRepo.enviar(
+        email: u.email, nombre: u.nombre, doc: doc, selfie: selfie);
+    if (st == null) return false;
+    estadoVerificacion = st;
+    notifyListeners();
+    _persistirDatos();
+    return true;
+  }
+
   // Moneda del saldo prepago del dueño: se congela con la primera recarga (el
   // país donde puso plata) y no cambia aunque el dueño abra la app en otro país.
   String monedaSaldo = '';
@@ -1534,6 +1566,7 @@ class AppState extends ChangeNotifier {
   static const _kUsuario = 'usuario_json';
   static const _kSaldo = 'saldo_club';
   static const _kMonedaSaldo = 'moneda_saldo';
+  static const _kVerif = 'verificacion_estado';
   static const _kMovs = 'movimientos_json';
   static const _kMisReservas = 'mis_reservas_json';
   static const _kCanchas = 'canchas_extra_json';
@@ -1567,6 +1600,11 @@ class AppState extends ChangeNotifier {
       if (prefs.containsKey(_kMonedaSaldo)) {
         monedaSaldo = prefs.getString(_kMonedaSaldo) ?? monedaSaldo;
       }
+
+      if (prefs.containsKey(_kVerif)) {
+        estadoVerificacion = prefs.getString(_kVerif) ?? estadoVerificacion;
+      }
+      sincronizarVerificacion(); // best-effort desde el backend
 
       if (prefs.containsKey(_kRadio)) {
         radioBusquedaKm = (prefs.getDouble(_kRadio) ?? radioBusquedaKm)
@@ -1668,6 +1706,7 @@ class AppState extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_kSaldo, saldoClub);
       await prefs.setString(_kMonedaSaldo, monedaSaldo);
+      await prefs.setString(_kVerif, estadoVerificacion);
       await prefs.setString(
           _kMovs, jsonEncode(movimientos.map((m) => m.toJson()).toList()));
       await prefs.setString(_kMisReservas,

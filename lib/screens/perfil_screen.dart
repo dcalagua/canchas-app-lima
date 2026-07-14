@@ -10,6 +10,7 @@ import 'ajustes_screen.dart';
 import 'anfitrion_screen.dart';
 import 'login_google_sheet.dart';
 import 'metodos_pago_screen.dart';
+import 'verificar_identidad_screen.dart';
 
 /// Pestaña PERFIL del jugador: sesión (login/logout), lo del jugador (academias,
 /// métodos de pago) y el acceso a **Modo anfitrión** (todo lo del anfitrión va
@@ -112,6 +113,20 @@ class PerfilScreen extends StatelessWidget {
                       onTap: () => Navigator.of(context).push(MaterialPageRoute(
                           builder: (_) => const AcademiasScreen())),
                     ),
+                    if (u != null)
+                      _Tile(
+                        icon: appState.jugadorVerificado
+                            ? Icons.verified
+                            : Icons.verified_user_outlined,
+                        title: appState.jugadorVerificado
+                            ? 'Identidad verificada ✓'
+                            : 'Verifica tu identidad',
+                        subtitle: appState.jugadorVerificado
+                            ? 'Tu perfil muestra la insignia de jugador verificado'
+                            : 'Da confianza a los dueños y reserva sin fricción',
+                        onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => const VerificarIdentidadScreen())),
+                      ),
                     if (u != null)
                       _Tile(
                         icon: Icons.credit_card,
