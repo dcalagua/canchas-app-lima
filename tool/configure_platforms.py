@@ -68,6 +68,14 @@ def android_manifest(text):
             text,
             count=1,
         )
+    # Micrófono: para grabar notas de voz en el chat (paquete record).
+    if "android.permission.RECORD_AUDIO" not in text:
+        text = re.sub(
+            r"(<manifest[^>]*>)",
+            r'\1\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>',
+            text,
+            count=1,
+        )
     if "com.google.android.geo.API_KEY" not in text:
         meta = (
             '        <meta-data android:name="com.google.android.geo.API_KEY" '
