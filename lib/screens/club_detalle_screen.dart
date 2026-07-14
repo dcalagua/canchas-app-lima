@@ -169,6 +169,27 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
 
   bool _esValle(String hora) => hora.compareTo('12:00') < 0;
 
+  /// Hoja "Resumen de tu reserva" (estilo Airbnb) antes de abrir la pasarela.
+  /// Devuelve true si el usuario confirma. Muestra un ÚNICO total todo-incluido,
+  /// sin desglosar comisiones.
+  Future<bool> _mostrarResumen(String hora, num total) async {
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _ResumenReserva(
+        cancha: _cancha,
+        dia: _dia,
+        hora: hora,
+        horaFin: _cancha.horaFinDe(hora),
+        deporte: _deporteEfectivo,
+        nombreCliente: appState.usuario?.nombre ?? '',
+        total: total,
+      ),
+    );
+    return ok == true;
+  }
+
   Future<void> _reservar() async {
     final hora = _hora;
     if (hora == null) return;
@@ -177,12 +198,24 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
       final ok = await LoginGoogleSheet.mostrar(context);
       if (!ok || !mounted) return;
     }
-    // Pago con tarjeta (Culqi). Cobra el precio de la reserva; si el usuario
+    // Total "todo incluido": si el dueño tiene saldo (cancha destacada), la
+    // comisión de Pichangol sale de su saldo y el jugador paga solo el precio.
+    // Si NO tiene saldo, la comisión va sumada DENTRO del total, sin desglosar
+    // (el jugador nunca ve la palabra "comisión"). La comisión de la pasarela
+    // nunca se le muestra.
+    final precio = _cancha.precioHora;
+    final total = appState.esDestacada(_cancha)
+        ? precio
+        : precio + appState.comisionDe(precio);
+    // Resumen estilo Airbnb ANTES de pagar (confianza + claridad).
+    final confirmar = await _mostrarResumen(hora, total);
+    if (!confirmar || !mounted) return;
+    // Pago con tarjeta (Culqi). Cobra el total de la reserva; si el usuario
     // cancela o el pago falla, no se reserva. Si Culqi no está configurado, el
     // sheet cae a la pasarela simulada (demo).
     final pagado = await PagoTarjeta.cobrar(
       context,
-      monto: _cancha.precioHora.round(),
+      monto: total.round(),
       concepto: 'Reserva · ${_cancha.nombre} · $_dia $hora',
       email: appState.usuario?.email ?? '',
       moneda: _cancha.monedaSimbolo,
@@ -816,6 +849,132 @@ class _ReservarBar extends StatelessWidget {
             ),
             onPressed: onReservar,
             child: const Text('Reservar'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Hoja "Resumen de tu reserva" (estilo Airbnb): detalle de la reserva + un
+/// ÚNICO total todo-incluido, sin desglosar comisiones. Devuelve true al pagar.
+class _ResumenReserva extends StatelessWidget {
+  const _ResumenReserva({
+    required this.cancha,
+    required this.dia,
+    required this.hora,
+    required this.horaFin,
+    required this.deporte,
+    required this.nombreCliente,
+    required this.total,
+  });
+
+  final Cancha cancha;
+  final String dia;
+  final String hora;
+  final String horaFin;
+  final Deporte deporte;
+  final String nombreCliente;
+  final num total;
+
+  String get _duracion {
+    final min = cancha.duracionSlotMin <= 0 ? 60 : cancha.duracionSlotMin;
+    final h = min ~/ 60;
+    final m = min % 60;
+    if (h == 0) return '$m min';
+    return m == 0 ? '$h h' : '$h h $m min';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final t = Theme.of(context).textTheme;
+    final dir = (cancha.direccion ?? '').trim();
+    final cliente = nombreCliente.trim().isEmpty ? 'Ti' : nombreCliente.trim();
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: EdgeInsets.fromLTRB(
+          20, 12, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              width: 44,
+              height: 5,
+              decoration: BoxDecoration(
+                  color: Colors.black12, borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text('Resumen de tu reserva',
+              style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 14),
+          _fila(context, iconoDeporte(deporte), colorDeporte(deporte),
+              '${cancha.nombre} · ${deporte.etiqueta}'),
+          _fila(context, Icons.event, cs.primary,
+              '$dia · $hora–$horaFin  ($_duracion)'),
+          if (dir.isNotEmpty)
+            _fila(context, Icons.place_outlined, cs.primary, dir),
+          _fila(context, Icons.person_outline, cs.primary,
+              'A nombre de: $cliente'),
+          const SizedBox(height: 8),
+          Divider(color: trazo),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Expanded(
+                child: Text('Total a pagar',
+                    style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+              ),
+              Text('${cancha.monedaSimbolo} ${total.toStringAsFixed(2)}',
+                  style: t.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w800, color: cs.primary)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.lock_outline, size: 15, color: textoTenue),
+              const SizedBox(width: 6),
+              Text('Pago seguro · Confirmación al instante',
+                  style: t.bodySmall?.copyWith(color: textoTenue)),
+            ],
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                  backgroundColor: pino,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 15)),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Confirmar y pagar',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _fila(BuildContext context, IconData icono, Color color, String texto) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icono, size: 20, color: color),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(texto,
+                style: const TextStyle(fontSize: 14.5, height: 1.3)),
           ),
         ],
       ),
