@@ -304,6 +304,14 @@ class PlacesService {
     // Zapaterías/ropa deportiva: "tenis" en jerga = zapatillas. NO son canchas.
     'zapatilla', 'zapato', 'calzado', 'sneaker', 'sport wear', 'sportwear',
     'deportes americano', 'ropa deportiva', 'boutique', 'outlet',
+    // Tiendas de artículos deportivos (retail): en LatAm suelen llamarse en
+    // inglés "Sport Center" y Google a veces las etiqueta como recinto
+    // deportivo. NO son canchas de alquiler (el dueño real puede registrarla
+    // a mano por el flujo de dueño).
+    'sport center', 'sports center', 'sport centre', 'sports centre',
+    'sportcenter', 'sport shop', 'sports shop', 'deportes en general',
+    'importadora', 'distribuidora', 'comercializadora', 'ferretería',
+    'ferreteria',
     // Deportes que NO son de cancha reservable en el marketplace:
     'skate', 'skatepark', 'patineta', 'patinaje', 'monopatín', 'monopatin',
     'roller', 'bmx', 'ciclovía', 'ciclovia', 'pista atlética', 'pista atletica',
