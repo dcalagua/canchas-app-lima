@@ -55,6 +55,13 @@ dependency_overrides:
   # record_android 1.4+/1.5 usa flutter.compileSdkVersion (rompe CI). La 1.3.3
   # hardcodea compileSdk 34 (changelog "Gradle compile SDK to 34"), minSdk 23.
   record_android: 1.3.3
+  # record_platform_interface 1.6.0 agregó startStream() y hasPermission(request:)
+  # que record_linux 0.7.2 NO implementa (record capa record_linux a <1.0.0). Pub
+  # flotaba la interfaz a 1.6.0 por ^1.2.0 y rompía el kernel_snapshot. La clavamos
+  # a 1.2.0 (era real de record_linux 0.7.2): pub baja darwin→1.2.2, web→1.1.9,
+  # windows→1.0.6, todo pre-startStream y consistente. record_android 1.3.3 y
+  # record 5.2.x piden ^1.2.0, así que 1.2.0 les basta.
+  record_platform_interface: 1.2.0
 
 flutter:
   uses-material-design: true
