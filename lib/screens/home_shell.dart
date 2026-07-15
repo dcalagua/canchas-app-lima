@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'agenda_screen.dart';
+import 'clientes_screen.dart';
 import 'cuenta_screen.dart';
 import 'mis_canchas_screen.dart';
 import 'reportes_screen.dart';
@@ -26,6 +27,7 @@ class _HomeShellState extends State<HomeShell> {
     MisCanchasScreen(),     // tus canchas reales (editar precio/horarios/servicios)
     AgendaScreen(),         // agenda de hoy (real)
     ReservasDuenoScreen(),  // reservas reales de tus canchas + caja
+    ClientesScreen(),       // base de clientes (CRM ligero, derivado de reservas)
     ReportesScreen(),       // reportes / KPIs (reales)
     CuentaScreen(),         // saldo prepago + recargar (Culqi)
   ];
@@ -35,13 +37,15 @@ class _HomeShellState extends State<HomeShell> {
     Icons.sports_soccer,
     Icons.calendar_month,
     Icons.event_note,
+    Icons.groups,
     Icons.bar_chart,
     Icons.account_balance_wallet,
   ];
   static const _etiquetas = <String>[
-    'Mis canchas',
+    'Canchas',
     'Agenda',
     'Reservas',
+    'Clientes',
     'Reportes',
     'Cuenta',
   ];
