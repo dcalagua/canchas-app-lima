@@ -40,7 +40,19 @@ class Mensaje {
     this.mediaUrl = '',
   });
 
-  bool get tieneFoto => mediaUrl.isNotEmpty;
+  /// ¿El adjunto es una nota de voz? (se distingue por la extensión del archivo).
+  bool get esAudio {
+    if (mediaUrl.isEmpty) return false;
+    final u = mediaUrl.toLowerCase();
+    return u.contains('.m4a') ||
+        u.contains('.aac') ||
+        u.contains('.mp3') ||
+        u.contains('.wav') ||
+        u.contains('.ogg');
+  }
+
+  /// ¿El adjunto es una foto? (media que no es audio).
+  bool get tieneFoto => mediaUrl.isNotEmpty && !esAudio;
 
   bool get esCancha => tipo == 'cancha';
   bool get esGrupo => tipo == 'grupo';

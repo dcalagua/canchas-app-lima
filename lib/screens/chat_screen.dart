@@ -1,5 +1,10 @@
+import 'dart:io';
+
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
 
 import '../data/mensajes_repo.dart';
 import '../models/mensaje.dart';
@@ -133,6 +138,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _texto.dispose();
     _scroll.dispose();
     _focus.dispose();
+    _rec.dispose();
     super.dispose();
   }
 
@@ -200,6 +206,78 @@ class _ChatScreenState extends State<ChatScreen> {
       await MensajesRepo.enviar(msg);
     } catch (_) {
       // ignora: fail-safe
+    } finally {
+      if (mounted) setState(() => _enviando = false);
+    }
+  }
+
+  // ── Notas de voz ──────────────────────────────────────────────────────────
+  final AudioRecorder _rec = AudioRecorder();
+  bool _grabando = false;
+
+  /// Inicia o detiene la grabación de una nota de voz. Al detener, la sube y la
+  /// envía como mensaje de audio.
+  Future<void> _toggleGrabacion() async {
+    if (_grabando) {
+      String? ruta;
+      try {
+        ruta = await _rec.stop();
+      } catch (_) {}
+      if (mounted) setState(() => _grabando = false);
+      if (ruta != null) await _enviarAudio(ruta);
+      return;
+    }
+    // Empezar: pide permiso de micrófono.
+    try {
+      if (!await _rec.hasPermission()) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Activa el permiso de micrófono para grabar.')));
+        }
+        return;
+      }
+      final dir = await getTemporaryDirectory();
+      final ruta =
+          '${dir.path}/nota_${DateTime.now().microsecondsSinceEpoch}.m4a';
+      await _rec.start(const RecordConfig(encoder: AudioEncoder.aacLc),
+          path: ruta);
+      if (mounted) setState(() => _grabando = true);
+    } catch (_) {
+      if (mounted) setState(() => _grabando = false);
+    }
+  }
+
+  Future<void> _enviarAudio(String ruta) async {
+    final u = appState.usuario;
+    if (u == null) return;
+    setState(() => _enviando = true);
+    try {
+      final bytes = await File(ruta).readAsBytes();
+      if (bytes.isEmpty) return;
+      final url = await MensajesRepo.subirAudio(_hilo, bytes);
+      if (url == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('No se pudo enviar la nota de voz.')));
+        return;
+      }
+      final msg = Mensaje(
+        id: 'msg_${DateTime.now().microsecondsSinceEpoch}',
+        hilo: _hilo,
+        tipo: widget.tipo,
+        refId: _refId,
+        academiaId: widget.academiaId,
+        cuentaEmail: widget.cuentaEmail,
+        autorEmail: u.email,
+        autorNombre: u.nombre,
+        esProfe: widget.soyProfe,
+        texto: '🎤 Nota de voz',
+        mediaUrl: url,
+        creado: DateTime.now(),
+      );
+      await MensajesRepo.enviar(msg);
+    } catch (_) {
+      // fail-safe
     } finally {
       if (mounted) setState(() => _enviando = false);
     }
@@ -303,6 +381,8 @@ class _ChatScreenState extends State<ChatScreen> {
             onToggleEmojis: _toggleEmojis,
             onGaleria: () => _enviarFoto(ImageSource.gallery),
             onCamara: () => _enviarFoto(ImageSource.camera),
+            grabando: _grabando,
+            onMic: _toggleGrabacion,
             wa: wa,
           ),
           if (_emojis) _EmojiPanel(onSelect: _insertarEmoji, wa: wa),
@@ -363,7 +443,12 @@ class _Burbuja extends StatelessWidget {
                         fontSize: 12.5,
                         fontWeight: FontWeight.w700)),
               ),
-            if (mensaje.tieneFoto)
+            if (mensaje.esAudio)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: _BurbujaAudio(url: mensaje.mediaUrl, mio: mio, wa: wa),
+              )
+            else if (mensaje.tieneFoto)
               Padding(
                 padding: const EdgeInsets.only(bottom: 4),
                 child: ClipRRect(
@@ -390,7 +475,8 @@ class _Burbuja extends StatelessWidget {
           crossAxisAlignment: WrapCrossAlignment.end,
           children: [
             if (mensaje.texto.isNotEmpty &&
-                !(mensaje.tieneFoto && mensaje.texto == '📷 Foto'))
+                !(mensaje.tieneFoto && mensaje.texto == '📷 Foto') &&
+                !(mensaje.esAudio && mensaje.texto == '🎤 Nota de voz'))
               Text(mensaje.texto,
                   style: TextStyle(
                       color: mio ? wa.textoMio : wa.textoOtro, fontSize: 15.5)),
@@ -422,6 +508,128 @@ class _Burbuja extends StatelessWidget {
   }
 }
 
+/// Punto rojo (indicador de grabación en curso).
+class _PuntoGrabando extends StatelessWidget {
+  const _PuntoGrabando();
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 11,
+      height: 11,
+      decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+    );
+  }
+}
+
+/// Burbuja de NOTA DE VOZ: botón play/pausa + barra + duración. Reproduce la URL
+/// del audio con audioplayers. Cada burbuja tiene su propio reproductor.
+class _BurbujaAudio extends StatefulWidget {
+  const _BurbujaAudio({required this.url, required this.mio, required this.wa});
+  final String url;
+  final bool mio;
+  final _WA wa;
+
+  @override
+  State<_BurbujaAudio> createState() => _BurbujaAudioState();
+}
+
+class _BurbujaAudioState extends State<_BurbujaAudio> {
+  final AudioPlayer _player = AudioPlayer();
+  bool _sonando = false;
+  Duration _total = Duration.zero;
+  Duration _pos = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    _player.onDurationChanged.listen((d) {
+      if (mounted) setState(() => _total = d);
+    });
+    _player.onPositionChanged.listen((p) {
+      if (mounted) setState(() => _pos = p);
+    });
+    _player.onPlayerComplete.listen((_) {
+      if (mounted) setState(() {
+            _sonando = false;
+            _pos = Duration.zero;
+          });
+    });
+  }
+
+  @override
+  void dispose() {
+    _player.dispose();
+    super.dispose();
+  }
+
+  Future<void> _toggle() async {
+    try {
+      if (_sonando) {
+        await _player.pause();
+        if (mounted) setState(() => _sonando = false);
+      } else {
+        await _player.play(UrlSource(widget.url));
+        if (mounted) setState(() => _sonando = true);
+      }
+    } catch (_) {}
+  }
+
+  String _fmt(Duration d) {
+    final m = d.inMinutes.remainder(60).toString();
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = widget.mio ? widget.wa.textoMio : widget.wa.textoOtro;
+    final frac = _total.inMilliseconds == 0
+        ? 0.0
+        : (_pos.inMilliseconds / _total.inMilliseconds).clamp(0.0, 1.0);
+    final mostrar = _sonando || _pos > Duration.zero ? _pos : _total;
+    return SizedBox(
+      width: 210,
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: _toggle,
+            child: Icon(_sonando ? Icons.pause_circle_filled : Icons.play_circle_fill,
+                size: 34, color: widget.wa.send),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: frac,
+                    minHeight: 4,
+                    backgroundColor: color.withOpacity(0.2),
+                    valueColor: AlwaysStoppedAnimation(widget.wa.send),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Icon(Icons.mic, size: 13, color: color.withOpacity(0.7)),
+                    const SizedBox(width: 3),
+                    Text(_fmt(mostrar),
+                        style: TextStyle(
+                            fontSize: 11, color: color.withOpacity(0.8))),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _Barra extends StatelessWidget {
   const _Barra({
     required this.controller,
@@ -432,6 +640,8 @@ class _Barra extends StatelessWidget {
     required this.onToggleEmojis,
     required this.onGaleria,
     required this.onCamara,
+    required this.grabando,
+    required this.onMic,
     required this.wa,
   });
   final TextEditingController controller;
@@ -442,6 +652,8 @@ class _Barra extends StatelessWidget {
   final VoidCallback onToggleEmojis;
   final VoidCallback onGaleria;
   final VoidCallback onCamara;
+  final bool grabando;
+  final VoidCallback onMic;
   final _WA wa;
 
   @override
@@ -454,8 +666,8 @@ class _Barra extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            // Pastilla con emoji + campo de texto (los emojis salen del teclado
-            // del sistema; el botón carita solo abre/enfoca el teclado).
+            // Pastilla: mientras GRABA muestra "Grabando…"; si no, el campo de
+            // texto con emoji/adjuntar/cámara.
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
@@ -463,72 +675,112 @@ class _Barra extends StatelessWidget {
                   borderRadius: BorderRadius.circular(24),
                 ),
                 padding: const EdgeInsets.only(left: 4, right: 8),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    IconButton(
-                      onPressed: onToggleEmojis,
-                      icon: Icon(
-                          emojisAbiertos
-                              ? Icons.keyboard_outlined
-                              : Icons.sentiment_satisfied_outlined,
-                          color: wa.hora),
-                      splashRadius: 20,
-                    ),
-                    Expanded(
-                      child: TextField(
-                        controller: controller,
-                        focusNode: focus,
-                        minLines: 1,
-                        maxLines: 5,
-                        textCapitalization: TextCapitalization.sentences,
-                        style: TextStyle(color: wa.pillTexto, fontSize: 16),
-                        decoration: InputDecoration(
-                          hintText: 'Mensaje',
-                          hintStyle: TextStyle(color: wa.hora),
-                          isDense: true,
-                          border: InputBorder.none,
-                          contentPadding:
-                              const EdgeInsets.symmetric(vertical: 10),
+                child: grabando
+                    ? Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 12),
+                        child: Row(
+                          children: [
+                            const _PuntoGrabando(),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text('Grabando nota de voz…',
+                                  style: TextStyle(
+                                      color: wa.pillTexto,
+                                      fontWeight: FontWeight.w600)),
+                            ),
+                            Text('toca ▶ para enviar',
+                                style:
+                                    TextStyle(color: wa.hora, fontSize: 12)),
+                          ],
                         ),
-                        onSubmitted: (_) => onEnviar(),
+                      )
+                    : Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          IconButton(
+                            onPressed: onToggleEmojis,
+                            icon: Icon(
+                                emojisAbiertos
+                                    ? Icons.keyboard_outlined
+                                    : Icons.sentiment_satisfied_outlined,
+                                color: wa.hora),
+                            splashRadius: 20,
+                          ),
+                          Expanded(
+                            child: TextField(
+                              controller: controller,
+                              focusNode: focus,
+                              minLines: 1,
+                              maxLines: 5,
+                              textCapitalization:
+                                  TextCapitalization.sentences,
+                              style: TextStyle(
+                                  color: wa.pillTexto, fontSize: 16),
+                              decoration: InputDecoration(
+                                hintText: 'Mensaje',
+                                hintStyle: TextStyle(color: wa.hora),
+                                isDense: true,
+                                border: InputBorder.none,
+                                contentPadding: const EdgeInsets.symmetric(
+                                    vertical: 10),
+                              ),
+                              onSubmitted: (_) => onEnviar(),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: enviando ? null : onGaleria,
+                            icon: Icon(Icons.attach_file, color: wa.hora),
+                            splashRadius: 20,
+                            tooltip: 'Adjuntar foto',
+                          ),
+                          IconButton(
+                            onPressed: enviando ? null : onCamara,
+                            icon: Icon(Icons.photo_camera_outlined,
+                                color: wa.hora),
+                            splashRadius: 20,
+                            tooltip: 'Cámara',
+                          ),
+                        ],
                       ),
-                    ),
-                    IconButton(
-                      onPressed: enviando ? null : onGaleria,
-                      icon: Icon(Icons.attach_file, color: wa.hora),
-                      splashRadius: 20,
-                      tooltip: 'Adjuntar foto',
-                    ),
-                    IconButton(
-                      onPressed: enviando ? null : onCamara,
-                      icon: Icon(Icons.photo_camera_outlined, color: wa.hora),
-                      splashRadius: 20,
-                      tooltip: 'Cámara',
-                    ),
-                  ],
-                ),
               ),
             ),
             const SizedBox(width: 6),
-            // Botón de envío circular verde WhatsApp.
-            Material(
-              color: wa.send,
-              shape: const CircleBorder(),
-              child: InkWell(
-                customBorder: const CircleBorder(),
-                onTap: enviando ? null : onEnviar,
-                child: Padding(
-                  padding: const EdgeInsets.all(11),
-                  child: enviando
-                      ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white))
-                      : const Icon(Icons.send, color: Colors.white, size: 22),
-                ),
-              ),
+            // Botón circular: grabando → enviar (verde); con texto → enviar;
+            // vacío → micrófono (empieza a grabar).
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: controller,
+              builder: (context, value, _) {
+                final hayTexto = value.text.trim().isNotEmpty;
+                final mostrarMic = !grabando && !hayTexto;
+                return Material(
+                  color: grabando ? Colors.red : wa.send,
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: enviando
+                        ? null
+                        : grabando
+                            ? onMic
+                            : (hayTexto ? onEnviar : onMic),
+                    child: Padding(
+                      padding: const EdgeInsets.all(11),
+                      child: enviando
+                          ? const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white))
+                          : Icon(
+                              grabando
+                                  ? Icons.send
+                                  : (mostrarMic ? Icons.mic : Icons.send),
+                              color: Colors.white,
+                              size: 22),
+                    ),
+                  ),
+                );
+              },
             ),
           ],
         ),

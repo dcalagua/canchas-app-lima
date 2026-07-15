@@ -117,6 +117,24 @@ class MensajesRepo {
     }
   }
 
+  /// Sube una nota de voz (.m4a) al bucket `chat` y devuelve su URL pública.
+  static Future<String?> subirAudio(String hilo, Uint8List bytes) async {
+    if (!SupabaseService.disponible) return null;
+    try {
+      final carpeta = hilo.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+      final path = '$carpeta/${DateTime.now().microsecondsSinceEpoch}.m4a';
+      await SupabaseService.client.storage.from('chat').uploadBinary(
+            path,
+            bytes,
+            fileOptions:
+                const FileOptions(contentType: 'audio/mp4', upsert: true),
+          );
+      return SupabaseService.client.storage.from('chat').getPublicUrl(path);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Envía un mensaje (INSERT). Devuelve true si se guardó. Fail-safe.
   static Future<bool> enviar(Mensaje m) async {
     if (!SupabaseService.disponible) return false;

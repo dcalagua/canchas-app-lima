@@ -68,6 +68,14 @@ def android_manifest(text):
             text,
             count=1,
         )
+    # Micrófono: notas de voz en el chat (plugin record).
+    if "android.permission.RECORD_AUDIO" not in text:
+        text = re.sub(
+            r"(<manifest[^>]*>)",
+            r'\1\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>',
+            text,
+            count=1,
+        )
     if "com.google.android.geo.API_KEY" not in text:
         meta = (
             '        <meta-data android:name="com.google.android.geo.API_KEY" '
@@ -122,6 +130,14 @@ def ios_infoplist(text):
         block = (
             "\t<key>NSPhotoLibraryUsageDescription</key>\n"
             "\t<string>Pichangol usa tus fotos para registrar canchas y detectar el deporte.</string>\n"
+            "</dict>\n</plist>"
+        )
+        text = text.replace("</dict>\n</plist>", block, 1)
+    # Permiso de micrófono (notas de voz en el chat).
+    if "NSMicrophoneUsageDescription" not in text:
+        block = (
+            "\t<key>NSMicrophoneUsageDescription</key>\n"
+            "\t<string>Pichangol usa el micrófono para enviar notas de voz en el chat.</string>\n"
             "</dict>\n</plist>"
         )
         text = text.replace("</dict>\n</plist>", block, 1)
