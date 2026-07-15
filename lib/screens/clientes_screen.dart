@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/models.dart';
+import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'chat_screen.dart';
@@ -49,6 +50,9 @@ class _ClientesScreenState extends State<ClientesScreen> {
       if (email.isEmpty && nombre.isEmpty) continue;
       final cl = map.putIfAbsent(key, () => _Cliente(email: email));
       if (cl.nombre.isEmpty && nombre.isNotEmpty) cl.nombre = nombre;
+      if (cl.telefono.isEmpty && r.telefono.isNotEmpty) {
+        cl.telefono = r.telefono;
+      }
       if (r.nivel.isNotEmpty) cl.nivel = r.nivel;
       if (r.moneda.isNotEmpty) cl.moneda = r.monedaSimbolo;
       cl.reservas++;
@@ -186,6 +190,7 @@ class _Cliente {
   _Cliente({required this.email});
   final String email;
   String nombre = '';
+  String telefono = '';
   String nivel = '';
   String moneda = 'S/';
   int reservas = 0;
@@ -366,11 +371,7 @@ class _ClienteCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 1),
                       Text(
-                        cliente.nivel.isNotEmpty
-                            ? cliente.nivel
-                            : (cliente.email.isNotEmpty
-                                ? cliente.email
-                                : 'Sin correo'),
+                        _contacto(cliente),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: t.bodySmall
@@ -385,6 +386,14 @@ class _ClienteCard extends StatelessWidget {
                     icon: const Icon(Icons.chat_bubble_outline),
                     color: bosque,
                     onPressed: () => _chatear(context),
+                  )
+                else if (cliente.telefono.isNotEmpty)
+                  IconButton(
+                    tooltip: 'WhatsApp',
+                    icon: const Icon(Icons.chat),
+                    color: lima,
+                    onPressed: () => WhatsAppLink.abrir(cliente.telefono,
+                        'Hola ${cliente.nombreVisible} 👋'),
                   ),
               ],
             ),
@@ -500,10 +509,9 @@ class _ClienteCard extends StatelessWidget {
                         Text(cliente.nombreVisible,
                             style: t.titleLarge
                                 ?.copyWith(fontWeight: FontWeight.w800)),
-                        if (cliente.email.isNotEmpty)
-                          Text(cliente.email,
-                              style: t.bodySmall
-                                  ?.copyWith(color: textoTenueDe(ctx))),
+                        Text(_contacto(cliente),
+                            style: t.bodySmall
+                                ?.copyWith(color: textoTenueDe(ctx))),
                       ],
                     ),
                   ),
@@ -516,6 +524,14 @@ class _ClienteCard extends StatelessWidget {
                       },
                       icon: const Icon(Icons.chat_bubble_outline, size: 18),
                       label: const Text('Chat'),
+                    )
+                  else if (cliente.telefono.isNotEmpty)
+                    FilledButton.icon(
+                      style: FilledButton.styleFrom(backgroundColor: lima),
+                      onPressed: () => WhatsAppLink.abrir(cliente.telefono,
+                          'Hola ${cliente.nombreVisible} 👋'),
+                      icon: const Icon(Icons.chat, size: 18),
+                      label: const Text('WhatsApp'),
                     ),
                 ],
               ),
@@ -632,6 +648,15 @@ class _Vacio extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Subtítulo de contacto del cliente: prioriza lo que sirve para ubicarlo
+/// (correo si tiene cuenta, si no el teléfono del cuaderno), luego el nivel.
+String _contacto(_Cliente c) {
+  if (c.email.isNotEmpty) return c.email;
+  if (c.telefono.isNotEmpty) return c.telefono;
+  if (c.nivel.isNotEmpty) return c.nivel;
+  return 'Sin contacto';
 }
 
 /// Color estable del avatar a partir del nombre (paleta de marca).

@@ -6,6 +6,7 @@ import '../theme.dart';
 import '../utils/moneda.dart';
 import 'chat_screen.dart';
 import 'reporte_canchas_screen.dart';
+import 'reserva_manual_screen.dart';
 
 /// Panel de RESERVAS del dueño (piloto): lista las reservas reales de sus
 /// canchas, con botones para registrar el pago en efectivo o marcar no-show,
@@ -55,6 +56,15 @@ class _ReservasDuenoScreenState extends State<ReservasDuenoScreen> {
                 builder: (_) => const ReporteCanchasScreen())),
           ),
         ],
+      ),
+      // Anota la reserva de un cliente que llamó/vino (digitaliza el cuaderno).
+      floatingActionButton: FloatingActionButton.extended(
+        backgroundColor: lima,
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.add),
+        label: const Text('Reserva manual'),
+        onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => const ReservaManualScreen())),
       ),
       body: ListenableBuilder(
         listenable: appState,

@@ -1954,6 +1954,64 @@ class AppState extends ChangeNotifier {
     return res == ResultadoReserva.ok ? ResultadoReserva.ok : res;
   }
 
+  /// RESERVA MANUAL del dueño: registra la reserva de un cliente que llamó por
+  /// teléfono/WhatsApp (digitaliza el cuaderno). Es `traidaPorApp: false` —
+  /// cliente PROPIO del dueño, FUERA de la base de comisión: Pichangol solo
+  /// monetiza lo que trae la app. Ocupa el slot igual (anti doble-reserva), así
+  /// un jugador de la app no puede reservar una hora ya tomada.
+  Future<ResultadoReserva> agregarReservaManual(
+    Cancha cancha,
+    String fecha,
+    String diaLabel,
+    String hora, {
+    required String nombreCliente,
+    String telefono = '',
+    bool pagado = false,
+    int? precioOverride,
+    Deporte? deporte,
+  }) async {
+    final yaLocal = reservas.any((r) =>
+        r.canchaId == cancha.id && r.fecha == fecha && r.horaInicio == hora);
+    if (yaLocal) return ResultadoReserva.ocupado;
+
+    final precio = precioOverride ??
+        (cancha.precioHora * cancha.duracionSlotMin / 60).round();
+    final nombre = nombreCliente.trim();
+    final reserva = Reserva(
+      id: 'man_${DateTime.now().millisecondsSinceEpoch}_${_contadorJugador++}',
+      canchaId: cancha.id,
+      jugador: nombre.isEmpty ? 'Cliente' : nombre,
+      nivel: '',
+      fecha: fecha,
+      dia: diaLabel,
+      horaInicio: hora,
+      horaFin: cancha.horaFinDe(hora),
+      estado: EstadoReserva.confirmada,
+      traidaPorApp: false, // CLIENTE PROPIO del dueño → fuera de comisión
+      precio: precio,
+      sena: 0,
+      pagado: pagado,
+      usuario: '', // cliente offline: sin cuenta de la app
+      deporte: (deporte ?? cancha.deporte).name,
+      moneda: cancha.monedaSimbolo,
+      telefono: telefono.trim(),
+    );
+
+    // Misma fuente de verdad anti-doble-reserva que la reserva del jugador.
+    final res = await ReservasRepo.insertarSegura(reserva);
+    if (res == ResultadoReserva.ocupado) return res;
+
+    reservas.insert(0, reserva); // visible en el panel del dueño
+    if (diaLabel == 'Hoy') {
+      final i =
+          agenda.indexWhere((b) => b.canchaId == cancha.id && b.hora == hora);
+      if (i >= 0) agenda[i] = agenda[i].copyWith(reservaId: reserva.id);
+    }
+    notifyListeners();
+    _persistirDatos();
+    return res == ResultadoReserva.ok ? ResultadoReserva.ok : res;
+  }
+
   /// El dueño confirma (o revierte) que el jugador pagó en efectivo en la cancha.
   Future<void> marcarPago(Reserva r, {bool pagado = true}) async {
     final upd = r.copyWith(pagado: pagado);

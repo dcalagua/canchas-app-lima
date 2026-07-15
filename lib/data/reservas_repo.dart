@@ -135,6 +135,9 @@ class ReservasRepo {
         if (conDeporte) 'deporte': r.deporte,
         if (conDeporte) 'moneda': r.moneda,
         if (conDeporte) 'extras': r.extras.map((s) => s.toJson()).toList(),
+        // Teléfono del cliente en reservas manuales del dueño (columna nueva;
+        // va bajo el mismo guard para no romper si aún no se corrió el ALTER).
+        if (conDeporte && r.telefono.isNotEmpty) 'telefono': r.telefono,
       };
 
   static Reserva _fromRow(Map<String, dynamic> r) => Reserva(
@@ -155,6 +158,7 @@ class ReservasRepo {
         deporte: (r['deporte'] ?? '') as String,
         moneda: (r['moneda'] ?? '') as String,
         extras: ServicioExtra.listaDe(r['extras']),
+        telefono: (r['telefono'] ?? '') as String,
       );
 
   static EstadoReserva _estado(String? s) {
