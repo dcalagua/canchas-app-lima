@@ -131,6 +131,9 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
   List<String> _fotosBase = const [];
 
   static const _limaCentro = LatLng(-12.0931, -77.0465);
+  // Centro inicial del mapa detectado por GPS (Perú/Bolivia/Ecuador…), para no
+  // arrancar clavado en Lima cuando el dueño registra desde otro país/ciudad.
+  LatLng? _centroInicial;
 
   @override
   void initState() {
@@ -146,7 +149,26 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
       _fotosBase = b.fotos.isNotEmpty
           ? b.fotos
           : (b.fotoUrl != null ? [b.fotoUrl!] : const []);
+    } else {
+      // Cancha nueva (sin ubicación fija): centra el mapa en donde está el dueño.
+      _autoCentrarMapa();
     }
+  }
+
+  /// Detecta la ubicación del dueño y centra el mapa ahí (sin fijar el pin: el
+  /// dueño confirma el punto exacto tocando/arrastrando o por dirección).
+  Future<void> _autoCentrarMapa() async {
+    // 1) Rápida (última conocida) para reubicar de inmediato; 2) precisa (GPS).
+    final rapida = await LocationService.ultimaConocida();
+    if (rapida != null) _aplicarCentro(rapida);
+    final precisa = await LocationService.ubicacionActual();
+    if (precisa != null) _aplicarCentro(precisa);
+  }
+
+  void _aplicarCentro(LatLng pos) {
+    if (!mounted || _ubicacion != null) return; // no pisar un pin ya elegido
+    setState(() => _centroInicial = pos); // por si el mapa aún no se creó
+    _map?.animateCamera(CameraUpdate.newLatLngZoom(pos, 14));
   }
 
   @override
@@ -595,7 +617,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
 
           // Mapa de confirmación: marcador arrastrable + tocar para ajustar.
           _MapaUbicacion(
-            inicial: _ubicacion ?? _limaCentro,
+            inicial: _ubicacion ?? _centroInicial ?? _limaCentro,
             ubicacion: _ubicacion,
             onMapCreated: (c) => _map = c,
             onElegir: _moverPin,
