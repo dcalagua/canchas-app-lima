@@ -5,6 +5,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/moneda.dart';
 import 'chat_screen.dart';
+import 'reporte_canchas_screen.dart';
 
 /// Panel de RESERVAS del dueño (piloto): lista las reservas reales de sus
 /// canchas, con botones para registrar el pago en efectivo o marcar no-show,
@@ -44,7 +45,17 @@ class _ReservasDuenoScreenState extends State<ReservasDuenoScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Reservas')),
+      appBar: AppBar(
+        title: const Text('Reservas'),
+        actions: [
+          IconButton(
+            tooltip: 'Reporte de cobros',
+            icon: const Icon(Icons.bar_chart),
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => const ReporteCanchasScreen())),
+          ),
+        ],
+      ),
       body: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
