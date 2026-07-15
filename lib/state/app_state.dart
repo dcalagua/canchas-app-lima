@@ -10,6 +10,7 @@ import '../data/campeonatos_repo.dart';
 import '../data/canchas_repo.dart';
 import '../data/invitaciones_repo.dart';
 import '../data/matriculas_repo.dart';
+import '../data/bloqueos_repo.dart';
 import '../data/reservas_repo.dart';
 import '../data/sample_data.dart';
 import '../data/verificacion_repo.dart';
@@ -979,6 +980,37 @@ class AppState extends ChangeNotifier {
     }
     _recomputarMisReservas();
     notifyListeners();
+  }
+
+  // ── Horarios BLOQUEADOS por el dueño ──────────────────────────────────────
+  // Claves "canchaId|fecha|hora" de slots que el dueño cerró (no reservables).
+  final Set<String> _bloqueos = {};
+
+  bool estaBloqueado(String canchaId, String fecha, String hora) =>
+      _bloqueos.contains(BloqueosRepo.clave(canchaId, fecha, hora));
+
+  /// Carga los bloqueos desde la nube (al abrir una ficha de cancha).
+  Future<void> cargarBloqueos() async {
+    final s = await BloqueosRepo.fetch();
+    _bloqueos
+      ..clear()
+      ..addAll(s);
+    notifyListeners();
+  }
+
+  /// El dueño bloquea/desbloquea un horario. Actualiza al instante y sincroniza.
+  Future<void> alternarBloqueo(
+      String canchaId, String fecha, String hora) async {
+    final k = BloqueosRepo.clave(canchaId, fecha, hora);
+    if (_bloqueos.contains(k)) {
+      _bloqueos.remove(k);
+      notifyListeners();
+      await BloqueosRepo.desbloquear(canchaId, fecha, hora);
+    } else {
+      _bloqueos.add(k);
+      notifyListeners();
+      await BloqueosRepo.bloquear(canchaId, fecha, hora);
+    }
   }
 
   /// Mis reservas = reservas cuyo correo coincide con el jugador logueado.

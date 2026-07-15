@@ -76,6 +76,8 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     // horario que otro dispositivo ya tomó (integridad la garantiza el UNIQUE,
     // esto es solo para que se vea al día).
     appState.cargarReservasRemotas();
+    // Horarios bloqueados por el dueño (no reservables).
+    appState.cargarBloqueos();
   }
 
   /// Si el (último) reclamo de esta cancha fue RECHAZADO y NO es mío, la cancha
@@ -164,10 +166,26 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         MaterialPageRoute(builder: (_) => const ReservasDuenoScreen()));
   }
 
-  bool _ocupada(String hora) => appState.reservas.any((r) =>
+  bool _reservado(String hora) => appState.reservas.any((r) =>
       r.canchaId == _cancha.id && r.fecha == _fechaIso && r.horaInicio == hora);
 
+  bool _bloqueado(String hora) =>
+      appState.estaBloqueado(_cancha.id, _fechaIso, hora);
+
+  // Un slot NO se puede reservar si está reservado o bloqueado por el dueño.
+  bool _ocupada(String hora) => _reservado(hora) || _bloqueado(hora);
+
   bool _esValle(String hora) => hora.compareTo('12:00') < 0;
+
+  /// El dueño bloquea/desbloquea un horario (los reservados no se tocan).
+  Future<void> _alternarBloqueo(String hora) async {
+    if (_reservado(hora)) return; // no bloquear un slot ya reservado
+    // El set se actualiza de forma síncrona dentro de alternarBloqueo; el
+    // setState refleja el cambio al instante y la red va por detrás.
+    final f = appState.alternarBloqueo(_cancha.id, _fechaIso, hora);
+    if (mounted) setState(() {});
+    await f;
+  }
 
   /// Hoja "Resumen de tu reserva" (estilo Airbnb) antes de pagar. Devuelve el
   /// método elegido: 'online' (Yape/Tarjeta) o 'cancha' (efectivo), o null si se
@@ -477,12 +495,60 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                         onRechazado: (v) {
                           if (mounted) setState(() => _reclamoRechazado = v);
                         })
-                  else if (_soyDueno)
+                  else if (_soyDueno) ...[
                     _PanelDueno(
                         cancha: _cancha,
                         onEditar: _editar,
-                        onVerReservas: _verReservas)
-                  else ...[
+                        onVerReservas: _verReservas),
+                    const SizedBox(height: 22),
+                    Text('Bloquear horarios',
+                        style: t.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 4),
+                    Text(
+                        'Cierra horas que no quieras alquilar (mantenimiento, o '
+                        'walk-in que tomó la cancha). Los jugadores no podrán '
+                        'reservarlas. Toca para bloquear/reabrir.',
+                        style: t.bodySmall
+                            ?.copyWith(color: textoTenueDe(context))),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        _DiaChip('Hoy', _dia == 'Hoy',
+                            () => setState(() => _dia = 'Hoy')),
+                        const SizedBox(width: 10),
+                        _DiaChip('Mañana', _dia == 'Mañana',
+                            () => setState(() => _dia = 'Mañana')),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    if (_horas.isEmpty)
+                      Text(
+                          _dia == 'Hoy'
+                              ? 'No quedan horas para hoy. Elige "Mañana".'
+                              : 'Sin horas configuradas.',
+                          style: t.bodyMedium
+                              ?.copyWith(color: textoTenueDe(context)))
+                    else
+                      Wrap(
+                        spacing: 9,
+                        runSpacing: 9,
+                        children: [
+                          for (final h in _horas)
+                            _SlotChip(
+                              hora: h,
+                              // Reservado = ocupada (no se toca); bloqueado =
+                              // chip con candado (tap para reabrir); libre = tap
+                              // para bloquear.
+                              ocupada: _reservado(h),
+                              bloqueada: _bloqueado(h),
+                              valle: _esValle(h),
+                              seleccionada: false,
+                              onTap: () => _alternarBloqueo(h),
+                            ),
+                        ],
+                      ),
+                  ] else ...[
                     // Fila de datos clave (estilo Airbnb): deporte · horario ·
                     // duración · precio, con íconos.
                     _FilaDatos(cancha: _cancha),
@@ -1150,16 +1216,41 @@ class _SlotChip extends StatelessWidget {
     required this.valle,
     required this.seleccionada,
     required this.onTap,
+    this.bloqueada = false,
   });
   final String hora;
   final bool ocupada;
   final bool valle;
   final bool seleccionada;
   final VoidCallback onTap;
+  final bool bloqueada; // slot cerrado por el dueño (tappable para reabrir)
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    // Slot BLOQUEADO (vista del dueño): candado + tappable para desbloquear.
+    if (bloqueada) {
+      return GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          decoration: BoxDecoration(
+            color: bosque,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.lock, size: 14, color: Colors.white),
+              const SizedBox(width: 5),
+              Text(hora,
+                  style: const TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.w700)),
+            ],
+          ),
+        ),
+      );
+    }
     if (ocupada) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
