@@ -92,16 +92,7 @@ class MiAcademiaScreen extends StatelessWidget {
                   ],
                 ),
               ),
-              if (alumnos.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Text(
-                      'Aún no tienes alumnos. Invítalos por correo o WhatsApp, o '
-                      'agrégalos a mano y ellos verán sus cuotas.',
-                      style: TextStyle(color: textoTenue)),
-                ),
-              for (final al in alumnos)
-                _TarjetaAlumno(alumno: al, moneda: ac.monedaSimbolo),
+              _RosterAlumnos(academia: ac),
               _SeccionInvitaciones(academia: ac),
               const SizedBox(height: 30),
             ],
@@ -731,16 +722,212 @@ class _EtiquetaAlumno extends StatelessWidget {
   }
 }
 
-class _TarjetaAlumno extends StatelessWidget {
-  const _TarjetaAlumno({required this.alumno, required this.moneda});
-  final Alumno alumno;
-  final String moneda;
+/// Deuda pendiente de un alumno (suma de cuotas impagas) + si alguna está
+/// vencida. Base del roster de cobranza.
+({double deuda, bool vencido}) _deudaAlumno(String alumnoId) {
+  var deuda = 0.0;
+  var vencido = false;
+  final hoy = DateTime.now();
+  for (final c in appState.cuotasDeAlumno(alumnoId)) {
+    if (!c.pagada) {
+      deuda += (c.monto as num).toDouble();
+      if (c.vencidaAl(hoy)) vencido = true;
+    }
+  }
+  return (deuda: deuda, vencido: vencido);
+}
+
+/// Recordatorio de cobranza por WhatsApp del TOTAL adeudado por el alumno.
+Future<void> _recordarDeuda(
+    BuildContext context, Alumno alumno, String moneda, double deuda) async {
+  final tel = alumno.whatsappContacto;
+  if (tel.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('No hay WhatsApp registrado para recordar el pago.')));
+    return;
+  }
+  final saludo = alumno.esMenor ? alumno.apoderadoNombre : alumno.nombre;
+  final deQuien = alumno.esMenor ? ' de ${alumno.nombre}' : '';
+  final msg = 'Hola $saludo, te recuerdo el pago pendiente$deQuien por '
+      '$moneda ${deuda.toStringAsFixed(2)}. ¡Gracias!';
+  final ok = await WhatsAppLink.abrir(tel, msg);
+  if (!ok && context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No pude abrir WhatsApp.')));
+  }
+}
+
+enum _FiltroAlumno { todos, alDia, morosos }
+
+/// Roster de alumnos como TABLERO DE COBRANZA (refuerzo del panel): buscador,
+/// filtros Todos/Al día/Morosos, orden con los que más deben arriba, y en cada
+/// tarjeta el estado (debe/vencido) + recordatorio por WhatsApp.
+class _RosterAlumnos extends StatefulWidget {
+  const _RosterAlumnos({required this.academia});
+  final Academia academia;
+
+  @override
+  State<_RosterAlumnos> createState() => _RosterAlumnosState();
+}
+
+class _RosterAlumnosState extends State<_RosterAlumnos> {
+  String _q = '';
+  _FiltroAlumno _filtro = _FiltroAlumno.todos;
 
   @override
   Widget build(BuildContext context) {
-    final cuotas = appState.cuotasDeAlumno(alumno.id);
-    final pend =
-        cuotas.where((c) => !c.pagada).fold<double>(0, (s, c) => s + c.monto);
+    final ac = widget.academia;
+    final todos = appState.alumnosDe(ac.id);
+    if (todos.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(24),
+        child: Text(
+            'Aún no tienes alumnos. Invítalos por correo o WhatsApp, o '
+            'agrégalos a mano y ellos verán sus cuotas.',
+            style: TextStyle(color: textoTenue)),
+      );
+    }
+    // Deuda por alumno, cacheada en este build.
+    final deuda = <String, ({double deuda, bool vencido})>{};
+    for (final a in todos) {
+      deuda[a.id] = _deudaAlumno(a.id);
+    }
+    final morososN = todos.where((a) => deuda[a.id]!.deuda > 0).length;
+    final alDiaN = todos.length - morososN;
+
+    final q = _q.trim().toLowerCase();
+    final lista = todos.where((a) {
+      final d = deuda[a.id]!.deuda;
+      if (_filtro == _FiltroAlumno.morosos && d <= 0) return false;
+      if (_filtro == _FiltroAlumno.alDia && d > 0) return false;
+      if (q.isNotEmpty && !a.nombre.toLowerCase().contains(q)) return false;
+      return true;
+    }).toList();
+    lista.sort((a, b) {
+      final da = deuda[a.id]!, db = deuda[b.id]!;
+      // Deudores arriba (salvo en el filtro "Al día"); a más deuda, más arriba.
+      if (_filtro != _FiltroAlumno.alDia) {
+        if ((db.deuda > 0) != (da.deuda > 0)) return db.deuda > 0 ? 1 : -1;
+        if (da.deuda != db.deuda) return db.deuda.compareTo(da.deuda);
+      }
+      return a.nombre.toLowerCase().compareTo(b.nombre.toLowerCase());
+    });
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 4, 18, 8),
+          child: TextField(
+            onChanged: (v) => setState(() => _q = v),
+            decoration: InputDecoration(
+              hintText: 'Buscar alumno…',
+              prefixIcon: const Icon(Icons.search),
+              isDense: true,
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(color: trazo)),
+              enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(color: trazo)),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Row(
+            children: [
+              _ChipFiltro(
+                  texto: 'Todos',
+                  n: todos.length,
+                  activo: _filtro == _FiltroAlumno.todos,
+                  onTap: () => setState(() => _filtro = _FiltroAlumno.todos)),
+              _ChipFiltro(
+                  texto: 'Al día',
+                  n: alDiaN,
+                  activo: _filtro == _FiltroAlumno.alDia,
+                  onTap: () => setState(() => _filtro = _FiltroAlumno.alDia)),
+              _ChipFiltro(
+                  texto: 'Morosos',
+                  n: morososN,
+                  activo: _filtro == _FiltroAlumno.morosos,
+                  color: clayOscuro,
+                  onTap: () =>
+                      setState(() => _filtro = _FiltroAlumno.morosos)),
+            ],
+          ),
+        ),
+        if (lista.isEmpty)
+          const Padding(
+            padding: EdgeInsets.all(24),
+            child: Text('Nadie en este filtro.',
+                style: TextStyle(color: textoTenue)),
+          ),
+        for (final al in lista)
+          _TarjetaAlumno(
+            alumno: al,
+            moneda: ac.monedaSimbolo,
+            deuda: deuda[al.id]!.deuda,
+            vencido: deuda[al.id]!.vencido,
+          ),
+      ],
+    );
+  }
+}
+
+class _ChipFiltro extends StatelessWidget {
+  const _ChipFiltro({
+    required this.texto,
+    required this.n,
+    required this.activo,
+    required this.onTap,
+    this.color,
+  });
+  final String texto;
+  final int n;
+  final bool activo;
+  final VoidCallback onTap;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = color ?? Theme.of(context).colorScheme.primary;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: BoxDecoration(
+            color: activo ? c.withOpacity(0.12) : Colors.white,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: activo ? c : trazo),
+          ),
+          child: Text('$texto · $n',
+              style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: activo ? c : textoTenue)),
+        ),
+      ),
+    );
+  }
+}
+
+class _TarjetaAlumno extends StatelessWidget {
+  const _TarjetaAlumno(
+      {required this.alumno,
+      required this.moneda,
+      required this.deuda,
+      required this.vencido});
+  final Alumno alumno;
+  final String moneda;
+  final double deuda;
+  final bool vencido;
+
+  @override
+  Widget build(BuildContext context) {
+    final pend = deuda;
     final tieneFoto = alumno.fotoUrl != null && alumno.fotoUrl!.isNotEmpty;
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 18, vertical: 5),
@@ -763,7 +950,21 @@ class _TarjetaAlumno extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontWeight: FontWeight.w700)),
             ),
-            if (alumno.esMenor)
+            if (vencido) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                    color: clayOscuro.withOpacity(0.14),
+                    borderRadius: BorderRadius.circular(999)),
+                child: const Text('vencido',
+                    style: TextStyle(
+                        color: clayOscuro,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w800)),
+              ),
+            ] else if (alumno.esMenor)
               const _EtiquetaAlumno('menor')
             else if (alumno.esApp)
               const _EtiquetaAlumno('app'),
@@ -771,18 +972,31 @@ class _TarjetaAlumno extends StatelessWidget {
         ),
         subtitle: Text(
           () {
-            final deuda = pend > 0
+            final estado = pend > 0
                 ? 'Debe $moneda ${pend.toStringAsFixed(2)}'
                 : 'Al día';
             if (alumno.esMenor) {
-              return 'Apoderado: ${alumno.apoderadoNombre} · $deuda';
+              return 'Apoderado: ${alumno.apoderadoNombre} · $estado';
             }
-            return alumno.esApp ? 'Vinculado · $deuda' : deuda;
+            return alumno.esApp ? 'Vinculado · $estado' : estado;
           }(),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        trailing: const Icon(Icons.chevron_right),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Cobranza de un toque: recuerda el total adeudado por WhatsApp.
+            if (pend > 0 && alumno.whatsappContacto.isNotEmpty)
+              IconButton(
+                tooltip: 'Recordar pago',
+                icon: const Icon(Icons.chat, color: verde),
+                onPressed: () =>
+                    _recordarDeuda(context, alumno, moneda, pend),
+              ),
+            const Icon(Icons.chevron_right),
+          ],
+        ),
         onTap: () => Navigator.of(context).push(MaterialPageRoute(
             builder: (_) => AlumnoDetalleScreen(alumnoId: alumno.id))),
       ),
