@@ -370,7 +370,7 @@ class _ClienteCard extends StatelessWidget {
                           ),
                           if (verificado) ...[
                             const SizedBox(width: 5),
-                            const Icon(Icons.verified,
+                            Icon(Icons.verified,
                                 size: 16, color: cs.primary),
                           ],
                         ],
