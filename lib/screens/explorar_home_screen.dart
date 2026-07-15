@@ -342,6 +342,40 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                           .add(cl);
                     }
                   }
+                  // COMPARADOR DE PRECIOS: por cada grupo del MISMO deporte,
+                  // calcula el promedio y el mínimo "desde" para marcar el más
+                  // barato ("MEJOR PRECIO") y el % de ahorro vs. la zona. Solo
+                  // aplica con ≥2 opciones con precio (comparar tiene sentido).
+                  final comp = <String, ({int? ahorro, bool mejor})>{};
+                  void calcularComparador(List<Club> grupo) {
+                    final conPrecio = grupo
+                        .where((c) => c.registrada && (c.precioDesde ?? 0) > 0)
+                        .toList();
+                    if (conPrecio.length < 2) return;
+                    final precios =
+                        conPrecio.map((c) => c.precioDesde!).toList();
+                    final avg =
+                        precios.reduce((a, b) => a + b) / precios.length;
+                    final minP = precios.reduce((a, b) => a < b ? a : b);
+                    // Solo hay "mejor precio" si existe diferencia real (si todas
+                    // valen igual, el sello no aporta).
+                    final haySpread = precios.any((x) => x > minP);
+                    for (final c in conPrecio) {
+                      final p = c.precioDesde!;
+                      final ah =
+                          avg > 0 ? (((avg - p) / avg) * 100).round() : 0;
+                      comp[c.id] = (
+                        ahorro: ah > 0 ? ah : null,
+                        mejor: haySpread && p <= minP,
+                      );
+                    }
+                  }
+
+                  for (final g in porDeporte.values) {
+                    calcularComparador(g);
+                  }
+                  calcularComparador(clubesFormales);
+
                   final nCanchas =
                       clubs.fold<int>(0, (a, c) => a + c.canchas.length);
                   final hijos = <Widget>[
@@ -375,6 +409,8 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                         child: ClubCard(
                           club: cl,
                           nivelDestacado: _nivelClub(cl),
+                          esMejorPrecio: comp[cl.id]?.mejor ?? false,
+                          ahorroPct: comp[cl.id]?.ahorro,
                           onTap: () => _abrirClub(cl),
                           distanciaKm: _centroBusqueda == null
                               ? null
@@ -405,6 +441,8 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                                 child: ClubCard(
                                   club: cl,
                                   nivelDestacado: _nivelClub(cl),
+                                  esMejorPrecio: comp[cl.id]?.mejor ?? false,
+                                  ahorroPct: comp[cl.id]?.ahorro,
                                   onTap: () => _abrirClub(cl),
                                   distanciaKm: _centroBusqueda == null
                                       ? null

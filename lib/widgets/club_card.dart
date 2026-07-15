@@ -15,7 +15,9 @@ class ClubCard extends StatelessWidget {
       required this.club,
       this.onTap,
       this.distanciaKm,
-      this.nivelDestacado = 0});
+      this.nivelDestacado = 0,
+      this.esMejorPrecio = false,
+      this.ahorroPct});
 
   final Club club;
   final VoidCallback? onTap;
@@ -27,6 +29,16 @@ class ClubCard extends StatelessWidget {
   /// Nivel de DESTACADO del local (0 = no; 1 bronce, 2 plata, 3 oro). Su dueño
   /// puso saldo → más visibilidad. Se muestra con medalla en el badge.
   final int nivelDestacado;
+
+  /// Comparador de precios: true si este local tiene el precio "desde" más bajo
+  /// entre las opciones del MISMO deporte cerca del usuario. Muestra el sello
+  /// "MEJOR PRECIO" en la portada.
+  final bool esMejorPrecio;
+
+  /// % de ahorro respecto al promedio de la zona (para el mismo deporte). Si es
+  /// > 0 se muestra un chip verde "−N% vs. zona" junto al precio. Null = no
+  /// comparable (menos de 2 opciones con precio).
+  final int? ahorroPct;
 
   @override
   Widget build(BuildContext context) {
@@ -84,6 +96,14 @@ class ClubCard extends StatelessWidget {
                       child: Icon(Icons.favorite_border, size: 18, color: tinta),
                     ),
                   ),
+                  // Comparador de precios: sello del más barato de su deporte.
+                  if (esMejorPrecio && !desc)
+                    const Positioned(
+                      bottom: 14,
+                      left: 14,
+                      child: _Badge('💰 MEJOR PRECIO',
+                          bg: _verdeAhorro, fg: Colors.white),
+                    ),
                 ],
               ),
             ),
@@ -155,17 +175,32 @@ class ClubCard extends StatelessWidget {
                             style: t.titleSmall?.copyWith(
                                 color: clayOscuro, fontWeight: FontWeight.w700))
                       else
-                        RichText(
-                          text: TextSpan(
-                            style: t.bodySmall?.copyWith(color: textoTenueDe(context)),
+                        Flexible(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              const TextSpan(text: 'desde '),
-                              TextSpan(
-                                text: '${club.monedaSimbolo}${club.precioDesde?.toStringAsFixed(2) ?? '--'}',
-                                style: t.titleMedium?.copyWith(
-                                    color: cs.onSurface, fontWeight: FontWeight.w700),
+                              RichText(
+                                text: TextSpan(
+                                  style: t.bodySmall
+                                      ?.copyWith(color: textoTenueDe(context)),
+                                  children: [
+                                    const TextSpan(text: 'desde '),
+                                    TextSpan(
+                                      text:
+                                          '${club.monedaSimbolo}${club.precioDesde?.toStringAsFixed(2) ?? '--'}',
+                                      style: t.titleMedium?.copyWith(
+                                          color: cs.onSurface,
+                                          fontWeight: FontWeight.w700),
+                                    ),
+                                    const TextSpan(text: ' /hora'),
+                                  ],
+                                ),
                               ),
-                              const TextSpan(text: ' /hora'),
+                              if (ahorroPct != null && ahorroPct! > 0) ...[
+                                const SizedBox(height: 5),
+                                _AhorroChip(ahorroPct!),
+                              ],
                             ],
                           ),
                         ),
@@ -189,6 +224,41 @@ class ClubCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Verde del comparador de precios (ahorro / mejor precio). Tono sobrio,
+/// congruente con la paleta (no el verde saturado de WhatsApp).
+const Color _verdeAhorro = Color(0xFF119861);
+
+/// Chip verde "−N% vs. zona": señala cuánto más barato es este local respecto
+/// al promedio de su deporte cerca del usuario (núcleo del comparador).
+class _AhorroChip extends StatelessWidget {
+  const _AhorroChip(this.pct);
+  final int pct;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: _verdeAhorro.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.trending_down, size: 13, color: _verdeAhorro),
+          const SizedBox(width: 4),
+          Text('$pct% vs. zona',
+              style: const TextStyle(
+                  color: _verdeAhorro,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w800,
+                  height: 1)),
+        ],
       ),
     );
   }
