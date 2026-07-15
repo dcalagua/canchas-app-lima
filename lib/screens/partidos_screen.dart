@@ -473,6 +473,24 @@ class _CrearPartidoSheetState extends State<_CrearPartidoSheet> {
 
   String _dosDig(int n) => n.toString().padLeft(2, '0');
 
+  /// Atajos de "jugadores en total" según el deporte (etiqueta, total). El
+  /// total incluye al creador. Ej.: dobles de tenis = 4; fútbol 7 = 14.
+  List<(String, int)> _presetsDe(Deporte d) => switch (d) {
+        Deporte.tenis ||
+        Deporte.padel ||
+        Deporte.pickleball =>
+          const [('Singles', 2), ('Dobles', 4)],
+        Deporte.futbol => const [
+            ('Fut 5', 10),
+            ('Fut 6', 12),
+            ('Fut 7', 14),
+            ('Fut 8', 16),
+            ('Fut 11', 22),
+          ],
+        Deporte.voley => const [('4 vs 4', 8), ('6 vs 6', 12)],
+        Deporte.basquet => const [('3 vs 3', 6), ('5 vs 5', 10)],
+      };
+
   Future<void> _publicar() async {
     final u = appState.usuario;
     if (u == null) return;
@@ -548,7 +566,13 @@ class _CrearPartidoSheetState extends State<_CrearPartidoSheet> {
                     labelStyle: TextStyle(
                         color: _deporte == d ? Colors.white : cs.onSurface,
                         fontWeight: FontWeight.w600),
-                    onSelected: (_) => setState(() => _deporte = d),
+                    onSelected: (_) => setState(() {
+                      _deporte = d;
+                      // Al cambiar de deporte, propone un total típico de ese
+                      // deporte (el primer atajo) para no arrastrar el anterior.
+                      final ps = _presetsDe(d);
+                      if (ps.isNotEmpty) _cupos = ps.first.$2;
+                    }),
                   ),
               ],
             ),
@@ -606,14 +630,36 @@ class _CrearPartidoSheetState extends State<_CrearPartidoSheet> {
               ],
             ),
             const SizedBox(height: 16),
-            Text('Jugadores necesarios', style: t.labelLarge),
+            Text('Jugadores en total', style: t.labelLarge),
+            const SizedBox(height: 2),
+            Text('Tú ya cuentas como 1 · te faltan ${_cupos - 1}',
+                style: TextStyle(color: textoTenue, fontSize: 12)),
             const SizedBox(height: 8),
+            // Atajos por deporte (Singles/Dobles, Fut 5/6/7…): fijan el total sin
+            // que el usuario tenga que hacer la cuenta.
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final p in _presetsDe(_deporte))
+                  ChoiceChip(
+                    label: Text('${p.$1} (${p.$2})'),
+                    selected: _cupos == p.$2,
+                    selectedColor: lima,
+                    labelStyle: TextStyle(
+                        color: _cupos == p.$2 ? Colors.white : cs.onSurface,
+                        fontWeight: FontWeight.w600),
+                    onSelected: (_) => setState(() => _cupos = p.$2),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
             Row(
               children: [
                 _StepBtn(
                     icon: Icons.remove,
                     onTap: () =>
-                        setState(() => _cupos = (_cupos - 1).clamp(2, 30))),
+                        setState(() => _cupos = (_cupos - 1).clamp(2, 40))),
                 Expanded(
                   child: Center(
                     child: Text('$_cupos',
@@ -624,7 +670,7 @@ class _CrearPartidoSheetState extends State<_CrearPartidoSheet> {
                 _StepBtn(
                     icon: Icons.add,
                     onTap: () =>
-                        setState(() => _cupos = (_cupos + 1).clamp(2, 30))),
+                        setState(() => _cupos = (_cupos + 1).clamp(2, 40))),
               ],
             ),
             const SizedBox(height: 14),
