@@ -102,7 +102,7 @@ class _VerificarIdentidadScreenState extends State<VerificarIdentidadScreen> {
               subtitulo:
                   '$docIdActual, carné o pasaporte (dato privado, no se publica)',
               icono: Icons.badge_outlined,
-              listo: _doc != null,
+              preview: _doc,
               onTap: () => _elegir(selfie: false),
             ),
             const SizedBox(height: 12),
@@ -110,7 +110,7 @@ class _VerificarIdentidadScreenState extends State<VerificarIdentidadScreen> {
               titulo: 'Selfie',
               subtitulo: 'Una foto tuya de frente',
               icono: Icons.face_outlined,
-              listo: _selfie != null,
+              preview: _selfie,
               onTap: () => _elegir(selfie: true),
             ),
             const SizedBox(height: 20),
@@ -187,18 +187,22 @@ class _Tile extends StatelessWidget {
     required this.titulo,
     required this.subtitulo,
     required this.icono,
-    required this.listo,
     required this.onTap,
+    this.preview,
   });
   final String titulo;
   final String subtitulo;
   final IconData icono;
-  final bool listo;
   final VoidCallback onTap;
+
+  /// Bytes de la foto capturada (documento o selfie). Si viene, se muestra una
+  /// miniatura para que el jugador confirme que salió bien (y pueda re-tomarla).
+  final Uint8List? preview;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final listo = preview != null;
     return Material(
       color: cs.surface,
       borderRadius: BorderRadius.circular(16),
@@ -213,12 +217,18 @@ class _Tile extends StatelessWidget {
           ),
           child: Row(
             children: [
-              CircleAvatar(
-                backgroundColor:
-                    (listo ? pino : cs.primary).withOpacity(0.14),
-                child: Icon(listo ? Icons.check : icono,
-                    color: listo ? pino : cs.primary),
-              ),
+              // Miniatura de lo capturado, o el ícono si aún no hay foto.
+              if (listo)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.memory(preview!,
+                      width: 46, height: 46, fit: BoxFit.cover),
+                )
+              else
+                CircleAvatar(
+                  backgroundColor: cs.primary.withOpacity(0.14),
+                  child: Icon(icono, color: cs.primary),
+                ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
@@ -227,8 +237,12 @@ class _Tile extends StatelessWidget {
                     Text(titulo,
                         style: const TextStyle(fontWeight: FontWeight.w700)),
                     const SizedBox(height: 2),
-                    Text(subtitulo,
-                        style: TextStyle(color: textoTenue, fontSize: 12.5)),
+                    Text(listo ? 'Listo · toca para cambiar' : subtitulo,
+                        style: TextStyle(
+                            color: listo ? pino : textoTenue,
+                            fontSize: 12.5,
+                            fontWeight:
+                                listo ? FontWeight.w600 : FontWeight.w400)),
                   ],
                 ),
               ),
