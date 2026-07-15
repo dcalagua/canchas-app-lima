@@ -389,14 +389,18 @@ class _GrillaHoras extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                 decoration: BoxDecoration(
+                  // Theme-aware: seleccionado tiñe con el acento; libre queda
+                  // transparente con borde; ocupado, atenuado. Sin blanco fijo.
                   color: taken
-                      ? const Color(0xFFF0F0F0)
+                      ? textoTenueDe(context).withOpacity(0.12)
                       : sel
                           ? cs.primary
-                          : Colors.white,
+                          : Colors.transparent,
                   borderRadius: BorderRadius.circular(999),
                   border: Border.all(
-                    color: sel ? cs.primary : const Color(0xFFE4E4E4),
+                    color: sel
+                        ? cs.primary
+                        : textoTenueDe(context).withOpacity(0.4),
                   ),
                 ),
                 child: Text(
@@ -405,10 +409,10 @@ class _GrillaHoras extends StatelessWidget {
                     fontSize: 13.5,
                     fontWeight: FontWeight.w700,
                     color: taken
-                        ? const Color(0xFFBDBDBD)
+                        ? textoTenueDe(context)
                         : sel
                             ? Colors.white
-                            : const Color(0xFF222222),
+                            : cs.onSurface,
                     decoration:
                         taken ? TextDecoration.lineThrough : TextDecoration.none,
                   ),

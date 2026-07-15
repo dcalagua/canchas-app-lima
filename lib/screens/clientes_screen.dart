@@ -221,15 +221,18 @@ class _KpiFila extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
       child: Row(
         children: [
-          _Kpi(valor: '$total', label: 'Clientes', color: bosque),
+          // Colores VISIBLES en claro y oscuro (no charcoal, que se pierde en
+          // fondo negro).
+          _Kpi(valor: '$total', label: 'Clientes', color: cs.primary),
           const SizedBox(width: 10),
-          _Kpi(valor: '$recurrentes', label: 'Recurrentes', color: pino),
+          _Kpi(valor: '$recurrentes', label: 'Recurrentes', color: teal),
           const SizedBox(width: 10),
-          _Kpi(valor: '$nuevos', label: 'Nuevos (mes)', color: coral),
+          _Kpi(valor: '$nuevos', label: 'Nuevos (mes)', color: amarillo),
         ],
       ),
     );
@@ -285,6 +288,8 @@ class _OrdenChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    // Theme-aware (funciona en claro y oscuro): pastilla transparente con borde;
+    // al activarse se tiñe con el acento. Nada de blanco fijo ni charcoal.
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: InkWell(
@@ -293,18 +298,18 @@ class _OrdenChip extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(
-            color: activo ? const Color(0xFFEBEBEB) : Colors.white,
+            color: activo ? cs.primary.withOpacity(0.15) : Colors.transparent,
             borderRadius: BorderRadius.circular(999),
             border: Border.all(
                 color: activo
-                    ? const Color(0xFFD6D6D6)
-                    : const Color(0xFFE4E4E4)),
+                    ? cs.primary
+                    : textoTenueDe(context).withOpacity(0.4)),
           ),
           child: Text(texto,
               style: TextStyle(
                   fontSize: 13,
                   fontWeight: activo ? FontWeight.w700 : FontWeight.w500,
-                  color: activo ? cs.onSurface : textoTenueDe(context))),
+                  color: activo ? cs.primary : textoTenueDe(context))),
         ),
       ),
     );
@@ -318,6 +323,7 @@ class _ClienteCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     final verificado =
         cliente.email.isNotEmpty && appState.estaVerificado(cliente.email);
     return InkWell(
@@ -365,7 +371,7 @@ class _ClienteCard extends StatelessWidget {
                           if (verificado) ...[
                             const SizedBox(width: 5),
                             const Icon(Icons.verified,
-                                size: 16, color: bosque),
+                                size: 16, color: cs.primary),
                           ],
                         ],
                       ),
@@ -384,7 +390,7 @@ class _ClienteCard extends StatelessWidget {
                   IconButton(
                     tooltip: 'Chatear',
                     icon: const Icon(Icons.chat_bubble_outline),
-                    color: bosque,
+                    color: cs.primary,
                     onPressed: () => _chatear(context),
                   )
                 else if (cliente.telefono.isNotEmpty)
@@ -406,12 +412,12 @@ class _ClienteCard extends StatelessWidget {
                     icono: Icons.event_available,
                     texto:
                         '${cliente.reservas} ${cliente.reservas == 1 ? 'reserva' : 'reservas'}',
-                    color: pino),
+                    color: teal),
                 _Chip(
                     icono: Icons.payments_outlined,
                     texto:
                         '${cliente.moneda}${cliente.gastado.toStringAsFixed(2)} gastado',
-                    color: bosque),
+                    color: cs.primary),
                 if (cliente.porCobrar > 0)
                   _Chip(
                       icono: Icons.schedule,
@@ -422,13 +428,13 @@ class _ClienteCard extends StatelessWidget {
                   _Chip(
                       icono: Icons.history,
                       texto: 'última ${_fechaCorta(cliente.ultima)}',
-                      color: const Color(0xFF6B7280)),
+                      color: textoTenueDe(context)),
                 if (cliente.noShows > 0)
                   _Chip(
                       icono: Icons.person_off,
                       texto:
                           '${cliente.noShows} no-show${cliente.noShows == 1 ? '' : 's'}',
-                      color: coral),
+                      color: clayOscuro),
               ],
             ),
           ],
@@ -517,7 +523,7 @@ class _ClienteCard extends StatelessWidget {
                   ),
                   if (cliente.email.isNotEmpty)
                     FilledButton.icon(
-                      style: FilledButton.styleFrom(backgroundColor: bosque),
+                      style: FilledButton.styleFrom(backgroundColor: teal),
                       onPressed: () {
                         Navigator.of(ctx).pop();
                         _chatear(context);
@@ -552,8 +558,8 @@ class _ClienteCard extends StatelessWidget {
                                 : Icons.schedule),
                         size: 18,
                         color: r.estado == EstadoReserva.noShow
-                            ? coral
-                            : (r.pagado ? bosque : clayOscuro),
+                            ? clayOscuro
+                            : (r.pagado ? lima : amarillo),
                       ),
                       const SizedBox(width: 10),
                       Expanded(

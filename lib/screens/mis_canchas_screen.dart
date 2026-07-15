@@ -8,6 +8,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import 'agregar_cancha_screen.dart';
 import 'bienvenida_dueno_sheet.dart';
+import 'bloquear_horarios_screen.dart';
 import 'editar_cancha_screen.dart';
 import 'recargar_saldo_screen.dart';
 import 'registrar_cancha_screen.dart';
@@ -645,6 +646,7 @@ class _FilaCancha extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: () => Navigator.of(context).push(
@@ -695,6 +697,14 @@ class _FilaCancha extends StatelessWidget {
                         fontSize: 10,
                         fontWeight: FontWeight.w700)),
               ),
+            // Cerrar horas (mantenimiento / clientes de teléfono): abre el grid
+            // de bloqueo directamente (antes era inalcanzable para el dueño).
+            IconButton(
+              tooltip: 'Bloquear horarios',
+              icon: Icon(Icons.event_busy_outlined, color: cs.primary),
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => BloquearHorariosScreen(cancha: cancha))),
+            ),
             Icon(Icons.chevron_right, color: textoTenueDe(context)),
           ],
         ),

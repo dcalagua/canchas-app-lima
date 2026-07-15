@@ -891,6 +891,8 @@ class _ChipFiltro extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = color ?? Theme.of(context).colorScheme.primary;
+    // Theme-aware: pastilla transparente con borde; teñida al activarse. Sin
+    // blanco fijo ni gris no adaptativo (se leía mal en modo oscuro).
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: InkWell(
@@ -899,15 +901,16 @@ class _ChipFiltro extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
           decoration: BoxDecoration(
-            color: activo ? c.withOpacity(0.12) : Colors.white,
+            color: activo ? c.withOpacity(0.15) : Colors.transparent,
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: activo ? c : trazo),
+            border: Border.all(
+                color: activo ? c : textoTenueDe(context).withOpacity(0.4)),
           ),
           child: Text('$texto · $n',
               style: TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w700,
-                  color: activo ? c : textoTenue)),
+                  color: activo ? c : textoTenueDe(context))),
         ),
       ),
     );
@@ -990,7 +993,7 @@ class _TarjetaAlumno extends StatelessWidget {
             if (pend > 0 && alumno.whatsappContacto.isNotEmpty)
               IconButton(
                 tooltip: 'Recordar pago',
-                icon: const Icon(Icons.chat, color: verde),
+                icon: const Icon(Icons.chat, color: lima),
                 onPressed: () =>
                     _recordarDeuda(context, alumno, moneda, pend),
               ),
@@ -1228,7 +1231,7 @@ class _FilaCuota extends StatelessWidget {
               if (!c.pagada) ...[
                 TextButton.icon(
                   onPressed: () => _recordar(context, c),
-                  icon: const Icon(Icons.chat, size: 18, color: verde),
+                  icon: const Icon(Icons.chat, size: 18, color: lima),
                   label: const Text('Recordar'),
                 ),
                 const SizedBox(width: 4),
