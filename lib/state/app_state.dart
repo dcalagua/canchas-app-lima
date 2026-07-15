@@ -11,6 +11,7 @@ import '../data/canchas_repo.dart';
 import '../data/invitaciones_repo.dart';
 import '../data/matriculas_repo.dart';
 import '../data/bloqueos_repo.dart';
+import '../data/resenas_repo.dart';
 import '../data/reservas_repo.dart';
 import '../data/sample_data.dart';
 import '../data/verificacion_repo.dart';
@@ -18,6 +19,7 @@ import '../models/academia.dart';
 import '../models/campeonato.dart';
 import '../models/invitacion.dart';
 import '../models/models.dart';
+import '../models/resena.dart';
 import '../models/usuario.dart';
 import '../services/auth_service.dart';
 import '../services/pagos_service.dart';
@@ -1011,6 +1013,73 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       await BloqueosRepo.bloquear(canchaId, fecha, hora);
     }
+  }
+
+  // ── RESEÑAS de canchas (⭐ real) ──────────────────────────────────────────
+  // Cache por cancha_id (se llena al abrir una ficha).
+  final Map<String, List<Resena>> _resenas = {};
+
+  /// Carga las reseñas de todas las canchas de un local (una consulta).
+  Future<void> cargarResenas(List<String> canchaIds) async {
+    if (canchaIds.isEmpty) return;
+    final rows = await ResenasRepo.deCanchas(canchaIds);
+    for (final id in canchaIds) {
+      _resenas[id] = rows.where((r) => r.canchaId == id).toList();
+    }
+    notifyListeners();
+  }
+
+  /// Reseñas cacheadas de un conjunto de canchas, más nuevas primero.
+  List<Resena> resenasDe(List<String> canchaIds) {
+    final out = <Resena>[];
+    for (final id in canchaIds) {
+      final l = _resenas[id];
+      if (l != null) out.addAll(l);
+    }
+    out.sort((a, b) => b.creado.compareTo(a.creado));
+    return out;
+  }
+
+  /// Promedio + cantidad de reseñas de un local.
+  ResumenResenas resumenResenas(List<String> canchaIds) {
+    final l = resenasDe(canchaIds);
+    if (l.isEmpty) return const ResumenResenas(0, 0);
+    final suma = l.fold<int>(0, (a, r) => a + r.estrellas);
+    return ResumenResenas(suma / l.length, l.length);
+  }
+
+  /// La reseña del usuario logueado en este local (para editarla), si existe.
+  Resena? miResena(List<String> canchaIds) {
+    final email = usuario?.email.trim().toLowerCase();
+    if (email == null || email.isEmpty) return null;
+    for (final r in resenasDe(canchaIds)) {
+      if (r.autorEmail.trim().toLowerCase() == email) return r;
+    }
+    return null;
+  }
+
+  /// El jugador dejó (o editó) su reseña de una cancha. Optimista: actualiza la
+  /// cache al instante y sincroniza a Supabase.
+  Future<bool> enviarResena(
+      String canchaId, int estrellas, String comentario) async {
+    final u = usuario;
+    if (u == null || u.email.isEmpty) return false;
+    final r = Resena(
+      id: 'res_${u.email.hashCode.toUnsigned(20).toRadixString(16)}_$canchaId',
+      canchaId: canchaId,
+      autorEmail: u.email.trim().toLowerCase(),
+      autorNombre: u.nombre,
+      estrellas: estrellas.clamp(1, 5),
+      comentario: comentario.trim(),
+      creado: DateTime.now(),
+    );
+    // Optimista: reemplaza la reseña previa del autor en esa cancha.
+    final lista = [..._resenas[canchaId] ?? const <Resena>[]]
+      ..removeWhere((x) => x.autorEmail.toLowerCase() == r.autorEmail)
+      ..insert(0, r);
+    _resenas[canchaId] = lista;
+    notifyListeners();
+    return ResenasRepo.enviar(r);
   }
 
   /// Mis reservas = reservas cuyo correo coincide con el jugador logueado.

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/reservas_repo.dart';
 import '../models/club.dart';
 import '../models/models.dart';
+import '../models/resena.dart';
 import '../services/location_service.dart';
 import '../services/propiedad_service.dart';
 import '../state/app_state.dart';
@@ -607,6 +608,16 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                             ),
                         ],
                       ),
+                  ],
+                  // Reseñas del local: reputación real (visible para dueño y
+                  // jugadores en canchas ya registradas).
+                  if (!descubierta && !pendiente) ...[
+                    const SizedBox(height: 26),
+                    _SeccionResenas(
+                      club: widget.club,
+                      canchaDestino: _cancha,
+                      puedeResenar: appState.logueado && !_soyDueno,
+                    ),
                   ],
                 ],
               ),
@@ -1926,6 +1937,275 @@ class _Badge extends StatelessWidget {
       child: Text(texto,
           style: TextStyle(
               color: fg, fontSize: 11, fontWeight: FontWeight.w700, height: 1)),
+    );
+  }
+}
+
+/// RESEÑAS del local (⭐ real). Muestra el promedio + cantidad, la lista de
+/// reseñas y —para jugadores logueados que no son el dueño— una tarjeta para
+/// calificar (estrellas + comentario). Reemplaza el rating "presentacional".
+class _SeccionResenas extends StatefulWidget {
+  const _SeccionResenas({
+    required this.club,
+    required this.canchaDestino,
+    required this.puedeResenar,
+  });
+  final Club club;
+  final Cancha canchaDestino; // a qué cancha se atribuye la reseña del usuario
+  final bool puedeResenar;
+
+  @override
+  State<_SeccionResenas> createState() => _SeccionResenasState();
+}
+
+class _SeccionResenasState extends State<_SeccionResenas> {
+  final _comentario = TextEditingController();
+  int _estrellas = 0;
+  bool _enviando = false;
+  bool _editor = false; // muestra el formulario para calificar
+
+  List<String> get _canchaIds => widget.club.canchas.map((c) => c.id).toList();
+
+  @override
+  void initState() {
+    super.initState();
+    appState.cargarResenas(_canchaIds);
+  }
+
+  @override
+  void dispose() {
+    _comentario.dispose();
+    super.dispose();
+  }
+
+  /// ¿Este correo tiene alguna reserva en el local? → sello "reservó aquí".
+  bool _reservoAqui(String email) {
+    final e = email.trim().toLowerCase();
+    final ids = _canchaIds.toSet();
+    return appState.reservas.any((r) =>
+        ids.contains(r.canchaId) && r.usuario.trim().toLowerCase() == e);
+  }
+
+  Future<void> _guardar() async {
+    if (_estrellas < 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Elige cuántas estrellas.')));
+      return;
+    }
+    setState(() => _enviando = true);
+    final ok = await appState.enviarResena(
+        widget.canchaDestino.id, _estrellas, _comentario.text);
+    if (!mounted) return;
+    setState(() {
+      _enviando = false;
+      if (ok) _editor = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(ok ? '¡Gracias por tu reseña!' : 'No se pudo guardar.'),
+      backgroundColor: ok ? lima : null,
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: appState,
+      builder: (context, _) {
+        final t = Theme.of(context).textTheme;
+        final resumen = appState.resumenResenas(_canchaIds);
+        final lista = appState.resenasDe(_canchaIds);
+        final mia = appState.miResena(_canchaIds);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text('Reseñas',
+                    style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                const Spacer(),
+                if (resumen.hay) ...[
+                  const Icon(Icons.star, size: 18, color: amarillo),
+                  const SizedBox(width: 4),
+                  Text(resumen.promedio.toStringAsFixed(1),
+                      style: const TextStyle(fontWeight: FontWeight.w800)),
+                  const SizedBox(width: 4),
+                  Text('(${resumen.cantidad})',
+                      style: TextStyle(color: textoTenueDe(context))),
+                ],
+              ],
+            ),
+            const SizedBox(height: 4),
+            if (!resumen.hay)
+              Text(
+                widget.puedeResenar
+                    ? 'Aún no hay reseñas. ¡Sé el primero en calificar!'
+                    : 'Aún no hay reseñas de este local.',
+                style: t.bodySmall?.copyWith(color: textoTenueDe(context)),
+              ),
+
+            // Tarjeta para calificar (jugador logueado, no dueño).
+            if (widget.puedeResenar) ...[
+              const SizedBox(height: 12),
+              if (!_editor)
+                OutlinedButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _editor = true;
+                      _estrellas = mia?.estrellas ?? 0;
+                      _comentario.text = mia?.comentario ?? '';
+                    });
+                  },
+                  icon: Icon(mia == null ? Icons.rate_review_outlined : Icons.edit,
+                      size: 18),
+                  label: Text(mia == null ? 'Calificar mi experiencia' : 'Editar mi reseña'),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFEEEAE0)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Tu reseña de ${widget.club.nombre}',
+                          style: const TextStyle(fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          for (var i = 1; i <= 5; i++)
+                            IconButton(
+                              padding: const EdgeInsets.symmetric(horizontal: 2),
+                              constraints: const BoxConstraints(),
+                              onPressed: () => setState(() => _estrellas = i),
+                              icon: Icon(
+                                i <= _estrellas ? Icons.star : Icons.star_border,
+                                color: amarillo,
+                                size: 32,
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _comentario,
+                        maxLines: 3,
+                        textCapitalization: TextCapitalization.sentences,
+                        decoration: InputDecoration(
+                          hintText: '¿Cómo estuvo la cancha? (opcional)',
+                          isDense: true,
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: trazo)),
+                          enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: trazo)),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: _enviando
+                                ? null
+                                : () => setState(() => _editor = false),
+                            child: const Text('Cancelar'),
+                          ),
+                          const SizedBox(width: 6),
+                          FilledButton(
+                            style: FilledButton.styleFrom(backgroundColor: lima),
+                            onPressed: _enviando ? null : _guardar,
+                            child: Text(_enviando ? 'Guardando…' : 'Publicar'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+
+            // Lista de reseñas.
+            for (final r in lista) ...[
+              const SizedBox(height: 14),
+              _ResenaCard(resena: r, reservoAqui: _reservoAqui(r.autorEmail)),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ResenaCard extends StatelessWidget {
+  const _ResenaCard({required this.resena, required this.reservoAqui});
+  final Resena resena;
+  final bool reservoAqui;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final nombre = resena.autorNombre.trim().isNotEmpty
+        ? resena.autorNombre.trim()
+        : resena.autorEmail.split('@').first;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        CircleAvatar(
+          radius: 18,
+          backgroundColor: teal,
+          child: Text(nombre.isEmpty ? '?' : nombre[0].toUpperCase(),
+              style: const TextStyle(
+                  color: Colors.white, fontWeight: FontWeight.w800)),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Flexible(
+                    child: Text(nombre,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w700)),
+                  ),
+                  if (reservoAqui) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                          color: lima.withOpacity(0.14),
+                          borderRadius: BorderRadius.circular(999)),
+                      child: const Text('✓ reservó aquí',
+                          style: TextStyle(
+                              color: lima,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800)),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 2),
+              Row(
+                children: [
+                  for (var i = 1; i <= 5; i++)
+                    Icon(i <= resena.estrellas ? Icons.star : Icons.star_border,
+                        size: 14, color: amarillo),
+                ],
+              ),
+              if (resena.comentario.trim().isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(resena.comentario.trim(), style: t.bodyMedium),
+              ],
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
