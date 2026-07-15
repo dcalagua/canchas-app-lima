@@ -188,6 +188,19 @@ sigue el lenguaje Airbnb sobre la paleta EBIM:
 - Validación en sitio (motorizado) como fase de endurecimiento.
 - Apelación a Meta (cuenta bloqueada) + Twilio Sandbox como respaldo OTP.
 - Idea biométrica para validación de dueño (madurar).
+- **Explorar carga rápida (idea del usuario, para más adelante):**
+  1. **GPS colgado con mala señal:** Explorar se queda en "Detectando tu
+     ubicación…" indefinidamente. Fix: timeout al GPS + caer a última ubicación
+     conocida / default por país + botón reintentar; mostrar canchas ya con esa
+     ubicación y reordenar por cercanía cuando el GPS resuelva.
+  2. **Cosechar canchas a Supabase (no bajar todo en vivo cada vez):** llenar
+     `pichangol_canchas` una vez con las descubiertas de Google (place_id +
+     nombre + dirección + lat/lng + deporte) y que la app LEA de la tabla
+     (instantáneo, offline-friendly, menos costo Google); la reserva sigue en
+     vivo. Cuidados: **no** guardar fotos de Google (caducan + licencia) → foto
+     diferida/placeholder en la lista y foto real sólo en canchas reclamadas;
+     **refresco periódico** de la zona (frescura + ToS). Prioridad: que la lista
+     NO se bloquee por GPS ni por fotos.
 
 ## Tips operativos
 

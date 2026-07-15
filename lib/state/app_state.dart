@@ -1362,6 +1362,15 @@ class AppState extends ChangeNotifier {
   // Saldo prepago del club (modelo inDrive): con saldo aparece destacado y
   // cada reserva nueva descuenta una comisión. Sin saldo, deja de destacarse.
   int saldoClub = 30;
+  // ¿Ya se le mostró al dueño el mensaje de bienvenida (onboarding "stack de
+  // valor")? Se muestra una sola vez al entrar a "Mis canchas".
+  bool bienvenidaDuenoVista = false;
+  void marcarBienvenidaDueno() {
+    if (bienvenidaDuenoVista) return;
+    bienvenidaDuenoVista = true;
+    _persistirDatos();
+  }
+
   // Verificación de identidad del jugador: 'no' | 'en_revision' | 'verificado'.
   String estadoVerificacion = 'no';
   bool get jugadorVerificado => estadoVerificacion == 'verificado';
@@ -1632,6 +1641,7 @@ class AppState extends ChangeNotifier {
   static const _kSaldo = 'saldo_club';
   static const _kSaldoOtros = 'saldo_otros_paises_json';
   static const _kMonedaSaldo = 'moneda_saldo';
+  static const _kBienvenidaDueno = 'bienvenida_dueno_vista';
   static const _kVerif = 'verificacion_estado';
   static const _kMovs = 'movimientos_json';
   static const _kMisReservas = 'mis_reservas_json';
@@ -1680,6 +1690,9 @@ class AppState extends ChangeNotifier {
       if (prefs.containsKey(_kVerif)) {
         estadoVerificacion = prefs.getString(_kVerif) ?? estadoVerificacion;
       }
+
+      bienvenidaDuenoVista =
+          prefs.getBool(_kBienvenidaDueno) ?? bienvenidaDuenoVista;
       sincronizarVerificacion(); // best-effort desde el backend
 
       if (prefs.containsKey(_kRadio)) {
@@ -1784,6 +1797,7 @@ class AppState extends ChangeNotifier {
       await prefs.setString(_kSaldoOtros, jsonEncode(_saldoOtrosPaises));
       await prefs.setString(_kMonedaSaldo, monedaSaldo);
       await prefs.setString(_kVerif, estadoVerificacion);
+      await prefs.setBool(_kBienvenidaDueno, bienvenidaDuenoVista);
       await prefs.setString(
           _kMovs, jsonEncode(movimientos.map((m) => m.toJson()).toList()));
       await prefs.setString(_kMisReservas,

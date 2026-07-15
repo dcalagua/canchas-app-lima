@@ -7,6 +7,7 @@ import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'agregar_cancha_screen.dart';
+import 'bienvenida_dueno_sheet.dart';
 import 'editar_cancha_screen.dart';
 import 'recargar_saldo_screen.dart';
 import 'registrar_cancha_screen.dart';
@@ -29,6 +30,10 @@ class _MisCanchasScreenState extends State<MisCanchasScreen> {
     // Al abrir, pregunta al backend si el admin ya aprobó alguna cancha pendiente
     // (quita el cartel "pendiente" y habilita reservas si así fue).
     appState.sincronizarPropiedades();
+    // Mensaje de bienvenida al dueño (una sola vez) con el "stack de valor".
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) BienvenidaDuenoSheet.mostrarSiCorresponde(context);
+    });
   }
 
   @override
