@@ -316,6 +316,9 @@ class PlacesService {
     'skate', 'skatepark', 'patineta', 'patinaje', 'monopatín', 'monopatin',
     'roller', 'bmx', 'ciclovía', 'ciclovia', 'pista atlética', 'pista atletica',
     'atletismo', 'skatboard', 'patinódromo', 'patinodromo',
+    // Ciclismo / bicicletas (tiendas, bike parks, pistas): no son canchas.
+    'bike', 'bicicleta', 'bici ', 'ciclismo', 'ciclista', 'cycling',
+    'mountain bike', 'bikepark', 'bike park', 'downhill', 'mtb ',
     // Atracciones/servicios DENTRO de un club que no son canchas de alquiler:
     'laguna', 'acuático', 'acuatico', 'waterpark', 'parque acuático',
     'restaurante', 'hotel', 'spa', 'juegos para niños', 'zoológico', 'zoologico',
