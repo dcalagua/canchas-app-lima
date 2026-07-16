@@ -10,6 +10,7 @@ import 'ajustes_screen.dart';
 import 'anfitrion_screen.dart';
 import 'login_google_sheet.dart';
 import 'metodos_pago_screen.dart';
+import 'referidos_screen.dart';
 import 'verificar_identidad_screen.dart';
 
 /// Pestaña PERFIL del jugador: sesión (login/logout), lo del jugador (academias,
@@ -135,6 +136,13 @@ class PerfilScreen extends StatelessWidget {
                         onTap: () => Navigator.of(context).push(MaterialPageRoute(
                             builder: (_) => const MetodosPagoScreen())),
                       ),
+                    _Tile(
+                      icon: Icons.card_giftcard,
+                      title: 'Invita y gana 🎁',
+                      subtitle: 'Comparte tu código; tú y tu amigo ganan un bono',
+                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => const ReferidosScreen())),
+                    ),
 
                     // --- Ajustes (tema claro/oscuro) ---
                     _Tile(

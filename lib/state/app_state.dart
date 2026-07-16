@@ -11,6 +11,7 @@ import '../data/canchas_repo.dart';
 import '../data/invitaciones_repo.dart';
 import '../data/matriculas_repo.dart';
 import '../data/bloqueos_repo.dart';
+import '../data/referidos_repo.dart';
 import '../data/resenas_repo.dart';
 import '../data/reservas_repo.dart';
 import '../data/sample_data.dart';
@@ -1709,6 +1710,60 @@ class AppState extends ChangeNotifier {
     if (diff <= 0) return 'Hoy';
     if (diff == 1) return 'Ayer';
     return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
+  }
+
+  // ── REFERIDOS (invita y gana) ─────────────────────────────────────────────
+  /// Bono (en la moneda local) que gana cada lado de un referido.
+  static const bonoReferido = 10;
+
+  /// Código de referido del usuario: estable y derivado de su correo.
+  String get codigoReferido {
+    final e = usuario?.email.trim().toLowerCase() ?? '';
+    if (e.isEmpty) return '';
+    final h = e.codeUnits.fold<int>(7, (a, b) => (a * 31 + b) & 0x7fffffff);
+    final s = h.toRadixString(36).toUpperCase().padLeft(6, '0');
+    return 'PCG${s.substring(s.length - 6)}';
+  }
+
+  /// Acredita un bono de saldo en el país actual (+ movimiento).
+  void _acreditarBono(int monto, String concepto) {
+    if (monto <= 0) return;
+    if (monedaSaldo.isEmpty) monedaSaldo = paisActual.moneda;
+    final iso = paisActual.iso;
+    if (iso == 'PE') {
+      saldoClub += monto;
+    } else {
+      _saldoOtrosPaises[iso] = (_saldoOtrosPaises[iso] ?? 0) + monto;
+    }
+    movimientos.insert(
+      0,
+      MovimientoSaldo(
+          tipo: TipoMovimiento.recarga,
+          monto: monto,
+          concepto: concepto,
+          cuando: 'Ahora'),
+    );
+    notifyListeners();
+    _persistirDatos();
+  }
+
+  /// El usuario canjea el código de referido de un amigo. Acredita el bono al
+  /// invitado (a él). Devuelve false si el código es el suyo, vacío, o ya canjeó.
+  Future<bool> canjearReferido(String codigo) async {
+    final e = usuario?.email.trim().toLowerCase() ?? '';
+    final c = codigo.trim().toUpperCase();
+    if (e.isEmpty || c.isEmpty || c == codigoReferido) return false;
+    final ok = await ReferidosRepo.canjear(invitadoEmail: e, codigo: c);
+    if (!ok) return false;
+    _acreditarBono(bonoReferido, 'Bono de bienvenida (referido)');
+    return true;
+  }
+
+  /// Reclama los bonos de las personas que usaron MI código (self-credit).
+  Future<int> reclamarBonosReferidor() async {
+    final n = await ReferidosRepo.reclamarReferidor(codigoReferido);
+    if (n > 0) _acreditarBono(bonoReferido * n, 'Bono por invitar amigos');
+    return n;
   }
 
   /// Recarga el saldo prepago del club.
