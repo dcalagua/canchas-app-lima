@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../config/pais.dart';
 import '../models/models.dart';
 import '../services/location_service.dart';
 import '../state/app_state.dart';
@@ -35,14 +36,21 @@ class _BuscarDireccionScreenState extends State<BuscarDireccionScreen> {
   List<_Zona> _zonas = const [];
   bool _cargandoZonas = true;
 
-  // Respaldo (sin GPS): distritos populares de Lima central.
-  static const _distritos = <String, LatLng>{
+  // Respaldo (sin GPS) SOLO para Perú: distritos populares de Lima central. En
+  // otros países no se muestra una lista clavada (sería geografía ajena); se
+  // invita a activar el GPS. Ver `_distritosRespaldo`.
+  static const _distritosLima = <String, LatLng>{
     'San Borja': LatLng(-12.108, -76.999),
     'Surco': LatLng(-12.135, -76.992),
     'La Molina': LatLng(-12.079, -76.948),
     'Miraflores': LatLng(-12.121, -77.029),
     'San Isidro': LatLng(-12.097, -77.036),
   };
+
+  /// Lista de respaldo según el país activo: en Perú, los distritos de Lima; en
+  /// Bolivia/Ecuador, vacía (no inventar zonas ajenas).
+  Map<String, LatLng> get _distritosRespaldo =>
+      paisActual.iso == 'PE' ? _distritosLima : const {};
 
   @override
   void initState() {
@@ -149,12 +157,12 @@ class _BuscarDireccionScreenState extends State<BuscarDireccionScreen> {
     // 2) Fallback: geocodifica la dirección. El geocoder puede devolver VARIOS
     //    homónimos en Lima; elige el MÁS CERCANO al usuario (no el primero).
     try {
-      final locs = await locationFromAddress('$q, Lima, Perú');
+      final locs = await locationFromAddress('$q, ${paisActual.geocodeHint}');
       if (locs.isEmpty) {
         setState(() {
           _buscando = false;
           _error =
-              'No encontré esa dirección. Prueba con otra o elige un distrito.';
+              'No encontré esa dirección. Prueba con otra o elige una zona.';
         });
         return;
       }
@@ -175,7 +183,7 @@ class _BuscarDireccionScreenState extends State<BuscarDireccionScreen> {
     } catch (_) {
       setState(() {
         _buscando = false;
-        _error = 'No pude buscar esa dirección. Prueba con un distrito.';
+        _error = 'No pude buscar esa dirección. Prueba con una zona.';
       });
     }
   }
@@ -299,7 +307,7 @@ class _BuscarDireccionScreenState extends State<BuscarDireccionScreen> {
               ],
             ),
             const SizedBox(height: 22),
-            Text(_zonas.isNotEmpty ? 'Zonas cerca de ti' : 'Distritos populares',
+            Text(_zonas.isNotEmpty ? 'Zonas cerca de ti' : 'Zonas populares',
                 style: Theme.of(context)
                     .textTheme
                     .titleSmall
@@ -333,7 +341,7 @@ class _BuscarDireccionScreenState extends State<BuscarDireccionScreen> {
                             .pop(ResultadoBusqueda(z.centro, z.nombre)),
                       )
                   else
-                    for (final e in _distritos.entries)
+                    for (final e in _distritosRespaldo.entries)
                       ActionChip(
                         avatar: const Icon(Icons.place,
                             size: 18, color: verdeCancha),
@@ -341,6 +349,11 @@ class _BuscarDireccionScreenState extends State<BuscarDireccionScreen> {
                         onPressed: () => Navigator.of(context)
                             .pop(ResultadoBusqueda(e.value, e.key)),
                       ),
+                  // Sin GPS y sin lista de respaldo (fuera de Perú): guía al
+                  // usuario a activar la ubicación en vez de mostrar zonas ajenas.
+                  if (_zonas.isEmpty && _distritosRespaldo.isEmpty)
+                    Text('Activa el GPS o escribe tu dirección arriba.',
+                        style: const TextStyle(color: textoTenue)),
                 ],
               ),
           ],

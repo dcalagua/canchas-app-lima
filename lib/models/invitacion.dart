@@ -9,6 +9,10 @@
 ///
 /// El profe ve el estado de cada invitación (pendiente/aceptada) y puede
 /// reenviarla o cancelarla.
+library;
+
+import '../config/pais.dart';
+
 enum EstadoInvitacion {
   pendiente('Pendiente'),
   aceptada('Aceptada'),
@@ -45,11 +49,13 @@ class Invitacion {
   /// Normaliza un correo para comparar (minúsculas, sin espacios).
   static String normalizarEmail(String e) => e.trim().toLowerCase();
 
-  /// Normaliza un teléfono a los **últimos 9 dígitos** (celular peruano), así
-  /// coincide venga con +51, espacios, guiones o sin prefijo.
+  /// Normaliza un teléfono a los **últimos N dígitos** del celular local del
+  /// país activo (9 en PE/EC, 8 en BO), así coincide venga con código de país,
+  /// espacios, guiones o sin prefijo.
   static String normalizarTelefono(String t) {
     final d = t.replaceAll(RegExp(r'[^0-9]'), '');
-    return d.length <= 9 ? d : d.substring(d.length - 9);
+    final n = paisActual.telLongitud;
+    return d.length <= n ? d : d.substring(d.length - n);
   }
 
   bool coincideEmail(String e) =>
@@ -61,7 +67,7 @@ class Invitacion {
   /// Cómo se identificó al invitado (para mostrarlo en la lista del profe).
   String get destino => email.isNotEmpty
       ? email
-      : (telefono.isNotEmpty ? '+51 $telefono' : 'código');
+      : (telefono.isNotEmpty ? '$codigoTelActual $telefono' : 'código');
 
   Invitacion copyWith({EstadoInvitacion? estado}) => Invitacion(
         id: id,

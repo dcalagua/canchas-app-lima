@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../config/pais.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -271,7 +272,8 @@ class _HeaderAgenda extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    final barrio = canchas.isEmpty ? 'Lima' : canchas.first.distrito.etiqueta;
+    final barrio =
+        canchas.isEmpty ? paisActual.nombre : canchas.first.distrito.etiqueta;
     final local = canchas.isEmpty ? 'Mis canchas' : canchas.first.club;
 
     // Saludo por hora del día (+ nombre del dueño si hay sesión). Antes decía

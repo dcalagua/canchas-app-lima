@@ -32,7 +32,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     _Slide(Icons.bolt, coral, 'Reserva en segundos',
         'Elige día y hora y asegura tu cancha con una seña. Menos plantones, tu hora garantizada.'),
     _Slide(Icons.groups, arena, 'Arma tu partido',
-        'Junta a tu gente y juega a tu nivel. Pichangol conecta jugadores y canchas en toda Lima.'),
+        'Junta a tu gente y juega a tu nivel. Pichangol conecta jugadores y canchas cerca de ti.'),
   ];
 
   @override

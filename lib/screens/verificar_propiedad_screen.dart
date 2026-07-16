@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
+import '../config/pais.dart';
 import '../models/models.dart';
 import '../services/propiedad_service.dart';
 import '../state/app_state.dart';
@@ -37,8 +38,10 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
 
   Future<void> _solicitar() async {
     final tel = _telefono.text.trim();
-    if (tel.length < 9) {
-      setState(() => _msg = 'Ingresa el teléfono del local (9 dígitos).');
+    final n = paisActual.telLongitud;
+    // Cuenta solo dígitos (el usuario puede escribir espacios/guiones).
+    if (tel.replaceAll(RegExp(r'[^0-9]'), '').length < n) {
+      setState(() => _msg = 'Ingresa el teléfono del local ($n dígitos).');
       return;
     }
     setState(() {

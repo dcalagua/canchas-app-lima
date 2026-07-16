@@ -643,7 +643,7 @@ class _BarraBusqueda extends StatelessWidget {
                           Text(
                             buscando
                                 ? 'Canchas cerca de tu zona'
-                                : 'Fútbol · Tenis · Clubes · Lima',
+                                : 'Fútbol · Tenis · Clubes cerca de ti',
                             style: const TextStyle(
                                 color: textoTenue, fontSize: 12),
                           ),

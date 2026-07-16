@@ -205,7 +205,7 @@ const _kReleaseUrl =
 /// gente en Perú. Mismo mecanismo que compartir el código de una academia.
 Future<void> _compartirApp(BuildContext context) async {
   final msg = '¡Descárgate $kBrandName! 🎾⚽ Reserva canchas de fútbol, tenis y '
-      'más en Lima, y únete a academias y campeonatos.\n\n'
+      'más cerca de ti, y únete a academias y campeonatos.\n\n'
       'Bájala aquí: $_kReleaseUrl';
   final ok = await WhatsAppLink.compartir(msg);
   if (!ok && context.mounted) {
