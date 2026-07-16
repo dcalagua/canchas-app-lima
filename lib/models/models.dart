@@ -123,6 +123,20 @@ class Cancha {
   /// Servicios EXTRA de pago que ofrece la cancha (árbitro, pelotero…). El
   /// jugador los agrega al reservar. Vacío = la cancha no ofrece ninguno.
   final List<ServicioExtra> serviciosExtra;
+  /// "Hora feliz": descuento (%) que aplica el dueño a las horas VALLE (mañanas)
+  /// para llenar cancha vacía. 0 = sin descuento. Gana el dueño (más ocupación)
+  /// y el jugador (más barato).
+  final int descuentoValle;
+
+  /// ¿Una hora ("07:00") cae en el valle (mañana)? Regla simple: antes de mediodía.
+  static bool horaEsValle(String hora) => hora.compareTo('12:00') < 0;
+
+  /// Precio efectivo por hora en un horario dado (aplica el descuento de hora
+  /// feliz si corresponde). Fuente única para mostrar y para cobrar.
+  double precioEn(String hora) =>
+      (descuentoValle > 0 && horaEsValle(hora))
+          ? precioHora * (100 - descuentoValle.clamp(0, 90)) / 100
+          : precioHora;
 
   const Cancha({
     required this.id,
@@ -149,6 +163,7 @@ class Cancha {
     this.superficie = '',
     this.moneda = '',
     this.serviciosExtra = const [],
+    this.descuentoValle = 0,
   });
 
   /// Símbolo de moneda de la cancha. La UBICACIÓN de la cancha es la fuente de
@@ -251,6 +266,7 @@ class Cancha {
     String? superficie,
     String? moneda,
     List<ServicioExtra>? serviciosExtra,
+    int? descuentoValle,
   }) {
     return Cancha(
       id: id,
@@ -277,6 +293,7 @@ class Cancha {
       superficie: superficie ?? this.superficie,
       moneda: moneda ?? this.moneda,
       serviciosExtra: serviciosExtra ?? this.serviciosExtra,
+      descuentoValle: descuentoValle ?? this.descuentoValle,
     );
   }
 
@@ -306,6 +323,7 @@ class Cancha {
         'superficie': superficie,
         'moneda': moneda,
         'serviciosExtra': serviciosExtra.map((s) => s.toJson()).toList(),
+        'descuentoValle': descuentoValle,
       };
 
   factory Cancha.fromJson(Map<String, dynamic> j) => Cancha(
@@ -340,6 +358,7 @@ class Cancha {
         superficie: (j['superficie'] ?? '') as String,
         moneda: (j['moneda'] ?? '') as String,
         serviciosExtra: ServicioExtra.listaDe(j['serviciosExtra']),
+        descuentoValle: (j['descuentoValle'] ?? 0) as int,
       );
 }
 

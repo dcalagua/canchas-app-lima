@@ -40,6 +40,8 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
       TextEditingController(text: widget.cancha.direccion ?? '');
   late final TextEditingController _precio =
       TextEditingController(text: widget.cancha.precioHora.toStringAsFixed(2));
+  // "Hora feliz": descuento (%) en horas valle (mañanas). 0 = sin descuento.
+  late int _descuentoValle = widget.cancha.descuentoValle;
   final TextEditingController _ruc =
       TextEditingController(); // opcional, refuerza la verificación al reclamar
   final TextEditingController _contacto =
@@ -294,6 +296,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
         for (final e in _servicios.entries)
           ServicioExtra(clave: e.key, precio: e.value),
       ],
+      descuentoValle: _descuentoValle,
     );
     appState.actualizarCancha(actualizada);
     if (club != widget.cancha.club) {
@@ -552,6 +555,40 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
               prefixText: '${widget.cancha.monedaSimbolo} ',
             ),
           ),
+          const SizedBox(height: 18),
+          const Text('Hora feliz (descuento en horas valle)',
+              style: TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 2),
+          Text(
+              'Aplica un descuento a las mañanas (antes de mediodía), que suelen '
+              'estar vacías. Llenas más horas y el jugador paga menos. 🔥',
+              style: TextStyle(color: textoTenue, fontSize: 12)),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final d in const [0, 10, 15, 20, 30])
+                ChoiceChip(
+                  label: Text(d == 0 ? 'Sin descuento' : '-$d%'),
+                  selected: _descuentoValle == d,
+                  onSelected: (_) => setState(() => _descuentoValle = d),
+                ),
+            ],
+          ),
+          if (_descuentoValle > 0) ...[
+            const SizedBox(height: 6),
+            Builder(builder: (context) {
+              final base = double.tryParse(
+                      _precio.text.trim().replaceAll(',', '.')) ??
+                  widget.cancha.precioHora;
+              final conDesc = base * (100 - _descuentoValle) / 100;
+              return Text(
+                  'En la mañana: ${widget.cancha.monedaSimbolo} ${conDesc.toStringAsFixed(2)} '
+                  '(en vez de ${widget.cancha.monedaSimbolo} ${base.toStringAsFixed(2)}).',
+                  style: const TextStyle(
+                      color: lima, fontWeight: FontWeight.w700, fontSize: 12.5));
+            }),
+          ],
           const SizedBox(height: 18),
           const Text('Tipo de piso *',
               style: TextStyle(fontWeight: FontWeight.w700)),

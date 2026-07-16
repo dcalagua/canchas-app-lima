@@ -159,6 +159,7 @@ class CanchasRepo {
         if (conAmenidades)
           'servicios_extra':
               c.serviciosExtra.map((s) => s.toJson()).toList(),
+        if (conAmenidades) 'descuento_valle': c.descuentoValle,
       };
 
   static Cancha _fromRow(Map<String, dynamic> r) => Cancha(
@@ -196,6 +197,7 @@ class CanchasRepo {
         superficie: (r['superficie'] ?? '') as String,
         moneda: (r['moneda'] ?? '') as String,
         serviciosExtra: ServicioExtra.listaDe(r['servicios_extra']),
+        descuentoValle: ((r['descuento_valle'] ?? 0) as num).toInt(),
       );
 
   static Distrito _enumDistrito(String? s) {

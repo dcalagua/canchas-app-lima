@@ -479,6 +479,16 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                     }
                     PagosService.registrarVistasUnaVez(duenosVistos.toList());
                   }
+                  // FAVORITOS del jugador que están cerca (arriba de todo).
+                  final favs = clubs
+                      .where((cl) => appState.esFavorito(cl.id))
+                      .toList();
+                  if (favs.isNotEmpty) {
+                    hijos.add(_SeccionHeader(
+                        'Tus favoritos', favs.length, const Color(0xFFE0245E),
+                        Icons.favorite));
+                    agregarCards(favs);
+                  }
                   if (topDest.isNotEmpty) {
                     hijos.add(_SeccionHeader('Destacados cerca de ti',
                         topDest.length, lima, Icons.star));

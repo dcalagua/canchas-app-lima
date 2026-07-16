@@ -58,6 +58,16 @@ class AppState extends ChangeNotifier {
   // vuelva a devolverlas (borrado durable en el dispositivo).
   final Set<String> canchasEliminadas = {};
 
+  // ── FAVORITOS del jugador (ids de club) ───────────────────────────────────
+  final Set<String> favoritos = {};
+  bool esFavorito(String clubId) => favoritos.contains(clubId);
+  void alternarFavorito(String clubId) {
+    if (clubId.isEmpty) return;
+    if (!favoritos.remove(clubId)) favoritos.add(clubId);
+    notifyListeners();
+    _persistirDatos();
+  }
+
   // ── Academias (Fase 1) ────────────────────────────────────────────────────
   final List<Academia> academias = [];
   final List<Alumno> alumnos = [];
@@ -1748,6 +1758,7 @@ class AppState extends ChangeNotifier {
   static const _kMisReservas = 'mis_reservas_json';
   static const _kCanchas = 'canchas_extra_json';
   static const _kEliminadas = 'canchas_eliminadas_json';
+  static const _kFavoritos = 'favoritos_json';
   static const _kRadio = 'radio_busqueda_km';
   static const _kTema = 'tema_modo'; // 0=system, 1=light, 2=dark
   static const _kAcademias = 'academias_json';
@@ -1838,6 +1849,13 @@ class AppState extends ChangeNotifier {
           ..addAll((jsonDecode(elimRaw) as List).map((e) => e.toString()));
       }
 
+      final favRaw = prefs.getString(_kFavoritos);
+      if (favRaw != null) {
+        favoritos
+          ..clear()
+          ..addAll((jsonDecode(favRaw) as List).map((e) => e.toString()));
+      }
+
       final misRaw = prefs.getString(_kMisReservas);
       if (misRaw != null) {
         final list = (jsonDecode(misRaw) as List)
@@ -1907,6 +1925,7 @@ class AppState extends ChangeNotifier {
           _kCanchas, jsonEncode(canchasExtra.map((c) => c.toJson()).toList()));
       await prefs.setString(
           _kEliminadas, jsonEncode(canchasEliminadas.toList()));
+      await prefs.setString(_kFavoritos, jsonEncode(favoritos.toList()));
       await prefs.setDouble(_kRadio, radioBusquedaKm);
       await prefs.setInt(_kTema, switch (temaModo) {
         ThemeMode.light => 1,
@@ -1984,7 +2003,8 @@ class AppState extends ChangeNotifier {
         r.canchaId == cancha.id && r.fecha == fecha && r.horaInicio == hora);
     if (yaLocal) return ResultadoReserva.ocupado;
 
-    final precio = (cancha.precioHora * cancha.duracionSlotMin / 60).round();
+    // Precio efectivo del slot (aplica "hora feliz" si la hora es valle).
+    final precio = (cancha.precioEn(hora) * cancha.duracionSlotMin / 60).round();
     final reserva = Reserva(
       id: 'jug_${DateTime.now().millisecondsSinceEpoch}_${_contadorJugador++}',
       canchaId: cancha.id,

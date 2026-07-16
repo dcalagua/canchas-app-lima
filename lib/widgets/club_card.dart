@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/club.dart';
 import '../models/models.dart';
+import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/moneda.dart';
 import 'court_lines.dart';
@@ -87,13 +88,24 @@ class ClubCard extends StatelessWidget {
                                 : _Badge('${club.canchas.length} CANCHAS',
                                     bg: Colors.white, fg: tinta),
                   ),
-                  const Positioned(
+                  Positioned(
                     top: 12,
                     right: 12,
-                    child: CircleAvatar(
-                      radius: 16,
-                      backgroundColor: Colors.white,
-                      child: Icon(Icons.favorite_border, size: 18, color: tinta),
+                    child: GestureDetector(
+                      onTap: () => appState.alternarFavorito(club.id),
+                      child: CircleAvatar(
+                        radius: 16,
+                        backgroundColor: Colors.white,
+                        child: Icon(
+                          appState.esFavorito(club.id)
+                              ? Icons.favorite
+                              : Icons.favorite_border,
+                          size: 18,
+                          color: appState.esFavorito(club.id)
+                              ? const Color(0xFFE0245E)
+                              : tinta,
+                        ),
+                      ),
                     ),
                   ),
                   // Comparador de precios: sello del más barato de su deporte.

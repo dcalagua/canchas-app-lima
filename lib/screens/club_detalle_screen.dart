@@ -222,7 +222,8 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     // tenga o no saldo el dueño. La comisión de Pichangol es 100% del lado del
     // dueño: sale de su saldo si tiene (recibe el precio completo) o se descuenta
     // de su liquidación si no. Nunca se le suma al jugador; la del banco tampoco.
-    final base = _cancha.precioHora;
+    // Precio efectivo: aplica "hora feliz" si la hora elegida es valle.
+    final base = _cancha.precioEn(hora);
     // Resumen estilo Airbnb ANTES de pagar (confianza + claridad). Devuelve el
     // método ('online'/'cancha') + los servicios extra elegidos (árbitro…).
     final r = await _mostrarResumen(hora, base);
@@ -350,8 +351,16 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                       punto: _cancha.ubicacion,
                       titulo: c.nombre)),
               IconButton(
-                  icon: const Icon(Icons.favorite_border, color: Colors.white),
-                  onPressed: () {}),
+                  tooltip: 'Guardar en favoritos',
+                  icon: Icon(
+                      appState.esFavorito(widget.club.id)
+                          ? Icons.favorite
+                          : Icons.favorite_border,
+                      color: appState.esFavorito(widget.club.id)
+                          ? const Color(0xFFE0245E)
+                          : Colors.white),
+                  onPressed: () => setState(
+                      () => appState.alternarFavorito(widget.club.id))),
               const SizedBox(width: 6),
             ],
           ),
@@ -544,6 +553,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                               ocupada: _reservado(h),
                               bloqueada: _bloqueado(h),
                               valle: _esValle(h),
+                              descuento: _cancha.descuentoValle,
                               seleccionada: false,
                               onTap: () => _alternarBloqueo(h),
                             ),
@@ -603,6 +613,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                               hora: h,
                               ocupada: _ocupada(h),
                               valle: _esValle(h),
+                              descuento: _cancha.descuentoValle,
                               seleccionada: _hora == h,
                               onTap: () => setState(() => _hora = h),
                             ),
@@ -629,7 +640,10 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
       bottomNavigationBar: (descubierta || pendiente || _soyDueno)
           ? null
           : _ReservarBar(
-              precio: _cancha.precioHora,
+              // Precio efectivo del slot elegido (con "hora feliz" si aplica).
+              precio: _hora != null
+                  ? _cancha.precioEn(_hora!)
+                  : _cancha.precioHora,
               moneda: _cancha.monedaSimbolo,
               hora: _hora,
               onReservar: _hora == null ? null : _reservar,
@@ -1228,6 +1242,7 @@ class _SlotChip extends StatelessWidget {
     required this.seleccionada,
     required this.onTap,
     this.bloqueada = false,
+    this.descuento = 0,
   });
   final String hora;
   final bool ocupada;
@@ -1235,6 +1250,7 @@ class _SlotChip extends StatelessWidget {
   final bool seleccionada;
   final VoidCallback onTap;
   final bool bloqueada; // slot cerrado por el dueño (tappable para reabrir)
+  final int descuento; // "hora feliz": % de descuento si valle (0 = ninguno)
 
   @override
   Widget build(BuildContext context) {
@@ -1302,11 +1318,26 @@ class _SlotChip extends StatelessWidget {
                 style: TextStyle(color: texto, fontWeight: FontWeight.w700)),
             if (valle && !seleccionada) ...[
               const SizedBox(width: 5),
-              const Text('valle',
-                  style: TextStyle(
-                      color: clayOscuro,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700)),
+              // Con "hora feliz" activa se muestra el descuento; si no, "valle".
+              if (descuento > 0)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  decoration: BoxDecoration(
+                      color: lima.withOpacity(0.14),
+                      borderRadius: BorderRadius.circular(999)),
+                  child: Text('🔥 -$descuento%',
+                      style: const TextStyle(
+                          color: lima,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800)),
+                )
+              else
+                const Text('valle',
+                    style: TextStyle(
+                        color: clayOscuro,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700)),
             ],
           ],
         ),
