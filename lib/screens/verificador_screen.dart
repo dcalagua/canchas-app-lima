@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../config/pais.dart';
 import '../data/canchas_repo.dart';
 import '../services/growth_service.dart';
 import '../services/location_service.dart';
@@ -19,10 +20,11 @@ class VerificadorScreen extends StatefulWidget {
   State<VerificadorScreen> createState() => _VerificadorScreenState();
 }
 
-const _zonas = ['lima_norte', 'lima_sur', 'lima_este', 'lima_moderna', 'callao'];
-
 class _VerificadorScreenState extends State<VerificadorScreen> {
-  String _zona = 'lima_este';
+  // Zonas del país activo (Lima en Perú, ciudades en Bolivia/Ecuador). Se elige
+  // la primera por defecto; nunca "lima este" cuando el verificador está en BO.
+  late final List<String> _zonas = paisActual.zonas;
+  late String _zona = _zonas.first;
   bool _cargando = false;
   List<Map<String, dynamic>> _visitas = [];
 
@@ -89,9 +91,11 @@ class _VerificadorScreenState extends State<VerificadorScreen> {
                           child: ChoiceChip(
                             label: Text(z.replaceAll('_', ' ')),
                             selected: _zona == z,
-                            selectedColor: bosque,
+                            // Seleccionado = verde WhatsApp (marca), no negro.
+                            selectedColor: lima,
+                            checkmarkColor: Colors.white,
                             labelStyle: TextStyle(
-                                color: _zona == z ? lima : cs.onSurface,
+                                color: _zona == z ? Colors.white : cs.onSurface,
                                 fontWeight: FontWeight.w700),
                             onSelected: (_) {
                               setState(() => _zona = z);

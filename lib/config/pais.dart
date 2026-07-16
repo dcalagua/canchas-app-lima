@@ -57,6 +57,11 @@ class PaisConfig {
   /// dirección boliviana se resuelva en Perú.
   final String geocodeHint;
 
+  /// Zonas operativas del país (slugs) para la cola del **Verificador de campo**:
+  /// agrupan las visitas por área de la ciudad. Se muestran reemplazando "_" por
+  /// espacio. En Perú son las zonas de Lima; en Bolivia/Ecuador, sus ciudades.
+  final List<String> zonas;
+
   const PaisConfig({
     required this.iso,
     required this.nombre,
@@ -71,6 +76,7 @@ class PaisConfig {
     required this.docLongitud,
     required this.consultaDoc,
     required this.geocodeHint,
+    required this.zonas,
   });
 }
 
@@ -90,6 +96,13 @@ const Map<String, PaisConfig> paisesSoportados = {
     docLongitud: 8, // DNI peruano = 8 dígitos exactos
     consultaDoc: true, // consulta RENIEC vía Factiliza
     geocodeHint: 'Lima, Perú',
+    zonas: [
+      'lima_norte',
+      'lima_sur',
+      'lima_este',
+      'lima_moderna',
+      'callao',
+    ],
   ),
   'BO': PaisConfig(
     iso: 'BO',
@@ -108,6 +121,13 @@ const Map<String, PaisConfig> paisesSoportados = {
     docLongitud: null, // el CI boliviano no tiene largo fijo
     consultaDoc: false, // no hay consulta automática de CI
     geocodeHint: 'Bolivia',
+    zonas: [
+      'la_paz',
+      'el_alto',
+      'santa_cruz',
+      'cochabamba',
+      'sucre',
+    ],
   ),
   'EC': PaisConfig(
     iso: 'EC',
@@ -123,6 +143,12 @@ const Map<String, PaisConfig> paisesSoportados = {
     docLongitud: 10, // cédula ecuatoriana = 10 dígitos
     consultaDoc: false,
     geocodeHint: 'Ecuador',
+    zonas: [
+      'quito',
+      'guayaquil',
+      'cuenca',
+      'ambato',
+    ],
   ),
 };
 
@@ -142,6 +168,13 @@ const PaisConfig _paisPorDefecto = PaisConfig(
   docLongitud: 8,
   consultaDoc: true,
   geocodeHint: 'Lima, Perú',
+  zonas: [
+    'lima_norte',
+    'lima_sur',
+    'lima_este',
+    'lima_moderna',
+    'callao',
+  ],
 );
 
 /// País actualmente activo. La UI de moneda lee de aquí (vía `monedaSimbolo`).
