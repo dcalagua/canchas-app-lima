@@ -221,10 +221,12 @@ class _AgendaScreenState extends State<AgendaScreen> {
                                   const EdgeInsets.symmetric(horizontal: 14),
                               alignment: Alignment.center,
                               decoration: BoxDecoration(
-                                color: sel ? tinta : Colors.white,
+                                // Seleccionada = verde suave (igual que el
+                                // selector de escritorio), nunca negro.
+                                color: sel ? limaSuave : Colors.white,
                                 borderRadius: BorderRadius.circular(999),
                                 border:
-                                    Border.all(color: sel ? tinta : trazo),
+                                    Border.all(color: sel ? lima : trazo),
                               ),
                               child: Row(
                                 children: [
@@ -239,7 +241,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
                                   const SizedBox(width: 7),
                                   Text(c.nombre,
                                       style: TextStyle(
-                                          color: sel ? Colors.white : tinta,
+                                          color: tinta,
                                           fontWeight: sel
                                               ? FontWeight.w700
                                               : FontWeight.w600)),
@@ -386,9 +388,10 @@ class _Pildora extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
         decoration: BoxDecoration(
-          color: activo ? tinta : Colors.white,
+          // Toggle activo = verde WhatsApp (marca), nunca negro. Congruente.
+          color: activo ? lima : Colors.white,
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: activo ? tinta : trazo),
+          border: Border.all(color: activo ? lima : trazo),
         ),
         child: Text(texto,
             style: TextStyle(
@@ -415,10 +418,11 @@ class _CanchaTile extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
-        color: seleccionada ? tinta : Theme.of(context).colorScheme.surface,
+        // Seleccionada = verde suave con borde lima, nunca negro. Congruente.
+        color: seleccionada ? limaSuave : Theme.of(context).colorScheme.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: seleccionada ? tinta : trazo),
+          side: BorderSide(color: seleccionada ? lima : trazo),
         ),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
@@ -440,7 +444,7 @@ class _CanchaTile extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                          color: seleccionada ? Colors.white : tinta,
+                          color: tinta,
                           fontWeight: seleccionada
                               ? FontWeight.w800
                               : FontWeight.w600)),

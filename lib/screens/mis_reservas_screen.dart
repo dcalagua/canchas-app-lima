@@ -139,13 +139,14 @@ class _SegChip extends StatelessWidget {
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         decoration: BoxDecoration(
-          color: activo ? bosque : Theme.of(context).colorScheme.surface,
+          // Activo = verde WhatsApp (marca), no negro. Congruente con la app.
+          color: activo ? lima : Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: activo ? bosque : trazo),
+          border: Border.all(color: activo ? lima : trazo),
         ),
         child: Text(texto,
             style: TextStyle(
-                color: activo ? lima : textoTenue,
+                color: activo ? Colors.white : textoTenueDe(context),
                 fontWeight: FontWeight.w700,
                 fontSize: 14)),
       ),

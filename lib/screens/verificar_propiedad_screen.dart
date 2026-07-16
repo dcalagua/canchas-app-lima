@@ -101,7 +101,7 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
           via: 'otp_whatsapp', dueno: email);
       Navigator.of(context).pop(true);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        backgroundColor: bosque,
+        backgroundColor: lima,
         content: Text('✅ Propiedad verificada. Tu cancha ya acepta reservas.',
             style: TextStyle(color: Colors.white)),
       ));

@@ -1291,12 +1291,14 @@ class _SlotChip extends StatelessWidget {
                 decoration: TextDecoration.lineThrough)),
       );
     }
+    // Slot seleccionado = verde WhatsApp (marca), nunca negro. Es la selección
+    // más visible al reservar; congruente con el resto de la app.
     final Color borde = seleccionada
-        ? tinta
+        ? lima
         : valle
             ? clay
             : trazo;
-    final Color fondo = seleccionada ? tinta : cs.surface;
+    final Color fondo = seleccionada ? lima : cs.surface;
     final Color texto = seleccionada
         ? Colors.white
         : valle

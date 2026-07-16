@@ -281,7 +281,7 @@ class _CapturaScreenState extends State<_CapturaScreen> {
     if (r['ok'] == true) {
       Navigator.of(context).pop(true);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        backgroundColor: bosque,
+        backgroundColor: lima,
         content: Text(
             '✅ ${r['insignia'] ?? 'Cancha verificada'} · coincide (${r['distancia_m'] ?? '—'} m)',
             style: const TextStyle(color: Colors.white)),
