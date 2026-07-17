@@ -160,6 +160,7 @@ class CanchasRepo {
           'servicios_extra':
               c.serviciosExtra.map((s) => s.toJson()).toList(),
         if (conAmenidades) 'descuento_valle': c.descuentoValle,
+        if (conAmenidades) 'barrio': c.barrio,
       };
 
   static Cancha _fromRow(Map<String, dynamic> r) => Cancha(
@@ -167,6 +168,7 @@ class CanchasRepo {
         nombre: (r['nombre'] ?? 'Cancha') as String,
         club: (r['club'] ?? '') as String,
         distrito: _enumDistrito(r['distrito'] as String?),
+        barrio: (r['barrio'] ?? '') as String,
         deporte: _enumDeporte(r['deporte'] as String?),
         deportes: (r['deportes'] as List?)
                 ?.map((e) => deportePorNombre(e.toString()))

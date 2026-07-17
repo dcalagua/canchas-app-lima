@@ -2,7 +2,10 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../config/pais.dart';
 
-/// Distritos del piloto (densidad geográfica antes que cobertura amplia).
+/// Clasificación GRUESA heredada del piloto de Lima. Ya NO se muestra al usuario
+/// directamente: la zona visible es [Cancha.zonaMostrable], que usa el barrio
+/// real (reverse-geocode) y cae a esta etiqueta solo si aún no hay barrio (datos
+/// viejos). Se conserva por compatibilidad de datos, no como fuente de display.
 enum Distrito {
   sanBorja('San Borja'),
   surco('Surco'),
@@ -93,6 +96,11 @@ class Cancha {
   final String nombre;
   final String club;
   final Distrito distrito;
+  /// Barrio/zona REAL de la cancha (ej. "Sopocachi", "Equipetrol", "San Borja"),
+  /// obtenido del reverse-geocode de sus coordenadas al registrarla. Es la zona
+  /// que ve el usuario en cualquier país. Vacío = dato viejo → se cae a
+  /// [distrito.etiqueta]. Usar el getter [zonaMostrable].
+  final String barrio;
   final Deporte deporte; // deporte PRINCIPAL (ícono/color/categoría en el mapa)
   /// Todos los deportes que se pueden jugar en ESTA cancha (loza multiuso). Si
   /// está vacío, se asume que solo ofrece [deporte] (compat. con datos viejos).
@@ -143,6 +151,7 @@ class Cancha {
     required this.nombre,
     required this.club,
     required this.distrito,
+    this.barrio = '',
     required this.deporte,
     this.deportes = const [],
     required this.precioHora,
@@ -174,6 +183,19 @@ class Cancha {
   /// al registrarla y, en última instancia, a 'S/'.
   String get monedaSimbolo =>
       monedaDeCoordenadas(ubicacion.latitude, ubicacion.longitude);
+
+  /// Zona/barrio VISIBLE de la cancha, en cualquier país. Usa el barrio real
+  /// (reverse-geocode). Si aún no hay barrio (dato viejo o cancha descubierta de
+  /// Google), la etiqueta del distrito heredado SOLO tiene sentido en el piloto
+  /// de Lima: fuera de Perú se devuelve vacío para NO inventar "San Borja" (la
+  /// dirección real se muestra aparte). Puede quedar vacío: los llamadores deben
+  /// tolerarlo. Fuente única para mostrar la ubicación textual de una cancha.
+  String get zonaMostrable {
+    if (barrio.trim().isNotEmpty) return barrio.trim();
+    final enPeru =
+        paisDeCoordenadas(ubicacion.latitude, ubicacion.longitude).iso == 'PE';
+    return enPeru ? distrito.etiqueta : '';
+  }
 
   /// Deportes jugables en esta cancha, garantizando al menos el principal.
   /// Es la fuente de verdad para filtros/visibilidad (una loza multiuso aparece
@@ -248,6 +270,7 @@ class Cancha {
     String? nombre,
     String? club,
     Distrito? distrito,
+    String? barrio,
     Deporte? deporte,
     List<Deporte>? deportes,
     double? precioHora,
@@ -273,6 +296,7 @@ class Cancha {
       nombre: nombre ?? this.nombre,
       club: club ?? this.club,
       distrito: distrito ?? this.distrito,
+      barrio: barrio ?? this.barrio,
       deporte: deporte ?? this.deporte,
       deportes: deportes ?? this.deportes,
       precioHora: precioHora ?? this.precioHora,
@@ -302,6 +326,7 @@ class Cancha {
         'nombre': nombre,
         'club': club,
         'distrito': distrito.name,
+        'barrio': barrio,
         'deporte': deporte.name,
         'deportes': deportesJugables.map((e) => e.name).toList(),
         'precioHora': precioHora,
@@ -330,7 +355,10 @@ class Cancha {
         id: j['id'] as String,
         nombre: j['nombre'] as String,
         club: j['club'] as String,
-        distrito: Distrito.values.byName(j['distrito'] as String),
+        distrito: Distrito.values.firstWhere(
+            (d) => d.name == j['distrito'],
+            orElse: () => Distrito.sanBorja),
+        barrio: (j['barrio'] ?? '') as String,
         deporte: Deporte.values.byName(j['deporte'] as String),
         deportes: (j['deportes'] as List?)
                 ?.map((e) => deportePorNombre(e.toString()))

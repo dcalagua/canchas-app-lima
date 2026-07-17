@@ -135,7 +135,10 @@ class ClubCard extends StatelessWidget {
                       Expanded(
                         child: Text(
                           club.direccion ??
-                              '${club.barrio} · ${club.canchas.length} ${club.canchas.length == 1 ? 'cancha' : 'canchas'}',
+                              [
+                                if (club.barrio.isNotEmpty) club.barrio,
+                                '${club.canchas.length} ${club.canchas.length == 1 ? 'cancha' : 'canchas'}',
+                              ].join(' · '),
                           style: t.bodySmall?.copyWith(color: textoTenueDe(context)),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,

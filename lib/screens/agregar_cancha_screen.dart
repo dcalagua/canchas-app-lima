@@ -81,6 +81,7 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
       nombre: nombre,
       club: l.club, // mismo local
       distrito: l.distrito,
+      barrio: l.barrio, // misma zona real que el local
       deporte: _deporte,
       deportes: _deportes.toList(),
       precioHora: precio,

@@ -175,8 +175,10 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
                   Row(
                     children: [
                       _Pill(cancha.deporte.etiqueta, _color),
-                      const SizedBox(width: 8),
-                      _Pill(cancha.distrito.etiqueta, Colors.black54),
+                      if (cancha.zonaMostrable.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        _Pill(cancha.zonaMostrable, Colors.black54),
+                      ],
                       const Spacer(),
                       if (cancha.registrada) ...[
                         Text(
@@ -201,7 +203,8 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
                     _PanelDescubierta(cancha: cancha)
                   else ...[
                     Text(
-                      'Cancha de ${cancha.deporte.etiqueta.toLowerCase()} en ${cancha.distrito.etiqueta}. '
+                      'Cancha de ${cancha.deporte.etiqueta.toLowerCase()}'
+                      '${cancha.zonaMostrable.isNotEmpty ? ' en ${cancha.zonaMostrable}' : ''}. '
                       'Reserva tu hora y juega con quien quieras, a tu nivel. '
                       'Reservas online y pagas en la cancha (efectivo).',
                       style: const TextStyle(height: 1.4),

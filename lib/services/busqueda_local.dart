@@ -117,11 +117,13 @@ class BusquedaLocal {
 
   static String _motivo(Cancha c, LatLng? centro, bool barato) {
     if (barato) return 'De las más económicas · ${precio(c.precioHora)}/h';
+    final zona = c.zonaMostrable;
     if (centro != null) {
       final d = distanciaKm(centro, c.ubicacion);
-      return 'A ${d.toStringAsFixed(1)} km de ti · ${c.distrito.etiqueta}';
+      final base = 'A ${d.toStringAsFixed(1)} km de ti';
+      return zona.isNotEmpty ? '$base · $zona' : base;
     }
-    return c.distrito.etiqueta;
+    return zona.isNotEmpty ? zona : c.club;
   }
 
   static String _texto(Deporte? dep, bool barato, String cuando, int n) {

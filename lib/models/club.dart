@@ -16,7 +16,7 @@ class Club {
   Cancha get principal => canchas.first;
   LatLng get ubicacion => principal.ubicacion;
   Distrito get distrito => principal.distrito;
-  String get barrio => principal.distrito.etiqueta;
+  String get barrio => principal.zonaMostrable;
   String? get direccion =>
       canchas.map((c) => c.direccion).firstWhere((d) => d != null, orElse: () => null);
 

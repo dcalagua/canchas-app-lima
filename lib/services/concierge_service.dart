@@ -53,7 +53,7 @@ class ConciergeService {
         'id': c.id,
         'nombre': c.nombre,
         'deporte': c.deporte.name,
-        'distrito': c.distrito.etiqueta,
+        'distrito': c.zonaMostrable,
         'club': c.club,
         'direccion': c.direccion ?? '',
         'precioHora': c.precioHora,

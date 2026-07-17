@@ -273,7 +273,7 @@ class _HeaderAgenda extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     final barrio =
-        canchas.isEmpty ? paisActual.nombre : canchas.first.distrito.etiqueta;
+        canchas.isEmpty ? paisActual.nombre : canchas.first.zonaMostrable;
     final local = canchas.isEmpty ? 'Mis canchas' : canchas.first.club;
 
     // Saludo por hora del día (+ nombre del dueño si hay sesión). Antes decía

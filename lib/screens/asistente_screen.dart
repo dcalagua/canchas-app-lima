@@ -445,7 +445,8 @@ class _TarjetaSugerencia extends StatelessWidget {
                           runSpacing: 4,
                           children: [
                             _Pill(iconoDeporte(c.deporte), c.deporte.etiqueta),
-                            _Pill(Icons.place_outlined, c.distrito.etiqueta),
+                            if (c.zonaMostrable.isNotEmpty)
+                              _Pill(Icons.place_outlined, c.zonaMostrable),
                             if (dist != null)
                               _Pill(Icons.directions_walk,
                                   '${dist.toStringAsFixed(1)} km'),

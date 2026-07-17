@@ -270,19 +270,32 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
     return partes.join(', ');
   }
 
-  /// Best-effort: deduce el distrito desde las coordenadas (para clasificar).
-  Future<Distrito> _distritoDe(LatLng p) async {
+  /// Best-effort desde las coordenadas, en UNA sola llamada de reverse-geocode:
+  /// - `distrito`: clasificación gruesa heredada (Lima) para compat.
+  /// - `barrio`: nombre REAL de la zona (sublocalidad/localidad), lo que ve el
+  ///   usuario en cualquier país (ej. "Sopocachi", "Equipetrol", "San Borja").
+  Future<(Distrito, String)> _zonaDe(LatLng p) async {
+    var distrito = Distrito.sanBorja;
+    var barrio = '';
     try {
       final marks = await placemarkFromCoordinates(p.latitude, p.longitude);
       for (final m in marks) {
-        final texto = '${m.subLocality} ${m.locality} ${m.subAdministrativeArea}'
-            .toLowerCase();
+        final sub = (m.subLocality ?? '').trim();
+        final loc = (m.locality ?? '').trim();
+        final sa = (m.subAdministrativeArea ?? '').trim();
+        if (barrio.isEmpty) {
+          barrio = sub.isNotEmpty ? sub : (loc.isNotEmpty ? loc : sa);
+        }
+        final texto = '$sub $loc $sa'.toLowerCase();
         for (final d in Distrito.values) {
-          if (texto.contains(d.etiqueta.toLowerCase())) return d;
+          if (texto.contains(d.etiqueta.toLowerCase())) {
+            distrito = d;
+            break;
+          }
         }
       }
     } catch (_) {}
-    return Distrito.sanBorja;
+    return (distrito, barrio);
   }
 
   Future<void> _publicar() async {
@@ -359,7 +372,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
     final precio =
         double.tryParse(_precio.text.trim().replaceAll(',', '.')) ?? 100;
     final direccion = _direccion.text.trim();
-    final distrito = await _distritoDe(_ubicacion!);
+    final (distrito, barrio) = await _zonaDe(_ubicacion!);
     final ts = DateTime.now().millisecondsSinceEpoch;
 
     // Sube la foto nueva (si hay) y conserva las que ya traía de Google.
@@ -392,6 +405,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
         nombre: nombreCancha,
         club: nombre,
         distrito: distrito,
+        barrio: barrio,
         deporte: principal,
         deportes: deportes, // todos los deportes jugables en esta loza
         precioHora: precio,
@@ -423,6 +437,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
           nombre: '${dep.etiqueta} 1',
           club: nombre, // el local es su propio club
           distrito: distrito,
+          barrio: barrio,
           deporte: dep,
           deportes: [dep],
           precioHora: precio,

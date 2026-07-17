@@ -336,7 +336,11 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                         color: Colors.white, fontWeight: FontWeight.w700)),
                 Text(
                   c.direccion ??
-                      '${c.barrio} · ${c.canchas.length} ${c.canchas.length == 1 ? 'cancha' : 'canchas'} · ${c.deportes.map((d) => d.etiqueta).join(' · ')}',
+                      [
+                        if (c.barrio.isNotEmpty) c.barrio,
+                        '${c.canchas.length} ${c.canchas.length == 1 ? 'cancha' : 'canchas'}',
+                        c.deportes.map((d) => d.etiqueta).join(' · '),
+                      ].join(' · '),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: t.bodySmall?.copyWith(color: Colors.white70),
