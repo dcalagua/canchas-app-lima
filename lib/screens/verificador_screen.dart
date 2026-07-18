@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../config/pais.dart';
@@ -21,17 +22,43 @@ class VerificadorScreen extends StatefulWidget {
 }
 
 class _VerificadorScreenState extends State<VerificadorScreen> {
-  // Zonas del país activo (Lima en Perú, ciudades en Bolivia/Ecuador). Se elige
-  // la primera por defecto; nunca "lima este" cuando el verificador está en BO.
-  late final List<String> _zonas = paisActual.zonas;
-  late String _zona = _zonas.first;
+  // Zonas del país donde ESTÁ el verificador. Arranca con el país actual, pero
+  // se refina con el GPS al abrir la pantalla (por eso NO es `late final`: tiene
+  // que poder cambiar de Lima a ciudades de Bolivia/Ecuador en caliente).
+  List<String> _zonas = paisActual.zonas;
+  String _zona = paisActual.zonas.first;
   bool _cargando = false;
   List<Map<String, dynamic>> _visitas = [];
 
   @override
   void initState() {
     super.initState();
-    _cargar();
+    _detectarPaisYcargar();
+  }
+
+  /// Resuelve el país por el GPS del verificador y AJUSTA las zonas antes de
+  /// cargar la cola. Hace al Verificador autosuficiente: no depende de que otra
+  /// pantalla (Explorar/Asistente) haya detectado el país primero — ese era el
+  /// bug por el que en La Paz seguían saliendo zonas de Lima. Fail-safe: si no
+  /// hay GPS/geocode, se queda con el país actual o persistido.
+  Future<void> _detectarPaisYcargar() async {
+    try {
+      final pos = await LocationService.ubicacionActual();
+      if (pos != null) {
+        final marks =
+            await placemarkFromCoordinates(pos.latitude, pos.longitude);
+        final iso = marks.isNotEmpty ? marks.first.isoCountryCode : null;
+        await setPaisPorIso(iso);
+      }
+    } catch (_) {
+      // Sin GPS/geocode: se mantiene el país actual.
+    }
+    if (!mounted) return;
+    setState(() {
+      _zonas = paisActual.zonas;
+      if (!_zonas.contains(_zona)) _zona = _zonas.first;
+    });
+    await _cargar();
   }
 
   Future<void> _cargar() async {
