@@ -1,10 +1,9 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:geocoding/geocoding.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../config/pais.dart';
 import '../data/canchas_repo.dart';
 import '../services/growth_service.dart';
 import '../services/location_service.dart';
@@ -22,54 +21,40 @@ class VerificadorScreen extends StatefulWidget {
 }
 
 class _VerificadorScreenState extends State<VerificadorScreen> {
-  // Zonas del país donde ESTÁ el verificador. Arranca con el país actual, pero
-  // se refina con el GPS al abrir la pantalla (por eso NO es `late final`: tiene
-  // que poder cambiar de Lima a ciudades de Bolivia/Ecuador en caliente).
-  List<String> _zonas = paisActual.zonas;
-  String _zona = paisActual.zonas.first;
+  // Cola por CERCANÍA al verificador — sin listas de zonas clavadas a Lima. La
+  // app pide al backend las visitas dentro de un radio alrededor de tu GPS, así
+  // en Juliaca ves Juliaca, en La Paz ves La Paz, en Ecuador ves Ecuador.
+  static const List<double?> _radios = [25, 50, 100, null]; // km; null = todas
+  double? _radioKm = 50; // por defecto: 50 km a la redonda
+  LatLng? _pos; // ubicación actual del verificador
   bool _cargando = false;
   List<Map<String, dynamic>> _visitas = [];
 
   @override
   void initState() {
     super.initState();
-    _detectarPaisYcargar();
-  }
-
-  /// Resuelve el país por el GPS del verificador y AJUSTA las zonas antes de
-  /// cargar la cola. Hace al Verificador autosuficiente: no depende de que otra
-  /// pantalla (Explorar/Asistente) haya detectado el país primero — ese era el
-  /// bug por el que en La Paz seguían saliendo zonas de Lima. Fail-safe: si no
-  /// hay GPS/geocode, se queda con el país actual o persistido.
-  Future<void> _detectarPaisYcargar() async {
-    try {
-      final pos = await LocationService.ubicacionActual();
-      if (pos != null) {
-        final marks =
-            await placemarkFromCoordinates(pos.latitude, pos.longitude);
-        final iso = marks.isNotEmpty ? marks.first.isoCountryCode : null;
-        await setPaisPorIso(iso);
-      }
-    } catch (_) {
-      // Sin GPS/geocode: se mantiene el país actual.
-    }
-    if (!mounted) return;
-    setState(() {
-      _zonas = paisActual.zonas;
-      if (!_zonas.contains(_zona)) _zona = _zonas.first;
-    });
-    await _cargar();
+    _cargar();
   }
 
   Future<void> _cargar() async {
     setState(() => _cargando = true);
-    final v = await GrowthService.visitas(zona: _zona);
+    // Ubica al verificador para pedir la cola por cercanía. Fail-safe: si no hay
+    // GPS, se pide sin filtro (todas) y se avisa arriba que active la ubicación.
+    _pos ??= await LocationService.ubicacionActual();
+    final v = await GrowthService.visitas(
+      lat: _pos?.latitude,
+      lng: _pos?.longitude,
+      radioKm: _pos != null ? _radioKm : null,
+    );
     if (!mounted) return;
     setState(() {
       _visitas = v;
       _cargando = false;
     });
   }
+
+  /// Etiqueta legible de un radio: 25 → "25 km", null → "Todas".
+  String _lblRadio(double? r) => r == null ? 'Todas' : '${r.toStringAsFixed(0)} km';
 
   @override
   Widget build(BuildContext context) {
@@ -92,7 +77,10 @@ class _VerificadorScreenState extends State<VerificadorScreen> {
               children: [
                 Text('Visitas pendientes',
                     style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-                Text('La cancha más pedida sale primero.',
+                Text(
+                    _pos == null
+                        ? 'Cerca de ti · la más pedida primero.'
+                        : 'Cerca de ti (${_lblRadio(_radioKm)}) · la más pedida primero.',
                     style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
                 const SizedBox(height: 10),
                 SizedBox(
@@ -106,26 +94,37 @@ class _VerificadorScreenState extends State<VerificadorScreen> {
                     label: const Text('Validar reclamo por código'),
                   ),
                 ),
+                if (_pos == null && !_cargando) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Activa la ubicación para ver solo las canchas cercanas a ti.',
+                    style: t.bodySmall?.copyWith(
+                        color: clayOscuro, fontWeight: FontWeight.w600),
+                  ),
+                ],
                 const SizedBox(height: 12),
+                // Radio de cercanía (reemplaza las zonas fijas de Lima).
                 SizedBox(
                   height: 38,
                   child: ListView(
                     scrollDirection: Axis.horizontal,
                     children: [
-                      for (final z in _zonas)
+                      for (final r in _radios)
                         Padding(
                           padding: const EdgeInsets.only(right: 8),
                           child: ChoiceChip(
-                            label: Text(z.replaceAll('_', ' ')),
-                            selected: _zona == z,
+                            label: Text(_lblRadio(r)),
+                            selected: _radioKm == r,
                             // Seleccionado = verde WhatsApp (marca), no negro.
                             selectedColor: lima,
                             checkmarkColor: Colors.white,
                             labelStyle: TextStyle(
-                                color: _zona == z ? Colors.white : cs.onSurface,
+                                color: _radioKm == r
+                                    ? Colors.white
+                                    : cs.onSurface,
                                 fontWeight: FontWeight.w700),
                             onSelected: (_) {
-                              setState(() => _zona = z);
+                              setState(() => _radioKm = r);
                               _cargar();
                             },
                           ),
@@ -146,7 +145,7 @@ class _VerificadorScreenState extends State<VerificadorScreen> {
                           SizedBox(height: 80),
                           Center(
                               child: Text(
-                                  'No hay visitas pendientes en esta zona.')),
+                                  'No hay visitas pendientes cerca de ti.')),
                         ])
                       : ListView.separated(
                           padding: const EdgeInsets.fromLTRB(18, 6, 18, 24),
@@ -171,6 +170,13 @@ class _VerificadorScreenState extends State<VerificadorScreen> {
     );
     if (ok == true) _cargar();
   }
+}
+
+/// Formatea la distancia del verificador a la visita: "a 380 m" / "a 2.4 km".
+String _distancia(dynamic metros) {
+  final m = (metros as num).toDouble();
+  if (m < 1000) return 'a ${m.round()} m';
+  return 'a ${(m / 1000).toStringAsFixed(1)} km';
 }
 
 class _VisitaCard extends StatelessWidget {
@@ -205,6 +211,19 @@ class _VisitaCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text('${visita['estado']} · ${visita['motivo'] ?? ''}',
                         style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
+                    if (visita['distancia_m'] != null) ...[
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Icon(Icons.directions_walk,
+                              size: 14, color: bosque),
+                          const SizedBox(width: 3),
+                          Text(_distancia(visita['distancia_m']),
+                              style: t.bodySmall?.copyWith(
+                                  color: bosque, fontWeight: FontWeight.w700)),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),

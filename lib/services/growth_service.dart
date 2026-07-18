@@ -68,10 +68,23 @@ class GrowthService {
 
   /// Cola de visitas del verificador (agendada/en_sitio), priorizada por demanda
   /// (las canchas más pedidas primero).
-  static Future<List<Map<String, dynamic>>> visitas({String? zona}) async {
+  static Future<List<Map<String, dynamic>>> visitas({
+    String? zona,
+    double? lat,
+    double? lng,
+    double? radioKm,
+  }) async {
     if (!disponible) return [];
     try {
-      final q = zona != null && zona.isNotEmpty ? '?zona=$zona' : '';
+      final params = <String, String>{
+        if (zona != null && zona.isNotEmpty) 'zona': zona,
+        if (lat != null) 'lat': '$lat',
+        if (lng != null) 'lng': '$lng',
+        if (radioKm != null) 'radio_km': '$radioKm',
+      };
+      final q = params.isEmpty
+          ? ''
+          : '?${params.entries.map((e) => '${e.key}=${e.value}').join('&')}';
       final uri = Uri.parse('$_baseUrl/verificacion-fisica/visitas$q');
       final resp = await http.get(uri).timeout(const Duration(seconds: 10));
       if (resp.statusCode != 200) return [];
