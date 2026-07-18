@@ -824,7 +824,10 @@ class AppState extends ChangeNotifier {
 
   /// Modo de tema (claro/oscuro/automático). Persistente. Lo consume
   /// `MaterialApp.themeMode` en main.dart vía ListenableBuilder(appState).
-  ThemeMode temaModo = ThemeMode.system;
+  /// Por defecto **claro** (la marca Pichangol es premium-clara: splash verde
+  /// lima, fondos blancos). Quien elija "Automático"/"Oscuro" en Ajustes lo
+  /// sobreescribe y se respeta (se persiste su elección).
+  ThemeMode temaModo = ThemeMode.light;
 
   /// Cambia el modo de tema, persiste y avisa a la app para redibujar.
   void setTemaModo(ThemeMode modo) {
