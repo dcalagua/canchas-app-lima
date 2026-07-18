@@ -287,8 +287,10 @@ class _ReservaCard extends StatelessWidget {
                 Expanded(
                   child: FilledButton.icon(
                     style: FilledButton.styleFrom(
-                      backgroundColor: reserva.pagado ? verdeCancha : pino,
-                      foregroundColor: reserva.pagado ? Colors.white : lima,
+                      // No pagado = CTA verde (marcar); pagado = verde suave
+                      // (estado hecho). Sin fondos oscuros.
+                      backgroundColor: reserva.pagado ? limaSuave : lima,
+                      foregroundColor: reserva.pagado ? bosque : Colors.white,
                     ),
                     onPressed: () =>
                         appState.marcarPago(reserva, pagado: !reserva.pagado),

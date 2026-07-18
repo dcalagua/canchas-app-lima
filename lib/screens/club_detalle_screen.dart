@@ -1226,13 +1226,15 @@ class _DiaChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
         decoration: BoxDecoration(
-          color: activo ? pino : cs.surface,
+          // Seleccionado = verde WhatsApp + texto blanco (nunca negro).
+          color: activo ? lima : cs.surface,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: activo ? pino : trazo),
+          border: Border.all(color: activo ? lima : trazo),
         ),
         child: Text(texto,
             style: TextStyle(
-                color: activo ? lima : cs.onSurface, fontWeight: FontWeight.w700)),
+                color: activo ? Colors.white : cs.onSurface,
+                fontWeight: FontWeight.w700)),
       ),
     );
   }

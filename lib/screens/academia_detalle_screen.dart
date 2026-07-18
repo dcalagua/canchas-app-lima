@@ -685,7 +685,7 @@ class _StepBtn extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(10),
           child: Icon(icon,
-              color: activo ? bosque : textoTenue, size: 22),
+              color: activo ? lima : textoTenue, size: 22),
         ),
       ),
     );

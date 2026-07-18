@@ -749,13 +749,13 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
                     ChoiceChip(
                       avatar: Icon(iconoSuperficie(s),
                           size: 16,
-                          color: _superficie == s ? bosque : textoTenue),
+                          color: _superficie == s ? Colors.white : textoTenue),
                       label: Text(s),
                       selected: _superficie == s,
                       selectedColor: lima,
                       labelStyle: TextStyle(
                           color: _superficie == s
-                              ? bosque
+                              ? Colors.white
                               : Theme.of(context).colorScheme.onSurface,
                           fontWeight: FontWeight.w600),
                       onSelected: (sel) =>
@@ -789,13 +789,13 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
                       ChoiceChip(
                         avatar: Icon(iconoSuperficie(s),
                             size: 16,
-                            color: _superficies[d] == s ? bosque : textoTenue),
+                            color: _superficies[d] == s ? Colors.white : textoTenue),
                         label: Text(s),
                         selected: _superficies[d] == s,
                         selectedColor: lima,
                         labelStyle: TextStyle(
                             color: _superficies[d] == s
-                                ? bosque
+                                ? Colors.white
                                 : Theme.of(context).colorScheme.onSurface,
                             fontWeight: FontWeight.w600),
                         onSelected: (sel) => setState(

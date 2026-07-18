@@ -538,10 +538,10 @@ class _FilaInscrito extends StatelessWidget {
       child: ListTile(
         leading: CircleAvatar(
           radius: 16,
-          backgroundColor: soyYo ? bosque : limaSuave,
+          backgroundColor: soyYo ? lima : limaSuave,
           child: Text('$orden',
               style: TextStyle(
-                  color: soyYo ? lima : bosque,
+                  color: soyYo ? Colors.white : bosque,
                   fontWeight: FontWeight.w700,
                   fontSize: 13)),
         ),

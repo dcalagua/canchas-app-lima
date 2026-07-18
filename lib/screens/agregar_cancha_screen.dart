@@ -196,11 +196,11 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
                 ChoiceChip(
                   avatar: Icon(iconoSuperficie(s),
                       size: 18,
-                      color: _superficie == s ? bosque : textoTenue),
+                      color: _superficie == s ? Colors.white : textoTenue),
                   label: Text(s),
                   selected: _superficie == s,
                   labelStyle: TextStyle(
-                      color: _superficie == s ? bosque : cs.onSurface,
+                      color: _superficie == s ? Colors.white : cs.onSurface,
                       fontWeight: FontWeight.w600),
                   selectedColor: lima,
                   onSelected: (sel) =>

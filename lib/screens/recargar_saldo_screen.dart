@@ -202,7 +202,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
                         selectedColor: lima,
                         labelStyle: TextStyle(
                             fontWeight: FontWeight.w800,
-                            color: _monto == m ? pinoOscuro : cs.onSurface),
+                            color: _monto == m ? Colors.white : cs.onSurface),
                         onSelected: (_) => setState(() => _monto = m),
                       ),
                   ],
@@ -469,7 +469,7 @@ class _MetodoBoton extends StatelessWidget {
             color: sel ? limaSuave : Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-                color: sel ? bosque : const Color(0xFFE4E4E4),
+                color: sel ? lima : const Color(0xFFE4E4E4),
                 width: sel ? 2 : 1),
             boxShadow: const [
               BoxShadow(

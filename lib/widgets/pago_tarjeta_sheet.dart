@@ -433,7 +433,7 @@ class _FilaCard extends StatelessWidget {
           color: sel ? limaSuave : Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-              color: sel ? bosque : const Color(0xFFE4E4E4), width: sel ? 2 : 1),
+              color: sel ? lima : const Color(0xFFE4E4E4), width: sel ? 2 : 1),
         ),
         child: Row(
           children: [
@@ -481,7 +481,7 @@ class _MetodoMini extends StatelessWidget {
             color: sel ? limaSuave : Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-                color: sel ? bosque : const Color(0xFFE4E4E4), width: sel ? 2 : 1),
+                color: sel ? lima : const Color(0xFFE4E4E4), width: sel ? 2 : 1),
           ),
           child: Stack(
             alignment: Alignment.center,
@@ -527,7 +527,7 @@ class _FilaNueva extends StatelessWidget {
           color: sel ? limaSuave : Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-              color: sel ? bosque : const Color(0xFFE4E4E4), width: sel ? 2 : 1),
+              color: sel ? lima : const Color(0xFFE4E4E4), width: sel ? 2 : 1),
         ),
         child: Row(
           children: [

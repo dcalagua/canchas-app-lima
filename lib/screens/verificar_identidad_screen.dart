@@ -213,7 +213,7 @@ class _Tile extends StatelessWidget {
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: listo ? pino : trazo, width: listo ? 1.5 : 1),
+            border: Border.all(color: listo ? lima : trazo, width: listo ? 1.5 : 1),
           ),
           child: Row(
             children: [
@@ -239,7 +239,7 @@ class _Tile extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(listo ? 'Listo · toca para cambiar' : subtitulo,
                         style: TextStyle(
-                            color: listo ? pino : textoTenue,
+                            color: listo ? lima : textoTenue,
                             fontSize: 12.5,
                             fontWeight:
                                 listo ? FontWeight.w600 : FontWeight.w400)),
@@ -247,7 +247,7 @@ class _Tile extends StatelessWidget {
                 ),
               ),
               Icon(listo ? Icons.check_circle : Icons.chevron_right,
-                  color: listo ? pino : textoTenue),
+                  color: listo ? lima : textoTenue),
             ],
           ),
         ),

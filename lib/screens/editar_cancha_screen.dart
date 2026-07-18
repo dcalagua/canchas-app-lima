@@ -606,11 +606,11 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
                 ChoiceChip(
                   avatar: Icon(iconoSuperficie(s),
                       size: 18,
-                      color: _superficie == s ? bosque : textoTenue),
+                      color: _superficie == s ? Colors.white : textoTenue),
                   label: Text(s),
                   selected: _superficie == s,
                   labelStyle: TextStyle(
-                      color: _superficie == s ? bosque : cs.onSurface,
+                      color: _superficie == s ? Colors.white : cs.onSurface,
                       fontWeight: FontWeight.w600),
                   selectedColor: lima,
                   onSelected: (sel) =>
@@ -645,14 +645,14 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
                   avatar: Icon(a.icono,
                       size: 18,
                       color: _amenidades.contains(a.clave)
-                          ? bosque
+                          ? Colors.white
                           : textoTenue),
                   label: Text(a.etiqueta),
                   selected: _amenidades.contains(a.clave),
                   selectedColor: lima,
-                  checkmarkColor: bosque,
+                  checkmarkColor: Colors.white,
                   labelStyle: TextStyle(
-                      color: _amenidades.contains(a.clave) ? bosque : cs.onSurface,
+                      color: _amenidades.contains(a.clave) ? Colors.white : cs.onSurface,
                       fontWeight: FontWeight.w600),
                   onSelected: (sel) => setState(() {
                     if (sel) {

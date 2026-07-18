@@ -82,7 +82,11 @@ const Color estadoNeutroFg = Color(0xFF5C6B6C);
 // ── Alias de compatibilidad con el tema anterior ──────────────────────────
 const Color pino = bosque;
 const Color pinoOscuro = tinta;
-const Color verdeCancha = bosque;
+// `verdeCancha` se usa en toda la app como acento/relleno de SELECCIÓN (chips de
+// día/hora, dots activos, badges "confirmada", íconos). Debe ser el verde
+// WhatsApp de la marca, NO el charcoal: mapearlo a `lima` mantiene la app
+// congruente sin tocar cada uso. (Antes era `bosque`, por eso salían negros.)
+const Color verdeCancha = lima;
 const Color verdeClaro = sage;
 const Color verdeOscuro = tinta;
 const Color clay = textoTenue;  // neutro (gris Foggy)

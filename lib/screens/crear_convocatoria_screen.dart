@@ -221,13 +221,13 @@ class _ModoOption extends StatelessWidget {
             color: seleccionado ? limaSuave : Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: seleccionado ? sage : trazo,
+              color: seleccionado ? lima : trazo,
               width: seleccionado ? 1.6 : 1,
             ),
           ),
           child: Row(
             children: [
-              Icon(_icono, color: seleccionado ? bosque : textoTenue),
+              Icon(_icono, color: seleccionado ? lima : textoTenue),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -246,7 +246,7 @@ class _ModoOption extends StatelessWidget {
                 seleccionado
                     ? Icons.radio_button_checked
                     : Icons.radio_button_off,
-                color: seleccionado ? bosque : trazo,
+                color: seleccionado ? lima : trazo,
               ),
             ],
           ),
