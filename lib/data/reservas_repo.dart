@@ -97,6 +97,16 @@ class ReservasRepo {
     } catch (_) {}
   }
 
+  /// Elimina UNA reserva por id (p. ej. el jugador la cancela). Libera el slot
+  /// borrando la fila, así el UNIQUE(cancha, fecha, hora) queda libre y el
+  /// horario vuelve a estar disponible. Fail-safe.
+  static Future<void> eliminar(String id) async {
+    if (!SupabaseService.disponible) return;
+    try {
+      await SupabaseService.client.from(_tabla).delete().eq('id', id);
+    } catch (_) {}
+  }
+
   /// Actualiza una reserva existente (estado / pago) por id. Fail-safe.
   static Future<void> actualizar(Reserva r) async {
     if (!SupabaseService.disponible) return;

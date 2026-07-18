@@ -188,6 +188,7 @@ class _ReservaDestacada extends StatelessWidget {
               Text(_estadoLabel(reserva.estado),
                   style: t.bodySmall
                       ?.copyWith(color: Colors.white.withOpacity(0.7))),
+              _MenuReserva(reserva: reserva, color: Colors.white),
             ],
           ),
           const SizedBox(height: 14),
@@ -315,6 +316,7 @@ class _ReservaCard extends StatelessWidget {
               visualDensity: VisualDensity.compact,
               onPressed: () => _chatearConDueno(context),
             ),
+          _MenuReserva(reserva: reserva),
         ],
       ),
     );
@@ -342,6 +344,78 @@ class _ReservaCard extends StatelessWidget {
         tipo: 'cancha',
         refId: owner,
       ),
+    ));
+  }
+}
+
+/// ¿La reserva ya terminó su ciclo (historial)? Cambia el texto del menú.
+bool _esHistorial(Reserva r) =>
+    r.estado == EstadoReserva.completada || r.estado == EstadoReserva.noShow;
+
+/// Menú "⋮" de una reserva: permite al jugador CANCELAR (si es próxima) o
+/// QUITAR del historial. Libera el slot y borra la reserva.
+class _MenuReserva extends StatelessWidget {
+  const _MenuReserva({required this.reserva, this.color});
+  final Reserva reserva;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final historial = _esHistorial(reserva);
+    return PopupMenuButton<String>(
+      icon: Icon(Icons.more_vert, size: 20, color: color),
+      tooltip: 'Opciones',
+      onSelected: (v) {
+        if (v == 'cancelar') _confirmarCancelar(context, reserva);
+      },
+      itemBuilder: (_) => [
+        PopupMenuItem(
+          value: 'cancelar',
+          child: Row(
+            children: [
+              Icon(historial ? Icons.delete_outline : Icons.cancel_outlined,
+                  size: 18, color: clayOscuro),
+              const SizedBox(width: 10),
+              Text(historial ? 'Quitar del historial' : 'Cancelar reserva'),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Confirma y ejecuta la cancelación/eliminación de una reserva del jugador.
+Future<void> _confirmarCancelar(BuildContext context, Reserva r) async {
+  final historial = _esHistorial(r);
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(historial ? '¿Quitar del historial?' : '¿Cancelar esta reserva?'),
+      content: Text(historial
+          ? 'Se eliminará esta reserva de tu historial. No se puede deshacer.'
+          : 'Se liberará el horario ${r.dia} ${r.horaInicio}–${r.horaFin} y '
+              'dejará de aparecer en tus reservas.'),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('No')),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: coral),
+          onPressed: () => Navigator.pop(ctx, true),
+          child: Text(historial ? 'Sí, quitar' : 'Sí, cancelar'),
+        ),
+      ],
+    ),
+  );
+  if (ok != true) return;
+  await appState.cancelarReserva(r);
+  if (context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      backgroundColor: bosque,
+      content: Text(historial
+          ? 'Reserva eliminada del historial.'
+          : 'Reserva cancelada. El horario quedó libre.'),
     ));
   }
 }

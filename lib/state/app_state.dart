@@ -2169,6 +2169,22 @@ class AppState extends ChangeNotifier {
     ReservasRepo.actualizar(upd); // best-effort
   }
 
+  /// El JUGADOR cancela / elimina una de sus reservas (próxima o del historial).
+  /// La quita de sus listas y de la del dueño, libera el slot en la agenda y la
+  /// borra de Supabase (best-effort) para que el horario vuelva a estar libre y
+  /// no reaparezca al sincronizar.
+  Future<void> cancelarReserva(Reserva r) async {
+    misReservas.removeWhere((x) => x.id == r.id);
+    reservas.removeWhere((x) => x.id == r.id);
+    final i = agenda.indexWhere((b) => b.reservaId == r.id);
+    if (i >= 0) {
+      agenda[i] = agenda[i].copyWith(limpiarReserva: true, disponible: true);
+    }
+    notifyListeners();
+    _persistirDatos();
+    await ReservasRepo.eliminar(r.id); // libera el slot en la nube
+  }
+
   /// El dueño marca que el jugador no se presentó.
   Future<void> marcarNoShow(Reserva r) async {
     final upd = r.copyWith(estado: EstadoReserva.noShow);
