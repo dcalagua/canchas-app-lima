@@ -64,7 +64,7 @@ class _LoginGoogleSheetState extends State<LoginGoogleSheet> {
               ),
             ),
           ),
-          // Marca: logo cuadrado (pin) + nombre limpio + eslogan.
+          // Marca: logo cuadrado (pelota) + wordmark "Pichang·o·l" + eslogan.
           Row(
             children: [
               const LogoCuadrado(size: 52),
@@ -73,11 +73,7 @@ class _LoginGoogleSheetState extends State<LoginGoogleSheet> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('Pichangol',
-                      style: t.headlineSmall?.copyWith(
-                          color: cs.primary,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.5)),
+                  const PichangolWordmark(fontSize: 24),
                   Text(kBrandEslogan,
                       style: t.bodySmall?.copyWith(
                           color: textoTenue, fontWeight: FontWeight.w600)),

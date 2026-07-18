@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../brand.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/marca.dart';
 import 'app_shell.dart';
 import 'onboarding_screen.dart';
 
@@ -131,15 +132,7 @@ class _SplashScreenState extends State<SplashScreen>
               ),
             ),
             const SizedBox(height: 24),
-            Text(
-              kBrandName,
-              style: const TextStyle(
-                color: lima,
-                fontSize: 42,
-                fontWeight: FontWeight.w900,
-                letterSpacing: -0.5,
-              ),
-            ),
+            const PichangolWordmark(fontSize: 40),
             const SizedBox(height: 6),
             Text(
               kBrandTagline,
