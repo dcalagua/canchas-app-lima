@@ -64,7 +64,7 @@ class _LoginGoogleSheetState extends State<LoginGoogleSheet> {
               ),
             ),
           ),
-          // Marca: logo cuadrado (pelota) + wordmark "Pichang·o·l" + eslogan.
+          // Marca: logo cuadrado (pin) + wordmark "Pichang·o·l" (pelota) + eslogan.
           Row(
             children: [
               const LogoCuadrado(size: 52),

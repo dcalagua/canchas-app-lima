@@ -82,7 +82,31 @@ class _VerificadorScreenState extends State<VerificadorScreen> {
                         ? 'Cerca de ti · la más pedida primero.'
                         : 'Cerca de ti (${_lblRadio(_radioKm)}) · la más pedida primero.',
                     style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
+                // Qué es esta pantalla (para el rol Verificador de campo).
+                Container(
+                  padding: const EdgeInsets.all(11),
+                  decoration: BoxDecoration(
+                      color: limaSuave,
+                      borderRadius: BorderRadius.circular(12)),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.verified_user_outlined,
+                          size: 18, color: bosque),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Vas a la cancha, tomas fotos del sitio y tu GPS, y confirmas '
+                          'que existe: así queda “Verificada” y se puede reservar.',
+                          style: t.bodySmall
+                              ?.copyWith(color: bosque, height: 1.3),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(

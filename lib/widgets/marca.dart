@@ -45,8 +45,9 @@ class PichangolWordmark extends StatelessWidget {
   }
 }
 
-/// Logo cuadrado (login / app icon): cuadrado VERDE WhatsApp con una PELOTA
-/// blanca al centro (Opción A). Reemplaza el cuadro gris + pin del esquema viejo.
+/// Logo cuadrado (login / app icon): cuadrado VERDE WhatsApp con un PIN de
+/// ubicación blanco al centro — igual que el ícono de la app. (El wordmark, en
+/// cambio, usa la pelota como 'o'.)
 class LogoCuadrado extends StatelessWidget {
   final double size;
   const LogoCuadrado({super.key, this.size = 60});
@@ -61,7 +62,7 @@ class LogoCuadrado extends StatelessWidget {
         color: lima,
         borderRadius: BorderRadius.circular(size * 0.30),
       ),
-      child: PelotaMarca(size: size * 0.58, color: Colors.white),
+      child: Icon(Icons.location_on, size: size * 0.56, color: Colors.white),
     );
   }
 }

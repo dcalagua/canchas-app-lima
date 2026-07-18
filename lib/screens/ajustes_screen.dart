@@ -22,8 +22,7 @@ class AjustesScreen extends StatelessWidget {
               Text('Apariencia',
                   style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
               const SizedBox(height: 4),
-              Text('Elige cómo se ve Pichangol. "Automático" sigue el tema de tu '
-                  'teléfono.',
+              Text('Elige cómo se ve Pichangol. Por defecto es claro.',
                   style: t.bodySmall?.copyWith(
                       color: Theme.of(context).colorScheme.onSurface
                           .withOpacity(0.6))),
@@ -38,16 +37,9 @@ class AjustesScreen extends StatelessWidget {
               _OpcionTema(
                 icon: Icons.dark_mode_outlined,
                 titulo: 'Oscuro',
-                subtitulo: 'Cancha nocturna: índigo + lima, descansa la vista',
+                subtitulo: 'Verde bosque, descansa la vista de noche',
                 seleccionado: appState.temaModo == ThemeMode.dark,
                 onTap: () => appState.setTemaModo(ThemeMode.dark),
-              ),
-              _OpcionTema(
-                icon: Icons.brightness_auto_outlined,
-                titulo: 'Automático',
-                subtitulo: 'Sigue la configuración del sistema',
-                seleccionado: appState.temaModo == ThemeMode.system,
-                onTap: () => appState.setTemaModo(ThemeMode.system),
               ),
             ],
           );

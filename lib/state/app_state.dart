@@ -1872,10 +1872,11 @@ class AppState extends ChangeNotifier {
       }
 
       if (prefs.containsKey(_kTema)) {
+        // Claro por defecto para TODOS: cualquier "automático" (0) guardado de
+        // versiones viejas migra a claro. Solo "oscuro" (2) se respeta.
         temaModo = switch (prefs.getInt(_kTema)) {
-          1 => ThemeMode.light,
           2 => ThemeMode.dark,
-          _ => ThemeMode.system,
+          _ => ThemeMode.light,
         };
       }
 
