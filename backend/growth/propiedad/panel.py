@@ -151,13 +151,11 @@ _HTML = r"""<!DOCTYPE html>
   }
   *{box-sizing:border-box}
   body{margin:0;font-family:'DM Sans',system-ui,sans-serif;background:var(--bg);color:var(--text)}
-  /* Wordmark "pichang(o)l" con la "o" = pelota (anillo + punto lima) */
+  /* Wordmark "Pichang[o]l" — la "o" es una PELOTA (igual que el app). */
   .wm{font-weight:800;letter-spacing:-.02em;display:inline-flex;align-items:center}
-  .wm .ball{display:inline-block;width:.74em;height:.74em;border-radius:50%;
-    border:.16em solid currentColor;position:relative;margin:0 .02em;
-    transform:translateY(.04em)}
-  .wm .ball::after{content:"";position:absolute;inset:0;margin:auto;width:.2em;height:.2em;
-    border-radius:50%;background:var(--lima)}
+  .wm .ball{width:.86em;height:.86em;display:inline-block;vertical-align:-.1em;margin:0 .02em}
+  /* El icono es el LOGO del app (cuadro + pin), como SVG. */
+  .pin svg{width:100%;height:100%;display:block}
   /* Lockup EBIM (respaldo, marca endosante) */
   .ebim{font-weight:900;letter-spacing:.06em;color:var(--teal);text-transform:lowercase}
   header{position:sticky;top:0;z-index:5;
@@ -196,8 +194,7 @@ _HTML = r"""<!DOCTYPE html>
     display:flex;flex-direction:column;padding:18px 14px;
     box-shadow:2px 0 16px rgba(18,140,126,.18)}
   .side-brand{display:flex;align-items:center;gap:11px;padding:6px 8px 4px}
-  .side-brand .pin{width:34px;height:34px;border-radius:50%;background:#fff;
-    display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0}
+  .side-brand .pin{width:36px;height:36px;border-radius:11px;overflow:hidden;flex-shrink:0}
   .side-brand .wm{font-size:19px;color:#fff}
   .side-sub{font-size:11px;font-weight:700;color:rgba(255,255,255,.75);margin-top:1px}
   .side-sub .ebim{color:#fff;font-size:11px}
@@ -295,9 +292,7 @@ _HTML = r"""<!DOCTYPE html>
     justify-content:center;padding:24px;z-index:30}
   .gate .box{background:#fff;border:1px solid var(--border);border-radius:18px;
     padding:28px 24px;max-width:380px;width:100%;text-align:center}
-  .gate .pin{width:54px;height:54px;border-radius:50%;
-    background:linear-gradient(135deg,var(--green),var(--green-deep));
-    display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 14px}
+  .gate .pin{width:58px;height:58px;border-radius:16px;overflow:hidden;margin:0 auto 14px}
   .gate h2{margin:0 0 4px;font-weight:900}
   .gate p{margin:0 0 18px;color:var(--muted);font-size:14px}
   .gate input{width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:10px;
@@ -310,8 +305,8 @@ _HTML = r"""<!DOCTYPE html>
 <body>
 <div class="gate" id="gate">
   <div class="box">
-    <div class="pin">📍</div>
-    <h2><span class="wm" style="font-size:24px">pichang<span class="ball"></span>l</span></h2>
+    <div class="pin"><svg viewBox="0 0 48 48"><rect x="1.5" y="1.5" width="45" height="45" rx="12" fill="#128C7E"/><path d="M24 11.5c-4.3 0-7.8 3.5-7.8 7.8 0 5.9 7.8 14.2 7.8 14.2s7.8-8.3 7.8-14.2c0-4.3-3.5-7.8-7.8-7.8zm0 10.7a2.9 2.9 0 110-5.8 2.9 2.9 0 010 5.8z" fill="#fff"/></svg></div>
+    <h2><span class="wm" style="font-size:24px">Pichang<svg class="ball" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polygon points="12,8.2 14.9,10.3 13.8,13.8 10.2,13.8 9.1,10.3"/><path d="M12 8.2V4.3M14.9 10.3l3.6-1.7M13.8 13.8l2.5 3.2M10.2 13.8l-2.5 3.2M9.1 10.3L5.5 8.6"/></svg>l</span></h2>
     <p>Panel de administración de canchas</p>
     <div class="err" id="gateErr"></div>
     <input id="tok" type="password" placeholder="Token de administrador" autocomplete="off">
@@ -325,9 +320,9 @@ _HTML = r"""<!DOCTYPE html>
 <div class="shell" id="app" style="display:none">
   <aside class="side">
     <div class="side-brand">
-      <div class="pin">📍</div>
+      <div class="pin"><svg viewBox="0 0 48 48"><rect x="1.5" y="1.5" width="45" height="45" rx="12" fill="#fff"/><path d="M24 11.5c-4.3 0-7.8 3.5-7.8 7.8 0 5.9 7.8 14.2 7.8 14.2s7.8-8.3 7.8-14.2c0-4.3-3.5-7.8-7.8-7.8zm0 10.7a2.9 2.9 0 110-5.8 2.9 2.9 0 010 5.8z" fill="#128C7E"/></svg></div>
       <div>
-        <span class="wm">pichang<span class="ball"></span>l</span>
+        <span class="wm">Pichang<svg class="ball" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polygon points="12,8.2 14.9,10.3 13.8,13.8 10.2,13.8 9.1,10.3"/><path d="M12 8.2V4.3M14.9 10.3l3.6-1.7M13.8 13.8l2.5 3.2M10.2 13.8l-2.5 3.2M9.1 10.3L5.5 8.6"/></svg>l</span>
         <div class="side-sub"><span class="ebim">ebim</span> · admin</div>
       </div>
     </div>
