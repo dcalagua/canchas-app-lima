@@ -74,6 +74,41 @@ class CuentaScreen extends StatelessWidget {
                   ),
                 ),
               ],
+              // "Por recibir": neto de reservas online que Pichangol aún no te
+              // transfiere (Fase 2). Distinto del saldo prepago.
+              Builder(builder: (context) {
+                final porRecibir = appState.movimientos
+                    .where((m) =>
+                        m.tipo == TipoMovimiento.liquidacion && !m.liquidado)
+                    .fold<int>(0, (a, m) => a + m.monto);
+                if (porRecibir <= 0) return const SizedBox.shrink();
+                return Container(
+                  margin: const EdgeInsets.only(top: 12),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: teal.withOpacity(0.10),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: teal.withOpacity(0.4)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.account_balance_wallet_outlined,
+                          color: teal),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Por recibir de reservas online (Pichangol te transfiere aparte).',
+                          style: t.bodySmall?.copyWith(height: 1.3),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text('${appState.monedaSaldoSimbolo}$porRecibir',
+                          style: t.titleMedium?.copyWith(
+                              color: teal, fontWeight: FontWeight.w800)),
+                    ],
+                  ),
+                );
+              }),
               const SizedBox(height: 22),
               Text('Movimientos',
                   style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
@@ -228,15 +263,19 @@ class _FilaMovimiento extends StatelessWidget {
     final t = Theme.of(context).textTheme;
     final esRecarga = m.tipo == TipoMovimiento.recarga;
     final esLiquidacion = m.tipo == TipoMovimiento.liquidacion;
-    // Ingresos (recarga) en verde WhatsApp; comisión que sale del saldo en rojo;
-    // liquidación online en teal (es un NETO por RECIBIR, no toca el saldo).
-    final color =
-        esRecarga ? lima : (esLiquidacion ? teal : clayOscuro);
+    final liqPagada = esLiquidacion && m.liquidado;
+    // Recarga en verde; comisión que sale del saldo en rojo; liquidación online
+    // en teal si está PENDIENTE (por recibir) y en verde si ya te la pagaron.
+    final color = esRecarga
+        ? lima
+        : (esLiquidacion ? (liqPagada ? lima : teal) : clayOscuro);
     final signo = (esRecarga || esLiquidacion) ? '+' : '−';
     final icono = esRecarga
         ? Icons.arrow_downward
         : (esLiquidacion
-            ? Icons.account_balance_wallet_outlined
+            ? (liqPagada
+                ? Icons.check_circle_outline
+                : Icons.account_balance_wallet_outlined)
             : Icons.arrow_upward);
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -260,7 +299,10 @@ class _FilaMovimiento extends StatelessWidget {
               children: [
                 Text(m.concepto,
                     style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
-                Text(esLiquidacion ? '${m.cuando} · por recibir' : m.cuando,
+                Text(
+                    esLiquidacion
+                        ? '${m.cuando} · ${liqPagada ? 'recibido' : 'por recibir'}'
+                        : m.cuando,
                     style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
               ],
             ),

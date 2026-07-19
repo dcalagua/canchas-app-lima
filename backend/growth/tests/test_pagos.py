@@ -16,7 +16,10 @@ from db.store import stores  # noqa: E402
 from main import app  # noqa: E402
 from pagos import culqi  # noqa: E402
 
-client = TestClient(app)
+# Header del operador (torre de control) para endpoints admin de liquidaciones.
+# Va por defecto en el cliente; los endpoints app-key simplemente lo ignoran.
+_ADM = {"X-Admin-Token": "adm_test"}
+client = TestClient(app, headers=_ADM)
 
 
 class _FakeCulqi:
@@ -68,6 +71,7 @@ def _setup(monkeypatch):
     monkeypatch.setattr(config, "CULQI_SECRET_KEY", "sk_test_xxx")
     monkeypatch.setattr(config, "CULQI_PUBLIC_KEY", "pk_test_xxx")
     monkeypatch.setattr(config, "APP_API_KEY", "")  # sin app-key en tests
+    monkeypatch.setattr(config, "ADMIN_PANEL_TOKEN", "adm_test")  # operador
     fake = _FakeCulqi()
     monkeypatch.setattr(culqi, "_request", fake.request)
     yield fake
@@ -327,6 +331,71 @@ def test_liquidacion_aparece_en_movimientos_con_neto():
     assert liq["comision_soles"] == 6.0
     assert liq["neto_soles"] == 114.0
     assert liq["monto_soles"] == 114.0            # el neto es lo que verá "+"
+
+
+def test_liquidacion_pendiente_y_marcar_pagada():
+    # Registrar 2 liquidaciones (una de otro dueño) → pendientes las lista.
+    client.post("/pagos/liquidacion-online", json={
+        "dueno_id": "due@x.com", "monto_soles": 120, "reserva_id": "jug_a"})
+    client.post("/pagos/liquidacion-online", json={
+        "dueno_id": "otro@x.com", "monto_soles": 80, "reserva_id": "jug_b"})
+    pend = client.get("/pagos/liquidaciones/pendientes").json()
+    assert len(pend["pendientes"]) == 2
+    assert pend["total_neto_soles"] == 114.0 + 76.0   # (120-6)+(80-4)
+
+    # Marcar una como pagada.
+    r = client.post("/pagos/liquidaciones/jug_a/pagar",
+                    json={"metodo": "yape", "referencia": "OP123"}).json()
+    assert r["ok"] is True and r["liquidado"] is True
+    assert r["metodo_liquidacion"] == "yape"
+
+    # Ahora solo queda una pendiente.
+    pend2 = client.get("/pagos/liquidaciones/pendientes").json()
+    assert len(pend2["pendientes"]) == 1
+    assert pend2["pendientes"][0]["reserva_id"] == "jug_b"
+
+
+def test_marcar_liquidacion_es_idempotente():
+    client.post("/pagos/liquidacion-online", json={
+        "dueno_id": "d", "monto_soles": 120, "reserva_id": "jug_c"})
+    client.post("/pagos/liquidaciones/jug_c/pagar",
+                json={"metodo": "yape", "referencia": "OP1"})
+    # Segundo marcado: no cambia el método original ni rompe.
+    r = client.post("/pagos/liquidaciones/jug_c/pagar",
+                    json={"metodo": "transferencia", "referencia": "OP2"}).json()
+    assert r["liquidado"] is True
+    assert r["metodo_liquidacion"] == "yape"   # conserva el primer pago
+
+
+def test_marcar_liquidacion_inexistente_404():
+    resp = client.post("/pagos/liquidaciones/nope/pagar", json={})
+    assert resp.status_code == 404
+
+
+def test_por_recibir_del_dueno():
+    client.post("/pagos/liquidacion-online", json={
+        "dueno_id": "d", "monto_soles": 120, "reserva_id": "jug_d"})
+    client.post("/pagos/liquidacion-online", json={
+        "dueno_id": "d", "monto_soles": 100, "reserva_id": "jug_e"})
+    r = client.get("/pagos/por-recibir/d").json()
+    assert r["por_recibir_soles"] == 114.0 + 95.0   # (120-6)+(100-5)
+    assert r["reservas"] == 2
+    # Tras pagar una, baja el por-recibir.
+    client.post("/pagos/liquidaciones/jug_d/pagar", json={"metodo": "yape"})
+    r2 = client.get("/pagos/por-recibir/d").json()
+    assert r2["por_recibir_soles"] == 95.0 and r2["reservas"] == 1
+
+
+def test_movimientos_liquidacion_incluye_estado():
+    client.post("/pagos/liquidacion-online", json={
+        "dueno_id": "d", "monto_soles": 120, "reserva_id": "jug_f"})
+    movs = client.get("/pagos/movimientos/d").json()["movimientos"]
+    liq = next(m for m in movs if m["tipo"] == "liquidacion_online")
+    assert liq["liquidado"] is False
+    client.post("/pagos/liquidaciones/jug_f/pagar", json={"metodo": "yape"})
+    movs2 = client.get("/pagos/movimientos/d").json()["movimientos"]
+    liq2 = next(m for m in movs2 if m["tipo"] == "liquidacion_online")
+    assert liq2["liquidado"] is True
 
 
 def test_cobrar_generico():

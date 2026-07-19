@@ -570,21 +570,31 @@ class MovimientoSaldo {
   final int monto; // soles
   final String concepto;
   final String cuando; // etiqueta simple ("Ahora", "Hoy", etc.)
+  /// Solo para [TipoMovimiento.liquidacion]: ¿Pichangol ya transfirió el neto?
+  /// false = "por recibir"; true = "recibido".
+  final bool liquidado;
 
   const MovimientoSaldo({
     required this.tipo,
     required this.monto,
     required this.concepto,
     required this.cuando,
+    this.liquidado = false,
   });
 
-  Map<String, dynamic> toJson() =>
-      {'tipo': tipo.name, 'monto': monto, 'concepto': concepto, 'cuando': cuando};
+  Map<String, dynamic> toJson() => {
+        'tipo': tipo.name,
+        'monto': monto,
+        'concepto': concepto,
+        'cuando': cuando,
+        'liquidado': liquidado,
+      };
 
   factory MovimientoSaldo.fromJson(Map<String, dynamic> j) => MovimientoSaldo(
         tipo: TipoMovimiento.values.byName(j['tipo'] as String),
         monto: j['monto'] as int,
         concepto: j['concepto'] as String,
         cuando: j['cuando'] as String,
+        liquidado: (j['liquidado'] ?? false) as bool,
       );
 }

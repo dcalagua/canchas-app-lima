@@ -1711,6 +1711,7 @@ class AppState extends ChangeNotifier {
             monto: ((m['monto_soles'] as num?)?.abs() ?? 0).round(),
             concepto: concepto,
             cuando: _fechaRelativa(m['creado_en'] as String?),
+            liquidado: (m['liquidado'] ?? false) as bool,
           );
         }));
       notifyListeners();

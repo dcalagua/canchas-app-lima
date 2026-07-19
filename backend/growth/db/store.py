@@ -264,6 +264,12 @@ class PagoRegistro:
     culqi_charge_id: str | None = None
     email: str | None = None
     concepto: str | None = None
+    # Liquidación (solo tipo=liquidacion_online): estado del pago del NETO al
+    # dueño. liquidado=False → Pichangol aún le debe; True → ya se le transfirió.
+    liquidado: bool = False
+    liquidado_en: datetime | None = None
+    metodo_liquidacion: str | None = None      # yape | transferencia | efectivo
+    referencia_liquidacion: str | None = None  # nº de operación / nota
 
 
 class Stores:
@@ -362,6 +368,35 @@ class Stores:
         p = PagoRegistro(id=self.next_id("pago"), creado_en=ahora(), **kw)
         self.pagos.append(p)
         return p
+
+    def liquidaciones(self, dueno_id: str | None = None,
+                      solo_pendientes: bool = False) -> "list[PagoRegistro]":
+        """Liquidaciones online (neto que Pichangol le debe al dueño). Filtra por
+        dueño y/o solo las pendientes de pago."""
+        out = []
+        for p in self.pagos:
+            if p.tipo != "liquidacion_online":
+                continue
+            if dueno_id is not None and p.dueno_id != dueno_id:
+                continue
+            if solo_pendientes and p.liquidado:
+                continue
+            out.append(p)
+        return out
+
+    def marcar_liquidacion_pagada(self, reserva_id: str, metodo: str | None,
+                                  referencia: str | None) -> "PagoRegistro | None":
+        """Marca una liquidación como PAGADA (Pichangol transfirió el neto al
+        dueño). Idempotente: si ya estaba pagada, la devuelve igual."""
+        for p in self.pagos:
+            if p.tipo == "liquidacion_online" and p.culqi_charge_id == reserva_id:
+                if not p.liquidado:
+                    p.liquidado = True
+                    p.liquidado_en = ahora()
+                    p.metodo_liquidacion = metodo
+                    p.referencia_liquidacion = referencia
+                return p
+        return None
 
     # --- vistas / impresiones de destacados (métrica de impacto del boost) ---
     def registrar_vista(self, id_: str, dia: str | None = None, n: int = 1) -> None:
@@ -612,7 +647,11 @@ def _pago_from(d: dict) -> PagoRegistro:
         moneda=d.get("moneda", "PEN"), estado=d["estado"],
         creado_en=_dt(d["creado_en"]), dueno_id=d.get("dueno_id"),
         culqi_charge_id=d.get("culqi_charge_id"), email=d.get("email"),
-        concepto=d.get("concepto"))
+        concepto=d.get("concepto"),
+        liquidado=bool(d.get("liquidado", False)),
+        liquidado_en=_dt(d.get("liquidado_en")),
+        metodo_liquidacion=d.get("metodo_liquidacion"),
+        referencia_liquidacion=d.get("referencia_liquidacion"))
 
 
 def _insc_from(d: dict) -> Inscripcion:

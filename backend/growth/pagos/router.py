@@ -41,6 +41,18 @@ def _require_app_key(x_app_key: str | None = Header(default=None)) -> None:
 _APP = [Depends(_require_app_key)]
 
 
+def _require_admin(x_admin_token: str | None = Header(default=None)) -> None:
+    """Auth de operador (torre de control) para marcar liquidaciones pagadas y
+    ver las pendientes. Sin token configurado → fail-closed (503)."""
+    if not config.ADMIN_PANEL_TOKEN:
+        raise HTTPException(status_code=503, detail="admin_no_configurado")
+    if x_admin_token != config.ADMIN_PANEL_TOKEN:
+        raise HTTPException(status_code=401, detail="token_invalido")
+
+
+_ADMIN = [Depends(_require_admin)]
+
+
 def _soles_a_centimos(soles: float) -> int:
     return int(round(float(soles) * 100))
 
@@ -88,6 +100,11 @@ class LiquidacionOnlineReq(BaseModel):
     monto_soles: float         # precio BRUTO que pagó el jugador online
     reserva_id: str            # idempotencia
     concepto: str | None = None
+
+
+class MarcarLiquidacionReq(BaseModel):
+    metodo: str | None = None       # yape | transferencia | efectivo
+    referencia: str | None = None   # nº de operación / nota
 
 
 class MetodoReq(BaseModel):
@@ -223,6 +240,56 @@ def post_liquidacion_online(req: LiquidacionOnlineReq) -> dict:
             "comision_centimos": comision, "neto_centimos": bruto - comision}
 
 
+def _liquidacion_dict(p) -> dict:
+    """Serializa una liquidación con su desglose y estado de pago."""
+    bruto = p.monto_centimos
+    comision = comision_centimos(bruto / 100.0)
+    neto = bruto - comision
+    return {
+        "reserva_id": p.culqi_charge_id,
+        "dueno_id": p.dueno_id,
+        "concepto": p.concepto or "Reserva online",
+        "creado_en": p.creado_en.isoformat(),
+        "bruto_soles": bruto / 100.0,
+        "comision_soles": comision / 100.0,
+        "neto_soles": neto / 100.0,
+        "liquidado": p.liquidado,
+        "liquidado_en": p.liquidado_en.isoformat() if p.liquidado_en else None,
+        "metodo_liquidacion": p.metodo_liquidacion,
+        "referencia_liquidacion": p.referencia_liquidacion,
+    }
+
+
+@router.get("/liquidaciones/pendientes", dependencies=_ADMIN)
+def get_liquidaciones_pendientes() -> dict:
+    """OPERADOR: liquidaciones online PENDIENTES de pagar al dueño (Pichangol le
+    debe el neto). Para saber a quién transferir y cuánto. Más antiguas primero."""
+    pend = stores.liquidaciones(solo_pendientes=True)
+    total = sum(_liquidacion_dict(p)["neto_soles"] for p in pend)
+    return {"pendientes": [_liquidacion_dict(p) for p in pend],
+            "total_neto_soles": round(total, 2)}
+
+
+@router.post("/liquidaciones/{reserva_id}/pagar", dependencies=_ADMIN)
+def post_liquidacion_pagar(reserva_id: str, req: MarcarLiquidacionReq) -> dict:
+    """OPERADOR: marca una liquidación como PAGADA (ya transfirió el neto al
+    dueño). Idempotente."""
+    p = stores.marcar_liquidacion_pagada(reserva_id, req.metodo, req.referencia)
+    if p is None:
+        raise HTTPException(status_code=404, detail="liquidacion_no_encontrada")
+    return {"ok": True, **_liquidacion_dict(p)}
+
+
+@router.get("/por-recibir/{dueno_id}", dependencies=_APP)
+def get_por_recibir(dueno_id: str) -> dict:
+    """DUEÑO: total NETO que Pichangol le debe por reservas online aún no
+    liquidadas (su "por recibir"). Complementa el saldo prepago."""
+    pend = stores.liquidaciones(dueno_id=dueno_id, solo_pendientes=True)
+    total = sum(_liquidacion_dict(p)["neto_soles"] for p in pend)
+    return {"dueno_id": dueno_id, "por_recibir_soles": round(total, 2),
+            "reservas": len(pend)}
+
+
 def _nivel_destacado(centimos: int) -> int:
     """Nivel de destacado según el saldo (más saldo = más visibilidad).
     3 = premium, 2 = medio, 1 = base. Umbrales en soles (tunables)."""
@@ -312,6 +379,7 @@ def get_movimientos(dueno_id: str) -> dict:
                 "bruto_soles": bruto / 100.0,
                 "comision_soles": comision / 100.0,
                 "neto_soles": neto / 100.0,
+                "liquidado": p.liquidado,                # ¿ya te lo transfirieron?
                 "concepto": p.concepto or "Reserva online"}
 
     # stores.pagos está en orden de inserción (viejo→nuevo); lo invertimos para
