@@ -1687,14 +1687,32 @@ class AppState extends ChangeNotifier {
     if (movs != null && movs.isNotEmpty) {
       movimientos
         ..clear()
-        ..addAll(movs.map((m) => MovimientoSaldo(
-              tipo: m['tipo'] == 'consumo'
-                  ? TipoMovimiento.consumo
-                  : TipoMovimiento.recarga,
-              monto: (m['monto_soles'] as num?)?.round() ?? 0,
-              concepto: (m['concepto'] as String?) ?? 'Recarga de saldo',
-              cuando: _fechaRelativa(m['creado_en'] as String?),
-            )));
+        ..addAll(movs.map((m) {
+          final tipoStr = (m['tipo'] as String?) ?? 'recarga';
+          final tipo = switch (tipoStr) {
+            'comision_reserva' => TipoMovimiento.consumo,
+            'liquidacion_online' => TipoMovimiento.liquidacion,
+            _ => TipoMovimiento.recarga,
+          };
+          var concepto = (m['concepto'] as String?) ?? '';
+          if (tipo == TipoMovimiento.liquidacion) {
+            // Agrega el desglose de la comisión a la línea de liquidación.
+            final com = (m['comision_soles'] as num?)?.round();
+            final txt = 'comisión $monedaSaldoSimbolo$com';
+            concepto = concepto.isEmpty ? 'Reserva online · $txt' : '$concepto · $txt';
+          } else if (concepto.isEmpty) {
+            concepto = tipo == TipoMovimiento.consumo
+                ? 'Comisión de reserva'
+                : 'Recarga de saldo';
+          }
+          return MovimientoSaldo(
+            // El signo lo pone el tipo en la UI; el monto va en positivo.
+            tipo: tipo,
+            monto: ((m['monto_soles'] as num?)?.abs() ?? 0).round(),
+            concepto: concepto,
+            cuando: _fechaRelativa(m['creado_en'] as String?),
+          );
+        }));
       notifyListeners();
       _persistirDatos();
     }
@@ -2056,7 +2074,7 @@ class AppState extends ChangeNotifier {
       Cancha cancha, String fecha, String diaLabel, String hora,
       {Deporte? deporte,
       List<ServicioExtra> extras = const [],
-      bool cobrarComisionDueno = false}) async {
+      String cobro = 'ninguno'}) async {
     // Chequeo local rápido (doble toque / feedback inmediato sin conexión).
     // La agenda es COMPARTIDA entre deportes: se ocupa por (cancha, fecha, hora),
     // sin importar el deporte (es la misma superficie física).
@@ -2099,18 +2117,28 @@ class AppState extends ChangeNotifier {
           (b) => b.canchaId == cancha.id && b.hora == hora);
       if (i >= 0) agenda[i] = agenda[i].copyWith(reservaId: reserva.id);
     }
-    // Reserva en EFECTIVO con saldo del dueño: PCG cobra su comisión del saldo
-    // prepago del dueño (el jugador ya paga la cancha en efectivo). Best-effort
-    // e idempotente por id en el backend: si no hay red, no bloquea la reserva.
-    if (cobrarComisionDueno &&
-        res == ResultadoReserva.ok &&
-        cancha.dueno.isNotEmpty) {
-      PagosService.comisionReserva(
-        duenoId: cancha.dueno,
-        montoSoles: cancha.precioEn(hora),
-        reservaId: reserva.id,
-        concepto: 'Comisión · ${cancha.nombre}',
-      );
+    // Trazabilidad de la comisión de PCG (best-effort, idempotente por id):
+    //  - 'efectivo': el jugador paga la cancha; PCG cobra la comisión del SALDO
+    //    prepago del dueño.
+    //  - 'online': el jugador pagó por la app; se registra la LIQUIDACIÓN (neto
+    //    que PCG le debe al dueño). No toca el saldo.
+    if (res == ResultadoReserva.ok && cancha.dueno.isNotEmpty) {
+      final etiqueta = '${cancha.nombre} · $diaLabel $hora';
+      if (cobro == 'efectivo') {
+        PagosService.comisionReserva(
+          duenoId: cancha.dueno,
+          montoSoles: cancha.precioEn(hora),
+          reservaId: reserva.id,
+          concepto: 'Comisión · $etiqueta',
+        );
+      } else if (cobro == 'online') {
+        PagosService.liquidacionOnline(
+          duenoId: cancha.dueno,
+          montoSoles: cancha.precioEn(hora),
+          reservaId: reserva.id,
+          concepto: 'Reserva online · $etiqueta',
+        );
+      }
     }
     notifyListeners();
     _persistirDatos();

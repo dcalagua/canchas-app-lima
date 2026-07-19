@@ -83,6 +83,13 @@ class ComisionReservaReq(BaseModel):
     concepto: str | None = None
 
 
+class LiquidacionOnlineReq(BaseModel):
+    dueno_id: str              # dueño a quien Pichangol le debe el neto
+    monto_soles: float         # precio BRUTO que pagó el jugador online
+    reserva_id: str            # idempotencia
+    concepto: str | None = None
+
+
 class MetodoReq(BaseModel):
     token: str                 # token temporal (tkn_) de tokenizar la tarjeta
     user_id: str               # a quién pertenece (correo del jugador)
@@ -192,6 +199,30 @@ def post_comision_reserva(req: ComisionReservaReq) -> dict:
             "saldo_centimos": nuevo, "saldo_soles": nuevo / 100.0}
 
 
+@router.post("/liquidacion-online", dependencies=_APP)
+def post_liquidacion_online(req: LiquidacionOnlineReq) -> dict:
+    """Registra la LIQUIDACIÓN de una reserva pagada ONLINE (dueño sin saldo):
+    el jugador le pagó a Pichangol; se descuenta la comisión y el NETO se le debe
+    al dueño (se le transfiere aparte). NO toca el saldo prepago — es otra
+    contabilidad. Idempotente por `reserva_id`. Sirve para la trazabilidad del
+    dueño (ve cuánto le cobró Pichangol y cuánto le queda por recibir)."""
+    bruto = _soles_a_centimos(req.monto_soles)
+    comision = comision_centimos(req.monto_soles)
+    ya = stores.pago_por_charge(req.reserva_id)
+    if ya is not None and ya.tipo == "liquidacion_online":
+        return {"ok": True, "duplicada": True, "bruto_centimos": ya.monto_centimos,
+                "comision_centimos": comision_centimos(ya.monto_centimos / 100.0),
+                "neto_centimos": ya.monto_centimos
+                - comision_centimos(ya.monto_centimos / 100.0)}
+    stores.registrar_pago(
+        tipo="liquidacion_online", monto_centimos=bruto, moneda="PEN",
+        estado="aprobado", dueno_id=req.dueno_id,
+        culqi_charge_id=req.reserva_id,
+        concepto=req.concepto or "Reserva online")
+    return {"ok": True, "duplicada": False, "bruto_centimos": bruto,
+            "comision_centimos": comision, "neto_centimos": bruto - comision}
+
+
 def _nivel_destacado(centimos: int) -> int:
     """Nivel de destacado según el saldo (más saldo = más visibilidad).
     3 = premium, 2 = medio, 1 = base. Umbrales en soles (tunables)."""
@@ -249,30 +280,43 @@ def get_movimientos(dueno_id: str) -> dict:
     reciente al más antiguo. El saldo vive en el backend, así que este historial
     SOBREVIVE a reinstalar la app (a diferencia del historial local del teléfono).
     """
-    # Recargas (entra saldo) y comisiones por reserva en efectivo (sale saldo).
+    # Trazabilidad del dueño (3 tipos):
+    #  - recarga            → entra saldo (+)
+    #  - comision_reserva   → sale de su saldo por reserva en efectivo (−)
+    #  - liquidacion_online → reserva online: Pichangol cobró al jugador, se queda
+    #                         la comisión y le debe el NETO al dueño (no toca saldo).
     propios = [
         p
         for p in stores.pagos
         if p.dueno_id == dueno_id
         and p.estado == "aprobado"
-        and p.tipo in ("recarga", "comision_reserva")
+        and p.tipo in ("recarga", "comision_reserva", "liquidacion_online")
     ]
-    movimientos = [
-        {
-            "tipo": p.tipo,
-            # La comisión es un EGRESO: monto en negativo para que el historial
-            # muestre "− S/ x" y cuadre con el saldo.
-            "monto_soles": (p.monto_centimos / 100.0)
-            * (-1 if p.tipo == "comision_reserva" else 1),
-            "concepto": p.concepto
-            or ("Comisión de reserva" if p.tipo == "comision_reserva"
-                else "Recarga de saldo"),
-            "creado_en": p.creado_en.isoformat(),
-        }
-        # stores.pagos está en orden de inserción (viejo→nuevo); lo invertimos
-        # para mostrar el más reciente primero.
-        for p in reversed(propios)
-    ]
+
+    def _fila(p) -> dict:
+        base = {"tipo": p.tipo, "creado_en": p.creado_en.isoformat()}
+        if p.tipo == "recarga":
+            return {**base, "monto_soles": p.monto_centimos / 100.0,
+                    "concepto": p.concepto or "Recarga de saldo"}
+        if p.tipo == "comision_reserva":
+            # Egreso de saldo: negativo.
+            return {**base, "monto_soles": -(p.monto_centimos / 100.0),
+                    "concepto": p.concepto or "Comisión de reserva"}
+        # liquidacion_online: desglose bruto/comisión/neto (el neto es lo que
+        # Pichangol le debe al dueño por esa reserva).
+        bruto = p.monto_centimos
+        comision = comision_centimos(bruto / 100.0)
+        neto = bruto - comision
+        return {**base,
+                "monto_soles": neto / 100.0,             # neto a recibir
+                "bruto_soles": bruto / 100.0,
+                "comision_soles": comision / 100.0,
+                "neto_soles": neto / 100.0,
+                "concepto": p.concepto or "Reserva online"}
+
+    # stores.pagos está en orden de inserción (viejo→nuevo); lo invertimos para
+    # mostrar el más reciente primero.
+    movimientos = [_fila(p) for p in reversed(propios)]
     return {"dueno_id": dueno_id, "movimientos": movimientos}
 
 

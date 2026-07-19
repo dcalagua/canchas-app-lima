@@ -124,8 +124,9 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
     }
     final res = await appState.agregarReservaJugador(
         cancha, _fechaIso, _dia, hora,
-        // Con saldo (efectivo): PCG cobra la comisión del saldo del dueño.
-        cobrarComisionDueno: efectivo);
+        // Con saldo → efectivo (comisión del saldo); sin saldo → online (ya se
+        // cobró al jugador; se registra la liquidación / neto al dueño).
+        cobro: efectivo ? 'efectivo' : 'online');
     if (!mounted) return;
 
     if (res == ResultadoReserva.ocupado) {

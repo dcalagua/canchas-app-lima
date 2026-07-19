@@ -227,9 +227,17 @@ class _FilaMovimiento extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     final esRecarga = m.tipo == TipoMovimiento.recarga;
-    // Congruencia con el acento de la app: ingresos en verde WhatsApp (lima),
-    // egresos en rojo. Antes usaba un lima brillante (#C4F542) que desentonaba.
-    final color = esRecarga ? lima : clayOscuro;
+    final esLiquidacion = m.tipo == TipoMovimiento.liquidacion;
+    // Ingresos (recarga) en verde WhatsApp; comisión que sale del saldo en rojo;
+    // liquidación online en teal (es un NETO por RECIBIR, no toca el saldo).
+    final color =
+        esRecarga ? lima : (esLiquidacion ? teal : clayOscuro);
+    final signo = (esRecarga || esLiquidacion) ? '+' : '−';
+    final icono = esRecarga
+        ? Icons.arrow_downward
+        : (esLiquidacion
+            ? Icons.account_balance_wallet_outlined
+            : Icons.arrow_upward);
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
@@ -243,8 +251,7 @@ class _FilaMovimiento extends StatelessWidget {
           CircleAvatar(
             radius: 20,
             backgroundColor: color.withOpacity(0.12),
-            child: Icon(esRecarga ? Icons.arrow_downward : Icons.arrow_upward,
-                color: color, size: 20),
+            child: Icon(icono, color: color, size: 20),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -253,12 +260,12 @@ class _FilaMovimiento extends StatelessWidget {
               children: [
                 Text(m.concepto,
                     style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
-                Text(m.cuando,
+                Text(esLiquidacion ? '${m.cuando} · por recibir' : m.cuando,
                     style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
               ],
             ),
           ),
-          Text('${esRecarga ? '+' : '−'} ${appState.monedaSaldoSimbolo}${m.monto}',
+          Text('$signo ${appState.monedaSaldoSimbolo}${m.monto}',
               style: t.titleMedium
                   ?.copyWith(color: color, fontWeight: FontWeight.w700)),
         ],

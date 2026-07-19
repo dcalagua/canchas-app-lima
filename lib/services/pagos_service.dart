@@ -276,6 +276,39 @@ class PagosService {
     }
   }
 
+  /// Registra la LIQUIDACIÓN de una reserva pagada ONLINE (dueño sin saldo): el
+  /// jugador pagó a Pichangol, que se queda la comisión y le debe el neto al
+  /// dueño. NO toca el saldo; alimenta la trazabilidad del dueño. Idempotente
+  /// por [reservaId]. Best-effort.
+  static Future<Map<String, dynamic>?> liquidacionOnline({
+    required String duenoId,
+    required double montoSoles,
+    required String reservaId,
+    String? concepto,
+  }) async {
+    if (!disponible || duenoId.isEmpty) return null;
+    try {
+      final r = await http
+          .post(
+            Uri.parse('$_baseUrl/pagos/liquidacion-online'),
+            headers: _appHeaders(json: true),
+            body: jsonEncode({
+              'dueno_id': duenoId,
+              'monto_soles': montoSoles,
+              'reserva_id': reservaId,
+              if (concepto != null) 'concepto': concepto,
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
+      if (r.statusCode == 200) {
+        return jsonDecode(r.body) as Map<String, dynamic>;
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   // --- 4) Métodos de pago guardados (Culqi One Click) ---------------------
   /// Lista las tarjetas guardadas del usuario: [{id, marca, ultimos4}].
   static Future<List<Map<String, dynamic>>> metodos(String userId) async {

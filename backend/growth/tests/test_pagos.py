@@ -294,6 +294,41 @@ def test_comision_aparece_en_movimientos_como_egreso():
     assert com["monto_soles"] == -3.0             # egreso en negativo
 
 
+def test_liquidacion_online_no_toca_saldo_y_desglosa():
+    # Dueño SIN saldo: reserva online → registra bruto/comisión/neto, sin tocar
+    # el saldo prepago.
+    r = client.post("/pagos/liquidacion-online", json={
+        "dueno_id": "due@x.com", "monto_soles": 120, "reserva_id": "jug_5",
+        "concepto": "Reserva online · Fútbol 1"}).json()
+    assert r["ok"] is True and r["duplicada"] is False
+    assert r["bruto_centimos"] == 12000
+    assert r["comision_centimos"] == 600          # 5% de 120
+    assert r["neto_centimos"] == 11400            # 120 - 6
+    assert stores.saldo_centimos("due@x.com") == 0  # NO toca el saldo
+
+
+def test_liquidacion_online_idempotente():
+    body = {"dueno_id": "d", "monto_soles": 120, "reserva_id": "jug_7"}
+    client.post("/pagos/liquidacion-online", json=body)
+    client.post("/pagos/liquidacion-online", json=body)
+    # Solo una fila de liquidación para esa reserva.
+    n = sum(1 for p in stores.pagos
+            if p.tipo == "liquidacion_online" and p.culqi_charge_id == "jug_7")
+    assert n == 1
+
+
+def test_liquidacion_aparece_en_movimientos_con_neto():
+    client.post("/pagos/liquidacion-online", json={
+        "dueno_id": "d", "monto_soles": 120, "reserva_id": "jug_8",
+        "concepto": "Reserva online · Fútbol 1"})
+    movs = client.get("/pagos/movimientos/d").json()["movimientos"]
+    liq = next(m for m in movs if m["tipo"] == "liquidacion_online")
+    assert liq["bruto_soles"] == 120.0
+    assert liq["comision_soles"] == 6.0
+    assert liq["neto_soles"] == 114.0
+    assert liq["monto_soles"] == 114.0            # el neto es lo que verá "+"
+
+
 def test_cobrar_generico():
     r = client.post("/pagos/cobrar", json={
         "token": "tkn_1", "email": "j@x.com", "monto_soles": 60,

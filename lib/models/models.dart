@@ -560,7 +560,10 @@ class BloqueHorario {
 }
 
 /// Movimiento del saldo prepago del club (modelo estilo inDrive).
-enum TipoMovimiento { recarga, consumo }
+/// Tipo de movimiento del dueño: recarga (entra saldo), consumo (comisión que
+/// sale del saldo por reserva en efectivo) y liquidacion (reserva online: el
+/// jugador pagó a Pichangol y le queda un NETO por recibir; no toca el saldo).
+enum TipoMovimiento { recarga, consumo, liquidacion }
 
 class MovimientoSaldo {
   final TipoMovimiento tipo;
