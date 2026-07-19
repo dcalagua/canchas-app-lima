@@ -2054,7 +2054,9 @@ class AppState extends ChangeNotifier {
   /// slot de la cancha (1h, 1.5h, 2h).
   Future<ResultadoReserva> agregarReservaJugador(
       Cancha cancha, String fecha, String diaLabel, String hora,
-      {Deporte? deporte, List<ServicioExtra> extras = const []}) async {
+      {Deporte? deporte,
+      List<ServicioExtra> extras = const [],
+      bool cobrarComisionDueno = false}) async {
     // Chequeo local rápido (doble toque / feedback inmediato sin conexión).
     // La agenda es COMPARTIDA entre deportes: se ocupa por (cancha, fecha, hora),
     // sin importar el deporte (es la misma superficie física).
@@ -2096,6 +2098,19 @@ class AppState extends ChangeNotifier {
       final i = agenda.indexWhere(
           (b) => b.canchaId == cancha.id && b.hora == hora);
       if (i >= 0) agenda[i] = agenda[i].copyWith(reservaId: reserva.id);
+    }
+    // Reserva en EFECTIVO con saldo del dueño: PCG cobra su comisión del saldo
+    // prepago del dueño (el jugador ya paga la cancha en efectivo). Best-effort
+    // e idempotente por id en el backend: si no hay red, no bloquea la reserva.
+    if (cobrarComisionDueno &&
+        res == ResultadoReserva.ok &&
+        cancha.dueno.isNotEmpty) {
+      PagosService.comisionReserva(
+        duenoId: cancha.dueno,
+        montoSoles: cancha.precioEn(hora),
+        reservaId: reserva.id,
+        concepto: 'Comisión · ${cancha.nombre}',
+      );
     }
     notifyListeners();
     _persistirDatos();

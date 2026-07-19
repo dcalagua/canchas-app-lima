@@ -242,6 +242,40 @@ class PagosService {
     }
   }
 
+  /// Descuenta la COMISIÓN de Pichangol del saldo del DUEÑO cuando entra una
+  /// reserva pagada en efectivo (el jugador pagó la cancha; PCG cobra del saldo
+  /// prepago del dueño). Idempotente por [reservaId] en el backend: seguro de
+  /// reintentar. Best-effort: si no hay red, devuelve null y la reserva igual
+  /// queda hecha (se reconcilia en la próxima). No bloquea al jugador.
+  static Future<Map<String, dynamic>?> comisionReserva({
+    required String duenoId,
+    required double montoSoles,
+    required String reservaId,
+    String? concepto,
+  }) async {
+    if (!disponible || duenoId.isEmpty) return null;
+    try {
+      final r = await http
+          .post(
+            Uri.parse('$_baseUrl/pagos/comision-reserva'),
+            headers: _appHeaders(json: true),
+            body: jsonEncode({
+              'dueno_id': duenoId,
+              'monto_soles': montoSoles,
+              'reserva_id': reservaId,
+              if (concepto != null) 'concepto': concepto,
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
+      if (r.statusCode == 200) {
+        return jsonDecode(r.body) as Map<String, dynamic>;
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   // --- 4) Métodos de pago guardados (Culqi One Click) ---------------------
   /// Lista las tarjetas guardadas del usuario: [{id, marca, ultimos4}].
   static Future<List<Map<String, dynamic>>> metodos(String userId) async {

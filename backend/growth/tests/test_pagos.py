@@ -248,6 +248,52 @@ def test_comision_calculo():
     assert comision_centimos(20) == 200      # 5% de 20 = 1.00 → mínimo 2.00
 
 
+def test_comision_reserva_descuenta_saldo_del_dueno():
+    # El dueño recarga; una reserva en efectivo descuenta su comisión (5% mín 2).
+    client.post("/pagos/recarga", json={
+        "token": "t", "dueno_id": "due@x.com", "email": "due@x.com",
+        "monto_soles": 30})
+    r = client.post("/pagos/comision-reserva", json={
+        "dueno_id": "due@x.com", "monto_soles": 60, "reserva_id": "jug_1",
+        "concepto": "Comisión · Joga Bonito"}).json()
+    assert r["ok"] is True and r["duplicada"] is False
+    assert r["comision_centimos"] == 300           # 5% de 60
+    assert r["saldo_centimos"] == 2700             # 3000 - 300
+    assert stores.saldo_centimos("due@x.com") == 2700
+
+
+def test_comision_reserva_es_idempotente_por_reserva():
+    client.post("/pagos/recarga", json={
+        "token": "t", "dueno_id": "d", "email": "d@x.com", "monto_soles": 30})
+    body = {"dueno_id": "d", "monto_soles": 60, "reserva_id": "jug_9"}
+    r1 = client.post("/pagos/comision-reserva", json=body).json()
+    r2 = client.post("/pagos/comision-reserva", json=body).json()
+    assert r1["duplicada"] is False and r2["duplicada"] is True
+    # Solo se cobró UNA vez: saldo 3000 - 300 = 2700 (no 2400).
+    assert stores.saldo_centimos("d") == 2700
+
+
+def test_comision_reserva_nunca_deja_saldo_negativo():
+    client.post("/pagos/recarga", json={
+        "token": "t", "dueno_id": "d", "email": "d@x.com", "monto_soles": 1})
+    r = client.post("/pagos/comision-reserva", json={
+        "dueno_id": "d", "monto_soles": 200, "reserva_id": "jug_x"}).json()
+    assert r["ok"] is True
+    assert r["saldo_centimos"] == 0                 # clamp en 0, no negativo
+
+
+def test_comision_aparece_en_movimientos_como_egreso():
+    client.post("/pagos/recarga", json={
+        "token": "t", "dueno_id": "d", "email": "d@x.com", "monto_soles": 30})
+    client.post("/pagos/comision-reserva", json={
+        "dueno_id": "d", "monto_soles": 60, "reserva_id": "jug_2"})
+    movs = client.get("/pagos/movimientos/d").json()["movimientos"]
+    tipos = {m["tipo"] for m in movs}
+    assert "comision_reserva" in tipos and "recarga" in tipos
+    com = next(m for m in movs if m["tipo"] == "comision_reserva")
+    assert com["monto_soles"] == -3.0             # egreso en negativo
+
+
 def test_cobrar_generico():
     r = client.post("/pagos/cobrar", json={
         "token": "tkn_1", "email": "j@x.com", "monto_soles": 60,

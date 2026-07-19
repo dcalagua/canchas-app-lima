@@ -252,7 +252,10 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     final nav = Navigator.of(context);
     final res = await appState.agregarReservaJugador(
         _cancha, _fechaIso, _dia, hora,
-        deporte: _deporteEfectivo, extras: extras);
+        deporte: _deporteEfectivo, extras: extras,
+        // Solo en efectivo con saldo: PCG cobra la comisión del saldo del dueño.
+        // Online: el jugador paga por la app y la comisión sale de ese cobro.
+        cobrarComisionDueno: metodo == 'cancha');
     if (!mounted) return;
     if (res == ResultadoReserva.ocupado) {
       setState(() => _hora = null); // libera selección; la grilla se refresca

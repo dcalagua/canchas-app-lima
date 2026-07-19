@@ -342,6 +342,14 @@ class Stores:
         self.saldos[dueno_id] = self.saldos.get(dueno_id, 0) + int(centimos)
         return self.saldos[dueno_id]
 
+    def debitar(self, dueno_id: str, centimos: int) -> int:
+        """Resta [centimos] del saldo del dueño (nunca baja de 0) y devuelve el
+        nuevo saldo. Se usa para cobrar la comisión de Pichangol de las reservas
+        pagadas en efectivo (el jugador paga la cancha; PCG cobra del saldo)."""
+        nuevo = max(0, self.saldos.get(dueno_id, 0) - int(centimos))
+        self.saldos[dueno_id] = nuevo
+        return nuevo
+
     def pago_por_charge(self, charge_id: str | None) -> "PagoRegistro | None":
         if not charge_id:
             return None

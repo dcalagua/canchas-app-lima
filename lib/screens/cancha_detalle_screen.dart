@@ -5,6 +5,7 @@ import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/court_lines.dart';
+import '../widgets/pago_tarjeta_sheet.dart';
 import 'login_google_sheet.dart';
 import 'registrar_cancha_screen.dart';
 import '../utils/moneda.dart';
@@ -63,6 +64,9 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
     }
 
     final total = cancha.precioHora * cancha.duracionSlotMin / 60;
+    // El efectivo (pago en la cancha) SOLO se ofrece si el dueño tiene saldo:
+    // así PCG cobra su comisión de ese saldo. Sin saldo, el jugador paga online.
+    final efectivo = appState.esDestacada(cancha);
     final confirmar = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -80,10 +84,12 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
                     color: Theme.of(ctx).colorScheme.primary,
                     fontWeight: FontWeight.w700)),
             const SizedBox(height: 8),
-            const Text(
-              'Reservas ahora y pagas en la cancha (efectivo). El club confirma '
-              'tu pago al llegar.',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
+            Text(
+              efectivo
+                  ? 'Reservas ahora y pagas en la cancha (efectivo). El club '
+                      'confirma tu pago al llegar.'
+                  : 'Pagas ahora por la app (Yape/tarjeta) para asegurar tu hora.',
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
             ),
           ],
         ),
@@ -104,8 +110,22 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
 
     final messenger = ScaffoldMessenger.of(context);
     final nav = Navigator.of(context);
-    final res =
-        await appState.agregarReservaJugador(cancha, _fechaIso, _dia, hora);
+    // Sin saldo del dueño → el jugador paga online ANTES de reservar (ahí queda
+    // la comisión de PCG). Si cancela o falla el pago, no se reserva.
+    if (!efectivo) {
+      final pagado = await PagoTarjeta.cobrar(
+        context,
+        monto: total.round(),
+        concepto: 'Reserva · ${cancha.nombre} · $_dia $hora',
+        email: appState.usuario?.email ?? '',
+        moneda: cancha.monedaSimbolo,
+      );
+      if (!pagado || !mounted) return;
+    }
+    final res = await appState.agregarReservaJugador(
+        cancha, _fechaIso, _dia, hora,
+        // Con saldo (efectivo): PCG cobra la comisión del saldo del dueño.
+        cobrarComisionDueno: efectivo);
     if (!mounted) return;
 
     if (res == ResultadoReserva.ocupado) {

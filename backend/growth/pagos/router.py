@@ -76,6 +76,13 @@ class CobroReq(BaseModel):
     tipo: str = "cobro"        # reserva | academia | cobro
 
 
+class ComisionReservaReq(BaseModel):
+    dueno_id: str              # correo del dueño de la cancha (de cuyo saldo sale)
+    monto_soles: float         # precio de la reserva (base para calcular comisión)
+    reserva_id: str            # id de la reserva (idempotencia: no cobrar 2 veces)
+    concepto: str | None = None
+
+
 class MetodoReq(BaseModel):
     token: str                 # token temporal (tkn_) de tokenizar la tarjeta
     user_id: str               # a quién pertenece (correo del jugador)
@@ -160,6 +167,31 @@ def get_saldo(dueno_id: str) -> dict:
     return {"dueno_id": dueno_id, "saldo_centimos": c, "saldo_soles": c / 100.0}
 
 
+@router.post("/comision-reserva", dependencies=_APP)
+def post_comision_reserva(req: ComisionReservaReq) -> dict:
+    """Descuenta la comisión de Pichangol del SALDO del dueño cuando entra una
+    reserva pagada EN EFECTIVO (el jugador paga la cancha; PCG cobra su comisión
+    del saldo prepago del dueño). Es la contraparte de que el efectivo solo se
+    ofrece al jugador si el dueño tiene saldo. Idempotente por `reserva_id`: no
+    cobra dos veces la misma reserva."""
+    comision = comision_centimos(req.monto_soles)
+    # Idempotencia: si esta reserva ya generó comisión, no la cobres de nuevo.
+    ya = stores.pago_por_charge(req.reserva_id)
+    if ya is not None and ya.tipo == "comision_reserva":
+        c = stores.saldo_centimos(req.dueno_id)
+        return {"ok": True, "duplicada": True,
+                "comision_centimos": ya.monto_centimos,
+                "saldo_centimos": c, "saldo_soles": c / 100.0}
+    nuevo = stores.debitar(req.dueno_id, comision)
+    stores.registrar_pago(
+        tipo="comision_reserva", monto_centimos=comision, moneda="PEN",
+        estado="aprobado", dueno_id=req.dueno_id,
+        culqi_charge_id=req.reserva_id,
+        concepto=req.concepto or "Comisión de reserva")
+    return {"ok": True, "duplicada": False, "comision_centimos": comision,
+            "saldo_centimos": nuevo, "saldo_soles": nuevo / 100.0}
+
+
 def _nivel_destacado(centimos: int) -> int:
     """Nivel de destacado según el saldo (más saldo = más visibilidad).
     3 = premium, 2 = medio, 1 = base. Umbrales en soles (tunables)."""
@@ -217,23 +249,29 @@ def get_movimientos(dueno_id: str) -> dict:
     reciente al más antiguo. El saldo vive en el backend, así que este historial
     SOBREVIVE a reinstalar la app (a diferencia del historial local del teléfono).
     """
-    recargas = [
+    # Recargas (entra saldo) y comisiones por reserva en efectivo (sale saldo).
+    propios = [
         p
         for p in stores.pagos
-        if p.tipo == "recarga"
-        and p.dueno_id == dueno_id
+        if p.dueno_id == dueno_id
         and p.estado == "aprobado"
+        and p.tipo in ("recarga", "comision_reserva")
     ]
     movimientos = [
         {
-            "tipo": "recarga",
-            "monto_soles": p.monto_centimos / 100.0,
-            "concepto": p.concepto or "Recarga de saldo",
+            "tipo": p.tipo,
+            # La comisión es un EGRESO: monto en negativo para que el historial
+            # muestre "− S/ x" y cuadre con el saldo.
+            "monto_soles": (p.monto_centimos / 100.0)
+            * (-1 if p.tipo == "comision_reserva" else 1),
+            "concepto": p.concepto
+            or ("Comisión de reserva" if p.tipo == "comision_reserva"
+                else "Recarga de saldo"),
             "creado_en": p.creado_en.isoformat(),
         }
         # stores.pagos está en orden de inserción (viejo→nuevo); lo invertimos
         # para mostrar el más reciente primero.
-        for p in reversed(recargas)
+        for p in reversed(propios)
     ]
     return {"dueno_id": dueno_id, "movimientos": movimientos}
 
