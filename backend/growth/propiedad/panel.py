@@ -140,11 +140,14 @@ _HTML = r"""<!DOCTYPE html>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800;900&display=swap" rel="stylesheet">
 <style>
-  /* Paleta oficial EBIM (handoff v2) — co-marca Pichangol + EBIM, solo web admin */
+  /* Paleta del APP (verde WhatsApp) — co-marca Pichangol + EBIM, solo web admin.
+     El primario ('bosque'/'lima') se remapea al verde de la app para congruencia:
+     superficies primarias en verde #128C7E con texto blanco. */
   :root{
-    --bg:#F4F6F1; --card:#fff; --border:#E0E5DB; --text:#123D2D; --muted:#7C8A80;
-    --lima:#AEEA94; --sage:#5AA97F; --verde:#2E8B66; --bosque:#14463A;
-    --teal:#056769; --amarillo:#F2C94C; --limaSuave:#EFF8E4; --rojo:#D11F2E;
+    --bg:#f4f7f6; --card:#fff; --border:#e6eae8; --text:#1e2422; --muted:#6b7671;
+    --green:#128C7E; --green-deep:#0d6f63; --sage:#5AA97F; --verde:#128C7E;
+    --bosque:#128C7E; --lima:#ffffff; --teal:#008489; --amarillo:#F2C94C;
+    --limaSuave:#e3f2ef; --rojo:#D11F2E;
   }
   *{box-sizing:border-box}
   body{margin:0;font-family:'DM Sans',system-ui,sans-serif;background:var(--bg);color:var(--text)}
@@ -157,11 +160,13 @@ _HTML = r"""<!DOCTYPE html>
     border-radius:50%;background:var(--lima)}
   /* Lockup EBIM (respaldo, marca endosante) */
   .ebim{font-weight:900;letter-spacing:.06em;color:var(--teal);text-transform:lowercase}
-  header{position:sticky;top:0;z-index:5;background:var(--bosque);color:#fff;
-    padding:14px 20px;display:flex;align-items:center;gap:12px;
-    box-shadow:0 2px 8px rgba(0,0,0,.08)}
-  header .pin{width:30px;height:30px;border-radius:50%;background:var(--lima);
-    display:flex;align-items:center;justify-content:center;font-size:16px}
+  header{position:sticky;top:0;z-index:5;
+    background:linear-gradient(120deg,var(--green),var(--green-deep));color:#fff;
+    padding:15px 26px;display:flex;align-items:center;gap:12px;
+    box-shadow:0 2px 14px rgba(18,140,126,.22)}
+  header .pin{width:32px;height:32px;border-radius:50%;background:#fff;
+    display:flex;align-items:center;justify-content:center;font-size:16px;
+    box-shadow:0 1px 4px rgba(0,0,0,.15)}
   header .brand{display:flex;align-items:center;gap:10px}
   header .wm{font-size:18px;color:#fff}
   header .div{width:1px;height:20px;background:rgba(255,255,255,.25)}
@@ -171,10 +176,19 @@ _HTML = r"""<!DOCTYPE html>
   header button{background:rgba(255,255,255,.14);color:#fff;border:0;border-radius:12px;
     padding:8px 12px;font-family:inherit;font-weight:700;cursor:pointer;font-size:13px}
   header button:hover{background:rgba(255,255,255,.24)}
-  .wrap{max-width:760px;margin:0 auto;padding:18px 16px 30px}
-  footer{max-width:760px;margin:0 auto;padding:8px 16px 50px;text-align:center;
+  .wrap{max-width:1440px;margin:0 auto;padding:24px 28px 40px}
+  footer{max-width:1440px;margin:0 auto;padding:8px 28px 50px;text-align:center;
     color:var(--muted);font-size:12px;font-weight:600}
   footer .ebim{font-size:12px}
+  /* Dashboard: config en fila (grid), listas a ancho completo. */
+  .sec{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;
+    color:var(--muted);margin:26px 2px 4px}
+  .cfg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));
+    gap:16px;align-items:start}
+  #liquidaciones{margin-top:16px}
+  #liquidaciones:empty{display:none}
+  #lista{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));
+    gap:16px;margin-top:12px}
   .tabs{display:flex;gap:8px;overflow:auto;padding:4px 0 14px}
   .tab{white-space:nowrap;border:1px solid var(--border);background:#fff;color:var(--text);
     border-radius:999px;padding:8px 14px;font-weight:700;font-size:13px;cursor:pointer}
@@ -182,8 +196,9 @@ _HTML = r"""<!DOCTYPE html>
   .tab .n{display:inline-block;margin-left:6px;background:var(--limaSuave);color:var(--bosque);
     border-radius:999px;padding:0 7px;font-size:11px;font-weight:900}
   .tab.on .n{background:rgba(255,255,255,.2);color:#fff}
-  .card{background:var(--card);border:1px solid var(--border);border-radius:20px;
-    padding:16px;margin-bottom:14px;box-shadow:0 6px 20px -12px rgba(0,0,0,.20)}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:18px;
+    padding:18px;margin:0;box-shadow:0 1px 2px rgba(18,140,126,.04),
+    0 10px 26px -18px rgba(18,140,126,.28)}
   .card .top{display:flex;align-items:flex-start;gap:10px}
   .card h3{margin:0;font-size:16px;font-weight:800;flex:1}
   .cod{background:#EAF6C2;color:var(--bosque);font-weight:900;font-size:12px;
@@ -233,7 +248,7 @@ _HTML = r"""<!DOCTYPE html>
     background:#fff;transition:.15s;box-shadow:0 1px 3px rgba(0,0,0,.25)}
   .sw input:checked + .track{background:var(--verde)}
   .sw input:checked + .track .knob{left:23px}
-  .empty{text-align:center;color:var(--muted);padding:50px 10px}
+  .empty{text-align:center;color:var(--muted);padding:50px 10px;grid-column:1/-1}
   .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);
     background:var(--bosque);color:#fff;padding:12px 18px;border-radius:12px;
     font-weight:700;font-size:14px;z-index:20;box-shadow:0 6px 20px rgba(0,0,0,.2)}
@@ -242,7 +257,8 @@ _HTML = r"""<!DOCTYPE html>
     justify-content:center;padding:24px;z-index:30}
   .gate .box{background:#fff;border:1px solid var(--border);border-radius:18px;
     padding:28px 24px;max-width:380px;width:100%;text-align:center}
-  .gate .pin{width:54px;height:54px;border-radius:50%;background:var(--lima);
+  .gate .pin{width:54px;height:54px;border-radius:50%;
+    background:linear-gradient(135deg,var(--green),var(--green-deep));
     display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 14px}
   .gate h2{margin:0 0 4px;font-weight:900}
   .gate p{margin:0 0 18px;color:var(--muted);font-size:14px}
@@ -282,10 +298,14 @@ _HTML = r"""<!DOCTYPE html>
 </header>
 
 <div class="wrap" id="app" style="display:none">
-  <div id="modo"></div>
-  <div id="pichangaModo"></div>
-  <div id="ubic"></div>
+  <div class="sec">Configuración</div>
+  <div class="cfg-grid">
+    <div id="modo"></div>
+    <div id="pichangaModo"></div>
+    <div id="ubic"></div>
+  </div>
   <div id="liquidaciones"></div>
+  <div class="sec">Reclamos de propiedad</div>
   <div class="tabs" id="tabs"></div>
   <div id="lista"></div>
 </div>
