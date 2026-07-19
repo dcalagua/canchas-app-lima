@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../utils/ubicacion_share.dart';
 import '../widgets/court_lines.dart';
 import '../utils/moneda.dart';
 import 'chat_screen.dart';
@@ -162,12 +163,20 @@ class _ReservaDestacada extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     final dep = cancha?.deporte ?? Deporte.futbol;
+    // Card claro con acento verde (nunca fondo negro): se distingue como "la
+    // próxima" por el borde lima y la pastilla, no por un fondo oscuro.
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: pino,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: lima, width: 2),
+        boxShadow: const [
+          BoxShadow(
+              color: Color(0x14000000), blurRadius: 14, offset: Offset(0, 6)),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -180,15 +189,14 @@ class _ReservaDestacada extends StatelessWidget {
                     color: lima, borderRadius: BorderRadius.circular(999)),
                 child: Text('PRÓXIMA · ${reserva.dia.toUpperCase()}',
                     style: const TextStyle(
-                        color: pinoOscuro,
+                        color: Colors.white,
                         fontSize: 11,
                         fontWeight: FontWeight.w800)),
               ),
               const Spacer(),
               Text(_estadoLabel(reserva.estado),
-                  style: t.bodySmall
-                      ?.copyWith(color: Colors.white.withOpacity(0.7))),
-              _MenuReserva(reserva: reserva, color: Colors.white),
+                  style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
+              _MenuReserva(reserva: reserva),
             ],
           ),
           const SizedBox(height: 14),
@@ -210,17 +218,17 @@ class _ReservaDestacada extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(cancha?.nombre ?? 'Cancha',
-                        style: t.titleMedium?.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700)),
+                        style: t.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700)),
                     Text(
                       '${cancha?.club ?? dep.etiqueta} · ${reserva.horaInicio}–${reserva.horaFin}',
                       style: t.bodyMedium
-                          ?.copyWith(color: Colors.white.withOpacity(0.8)),
+                          ?.copyWith(color: textoTenueDe(context)),
                     ),
                     if (reserva.sena > 0)
                       Text('Seña pagada ${reserva.monedaSimbolo}${reserva.sena}',
-                          style: t.bodySmall?.copyWith(color: lima)),
+                          style: t.bodySmall?.copyWith(
+                              color: lima, fontWeight: FontWeight.w700)),
                   ],
                 ),
               ),
@@ -232,8 +240,12 @@ class _ReservaDestacada extends StatelessWidget {
               Expanded(
                 child: FilledButton.icon(
                   style: FilledButton.styleFrom(
-                      backgroundColor: lima, foregroundColor: pinoOscuro),
-                  onPressed: () {},
+                      backgroundColor: lima,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 13)),
+                  onPressed: cancha == null
+                      ? null
+                      : () => UbicacionShare.abrirMapa(cancha!.ubicacion),
                   icon: const Icon(Icons.directions, size: 18),
                   label: const Text('Cómo llegar'),
                 ),
@@ -242,13 +254,13 @@ class _ReservaDestacada extends StatelessWidget {
               Expanded(
                 child: OutlinedButton(
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    side: BorderSide(color: Colors.white.withOpacity(0.4)),
+                    foregroundColor: lima,
+                    side: const BorderSide(color: lima, width: 1.5),
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16)),
                   ),
-                  onPressed: () {},
+                  onPressed: () => _mostrarPase(context, reserva, cancha),
                   child: const Text('Ver pase'),
                 ),
               ),
@@ -269,7 +281,9 @@ class _ReservaCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     final dep = cancha?.deporte ?? Deporte.futbol;
-    return Container(
+    return GestureDetector(
+      onTap: () => _mostrarPase(context, reserva, cancha),
+      child: Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
@@ -318,6 +332,7 @@ class _ReservaCard extends StatelessWidget {
             ),
           _MenuReserva(reserva: reserva),
         ],
+      ),
       ),
     );
   }
@@ -417,6 +432,128 @@ Future<void> _confirmarCancelar(BuildContext context, Reserva r) async {
           ? 'Reserva eliminada del historial.'
           : 'Reserva cancelada. El horario quedó libre.'),
     ));
+  }
+}
+
+/// Hoja "pase de reserva": el DETALLE que ve el jugador al tocar una reserva o
+/// pulsar "Ver pase". Muestra los datos y permite "Cómo llegar".
+void _mostrarPase(BuildContext context, Reserva reserva, Cancha? cancha) {
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: Theme.of(context).colorScheme.surface,
+    isScrollControlled: true,
+    shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+    builder: (ctx) {
+      final t = Theme.of(ctx).textTheme;
+      final dep = cancha?.deporte ?? Deporte.futbol;
+      final id = reserva.id;
+      final codigo = (id.length > 6 ? id.substring(id.length - 6) : id)
+          .toUpperCase();
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                        color: trazo,
+                        borderRadius: BorderRadius.circular(999))),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Container(
+                    width: 54,
+                    height: 54,
+                    clipBehavior: Clip.antiAlias,
+                    decoration: BoxDecoration(
+                        gradient: gradienteDeporte(dep),
+                        borderRadius: BorderRadius.circular(14)),
+                    child: const CourtLines(opacity: 0.5),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(cancha?.nombre ?? 'Cancha',
+                            style: t.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w800)),
+                        Text(cancha?.club ?? dep.etiqueta,
+                            style:
+                                t.bodySmall?.copyWith(color: textoTenue)),
+                      ],
+                    ),
+                  ),
+                  _EstadoChip(estado: reserva.estado),
+                ],
+              ),
+              const SizedBox(height: 18),
+              _PaseFila(Icons.event_outlined, 'Día', reserva.dia),
+              _PaseFila(Icons.schedule, 'Hora',
+                  '${reserva.horaInicio}–${reserva.horaFin}'),
+              _PaseFila(Icons.sports_soccer, 'Deporte', dep.etiqueta),
+              _PaseFila(Icons.payments_outlined, 'Precio',
+                  '${reserva.monedaSimbolo}${reserva.precio} · pagas en la cancha'),
+              _PaseFila(Icons.confirmation_number_outlined, 'Código', codigo),
+              const SizedBox(height: 18),
+              if (cancha != null)
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                        backgroundColor: lima,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14)),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      UbicacionShare.abrirMapa(cancha.ubicacion);
+                    },
+                    icon: const Icon(Icons.directions, size: 18),
+                    label: const Text('Cómo llegar'),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
+/// Una fila del pase: ícono + etiqueta + valor.
+class _PaseFila extends StatelessWidget {
+  const _PaseFila(this.icono, this.label, this.valor);
+  final IconData icono;
+  final String label;
+  final String valor;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      child: Row(
+        children: [
+          Icon(icono, size: 18, color: lima),
+          const SizedBox(width: 12),
+          Text(label,
+              style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(valor,
+                textAlign: TextAlign.right,
+                style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
   }
 }
 
