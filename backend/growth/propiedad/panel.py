@@ -189,6 +189,44 @@ _HTML = r"""<!DOCTYPE html>
   #liquidaciones:empty{display:none}
   #lista{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));
     gap:16px;margin-top:12px}
+  /* --- Layout con BARRA LATERAL izquierda (dashboard) --- */
+  .shell{display:flex;min-height:100vh}
+  .side{width:238px;flex-shrink:0;position:sticky;top:0;height:100vh;
+    background:linear-gradient(180deg,var(--green),var(--green-deep));color:#fff;
+    display:flex;flex-direction:column;padding:18px 14px;
+    box-shadow:2px 0 16px rgba(18,140,126,.18)}
+  .side-brand{display:flex;align-items:center;gap:11px;padding:6px 8px 4px}
+  .side-brand .pin{width:34px;height:34px;border-radius:50%;background:#fff;
+    display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0}
+  .side-brand .wm{font-size:19px;color:#fff}
+  .side-sub{font-size:11px;font-weight:700;color:rgba(255,255,255,.75);margin-top:1px}
+  .side-sub .ebim{color:#fff;font-size:11px}
+  .nav{display:flex;flex-direction:column;gap:4px;margin-top:22px;flex:1}
+  .nav-i{display:flex;align-items:center;gap:11px;background:transparent;border:0;
+    color:rgba(255,255,255,.86);text-align:left;padding:12px;border-radius:12px;
+    font-family:inherit;font-weight:700;font-size:14.5px;cursor:pointer;transition:.12s}
+  .nav-i .ico{font-size:16px;width:20px;text-align:center}
+  .nav-i:hover{background:rgba(255,255,255,.10);color:#fff}
+  .nav-i.on{background:rgba(255,255,255,.18);color:#fff}
+  .side-foot{display:flex;flex-direction:column;gap:8px}
+  .side-btn{background:rgba(255,255,255,.14);color:#fff;border:0;border-radius:11px;
+    padding:10px;font-family:inherit;font-weight:700;font-size:13px;cursor:pointer}
+  .side-btn:hover{background:rgba(255,255,255,.24)}
+  .side-cred{text-align:center;font-size:11px;color:rgba(255,255,255,.7);
+    font-weight:600;padding-top:6px}
+  .side-cred .ebim{color:#fff;font-size:11px}
+  .main{flex:1;min-width:0;padding:26px 30px 44px;max-width:1360px}
+  .page-h{font-size:22px;font-weight:900;letter-spacing:-.01em;margin:0 0 18px}
+  @media(max-width:820px){
+    .shell{flex-direction:column}
+    .side{width:auto;height:auto;position:static;flex-direction:row;flex-wrap:wrap;
+      align-items:center;padding:12px 14px;gap:8px}
+    .nav{flex-direction:row;margin-top:0;flex:1 1 100%;overflow:auto;gap:6px;order:3}
+    .nav-i{padding:9px 12px;font-size:13.5px;white-space:nowrap}
+    .side-foot{flex-direction:row;order:2;margin-left:auto}
+    .side-cred{display:none}
+    .main{padding:18px 16px 40px}
+  }
   .tabs{display:flex;gap:8px;overflow:auto;padding:4px 0 14px}
   .tab{white-space:nowrap;border:1px solid var(--border);background:#fff;color:var(--text);
     border-radius:999px;padding:8px 14px;font-weight:700;font-size:13px;cursor:pointer}
@@ -284,34 +322,49 @@ _HTML = r"""<!DOCTYPE html>
   </div>
 </div>
 
-<header style="display:none" id="hdr">
-  <div class="pin">📍</div>
-  <div class="brand">
-    <span class="wm">pichang<span class="ball"></span>l</span>
-    <span class="div"></span>
-    <span class="ebim">ebim</span>
-    <span class="sub">admin</span>
-  </div>
-  <div class="sp"></div>
-  <button onclick="cargar()">↻ Actualizar</button>
-  <button onclick="salir()">Salir</button>
-</header>
-
-<div class="wrap" id="app" style="display:none">
-  <div class="sec">Configuración</div>
-  <div class="cfg-grid">
-    <div id="modo"></div>
-    <div id="pichangaModo"></div>
-    <div id="ubic"></div>
-  </div>
-  <div id="liquidaciones"></div>
-  <div class="sec">Reclamos de propiedad</div>
-  <div class="tabs" id="tabs"></div>
-  <div id="lista"></div>
+<div class="shell" id="app" style="display:none">
+  <aside class="side">
+    <div class="side-brand">
+      <div class="pin">📍</div>
+      <div>
+        <span class="wm">pichang<span class="ball"></span>l</span>
+        <div class="side-sub"><span class="ebim">ebim</span> · admin</div>
+      </div>
+    </div>
+    <nav class="nav">
+      <button class="nav-i on" data-sec="reclamos" onclick="mostrarSeccion('reclamos')">
+        <span class="ico">📋</span> Reclamos</button>
+      <button class="nav-i" data-sec="liquidaciones" onclick="mostrarSeccion('liquidaciones')">
+        <span class="ico">💸</span> Liquidaciones</button>
+      <button class="nav-i" data-sec="config" onclick="mostrarSeccion('config')">
+        <span class="ico">⚙️</span> Configuración</button>
+    </nav>
+    <div class="side-foot">
+      <button class="side-btn" onclick="cargar();cargarLiquidaciones()">↻ Actualizar</button>
+      <button class="side-btn" onclick="salir()">Salir</button>
+      <div class="side-cred">una solución de <span class="ebim">ebim</span></div>
+    </div>
+  </aside>
+  <main class="main">
+    <section id="page-reclamos" class="page">
+      <h1 class="page-h">Reclamos de propiedad</h1>
+      <div class="tabs" id="tabs"></div>
+      <div id="lista"></div>
+    </section>
+    <section id="page-liquidaciones" class="page" style="display:none">
+      <h1 class="page-h">Liquidaciones a dueños</h1>
+      <div id="liquidaciones"></div>
+    </section>
+    <section id="page-config" class="page" style="display:none">
+      <h1 class="page-h">Configuración</h1>
+      <div class="cfg-grid">
+        <div id="modo"></div>
+        <div id="pichangaModo"></div>
+        <div id="ubic"></div>
+      </div>
+    </section>
+  </main>
 </div>
-<footer id="ftr" style="display:none">
-  Pichangol · una solución de <span class="ebim">ebim</span> — grupoebim.com
-</footer>
 
 <script>
 const FILTROS = [
@@ -348,15 +401,22 @@ async function entrar(){
 function salir(){ localStorage.removeItem('pichangol_admin_tok'); location.reload(); }
 function mostrarApp(){
   document.getElementById('gate').style.display='none';
-  document.getElementById('hdr').style.display='flex';
-  document.getElementById('app').style.display='block';
-  document.getElementById('ftr').style.display='block';
+  document.getElementById('app').style.display='flex';
   renderTabs();
   cargarModo();
   cargarPichangaModo();
   cargarUbicacion();
   cargarLiquidaciones();
   cargar();
+}
+// Navegación de la barra lateral: muestra una sección y marca su ítem activo.
+function mostrarSeccion(sec){
+  document.querySelectorAll('.page').forEach(p=>{ p.style.display='none'; });
+  const el = document.getElementById('page-'+sec);
+  if(el) el.style.display='block';
+  document.querySelectorAll('.nav-i').forEach(b=>{
+    b.classList.toggle('on', b.dataset.sec===sec);
+  });
 }
 
 // --- Liquidaciones: pagos pendientes de Pichangol al dueño (reservas online) ---
