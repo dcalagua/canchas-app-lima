@@ -285,6 +285,7 @@ _HTML = r"""<!DOCTYPE html>
   <div id="modo"></div>
   <div id="pichangaModo"></div>
   <div id="ubic"></div>
+  <div id="liquidaciones"></div>
   <div class="tabs" id="tabs"></div>
   <div id="lista"></div>
 </div>
@@ -334,7 +335,47 @@ function mostrarApp(){
   cargarModo();
   cargarPichangaModo();
   cargarUbicacion();
+  cargarLiquidaciones();
   cargar();
+}
+
+// --- Liquidaciones: pagos pendientes de Pichangol al dueño (reservas online) ---
+async function cargarLiquidaciones(){
+  const box = document.getElementById('liquidaciones');
+  try{
+    const r = await fetch('/pagos/liquidaciones/pendientes',{headers:headers()});
+    if(!r.ok){ box.innerHTML=''; return; }
+    const j = await r.json();
+    const pend = j.pendientes||[];
+    const filas = pend.length ? pend.map(p=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 0;border-top:1px solid var(--border)">
+        <div>
+          <b>${esc(p.dueno_id)||'—'}</b>
+          <div style="color:var(--muted);font-size:13px">${esc(p.concepto)} · ${fmtFecha(p.creado_en)}</div>
+          <div style="color:var(--muted);font-size:12px">Bruto S/${p.bruto_soles} · comisión S/${p.comision_soles}</div>
+        </div>
+        <div style="text-align:right;white-space:nowrap">
+          <div style="font-weight:800;font-size:17px">S/${p.neto_soles}</div>
+          <button onclick="pagarLiquidacion('${esc(p.reserva_id)}')" style="margin-top:6px;background:var(--bosque);color:var(--lima);border:0;border-radius:12px;padding:9px 12px;font-family:inherit;font-weight:700;cursor:pointer">Marcar pagado</button>
+        </div>
+      </div>`).join('')
+      : '<div style="color:var(--muted);padding:8px 0">No hay liquidaciones pendientes. 🎉</div>';
+    box.innerHTML = `<div class="card"><div class="top">
+      <h3 style="flex:1">Liquidaciones por pagar a dueños</h3>
+      <span style="font-weight:800;color:var(--bosque)">Total S/${j.total_neto_soles||0}</span></div>
+      <p style="color:var(--muted);font-size:13px;margin:6px 0 4px">Reservas online: el jugador pagó a Pichangol. Transfiere el NETO al dueño (Yape/banco) y marca pagado.</p>
+      ${filas}</div>`;
+  }catch(e){ box.innerHTML=''; }
+}
+async function pagarLiquidacion(rid){
+  const metodo = prompt('¿Cómo le pagaste al dueño? (yape / transferencia / efectivo)','yape');
+  if(metodo===null) return;
+  const ref = prompt('Referencia / nº de operación (opcional):','') || '';
+  const r = await fetch('/pagos/liquidaciones/'+encodeURIComponent(rid)+'/pagar',{
+    method:'POST', headers:headers(),
+    body:JSON.stringify({metodo:metodo.trim(), referencia:ref.trim()})});
+  if(r.ok){ cargarLiquidaciones(); }
+  else { alert('No se pudo marcar como pagado. Revisa tu conexión/token.'); }
 }
 
 async function cargarUbicacion(){

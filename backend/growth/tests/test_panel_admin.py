@@ -89,6 +89,24 @@ def test_pagina_panel_se_sirve(client):
     r = client.get("/admin")
     assert r.status_code == 200
     assert "Pichangol" in r.text and "Panel de administración" in r.text
+    # Fase 2: el panel incluye la sección de liquidaciones a dueños.
+    assert "cargarLiquidaciones" in r.text
+    assert "Liquidaciones por pagar a dueños" in r.text
+    assert "/pagos/liquidaciones/pendientes" in r.text
+
+
+def test_flujo_liquidacion_desde_panel(client):
+    # El operador (panel) usa los endpoints de pagos con X-Admin-Token.
+    h = {"X-Admin-Token": TOKEN}
+    client.post("/pagos/liquidacion-online", json={
+        "dueno_id": "due@x.com", "monto_soles": 120, "reserva_id": "r_panel"})
+    pend = client.get("/pagos/liquidaciones/pendientes", headers=h).json()
+    assert len(pend["pendientes"]) == 1
+    ok = client.post("/pagos/liquidaciones/r_panel/pagar", headers=h,
+                     json={"metodo": "yape", "referencia": "OP9"}).json()
+    assert ok["liquidado"] is True
+    # Sin token → 401 (protegido).
+    assert client.get("/pagos/liquidaciones/pendientes").status_code == 401
 
 
 def test_aprobar_por_http_exige_token_admin(client):
