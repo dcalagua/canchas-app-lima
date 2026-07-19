@@ -91,21 +91,30 @@ class ReportesScreen extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: pino,
+                  color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(22),
+                  border: Border.all(color: trazo),
+                  boxShadow: const [
+                    BoxShadow(
+                        color: Color(0x0F000000),
+                        blurRadius: 12,
+                        offset: Offset(0, 5)),
+                  ],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('Ingresos del mes (cobrado)',
-                        style: t.bodyMedium?.copyWith(color: Colors.white70)),
+                        style: t.bodyMedium
+                            ?.copyWith(color: textoTenueDe(context))),
                     const SizedBox(height: 6),
                     Text('$moneda $ingresoMes',
                         style: t.displaySmall?.copyWith(
-                            color: Colors.white, fontWeight: FontWeight.w700)),
+                            color: lima, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 4),
                     Text('Últimos 7 días',
-                        style: t.bodySmall?.copyWith(color: Colors.white60)),
+                        style: t.bodySmall
+                            ?.copyWith(color: textoTenueDe(context))),
                     const SizedBox(height: 12),
                     _MiniBarChart(valores: serie),
                   ],
@@ -238,7 +247,7 @@ class _MiniBarChart extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: i == valores.length - 1
                         ? lima
-                        : Colors.white.withOpacity(0.25),
+                        : lima.withOpacity(0.22),
                     borderRadius: BorderRadius.circular(5),
                   ),
                 ),

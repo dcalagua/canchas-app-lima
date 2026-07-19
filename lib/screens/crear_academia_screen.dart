@@ -535,7 +535,7 @@ class _LogoPicker extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(6),
                 decoration: const BoxDecoration(
-                    color: pino, shape: BoxShape.circle),
+                    color: lima, shape: BoxShape.circle),
                 child: const Icon(Icons.photo_camera,
                     size: 16, color: Colors.white),
               ),

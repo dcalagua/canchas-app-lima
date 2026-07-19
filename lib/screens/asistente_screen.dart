@@ -374,8 +374,8 @@ class _AvatarBot extends StatelessWidget {
     return Container(
       width: 32,
       height: 32,
-      decoration: const BoxDecoration(color: bosque, shape: BoxShape.circle),
-      child: const Icon(Icons.auto_awesome, color: lima, size: 17),
+      decoration: const BoxDecoration(color: lima, shape: BoxShape.circle),
+      child: const Icon(Icons.auto_awesome, color: Colors.white, size: 17),
     );
   }
 }

@@ -866,10 +866,10 @@ class _Miniatura extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                 decoration: BoxDecoration(
-                    color: pino, borderRadius: BorderRadius.circular(999)),
+                    color: lima, borderRadius: BorderRadius.circular(999)),
                 child: const Text('Portada',
                     style: TextStyle(
-                        color: lima,
+                        color: Colors.white,
                         fontSize: 10,
                         fontWeight: FontWeight.w700)),
               ),

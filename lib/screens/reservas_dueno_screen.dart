@@ -156,11 +156,19 @@ class _Caja extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    // Card CLARO (nunca fondo negro): "Cobrado" en verde, "Por cobrar" en
+    // charcoal, sobre superficie blanca con borde suave.
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: pino,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: trazo),
+        boxShadow: const [
+          BoxShadow(
+              color: Color(0x0F000000), blurRadius: 10, offset: Offset(0, 4)),
+        ],
       ),
       child: Row(
         children: [
@@ -168,24 +176,25 @@ class _Caja extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Cobrado', style: t.bodySmall?.copyWith(color: lima)),
+                Text('Cobrado',
+                    style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
                 Text('$moneda $cobrado',
-                    style: t.titleLarge?.copyWith(
-                        color: Colors.white, fontWeight: FontWeight.w800)),
+                    style: t.titleLarge
+                        ?.copyWith(color: lima, fontWeight: FontWeight.w800)),
               ],
             ),
           ),
-          Container(width: 1, height: 38, color: Colors.white24),
+          Container(width: 1, height: 38, color: trazo),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('Por cobrar',
-                    style: t.bodySmall?.copyWith(color: Colors.white70)),
+                    style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
                 Text('$moneda $porCobrar',
                     style: t.titleLarge?.copyWith(
-                        color: Colors.white, fontWeight: FontWeight.w800)),
+                        color: cs.onSurface, fontWeight: FontWeight.w800)),
               ],
             ),
           ),

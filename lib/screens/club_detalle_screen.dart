@@ -755,8 +755,8 @@ class _PanelDueno extends StatelessWidget {
             child: OutlinedButton.icon(
               onPressed: onVerReservas,
               style: OutlinedButton.styleFrom(
-                foregroundColor: pino,
-                side: const BorderSide(color: pino, width: 1.5),
+                foregroundColor: lima,
+                side: const BorderSide(color: lima, width: 1.5),
                 padding: const EdgeInsets.symmetric(vertical: 15),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14)),
@@ -1130,8 +1130,8 @@ class _ResumenReservaState extends State<_ResumenReserva> {
                 width: double.infinity,
                 child: OutlinedButton.icon(
                   style: OutlinedButton.styleFrom(
-                      foregroundColor: pino,
-                      side: BorderSide(color: pino.withOpacity(0.5)),
+                      foregroundColor: lima,
+                      side: BorderSide(color: lima.withOpacity(0.6)),
                       padding: const EdgeInsets.symmetric(vertical: 14)),
                   onPressed: () => _cerrar('cancha'),
                   icon: const Icon(Icons.payments_outlined, size: 18),
