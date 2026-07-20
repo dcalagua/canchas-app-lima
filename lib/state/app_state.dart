@@ -716,10 +716,14 @@ class AppState extends ChangeNotifier {
 
   /// Inscribe a un alumno en un plan: genera las cuotas mensuales (mensual /
   /// prepago). Para [TipoPlan.porClase] no genera nada (se cobra por clase).
-  void inscribir(Alumno alumno, Plan plan, {DateTime? inicio}) {
+  void inscribir(Alumno alumno, Plan plan, {DateTime? inicio, int? duracionMeses}) {
     if (plan.tipo == TipoPlan.porClase) return;
     final base = inicio ?? DateTime.now();
-    final meses = plan.meses < 1 ? 1 : plan.meses;
+    // Duración elegida al inscribir (nº de cuotas mensuales). Si no se indica,
+    // cae a la del plan (mensual = 1, prepago = meses del paquete).
+    final meses = (duracionMeses != null && duracionMeses > 0)
+        ? duracionMeses
+        : (plan.meses < 1 ? 1 : plan.meses);
     // Precio efectivo: socio = tarifa del plan; invitado = + recargoInvitado de
     // la academia (sede/club). Si no ubica la academia, usa la tarifa del plan.
     Academia? ac;

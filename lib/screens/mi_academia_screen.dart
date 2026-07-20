@@ -1191,9 +1191,73 @@ class AlumnoDetalleScreen extends StatelessWidget {
     if (plan == null) return;
     if (plan.tipo == TipoPlan.porClase) {
       appState.agregarClaseSuelta(al, plan.precioMes, concepto: plan.nombre);
-    } else {
-      appState.inscribir(al, plan);
+      return;
     }
+    if (!context.mounted) return;
+    final meses = await _pedirMeses(context, plan);
+    if (meses == null) return;
+    appState.inscribir(al, plan, duracionMeses: meses);
+  }
+
+  /// Pregunta por CUÁNTOS MESES inscribir (default 1). Genera esa cantidad de
+  /// cuotas mensuales. Devuelve null si se cancela.
+  Future<int?> _pedirMeses(BuildContext context, Plan plan) async {
+    var meses = 1;
+    return showDialog<int>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSt) {
+          return AlertDialog(
+            title: const Text('¿Por cuántos meses?'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(plan.nombre,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: textoTenue)),
+                const SizedBox(height: 14),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton.filledTonal(
+                      onPressed:
+                          meses > 1 ? () => setSt(() => meses--) : null,
+                      icon: const Icon(Icons.remove),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 22),
+                      child: Text('$meses',
+                          style: const TextStyle(
+                              fontSize: 24, fontWeight: FontWeight.w800)),
+                    ),
+                    IconButton.filledTonal(
+                      onPressed: () => setSt(() => meses++),
+                      icon: const Icon(Icons.add),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                    meses == 1
+                        ? 'Genera 1 cuota mensual'
+                        : 'Genera $meses cuotas mensuales',
+                    style: const TextStyle(color: textoTenue, fontSize: 12.5)),
+              ],
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancelar')),
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: lima),
+                onPressed: () => Navigator.pop(ctx, meses),
+                child: const Text('Inscribir'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _claseSuelta(BuildContext context, Alumno al) async {
