@@ -216,6 +216,39 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
         ),
       );
 
+  /// Sección plegable (ExpansionTile) para opciones avanzadas. Colapsada por
+  /// defecto; [abierta] la muestra expandida (si la academia ya tiene valores).
+  Widget _seccionPlegable({
+    required String titulo,
+    required String subtitulo,
+    required bool abierta,
+    required List<Widget> hijos,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: trazo),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          initiallyExpanded: abierta,
+          tilePadding: const EdgeInsets.symmetric(horizontal: 14),
+          childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+          expandedCrossAxisAlignment: CrossAxisAlignment.start,
+          title: Text(titulo,
+              style:
+                  const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+          subtitle: Text(subtitulo,
+              style: const TextStyle(color: textoTenue, fontSize: 12)),
+          children: hijos,
+        ),
+      ),
+    );
+  }
+
   /// Lista de planes agrupada: los PROGRAMAS (matriz) como tarjeta editable con
   /// su etapa/edad, duración y precios por frecuencia; los planes simples aparte.
   List<Widget> _listaProgramas() {
@@ -634,52 +667,63 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          // Recargo del invitado (no socio del club/sede). Vacío = un solo precio.
-          TextField(
-            controller: _recargoInvitado,
-            keyboardType: TextInputType.number,
-            decoration: InputDecoration(
-              labelText: 'Recargo invitado (no socio del club)',
-              hintText: 'Ej.: 50',
-              prefixText: '${_paisAcademia.moneda} ',
-              helperText:
-                  'Se suma a la tarifa socio para invitados. Vacío = un solo precio.',
-            ),
-          ),
-          const SizedBox(height: 16),
-          const Text('Descuentos (opcional)',
-              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-          const SizedBox(height: 2),
-          const Text(
-              'Se aplican automáticamente al inscribir. Vacío = sin descuento. '
-              'El de hermano y el de prepago se suman.',
-              style: TextStyle(color: textoTenue, fontSize: 12)),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(child: _campoPct(_dtoHermano2, '2º hermano')),
-              const SizedBox(width: 10),
-              Expanded(child: _campoPct(_dtoHermano3, '3º hermano +')),
-            ],
-          ),
-          const SizedBox(height: 10),
-          _campoPct(_dtoPrepago, 'Prepago (paquete de meses)'),
-          const SizedBox(height: 16),
-          const Text('Retribución al club (opcional)',
-              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-          const SizedBox(height: 2),
-          const Text(
-              '% de lo cobrado que le pagas al club/sede. Vacío = no aplica. '
-              'Aparece en el Reporte como liquidación al club.',
-              style: TextStyle(color: textoTenue, fontSize: 12)),
-          const SizedBox(height: 8),
-          _campoPct(_retribClub, 'Retribución al club'),
           const SizedBox(height: 12),
           if (_planes.isEmpty)
             const Text('Aún no agregas planes (mensualidad, paquetes, por clase).',
                 style: TextStyle(color: textoTenue, fontSize: 13)),
           ..._listaProgramas(),
+          const SizedBox(height: 18),
+          // Opciones avanzadas plegadas: una academia "normal" (sin convenio de
+          // club) no las necesita. Se abren solas si ya traen valores (Jartur).
+          _seccionPlegable(
+            titulo: 'Convenio con club (opcional)',
+            subtitulo:
+                'Solo si operas dentro de un club: tarifa distinta para invitados '
+                'y % que le pagas al club.',
+            abierta: (widget.academia?.recargoInvitado ?? 0) > 0 ||
+                (widget.academia?.retribucionClubPct ?? 0) > 0,
+            hijos: [
+              TextField(
+                controller: _recargoInvitado,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'Recargo invitado (no socio del club)',
+                  hintText: 'Ej.: 50',
+                  prefixText: '${_paisAcademia.moneda} ',
+                  helperText:
+                      'Se suma a la tarifa socio para invitados. Vacío = un solo precio.',
+                ),
+              ),
+              const SizedBox(height: 14),
+              _campoPct(_retribClub, 'Retribución al club (%)'),
+              const SizedBox(height: 4),
+              const Text(
+                  '% de lo cobrado que le pagas al club. Aparece en el Reporte '
+                  'como liquidación al club.',
+                  style: TextStyle(color: textoTenue, fontSize: 11.5)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          _seccionPlegable(
+            titulo: 'Descuentos (opcional)',
+            subtitulo:
+                'Se aplican al inscribir. Hermano y prepago se suman. Vacío = sin '
+                'descuento.',
+            abierta: (widget.academia?.descuentoHermano2 ?? 0) > 0 ||
+                (widget.academia?.descuentoHermano3 ?? 0) > 0 ||
+                (widget.academia?.descuentoPrepago ?? 0) > 0,
+            hijos: [
+              Row(
+                children: [
+                  Expanded(child: _campoPct(_dtoHermano2, '2º hermano')),
+                  const SizedBox(width: 10),
+                  Expanded(child: _campoPct(_dtoHermano3, '3º hermano +')),
+                ],
+              ),
+              const SizedBox(height: 10),
+              _campoPct(_dtoPrepago, 'Prepago (paquete de meses)'),
+            ],
+          ),
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
