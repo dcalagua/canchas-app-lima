@@ -35,6 +35,12 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       TextEditingController(text: widget.academia?.sedeClub ?? '');
   late final TextEditingController _desc =
       TextEditingController(text: widget.academia?.descripcion ?? '');
+  // Recargo fijo del INVITADO (no socio del club) sobre la tarifa socio. Vacío
+  // o 0 = la academia no distingue socio/invitado (un solo precio).
+  late final TextEditingController _recargoInvitado = TextEditingController(
+      text: (widget.academia?.recargoInvitado ?? 0) > 0
+          ? widget.academia!.recargoInvitado.toStringAsFixed(0)
+          : '');
   late Deporte _deporte = widget.academia?.deporte ?? Deporte.tenis;
   late final List<Plan> _planes = [...(widget.academia?.planes ?? const [])];
 
@@ -136,6 +142,23 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
     if (plan != null) setState(() => _planes.add(plan));
   }
 
+  /// Editor de TARIFARIO por frecuencia: un programa (ej. "Bola Roja y Naranja")
+  /// con sus precios socio 2x/3x/4x/5x → crea 4 planes mensuales de una vez.
+  Future<void> _agregarPrograma() async {
+    final nuevos = await showModalBottomSheet<List<Plan>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => _EditorPrograma(moneda: _paisAcademia.moneda),
+    );
+    if (nuevos != null && nuevos.isNotEmpty) {
+      setState(() => _planes.addAll(nuevos));
+    }
+  }
+
   Future<void> _guardar() async {
     final nombre = _nombre.text.trim();
     if (nombre.isEmpty) {
@@ -194,6 +217,8 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       sedeUbicacion: _sedes[_sede.text.trim()] ?? _sedeUbic,
       descripcion: _desc.text.trim(),
       planes: _planes,
+      recargoInvitado:
+          double.tryParse(_recargoInvitado.text.trim().replaceAll(',', '.')) ?? 0,
       logoUrl: _logoUrl,
       redes: redes,
       fotos: fotos,
@@ -430,18 +455,41 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
               ),
             ],
           const SizedBox(height: 22),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          const Text('Planes y tarifario',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
             children: [
-              const Text('Planes',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+              OutlinedButton.icon(
+                onPressed: _agregarPrograma,
+                style: OutlinedButton.styleFrom(
+                    foregroundColor: lima,
+                    side: const BorderSide(color: lima)),
+                icon: const Icon(Icons.grid_view, size: 18),
+                label: const Text('Programa (tarifa x frecuencia)'),
+              ),
               TextButton.icon(
                 onPressed: _agregarPlan,
                 icon: const Icon(Icons.add),
-                label: const Text('Agregar plan'),
+                label: const Text('Plan simple'),
               ),
             ],
           ),
+          const SizedBox(height: 8),
+          // Recargo del invitado (no socio del club/sede). Vacío = un solo precio.
+          TextField(
+            controller: _recargoInvitado,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(
+              labelText: 'Recargo invitado (no socio del club)',
+              hintText: 'Ej.: 50',
+              prefixText: '${_paisAcademia.moneda} ',
+              helperText:
+                  'Se suma a la tarifa socio para invitados. Vacío = un solo precio.',
+            ),
+          ),
+          const SizedBox(height: 12),
           if (_planes.isEmpty)
             const Text('Aún no agregas planes (mensualidad, paquetes, por clase).',
                 style: TextStyle(color: textoTenue, fontSize: 13)),
@@ -700,6 +748,122 @@ class _EditorPlanState extends State<_EditorPlan> {
                 ));
               },
               child: const Text('Agregar'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Editor de un PROGRAMA del tarifario (matriz): nombre + precio SOCIO por
+/// frecuencia (2x–5x). Devuelve un plan mensual por cada frecuencia con precio.
+class _EditorPrograma extends StatefulWidget {
+  final String moneda;
+  const _EditorPrograma({required this.moneda});
+  @override
+  State<_EditorPrograma> createState() => _EditorProgramaState();
+}
+
+class _EditorProgramaState extends State<_EditorPrograma> {
+  final _prog = TextEditingController();
+  static const _frecs = [2, 3, 4, 5];
+  final Map<int, TextEditingController> _precio = {
+    for (final f in [2, 3, 4, 5]) f: TextEditingController(),
+  };
+
+  @override
+  void dispose() {
+    _prog.dispose();
+    for (final c in _precio.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  void _guardar() {
+    final prog = _prog.text.trim();
+    if (prog.isEmpty) return;
+    final planes = <Plan>[];
+    for (final f in _frecs) {
+      final v = double.tryParse(_precio[f]!.text.trim().replaceAll(',', '.'));
+      if (v != null && v > 0) {
+        planes.add(Plan(
+          id: '$prog | ${f}x',
+          nombre: '$prog · ${f}x/sem',
+          tipo: TipoPlan.mensual,
+          precioMes: v,
+          meses: 1,
+          programa: prog,
+          frecuenciaSemana: f,
+        ));
+      }
+    }
+    Navigator.pop(context, planes);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+          20, 14, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+                width: 44,
+                height: 5,
+                decoration: BoxDecoration(
+                    color: Colors.black12,
+                    borderRadius: BorderRadius.circular(10))),
+          ),
+          const SizedBox(height: 16),
+          const Text('Programa del tarifario',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 4),
+          const Text(
+              'Precio SOCIO por frecuencia. Deja en blanco las que no ofreces.',
+              style: TextStyle(color: textoTenue, fontSize: 13)),
+          const SizedBox(height: 14),
+          TextField(
+            controller: _prog,
+            decoration: const InputDecoration(
+                labelText: 'Programa', hintText: 'Ej.: Bola Roja y Naranja'),
+          ),
+          for (final f in _frecs)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Row(
+                children: [
+                  SizedBox(
+                      width: 84,
+                      child: Text('${f}x/sem',
+                          style: const TextStyle(fontWeight: FontWeight.w700))),
+                  Expanded(
+                    child: TextField(
+                      controller: _precio[f],
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                          prefixText: '${widget.moneda} ',
+                          hintText: 'socio / mes',
+                          isDense: true),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 18),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                  backgroundColor: lima,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14)),
+              onPressed: _guardar,
+              child: const Text('Agregar programa'),
             ),
           ),
         ],

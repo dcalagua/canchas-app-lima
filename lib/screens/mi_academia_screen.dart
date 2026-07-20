@@ -106,31 +106,47 @@ class MiAcademiaScreen extends StatelessWidget {
       BuildContext context, Academia ac) async {
     final nombre = TextEditingController();
     final whats = TextEditingController();
+    var esSocio = true;
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Nuevo alumno'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-                controller: nombre,
-                decoration: const InputDecoration(labelText: 'Nombre')),
-            TextField(
-                controller: whats,
-                keyboardType: TextInputType.phone,
-                decoration: InputDecoration(
-                    labelText: 'WhatsApp', prefixText: '$codigoTelActual ')),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSt) => AlertDialog(
+          title: const Text('Nuevo alumno'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                  controller: nombre,
+                  decoration: const InputDecoration(labelText: 'Nombre')),
+              TextField(
+                  controller: whats,
+                  keyboardType: TextInputType.phone,
+                  decoration: InputDecoration(
+                      labelText: 'WhatsApp', prefixText: '$codigoTelActual ')),
+              if (ac.tieneTarifaInvitado) ...[
+                const SizedBox(height: 6),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  activeColor: lima,
+                  value: esSocio,
+                  onChanged: (v) => setSt(() => esSocio = v),
+                  title: const Text('Socio del club'),
+                  subtitle: Text(esSocio
+                      ? 'Paga tarifa de socio'
+                      : 'Invitado: +${ac.monedaSimbolo} ${ac.recargoInvitado.toStringAsFixed(0)} por plan'),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancelar')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Agregar')),
           ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancelar')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Agregar')),
-        ],
       ),
     );
     if (ok == true && nombre.text.trim().isNotEmpty) {
@@ -139,6 +155,7 @@ class MiAcademiaScreen extends StatelessWidget {
         academiaId: ac.id,
         nombre: nombre.text.trim(),
         whatsapp: whats.text.trim(),
+        esSocioSede: esSocio,
       ));
     }
   }
