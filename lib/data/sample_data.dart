@@ -289,6 +289,7 @@ class SampleData {
       descuentoHermano2: 10, // 2º hermano −10%
       descuentoHermano3: 20, // 3º hermano en adelante −20%
       descuentoPrepago: 5, // pago trimestral/paquete adelantado −5%
+      retribucionClubPct: 11, // liquidación al Country Club El Bosque
       redes: const {'instagram': 'academiadetenisjarthurbaldeon'},
       planes: [
         plan(roja, 2, 250), plan(roja, 3, 300), plan(roja, 4, 400), plan(roja, 5, 450),

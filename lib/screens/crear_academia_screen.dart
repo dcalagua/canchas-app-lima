@@ -48,6 +48,9 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       _ctrlPct(widget.academia?.descuentoHermano3);
   late final TextEditingController _dtoPrepago =
       _ctrlPct(widget.academia?.descuentoPrepago);
+  // Retribución al club/sede (%) sobre lo cobrado. Vacío = 0 = no aplica.
+  late final TextEditingController _retribClub =
+      _ctrlPct(widget.academia?.retribucionClubPct);
   static TextEditingController _ctrlPct(double? v) => TextEditingController(
       text: (v ?? 0) > 0 ? v!.toStringAsFixed(0) : '');
   late Deporte _deporte = widget.academia?.deporte ?? Deporte.tenis;
@@ -115,6 +118,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
     _dtoHermano2.dispose();
     _dtoHermano3.dispose();
     _dtoPrepago.dispose();
+    _retribClub.dispose();
     for (final c in _redesCtrl.values) {
       c.dispose();
     }
@@ -254,6 +258,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       descuentoHermano2: _pct(_dtoHermano2),
       descuentoHermano3: _pct(_dtoHermano3),
       descuentoPrepago: _pct(_dtoPrepago),
+      retribucionClubPct: _pct(_retribClub),
       logoUrl: _logoUrl,
       redes: redes,
       fotos: fotos,
@@ -542,6 +547,16 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
           ),
           const SizedBox(height: 10),
           _campoPct(_dtoPrepago, 'Prepago (paquete de meses)'),
+          const SizedBox(height: 16),
+          const Text('Retribución al club (opcional)',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+          const SizedBox(height: 2),
+          const Text(
+              '% de lo cobrado que le pagas al club/sede. Vacío = no aplica. '
+              'Aparece en el Reporte como liquidación al club.',
+              style: TextStyle(color: textoTenue, fontSize: 12)),
+          const SizedBox(height: 8),
+          _campoPct(_retribClub, 'Retribución al club'),
           const SizedBox(height: 12),
           if (_planes.isEmpty)
             const Text('Aún no agregas planes (mensualidad, paquetes, por clase).',

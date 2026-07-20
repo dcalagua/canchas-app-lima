@@ -100,6 +100,10 @@ class Academia {
   final double descuentoHermano2;
   final double descuentoHermano3;
   final double descuentoPrepago;
+  /// Retribución (%) que la academia le paga al CLUB/sede sobre lo EFECTIVAMENTE
+  /// cobrado (liquidación). CONFIGURABLE; 0 = la academia no le paga nada al club
+  /// (clubes que no usan esta opción). Caso Jartur (El Bosque): 11.
+  final double retribucionClubPct;
 
   const Academia({
     required this.id,
@@ -119,6 +123,7 @@ class Academia {
     this.descuentoHermano2 = 0,
     this.descuentoHermano3 = 0,
     this.descuentoPrepago = 0,
+    this.retribucionClubPct = 0,
   });
 
   /// ¿La academia distingue tarifa socio vs invitado (según la sede/club)?
@@ -159,6 +164,12 @@ class Academia {
         (1 - descuentoTotalPct(ordenHermano: ordenHermano, prepago: prepago) / 100);
     return f < 0 ? 0 : f;
   }
+
+  /// ¿La academia le retribuye un % al club/sede (liquidación)?
+  bool get tieneRetribucionClub => retribucionClubPct > 0;
+
+  /// Monto a pagar al club sobre lo EFECTIVAMENTE cobrado.
+  double retribucionClub(double cobrado) => cobrado * retribucionClubPct / 100;
 
   /// Planes agrupados por programa (para el tarifario matriz), preservando el
   /// orden de aparición. Los planes sin programa quedan bajo la clave ''.
@@ -239,6 +250,7 @@ class Academia {
     double? descuentoHermano2,
     double? descuentoHermano3,
     double? descuentoPrepago,
+    double? retribucionClubPct,
   }) =>
       Academia(
         id: id,
@@ -258,6 +270,7 @@ class Academia {
         descuentoHermano2: descuentoHermano2 ?? this.descuentoHermano2,
         descuentoHermano3: descuentoHermano3 ?? this.descuentoHermano3,
         descuentoPrepago: descuentoPrepago ?? this.descuentoPrepago,
+        retribucionClubPct: retribucionClubPct ?? this.retribucionClubPct,
       );
 
   Map<String, dynamic> toJson() => {
@@ -279,6 +292,7 @@ class Academia {
         'descuentoHermano2': descuentoHermano2,
         'descuentoHermano3': descuentoHermano3,
         'descuentoPrepago': descuentoPrepago,
+        'retribucionClubPct': retribucionClubPct,
       };
 
   factory Academia.fromJson(Map<String, dynamic> j) => Academia(
@@ -308,6 +322,8 @@ class Academia {
         descuentoHermano2: ((j['descuentoHermano2'] ?? 0) as num).toDouble(),
         descuentoHermano3: ((j['descuentoHermano3'] ?? 0) as num).toDouble(),
         descuentoPrepago: ((j['descuentoPrepago'] ?? 0) as num).toDouble(),
+        retribucionClubPct:
+            ((j['retribucionClubPct'] ?? 0) as num).toDouble(),
       );
 }
 

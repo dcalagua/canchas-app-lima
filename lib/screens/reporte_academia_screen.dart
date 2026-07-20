@@ -70,8 +70,12 @@ class _ReporteAcademiaScreenState extends State<ReporteAcademiaScreen> {
           final rango = _rangoActual();
           final todas = appState.cuotasDe(widget.academiaId);
           var mon = monedaSimbolo;
+          Academia? academia;
           for (final a in appState.academias) {
-            if (a.id == widget.academiaId) mon = a.monedaSimbolo;
+            if (a.id == widget.academiaId) {
+              academia = a;
+              mon = a.monedaSimbolo;
+            }
           }
           final enRango =
               todas.where((c) => _enRango(_ref(c), rango)).toList()
@@ -109,6 +113,11 @@ class _ReporteAcademiaScreenState extends State<ReporteAcademiaScreen> {
                   Expanded(child: _Kpi('Vencido', vencido, clayOscuro, mon)),
                 ],
               ),
+              if (academia != null && academia.tieneRetribucionClub) ...[
+                const SizedBox(height: 14),
+                _LiquidacionClub(
+                    academia: academia, cobrado: cobrado, moneda: mon),
+              ],
               const SizedBox(height: 20),
               const Text('Ingresos cobrados (últimos 6 meses)',
                   style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
@@ -187,6 +196,77 @@ class _ReporteAcademiaScreenState extends State<ReporteAcademiaScreen> {
           },
         ),
       ],
+    );
+  }
+}
+
+/// Liquidación al club/sede: sobre lo EFECTIVAMENTE cobrado en el rango, cuánto
+/// le corresponde al club (retribución configurable) y cuánto queda para la
+/// academia. Solo se muestra si la academia tiene retribución > 0.
+class _LiquidacionClub extends StatelessWidget {
+  const _LiquidacionClub(
+      {required this.academia, required this.cobrado, required this.moneda});
+  final Academia academia;
+  final double cobrado;
+  final String moneda;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final aClub = academia.retribucionClub(cobrado);
+    final neto = cobrado - aClub;
+    final pct = academia.retribucionClubPct.toStringAsFixed(
+        academia.retribucionClubPct % 1 == 0 ? 0 : 1);
+    final club =
+        academia.sedeClub.isNotEmpty ? academia.sedeClub : 'el club';
+    Widget fila(String t, double v, {bool fuerte = false, Color? color}) =>
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 3),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(t,
+                  style: TextStyle(
+                      fontSize: 13,
+                      color: color ?? textoTenue,
+                      fontWeight: fuerte ? FontWeight.w700 : FontWeight.w500)),
+              Text('$moneda ${v.toStringAsFixed(2)}',
+                  style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: fuerte ? FontWeight.w800 : FontWeight.w700,
+                      color: color ?? cs.onSurface)),
+            ],
+          ),
+        );
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: limaSuave,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.account_balance_outlined, size: 18, color: lima),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Liquidación al club · $pct%',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
+                        color: cs.onSurface)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          fila('Cobrado en el rango', cobrado),
+          fila('A pagar a $club ($pct%)', aClub, color: clayOscuro),
+          const Divider(height: 16),
+          fila('Queda para la academia', neto, fuerte: true, color: lima),
+        ],
+      ),
     );
   }
 }
