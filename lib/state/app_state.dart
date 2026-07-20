@@ -338,8 +338,38 @@ class AppState extends ChangeNotifier {
   /// profe la editó (mismo id), la versión guardada/remota gana luego.
   bool sembrarAcademias() {
     const seedId = 'seed_jartur_elbosque';
-    if (academias.any((a) => a.id == seedId)) return false;
-    academias.add(SampleData.academiaJartur());
+    if (!academias.any((a) => a.id == seedId)) {
+      academias.add(SampleData.academiaJartur());
+      return true;
+    }
+    return _curarSeedJartur();
+  }
+
+  /// Cura una Jartur guardada de un build viejo: si NO tiene tarifa invitado ni
+  /// descuentos ni retribución (todos en 0 = registro anterior a estos campos),
+  /// les aplica los valores del seed SIN tocar el resto (nombre/planes que el
+  /// profe pudo editar). Una vez que el profe fija cualquiera de estos valores,
+  /// deja de curar. Devuelve true si cambió algo.
+  bool _curarSeedJartur() {
+    const seedId = 'seed_jartur_elbosque';
+    final i = academias.indexWhere((a) => a.id == seedId);
+    if (i < 0) return false;
+    final actual = academias[i];
+    final faltan = actual.recargoInvitado == 0 &&
+        actual.descuentoHermano2 == 0 &&
+        actual.descuentoHermano3 == 0 &&
+        actual.descuentoPrepago == 0 &&
+        actual.retribucionClubPct == 0;
+    if (!faltan) return false;
+    final seed = SampleData.academiaJartur();
+    academias[i] = actual.copyWith(
+      recargoInvitado: seed.recargoInvitado,
+      descuentoHermano2: seed.descuentoHermano2,
+      descuentoHermano3: seed.descuentoHermano3,
+      descuentoPrepago: seed.descuentoPrepago,
+      retribucionClubPct: seed.retribucionClubPct,
+      planes: actual.planes.isEmpty ? seed.planes : actual.planes,
+    );
     return true;
   }
 
@@ -355,6 +385,8 @@ class AppState extends ChangeNotifier {
       }
       cambio = true;
     }
+    // La remota pudo pisar a Jartur con una versión vieja: cúrala de nuevo.
+    if (_curarSeedJartur()) cambio = true;
     if (cambio) {
       notifyListeners();
       _persistirDatos();
