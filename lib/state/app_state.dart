@@ -694,8 +694,19 @@ class AppState extends ChangeNotifier {
     for (final a in academias) {
       if (a.id == alumno.academiaId) { ac = a; break; }
     }
+    // Descuentos configurables de la academia: por orden de hermano (del alumno)
+    // y por prepago (paquete de meses). El monto ya viene neto; se deja traza del
+    // % aplicado en el concepto para el reporte del dueño.
+    final prepago = plan.tipo == TipoPlan.prepago;
+    final dtoPct = ac?.descuentoTotalPct(
+            ordenHermano: alumno.ordenHermano, prepago: prepago) ??
+        0;
+    final sufijoDto = dtoPct > 0 ? ' (−${dtoPct.toStringAsFixed(0)}%)' : '';
     final monto = ac != null
-        ? ac.precioDePlan(plan, socio: alumno.esSocioSede)
+        ? ac.precioFinal(plan,
+            socio: alumno.esSocioSede,
+            ordenHermano: alumno.ordenHermano,
+            prepago: prepago)
         : plan.precioMes;
     for (var i = 0; i < meses; i++) {
       final venc = DateTime(base.year, base.month + i, base.day);
@@ -703,7 +714,7 @@ class AppState extends ChangeNotifier {
         id: 'cu_${DateTime.now().microsecondsSinceEpoch}_$i',
         academiaId: alumno.academiaId,
         alumnoId: alumno.id,
-        concepto: '${plan.nombre} · ${_mesNombre(venc)}',
+        concepto: '${plan.nombre} · ${_mesNombre(venc)}$sufijoDto',
         monto: monto,
         vencimiento: venc,
       ));

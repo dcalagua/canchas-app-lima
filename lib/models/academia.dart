@@ -92,6 +92,14 @@ class Academia {
   /// tarifa socio del plan. 0 = la academia no distingue socio/invitado (un solo
   /// precio). Caso Jartur (Country Club El Bosque): 50.
   final double recargoInvitado;
+  /// Descuentos CONFIGURABLES (%), 0 = sin descuento. Se aplican al inscribir:
+  /// [descuentoHermano2] al 2º hermano, [descuentoHermano3] al 3º en adelante,
+  /// [descuentoPrepago] al pagar un paquete de meses por adelantado (prepago).
+  /// Caso Jartur: 10 / 20 / 5. Son ADITIVOS entre sí (2º hermano + prepago =
+  /// 10 + 5 = 15%).
+  final double descuentoHermano2;
+  final double descuentoHermano3;
+  final double descuentoPrepago;
 
   const Academia({
     required this.id,
@@ -108,6 +116,9 @@ class Academia {
     this.fotos = const [],
     this.moneda = '',
     this.recargoInvitado = 0,
+    this.descuentoHermano2 = 0,
+    this.descuentoHermano3 = 0,
+    this.descuentoPrepago = 0,
   });
 
   /// ¿La academia distingue tarifa socio vs invitado (según la sede/club)?
@@ -116,6 +127,38 @@ class Academia {
   /// Tarifa mensual efectiva de un plan según sea socio (de la sede) o invitado.
   double precioDePlan(Plan p, {required bool socio}) =>
       socio ? p.precioMes : p.precioMes + recargoInvitado;
+
+  /// ¿La academia tiene algún descuento configurado?
+  bool get tieneDescuentos =>
+      descuentoHermano2 > 0 || descuentoHermano3 > 0 || descuentoPrepago > 0;
+
+  /// ¿Distingue descuento por orden de hermano (2º / 3º)?
+  bool get tieneDescuentoHermanos =>
+      descuentoHermano2 > 0 || descuentoHermano3 > 0;
+
+  /// % de descuento por orden de hermano (1 = único/1º sin dto, 2 = 2º, 3+ = 3º
+  /// o más).
+  double descuentoHermanoPct(int orden) {
+    if (orden >= 3) return descuentoHermano3;
+    if (orden == 2) return descuentoHermano2;
+    return 0;
+  }
+
+  /// % total de descuento aplicable (hermano + prepago), aditivo, tope 100.
+  double descuentoTotalPct({int ordenHermano = 1, bool prepago = false}) {
+    var d = descuentoHermanoPct(ordenHermano);
+    if (prepago) d += descuentoPrepago;
+    return d > 100 ? 100 : d;
+  }
+
+  /// Precio final de un plan tras aplicar tarifa socio/invitado y descuentos.
+  double precioFinal(Plan p,
+      {required bool socio, int ordenHermano = 1, bool prepago = false}) {
+    final base = precioDePlan(p, socio: socio);
+    final f = base *
+        (1 - descuentoTotalPct(ordenHermano: ordenHermano, prepago: prepago) / 100);
+    return f < 0 ? 0 : f;
+  }
 
   /// Planes agrupados por programa (para el tarifario matriz), preservando el
   /// orden de aparición. Los planes sin programa quedan bajo la clave ''.
@@ -193,6 +236,9 @@ class Academia {
     List<String>? fotos,
     String? moneda,
     double? recargoInvitado,
+    double? descuentoHermano2,
+    double? descuentoHermano3,
+    double? descuentoPrepago,
   }) =>
       Academia(
         id: id,
@@ -209,6 +255,9 @@ class Academia {
         fotos: fotos ?? this.fotos,
         moneda: moneda ?? this.moneda,
         recargoInvitado: recargoInvitado ?? this.recargoInvitado,
+        descuentoHermano2: descuentoHermano2 ?? this.descuentoHermano2,
+        descuentoHermano3: descuentoHermano3 ?? this.descuentoHermano3,
+        descuentoPrepago: descuentoPrepago ?? this.descuentoPrepago,
       );
 
   Map<String, dynamic> toJson() => {
@@ -227,6 +276,9 @@ class Academia {
         'fotos': fotos,
         'moneda': moneda,
         'recargoInvitado': recargoInvitado,
+        'descuentoHermano2': descuentoHermano2,
+        'descuentoHermano3': descuentoHermano3,
+        'descuentoPrepago': descuentoPrepago,
       };
 
   factory Academia.fromJson(Map<String, dynamic> j) => Academia(
@@ -253,6 +305,9 @@ class Academia {
             const [],
         moneda: (j['moneda'] ?? '') as String,
         recargoInvitado: ((j['recargoInvitado'] ?? 0) as num).toDouble(),
+        descuentoHermano2: ((j['descuentoHermano2'] ?? 0) as num).toDouble(),
+        descuentoHermano3: ((j['descuentoHermano3'] ?? 0) as num).toDouble(),
+        descuentoPrepago: ((j['descuentoPrepago'] ?? 0) as num).toDouble(),
       );
 }
 
@@ -279,6 +334,10 @@ class Alumno {
   /// socio = precio del plan; invitado (false) = precio + recargoInvitado.
   /// Por defecto true (los alumnos fundadores son socios). Lo marca el profe.
   final bool esSocioSede;
+  /// Orden de hermano para el descuento familiar configurable de la academia:
+  /// 1 = único/1º (sin descuento), 2 = 2º hermano, 3 = 3º o más. Lo marca el
+  /// profe al inscribir. Ver `Academia.descuentoHermano2/3`.
+  final int ordenHermano;
 
   const Alumno({
     required this.id,
@@ -291,6 +350,7 @@ class Alumno {
     this.apoderadoWhatsapp = '',
     this.edad,
     this.esSocioSede = true,
+    this.ordenHermano = 1,
   });
 
   /// ¿Es un alumno que usa la app (se unió con código)?
@@ -314,6 +374,7 @@ class Alumno {
         'apoderadoWhatsapp': apoderadoWhatsapp,
         if (edad != null) 'edad': edad,
         'esSocioSede': esSocioSede,
+        'ordenHermano': ordenHermano,
       };
 
   factory Alumno.fromJson(Map<String, dynamic> j) => Alumno(
@@ -327,6 +388,7 @@ class Alumno {
         apoderadoWhatsapp: (j['apoderadoWhatsapp'] ?? '') as String,
         edad: (j['edad'] as num?)?.toInt(),
         esSocioSede: (j['esSocioSede'] ?? true) as bool,
+        ordenHermano: ((j['ordenHermano'] ?? 1) as num).toInt(),
       );
 }
 

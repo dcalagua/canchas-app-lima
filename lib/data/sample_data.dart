@@ -286,6 +286,9 @@ class SampleData {
       sedeUbicacion: centroPiloto, // referencial (Lima); el profe la ajusta
       moneda: 'S/',
       recargoInvitado: 50, // invitado (no socio del club) = socio + S/50
+      descuentoHermano2: 10, // 2º hermano −10%
+      descuentoHermano3: 20, // 3º hermano en adelante −20%
+      descuentoPrepago: 5, // pago trimestral/paquete adelantado −5%
       redes: const {'instagram': 'academiadetenisjarthurbaldeon'},
       planes: [
         plan(roja, 2, 250), plan(roja, 3, 300), plan(roja, 4, 400), plan(roja, 5, 450),

@@ -41,6 +41,15 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       text: (widget.academia?.recargoInvitado ?? 0) > 0
           ? widget.academia!.recargoInvitado.toStringAsFixed(0)
           : '');
+  // Descuentos configurables (%). Vacío = 0 = sin descuento.
+  late final TextEditingController _dtoHermano2 =
+      _ctrlPct(widget.academia?.descuentoHermano2);
+  late final TextEditingController _dtoHermano3 =
+      _ctrlPct(widget.academia?.descuentoHermano3);
+  late final TextEditingController _dtoPrepago =
+      _ctrlPct(widget.academia?.descuentoPrepago);
+  static TextEditingController _ctrlPct(double? v) => TextEditingController(
+      text: (v ?? 0) > 0 ? v!.toStringAsFixed(0) : '');
   late Deporte _deporte = widget.academia?.deporte ?? Deporte.tenis;
   late final List<Plan> _planes = [...(widget.academia?.planes ?? const [])];
 
@@ -102,6 +111,10 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
     _whatsapp.dispose();
     _sede.dispose();
     _desc.dispose();
+    _recargoInvitado.dispose();
+    _dtoHermano2.dispose();
+    _dtoHermano3.dispose();
+    _dtoPrepago.dispose();
     for (final c in _redesCtrl.values) {
       c.dispose();
     }
@@ -158,6 +171,25 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       setState(() => _planes.addAll(nuevos));
     }
   }
+
+  /// Lee un % de un controller: number 0–100 (vacío/invalido = 0).
+  double _pct(TextEditingController c) {
+    final v = double.tryParse(c.text.trim().replaceAll(',', '.')) ?? 0;
+    if (v < 0) return 0;
+    return v > 100 ? 100 : v;
+  }
+
+  /// Campo de porcentaje reutilizable para los descuentos.
+  Widget _campoPct(TextEditingController c, String label) => TextField(
+        controller: c,
+        keyboardType: TextInputType.number,
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: '0',
+          suffixText: '%',
+          isDense: true,
+        ),
+      );
 
   Future<void> _guardar() async {
     final nombre = _nombre.text.trim();
@@ -219,6 +251,9 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       planes: _planes,
       recargoInvitado:
           double.tryParse(_recargoInvitado.text.trim().replaceAll(',', '.')) ?? 0,
+      descuentoHermano2: _pct(_dtoHermano2),
+      descuentoHermano3: _pct(_dtoHermano3),
+      descuentoPrepago: _pct(_dtoPrepago),
       logoUrl: _logoUrl,
       redes: redes,
       fotos: fotos,
@@ -489,6 +524,24 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                   'Se suma a la tarifa socio para invitados. Vacío = un solo precio.',
             ),
           ),
+          const SizedBox(height: 16),
+          const Text('Descuentos (opcional)',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+          const SizedBox(height: 2),
+          const Text(
+              'Se aplican automáticamente al inscribir. Vacío = sin descuento. '
+              'El de hermano y el de prepago se suman.',
+              style: TextStyle(color: textoTenue, fontSize: 12)),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(child: _campoPct(_dtoHermano2, '2º hermano')),
+              const SizedBox(width: 10),
+              Expanded(child: _campoPct(_dtoHermano3, '3º hermano +')),
+            ],
+          ),
+          const SizedBox(height: 10),
+          _campoPct(_dtoPrepago, 'Prepago (paquete de meses)'),
           const SizedBox(height: 12),
           if (_planes.isEmpty)
             const Text('Aún no agregas planes (mensualidad, paquetes, por clase).',

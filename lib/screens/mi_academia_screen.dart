@@ -107,36 +107,62 @@ class MiAcademiaScreen extends StatelessWidget {
     final nombre = TextEditingController();
     final whats = TextEditingController();
     var esSocio = true;
+    var orden = 1; // orden de hermano (descuento familiar)
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSt) => AlertDialog(
           title: const Text('Nuevo alumno'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                  controller: nombre,
-                  decoration: const InputDecoration(labelText: 'Nombre')),
-              TextField(
-                  controller: whats,
-                  keyboardType: TextInputType.phone,
-                  decoration: InputDecoration(
-                      labelText: 'WhatsApp', prefixText: '$codigoTelActual ')),
-              if (ac.tieneTarifaInvitado) ...[
-                const SizedBox(height: 6),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  activeColor: lima,
-                  value: esSocio,
-                  onChanged: (v) => setSt(() => esSocio = v),
-                  title: const Text('Socio del club'),
-                  subtitle: Text(esSocio
-                      ? 'Paga tarifa de socio'
-                      : 'Invitado: +${ac.monedaSimbolo} ${ac.recargoInvitado.toStringAsFixed(0)} por plan'),
-                ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                    controller: nombre,
+                    decoration: const InputDecoration(labelText: 'Nombre')),
+                TextField(
+                    controller: whats,
+                    keyboardType: TextInputType.phone,
+                    decoration: InputDecoration(
+                        labelText: 'WhatsApp',
+                        prefixText: '$codigoTelActual ')),
+                if (ac.tieneTarifaInvitado) ...[
+                  const SizedBox(height: 6),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    activeColor: lima,
+                    value: esSocio,
+                    onChanged: (v) => setSt(() => esSocio = v),
+                    title: const Text('Socio del club'),
+                    subtitle: Text(esSocio
+                        ? 'Paga tarifa de socio'
+                        : 'Invitado: +${ac.monedaSimbolo} ${ac.recargoInvitado.toStringAsFixed(0)} por plan'),
+                  ),
+                ],
+                if (ac.tieneDescuentoHermanos) ...[
+                  const SizedBox(height: 12),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('Orden de hermano (descuento familiar)',
+                        style: TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w600)),
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      for (final o in const [1, 2, 3])
+                        ChoiceChip(
+                          label: Text(_labelHermano(ac, o)),
+                          selected: orden == o,
+                          selectedColor: limaSuave,
+                          onSelected: (_) => setSt(() => orden = o),
+                        ),
+                    ],
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
           actions: [
             TextButton(
@@ -156,8 +182,17 @@ class MiAcademiaScreen extends StatelessWidget {
         nombre: nombre.text.trim(),
         whatsapp: whats.text.trim(),
         esSocioSede: esSocio,
+        ordenHermano: orden,
       ));
     }
+  }
+
+  /// Etiqueta del chip de orden de hermano con su % de descuento.
+  static String _labelHermano(Academia ac, int orden) {
+    if (orden == 1) return 'Único / 1º';
+    final pct = ac.descuentoHermanoPct(orden);
+    final sufijo = pct > 0 ? ' (−${pct.toStringAsFixed(0)}%)' : '';
+    return orden == 2 ? '2º hermano$sufijo' : '3º o más$sufijo';
   }
 
   /// Invita a un alumno por CORREO (le aparece solo al entrar a la app) y/o por

@@ -187,6 +187,33 @@ class _Contenido extends StatelessWidget {
                 const SizedBox(height: 4),
                 const Text('Elige un plan y matricúlate aquí mismo.',
                     style: TextStyle(color: textoTenue, fontSize: 13)),
+                if (academia.tieneDescuentos) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: limaSuave,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.local_offer_outlined,
+                            size: 18, color: lima),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(_descuentosTexto(academia),
+                              style: TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurface)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 12),
                 if (academia.planes.isEmpty)
                   const Text('Esta academia aún no publicó sus planes.',
@@ -703,4 +730,20 @@ class _StepBtn extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Resumen legible de los descuentos configurados de una academia (para la
+/// ficha pública). Solo lista los que están activos (> 0).
+String _descuentosTexto(Academia ac) {
+  final partes = <String>[];
+  if (ac.descuentoHermano2 > 0) {
+    partes.add('2º hermano −${ac.descuentoHermano2.toStringAsFixed(0)}%');
+  }
+  if (ac.descuentoHermano3 > 0) {
+    partes.add('3º+ −${ac.descuentoHermano3.toStringAsFixed(0)}%');
+  }
+  if (ac.descuentoPrepago > 0) {
+    partes.add('prepago −${ac.descuentoPrepago.toStringAsFixed(0)}%');
+  }
+  return 'Descuentos: ${partes.join(' · ')}';
 }
