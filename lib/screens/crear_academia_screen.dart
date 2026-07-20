@@ -176,6 +176,27 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
     }
   }
 
+  /// Edita un PROGRAMA existente: precarga sus planes, y al guardar reemplaza
+  /// todos los planes de ese programa (soporta renombrarlo).
+  Future<void> _editarPrograma(String programa) async {
+    final base = _planes.where((p) => p.programa == programa).toList();
+    final nuevos = await showModalBottomSheet<List<Plan>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => _EditorPrograma(moneda: _paisAcademia.moneda, base: base),
+    );
+    if (nuevos != null) {
+      setState(() {
+        _planes.removeWhere((p) => p.programa == programa);
+        _planes.addAll(nuevos);
+      });
+    }
+  }
+
   /// Lee un % de un controller: number 0–100 (vacío/invalido = 0).
   double _pct(TextEditingController c) {
     final v = double.tryParse(c.text.trim().replaceAll(',', '.')) ?? 0;
@@ -194,6 +215,103 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
           isDense: true,
         ),
       );
+
+  /// Lista de planes agrupada: los PROGRAMAS (matriz) como tarjeta editable con
+  /// su etapa/edad, duración y precios por frecuencia; los planes simples aparte.
+  List<Widget> _listaProgramas() {
+    final porPrograma = <String, List<Plan>>{};
+    final simples = <Plan>[];
+    for (final p in _planes) {
+      if (p.programa.isNotEmpty) {
+        (porPrograma[p.programa] ??= []).add(p);
+      } else {
+        simples.add(p);
+      }
+    }
+    final mon = _paisAcademia.moneda;
+    final w = <Widget>[];
+    porPrograma.forEach((prog, planes) {
+      planes.sort((a, b) => a.frecuenciaSemana.compareTo(b.frecuenciaSemana));
+      final first = planes.first;
+      final sub = [
+        if (first.etapaEdad.isNotEmpty) first.etapaEdad,
+        if (first.duracionClase.isNotEmpty) 'Duración: ${first.duracionClase}',
+      ].join(' · ');
+      w.add(Card(
+        margin: const EdgeInsets.only(bottom: 8),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 10, 6, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(prog,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 15)),
+                  ),
+                  IconButton(
+                    tooltip: 'Editar programa',
+                    icon: const Icon(Icons.edit_outlined, color: lima),
+                    onPressed: () => _editarPrograma(prog),
+                  ),
+                  IconButton(
+                    tooltip: 'Eliminar programa',
+                    icon: const Icon(Icons.delete_outline,
+                        color: Colors.redAccent),
+                    onPressed: () => setState(
+                        () => _planes.removeWhere((p) => p.programa == prog)),
+                  ),
+                ],
+              ),
+              if (sub.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8, bottom: 8),
+                  child: Text(sub,
+                      style:
+                          const TextStyle(color: textoTenue, fontSize: 12.5)),
+                ),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final p in planes)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: limaSuave,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                          '${p.frecuenciaSemana}x · $mon ${p.precioMes.toStringAsFixed(0)}',
+                          style: const TextStyle(
+                              fontSize: 12.5, fontWeight: FontWeight.w700)),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ));
+    });
+    for (final p in simples) {
+      w.add(Card(
+        margin: const EdgeInsets.only(bottom: 8),
+        child: ListTile(
+          title: Text(p.nombre,
+              style: const TextStyle(fontWeight: FontWeight.w700)),
+          subtitle: Text(_descPlan(p)),
+          trailing: IconButton(
+            icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+            onPressed: () => setState(() => _planes.remove(p)),
+          ),
+        ),
+      ));
+    }
+    return w;
+  }
 
   Future<void> _guardar() async {
     final nombre = _nombre.text.trim();
@@ -561,19 +679,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
           if (_planes.isEmpty)
             const Text('Aún no agregas planes (mensualidad, paquetes, por clase).',
                 style: TextStyle(color: textoTenue, fontSize: 13)),
-          for (var i = 0; i < _planes.length; i++)
-            Card(
-              margin: const EdgeInsets.only(bottom: 8),
-              child: ListTile(
-                title: Text(_planes[i].nombre,
-                    style: const TextStyle(fontWeight: FontWeight.w700)),
-                subtitle: Text(_descPlan(_planes[i])),
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                  onPressed: () => setState(() => _planes.removeAt(i)),
-                ),
-              ),
-            ),
+          ..._listaProgramas(),
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
@@ -828,21 +934,47 @@ class _EditorPlanState extends State<_EditorPlan> {
 /// frecuencia (2x–5x). Devuelve un plan mensual por cada frecuencia con precio.
 class _EditorPrograma extends StatefulWidget {
   final String moneda;
-  const _EditorPrograma({required this.moneda});
+  /// Planes existentes del programa (para EDITAR). null/vacío = crear nuevo.
+  final List<Plan>? base;
+  const _EditorPrograma({required this.moneda, this.base});
   @override
   State<_EditorPrograma> createState() => _EditorProgramaState();
 }
 
 class _EditorProgramaState extends State<_EditorPrograma> {
   final _prog = TextEditingController();
+  final _etapa = TextEditingController();
+  final _duracion = TextEditingController();
   static const _frecs = [2, 3, 4, 5];
   final Map<int, TextEditingController> _precio = {
     for (final f in [2, 3, 4, 5]) f: TextEditingController(),
   };
 
+  bool get _editando => (widget.base?.isNotEmpty ?? false);
+
+  @override
+  void initState() {
+    super.initState();
+    final base = widget.base;
+    if (base != null && base.isNotEmpty) {
+      final first = base.first;
+      _prog.text = first.programa;
+      _etapa.text = first.etapaEdad;
+      _duracion.text = first.duracionClase;
+      for (final p in base) {
+        final c = _precio[p.frecuenciaSemana];
+        if (c != null && p.precioMes > 0) {
+          c.text = p.precioMes.toStringAsFixed(0);
+        }
+      }
+    }
+  }
+
   @override
   void dispose() {
     _prog.dispose();
+    _etapa.dispose();
+    _duracion.dispose();
     for (final c in _precio.values) {
       c.dispose();
     }
@@ -852,6 +984,8 @@ class _EditorProgramaState extends State<_EditorPrograma> {
   void _guardar() {
     final prog = _prog.text.trim();
     if (prog.isEmpty) return;
+    final etapa = _etapa.text.trim();
+    final duracion = _duracion.text.trim();
     final planes = <Plan>[];
     for (final f in _frecs) {
       final v = double.tryParse(_precio[f]!.text.trim().replaceAll(',', '.'));
@@ -864,6 +998,8 @@ class _EditorProgramaState extends State<_EditorPrograma> {
           meses: 1,
           programa: prog,
           frecuenciaSemana: f,
+          etapaEdad: etapa,
+          duracionClase: duracion,
         ));
       }
     }
@@ -875,7 +1011,11 @@ class _EditorProgramaState extends State<_EditorPrograma> {
     return Padding(
       padding: EdgeInsets.fromLTRB(
           20, 14, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
-      child: Column(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.85),
+        child: SingleChildScrollView(
+          child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -888,11 +1028,12 @@ class _EditorProgramaState extends State<_EditorPrograma> {
                     borderRadius: BorderRadius.circular(10))),
           ),
           const SizedBox(height: 16),
-          const Text('Programa del tarifario',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+          Text(_editando ? 'Editar programa' : 'Programa del tarifario',
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
           const SizedBox(height: 4),
           const Text(
-              'Precio SOCIO por frecuencia. Deja en blanco las que no ofreces.',
+              'Precio SOCIO por frecuencia. Deja en blanco las que no ofreces. '
+              'El invitado se calcula con el recargo de la academia.',
               style: TextStyle(color: textoTenue, fontSize: 13)),
           const SizedBox(height: 14),
           TextField(
@@ -900,6 +1041,26 @@ class _EditorProgramaState extends State<_EditorPrograma> {
             decoration: const InputDecoration(
                 labelText: 'Programa', hintText: 'Ej.: Bola Roja y Naranja'),
           ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _etapa,
+            decoration: const InputDecoration(
+                labelText: 'Etapa / Edad',
+                hintText: 'Ej.: Iniciación e intermedio · 5 a 10 años',
+                isDense: true),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _duracion,
+            decoration: const InputDecoration(
+                labelText: 'Duración de clase',
+                hintText: 'Ej.: 1 h 30 min',
+                isDense: true),
+          ),
+          const SizedBox(height: 6),
+          const Text('Precio socio por frecuencia (veces x semana):',
+              style: TextStyle(
+                  color: textoTenue, fontSize: 12, fontWeight: FontWeight.w600)),
           for (final f in _frecs)
             Padding(
               padding: const EdgeInsets.only(top: 10),
@@ -931,10 +1092,12 @@ class _EditorProgramaState extends State<_EditorPrograma> {
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 14)),
               onPressed: _guardar,
-              child: const Text('Agregar programa'),
+              child: Text(_editando ? 'Guardar cambios' : 'Agregar programa'),
             ),
           ),
         ],
+          ),
+        ),
       ),
     );
   }

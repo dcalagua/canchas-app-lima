@@ -267,6 +267,13 @@ class SampleData {
     const roja = 'Bola Roja y Naranja';
     const verde = 'Bola Verde y Amarilla';
     const adultos = 'Adultos';
+    // Etapa/edad y duración de clase por programa (según tarifario Jartur).
+    const etapa = {
+      roja: 'Iniciación e intermedio · 5 a 10 años',
+      verde: 'Intermedio-avanzado y avanzados · 8 a 16 años',
+      adultos: 'Turno mañana',
+    };
+    const duracion = {roja: '1 h 30 min', verde: '2 h', adultos: '2 h'};
     Plan plan(String prog, int frec, double socio) => Plan(
           id: '$prog | ${frec}x', // "clave (no editar)" del tarifario
           nombre: '$prog · ${frec}x/sem',
@@ -275,6 +282,8 @@ class SampleData {
           meses: 1,
           programa: prog,
           frecuenciaSemana: frec,
+          etapaEdad: etapa[prog] ?? '',
+          duracionClase: duracion[prog] ?? '',
         );
     return Academia(
       id: 'seed_jartur_elbosque',

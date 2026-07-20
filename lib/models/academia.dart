@@ -29,6 +29,11 @@ class Plan {
   /// la tarifa SOCIO; la de invitado se deriva con `Academia.recargoInvitado`.
   final String programa;
   final int frecuenciaSemana;
+  /// Descripción de la ETAPA/EDAD del programa (ej. "Iniciación e intermedio ·
+  /// 5 a 10 años"). Compartida por todas las frecuencias del mismo programa.
+  final String etapaEdad;
+  /// Duración de la clase (ej. "1 h 30 min", "2 h"). Igual dentro del programa.
+  final String duracionClase;
 
   const Plan({
     required this.id,
@@ -38,6 +43,8 @@ class Plan {
     this.meses = 1,
     this.programa = '',
     this.frecuenciaSemana = 0,
+    this.etapaEdad = '',
+    this.duracionClase = '',
   });
 
   /// Total del plan (para mostrar "paga todo").
@@ -55,6 +62,8 @@ class Plan {
         'meses': meses,
         'programa': programa,
         'frecuenciaSemana': frecuenciaSemana,
+        'etapaEdad': etapaEdad,
+        'duracionClase': duracionClase,
       };
 
   factory Plan.fromJson(Map<String, dynamic> j) => Plan(
@@ -66,6 +75,8 @@ class Plan {
         meses: ((j['meses'] ?? 1) as num).toInt(),
         programa: (j['programa'] ?? '') as String,
         frecuenciaSemana: ((j['frecuenciaSemana'] ?? 0) as num).toInt(),
+        etapaEdad: (j['etapaEdad'] ?? '') as String,
+        duracionClase: (j['duracionClase'] ?? '') as String,
       );
 }
 
