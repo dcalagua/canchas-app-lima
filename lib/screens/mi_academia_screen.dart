@@ -1150,25 +1150,41 @@ class AlumnoDetalleScreen extends StatelessWidget {
     final mon = appState.miAcademia?.monedaSimbolo ?? monedaSimbolo;
     final plan = await showModalBottomSheet<Plan>(
       context: context,
+      isScrollControlled: true, // permite crecer y hacer scroll con muchos planes
       backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text('Elige el plan',
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
-            ),
-            for (final p in planes)
-              ListTile(
-                title: Text(p.nombre),
-                subtitle: Text(p.tipo == TipoPlan.porClase
-                    ? 'Por clase · $mon ${p.precioMes.toStringAsFixed(2)}'
-                    : '${p.meses} ${p.meses == 1 ? 'mes' : 'meses'} · Total $mon ${p.total.toStringAsFixed(2)}'),
-                onTap: () => Navigator.pop(context, p),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.75),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('Elige el plan',
+                    style:
+                        TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
               ),
-          ],
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final p in planes)
+                      ListTile(
+                        title: Text(p.nombre),
+                        subtitle: Text(p.tipo == TipoPlan.porClase
+                            ? 'Por clase · $mon ${p.precioMes.toStringAsFixed(2)}'
+                            : '${p.meses} ${p.meses == 1 ? 'mes' : 'meses'} · Total $mon ${p.total.toStringAsFixed(2)}'),
+                        onTap: () => Navigator.pop(context, p),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
