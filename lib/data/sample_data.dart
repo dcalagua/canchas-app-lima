@@ -1,5 +1,6 @@
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../models/academia.dart';
 import '../models/models.dart';
 
 /// Datos de demostración en memoria (sin backend todavía).
@@ -257,5 +258,40 @@ class SampleData {
       }
     }
     return bloques;
+  }
+
+  /// Academia PILOTO sembrada: "J. Arthur Baldeón" en el Country Club El Bosque.
+  /// Tarifario real por programa × frecuencia (precio SOCIO) + recargo invitado
+  /// fijo de S/50 (socio del club vs. invitado). La administra dcalagua@ebim.pe.
+  static Academia academiaJartur() {
+    const roja = 'Bola Roja y Naranja';
+    const verde = 'Bola Verde y Amarilla';
+    const adultos = 'Adultos';
+    Plan plan(String prog, int frec, double socio) => Plan(
+          id: '$prog | ${frec}x', // "clave (no editar)" del tarifario
+          nombre: '$prog · ${frec}x/sem',
+          tipo: TipoPlan.mensual,
+          precioMes: socio, // tarifa SOCIO; invitado = + recargoInvitado
+          meses: 1,
+          programa: prog,
+          frecuenciaSemana: frec,
+        );
+    return Academia(
+      id: 'seed_jartur_elbosque',
+      nombre: 'Academia de Tenis J. Arthur Baldeón',
+      deporte: Deporte.tenis,
+      dueno: 'dcalagua@ebim.pe',
+      descripcion: 'Actitud, disciplina, técnica y más · Country Club El Bosque',
+      sedeClub: 'Country Club El Bosque',
+      sedeUbicacion: centroPiloto, // referencial (Lima); el profe la ajusta
+      moneda: 'S/',
+      recargoInvitado: 50, // invitado (no socio del club) = socio + S/50
+      redes: const {'instagram': 'academiadetenisjarthurbaldeon'},
+      planes: [
+        plan(roja, 2, 250), plan(roja, 3, 300), plan(roja, 4, 400), plan(roja, 5, 450),
+        plan(verde, 2, 250), plan(verde, 3, 350), plan(verde, 4, 450), plan(verde, 5, 600),
+        plan(adultos, 2, 250), plan(adultos, 3, 350), plan(adultos, 4, 450), plan(adultos, 5, 600),
+      ],
+    );
   }
 }

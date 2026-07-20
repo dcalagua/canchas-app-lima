@@ -333,10 +333,19 @@ class AppState extends ChangeNotifier {
 
   /// Trae las academias de la nube y las fusiona con las locales (por id). Así,
   /// al reinstalar el APK, las academias del profe reaparecen. Best-effort.
+  /// Siembra la academia PILOTO (Jartur · El Bosque) si aún no está, con su
+  /// tarifario cargado. Devuelve true si la agregó. Retro-compatible: si el
+  /// profe la editó (mismo id), la versión guardada/remota gana luego.
+  bool sembrarAcademias() {
+    const seedId = 'seed_jartur_elbosque';
+    if (academias.any((a) => a.id == seedId)) return false;
+    academias.add(SampleData.academiaJartur());
+    return true;
+  }
+
   Future<void> cargarAcademiasRemotas() async {
+    var cambio = sembrarAcademias(); // asegura la academia piloto + su tarifario
     final remotas = await AcademiasRepo.fetchRemotas();
-    if (remotas.isEmpty) return;
-    var cambio = false;
     for (final a in remotas) {
       final i = academias.indexWhere((x) => x.id == a.id);
       if (i >= 0) {
@@ -679,6 +688,15 @@ class AppState extends ChangeNotifier {
     if (plan.tipo == TipoPlan.porClase) return;
     final base = inicio ?? DateTime.now();
     final meses = plan.meses < 1 ? 1 : plan.meses;
+    // Precio efectivo: socio = tarifa del plan; invitado = + recargoInvitado de
+    // la academia (sede/club). Si no ubica la academia, usa la tarifa del plan.
+    Academia? ac;
+    for (final a in academias) {
+      if (a.id == alumno.academiaId) { ac = a; break; }
+    }
+    final monto = ac != null
+        ? ac.precioDePlan(plan, socio: alumno.esSocioSede)
+        : plan.precioMes;
     for (var i = 0; i < meses; i++) {
       final venc = DateTime(base.year, base.month + i, base.day);
       cuotas.add(Cuota(
@@ -686,7 +704,7 @@ class AppState extends ChangeNotifier {
         academiaId: alumno.academiaId,
         alumnoId: alumno.id,
         concepto: '${plan.nombre} · ${_mesNombre(venc)}',
-        monto: plan.precioMes,
+        monto: monto,
         vencimiento: venc,
       ));
     }

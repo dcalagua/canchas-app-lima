@@ -23,6 +23,12 @@ class Plan {
   final TipoPlan tipo;
   final double precioMes; // S/ por mes (o por clase si tipo == porClase)
   final int meses; // duración: 1 (mensual) o N (prepago); 0 si porClase
+  /// Tarifario por PROGRAMA y FRECUENCIA (academias tipo Jartur El Bosque):
+  /// [programa] agrupa (ej. "Bola Roja y Naranja"); [frecuenciaSemana] es las
+  /// veces por semana (2–5). Vacío/0 = plan simple (sin matriz). [precioMes] es
+  /// la tarifa SOCIO; la de invitado se deriva con `Academia.recargoInvitado`.
+  final String programa;
+  final int frecuenciaSemana;
 
   const Plan({
     required this.id,
@@ -30,10 +36,16 @@ class Plan {
     required this.tipo,
     required this.precioMes,
     this.meses = 1,
+    this.programa = '',
+    this.frecuenciaSemana = 0,
   });
 
   /// Total del plan (para mostrar "paga todo").
   double get total => tipo == TipoPlan.porClase ? precioMes : precioMes * meses;
+
+  /// Etiqueta corta de frecuencia: 3 → "3x/sem" (vacío si no aplica).
+  String get frecuenciaLabel =>
+      frecuenciaSemana > 0 ? '${frecuenciaSemana}x/sem' : '';
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -41,6 +53,8 @@ class Plan {
         'tipo': tipo.name,
         'precioMes': precioMes,
         'meses': meses,
+        'programa': programa,
+        'frecuenciaSemana': frecuenciaSemana,
       };
 
   factory Plan.fromJson(Map<String, dynamic> j) => Plan(
@@ -50,6 +64,8 @@ class Plan {
             (t) => t.name == j['tipo'], orElse: () => TipoPlan.mensual),
         precioMes: ((j['precioMes'] ?? 0) as num).toDouble(),
         meses: ((j['meses'] ?? 1) as num).toInt(),
+        programa: (j['programa'] ?? '') as String,
+        frecuenciaSemana: ((j['frecuenciaSemana'] ?? 0) as num).toInt(),
       );
 }
 
@@ -72,6 +88,10 @@ class Academia {
   /// Los precios de los planes se muestran en esta moneda sin importar el país
   /// desde donde se abra la app.
   final String moneda;
+  /// Recargo FIJO (S/) que paga un INVITADO (no socio de la sede/club) sobre la
+  /// tarifa socio del plan. 0 = la academia no distingue socio/invitado (un solo
+  /// precio). Caso Jartur (Country Club El Bosque): 50.
+  final double recargoInvitado;
 
   const Academia({
     required this.id,
@@ -87,7 +107,28 @@ class Academia {
     this.redes = const {},
     this.fotos = const [],
     this.moneda = '',
+    this.recargoInvitado = 0,
   });
+
+  /// ¿La academia distingue tarifa socio vs invitado (según la sede/club)?
+  bool get tieneTarifaInvitado => recargoInvitado > 0;
+
+  /// Tarifa mensual efectiva de un plan según sea socio (de la sede) o invitado.
+  double precioDePlan(Plan p, {required bool socio}) =>
+      socio ? p.precioMes : p.precioMes + recargoInvitado;
+
+  /// Planes agrupados por programa (para el tarifario matriz), preservando el
+  /// orden de aparición. Los planes sin programa quedan bajo la clave ''.
+  Map<String, List<Plan>> get planesPorPrograma {
+    final m = <String, List<Plan>>{};
+    for (final p in planes) {
+      (m[p.programa] ??= []).add(p);
+    }
+    for (final lista in m.values) {
+      lista.sort((a, b) => a.frecuenciaSemana.compareTo(b.frecuenciaSemana));
+    }
+    return m;
+  }
 
   /// Símbolo de moneda de la academia. La UBICACIÓN de la sede es la fuente de
   /// verdad (una academia en Lima cobra en S/, aunque el profe abra la app desde
@@ -151,6 +192,7 @@ class Academia {
     Map<String, String>? redes,
     List<String>? fotos,
     String? moneda,
+    double? recargoInvitado,
   }) =>
       Academia(
         id: id,
@@ -166,6 +208,7 @@ class Academia {
         redes: redes ?? this.redes,
         fotos: fotos ?? this.fotos,
         moneda: moneda ?? this.moneda,
+        recargoInvitado: recargoInvitado ?? this.recargoInvitado,
       );
 
   Map<String, dynamic> toJson() => {
@@ -183,6 +226,7 @@ class Academia {
         'redes': redes,
         'fotos': fotos,
         'moneda': moneda,
+        'recargoInvitado': recargoInvitado,
       };
 
   factory Academia.fromJson(Map<String, dynamic> j) => Academia(
@@ -208,6 +252,7 @@ class Academia {
         fotos: (j['fotos'] as List?)?.map((e) => e.toString()).toList() ??
             const [],
         moneda: (j['moneda'] ?? '') as String,
+        recargoInvitado: ((j['recargoInvitado'] ?? 0) as num).toDouble(),
       );
 }
 
@@ -230,6 +275,10 @@ class Alumno {
   final String apoderadoNombre; // '' si el alumno es un adulto; nombre del padre si es menor
   final String apoderadoWhatsapp; // WhatsApp del apoderado (recordatorios de pago)
   final int? edad; // edad del alumno (opcional; útil para menores)
+  /// ¿Es SOCIO de la sede/club (ej. Country Club El Bosque)? Define la tarifa:
+  /// socio = precio del plan; invitado (false) = precio + recargoInvitado.
+  /// Por defecto true (los alumnos fundadores son socios). Lo marca el profe.
+  final bool esSocioSede;
 
   const Alumno({
     required this.id,
@@ -241,6 +290,7 @@ class Alumno {
     this.apoderadoNombre = '',
     this.apoderadoWhatsapp = '',
     this.edad,
+    this.esSocioSede = true,
   });
 
   /// ¿Es un alumno que usa la app (se unió con código)?
@@ -263,6 +313,7 @@ class Alumno {
         'apoderadoNombre': apoderadoNombre,
         'apoderadoWhatsapp': apoderadoWhatsapp,
         if (edad != null) 'edad': edad,
+        'esSocioSede': esSocioSede,
       };
 
   factory Alumno.fromJson(Map<String, dynamic> j) => Alumno(
@@ -275,6 +326,7 @@ class Alumno {
         apoderadoNombre: (j['apoderadoNombre'] ?? '') as String,
         apoderadoWhatsapp: (j['apoderadoWhatsapp'] ?? '') as String,
         edad: (j['edad'] as num?)?.toInt(),
+        esSocioSede: (j['esSocioSede'] ?? true) as bool,
       );
 }
 

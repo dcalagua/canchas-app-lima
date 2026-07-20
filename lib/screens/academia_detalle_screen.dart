@@ -431,6 +431,19 @@ class _TarjetaPlan extends StatelessWidget {
                   color: Theme.of(context).colorScheme.onSurface)),
           const SizedBox(height: 4),
           Text(_detalle, style: const TextStyle(color: textoTenue, fontSize: 13)),
+          if (academia.tieneTarifaInvitado &&
+              plan.tipo != TipoPlan.porClase) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Socio ${academia.monedaSimbolo} ${plan.precioMes.toStringAsFixed(0)}'
+              ' · Invitado ${academia.monedaSimbolo} '
+              '${academia.precioDePlan(plan, socio: false).toStringAsFixed(0)}',
+              style: TextStyle(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700),
+            ),
+          ],
           const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
