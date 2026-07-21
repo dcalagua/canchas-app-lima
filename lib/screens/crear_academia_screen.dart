@@ -5,10 +5,12 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../brand.dart';
 import '../data/canchas_repo.dart';
 import '../models/academia.dart';
 import '../models/club.dart';
 import '../models/models.dart';
+import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/responsive.dart';
@@ -198,6 +200,20 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
         _planes.removeWhere((p) => p.programa == programa);
         _planes.addAll(nuevos);
       });
+    }
+  }
+
+  /// Abre WhatsApp con Pichangol para contratar el servicio de landing/redes,
+  /// con un mensaje prellenado que incluye el nombre de la academia.
+  Future<void> _contactarServicio() async {
+    final nombre = _nombre.text.trim();
+    final msg = 'Hola Pichangol 👋 Soy'
+        '${nombre.isNotEmpty ? ' de la academia "$nombre"' : ' dueño de una academia'}'
+        ' y quiero contratar mi landing + manejo de redes sociales.';
+    final ok = await WhatsAppLink.abrir(kContactoWhatsApp, msg);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No se pudo abrir WhatsApp. Inténtalo de nuevo.')));
     }
   }
 
@@ -747,10 +763,22 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                   isDense: true,
                 ),
               ),
-              const SizedBox(height: 6),
-              const Text(
-                  '¿Aún no tienes? Escríbenos para activar tu landing + campañas.',
-                  style: TextStyle(color: textoTenue, fontSize: 11.5)),
+              const SizedBox(height: 10),
+              const Text('¿Aún no tienes? Nosotros te la creamos:',
+                  style: TextStyle(color: textoTenue, fontSize: 12)),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF25D366),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12)),
+                  icon: const FaIcon(FontAwesomeIcons.whatsapp, size: 18),
+                  label: const Text('Quiero mi landing (WhatsApp)'),
+                  onPressed: _contactarServicio,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 24),
