@@ -35,6 +35,9 @@ CONFIG_DEFAULT: dict[str, str] = {
     "servicio_landing_soles": "49",
     "servicio_redes_soles": "99",
     "servicio_presencia_soles": "129",
+    # "Gestión de redes" (Nivel 2): Pichangol publica DIRECTAMENTE en el IG/FB del
+    # dueño (con su permiso). Es un servicio superior; precio editable.
+    "servicio_gestion_soles": "199",
     # Tope de generaciones de posts con IA por academia/mes (control de costo).
     # Editable desde la torre de control. 0 = sin tope.
     "marketing_posts_limite_mes": "30",
@@ -321,6 +324,10 @@ class Stores:
         # USO de generación de posts con IA: academia_id -> {"YYYY-MM": conteo}.
         # Sirve para el tope mensual (control de costo Anthropic).
         self.marketing_uso: dict[str, dict] = {}
+        # CONEXIONES de redes (Gestión de redes / Nivel 2): academia_id -> dict con
+        # el permiso OAuth de Meta del dueño (IG/FB) para publicar por él. El token
+        # va CIFRADO en "token_enc" y NUNCA se expone en respuestas (se enmascara).
+        self.conexiones_redes: dict[str, dict] = {}
         # VISTAS de destacados (métrica de impacto del boost): por id (dueno_id
         # de canchas o id de academia) → {YYYY-MM-DD: nº impresiones ese día}.
         self.vistas: dict[str, dict[str, int]] = {}
@@ -495,6 +502,7 @@ class Stores:
             "suscripciones": {k: dict(v) for k, v in self.suscripciones.items()},
             "landings": {k: dict(v) for k, v in self.landings.items()},
             "marketing_uso": {k: dict(v) for k, v in self.marketing_uso.items()},
+            "conexiones_redes": {k: dict(v) for k, v in self.conexiones_redes.items()},
             "vistas": {k: dict(v) for k, v in self.vistas.items()},
             "customers": dict(self.customers),
             "metodos": {k: list(v) for k, v in self.metodos.items()},
@@ -532,6 +540,9 @@ class Stores:
         }
         self.marketing_uso = {
             k: dict(v) for k, v in (data.get("marketing_uso") or {}).items()
+        }
+        self.conexiones_redes = {
+            k: dict(v) for k, v in (data.get("conexiones_redes") or {}).items()
         }
         self.vistas = {
             k: {d: int(n) for d, n in (v or {}).items()}

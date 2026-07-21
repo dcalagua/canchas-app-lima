@@ -87,6 +87,37 @@ RECLAMO_RATE_WINDOW_S = int(os.getenv("RECLAMO_RATE_WINDOW_S", "600"))
 # de Anthropic ante clics repetidos). La landing NO cuenta (no usa IA). 0 = sin
 # tope. Editable por env.
 MARKETING_POSTS_LIMITE_MES = int(os.getenv("MARKETING_POSTS_LIMITE_MES", "30"))
+
+# --- Meta (Instagram / Facebook Graph API) — "Gestión de redes" (Nivel 2) ----
+# Servicio superior: Pichangol publica DIRECTAMENTE en el Instagram/Facebook del
+# dueño, previo permiso suyo (OAuth de Meta, revocable). Todo esto queda inactivo
+# (fail-safe) hasta que Meta apruebe los permisos (App Review) y se carguen estas
+# credenciales como secrets de Railway. Nunca van en el APK.
+META_APP_ID = os.getenv("META_APP_ID", "")
+META_APP_SECRET = os.getenv("META_APP_SECRET", "")
+META_GRAPH_VERSION = os.getenv("META_GRAPH_VERSION", "v21.0")
+META_GRAPH_BASE = os.getenv("META_GRAPH_BASE", "https://graph.facebook.com")
+# URL pública EXACTA del callback OAuth (debe coincidir con la registrada en la
+# app de Meta), ej. https://<backend>/marketing/redes/callback.
+META_REDIRECT_URI = os.getenv("META_REDIRECT_URI", "")
+# Modo del servicio: "sandbox" (sin App Review: SIMULA la conexión y la
+# publicación para probar el flujo completo en dev/QAS) | "produccion" (OAuth y
+# publicación reales contra Meta). Si falta META_APP_ID/SECRET, se fuerza sandbox
+# aunque diga producción (nunca intenta un OAuth sin credenciales).
+META_MODO = os.getenv("META_MODO", "sandbox")
+# Clave para CIFRAR en reposo los tokens de acceso de los dueños (Fernet, base64
+# urlsafe de 32 bytes). Si falta, los tokens se guardan ofuscados y NUNCA se
+# exponen en ninguna respuesta (siempre enmascarados). Generar con:
+#   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+META_TOKEN_KEY = os.getenv("META_TOKEN_KEY", "")
+
+
+def meta_modo() -> str:
+    """Modo EFECTIVO de la Gestión de redes. Sin credenciales → siempre sandbox
+    (jamás intenta un OAuth real a medias)."""
+    if META_MODO == "produccion" and META_APP_ID and META_APP_SECRET:
+        return "produccion"
+    return "sandbox"
 # Si true, la validación en sitio del motorizado activa la cancha automáticamente
 # (y se avisa al admin). Si false, queda lista y el admin la activa a mano.
 VALIDADOR_ACTIVA_AUTOMATICO = os.getenv("VALIDADOR_ACTIVA_AUTOMATICO", "1") == "1"

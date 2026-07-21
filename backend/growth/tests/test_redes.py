@@ -1,0 +1,110 @@
+"""Gestión de redes (Nivel 2): conexión OAuth + publicación.
+
+En modo sandbox (sin App Review de Meta) el flujo completo debe funcionar:
+conectar → estado → publicar → desconectar, sin tocar ninguna red real y sin
+exponer nunca el token del dueño.
+"""
+
+import os
+import sys
+
+import pytest
+from fastapi.testclient import TestClient
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+import config  # noqa: E402
+from db.store import stores  # noqa: E402
+from marketing import redes  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _limpio(monkeypatch):
+    stores.reset()
+    # Sin credenciales de Meta → modo sandbox forzado (nunca OAuth a medias).
+    monkeypatch.setattr(config, "META_MODO", "sandbox")
+    monkeypatch.setattr(config, "META_APP_ID", "")
+    monkeypatch.setattr(config, "META_APP_SECRET", "")
+    monkeypatch.setattr(config, "APP_API_KEY", "")  # público en tests
+    yield
+
+
+@pytest.fixture
+def client():
+    import main
+    return TestClient(main.app)
+
+
+def test_modo_sandbox_sin_credenciales():
+    assert config.meta_modo() == "sandbox"
+    assert redes.modo() == "sandbox"
+
+
+def test_produccion_requiere_credenciales(monkeypatch):
+    # Aunque se pida producción, sin app_id/secret se cae a sandbox.
+    monkeypatch.setattr(config, "META_MODO", "produccion")
+    assert redes.modo() == "sandbox"
+
+
+def test_cifrado_ida_vuelta():
+    enc = redes.cifrar("token-secreto")
+    assert "token-secreto" not in enc          # no queda en claro
+    assert redes.descifrar(enc) == "token-secreto"
+
+
+def test_conectar_estado_publicar_desconectar(client):
+    aid = "acad-1"
+    # 1) Estado inicial: desconectado.
+    r = client.get(f"/marketing/redes/estado/{aid}")
+    assert r.status_code == 200
+    assert r.json()["conectado"] is False
+
+    # 2) Conectar (sandbox simula la conexión).
+    r = client.post("/marketing/redes/conectar",
+                    json={"academia_id": aid, "dueno_id": "due@x.com"})
+    assert r.status_code == 200
+    j = r.json()
+    assert j["ok"] is True and j["modo"] == "sandbox"
+    assert j["conexion"]["conectado"] is True
+
+    # 3) Estado ahora conectado; NUNCA expone el token.
+    r = client.get(f"/marketing/redes/estado/{aid}")
+    body = r.json()
+    assert body["conectado"] is True
+    assert "token" not in body and "token_enc" not in body
+
+    # 4) Publicar (simulado): FB ok; IG requiere imagen.
+    r = client.post("/marketing/redes/publicar",
+                    json={"academia_id": aid, "texto": "¡Inscripciones abiertas!"})
+    assert r.status_code == 200
+    pub = r.json()
+    assert pub["ok"] is True
+    assert pub["resultados"]["facebook"]["ok"] is True
+    assert pub["resultados"]["instagram"]["ok"] is False  # sin imagen
+
+    # con imagen, IG también publica.
+    r = client.post("/marketing/redes/publicar",
+                    json={"academia_id": aid, "texto": "Con foto",
+                          "imagen_url": "https://x/y.jpg"})
+    assert r.json()["resultados"]["instagram"]["ok"] is True
+
+    # contador de publicaciones sube.
+    assert stores.conexiones_redes[aid]["publicaciones"] == 2
+
+    # 5) Desconectar.
+    r = client.post("/marketing/redes/desconectar", json={"academia_id": aid})
+    assert r.json()["ok"] is True
+    assert client.get(f"/marketing/redes/estado/{aid}").json()["conectado"] is False
+
+
+def test_publicar_sin_conexion_falla(client):
+    r = client.post("/marketing/redes/publicar",
+                    json={"academia_id": "x", "texto": "hola"})
+    assert r.json()["ok"] is False
+    assert r.json()["error"] == "no_conectado"
+
+
+def test_plan_gestion_en_catalogo(client):
+    r = client.get("/pagos/servicios/planes")
+    claves = {p["clave"] for p in r.json()["planes"]}
+    assert "gestion" in claves

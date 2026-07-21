@@ -251,6 +251,9 @@ _SERVICIOS = {
               "Publicamos por ti en redes (community manager con IA)."),
     "presencia": ("Presencia digital", "servicio_presencia_soles",
                   "Landing + manejo de redes, todo incluido."),
+    "gestion": ("Gestión de redes", "servicio_gestion_soles",
+                "Publicamos directamente en tu Instagram/Facebook. Tú nos das "
+                "permiso (revocable); es como tener tu propio equipo de marketing."),
 }
 
 

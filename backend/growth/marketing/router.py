@@ -18,6 +18,7 @@ from pydantic import BaseModel
 import config
 from db.store import stores
 
+from . import redes as redes_svc
 from .landing import render_landing
 from .posts import generar_posts
 
@@ -44,6 +45,21 @@ class PostsReq(BaseModel):
     datos: dict = {}
     contexto: str = ""
     cantidad: int = 3
+
+
+class RedesConectarReq(BaseModel):
+    academia_id: str
+    dueno_id: str = ""
+
+
+class RedesAccionReq(BaseModel):
+    academia_id: str
+
+
+class RedesPublicarReq(BaseModel):
+    academia_id: str
+    texto: str
+    imagen_url: str | None = None
 
 
 @router.post("/marketing/landing", dependencies=_APP)
@@ -78,6 +94,58 @@ def generar_posts_endpoint(req: PostsReq) -> dict:
         u[periodo] = usados + 1
     return {"ok": True, "posts": posts, "usados": usados + 1, "limite_mes": lim,
             "via": "ia" if config.ANTHROPIC_API_KEY else "plantilla"}
+
+
+# ------ Gestión de redes (Nivel 2): conexión OAuth + publicación ------------
+@router.get("/marketing/redes/estado/{academia_id}", dependencies=_APP)
+def redes_estado(academia_id: str) -> dict:
+    """Estado de la conexión de redes del dueño (enmascarado, sin token)."""
+    return {"ok": True, "modo": redes_svc.modo(), **redes_svc.estado(academia_id)}
+
+
+@router.post("/marketing/redes/conectar", dependencies=_APP)
+def redes_conectar(req: RedesConectarReq) -> dict:
+    """Inicia la conexión. produccion → devuelve login_url (el APK la abre en el
+    navegador); sandbox → conecta simulado para probar el flujo."""
+    return redes_svc.conectar(req.academia_id, req.dueno_id)
+
+
+@router.get("/marketing/redes/callback", response_class=HTMLResponse)
+def redes_callback(code: str = "", state: str = "",
+                   error: str = "", error_description: str = "") -> str:
+    """PÚBLICO: Meta redirige aquí tras el permiso del dueño. Intercambia el
+    código, guarda la conexión y muestra una página de 'vuelve a la app'."""
+    if error:
+        msg = error_description or error
+        ok = False
+    else:
+        r = redes_svc.procesar_callback(code, state)
+        ok = r.get("ok", False)
+        msg = "¡Listo! Ya puedes volver a Pichangol." if ok else \
+            (r.get("error") or "No se pudo conectar.")
+    color = "#14463A" if ok else "#B23B3B"
+    icono = "✅" if ok else "⚠️"
+    return HTMLResponse(
+        "<!doctype html><meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        f"<div style='font-family:system-ui;text-align:center;padding:56px 22px;color:{color}'>"
+        f"<div style='font-size:46px'>{icono}</div>"
+        f"<h2 style='margin:10px 0'>Conexión de redes</h2>"
+        f"<p style='color:#555;font-size:15px'>{msg}</p>"
+        "<p style='color:#999;font-size:13px;margin-top:24px'>Puedes cerrar esta ventana.</p>"
+        "</div>")
+
+
+@router.post("/marketing/redes/desconectar", dependencies=_APP)
+def redes_desconectar(req: RedesAccionReq) -> dict:
+    """Revoca la conexión (deja de publicar por el dueño)."""
+    return redes_svc.desconectar(req.academia_id)
+
+
+@router.post("/marketing/redes/publicar", dependencies=_APP)
+def redes_publicar(req: RedesPublicarReq) -> dict:
+    """Publica un post aprobado en las redes conectadas del dueño (IG/FB)."""
+    return redes_svc.publicar(req.academia_id, req.texto, req.imagen_url)
 
 
 @router.get("/l/{academia_id}", response_class=HTMLResponse)

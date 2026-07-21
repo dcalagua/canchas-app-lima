@@ -33,6 +33,11 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
   List<Map<String, dynamic>>? _posts;
   bool _generandoPosts = false;
 
+  // Gestión de redes (Nivel 2): estado de la conexión OAuth del dueño.
+  Map<String, dynamic>? _redesConn;
+  bool _conectandoRedes = false;
+  int? _publicando; // índice del post que se está publicando
+
   @override
   void dispose() {
     _tema.dispose();
@@ -50,10 +55,19 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
       (s['servicio'] == 'landing' || s['servicio'] == 'presencia') &&
       (s['estado'] == 'activa' || s['estado'] == 'pendiente_pago'));
 
-  // ¿Tiene manejo de redes activo (redes o presencia)?
+  // ¿Tiene algún servicio con community manager IA (redes, presencia o gestión)?
   bool get _redesContratada => _subs.any((s) =>
-      (s['servicio'] == 'redes' || s['servicio'] == 'presencia') &&
+      (s['servicio'] == 'redes' ||
+          s['servicio'] == 'presencia' ||
+          s['servicio'] == 'gestion') &&
       (s['estado'] == 'activa' || s['estado'] == 'pendiente_pago'));
+
+  // ¿Tiene "Gestión de redes" (Nivel 2: publicamos por él)?
+  bool get _gestionContratada => _subs.any((s) =>
+      s['servicio'] == 'gestion' &&
+      (s['estado'] == 'activa' || s['estado'] == 'pendiente_pago'));
+
+  bool get _redesConectada => _redesConn?['conectado'] == true;
 
   // ¿La academia ya tiene alguna red social publicada?
   bool get _tieneRedes =>
@@ -82,10 +96,12 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
     await appState.sincronizarSaldoAcademia(_idAcademia);
     final planes = await PagosService.planesServicios();
     final subs = await PagosService.estadoServicios(_idAcademia);
+    final conn = await PagosService.estadoRedes(_idAcademia);
     if (!mounted) return;
     setState(() {
       _planes = planes;
       _subs = subs ?? const [];
+      _redesConn = conn;
       _cargando = false;
     });
   }
@@ -220,6 +236,98 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
     setState(() => _posts = posts);
   }
 
+  // --- Gestión de redes (conexión OAuth + publicación) --------------------
+  Future<void> _conectarRedes() async {
+    setState(() => _conectandoRedes = true);
+    final r = await PagosService.conectarRedes(
+        academiaId: _idAcademia, duenoId: _idAcademia);
+    if (!mounted) return;
+    setState(() => _conectandoRedes = false);
+    if (r == null || r['ok'] != true) {
+      _msg('No se pudo iniciar la conexión. Reintenta.');
+      return;
+    }
+    final loginUrl = r['login_url'] as String?;
+    if (loginUrl != null && loginUrl.isNotEmpty) {
+      // Producción: el dueño autoriza en el navegador (permiso de Meta).
+      await _abrir(loginUrl);
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Autoriza tus redes'),
+          content: const Text(
+              'Se abrió una página para que autorices a Pichangol a publicar en '
+              'tu Instagram/Facebook. Cuando termines, vuelve aquí y toca '
+              '"Ya autoricé".'),
+          actions: [
+            FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: lima),
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Ya autoricé')),
+          ],
+        ),
+      );
+      await _cargar();
+    } else {
+      // Sandbox: quedó conectado al instante.
+      setState(() => _redesConn = Map<String, dynamic>.from(
+          (r['conexion'] as Map?) ?? const {}));
+      _msg('✅ Redes conectadas.');
+    }
+  }
+
+  Future<void> _desconectarRedes() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Desconectar redes'),
+        content: const Text(
+            'Dejaremos de publicar por ti. Puedes volver a conectar cuando '
+            'quieras. También puedes revocar el permiso desde tu Facebook.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('No')),
+          FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: clayOscuro),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Desconectar')),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await PagosService.desconectarRedes(_idAcademia);
+      await _cargar();
+    }
+  }
+
+  Future<void> _publicar(int idx, Map<String, dynamic> p) async {
+    final texto = (p['texto'] ?? '').toString();
+    final hashtags =
+        ((p['hashtags'] as List?) ?? const []).map((e) => e.toString()).toList();
+    final completo =
+        hashtags.isEmpty ? texto : '$texto\n\n${hashtags.join(' ')}';
+    setState(() => _publicando = idx);
+    final r = await PagosService.publicarPost(
+        academiaId: _idAcademia, texto: completo);
+    if (!mounted) return;
+    setState(() => _publicando = null);
+    if (r == null) {
+      _msg('No se pudo publicar. Revisa tu conexión.');
+      return;
+    }
+    if (r['ok'] == true) {
+      final sim = r['simulado'] == true;
+      _msg(sim
+          ? '✅ Publicado (modo prueba). En vivo se publicará en tus redes.'
+          : '✅ Publicado en tus redes.');
+      await _cargar(); // refresca el contador de publicaciones
+    } else {
+      _msg('No se pudo publicar: ${r['error'] ?? 'error'}');
+    }
+  }
+
   String _fecha(String? iso) {
     if (iso == null) return '';
     final d = DateTime.tryParse(iso);
@@ -277,6 +385,7 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
                   ),
                   const SizedBox(height: 8),
                   if (_landingContratada) _cardLanding(),
+                  if (_gestionContratada) _cardGestion(),
                   if (_redesContratada) _cardRedes(),
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 8, horizontal: 2),
@@ -296,6 +405,115 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
                 ],
               ),
             ),
+    );
+  }
+
+  /// Tarjeta "Gestión de redes" (Nivel 2): conectar/desconectar el IG/FB del
+  /// dueño para que Pichangol publique por él (permiso de Meta, revocable).
+  Widget _cardGestion() {
+    final conectada = _redesConectada;
+    final modo = (_redesConn?['modo'] ?? '').toString();
+    final ig = (_redesConn?['ig_username'] ?? '').toString();
+    final page = (_redesConn?['page_nombre'] ?? '').toString();
+    final pubs = (_redesConn?['publicaciones'] as num?)?.toInt() ?? 0;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: bosque,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.hub, color: lima),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text('Gestión de redes',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                        color: Colors.white)),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: conectada ? lima : Colors.white24,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(conectada ? '● Conectada' : 'Sin conectar',
+                    style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                        color: conectada ? bosque : Colors.white)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+              conectada
+                  ? 'Publicamos por ti en tus redes. ${ig.isNotEmpty ? '@$ig' : ''}'
+                      '${page.isNotEmpty ? (ig.isNotEmpty ? ' · ' : '') + page : ''}'
+                  : 'Conecta tu Instagram/Facebook y nosotros publicamos por ti. '
+                      'Tú das el permiso a Meta y lo puedes revocar cuando quieras.',
+              style: const TextStyle(color: Colors.white70, fontSize: 13)),
+          if (conectada && pubs > 0) ...[
+            const SizedBox(height: 6),
+            Text('$pubs publicación${pubs == 1 ? '' : 'es'} realizada'
+                '${pubs == 1 ? '' : 's'}.',
+                style: const TextStyle(color: Colors.white54, fontSize: 12)),
+          ],
+          if (modo == 'sandbox') ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Text(
+                  '🧪 Modo prueba: el flujo funciona pero aún no se publica en '
+                  'redes reales (falta la aprobación de Meta). Se activará solo '
+                  'cuando esté lista, sin que hagas nada.',
+                  style: TextStyle(color: Colors.white70, fontSize: 11.5)),
+            ),
+          ],
+          const SizedBox(height: 12),
+          if (!conectada)
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                    backgroundColor: lima,
+                    foregroundColor: bosque,
+                    padding: const EdgeInsets.symmetric(vertical: 13)),
+                icon: _conectandoRedes
+                    ? const SizedBox(
+                        height: 18,
+                        width: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2.2, color: bosque))
+                    : const Icon(Icons.link, size: 18),
+                label: const Text('Conectar Instagram / Facebook',
+                    style: TextStyle(fontWeight: FontWeight.w800)),
+                onPressed: _conectandoRedes ? null : _conectarRedes,
+              ),
+            )
+          else
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                icon: const Icon(Icons.link_off, size: 18, color: Colors.white70),
+                label: const Text('Desconectar',
+                    style: TextStyle(color: Colors.white70)),
+                onPressed: _desconectarRedes,
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -477,19 +695,22 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
           ),
           if (_posts != null) ...[
             const SizedBox(height: 12),
-            for (final p in _posts!) _postItem(p),
+            for (final e in _posts!.asMap().entries) _postItem(e.key, e.value),
           ],
         ],
       ),
     );
   }
 
-  Widget _postItem(Map<String, dynamic> p) {
+  Widget _postItem(int idx, Map<String, dynamic> p) {
     final texto = (p['texto'] ?? '').toString();
     final hashtags =
         ((p['hashtags'] as List?) ?? const []).map((e) => e.toString()).toList();
     final hora = (p['hora_sugerida'] ?? '').toString();
     final completo = hashtags.isEmpty ? texto : '$texto\n\n${hashtags.join(' ')}';
+    // Publicar directo sólo si contrató Gestión de redes y está conectado.
+    final puedePublicar = _gestionContratada && _redesConectada;
+    final publicandoEste = _publicando == idx;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
@@ -527,6 +748,20 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
                 label: const Text('Compartir'),
                 onPressed: () => WhatsAppLink.compartir(completo),
               ),
+              if (puedePublicar)
+                TextButton.icon(
+                  icon: publicandoEste
+                      ? const SizedBox(
+                          height: 14,
+                          width: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.send, size: 16, color: lima),
+                  label: const Text('Publicar',
+                      style: TextStyle(
+                          color: lima, fontWeight: FontWeight.w800)),
+                  onPressed:
+                      _publicando != null ? null : () => _publicar(idx, p),
+                ),
             ],
           ),
         ],

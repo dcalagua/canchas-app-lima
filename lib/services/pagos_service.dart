@@ -526,6 +526,89 @@ class PagosService {
     }
   }
 
+  // --- Gestión de redes (Nivel 2): conexión OAuth + publicación -----------
+  /// Estado de la conexión de redes de una academia (enmascarado, sin token).
+  /// {conectado, estado, ig_username, page_nombre, publicaciones, modo} o null.
+  static Future<Map<String, dynamic>?> estadoRedes(String academiaId) async {
+    if (!disponible) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/marketing/redes/estado/$academiaId');
+      final r = await http.get(uri, headers: _appHeaders())
+          .timeout(const Duration(seconds: 12));
+      if (r.statusCode != 200) return null;
+      return Map<String, dynamic>.from(jsonDecode(r.body) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Inicia la conexión de redes. En producción devuelve {login_url} (el APK la
+  /// abre en el navegador para que el dueño dé permiso a Meta); en sandbox
+  /// devuelve {conexion} ya conectada (para probar el flujo). Null si no se pudo.
+  static Future<Map<String, dynamic>?> conectarRedes({
+    required String academiaId,
+    String duenoId = '',
+  }) async {
+    if (!disponible) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/marketing/redes/conectar');
+      final r = await http
+          .post(uri,
+              headers: _appHeaders(json: true),
+              body: jsonEncode(
+                  {'academia_id': academiaId, 'dueno_id': duenoId}))
+          .timeout(const Duration(seconds: 15));
+      if (r.statusCode != 200) return null;
+      return Map<String, dynamic>.from(jsonDecode(r.body) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Revoca la conexión de redes (deja de publicar por el dueño).
+  static Future<bool> desconectarRedes(String academiaId) async {
+    if (!disponible) return false;
+    try {
+      final uri = Uri.parse('$_baseUrl/marketing/redes/desconectar');
+      final r = await http
+          .post(uri,
+              headers: _appHeaders(json: true),
+              body: jsonEncode({'academia_id': academiaId}))
+          .timeout(const Duration(seconds: 12));
+      if (r.statusCode != 200) return false;
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      return j['ok'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Publica un post aprobado en las redes conectadas del dueño (IG/FB).
+  /// Devuelve el JSON del backend {ok, resultados:{facebook, instagram}} o null.
+  static Future<Map<String, dynamic>?> publicarPost({
+    required String academiaId,
+    required String texto,
+    String? imagenUrl,
+  }) async {
+    if (!disponible) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/marketing/redes/publicar');
+      final r = await http
+          .post(uri,
+              headers: _appHeaders(json: true),
+              body: jsonEncode({
+                'academia_id': academiaId,
+                'texto': texto,
+                if (imagenUrl != null) 'imagen_url': imagenUrl,
+              }))
+          .timeout(const Duration(seconds: 30));
+      if (r.statusCode != 200) return null;
+      return Map<String, dynamic>.from(jsonDecode(r.body) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Conjunto de dueños DESTACADOS (saldo prepago > 0) con su nivel (1-3).
   /// El APK resalta las canchas de estos dueños en Explorar (más saldo = más
   /// visibilidad). Devuelve {duenoId(lowercase): nivel} o null si no se pudo.
