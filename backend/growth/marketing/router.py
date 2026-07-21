@@ -128,6 +128,7 @@ def redes_diag() -> dict:
         "app_id": config.META_APP_ID,
         "tiene_app_secret": bool(config.META_APP_SECRET),
         "graph_version": config.META_GRAPH_VERSION,
+        "credenciales_validas": redes_svc.verificar_credenciales(),
         "login_url_ejemplo": redes_svc.login_url("DIAG"),
     }
 

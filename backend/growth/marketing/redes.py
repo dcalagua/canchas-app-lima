@@ -139,6 +139,20 @@ def estado(academia_id: str) -> dict:
     return _publico(stores.conexiones_redes.get(academia_id))
 
 
+def verificar_credenciales() -> dict:
+    """Valida app_id + app_secret pidiendo un app access token
+    (grant_type=client_credentials). NO devuelve el token, solo si las
+    credenciales son correctas. Sirve para diagnosticar el 'client secret'."""
+    if not config.META_APP_ID or not config.META_APP_SECRET:
+        return {"ok": False, "error": "faltan_credenciales"}
+    r = _graph("oauth/access_token", {
+        "client_id": config.META_APP_ID,
+        "client_secret": config.META_APP_SECRET,
+        "grant_type": "client_credentials",
+    })
+    return {"ok": True} if r["ok"] else {"ok": False, "error": r.get("error")}
+
+
 def login_url(academia_id: str) -> str:
     """URL del diálogo OAuth de Meta que el dueño abre para dar permiso.
 
