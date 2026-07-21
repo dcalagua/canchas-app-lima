@@ -340,6 +340,8 @@ class Stores:
         # el permiso OAuth de Meta del dueño (IG/FB) para publicar por él. El token
         # va CIFRADO en "token_enc" y NUNCA se expone en respuestas (se enmascara).
         self.conexiones_redes: dict[str, dict] = {}
+        # Solicitudes de eliminación de datos (callback de Meta): auditoría ligera.
+        self.eliminaciones: list[dict] = []
         # IMÁGENES para publicar (hosting transitorio): id -> {bytes, content_type}.
         # NO se persiste (Meta las descarga al instante al publicar); se descartan
         # las más viejas al pasar el tope (config.IMG_MAX_RETENIDAS).

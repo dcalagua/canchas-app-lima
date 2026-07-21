@@ -203,6 +203,9 @@ def procesar_callback(code: str, state: str) -> dict:
     })
     if rl["ok"] and (rl["data"] or {}).get("access_token"):
         token = rl["data"]["access_token"]
+    # 2b) Id del usuario de Meta (para poder borrar sus datos si Meta lo pide).
+    rme = _graph("me", {"access_token": token, "fields": "id"})
+    meta_user_id = (rme["data"] or {}).get("id") if rme["ok"] else None
     # 3) Página del dueño + su token de página
     rp = _graph("me/accounts", {"access_token": token, "fields":
                                 "id,name,access_token,instagram_business_account"})
@@ -222,7 +225,7 @@ def procesar_callback(code: str, state: str) -> dict:
     conx = _guardar(
         academia_id, estado="conectado", modo="produccion",
         page_id=pg.get("id"), page_nombre=pg.get("name"),
-        ig_user_id=ig, ig_username=ig_username,
+        ig_user_id=ig, ig_username=ig_username, meta_user_id=meta_user_id,
         token_enc=cifrar(page_token),
         conectado_en=datetime.now(timezone.utc).isoformat())
     return {"ok": True, "conexion": _publico(conx)}
@@ -233,6 +236,18 @@ def desconectar(academia_id: str) -> dict:
     permiso desde su propio Facebook."""
     stores.conexiones_redes.pop(academia_id, None)
     return {"ok": True, "conexion": _publico(None)}
+
+
+def borrar_por_meta_user(meta_user_id: str) -> int:
+    """Borra TODAS las conexiones asociadas a un usuario de Meta (para el callback
+    de eliminación de datos que Meta exige). Devuelve cuántas borró."""
+    if not meta_user_id:
+        return 0
+    ids = [aid for aid, c in stores.conexiones_redes.items()
+           if c.get("meta_user_id") == meta_user_id]
+    for aid in ids:
+        stores.conexiones_redes.pop(aid, None)
+    return len(ids)
 
 
 # --- publicar ----------------------------------------------------------------

@@ -14,6 +14,7 @@ from concierge.router import router as concierge_router
 from convocatorias.router import router as convocatorias_router
 from db import pg
 from db.store import seed_verificadores, stores
+from legal.router import router as legal_router
 from models import ConfigRequest, ConsentimientoRequest
 from marketing.router import router as marketing_router
 from pagos.router import router as pagos_router
@@ -70,6 +71,7 @@ app.include_router(panel_router)
 app.include_router(convocatorias_router)
 app.include_router(pagos_router)
 app.include_router(marketing_router)
+app.include_router(legal_router)
 app.include_router(concierge_router)
 
 
