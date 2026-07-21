@@ -80,6 +80,10 @@ APP_API_KEY = os.getenv("APP_API_KEY", "")
 # vuelve a quedar expuesta.
 RECLAMO_RATE_LIMIT = int(os.getenv("RECLAMO_RATE_LIMIT", "10"))
 RECLAMO_RATE_WINDOW_S = int(os.getenv("RECLAMO_RATE_WINDOW_S", "600"))
+# Tope de GENERACIONES de posts con IA por academia y por mes (protege el costo
+# de Anthropic ante clics repetidos). La landing NO cuenta (no usa IA). 0 = sin
+# tope. Editable por env.
+MARKETING_POSTS_LIMITE_MES = int(os.getenv("MARKETING_POSTS_LIMITE_MES", "30"))
 # Si true, la validación en sitio del motorizado activa la cancha automáticamente
 # (y se avisa al admin). Si false, queda lista y el admin la activa a mano.
 VALIDADOR_ACTIVA_AUTOMATICO = os.getenv("VALIDADOR_ACTIVA_AUTOMATICO", "1") == "1"

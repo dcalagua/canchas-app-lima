@@ -315,6 +315,9 @@ class Stores:
         # LANDINGS generadas (fulfillment del servicio). academia_id -> datos que
         # el backend renderiza como página pública en GET /l/{academia_id}.
         self.landings: dict[str, dict] = {}
+        # USO de generación de posts con IA: academia_id -> {"YYYY-MM": conteo}.
+        # Sirve para el tope mensual (control de costo Anthropic).
+        self.marketing_uso: dict[str, dict] = {}
         # VISTAS de destacados (métrica de impacto del boost): por id (dueno_id
         # de canchas o id de academia) → {YYYY-MM-DD: nº impresiones ese día}.
         self.vistas: dict[str, dict[str, int]] = {}
@@ -488,6 +491,7 @@ class Stores:
             "pagos": [como_dict(p) for p in self.pagos],
             "suscripciones": {k: dict(v) for k, v in self.suscripciones.items()},
             "landings": {k: dict(v) for k, v in self.landings.items()},
+            "marketing_uso": {k: dict(v) for k, v in self.marketing_uso.items()},
             "vistas": {k: dict(v) for k, v in self.vistas.items()},
             "customers": dict(self.customers),
             "metodos": {k: list(v) for k, v in self.metodos.items()},
@@ -522,6 +526,9 @@ class Stores:
         }
         self.landings = {
             k: dict(v) for k, v in (data.get("landings") or {}).items()
+        }
+        self.marketing_uso = {
+            k: dict(v) for k, v in (data.get("marketing_uso") or {}).items()
         }
         self.vistas = {
             k: {d: int(n) for d, n in (v or {}).items()}

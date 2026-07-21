@@ -498,7 +498,10 @@ class PagosService {
   }
 
   /// Community manager con IA: pide N posts (texto + hashtags + hora) para redes.
-  static Future<List<Map<String, dynamic>>?> generarPosts({
+  /// Devuelve el JSON del backend {ok, posts, usados, limite_mes, limite} o null
+  /// si no se pudo (para que la app muestre el tope mensual alcanzado).
+  static Future<Map<String, dynamic>?> generarPosts({
+    required String academiaId,
     required Map<String, dynamic> datos,
     String contexto = '',
     int cantidad = 3,
@@ -509,14 +512,15 @@ class PagosService {
       final r = await http
           .post(uri,
               headers: _appHeaders(json: true),
-              body: jsonEncode(
-                  {'datos': datos, 'contexto': contexto, 'cantidad': cantidad}))
+              body: jsonEncode({
+                'academia_id': academiaId,
+                'datos': datos,
+                'contexto': contexto,
+                'cantidad': cantidad
+              }))
           .timeout(const Duration(seconds: 30));
       if (r.statusCode != 200) return null;
-      final j = jsonDecode(r.body) as Map<String, dynamic>;
-      return ((j['posts'] as List?) ?? const [])
-          .map((e) => Map<String, dynamic>.from(e as Map))
-          .toList();
+      return Map<String, dynamic>.from(jsonDecode(r.body) as Map);
     } catch (_) {
       return null;
     }

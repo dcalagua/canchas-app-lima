@@ -9,6 +9,8 @@ El POST exige X-App-Key (igual que pagos/propiedad); el GET es público.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -38,6 +40,7 @@ class LandingReq(BaseModel):
 
 
 class PostsReq(BaseModel):
+    academia_id: str = ""
     datos: dict = {}
     contexto: str = ""
     cantidad: int = 3
@@ -56,9 +59,23 @@ def generar_landing(req: LandingReq) -> dict:
 @router.post("/marketing/posts", dependencies=_APP)
 def generar_posts_endpoint(req: PostsReq) -> dict:
     """Community manager con IA: devuelve posts (texto + hashtags + hora) para
-    aprobar y compartir. Usa Anthropic si hay key; si no, plantillas."""
+    aprobar y compartir. Usa Anthropic si hay key; si no, plantillas.
+
+    Aplica un TOPE mensual de generaciones por academia (config
+    MARKETING_POSTS_LIMITE_MES) para proteger el costo de Anthropic ante clics
+    repetidos."""
+    periodo = datetime.now(timezone.utc).strftime("%Y-%m")
+    lim = config.MARKETING_POSTS_LIMITE_MES
+    aid = req.academia_id
+    usados = int((stores.marketing_uso.get(aid, {}) or {}).get(periodo, 0)) if aid else 0
+    if aid and lim > 0 and usados >= lim:
+        return {"ok": False, "limite": True, "usados": usados,
+                "limite_mes": lim, "posts": []}
     posts = generar_posts(req.datos or {}, req.contexto, req.cantidad)
-    return {"ok": True, "posts": posts,
+    if aid:
+        u = stores.marketing_uso.setdefault(aid, {})
+        u[periodo] = usados + 1
+    return {"ok": True, "posts": posts, "usados": usados + 1, "limite_mes": lim,
             "via": "ia" if config.ANTHROPIC_API_KEY else "plantilla"}
 
 

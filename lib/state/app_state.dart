@@ -200,10 +200,11 @@ class AppState extends ChangeNotifier {
   }
 
   /// Community manager con IA: genera posts para las redes de la academia
-  /// (texto + hashtags + hora sugerida), a partir de sus datos y un tema opcional.
-  Future<List<Map<String, dynamic>>?> generarPosts(
-      Academia ac, String tema) async {
-    return PagosService.generarPosts(datos: _landingDatos(ac), contexto: tema);
+  /// (texto + hashtags + hora sugerida). Devuelve el JSON del backend (incluye
+  /// 'posts' y el control de tope mensual 'limite'/'usados').
+  Future<Map<String, dynamic>?> generarPosts(Academia ac, String tema) async {
+    return PagosService.generarPosts(
+        academiaId: ac.id, datos: _landingDatos(ac), contexto: tema);
   }
 
   void eliminarAcademia(String id) {

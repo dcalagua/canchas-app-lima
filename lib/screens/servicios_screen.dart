@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../brand.dart';
 import '../models/academia.dart';
+import '../services/growth_service.dart';
 import '../services/pagos_service.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
@@ -52,6 +54,22 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
   bool get _redesContratada => _subs.any((s) =>
       (s['servicio'] == 'redes' || s['servicio'] == 'presencia') &&
       (s['estado'] == 'activa' || s['estado'] == 'pendiente_pago'));
+
+  // ¿La academia ya tiene alguna red social publicada?
+  bool get _tieneRedes =>
+      (_ac.redes['instagram']?.trim().isNotEmpty ?? false) ||
+      (_ac.redes['facebook']?.trim().isNotEmpty ?? false) ||
+      (_ac.redes['tiktok']?.trim().isNotEmpty ?? false);
+
+  /// Abre WhatsApp con Pichangol (número del país) para pedir que le CREEN las
+  /// redes al dueño que no tiene cuentas.
+  Future<void> _pedirCrearRedes() async {
+    final numero =
+        await GrowthService.contactoWhatsApp(_ac.pais.iso) ?? kContactoWhatsApp;
+    await WhatsAppLink.abrir(numero,
+        'Hola Pichangol, no tengo redes y quiero que me ayuden a crear y manejar '
+        'las de mi academia "${_ac.nombre}".');
+  }
 
   @override
   void initState() {
@@ -183,13 +201,23 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
 
   Future<void> _generarPosts() async {
     setState(() => _generandoPosts = true);
-    final posts = await appState.generarPosts(_ac, _tema.text.trim());
+    final r = await appState.generarPosts(_ac, _tema.text.trim());
     if (!mounted) return;
-    setState(() {
-      _generandoPosts = false;
-      if (posts != null) _posts = posts;
-    });
-    if (posts == null) _msg('No se pudo generar. Revisa tu conexión.');
+    setState(() => _generandoPosts = false);
+    if (r == null) {
+      _msg('No se pudo generar. Revisa tu conexión.');
+      return;
+    }
+    if (r['limite'] == true) {
+      final lim = r['limite_mes'] ?? '';
+      _msg('Alcanzaste el límite de generaciones de este mes ($lim). '
+          'Vuelve el próximo mes o escríbenos.');
+      return;
+    }
+    final posts = ((r['posts'] as List?) ?? const [])
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+    setState(() => _posts = posts);
   }
 
   String _fecha(String? iso) {
@@ -390,6 +418,35 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
               'Genera posts listos (texto + hashtags + mejor hora). Los revisas '
               'y compartes a tus redes con un tap.',
               style: TextStyle(color: textoTenue, fontSize: 13)),
+          if (!_tieneRedes) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFBEAD2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                      '💡 Aún no registraste tu Instagram/Facebook. Puedes generar '
+                      'el contenido igual, y si no tienes cuentas, nosotros te las '
+                      'creamos y las manejamos.',
+                      style: TextStyle(fontSize: 12.5, color: clayOscuro)),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                        foregroundColor: clayOscuro,
+                        side: const BorderSide(color: clayOscuro)),
+                    icon: const Icon(Icons.support_agent, size: 18),
+                    label: const Text('Ayúdenme a crear mis redes'),
+                    onPressed: _pedirCrearRedes,
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 10),
           TextField(
             controller: _tema,
