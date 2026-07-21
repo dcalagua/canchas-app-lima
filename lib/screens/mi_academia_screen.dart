@@ -728,7 +728,79 @@ class _Header extends StatelessWidget {
                   style: t.bodyMedium?.copyWith(color: Colors.white70)),
             ],
           ),
+          const SizedBox(height: 14),
+          _SaldoPill(academia: academia),
         ],
+      ),
+    );
+  }
+}
+
+/// Píldora de SALDO siempre visible en la cabecera del dueño: ve su saldo de un
+/// vistazo y toca para recargar (misma billetera prepago de la academia).
+class _SaldoPill extends StatelessWidget {
+  const _SaldoPill({required this.academia});
+  final Academia academia;
+
+  Future<void> _recargar(BuildContext context) async {
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => RecargarSaldoScreen(
+          duenoId: academia.id,
+          titulo: 'Recargar saldo',
+          pais: academia.pais),
+    ));
+    await appState.sincronizarSaldoAcademia(academia.id);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final saldo = appState.saldoAcademiaDe(academia.id);
+    return Material(
+      color: Colors.white.withOpacity(0.18),
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: () => _recargar(context),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 9, 10, 9),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.account_balance_wallet,
+                  size: 18, color: Colors.white),
+              const SizedBox(width: 8),
+              Text('Saldo  ',
+                  style: TextStyle(
+                      color: Colors.white.withOpacity(0.85), fontSize: 13)),
+              Text('${academia.monedaSimbolo} $saldo',
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900)),
+              const SizedBox(width: 8),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.add, size: 15, color: lima),
+                    SizedBox(width: 2),
+                    Text('Recargar',
+                        style: TextStyle(
+                            color: lima,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w800)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

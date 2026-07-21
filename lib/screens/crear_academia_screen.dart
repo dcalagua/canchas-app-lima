@@ -82,12 +82,19 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
     ('youtube', 'YouTube', FontAwesomeIcons.youtube),
     ('web', 'Web', FontAwesomeIcons.globe),
   ];
+  // Si ya tiene landing y no puso una web propia, la web = su landing (auto).
+  late final String _webAuto = (widget.academia?.redes['web']?.trim().isNotEmpty
+          ?? false)
+      ? widget.academia!.redes['web']!.trim()
+      : (widget.academia?.landingUrl ?? '');
   late final Map<String, TextEditingController> _redesCtrl = {
     for (final r in _redesCatalogo)
-      r.$1: TextEditingController(text: widget.academia?.redes[r.$1] ?? '')
+      r.$1: TextEditingController(
+          text: r.$1 == 'web' ? _webAuto : (widget.academia?.redes[r.$1] ?? ''))
   };
   late final Set<String> _redesSel = {
-    ...(widget.academia?.redes.keys ?? const <String>[])
+    ...(widget.academia?.redes.keys ?? const <String>[]),
+    if (_webAuto.isNotEmpty) 'web',
   };
 
   // Sedes conocidas (locales de la lista) para el autocompletable. Al elegir
@@ -689,6 +696,12 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                   hintText: r.$1 == 'web'
                       ? 'https://tuacademia.com'
                       : '@tuusuario o enlace',
+                  helperText: r.$1 == 'web' &&
+                          (widget.academia?.landingUrl ?? '').isNotEmpty &&
+                          _redesCtrl['web']?.text.trim() ==
+                              widget.academia?.landingUrl.trim()
+                      ? 'Es tu landing de Pichangol (puedes reemplazarla).'
+                      : null,
                 ),
               ),
             ],
