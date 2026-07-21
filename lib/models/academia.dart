@@ -111,6 +111,10 @@ class Academia {
   final double descuentoHermano2;
   final double descuentoHermano3;
   final double descuentoPrepago;
+  /// URL de la LANDING/publicidad de la academia (servicio de marketing de
+  /// Pichangol). Vacío = no contratada. Se muestra como "Sitio web" en la ficha
+  /// y el dueño puede compartirla. Configurable por academia (extra opcional).
+  final String landingUrl;
   /// Retribución (%) que la academia le paga al CLUB/sede sobre lo EFECTIVAMENTE
   /// cobrado (liquidación). CONFIGURABLE; 0 = la academia no le paga nada al club
   /// (clubes que no usan esta opción). Caso Jartur (El Bosque): 11.
@@ -134,8 +138,12 @@ class Academia {
     this.descuentoHermano2 = 0,
     this.descuentoHermano3 = 0,
     this.descuentoPrepago = 0,
+    this.landingUrl = '',
     this.retribucionClubPct = 0,
   });
+
+  /// ¿Tiene landing/publicidad contratada (servicio de marketing)?
+  bool get tieneLanding => landingUrl.trim().isNotEmpty;
 
   /// ¿La academia distingue tarifa socio vs invitado (según la sede/club)?
   bool get tieneTarifaInvitado => recargoInvitado > 0;
@@ -261,6 +269,7 @@ class Academia {
     double? descuentoHermano2,
     double? descuentoHermano3,
     double? descuentoPrepago,
+    String? landingUrl,
     double? retribucionClubPct,
   }) =>
       Academia(
@@ -281,6 +290,7 @@ class Academia {
         descuentoHermano2: descuentoHermano2 ?? this.descuentoHermano2,
         descuentoHermano3: descuentoHermano3 ?? this.descuentoHermano3,
         descuentoPrepago: descuentoPrepago ?? this.descuentoPrepago,
+        landingUrl: landingUrl ?? this.landingUrl,
         retribucionClubPct: retribucionClubPct ?? this.retribucionClubPct,
       );
 
@@ -303,6 +313,7 @@ class Academia {
         'descuentoHermano2': descuentoHermano2,
         'descuentoHermano3': descuentoHermano3,
         'descuentoPrepago': descuentoPrepago,
+        'landingUrl': landingUrl,
         'retribucionClubPct': retribucionClubPct,
       };
 
@@ -333,6 +344,7 @@ class Academia {
         descuentoHermano2: ((j['descuentoHermano2'] ?? 0) as num).toDouble(),
         descuentoHermano3: ((j['descuentoHermano3'] ?? 0) as num).toDouble(),
         descuentoPrepago: ((j['descuentoPrepago'] ?? 0) as num).toDouble(),
+        landingUrl: (j['landingUrl'] ?? '') as String,
         retribucionClubPct:
             ((j['retribucionClubPct'] ?? 0) as num).toDouble(),
       );

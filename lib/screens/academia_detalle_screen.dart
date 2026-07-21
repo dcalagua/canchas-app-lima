@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/academia.dart';
 import '../services/whatsapp_link.dart';
@@ -118,6 +119,29 @@ class _Contenido extends StatelessWidget {
                       style: t.bodyMedium?.copyWith(
                           color: Theme.of(context).colorScheme.onSurface,
                           height: 1.4)),
+                ],
+                // Landing/publicidad (si la academia contrató el servicio).
+                if (academia.tieneLanding) ...[
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                          backgroundColor: lima,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 13)),
+                      icon: const Icon(Icons.public, size: 18),
+                      label: const Text('Ver sitio web oficial'),
+                      onPressed: () {
+                        final raw = academia.landingUrl.trim();
+                        final u = Uri.tryParse(
+                            raw.startsWith('http') ? raw : 'https://$raw');
+                        if (u != null) {
+                          launchUrl(u, mode: LaunchMode.externalApplication);
+                        }
+                      },
+                    ),
+                  ),
                 ],
                 // Redes: "Síguenos" (secundario, con color de marca).
                 if (academia.redes.isNotEmpty) ...[

@@ -51,6 +51,9 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
   // Retribución al club/sede (%) sobre lo cobrado. Vacío = 0 = no aplica.
   late final TextEditingController _retribClub =
       _ctrlPct(widget.academia?.retribucionClubPct);
+  // Landing/publicidad (servicio de marketing). Vacío = no contratada.
+  late final TextEditingController _landing =
+      TextEditingController(text: widget.academia?.landingUrl ?? '');
   static TextEditingController _ctrlPct(double? v) => TextEditingController(
       text: (v ?? 0) > 0 ? v!.toStringAsFixed(0) : '');
   late Deporte _deporte = widget.academia?.deporte ?? Deporte.tenis;
@@ -119,6 +122,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
     _dtoHermano3.dispose();
     _dtoPrepago.dispose();
     _retribClub.dispose();
+    _landing.dispose();
     for (final c in _redesCtrl.values) {
       c.dispose();
     }
@@ -410,6 +414,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       descuentoHermano3: _pct(_dtoHermano3),
       descuentoPrepago: _pct(_dtoPrepago),
       retribucionClubPct: _pct(_retribClub),
+      landingUrl: _landing.text.trim(),
       logoUrl: _logoUrl,
       redes: redes,
       fotos: fotos,
@@ -722,6 +727,30 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
               ),
               const SizedBox(height: 10),
               _campoPct(_dtoPrepago, 'Prepago (paquete de meses)'),
+            ],
+          ),
+          const SizedBox(height: 10),
+          _seccionPlegable(
+            titulo: 'Publicidad / Landing (opcional)',
+            subtitulo:
+                'Servicio de marketing de Pichangol: tu página web para difundir '
+                'la academia. Pega aquí el enlace que te entregamos.',
+            abierta: (widget.academia?.landingUrl ?? '').isNotEmpty,
+            hijos: [
+              TextField(
+                controller: _landing,
+                keyboardType: TextInputType.url,
+                decoration: const InputDecoration(
+                  labelText: 'Enlace de la landing',
+                  hintText: 'https://…',
+                  prefixIcon: Icon(Icons.public, size: 20),
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                  '¿Aún no tienes? Escríbenos para activar tu landing + campañas.',
+                  style: TextStyle(color: textoTenue, fontSize: 11.5)),
             ],
           ),
           const SizedBox(height: 24),
