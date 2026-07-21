@@ -22,8 +22,13 @@ def mes_de(dt: datetime) -> str:
 
 # === config_incentivos (TODO configurable, nada hardcodeado en la lógica) ======
 CONFIG_DEFAULT: dict[str, str] = {
-    # WhatsApp de contacto de Pichangol/EBIM para SERVICIOS (landing, redes,
-    # soporte). Editable desde la torre de control. Formato internacional sin '+'.
+    # WhatsApp de contacto de Pichangol/EBIM para SERVICIOS (landing, redes),
+    # por PAÍS y editable desde la torre de control. Se guarda el número LOCAL
+    # (sin código de país); el backend antepone el código (PE 51 / EC 593 / BO 591).
+    "contacto_whatsapp_pe": "",
+    "contacto_whatsapp_ec": "998706994",
+    "contacto_whatsapp_bo": "",
+    # Respaldo global (legado) si ningún país tiene número.
     "contacto_whatsapp": "593998706994",
     "puntos_traer_cancha": "500",
     "puntos_invitar_jugador": "100",

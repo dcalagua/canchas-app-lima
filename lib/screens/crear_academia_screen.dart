@@ -211,8 +211,10 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
     final msg = 'Hola Pichangol 👋 Soy'
         '${nombre.isNotEmpty ? ' de la academia "$nombre"' : ' dueño de una academia'}'
         ' y quiero contratar mi landing + manejo de redes sociales.';
-    // Número configurable desde la torre de control; respaldo = constante marca.
-    final numero = await GrowthService.contactoWhatsApp() ?? kContactoWhatsApp;
+    // Número configurable POR PAÍS desde la torre de control (según el país de
+    // la academia); respaldo = constante de marca.
+    final numero =
+        await GrowthService.contactoWhatsApp(_paisAcademia.iso) ?? kContactoWhatsApp;
     final ok = await WhatsAppLink.abrir(numero, msg);
     if (!ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(

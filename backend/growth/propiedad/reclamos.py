@@ -58,17 +58,47 @@ def set_exigir_ubicacion(activo: bool) -> dict:
             "max_m": config.RECLAMO_UBICACION_MAX_M}
 
 
-def contacto_whatsapp() -> str:
-    """WhatsApp de contacto de Pichangol/EBIM para servicios (landing, redes).
-    Editable desde la torre de control. Formato internacional sin '+'."""
-    return stores.cfg("contacto_whatsapp")
+# Código telefónico internacional por país (para armar el número completo).
+COD_PAIS_CONTACTO = {"pe": "51", "ec": "593", "bo": "591"}
 
 
-def set_contacto_whatsapp(valor: str) -> dict:
-    """Fija el WhatsApp de contacto (solo dígitos)."""
-    solo = "".join(ch for ch in (valor or "") if ch.isdigit())
-    stores.config["contacto_whatsapp"] = solo
-    return {"ok": True, "contacto_whatsapp": contacto_whatsapp()}
+def _solo_digitos(v: str) -> str:
+    return "".join(ch for ch in (v or "") if ch.isdigit())
+
+
+def contacto_local(pais: str) -> str:
+    """Número LOCAL guardado para un país (pe|ec|bo), sin el código de país."""
+    p = (pais or "").lower()
+    return stores.cfg("contacto_whatsapp_" + p) if p in COD_PAIS_CONTACTO else ""
+
+
+def contactos_whatsapp() -> dict:
+    """Números LOCALES por país (para la torre de control)."""
+    return {p: contacto_local(p) for p in COD_PAIS_CONTACTO}
+
+
+def contacto_whatsapp(pais: str | None = None) -> str:
+    """WhatsApp COMPLETO (código + local) del país indicado. Si ese país no
+    tiene número, cae al primero configurado (orden ec, pe, bo). Editable desde
+    la torre de control."""
+    p = (pais or "").lower()
+    local = contacto_local(p)
+    if local:
+        return COD_PAIS_CONTACTO[p] + local
+    for q in ("ec", "pe", "bo"):
+        lq = contacto_local(q)
+        if lq:
+            return COD_PAIS_CONTACTO[q] + lq
+    return stores.cfg("contacto_whatsapp")  # respaldo legado (global)
+
+
+def set_contactos_whatsapp(contactos: dict) -> dict:
+    """Fija los números LOCALES por país. Ignora países desconocidos."""
+    for p, v in (contactos or {}).items():
+        pk = str(p).lower()
+        if pk in COD_PAIS_CONTACTO:
+            stores.config["contacto_whatsapp_" + pk] = _solo_digitos(str(v))
+    return {"ok": True, "contactos": contactos_whatsapp()}
 
 
 def set_modo_cancha(cancha_id: str, modo: str | None) -> dict:

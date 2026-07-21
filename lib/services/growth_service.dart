@@ -26,12 +26,13 @@ class GrowthService {
   static bool get disponible => _baseUrl.isNotEmpty;
 
   /// WhatsApp de contacto de Pichangol/EBIM para servicios (landing, redes),
-  /// configurable desde la torre de control. Devuelve solo dígitos, o null si no
-  /// se pudo obtener (la pantalla cae a la constante de marca como respaldo).
-  static Future<String?> contactoWhatsApp() async {
+  /// configurable POR PAÍS desde la torre de control. [pais] = ISO ('PE'|'EC'|
+  /// 'BO'); el backend devuelve el número local del país con su código. Devuelve
+  /// solo dígitos, o null si no se pudo (la pantalla cae a la constante marca).
+  static Future<String?> contactoWhatsApp(String pais) async {
     if (!disponible) return null;
     try {
-      final uri = Uri.parse('$_baseUrl/config/contacto');
+      final uri = Uri.parse('$_baseUrl/config/contacto?pais=$pais');
       final resp = await http.get(uri).timeout(const Duration(seconds: 6));
       if (resp.statusCode != 200) return null;
       final j = jsonDecode(resp.body) as Map<String, dynamic>;

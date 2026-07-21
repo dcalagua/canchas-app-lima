@@ -48,7 +48,7 @@ class ExigirUbicacionRequest(BaseModel):
 
 
 class ContactoRequest(BaseModel):
-    whatsapp: str
+    contactos: dict[str, str]
 
 
 @router.get("/admin/api/sesion")
@@ -131,23 +131,25 @@ def set_pichangas_modo(req: ModoRequest,
 
 @router.get("/admin/api/contacto")
 def get_contacto_admin(x_admin_token: str | None = Header(default=None)) -> dict:
-    """WhatsApp de contacto de Pichangol/EBIM para servicios (landing, redes)."""
+    """Números LOCALES de contacto por país (para la torre de control)."""
     _check(x_admin_token)
-    return {"whatsapp": reclamos.contacto_whatsapp()}
+    return {"contactos": reclamos.contactos_whatsapp(),
+            "codigos": reclamos.COD_PAIS_CONTACTO}
 
 
 @router.post("/admin/api/contacto")
 def set_contacto_admin(req: ContactoRequest,
                        x_admin_token: str | None = Header(default=None)) -> dict:
-    """Cambia el WhatsApp de contacto (torre de control)."""
+    """Cambia los WhatsApp de contacto por país (torre de control)."""
     _check(x_admin_token)
-    return reclamos.set_contacto_whatsapp(req.whatsapp)
+    return reclamos.set_contactos_whatsapp(req.contactos)
 
 
 @router.get("/config/contacto")
-def get_contacto_publico() -> dict:
-    """PÚBLICO: el APK lee el WhatsApp de contacto para el botón de servicios."""
-    return {"whatsapp": reclamos.contacto_whatsapp()}
+def get_contacto_publico(pais: str | None = None) -> dict:
+    """PÚBLICO: el APK lee el WhatsApp de contacto COMPLETO del país detectado
+    (?pais=PE|EC|BO). Sin país, devuelve el primero configurado."""
+    return {"whatsapp": reclamos.contacto_whatsapp(pais)}
 
 
 @router.get("/admin", response_class=HTMLResponse)
@@ -468,37 +470,51 @@ function mostrarApp(){
   cargar();
 }
 
-// --- WhatsApp de contacto (servicios: landing, redes) ----------------------
-let contactoWa = '';
+// --- WhatsApp de contacto por PAÍS (servicios: landing, redes) -------------
+const PAISES_CONTACTO = [
+  ['pe','🇵🇪','Perú','51'],
+  ['ec','🇪🇨','Ecuador','593'],
+  ['bo','🇧🇴','Bolivia','591'],
+];
+let contactos = {pe:'',ec:'',bo:''};
 async function cargarContacto(){
   try{
     const r = await fetch('/admin/api/contacto',{headers:headers()});
     if(!r.ok) return;
     const j = await r.json();
-    contactoWa = j.whatsapp || '';
+    contactos = j.contactos || contactos;
     renderContacto();
   }catch(e){}
 }
 function renderContacto(){
+  const filas = PAISES_CONTACTO.map(([k,fl,nom,cod])=>`
+    <div style="display:flex;align-items:center;gap:8px;margin-top:10px">
+      <span style="font-size:20px">${fl}</span>
+      <span style="min-width:66px;font-weight:700;font-size:13px">${nom}</span>
+      <span style="color:var(--muted);font-weight:700;font-size:13px">+${cod}</span>
+      <input id="wa_${k}" value="${esc(contactos[k]||'')}" placeholder="número local"
+        inputmode="numeric" style="flex:1;padding:10px 12px;border:1px solid var(--border);
+        border-radius:10px;font-family:inherit;font-size:14px">
+    </div>`).join('');
   document.getElementById('contacto').innerHTML =
-    `<div class="card"><div class="top"><h3>WhatsApp de contacto (servicios)</h3></div>
-      <div class="row">Número al que llegan los dueños que piden su <b>landing</b> o
-        <b>manejo de redes</b> desde la app. Formato internacional sin «+».</div>
-      <input id="contactoInp" value="${esc(contactoWa)}" placeholder="593998706994"
-        inputmode="numeric" style="margin-top:12px;width:100%;padding:11px 12px;
-        border:1px solid var(--border);border-radius:12px;font-family:inherit;font-size:14px">
+    `<div class="card"><div class="top"><h3>WhatsApp de contacto por país</h3></div>
+      <div class="row">La app detecta el país del usuario y le propone el número
+        local (más confianza). Escribe solo el número, sin el código de país.</div>
+      ${filas}
       <div class="actions">
-        <button class="btn-ap" onclick="guardarContacto()">Guardar número</button>
+        <button class="btn-ap" onclick="guardarContacto()">Guardar números</button>
       </div></div>`;
 }
 async function guardarContacto(){
-  const v = (document.getElementById('contactoInp').value||'').replace(/[^0-9]/g,'');
-  if(v.length < 8){ toast('Número inválido'); return; }
+  const nuevos = {};
+  for(const [k] of PAISES_CONTACTO){
+    nuevos[k] = (document.getElementById('wa_'+k).value||'').replace(/[^0-9]/g,'');
+  }
   const r = await fetch('/admin/api/contacto',{method:'POST',headers:headers(),
-    body:JSON.stringify({whatsapp:v})});
+    body:JSON.stringify({contactos:nuevos})});
   if(r.status===401){ salir(); return; }
   const j = await r.json();
-  if(j.ok){ contactoWa = j.whatsapp; renderContacto(); toast('WhatsApp de contacto guardado'); }
+  if(j.ok){ contactos = j.contactos; renderContacto(); toast('Números de contacto guardados'); }
   else toast('No se pudo guardar');
 }
 // Navegación de la barra lateral: muestra una sección y marca su ítem activo.
