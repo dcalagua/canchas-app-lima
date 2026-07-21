@@ -16,6 +16,9 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 # Modelo del concierge. Por defecto Opus 4.8; para bajar costo en alto volumen
 # se puede poner claude-haiku-4-5.
 CONCIERGE_MODEL = os.getenv("CONCIERGE_MODEL", "claude-opus-4-8")
+# Modelo para GENERAR posts de redes: por defecto Haiku (barato) porque un copy
+# de Instagram no necesita Opus. Baja mucho el costo por generación → más margen.
+MARKETING_MODEL = os.getenv("MARKETING_MODEL", "claude-haiku-4-5-20251001")
 
 # --- Factiliza (consulta de DNI = identidad del reclamante) -----------------
 # El token nunca va en el APK; se lee aquí. Sin token, la consulta queda

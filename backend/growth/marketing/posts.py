@@ -48,7 +48,7 @@ def _con_claude(datos: dict, contexto: str, cantidad: int) -> list[dict] | None:
         payload = {"academia": datos, "tema": contexto or "difusión general",
                    "cantidad": cantidad}
         resp = client.messages.create(
-            model=config.CONCIERGE_MODEL,
+            model=config.MARKETING_MODEL,
             max_tokens=1400,
             system=_SYSTEM,
             messages=[{"role": "user", "content":
