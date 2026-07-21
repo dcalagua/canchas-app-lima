@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/academia.dart';
 import '../services/pagos_service.dart';
+import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'recargar_saldo_screen.dart';
@@ -23,8 +25,18 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
   bool _cargando = true;
   String? _procesando; // clave del servicio en curso
 
+  bool _generandoLanding = false;
+
   String get _mon => widget.academia.monedaSimbolo;
   String get _idAcademia => widget.academia.id;
+  // Academia SIEMPRE actualizada (tras generar landing, guardarAcademia, etc.).
+  Academia get _ac => appState.academias.firstWhere((a) => a.id == _idAcademia,
+      orElse: () => widget.academia);
+
+  // ¿Tiene un servicio con landing activo (landing o presencia)?
+  bool get _landingContratada => _subs.any((s) =>
+      (s['servicio'] == 'landing' || s['servicio'] == 'presencia') &&
+      (s['estado'] == 'activa' || s['estado'] == 'pendiente_pago'));
 
   @override
   void initState() {
@@ -137,6 +149,23 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t)));
   }
 
+  Future<void> _generarLanding() async {
+    setState(() => _generandoLanding = true);
+    final url = await appState.generarLanding(_ac);
+    if (!mounted) return;
+    setState(() => _generandoLanding = false);
+    if (url == null) {
+      _msg('No se pudo generar la landing. Revisa tu conexión.');
+    } else {
+      _msg('✅ Tu landing está publicada.');
+    }
+  }
+
+  Future<void> _abrir(String url) async {
+    final u = Uri.tryParse(url);
+    if (u != null) await launchUrl(u, mode: LaunchMode.externalApplication);
+  }
+
   String _fecha(String? iso) {
     if (iso == null) return '';
     final d = DateTime.tryParse(iso);
@@ -193,6 +222,7 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
+                  if (_landingContratada) _cardLanding(),
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 8, horizontal: 2),
                     child: Text(
@@ -211,6 +241,96 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
                 ],
               ),
             ),
+    );
+  }
+
+  /// Tarjeta "Tu landing" (fulfillment): genera / ve / comparte la página web.
+  Widget _cardLanding() {
+    final ac = _ac;
+    final tiene = ac.tieneLanding;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: limaSuave,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.public, color: lima),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text('Tu landing web',
+                    style:
+                        TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+              tiene
+                  ? 'Publicada y lista para compartir. Se arma con los datos de '
+                      'tu academia (actualízala si cambias tarifario o fotos).'
+                  : 'Genera tu página web con los datos de tu academia. Queda con '
+                      'un enlace público para compartir.',
+              style: const TextStyle(color: textoTenue, fontSize: 13)),
+          const SizedBox(height: 12),
+          if (tiene) ...[
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                      backgroundColor: lima, foregroundColor: Colors.white),
+                  icon: const Icon(Icons.open_in_new, size: 18),
+                  label: const Text('Ver'),
+                  onPressed: () => _abrir(ac.landingUrl),
+                ),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                      foregroundColor: lima,
+                      side: const BorderSide(color: lima)),
+                  icon: const Icon(Icons.share_outlined, size: 18),
+                  label: const Text('Compartir'),
+                  onPressed: () => WhatsAppLink.compartir(
+                      'Mira nuestra página: ${ac.landingUrl}'),
+                ),
+                TextButton.icon(
+                  icon: _generandoLanding
+                      ? const SizedBox(
+                          height: 16,
+                          width: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.refresh, size: 18),
+                  label: const Text('Actualizar'),
+                  onPressed: _generandoLanding ? null : _generarLanding,
+                ),
+              ],
+            ),
+          ] else
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                    backgroundColor: lima,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 13)),
+                onPressed: _generandoLanding ? null : _generarLanding,
+                child: _generandoLanding
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2.4, color: Colors.white))
+                    : const Text('Generar mi landing'),
+              ),
+            ),
+        ],
+      ),
     );
   }
 

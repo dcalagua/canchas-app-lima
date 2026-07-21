@@ -138,6 +138,67 @@ class AppState extends ChangeNotifier {
     AcademiasRepo.guardar(a); // best-effort: comparte y sobrevive reinstalación
   }
 
+  /// Arma los datos que el backend necesita para RENDERIZAR la landing de una
+  /// academia (nombre, tarifario por programa, fotos, redes, ubicación).
+  Map<String, dynamic> _landingDatos(Academia ac) {
+    final programas = <Map<String, dynamic>>[];
+    ac.planesPorPrograma.forEach((prog, planes) {
+      if (prog.isEmpty) return;
+      final first = planes.first;
+      programas.add({
+        'nombre': prog,
+        'etapa': first.etapaEdad,
+        'duracion': first.duracionClase,
+        'precios': [
+          for (final p in planes)
+            {'frec': p.frecuenciaSemana, 'socio': p.precioMes}
+        ],
+      });
+    });
+    final simples = [
+      for (final p in ac.planes)
+        if (p.programa.isEmpty)
+          {
+            'nombre': p.nombre,
+            'precio': p.precioMes,
+            'sufijo': p.tipo == TipoPlan.porClase ? ' /clase' : ' /mes',
+          }
+    ];
+    return {
+      'nombre': ac.nombre,
+      'deporte': ac.deporte.name,
+      'sede': ac.sedeClub,
+      'moneda': ac.monedaSimbolo,
+      'recargo_invitado': ac.recargoInvitado,
+      'descripcion': ac.descripcion,
+      'whatsapp': ac.whatsapp,
+      'instagram': ac.redes['instagram'] ?? '',
+      if (ac.sedeUbicacion != null) 'lat': ac.sedeUbicacion!.latitude,
+      if (ac.sedeUbicacion != null) 'lng': ac.sedeUbicacion!.longitude,
+      'fotos': ac.fotos,
+      'programas': programas,
+      'planes': simples,
+    };
+  }
+
+  /// Genera/actualiza la landing en el backend y guarda su URL en la academia
+  /// (para que el editor y la ficha muestren "Ver mi landing"). Devuelve la URL
+  /// o null si no se pudo.
+  Future<String?> generarLanding(Academia ac) async {
+    final ok = await PagosService.generarLanding(ac.id, _landingDatos(ac));
+    if (!ok) return null;
+    final url = PagosService.landingUrl(ac.id);
+    if (url == null) return null;
+    final i = academias.indexWhere((a) => a.id == ac.id);
+    if (i >= 0) {
+      academias[i] = academias[i].copyWith(landingUrl: url);
+      notifyListeners();
+      _persistirDatos();
+      AcademiasRepo.guardar(academias[i]);
+    }
+    return url;
+  }
+
   void eliminarAcademia(String id) {
     academias.removeWhere((a) => a.id == id);
     alumnos.removeWhere((al) => al.academiaId == id);

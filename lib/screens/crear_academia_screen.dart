@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../brand.dart';
 import '../data/canchas_repo.dart';
@@ -202,6 +203,12 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
         _planes.addAll(nuevos);
       });
     }
+  }
+
+  /// Abre la landing publicada en el navegador.
+  Future<void> _abrirLanding(String url) async {
+    final u = Uri.tryParse(url);
+    if (u != null) await launchUrl(u, mode: LaunchMode.externalApplication);
   }
 
   /// Abre WhatsApp con Pichangol para contratar el servicio de landing/redes,
@@ -782,22 +789,58 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                   isDense: true,
                 ),
               ),
-              const SizedBox(height: 10),
-              const Text('¿Aún no tienes? Nosotros te la creamos:',
-                  style: TextStyle(color: textoTenue, fontSize: 12)),
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF25D366),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12)),
-                  icon: const FaIcon(FontAwesomeIcons.whatsapp, size: 18),
-                  label: const Text('Quiero mi landing (WhatsApp)'),
-                  onPressed: _contactarServicio,
+              const SizedBox(height: 12),
+              if ((widget.academia?.landingUrl ?? '').isNotEmpty) ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                            backgroundColor: lima, foregroundColor: Colors.white),
+                        icon: const Icon(Icons.open_in_new, size: 18),
+                        label: const Text('Ver mi landing'),
+                        onPressed: () =>
+                            _abrirLanding(widget.academia!.landingUrl),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                            foregroundColor: lima,
+                            side: const BorderSide(color: lima)),
+                        icon: const Icon(Icons.share_outlined, size: 18),
+                        label: const Text('Compartir'),
+                        onPressed: () => WhatsAppLink.compartir(
+                            'Mira nuestra página: ${widget.academia!.landingUrl}'),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
+                const SizedBox(height: 6),
+                const Text(
+                    'Genérala o actualízala desde "Servicios" (📣) cuando cambies '
+                    'tu tarifario o fotos.',
+                    style: TextStyle(color: textoTenue, fontSize: 11.5)),
+              ] else ...[
+                const Text(
+                    'Contrátala en "Servicios" (📣) — la generamos con los datos de '
+                    'tu academia — o escríbenos:',
+                    style: TextStyle(color: textoTenue, fontSize: 12)),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF25D366),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12)),
+                    icon: const FaIcon(FontAwesomeIcons.whatsapp, size: 18),
+                    label: const Text('Quiero mi landing (WhatsApp)'),
+                    onPressed: _contactarServicio,
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 24),

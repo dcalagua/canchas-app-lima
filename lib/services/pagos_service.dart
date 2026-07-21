@@ -472,6 +472,31 @@ class PagosService {
     }
   }
 
+  // --- Landing hospedada (fulfillment del servicio de marketing) ----------
+  /// URL pública de la landing de una academia (la sirve el backend).
+  static String? landingUrl(String academiaId) =>
+      disponible ? '$_baseUrl/l/$academiaId' : null;
+
+  /// Genera/actualiza la landing: manda los datos de la academia al backend, que
+  /// la publica en [landingUrl]. Devuelve true si quedó publicada.
+  static Future<bool> generarLanding(
+      String academiaId, Map<String, dynamic> datos) async {
+    if (!disponible) return false;
+    try {
+      final uri = Uri.parse('$_baseUrl/marketing/landing');
+      final r = await http
+          .post(uri,
+              headers: _appHeaders(json: true),
+              body: jsonEncode({'academia_id': academiaId, 'datos': datos}))
+          .timeout(const Duration(seconds: 15));
+      if (r.statusCode != 200) return false;
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      return j['ok'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Conjunto de dueños DESTACADOS (saldo prepago > 0) con su nivel (1-3).
   /// El APK resalta las canchas de estos dueños en Explorar (más saldo = más
   /// visibilidad). Devuelve {duenoId(lowercase): nivel} o null si no se pudo.

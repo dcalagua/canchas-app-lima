@@ -312,6 +312,9 @@ class Stores:
         # "{academia_id}:{servicio}" -> dict con estado y próximo cobro. Se debita
         # del saldo del dueño cada mes (mismo saldo prepago de Culqi).
         self.suscripciones: dict[str, dict] = {}
+        # LANDINGS generadas (fulfillment del servicio). academia_id -> datos que
+        # el backend renderiza como página pública en GET /l/{academia_id}.
+        self.landings: dict[str, dict] = {}
         # VISTAS de destacados (métrica de impacto del boost): por id (dueno_id
         # de canchas o id de academia) → {YYYY-MM-DD: nº impresiones ese día}.
         self.vistas: dict[str, dict[str, int]] = {}
@@ -484,6 +487,7 @@ class Stores:
             "saldos": dict(self.saldos),
             "pagos": [como_dict(p) for p in self.pagos],
             "suscripciones": {k: dict(v) for k, v in self.suscripciones.items()},
+            "landings": {k: dict(v) for k, v in self.landings.items()},
             "vistas": {k: dict(v) for k, v in self.vistas.items()},
             "customers": dict(self.customers),
             "metodos": {k: list(v) for k, v in self.metodos.items()},
@@ -515,6 +519,9 @@ class Stores:
         self.pagos = [_pago_from(d) for d in data.get("pagos", [])]
         self.suscripciones = {
             k: dict(v) for k, v in (data.get("suscripciones") or {}).items()
+        }
+        self.landings = {
+            k: dict(v) for k, v in (data.get("landings") or {}).items()
         }
         self.vistas = {
             k: {d: int(n) for d, n in (v or {}).items()}
