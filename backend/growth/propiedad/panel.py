@@ -611,7 +611,7 @@ function renderComision(){
     `<div class="card"><div class="top"><h3>Comisión por cobro digital</h3></div>
       <div class="row">Tarifa "tipo POS" que la academia absorbe cuando el alumno
         paga la matrícula por la app (el alumno paga el precio limpio). El pago en
-        efectivo es 0%. Piloto: 0% para ganar adopción.</div>
+        efectivo es 0%. Ajusta el % por país.</div>
       ${campo('com_pe','🇵🇪','Perú', com.pe)}
       ${campo('com_ec','🇪🇨','Ecuador', com.ec)}
       ${campo('com_bo','🇧🇴','Bolivia', com.bo)}

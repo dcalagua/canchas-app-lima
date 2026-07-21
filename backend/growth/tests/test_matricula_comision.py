@@ -30,8 +30,11 @@ def client():
     return TestClient(main.app)
 
 
-def test_piloto_default_cero(client):
-    assert client.get("/pagos/comision-matricula?pais=pe").json()["pct"] == 0.0
+def test_defaults_por_pais(client):
+    # Perú arranca en 5%; Ecuador y Bolivia en 0 hasta configurarse.
+    assert client.get("/pagos/comision-matricula?pais=pe").json()["pct"] == 5.0
+    assert client.get("/pagos/comision-matricula?pais=ec").json()["pct"] == 0.0
+    assert client.get("/pagos/comision-matricula?pais=bo").json()["pct"] == 0.0
 
 
 def test_comision_por_pais_y_neto(client):

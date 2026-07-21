@@ -41,8 +41,9 @@ CONFIG_DEFAULT: dict[str, str] = {
     # Comisión por COBRO DIGITAL de matrícula (cuando el alumno paga por la app).
     # Es una tarifa única "tipo POS" que la academia absorbe (el alumno paga el
     # precio limpio). Por país y editable desde la torre de control. Efectivo = 0%
-    # (un pago que el profe marca a mano NO pasa por aquí). Piloto: 0% (adopción).
-    "comision_matricula_pct_pe": "0",
+    # (un pago que el profe marca a mano NO pasa por aquí). Perú arranca en 5%;
+    # los demás países en 0 hasta que se configuren.
+    "comision_matricula_pct_pe": "5",
     "comision_matricula_pct_ec": "0",
     "comision_matricula_pct_bo": "0",
     # Tope de generaciones de posts con IA por academia/mes (control de costo).
