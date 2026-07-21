@@ -35,6 +35,9 @@ CONFIG_DEFAULT: dict[str, str] = {
     "servicio_landing_soles": "49",
     "servicio_redes_soles": "99",
     "servicio_presencia_soles": "129",
+    # Tope de generaciones de posts con IA por academia/mes (control de costo).
+    # Editable desde la torre de control. 0 = sin tope.
+    "marketing_posts_limite_mes": "30",
     "puntos_traer_cancha": "500",
     "puntos_invitar_jugador": "100",
     "puntos_pedir_cancha": "50",

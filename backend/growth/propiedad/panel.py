@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 import config
 from convocatorias import service as convocatorias_service
+from db.store import stores
 from propiedad import reclamos
 
 router = APIRouter(tags=["panel"])
@@ -49,6 +50,13 @@ class ExigirUbicacionRequest(BaseModel):
 
 class ContactoRequest(BaseModel):
     contactos: dict[str, str]
+
+
+class MarketingConfigRequest(BaseModel):
+    landing_soles: float | None = None
+    redes_soles: float | None = None
+    presencia_soles: float | None = None
+    posts_limite_mes: int | None = None
 
 
 @router.get("/admin/api/sesion")
@@ -143,6 +151,34 @@ def set_contacto_admin(req: ContactoRequest,
     """Cambia los WhatsApp de contacto por país (torre de control)."""
     _check(x_admin_token)
     return reclamos.set_contactos_whatsapp(req.contactos)
+
+
+@router.get("/admin/api/marketing")
+def get_marketing_admin(x_admin_token: str | None = Header(default=None)) -> dict:
+    """Precios de los servicios de marketing + tope mensual de posts IA."""
+    _check(x_admin_token)
+    return {
+        "landing_soles": stores.cfg_int("servicio_landing_soles"),
+        "redes_soles": stores.cfg_int("servicio_redes_soles"),
+        "presencia_soles": stores.cfg_int("servicio_presencia_soles"),
+        "posts_limite_mes": stores.cfg_int("marketing_posts_limite_mes"),
+    }
+
+
+@router.post("/admin/api/marketing")
+def set_marketing_admin(req: MarketingConfigRequest,
+                        x_admin_token: str | None = Header(default=None)) -> dict:
+    """Cambia precios de servicios y el tope de posts (torre de control)."""
+    _check(x_admin_token)
+    if req.landing_soles is not None:
+        stores.config["servicio_landing_soles"] = str(int(req.landing_soles))
+    if req.redes_soles is not None:
+        stores.config["servicio_redes_soles"] = str(int(req.redes_soles))
+    if req.presencia_soles is not None:
+        stores.config["servicio_presencia_soles"] = str(int(req.presencia_soles))
+    if req.posts_limite_mes is not None:
+        stores.config["marketing_posts_limite_mes"] = str(max(0, int(req.posts_limite_mes)))
+    return get_marketing_admin(x_admin_token)
 
 
 @router.get("/config/contacto")
@@ -409,6 +445,7 @@ _HTML = r"""<!DOCTYPE html>
         <div id="pichangaModo"></div>
         <div id="ubic"></div>
         <div id="contacto"></div>
+        <div id="marketing"></div>
       </div>
     </section>
   </main>
@@ -466,8 +503,49 @@ function mostrarApp(){
   cargarPichangaModo();
   cargarUbicacion();
   cargarContacto();
+  cargarMarketing();
   cargarLiquidaciones();
   cargar();
+}
+
+// --- Servicios de marketing: precios + tope de posts IA --------------------
+let mkt = {landing_soles:0, redes_soles:0, presencia_soles:0, posts_limite_mes:0};
+async function cargarMarketing(){
+  try{
+    const r = await fetch('/admin/api/marketing',{headers:headers()});
+    if(!r.ok) return;
+    mkt = await r.json();
+    renderMarketing();
+  }catch(e){}
+}
+function renderMarketing(){
+  const campo = (id,lbl,val,suf)=>`
+    <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+      <span style="flex:1;font-weight:600;font-size:13px">${lbl}</span>
+      <input id="${id}" value="${val}" inputmode="numeric" style="width:96px;padding:9px 10px;
+        border:1px solid var(--border);border-radius:10px;font-family:inherit;font-size:14px;text-align:right">
+      <span style="color:var(--muted);font-size:13px;min-width:44px">${suf}</span>
+    </div>`;
+  document.getElementById('marketing').innerHTML =
+    `<div class="card"><div class="top"><h3>Servicios de marketing</h3></div>
+      <div class="row">Precios MENSUALES de cada servicio (se debitan del saldo del
+        dueño) y tope de generaciones de posts con IA por academia/mes (control de
+        costo; la landing no cuenta).</div>
+      ${campo('mkt_landing','Landing web', mkt.landing_soles, 'S/ /mes')}
+      ${campo('mkt_redes','Manejo de redes', mkt.redes_soles, 'S/ /mes')}
+      ${campo('mkt_presencia','Presencia digital', mkt.presencia_soles, 'S/ /mes')}
+      ${campo('mkt_limite','Tope de posts IA', mkt.posts_limite_mes, '/mes')}
+      <div class="actions"><button class="btn-ap" onclick="guardarMarketing()">Guardar</button></div>
+    </div>`;
+}
+async function guardarMarketing(){
+  const n = id => parseInt((document.getElementById(id).value||'0').replace(/[^0-9]/g,''))||0;
+  const r = await fetch('/admin/api/marketing',{method:'POST',headers:headers(),
+    body:JSON.stringify({landing_soles:n('mkt_landing'),redes_soles:n('mkt_redes'),
+      presencia_soles:n('mkt_presencia'),posts_limite_mes:n('mkt_limite')})});
+  if(r.status===401){ salir(); return; }
+  if(r.ok){ mkt = await r.json(); renderMarketing(); toast('Servicios de marketing actualizados'); }
+  else toast('No se pudo guardar');
 }
 
 // --- WhatsApp de contacto por PAÍS (servicios: landing, redes) -------------

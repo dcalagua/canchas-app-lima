@@ -65,7 +65,8 @@ def generar_posts_endpoint(req: PostsReq) -> dict:
     MARKETING_POSTS_LIMITE_MES) para proteger el costo de Anthropic ante clics
     repetidos."""
     periodo = datetime.now(timezone.utc).strftime("%Y-%m")
-    lim = config.MARKETING_POSTS_LIMITE_MES
+    # Tope editable desde la torre de control (config), con respaldo al env.
+    lim = stores.cfg_int("marketing_posts_limite_mes")
     aid = req.academia_id
     usados = int((stores.marketing_uso.get(aid, {}) or {}).get(periodo, 0)) if aid else 0
     if aid and lim > 0 and usados >= lim:
