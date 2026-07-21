@@ -199,6 +199,13 @@ class AppState extends ChangeNotifier {
     return url;
   }
 
+  /// Community manager con IA: genera posts para las redes de la academia
+  /// (texto + hashtags + hora sugerida), a partir de sus datos y un tema opcional.
+  Future<List<Map<String, dynamic>>?> generarPosts(
+      Academia ac, String tema) async {
+    return PagosService.generarPosts(datos: _landingDatos(ac), contexto: tema);
+  }
+
   void eliminarAcademia(String id) {
     academias.removeWhere((a) => a.id == id);
     alumnos.removeWhere((al) => al.academiaId == id);

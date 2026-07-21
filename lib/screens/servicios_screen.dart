@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/academia.dart';
@@ -26,6 +27,15 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
   String? _procesando; // clave del servicio en curso
 
   bool _generandoLanding = false;
+  final _tema = TextEditingController();
+  List<Map<String, dynamic>>? _posts;
+  bool _generandoPosts = false;
+
+  @override
+  void dispose() {
+    _tema.dispose();
+    super.dispose();
+  }
 
   String get _mon => widget.academia.monedaSimbolo;
   String get _idAcademia => widget.academia.id;
@@ -36,6 +46,11 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
   // ¿Tiene un servicio con landing activo (landing o presencia)?
   bool get _landingContratada => _subs.any((s) =>
       (s['servicio'] == 'landing' || s['servicio'] == 'presencia') &&
+      (s['estado'] == 'activa' || s['estado'] == 'pendiente_pago'));
+
+  // ¿Tiene manejo de redes activo (redes o presencia)?
+  bool get _redesContratada => _subs.any((s) =>
+      (s['servicio'] == 'redes' || s['servicio'] == 'presencia') &&
       (s['estado'] == 'activa' || s['estado'] == 'pendiente_pago'));
 
   @override
@@ -166,6 +181,17 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
     if (u != null) await launchUrl(u, mode: LaunchMode.externalApplication);
   }
 
+  Future<void> _generarPosts() async {
+    setState(() => _generandoPosts = true);
+    final posts = await appState.generarPosts(_ac, _tema.text.trim());
+    if (!mounted) return;
+    setState(() {
+      _generandoPosts = false;
+      if (posts != null) _posts = posts;
+    });
+    if (posts == null) _msg('No se pudo generar. Revisa tu conexión.');
+  }
+
   String _fecha(String? iso) {
     if (iso == null) return '';
     final d = DateTime.tryParse(iso);
@@ -223,6 +249,7 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
                   ),
                   const SizedBox(height: 8),
                   if (_landingContratada) _cardLanding(),
+                  if (_redesContratada) _cardRedes(),
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 8, horizontal: 2),
                     child: Text(
@@ -329,6 +356,122 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
                     : const Text('Generar mi landing'),
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  /// Tarjeta "Community manager IA": genera posts para redes a partir de un tema.
+  Widget _cardRedes() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: trazo),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: const [
+              Icon(Icons.auto_awesome, color: lima),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text('Community manager con IA',
+                    style:
+                        TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Text(
+              'Genera posts listos (texto + hashtags + mejor hora). Los revisas '
+              'y compartes a tus redes con un tap.',
+              style: TextStyle(color: textoTenue, fontSize: 13)),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _tema,
+            decoration: const InputDecoration(
+              labelText: '¿Sobre qué quieres postear? (opcional)',
+              hintText: 'Ej.: apertura, torneo, promo de vacaciones',
+              isDense: true,
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                  backgroundColor: lima,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12)),
+              icon: _generandoPosts
+                  ? const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2.2, color: Colors.white))
+                  : const Icon(Icons.auto_awesome, size: 18),
+              label: Text(_posts == null ? 'Generar posts' : 'Generar otros'),
+              onPressed: _generandoPosts ? null : _generarPosts,
+            ),
+          ),
+          if (_posts != null) ...[
+            const SizedBox(height: 12),
+            for (final p in _posts!) _postItem(p),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _postItem(Map<String, dynamic> p) {
+    final texto = (p['texto'] ?? '').toString();
+    final hashtags =
+        ((p['hashtags'] as List?) ?? const []).map((e) => e.toString()).toList();
+    final hora = (p['hora_sugerida'] ?? '').toString();
+    final completo = hashtags.isEmpty ? texto : '$texto\n\n${hashtags.join(' ')}';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: limaSuave,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (hora.isNotEmpty)
+            Text('⏰ Mejor hora: $hora',
+                style: const TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w700, color: lima)),
+          const SizedBox(height: 4),
+          Text(texto, style: const TextStyle(fontSize: 14)),
+          if (hashtags.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(hashtags.join(' '),
+                style: const TextStyle(fontSize: 12.5, color: lima)),
+          ],
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              TextButton.icon(
+                icon: const Icon(Icons.copy, size: 16),
+                label: const Text('Copiar'),
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: completo));
+                  _msg('Post copiado');
+                },
+              ),
+              TextButton.icon(
+                icon: const Icon(Icons.share_outlined, size: 16),
+                label: const Text('Compartir'),
+                onPressed: () => WhatsAppLink.compartir(completo),
+              ),
+            ],
+          ),
         ],
       ),
     );

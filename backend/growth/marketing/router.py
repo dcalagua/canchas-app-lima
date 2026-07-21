@@ -17,6 +17,7 @@ import config
 from db.store import stores
 
 from .landing import render_landing
+from .posts import generar_posts
 
 router = APIRouter(tags=["marketing"])
 
@@ -36,6 +37,12 @@ class LandingReq(BaseModel):
     datos: dict
 
 
+class PostsReq(BaseModel):
+    datos: dict = {}
+    contexto: str = ""
+    cantidad: int = 3
+
+
 @router.post("/marketing/landing", dependencies=_APP)
 def generar_landing(req: LandingReq) -> dict:
     """Guarda/actualiza los datos de la landing de una academia. La página queda
@@ -44,6 +51,15 @@ def generar_landing(req: LandingReq) -> dict:
         raise HTTPException(status_code=400, detail="academia_id_requerido")
     stores.landings[req.academia_id] = dict(req.datos or {})
     return {"ok": True, "path": f"/l/{req.academia_id}"}
+
+
+@router.post("/marketing/posts", dependencies=_APP)
+def generar_posts_endpoint(req: PostsReq) -> dict:
+    """Community manager con IA: devuelve posts (texto + hashtags + hora) para
+    aprobar y compartir. Usa Anthropic si hay key; si no, plantillas."""
+    posts = generar_posts(req.datos or {}, req.contexto, req.cantidad)
+    return {"ok": True, "posts": posts,
+            "via": "ia" if config.ANTHROPIC_API_KEY else "plantilla"}
 
 
 @router.get("/l/{academia_id}", response_class=HTMLResponse)

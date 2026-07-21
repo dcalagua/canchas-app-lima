@@ -497,6 +497,31 @@ class PagosService {
     }
   }
 
+  /// Community manager con IA: pide N posts (texto + hashtags + hora) para redes.
+  static Future<List<Map<String, dynamic>>?> generarPosts({
+    required Map<String, dynamic> datos,
+    String contexto = '',
+    int cantidad = 3,
+  }) async {
+    if (!disponible) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/marketing/posts');
+      final r = await http
+          .post(uri,
+              headers: _appHeaders(json: true),
+              body: jsonEncode(
+                  {'datos': datos, 'contexto': contexto, 'cantidad': cantidad}))
+          .timeout(const Duration(seconds: 30));
+      if (r.statusCode != 200) return null;
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      return ((j['posts'] as List?) ?? const [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Conjunto de dueños DESTACADOS (saldo prepago > 0) con su nivel (1-3).
   /// El APK resalta las canchas de estos dueños en Explorar (más saldo = más
   /// visibilidad). Devuelve {duenoId(lowercase): nivel} o null si no se pudo.
