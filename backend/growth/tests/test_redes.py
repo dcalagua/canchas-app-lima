@@ -108,3 +108,41 @@ def test_plan_gestion_en_catalogo(client):
     r = client.get("/pagos/servicios/planes")
     claves = {p["clave"] for p in r.json()["planes"]}
     assert "gestion" in claves
+
+
+def test_subir_imagen_y_servirla(client):
+    import base64
+    png = base64.b64encode(b"\x89PNG\r\n\x1a\n-demo").decode()
+    r = client.post("/marketing/img",
+                    json={"academia_id": "a1", "data_b64": png,
+                          "content_type": "image/png"})
+    assert r.status_code == 200
+    url = r.json()["url"]
+    assert url.endswith(".png")
+    # la sirve públicamente para el fetch de Meta.
+    path = "/marketing/img/" + url.split("/marketing/img/")[1]
+    rv = client.get(path)
+    assert rv.status_code == 200
+    assert rv.headers["content-type"].startswith("image/png")
+
+
+def test_imagen_invalida_rechazada(client):
+    r = client.post("/marketing/img",
+                    json={"academia_id": "a1", "data_b64": "no-es-base64!!"})
+    assert r.status_code == 400
+
+
+def test_publicar_con_imagen_en_instagram(client):
+    aid = "acad-ig"
+    client.post("/marketing/redes/conectar", json={"academia_id": aid})
+    import base64
+    png = base64.b64encode(b"\x89PNG\r\n\x1a\n-x").decode()
+    url = client.post("/marketing/img",
+                      json={"academia_id": aid, "data_b64": png,
+                            "content_type": "image/png"}).json()["url"]
+    r = client.post("/marketing/redes/publicar",
+                    json={"academia_id": aid, "texto": "Con foto",
+                          "imagen_url": url})
+    res = r.json()["resultados"]
+    assert res["facebook"]["ok"] is True
+    assert res["instagram"]["ok"] is True

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../brand.dart';
@@ -302,15 +303,74 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
     }
   }
 
+  /// Pregunta si publicar con foto (IG+FB) o solo texto (FB). Instagram EXIGE
+  /// una imagen, así que la opción con foto es la que llega a IG.
   Future<void> _publicar(int idx, Map<String, dynamic> p) async {
+    final opcion = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 6),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('¿Cómo publicamos?',
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined, color: lima),
+              title: const Text('Con foto (Instagram + Facebook)'),
+              subtitle: const Text('Instagram requiere una imagen.'),
+              onTap: () => Navigator.pop(ctx, 'foto'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.notes, color: lima),
+              title: const Text('Solo texto (Facebook)'),
+              onTap: () => Navigator.pop(ctx, 'texto'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (opcion == null) return;
+
     final texto = (p['texto'] ?? '').toString();
     final hashtags =
         ((p['hashtags'] as List?) ?? const []).map((e) => e.toString()).toList();
     final completo =
         hashtags.isEmpty ? texto : '$texto\n\n${hashtags.join(' ')}';
-    setState(() => _publicando = idx);
+
+    String? imagenUrl;
+    if (opcion == 'foto') {
+      final f = await ImagePicker()
+          .pickImage(source: ImageSource.gallery, maxWidth: 1080);
+      if (f == null) return;
+      final bytes = await f.readAsBytes();
+      if (!mounted) return;
+      setState(() => _publicando = idx);
+      final ct = (f.mimeType != null && f.mimeType!.startsWith('image/'))
+          ? f.mimeType!
+          : (f.path.toLowerCase().endsWith('.png')
+              ? 'image/png'
+              : 'image/jpeg');
+      imagenUrl = await PagosService.subirImagen(
+          academiaId: _idAcademia, bytes: bytes, contentType: ct);
+      if (!mounted) return;
+      if (imagenUrl == null) {
+        setState(() => _publicando = null);
+        _msg('No se pudo subir la imagen. Reintenta.');
+        return;
+      }
+    } else {
+      setState(() => _publicando = idx);
+    }
+
     final r = await PagosService.publicarPost(
-        academiaId: _idAcademia, texto: completo);
+        academiaId: _idAcademia, texto: completo, imagenUrl: imagenUrl);
     if (!mounted) return;
     setState(() => _publicando = null);
     if (r == null) {

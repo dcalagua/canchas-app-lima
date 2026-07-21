@@ -9,10 +9,12 @@ El POST exige X-App-Key (igual que pagos/propiedad); el GET es público.
 
 from __future__ import annotations
 
+import base64
+import binascii
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Header, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
 
 import config
@@ -60,6 +62,22 @@ class RedesPublicarReq(BaseModel):
     academia_id: str
     texto: str
     imagen_url: str | None = None
+
+
+class ImagenReq(BaseModel):
+    academia_id: str = ""
+    data_b64: str
+    content_type: str = "image/jpeg"
+
+
+_IMG_TIPOS = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
+
+
+def _base_publica(request: Request) -> str:
+    """URL absoluta base del backend (para que Meta pueda descargar la imagen)."""
+    if config.PUBLIC_BASE_URL:
+        return config.PUBLIC_BASE_URL.rstrip("/")
+    return str(request.base_url).rstrip("/")
 
 
 @router.post("/marketing/landing", dependencies=_APP)
@@ -146,6 +164,38 @@ def redes_desconectar(req: RedesAccionReq) -> dict:
 def redes_publicar(req: RedesPublicarReq) -> dict:
     """Publica un post aprobado en las redes conectadas del dueño (IG/FB)."""
     return redes_svc.publicar(req.academia_id, req.texto, req.imagen_url)
+
+
+@router.post("/marketing/img", dependencies=_APP)
+def subir_imagen(req: ImagenReq, request: Request) -> dict:
+    """Aloja una imagen (base64) y devuelve su URL pública ABSOLUTA, para que
+    Instagram/Facebook la descarguen al publicar. Hosting transitorio (memoria):
+    Meta la baja al instante; no se persiste."""
+    ct = req.content_type if req.content_type in _IMG_TIPOS else "image/jpeg"
+    try:
+        datos = base64.b64decode(req.data_b64, validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(status_code=400, detail="imagen_invalida")
+    if not datos:
+        raise HTTPException(status_code=400, detail="imagen_vacia")
+    if len(datos) > config.IMG_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="imagen_muy_grande")
+    img_id = stores.guardar_imagen(datos, ct, tope=config.IMG_MAX_RETENIDAS)
+    ext = _IMG_TIPOS[ct]
+    url = f"{_base_publica(request)}/marketing/img/{img_id}.{ext}"
+    return {"ok": True, "id": img_id, "url": url}
+
+
+@router.get("/marketing/img/{nombre}")
+def ver_imagen(nombre: str) -> Response:
+    """PÚBLICO: sirve una imagen alojada (para el fetch de Meta al publicar)."""
+    img_id = nombre.split(".")[0]
+    img = stores.imagenes.get(img_id)
+    if not img:
+        raise HTTPException(status_code=404, detail="no_encontrada")
+    return Response(content=img["bytes"], media_type=img.get("content_type",
+                                                             "image/jpeg"),
+                    headers={"Cache-Control": "public, max-age=86400"})
 
 
 @router.get("/l/{academia_id}", response_class=HTMLResponse)

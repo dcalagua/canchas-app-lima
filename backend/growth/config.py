@@ -118,6 +118,17 @@ def meta_modo() -> str:
     if META_MODO == "produccion" and META_APP_ID and META_APP_SECRET:
         return "produccion"
     return "sandbox"
+
+
+# Base pública del backend, para construir URLs ABSOLUTAS de las imágenes que
+# Instagram debe poder descargar al publicar (Meta hace fetch de image_url). Si
+# está vacío, se arma con la URL de la request. Ej.:
+# https://pg-backend-production-c176.up.railway.app
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "")
+# Hosting transitorio de imágenes para publicar (no se persiste): tope de tamaño
+# por imagen y cuántas se retienen en memoria (se descartan las más viejas).
+IMG_MAX_BYTES = int(os.getenv("IMG_MAX_BYTES", str(8 * 1024 * 1024)))  # 8 MB
+IMG_MAX_RETENIDAS = int(os.getenv("IMG_MAX_RETENIDAS", "80"))
 # Si true, la validación en sitio del motorizado activa la cancha automáticamente
 # (y se avisa al admin). Si false, queda lista y el admin la activa a mano.
 VALIDADOR_ACTIVA_AUTOMATICO = os.getenv("VALIDADOR_ACTIVA_AUTOMATICO", "1") == "1"

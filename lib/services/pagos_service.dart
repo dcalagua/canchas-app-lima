@@ -583,6 +583,34 @@ class PagosService {
     }
   }
 
+  /// Sube una imagen (bytes) y devuelve su URL pública para publicar en IG/FB.
+  /// Instagram EXIGE una imagen accesible por URL; esto la aloja en el backend.
+  /// Null si no se pudo.
+  static Future<String?> subirImagen({
+    required String academiaId,
+    required List<int> bytes,
+    String contentType = 'image/jpeg',
+  }) async {
+    if (!disponible || bytes.isEmpty) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/marketing/img');
+      final r = await http
+          .post(uri,
+              headers: _appHeaders(json: true),
+              body: jsonEncode({
+                'academia_id': academiaId,
+                'data_b64': base64Encode(bytes),
+                'content_type': contentType,
+              }))
+          .timeout(const Duration(seconds: 30));
+      if (r.statusCode != 200) return null;
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      return j['ok'] == true ? j['url'] as String? : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Publica un post aprobado en las redes conectadas del dueño (IG/FB).
   /// Devuelve el JSON del backend {ok, resultados:{facebook, instagram}} o null.
   static Future<Map<String, dynamic>?> publicarPost({

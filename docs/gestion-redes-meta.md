@@ -13,9 +13,10 @@ como que el dueño contrate un equipo de marketing.
 3. Al tocar, el APK abre el **diálogo de permiso de Meta** (OAuth). El dueño
    acepta → Meta redirige a `GROWTH_API_URL/marketing/redes/callback` → el backend
    guarda el **token cifrado** y la conexión queda **conectada**.
-4. En _Community manager IA_ cada post generado muestra **"Publicar"**: publica en
-   la Página de FB (texto) y en Instagram (si hay imagen). El token del dueño
-   nunca sale del backend ni se muestra en el APK.
+4. En _Community manager IA_ cada post generado muestra **"Publicar"**: el dueño
+   elige **"Con foto (IG + FB)"** — el APK sube la imagen al backend, que la aloja
+   con URL pública para que Meta la descargue — o **"Solo texto (FB)"**. El token
+   del dueño nunca sale del backend ni se muestra en el APK.
 5. El dueño puede **Desconectar** desde el APK, o **revocar** el permiso desde su
    propio Facebook.
 
@@ -59,6 +60,7 @@ Cargar en el servicio `pg-backend` (nunca en el APK ni en el repo):
 | `META_MODO` | `produccion` |
 | `META_TOKEN_KEY` | clave Fernet para cifrar tokens (ver abajo) |
 | `META_GRAPH_VERSION` | opcional, por defecto `v21.0` |
+| `PUBLIC_BASE_URL` | base pública del backend para las URLs de imagen que Meta descarga (ej. `https://pg-backend-production-c176.up.railway.app`) |
 
 Generar `META_TOKEN_KEY`:
 
@@ -75,6 +77,8 @@ Con eso, el flujo ya construido pasa de sandbox a real **sin cambios de código*
 - `GET  /marketing/redes/callback` — público; Meta redirige aquí tras el permiso.
 - `POST /marketing/redes/desconectar` — revoca la conexión.
 - `POST /marketing/redes/publicar` — publica un post aprobado en IG/FB.
+- `POST /marketing/img` — aloja una imagen (base64) y devuelve su URL pública.
+- `GET  /marketing/img/{nombre}` — público; sirve la imagen (fetch de Meta).
 
 Precio del plan: `servicio_gestion_soles` (torre de control → _Servicios de
 marketing_ → "Gestión de redes").

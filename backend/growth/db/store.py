@@ -328,6 +328,10 @@ class Stores:
         # el permiso OAuth de Meta del dueño (IG/FB) para publicar por él. El token
         # va CIFRADO en "token_enc" y NUNCA se expone en respuestas (se enmascara).
         self.conexiones_redes: dict[str, dict] = {}
+        # IMÁGENES para publicar (hosting transitorio): id -> {bytes, content_type}.
+        # NO se persiste (Meta las descarga al instante al publicar); se descartan
+        # las más viejas al pasar el tope (config.IMG_MAX_RETENIDAS).
+        self.imagenes: "dict[str, dict]" = {}
         # VISTAS de destacados (métrica de impacto del boost): por id (dueno_id
         # de canchas o id de academia) → {YYYY-MM-DD: nº impresiones ese día}.
         self.vistas: dict[str, dict[str, int]] = {}
@@ -460,6 +464,17 @@ class Stores:
             c = CanchaEstado(cancha_id=cancha_id)
             self.canchas[cancha_id] = c
         return c
+
+    # --- imágenes transitorias para publicar (hosting efímero) --------------
+    def guardar_imagen(self, datos: bytes, content_type: str,
+                       tope: int = 80) -> str:
+        """Guarda una imagen en memoria y devuelve su id. Descarta las más
+        viejas si se pasa el tope (dict conserva orden de inserción)."""
+        img_id = f"{self.next_id('img')}"
+        self.imagenes[img_id] = {"bytes": datos, "content_type": content_type}
+        while len(self.imagenes) > max(1, tope):
+            self.imagenes.pop(next(iter(self.imagenes)))
+        return img_id
 
     # --- idempotencia ---
     def idem_get(self, scope: str, key: str | None) -> dict | None:
