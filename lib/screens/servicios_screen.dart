@@ -10,6 +10,7 @@ import '../services/pagos_service.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'conectar_redes_screen.dart';
 import 'recargar_saldo_screen.dart';
 
 /// "Servicios Pichangol": el dueño contrata landing / manejo de redes /
@@ -36,7 +37,6 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
 
   // Gestión de redes (Nivel 2): estado de la conexión OAuth del dueño.
   Map<String, dynamic>? _redesConn;
-  bool _conectandoRedes = false;
   int? _publicando; // índice del post que se está publicando
 
   @override
@@ -238,69 +238,11 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
   }
 
   // --- Gestión de redes (conexión OAuth + publicación) --------------------
-  Future<void> _conectarRedes() async {
-    setState(() => _conectandoRedes = true);
-    final r = await PagosService.conectarRedes(
-        academiaId: _idAcademia, duenoId: _idAcademia);
-    if (!mounted) return;
-    setState(() => _conectandoRedes = false);
-    if (r == null || r['ok'] != true) {
-      _msg('No se pudo iniciar la conexión. Reintenta.');
-      return;
-    }
-    final loginUrl = r['login_url'] as String?;
-    if (loginUrl != null && loginUrl.isNotEmpty) {
-      // Producción: el dueño autoriza en el navegador (permiso de Meta).
-      await _abrir(loginUrl);
-      if (!mounted) return;
-      await showDialog<void>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Autoriza tus redes'),
-          content: const Text(
-              'Se abrió una página para que autorices a Pichangol a publicar en '
-              'tu Instagram/Facebook. Cuando termines, vuelve aquí y toca '
-              '"Ya autoricé".'),
-          actions: [
-            FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: lima),
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Ya autoricé')),
-          ],
-        ),
-      );
-      await _cargar();
-    } else {
-      // Sandbox: quedó conectado al instante.
-      setState(() => _redesConn = Map<String, dynamic>.from(
-          (r['conexion'] as Map?) ?? const {}));
-      _msg('✅ Redes conectadas.');
-    }
-  }
-
-  Future<void> _desconectarRedes() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Desconectar redes'),
-        content: const Text(
-            'Dejaremos de publicar por ti. Puedes volver a conectar cuando '
-            'quieras. También puedes revocar el permiso desde tu Facebook.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('No')),
-          FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: clayOscuro),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Desconectar')),
-        ],
-      ),
-    );
-    if (ok == true) {
-      await PagosService.desconectarRedes(_idAcademia);
-      await _cargar();
-    }
+  /// Abre la pantalla guiada de conexión (requisitos → conectar → estado).
+  Future<void> _gestionarRedes() async {
+    await Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => ConectarRedesScreen(academia: widget.academia)));
+    if (mounted) await _cargar();
   }
 
   /// Pregunta si publicar con foto (IG+FB) o solo texto (FB). Instagram EXIGE
@@ -542,36 +484,20 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
             ),
           ],
           const SizedBox(height: 12),
-          if (!conectada)
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                style: FilledButton.styleFrom(
-                    backgroundColor: lima,
-                    foregroundColor: bosque,
-                    padding: const EdgeInsets.symmetric(vertical: 13)),
-                icon: _conectandoRedes
-                    ? const SizedBox(
-                        height: 18,
-                        width: 18,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2.2, color: bosque))
-                    : const Icon(Icons.link, size: 18),
-                label: const Text('Conectar Instagram / Facebook',
-                    style: TextStyle(fontWeight: FontWeight.w800)),
-                onPressed: _conectandoRedes ? null : _conectarRedes,
-              ),
-            )
-          else
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                icon: const Icon(Icons.link_off, size: 18, color: Colors.white70),
-                label: const Text('Desconectar',
-                    style: TextStyle(color: Colors.white70)),
-                onPressed: _desconectarRedes,
-              ),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                  backgroundColor: lima,
+                  foregroundColor: bosque,
+                  padding: const EdgeInsets.symmetric(vertical: 13)),
+              icon: Icon(conectada ? Icons.settings : Icons.link, size: 18),
+              label: Text(
+                  conectada ? 'Gestionar conexión' : 'Conectar Instagram / Facebook',
+                  style: const TextStyle(fontWeight: FontWeight.w800)),
+              onPressed: _gestionarRedes,
             ),
+          ),
         ],
       ),
     );
