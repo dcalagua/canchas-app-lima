@@ -115,6 +115,23 @@ def generar_posts_endpoint(req: PostsReq) -> dict:
 
 
 # ------ Gestión de redes (Nivel 2): conexión OAuth + publicación ------------
+@router.get("/marketing/redes/diag")
+def redes_diag() -> dict:
+    """Diagnóstico PÚBLICO (sin secretos): qué config de Meta ve el backend en
+    caliente. Sirve para confirmar que Railway aplicó las variables nuevas.
+    No expone el App Secret (solo si está o no)."""
+    return {
+        "modo": redes_svc.modo(),
+        "redirect_uri": config.META_REDIRECT_URI,
+        "public_base_url": config.PUBLIC_BASE_URL,
+        "config_id": config.META_LOGIN_CONFIG_ID,
+        "app_id": config.META_APP_ID,
+        "tiene_app_secret": bool(config.META_APP_SECRET),
+        "graph_version": config.META_GRAPH_VERSION,
+        "login_url_ejemplo": redes_svc.login_url("DIAG"),
+    }
+
+
 @router.get("/marketing/redes/estado/{academia_id}", dependencies=_APP)
 def redes_estado(academia_id: str) -> dict:
     """Estado de la conexión de redes del dueño (enmascarado, sin token)."""
