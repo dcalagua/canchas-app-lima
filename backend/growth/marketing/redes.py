@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import base64
 import json
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
@@ -95,8 +96,23 @@ def _graph(path: str, params: dict | None = None, *, post: bool = False) -> dict
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         if isinstance(data, dict) and data.get("error"):
-            return {"ok": False, "error": str(data["error"].get("message"))[:200]}
+            return {"ok": False, "error": str(data["error"].get("message"))[:300]}
         return {"ok": True, "data": data}
+    except urllib.error.HTTPError as e:  # noqa: PERF203
+        # Facebook manda el detalle real (redirect_uri mismatch, code usado, etc.)
+        # en el CUERPO del error; sin leerlo solo veríamos "HTTP Error 400".
+        try:
+            cuerpo = e.read().decode("utf-8", "ignore")
+        except Exception:  # noqa: BLE001
+            cuerpo = ""
+        detalle = cuerpo
+        try:
+            j = json.loads(cuerpo)
+            if isinstance(j, dict) and j.get("error"):
+                detalle = str(j["error"].get("message") or cuerpo)
+        except Exception:  # noqa: BLE001
+            pass
+        return {"ok": False, "error": f"HTTP {e.code}: {detalle[:300]}"}
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": str(e)[:200]}
 
