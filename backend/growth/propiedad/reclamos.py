@@ -58,6 +58,19 @@ def set_exigir_ubicacion(activo: bool) -> dict:
             "max_m": config.RECLAMO_UBICACION_MAX_M}
 
 
+def contacto_whatsapp() -> str:
+    """WhatsApp de contacto de Pichangol/EBIM para servicios (landing, redes).
+    Editable desde la torre de control. Formato internacional sin '+'."""
+    return stores.cfg("contacto_whatsapp")
+
+
+def set_contacto_whatsapp(valor: str) -> dict:
+    """Fija el WhatsApp de contacto (solo dígitos)."""
+    solo = "".join(ch for ch in (valor or "") if ch.isdigit())
+    stores.config["contacto_whatsapp"] = solo
+    return {"ok": True, "contacto_whatsapp": contacto_whatsapp()}
+
+
 def set_modo_cancha(cancha_id: str, modo: str | None) -> dict:
     """Fija (o limpia, si modo es None/'') el override de una cancha."""
     if not modo:

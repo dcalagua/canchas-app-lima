@@ -10,6 +10,7 @@ import '../data/canchas_repo.dart';
 import '../models/academia.dart';
 import '../models/club.dart';
 import '../models/models.dart';
+import '../services/growth_service.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -210,7 +211,9 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
     final msg = 'Hola Pichangol 👋 Soy'
         '${nombre.isNotEmpty ? ' de la academia "$nombre"' : ' dueño de una academia'}'
         ' y quiero contratar mi landing + manejo de redes sociales.';
-    final ok = await WhatsAppLink.abrir(kContactoWhatsApp, msg);
+    // Número configurable desde la torre de control; respaldo = constante marca.
+    final numero = await GrowthService.contactoWhatsApp() ?? kContactoWhatsApp;
+    final ok = await WhatsAppLink.abrir(numero, msg);
     if (!ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('No se pudo abrir WhatsApp. Inténtalo de nuevo.')));

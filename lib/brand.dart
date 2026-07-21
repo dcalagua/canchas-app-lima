@@ -6,6 +6,7 @@ const String kBrandTaglineShort = '¿Dónde juegas hoy?';
 const String kRespaldoEbim = 'Una solución de EBIM';
 
 /// WhatsApp de contacto de Pichangol/EBIM para SERVICIOS (landing, manejo de
-/// redes, soporte comercial). Formato internacional SIN '+'.
-/// TODO: reemplazar por el número real de atención.
-const String kContactoWhatsApp = '51999999999';
+/// redes, soporte comercial). Formato internacional SIN '+'. Es solo RESPALDO:
+/// la fuente de verdad es la torre de control (`GET /config/contacto`), que la
+/// app consulta antes de abrir WhatsApp.
+const String kContactoWhatsApp = '593998706994';

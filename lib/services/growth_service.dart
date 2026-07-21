@@ -25,6 +25,23 @@ class GrowthService {
 
   static bool get disponible => _baseUrl.isNotEmpty;
 
+  /// WhatsApp de contacto de Pichangol/EBIM para servicios (landing, redes),
+  /// configurable desde la torre de control. Devuelve solo dígitos, o null si no
+  /// se pudo obtener (la pantalla cae a la constante de marca como respaldo).
+  static Future<String?> contactoWhatsApp() async {
+    if (!disponible) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/config/contacto');
+      final resp = await http.get(uri).timeout(const Duration(seconds: 6));
+      if (resp.statusCode != 200) return null;
+      final j = jsonDecode(resp.body) as Map<String, dynamic>;
+      final w = (j['whatsapp'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), '');
+      return w.isNotEmpty ? w : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Carril informal: corre la IA primero (reusa el módulo de existencia en el
   /// servidor) y, si no concluye, agenda una visita. Devuelve null si el servicio
   /// no está configurado / no respondió.

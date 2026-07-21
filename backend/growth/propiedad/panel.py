@@ -47,6 +47,10 @@ class ExigirUbicacionRequest(BaseModel):
     exigir: bool
 
 
+class ContactoRequest(BaseModel):
+    whatsapp: str
+
+
 @router.get("/admin/api/sesion")
 def sesion(x_admin_token: str | None = Header(default=None)) -> dict:
     """Valida el token (lo usa la pantalla de login del panel)."""
@@ -125,6 +129,27 @@ def set_pichangas_modo(req: ModoRequest,
     return convocatorias_service.set_modo_global(req.modo)
 
 
+@router.get("/admin/api/contacto")
+def get_contacto_admin(x_admin_token: str | None = Header(default=None)) -> dict:
+    """WhatsApp de contacto de Pichangol/EBIM para servicios (landing, redes)."""
+    _check(x_admin_token)
+    return {"whatsapp": reclamos.contacto_whatsapp()}
+
+
+@router.post("/admin/api/contacto")
+def set_contacto_admin(req: ContactoRequest,
+                       x_admin_token: str | None = Header(default=None)) -> dict:
+    """Cambia el WhatsApp de contacto (torre de control)."""
+    _check(x_admin_token)
+    return reclamos.set_contacto_whatsapp(req.whatsapp)
+
+
+@router.get("/config/contacto")
+def get_contacto_publico() -> dict:
+    """PÚBLICO: el APK lee el WhatsApp de contacto para el botón de servicios."""
+    return {"whatsapp": reclamos.contacto_whatsapp()}
+
+
 @router.get("/admin", response_class=HTMLResponse)
 def panel() -> str:
     return _HTML
@@ -157,7 +182,7 @@ _HTML = r"""<!DOCTYPE html>
   /* El icono es el LOGO del app (cuadro + pin), como SVG. */
   .pin svg{width:100%;height:100%;display:block}
   /* Lockup EBIM (respaldo, marca endosante) */
-  .ebim{font-weight:900;letter-spacing:.06em;color:var(--teal);text-transform:lowercase}
+  .ebim{font-weight:900;letter-spacing:.06em;color:var(--teal);text-transform:uppercase}
   header{position:sticky;top:0;z-index:5;
     background:linear-gradient(120deg,var(--green),var(--green-deep));color:#fff;
     padding:15px 26px;display:flex;align-items:center;gap:12px;
@@ -181,8 +206,10 @@ _HTML = r"""<!DOCTYPE html>
   /* Dashboard: config en fila (grid), listas a ancho completo. */
   .sec{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;
     color:var(--muted);margin:26px 2px 4px}
-  .cfg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));
-    gap:16px;align-items:start}
+  .cfg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
+    gap:16px;align-items:stretch}
+  .cfg-grid > div{display:flex}
+  .cfg-grid .card{flex:1;display:flex;flex-direction:column;margin:0}
   #liquidaciones{margin-top:16px}
   #liquidaciones:empty{display:none}
   #lista{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));
@@ -207,11 +234,27 @@ _HTML = r"""<!DOCTYPE html>
   .nav-i.on{background:rgba(255,255,255,.18);color:#fff}
   .side-foot{display:flex;flex-direction:column;gap:8px}
   .side-btn{background:rgba(255,255,255,.14);color:#fff;border:0;border-radius:11px;
-    padding:10px;font-family:inherit;font-weight:700;font-size:13px;cursor:pointer}
+    padding:10px;font-family:inherit;font-weight:700;font-size:13px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:8px}
   .side-btn:hover{background:rgba(255,255,255,.24)}
   .side-cred{text-align:center;font-size:11px;color:rgba(255,255,255,.7);
     font-weight:600;padding-top:6px}
   .side-cred .ebim{color:#fff;font-size:11px}
+  /* Botón para colapsar/expandir la barra lateral */
+  .side-toggle{align-self:flex-end;background:rgba(255,255,255,.14);color:#fff;border:0;
+    border-radius:10px;width:30px;height:30px;font-size:17px;line-height:1;cursor:pointer;
+    flex-shrink:0;margin-bottom:4px;transition:.12s}
+  .side-toggle:hover{background:rgba(255,255,255,.26)}
+  .side{transition:width .16s ease}
+  .side.collapsed{width:70px;padding:18px 10px;align-items:center}
+  .side.collapsed .sb-txt,
+  .side.collapsed .side-cred,
+  .side.collapsed .side-btn .lbl{display:none}
+  .side.collapsed .side-toggle{align-self:center}
+  .side.collapsed .side-brand{justify-content:center;padding:6px 0 4px}
+  .side.collapsed .nav-i{justify-content:center;gap:0;padding:12px 0;font-size:0}
+  .side.collapsed .nav-i .ico{font-size:19px;width:auto}
+  .side.collapsed .side-btn{justify-content:center;gap:0}
   .main{flex:1;min-width:0;padding:26px 30px 44px;max-width:1360px}
   .page-h{font-size:22px;font-weight:900;letter-spacing:-.01em;margin:0 0 18px}
   @media(max-width:820px){
@@ -223,6 +266,12 @@ _HTML = r"""<!DOCTYPE html>
     .side-foot{flex-direction:row;order:2;margin-left:auto}
     .side-cred{display:none}
     .main{padding:18px 16px 40px}
+    /* En móvil la barra es horizontal: el colapsable no aplica. */
+    .side-toggle{display:none}
+    .side.collapsed{width:auto;padding:12px 14px;align-items:center}
+    .side.collapsed .sb-txt,.side.collapsed .side-btn .lbl{display:inline}
+    .side.collapsed .nav-i{font-size:13.5px;padding:9px 12px;gap:11px}
+    .side.collapsed .nav-i .ico{font-size:16px}
   }
   .tabs{display:flex;gap:8px;overflow:auto;padding:4px 0 14px}
   .tab{white-space:nowrap;border:1px solid var(--border);background:#fff;color:var(--text);
@@ -312,32 +361,33 @@ _HTML = r"""<!DOCTYPE html>
     <input id="tok" type="password" placeholder="Token de administrador" autocomplete="off">
     <button onclick="entrar()">Entrar</button>
     <div style="margin-top:16px;color:var(--muted);font-size:12px;font-weight:600">
-      Una solución de <span class="ebim">ebim</span>
+      Una solución de <span class="ebim">EBIM</span>
     </div>
   </div>
 </div>
 
 <div class="shell" id="app" style="display:none">
-  <aside class="side">
+  <aside class="side" id="side">
+    <button class="side-toggle" onclick="toggleSide()" title="Colapsar / expandir menú">‹</button>
     <div class="side-brand">
       <div class="pin"><svg viewBox="0 0 48 48"><rect x="1.5" y="1.5" width="45" height="45" rx="12" fill="#fff"/><path d="M24 11.5c-4.3 0-7.8 3.5-7.8 7.8 0 5.9 7.8 14.2 7.8 14.2s7.8-8.3 7.8-14.2c0-4.3-3.5-7.8-7.8-7.8zm0 10.7a2.9 2.9 0 110-5.8 2.9 2.9 0 010 5.8z" fill="#128C7E"/></svg></div>
-      <div>
+      <div class="sb-txt">
         <span class="wm">Pichang<svg class="ball" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polygon points="12,8.2 14.9,10.3 13.8,13.8 10.2,13.8 9.1,10.3"/><path d="M12 8.2V4.3M14.9 10.3l3.6-1.7M13.8 13.8l2.5 3.2M10.2 13.8l-2.5 3.2M9.1 10.3L5.5 8.6"/></svg>l</span>
-        <div class="side-sub"><span class="ebim">ebim</span> · admin</div>
+        <div class="side-sub"><span class="ebim">EBIM</span> · admin</div>
       </div>
     </div>
     <nav class="nav">
-      <button class="nav-i on" data-sec="reclamos" onclick="mostrarSeccion('reclamos')">
+      <button class="nav-i on" data-sec="reclamos" onclick="mostrarSeccion('reclamos')" title="Reclamos">
         <span class="ico">📋</span> Reclamos</button>
-      <button class="nav-i" data-sec="liquidaciones" onclick="mostrarSeccion('liquidaciones')">
+      <button class="nav-i" data-sec="liquidaciones" onclick="mostrarSeccion('liquidaciones')" title="Liquidaciones">
         <span class="ico">💸</span> Liquidaciones</button>
-      <button class="nav-i" data-sec="config" onclick="mostrarSeccion('config')">
+      <button class="nav-i" data-sec="config" onclick="mostrarSeccion('config')" title="Configuración">
         <span class="ico">⚙️</span> Configuración</button>
     </nav>
     <div class="side-foot">
-      <button class="side-btn" onclick="cargar();cargarLiquidaciones()">↻ Actualizar</button>
-      <button class="side-btn" onclick="salir()">Salir</button>
-      <div class="side-cred">una solución de <span class="ebim">ebim</span></div>
+      <button class="side-btn" onclick="cargar();cargarLiquidaciones()" title="Actualizar"><span class="ico">↻</span><span class="lbl">Actualizar</span></button>
+      <button class="side-btn" onclick="salir()" title="Salir"><span class="ico">⎋</span><span class="lbl">Salir</span></button>
+      <div class="side-cred">una solución de <span class="ebim">EBIM</span></div>
     </div>
   </aside>
   <main class="main">
@@ -356,6 +406,7 @@ _HTML = r"""<!DOCTYPE html>
         <div id="modo"></div>
         <div id="pichangaModo"></div>
         <div id="ubic"></div>
+        <div id="contacto"></div>
       </div>
     </section>
   </main>
@@ -394,15 +445,61 @@ async function entrar(){
   }
 }
 function salir(){ localStorage.removeItem('pichangol_admin_tok'); location.reload(); }
+// Colapsa / expande la barra lateral y recuerda la preferencia.
+function toggleSide(){
+  const s = document.getElementById('side');
+  s.classList.toggle('collapsed');
+  try{ localStorage.setItem('pg_side_collapsed', s.classList.contains('collapsed')?'1':'0'); }catch(e){}
+}
+function restaurarSide(){
+  try{ if(localStorage.getItem('pg_side_collapsed')==='1')
+    document.getElementById('side').classList.add('collapsed'); }catch(e){}
+}
 function mostrarApp(){
   document.getElementById('gate').style.display='none';
   document.getElementById('app').style.display='flex';
+  restaurarSide();
   renderTabs();
   cargarModo();
   cargarPichangaModo();
   cargarUbicacion();
+  cargarContacto();
   cargarLiquidaciones();
   cargar();
+}
+
+// --- WhatsApp de contacto (servicios: landing, redes) ----------------------
+let contactoWa = '';
+async function cargarContacto(){
+  try{
+    const r = await fetch('/admin/api/contacto',{headers:headers()});
+    if(!r.ok) return;
+    const j = await r.json();
+    contactoWa = j.whatsapp || '';
+    renderContacto();
+  }catch(e){}
+}
+function renderContacto(){
+  document.getElementById('contacto').innerHTML =
+    `<div class="card"><div class="top"><h3>WhatsApp de contacto (servicios)</h3></div>
+      <div class="row">Número al que llegan los dueños que piden su <b>landing</b> o
+        <b>manejo de redes</b> desde la app. Formato internacional sin «+».</div>
+      <input id="contactoInp" value="${esc(contactoWa)}" placeholder="593998706994"
+        inputmode="numeric" style="margin-top:12px;width:100%;padding:11px 12px;
+        border:1px solid var(--border);border-radius:12px;font-family:inherit;font-size:14px">
+      <div class="actions">
+        <button class="btn-ap" onclick="guardarContacto()">Guardar número</button>
+      </div></div>`;
+}
+async function guardarContacto(){
+  const v = (document.getElementById('contactoInp').value||'').replace(/[^0-9]/g,'');
+  if(v.length < 8){ toast('Número inválido'); return; }
+  const r = await fetch('/admin/api/contacto',{method:'POST',headers:headers(),
+    body:JSON.stringify({whatsapp:v})});
+  if(r.status===401){ salir(); return; }
+  const j = await r.json();
+  if(j.ok){ contactoWa = j.whatsapp; renderContacto(); toast('WhatsApp de contacto guardado'); }
+  else toast('No se pudo guardar');
 }
 // Navegación de la barra lateral: muestra una sección y marca su ítem activo.
 function mostrarSeccion(sec){
