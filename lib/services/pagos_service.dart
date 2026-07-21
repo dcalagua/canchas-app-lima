@@ -526,6 +526,69 @@ class PagosService {
     }
   }
 
+  // --- Comisión por cobro digital de matrícula (tarifa "tipo POS") --------
+  /// Tarifa (%) por cobro digital de matrícula para un país. 0 = sin comisión
+  /// (o efectivo). Null si no se pudo consultar.
+  static Future<double?> comisionMatricula(String pais) async {
+    if (!disponible) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/pagos/comision-matricula?pais=$pais');
+      final r = await http.get(uri, headers: _appHeaders())
+          .timeout(const Duration(seconds: 10));
+      if (r.statusCode != 200) return null;
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      return (j['pct'] as num?)?.toDouble();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Registra un cobro digital de matrícula: congela la comisión del país y deja
+  /// el neto como "por recibir" de la academia. Idempotente por [matriculaId].
+  /// Best-effort (no bloquea la matrícula si falla la red).
+  static Future<Map<String, dynamic>?> registrarMatricula({
+    required String academiaId,
+    required double montoSoles,
+    required String matriculaId,
+    required String pais,
+    String? concepto,
+  }) async {
+    if (!disponible) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/pagos/matricula');
+      final r = await http
+          .post(uri,
+              headers: _appHeaders(json: true),
+              body: jsonEncode({
+                'academia_id': academiaId,
+                'monto_soles': montoSoles,
+                'matricula_id': matriculaId,
+                'pais': pais,
+                if (concepto != null) 'concepto': concepto,
+              }))
+          .timeout(const Duration(seconds: 15));
+      if (r.statusCode != 200) return null;
+      return Map<String, dynamic>.from(jsonDecode(r.body) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Resumen de cobros digitales de matrícula de una academia (para el reporte):
+  /// {cobros, bruto_soles, comision_soles, neto_soles}. Null si no se pudo.
+  static Future<Map<String, dynamic>?> resumenMatricula(String academiaId) async {
+    if (!disponible) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/pagos/matricula/resumen/$academiaId');
+      final r = await http.get(uri, headers: _appHeaders())
+          .timeout(const Duration(seconds: 12));
+      if (r.statusCode != 200) return null;
+      return Map<String, dynamic>.from(jsonDecode(r.body) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
   // --- Gestión de redes (Nivel 2): conexión OAuth + publicación -----------
   /// Estado de la conexión de redes de una academia (enmascarado, sin token).
   /// {conectado, estado, ig_username, page_nombre, publicaciones, modo} o null.

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/academia.dart';
+import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/moneda.dart';
@@ -113,6 +114,10 @@ class _ReporteAcademiaScreenState extends State<ReporteAcademiaScreen> {
                   Expanded(child: _Kpi('Vencido', vencido, clayOscuro, mon)),
                 ],
               ),
+              if (academia != null) ...[
+                const SizedBox(height: 14),
+                _ComisionDigital(academia: academia, moneda: mon),
+              ],
               if (academia != null && academia.tieneRetribucionClub) ...[
                 const SizedBox(height: 14),
                 _LiquidacionClub(
@@ -196,6 +201,119 @@ class _ReporteAcademiaScreenState extends State<ReporteAcademiaScreen> {
           },
         ),
       ],
+    );
+  }
+}
+
+/// Comisión por COBRO DIGITAL ("es como tu POS"): tarifa por país que se aplica
+/// a lo que los alumnos pagan por la app; el efectivo es 0%. Muestra el % y, si
+/// hubo cobros digitales, el neto que le queda a la academia (del backend).
+class _ComisionDigital extends StatefulWidget {
+  const _ComisionDigital({required this.academia, required this.moneda});
+  final Academia academia;
+  final String moneda;
+  @override
+  State<_ComisionDigital> createState() => _ComisionDigitalState();
+}
+
+class _ComisionDigitalState extends State<_ComisionDigital> {
+  double? _pct;
+  Map<String, dynamic>? _resumen;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  Future<void> _cargar() async {
+    final pct = await PagosService.comisionMatricula(widget.academia.pais.iso);
+    final res = await PagosService.resumenMatricula(widget.academia.id);
+    if (!mounted) return;
+    setState(() {
+      _pct = pct;
+      _resumen = res;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final pct = _pct ?? 0;
+    final tienePct = pct > 0;
+    final m = widget.moneda;
+    final res = _resumen;
+    final cobros = (res?['cobros'] as num?)?.toInt() ?? 0;
+    final bruto = (res?['bruto_soles'] as num?)?.toDouble() ?? 0;
+    final comision = (res?['comision_soles'] as num?)?.toDouble() ?? 0;
+    final neto = (res?['neto_soles'] as num?)?.toDouble() ?? 0;
+    final pctTxt = pct.toStringAsFixed(pct % 1 == 0 ? 0 : 1);
+
+    Widget fila(String t, double v, {Color? color, bool fuerte = false}) =>
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 3),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(t,
+                  style: TextStyle(
+                      fontSize: 13.5,
+                      color: color ?? cs.onSurface,
+                      fontWeight: fuerte ? FontWeight.w800 : FontWeight.w500)),
+              Text('$m ${v.toStringAsFixed(2)}',
+                  style: TextStyle(
+                      fontSize: 13.5,
+                      color: color ?? cs.onSurface,
+                      fontWeight: fuerte ? FontWeight.w800 : FontWeight.w600)),
+            ],
+          ),
+        );
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: trazo),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.point_of_sale, size: 18, color: lima),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                    tienePct
+                        ? 'Comisión por cobro digital · $pctTxt%'
+                        : 'Comisión por cobro digital',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
+                        color: cs.onSurface)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            tienePct
+                ? 'Es como tu POS: los pagos por la app tienen $pctTxt% de comisión. '
+                    'Los pagos en efectivo que registras a mano son 0%.'
+                : 'Los pagos por la app hoy no tienen comisión (etapa piloto). '
+                    'Los pagos en efectivo siempre son 0%.',
+            style: const TextStyle(color: textoTenue, fontSize: 12.5, height: 1.3),
+          ),
+          if (cobros > 0) ...[
+            const Divider(height: 18),
+            fila('Cobrado por la app ($cobros)', bruto),
+            if (tienePct)
+              fila('Comisión ($pctTxt%)', -comision, color: clayOscuro),
+            const Divider(height: 16),
+            fila('Neto para tu academia', neto, fuerte: true, color: lima),
+          ],
+        ],
+      ),
     );
   }
 }

@@ -60,6 +60,13 @@ class MarketingConfigRequest(BaseModel):
     posts_limite_mes: int | None = None
 
 
+class ComisionRequest(BaseModel):
+    # % por cobro digital de matrícula, por país (efectivo = 0%).
+    pe: float | None = None
+    ec: float | None = None
+    bo: float | None = None
+
+
 @router.get("/admin/api/sesion")
 def sesion(x_admin_token: str | None = Header(default=None)) -> dict:
     """Valida el token (lo usa la pantalla de login del panel)."""
@@ -183,6 +190,32 @@ def set_marketing_admin(req: MarketingConfigRequest,
     if req.posts_limite_mes is not None:
         stores.config["marketing_posts_limite_mes"] = str(max(0, int(req.posts_limite_mes)))
     return get_marketing_admin(x_admin_token)
+
+
+@router.get("/admin/api/comision")
+def get_comision_admin(x_admin_token: str | None = Header(default=None)) -> dict:
+    """Comisión por cobro digital de matrícula, por país (torre de control)."""
+    _check(x_admin_token)
+
+    def _pct(iso: str) -> float:
+        try:
+            return max(0.0, float(stores.cfg(f"comision_matricula_pct_{iso}")))
+        except (TypeError, ValueError):
+            return 0.0
+
+    return {"pe": _pct("pe"), "ec": _pct("ec"), "bo": _pct("bo")}
+
+
+@router.post("/admin/api/comision")
+def set_comision_admin(req: ComisionRequest,
+                       x_admin_token: str | None = Header(default=None)) -> dict:
+    """Cambia la comisión por cobro digital por país (torre de control)."""
+    _check(x_admin_token)
+    for iso in ("pe", "ec", "bo"):
+        val = getattr(req, iso)
+        if val is not None:
+            stores.config[f"comision_matricula_pct_{iso}"] = str(max(0.0, float(val)))
+    return get_comision_admin(x_admin_token)
 
 
 @router.get("/config/contacto")
@@ -450,6 +483,7 @@ _HTML = r"""<!DOCTYPE html>
         <div id="ubic"></div>
         <div id="contacto"></div>
         <div id="marketing"></div>
+        <div id="comision"></div>
       </div>
     </section>
   </main>
@@ -508,6 +542,7 @@ function mostrarApp(){
   cargarUbicacion();
   cargarContacto();
   cargarMarketing();
+  cargarComision();
   cargarLiquidaciones();
   cargar();
 }
@@ -551,6 +586,44 @@ async function guardarMarketing(){
       posts_limite_mes:n('mkt_limite')})});
   if(r.status===401){ salir(); return; }
   if(r.ok){ mkt = await r.json(); renderMarketing(); toast('Servicios de marketing actualizados'); }
+  else toast('No se pudo guardar');
+}
+
+// --- Comisión por cobro digital de matrícula (por país) --------------------
+let com = {pe:0, ec:0, bo:0};
+async function cargarComision(){
+  try{
+    const r = await fetch('/admin/api/comision',{headers:headers()});
+    if(!r.ok) return;
+    com = await r.json();
+    renderComision();
+  }catch(e){}
+}
+function renderComision(){
+  const campo = (id,bandera,lbl,val)=>`
+    <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+      <span style="flex:1;font-weight:600;font-size:13px">${bandera} ${lbl}</span>
+      <input id="${id}" value="${val}" inputmode="decimal" style="width:80px;padding:9px 10px;
+        border:1px solid var(--border);border-radius:10px;font-family:inherit;font-size:14px;text-align:right">
+      <span style="color:var(--muted);font-size:13px;min-width:16px">%</span>
+    </div>`;
+  document.getElementById('comision').innerHTML =
+    `<div class="card"><div class="top"><h3>Comisión por cobro digital</h3></div>
+      <div class="row">Tarifa "tipo POS" que la academia absorbe cuando el alumno
+        paga la matrícula por la app (el alumno paga el precio limpio). El pago en
+        efectivo es 0%. Piloto: 0% para ganar adopción.</div>
+      ${campo('com_pe','🇵🇪','Perú', com.pe)}
+      ${campo('com_ec','🇪🇨','Ecuador', com.ec)}
+      ${campo('com_bo','🇧🇴','Bolivia', com.bo)}
+      <div class="actions"><button class="btn-ap" onclick="guardarComision()">Guardar</button></div>
+    </div>`;
+}
+async function guardarComision(){
+  const f = id => parseFloat((document.getElementById(id).value||'0').replace(',','.'))||0;
+  const r = await fetch('/admin/api/comision',{method:'POST',headers:headers(),
+    body:JSON.stringify({pe:f('com_pe'),ec:f('com_ec'),bo:f('com_bo')})});
+  if(r.status===401){ salir(); return; }
+  if(r.ok){ com = await r.json(); renderComision(); toast('Comisión actualizada'); }
   else toast('No se pudo guardar');
 }
 

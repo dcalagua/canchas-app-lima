@@ -38,6 +38,13 @@ CONFIG_DEFAULT: dict[str, str] = {
     # "Gestión de redes" (Nivel 2): Pichangol publica DIRECTAMENTE en el IG/FB del
     # dueño (con su permiso). Es un servicio superior; precio editable.
     "servicio_gestion_soles": "199",
+    # Comisión por COBRO DIGITAL de matrícula (cuando el alumno paga por la app).
+    # Es una tarifa única "tipo POS" que la academia absorbe (el alumno paga el
+    # precio limpio). Por país y editable desde la torre de control. Efectivo = 0%
+    # (un pago que el profe marca a mano NO pasa por aquí). Piloto: 0% (adopción).
+    "comision_matricula_pct_pe": "0",
+    "comision_matricula_pct_ec": "0",
+    "comision_matricula_pct_bo": "0",
     # Tope de generaciones de posts con IA por academia/mes (control de costo).
     # Editable desde la torre de control. 0 = sin tope.
     "marketing_posts_limite_mes": "30",
@@ -283,6 +290,10 @@ class PagoRegistro:
     culqi_charge_id: str | None = None
     email: str | None = None
     concepto: str | None = None
+    # Comisión congelada al momento del cobro (tipo=matricula_online): la tarifa
+    # por cobro digital depende del país y es editable, así que se guarda aquí y
+    # NO se recalcula después. neto = monto_centimos - comision_centimos.
+    comision_centimos: int = 0
     # Liquidación (solo tipo=liquidacion_online): estado del pago del NETO al
     # dueño. liquidado=False → Pichangol aún le debe; True → ya se le transfirió.
     liquidado: bool = False
@@ -712,6 +723,7 @@ def _pago_from(d: dict) -> PagoRegistro:
         creado_en=_dt(d["creado_en"]), dueno_id=d.get("dueno_id"),
         culqi_charge_id=d.get("culqi_charge_id"), email=d.get("email"),
         concepto=d.get("concepto"),
+        comision_centimos=int(d.get("comision_centimos", 0)),
         liquidado=bool(d.get("liquidado", False)),
         liquidado_en=_dt(d.get("liquidado_en")),
         metodo_liquidacion=d.get("metodo_liquidacion"),

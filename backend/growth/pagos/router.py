@@ -396,6 +396,76 @@ def post_cobrar_vencidas() -> dict:
     return {"ok": True, "cobradas": cobradas, "pendientes": pendientes}
 
 
+# ------ Comisión por COBRO DIGITAL de matrícula (tarifa "tipo POS") ----------
+# El alumno paga el precio limpio por la app; la academia absorbe una comisión
+# única por país (editable en la torre de control). Efectivo = 0% (no pasa por
+# aquí). El NETO (bruto − comisión) queda como "por recibir" de la academia.
+_PAISES_COMISION = ("pe", "ec", "bo")
+
+
+def _comision_matricula_pct(pais: str | None) -> float:
+    iso = (pais or "pe").strip().lower()
+    if iso not in _PAISES_COMISION:
+        iso = "pe"
+    try:
+        return max(0.0, float(stores.cfg(f"comision_matricula_pct_{iso}")))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+class MatriculaReq(BaseModel):
+    academia_id: str          # la academia (su billetera/“por recibir”)
+    monto_soles: float        # lo que pagó el alumno (precio limpio)
+    matricula_id: str         # idempotencia: no registrar 2 veces
+    pais: str = "pe"
+    concepto: str | None = None
+
+
+@router.get("/comision-matricula")
+def get_comision_matricula(pais: str = "pe") -> dict:
+    """Tarifa (%) por cobro digital de matrícula para un país. Público: el APK la
+    muestra al profe ('es como tu POS'). Efectivo = 0%."""
+    return {"pais": pais, "pct": _comision_matricula_pct(pais)}
+
+
+@router.post("/matricula", dependencies=_APP)
+def post_matricula(req: MatriculaReq) -> dict:
+    """Registra un cobro digital de matrícula: congela la comisión del país y deja
+    el NETO como 'por recibir' de la academia. Idempotente por matricula_id. El
+    alumno ya pagó el bruto a Pichangol (Culqi); esto es la contabilidad del neto
+    que se le debe a la academia."""
+    bruto = _soles_a_centimos(req.monto_soles)
+    pct = _comision_matricula_pct(req.pais)
+    comision = int(round(bruto * pct / 100.0))
+    ya = stores.pago_por_charge(req.matricula_id)
+    if ya is not None and ya.tipo == "matricula_online":
+        return {"ok": True, "duplicada": True, "bruto_centimos": ya.monto_centimos,
+                "comision_centimos": ya.comision_centimos,
+                "neto_centimos": ya.monto_centimos - ya.comision_centimos,
+                "pct": pct}
+    stores.registrar_pago(
+        tipo="matricula_online", monto_centimos=bruto, moneda="PEN",
+        estado="aprobado", dueno_id=req.academia_id,
+        culqi_charge_id=req.matricula_id, comision_centimos=comision,
+        concepto=req.concepto or "Matrícula (cobro digital)")
+    return {"ok": True, "duplicada": False, "bruto_centimos": bruto,
+            "comision_centimos": comision, "neto_centimos": bruto - comision,
+            "pct": pct}
+
+
+@router.get("/matricula/resumen/{academia_id}", dependencies=_APP)
+def get_matricula_resumen(academia_id: str) -> dict:
+    """Resumen de cobros digitales de matrícula de una academia (para el reporte
+    del profe): bruto, comisión y neto acumulados por cobro por la app."""
+    ms = [p for p in stores.pagos
+          if p.tipo == "matricula_online" and p.dueno_id == academia_id]
+    bruto = sum(p.monto_centimos for p in ms)
+    comision = sum(p.comision_centimos for p in ms)
+    return {"academia_id": academia_id, "cobros": len(ms),
+            "bruto_soles": bruto / 100.0, "comision_soles": comision / 100.0,
+            "neto_soles": (bruto - comision) / 100.0}
+
+
 def _liquidacion_dict(p) -> dict:
     """Serializa una liquidación con su desglose y estado de pago."""
     bruto = p.monto_centimos

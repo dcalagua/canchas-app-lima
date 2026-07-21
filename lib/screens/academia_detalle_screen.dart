@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/academia.dart';
+import '../services/pagos_service.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -548,6 +549,17 @@ class _TarjetaPlan extends StatelessWidget {
       moneda: academia.monedaSimbolo,
     );
     if (!pagado) return;
+
+    // 2b) Registra el COBRO DIGITAL en el backend: congela la comisión "tipo POS"
+    // del país y deja el neto como "por recibir" de la academia (best-effort; no
+    // bloquea la matrícula si falla la red).
+    PagosService.registrarMatricula(
+      academiaId: academia.id,
+      montoSoles: monto.toDouble(),
+      matriculaId: 'mat_${academia.id}_${DateTime.now().microsecondsSinceEpoch}',
+      pais: academia.pais.iso,
+      concepto: 'Matrícula ${academia.nombre} · ${plan.nombre}',
+    );
 
     // 3) Registra la matrícula (crea alumno + cuotas pagadas por la cantidad).
     appState.matricular(
