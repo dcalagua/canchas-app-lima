@@ -434,7 +434,6 @@ class _DestacarCardState extends State<_DestacarCard> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    final saldo = appState.saldoAcademiaDe(widget.academia.id);
     final nivel = appState.nivelDestacadoAcademia(widget.academia);
     final destacada = nivel > 0;
     return Container(
@@ -467,11 +466,14 @@ class _DestacarCardState extends State<_DestacarCard> {
           const SizedBox(height: 6),
           Text(
             destacada
-                ? 'Apareces primero en la lista de academias. Saldo: ${widget.academia.monedaSimbolo} $saldo. '
-                    'Más saldo = mejor posición: Plata desde ${widget.academia.monedaSimbolo} 50, Oro desde ${widget.academia.monedaSimbolo} 200.'
-                : 'Pon saldo y tu academia aparece destacada (arriba y con '
-                    'medalla) para que más alumnos la encuentren. '
-                    'Bronce desde ${widget.academia.monedaSimbolo} 1, Plata ${widget.academia.monedaSimbolo} 50, Oro ${widget.academia.monedaSimbolo} 200.',
+                ? 'Tu academia aparece primero en la lista. Sube de nivel con más '
+                    'saldo: Plata desde ${widget.academia.monedaSimbolo} 50, '
+                    'Oro desde ${widget.academia.monedaSimbolo} 200.'
+                : 'Con saldo, tu academia aparece destacada (arriba y con medalla) '
+                    'para que más alumnos la encuentren. '
+                    'Bronce desde ${widget.academia.monedaSimbolo} 1, '
+                    'Plata ${widget.academia.monedaSimbolo} 50, '
+                    'Oro ${widget.academia.monedaSimbolo} 200.',
             style: t.bodySmall
                 ?.copyWith(color: Colors.white.withOpacity(0.92), height: 1.3),
           ),
@@ -498,10 +500,8 @@ class _DestacarCardState extends State<_DestacarCard> {
               style: FilledButton.styleFrom(
                   backgroundColor: Colors.white, foregroundColor: lima),
               onPressed: _recargar,
-              icon: const Icon(Icons.add),
-              label: Text(saldo > 0
-                  ? 'Recargar saldo (${widget.academia.monedaSimbolo} $saldo)'
-                  : 'Poner saldo y destacar'),
+              icon: Icon(destacada ? Icons.trending_up : Icons.star),
+              label: Text(destacada ? 'Subir de nivel' : 'Destacar mi academia'),
             ),
           ),
         ],
