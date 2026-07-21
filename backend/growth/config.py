@@ -100,6 +100,12 @@ META_GRAPH_BASE = os.getenv("META_GRAPH_BASE", "https://graph.facebook.com")
 # URL pública EXACTA del callback OAuth (debe coincidir con la registrada en la
 # app de Meta), ej. https://<backend>/marketing/redes/callback.
 META_REDIRECT_URI = os.getenv("META_REDIRECT_URI", "")
+# ID de la "configuración" de Facebook Login for Business (config_id). Si está,
+# el diálogo de permiso usa esa configuración: los permisos se definen ALLÍ (en
+# el panel de Meta), no por scope. Es el flujo actual de Meta para publicar en
+# nombre de negocios. Se copia del panel al crear la configuración. Si está
+# vacío, se cae al Facebook Login clásico (permisos por scope).
+META_LOGIN_CONFIG_ID = os.getenv("META_LOGIN_CONFIG_ID", "")
 # Modo del servicio: "sandbox" (sin App Review: SIMULA la conexión y la
 # publicación para probar el flujo completo en dev/QAS) | "produccion" (OAuth y
 # publicación reales contra Meta). Si falta META_APP_ID/SECRET, se fuerza sandbox

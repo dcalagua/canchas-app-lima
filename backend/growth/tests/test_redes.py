@@ -46,6 +46,19 @@ def test_produccion_requiere_credenciales(monkeypatch):
     assert redes.modo() == "sandbox"
 
 
+def test_login_url_usa_config_id_si_esta(monkeypatch):
+    monkeypatch.setattr(config, "META_APP_ID", "123")
+    monkeypatch.setattr(config, "META_REDIRECT_URI", "https://x/cb")
+    # Con config_id (Facebook Login for Business): va config_id, no scope.
+    monkeypatch.setattr(config, "META_LOGIN_CONFIG_ID", "cfg999")
+    url = redes.login_url("acad-1")
+    assert "config_id=cfg999" in url and "scope=" not in url
+    # Sin config_id: cae al clásico con scope.
+    monkeypatch.setattr(config, "META_LOGIN_CONFIG_ID", "")
+    url2 = redes.login_url("acad-1")
+    assert "scope=" in url2 and "config_id" not in url2
+
+
 def test_cifrado_ida_vuelta():
     enc = redes.cifrar("token-secreto")
     assert "token-secreto" not in enc          # no queda en claro

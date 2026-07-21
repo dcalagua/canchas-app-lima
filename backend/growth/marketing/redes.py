@@ -124,14 +124,21 @@ def estado(academia_id: str) -> dict:
 
 
 def login_url(academia_id: str) -> str:
-    """URL del diálogo OAuth de Meta que el dueño abre para dar permiso."""
+    """URL del diálogo OAuth de Meta que el dueño abre para dar permiso.
+
+    Si hay META_LOGIN_CONFIG_ID (Facebook Login for Business), el diálogo usa esa
+    configuración y los permisos se definen en el panel de Meta (no por scope).
+    Si no, cae al Facebook Login clásico (permisos por scope)."""
     params = {
         "client_id": config.META_APP_ID,
         "redirect_uri": config.META_REDIRECT_URI,
         "state": academia_id,
-        "scope": SCOPES,
         "response_type": "code",
     }
+    if config.META_LOGIN_CONFIG_ID:
+        params["config_id"] = config.META_LOGIN_CONFIG_ID
+    else:
+        params["scope"] = SCOPES
     return (f"https://www.facebook.com/{config.META_GRAPH_VERSION}"
             f"/dialog/oauth?{urllib.parse.urlencode(params)}")
 

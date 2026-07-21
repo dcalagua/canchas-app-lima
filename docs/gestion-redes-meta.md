@@ -57,6 +57,7 @@ Cargar en el servicio `pg-backend` (nunca en el APK ni en el repo):
 | `META_APP_ID` | ID de la app de Meta |
 | `META_APP_SECRET` | Secret de la app |
 | `META_REDIRECT_URI` | `…/marketing/redes/callback` (idéntico al registrado) |
+| `META_LOGIN_CONFIG_ID` | ID de la *configuración* de Facebook Login for Business (los permisos se definen ahí). Vacío = login clásico por scope. |
 | `META_MODO` | `produccion` |
 | `META_TOKEN_KEY` | clave Fernet para cifrar tokens (ver abajo) |
 | `META_GRAPH_VERSION` | opcional, por defecto `v21.0` |
