@@ -229,16 +229,30 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
     return v > 100 ? 100 : v;
   }
 
-  /// Campo de porcentaje reutilizable para los descuentos.
-  Widget _campoPct(TextEditingController c, String label) => TextField(
-        controller: c,
-        keyboardType: TextInputType.number,
-        decoration: InputDecoration(
-          labelText: label,
-          hintText: '0',
-          suffixText: '%',
-          isDense: true,
-        ),
+  /// Campo de porcentaje reutilizable. La etiqueta va como texto FIJO arriba
+  /// (no flotante) para que se lea completa incluso en columnas angostas.
+  Widget _campoPct(TextEditingController c, String label) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: textoTenue)),
+          const SizedBox(height: 4),
+          TextField(
+            controller: c,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              hintText: '0',
+              suffixText: '%',
+              isDense: true,
+            ),
+          ),
+        ],
       );
 
   /// Sección plegable (ExpansionTile) para opciones avanzadas. Colapsada por
