@@ -34,12 +34,18 @@ def patch(path, fn):
         print(f"  sin cambios {path}")
 
 
-APP_LABEL = "Pichangol"
+# Entorno de build: dev | qas | prod (viene de la env ENTORNO en el CI).
+# QAS usa un applicationId/label DISTINTO (sufijo .qas) para convivir con
+# prod/dev en el mismo teléfono y apuntar a la base de datos de pruebas.
+ENTORNO = os.environ.get("ENTORNO", "dev").strip().lower()
+_ES_QAS = ENTORNO == "qas"
+
+APP_LABEL = "Pichangol QAS" if _ES_QAS else "Pichangol"
 # Identidad PERMANENTE de la app en Google Play / App Store. NO cambiar una vez
 # publicada la primera versión (el applicationId es inmutable en la tienda).
 # El paquete de código Dart sigue siendo `canchas_lima`; esto sólo fija el
 # applicationId (Android) y el bundle id (iOS) que ve la tienda.
-APPLICATION_ID = "pe.ebim.pichangol"
+APPLICATION_ID = "pe.ebim.pichangol.qas" if _ES_QAS else "pe.ebim.pichangol"
 
 
 def android_manifest(text):
@@ -363,6 +369,11 @@ def configurar_firebase_android():
     `GOOGLE_SERVICES_JSON_B64`. Si NO está, no se toca nada: el APK compila igual
     y el push queda desactivado en runtime (PushService es fail-safe). Así el CI
     sigue verde sin Firebase hasta que se configure."""
+    if _ES_QAS:
+        # El google-services.json es para pe.ebim.pichangol; con el sufijo .qas
+        # el plugin fallaría ("no matching client"). En QAS el push va desactivado.
+        print("  Firebase/FCM: omitido en QAS (applicationId .qas)")
+        return
     b64 = os.environ.get("GOOGLE_SERVICES_JSON_B64", "").strip()
     if not b64:
         print("  Firebase/FCM: desactivado (sin GOOGLE_SERVICES_JSON_B64)")

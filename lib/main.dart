@@ -9,6 +9,10 @@ import 'services/supabase_service.dart';
 import 'state/app_state.dart';
 import 'theme.dart';
 
+/// Entorno del build (dev | qas | prod), inyectado por `--dart-define=ENTORNO`.
+/// En QAS la app muestra un banner para no confundir con producción.
+const String kEntorno = String.fromEnvironment('ENTORNO', defaultValue: 'dev');
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Moneda correcta desde el primer frame (y offline): recupera el país
@@ -44,6 +48,17 @@ class PichangolApp extends StatelessWidget {
         ],
         // Arranca en el splash de marca y luego entra al mapa (estilo Airbnb).
         home: const SplashScreen(),
+        // Banner "QAS" (esquina) solo en builds de pruebas, para no confundirlo
+        // con producción.
+        builder: (context, child) {
+          if (kEntorno != 'qas' || child == null) return child ?? const SizedBox();
+          return Banner(
+            message: 'QAS',
+            location: BannerLocation.topEnd,
+            color: const Color(0xFFC75B39),
+            child: child,
+          );
+        },
       ),
     );
   }

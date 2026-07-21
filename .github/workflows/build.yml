@@ -5,6 +5,12 @@ on:
     branches:
       - "**"
   workflow_dispatch:
+    inputs:
+      entorno:
+        description: "Entorno de build (dev = sideload, qas = pruebas, prod = Play)"
+        type: choice
+        options: [dev, qas, prod]
+        default: dev
 
 permissions:
   contents: write
@@ -16,6 +22,11 @@ jobs:
   android:
     name: Android APK
     runs-on: ubuntu-latest
+    # Toma los secrets del Environment del entorno elegido (dev/qas/prod). Si el
+    # Environment no define un secret, cae al secret del repositorio (dev).
+    environment: ${{ github.event.inputs.entorno || 'dev' }}
+    env:
+      ENTORNO: ${{ github.event.inputs.entorno || 'dev' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -76,6 +87,7 @@ jobs:
           # universal). El arm64-v8a sirve a la gran mayoría de teléfonos.
           flutter build apk --release --split-per-abi \
             --build-number=${{ github.run_number }} \
+            --dart-define=ENTORNO="$ENTORNO" \
             --dart-define=SUPABASE_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
             --dart-define=MAPS_API_KEY="$MAPS_API_KEY" \
@@ -83,6 +95,41 @@ jobs:
             --dart-define=VERIF_API_URL="$VERIF_API_URL" \
             --dart-define=GROWTH_API_URL="$GROWTH_API_URL" \
             --dart-define=APP_API_KEY="$APP_API_KEY"
+
+      # App Bundle (.aab) para subir a Google Play. Solo en builds manuales
+      # (workflow_dispatch), para no gastar tiempo en cada push de desarrollo.
+      - name: Build AAB (release, para Google Play)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
+          PLACES_API_KEY: ${{ secrets.PLACES_API_KEY }}
+          VERIF_API_URL: ${{ secrets.VERIF_API_URL }}
+          GROWTH_API_URL: ${{ secrets.GROWTH_API_URL }}
+          APP_API_KEY: ${{ secrets.APP_API_KEY }}
+        run: |
+          flutter build appbundle --release \
+            --build-number=${{ github.run_number }} \
+            --dart-define=ENTORNO="$ENTORNO" \
+            --dart-define=SUPABASE_URL="$SUPABASE_URL" \
+            --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
+            --dart-define=MAPS_API_KEY="$MAPS_API_KEY" \
+            --dart-define=PLACES_API_KEY="$PLACES_API_KEY" \
+            --dart-define=VERIF_API_URL="$VERIF_API_URL" \
+            --dart-define=GROWTH_API_URL="$GROWTH_API_URL" \
+            --dart-define=APP_API_KEY="$APP_API_KEY"
+          mkdir -p dist
+          cp build/app/outputs/bundle/release/app-release.aab \
+             "dist/pichangol-${ENTORNO}-${{ github.run_number }}.aab"
+
+      - name: Subir AAB (artifact para Play)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pichangol-aab-${{ github.event.inputs.entorno || 'dev' }}
+          path: dist/*.aab
+          if-no-files-found: error
 
       - name: Verificar firma del APK
         run: |
@@ -92,10 +139,12 @@ jobs:
       - name: Renombrar APK
         run: |
           mkdir -p dist
+          # QAS lleva sufijo para no confundirse con dev/prod.
+          SUF=""; [ "$ENTORNO" = "qas" ] && SUF="-qas"
           # Principal (recomendado): arm64-v8a, liviano, ~95% de los teléfonos.
-          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "dist/pichangol-${{ github.run_number }}.apk"
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "dist/pichangol${SUF}-${{ github.run_number }}.apk"
           # Respaldo para teléfonos antiguos de 32 bits.
-          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk "dist/pichangol-${{ github.run_number }}-arm32.apk"
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk "dist/pichangol${SUF}-${{ github.run_number }}-arm32.apk"
           ls -lh dist/
 
       - name: Subir APK (artifact)
@@ -106,7 +155,7 @@ jobs:
           if-no-files-found: error
 
       - name: Limpiar assets viejos del Release
-        if: github.ref == 'refs/heads/claude/apk-google-maps-setup-fvpl9w' || startsWith(github.ref, 'refs/tags/v')
+        if: (github.ref == 'refs/heads/claude/apk-google-maps-setup-fvpl9w' || startsWith(github.ref, 'refs/tags/v')) && env.ENTORNO != 'qas'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -115,7 +164,7 @@ jobs:
           done
 
       - name: Publicar APK en Release (v0.1.0)
-        if: github.ref == 'refs/heads/claude/apk-google-maps-setup-fvpl9w' || startsWith(github.ref, 'refs/tags/v')
+        if: (github.ref == 'refs/heads/claude/apk-google-maps-setup-fvpl9w' || startsWith(github.ref, 'refs/tags/v')) && env.ENTORNO != 'qas'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v0.1.0
