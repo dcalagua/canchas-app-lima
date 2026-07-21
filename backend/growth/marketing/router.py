@@ -159,6 +159,15 @@ def redes_callback(code: str = "", state: str = "",
         ok = r.get("ok", False)
         msg = "¡Listo! Ya puedes volver a Pichangol." if ok else \
             (r.get("error") or "No se pudo conectar.")
+        # El callback es GET, así que el middleware NO persiste: guardamos el
+        # snapshot a mano para que la conexión SOBREVIVA a reinicios/redeploys.
+        if ok:
+            try:
+                from db import pg
+                if pg.habilitado:
+                    pg.guardar(stores.to_state())
+            except Exception:  # noqa: BLE001
+                pass
     color = "#14463A" if ok else "#B23B3B"
     icono = "✅" if ok else "⚠️"
     return HTMLResponse(
