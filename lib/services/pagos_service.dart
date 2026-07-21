@@ -388,6 +388,90 @@ class PagosService {
     }
   }
 
+  // --- Servicios de marketing (suscripción recurrente) --------------------
+  /// Catálogo de servicios (landing/redes/presencia) con su precio mensual.
+  static Future<List<Map<String, dynamic>>?> planesServicios() async {
+    if (!disponible) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/pagos/servicios/planes');
+      final r = await http.get(uri, headers: _appHeaders())
+          .timeout(const Duration(seconds: 12));
+      if (r.statusCode != 200) return null;
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      return ((j['planes'] as List?) ?? const [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Suscripciones actuales de una academia.
+  static Future<List<Map<String, dynamic>>?> estadoServicios(
+      String academiaId) async {
+    if (!disponible) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/pagos/servicios/estado/$academiaId');
+      final r = await http.get(uri, headers: _appHeaders())
+          .timeout(const Duration(seconds: 12));
+      if (r.statusCode != 200) return null;
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      return ((j['suscripciones'] as List?) ?? const [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Contrata un servicio (cobra el 1.er mes del saldo). Devuelve el JSON del
+  /// backend: {ok:true,...} o {ok:false, falta_saldo:true, requerido_soles,...}.
+  static Future<Map<String, dynamic>?> contratarServicio({
+    required String duenoId,
+    required String academiaId,
+    required String servicio,
+  }) async {
+    if (!disponible) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/pagos/servicios/contratar');
+      final r = await http
+          .post(uri,
+              headers: _appHeaders(json: true),
+              body: jsonEncode({
+                'dueno_id': duenoId,
+                'academia_id': academiaId,
+                'servicio': servicio,
+              }))
+          .timeout(const Duration(seconds: 15));
+      if (r.statusCode != 200) return null;
+      return Map<String, dynamic>.from(jsonDecode(r.body) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Cancela la renovación de un servicio.
+  static Future<bool> cancelarServicio({
+    required String academiaId,
+    required String servicio,
+  }) async {
+    if (!disponible) return false;
+    try {
+      final uri = Uri.parse('$_baseUrl/pagos/servicios/cancelar');
+      final r = await http
+          .post(uri,
+              headers: _appHeaders(json: true),
+              body: jsonEncode(
+                  {'academia_id': academiaId, 'servicio': servicio}))
+          .timeout(const Duration(seconds: 12));
+      if (r.statusCode != 200) return false;
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      return j['ok'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Conjunto de dueños DESTACADOS (saldo prepago > 0) con su nivel (1-3).
   /// El APK resalta las canchas de estos dueños en Explorar (más saldo = más
   /// visibilidad). Devuelve {duenoId(lowercase): nivel} o null si no se pudo.

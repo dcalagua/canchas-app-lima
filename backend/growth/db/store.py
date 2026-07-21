@@ -30,6 +30,11 @@ CONFIG_DEFAULT: dict[str, str] = {
     "contacto_whatsapp_bo": "",
     # Respaldo global (legado) si ningún país tiene número.
     "contacto_whatsapp": "593998706994",
+    # Precios MENSUALES (soles) de los servicios de marketing de Pichangol.
+    # Editables desde la torre de control. Es lo que se debita del saldo del dueño.
+    "servicio_landing_soles": "49",
+    "servicio_redes_soles": "99",
+    "servicio_presencia_soles": "129",
     "puntos_traer_cancha": "500",
     "puntos_invitar_jugador": "100",
     "puntos_pedir_cancha": "50",
@@ -303,6 +308,10 @@ class Stores:
         # PAGOS (Culqi): saldo prepago por dueño (céntimos) + libro de pagos.
         self.saldos: dict[str, int] = {}          # dueno_id -> céntimos
         self.pagos: list[PagoRegistro] = []
+        # SUSCRIPCIONES a servicios de marketing (landing/redes/presencia). Clave
+        # "{academia_id}:{servicio}" -> dict con estado y próximo cobro. Se debita
+        # del saldo del dueño cada mes (mismo saldo prepago de Culqi).
+        self.suscripciones: dict[str, dict] = {}
         # VISTAS de destacados (métrica de impacto del boost): por id (dueno_id
         # de canchas o id de academia) → {YYYY-MM-DD: nº impresiones ese día}.
         self.vistas: dict[str, dict[str, int]] = {}
@@ -474,6 +483,7 @@ class Stores:
             "inscripciones": [como_dict(i) for i in self.inscripciones],
             "saldos": dict(self.saldos),
             "pagos": [como_dict(p) for p in self.pagos],
+            "suscripciones": {k: dict(v) for k, v in self.suscripciones.items()},
             "vistas": {k: dict(v) for k, v in self.vistas.items()},
             "customers": dict(self.customers),
             "metodos": {k: list(v) for k, v in self.metodos.items()},
@@ -503,6 +513,9 @@ class Stores:
         self.inscripciones = [_insc_from(d) for d in data.get("inscripciones", [])]
         self.saldos = {k: int(v) for k, v in (data.get("saldos") or {}).items()}
         self.pagos = [_pago_from(d) for d in data.get("pagos", [])]
+        self.suscripciones = {
+            k: dict(v) for k, v in (data.get("suscripciones") or {}).items()
+        }
         self.vistas = {
             k: {d: int(n) for d, n in (v or {}).items()}
             for k, v in (data.get("vistas") or {}).items()

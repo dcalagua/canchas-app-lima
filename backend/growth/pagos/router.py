@@ -16,6 +16,7 @@ La llave secreta vive sólo en el backend. Los POST del APK exigen X-App-Key
 from __future__ import annotations
 
 import html as _html
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse
@@ -238,6 +239,158 @@ def post_liquidacion_online(req: LiquidacionOnlineReq) -> dict:
         concepto=req.concepto or "Reserva online")
     return {"ok": True, "duplicada": False, "bruto_centimos": bruto,
             "comision_centimos": comision, "neto_centimos": bruto - comision}
+
+
+# ------ Servicios de marketing (landing/redes): SUSCRIPCIÓN recurrente --------
+# Se debita del mismo saldo prepago del dueño (Culqi). Precios editables en la
+# torre de control (config). Catálogo:
+_SERVICIOS = {
+    "landing": ("Landing web", "servicio_landing_soles",
+                "Tu página web para difundir la academia/cancha."),
+    "redes": ("Manejo de redes", "servicio_redes_soles",
+              "Publicamos por ti en redes (community manager con IA)."),
+    "presencia": ("Presencia digital", "servicio_presencia_soles",
+                  "Landing + manejo de redes, todo incluido."),
+}
+
+
+def _servicio_soles(clave: str) -> float:
+    try:
+        return float(stores.cfg(_SERVICIOS[clave][1]))
+    except (KeyError, TypeError, ValueError):
+        return 0.0
+
+
+def _mas_un_mes(d: datetime) -> datetime:
+    """Fecha + 1 mes (día tope 28 para no desbordar en meses cortos)."""
+    m = d.month + 1
+    y = d.year + (1 if m > 12 else 0)
+    m = m - 12 if m > 12 else m
+    return d.replace(year=y, month=m, day=min(d.day, 28))
+
+
+def _sub_dict(s: dict) -> dict:
+    serv = s.get("servicio")
+    return {
+        "academia_id": s.get("academia_id"),
+        "servicio": serv,
+        "nombre": _SERVICIOS.get(serv, ("?",))[0],
+        "monto_soles": s.get("monto_centimos", 0) / 100.0,
+        "estado": s.get("estado"),
+        "proximo_cobro": s.get("proximo_cobro"),
+        "ultimo_cobro": s.get("ultimo_cobro"),
+    }
+
+
+class ContratarServicioReq(BaseModel):
+    dueno_id: str
+    academia_id: str
+    servicio: str
+
+
+class CancelarServicioReq(BaseModel):
+    academia_id: str
+    servicio: str
+
+
+@router.get("/servicios/planes")
+def get_servicios_planes() -> dict:
+    """Catálogo de servicios de marketing con su precio mensual (público)."""
+    return {"planes": [
+        {"clave": k, "nombre": nom, "desc": desc, "soles": _servicio_soles(k)}
+        for k, (nom, _cfg, desc) in _SERVICIOS.items()
+    ]}
+
+
+@router.post("/servicios/contratar", dependencies=_APP)
+def post_contratar_servicio(req: ContratarServicioReq) -> dict:
+    """Contrata un servicio: cobra el 1.er mes del SALDO del dueño y deja la
+    suscripción activa con su próximo cobro. Si no hay saldo, devuelve
+    falta_saldo (el APK lo manda a recargar)."""
+    if req.servicio not in _SERVICIOS:
+        raise HTTPException(status_code=400, detail="servicio_invalido")
+    monto = _soles_a_centimos(_servicio_soles(req.servicio))
+    saldo = stores.saldo_centimos(req.dueno_id)
+    if saldo < monto:
+        return {"ok": False, "falta_saldo": True, "requerido_centimos": monto,
+                "requerido_soles": monto / 100.0,
+                "saldo_centimos": saldo, "saldo_soles": saldo / 100.0}
+    nuevo = stores.debitar(req.dueno_id, monto)
+    ahora = datetime.now(timezone.utc)
+    clave = f"{req.academia_id}:{req.servicio}"
+    stores.suscripciones[clave] = {
+        "academia_id": req.academia_id, "dueno_id": req.dueno_id,
+        "servicio": req.servicio, "monto_centimos": monto, "estado": "activa",
+        "creado_en": ahora.isoformat(), "ultimo_cobro": ahora.isoformat(),
+        "proximo_cobro": _mas_un_mes(ahora).isoformat(),
+    }
+    stores.registrar_pago(
+        tipo="suscripcion", monto_centimos=monto, moneda="PEN",
+        estado="aprobado", dueno_id=req.dueno_id,
+        concepto=f"Suscripción {req.servicio} · {req.academia_id}")
+    return {"ok": True, "suscripcion": _sub_dict(stores.suscripciones[clave]),
+            "saldo_centimos": nuevo, "saldo_soles": nuevo / 100.0}
+
+
+@router.post("/servicios/cancelar", dependencies=_APP)
+def post_cancelar_servicio(req: CancelarServicioReq) -> dict:
+    """Cancela la renovación (no reembolsa el mes en curso)."""
+    s = stores.suscripciones.get(f"{req.academia_id}:{req.servicio}")
+    if not s:
+        return {"ok": False, "error": "no_existe"}
+    s["estado"] = "cancelada"
+    return {"ok": True, "suscripcion": _sub_dict(s)}
+
+
+@router.get("/servicios/estado/{academia_id}", dependencies=_APP)
+def get_servicios_estado(academia_id: str) -> dict:
+    """Suscripciones de una academia (para el panel del dueño)."""
+    subs = [_sub_dict(s) for s in stores.suscripciones.values()
+            if s.get("academia_id") == academia_id]
+    return {"academia_id": academia_id, "suscripciones": subs}
+
+
+@router.get("/servicios/todas", dependencies=_ADMIN)
+def get_servicios_todas() -> dict:
+    """Todas las suscripciones + MRR (para la torre de control)."""
+    subs = [_sub_dict(s) for s in stores.suscripciones.values()]
+    activas = [s for s in subs if s["estado"] == "activa"]
+    return {"suscripciones": subs, "activas": len(activas),
+            "mrr_soles": round(sum(s["monto_soles"] for s in activas), 2)}
+
+
+@router.post("/servicios/cobrar-vencidas", dependencies=_ADMIN)
+def post_cobrar_vencidas() -> dict:
+    """Cobra las suscripciones activas cuyo próximo cobro ya venció (renovación
+    mensual). Si el dueño no tiene saldo, la deja 'pendiente_pago'. La dispara la
+    torre de control (o un cron más adelante)."""
+    ahora = datetime.now(timezone.utc)
+    cobradas = pendientes = 0
+    for s in stores.suscripciones.values():
+        if s.get("estado") not in ("activa", "pendiente_pago"):
+            continue
+        prox = s.get("proximo_cobro")
+        try:
+            venc = datetime.fromisoformat(prox) if prox else None
+        except (TypeError, ValueError):
+            venc = None
+        if venc is not None and venc > ahora:
+            continue
+        monto = s.get("monto_centimos", 0)
+        if stores.saldo_centimos(s["dueno_id"]) >= monto:
+            stores.debitar(s["dueno_id"], monto)
+            stores.registrar_pago(
+                tipo="suscripcion", monto_centimos=monto, moneda="PEN",
+                estado="aprobado", dueno_id=s["dueno_id"],
+                concepto=f"Suscripción {s['servicio']} · {s['academia_id']}")
+            s["ultimo_cobro"] = ahora.isoformat()
+            s["proximo_cobro"] = _mas_un_mes(ahora).isoformat()
+            s["estado"] = "activa"
+            cobradas += 1
+        else:
+            s["estado"] = "pendiente_pago"
+            pendientes += 1
+    return {"ok": True, "cobradas": cobradas, "pendientes": pendientes}
 
 
 def _liquidacion_dict(p) -> dict:

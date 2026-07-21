@@ -13,6 +13,7 @@ import 'chats_academia_screen.dart';
 import 'crear_academia_screen.dart';
 import 'recargar_saldo_screen.dart';
 import 'reporte_academia_screen.dart';
+import 'servicios_screen.dart';
 import '../utils/moneda.dart';
 import '../config/pais.dart';
 
@@ -700,6 +701,12 @@ class _Header extends StatelessWidget {
                 onPressed: () => Navigator.of(context).push(MaterialPageRoute(
                     builder: (_) =>
                         AsistenciaScreen(academiaId: academia.id))),
+              ),
+              IconButton(
+                tooltip: 'Servicios (publicidad)',
+                icon: const Icon(Icons.campaign_outlined, color: Colors.white),
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => ServiciosScreen(academia: academia))),
               ),
               IconButton(
                 tooltip: 'Editar',
