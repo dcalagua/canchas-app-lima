@@ -36,6 +36,10 @@ dependencies:
   record: ^5.1.0
   audioplayers: ^6.1.0
   path_provider: ^2.1.4
+  # Comprobante de pago en PDF (generar) + compartir/descargar (hoja del sistema).
+  # `pdf` es Dart puro; `printing` da la hoja de compartir/guardar del SO.
+  pdf: ^3.11.1
+  printing: ^5.13.3
 
 dev_dependencies:
   flutter_test:

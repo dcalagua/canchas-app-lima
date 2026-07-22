@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 import '../models/academia.dart';
 import '../services/pagos_service.dart';
@@ -132,7 +135,7 @@ class MisClasesScreen extends StatelessWidget {
                     InkWell(
                       borderRadius: BorderRadius.circular(10),
                       onTap: () =>
-                          _verComprobante(context, nombreAca, al, c, mon),
+                          _verComprobante(context, academia, al, c, mon),
                       child: _fila(
                           c.concepto,
                           'Pagado ${_fecha(c.fechaPago ?? c.vencimiento)}',
@@ -238,21 +241,39 @@ class MisClasesScreen extends StatelessWidget {
     );
   }
 
-  void _verComprobante(BuildContext context, String academia, Alumno al,
+  String _fechaHora(DateTime? d) {
+    if (d == null) return '';
+    final hh = d.hour.toString().padLeft(2, '0');
+    final mm = d.minute.toString().padLeft(2, '0');
+    return '${_fecha(d)} · $hh:$mm';
+  }
+
+  void _verComprobante(BuildContext context, Academia? academia, Alumno al,
       Cuota c, String mon) {
+    final nombreAca = academia?.nombre ?? 'Academia';
+    final logo = academia?.logoUrl;
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        icon: const Icon(Icons.receipt_long, color: lima, size: 36),
+        icon: (logo != null && logo.isNotEmpty)
+            ? ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Image.network(logo,
+                    width: 48,
+                    height: 48,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) =>
+                        const Icon(Icons.receipt_long, color: lima, size: 36)))
+            : const Icon(Icons.receipt_long, color: lima, size: 36),
         title: const Text('Comprobante de pago'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _lineaComp('Academia', academia),
+            _lineaComp('Academia', nombreAca),
             _lineaComp('Alumno', al.nombre),
             _lineaComp('Concepto', c.concepto),
-            _lineaComp('Fecha', _fecha(c.fechaPago ?? c.vencimiento)),
+            _lineaComp('Fecha y hora', _fechaHora(c.fechaPago ?? c.vencimiento)),
             const Divider(height: 20),
             _lineaComp('Monto', '$mon ${c.monto.toStringAsFixed(2)}',
                 fuerte: true),
@@ -265,10 +286,97 @@ class MisClasesScreen extends StatelessWidget {
           TextButton(
               onPressed: () => Navigator.pop(ctx),
               child: const Text('Cerrar')),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(
+                backgroundColor: lima, foregroundColor: Colors.white),
+            icon: const Icon(Icons.ios_share, size: 18),
+            label: const Text('Compartir / PDF'),
+            onPressed: () => _compartirComprobante(academia, al, c, mon),
+          ),
         ],
       ),
     );
   }
+
+  /// Genera el comprobante en PDF y abre la hoja del sistema para COMPARTIRLO o
+  /// GUARDARLO (descargar). Incluye el logo de la academia si lo tiene.
+  Future<void> _compartirComprobante(
+      Academia? ac, Alumno al, Cuota c, String mon) async {
+    final doc = pw.Document();
+    pw.ImageProvider? logo;
+    final url = ac?.logoUrl;
+    if (url != null && url.isNotEmpty) {
+      try {
+        logo = await networkImage(url);
+      } catch (_) {}
+    }
+    final nombreAca = ac?.nombre ?? 'Academia';
+    doc.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a5,
+        build: (context) => pw.Padding(
+          padding: const pw.EdgeInsets.all(28),
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Row(
+                crossAxisAlignment: pw.CrossAxisAlignment.center,
+                children: [
+                  if (logo != null) ...[
+                    pw.SizedBox(width: 44, height: 44, child: pw.Image(logo)),
+                    pw.SizedBox(width: 10),
+                  ],
+                  pw.Expanded(
+                    child: pw.Text(nombreAca,
+                        style: pw.TextStyle(
+                            fontSize: 16, fontWeight: pw.FontWeight.bold)),
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: 4),
+              pw.Text('Comprobante de pago',
+                  style:
+                      pw.TextStyle(fontSize: 13, color: PdfColors.grey700)),
+              pw.Divider(),
+              _pdfLinea('Alumno', al.nombre),
+              _pdfLinea('Concepto', c.concepto),
+              _pdfLinea('Fecha y hora', _fechaHora(c.fechaPago ?? c.vencimiento)),
+              pw.Divider(),
+              _pdfLinea('Monto', '$mon ${c.monto.toStringAsFixed(2)}',
+                  fuerte: true),
+              pw.SizedBox(height: 18),
+              pw.Text('Pago procesado por Pichangol.',
+                  style: pw.TextStyle(fontSize: 10, color: PdfColors.grey600)),
+            ],
+          ),
+        ),
+      ),
+    );
+    final bytes = await doc.save();
+    await Printing.sharePdf(
+        bytes: bytes, filename: 'comprobante_${al.nombre}_${c.id}.pdf');
+  }
+
+  pw.Widget _pdfLinea(String k, String v, {bool fuerte = false}) => pw.Padding(
+        padding: const pw.EdgeInsets.symmetric(vertical: 3),
+        child: pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.SizedBox(
+                width: 92,
+                child: pw.Text(k,
+                    style:
+                        pw.TextStyle(color: PdfColors.grey700, fontSize: 11))),
+            pw.Expanded(
+              child: pw.Text(v,
+                  style: pw.TextStyle(
+                      fontSize: fuerte ? 15 : 12,
+                      fontWeight:
+                          fuerte ? pw.FontWeight.bold : pw.FontWeight.normal)),
+            ),
+          ],
+        ),
+      );
 
   Widget _lineaComp(String k, String v, {bool fuerte = false}) {
     return Padding(
