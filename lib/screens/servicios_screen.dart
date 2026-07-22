@@ -392,55 +392,49 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 30),
                 children: [
-                  // Saldo de marketing del negocio.
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: limaSuave,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.account_balance_wallet_outlined,
-                            color: lima),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('Saldo de marketing',
-                                  style: TextStyle(
-                                      fontSize: 12, color: textoTenue)),
-                              Text('$_mon $saldo',
-                                  style: const TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.w800)),
-                            ],
+                  if (widget.negocio.esMixto) ...[
+                    _bannerUnificado(),
+                    const SizedBox(height: 10),
+                  ],
+                  // Método de pago (tarjeta) PRIMERO: con qué se cobran las
+                  // suscripciones cada mes.
+                  _cardDebitoAuto(),
+                  // Saldo PREPAGO opcional (degradado a una línea): se usa primero
+                  // si lo tienes; si no, se cobra a la tarjeta.
+                  InkWell(
+                    onTap: _pushRecarga,
+                    borderRadius: BorderRadius.circular(10),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 4, vertical: 10),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.account_balance_wallet_outlined,
+                              color: textoTenue, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text('Saldo prepago (opcional): $_mon $saldo',
+                                style: const TextStyle(
+                                    color: textoTenue, fontSize: 13)),
                           ),
-                        ),
-                        TextButton(
-                          onPressed: _pushRecarga,
-                          child: const Text('Recargar',
+                          const Text('Recargar',
                               style: TextStyle(
-                                  color: lima, fontWeight: FontWeight.w800)),
-                        ),
-                      ],
+                                  color: lima,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 13)),
+                        ],
+                      ),
                     ),
                   ),
-                  if (widget.negocio.esMixto) ...[
-                    const SizedBox(height: 8),
-                    _bannerUnificado(),
-                  ],
-                  const SizedBox(height: 8),
-                  _cardDebitoAuto(),
+                  const SizedBox(height: 4),
                   if (_landingContratada) _cardLanding(),
                   if (_redesContratada) _cardGestion(),
                   if (_redesContratada) _cardRedes(),
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 8, horizontal: 2),
                     child: Text(
-                        'Contrata tu presencia digital. Se cobra del saldo o de tu '
-                        'tarjeta cada mes; puedes cancelar cuando quieras.',
+                        'Contrata tu presencia digital. Se cobra a tu tarjeta cada '
+                        'mes (o de tu saldo si tienes); cancela cuando quieras.',
                         style: TextStyle(color: textoTenue, fontSize: 13)),
                   ),
                   if (_planes == null)
@@ -494,8 +488,9 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
     );
   }
 
-  /// Tarjeta de DÉBITO AUTOMÁTICO: la academia guarda una tarjeta para que las
-  /// suscripciones se cobren solas cada mes (si no hay saldo).
+  /// MÉTODO DE PAGO (recurrente): la academia guarda una tarjeta (One-Click) para
+  /// que las suscripciones se cobren solas cada mes. Es lo principal; el saldo
+  /// prepago quedó como opción secundaria. Yape no es recurrente (pago único).
   Widget _cardDebitoAuto() {
     final tiene = _metodoSus?['tiene_tarjeta'] == true;
     final marca = (_metodoSus?['marca'] ?? '').toString();
@@ -516,7 +511,7 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
               const Icon(Icons.credit_card, color: lima),
               const SizedBox(width: 8),
               const Expanded(
-                child: Text('Débito automático',
+                child: Text('Método de pago',
                     style:
                         TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
               ),
@@ -540,8 +535,10 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
               tiene
                   ? 'Tus suscripciones se cobran solas cada mes. Tarjeta '
                       '${marca.isEmpty ? '' : '$marca '}····$u4.'
-                  : 'Guarda una tarjeta y tus suscripciones se cobran solas cada '
-                      'mes (si no tienes saldo). Sin perseguir el pago.',
+                  : 'Agrega tu tarjeta y tus suscripciones se cobran solas cada '
+                      'mes. Sin recargar ni perseguir el pago.\n'
+                      'Yape sirve para pagos únicos (recargar saldo); el cobro '
+                      'automático es solo con tarjeta.',
               style: const TextStyle(color: textoTenue, fontSize: 13)),
           const SizedBox(height: 12),
           if (tiene)
