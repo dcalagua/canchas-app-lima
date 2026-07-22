@@ -754,7 +754,16 @@ class AppState extends ChangeNotifier {
       return;
     }
     _ultimoSyncMatriculas = ahora;
-    cargarMatriculasRemotas();
+    refrescarAcademiaProfe();
+  }
+
+  /// Refresca academias + matrículas de la nube (para pull-to-refresh del panel
+  /// del profe). Devuelve un Future para el RefreshIndicator.
+  Future<void> refrescarAcademiaProfe() async {
+    // Primero las academias (para tener bien `misAcademiaIds` aunque la academia
+    // se haya creado en otro dispositivo) y luego las matrículas.
+    await cargarAcademiasRemotas();
+    await cargarMatriculasRemotas();
   }
 
   /// Trae de la nube las matrículas relevantes: las de las academias que el
@@ -2378,7 +2387,12 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     cargarReservasRemotas(); // best-effort refresco
     sincronizarSaldo(); // saldo real del backend (sobrevive reinstalar)
-    cargarMatriculasRemotas(); // sus academias/matrículas vinculadas
+    // Trae sus academias (por si las creó en otro dispositivo) y LUEGO las
+    // matrículas, para que el profe vea a sus alumnos apenas entra.
+    () async {
+      await cargarAcademiasRemotas();
+      await cargarMatriculasRemotas();
+    }();
     cargarInvitacionesRemotas(); // ¿lo invitaron a alguna academia por correo?
     return true;
   }

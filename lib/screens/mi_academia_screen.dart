@@ -46,7 +46,7 @@ class MiAcademiaScreen extends StatelessWidget {
           }
           return RefreshIndicator(
             color: lima,
-            onRefresh: () => appState.cargarMatriculasRemotas(),
+            onRefresh: () => appState.refrescarAcademiaProfe(),
             child: ListView(
               padding: EdgeInsets.zero,
               children: [
