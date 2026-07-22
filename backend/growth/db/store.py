@@ -474,6 +474,25 @@ class Stores:
                     semana += n
         return {"semana": semana, "total": total}
 
+    def migrar_suscripciones_legacy(self) -> int:
+        """Unificación: renombra suscripciones del plan retirado 'gestion' a
+        'redes' (Manejo de redes) para que aparezcan como activas en el catálogo
+        nuevo. No pisa un 'redes' ya existente. Devuelve cuántas migró."""
+        migradas = 0
+        for key in list(self.suscripciones.keys()):
+            s = self.suscripciones.get(key) or {}
+            if s.get("servicio") != "gestion":
+                continue
+            aid = s.get("academia_id")
+            s["servicio"] = "redes"
+            destino = f"{aid}:redes"
+            if destino not in self.suscripciones:
+                self.suscripciones[destino] = s
+            if key != destino:
+                self.suscripciones.pop(key, None)
+            migradas += 1
+        return migradas
+
     def cancha(self, cancha_id: str) -> CanchaEstado:
         c = self.canchas.get(cancha_id)
         if c is None:

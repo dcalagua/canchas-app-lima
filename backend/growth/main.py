@@ -46,6 +46,14 @@ if pg.habilitado:               # backfill inicial (snapshot -> tablas) idempote
 if not stores.verificadores:
     seed_verificadores()
 
+# Unificación de servicios: migra suscripciones del plan retirado "gestion" a
+# "redes" (Manejo de redes) y persiste si cambió algo.
+if stores.migrar_suscripciones_legacy() and pg.habilitado:
+    try:
+        pg.guardar(stores.to_state())
+    except Exception:  # noqa: BLE001
+        pass
+
 
 @app.middleware("http")
 async def _persistir(request: Request, call_next):

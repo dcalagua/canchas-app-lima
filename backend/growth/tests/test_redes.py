@@ -117,6 +117,18 @@ def test_publicar_sin_conexion_falla(client):
     assert r.json()["error"] == "no_conectado"
 
 
+def test_migracion_gestion_a_redes():
+    stores.reset()
+    stores.suscripciones["ac9:gestion"] = {
+        "academia_id": "ac9", "dueno_id": "d@x", "servicio": "gestion",
+        "monto_centimos": 19900, "estado": "activa"}
+    n = stores.migrar_suscripciones_legacy()
+    assert n == 1
+    assert "ac9:gestion" not in stores.suscripciones
+    assert stores.suscripciones["ac9:redes"]["servicio"] == "redes"
+    assert stores.suscripciones["ac9:redes"]["estado"] == "activa"
+
+
 def test_catalogo_unificado(client):
     # "Gestión de redes" se unificó dentro de "Manejo de redes": ya no se ofrece
     # "gestion" en el catálogo, pero sí "redes".
