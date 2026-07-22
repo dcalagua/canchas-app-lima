@@ -1185,6 +1185,8 @@ class AlumnoDetalleScreen extends StatelessWidget {
                 Text(
                     '${al.esMenor ? 'WhatsApp apoderado' : 'WhatsApp'}: ${al.whatsappContacto}',
                     style: const TextStyle(color: textoTenue)),
+              _SuscripcionAlumnoInfoProfe(
+                  alumnoId: al.id, moneda: ac?.monedaSimbolo ?? monedaSimbolo),
               const SizedBox(height: 16),
               Row(
                 children: [
@@ -1488,5 +1490,87 @@ class _FilaCuota extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('No pude abrir WhatsApp.')));
     }
+  }
+}
+
+/// Indicador (para el PROFE) de que el alumno paga MES A MES: modalidad, monto
+/// mensual y próximo cobro automático. Vacío si el alumno no tiene débito
+/// mensual activo (pago al contado / adelantado).
+class _SuscripcionAlumnoInfoProfe extends StatefulWidget {
+  const _SuscripcionAlumnoInfoProfe(
+      {required this.alumnoId, required this.moneda});
+  final String alumnoId;
+  final String moneda;
+  @override
+  State<_SuscripcionAlumnoInfoProfe> createState() =>
+      _SuscripcionAlumnoInfoProfeState();
+}
+
+class _SuscripcionAlumnoInfoProfeState
+    extends State<_SuscripcionAlumnoInfoProfe> {
+  static const _meses = [
+    'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+    'jul', 'ago', 'set', 'oct', 'nov', 'dic'
+  ];
+  Map<String, dynamic>? _sus;
+  bool _cargando = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  Future<void> _cargar() async {
+    final s = await PagosService.estadoSuscripcionAlumno(widget.alumnoId);
+    if (!mounted) return;
+    setState(() {
+      _sus = s;
+      _cargando = false;
+    });
+  }
+
+  String? _fecha(String? iso) {
+    if (iso == null || iso.isEmpty) return null;
+    final d = DateTime.tryParse(iso);
+    if (d == null) return null;
+    return '${d.day} ${_meses[d.month - 1]} ${d.year}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_cargando) return const SizedBox.shrink();
+    final s = _sus;
+    if (s == null || s['activa'] != true) return const SizedBox.shrink();
+    final monto = (s['monto_soles'] as num?)?.toDouble() ?? 0;
+    final prox = _fecha(s['proximo_cobro']?.toString());
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: limaSuave,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.autorenew, color: lima, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Paga mes a mes (débito automático)',
+                    style:
+                        TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                Text(
+                    '${widget.moneda} ${monto.toStringAsFixed(2)}/mes'
+                    '${prox != null ? ' · próximo cobro: $prox' : ''}',
+                    style: const TextStyle(color: textoTenue, fontSize: 12.5)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
