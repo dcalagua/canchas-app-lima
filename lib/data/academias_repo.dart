@@ -11,6 +11,9 @@ import '../services/supabase_service.dart';
 class AcademiasRepo {
   static const _tabla = 'pichangol_academias';
 
+  /// Último error al guardar en la nube (para diagnóstico). null = todo OK.
+  static String? ultimoError;
+
   static Future<List<Academia>> fetchRemotas() async {
     if (!SupabaseService.disponible) return [];
     try {
@@ -27,17 +30,29 @@ class AcademiasRepo {
     }
   }
 
-  /// Inserta o actualiza (upsert por id). Fail-safe.
-  static Future<void> guardar(Academia a) async {
-    if (!SupabaseService.disponible) return;
+  /// Inserta o actualiza (upsert por id). Devuelve true si quedó guardada en la
+  /// nube (o si no hay nube configurada: nada que sincronizar). Devuelve FALSE si
+  /// Supabase está disponible pero el guardado FALLÓ (p. ej. RLS sin política de
+  /// UPDATE): así la app sabe que la edición local aún no está en la nube y no la
+  /// pisa con la versión vieja al recargar. Guarda el motivo en [ultimoError].
+  static Future<bool> guardar(Academia a) async {
+    if (!SupabaseService.disponible) {
+      ultimoError = null;
+      return true; // sin nube: la fuente de verdad es lo local
+    }
     try {
       await SupabaseService.client.from(_tabla).upsert({
         'id': a.id,
         'dueno': a.dueno,
         'data': a.toJson(),
         'eliminada': false,
-      });
-    } catch (_) {}
+      }, onConflict: 'id'); // fuerza UPDATE sobre la misma fila (no duplica)
+      ultimoError = null;
+      return true;
+    } catch (e) {
+      ultimoError = e.toString();
+      return false;
+    }
   }
 
   /// Borrado lógico durable (sobrevive reinstalar). Fail-safe.

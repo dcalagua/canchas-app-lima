@@ -610,11 +610,18 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       redes: redes,
       fotos: fotos,
     );
-    appState.guardarAcademia(academia);
+    final okNube = await appState.guardarAcademia(academia);
     if (!mounted) return;
     setState(() => _guardando = false);
     Navigator.of(context).pop();
-    _avisar('✅ Academia guardada.');
+    if (okNube) {
+      _avisar('✅ Academia guardada.');
+    } else {
+      // Se guardó en el equipo, pero la nube no confirmó (p. ej. permisos de
+      // Supabase). No se pierde: se reintenta solo al recargar.
+      _avisarRojo(
+          'Guardado en este equipo, pero la nube no confirmó. Reintentaré al recargar.');
+    }
   }
 
   @override

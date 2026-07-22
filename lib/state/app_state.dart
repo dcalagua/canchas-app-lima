@@ -73,6 +73,12 @@ class AppState extends ChangeNotifier {
 
   // ── Academias (Fase 1) ────────────────────────────────────────────────────
   final List<Academia> academias = [];
+
+  /// Ids de academias con una edición LOCAL que aún NO se confirmó en la nube
+  /// (Supabase falló, p. ej. RLS). Mientras un id esté aquí, la recarga NO pisa
+  /// la versión local con la remota (vieja) y se reintenta subirla. Se persiste
+  /// para que la edición no se pierda ni tras reiniciar la app.
+  final Set<String> _academiasPendientesNube = {};
   final List<Alumno> alumnos = [];
   final List<Cuota> cuotas = [];
   final List<Asistencia> asistencias = [];
@@ -128,7 +134,11 @@ class AppState extends ChangeNotifier {
 
   /// Crea o actualiza una academia (upsert por id). Persiste local + nube
   /// (Supabase) para que sobreviva a reinstalar el APK.
-  void guardarAcademia(Academia a) {
+  /// Crea o actualiza la academia (local + nube). Devuelve true si además quedó
+  /// confirmada en la NUBE; false si solo se guardó local (Supabase falló). En
+  /// ese caso el id queda "pendiente" y se reintenta al recargar, sin perder la
+  /// edición ni dejar que la versión vieja de la nube la revierta.
+  Future<bool> guardarAcademia(Academia a) async {
     // Modelo piloto: UNA academia por dueño. Si ya existe una del mismo dueño con
     // OTRO id (típico: se creó una nueva porque la nube aún no había cargado tras
     // reinstalar), NO duplicamos: reusamos el id existente y la actualizamos. Es
@@ -148,8 +158,16 @@ class AppState extends ChangeNotifier {
     }
     notifyListeners();
     _persistirDatos();
-    // best-effort: comparte y sobrevive reinstalación
-    AcademiasRepo.guardar(academia);
+    // Nube: si falla, marca el id como pendiente para no perder la edición ni
+    // que la recarga la pise con la versión vieja (comparte + sobrevive reinstalar).
+    final ok = await AcademiasRepo.guardar(academia);
+    if (ok) {
+      _academiasPendientesNube.remove(academia.id);
+    } else {
+      _academiasPendientesNube.add(academia.id);
+    }
+    _persistirDatos();
+    return ok;
   }
 
   /// Al CONECTAR las redes (OAuth Meta en Servicios), auto-declara en la academia
@@ -683,6 +701,10 @@ class AppState extends ChangeNotifier {
     try {
       final remotas = await AcademiasRepo.fetchRemotas();
       for (final a in remotas) {
+        // Si hay una edición local sin confirmar en la nube, NO la pises con la
+        // versión remota (más vieja): perderíamos lo que el profe acaba de
+        // guardar. Se reintenta subir más abajo.
+        if (_academiasPendientesNube.contains(a.id)) continue;
         final i = academias.indexWhere((x) => x.id == a.id);
         if (i >= 0) {
           academias[i] = a;
@@ -693,6 +715,18 @@ class AppState extends ChangeNotifier {
       }
       // La remota pudo pisar a Jartur con una versión vieja: cúrala de nuevo.
       if (_curarSeedJartur()) cambio = true;
+      // Reintenta subir las ediciones locales que aún no confirmaron en la nube.
+      for (final id in _academiasPendientesNube.toList()) {
+        final i = academias.indexWhere((x) => x.id == id);
+        if (i < 0) {
+          _academiasPendientesNube.remove(id); // ya no existe: nada que subir
+          continue;
+        }
+        if (await AcademiasRepo.guardar(academias[i])) {
+          _academiasPendientesNube.remove(id);
+          cambio = true;
+        }
+      }
     } finally {
       _cargandoAcademias = false;
       if (!academiasRemotasCargadas) {
@@ -2345,6 +2379,7 @@ class AppState extends ChangeNotifier {
   static const _kRadio = 'radio_busqueda_km';
   static const _kTema = 'tema_modo'; // 0=system, 1=light, 2=dark
   static const _kAcademias = 'academias_json';
+  static const _kAcademiasPendientes = 'academias_pendientes_nube_json';
   static const _kAlumnos = 'alumnos_json';
   static const _kCuotas = 'cuotas_json';
   static const _kAsistencias = 'asistencias_json';
@@ -2462,6 +2497,14 @@ class AppState extends ChangeNotifier {
       }
 
       _cargarLista(prefs, _kAcademias, academias, Academia.fromJson);
+      final pendRaw = prefs.getString(_kAcademiasPendientes);
+      if (pendRaw != null) {
+        try {
+          _academiasPendientesNube
+            ..clear()
+            ..addAll((jsonDecode(pendRaw) as List).map((e) => e.toString()));
+        } catch (_) {}
+      }
       _cargarLista(prefs, _kAlumnos, alumnos, Alumno.fromJson);
       _cargarLista(prefs, _kCuotas, cuotas, Cuota.fromJson);
       _cargarLista(prefs, _kAsistencias, asistencias, Asistencia.fromJson);
@@ -2527,6 +2570,8 @@ class AppState extends ChangeNotifier {
       });
       await prefs.setString(
           _kAcademias, jsonEncode(academias.map((a) => a.toJson()).toList()));
+      await prefs.setString(
+          _kAcademiasPendientes, jsonEncode(_academiasPendientesNube.toList()));
       await prefs.setString(
           _kAlumnos, jsonEncode(alumnos.map((a) => a.toJson()).toList()));
       await prefs.setString(
@@ -2623,6 +2668,7 @@ class AppState extends ChangeNotifier {
     canchasDescubiertas.clear();
     canchasEliminadas.clear();
     academias.clear();
+    _academiasPendientesNube.clear();
     alumnos.clear();
     cuotas.clear();
     asistencias.clear();
