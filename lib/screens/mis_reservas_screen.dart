@@ -6,6 +6,7 @@ import '../theme.dart';
 import '../utils/ubicacion_share.dart';
 import '../widgets/court_lines.dart';
 import '../utils/moneda.dart';
+import '../widgets/sesion_requerida.dart';
 import 'chat_screen.dart';
 
 /// Reservas hechas por el jugador logueado (rediseño premium, handoff v2):
@@ -55,6 +56,13 @@ class _MisReservasScreenState extends State<MisReservasScreen> {
       body: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
+          if (!appState.logueado) {
+            return const SesionRequerida(
+              motivo: 'ver tus reservas',
+              icono: Icons.sports_soccer,
+              titulo: 'Tus reservas te esperan',
+            );
+          }
           final todas = appState.misReservas;
           final proximas = todas.where(_esProxima).toList()
             ..sort((a, b) => (_fechaHora(a.fecha, a.horaInicio) ?? DateTime.now())

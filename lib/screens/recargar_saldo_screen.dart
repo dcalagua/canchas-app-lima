@@ -8,6 +8,7 @@ import '../theme.dart';
 import '../utils/input_formatos.dart';
 import '../widgets/marcas_pago.dart';
 import '../widgets/pago_procesando.dart';
+import '../widgets/sesion_requerida.dart';
 import '../utils/moneda.dart';
 
 /// Recarga de saldo del dueño con Culqi (tarjeta o Yape). Tokeniza con la llave
@@ -181,9 +182,16 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: Text(widget.titulo ?? 'Recargar saldo')),
-      body: !_pasarelaLista
-          ? _pasarelaProximamente()
-          : _cargando
+      body: _email.isEmpty
+          ? SesionRequerida(
+              motivo: 'recargar tu saldo',
+              icono: Icons.account_balance_wallet_outlined,
+              titulo: 'Inicia sesión para recargar',
+              onLogueado: () => setState(() {}),
+            )
+          : !_pasarelaLista
+              ? _pasarelaProximamente()
+              : _cargando
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               padding: const EdgeInsets.all(18),

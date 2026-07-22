@@ -6,6 +6,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/input_formatos.dart';
 import '../widgets/marcas_pago.dart';
+import '../widgets/sesion_requerida.dart';
 
 /// Métodos de pago del usuario: tarjetas guardadas (Culqi One Click). El usuario
 /// agrega una tarjeta una vez y luego paga sin re-tipear. No se guarda el número
@@ -92,13 +93,11 @@ class _MetodosPagoScreenState extends State<MetodosPagoScreen> {
       body: _cargando
           ? const Center(child: CircularProgressIndicator())
           : _userId.isEmpty
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(28),
-                    child: Text('Inicia sesión para guardar tus tarjetas.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: textoTenue)),
-                  ),
+              ? SesionRequerida(
+                  motivo: 'guardar tus tarjetas',
+                  icono: Icons.credit_card,
+                  titulo: 'Guarda tus tarjetas',
+                  onLogueado: _cargar,
                 )
               : ListView(
                   padding: const EdgeInsets.all(18),

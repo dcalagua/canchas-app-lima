@@ -5,6 +5,7 @@ import '../services/convocatorias_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'convocatorias_screen.dart' show EstadoChip, ModoChip;
+import 'login_google_sheet.dart';
 
 /// Ficha de una convocatoria: el jugador ve su estado y se anota / cancela; el
 /// dueño (admin) cierra la convocatoria, la reabre y marca asistencia.
@@ -51,16 +52,13 @@ class _ConvocatoriaDetalleScreenState extends State<ConvocatoriaDetalleScreen> {
   }
 
   Future<void> _anotarme() async {
-    var email = _miEmail;
-    if (email == null || email.isEmpty) {
-      final ok = await appState.entrarConGoogle();
-      if (!ok) {
-        _aviso('Inicia sesión con Google para anotarte.', error: true);
-        return;
-      }
-      email = appState.usuario?.email;
-      if (email == null) return;
+    if (!await LoginGoogleSheet.mostrar(context,
+        motivo: 'anotarte a esta convocatoria')) {
+      return;
     }
+    if (!mounted) return;
+    final email = appState.usuario?.email;
+    if (email == null || email.isEmpty) return;
     setState(() => _ocupado = true);
     final r = await ConvocatoriasService.inscribir(
         widget.convId, email, appState.usuario?.nombre ?? email);

@@ -9,6 +9,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/logo_academia.dart';
 import '../widgets/pago_tarjeta_sheet.dart';
+import '../widgets/sesion_requerida.dart';
 
 /// Vista del ALUMNO: sus matrículas, los pagos que hizo (comprobante/boleta) y
 /// los próximos pagos. Es el "¿dónde veo mis pagos?" del jugador.
@@ -30,6 +31,13 @@ class MisClasesScreen extends StatelessWidget {
       body: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
+          if (!appState.logueado) {
+            return const SesionRequerida(
+              motivo: 'ver tus clases y pagos',
+              icono: Icons.school_outlined,
+              titulo: 'Tus clases y pagos',
+            );
+          }
           final matriculas = appState.misMatriculas;
           if (matriculas.isEmpty) {
             return const Center(
