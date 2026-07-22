@@ -56,7 +56,6 @@ class MarketingConfigRequest(BaseModel):
     landing_soles: float | None = None
     redes_soles: float | None = None
     presencia_soles: float | None = None
-    gestion_soles: float | None = None
     posts_limite_mes: int | None = None
 
 
@@ -169,7 +168,6 @@ def get_marketing_admin(x_admin_token: str | None = Header(default=None)) -> dic
         "landing_soles": stores.cfg_int("servicio_landing_soles"),
         "redes_soles": stores.cfg_int("servicio_redes_soles"),
         "presencia_soles": stores.cfg_int("servicio_presencia_soles"),
-        "gestion_soles": stores.cfg_int("servicio_gestion_soles"),
         "posts_limite_mes": stores.cfg_int("marketing_posts_limite_mes"),
     }
 
@@ -185,8 +183,6 @@ def set_marketing_admin(req: MarketingConfigRequest,
         stores.config["servicio_redes_soles"] = str(int(req.redes_soles))
     if req.presencia_soles is not None:
         stores.config["servicio_presencia_soles"] = str(int(req.presencia_soles))
-    if req.gestion_soles is not None:
-        stores.config["servicio_gestion_soles"] = str(int(req.gestion_soles))
     if req.posts_limite_mes is not None:
         stores.config["marketing_posts_limite_mes"] = str(max(0, int(req.posts_limite_mes)))
     return get_marketing_admin(x_admin_token)
@@ -548,7 +544,7 @@ function mostrarApp(){
 }
 
 // --- Servicios de marketing: precios + tope de posts IA --------------------
-let mkt = {landing_soles:0, redes_soles:0, presencia_soles:0, gestion_soles:0, posts_limite_mes:0};
+let mkt = {landing_soles:0, redes_soles:0, presencia_soles:0, posts_limite_mes:0};
 async function cargarMarketing(){
   try{
     const r = await fetch('/admin/api/marketing',{headers:headers()});
@@ -571,9 +567,8 @@ function renderMarketing(){
         dueño) y tope de generaciones de posts con IA por academia/mes (control de
         costo; la landing no cuenta).</div>
       ${campo('mkt_landing','Landing web', mkt.landing_soles, 'S/ /mes')}
-      ${campo('mkt_redes','Manejo de redes', mkt.redes_soles, 'S/ /mes')}
+      ${campo('mkt_redes','Manejo de redes (contenido IA + publicación)', mkt.redes_soles, 'S/ /mes')}
       ${campo('mkt_presencia','Presencia digital', mkt.presencia_soles, 'S/ /mes')}
-      ${campo('mkt_gestion','Gestión de redes (publicamos por él)', mkt.gestion_soles, 'S/ /mes')}
       ${campo('mkt_limite','Tope de posts IA', mkt.posts_limite_mes, '/mes')}
       <div class="actions"><button class="btn-ap" onclick="guardarMarketing()">Guardar</button></div>
     </div>`;
@@ -582,8 +577,7 @@ async function guardarMarketing(){
   const n = id => parseInt((document.getElementById(id).value||'0').replace(/[^0-9]/g,''))||0;
   const r = await fetch('/admin/api/marketing',{method:'POST',headers:headers(),
     body:JSON.stringify({landing_soles:n('mkt_landing'),redes_soles:n('mkt_redes'),
-      presencia_soles:n('mkt_presencia'),gestion_soles:n('mkt_gestion'),
-      posts_limite_mes:n('mkt_limite')})});
+      presencia_soles:n('mkt_presencia'),posts_limite_mes:n('mkt_limite')})});
   if(r.status===401){ salir(); return; }
   if(r.ok){ mkt = await r.json(); renderMarketing(); toast('Servicios de marketing actualizados'); }
   else toast('No se pudo guardar');

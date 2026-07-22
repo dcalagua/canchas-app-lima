@@ -248,13 +248,22 @@ _SERVICIOS = {
     "landing": ("Landing web", "servicio_landing_soles",
                 "Tu página web para difundir la academia/cancha."),
     "redes": ("Manejo de redes", "servicio_redes_soles",
-              "Publicamos por ti en redes (community manager con IA)."),
+              "Community manager con IA: creamos tu contenido y lo publicamos en "
+              "tu Instagram/Facebook si conectas tus cuentas (o lo compartes con "
+              "un tap)."),
     "presencia": ("Presencia digital", "servicio_presencia_soles",
                   "Landing + manejo de redes, todo incluido."),
-    "gestion": ("Gestión de redes", "servicio_gestion_soles",
-                "Publicamos directamente en tu Instagram/Facebook. Tú nos das "
-                "permiso (revocable); es como tener tu propio equipo de marketing."),
 }
+
+# Servicios RETIRADOS del catálogo pero reconocidos para mostrar suscripciones
+# antiguas: "Gestión de redes" se unificó dentro de "Manejo de redes".
+_SERVICIOS_LEGACY = {"gestion": "Manejo de redes"}
+
+
+def _nombre_servicio(clave: str) -> str:
+    if clave in _SERVICIOS:
+        return _SERVICIOS[clave][0]
+    return _SERVICIOS_LEGACY.get(clave, "?")
 
 
 def _servicio_soles(clave: str) -> float:
@@ -277,7 +286,7 @@ def _sub_dict(s: dict) -> dict:
     return {
         "academia_id": s.get("academia_id"),
         "servicio": serv,
-        "nombre": _SERVICIOS.get(serv, ("?",))[0],
+        "nombre": _nombre_servicio(serv),
         "monto_soles": s.get("monto_centimos", 0) / 100.0,
         "estado": s.get("estado"),
         "proximo_cobro": s.get("proximo_cobro"),

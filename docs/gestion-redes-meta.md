@@ -6,9 +6,11 @@ como que el dueño contrate un equipo de marketing.
 
 ## Cómo funciona (ya implementado)
 
-1. El dueño **contrata** el plan **"Gestión de redes"** en _Servicios Pichangol_
+1. El dueño **contrata** el plan **"Manejo de redes"** en _Servicios Pichangol_
    (se debita del saldo, precio editable en la torre de control →
-   `servicio_gestion_soles`).
+   `servicio_redes_soles`). La publicación automática es una función de ese plan
+   que se activa al conectar las cuentas. *(El antiguo plan "Gestión de redes" se
+   unificó dentro de "Manejo de redes".)*
 2. Aparece la tarjeta **"Gestión de redes"** con **"Conectar Instagram/Facebook"**.
 3. Al tocar, el APK abre el **diálogo de permiso de Meta** (OAuth). El dueño
    acepta → Meta redirige a `GROWTH_API_URL/marketing/redes/callback` → el backend

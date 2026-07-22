@@ -117,10 +117,13 @@ def test_publicar_sin_conexion_falla(client):
     assert r.json()["error"] == "no_conectado"
 
 
-def test_plan_gestion_en_catalogo(client):
+def test_catalogo_unificado(client):
+    # "Gestión de redes" se unificó dentro de "Manejo de redes": ya no se ofrece
+    # "gestion" en el catálogo, pero sí "redes".
     r = client.get("/pagos/servicios/planes")
     claves = {p["clave"] for p in r.json()["planes"]}
-    assert "gestion" in claves
+    assert "redes" in claves
+    assert "gestion" not in claves
 
 
 def test_subir_imagen_y_servirla(client):

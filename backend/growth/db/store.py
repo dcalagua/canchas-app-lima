@@ -33,10 +33,12 @@ CONFIG_DEFAULT: dict[str, str] = {
     # Precios MENSUALES (soles) de los servicios de marketing de Pichangol.
     # Editables desde la torre de control. Es lo que se debita del saldo del dueño.
     "servicio_landing_soles": "49",
-    "servicio_redes_soles": "99",
-    "servicio_presencia_soles": "129",
-    # "Gestión de redes" (Nivel 2): Pichangol publica DIRECTAMENTE en el IG/FB del
-    # dueño (con su permiso). Es un servicio superior; precio editable.
+    # "Manejo de redes" (unificado): contenido con IA + publicación automática en
+    # IG/FB si el dueño conecta sus cuentas (o compartir con un tap). Editable.
+    "servicio_redes_soles": "129",
+    "servicio_presencia_soles": "149",
+    # (Legado) "Gestión de redes" se fusionó en "Manejo de redes". Se conserva la
+    # clave por compatibilidad con datos antiguos; ya no se ofrece en el catálogo.
     "servicio_gestion_soles": "199",
     # Comisión por COBRO DIGITAL de matrícula (cuando el alumno paga por la app).
     # Es una tarifa única "tipo POS" que la academia absorbe (el alumno paga el

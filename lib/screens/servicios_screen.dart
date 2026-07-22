@@ -56,16 +56,12 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
       (s['servicio'] == 'landing' || s['servicio'] == 'presencia') &&
       (s['estado'] == 'activa' || s['estado'] == 'pendiente_pago'));
 
-  // ¿Tiene algún servicio con community manager IA (redes, presencia o gestión)?
+  // ¿Tiene "Manejo de redes" (unificado: contenido IA + publicación)? Incluye
+  // "presencia" (lo trae todo) y el legado "gestion".
   bool get _redesContratada => _subs.any((s) =>
       (s['servicio'] == 'redes' ||
           s['servicio'] == 'presencia' ||
           s['servicio'] == 'gestion') &&
-      (s['estado'] == 'activa' || s['estado'] == 'pendiente_pago'));
-
-  // ¿Tiene "Gestión de redes" (Nivel 2: publicamos por él)?
-  bool get _gestionContratada => _subs.any((s) =>
-      s['servicio'] == 'gestion' &&
       (s['estado'] == 'activa' || s['estado'] == 'pendiente_pago'));
 
   bool get _redesConectada => _redesConn?['conectado'] == true;
@@ -387,7 +383,7 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
                   ),
                   const SizedBox(height: 8),
                   if (_landingContratada) _cardLanding(),
-                  if (_gestionContratada) _cardGestion(),
+                  if (_redesContratada) _cardGestion(),
                   if (_redesContratada) _cardRedes(),
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 8, horizontal: 2),
@@ -410,8 +406,8 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
     );
   }
 
-  /// Tarjeta "Gestión de redes" (Nivel 2): conectar/desconectar el IG/FB del
-  /// dueño para que Pichangol publique por él (permiso de Meta, revocable).
+  /// Tarjeta "Publicación automática": conectar el IG/FB del dueño para que
+  /// Pichangol publique por él (parte de Manejo de redes; permiso revocable).
   Widget _cardGestion() {
     final conectada = _redesConectada;
     final modo = (_redesConn?['modo'] ?? '').toString();
@@ -433,7 +429,7 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
               const Icon(Icons.hub, color: lima),
               const SizedBox(width: 8),
               const Expanded(
-                child: Text('Gestión de redes',
+                child: Text('Publicación automática',
                     style: TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 16,
@@ -694,8 +690,8 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
         ((p['hashtags'] as List?) ?? const []).map((e) => e.toString()).toList();
     final hora = (p['hora_sugerida'] ?? '').toString();
     final completo = hashtags.isEmpty ? texto : '$texto\n\n${hashtags.join(' ')}';
-    // Publicar directo sólo si contrató Gestión de redes y está conectado.
-    final puedePublicar = _gestionContratada && _redesConectada;
+    // Publicar directo sólo si contrató Manejo de redes y está conectado.
+    final puedePublicar = _redesContratada && _redesConectada;
     final publicandoEste = _publicando == idx;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
