@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../brand.dart';
+import '../services/auth_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/google_logo.dart';
@@ -51,7 +52,32 @@ class _LoginGoogleSheetState extends State<LoginGoogleSheet> {
     final ok = await appState.entrarConGoogle();
     if (!mounted) return;
     setState(() => _cargando = false);
-    if (ok) Navigator.of(context).pop(true);
+    if (ok) {
+      Navigator.of(context).pop(true);
+      return;
+    }
+    // Falló o se canceló. Si hubo error real de Google, muéstralo para
+    // diagnosticar (ej. ApiException: 10 = SHA-1/paquete que no calzan).
+    final err = AuthService.ultimoError;
+    if (err != null && mounted) {
+      await showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('No se pudo entrar con Google'),
+          content: SingleChildScrollView(
+            child: Text(
+                'Detalle técnico (para diagnóstico):\n\n$err\n\n'
+                'Si dice "ApiException: 10", es el SHA-1/paquete del cliente '
+                'OAuth. Mientras tanto puedes entrar con tu correo abajo.'),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Entendido')),
+          ],
+        ),
+      );
+    }
   }
 
   Future<void> _entrarManual() async {
@@ -121,22 +147,45 @@ class _LoginGoogleSheetState extends State<LoginGoogleSheet> {
             style: t.bodyMedium?.copyWith(color: const Color(0xFF7C766B)),
           ),
           const SizedBox(height: 22),
-          if (_modoPruebas) ...[
-            // Aviso claro de que es login de PRUEBAS (no Google real).
-            Container(
-              padding: const EdgeInsets.all(12),
-              margin: const EdgeInsets.only(bottom: 14),
-              decoration: BoxDecoration(
-                color: limaSuave,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                'Modo pruebas ($_entorno): entra con el correo que quieras para '
-                'simular distintas cuentas (jugador, profe, dueño). El login real '
-                'con Google se activa en producción.',
-                style: t.bodySmall?.copyWith(color: bosque),
+          if (_cargando)
+            const Center(child: CircularProgressIndicator(color: lima))
+          else ...[
+            // Login REAL con Google (siempre disponible). Si falla, muestra el
+            // error para diagnóstico (ver _entrar).
+            SizedBox(
+              width: double.infinity,
+              height: 58,
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  side: const BorderSide(color: Color(0xFFE3DECF), width: 1.5),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
+                  foregroundColor: tinta,
+                ),
+                icon: const GoogleLogo(size: 22),
+                label: Text('Continuar con Google',
+                    style: t.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w700, color: tinta)),
+                onPressed: _entrar,
               ),
             ),
+            // Respaldo por CORREO: si Google falla o para simular cuentas en
+            // pruebas. En prod queda discreto (abajo), pero disponible.
+            const SizedBox(height: 18),
+            Row(children: [
+              const Expanded(child: Divider()),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Text(
+                    _modoPruebas
+                        ? 'o entra con tu correo (pruebas)'
+                        : 'o si Google falla, entra con tu correo',
+                    style: t.bodySmall?.copyWith(color: textoTenue)),
+              ),
+              const Expanded(child: Divider()),
+            ]),
+            const SizedBox(height: 14),
             TextField(
               controller: _nombre,
               textCapitalization: TextCapitalization.words,
@@ -156,46 +205,23 @@ class _LoginGoogleSheetState extends State<LoginGoogleSheet> {
                 border: OutlineInputBorder(),
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
-              height: 54,
-              child: _cargando
-                  ? Center(child: CircularProgressIndicator(color: cs.primary))
-                  : FilledButton(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: cs.primary,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16)),
-                      ),
-                      onPressed: _entrarManual,
-                      child: const Text('Entrar (modo pruebas)',
-                          style: TextStyle(
-                              fontWeight: FontWeight.w800, fontSize: 16)),
-                    ),
+              height: 50,
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: cs.primary,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
+                ),
+                onPressed: _entrarManual,
+                child: const Text('Entrar con correo',
+                    style:
+                        TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+              ),
             ),
-          ] else
-            SizedBox(
-              width: double.infinity,
-              height: 58,
-              child: _cargando
-                  ? Center(child: CircularProgressIndicator(color: cs.primary))
-                  : OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        side: const BorderSide(
-                            color: Color(0xFFE3DECF), width: 1.5),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16)),
-                        foregroundColor: tinta,
-                      ),
-                      icon: const GoogleLogo(size: 22),
-                      label: Text('Continuar con Google',
-                          style: t.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700, color: tinta)),
-                      onPressed: _entrar,
-                    ),
-            ),
+          ],
           const SizedBox(height: 16),
           Center(
             child: Text(

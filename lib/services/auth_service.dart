@@ -17,8 +17,16 @@ class AuthService {
   static const _entorno =
       String.fromEnvironment('ENTORNO', defaultValue: 'dev');
 
-  /// Devuelve el usuario, o null si el usuario canceló el login.
+  /// Último error de Google Sign-In (para diagnóstico en la UI). Null si el
+  /// último intento salió bien o fue cancelado por el usuario.
+  static String? ultimoError;
+
+  /// Devuelve el usuario, o null si el usuario canceló el login (o si Google
+  /// falló; en ese caso [ultimoError] trae el detalle). NO cae a cuenta demo:
+  /// el login de pruebas ahora es explícito (entrarComo), así que un fallo de
+  /// Google se ve tal cual para poder diagnosticarlo.
   static Future<Usuario?> entrarConGoogle() async {
+    ultimoError = null;
     try {
       final cuenta = await _google.signIn();
       if (cuenta == null) return null; // cancelado por el usuario
@@ -27,16 +35,11 @@ class AuthService {
         email: cuenta.email,
         fotoUrl: cuenta.photoUrl,
       );
-    } catch (_) {
-      // En PROD no inventamos cuenta: si Google falla, se trata como cancelado
-      // (no crear un usuario falso). En dev/qas cae a una cuenta demo para no
-      // bloquear el flujo si alguien usa el botón de Google.
-      if (_entorno == 'prod') return null;
-      return const Usuario(
-        nombre: 'Jugador Pichangol',
-        email: 'jugador@gmail.com',
-        fotoUrl: null,
-      );
+    } catch (e) {
+      // Guarda el error real (ej. ApiException: 10 = DEVELOPER_ERROR por SHA-1/
+      // paquete que no calzan) para mostrarlo en la hoja de login.
+      ultimoError = e.toString();
+      return null;
     }
   }
 
