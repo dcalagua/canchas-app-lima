@@ -65,6 +65,9 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
   late Deporte _deporte = widget.academia?.deporte ?? Deporte.tenis;
   late final List<Plan> _planes = [...(widget.academia?.planes ?? const [])];
 
+  // "Plan simple" oculto por ahora (el tarifario se arma con "Programa").
+  static const bool _mostrarPlanSimple = false;
+
   // Id fijo (para crear/editar y para la ruta del logo).
   late final String _id =
       widget.academia?.id ?? 'ac_${DateTime.now().microsecondsSinceEpoch}';
@@ -711,11 +714,13 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                 icon: const Icon(Icons.grid_view, size: 18),
                 label: const Text('Programa (tarifa x frecuencia)'),
               ),
-              TextButton.icon(
-                onPressed: _agregarPlan,
-                icon: const Icon(Icons.add),
-                label: const Text('Plan simple'),
-              ),
+              // "Plan simple" oculto por ahora (poner true para reactivarlo).
+              if (_mostrarPlanSimple)
+                TextButton.icon(
+                  onPressed: _agregarPlan,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Plan simple'),
+                ),
             ],
           ),
           const SizedBox(height: 12),
