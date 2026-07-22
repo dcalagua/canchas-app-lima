@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/academia.dart';
+import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 
@@ -110,6 +111,7 @@ class MisClasesScreen extends StatelessWidget {
                 Text('Total pagado: $mon ${totalPagado.toStringAsFixed(2)}',
                     style: const TextStyle(
                         fontWeight: FontWeight.w800, fontSize: 14, color: lima)),
+                _SuscripcionMesAMes(alumnoId: al.id, moneda: mon),
                 if (proximas.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   const Text('Próximos pagos',
@@ -235,6 +237,93 @@ class MisClasesScreen extends StatelessWidget {
                     fontSize: fuerte ? 16 : 13.5,
                     fontWeight: fuerte ? FontWeight.w900 : FontWeight.w600,
                     color: fuerte ? lima : null)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Estado de la suscripción "mes a mes" del alumno (débito automático) con opción
+/// a cancelar. Solo aparece si el alumno activó el pago mensual automático.
+class _SuscripcionMesAMes extends StatefulWidget {
+  const _SuscripcionMesAMes({required this.alumnoId, required this.moneda});
+  final String alumnoId;
+  final String moneda;
+  @override
+  State<_SuscripcionMesAMes> createState() => _SuscripcionMesAMesState();
+}
+
+class _SuscripcionMesAMesState extends State<_SuscripcionMesAMes> {
+  Map<String, dynamic>? _sus;
+  bool _cargando = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  Future<void> _cargar() async {
+    final s = await PagosService.estadoSuscripcionAlumno(widget.alumnoId);
+    if (!mounted) return;
+    setState(() {
+      _sus = s;
+      _cargando = false;
+    });
+  }
+
+  Future<void> _cancelar() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('¿Cancelar el débito automático?'),
+        content: const Text(
+            'Dejarás de pagar automático cada mes. Podrás volver a matricularte '
+            'cuando quieras.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('No')),
+          FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: clayOscuro),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Sí, cancelar')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await PagosService.cancelarSuscripcionAlumno(widget.alumnoId);
+    if (mounted) _cargar();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_cargando) return const SizedBox.shrink();
+    final s = _sus;
+    if (s == null || s['activa'] != true) return const SizedBox.shrink();
+    final monto = (s['monto_soles'] as num?)?.toDouble() ?? 0;
+    return Container(
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: limaSuave,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.autorenew, color: lima, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+                'Mes a mes activo: ${widget.moneda} ${monto.toStringAsFixed(2)} '
+                'automático cada mes.',
+                style: const TextStyle(fontSize: 12.5, color: bosque)),
+          ),
+          TextButton(
+            onPressed: _cancelar,
+            child: const Text('Cancelar',
+                style: TextStyle(color: clayOscuro, fontWeight: FontWeight.w700)),
           ),
         ],
       ),

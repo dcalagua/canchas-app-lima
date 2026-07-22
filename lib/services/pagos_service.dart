@@ -534,6 +534,74 @@ class PagosService {
     }
   }
 
+  // --- Suscripción MENSUAL del ALUMNO (pago "mes a mes") ------------------
+  /// Crea la suscripción mensual del alumno: guarda su tarjeta (token tkn_) y
+  /// programa el cobro automático de los meses siguientes. El 1.er mes se cobra
+  /// aparte (PagoTarjeta + registrarMatricula). Devuelve {ok,...} o {ok:false}.
+  static Future<Map<String, dynamic>> crearSuscripcionAlumno({
+    required String alumnoId,
+    required String academiaId,
+    required String email,
+    required String token,
+    required double montoSoles,
+    String nombre = '',
+    String pais = 'pe',
+    String? concepto,
+  }) async {
+    if (!disponible) return {'ok': false, 'error': 'Pagos no disponibles.'};
+    try {
+      final r = await http.post(
+        Uri.parse('$_baseUrl/pagos/matricula/suscripcion'),
+        headers: _appHeaders(json: true),
+        body: jsonEncode({
+          'alumno_id': alumnoId,
+          'academia_id': academiaId,
+          'email': email,
+          'token': token,
+          'monto_soles': montoSoles,
+          'nombre': nombre,
+          'pais': pais,
+          if (concepto != null) 'concepto': concepto,
+        }),
+      ).timeout(const Duration(seconds: 30));
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      if (r.statusCode == 200 && j['ok'] == true) return j;
+      return {'ok': false, 'error': j['error'] ?? 'No se pudo activar el mes a mes.'};
+    } catch (_) {
+      return {'ok': false, 'error': 'Sin conexión con el servidor de pagos.'};
+    }
+  }
+
+  /// Estado de la suscripción mensual del alumno (para "Mis clases").
+  static Future<Map<String, dynamic>?> estadoSuscripcionAlumno(
+      String alumnoId) async {
+    if (!disponible) return null;
+    try {
+      final r = await http.get(
+        Uri.parse('$_baseUrl/pagos/matricula/suscripcion/$alumnoId'),
+        headers: _appHeaders(),
+      ).timeout(const Duration(seconds: 12));
+      if (r.statusCode != 200) return null;
+      return Map<String, dynamic>.from(jsonDecode(r.body) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Cancela la suscripción mensual del alumno (deja de cobrar cada mes).
+  static Future<bool> cancelarSuscripcionAlumno(String alumnoId) async {
+    if (!disponible) return false;
+    try {
+      final r = await http.delete(
+        Uri.parse('$_baseUrl/pagos/matricula/suscripcion/$alumnoId'),
+        headers: _appHeaders(),
+      ).timeout(const Duration(seconds: 12));
+      return r.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
   // --- Landing hospedada (fulfillment del servicio de marketing) ----------
   /// URL pública de la landing de una academia (la sirve el backend).
   static String? landingUrl(String academiaId) =>

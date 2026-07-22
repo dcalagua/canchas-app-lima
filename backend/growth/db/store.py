@@ -366,6 +366,12 @@ class Stores:
         # renovar, si no hay saldo, se cobra a esta tarjeta guardada (crd_ de
         # Culqi). Guarda email + marca + últimos4, NUNCA el número completo.
         self.metodo_suscripcion: dict[str, dict] = {}  # academia_id -> {card_id,email,marca,ultimos4}
+        # SUSCRIPCIÓN MENSUAL del ALUMNO a una academia (pago "mes a mes"): al
+        # matricularse en modo mes a mes, paga 1 mes y guarda su tarjeta; el cron
+        # cobra cada mes y acredita el neto a la academia (misma comisión POS).
+        # Clave = alumno_id -> {alumno_id, academia_id, email, card_id, marca,
+        # ultimos4, monto_centimos, pais, proximo_cobro, estado, concepto}.
+        self.suscripciones_alumno: dict[str, dict] = {}
         self._idem: dict[tuple[str, str], dict] = {}
         self._ids: dict[str, int] = {}
 
@@ -587,6 +593,8 @@ class Stores:
             "customers": dict(self.customers),
             "metodos": {k: list(v) for k, v in self.metodos.items()},
             "metodo_suscripcion": {k: dict(v) for k, v in self.metodo_suscripcion.items()},
+            "suscripciones_alumno": {
+                k: dict(v) for k, v in self.suscripciones_alumno.items()},
         }
 
     def load_state(self, data: dict) -> None:
@@ -635,6 +643,9 @@ class Stores:
         }
         self.metodo_suscripcion = {
             k: dict(v) for k, v in (data.get("metodo_suscripcion") or {}).items()
+        }
+        self.suscripciones_alumno = {
+            k: dict(v) for k, v in (data.get("suscripciones_alumno") or {}).items()
         }
 
     # --- normalización a TABLAS SQL (fase 1: saldos/pagos/vistas/reclamos) ----

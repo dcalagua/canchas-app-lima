@@ -111,6 +111,10 @@ class Academia {
   final double descuentoHermano2;
   final double descuentoHermano3;
   final double descuentoPrepago;
+  /// Desde cuántos MESES adelantados aplica [descuentoPrepago]. CONFIGURABLE por
+  /// el profe (default 3): al pagar N ≥ este umbral de golpe, se aplica el
+  /// descuento de prepago. Si es 1, cualquier pago adelantado ya descuenta.
+  final int mesesMinPrepago;
   /// URL de la LANDING/publicidad de la academia (servicio de marketing de
   /// Pichangol). Vacío = no contratada. Se muestra como "Sitio web" en la ficha
   /// y el dueño puede compartirla. Configurable por academia (extra opcional).
@@ -138,9 +142,14 @@ class Academia {
     this.descuentoHermano2 = 0,
     this.descuentoHermano3 = 0,
     this.descuentoPrepago = 0,
+    this.mesesMinPrepago = 3,
     this.landingUrl = '',
     this.retribucionClubPct = 0,
   });
+
+  /// ¿Aplica el descuento de prepago al pagar [meses] adelantados de golpe?
+  bool aplicaPrepago(int meses) =>
+      descuentoPrepago > 0 && meses >= mesesMinPrepago;
 
   /// ¿Tiene landing/publicidad contratada (servicio de marketing)?
   bool get tieneLanding => landingUrl.trim().isNotEmpty;
@@ -269,6 +278,7 @@ class Academia {
     double? descuentoHermano2,
     double? descuentoHermano3,
     double? descuentoPrepago,
+    int? mesesMinPrepago,
     String? landingUrl,
     double? retribucionClubPct,
   }) =>
@@ -290,6 +300,7 @@ class Academia {
         descuentoHermano2: descuentoHermano2 ?? this.descuentoHermano2,
         descuentoHermano3: descuentoHermano3 ?? this.descuentoHermano3,
         descuentoPrepago: descuentoPrepago ?? this.descuentoPrepago,
+        mesesMinPrepago: mesesMinPrepago ?? this.mesesMinPrepago,
         landingUrl: landingUrl ?? this.landingUrl,
         retribucionClubPct: retribucionClubPct ?? this.retribucionClubPct,
       );
@@ -313,6 +324,7 @@ class Academia {
         'descuentoHermano2': descuentoHermano2,
         'descuentoHermano3': descuentoHermano3,
         'descuentoPrepago': descuentoPrepago,
+        'mesesMinPrepago': mesesMinPrepago,
         'landingUrl': landingUrl,
         'retribucionClubPct': retribucionClubPct,
       };
@@ -344,6 +356,7 @@ class Academia {
         descuentoHermano2: ((j['descuentoHermano2'] ?? 0) as num).toDouble(),
         descuentoHermano3: ((j['descuentoHermano3'] ?? 0) as num).toDouble(),
         descuentoPrepago: ((j['descuentoPrepago'] ?? 0) as num).toDouble(),
+        mesesMinPrepago: ((j['mesesMinPrepago'] ?? 3) as num).toInt(),
         landingUrl: (j['landingUrl'] ?? '') as String,
         retribucionClubPct:
             ((j['retribucionClubPct'] ?? 0) as num).toDouble(),

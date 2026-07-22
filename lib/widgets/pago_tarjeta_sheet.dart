@@ -24,6 +24,7 @@ class PagoTarjeta {
     required String concepto,
     required String email,
     String moneda = '',
+    ValueChanged<String>? onToken, // recibe el token (tkn_/crd_) usado si el pago fue OK
   }) async {
     final cfg = await PagosService.config();
     final disponible = cfg != null && cfg['disponible'] == true;
@@ -54,6 +55,7 @@ class PagoTarjeta {
         pk: pk,
         esTest: esTest,
         moneda: moneda,
+        onToken: onToken,
       ),
     );
     return ok == true;
@@ -69,6 +71,7 @@ class _PagoTarjetaSheet extends StatefulWidget {
     required this.pk,
     required this.esTest,
     this.moneda = '',
+    this.onToken,
   });
   final int monto;
   final String concepto;
@@ -77,6 +80,7 @@ class _PagoTarjetaSheet extends StatefulWidget {
   final String pk;
   final bool esTest;
   final String moneda;
+  final ValueChanged<String>? onToken;
 
   @override
   State<_PagoTarjetaSheet> createState() => _PagoTarjetaSheetState();
@@ -194,6 +198,7 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
       final res = await PagosService.cobrar(
         token: tk, email: widget.email,
         montoSoles: widget.monto.toDouble(), concepto: widget.concepto);
+      if (res['ok'] == true) widget.onToken?.call(tk!);
       return res['ok'] == true
           ? {'ok': true, 'detalle': 'Pago de $_mon ${widget.monto} aprobado.'}
           : {'ok': false, 'error': res['error']?.toString() ?? 'No se pudo cobrar.'};

@@ -538,6 +538,139 @@ def del_metodo_suscripcion(academia_id: str) -> dict:
     return {"ok": True}
 
 
+# ── Suscripción MENSUAL del ALUMNO (pago "mes a mes") ──────────────────────────
+class SuscripcionAlumnoReq(BaseModel):
+    alumno_id: str
+    academia_id: str
+    email: str
+    token: str                 # tkn_ tokenizado en el APK (tarjeta del alumno)
+    monto_soles: float         # mensualidad
+    nombre: str = ""
+    apellido: str = ""
+    pais: str = "pe"
+    concepto: str | None = None
+
+
+def _suscripcion_alumno_publica(s: dict | None) -> dict:
+    if not s:
+        return {"activa": False}
+    return {
+        "activa": s.get("estado") == "activa",
+        "estado": s.get("estado"),
+        "monto_soles": s.get("monto_centimos", 0) / 100.0,
+        "proximo_cobro": s.get("proximo_cobro"),
+        "marca": s.get("marca"), "ultimos4": s.get("ultimos4"),
+    }
+
+
+@router.get("/matricula/suscripcion/{alumno_id}", dependencies=_APP)
+def get_suscripcion_alumno(alumno_id: str) -> dict:
+    """Estado de la suscripción mensual del alumno (enmascarada, sin tarjeta)."""
+    return _suscripcion_alumno_publica(stores.suscripciones_alumno.get(alumno_id))
+
+
+@router.post("/matricula/suscripcion", dependencies=_APP)
+def post_suscripcion_alumno(req: SuscripcionAlumnoReq) -> dict:
+    """Crea la suscripción MENSUAL del alumno (pago mes a mes): guarda su tarjeta
+    (Culqi One-Click) y programa el próximo cobro a un mes. El 1.er mes lo cobró el
+    APK aparte (con /matricula). El cron cobra los meses siguientes."""
+    if not culqi.disponible():
+        raise HTTPException(status_code=503, detail="pagos_no_configurados")
+    # El token puede venir como tarjeta guardada (crd_) —se usa tal cual— o como
+    # token temporal (tkn_) que hay que convertir en tarjeta permanente (crd_).
+    if req.token.startswith("crd_"):
+        card_id, marca, ultimos4 = req.token, "", ""
+    else:
+        key = f"al:{req.alumno_id}"
+        cus = stores.customers.get(key)
+        if not cus:
+            rc = culqi.crear_customer(email=req.email, nombre=req.nombre,
+                                      apellido=req.apellido)
+            if not rc["ok"]:
+                return {"ok": False, "error": rc.get("error", "no_se_pudo_crear_cliente")}
+            cus = rc["customer_id"]
+            stores.customers[key] = cus
+        rcard = culqi.crear_card(customer_id=cus, token=req.token)
+        if not rcard["ok"]:
+            return {"ok": False, "error": rcard.get("error", "no_se_pudo_guardar_tarjeta")}
+        card_id, marca, ultimos4 = rcard["card_id"], rcard["marca"], rcard["ultimos4"]
+    ahora = datetime.now(timezone.utc)
+    stores.suscripciones_alumno[req.alumno_id] = {
+        "alumno_id": req.alumno_id, "academia_id": req.academia_id,
+        "email": req.email, "card_id": card_id,
+        "marca": marca, "ultimos4": ultimos4,
+        "monto_centimos": _soles_a_centimos(req.monto_soles),
+        "pais": req.pais, "estado": "activa",
+        "concepto": req.concepto or "Mensualidad (mes a mes)",
+        "creado_en": ahora.isoformat(),
+        "proximo_cobro": _mas_un_mes(ahora).isoformat(),
+    }
+    return {"ok": True, **_suscripcion_alumno_publica(
+        stores.suscripciones_alumno[req.alumno_id])}
+
+
+@router.delete("/matricula/suscripcion/{alumno_id}", dependencies=_APP)
+def del_suscripcion_alumno(alumno_id: str) -> dict:
+    """Cancela la suscripción mensual del alumno (deja de cobrar cada mes)."""
+    s = stores.suscripciones_alumno.pop(alumno_id, None)
+    if s and s.get("card_id"):
+        culqi.eliminar_card(s["card_id"])  # best-effort
+    return {"ok": True}
+
+
+def procesar_renovaciones_alumnos() -> dict:
+    """Cobra las MENSUALIDADES vencidas (alumnos con pago mes a mes) contra su
+    tarjeta guardada (Culqi) y acredita el neto (menos comisión POS del país) a la
+    academia como 'por recibir'. Fail-safe. La usa el cron interno."""
+    ahora = datetime.now(timezone.utc)
+    cobradas = pendientes = 0
+    for s in stores.suscripciones_alumno.values():
+        if s.get("estado") not in ("activa", "pendiente_pago"):
+            continue
+        prox = s.get("proximo_cobro")
+        try:
+            venc = datetime.fromisoformat(prox) if prox else None
+        except (TypeError, ValueError):
+            venc = None
+        if venc is not None and venc > ahora:
+            continue
+        if not culqi.disponible() or not s.get("card_id"):
+            s["estado"] = "pendiente_pago"
+            pendientes += 1
+            continue
+        monto = s.get("monto_centimos", 0)
+        aca = s.get("academia_id")
+        concepto = s.get("concepto") or "Mensualidad"
+        r = culqi.crear_cargo(
+            token=s["card_id"], monto_centimos=monto,
+            email=s.get("email") or "", descripcion=concepto,
+            metadata={"tipo": "mensualidad_alumno", "academia_id": aca,
+                      "alumno_id": s.get("alumno_id")})
+        if r.get("ok"):
+            pct = _comision_matricula_pct(s.get("pais"))
+            comision = int(round(monto * pct / 100.0))
+            stores.registrar_pago(
+                tipo="matricula_online", monto_centimos=monto, moneda="PEN",
+                estado="aprobado", dueno_id=aca,
+                culqi_charge_id=r.get("charge_id"), comision_centimos=comision,
+                concepto=concepto + " (mes a mes)")
+            s["ultimo_cobro"] = ahora.isoformat()
+            s["proximo_cobro"] = _mas_un_mes(ahora).isoformat()
+            s["estado"] = "activa"
+            cobradas += 1
+        else:
+            s["estado"] = "pendiente_pago"
+            pendientes += 1
+    return {"ok": True, "cobradas": cobradas, "pendientes": pendientes}
+
+
+@router.post("/matricula/cobrar-vencidas", dependencies=_ADMIN)
+def post_cobrar_mensualidades() -> dict:
+    """Dispara el cobro de mensualidades vencidas (torre de control). El cron
+    interno hace lo mismo automáticamente."""
+    return procesar_renovaciones_alumnos()
+
+
 # ------ Comisión por COBRO DIGITAL de matrícula (tarifa "tipo POS") ----------
 # El alumno paga el precio limpio por la app; la academia absorbe una comisión
 # única por país (editable en la torre de control). Efectivo = 0% (no pasa por

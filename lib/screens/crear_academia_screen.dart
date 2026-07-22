@@ -52,6 +52,9 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       _ctrlPct(widget.academia?.descuentoHermano3);
   late final TextEditingController _dtoPrepago =
       _ctrlPct(widget.academia?.descuentoPrepago);
+  // Desde cuántos meses adelantados aplica el descuento de prepago (default 3).
+  late final TextEditingController _mesesMinPrepago = TextEditingController(
+      text: '${widget.academia?.mesesMinPrepago ?? 3}');
   // Retribución al club/sede (%) sobre lo cobrado. Vacío = 0 = no aplica.
   late final TextEditingController _retribClub =
       _ctrlPct(widget.academia?.retribucionClubPct);
@@ -132,6 +135,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
     _dtoHermano2.dispose();
     _dtoHermano3.dispose();
     _dtoPrepago.dispose();
+    _mesesMinPrepago.dispose();
     _retribClub.dispose();
     _landing.dispose();
     for (final c in _redesCtrl.values) {
@@ -462,6 +466,8 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       descuentoHermano2: _pct(_dtoHermano2),
       descuentoHermano3: _pct(_dtoHermano3),
       descuentoPrepago: _pct(_dtoPrepago),
+      mesesMinPrepago: (int.tryParse(_mesesMinPrepago.text.trim()) ?? 3)
+          .clamp(1, 36),
       retribucionClubPct: _pct(_retribClub),
       landingUrl: _landing.text.trim(),
       logoUrl: _logoUrl,
@@ -781,7 +787,28 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                 ],
               ),
               const SizedBox(height: 10),
-              _campoPct(_dtoPrepago, 'Prepago (paquete de meses)'),
+              Row(
+                children: [
+                  Expanded(
+                      child: _campoPct(_dtoPrepago, 'Prepago (% adelantado)')),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextField(
+                      controller: _mesesMinPrepago,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Desde N meses',
+                        isDense: true,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                  'El descuento de prepago aplica cuando el alumno paga N o más '
+                  'meses de golpe (tú decides el N).',
+                  style: TextStyle(color: textoTenue, fontSize: 11.5)),
             ],
           ),
           const SizedBox(height: 10),

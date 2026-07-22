@@ -519,8 +519,9 @@ class _TarjetaPlan extends StatelessWidget {
   }
 
   Future<void> _matricular(BuildContext context) async {
-    // 1) Datos del alumno + CANTIDAD (clases/meses/paquetes que paga).
-    final datos = await showModalBottomSheet<(String, String, int)>(
+    // 1) Datos del alumno + MODO (mes a mes / adelantado) + cantidad + total.
+    final datos =
+        await showModalBottomSheet<(String, String, int, bool, double)>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Theme.of(context).colorScheme.surface,
@@ -532,21 +533,26 @@ class _TarjetaPlan extends StatelessWidget {
         academia: academia.nombre,
         planObj: plan,
         moneda: academia.monedaSimbolo,
+        esMensual: plan.tipo == TipoPlan.mensual,
+        descuentoPrepago: academia.descuentoPrepago,
+        mesesMinPrepago: academia.mesesMinPrepago,
       ),
     );
     if (datos == null) return;
-    final (nombre, whatsapp, cantidad) = datos;
-    final monto = (plan.total * cantidad).round();
+    final (nombre, whatsapp, cantidad, mesAMes, totalAhora) = datos;
+    final monto = totalAhora.round();
 
-    // 2) Pago del total elegido con tarjeta/Yape (Culqi). Si Culqi no está
-    // configurado, el sheet cae a la pasarela simulada (demo).
+    // 2) Pago del total a cobrar AHORA (mes a mes = 1 mes; adelantado = N meses
+    // con descuento si aplica). Capturamos el token para el débito automático.
     if (!context.mounted) return;
+    String? tokenUsado;
     final pagado = await PagoTarjeta.cobrar(
       context,
       monto: monto,
       concepto: 'Matrícula ${academia.nombre} · ${plan.nombre}',
       email: appState.usuario?.email ?? '',
       moneda: academia.monedaSimbolo,
+      onToken: (t) => tokenUsado = t,
     );
     if (!pagado) return;
 
@@ -561,14 +567,28 @@ class _TarjetaPlan extends StatelessWidget {
       concepto: 'Matrícula ${academia.nombre} · ${plan.nombre}',
     );
 
-    // 3) Registra la matrícula (crea alumno + cuotas pagadas por la cantidad).
-    appState.matricular(
+    // 3) Registra la matrícula (crea alumno + cuotas pagadas). En mes a mes es 1 mes.
+    final alumno = appState.matricular(
       academiaId: academia.id,
       nombre: nombre,
       whatsapp: whatsapp,
       plan: plan,
-      cantidad: cantidad,
+      cantidad: mesAMes ? 1 : cantidad,
     );
+
+    // 3b) Mes a mes: activa el débito automático mensual con la tarjeta usada.
+    if (mesAMes && tokenUsado != null) {
+      PagosService.crearSuscripcionAlumno(
+        alumnoId: alumno.id,
+        academiaId: academia.id,
+        email: appState.usuario?.email ?? '',
+        token: tokenUsado!,
+        montoSoles: plan.total,
+        nombre: nombre,
+        pais: academia.pais.iso,
+        concepto: 'Mensualidad ${academia.nombre} · ${plan.nombre}',
+      );
+    }
 
     if (!context.mounted) return;
     await showDialog<void>(
@@ -576,9 +596,12 @@ class _TarjetaPlan extends StatelessWidget {
       builder: (_) => AlertDialog(
         icon: const Icon(Icons.check_circle, color: verde, size: 40),
         title: const Text('¡Matrícula lista!'),
-        content: Text(
-            'Ya estás inscrito en ${academia.nombre} (${plan.nombre}). '
-            'Te contactarán por WhatsApp para coordinar tus horarios.'),
+        content: Text(mesAMes
+            ? 'Ya estás inscrito en ${academia.nombre} (${plan.nombre}). '
+                'Se debitará ${academia.monedaSimbolo} ${plan.total.toStringAsFixed(2)} '
+                'automático cada mes; puedes cancelar cuando quieras.'
+            : 'Ya estás inscrito en ${academia.nombre} (${plan.nombre}). '
+                'Te contactarán por WhatsApp para coordinar tus horarios.'),
         actions: [
           if (academia.whatsapp.isNotEmpty)
             TextButton.icon(
@@ -608,11 +631,17 @@ class _HojaDatosAlumno extends StatefulWidget {
     required this.academia,
     required this.planObj,
     required this.moneda,
+    this.esMensual = false,
+    this.descuentoPrepago = 0,
+    this.mesesMinPrepago = 3,
   });
   final String nombreInicial;
   final String academia;
   final Plan planObj;
   final String moneda;
+  final bool esMensual; // ¿el plan es mensual? (habilita "mes a mes")
+  final double descuentoPrepago; // % de descuento por pago adelantado
+  final int mesesMinPrepago; // desde cuántos meses aplica el descuento
 
   @override
   State<_HojaDatosAlumno> createState() => _HojaDatosAlumnoState();
@@ -623,13 +652,14 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
       TextEditingController(text: widget.nombreInicial);
   final _whatsapp = TextEditingController();
   int _cantidad = 1;
+  bool _mesAMes = false; // solo aplica a planes mensuales
   String? _error; // mensaje de validación inline (visible)
 
   Plan get _plan => widget.planObj;
 
   String get _labelCantidad => switch (_plan.tipo) {
         TipoPlan.porClase => '¿Cuántas clases pagarás?',
-        TipoPlan.mensual => '¿Cuántos meses pagarás?',
+        TipoPlan.mensual => '¿Cuántos meses adelantas?',
         TipoPlan.prepago => '¿Cuántos paquetes de ${_plan.meses} meses?',
       };
 
@@ -639,7 +669,17 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
         TipoPlan.prepago => _cantidad == 1 ? 'paquete' : 'paquetes',
       };
 
-  double get _total => _plan.total * _cantidad;
+  // ¿Aplica el descuento de prepago? (solo modo adelantado, con % y umbral).
+  bool get _aplicaDescuento =>
+      !_mesAMes &&
+      widget.descuentoPrepago > 0 &&
+      _cantidad >= widget.mesesMinPrepago;
+
+  double get _totalSinDto => _plan.total * _cantidad;
+  double get _ahorro =>
+      _aplicaDescuento ? _totalSinDto * widget.descuentoPrepago / 100 : 0;
+  // Lo que se cobra AHORA: mes a mes = 1 mes; adelantado = total − descuento.
+  double get _total => _mesAMes ? _plan.total : (_totalSinDto - _ahorro);
 
   @override
   void dispose() {
@@ -680,38 +720,101 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
                 prefixIcon: Icon(Icons.chat_outlined)),
           ),
           const SizedBox(height: 18),
-          Text(_labelCantidad,
-              style: const TextStyle(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              _StepBtn(
-                  icon: Icons.remove,
-                  onTap: _cantidad > 1
-                      ? () => setState(() => _cantidad--)
-                      : null),
-              Expanded(
-                child: Text('$_cantidad $_unidad',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w800, fontSize: 16)),
-              ),
-              _StepBtn(
-                  icon: Icons.add,
-                  onTap: _cantidad < 36
-                      ? () => setState(() => _cantidad++)
-                      : null),
-            ],
-          ),
-          const SizedBox(height: 14),
+          // Modo de pago (solo planes mensuales): mes a mes vs adelantado.
+          if (widget.esMensual) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: _ChipModo(
+                    titulo: 'Mes a mes',
+                    subtitulo: 'Débito automático',
+                    activo: _mesAMes,
+                    onTap: () => setState(() => _mesAMes = true),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _ChipModo(
+                    titulo: 'Adelantado',
+                    subtitulo: widget.descuentoPrepago > 0
+                        ? 'Ahorra desde ${widget.mesesMinPrepago} meses'
+                        : 'Paga varios meses',
+                    activo: !_mesAMes,
+                    onTap: () => setState(() => _mesAMes = false),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+          ],
+          if (!_mesAMes) ...[
+            Text(_labelCantidad,
+                style: const TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                _StepBtn(
+                    icon: Icons.remove,
+                    onTap: _cantidad > 1
+                        ? () => setState(() => _cantidad--)
+                        : null),
+                Expanded(
+                  child: Text('$_cantidad $_unidad',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w800, fontSize: 16)),
+                ),
+                _StepBtn(
+                    icon: Icons.add,
+                    onTap: _cantidad < 36
+                        ? () => setState(() => _cantidad++)
+                        : null),
+              ],
+            ),
+            const SizedBox(height: 14),
+          ],
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
                 color: limaSuave, borderRadius: BorderRadius.circular(12)),
-            child: Text('Pagarás ahora: ${widget.moneda} ${_total.toStringAsFixed(2)}',
-                style: const TextStyle(
-                    color: bosque, fontWeight: FontWeight.w800, fontSize: 15)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                    _mesAMes
+                        ? 'Se debita cada mes: ${widget.moneda} ${_plan.total.toStringAsFixed(2)}'
+                        : 'Pagarás ahora: ${widget.moneda} ${_total.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                        color: bosque,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15)),
+                if (_aplicaDescuento) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                      'Descuento ${widget.descuentoPrepago.toStringAsFixed(0)}% '
+                      'por adelantar · ahorras ${widget.moneda} ${_ahorro.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                          color: lima,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12.5)),
+                ] else if (!_mesAMes &&
+                    widget.descuentoPrepago > 0 &&
+                    _cantidad < widget.mesesMinPrepago) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                      'Paga ${widget.mesesMinPrepago}+ meses y ahorra '
+                      '${widget.descuentoPrepago.toStringAsFixed(0)}%.',
+                      style: const TextStyle(
+                          color: textoTenue, fontSize: 12.5)),
+                ],
+                if (_mesAMes) ...[
+                  const SizedBox(height: 4),
+                  const Text('Se cobra automático de tu tarjeta. Cancela cuando quieras.',
+                      style: TextStyle(color: textoTenue, fontSize: 12.5)),
+                ],
+              ],
+            ),
           ),
           if (_error != null) ...[
             const SizedBox(height: 10),
@@ -750,12 +853,73 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
                   return;
                 }
                 setState(() => _error = null);
-                Navigator.of(context).pop((n, _whatsapp.text.trim(), _cantidad));
+                Navigator.of(context).pop((
+                  n,
+                  _whatsapp.text.trim(),
+                  _mesAMes ? 1 : _cantidad,
+                  _mesAMes,
+                  _total,
+                ));
               },
-              child: Text('Pagar ${widget.moneda} ${_total.toStringAsFixed(2)}'),
+              child: Text(_mesAMes
+                  ? 'Pagar 1.er mes ${widget.moneda} ${_total.toStringAsFixed(2)}'
+                  : 'Pagar ${widget.moneda} ${_total.toStringAsFixed(2)}'),
             ),
           ),
         ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Chip de selección de MODO de pago (mes a mes / adelantado). Estilo Airbnb:
+/// blanco con borde suave; seleccionado = tinte lima, sin borde negro.
+class _ChipModo extends StatelessWidget {
+  const _ChipModo({
+    required this.titulo,
+    required this.subtitulo,
+    required this.activo,
+    required this.onTap,
+  });
+  final String titulo;
+  final String subtitulo;
+  final bool activo;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: activo ? limaSuave : cs.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: activo ? lima : trazo, width: activo ? 1.5 : 1),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(activo ? Icons.check_circle : Icons.circle_outlined,
+                      size: 18, color: activo ? lima : textoTenue),
+                  const SizedBox(width: 6),
+                  Text(titulo,
+                      style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 14,
+                          color: activo ? bosque : textoTenue)),
+                ],
+              ),
+              const SizedBox(height: 3),
+              Text(subtitulo,
+                  style: const TextStyle(color: textoTenue, fontSize: 11.5)),
+            ],
+          ),
         ),
       ),
     );
