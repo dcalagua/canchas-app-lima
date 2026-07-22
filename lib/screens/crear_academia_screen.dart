@@ -699,6 +699,59 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                 ),
               ),
             ],
+          const SizedBox(height: 14),
+          // Atajo al servicio de MANEJO de redes (OAuth para publicar). El enlace
+          // OAuth vive en Servicios Pichangol (donde se contrata); aquí solo se
+          // descubre. Publicar por el usuario ≠ declarar el @usuario de arriba.
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+                color: limaSuave, borderRadius: BorderRadius.circular(14)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.campaign_outlined, color: bosque, size: 20),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text('¿Quieres que publiquemos por ti?',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w800, color: bosque)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                    'Conecta tu Instagram/Facebook y deja que Pichangol maneje '
+                    'tus redes (contenido con IA + publicación). Se activa en '
+                    'Servicios Pichangol.',
+                    style: TextStyle(fontSize: 12.5, color: textoTenue)),
+                const SizedBox(height: 10),
+                if (widget.academia != null)
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                          backgroundColor: lima, foregroundColor: Colors.white),
+                      icon: const Icon(Icons.arrow_forward, size: 18),
+                      label: const Text('Ir a Servicios Pichangol'),
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => ServiciosScreen(
+                              negocio: appState.negocioServiciosDeAcademia(
+                                  widget.academia!)),
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  const Text(
+                      'Guarda la academia y actívalo desde Servicios Pichangol.',
+                      style: TextStyle(fontSize: 12, color: textoTenue)),
+              ],
+            ),
+          ),
           const SizedBox(height: 22),
           const Text('Planes y tarifario',
               style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
