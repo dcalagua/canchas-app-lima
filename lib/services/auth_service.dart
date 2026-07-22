@@ -14,6 +14,9 @@ class AuthService {
   static final GoogleSignIn _google =
       GoogleSignIn(scopes: const ['email', 'profile']);
 
+  static const _entorno =
+      String.fromEnvironment('ENTORNO', defaultValue: 'dev');
+
   /// Devuelve el usuario, o null si el usuario canceló el login.
   static Future<Usuario?> entrarConGoogle() async {
     try {
@@ -25,7 +28,10 @@ class AuthService {
         fotoUrl: cuenta.photoUrl,
       );
     } catch (_) {
-      // OAuth aún no configurado en este build: cuenta demo para probar el flujo.
+      // En PROD no inventamos cuenta: si Google falla, se trata como cancelado
+      // (no crear un usuario falso). En dev/qas cae a una cuenta demo para no
+      // bloquear el flujo si alguien usa el botón de Google.
+      if (_entorno == 'prod') return null;
       return const Usuario(
         nombre: 'Jugador Pichangol',
         email: 'jugador@gmail.com',

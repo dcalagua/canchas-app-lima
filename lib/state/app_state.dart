@@ -2380,8 +2380,28 @@ class AppState extends ChangeNotifier {
   Future<bool> entrarConGoogle() async {
     final u = await AuthService.entrarConGoogle();
     if (u == null) return false; // canceló
+    _finalizarLogin(u);
+    return true;
+  }
+
+  /// Login MANUAL con una cuenta explícita (modo pruebas dev/qas): permite entrar
+  /// como jugador o como profe con correos DISTINTOS sin depender de que el OAuth
+  /// de Google esté configurado en el build. En prod no se usa (login = Google).
+  Future<bool> entrarComo({required String email, String? nombre}) async {
+    final correo = email.trim().toLowerCase();
+    if (correo.isEmpty || !correo.contains('@')) return false;
+    final nom = (nombre?.trim().isNotEmpty ?? false)
+        ? nombre!.trim()
+        : correo.split('@').first;
+    _finalizarLogin(Usuario(nombre: nom, email: correo, fotoUrl: null));
+    return true;
+  }
+
+  /// Deja la sesión lista tras autenticar (Google o manual) y dispara los
+  /// refrescos remotos (reservas, saldo, academias→matrículas, invitaciones).
+  void _finalizarLogin(Usuario u) {
     usuario = u;
-    await _persistirUsuario();
+    _persistirUsuario();
     PushService.registrarParaUsuario(u.email); // push del chat a este dispositivo
     _recomputarMisReservas(); // recupera sus reservas de otros dispositivos
     notifyListeners();
@@ -2394,7 +2414,6 @@ class AppState extends ChangeNotifier {
       await cargarMatriculasRemotas();
     }();
     cargarInvitacionesRemotas(); // ¿lo invitaron a alguna academia por correo?
-    return true;
   }
 
   Future<void> cerrarSesionUsuario() async {
@@ -2404,6 +2423,59 @@ class AppState extends ChangeNotifier {
     misReservas.clear(); // no mezclar reservas entre cuentas
     await _persistirUsuario();
     _persistirDatos();
+    notifyListeners();
+  }
+
+  /// "Empezar de cero" (solo pruebas dev/qas): deja el dispositivo VIRGEN.
+  /// Borra academias/matrículas del usuario en la NUBE (best-effort, para que no
+  /// reaparezcan al re-sincronizar) y limpia toda la memoria + disco local.
+  Future<void> borrarTodoParaPruebas({bool incluirNube = true}) async {
+    // 1) Nube (best-effort): academias del usuario + sus matrículas + las suyas
+    //    como alumno. Solo lo del correo logueado; no toca datos de otros.
+    if (incluirNube) {
+      final email = usuario?.email.toLowerCase();
+      if (email != null && email.isNotEmpty) {
+        final mias =
+            academias.where((a) => a.dueno.toLowerCase() == email).toList();
+        for (final a in mias) {
+          for (final al in alumnos.where((x) => x.academiaId == a.id)) {
+            await MatriculasRepo.eliminar(al.id);
+          }
+          await AcademiasRepo.eliminar(a.id);
+        }
+        for (final al
+            in alumnos.where((x) => x.email.toLowerCase() == email)) {
+          await MatriculasRepo.eliminar(al.id);
+        }
+      }
+    }
+    // 2) Memoria en blanco.
+    reservas.clear();
+    agenda.clear();
+    misReservas.clear();
+    canchasExtra.clear();
+    canchasRemotas.clear();
+    canchasDescubiertas.clear();
+    canchasEliminadas.clear();
+    academias.clear();
+    alumnos.clear();
+    cuotas.clear();
+    asistencias.clear();
+    invitaciones.clear();
+    campeonatos.clear();
+    movimientos.clear();
+    _landingNegocios.clear();
+    _saldoOtrosPaises.clear();
+    saldoClub = 0;
+    _ultimoSyncMatriculas = null;
+    usuario = null;
+    // 3) Disco en blanco.
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear();
+    } catch (_) {}
+    await PushService.olvidar();
+    await AuthService.salir();
     notifyListeners();
   }
 

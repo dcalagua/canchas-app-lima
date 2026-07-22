@@ -30,9 +30,39 @@ class LoginGoogleSheet extends StatefulWidget {
 class _LoginGoogleSheetState extends State<LoginGoogleSheet> {
   bool _cargando = false;
 
+  // Modo pruebas: en dev/qas el OAuth de Google no está configurado, así que se
+  // permite entrar con un correo escrito (cuentas distintas → probar roles).
+  static const _entorno =
+      String.fromEnvironment('ENTORNO', defaultValue: 'dev');
+  bool get _modoPruebas => _entorno != 'prod';
+
+  final _email = TextEditingController();
+  final _nombre = TextEditingController();
+
+  @override
+  void dispose() {
+    _email.dispose();
+    _nombre.dispose();
+    super.dispose();
+  }
+
   Future<void> _entrar() async {
     setState(() => _cargando = true);
     final ok = await appState.entrarConGoogle();
+    if (!mounted) return;
+    setState(() => _cargando = false);
+    if (ok) Navigator.of(context).pop(true);
+  }
+
+  Future<void> _entrarManual() async {
+    final correo = _email.text.trim();
+    if (!correo.contains('@')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Escribe un correo válido.')));
+      return;
+    }
+    setState(() => _cargando = true);
+    final ok = await appState.entrarComo(email: correo, nombre: _nombre.text);
     if (!mounted) return;
     setState(() => _cargando = false);
     if (ok) Navigator.of(context).pop(true);
@@ -91,27 +121,81 @@ class _LoginGoogleSheetState extends State<LoginGoogleSheet> {
             style: t.bodyMedium?.copyWith(color: const Color(0xFF7C766B)),
           ),
           const SizedBox(height: 22),
-          SizedBox(
-            width: double.infinity,
-            height: 58,
-            child: _cargando
-                ? Center(child: CircularProgressIndicator(color: cs.primary))
-                : OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      side: const BorderSide(
-                          color: Color(0xFFE3DECF), width: 1.5),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16)),
-                      foregroundColor: tinta,
+          if (_modoPruebas) ...[
+            // Aviso claro de que es login de PRUEBAS (no Google real).
+            Container(
+              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.only(bottom: 14),
+              decoration: BoxDecoration(
+                color: limaSuave,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                'Modo pruebas ($_entorno): entra con el correo que quieras para '
+                'simular distintas cuentas (jugador, profe, dueño). El login real '
+                'con Google se activa en producción.',
+                style: t.bodySmall?.copyWith(color: bosque),
+              ),
+            ),
+            TextField(
+              controller: _nombre,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                labelText: 'Nombre (opcional)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _email,
+              keyboardType: TextInputType.emailAddress,
+              autocorrect: false,
+              decoration: const InputDecoration(
+                labelText: 'Correo',
+                hintText: 'ej. dcalagua@ebim.pe',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              height: 54,
+              child: _cargando
+                  ? Center(child: CircularProgressIndicator(color: cs.primary))
+                  : FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: cs.primary,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
+                      ),
+                      onPressed: _entrarManual,
+                      child: const Text('Entrar (modo pruebas)',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w800, fontSize: 16)),
                     ),
-                    icon: const GoogleLogo(size: 22),
-                    label: Text('Continuar con Google',
-                        style: t.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700, color: tinta)),
-                    onPressed: _entrar,
-                  ),
-          ),
+            ),
+          ] else
+            SizedBox(
+              width: double.infinity,
+              height: 58,
+              child: _cargando
+                  ? Center(child: CircularProgressIndicator(color: cs.primary))
+                  : OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        side: const BorderSide(
+                            color: Color(0xFFE3DECF), width: 1.5),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
+                        foregroundColor: tinta,
+                      ),
+                      icon: const GoogleLogo(size: 22),
+                      label: Text('Continuar con Google',
+                          style: t.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700, color: tinta)),
+                      onPressed: _entrar,
+                    ),
+            ),
           const SizedBox(height: 16),
           Center(
             child: Text(

@@ -8,6 +8,39 @@ import '../theme.dart';
 class AjustesScreen extends StatelessWidget {
   const AjustesScreen({super.key});
 
+  static const _entorno =
+      String.fromEnvironment('ENTORNO', defaultValue: 'dev');
+  static bool get _modoPruebas => _entorno != 'prod';
+
+  Future<void> _empezarDeCero(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('¿Empezar de cero?'),
+        content: const Text(
+            'Borra TODO en este dispositivo (academias, alumnos, reservas, '
+            'saldo, sesión) y también tus academias/matrículas en la nube. '
+            'No se puede deshacer. Ideal para una prueba limpia.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: clayOscuro),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Sí, borrar todo')),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    await appState.borrarTodoParaPruebas();
+    if (!context.mounted) return;
+    // Vuelve al inicio: la app queda como recién instalada.
+    Navigator.of(context).popUntil((r) => r.isFirst);
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Listo: app en blanco. Inicia sesión para probar.')));
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
@@ -41,6 +74,35 @@ class AjustesScreen extends StatelessWidget {
                 seleccionado: appState.temaModo == ThemeMode.dark,
                 onTap: () => appState.setTemaModo(ThemeMode.dark),
               ),
+              if (_modoPruebas) ...[
+                const SizedBox(height: 28),
+                Text('Zona de pruebas',
+                    style:
+                        t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                const SizedBox(height: 4),
+                Text(
+                    'Solo en builds de prueba ($_entorno). Deja la app como '
+                    'recién instalada para probar desde cero.',
+                    style: t.bodySmall?.copyWith(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withOpacity(0.6))),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: clayOscuro,
+                    side: const BorderSide(color: clayOscuro),
+                    minimumSize: const Size.fromHeight(50),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                  ),
+                  icon: const Icon(Icons.restart_alt),
+                  label: const Text('Empezar de cero (borrar todo)',
+                      style: TextStyle(fontWeight: FontWeight.w800)),
+                  onPressed: () => _empezarDeCero(context),
+                ),
+              ],
             ],
           );
         },
