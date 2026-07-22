@@ -1522,7 +1522,8 @@ class _SuscripcionAlumnoInfoProfeState
   }
 
   Future<void> _cargar() async {
-    final s = await PagosService.estadoSuscripcionAlumno(widget.alumnoId);
+    // Reconcilia (marca pagadas las cuotas ya cobradas por el cron) + trae estado.
+    final s = await appState.reconciliarSuscripcionAlumno(widget.alumnoId);
     if (!mounted) return;
     setState(() {
       _sus = s;

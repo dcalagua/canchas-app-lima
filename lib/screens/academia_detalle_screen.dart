@@ -577,6 +577,7 @@ class _TarjetaPlan extends StatelessWidget {
       plan: plan,
       cantidad: cantidad,
       mesesPagados: mesAMes ? 1 : null,
+      autoDebito: mesAMes,
     );
 
     // 3b) Mes a mes: activa el débito automático de los meses restantes con la

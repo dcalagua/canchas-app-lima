@@ -40,6 +40,7 @@ def test_cobra_mensualidad_y_acredita_neto(monkeypatch):
     s = stores.suscripciones_alumno["al1"]
     assert s["estado"] == "activa"
     assert s["proximo_cobro"] != VENCIDA
+    assert s["cobros_hechos"] == 1  # para la reconciliación de cuotas en la app
     # Se registró como matricula_online con comisión 5% para la academia.
     pagos = [p for p in stores.pagos
              if p.tipo == "matricula_online" and p.dueno_id == "a1"]

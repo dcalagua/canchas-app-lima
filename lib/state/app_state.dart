@@ -813,6 +813,38 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// RECONCILIA las cuotas de mes a mes: consulta al backend cuántos cobros
+  /// automáticos hizo el cron y marca pagadas las cuotas correspondientes del
+  /// alumno (1.er mes del signup + cobros hechos), en orden cronológico. Lo llama
+  /// tanto el alumno (Mis clases) como el profe (ficha), y cada uno converge al
+  /// mismo estado sin depender del otro. Devuelve el estado para mostrarlo.
+  Future<Map<String, dynamic>?> reconciliarSuscripcionAlumno(
+      String alumnoId) async {
+    final estado = await PagosService.estadoSuscripcionAlumno(alumnoId);
+    if (estado == null) return null;
+    final hechos = (estado['cobros_hechos'] as num?)?.toInt() ?? 0;
+    final pagadasEsperadas = 1 + hechos; // 1.er mes (signup) + cobros del cron
+    final auto = cuotas
+        .where((c) => c.alumnoId == alumnoId && c.autoDebito)
+        .toList()
+      ..sort((a, b) => a.vencimiento.compareTo(b.vencimiento));
+    var cambio = false;
+    final ahora = DateTime.now();
+    for (var i = 0; i < auto.length && i < pagadasEsperadas; i++) {
+      if (auto[i].pagada) continue;
+      final idx = cuotas.indexWhere((x) => x.id == auto[i].id);
+      if (idx >= 0) {
+        cuotas[idx] = cuotas[idx].copyWith(pagada: true, fechaPago: ahora);
+        cambio = true;
+      }
+    }
+    if (cambio) {
+      notifyListeners();
+      _persistirDatos();
+    }
+    return estado;
+  }
+
   // ── Invitaciones (invitar por correo / teléfono) ──────────────────────────
 
   /// Invitaciones que el profe creó para una academia (excluye canceladas), de
@@ -1062,6 +1094,7 @@ class AppState extends ChangeNotifier {
     required Plan plan,
     int cantidad = 1,
     int? mesesPagados, // mes a mes: solo N pagadas, el resto quedan pendientes
+    bool autoDebito = false, // mes a mes: marca las cuotas para reconciliación
   }) {
     final n = cantidad < 1 ? 1 : cantidad;
     final alumno = Alumno(
@@ -1107,6 +1140,7 @@ class AppState extends ChangeNotifier {
           vencimiento: venc,
           pagada: pagada,
           fechaPago: pagada ? hoy : null,
+          autoDebito: autoDebito,
         ));
       }
     }

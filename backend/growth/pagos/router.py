@@ -563,6 +563,9 @@ def _suscripcion_alumno_publica(s: dict | None) -> dict:
         "monto_soles": s.get("monto_centimos", 0) / 100.0,
         "proximo_cobro": s.get("proximo_cobro"),
         "marca": s.get("marca"), "ultimos4": s.get("ultimos4"),
+        # Cobros AUTOMÁTICOS ya realizados (sin contar el 1.er mes del signup).
+        # La app lo usa para RECONCILIAR: marcar pagadas las cuotas cobradas.
+        "cobros_hechos": int(s.get("cobros_hechos", 0)),
     }
 
 
@@ -608,6 +611,7 @@ def post_suscripcion_alumno(req: SuscripcionAlumnoReq) -> dict:
         "creado_en": ahora.isoformat(),
         "proximo_cobro": _mas_un_mes(ahora).isoformat(),
         "cobros_restantes": req.cobros_restantes,
+        "cobros_hechos": 0,
     }
     return {"ok": True, **_suscripcion_alumno_publica(
         stores.suscripciones_alumno[req.alumno_id])}
@@ -660,6 +664,7 @@ def procesar_renovaciones_alumnos() -> dict:
                 concepto=concepto + " (mes a mes)")
             s["ultimo_cobro"] = ahora.isoformat()
             s["proximo_cobro"] = _mas_un_mes(ahora).isoformat()
+            s["cobros_hechos"] = int(s.get("cobros_hechos", 0)) + 1
             # Descuenta los cobros comprometidos; al llegar a 0, se completa
             # (deja de cobrar). None = indefinido (sigue hasta cancelar).
             rest = s.get("cobros_restantes")

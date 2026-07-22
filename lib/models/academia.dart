@@ -455,6 +455,11 @@ class Cuota {
   final DateTime vencimiento;
   final bool pagada;
   final DateTime? fechaPago; // cuándo se cobró (para reportes por fecha)
+  /// Cuota de una MENSUALIDAD con débito automático (pago "mes a mes"): el cron
+  /// la cobra en su fecha. Sirve para la RECONCILIACIÓN (marcar pagada sola según
+  /// los cobros que hizo el backend). Las cuotas normales (contado, clase suelta)
+  /// van en false y no se auto-marcan.
+  final bool autoDebito;
 
   const Cuota({
     required this.id,
@@ -465,6 +470,7 @@ class Cuota {
     required this.vencimiento,
     this.pagada = false,
     this.fechaPago,
+    this.autoDebito = false,
   });
 
   /// Vencida = no pagada y ya pasó su fecha de vencimiento.
@@ -481,6 +487,7 @@ class Cuota {
         vencimiento: vencimiento,
         pagada: pagada ?? this.pagada,
         fechaPago: limpiarFechaPago ? null : (fechaPago ?? this.fechaPago),
+        autoDebito: autoDebito,
       );
 
   Map<String, dynamic> toJson() => {
@@ -492,6 +499,7 @@ class Cuota {
         'vencimiento': vencimiento.toIso8601String(),
         'pagada': pagada,
         if (fechaPago != null) 'fechaPago': fechaPago!.toIso8601String(),
+        if (autoDebito) 'autoDebito': true,
       };
 
   factory Cuota.fromJson(Map<String, dynamic> j) => Cuota(
@@ -507,6 +515,7 @@ class Cuota {
         fechaPago: j['fechaPago'] != null
             ? DateTime.tryParse(j['fechaPago'] as String)
             : null,
+        autoDebito: (j['autoDebito'] ?? false) as bool,
       );
 }
 

@@ -265,7 +265,8 @@ class _SuscripcionMesAMesState extends State<_SuscripcionMesAMes> {
   }
 
   Future<void> _cargar() async {
-    final s = await PagosService.estadoSuscripcionAlumno(widget.alumnoId);
+    // Reconcilia (marca pagadas las cuotas que el cron ya cobró) y trae el estado.
+    final s = await appState.reconciliarSuscripcionAlumno(widget.alumnoId);
     if (!mounted) return;
     setState(() {
       _sus = s;
