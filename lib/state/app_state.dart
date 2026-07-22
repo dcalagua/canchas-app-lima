@@ -406,6 +406,10 @@ class AppState extends ChangeNotifier {
   /// tarifario cargado. Devuelve true si la agregó. Retro-compatible: si el
   /// profe la editó (mismo id), la versión guardada/remota gana luego.
   bool sembrarAcademias() {
+    // La academia DEMO (Jartur) es solo para demos: se siembra únicamente en
+    // dev. En QAS/prod NO aparece (evita el "duplicado" con academias reales).
+    const entorno = String.fromEnvironment('ENTORNO', defaultValue: 'dev');
+    if (entorno != 'dev') return false;
     const seedId = 'seed_jartur_elbosque';
     if (!academias.any((a) => a.id == seedId)) {
       academias.add(SampleData.academiaJartur());
@@ -464,6 +468,16 @@ class AppState extends ChangeNotifier {
 
   List<Alumno> alumnosDe(String academiaId) =>
       alumnos.where((a) => a.academiaId == academiaId).toList();
+
+  /// Matrículas del USUARIO actual (como ALUMNO): las academias donde está
+  /// inscrito. Sirve para su vista "Mis clases y pagos".
+  List<Alumno> get misMatriculas {
+    final email = usuario?.email.trim().toLowerCase();
+    if (email == null || email.isEmpty) return const [];
+    return alumnos
+        .where((a) => a.email.trim().toLowerCase() == email)
+        .toList();
+  }
 
   void agregarAlumno(Alumno a) {
     alumnos.add(a);

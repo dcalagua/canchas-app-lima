@@ -9,6 +9,7 @@ import '../utils/redes.dart';
 import '../widgets/responsive.dart';
 import 'academia_detalle_screen.dart';
 import 'login_google_sheet.dart';
+import 'mis_clases_screen.dart';
 import '../config/pais.dart';
 
 /// Directorio público de academias (Fase 1): el jugador ve las academias, su
@@ -16,6 +17,48 @@ import '../config/pais.dart';
 /// ve el feed de fotos, se matricula (pago simulado) y sigue sus redes.
 class AcademiasScreen extends StatelessWidget {
   const AcademiasScreen({super.key});
+
+  /// Acceso a "Mis clases y pagos" del alumno (comprobantes + próximos pagos).
+  Widget _misClasesAcceso(BuildContext context) {
+    final n = appState.misMatriculas.length;
+    return Material(
+      color: bosque,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => const MisClasesScreen())),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              const Icon(Icons.receipt_long, color: lima),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Mis clases y pagos',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15)),
+                    Text(
+                        n == 1
+                            ? '1 academia · comprobantes y próximos pagos'
+                            : '$n academias · comprobantes y próximos pagos',
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 12.5)),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: Colors.white70),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -54,6 +97,10 @@ class AcademiasScreen extends StatelessWidget {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              if (appState.misMatriculas.isNotEmpty) ...[
+                _misClasesAcceso(context),
+                const SizedBox(height: 12),
+              ],
               const _MisInvitaciones(),
               const _UnirmeConCodigo(),
               const SizedBox(height: 16),
