@@ -162,6 +162,38 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
     }
   }
 
+  /// Al VOLVER de "Servicios Pichangol" (donde el dueño genera su landing o
+  /// conecta sus redes por OAuth), refresca los chips y campos SIN tener que
+  /// salir y re-entrar a la academia: badge de conexión, enlace de la landing y
+  /// las redes que el OAuth auto-declaró (Instagram/Facebook).
+  Future<void> _refrescarTrasServicios() async {
+    if (!mounted) return;
+    final id = widget.academia?.id;
+    final fresca = id == null
+        ? null
+        : appState.academias
+            .cast<Academia?>()
+            .firstWhere((a) => a?.id == id, orElse: () => null);
+    // 1) Estado de conexión OAuth (badge "conectada" + CTA personalizado).
+    await _cargarEstadoRedes();
+    if (!mounted) return;
+    setState(() {
+      if (fresca != null) {
+        // 2) Enlace de la landing: aparece solo (no hay que pegarlo a mano).
+        final url = fresca.landingUrl.trim();
+        if (url.isNotEmpty) _landing.text = url;
+        // 3) Redes auto-declaradas al conectar: marca el chip y rellena el valor
+        //    si estaba vacío (sin pisar lo que el dueño ya había escrito).
+        fresca.redes.forEach((clave, valor) {
+          if (valor.trim().isEmpty) return;
+          _redesSel.add(clave);
+          final c = _redesCtrl[clave];
+          if (c != null && c.text.trim().isEmpty) c.text = valor;
+        });
+      }
+    });
+  }
+
   @override
   void dispose() {
     _nombre.dispose();
@@ -916,17 +948,9 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                                     widget.academia!)),
                           ),
                         );
-                        if (!mounted) return;
-                        // Al volver de Servicios la landing pudo generarse: refleja
-                        // su enlace en el campo (y así no lo borra al Guardar).
-                        final fresca = appState.academias.firstWhere(
-                          (a) => a.id == widget.academia!.id,
-                          orElse: () => widget.academia!,
-                        );
-                        final url = fresca.landingUrl.trim();
-                        if (url.isNotEmpty && _landing.text.trim() != url) {
-                          setState(() => _landing.text = url);
-                        }
+                        // Al volver: refresca chips (redes conectadas), enlace de
+                        // landing y redes auto-declaradas, sin salir y re-entrar.
+                        await _refrescarTrasServicios();
                       },
                     ),
                   )
@@ -1120,17 +1144,9 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                                     widget.academia!)),
                           ),
                         );
-                        if (!mounted) return;
-                        // Al volver de Servicios la landing pudo generarse: refleja
-                        // su enlace en el campo (y así no lo borra al Guardar).
-                        final fresca = appState.academias.firstWhere(
-                          (a) => a.id == widget.academia!.id,
-                          orElse: () => widget.academia!,
-                        );
-                        final url = fresca.landingUrl.trim();
-                        if (url.isNotEmpty && _landing.text.trim() != url) {
-                          setState(() => _landing.text = url);
-                        }
+                        // Al volver: refresca chips (redes conectadas), enlace de
+                        // landing y redes auto-declaradas, sin salir y re-entrar.
+                        await _refrescarTrasServicios();
                       },
                     ),
                   ),
