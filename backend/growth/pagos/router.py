@@ -549,6 +549,9 @@ class SuscripcionAlumnoReq(BaseModel):
     apellido: str = ""
     pais: str = "pe"
     concepto: str | None = None
+    # Cobros AUTOMÁTICOS restantes (meses comprometidos menos el 1.º ya pagado).
+    # None = indefinido (cobra hasta que el alumno cancele).
+    cobros_restantes: int | None = None
 
 
 def _suscripcion_alumno_publica(s: dict | None) -> dict:
@@ -604,6 +607,7 @@ def post_suscripcion_alumno(req: SuscripcionAlumnoReq) -> dict:
         "concepto": req.concepto or "Mensualidad (mes a mes)",
         "creado_en": ahora.isoformat(),
         "proximo_cobro": _mas_un_mes(ahora).isoformat(),
+        "cobros_restantes": req.cobros_restantes,
     }
     return {"ok": True, **_suscripcion_alumno_publica(
         stores.suscripciones_alumno[req.alumno_id])}
@@ -656,7 +660,15 @@ def procesar_renovaciones_alumnos() -> dict:
                 concepto=concepto + " (mes a mes)")
             s["ultimo_cobro"] = ahora.isoformat()
             s["proximo_cobro"] = _mas_un_mes(ahora).isoformat()
-            s["estado"] = "activa"
+            # Descuenta los cobros comprometidos; al llegar a 0, se completa
+            # (deja de cobrar). None = indefinido (sigue hasta cancelar).
+            rest = s.get("cobros_restantes")
+            if rest is not None:
+                rest = int(rest) - 1
+                s["cobros_restantes"] = rest
+                s["estado"] = "completada" if rest <= 0 else "activa"
+            else:
+                s["estado"] = "activa"
             cobradas += 1
         else:
             s["estado"] = "pendiente_pago"

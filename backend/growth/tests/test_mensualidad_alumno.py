@@ -65,6 +65,26 @@ def test_no_cobra_si_no_vencio(monkeypatch):
     assert r["cobradas"] == 0 and r["pendientes"] == 0
 
 
+def test_cobros_restantes_completa_la_suscripcion(monkeypatch):
+    monkeypatch.setattr(culqi_mod, "disponible", lambda: True)
+    monkeypatch.setattr(culqi_mod, "crear_cargo",
+                        lambda **k: {"ok": True, "charge_id": "chg_x"})
+    _sub()
+    stores.suscripciones_alumno["al1"]["cobros_restantes"] = 2
+    # 1.er cobro automático: quedan 1, sigue activa.
+    procesar_renovaciones_alumnos()
+    s = stores.suscripciones_alumno["al1"]
+    assert s["cobros_restantes"] == 1 and s["estado"] == "activa"
+    # Vence de nuevo → 2.º cobro: quedan 0 → completada (deja de cobrar).
+    s["proximo_cobro"] = VENCIDA
+    procesar_renovaciones_alumnos()
+    assert s["cobros_restantes"] == 0 and s["estado"] == "completada"
+    # Ya completada: no cobra más.
+    s["proximo_cobro"] = VENCIDA
+    r = procesar_renovaciones_alumnos()
+    assert r["cobradas"] == 0
+
+
 def test_persistencia_incluye_suscripciones_alumno():
     _sub()
     estado = stores.to_state()

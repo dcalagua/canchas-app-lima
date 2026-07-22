@@ -547,6 +547,7 @@ class PagosService {
     String nombre = '',
     String pais = 'pe',
     String? concepto,
+    int? cobrosRestantes,
   }) async {
     if (!disponible) return {'ok': false, 'error': 'Pagos no disponibles.'};
     try {
@@ -562,6 +563,7 @@ class PagosService {
           'nombre': nombre,
           'pais': pais,
           if (concepto != null) 'concepto': concepto,
+          if (cobrosRestantes != null) 'cobros_restantes': cobrosRestantes,
         }),
       ).timeout(const Duration(seconds: 30));
       final j = jsonDecode(r.body) as Map<String, dynamic>;

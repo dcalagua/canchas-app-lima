@@ -1061,6 +1061,7 @@ class AppState extends ChangeNotifier {
     required String whatsapp,
     required Plan plan,
     int cantidad = 1,
+    int? mesesPagados, // mes a mes: solo N pagadas, el resto quedan pendientes
   }) {
     final n = cantidad < 1 ? 1 : cantidad;
     final alumno = Alumno(
@@ -1090,8 +1091,13 @@ class AppState extends ChangeNotifier {
       ));
     } else {
       final meses = (plan.tipo == TipoPlan.mensual ? 1 : plan.meses) * n;
+      // Cuántas cuotas quedan PAGADAS ya: todas por defecto; en "mes a mes" solo
+      // las primeras [mesesPagados] (típicamente 1), el resto quedan pendientes
+      // con su fecha de vencimiento (el débito automático las cobrará su mes).
+      final pagadasN = mesesPagados ?? meses;
       for (var i = 0; i < meses; i++) {
         final venc = DateTime(hoy.year, hoy.month + i, hoy.day);
+        final pagada = i < pagadasN;
         nuevasCuotas.add(Cuota(
           id: 'cu_${hoy.microsecondsSinceEpoch}_$i',
           academiaId: academiaId,
@@ -1099,8 +1105,8 @@ class AppState extends ChangeNotifier {
           concepto: '${plan.nombre} · ${_mesNombre(venc)}',
           monto: plan.precioMes,
           vencimiento: venc,
-          pagada: true,
-          fechaPago: hoy,
+          pagada: pagada,
+          fechaPago: pagada ? hoy : null,
         ));
       }
     }

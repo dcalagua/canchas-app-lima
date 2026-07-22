@@ -567,16 +567,20 @@ class _TarjetaPlan extends StatelessWidget {
       concepto: 'Matrícula ${academia.nombre} · ${plan.nombre}',
     );
 
-    // 3) Registra la matrícula (crea alumno + cuotas pagadas). En mes a mes es 1 mes.
+    // 3) Registra la matrícula. Mes a mes: crea las N cuotas del compromiso con
+    // solo la 1.ª pagada (las demás quedan pendientes con su fecha). Adelantado:
+    // todas pagadas.
     final alumno = appState.matricular(
       academiaId: academia.id,
       nombre: nombre,
       whatsapp: whatsapp,
       plan: plan,
-      cantidad: mesAMes ? 1 : cantidad,
+      cantidad: cantidad,
+      mesesPagados: mesAMes ? 1 : null,
     );
 
-    // 3b) Mes a mes: activa el débito automático mensual con la tarjeta usada.
+    // 3b) Mes a mes: activa el débito automático de los meses restantes con la
+    // tarjeta usada. cobrosRestantes = meses comprometidos − el 1.º ya pagado.
     if (mesAMes && tokenUsado != null) {
       PagosService.crearSuscripcionAlumno(
         alumnoId: alumno.id,
@@ -587,6 +591,7 @@ class _TarjetaPlan extends StatelessWidget {
         nombre: nombre,
         pais: academia.pais.iso,
         concepto: 'Mensualidad ${academia.nombre} · ${plan.nombre}',
+        cobrosRestantes: cantidad - 1,
       );
     }
 
@@ -659,7 +664,9 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
 
   String get _labelCantidad => switch (_plan.tipo) {
         TipoPlan.porClase => '¿Cuántas clases pagarás?',
-        TipoPlan.mensual => '¿Cuántos meses adelantas?',
+        TipoPlan.mensual => _mesAMes
+            ? '¿Por cuántos meses te comprometes?'
+            : '¿Cuántos meses adelantas?',
         TipoPlan.prepago => '¿Cuántos paquetes de ${_plan.meses} meses?',
       };
 
@@ -747,32 +754,29 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
             ),
             const SizedBox(height: 16),
           ],
-          if (!_mesAMes) ...[
-            Text(_labelCantidad,
-                style: const TextStyle(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                _StepBtn(
-                    icon: Icons.remove,
-                    onTap: _cantidad > 1
-                        ? () => setState(() => _cantidad--)
-                        : null),
-                Expanded(
-                  child: Text('$_cantidad $_unidad',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w800, fontSize: 16)),
-                ),
-                _StepBtn(
-                    icon: Icons.add,
-                    onTap: _cantidad < 36
-                        ? () => setState(() => _cantidad++)
-                        : null),
-              ],
-            ),
-            const SizedBox(height: 14),
-          ],
+          Text(_labelCantidad,
+              style: const TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              _StepBtn(
+                  icon: Icons.remove,
+                  onTap:
+                      _cantidad > 1 ? () => setState(() => _cantidad--) : null),
+              Expanded(
+                child: Text('$_cantidad $_unidad',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800, fontSize: 16)),
+              ),
+              _StepBtn(
+                  icon: Icons.add,
+                  onTap: _cantidad < 36
+                      ? () => setState(() => _cantidad++)
+                      : null),
+            ],
+          ),
+          const SizedBox(height: 14),
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -783,12 +787,23 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
               children: [
                 Text(
                     _mesAMes
-                        ? 'Se debita cada mes: ${widget.moneda} ${_plan.total.toStringAsFixed(2)}'
+                        ? 'Pagas hoy 1 mes: ${widget.moneda} ${_plan.total.toStringAsFixed(2)}'
                         : 'Pagarás ahora: ${widget.moneda} ${_total.toStringAsFixed(2)}',
                     style: const TextStyle(
                         color: bosque,
                         fontWeight: FontWeight.w800,
                         fontSize: 15)),
+                if (_mesAMes) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                      'Luego ${widget.moneda} ${_plan.total.toStringAsFixed(2)} '
+                      'automático por ${_cantidad - 1} '
+                      '${_cantidad - 1 == 1 ? 'mes más' : 'meses más'}.',
+                      style: const TextStyle(
+                          color: bosque,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12.5)),
+                ],
                 if (_aplicaDescuento) ...[
                   const SizedBox(height: 4),
                   Text(
@@ -856,7 +871,7 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
                 Navigator.of(context).pop((
                   n,
                   _whatsapp.text.trim(),
-                  _mesAMes ? 1 : _cantidad,
+                  _cantidad, // meses comprometidos (mes a mes) o adelantados
                   _mesAMes,
                   _total,
                 ));
