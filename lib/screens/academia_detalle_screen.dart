@@ -244,8 +244,31 @@ class _Contenido extends StatelessWidget {
                   const Text('Esta academia aún no publicó sus planes.',
                       style: TextStyle(color: textoTenue))
                 else
-                  for (final p in academia.planes)
-                    _TarjetaPlan(academia: academia, plan: p),
+                  // Planes AGRUPADOS por programa (Bola Roja/Naranja, Verde/
+                  // Amarilla…): un encabezado por programa y debajo sus
+                  // frecuencias. Los planes sin programa van sin encabezado.
+                  for (final entrada in academia.planesPorPrograma.entries) ...[
+                    if (entrada.key.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(entrada.key,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w800, fontSize: 16)),
+                      if (entrada.value.first.etapaEdad.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2, bottom: 4),
+                          child: Text(entrada.value.first.etapaEdad,
+                              style: const TextStyle(
+                                  color: textoTenue, fontSize: 12.5)),
+                        ),
+                      const SizedBox(height: 8),
+                    ],
+                    for (final p in entrada.value)
+                      _TarjetaPlan(
+                          academia: academia,
+                          plan: p,
+                          tituloOverride:
+                              entrada.key.isEmpty ? null : p.frecuenciaLabel),
+                  ],
                 // Chat con el profe (solo si el usuario está matriculado aquí).
                 Builder(builder: (context) {
                   final email = appState.usuario?.email;
@@ -450,9 +473,13 @@ class _Galeria extends StatelessWidget {
 
 /// Tarjeta de un plan con su botón "Matricularme".
 class _TarjetaPlan extends StatelessWidget {
-  const _TarjetaPlan({required this.academia, required this.plan});
+  const _TarjetaPlan(
+      {required this.academia, required this.plan, this.tituloOverride});
   final Academia academia;
   final Plan plan;
+  // Título compacto cuando la tarjeta ya va bajo un encabezado de programa
+  // (ej. "4x/sem"); si es null usa el nombre completo del plan.
+  final String? tituloOverride;
 
   String get _detalle {
     if (plan.tipo == TipoPlan.porClase) {
@@ -476,7 +503,7 @@ class _TarjetaPlan extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(plan.nombre,
+          Text(tituloOverride ?? plan.nombre,
               style: TextStyle(
                   fontWeight: FontWeight.w800,
                   fontSize: 15,

@@ -1261,14 +1261,29 @@ class AlumnoDetalleScreen extends StatelessWidget {
                 child: ListView(
                   shrinkWrap: true,
                   children: [
-                    for (final p in planes)
-                      ListTile(
-                        title: Text(p.nombre),
-                        subtitle: Text(p.tipo == TipoPlan.porClase
-                            ? 'Por clase · $mon ${p.precioMes.toStringAsFixed(2)}'
-                            : '${p.meses} ${p.meses == 1 ? 'mes' : 'meses'} · Total $mon ${p.total.toStringAsFixed(2)}'),
-                        onTap: () => Navigator.pop(context, p),
-                      ),
+                    // Planes AGRUPADOS por programa (mismo criterio que la ficha
+                    // del alumno): un encabezado por programa y sus frecuencias.
+                    for (final entrada in _agruparPorPrograma(planes).entries) ...[
+                      if (entrada.key.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 2),
+                          child: Text(entrada.key,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w800, fontSize: 15)),
+                        ),
+                      for (final p in entrada.value)
+                        ListTile(
+                          title: Text(entrada.key.isEmpty
+                              ? p.nombre
+                              : (p.frecuenciaLabel.isEmpty
+                                  ? p.nombre
+                                  : p.frecuenciaLabel)),
+                          subtitle: Text(p.tipo == TipoPlan.porClase
+                              ? 'Por clase · $mon ${p.precioMes.toStringAsFixed(2)}'
+                              : '${p.meses} ${p.meses == 1 ? 'mes' : 'meses'} · Total $mon ${p.total.toStringAsFixed(2)}'),
+                          onTap: () => Navigator.pop(context, p),
+                        ),
+                    ],
                   ],
                 ),
               ),
@@ -1574,4 +1589,18 @@ class _SuscripcionAlumnoInfoProfeState
       ),
     );
   }
+}
+
+/// Agrupa planes por PROGRAMA preservando el orden de aparición y ordenando cada
+/// grupo por frecuencia (mismo criterio que `Academia.planesPorPrograma`). Se usa
+/// en el selector "Elige el plan" del profe.
+Map<String, List<Plan>> _agruparPorPrograma(List<Plan> planes) {
+  final m = <String, List<Plan>>{};
+  for (final p in planes) {
+    (m[p.programa] ??= []).add(p);
+  }
+  for (final lista in m.values) {
+    lista.sort((a, b) => a.frecuenciaSemana.compareTo(b.frecuenciaSemana));
+  }
+  return m;
 }
