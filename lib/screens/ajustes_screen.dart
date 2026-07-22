@@ -10,7 +10,12 @@ class AjustesScreen extends StatelessWidget {
 
   static const _entorno =
       String.fromEnvironment('ENTORNO', defaultValue: 'dev');
-  static bool get _modoPruebas => _entorno != 'prod';
+  // Herramientas de limpieza para el PILOTO: visibles en todos los builds
+  // (incluido prod, que es el que usa Google real) salvo que se pida ocultarlas
+  // con --dart-define=OCULTAR_PRUEBAS=1 para el lanzamiento en Play Store.
+  static const _ocultarPruebas =
+      String.fromEnvironment('OCULTAR_PRUEBAS', defaultValue: '0');
+  static bool get _mostrarHerramientasPrueba => _ocultarPruebas != '1';
 
   Future<void> _empezarDeCero(BuildContext context) async {
     final ok = await showDialog<bool>(
@@ -145,15 +150,15 @@ class AjustesScreen extends StatelessWidget {
                 seleccionado: appState.temaModo == ThemeMode.dark,
                 onTap: () => appState.setTemaModo(ThemeMode.dark),
               ),
-              if (_modoPruebas) ...[
+              if (_mostrarHerramientasPrueba) ...[
                 const SizedBox(height: 28),
                 Text('Zona de pruebas',
                     style:
                         t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
                 const SizedBox(height: 4),
                 Text(
-                    'Solo en builds de prueba ($_entorno). Deja la app como '
-                    'recién instalada para probar desde cero.',
+                    'Herramientas del piloto (entorno: $_entorno). Deja la app '
+                    'como recién instalada o limpia academias sueltas.',
                     style: t.bodySmall?.copyWith(
                         color: Theme.of(context)
                             .colorScheme
