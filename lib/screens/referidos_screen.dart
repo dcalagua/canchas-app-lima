@@ -112,7 +112,8 @@ class _ReferidosScreenState extends State<ReferidosScreen> {
                 FilledButton(
                   style: FilledButton.styleFrom(backgroundColor: lima),
                   onPressed: () async {
-                    final ok = await LoginGoogleSheet.mostrar(context);
+                    final ok = await LoginGoogleSheet.mostrar(context,
+                        motivo: 'tener tu código de referido');
                     if (ok && mounted) {
                       setState(() {});
                       _refrescar();

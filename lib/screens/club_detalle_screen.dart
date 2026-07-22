@@ -214,10 +214,10 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     final hora = _hora;
     if (hora == null) return;
     if (!_cancha.reservable) return; // no se reserva si está pendiente/descubierta
-    if (!appState.logueado) {
-      final ok = await LoginGoogleSheet.mostrar(context);
-      if (!ok || !mounted) return;
+    if (!await LoginGoogleSheet.mostrar(context, motivo: 'reservar tu cancha')) {
+      return;
     }
+    if (!mounted) return;
     // El jugador SIEMPRE paga el precio de la cancha (su precio de siempre),
     // tenga o no saldo el dueño. La comisión de Pichangol es 100% del lado del
     // dueño: sale de su saldo si tiene (recibe el precio completo) o se descuenta
@@ -1415,10 +1415,11 @@ class _PanelDescubiertaState extends State<_PanelDescubierta> {
   Future<void> _reclamar() async {
     // Pedimos login ANTES de abrir el formulario: así el reclamo nace con dueño
     // definido y el usuario no cae en otra pantalla tras loguearse a mitad.
-    if (!appState.logueado) {
-      final ok = await LoginGoogleSheet.mostrar(context);
-      if (!ok || !mounted) return;
+    if (!await LoginGoogleSheet.mostrar(context,
+        motivo: 'reclamar esta cancha')) {
+      return;
     }
+    if (!mounted) return;
     final creada = await Navigator.of(context).push<Cancha?>(
       MaterialPageRoute(builder: (_) => RegistrarCanchaScreen(base: cancha)),
     );

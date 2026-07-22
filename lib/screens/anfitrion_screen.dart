@@ -15,9 +15,9 @@ class AnfitrionScreen extends StatelessWidget {
   const AnfitrionScreen({super.key});
 
   Future<void> _abrirPanel(BuildContext context) async {
-    if (!appState.logueado) {
-      final ok = await LoginGoogleSheet.mostrar(context);
-      if (!ok || !context.mounted) return;
+    if (!await LoginGoogleSheet.mostrar(context,
+        motivo: 'administrar tus canchas')) {
+      return;
     }
     if (!context.mounted) return;
     Navigator.of(context)
@@ -25,9 +25,9 @@ class AnfitrionScreen extends StatelessWidget {
   }
 
   Future<void> _abrirMiAcademia(BuildContext context) async {
-    if (!appState.logueado) {
-      final ok = await LoginGoogleSheet.mostrar(context);
-      if (!ok || !context.mounted) return;
+    if (!await LoginGoogleSheet.mostrar(context,
+        motivo: 'administrar tu academia')) {
+      return;
     }
     if (!context.mounted) return;
     // Siempre a MiAcademiaScreen: él resuelve si mostrar la academia, un spinner

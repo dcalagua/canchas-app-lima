@@ -362,13 +362,12 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
     }
     // Anti-fraude: para registrar/reclamar hay que identificarse con Google, así
     // la cancha queda atada a una cuenta real y pasa a verificación.
-    if (!appState.logueado) {
-      final ok = await LoginGoogleSheet.mostrar(context);
-      if (!ok || !mounted) {
-        _avisar('Inicia sesión para registrar tu cancha.');
-        return;
-      }
+    if (!await LoginGoogleSheet.mostrar(context,
+        motivo: 'registrar tu cancha')) {
+      if (mounted) _avisar('Inicia sesión para registrar tu cancha.');
+      return;
     }
+    if (!mounted) return;
     final precio =
         double.tryParse(_precio.text.trim().replaceAll(',', '.')) ?? 100;
     final direccion = _direccion.text.trim();

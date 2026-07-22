@@ -58,10 +58,10 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
     if (hora == null) return;
 
     // Navegar/buscar es libre; reservar exige login con Google.
-    if (!appState.logueado) {
-      final ok = await LoginGoogleSheet.mostrar(context);
-      if (!ok || !mounted) return;
+    if (!await LoginGoogleSheet.mostrar(context, motivo: 'reservar tu cancha')) {
+      return;
     }
+    if (!mounted) return;
 
     final total = cancha.precioHora * cancha.duracionSlotMin / 60;
     // El efectivo (pago en la cancha) SOLO se ofrece si el dueño tiene saldo:

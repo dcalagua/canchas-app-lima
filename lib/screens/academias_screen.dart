@@ -168,9 +168,8 @@ class _UnirmeConCodigo extends StatelessWidget {
 
   Future<void> _abrir(BuildContext context) async {
     // Unirse requiere sesión (la cuenta es siempre de un adulto).
-    if (appState.usuario == null) {
-      await LoginGoogleSheet.mostrar(context);
-      if (appState.usuario == null) return; // canceló el login
+    if (!await LoginGoogleSheet.mostrar(context, motivo: 'matricularte')) {
+      return; // canceló el login
     }
     if (!context.mounted) return;
     final codigo = TextEditingController();

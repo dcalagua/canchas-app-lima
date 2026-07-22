@@ -8,18 +8,32 @@ import '../widgets/google_logo.dart';
 import '../widgets/marca.dart';
 
 /// Hoja de login con Google (rediseño premium). Se muestra cuando un invitado
-/// intenta reservar. Devuelve true por Navigator.pop si quedó logueado.
+/// intenta una acción que requiere cuenta (reservar, matricularse, publicar,
+/// etc.). Devuelve true por Navigator.pop si quedó logueado.
 class LoginGoogleSheet extends StatefulWidget {
-  const LoginGoogleSheet({super.key});
+  const LoginGoogleSheet({super.key, this.motivo});
 
-  /// Muestra la hoja y resuelve a true si el usuario inició sesión.
-  static Future<bool> mostrar(BuildContext context) async {
+  /// Frase que completa "Inicia sesión para {motivo}" (ej. "reservar tu
+  /// cancha", "matricularte", "publicar tu partido"). Si es null usa un texto
+  /// genérico. Adapta el copy al ACTO que disparó el login.
+  final String? motivo;
+
+  /// PORTÓN de sesión: úsalo en TODA acción que requiera cuenta.
+  /// - Si el usuario YA tiene sesión → devuelve true al instante (no muestra
+  ///   nada), así el flujo continúa sin fricción.
+  /// - Si no → abre la hoja de login con copy contextual y devuelve true solo
+  ///   si el usuario terminó logueado.
+  ///
+  /// Patrón único recomendado en cada acción:
+  ///   if (!await LoginGoogleSheet.mostrar(context, motivo: 'para reservar')) return;
+  static Future<bool> mostrar(BuildContext context, {String? motivo}) async {
+    if (appState.logueado) return true; // ya tiene cuenta: sin fricción
     final ok = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       barrierColor: const Color(0x8C16140F), // rgba(22,20,15,.55)
-      builder: (_) => const LoginGoogleSheet(),
+      builder: (_) => LoginGoogleSheet(motivo: motivo),
     );
     return ok ?? false;
   }
@@ -138,7 +152,7 @@ class _LoginGoogleSheetState extends State<LoginGoogleSheet> {
             ],
           ),
           const SizedBox(height: 18),
-          Text('Inicia sesión para\nreservar tu cancha',
+          Text('Inicia sesión para\n${widget.motivo ?? 'reservar tu cancha'}',
               style: t.headlineSmall),
           const SizedBox(height: 10),
           Text(

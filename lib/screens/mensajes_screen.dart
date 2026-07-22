@@ -7,6 +7,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import 'chat_screen.dart';
 import 'crear_grupo_screen.dart';
+import 'login_google_sheet.dart';
 
 /// Inbox unificado "Mensajes": junta en UN solo lugar todas las conversaciones
 /// del usuario logueado (como profe de sus academias y como alumno de las que
@@ -276,7 +277,22 @@ class _MensajesScreenState extends State<MensajesScreen> {
       body: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
-          if (!appState.logueado) return const _Aviso(_kSinSesion);
+          if (!appState.logueado) {
+            return _Aviso(
+              _kSinSesion,
+              accion: FilledButton.icon(
+                style: FilledButton.styleFrom(backgroundColor: lima),
+                onPressed: () async {
+                  if (await LoginGoogleSheet.mostrar(context,
+                      motivo: 'ver tus mensajes')) {
+                    _cargar();
+                  }
+                },
+                icon: const Icon(Icons.login, size: 18),
+                label: const Text('Iniciar sesión'),
+              ),
+            );
+          }
           if (!MensajesRepo.disponible) return const _Aviso(_kSinBackend);
           return RefreshIndicator(
             onRefresh: _cargar,
@@ -310,15 +326,25 @@ const _kVacio =
     'academia, aparecerán aquí.';
 
 class _Aviso extends StatelessWidget {
-  const _Aviso(this.texto);
+  const _Aviso(this.texto, {this.accion});
   final String texto;
+  final Widget? accion;
   @override
   Widget build(BuildContext context) => Center(
         child: Padding(
           padding: const EdgeInsets.all(28),
-          child: Text(texto,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: textoTenue)),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(texto,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: textoTenue)),
+              if (accion != null) ...[
+                const SizedBox(height: 16),
+                accion!,
+              ],
+            ],
+          ),
         ),
       );
 }

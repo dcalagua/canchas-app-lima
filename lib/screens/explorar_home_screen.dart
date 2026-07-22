@@ -275,9 +275,9 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
   /// Reportes · Cuenta). Requiere sesión de Google porque "Mis canchas" trabaja
   /// sobre las canchas del dueño (dueno == tu correo).
   Future<void> _abrirPanel() async {
-    if (!appState.logueado) {
-      final ok = await LoginGoogleSheet.mostrar(context);
-      if (!ok || !mounted) return;
+    if (!await LoginGoogleSheet.mostrar(context,
+        motivo: 'administrar tus canchas')) {
+      return;
     }
     if (!mounted) return;
     Navigator.of(context).push(

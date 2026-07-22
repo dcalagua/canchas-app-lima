@@ -57,9 +57,9 @@ class _PartidosScreenState extends State<PartidosScreen> {
   }
 
   Future<void> _crear() async {
-    if (appState.usuario == null) {
-      await LoginGoogleSheet.mostrar(context);
-      if (appState.usuario == null) return;
+    if (!await LoginGoogleSheet.mostrar(context,
+        motivo: 'publicar tu partido')) {
+      return;
     }
     if (!mounted) return;
     final creado = await showModalBottomSheet<bool>(
@@ -78,10 +78,11 @@ class _PartidosScreenState extends State<PartidosScreen> {
   }
 
   Future<void> _apuntarse(PartidoAbierto p) async {
-    if (appState.usuario == null) {
-      await LoginGoogleSheet.mostrar(context);
-      if (appState.usuario == null) return;
+    if (!await LoginGoogleSheet.mostrar(context,
+        motivo: 'apuntarte al partido')) {
+      return;
     }
+    if (!mounted) return;
     final u = appState.usuario!;
     final ok = await PartidosRepo.apuntarse(p.id, u.email, u.nombre);
     if (!mounted) return;

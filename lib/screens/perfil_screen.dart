@@ -93,7 +93,8 @@ class PerfilScreen extends StatelessWidget {
                       SizedBox(
                         width: double.infinity,
                         child: FilledButton.icon(
-                          onPressed: () => LoginGoogleSheet.mostrar(context),
+                          onPressed: () => LoginGoogleSheet.mostrar(context,
+                              motivo: 'acceder a tu cuenta'),
                           icon: Container(
                             padding: const EdgeInsets.all(3),
                             decoration: const BoxDecoration(

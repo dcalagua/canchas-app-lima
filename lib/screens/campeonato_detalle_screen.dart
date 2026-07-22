@@ -164,9 +164,9 @@ class CampeonatoDetalleScreen extends StatelessWidget {
   /// El jugador se inscribe (queda como participante-app). Pregunta si compite
   /// él o un hijo (apoderado) y cobra la inscripción si tiene costo.
   Future<void> _inscribirme(BuildContext context, Campeonato c) async {
-    if (appState.usuario == null) {
-      await LoginGoogleSheet.mostrar(context);
-      if (appState.usuario == null) return;
+    if (!await LoginGoogleSheet.mostrar(context,
+        motivo: 'inscribirte al campeonato')) {
+      return;
     }
     if (!context.mounted) return;
     final nombreNino = TextEditingController();
