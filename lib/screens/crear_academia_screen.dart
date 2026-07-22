@@ -797,13 +797,26 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                       label: Text(_redesConectadas
                           ? 'Administrar en Servicios'
                           : 'Ir a Servicios Pichangol'),
-                      onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => ServiciosScreen(
-                              negocio: appState.negocioServiciosDeAcademia(
-                                  widget.academia!)),
-                        ),
-                      ),
+                      onPressed: () async {
+                        await Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => ServiciosScreen(
+                                negocio: appState.negocioServiciosDeAcademia(
+                                    widget.academia!)),
+                          ),
+                        );
+                        if (!mounted) return;
+                        // Al volver de Servicios la landing pudo generarse: refleja
+                        // su enlace en el campo (y así no lo borra al Guardar).
+                        final fresca = appState.academias.firstWhere(
+                          (a) => a.id == widget.academia!.id,
+                          orElse: () => widget.academia!,
+                        );
+                        final url = fresca.landingUrl.trim();
+                        if (url.isNotEmpty && _landing.text.trim() != url) {
+                          setState(() => _landing.text = url);
+                        }
+                      },
                     ),
                   )
                 else
@@ -988,13 +1001,26 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                           padding: const EdgeInsets.symmetric(vertical: 12)),
                       icon: const Icon(Icons.campaign_outlined, size: 18),
                       label: const Text('Contratar mi landing (Servicios)'),
-                      onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => ServiciosScreen(
-                              negocio: appState.negocioServiciosDeAcademia(
-                                  widget.academia!)),
-                        ),
-                      ),
+                      onPressed: () async {
+                        await Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => ServiciosScreen(
+                                negocio: appState.negocioServiciosDeAcademia(
+                                    widget.academia!)),
+                          ),
+                        );
+                        if (!mounted) return;
+                        // Al volver de Servicios la landing pudo generarse: refleja
+                        // su enlace en el campo (y así no lo borra al Guardar).
+                        final fresca = appState.academias.firstWhere(
+                          (a) => a.id == widget.academia!.id,
+                          orElse: () => widget.academia!,
+                        );
+                        final url = fresca.landingUrl.trim();
+                        if (url.isNotEmpty && _landing.text.trim() != url) {
+                          setState(() => _landing.text = url);
+                        }
+                      },
                     ),
                   ),
               ],

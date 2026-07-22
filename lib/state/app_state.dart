@@ -325,6 +325,20 @@ class AppState extends ChangeNotifier {
       }
     } else {
       _landingNegocios.add(n.id);
+      // Negocio unificado (mixto: academia + canchas): el id es `dueno_<slug>`,
+      // no el de la academia, así que arriba NO se refleja el enlace en la ficha.
+      // Lo copiamos a la(s) academia(s) del dueño para que aparezca SOLO en
+      // "Editar academia › Landing" (la promesa "el enlace aparece aquí solo").
+      final email = usuario?.email.toLowerCase();
+      if (email != null && email.isNotEmpty) {
+        for (var i = 0; i < academias.length; i++) {
+          if (academias[i].dueno.toLowerCase() == email &&
+              academias[i].landingUrl.trim() != url) {
+            academias[i] = academias[i].copyWith(landingUrl: url);
+            AcademiasRepo.guardar(academias[i]);
+          }
+        }
+      }
     }
     notifyListeners();
     _persistirDatos();
