@@ -623,6 +623,7 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
       TextEditingController(text: widget.nombreInicial);
   final _whatsapp = TextEditingController();
   int _cantidad = 1;
+  String? _error; // mensaje de validación inline (visible)
 
   Plan get _plan => widget.planObj;
 
@@ -712,6 +713,22 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
                 style: const TextStyle(
                     color: bosque, fontWeight: FontWeight.w800, fontSize: 15)),
           ),
+          if (_error != null) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                const Icon(Icons.error_outline, size: 18, color: clayOscuro),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(_error!,
+                      style: const TextStyle(
+                          color: clayOscuro,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600)),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
@@ -723,11 +740,16 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
               onPressed: () {
                 final n = _nombre.text.trim();
                 final w = _whatsapp.text.replaceAll(RegExp(r'[^0-9]'), '');
-                if (n.isEmpty || w.length < 9) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                      content: Text('Pon el nombre y un WhatsApp válido.')));
+                if (n.isEmpty) {
+                  setState(() => _error = 'Escribe el nombre del alumno.');
                   return;
                 }
+                if (w.length < 9) {
+                  setState(() =>
+                      _error = 'Pon un WhatsApp de contacto válido (9 dígitos).');
+                  return;
+                }
+                setState(() => _error = null);
                 Navigator.of(context).pop((n, _whatsapp.text.trim(), _cantidad));
               },
               child: Text('Pagar ${widget.moneda} ${_total.toStringAsFixed(2)}'),
