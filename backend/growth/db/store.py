@@ -493,6 +493,25 @@ class Stores:
             migradas += 1
         return migradas
 
+    def resolver_solapamiento_servicios(self) -> int:
+        """Si una academia tiene 'presencia' (paquete) activa, cancela sus planes
+        individuales 'landing'/'redes' activos (ya están incluidos). Evita doble
+        cobro. Devuelve cuántas suscripciones canceló."""
+        con_presencia = {
+            s.get("academia_id")
+            for s in self.suscripciones.values()
+            if s.get("servicio") == "presencia"
+            and s.get("estado") in ("activa", "pendiente_pago")
+        }
+        canceladas = 0
+        for s in self.suscripciones.values():
+            if (s.get("academia_id") in con_presencia
+                    and s.get("servicio") in ("landing", "redes")
+                    and s.get("estado") in ("activa", "pendiente_pago")):
+                s["estado"] = "cancelada"
+                canceladas += 1
+        return canceladas
+
     def cancha(self, cancha_id: str) -> CanchaEstado:
         c = self.canchas.get(cancha_id)
         if c is None:

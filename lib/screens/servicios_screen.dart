@@ -110,6 +110,15 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
     return null;
   }
 
+  // ¿La academia tiene el paquete "Presencia digital" activo?
+  bool get _presenciaActiva => _subs.any((s) =>
+      s['servicio'] == 'presencia' &&
+      (s['estado'] == 'activa' || s['estado'] == 'pendiente_pago'));
+
+  // ¿Este plan ya está incluido en un paquete mayor (Presencia)?
+  bool _incluidoEnPresencia(String clave) =>
+      (clave == 'landing' || clave == 'redes') && _presenciaActiva;
+
   Future<void> _contratar(Map<String, dynamic> plan) async {
     final clave = plan['clave'] as String;
     setState(() => _procesando = clave);
@@ -125,9 +134,16 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
       await _faltaSaldo((r['requerido_soles'] as num?)?.toDouble() ?? 0);
       return;
     }
+    if (r['incluido'] == true) {
+      _msg('Ya está incluido en tu ${r['nombre_por'] ?? 'plan'}.');
+      return;
+    }
     if (r['ok'] == true) {
       await _cargar();
-      _msg('✅ ${plan['nombre']} activado. Te contactaremos para arrancar.');
+      final reemplaza = (r['reemplaza'] as List?) ?? const [];
+      _msg(reemplaza.isEmpty
+          ? '✅ ${plan['nombre']} activado. Te contactaremos para arrancar.'
+          : '✅ ${plan['nombre']} activado (reemplaza tus planes individuales).');
     } else {
       _msg('No se pudo contratar.');
     }
@@ -817,7 +833,21 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
                     style: TextStyle(color: clayOscuro)),
               ),
             ),
-          ] else
+          ] else if (_incluidoEnPresencia(clave))
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: limaSuave,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: const Text('✓ Incluido en Presencia digital',
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: lima)),
+            )
+          else
             SizedBox(
               width: double.infinity,
               child: FilledButton(

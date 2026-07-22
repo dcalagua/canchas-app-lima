@@ -266,6 +266,23 @@ def _nombre_servicio(clave: str) -> str:
     return _SERVICIOS_LEGACY.get(clave, "?")
 
 
+# "Presencia digital" es un PAQUETE que engloba landing + manejo de redes.
+INCLUYE_SERVICIOS = {"presencia": ("landing", "redes")}
+
+
+def _plan_mayor_activo(academia_id: str, servicio: str) -> str | None:
+    """Devuelve el plan MAYOR activo de la academia que ya incluye `servicio`
+    (p.ej. 'presencia' incluye 'landing'), o None."""
+    for s in stores.suscripciones.values():
+        if s.get("academia_id") != academia_id:
+            continue
+        if s.get("estado") not in ("activa", "pendiente_pago"):
+            continue
+        if servicio in INCLUYE_SERVICIOS.get(s.get("servicio"), ()):
+            return s.get("servicio")
+    return None
+
+
 def _servicio_soles(clave: str) -> float:
     try:
         return float(stores.cfg(_SERVICIOS[clave][1]))
@@ -321,6 +338,12 @@ def post_contratar_servicio(req: ContratarServicioReq) -> dict:
     falta_saldo (el APK lo manda a recargar)."""
     if req.servicio not in _SERVICIOS:
         raise HTTPException(status_code=400, detail="servicio_invalido")
+    # Ya cubierto por un plan mayor (p.ej. Presencia incluye Landing/Manejo):
+    # no se cobra de nuevo.
+    mayor = _plan_mayor_activo(req.academia_id, req.servicio)
+    if mayor:
+        return {"ok": False, "incluido": True, "por": mayor,
+                "nombre_por": _nombre_servicio(mayor)}
     monto = _soles_a_centimos(_servicio_soles(req.servicio))
     saldo = stores.saldo_centimos(req.dueno_id)
     if saldo < monto:
@@ -340,7 +363,16 @@ def post_contratar_servicio(req: ContratarServicioReq) -> dict:
         tipo="suscripcion", monto_centimos=monto, moneda="PEN",
         estado="aprobado", dueno_id=req.dueno_id,
         concepto=f"Suscripción {req.servicio} · {req.academia_id}")
+    # Al contratar un PAQUETE (Presencia), cancela los planes que engloba para
+    # que no haya doble cobro.
+    canceladas = []
+    for incl in INCLUYE_SERVICIOS.get(req.servicio, ()):
+        s = stores.suscripciones.get(f"{req.academia_id}:{incl}")
+        if s and s.get("estado") in ("activa", "pendiente_pago"):
+            s["estado"] = "cancelada"
+            canceladas.append(incl)
     return {"ok": True, "suscripcion": _sub_dict(stores.suscripciones[clave]),
+            "reemplaza": canceladas,
             "saldo_centimos": nuevo, "saldo_soles": nuevo / 100.0}
 
 

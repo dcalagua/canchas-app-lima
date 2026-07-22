@@ -47,8 +47,10 @@ if not stores.verificadores:
     seed_verificadores()
 
 # Unificación de servicios: migra suscripciones del plan retirado "gestion" a
-# "redes" (Manejo de redes) y persiste si cambió algo.
-if stores.migrar_suscripciones_legacy() and pg.habilitado:
+# "redes", y cancela solapamientos (Presencia ya incluye Landing/Manejo).
+_cambios = stores.migrar_suscripciones_legacy()
+_cambios += stores.resolver_solapamiento_servicios()
+if _cambios and pg.habilitado:
     try:
         pg.guardar(stores.to_state())
     except Exception:  # noqa: BLE001
