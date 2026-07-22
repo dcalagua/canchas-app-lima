@@ -84,7 +84,7 @@ class MisClasesScreen extends StatelessWidget {
             ),
             child: Row(
               children: [
-                const Icon(Icons.sports_tennis, color: lima),
+                _logoAcademia(academia),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
@@ -113,79 +113,13 @@ class MisClasesScreen extends StatelessWidget {
                     style: const TextStyle(
                         fontWeight: FontWeight.w800, fontSize: 14, color: lima)),
                 _SuscripcionMesAMes(alumnoId: al.id, moneda: mon),
-                if (proximas.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Próximos pagos',
-                          style: TextStyle(
-                              fontWeight: FontWeight.w800, fontSize: 13)),
-                      if (proximas.length > 1 && academia != null)
-                        TextButton(
-                          onPressed: () =>
-                              _pagarCuotas(context, academia, proximas, mon),
-                          style: TextButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(horizontal: 8),
-                              minimumSize: const Size(0, 0)),
-                          child: Text(
-                              'Pagar todo · $mon '
-                              '${proximas.fold<double>(0, (s, c) => s + c.monto).toStringAsFixed(2)}',
-                              style: const TextStyle(
-                                  color: lima, fontWeight: FontWeight.w800)),
-                        ),
-                    ],
+                if (proximas.isNotEmpty && academia != null)
+                  _ProximosPagos(
+                    cuotas: proximas,
+                    moneda: mon,
+                    onPagar: (sel) =>
+                        _pagarCuotas(context, academia, sel, mon),
                   ),
-                  const SizedBox(height: 4),
-                  for (final c in proximas)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(c.concepto,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                        fontSize: 13.5,
-                                        fontWeight: FontWeight.w600)),
-                                Text('Vence ${_fecha(c.vencimiento)}',
-                                    style: const TextStyle(
-                                        color: textoTenue, fontSize: 12)),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text('$mon ${c.monto.toStringAsFixed(2)}',
-                              style: const TextStyle(
-                                  fontSize: 13.5,
-                                  fontWeight: FontWeight.w800,
-                                  color: clayOscuro)),
-                          const SizedBox(width: 8),
-                          if (academia != null)
-                            OutlinedButton(
-                              onPressed: () =>
-                                  _pagarCuotas(context, academia, [c], mon),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: lima,
-                                side: const BorderSide(color: lima),
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 12, vertical: 4),
-                                minimumSize: const Size(0, 0),
-                                tapTargetSize:
-                                    MaterialTapTargetSize.shrinkWrap,
-                              ),
-                              child: const Text('Pagar',
-                                  style:
-                                      TextStyle(fontWeight: FontWeight.w800)),
-                            ),
-                        ],
-                      ),
-                    ),
-                ],
                 const SizedBox(height: 12),
                 const Text('Comprobantes de pago',
                     style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
@@ -249,6 +183,23 @@ class MisClasesScreen extends StatelessWidget {
               ? 'Cuota pagada. ¡Gracias!'
               : '${cuotas.length} cuotas pagadas. ¡Gracias!')));
     }
+  }
+
+  /// Logo de la academia (si lo subió); si no, cae al ícono de raqueta.
+  Widget _logoAcademia(Academia? ac) {
+    final url = ac?.logoUrl;
+    if (url != null && url.isNotEmpty) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(9),
+        child: Image.network(url,
+            width: 36,
+            height: 36,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) =>
+                const Icon(Icons.sports_tennis, color: lima)),
+      );
+    }
+    return const Icon(Icons.sports_tennis, color: lima);
   }
 
   Widget _fila(String titulo, String sub, String monto,
@@ -427,6 +378,141 @@ class _SuscripcionMesAMesState extends State<_SuscripcionMesAMes> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Sección "Próximos pagos" con CHECKBOXES: el alumno marca las cuotas que va a
+/// pagar y un solo botón "Pagar S/X" cobra las seleccionadas. Por defecto vienen
+/// todas marcadas (pagar todo con un tap; puede desmarcar las que no).
+class _ProximosPagos extends StatefulWidget {
+  const _ProximosPagos(
+      {required this.cuotas, required this.moneda, required this.onPagar});
+  final List<Cuota> cuotas; // pendientes, orden cronológico
+  final String moneda;
+  final Future<void> Function(List<Cuota>) onPagar;
+
+  @override
+  State<_ProximosPagos> createState() => _ProximosPagosState();
+}
+
+class _ProximosPagosState extends State<_ProximosPagos> {
+  static const _meses = [
+    'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+    'jul', 'ago', 'set', 'oct', 'nov', 'dic'
+  ];
+  late Set<String> _sel;
+  bool _pagando = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _sel = widget.cuotas.map((c) => c.id).toSet(); // todas marcadas por defecto
+  }
+
+  @override
+  void didUpdateWidget(_ProximosPagos old) {
+    super.didUpdateWidget(old);
+    // Si cambió la lista (tras pagar), suma las nuevas y limpia las que ya no están.
+    final ids = widget.cuotas.map((c) => c.id).toSet();
+    final nuevas = ids.difference(old.cuotas.map((c) => c.id).toSet());
+    _sel
+      ..retainWhere(ids.contains)
+      ..addAll(nuevas);
+  }
+
+  String _fecha(DateTime d) => '${d.day} ${_meses[d.month - 1]} ${d.year}';
+
+  double get _totalSel =>
+      widget.cuotas.where((c) => _sel.contains(c.id)).fold(0, (s, c) => s + c.monto);
+
+  Future<void> _pagar() async {
+    final sel = widget.cuotas.where((c) => _sel.contains(c.id)).toList();
+    if (sel.isEmpty || _pagando) return;
+    setState(() => _pagando = true);
+    await widget.onPagar(sel);
+    if (mounted) setState(() => _pagando = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 12),
+        const Text('Próximos pagos',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+        const SizedBox(height: 2),
+        const Text('Marca las que quieres pagar.',
+            style: TextStyle(color: textoTenue, fontSize: 12)),
+        for (final c in widget.cuotas)
+          InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: () => setState(() {
+              if (!_sel.remove(c.id)) _sel.add(c.id);
+            }),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                children: [
+                  Checkbox(
+                    value: _sel.contains(c.id),
+                    activeColor: lima,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                    onChanged: (v) => setState(() {
+                      if (v == true) {
+                        _sel.add(c.id);
+                      } else {
+                        _sel.remove(c.id);
+                      }
+                    }),
+                  ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(c.concepto,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 13.5, fontWeight: FontWeight.w600)),
+                        Text('Vence ${_fecha(c.vencimiento)}',
+                            style: const TextStyle(
+                                color: textoTenue, fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text('${widget.moneda} ${c.monto.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w800,
+                          color: clayOscuro)),
+                ],
+              ),
+            ),
+          ),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: lima,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12)),
+            onPressed: (_sel.isEmpty || _pagando) ? null : _pagar,
+            child: _pagando
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white))
+                : Text('Pagar ${widget.moneda} ${_totalSel.toStringAsFixed(2)}',
+                    style: const TextStyle(fontWeight: FontWeight.w800)),
+          ),
+        ),
+      ],
     );
   }
 }
