@@ -59,6 +59,40 @@ def test_no_contratar_individual_si_hay_presencia(client):
     assert r["por"] == "presencia"
 
 
+def test_precio_por_tipo_club_usa_override(client):
+    # Sin override, el club paga la tarifa base.
+    base = {p["clave"]: p["soles"]
+            for p in client.get("/pagos/servicios/planes",
+                                 params={"tipo": "club"}).json()["planes"]}
+    assert base["landing"] == 49
+    # Con override de club, la landing del club sube; academia sigue en 49.
+    stores.config["servicio_landing_soles_club"] = "79"
+    club = {p["clave"]: p["soles"]
+            for p in client.get("/pagos/servicios/planes",
+                                 params={"tipo": "club"}).json()["planes"]}
+    aca = {p["clave"]: p["soles"]
+           for p in client.get("/pagos/servicios/planes",
+                               params={"tipo": "academia"}).json()["planes"]}
+    assert club["landing"] == 79
+    assert aca["landing"] == 49
+    # El negocio unificado (mixto) usa la base, no el override de club.
+    mixto = {p["clave"]: p["soles"]
+             for p in client.get("/pagos/servicios/planes",
+                                  params={"tipo": "mixto"}).json()["planes"]}
+    assert mixto["landing"] == 49
+
+
+def test_contratar_club_cobra_tarifa_club(client):
+    stores.config["servicio_landing_soles_club"] = "79"
+    r = client.post("/pagos/servicios/contratar", json={
+        "dueno_id": "aca:1", "academia_id": "aca:1",
+        "servicio": "landing", "tipo": "club"}).json()
+    assert r["ok"] is True
+    sub = next(s for s in client.get("/pagos/servicios/estado/aca:1")
+               .json()["suscripciones"] if s["servicio"] == "landing")
+    assert sub["monto_soles"] == 79
+
+
 def test_resolver_solapamiento_limpia_estado_existente():
     # Estado "sucio": los 3 activos a la vez (como en pruebas).
     stores.reset()

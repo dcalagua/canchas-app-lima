@@ -636,7 +636,7 @@ class _LocalCard extends StatelessWidget {
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute(
                       builder: (_) => ServiciosScreen(
-                          negocio: appState.negocioDeClub(local))),
+                          negocio: appState.negocioServiciosDeClub(local))),
                 ),
                 icon: Icon(Icons.campaign_outlined, color: cs.primary, size: 20),
                 label: Text('Servicios Pichangol',

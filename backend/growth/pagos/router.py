@@ -283,11 +283,24 @@ def _plan_mayor_activo(academia_id: str, servicio: str) -> str | None:
     return None
 
 
-def _servicio_soles(clave: str) -> float:
+def _servicio_soles(clave: str, tipo: str | None = None) -> float:
+    """Precio mensual del servicio. Con `tipo='club'` usa el override por tipo si
+    está configurado (>0); si no, cae al precio base (academia). El negocio
+    unificado ('mixto') usa el precio base."""
     try:
-        return float(stores.cfg(_SERVICIOS[clave][1]))
+        base = float(stores.cfg(_SERVICIOS[clave][1]))
     except (KeyError, TypeError, ValueError):
         return 0.0
+    if tipo == "club":
+        try:
+            override = stores.cfg(f"{_SERVICIOS[clave][1]}_club").strip()
+            if override:
+                v = float(override)
+                if v > 0:
+                    return v
+        except (KeyError, TypeError, ValueError):
+            pass
+    return base
 
 
 def _mas_un_mes(d: datetime) -> datetime:
@@ -315,6 +328,7 @@ class ContratarServicioReq(BaseModel):
     dueno_id: str
     academia_id: str
     servicio: str
+    tipo: str | None = None  # 'academia' | 'club' | 'mixto' (Fase 3: precio por tipo)
 
 
 class CancelarServicioReq(BaseModel):
@@ -323,10 +337,13 @@ class CancelarServicioReq(BaseModel):
 
 
 @router.get("/servicios/planes")
-def get_servicios_planes() -> dict:
-    """Catálogo de servicios de marketing con su precio mensual (público)."""
+def get_servicios_planes(tipo: str | None = None) -> dict:
+    """Catálogo de servicios de marketing con su precio mensual (público). Con
+    `tipo=club` devuelve la tarifa del club si la torre de control la configuró;
+    academia/mixto usan la tarifa base."""
     return {"planes": [
-        {"clave": k, "nombre": nom, "desc": desc, "soles": _servicio_soles(k)}
+        {"clave": k, "nombre": nom, "desc": desc,
+         "soles": _servicio_soles(k, tipo)}
         for k, (nom, _cfg, desc) in _SERVICIOS.items()
     ]}
 
@@ -344,7 +361,7 @@ def post_contratar_servicio(req: ContratarServicioReq) -> dict:
     if mayor:
         return {"ok": False, "incluido": True, "por": mayor,
                 "nombre_por": _nombre_servicio(mayor)}
-    monto = _soles_a_centimos(_servicio_soles(req.servicio))
+    monto = _soles_a_centimos(_servicio_soles(req.servicio, req.tipo))
     saldo = stores.saldo_centimos(req.dueno_id)
     if saldo < monto:
         return {"ok": False, "falta_saldo": True, "requerido_centimos": monto,

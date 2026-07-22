@@ -390,10 +390,12 @@ class PagosService {
 
   // --- Servicios de marketing (suscripción recurrente) --------------------
   /// Catálogo de servicios (landing/redes/presencia) con su precio mensual.
-  static Future<List<Map<String, dynamic>>?> planesServicios() async {
+  static Future<List<Map<String, dynamic>>?> planesServicios(
+      {String? tipo}) async {
     if (!disponible) return null;
     try {
-      final uri = Uri.parse('$_baseUrl/pagos/servicios/planes');
+      final uri = Uri.parse('$_baseUrl/pagos/servicios/planes')
+          .replace(queryParameters: tipo == null ? null : {'tipo': tipo});
       final r = await http.get(uri, headers: _appHeaders())
           .timeout(const Duration(seconds: 12));
       if (r.statusCode != 200) return null;
@@ -430,6 +432,7 @@ class PagosService {
     required String duenoId,
     required String academiaId,
     required String servicio,
+    String? tipo,
   }) async {
     if (!disponible) return null;
     try {
@@ -441,6 +444,7 @@ class PagosService {
                 'dueno_id': duenoId,
                 'academia_id': academiaId,
                 'servicio': servicio,
+                if (tipo != null) 'tipo': tipo,
               }))
           .timeout(const Duration(seconds: 15));
       if (r.statusCode != 200) return null;

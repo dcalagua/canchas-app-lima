@@ -94,7 +94,8 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
   Future<void> _cargar() async {
     setState(() => _cargando = true);
     await appState.sincronizarSaldoAcademia(_idAcademia);
-    final planes = await PagosService.planesServicios();
+    final planes =
+        await PagosService.planesServicios(tipo: widget.negocio.tipo);
     final subs = await PagosService.estadoServicios(_idAcademia);
     final conn = await PagosService.estadoRedes(_idAcademia);
     final metodo = await PagosService.metodoSuscripcion(_idAcademia);
@@ -128,7 +129,10 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
     final clave = plan['clave'] as String;
     setState(() => _procesando = clave);
     final r = await PagosService.contratarServicio(
-        duenoId: _idAcademia, academiaId: _idAcademia, servicio: clave);
+        duenoId: _idAcademia,
+        academiaId: _idAcademia,
+        servicio: clave,
+        tipo: widget.negocio.tipo);
     if (!mounted) return;
     setState(() => _procesando = null);
     if (r == null) {
@@ -406,6 +410,10 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
                       ],
                     ),
                   ),
+                  if (widget.negocio.esMixto) ...[
+                    const SizedBox(height: 8),
+                    _bannerUnificado(),
+                  ],
                   const SizedBox(height: 8),
                   _cardDebitoAuto(),
                   if (_landingContratada) _cardLanding(),
@@ -429,6 +437,43 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
                 ],
               ),
             ),
+    );
+  }
+
+  /// Aviso de PRESENCIA UNIFICADA: cuando el dueño tiene academia + canchas, un
+  /// solo plan cubre ambos (no paga doble). La landing deja reservar y matricular.
+  Widget _bannerUnificado() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: limaSuave,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: lima.withOpacity(0.35)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.hub_outlined, color: bosque, size: 22),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Presencia unificada',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                        color: bosque)),
+                const SizedBox(height: 2),
+                Text(
+                    'Tienes academia y canchas. Un solo plan las cubre a ambas: '
+                    'tu página deja reservar cancha y matricularse. No pagas doble.',
+                    style: TextStyle(fontSize: 13, color: bosque.withOpacity(0.85))),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 

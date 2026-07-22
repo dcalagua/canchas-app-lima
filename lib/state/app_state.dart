@@ -295,6 +295,85 @@ class AppState extends ChangeNotifier {
         academiaId: n.id, datos: n.datosLanding, contexto: tema);
   }
 
+  // === Fase 2: presencia UNIFICADA (mismo dueño con academia + canchas) =====
+  /// Clubes (locales) REGISTRADOS del dueño logueado. Se derivan agrupando sus
+  /// canchas propias. Sólo cuentan las registradas (las descubiertas de Google
+  /// no son "suyas").
+  List<Club> get misClubesRegistrados =>
+      Club.agrupar(misCanchas.where((c) => c.registrada).toList())
+          .where((cl) => cl.registrada)
+          .toList();
+
+  /// ¿El dueño logueado tiene A LA VEZ una academia y al menos un local con
+  /// canchas registradas? Entonces conviene un solo plan de Servicios Pichangol
+  /// para ambos (no pagar doble por lo mismo).
+  bool get duenoTieneCanchasYAcademia =>
+      miAcademia != null && misClubesRegistrados.isNotEmpty;
+
+  String _slugDueno(String email) =>
+      email.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '_');
+
+  /// Negocio UNIFICADO del dueño: fusiona su academia + todos sus locales en un
+  /// solo sujeto de Servicios Pichangol (una landing que deja reservar cancha y
+  /// matricularse, una sola suscripción keyed por `dueno_<correo>`). Null si el
+  /// dueño no tiene ambos. La marca la lidera la academia (el nombre público).
+  Negocio? negocioUnificado() {
+    final ac = miAcademia;
+    final clubes = misClubesRegistrados;
+    if (ac == null || clubes.isEmpty) return null;
+    final email = usuario?.email ?? '';
+    final id = 'dueno_${_slugDueno(email)}';
+    final tieneLanding = _landingNegocios.contains(id);
+
+    // Datos combinados: programas de la academia + canchas de todos los locales
+    // como ítems reservables. La sede/ubicación la aporta la academia.
+    final base = _landingDatos(ac);
+    final planes = List<Map<String, dynamic>>.from(
+        (base['planes'] as List).map((e) => Map<String, dynamic>.from(e as Map)));
+    for (final cl in clubes) {
+      for (final ca in cl.canchas) {
+        planes.add({
+          'nombre': '${ca.nombre} · ${cl.nombre}',
+          'precio': ca.precioHora,
+          'sufijo': ' /hora',
+        });
+      }
+    }
+    final fotos = List<String>.from(base['fotos'] as List);
+    for (final cl in clubes) {
+      for (final ca in cl.canchas) {
+        fotos.addAll(ca.fotos);
+      }
+    }
+    final datos = Map<String, dynamic>.from(base)
+      ..['planes'] = planes
+      ..['fotos'] = fotos;
+
+    return Negocio(
+      id: id,
+      nombre: ac.nombre,
+      monedaSimbolo: ac.monedaSimbolo,
+      pais: ac.pais,
+      tipo: 'mixto',
+      tieneRedesRegistradas:
+          (ac.redes['instagram']?.trim().isNotEmpty ?? false) ||
+              (ac.redes['facebook']?.trim().isNotEmpty ?? false) ||
+              (ac.redes['tiktok']?.trim().isNotEmpty ?? false),
+      landingUrl: tieneLanding ? (PagosService.landingUrl(id) ?? '') : '',
+      datosLanding: datos,
+    );
+  }
+
+  /// El Negocio con el que abrir Servicios Pichangol desde la ACADEMIA: el
+  /// unificado si el dueño también tiene canchas, si no la academia sola.
+  Negocio negocioServiciosDeAcademia(Academia a) =>
+      negocioUnificado() ?? negocioDeAcademia(a);
+
+  /// El Negocio con el que abrir Servicios Pichangol desde un LOCAL: el unificado
+  /// si el dueño también tiene academia, si no ese club solo.
+  Negocio negocioServiciosDeClub(Club c) =>
+      negocioUnificado() ?? negocioDeClub(c);
+
   void eliminarAcademia(String id) {
     academias.removeWhere((a) => a.id == id);
     alumnos.removeWhere((al) => al.academiaId == id);

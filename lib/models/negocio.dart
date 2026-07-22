@@ -11,7 +11,7 @@ class Negocio {
   final String nombre;
   final String monedaSimbolo;
   final PaisConfig pais;
-  final String tipo; // 'academia' | 'club'
+  final String tipo; // 'academia' | 'club' | 'mixto'
   final bool tieneRedesRegistradas; // ¿ya declaró IG/FB/TikTok?
   final String landingUrl; // '' si aún no se generó
   final Map<String, dynamic> datosLanding; // datos para landing + posts
@@ -29,5 +29,10 @@ class Negocio {
 
   bool get esAcademia => tipo == 'academia';
   bool get esClub => tipo == 'club';
+
+  /// Negocio UNIFICADO: el mismo dueño tiene academia + canchas. Un solo plan de
+  /// Servicios Pichangol (una landing, una suscripción) cubre ambos; así no paga
+  /// doble por lo mismo. La landing deja reservar cancha y matricularse.
+  bool get esMixto => tipo == 'mixto';
   bool get tieneLanding => landingUrl.isNotEmpty;
 }

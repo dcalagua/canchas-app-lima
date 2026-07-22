@@ -57,6 +57,10 @@ class MarketingConfigRequest(BaseModel):
     redes_soles: float | None = None
     presencia_soles: float | None = None
     posts_limite_mes: int | None = None
+    # Fase 3: tarifa propia para CLUBES/canchas. 0 (o vacío) = usar la base.
+    landing_soles_club: float | None = None
+    redes_soles_club: float | None = None
+    presencia_soles_club: float | None = None
 
 
 class ComisionRequest(BaseModel):
@@ -169,6 +173,10 @@ def get_marketing_admin(x_admin_token: str | None = Header(default=None)) -> dic
         "redes_soles": stores.cfg_int("servicio_redes_soles"),
         "presencia_soles": stores.cfg_int("servicio_presencia_soles"),
         "posts_limite_mes": stores.cfg_int("marketing_posts_limite_mes"),
+        # 0 = sin tarifa propia de club (se usa la base de academia).
+        "landing_soles_club": stores.cfg_int("servicio_landing_soles_club"),
+        "redes_soles_club": stores.cfg_int("servicio_redes_soles_club"),
+        "presencia_soles_club": stores.cfg_int("servicio_presencia_soles_club"),
     }
 
 
@@ -185,6 +193,14 @@ def set_marketing_admin(req: MarketingConfigRequest,
         stores.config["servicio_presencia_soles"] = str(int(req.presencia_soles))
     if req.posts_limite_mes is not None:
         stores.config["marketing_posts_limite_mes"] = str(max(0, int(req.posts_limite_mes)))
+    # Overrides de club: 0 o menos = borrar (usar la tarifa base de academia).
+    for campo, clave in (
+        (req.landing_soles_club, "servicio_landing_soles_club"),
+        (req.redes_soles_club, "servicio_redes_soles_club"),
+        (req.presencia_soles_club, "servicio_presencia_soles_club"),
+    ):
+        if campo is not None:
+            stores.config[clave] = "" if int(campo) <= 0 else str(int(campo))
     return get_marketing_admin(x_admin_token)
 
 
@@ -570,6 +586,12 @@ function renderMarketing(){
       ${campo('mkt_redes','Manejo de redes (contenido IA + publicación)', mkt.redes_soles, 'S/ /mes')}
       ${campo('mkt_presencia','Presencia digital', mkt.presencia_soles, 'S/ /mes')}
       ${campo('mkt_limite','Tope de posts IA', mkt.posts_limite_mes, '/mes')}
+      <div class="row" style="margin-top:14px;font-weight:600">Tarifa propia para clubes / canchas
+        <span style="font-weight:400;color:var(--muted)"> — dejar en 0 usa la tarifa base de arriba. El
+        negocio unificado (academia + canchas) usa la base.</span></div>
+      ${campo('mkt_landing_club','Landing web (club)', mkt.landing_soles_club||0, 'S/ /mes')}
+      ${campo('mkt_redes_club','Manejo de redes (club)', mkt.redes_soles_club||0, 'S/ /mes')}
+      ${campo('mkt_presencia_club','Presencia digital (club)', mkt.presencia_soles_club||0, 'S/ /mes')}
       <div class="actions"><button class="btn-ap" onclick="guardarMarketing()">Guardar</button></div>
     </div>`;
 }
@@ -577,7 +599,9 @@ async function guardarMarketing(){
   const n = id => parseInt((document.getElementById(id).value||'0').replace(/[^0-9]/g,''))||0;
   const r = await fetch('/admin/api/marketing',{method:'POST',headers:headers(),
     body:JSON.stringify({landing_soles:n('mkt_landing'),redes_soles:n('mkt_redes'),
-      presencia_soles:n('mkt_presencia'),posts_limite_mes:n('mkt_limite')})});
+      presencia_soles:n('mkt_presencia'),posts_limite_mes:n('mkt_limite'),
+      landing_soles_club:n('mkt_landing_club'),redes_soles_club:n('mkt_redes_club'),
+      presencia_soles_club:n('mkt_presencia_club')})});
   if(r.status===401){ salir(); return; }
   if(r.ok){ mkt = await r.json(); renderMarketing(); toast('Servicios de marketing actualizados'); }
   else toast('No se pudo guardar');

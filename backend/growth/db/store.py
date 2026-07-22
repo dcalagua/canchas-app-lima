@@ -37,6 +37,13 @@ CONFIG_DEFAULT: dict[str, str] = {
     # IG/FB si el dueño conecta sus cuentas (o compartir con un tap). Editable.
     "servicio_redes_soles": "129",
     "servicio_presencia_soles": "149",
+    # Precios DIFERENCIADOS por tipo de negocio (Fase 3): los de arriba son la
+    # tarifa base (academias). Un CLUB/cancha puede tener su propia tarifa; si el
+    # override está VACÍO ("") se usa el precio base. Editable en la torre de
+    # control. El negocio UNIFICADO (mixto) usa la tarifa base (academia).
+    "servicio_landing_soles_club": "",
+    "servicio_redes_soles_club": "",
+    "servicio_presencia_soles_club": "",
     # (Legado) "Gestión de redes" se fusionó en "Manejo de redes". Se conserva la
     # clave por compatibilidad con datos antiguos; ya no se ofrece en el catálogo.
     "servicio_gestion_soles": "199",
