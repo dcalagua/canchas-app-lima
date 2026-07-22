@@ -11,6 +11,7 @@ import '../models/academia.dart';
 import '../models/club.dart';
 import '../models/models.dart';
 import '../services/pagos_service.dart';
+import '../services/places_service.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -108,6 +109,18 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
   late final Map<String, LatLng> _sedes = _cargarSedes();
   late LatLng? _sedeUbic = widget.academia?.sedeUbicacion;
 
+  // Foco + error inline (rojo) por campo requerido. Al guardar con un campo
+  // vacío, se enfoca ese campo y se pinta el error debajo + un aviso rojo.
+  final _nombreFocus = FocusNode();
+  final _whatsappFocus = FocusNode();
+  FocusNode? _sedeFocus; // capturado del Autocomplete (lo crea él)
+  String? _errNombre;
+  String? _errSede;
+  String? _errWhatsapp;
+
+  // Debounce del autocompletado de lugares: solo la última tecla dispara Google.
+  String _sedeQuery = '';
+
   Map<String, LatLng> _cargarSedes() {
     final m = <String, LatLng>{};
     for (final c in Club.agrupar(appState.todasLasCanchas())) {
@@ -154,6 +167,8 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
     _nombre.dispose();
     _whatsapp.dispose();
     _sede.dispose();
+    _nombreFocus.dispose();
+    _whatsappFocus.dispose();
     _desc.dispose();
     _recargoInvitado.dispose();
     _dtoHermano2.dispose();
@@ -413,16 +428,95 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
     return w;
   }
 
-  Future<void> _guardar() async {
+  /// Sedes conocidas (locales existentes) que calzan con [q], como sugerencias.
+  List<LugarSugerido> _sedesLocales(String q) {
+    final ql = q.trim().toLowerCase();
+    return [
+      for (final e in _sedes.entries)
+        if (ql.isEmpty || e.key.toLowerCase().contains(ql))
+          LugarSugerido(nombre: e.key, direccion: '', ubicacion: e.value),
+    ].take(4).toList();
+  }
+
+  /// Opciones del campo "sede": primero los locales conocidos que calzan, luego
+  /// lugares REALES de Google (filtrados por ubicación). Con debounce para no
+  /// llamar a Google en cada tecla.
+  Future<Iterable<LugarSugerido>> _opcionesSede(TextEditingValue v) async {
+    final q = v.text.trim();
+    final locales = _sedesLocales(q);
+    if (q.length < 3 || !PlacesService.disponible) return locales;
+    _sedeQuery = q;
+    await Future.delayed(const Duration(milliseconds: 350));
+    if (_sedeQuery != q) return locales; // el usuario siguió escribiendo
+    final remotos =
+        await PlacesService.autocompletarLugar(q, centro: _sedeUbic);
+    if (_sedeQuery != q) return locales;
+    // Evita repetir un local que Google también devuelva (por nombre).
+    final vistos = locales.map((e) => e.nombre.toLowerCase()).toSet();
+    return [
+      ...locales,
+      ...remotos.where((r) => !vistos.contains(r.nombre.toLowerCase())),
+    ];
+  }
+
+  /// Aviso ROJO llamativo (para errores de validación).
+  void _avisarRojo(String m) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        backgroundColor: const Color(0xFFD64545),
+        behavior: SnackBarBehavior.floating,
+        content: Row(children: [
+          const Icon(Icons.error_outline, color: Colors.white, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+              child: Text(m,
+                  style: const TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.w700))),
+        ]),
+      ));
+  }
+
+  /// Valida los campos requeridos. Si falta alguno: pinta el error inline (rojo),
+  /// ENFOCA el primer campo con error y muestra un aviso rojo. Devuelve true si
+  /// todo está OK.
+  bool _validar() {
     final nombre = _nombre.text.trim();
-    if (nombre.isEmpty) {
-      _avisar('Ponle un nombre a tu academia.');
-      return;
+    final sede = _sede.text.trim();
+    final tel = _whatsapp.text.replaceAll(RegExp(r'[^0-9]'), '');
+    final minTel = _paisAcademia.telLongitud;
+    final eN = nombre.isEmpty ? 'Ponle un nombre a tu academia.' : null;
+    final eS = sede.isEmpty ? 'Indica dónde entrenas (sede actual).' : null;
+    final eW = tel.length < minTel
+        ? 'Pon un WhatsApp válido ($minTel dígitos).'
+        : null;
+    setState(() {
+      _errNombre = eN;
+      _errSede = eS;
+      _errWhatsapp = eW;
+    });
+    if (eN != null) {
+      _nombreFocus.requestFocus();
+      _avisarRojo(eN);
+      return false;
     }
-    if (_whatsapp.text.replaceAll(RegExp(r'[^0-9]'), '').length < 9) {
-      _avisar('Pon un WhatsApp de contacto válido.');
-      return;
+    if (eS != null) {
+      _sedeFocus?.requestFocus();
+      _avisarRojo(eS);
+      return false;
     }
+    if (eW != null) {
+      _whatsappFocus.requestFocus();
+      _avisarRojo(eW);
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> _guardar() async {
+    if (!_validar()) return;
+    final nombre = _nombre.text.trim();
     setState(() => _guardando = true);
 
     // Sube el logo nuevo (si eligió uno) y toma su URL pública.
@@ -535,36 +629,43 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
           const SizedBox(height: 16),
           TextField(
             controller: _nombre,
-            decoration: const InputDecoration(
+            focusNode: _nombreFocus,
+            onChanged: (_) {
+              if (_errNombre != null) setState(() => _errNombre = null);
+            },
+            decoration: InputDecoration(
                 labelText: 'Nombre de la academia',
-                hintText: 'Ej.: Academia de Tenis Baseline'),
+                hintText: 'Ej.: Academia de Tenis Baseline',
+                errorText: _errNombre),
           ),
           const SizedBox(height: 16),
-          Autocomplete<String>(
+          Autocomplete<LugarSugerido>(
             initialValue: TextEditingValue(text: _sede.text),
-            optionsBuilder: (v) {
-              final q = v.text.trim().toLowerCase();
-              if (q.isEmpty) return const Iterable<String>.empty();
-              return _sedes.keys
-                  .where((n) => n.toLowerCase().contains(q))
-                  .take(6);
-            },
+            displayStringForOption: (o) => o.nombre,
+            optionsBuilder: _opcionesSede,
             onSelected: (sel) {
-              _sede.text = sel;
-              _sedeUbic = _sedes[sel]; // captura la ubicación del local elegido
+              _sede.text = sel.nombre;
+              _sedeUbic = sel.ubicacion; // captura la ubicación real elegida
+              if (_errSede != null) setState(() => _errSede = null);
             },
             fieldViewBuilder: (context, controller, focus, onSubmit) {
+              _sedeFocus = focus; // referencia para enfocar en la validación
               return TextField(
                 controller: controller,
                 focusNode: focus,
                 onChanged: (v) {
                   _sede.text = v;
-                  _sedeUbic = _sedes[v]; // null si es un nombre nuevo (no de lista)
+                  // Texto nuevo (no elegido de la lista): pierde la ubicación
+                  // hasta que elija una sugerencia real.
+                  _sedeUbic = _sedes[v];
+                  if (_errSede != null) setState(() => _errSede = null);
                 },
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: '¿Dónde entrenas ahora? (sede actual)',
-                  hintText: 'Escribe y elige de la lista, o pon una nueva',
-                  prefixIcon: Icon(Icons.place_outlined),
+                  hintText: 'Escribe tu sede o dirección y elige de la lista',
+                  helperText: 'Elige una sugerencia para fijar la ubicación 📍',
+                  prefixIcon: const Icon(Icons.place_outlined),
+                  errorText: _errSede,
                 ),
               );
             },
@@ -574,7 +675,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                 elevation: 4,
                 borderRadius: BorderRadius.circular(12),
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 240, maxWidth: 360),
+                  constraints: const BoxConstraints(maxHeight: 280, maxWidth: 360),
                   child: ListView(
                     padding: EdgeInsets.zero,
                     shrinkWrap: true,
@@ -585,7 +686,12 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                           leading: Icon(Icons.place,
                               size: 18,
                               color: Theme.of(context).colorScheme.primary),
-                          title: Text(o),
+                          title: Text(o.nombre,
+                              maxLines: 1, overflow: TextOverflow.ellipsis),
+                          subtitle: o.direccion.trim().isEmpty
+                              ? null
+                              : Text(o.direccion,
+                                  maxLines: 1, overflow: TextOverflow.ellipsis),
                           onTap: () => onSelected(o),
                         ),
                     ],
@@ -597,12 +703,17 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
           const SizedBox(height: 16),
           TextField(
             controller: _whatsapp,
+            focusNode: _whatsappFocus,
             keyboardType: TextInputType.phone,
+            onChanged: (_) {
+              if (_errWhatsapp != null) setState(() => _errWhatsapp = null);
+            },
             decoration: InputDecoration(
                 labelText: 'WhatsApp de contacto',
                 // Prefijo del país de la SEDE (+51 Perú, +591 Bolivia…), no el
                 // del dispositivo del profe.
-                prefixText: '+${_paisAcademia.codigoTel} '),
+                prefixText: '+${_paisAcademia.codigoTel} ',
+                errorText: _errWhatsapp),
           ),
           const SizedBox(height: 16),
           TextField(

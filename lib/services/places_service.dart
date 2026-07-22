@@ -17,6 +17,21 @@ import 'supabase_service.dart';
 /// que funcione hay que habilitar **Places API (New)** en Google Cloud y que la
 /// key NO esté restringida solo a apps Android (las llamadas web service la
 /// rechazarían). Todo es fail-safe: si algo falla, devuelve vacío.
+/// Un lugar sugerido por el autocompletado (nombre + dirección + coordenadas).
+/// Se usa para que el usuario ELIJA su sede filtrando por ubicación real de
+/// Google, en vez de escribir texto libre sin geolocalizar.
+class LugarSugerido {
+  final String nombre;
+  final String direccion;
+  final LatLng ubicacion;
+  const LugarSugerido(
+      {required this.nombre, required this.direccion, required this.ubicacion});
+
+  /// Texto para la caja de opciones: "Nombre — dirección" (si hay dirección).
+  String get etiqueta =>
+      direccion.trim().isEmpty ? nombre : '$nombre — $direccion';
+}
+
 class PlacesService {
   // Key dedicada a Places (web service). Si no se define, cae a la del mapa.
   static const _placesKey = String.fromEnvironment('PLACES_API_KEY');
@@ -24,6 +39,70 @@ class PlacesService {
   static String get _key => _placesKey.isNotEmpty ? _placesKey : _mapsKey;
 
   static bool get disponible => _key.isNotEmpty;
+
+  /// AUTOCOMPLETADO de lugares por texto, filtrando por UBICACIÓN. Devuelve
+  /// sugerencias reales de Google (nombre + dirección + coordenadas) para que el
+  /// usuario elija su sede en vez de escribir texto sin geolocalizar. Sesga por
+  /// [centro] si se pasa (locationBias) y por el país activo (regionCode).
+  /// Fail-safe: [] ante error/timeout o sin key.
+  static Future<List<LugarSugerido>> autocompletarLugar(String query,
+      {LatLng? centro}) async {
+    final q = query.trim();
+    if (q.length < 3 || !disponible) return const [];
+    try {
+      final uri = Uri.https('places.googleapis.com', '/v1/places:searchText');
+      final body = <String, dynamic>{
+        'textQuery': q,
+        'languageCode': 'es',
+        'regionCode': paisActual.iso,
+        'maxResultCount': 6,
+      };
+      if (centro != null) {
+        body['locationBias'] = {
+          'circle': {
+            'center': {
+              'latitude': centro.latitude,
+              'longitude': centro.longitude,
+            },
+            'radius': 30000.0, // 30 km alrededor de la referencia
+          },
+        };
+      }
+      final resp = await http
+          .post(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Goog-Api-Key': _key,
+              'X-Goog-FieldMask':
+                  'places.displayName,places.formattedAddress,places.location',
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 6));
+      if (resp.statusCode != 200) return const [];
+      final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      final out = <LugarSugerido>[];
+      for (final p in (data['places'] as List? ?? const [])) {
+        final m = p as Map<String, dynamic>;
+        final loc = m['location'] as Map<String, dynamic>?;
+        if (loc == null) continue;
+        final nombre = (m['displayName']?['text'] ?? '') as String;
+        final dir = (m['formattedAddress'] ?? '') as String;
+        out.add(LugarSugerido(
+          nombre: nombre.isNotEmpty ? nombre : dir,
+          direccion: dir,
+          ubicacion: LatLng(
+            (loc['latitude'] as num).toDouble(),
+            (loc['longitude'] as num).toDouble(),
+          ),
+        ));
+      }
+      return out;
+    } catch (_) {
+      return const [];
+    }
+  }
 
   /// Consultas de texto que cubren los deportes del marketplace en Lima.
   /// Incluye jerga peruana (pichanga, fulbito, grass/loza, fútbol 5/6/7) para
