@@ -472,6 +472,64 @@ class PagosService {
     }
   }
 
+  // --- Tarjeta de DÉBITO AUTOMÁTICO de las suscripciones ------------------
+  /// ¿La academia tiene tarjeta guardada para el cobro automático? Devuelve
+  /// {tiene_tarjeta, marca, ultimos4} o null si no se pudo.
+  static Future<Map<String, dynamic>?> metodoSuscripcion(String academiaId) async {
+    if (!disponible) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/pagos/servicios/metodo/$academiaId');
+      final r = await http.get(uri, headers: _appHeaders())
+          .timeout(const Duration(seconds: 12));
+      if (r.statusCode != 200) return null;
+      return Map<String, dynamic>.from(jsonDecode(r.body) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Guarda la tarjeta de débito automático (token tkn_ ya tokenizado). Devuelve
+  /// {ok, marca, ultimos4} o {ok:false, error}.
+  static Future<Map<String, dynamic>> guardarMetodoSuscripcion({
+    required String academiaId,
+    required String token,
+    required String email,
+    String nombre = '',
+  }) async {
+    if (!disponible) return {'ok': false, 'error': 'Pagos no disponibles.'};
+    try {
+      final r = await http.post(
+        Uri.parse('$_baseUrl/pagos/servicios/metodo'),
+        headers: _appHeaders(json: true),
+        body: jsonEncode({
+          'academia_id': academiaId,
+          'token': token,
+          'email': email,
+          'nombre': nombre,
+        }),
+      ).timeout(const Duration(seconds: 30));
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      if (r.statusCode == 200 && j['ok'] == true) return j;
+      return {'ok': false, 'error': j['error'] ?? 'No se pudo guardar la tarjeta.'};
+    } catch (e) {
+      return {'ok': false, 'error': 'Sin conexión con el servidor de pagos.'};
+    }
+  }
+
+  /// Elimina la tarjeta de débito automático de la academia.
+  static Future<bool> eliminarMetodoSuscripcion(String academiaId) async {
+    if (!disponible) return false;
+    try {
+      final r = await http.delete(
+        Uri.parse('$_baseUrl/pagos/servicios/metodo/$academiaId'),
+        headers: _appHeaders(),
+      ).timeout(const Duration(seconds: 12));
+      return r.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
   // --- Landing hospedada (fulfillment del servicio de marketing) ----------
   /// URL pública de la landing de una academia (la sirve el backend).
   static String? landingUrl(String academiaId) =>

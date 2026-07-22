@@ -39,6 +39,9 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
   Map<String, dynamic>? _redesConn;
   int? _publicando; // índice del post que se está publicando
 
+  // Tarjeta de débito automático de las suscripciones.
+  Map<String, dynamic>? _metodoSus;
+
   @override
   void dispose() {
     _tema.dispose();
@@ -94,11 +97,13 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
     final planes = await PagosService.planesServicios();
     final subs = await PagosService.estadoServicios(_idAcademia);
     final conn = await PagosService.estadoRedes(_idAcademia);
+    final metodo = await PagosService.metodoSuscripcion(_idAcademia);
     if (!mounted) return;
     setState(() {
       _planes = planes;
       _subs = subs ?? const [];
       _redesConn = conn;
+      _metodoSus = metodo;
       _cargando = false;
     });
   }
@@ -398,14 +403,15 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
+                  _cardDebitoAuto(),
                   if (_landingContratada) _cardLanding(),
                   if (_redesContratada) _cardGestion(),
                   if (_redesContratada) _cardRedes(),
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 8, horizontal: 2),
                     child: Text(
-                        'Contrata tu presencia digital. Se cobra del saldo cada '
-                        'mes; puedes cancelar cuando quieras.',
+                        'Contrata tu presencia digital. Se cobra del saldo o de tu '
+                        'tarjeta cada mes; puedes cancelar cuando quieras.',
                         style: TextStyle(color: textoTenue, fontSize: 13)),
                   ),
                   if (_planes == null)
@@ -420,6 +426,264 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
               ),
             ),
     );
+  }
+
+  /// Tarjeta de DÉBITO AUTOMÁTICO: la academia guarda una tarjeta para que las
+  /// suscripciones se cobren solas cada mes (si no hay saldo).
+  Widget _cardDebitoAuto() {
+    final tiene = _metodoSus?['tiene_tarjeta'] == true;
+    final marca = (_metodoSus?['marca'] ?? '').toString();
+    final u4 = (_metodoSus?['ultimos4'] ?? '').toString();
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: trazo),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.credit_card, color: lima),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text('Débito automático',
+                    style:
+                        TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+              ),
+              if (tiene)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                      color: limaSuave,
+                      borderRadius: BorderRadius.circular(999)),
+                  child: const Text('● Activo',
+                      style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w800,
+                          color: lima)),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+              tiene
+                  ? 'Tus suscripciones se cobran solas cada mes. Tarjeta '
+                      '${marca.isEmpty ? '' : '$marca '}····$u4.'
+                  : 'Guarda una tarjeta y tus suscripciones se cobran solas cada '
+                      'mes (si no tienes saldo). Sin perseguir el pago.',
+              style: const TextStyle(color: textoTenue, fontSize: 13)),
+          const SizedBox(height: 12),
+          if (tiene)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                icon: const Icon(Icons.delete_outline, size: 18, color: clayOscuro),
+                label: const Text('Quitar tarjeta',
+                    style: TextStyle(color: clayOscuro)),
+                onPressed: _quitarTarjeta,
+              ),
+            )
+          else
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                    backgroundColor: lima,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 13)),
+                icon: const Icon(Icons.add_card, size: 18),
+                label: const Text('Agregar tarjeta',
+                    style: TextStyle(fontWeight: FontWeight.w800)),
+                onPressed: _agregarTarjeta,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _quitarTarjeta() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Quitar tarjeta'),
+        content: const Text(
+            'Se elimina la tarjeta de débito automático. Tus suscripciones se '
+            'cobrarán del saldo; recárgalo para que no se pausen.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('No')),
+          FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: clayOscuro),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Quitar')),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await PagosService.eliminarMetodoSuscripcion(_idAcademia);
+      await _cargar();
+    }
+  }
+
+  /// Hoja para tokenizar y guardar la tarjeta de débito automático (Culqi).
+  Future<void> _agregarTarjeta() async {
+    final cfg = await PagosService.config();
+    final pk = (cfg?['public_key'] ?? '').toString();
+    if (!mounted) return;
+    if (cfg?['disponible'] != true || pk.isEmpty) {
+      _msg('Pagos no configurados en el servidor.');
+      return;
+    }
+    final email = appState.usuario?.email ?? '';
+    final numero = TextEditingController();
+    final exp = TextEditingController();
+    final cvv = TextEditingController();
+    var guardando = false;
+    String? error;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSt) => Padding(
+          padding: EdgeInsets.fromLTRB(
+              18, 18, 18, MediaQuery.of(ctx).viewInsets.bottom + 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Tarjeta para débito automático',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+              const SizedBox(height: 4),
+              const Text(
+                  'Se guarda de forma segura (no guardamos el número). Se usará '
+                  'para cobrar tus suscripciones cada mes.',
+                  style: TextStyle(color: textoTenue, fontSize: 12.5)),
+              const SizedBox(height: 14),
+              TextField(
+                controller: numero,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                    labelText: 'Número de tarjeta',
+                    hintText: '4111 1111 1111 1111'),
+              ),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: exp,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                          labelText: 'Vence (MM/AA)', hintText: '09/28'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: cvv,
+                      keyboardType: TextInputType.number,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                          labelText: 'CVV', hintText: '123'),
+                    ),
+                  ),
+                ],
+              ),
+              if (error != null) ...[
+                const SizedBox(height: 8),
+                Text(error!, style: const TextStyle(color: clayOscuro, fontSize: 13)),
+              ],
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  style: FilledButton.styleFrom(
+                      backgroundColor: lima,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14)),
+                  onPressed: guardando
+                      ? null
+                      : () async {
+                          final num = numero.text.replaceAll(' ', '');
+                          final partes = exp.text.split('/');
+                          final mes = partes.isNotEmpty
+                              ? (int.tryParse(partes[0].trim()) ?? 0)
+                              : 0;
+                          var anio = partes.length > 1
+                              ? (int.tryParse(partes[1].trim()) ?? 0)
+                              : 0;
+                          if (anio < 100) anio += 2000;
+                          if (num.length < 15) {
+                            setSt(() => error = 'Número de tarjeta inválido.');
+                            return;
+                          }
+                          if (mes < 1 || mes > 12) {
+                            setSt(() =>
+                                error = 'Fecha inválida. Escribe MES/AÑO, ej. 09/28.');
+                            return;
+                          }
+                          if (cvv.text.trim().length < 3) {
+                            setSt(() => error = 'CVV inválido.');
+                            return;
+                          }
+                          setSt(() {
+                            guardando = true;
+                            error = null;
+                          });
+                          final tok = await PagosService.tokenizarTarjeta(
+                              publicKey: pk,
+                              numero: num,
+                              cvv: cvv.text.trim(),
+                              mesExp: mes,
+                              anioExp: anio,
+                              email: email);
+                          if (tok['ok'] != true) {
+                            setSt(() {
+                              guardando = false;
+                              error = tok['error']?.toString() ??
+                                  'No se pudo validar la tarjeta.';
+                            });
+                            return;
+                          }
+                          final r = await PagosService.guardarMetodoSuscripcion(
+                              academiaId: _idAcademia,
+                              token: tok['token'].toString(),
+                              email: email);
+                          if (r['ok'] == true) {
+                            if (ctx.mounted) Navigator.pop(ctx);
+                          } else {
+                            setSt(() {
+                              guardando = false;
+                              error = r['error']?.toString() ??
+                                  'No se pudo guardar la tarjeta.';
+                            });
+                          }
+                        },
+                  child: guardando
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2.4, color: Colors.white))
+                      : const Text('Guardar tarjeta'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (mounted) await _cargar();
   }
 
   /// Tarjeta "Publicación automática": conectar el IG/FB del dueño para que

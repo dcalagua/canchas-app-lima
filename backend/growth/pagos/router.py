@@ -403,13 +403,19 @@ def get_servicios_todas() -> dict:
             "mrr_soles": round(sum(s["monto_soles"] for s in activas), 2)}
 
 
-@router.post("/servicios/cobrar-vencidas", dependencies=_ADMIN)
-def post_cobrar_vencidas() -> dict:
-    """Cobra las suscripciones activas cuyo próximo cobro ya venció (renovación
-    mensual). Si el dueño no tiene saldo, la deja 'pendiente_pago'. La dispara la
-    torre de control (o un cron más adelante)."""
+def _renovar_ok(s: dict, ahora: datetime) -> None:
+    s["ultimo_cobro"] = ahora.isoformat()
+    s["proximo_cobro"] = _mas_un_mes(ahora).isoformat()
+    s["estado"] = "activa"
+
+
+def procesar_renovaciones() -> dict:
+    """Renueva las suscripciones vencidas. Orden de cobro:
+    1) SALDO prepago del dueño; 2) si no alcanza, la TARJETA de débito automático
+    guardada de la academia (Culqi). Si ninguna funciona → 'pendiente_pago'.
+    La usan el endpoint /servicios/cobrar-vencidas y el cron interno."""
     ahora = datetime.now(timezone.utc)
-    cobradas = pendientes = 0
+    cobradas = por_tarjeta = pendientes = 0
     for s in stores.suscripciones.values():
         if s.get("estado") not in ("activa", "pendiente_pago"):
             continue
@@ -421,20 +427,98 @@ def post_cobrar_vencidas() -> dict:
         if venc is not None and venc > ahora:
             continue
         monto = s.get("monto_centimos", 0)
+        aca = s.get("academia_id")
+        concepto = f"Suscripción {s['servicio']} · {aca}"
+        # 1) Saldo prepago.
         if stores.saldo_centimos(s["dueno_id"]) >= monto:
             stores.debitar(s["dueno_id"], monto)
             stores.registrar_pago(
                 tipo="suscripcion", monto_centimos=monto, moneda="PEN",
-                estado="aprobado", dueno_id=s["dueno_id"],
-                concepto=f"Suscripción {s['servicio']} · {s['academia_id']}")
-            s["ultimo_cobro"] = ahora.isoformat()
-            s["proximo_cobro"] = _mas_un_mes(ahora).isoformat()
-            s["estado"] = "activa"
+                estado="aprobado", dueno_id=s["dueno_id"], concepto=concepto)
+            _renovar_ok(s, ahora)
             cobradas += 1
-        else:
-            s["estado"] = "pendiente_pago"
-            pendientes += 1
-    return {"ok": True, "cobradas": cobradas, "pendientes": pendientes}
+            continue
+        # 2) Tarjeta de débito automático guardada.
+        metodo = stores.metodo_suscripcion.get(aca)
+        if metodo and metodo.get("card_id") and culqi.disponible():
+            r = culqi.crear_cargo(
+                token=metodo["card_id"], monto_centimos=monto,
+                email=metodo.get("email") or "", descripcion=concepto,
+                metadata={"tipo": "suscripcion", "academia_id": aca})
+            if r.get("ok"):
+                stores.registrar_pago(
+                    tipo="suscripcion", monto_centimos=monto, moneda="PEN",
+                    estado="aprobado", dueno_id=s["dueno_id"],
+                    culqi_charge_id=r.get("charge_id"),
+                    concepto=concepto + " (tarjeta)")
+                _renovar_ok(s, ahora)
+                por_tarjeta += 1
+                continue
+        s["estado"] = "pendiente_pago"
+        pendientes += 1
+    return {"ok": True, "cobradas": cobradas, "por_tarjeta": por_tarjeta,
+            "pendientes": pendientes}
+
+
+@router.post("/servicios/cobrar-vencidas", dependencies=_ADMIN)
+def post_cobrar_vencidas() -> dict:
+    """Dispara la renovación de suscripciones vencidas (torre de control). El cron
+    interno hace lo mismo automáticamente."""
+    return procesar_renovaciones()
+
+
+class MetodoSuscripcionReq(BaseModel):
+    academia_id: str
+    token: str                 # tkn_ (tarjeta tokenizada en el APK)
+    email: str
+    nombre: str = ""
+    apellido: str = ""
+
+
+def _metodo_sus_publico(m: dict | None) -> dict:
+    if not m:
+        return {"tiene_tarjeta": False}
+    return {"tiene_tarjeta": True, "marca": m.get("marca"),
+            "ultimos4": m.get("ultimos4")}
+
+
+@router.get("/servicios/metodo/{academia_id}", dependencies=_APP)
+def get_metodo_suscripcion(academia_id: str) -> dict:
+    """¿La academia tiene tarjeta de débito automático? (enmascarada)."""
+    return _metodo_sus_publico(stores.metodo_suscripcion.get(academia_id))
+
+
+@router.post("/servicios/metodo", dependencies=_APP)
+def set_metodo_suscripcion(req: MetodoSuscripcionReq) -> dict:
+    """Guarda la tarjeta de débito automático de una academia (Culqi One-Click):
+    crea/reusa el customer, convierte el token en tarjeta permanente (crd_) y la
+    guarda con el email para cobrarla en cada renovación."""
+    if not culqi.disponible():
+        raise HTTPException(status_code=503, detail="pagos_no_configurados")
+    key = f"aca:{req.academia_id}"
+    cus = stores.customers.get(key)
+    if not cus:
+        rc = culqi.crear_customer(email=req.email, nombre=req.nombre,
+                                  apellido=req.apellido)
+        if not rc["ok"]:
+            return {"ok": False, "error": rc.get("error", "no_se_pudo_crear_cliente")}
+        cus = rc["customer_id"]
+        stores.customers[key] = cus
+    rcard = culqi.crear_card(customer_id=cus, token=req.token)
+    if not rcard["ok"]:
+        return {"ok": False, "error": rcard.get("error", "no_se_pudo_guardar_tarjeta")}
+    stores.metodo_suscripcion[req.academia_id] = {
+        "card_id": rcard["card_id"], "email": req.email,
+        "marca": rcard["marca"], "ultimos4": rcard["ultimos4"]}
+    return {"ok": True, **_metodo_sus_publico(stores.metodo_suscripcion[req.academia_id])}
+
+
+@router.delete("/servicios/metodo/{academia_id}", dependencies=_APP)
+def del_metodo_suscripcion(academia_id: str) -> dict:
+    m = stores.metodo_suscripcion.pop(academia_id, None)
+    if m and m.get("card_id"):
+        culqi.eliminar_card(m["card_id"])  # best-effort
+    return {"ok": True}
 
 
 # ------ Comisión por COBRO DIGITAL de matrícula (tarifa "tipo POS") ----------

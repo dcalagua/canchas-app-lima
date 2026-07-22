@@ -355,6 +355,10 @@ class Stores:
         # token permanente de Culqi (crd_...) + marca y últimos 4 para mostrar.
         self.customers: dict[str, str] = {}       # user_id -> cus_id de Culqi
         self.metodos: dict[str, list[dict]] = {}  # user_id -> [{id, marca, ultimos4, creado_en}]
+        # Tarjeta de DÉBITO AUTOMÁTICO por academia para las suscripciones: al
+        # renovar, si no hay saldo, se cobra a esta tarjeta guardada (crd_ de
+        # Culqi). Guarda email + marca + últimos4, NUNCA el número completo.
+        self.metodo_suscripcion: dict[str, dict] = {}  # academia_id -> {card_id,email,marca,ultimos4}
         self._idem: dict[tuple[str, str], dict] = {}
         self._ids: dict[str, int] = {}
 
@@ -575,6 +579,7 @@ class Stores:
             "vistas": {k: dict(v) for k, v in self.vistas.items()},
             "customers": dict(self.customers),
             "metodos": {k: list(v) for k, v in self.metodos.items()},
+            "metodo_suscripcion": {k: dict(v) for k, v in self.metodo_suscripcion.items()},
         }
 
     def load_state(self, data: dict) -> None:
@@ -620,6 +625,9 @@ class Stores:
         self.customers = dict(data.get("customers") or {})
         self.metodos = {
             k: list(v) for k, v in (data.get("metodos") or {}).items()
+        }
+        self.metodo_suscripcion = {
+            k: dict(v) for k, v in (data.get("metodo_suscripcion") or {}).items()
         }
 
     # --- normalización a TABLAS SQL (fase 1: saldos/pagos/vistas/reclamos) ----

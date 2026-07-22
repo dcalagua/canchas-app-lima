@@ -7,6 +7,8 @@ Ejecutar (desde este directorio):
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import Depends, FastAPI, Request
 
 from compliance.consent import consent_store
@@ -17,6 +19,7 @@ from db.store import seed_verificadores, stores
 from legal.router import router as legal_router
 from models import ConfigRequest, ConsentimientoRequest
 from marketing.router import router as marketing_router
+from pagos.router import procesar_renovaciones
 from pagos.router import router as pagos_router
 from propiedad.panel import router as panel_router
 from propiedad.router import _require_admin
@@ -83,6 +86,27 @@ app.include_router(pagos_router)
 app.include_router(marketing_router)
 app.include_router(legal_router)
 app.include_router(concierge_router)
+
+
+@app.on_event("startup")
+async def _iniciar_cron_renovaciones() -> None:
+    """Cron INTERNO: cada 12 h renueva las suscripciones vencidas (cobra del saldo
+    o de la tarjeta de débito automático). Corre dentro del mismo proceso (una
+    sola réplica en Railway), fail-safe, y persiste si cambió algo."""
+    async def _loop() -> None:
+        await asyncio.sleep(60)  # deja arrancar el servicio
+        while True:
+            try:
+                r = procesar_renovaciones()
+                cambio = (r.get("cobradas") or r.get("por_tarjeta")
+                          or r.get("pendientes"))
+                if cambio and pg.habilitado:
+                    pg.guardar(stores.to_state())
+            except Exception:  # noqa: BLE001
+                pass
+            await asyncio.sleep(12 * 3600)  # cada 12 horas
+
+    asyncio.create_task(_loop())
 
 
 @app.get("/health")
