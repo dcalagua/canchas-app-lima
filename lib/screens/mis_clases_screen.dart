@@ -7,6 +7,7 @@ import '../models/academia.dart';
 import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/logo_academia.dart';
 import '../widgets/pago_tarjeta_sheet.dart';
 
 /// Vista del ALUMNO: sus matrículas, los pagos que hizo (comprobante/boleta) y
@@ -87,7 +88,7 @@ class MisClasesScreen extends StatelessWidget {
             ),
             child: Row(
               children: [
-                _logoAcademia(academia),
+                LogoAcademia(logoUrl: academia?.logoUrl),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
@@ -158,6 +159,7 @@ class MisClasesScreen extends StatelessWidget {
     if (cuotas.isEmpty) return;
     final total = cuotas.fold<double>(0, (s, c) => s + c.monto);
     if (total <= 0) return;
+    String? operacionId;
     final pagado = await PagoTarjeta.cobrar(
       context,
       monto: total.round(),
@@ -166,6 +168,7 @@ class MisClasesScreen extends StatelessWidget {
           : '${cuotas.length} cuotas · ${ac.nombre}',
       email: appState.usuario?.email ?? '',
       moneda: mon,
+      onOperacion: (o) => operacionId = o,
     );
     if (!pagado) return;
     // Cobro digital para la academia (congela comisión POS, neto "por recibir").
@@ -178,7 +181,7 @@ class MisClasesScreen extends StatelessWidget {
           cuotas.length == 1 ? cuotas.first.concepto : 'Cuotas ${ac.nombre}',
     );
     for (final c in cuotas) {
-      appState.marcarCuotaPagada(c.id);
+      appState.marcarCuotaPagada(c.id, operacionId: operacionId ?? '');
     }
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -186,23 +189,6 @@ class MisClasesScreen extends StatelessWidget {
               ? 'Cuota pagada. ¡Gracias!'
               : '${cuotas.length} cuotas pagadas. ¡Gracias!')));
     }
-  }
-
-  /// Logo de la academia (si lo subió); si no, cae al ícono de raqueta.
-  Widget _logoAcademia(Academia? ac) {
-    final url = ac?.logoUrl;
-    if (url != null && url.isNotEmpty) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(9),
-        child: Image.network(url,
-            width: 36,
-            height: 36,
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) =>
-                const Icon(Icons.sports_tennis, color: lima)),
-      );
-    }
-    return const Icon(Icons.sports_tennis, color: lima);
   }
 
   Widget _fila(String titulo, String sub, String monto,
@@ -274,6 +260,8 @@ class MisClasesScreen extends StatelessWidget {
             _lineaComp('Alumno', al.nombre),
             _lineaComp('Concepto', c.concepto),
             _lineaComp('Fecha y hora', _fechaHora(c.fechaPago ?? c.vencimiento)),
+            if (c.operacionId.isNotEmpty)
+              _lineaComp('N.º operación', c.operacionId),
             const Divider(height: 20),
             _lineaComp('Monto', '$mon ${c.monto.toStringAsFixed(2)}',
                 fuerte: true),
@@ -341,6 +329,8 @@ class MisClasesScreen extends StatelessWidget {
               _pdfLinea('Alumno', al.nombre),
               _pdfLinea('Concepto', c.concepto),
               _pdfLinea('Fecha y hora', _fechaHora(c.fechaPago ?? c.vencimiento)),
+              if (c.operacionId.isNotEmpty)
+                _pdfLinea('N.º operación', c.operacionId),
               pw.Divider(),
               _pdfLinea('Monto', '$mon ${c.monto.toStringAsFixed(2)}',
                   fuerte: true),

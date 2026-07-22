@@ -455,6 +455,8 @@ class Cuota {
   final DateTime vencimiento;
   final bool pagada;
   final DateTime? fechaPago; // cuándo se cobró (para reportes por fecha)
+  /// N.º de operación del pago (charge_id de Culqi). Se muestra en el comprobante.
+  final String operacionId;
   /// Cuota de una MENSUALIDAD con débito automático (pago "mes a mes"): el cron
   /// la cobra en su fecha. Sirve para la RECONCILIACIÓN (marcar pagada sola según
   /// los cobros que hizo el backend). Las cuotas normales (contado, clase suelta)
@@ -471,13 +473,18 @@ class Cuota {
     this.pagada = false,
     this.fechaPago,
     this.autoDebito = false,
+    this.operacionId = '',
   });
 
   /// Vencida = no pagada y ya pasó su fecha de vencimiento.
   bool vencidaAl(DateTime hoy) =>
       !pagada && vencimiento.isBefore(DateTime(hoy.year, hoy.month, hoy.day));
 
-  Cuota copyWith({bool? pagada, DateTime? fechaPago, bool limpiarFechaPago = false}) =>
+  Cuota copyWith(
+          {bool? pagada,
+          DateTime? fechaPago,
+          bool limpiarFechaPago = false,
+          String? operacionId}) =>
       Cuota(
         id: id,
         academiaId: academiaId,
@@ -488,6 +495,7 @@ class Cuota {
         pagada: pagada ?? this.pagada,
         fechaPago: limpiarFechaPago ? null : (fechaPago ?? this.fechaPago),
         autoDebito: autoDebito,
+        operacionId: operacionId ?? this.operacionId,
       );
 
   Map<String, dynamic> toJson() => {
@@ -500,6 +508,7 @@ class Cuota {
         'pagada': pagada,
         if (fechaPago != null) 'fechaPago': fechaPago!.toIso8601String(),
         if (autoDebito) 'autoDebito': true,
+        if (operacionId.isNotEmpty) 'operacionId': operacionId,
       };
 
   factory Cuota.fromJson(Map<String, dynamic> j) => Cuota(
@@ -516,6 +525,7 @@ class Cuota {
             ? DateTime.tryParse(j['fechaPago'] as String)
             : null,
         autoDebito: (j['autoDebito'] ?? false) as bool,
+        operacionId: (j['operacionId'] ?? '') as String,
       );
 }
 

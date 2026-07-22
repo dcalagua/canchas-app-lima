@@ -7,6 +7,7 @@ import '../services/pagos_service.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/logo_academia.dart';
 import 'asistencia_screen.dart';
 import 'campeonatos_screen.dart';
 import 'chats_academia_screen.dart';
@@ -672,6 +673,14 @@ class _Header extends StatelessWidget {
         children: [
           Row(
             children: [
+              Container(
+                margin: const EdgeInsets.only(right: 10),
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10)),
+                child: LogoAcademia(logoUrl: academia.logoUrl, size: 34),
+              ),
               Expanded(
                 child: Text(academia.nombre,
                     maxLines: 1,

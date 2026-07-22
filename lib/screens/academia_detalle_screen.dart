@@ -8,6 +8,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/redes.dart';
 import '../utils/ubicacion_share.dart';
+import '../widgets/logo_academia.dart';
 import '../widgets/pago_tarjeta_sheet.dart';
 import 'campeonatos_screen.dart';
 import 'chat_screen.dart';
@@ -558,6 +559,7 @@ class _TarjetaPlan extends StatelessWidget {
       builder: (_) => _HojaDatosAlumno(
         nombreInicial: appState.usuario?.nombre ?? '',
         academia: academia.nombre,
+        logoUrl: academia.logoUrl,
         planObj: plan,
         moneda: academia.monedaSimbolo,
         esMensual: plan.tipo == TipoPlan.mensual,
@@ -574,6 +576,7 @@ class _TarjetaPlan extends StatelessWidget {
     // con descuento si aplica). Capturamos el token para el débito automático.
     if (!context.mounted) return;
     String? tokenUsado;
+    String? operacionId;
     final pagado = await PagoTarjeta.cobrar(
       context,
       monto: monto,
@@ -581,6 +584,7 @@ class _TarjetaPlan extends StatelessWidget {
       email: appState.usuario?.email ?? '',
       moneda: academia.monedaSimbolo,
       onToken: (t) => tokenUsado = t,
+      onOperacion: (o) => operacionId = o,
     );
     if (!pagado) return;
 
@@ -610,6 +614,7 @@ class _TarjetaPlan extends StatelessWidget {
       apoderadoNombre: esHijo ? (appState.usuario?.nombre ?? 'Apoderado') : '',
       apoderadoWhatsapp: esHijo ? whatsapp : '',
       edad: esHijo ? edad : null,
+      operacionId: operacionId ?? '',
     );
 
     // 3b) Mes a mes: activa el débito automático de los meses restantes con la
@@ -669,12 +674,14 @@ class _HojaDatosAlumno extends StatefulWidget {
     required this.academia,
     required this.planObj,
     required this.moneda,
+    this.logoUrl,
     this.esMensual = false,
     this.descuentoPrepago = 0,
     this.mesesMinPrepago = 3,
   });
   final String nombreInicial;
   final String academia;
+  final String? logoUrl;
   final Plan planObj;
   final String moneda;
   final bool esMensual; // ¿el plan es mensual? (habilita "mes a mes")
@@ -746,8 +753,18 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Matricularme en ${widget.academia}',
-              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              LogoAcademia(logoUrl: widget.logoUrl, size: 40),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text('Matricularme en ${widget.academia}',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800, fontSize: 17)),
+              ),
+            ],
+          ),
           const SizedBox(height: 4),
           Text('Plan: ${_plan.nombre}',
               style: const TextStyle(color: textoTenue, fontSize: 13)),

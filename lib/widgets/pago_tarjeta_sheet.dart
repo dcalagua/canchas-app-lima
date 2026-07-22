@@ -25,6 +25,7 @@ class PagoTarjeta {
     required String email,
     String moneda = '',
     ValueChanged<String>? onToken, // recibe el token (tkn_/crd_) usado si el pago fue OK
+    ValueChanged<String>? onOperacion, // recibe el N.º de operación (charge_id)
   }) async {
     final cfg = await PagosService.config();
     final disponible = cfg != null && cfg['disponible'] == true;
@@ -56,6 +57,7 @@ class PagoTarjeta {
         esTest: esTest,
         moneda: moneda,
         onToken: onToken,
+        onOperacion: onOperacion,
       ),
     );
     return ok == true;
@@ -72,6 +74,7 @@ class _PagoTarjetaSheet extends StatefulWidget {
     required this.esTest,
     this.moneda = '',
     this.onToken,
+    this.onOperacion,
   });
   final int monto;
   final String concepto;
@@ -81,6 +84,7 @@ class _PagoTarjetaSheet extends StatefulWidget {
   final bool esTest;
   final String moneda;
   final ValueChanged<String>? onToken;
+  final ValueChanged<String>? onOperacion;
 
   @override
   State<_PagoTarjetaSheet> createState() => _PagoTarjetaSheetState();
@@ -156,6 +160,9 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
         final res = await PagosService.cobrar(
             token: t['token'].toString(), email: widget.email,
             montoSoles: widget.monto.toDouble(), concepto: widget.concepto);
+        if (res['ok'] == true && res['chargeId'] != null) {
+          widget.onOperacion?.call(res['chargeId'].toString());
+        }
         return res['ok'] == true
             ? {'ok': true, 'detalle': 'Pago de $_mon ${widget.monto} aprobado.'}
             : {'ok': false, 'error': res['error']?.toString() ?? 'No se pudo cobrar.'};
@@ -198,7 +205,12 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
       final res = await PagosService.cobrar(
         token: tk, email: widget.email,
         montoSoles: widget.monto.toDouble(), concepto: widget.concepto);
-      if (res['ok'] == true) widget.onToken?.call(tk!);
+      if (res['ok'] == true) {
+        widget.onToken?.call(tk!);
+        if (res['chargeId'] != null) {
+          widget.onOperacion?.call(res['chargeId'].toString());
+        }
+      }
       return res['ok'] == true
           ? {'ok': true, 'detalle': 'Pago de $_mon ${widget.monto} aprobado.'}
           : {'ok': false, 'error': res['error']?.toString() ?? 'No se pudo cobrar.'};

@@ -1104,6 +1104,7 @@ class AppState extends ChangeNotifier {
     String apoderadoNombre = '', // si es menor: nombre del apoderado (el titular)
     String apoderadoWhatsapp = '',
     int? edad,
+    String operacionId = '', // N.º de operación del pago (para el comprobante)
   }) {
     final n = cantidad < 1 ? 1 : cantidad;
     final esMenor = apoderadoNombre.trim().isNotEmpty;
@@ -1134,6 +1135,7 @@ class AppState extends ChangeNotifier {
         vencimiento: hoy,
         pagada: true,
         fechaPago: hoy,
+        operacionId: operacionId,
       ));
     } else {
       final meses = (plan.tipo == TipoPlan.mensual ? 1 : plan.meses) * n;
@@ -1154,6 +1156,7 @@ class AppState extends ChangeNotifier {
           pagada: pagada,
           fechaPago: pagada ? hoy : null,
           autoDebito: autoDebito,
+          operacionId: pagada ? operacionId : '',
         ));
       }
     }
@@ -1180,12 +1183,16 @@ class AppState extends ChangeNotifier {
     _persistirDatos();
   }
 
-  void marcarCuotaPagada(String cuotaId, {bool pagada = true}) {
+  void marcarCuotaPagada(String cuotaId,
+      {bool pagada = true, String operacionId = ''}) {
     final i = cuotas.indexWhere((c) => c.id == cuotaId);
     if (i < 0) return;
     final alumnoId = cuotas[i].alumnoId;
     cuotas[i] = pagada
-        ? cuotas[i].copyWith(pagada: true, fechaPago: DateTime.now())
+        ? cuotas[i].copyWith(
+            pagada: true,
+            fechaPago: DateTime.now(),
+            operacionId: operacionId.isEmpty ? null : operacionId)
         : cuotas[i].copyWith(pagada: false, limpiarFechaPago: true);
     notifyListeners();
     _persistirDatos();
