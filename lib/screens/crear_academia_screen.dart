@@ -154,12 +154,15 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
   }
 
   Future<void> _agregarFoto() async {
-    final f = await ImagePicker()
-        .pickImage(source: ImageSource.gallery, maxWidth: 1280);
-    if (f == null) return;
-    final bytes = await f.readAsBytes();
+    // Selección MÚLTIPLE: el usuario puede elegir varias fotos a la vez.
+    final fs = await ImagePicker().pickMultiImage(maxWidth: 1280);
+    if (fs.isEmpty) return;
+    final nuevas = <Uint8List>[];
+    for (final f in fs) {
+      nuevas.add(await f.readAsBytes());
+    }
     if (!mounted) return;
-    setState(() => _fotosNuevas.add(bytes));
+    setState(() => _fotosNuevas.addAll(nuevas));
   }
 
   void _avisar(String m) =>
