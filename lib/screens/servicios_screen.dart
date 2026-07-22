@@ -4,7 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../brand.dart';
-import '../models/academia.dart';
+import '../models/negocio.dart';
 import '../services/growth_service.dart';
 import '../services/pagos_service.dart';
 import '../services/whatsapp_link.dart';
@@ -13,12 +13,13 @@ import '../theme.dart';
 import 'conectar_redes_screen.dart';
 import 'recargar_saldo_screen.dart';
 
-/// "Servicios Pichangol": el dueño contrata landing / manejo de redes /
-/// presencia digital como SUSCRIPCIÓN mensual, pagada con el saldo de su
-/// academia (mismo saldo prepago de Culqi). Muestra estado y próximo cobro.
+/// "Servicios Pichangol": el dueño de un NEGOCIO (academia o club) contrata
+/// landing / manejo de redes / presencia digital como SUSCRIPCIÓN mensual,
+/// pagada con el saldo de marketing (mismo saldo prepago de Culqi). Muestra
+/// estado y próximo cobro.
 class ServiciosScreen extends StatefulWidget {
-  const ServiciosScreen({super.key, required this.academia});
-  final Academia academia;
+  const ServiciosScreen({super.key, required this.negocio});
+  final Negocio negocio;
 
   @override
   State<ServiciosScreen> createState() => _ServiciosScreenState();
@@ -42,17 +43,17 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
   // Tarjeta de débito automático de las suscripciones.
   Map<String, dynamic>? _metodoSus;
 
+  // URL de la landing (se actualiza al generarla). Init desde el negocio.
+  String _landingUrl = '';
+
   @override
   void dispose() {
     _tema.dispose();
     super.dispose();
   }
 
-  String get _mon => widget.academia.monedaSimbolo;
-  String get _idAcademia => widget.academia.id;
-  // Academia SIEMPRE actualizada (tras generar landing, guardarAcademia, etc.).
-  Academia get _ac => appState.academias.firstWhere((a) => a.id == _idAcademia,
-      orElse: () => widget.academia);
+  String get _mon => widget.negocio.monedaSimbolo;
+  String get _idAcademia => widget.negocio.id;
 
   // ¿Tiene un servicio con landing activo (landing o presencia)?
   bool get _landingContratada => _subs.any((s) =>
@@ -69,25 +70,24 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
 
   bool get _redesConectada => _redesConn?['conectado'] == true;
 
-  // ¿La academia ya tiene alguna red social publicada?
-  bool get _tieneRedes =>
-      (_ac.redes['instagram']?.trim().isNotEmpty ?? false) ||
-      (_ac.redes['facebook']?.trim().isNotEmpty ?? false) ||
-      (_ac.redes['tiktok']?.trim().isNotEmpty ?? false);
+  // ¿El negocio ya declaró alguna red social?
+  bool get _tieneRedes => widget.negocio.tieneRedesRegistradas;
 
   /// Abre WhatsApp con Pichangol (número del país) para pedir que le CREEN las
   /// redes al dueño que no tiene cuentas.
   Future<void> _pedirCrearRedes() async {
     final numero =
-        await GrowthService.contactoWhatsApp(_ac.pais.iso) ?? kContactoWhatsApp;
+        await GrowthService.contactoWhatsApp(widget.negocio.pais.iso) ??
+            kContactoWhatsApp;
     await WhatsAppLink.abrir(numero,
         'Hola Pichangol, no tengo redes y quiero que me ayuden a crear y manejar '
-        'las de mi academia "${_ac.nombre}".');
+        'las de "${widget.negocio.nombre}".');
   }
 
   @override
   void initState() {
     super.initState();
+    _landingUrl = widget.negocio.landingUrl;
     _cargar();
   }
 
@@ -181,7 +181,7 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
       builder: (_) => RecargarSaldoScreen(
           duenoId: _idAcademia,
           titulo: 'Recargar saldo',
-          pais: widget.academia.pais),
+          pais: widget.negocio.pais),
     ));
     await _cargar();
   }
@@ -218,9 +218,12 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
 
   Future<void> _generarLanding() async {
     setState(() => _generandoLanding = true);
-    final url = await appState.generarLanding(_ac);
+    final url = await appState.generarLandingNegocio(widget.negocio);
     if (!mounted) return;
-    setState(() => _generandoLanding = false);
+    setState(() {
+      _generandoLanding = false;
+      if (url != null) _landingUrl = url;
+    });
     if (url == null) {
       _msg('No se pudo generar la landing. Revisa tu conexión.');
     } else {
@@ -235,7 +238,8 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
 
   Future<void> _generarPosts() async {
     setState(() => _generandoPosts = true);
-    final r = await appState.generarPosts(_ac, _tema.text.trim());
+    final r =
+        await appState.generarPostsNegocio(widget.negocio, _tema.text.trim());
     if (!mounted) return;
     setState(() => _generandoPosts = false);
     if (r == null) {
@@ -258,7 +262,7 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
   /// Abre la pantalla guiada de conexión (requisitos → conectar → estado).
   Future<void> _gestionarRedes() async {
     await Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => ConectarRedesScreen(academia: widget.academia)));
+        builder: (_) => ConectarRedesScreen(negocio: widget.negocio)));
     if (mounted) await _cargar();
   }
 
@@ -367,7 +371,7 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 30),
                 children: [
-                  // Saldo de la academia.
+                  // Saldo de marketing del negocio.
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -383,7 +387,7 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text('Saldo de la academia',
+                              const Text('Saldo de marketing',
                                   style: TextStyle(
                                       fontSize: 12, color: textoTenue)),
                               Text('$_mon $saldo',
@@ -781,8 +785,8 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
 
   /// Tarjeta "Tu landing" (fulfillment): genera / ve / comparte la página web.
   Widget _cardLanding() {
-    final ac = _ac;
-    final tiene = ac.tieneLanding;
+    final url = _landingUrl;
+    final tiene = url.isNotEmpty;
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
@@ -808,8 +812,8 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
           Text(
               tiene
                   ? 'Publicada y lista para compartir. Se arma con los datos de '
-                      'tu academia (actualízala si cambias tarifario o fotos).'
-                  : 'Genera tu página web con los datos de tu academia. Queda con '
+                      'tu negocio (actualízala si cambias precios o fotos).'
+                  : 'Genera tu página web con los datos de tu negocio. Queda con '
                       'un enlace público para compartir.',
               style: const TextStyle(color: textoTenue, fontSize: 13)),
           const SizedBox(height: 12),
@@ -823,7 +827,7 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
                       backgroundColor: lima, foregroundColor: Colors.white),
                   icon: const Icon(Icons.open_in_new, size: 18),
                   label: const Text('Ver'),
-                  onPressed: () => _abrir(ac.landingUrl),
+                  onPressed: () => _abrir(url),
                 ),
                 OutlinedButton.icon(
                   style: OutlinedButton.styleFrom(
@@ -832,7 +836,7 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
                   icon: const Icon(Icons.share_outlined, size: 18),
                   label: const Text('Compartir'),
                   onPressed: () => WhatsAppLink.compartir(
-                      'Mira nuestra página: ${ac.landingUrl}'),
+                      'Mira nuestra página: $url'),
                 ),
                 TextButton.icon(
                   icon: _generandoLanding

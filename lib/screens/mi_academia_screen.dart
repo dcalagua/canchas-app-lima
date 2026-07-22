@@ -706,7 +706,8 @@ class _Header extends StatelessWidget {
                 tooltip: 'Servicios (publicidad)',
                 icon: const Icon(Icons.campaign_outlined, color: Colors.white),
                 onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => ServiciosScreen(academia: academia))),
+                    builder: (_) => ServiciosScreen(
+                        negocio: appState.negocioDeAcademia(academia)))),
               ),
               IconButton(
                 tooltip: 'Editar',

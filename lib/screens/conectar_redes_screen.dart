@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../brand.dart';
-import '../models/academia.dart';
+import '../models/negocio.dart';
 import '../services/growth_service.dart';
 import '../services/pagos_service.dart';
 import '../services/whatsapp_link.dart';
@@ -12,8 +12,8 @@ import '../theme.dart';
 /// publique por él (Gestión de redes / Nivel 2). Verifica requisitos, abre el
 /// permiso de Meta, muestra las cuentas conectadas y permite desconectar.
 class ConectarRedesScreen extends StatefulWidget {
-  const ConectarRedesScreen({super.key, required this.academia});
-  final Academia academia;
+  const ConectarRedesScreen({super.key, required this.negocio});
+  final Negocio negocio;
 
   @override
   State<ConectarRedesScreen> createState() => _ConectarRedesScreenState();
@@ -26,7 +26,7 @@ class _ConectarRedesScreenState extends State<ConectarRedesScreen> {
   bool _cargando = true;
   bool _conectando = false;
 
-  String get _idAcademia => widget.academia.id;
+  String get _idAcademia => widget.negocio.id;
   bool get _conectada => _conn?['conectado'] == true;
 
   @override
@@ -121,12 +121,13 @@ class _ConectarRedesScreenState extends State<ConectarRedesScreen> {
   }
 
   Future<void> _ayuda() async {
-    final numero = await GrowthService.contactoWhatsApp(widget.academia.pais.iso) ??
-        kContactoWhatsApp;
+    final numero =
+        await GrowthService.contactoWhatsApp(widget.negocio.pais.iso) ??
+            kContactoWhatsApp;
     await WhatsAppLink.abrir(
         numero,
-        'Hola Pichangol, quiero conectar las redes de mi academia '
-        '"${widget.academia.nombre}" pero necesito ayuda con mi Instagram/Página.');
+        'Hola Pichangol, quiero conectar las redes de "${widget.negocio.nombre}" '
+        'pero necesito ayuda con mi Instagram/Página.');
   }
 
   @override

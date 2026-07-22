@@ -7,6 +7,7 @@ import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'agregar_cancha_screen.dart';
+import 'servicios_screen.dart';
 import 'bienvenida_dueno_sheet.dart';
 import 'bloquear_horarios_screen.dart';
 import 'editar_cancha_screen.dart';
@@ -618,18 +619,31 @@ class _LocalCard extends StatelessWidget {
           ],
           const SizedBox(height: 8),
           for (final c in local.canchas) _FilaCancha(cancha: c),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                    builder: (_) => AgregarCanchaScreen(local: local.principal)),
+          Wrap(
+            children: [
+              TextButton.icon(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                      builder: (_) =>
+                          AgregarCanchaScreen(local: local.principal)),
+                ),
+                icon: Icon(Icons.add, color: cs.primary, size: 20),
+                label: Text('Agregar cancha',
+                    style: TextStyle(
+                        color: cs.primary, fontWeight: FontWeight.w700)),
               ),
-              icon: Icon(Icons.add, color: cs.primary, size: 20),
-              label: Text('Agregar cancha',
-                  style:
-                      TextStyle(color: cs.primary, fontWeight: FontWeight.w700)),
-            ),
+              TextButton.icon(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                      builder: (_) => ServiciosScreen(
+                          negocio: appState.negocioDeClub(local))),
+                ),
+                icon: Icon(Icons.campaign_outlined, color: cs.primary, size: 20),
+                label: Text('Servicios Pichangol',
+                    style: TextStyle(
+                        color: cs.primary, fontWeight: FontWeight.w700)),
+              ),
+            ],
           ),
         ],
       ),

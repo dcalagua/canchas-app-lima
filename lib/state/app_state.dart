@@ -18,8 +18,10 @@ import '../data/sample_data.dart';
 import '../data/verificacion_repo.dart';
 import '../models/academia.dart';
 import '../models/campeonato.dart';
+import '../models/club.dart';
 import '../models/invitacion.dart';
 import '../models/models.dart';
+import '../models/negocio.dart';
 import '../models/resena.dart';
 import '../models/usuario.dart';
 import '../services/auth_service.dart';
@@ -205,6 +207,92 @@ class AppState extends ChangeNotifier {
   Future<Map<String, dynamic>?> generarPosts(Academia ac, String tema) async {
     return PagosService.generarPosts(
         academiaId: ac.id, datos: _landingDatos(ac), contexto: tema);
+  }
+
+  // === Servicios Pichangol sobre "Negocio" (academia o club) ==============
+  /// Ids de negocios (clubes) que ya generaron su landing (persistido). Las
+  /// academias guardan su landingUrl en la propia academia; los clubes aquí.
+  final Set<String> _landingNegocios = {};
+
+  Negocio negocioDeAcademia(Academia a) => Negocio(
+        id: a.id,
+        nombre: a.nombre,
+        monedaSimbolo: a.monedaSimbolo,
+        pais: a.pais,
+        tipo: 'academia',
+        tieneRedesRegistradas:
+            (a.redes['instagram']?.trim().isNotEmpty ?? false) ||
+                (a.redes['facebook']?.trim().isNotEmpty ?? false) ||
+                (a.redes['tiktok']?.trim().isNotEmpty ?? false),
+        landingUrl: a.landingUrl,
+        datosLanding: _landingDatos(a),
+      );
+
+  Negocio negocioDeClub(Club c) {
+    final id = 'club_${c.id}';
+    final lat = c.ubicacion.latitude, lng = c.ubicacion.longitude;
+    final tieneLanding = _landingNegocios.contains(id);
+    return Negocio(
+      id: id,
+      nombre: c.nombre,
+      monedaSimbolo: monedaDeCoordenadas(lat, lng),
+      pais: paisDeCoordenadas(lat, lng),
+      tipo: 'club',
+      tieneRedesRegistradas: false,
+      landingUrl: tieneLanding ? (PagosService.landingUrl(id) ?? '') : '',
+      datosLanding: _datosClub(c),
+    );
+  }
+
+  Map<String, dynamic> _datosClub(Club c) {
+    final canchas = [
+      for (final ca in c.canchas)
+        {
+          'nombre': ca.nombre,
+          'precio': ca.precioHora,
+          'sufijo': ' /hora',
+        }
+    ];
+    return {
+      'nombre': c.nombre,
+      'deporte': c.deportes.isNotEmpty ? c.deportes.first.name : '',
+      'sede': c.barrio,
+      'moneda': monedaDeCoordenadas(c.ubicacion.latitude, c.ubicacion.longitude),
+      'descripcion': '',
+      'whatsapp': '',
+      'instagram': '',
+      'lat': c.ubicacion.latitude,
+      'lng': c.ubicacion.longitude,
+      'fotos': [for (final ca in c.canchas) ...ca.fotos],
+      'programas': const [],
+      'planes': canchas,
+    };
+  }
+
+  /// Genera/actualiza la landing de un NEGOCIO (academia o club) en el backend.
+  Future<String?> generarLandingNegocio(Negocio n) async {
+    final ok = await PagosService.generarLanding(n.id, n.datosLanding);
+    if (!ok) return null;
+    final url = PagosService.landingUrl(n.id);
+    if (url == null) return null;
+    if (n.esAcademia) {
+      final i = academias.indexWhere((a) => a.id == n.id);
+      if (i >= 0) {
+        academias[i] = academias[i].copyWith(landingUrl: url);
+        AcademiasRepo.guardar(academias[i]);
+      }
+    } else {
+      _landingNegocios.add(n.id);
+    }
+    notifyListeners();
+    _persistirDatos();
+    return url;
+  }
+
+  Future<Map<String, dynamic>?> generarPostsNegocio(
+      Negocio n, String tema) async {
+    return PagosService.generarPosts(
+        academiaId: n.id, datos: n.datosLanding, contexto: tema);
   }
 
   void eliminarAcademia(String id) {
@@ -1983,6 +2071,7 @@ class AppState extends ChangeNotifier {
   static const _kMisReservas = 'mis_reservas_json';
   static const _kCanchas = 'canchas_extra_json';
   static const _kEliminadas = 'canchas_eliminadas_json';
+  static const _kLandingNegocios = 'landing_negocios_json';
   static const _kFavoritos = 'favoritos_json';
   static const _kRadio = 'radio_busqueda_km';
   static const _kTema = 'tema_modo'; // 0=system, 1=light, 2=dark
@@ -2075,6 +2164,13 @@ class AppState extends ChangeNotifier {
           ..addAll((jsonDecode(elimRaw) as List).map((e) => e.toString()));
       }
 
+      final landNegRaw = prefs.getString(_kLandingNegocios);
+      if (landNegRaw != null) {
+        _landingNegocios
+          ..clear()
+          ..addAll((jsonDecode(landNegRaw) as List).map((e) => e.toString()));
+      }
+
       final favRaw = prefs.getString(_kFavoritos);
       if (favRaw != null) {
         favoritos
@@ -2151,6 +2247,8 @@ class AppState extends ChangeNotifier {
           _kCanchas, jsonEncode(canchasExtra.map((c) => c.toJson()).toList()));
       await prefs.setString(
           _kEliminadas, jsonEncode(canchasEliminadas.toList()));
+      await prefs.setString(
+          _kLandingNegocios, jsonEncode(_landingNegocios.toList()));
       await prefs.setString(_kFavoritos, jsonEncode(favoritos.toList()));
       await prefs.setDouble(_kRadio, radioBusquedaKm);
       await prefs.setInt(_kTema, switch (temaModo) {
