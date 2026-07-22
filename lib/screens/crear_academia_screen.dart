@@ -10,6 +10,7 @@ import '../data/canchas_repo.dart';
 import '../models/academia.dart';
 import '../models/club.dart';
 import '../models/models.dart';
+import '../services/pagos_service.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -125,6 +126,27 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
   PaisConfig get _paisAcademia {
     final u = _ubicSede;
     return u != null ? paisDeCoordenadas(u.latitude, u.longitude) : paisActual;
+  }
+
+  /// @usuario de Instagram que el dueño ya declaró (para personalizar el CTA).
+  String get _igDeclarado => _redesCtrl['instagram']?.text.trim() ?? '';
+
+  // ¿Las redes están CONECTADAS por OAuth (para publicar)? Se carga al abrir la
+  // edición y sirve para el badge "conectada" y el CTA.
+  bool _redesConectadas = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargarEstadoRedes();
+  }
+
+  Future<void> _cargarEstadoRedes() async {
+    if (widget.academia == null) return; // aún sin crear: nada que consultar
+    final e = await PagosService.estadoRedes(_id);
+    if (mounted && e?['conectado'] == true) {
+      setState(() => _redesConectadas = true);
+    }
   }
 
   @override
@@ -675,6 +697,28 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                 ),
             ],
           ),
+          if (_redesConectadas) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                  color: limaSuave, borderRadius: BorderRadius.circular(20)),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.check_circle, color: lima, size: 16),
+                  SizedBox(width: 6),
+                  Flexible(
+                    child: Text('Instagram y Facebook conectados · publicamos por ti',
+                        style: TextStyle(
+                            color: bosque,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700)),
+                  ),
+                ],
+              ),
+            ),
+          ],
           for (final r in _redesCatalogo)
             if (_redesSel.contains(r.$1)) ...[
               const SizedBox(height: 10),
@@ -710,23 +754,38 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Row(
+                Row(
                   children: [
-                    Icon(Icons.campaign_outlined, color: bosque, size: 20),
-                    SizedBox(width: 8),
+                    Icon(
+                        _redesConectadas
+                            ? Icons.check_circle
+                            : Icons.campaign_outlined,
+                        color: _redesConectadas ? lima : bosque,
+                        size: 20),
+                    const SizedBox(width: 8),
                     Expanded(
-                      child: Text('¿Quieres que publiquemos por ti?',
-                          style: TextStyle(
+                      child: Text(
+                          _redesConectadas
+                              ? 'Tus redes están conectadas'
+                              : '¿Quieres que publiquemos por ti?',
+                          style: const TextStyle(
                               fontWeight: FontWeight.w800, color: bosque)),
                     ),
                   ],
                 ),
                 const SizedBox(height: 4),
-                const Text(
-                    'Conecta tu Instagram/Facebook y deja que Pichangol maneje '
-                    'tus redes (contenido con IA + publicación). Se activa en '
-                    'Servicios Pichangol.',
-                    style: TextStyle(fontSize: 12.5, color: textoTenue)),
+                Text(
+                    _redesConectadas
+                        ? 'Ya podemos publicar por ti. Genera contenido con IA y '
+                            'administra tus publicaciones en Servicios Pichangol.'
+                        : (_igDeclarado.isNotEmpty
+                            ? 'Detectamos tu Instagram $_igDeclarado. Conéctalo y '
+                                'Pichangol publica por ti (contenido con IA + '
+                                'publicación). Se activa en Servicios Pichangol.'
+                            : 'Conecta tu Instagram/Facebook y deja que Pichangol '
+                                'maneje tus redes (contenido con IA + publicación). '
+                                'Se activa en Servicios Pichangol.'),
+                    style: const TextStyle(fontSize: 12.5, color: textoTenue)),
                 const SizedBox(height: 10),
                 if (widget.academia != null)
                   SizedBox(
@@ -735,7 +794,9 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                       style: FilledButton.styleFrom(
                           backgroundColor: lima, foregroundColor: Colors.white),
                       icon: const Icon(Icons.arrow_forward, size: 18),
-                      label: const Text('Ir a Servicios Pichangol'),
+                      label: Text(_redesConectadas
+                          ? 'Administrar en Servicios'
+                          : 'Ir a Servicios Pichangol'),
                       onPressed: () => Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => ServiciosScreen(

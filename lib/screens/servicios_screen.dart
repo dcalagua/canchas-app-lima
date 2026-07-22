@@ -107,6 +107,23 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
       _metodoSus = metodo;
       _cargando = false;
     });
+    // Conectar = declarar: si ya está conectado, auto-completa el @usuario de IG y
+    // la Página de FB en la academia (solo lo vacío). El negocio unificado usa la
+    // academia del dueño.
+    if (conn?['conectado'] == true) {
+      final academiaId = widget.negocio.esClub
+          ? null
+          : (widget.negocio.esMixto
+              ? appState.miAcademia?.id
+              : widget.negocio.id);
+      if (academiaId != null) {
+        appState.actualizarRedesAcademia(
+          academiaId,
+          instagram: (conn?['ig_username'] ?? '').toString(),
+          facebook: (conn?['page_nombre'] ?? '').toString(),
+        );
+      }
+    }
   }
 
   Map<String, dynamic>? _subDe(String clave) {

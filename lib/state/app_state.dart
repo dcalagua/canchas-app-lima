@@ -140,6 +140,36 @@ class AppState extends ChangeNotifier {
     AcademiasRepo.guardar(a); // best-effort: comparte y sobrevive reinstalación
   }
 
+  /// Al CONECTAR las redes (OAuth Meta en Servicios), auto-declara en la academia
+  /// el @usuario de Instagram y la Página de Facebook reales, para no escribirlos
+  /// dos veces. Solo rellena lo que esté VACÍO (no pisa lo que el dueño ya puso).
+  /// Devuelve true si cambió algo.
+  bool actualizarRedesAcademia(String academiaId,
+      {String? instagram, String? facebook}) {
+    final i = academias.indexWhere((a) => a.id == academiaId);
+    if (i < 0) return false;
+    final redes = Map<String, String>.from(academias[i].redes);
+    var cambio = false;
+    if (instagram != null &&
+        instagram.trim().isNotEmpty &&
+        (redes['instagram'] ?? '').trim().isEmpty) {
+      redes['instagram'] = instagram.trim();
+      cambio = true;
+    }
+    if (facebook != null &&
+        facebook.trim().isNotEmpty &&
+        (redes['facebook'] ?? '').trim().isEmpty) {
+      redes['facebook'] = facebook.trim();
+      cambio = true;
+    }
+    if (!cambio) return false;
+    academias[i] = academias[i].copyWith(redes: redes);
+    notifyListeners();
+    _persistirDatos();
+    AcademiasRepo.guardar(academias[i]);
+    return true;
+  }
+
   /// Arma los datos que el backend necesita para RENDERIZAR la landing de una
   /// academia (nombre, tarifario por programa, fotos, redes, ubicación).
   Map<String, dynamic> _landingDatos(Academia ac) {
