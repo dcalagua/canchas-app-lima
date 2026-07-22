@@ -4,6 +4,7 @@ import '../models/academia.dart';
 import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/pago_tarjeta_sheet.dart';
 
 /// Vista del ALUMNO: sus matrículas, los pagos que hizo (comprobante/boleta) y
 /// los próximos pagos. Es el "¿dónde veo mis pagos?" del jugador.
@@ -114,15 +115,76 @@ class MisClasesScreen extends StatelessWidget {
                 _SuscripcionMesAMes(alumnoId: al.id, moneda: mon),
                 if (proximas.isNotEmpty) ...[
                   const SizedBox(height: 12),
-                  const Text('Próximos pagos',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w800, fontSize: 13)),
-                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Próximos pagos',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w800, fontSize: 13)),
+                      if (proximas.length > 1 && academia != null)
+                        TextButton(
+                          onPressed: () =>
+                              _pagarCuotas(context, academia, proximas, mon),
+                          style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              minimumSize: const Size(0, 0)),
+                          child: Text(
+                              'Pagar todo · $mon '
+                              '${proximas.fold<double>(0, (s, c) => s + c.monto).toStringAsFixed(2)}',
+                              style: const TextStyle(
+                                  color: lima, fontWeight: FontWeight.w800)),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
                   for (final c in proximas)
-                    _fila(c.concepto,
-                        'Vence ${_fecha(c.vencimiento)}',
-                        '$mon ${c.monto.toStringAsFixed(2)}',
-                        color: clayOscuro),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(c.concepto,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.w600)),
+                                Text('Vence ${_fecha(c.vencimiento)}',
+                                    style: const TextStyle(
+                                        color: textoTenue, fontSize: 12)),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text('$mon ${c.monto.toStringAsFixed(2)}',
+                              style: const TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: clayOscuro)),
+                          const SizedBox(width: 8),
+                          if (academia != null)
+                            OutlinedButton(
+                              onPressed: () =>
+                                  _pagarCuotas(context, academia, [c], mon),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: lima,
+                                side: const BorderSide(color: lima),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 4),
+                                minimumSize: const Size(0, 0),
+                                tapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              child: const Text('Pagar',
+                                  style:
+                                      TextStyle(fontWeight: FontWeight.w800)),
+                            ),
+                        ],
+                      ),
+                    ),
                 ],
                 const SizedBox(height: 12),
                 const Text('Comprobantes de pago',
@@ -150,6 +212,43 @@ class MisClasesScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// Cobra una o varias cuotas pendientes con tarjeta/Yape (Culqi). Al aprobar,
+  /// las marca pagadas (se propaga al profe) y registra el neto en la academia.
+  Future<void> _pagarCuotas(BuildContext context, Academia ac,
+      List<Cuota> cuotas, String mon) async {
+    if (cuotas.isEmpty) return;
+    final total = cuotas.fold<double>(0, (s, c) => s + c.monto);
+    if (total <= 0) return;
+    final pagado = await PagoTarjeta.cobrar(
+      context,
+      monto: total.round(),
+      concepto: cuotas.length == 1
+          ? cuotas.first.concepto
+          : '${cuotas.length} cuotas · ${ac.nombre}',
+      email: appState.usuario?.email ?? '',
+      moneda: mon,
+    );
+    if (!pagado) return;
+    // Cobro digital para la academia (congela comisión POS, neto "por recibir").
+    PagosService.registrarMatricula(
+      academiaId: ac.id,
+      montoSoles: total,
+      matriculaId: 'cuo_${ac.id}_${DateTime.now().microsecondsSinceEpoch}',
+      pais: ac.pais.iso,
+      concepto:
+          cuotas.length == 1 ? cuotas.first.concepto : 'Cuotas ${ac.nombre}',
+    );
+    for (final c in cuotas) {
+      appState.marcarCuotaPagada(c.id);
+    }
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(cuotas.length == 1
+              ? 'Cuota pagada. ¡Gracias!'
+              : '${cuotas.length} cuotas pagadas. ¡Gracias!')));
+    }
   }
 
   Widget _fila(String titulo, String sub, String monto,

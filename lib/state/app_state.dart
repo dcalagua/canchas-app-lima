@@ -798,12 +798,18 @@ class AppState extends ChangeNotifier {
       }
       cambio = true;
     }
-    // Fusiona las cuotas embebidas (la matrícula inicial que pagó el alumno):
-    // así el profe ve el programa y el pago. No pisa cambios locales del profe
-    // (solo agrega las que aún no tiene por id).
+    // Fusiona las cuotas embebidas. Si la cuota es nueva, se agrega; si ya existe
+    // y en la nube figura PAGADA (pago manual del alumno / marcada por el profe
+    // en otro dispositivo), se marca pagada acá también. El pago es "pegajoso":
+    // nunca revierte una pagada a pendiente (evita carreras entre dispositivos).
     for (final c in remotasCuotas) {
-      if (!cuotas.any((x) => x.id == c.id)) {
+      final i = cuotas.indexWhere((x) => x.id == c.id);
+      if (i < 0) {
         cuotas.add(c);
+        cambio = true;
+      } else if (c.pagada && !cuotas[i].pagada) {
+        cuotas[i] = cuotas[i]
+            .copyWith(pagada: true, fechaPago: c.fechaPago ?? DateTime.now());
         cambio = true;
       }
     }
@@ -1095,15 +1101,22 @@ class AppState extends ChangeNotifier {
     int cantidad = 1,
     int? mesesPagados, // mes a mes: solo N pagadas, el resto quedan pendientes
     bool autoDebito = false, // mes a mes: marca las cuotas para reconciliación
+    String apoderadoNombre = '', // si es menor: nombre del apoderado (el titular)
+    String apoderadoWhatsapp = '',
+    int? edad,
   }) {
     final n = cantidad < 1 ? 1 : cantidad;
+    final esMenor = apoderadoNombre.trim().isNotEmpty;
     final alumno = Alumno(
       id: 'al_${DateTime.now().microsecondsSinceEpoch}',
       academiaId: academiaId,
       nombre: nombre,
-      whatsapp: whatsapp,
-      email: usuario?.email ?? '', // si hay sesión, queda como alumno-app
-      fotoUrl: usuario?.fotoUrl,
+      whatsapp: esMenor ? '' : whatsapp,
+      email: usuario?.email ?? '', // la CUENTA que administra (titular)
+      fotoUrl: esMenor ? null : usuario?.fotoUrl,
+      apoderadoNombre: apoderadoNombre.trim(),
+      apoderadoWhatsapp: apoderadoWhatsapp.trim(),
+      edad: edad,
     );
     alumnos.add(alumno);
     final hoy = DateTime.now();
@@ -1170,11 +1183,24 @@ class AppState extends ChangeNotifier {
   void marcarCuotaPagada(String cuotaId, {bool pagada = true}) {
     final i = cuotas.indexWhere((c) => c.id == cuotaId);
     if (i < 0) return;
+    final alumnoId = cuotas[i].alumnoId;
     cuotas[i] = pagada
         ? cuotas[i].copyWith(pagada: true, fechaPago: DateTime.now())
         : cuotas[i].copyWith(pagada: false, limpiarFechaPago: true);
     notifyListeners();
     _persistirDatos();
+    // Propaga el pago al otro lado (alumno ↔ profe) re-subiendo las cuotas del
+    // alumno a la nube. El pago es "pegajoso" (una vez pagada, no se revierte).
+    if (pagada) _subirCuotasAlumno(alumnoId);
+  }
+
+  /// Re-sube a la nube (embebidas en la matrícula) las cuotas actuales de un
+  /// alumno, para que el estado de pago se sincronice entre dispositivos.
+  void _subirCuotasAlumno(String alumnoId) {
+    final ai = alumnos.indexWhere((a) => a.id == alumnoId);
+    if (ai < 0) return;
+    final sus = cuotas.where((c) => c.alumnoId == alumnoId).toList();
+    MatriculasRepo.guardar(alumnos[ai], cuotas: sus);
   }
 
   /// ¿El alumno está marcado presente ese día?

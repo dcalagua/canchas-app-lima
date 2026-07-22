@@ -547,8 +547,8 @@ class _TarjetaPlan extends StatelessWidget {
 
   Future<void> _matricular(BuildContext context) async {
     // 1) Datos del alumno + MODO (mes a mes / adelantado) + cantidad + total.
-    final datos =
-        await showModalBottomSheet<(String, String, int, bool, double)>(
+    final datos = await showModalBottomSheet<
+        (String, String, int, bool, double, bool, int?)>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Theme.of(context).colorScheme.surface,
@@ -566,7 +566,8 @@ class _TarjetaPlan extends StatelessWidget {
       ),
     );
     if (datos == null) return;
-    final (nombre, whatsapp, cantidad, mesAMes, totalAhora) = datos;
+    final (nombre, whatsapp, cantidad, mesAMes, totalAhora, esHijo, edad) =
+        datos;
     final monto = totalAhora.round();
 
     // 2) Pago del total a cobrar AHORA (mes a mes = 1 mes; adelantado = N meses
@@ -605,6 +606,10 @@ class _TarjetaPlan extends StatelessWidget {
       cantidad: cantidad,
       mesesPagados: mesAMes ? 1 : null,
       autoDebito: mesAMes,
+      // Si es para un hijo(a): el titular de la cuenta es el apoderado.
+      apoderadoNombre: esHijo ? (appState.usuario?.nombre ?? 'Apoderado') : '',
+      apoderadoWhatsapp: esHijo ? whatsapp : '',
+      edad: esHijo ? edad : null,
     );
 
     // 3b) Mes a mes: activa el débito automático de los meses restantes con la
@@ -681,11 +686,12 @@ class _HojaDatosAlumno extends StatefulWidget {
 }
 
 class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
-  late final TextEditingController _nombre =
-      TextEditingController(text: widget.nombreInicial);
+  late final TextEditingController _nombre = TextEditingController();
   final _whatsapp = TextEditingController();
+  final _edad = TextEditingController();
   int _cantidad = 1;
   bool _mesAMes = false; // solo aplica a planes mensuales
+  bool _esHijo = false; // ¿matriculo a mi hijo(a)? (yo soy el apoderado)
   String? _error; // mensaje de validación inline (visible)
 
   Plan get _plan => widget.planObj;
@@ -717,9 +723,16 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
   double get _total => _mesAMes ? _plan.total : (_totalSinDto - _ahorro);
 
   @override
+  void initState() {
+    super.initState();
+    _nombre.text = widget.nombreInicial; // "Para mí": prellena el nombre del titular
+  }
+
+  @override
   void dispose() {
     _nombre.dispose();
     _whatsapp.dispose();
+    _edad.dispose();
     super.dispose();
   }
 
@@ -739,20 +752,63 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
           Text('Plan: ${_plan.nombre}',
               style: const TextStyle(color: textoTenue, fontSize: 13)),
           const SizedBox(height: 16),
+          // ¿Para quién es la matrícula? Con la misma cuenta puedes inscribir a
+          // varias personas (tú + tus hijos); cada una es un alumno aparte.
+          Row(
+            children: [
+              Expanded(
+                child: _ChipModo(
+                  titulo: 'Para mí',
+                  subtitulo: 'Soy yo quien entrena',
+                  activo: !_esHijo,
+                  onTap: () => setState(() {
+                    _esHijo = false;
+                    _nombre.text = widget.nombreInicial;
+                  }),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _ChipModo(
+                  titulo: 'Para mi hijo(a)',
+                  subtitulo: 'Yo soy el apoderado',
+                  activo: _esHijo,
+                  onTap: () => setState(() {
+                    _esHijo = true;
+                    if (_nombre.text == widget.nombreInicial) _nombre.clear();
+                  }),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
           TextField(
             controller: _nombre,
-            decoration: const InputDecoration(
-                labelText: 'Nombre del alumno',
-                prefixIcon: Icon(Icons.person_outline)),
+            textCapitalization: TextCapitalization.words,
+            decoration: InputDecoration(
+                labelText: _esHijo ? 'Nombre del hijo(a)' : 'Nombre del alumno',
+                prefixIcon: const Icon(Icons.person_outline)),
           ),
+          if (_esHijo) ...[
+            const SizedBox(height: 14),
+            TextField(
+              controller: _edad,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                  labelText: 'Edad del hijo(a) (opcional)',
+                  prefixIcon: Icon(Icons.cake_outlined)),
+            ),
+          ],
           const SizedBox(height: 14),
           TextField(
             controller: _whatsapp,
             keyboardType: TextInputType.phone,
             decoration: InputDecoration(
-                labelText: 'WhatsApp de contacto',
+                labelText: _esHijo
+                    ? 'WhatsApp del apoderado (tú)'
+                    : 'WhatsApp de contacto',
                 prefixText: '$codigoTelActual ',
-                prefixIcon: Icon(Icons.chat_outlined)),
+                prefixIcon: const Icon(Icons.chat_outlined)),
           ),
           const SizedBox(height: 18),
           // Modo de pago (solo planes mensuales): mes a mes vs adelantado.
@@ -902,6 +958,8 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
                   _cantidad, // meses comprometidos (mes a mes) o adelantados
                   _mesAMes,
                   _total,
+                  _esHijo,
+                  int.tryParse(_edad.text.trim()),
                 ));
               },
               child: Text(_mesAMes
