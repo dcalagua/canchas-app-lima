@@ -98,6 +98,50 @@ hay tokens registrados — ambos significan que el trigger llegó bien).
 > Si usaste el trigger, NO configures además el webhook del paso 6 (dispararía el
 > push dos veces).
 
+## 6-ter) Push al PROFE cuando un alumno se matricula (`push-matricula`)
+La misma cuenta de servicio de FCM (paso 3) sirve. Sólo hay que desplegar la
+segunda función y conectar su webhook:
+
+1. **Deploy:** Edge Functions → Deploy a new function → nómbrala `push-matricula`
+   y pega el contenido de `supabase/functions/push-matricula/index.ts`.
+2. **Webhook:** Database → Webhooks → Create a new hook:
+   - **Table:** `pichangol_matriculas`
+   - **Events:** `Insert`
+   - **Type:** `Supabase Edge Functions` → función `push-matricula`
+3. **Alternativa TRIGGER SQL** (si el webhook da `schema "supabase_functions"
+   does not exist`), igual que el paso 6-bis pero apuntando a la otra tabla/función:
+
+```sql
+create extension if not exists pg_net with schema extensions;
+
+create or replace function public.notificar_push_matricula()
+returns trigger
+language plpgsql
+security definer
+as $$
+begin
+  perform net.http_post(
+    url     := 'https://TU-PROYECTO.supabase.co/functions/v1/push-matricula',
+    headers := jsonb_build_object(
+      'Content-Type',  'application/json',
+      'Authorization', 'Bearer TU_ANON_KEY'
+    ),
+    body    := jsonb_build_object('record', to_jsonb(NEW))
+  );
+  return NEW;
+end;
+$$;
+
+drop trigger if exists trg_push_matricula on public.pichangol_matriculas;
+create trigger trg_push_matricula
+  after insert on public.pichangol_matriculas
+  for each row execute function public.notificar_push_matricula();
+```
+
+Destinatario: el **dueño de la academia** (`pichangol_academias.dueno`). Mensaje:
+"Nuevo alumno 🎾 · {nombre} se matriculó en {academia}." Verificar igual que
+6-bis en **push-matricula → Logs** (`200` con `{"enviados":N}` o `{"skip":...}`).
+
 ## 7) Reconstruir el APK
 Cualquier push a la rama dispara el build. Con el secret del paso 2 ya presente,
 el APK sale con Firebase activo. Instálalo, inicia sesión (el token se guarda

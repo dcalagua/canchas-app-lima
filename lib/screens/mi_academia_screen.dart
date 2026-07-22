@@ -32,6 +32,9 @@ class MiAcademiaScreen extends StatelessWidget {
           if (ac == null) {
             return const _SinAcademia();
           }
+          // Al abrir, trae de la nube las matrículas nuevas (alumnos que se
+          // inscribieron desde otro dispositivo). Con throttle; no bloquea.
+          appState.syncMatriculas();
           final alumnos = appState.alumnosDe(ac.id);
           final hoy = DateTime.now();
           double porCobrar = 0, vencido = 0;
@@ -41,9 +44,12 @@ class MiAcademiaScreen extends StatelessWidget {
               if (c.vencidaAl(hoy)) vencido += c.monto;
             }
           }
-          return ListView(
-            padding: EdgeInsets.zero,
-            children: [
+          return RefreshIndicator(
+            color: lima,
+            onRefresh: () => appState.cargarMatriculasRemotas(),
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: [
               _Header(academia: ac),
               _CodigoCard(academia: ac),
               _DestacarCard(academia: ac),
@@ -97,6 +103,7 @@ class MiAcademiaScreen extends StatelessWidget {
               _SeccionInvitaciones(academia: ac),
               const SizedBox(height: 30),
             ],
+            ),
           );
         },
       ),

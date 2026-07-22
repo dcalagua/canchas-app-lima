@@ -662,6 +662,22 @@ class AppState extends ChangeNotifier {
     );
   }
 
+  DateTime? _ultimoSyncMatriculas;
+
+  /// Sincroniza matrículas desde la nube con THROTTLE (evita spam al reconstruir
+  /// la pantalla). Úsalo al abrir "Mi academia" para que el profe vea al toque a
+  /// los alumnos que se matricularon desde otro dispositivo.
+  void syncMatriculas({bool forzar = false}) {
+    final ahora = DateTime.now();
+    if (!forzar &&
+        _ultimoSyncMatriculas != null &&
+        ahora.difference(_ultimoSyncMatriculas!).inSeconds < 15) {
+      return;
+    }
+    _ultimoSyncMatriculas = ahora;
+    cargarMatriculasRemotas();
+  }
+
   /// Trae de la nube las matrículas relevantes: las de las academias que el
   /// usuario administra (rol profe) y las suyas como alumno-app. Las fusiona por
   /// id. Best-effort (sin romper si Supabase no está).
