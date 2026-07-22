@@ -154,26 +154,37 @@ jobs:
           path: dist/*.apk
           if-no-files-found: error
 
+      - name: Definir tag de release
+        run: |
+          # QAS publica en su PROPIO release (no pisa el v0.1.0 de dev/prod).
+          if [ "$ENTORNO" = "qas" ]; then
+            echo "REL_TAG=v0.1.0-qas" >> "$GITHUB_ENV"
+            echo "REL_NAME=Pichangol QAS (pruebas reales)" >> "$GITHUB_ENV"
+          else
+            echo "REL_TAG=v0.1.0" >> "$GITHUB_ENV"
+            echo "REL_NAME=Pichangol v0.1.0" >> "$GITHUB_ENV"
+          fi
+
       - name: Limpiar assets viejos del Release
-        if: (github.ref == 'refs/heads/claude/apk-google-maps-setup-fvpl9w' || startsWith(github.ref, 'refs/tags/v')) && env.ENTORNO != 'qas'
+        if: github.ref == 'refs/heads/claude/apk-google-maps-setup-fvpl9w' || startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view v0.1.0 -R "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' 2>/dev/null | while read -r a; do
-            [ -n "$a" ] && gh release delete-asset v0.1.0 "$a" -y -R "$GITHUB_REPOSITORY" || true
+          gh release view "$REL_TAG" -R "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' 2>/dev/null | while read -r a; do
+            [ -n "$a" ] && gh release delete-asset "$REL_TAG" "$a" -y -R "$GITHUB_REPOSITORY" || true
           done
 
-      - name: Publicar APK en Release (v0.1.0)
-        if: (github.ref == 'refs/heads/claude/apk-google-maps-setup-fvpl9w' || startsWith(github.ref, 'refs/tags/v')) && env.ENTORNO != 'qas'
+      - name: Publicar APK en Release
+        if: github.ref == 'refs/heads/claude/apk-google-maps-setup-fvpl9w' || startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.1.0
-          name: Pichangol v0.1.0
+          tag_name: ${{ env.REL_TAG }}
+          name: ${{ env.REL_NAME }}
           body: |
-            APK de **Pichangol** (build #${{ github.run_number }}) — canchas de fútbol, tenis, pádel y pickleball en Lima.
+            APK de **Pichangol** (build #${{ github.run_number }}, entorno **${{ env.ENTORNO }}**) — canchas de fútbol, tenis, pádel y pickleball en Lima.
 
-            **Descarga recomendada:** `pichangol-${{ github.run_number }}.apk` (arm64, liviano — sirve para casi todos los teléfonos).
-            Si no instala (teléfono antiguo de 32 bits), usa `pichangol-${{ github.run_number }}-arm32.apk`.
+            **Descarga recomendada:** `pichangol${{ env.ENTORNO == 'qas' && '-qas' || '' }}-${{ github.run_number }}.apk` (arm64, liviano — sirve para casi todos los teléfonos).
+            Si no instala (teléfono antiguo de 32 bits), usa la variante `-arm32.apk`.
 
             Instálalo por sideload. Verifica en Ajustes → Apps → Pichangol que la versión sea (${{ github.run_number }}).
           files: dist/pichangol-*.apk
