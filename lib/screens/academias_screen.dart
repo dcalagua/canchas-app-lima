@@ -74,7 +74,7 @@ class AcademiasScreen extends StatelessWidget {
           // que siempre pueda verla/gestionarla).
           final iso = paisActual.iso;
           final email = appState.usuario?.email.toLowerCase();
-          final academias = [
+          final crudas = [
             for (final a in appState.academias)
               if (email != null && a.dueno.toLowerCase() == email ||
                   a.sedeUbicacion == null ||
@@ -83,9 +83,26 @@ class AcademiasScreen extends StatelessWidget {
                           .iso ==
                       iso)
                 a
-          ]..sort((a, b) => appState
-              .nivelDestacadoAcademia(b)
-              .compareTo(appState.nivelDestacadoAcademia(a)));
+          ]..sort((a, b) {
+              // Primero por destacado; a igualdad, la más COMPLETA (más fotos +
+              // planes) queda antes, para que el dedupe conserve la mejor.
+              final d = appState
+                  .nivelDestacadoAcademia(b)
+                  .compareTo(appState.nivelDestacadoAcademia(a));
+              if (d != 0) return d;
+              return (b.fotos.length + b.planes.length)
+                  .compareTo(a.fotos.length + a.planes.length);
+            });
+          // Dedupe: si el MISMO dueño tiene dos academias con el MISMO nombre (se
+          // creó dos veces por error), muestra solo una. No colapsa academias de
+          // distintos dueños ni con nombres distintos.
+          final vistos = <String>{};
+          final academias = [
+            for (final a in crudas)
+              if (vistos.add(
+                  '${a.dueno.trim().toLowerCase()}|${a.nombre.trim().toLowerCase()}'))
+                a
+          ];
           // Métrica de impacto: impresión por cada academia destacada mostrada.
           final destacadasVistas = [
             for (final a in academias)
