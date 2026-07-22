@@ -776,13 +776,18 @@ class AppState extends ChangeNotifier {
         if (u != null && a.dueno.toLowerCase() == u.email.toLowerCase()) a.id,
     ];
     final remotas = <Alumno>[];
+    final remotasCuotas = <Cuota>[];
     if (misAcademiaIds.isNotEmpty) {
-      remotas.addAll(await MatriculasRepo.deAcademias(misAcademiaIds));
+      final r = await MatriculasRepo.deAcademias(misAcademiaIds);
+      remotas.addAll(r.alumnos);
+      remotasCuotas.addAll(r.cuotas);
     }
     if (u != null) {
-      remotas.addAll(await MatriculasRepo.deAlumno(u.email));
+      final r = await MatriculasRepo.deAlumno(u.email);
+      remotas.addAll(r.alumnos);
+      remotasCuotas.addAll(r.cuotas);
     }
-    if (remotas.isEmpty) return;
+    if (remotas.isEmpty && remotasCuotas.isEmpty) return;
     var cambio = false;
     for (final al in remotas) {
       final i = alumnos.indexWhere((x) => x.id == al.id);
@@ -792,6 +797,15 @@ class AppState extends ChangeNotifier {
         alumnos.add(al);
       }
       cambio = true;
+    }
+    // Fusiona las cuotas embebidas (la matrícula inicial que pagó el alumno):
+    // así el profe ve el programa y el pago. No pisa cambios locales del profe
+    // (solo agrega las que aún no tiene por id).
+    for (final c in remotasCuotas) {
+      if (!cuotas.any((x) => x.id == c.id)) {
+        cuotas.add(c);
+        cambio = true;
+      }
     }
     if (cambio) {
       notifyListeners();
@@ -1058,10 +1072,12 @@ class AppState extends ChangeNotifier {
       fotoUrl: usuario?.fotoUrl,
     );
     alumnos.add(alumno);
-    MatriculasRepo.guardar(alumno); // cross-device + sobrevive reinstalar
     final hoy = DateTime.now();
+    // Cuotas de la matrícula (pagadas). Se guardan localmente Y se embeben en la
+    // subida para que el PROFE vea, desde su dispositivo, el programa y el pago.
+    final nuevasCuotas = <Cuota>[];
     if (plan.tipo == TipoPlan.porClase) {
-      cuotas.add(Cuota(
+      nuevasCuotas.add(Cuota(
         id: 'cu_${hoy.microsecondsSinceEpoch}',
         academiaId: academiaId,
         alumnoId: alumno.id,
@@ -1076,7 +1092,7 @@ class AppState extends ChangeNotifier {
       final meses = (plan.tipo == TipoPlan.mensual ? 1 : plan.meses) * n;
       for (var i = 0; i < meses; i++) {
         final venc = DateTime(hoy.year, hoy.month + i, hoy.day);
-        cuotas.add(Cuota(
+        nuevasCuotas.add(Cuota(
           id: 'cu_${hoy.microsecondsSinceEpoch}_$i',
           academiaId: academiaId,
           alumnoId: alumno.id,
@@ -1088,6 +1104,9 @@ class AppState extends ChangeNotifier {
         ));
       }
     }
+    cuotas.addAll(nuevasCuotas);
+    // Sube el alumno con sus cuotas embebidas (cross-device + sobrevive reinstalar).
+    MatriculasRepo.guardar(alumno, cuotas: nuevasCuotas);
     notifyListeners();
     _persistirDatos();
     return alumno;

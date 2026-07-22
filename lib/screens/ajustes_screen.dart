@@ -41,6 +41,77 @@ class AjustesScreen extends StatelessWidget {
         content: Text('Listo: app en blanco. Inicia sesión para probar.')));
   }
 
+  /// Depurar academias: lista TODAS (con su dueño) y deja borrar cualquiera,
+  /// aunque no sea tuya. Sirve para limpiar academias basura (ej. las creadas
+  /// con la cuenta demo). El borrado es durable (también en la nube).
+  Future<void> _depurarAcademias(BuildContext context) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dctx) => AlertDialog(
+        title: const Text('Depurar academias'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListenableBuilder(
+            listenable: appState,
+            builder: (_, __) {
+              final acs = appState.academias;
+              if (acs.isEmpty) {
+                return const Text('No hay academias.');
+              }
+              return ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final a in acs)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(a.nombre,
+                          style:
+                              const TextStyle(fontWeight: FontWeight.w700)),
+                      subtitle: Text('Dueño: ${a.dueno.isEmpty ? '—' : a.dueno}',
+                          style: const TextStyle(fontSize: 12)),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete_outline,
+                            color: clayOscuro),
+                        onPressed: () async {
+                          final ok = await showDialog<bool>(
+                            context: dctx,
+                            builder: (_) => AlertDialog(
+                              title: const Text('¿Borrar esta academia?'),
+                              content: Text(
+                                  '"${a.nombre}". Se borra también en la nube '
+                                  'y no reaparece. No se puede deshacer.'),
+                              actions: [
+                                TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(dctx, false),
+                                    child: const Text('Cancelar')),
+                                FilledButton(
+                                    style: FilledButton.styleFrom(
+                                        backgroundColor: clayOscuro),
+                                    onPressed: () =>
+                                        Navigator.pop(dctx, true),
+                                    child: const Text('Borrar')),
+                              ],
+                            ),
+                          );
+                          if (ok == true) appState.eliminarAcademia(a.id);
+                        },
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dctx),
+              child: const Text('Cerrar')),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
@@ -101,6 +172,18 @@ class AjustesScreen extends StatelessWidget {
                   label: const Text('Empezar de cero (borrar todo)',
                       style: TextStyle(fontWeight: FontWeight.w800)),
                   onPressed: () => _empezarDeCero(context),
+                ),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(50),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                  ),
+                  icon: const Icon(Icons.cleaning_services_outlined),
+                  label: const Text('Depurar academias (borrar sueltas)',
+                      style: TextStyle(fontWeight: FontWeight.w800)),
+                  onPressed: () => _depurarAcademias(context),
                 ),
               ],
             ],

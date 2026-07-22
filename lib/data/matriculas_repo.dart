@@ -12,9 +12,14 @@ import '../services/supabase_service.dart';
 class MatriculasRepo {
   static const _tabla = 'pichangol_matriculas';
 
-  /// Matrículas de un conjunto de academias (las del profe). Fail-safe.
-  static Future<List<Alumno>> deAcademias(List<String> academiaIds) async {
-    if (!SupabaseService.disponible || academiaIds.isEmpty) return [];
+  /// Matrículas de un conjunto de academias (las del profe). Devuelve alumnos +
+  /// las cuotas EMBEBIDAS en cada matrícula (lo que pagó al inscribirse por la
+  /// app), para que el profe vea el programa y el pago. Fail-safe.
+  static Future<({List<Alumno> alumnos, List<Cuota> cuotas})> deAcademias(
+      List<String> academiaIds) async {
+    if (!SupabaseService.disponible || academiaIds.isEmpty) {
+      return (alumnos: <Alumno>[], cuotas: <Cuota>[]);
+    }
     try {
       final rows = await SupabaseService.client
           .from(_tabla)
@@ -23,13 +28,16 @@ class MatriculasRepo {
           .neq('eliminada', true);
       return _mapear(rows);
     } catch (_) {
-      return [];
+      return (alumnos: <Alumno>[], cuotas: <Cuota>[]);
     }
   }
 
   /// Matrículas de un alumno-app por su correo (para que vea sus academias).
-  static Future<List<Alumno>> deAlumno(String email) async {
-    if (!SupabaseService.disponible || email.isEmpty) return [];
+  static Future<({List<Alumno> alumnos, List<Cuota> cuotas})> deAlumno(
+      String email) async {
+    if (!SupabaseService.disponible || email.isEmpty) {
+      return (alumnos: <Alumno>[], cuotas: <Cuota>[]);
+    }
     try {
       final rows = await SupabaseService.client
           .from(_tabla)
@@ -38,24 +46,42 @@ class MatriculasRepo {
           .neq('eliminada', true);
       return _mapear(rows);
     } catch (_) {
-      return [];
+      return (alumnos: <Alumno>[], cuotas: <Cuota>[]);
     }
   }
 
-  static List<Alumno> _mapear(dynamic rows) => (rows as List)
-      .map((r) =>
-          Alumno.fromJson(Map<String, dynamic>.from((r as Map)['data'] as Map)))
-      .toList();
+  static ({List<Alumno> alumnos, List<Cuota> cuotas}) _mapear(dynamic rows) {
+    final alumnos = <Alumno>[];
+    final cuotas = <Cuota>[];
+    for (final r in (rows as List)) {
+      final data = Map<String, dynamic>.from((r as Map)['data'] as Map);
+      alumnos.add(Alumno.fromJson(data));
+      final cs = data['cuotas'];
+      if (cs is List) {
+        for (final c in cs) {
+          try {
+            cuotas.add(Cuota.fromJson(Map<String, dynamic>.from(c as Map)));
+          } catch (_) {}
+        }
+      }
+    }
+    return (alumnos: alumnos, cuotas: cuotas);
+  }
 
-  /// Inserta o actualiza (upsert por id). Fail-safe.
-  static Future<void> guardar(Alumno a) async {
+  /// Inserta o actualiza (upsert por id). Si se pasan [cuotas], se EMBEBEN en el
+  /// dato para que el profe las vea desde otro dispositivo. Fail-safe.
+  static Future<void> guardar(Alumno a, {List<Cuota> cuotas = const []}) async {
     if (!SupabaseService.disponible) return;
     try {
       await SupabaseService.client.from(_tabla).upsert({
         'id': a.id,
         'academia_id': a.academiaId,
         'email': a.email,
-        'data': a.toJson(),
+        'data': {
+          ...a.toJson(),
+          if (cuotas.isNotEmpty)
+            'cuotas': cuotas.map((c) => c.toJson()).toList(),
+        },
         'eliminada': false,
       });
     } catch (_) {}
