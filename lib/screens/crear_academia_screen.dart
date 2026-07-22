@@ -6,17 +6,16 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../brand.dart';
 import '../data/canchas_repo.dart';
 import '../models/academia.dart';
 import '../models/club.dart';
 import '../models/models.dart';
-import '../services/growth_service.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/responsive.dart';
 import '../config/pais.dart';
+import 'servicios_screen.dart';
 
 /// Crea o edita la academia del profe (marca independiente). Fase 1: nombre,
 /// deporte, sede actual (texto), WhatsApp, descripción y planes.
@@ -225,23 +224,6 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
     if (u != null) await launchUrl(u, mode: LaunchMode.externalApplication);
   }
 
-  /// Abre WhatsApp con Pichangol para contratar el servicio de landing/redes,
-  /// con un mensaje prellenado que incluye el nombre de la academia.
-  Future<void> _contactarServicio() async {
-    final nombre = _nombre.text.trim();
-    final msg = 'Hola Pichangol 👋 Soy'
-        '${nombre.isNotEmpty ? ' de la academia "$nombre"' : ' dueño de una academia'}'
-        ' y quiero contratar mi landing + manejo de redes sociales.';
-    // Número configurable POR PAÍS desde la torre de control (según el país de
-    // la academia); respaldo = constante de marca.
-    final numero =
-        await GrowthService.contactoWhatsApp(_paisAcademia.iso) ?? kContactoWhatsApp;
-    final ok = await WhatsAppLink.abrir(numero, msg);
-    if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('No se pudo abrir WhatsApp. Inténtalo de nuevo.')));
-    }
-  }
 
   /// Lee un % de un controller: number 0–100 (vacío/invalido = 0).
   double _pct(TextEditingController c) {
@@ -818,8 +800,9 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
           _seccionPlegable(
             titulo: 'Publicidad / Landing (opcional)',
             subtitulo:
-                'Servicio de marketing de Pichangol: tu página web para difundir '
-                'la academia. Pega aquí el enlace que te entregamos.',
+                'Si ya tienes tu página web, pégala aquí. Si no, contrata tu '
+                'landing en "Servicios Pichangol": la generamos con los datos de '
+                'tu academia.',
             abierta: (widget.academia?.landingUrl ?? '').isNotEmpty,
             hijos: [
               TextField(
@@ -866,23 +849,35 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                     'tu tarifario o fotos.',
                     style: TextStyle(color: textoTenue, fontSize: 11.5)),
               ] else ...[
-                const Text(
-                    'Contrátala en "Servicios" (📣) — la generamos con los datos de '
-                    'tu academia — o escríbenos:',
-                    style: TextStyle(color: textoTenue, fontSize: 12)),
+                Text(
+                    widget.academia == null
+                        ? '¿No tienes web? Guarda la academia y contrata tu '
+                            'landing en "Servicios Pichangol" (📣): la generamos '
+                            'con tus datos.'
+                        : '¿No tienes web? Contrata tu landing en "Servicios '
+                            'Pichangol": la generamos con los datos de tu academia '
+                            'y el enlace aparece aquí solo.',
+                    style: const TextStyle(color: textoTenue, fontSize: 12)),
                 const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFF25D366),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12)),
-                    icon: const FaIcon(FontAwesomeIcons.whatsapp, size: 18),
-                    label: const Text('Quiero mi landing (WhatsApp)'),
-                    onPressed: _contactarServicio,
+                if (widget.academia != null)
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                          backgroundColor: lima,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12)),
+                      icon: const Icon(Icons.campaign_outlined, size: 18),
+                      label: const Text('Contratar mi landing (Servicios)'),
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => ServiciosScreen(
+                              negocio: appState.negocioServiciosDeAcademia(
+                                  widget.academia!)),
+                        ),
+                      ),
+                    ),
                   ),
-                ),
               ],
             ],
           ),
