@@ -204,6 +204,18 @@ def set_marketing_admin(req: MarketingConfigRequest,
     return get_marketing_admin(x_admin_token)
 
 
+@router.post("/admin/api/borrar-suscripciones-alumno")
+def borrar_suscripciones_alumno_admin(
+        x_admin_token: str | None = Header(default=None)) -> dict:
+    """PRUEBAS: borra todas las suscripciones mensuales de alumnos (mes a mes),
+    para que al limpiar academias/alumnos no queden débitos automáticos huérfanos
+    cobrando tarjetas. No toca saldos ni reportes."""
+    _check(x_admin_token)
+    n = len(stores.suscripciones_alumno)
+    stores.suscripciones_alumno.clear()
+    return {"ok": True, "borradas": n}
+
+
 @router.get("/admin/api/comision")
 def get_comision_admin(x_admin_token: str | None = Header(default=None)) -> dict:
     """Comisión por cobro digital de matrícula, por país (torre de control)."""
@@ -496,6 +508,7 @@ _HTML = r"""<!DOCTYPE html>
         <div id="contacto"></div>
         <div id="marketing"></div>
         <div id="comision"></div>
+        <div id="mantenimiento"></div>
       </div>
     </section>
   </main>
@@ -555,8 +568,59 @@ function mostrarApp(){
   cargarContacto();
   cargarMarketing();
   cargarComision();
+  renderMantenimiento();
   cargarLiquidaciones();
   cargar();
+}
+
+// --- Mantenimiento / pruebas: disparar cobros automáticos manualmente ---------
+function renderMantenimiento(){
+  document.getElementById('mantenimiento').innerHTML =
+    `<div class="card"><div class="top"><h3>Mantenimiento (pruebas)</h3></div>
+      <div class="row">Dispara AHORA los cobros automáticos que normalmente corren
+        cada 12 h. Útil para probar el flujo sin esperar. Cobra a las tarjetas
+        guardadas de Culqi.</div>
+      <div class="actions" style="flex-wrap:wrap;gap:8px">
+        <button class="btn-ap" onclick="cobrarMensualidades()">Cobrar mensualidades vencidas (alumnos)</button>
+        <button class="btn-ap" onclick="cobrarServicios()">Cobrar suscripciones de marketing vencidas</button>
+      </div>
+      <div class="row" style="margin-top:12px;color:var(--muted)">Al limpiar academias/alumnos
+        (SQL en Supabase), borra también los débitos automáticos para que no queden cobrando huérfanos:</div>
+      <div class="actions"><button class="btn-rc" onclick="borrarSuscripcionesAlumno()">Borrar suscripciones de alumnos (pruebas)</button></div>
+      <div id="mant_res" class="row" style="margin-top:10px;color:var(--muted)"></div>
+    </div>`;
+}
+async function borrarSuscripcionesAlumno(){
+  if(!confirm('¿Borrar TODAS las suscripciones mes a mes de alumnos? (pruebas)')) return;
+  try{
+    const r = await fetch('/admin/api/borrar-suscripciones-alumno',{method:'POST',headers:headers()});
+    if(r.status===401){ salir(); return; }
+    const j = await r.json();
+    document.getElementById('mant_res').textContent = `Suscripciones de alumnos borradas: ${j.borradas||0}.`;
+    toast('Suscripciones de alumnos borradas');
+  }catch(e){ document.getElementById('mant_res').textContent='No se pudo.'; }
+}
+async function cobrarMensualidades(){
+  document.getElementById('mant_res').textContent='Cobrando mensualidades…';
+  try{
+    const r = await fetch('/pagos/matricula/cobrar-vencidas',{method:'POST',headers:headers()});
+    if(r.status===401){ salir(); return; }
+    const j = await r.json();
+    document.getElementById('mant_res').textContent =
+      `Mensualidades: ${j.cobradas||0} cobradas, ${j.pendientes||0} pendientes.`;
+    toast('Mensualidades procesadas');
+  }catch(e){ document.getElementById('mant_res').textContent='No se pudo (revisa Culqi/red).'; }
+}
+async function cobrarServicios(){
+  document.getElementById('mant_res').textContent='Cobrando suscripciones de marketing…';
+  try{
+    const r = await fetch('/pagos/servicios/cobrar-vencidas',{method:'POST',headers:headers()});
+    if(r.status===401){ salir(); return; }
+    const j = await r.json();
+    document.getElementById('mant_res').textContent =
+      `Marketing: ${j.cobradas||0} del saldo, ${j.por_tarjeta||0} por tarjeta, ${j.pendientes||0} pendientes.`;
+    toast('Suscripciones procesadas');
+  }catch(e){ document.getElementById('mant_res').textContent='No se pudo (revisa Culqi/red).'; }
 }
 
 // --- Servicios de marketing: precios + tope de posts IA --------------------
