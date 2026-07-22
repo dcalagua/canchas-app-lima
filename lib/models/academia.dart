@@ -263,6 +263,7 @@ class Academia {
   }
 
   Academia copyWith({
+    String? id,
     String? nombre,
     Deporte? deporte,
     String? whatsapp,
@@ -283,7 +284,7 @@ class Academia {
     double? retribucionClubPct,
   }) =>
       Academia(
-        id: id,
+        id: id ?? this.id,
         nombre: nombre ?? this.nombre,
         deporte: deporte ?? this.deporte,
         dueno: dueno,

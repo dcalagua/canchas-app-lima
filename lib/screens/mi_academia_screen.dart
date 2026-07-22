@@ -31,6 +31,13 @@ class MiAcademiaScreen extends StatelessWidget {
         builder: (context, _) {
           final ac = appState.miAcademia;
           if (ac == null) {
+            // Aún no sabemos si el profe tiene academia: la nube puede no haber
+            // bajado (típico tras reinstalar). Mostramos spinner y disparamos la
+            // carga; así NO se crea una academia duplicada por adelantarse.
+            if (!appState.academiasRemotasCargadas) {
+              appState.cargarAcademiasRemotas(); // idempotente (guard interno)
+              return const _CargandoAcademia();
+            }
             return const _SinAcademia();
           }
           // Al abrir, trae de la nube las matrículas nuevas (alumnos que se
@@ -512,6 +519,24 @@ class _DestacarCardState extends State<_DestacarCard> {
               label: Text(destacada ? 'Subir de nivel' : 'Destacar mi academia'),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CargandoAcademia extends StatelessWidget {
+  const _CargandoAcademia();
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircularProgressIndicator(color: lima),
+          SizedBox(height: 16),
+          Text('Cargando tu academia…',
+              style: TextStyle(color: textoTenue, fontWeight: FontWeight.w600)),
         ],
       ),
     );

@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../services/growth_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
-import 'crear_academia_screen.dart';
 import 'home_shell.dart';
 import 'login_google_sheet.dart';
 import 'mi_academia_screen.dart';
@@ -31,10 +30,12 @@ class AnfitrionScreen extends StatelessWidget {
       if (!ok || !context.mounted) return;
     }
     if (!context.mounted) return;
-    final tiene = appState.miAcademia != null;
-    Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) =>
-            tiene ? const MiAcademiaScreen() : const CrearAcademiaScreen()));
+    // Siempre a MiAcademiaScreen: él resuelve si mostrar la academia, un spinner
+    // mientras baja de la nube, o "Crear mi academia" cuando ya es seguro que no
+    // hay ninguna. Así evitamos crear una academia DUPLICADA por adelantarnos a
+    // que Supabase responda (típico tras reinstalar el APK).
+    Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const MiAcademiaScreen()));
   }
 
   @override

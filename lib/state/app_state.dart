@@ -129,15 +129,27 @@ class AppState extends ChangeNotifier {
   /// Crea o actualiza una academia (upsert por id). Persiste local + nube
   /// (Supabase) para que sobreviva a reinstalar el APK.
   void guardarAcademia(Academia a) {
-    final i = academias.indexWhere((x) => x.id == a.id);
+    // Modelo piloto: UNA academia por dueño. Si ya existe una del mismo dueño con
+    // OTRO id (típico: se creó una nueva porque la nube aún no había cargado tras
+    // reinstalar), NO duplicamos: reusamos el id existente y la actualizamos. Es
+    // la 2.ª barrera contra "academias duplicadas".
+    var academia = a;
+    final dueno = a.dueno.trim().toLowerCase();
+    if (dueno.isNotEmpty) {
+      final j = academias.indexWhere(
+          (x) => x.id != a.id && x.dueno.trim().toLowerCase() == dueno);
+      if (j >= 0) academia = a.copyWith(id: academias[j].id);
+    }
+    final i = academias.indexWhere((x) => x.id == academia.id);
     if (i >= 0) {
-      academias[i] = a;
+      academias[i] = academia;
     } else {
-      academias.add(a);
+      academias.add(academia);
     }
     notifyListeners();
     _persistirDatos();
-    AcademiasRepo.guardar(a); // best-effort: comparte y sobrevive reinstalación
+    // best-effort: comparte y sobrevive reinstalación
+    AcademiasRepo.guardar(academia);
   }
 
   /// Al CONECTAR las redes (OAuth Meta en Servicios), auto-declara en la academia
@@ -643,20 +655,37 @@ class AppState extends ChangeNotifier {
     return true;
   }
 
+  /// True una vez que el PRIMER intento de traer academias de la nube terminó
+  /// (con éxito o fallo). Mientras es false, la UI del profe muestra un spinner
+  /// en vez de "no tienes academia": así evitamos que el profe cree una academia
+  /// DUPLICADA porque la suya aún no había bajado de Supabase (1.ª barrera).
+  bool academiasRemotasCargadas = false;
+  bool _cargandoAcademias = false;
+
   Future<void> cargarAcademiasRemotas() async {
+    if (_cargandoAcademias) return; // ya hay una carga en curso: no re-entrar
+    _cargandoAcademias = true;
     var cambio = sembrarAcademias(); // asegura la academia piloto + su tarifario
-    final remotas = await AcademiasRepo.fetchRemotas();
-    for (final a in remotas) {
-      final i = academias.indexWhere((x) => x.id == a.id);
-      if (i >= 0) {
-        academias[i] = a;
-      } else {
-        academias.add(a);
+    try {
+      final remotas = await AcademiasRepo.fetchRemotas();
+      for (final a in remotas) {
+        final i = academias.indexWhere((x) => x.id == a.id);
+        if (i >= 0) {
+          academias[i] = a;
+        } else {
+          academias.add(a);
+        }
+        cambio = true;
       }
-      cambio = true;
+      // La remota pudo pisar a Jartur con una versión vieja: cúrala de nuevo.
+      if (_curarSeedJartur()) cambio = true;
+    } finally {
+      _cargandoAcademias = false;
+      if (!academiasRemotasCargadas) {
+        academiasRemotasCargadas = true;
+        cambio = true; // reemplaza el spinner por el contenido real
+      }
     }
-    // La remota pudo pisar a Jartur con una versión vieja: cúrala de nuevo.
-    if (_curarSeedJartur()) cambio = true;
     if (cambio) {
       notifyListeners();
       _persistirDatos();
