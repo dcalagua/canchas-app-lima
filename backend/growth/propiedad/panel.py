@@ -286,21 +286,32 @@ def _banco_pct() -> float:
 
 @router.get("/admin/api/margenes")
 def get_margenes_admin(x_admin_token: str | None = Header(default=None)) -> dict:
-    """DESGLOSE de la comisión de cobro digital de matrículas: cuánto se llevó el
-    banco/pasarela (Culqi) y cuánto es el MARGEN neto de Pichangol. El banco cobra
-    sobre el BRUTO; la comisión a la academia es lo que PCG le retiene."""
+    """DESGLOSE del margen de Pichangol: sus INGRESOS por comisiones (matrículas +
+    reservas) menos el COSTO real de la pasarela/banco (Culqi) sobre TODO lo que
+    pasa por tarjeta (matrículas de alumnos + recargas de saldo de dueños). Las
+    comisiones de reserva se debitan del saldo (que el dueño recargó por tarjeta),
+    por eso las recargas entran en la base de costo del banco."""
     _check(x_admin_token)
-    ms = [p for p in stores.pagos if p.tipo == "matricula_online"]
-    bruto = sum(p.monto_centimos for p in ms)
-    comision_ac = sum(p.comision_centimos for p in ms)
+    mat = [p for p in stores.pagos if p.tipo == "matricula_online"]
+    res = [p for p in stores.pagos if p.tipo == "comision_reserva"]
+    rec = [p for p in stores.pagos if p.tipo == "recarga"]
+    mat_bruto = sum(p.monto_centimos for p in mat)
+    comision_mat = sum(p.comision_centimos for p in mat)
+    comision_res = sum(p.monto_centimos for p in res)  # la comisión ES el monto
+    rec_bruto = sum(p.monto_centimos for p in rec)
+    bruto_procesado = mat_bruto + rec_bruto            # todo lo cobrado a tarjeta
+    ingresos = comision_mat + comision_res             # ingreso bruto de PCG
     banco_pct = _banco_pct()
-    costo_banco = int(round(bruto * banco_pct / 100.0))
-    margen = comision_ac - costo_banco
+    costo_banco = int(round(bruto_procesado * banco_pct / 100.0))
+    margen = ingresos - costo_banco
     return {
-        "cobros": len(ms),
-        "bruto_soles": bruto / 100.0,
-        "comision_academias_soles": comision_ac / 100.0,
+        "cobros_matricula": len(mat),
+        "cobros_reserva": len(res),
+        "comision_matricula_soles": comision_mat / 100.0,
+        "comision_reserva_soles": comision_res / 100.0,
+        "ingresos_pcg_soles": ingresos / 100.0,
         "banco_pct": banco_pct,
+        "bruto_procesado_soles": bruto_procesado / 100.0,
         "costo_banco_soles": costo_banco / 100.0,
         "margen_pcg_soles": margen / 100.0,
     }
@@ -814,22 +825,27 @@ async function cargarMargenes(){
 }
 function renderMargenes(m){
   const s = v => 'S/ ' + (Number(v)||0).toFixed(2);
+  const fila = (t,v,extra='') => `<div class="row" style="display:flex;justify-content:space-between;${extra}"><span>${t}</span><span>${v}</span></div>`;
   document.getElementById('margenes').innerHTML =
     `<div class="card"><div class="top"><h3>Márgenes Pichangol (comisiones)</h3></div>
-      <div class="row">Desglose de la comisión que cobras a las academias por cobro
-        digital: cuánto se lleva el banco/pasarela (Culqi, sobre el bruto) y cuánto
-        es tu MARGEN neto. Ajusta la tasa del banco con tu tarifa real.</div>
-      <div class="row" style="display:flex;justify-content:space-between"><span>Cobrado digital (bruto) · ${m.cobros} cobros</span><b>${s(m.bruto_soles)}</b></div>
-      <div class="row" style="display:flex;justify-content:space-between"><span>Comisión cobrada a academias</span><b>${s(m.comision_academias_soles)}</b></div>
+      <div class="row">Tus INGRESOS por comisiones (matrículas + reservas) menos el
+        COSTO real del banco/pasarela (Culqi) sobre todo lo que pasa por tarjeta
+        (matrículas de alumnos + recargas de saldo de dueños). Ajusta la tasa del
+        banco con tu tarifa real.</div>
+      ${fila('Comisión de matrículas · '+m.cobros_matricula, '<b>'+s(m.comision_matricula_soles)+'</b>')}
+      ${fila('Comisión de reservas · '+m.cobros_reserva, '<b>'+s(m.comision_reserva_soles)+'</b>')}
+      ${fila('= Ingresos Pichangol (comisiones)', '<b>'+s(m.ingresos_pcg_soles)+'</b>', 'color:#14463A')}
+      <hr style="border:none;border-top:1px solid var(--border);margin:8px 0">
+      ${fila('Bruto procesado por tarjeta (matrículas + recargas)', s(m.bruto_procesado_soles), 'color:var(--muted)')}
       <div style="display:flex;align-items:center;gap:8px;margin:8px 0">
         <span style="flex:1;font-weight:600;font-size:13px">− Costo pasarela/banco (Culqi)</span>
         <input id="banco_pct" value="${m.banco_pct}" inputmode="decimal" style="width:80px;padding:9px 10px;
           border:1px solid var(--border);border-radius:10px;font-family:inherit;font-size:14px;text-align:right">
         <span style="color:var(--muted);font-size:13px;min-width:16px">%</span>
       </div>
-      <div class="row" style="display:flex;justify-content:space-between;color:var(--muted)"><span>Costo banco estimado</span><span>− ${s(m.costo_banco_soles)}</span></div>
+      ${fila('Costo banco estimado', '− '+s(m.costo_banco_soles), 'color:var(--muted)')}
       <hr style="border:none;border-top:1px solid var(--border);margin:8px 0">
-      <div class="row" style="display:flex;justify-content:space-between;font-weight:800;color:#14463A"><span>Margen neto Pichangol</span><span>${s(m.margen_pcg_soles)}</span></div>
+      ${fila('Margen neto Pichangol', s(m.margen_pcg_soles), 'font-weight:800;color:#14463A')}
       <div class="actions"><button class="btn-ap" onclick="guardarBanco()">Guardar tasa banco</button></div>
     </div>`;
 }

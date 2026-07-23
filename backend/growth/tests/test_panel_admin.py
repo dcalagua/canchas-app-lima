@@ -214,23 +214,33 @@ def test_borrar_cobros_matricula_limpia_el_reporte(client):
     assert client.post("/admin/api/borrar-cobros-matricula").status_code == 401
 
 
-def test_margenes_desglosa_banco_y_pcg(client):
-    """La torre de control ve el desglose de la comisión: costo banco (sobre el
-    bruto) y margen neto de Pichangol (comisión a academias − costo banco)."""
+def test_margenes_unifica_matriculas_reservas_y_banco(client):
+    """La torre de control ve el margen total de Pichangol: comisiones (matrículas
+    + reservas) menos el costo del banco sobre lo procesado por tarjeta
+    (matrículas + recargas)."""
     h = {"X-Admin-Token": TOKEN}
-    # Fija 5% de comisión a academias (Perú) y registra un cobro de S/300.
-    client.post("/admin/api/comision", json={"pe": 5}, headers=h)
-    client.post("/pagos/matricula", json={
-        "academia_id": "acM", "monto_soles": 300, "matricula_id": "mM",
-        "pais": "pe", "concepto": "Matrícula"})
-    # Fija la tasa del banco en 4% y pide el desglose.
+    # Registra los pagos directo en el libro (sin pasar por Culqi):
+    #  - matrícula de S/300 con comisión congelada S/15 (5%)
+    stores.registrar_pago(tipo="matricula_online", monto_centimos=30000,
+                          moneda="PEN", estado="aprobado", dueno_id="acM",
+                          culqi_charge_id="mM", comision_centimos=1500)
+    #  - recarga de saldo del dueño S/100 (pasó por tarjeta)
+    stores.registrar_pago(tipo="recarga", monto_centimos=10000, moneda="PEN",
+                          estado="aprobado", dueno_id="due@x.com",
+                          culqi_charge_id="rec1")
+    #  - comisión de reserva S/5 (se debitó del saldo)
+    stores.registrar_pago(tipo="comision_reserva", monto_centimos=500,
+                          moneda="PEN", estado="aprobado", dueno_id="due@x.com",
+                          culqi_charge_id="rsv1")
+    # Tasa banco 4% y desglose.
     m = client.post("/admin/api/margenes/banco", json={"pct": 4}, headers=h).json()
-    assert m["cobros"] == 1
-    assert m["bruto_soles"] == 300.0
-    assert m["comision_academias_soles"] == 15.0     # 5% de 300
-    assert m["banco_pct"] == 4.0
-    assert m["costo_banco_soles"] == 12.0            # 4% de 300
-    assert m["margen_pcg_soles"] == 3.0              # 15 − 12
+    assert m["cobros_matricula"] == 1 and m["cobros_reserva"] == 1
+    assert m["comision_matricula_soles"] == 15.0               # 5% de 300
+    assert m["comision_reserva_soles"] == 5.0
+    assert m["ingresos_pcg_soles"] == 20.0                     # 15 + 5
+    assert m["bruto_procesado_soles"] == 400.0                 # 300 matrícula + 100 recarga
+    assert m["costo_banco_soles"] == 16.0                      # 4% de 400
+    assert m["margen_pcg_soles"] == 4.0                        # 20 − 16
     # Sin token -> 401.
     assert client.get("/admin/api/margenes").status_code == 401
 
