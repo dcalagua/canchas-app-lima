@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../screens/login_google_sheet.dart';
 import '../screens/pago_sheet.dart';
 import '../services/pagos_service.dart';
 import '../state/app_state.dart';
@@ -40,7 +41,23 @@ class PagoTarjeta {
 
     final pk = (cfg['public_key'] ?? '').toString();
     final esTest = (cfg['modo'] ?? '') == 'test';
-    final userId = appState.usuario?.email ?? email;
+    // Culqi EXIGE un email válido. Resuélvelo (sesión > el pasado) y, si falta,
+    // pide login AQUÍ antes de cobrar (evita el error "invalid_email").
+    var correo = (appState.usuario?.email ?? '').trim();
+    if (!_emailValido(correo)) correo = email.trim();
+    if (!_emailValido(correo)) {
+      final entro = await LoginGoogleSheet.mostrar(context, motivo: 'pagar');
+      if (!context.mounted) return false;
+      if (!entro) return false;
+      correo = (appState.usuario?.email ?? '').trim();
+      if (!_emailValido(correo)) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content:
+                Text('Necesitas una cuenta con correo válido para pagar.')));
+        return false;
+      }
+    }
+    final userId = correo;
     final ok = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -51,7 +68,7 @@ class PagoTarjeta {
       builder: (_) => _PagoTarjetaSheet(
         monto: monto,
         concepto: concepto,
-        email: email,
+        email: correo,
         userId: userId,
         pk: pk,
         esTest: esTest,
@@ -62,6 +79,10 @@ class PagoTarjeta {
     );
     return ok == true;
   }
+
+  /// Email con formato mínimo válido (Culqi lo rechaza si no lo tiene).
+  static bool _emailValido(String e) =>
+      RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(e.trim());
 }
 
 class _PagoTarjetaSheet extends StatefulWidget {

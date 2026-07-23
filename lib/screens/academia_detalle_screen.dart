@@ -12,6 +12,7 @@ import '../widgets/logo_academia.dart';
 import '../widgets/pago_tarjeta_sheet.dart';
 import 'campeonatos_screen.dart';
 import 'chat_screen.dart';
+import 'login_google_sheet.dart';
 import '../utils/moneda.dart';
 import '../config/pais.dart';
 
@@ -547,6 +548,14 @@ class _TarjetaPlan extends StatelessWidget {
   }
 
   Future<void> _matricular(BuildContext context) async {
+    // 0) Sesión OBLIGATORIA antes de matricular/pagar: el cobro (Culqi) necesita
+    //    un email válido y la matrícula se ata a la cuenta. Sin esto, el pago
+    //    fallaba con "email inválido". Pedimos login primero (Airbnb): así el
+    //    nombre y el correo ya vienen cargados.
+    if (!await LoginGoogleSheet.mostrar(context, motivo: 'matricularte y pagar')) {
+      return;
+    }
+    if (!context.mounted) return;
     // 1) Datos del alumno + MODO (mes a mes / adelantado) + cantidad + total.
     final datos = await showModalBottomSheet<
         (String, String, int, bool, double, bool, int?)>(
