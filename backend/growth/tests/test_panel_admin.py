@@ -214,6 +214,27 @@ def test_borrar_cobros_matricula_limpia_el_reporte(client):
     assert client.post("/admin/api/borrar-cobros-matricula").status_code == 401
 
 
+def test_margenes_desglosa_banco_y_pcg(client):
+    """La torre de control ve el desglose de la comisión: costo banco (sobre el
+    bruto) y margen neto de Pichangol (comisión a academias − costo banco)."""
+    h = {"X-Admin-Token": TOKEN}
+    # Fija 5% de comisión a academias (Perú) y registra un cobro de S/300.
+    client.post("/admin/api/comision", json={"pe": 5}, headers=h)
+    client.post("/pagos/matricula", json={
+        "academia_id": "acM", "monto_soles": 300, "matricula_id": "mM",
+        "pais": "pe", "concepto": "Matrícula"})
+    # Fija la tasa del banco en 4% y pide el desglose.
+    m = client.post("/admin/api/margenes/banco", json={"pct": 4}, headers=h).json()
+    assert m["cobros"] == 1
+    assert m["bruto_soles"] == 300.0
+    assert m["comision_academias_soles"] == 15.0     # 5% de 300
+    assert m["banco_pct"] == 4.0
+    assert m["costo_banco_soles"] == 12.0            # 4% de 300
+    assert m["margen_pcg_soles"] == 3.0              # 15 − 12
+    # Sin token -> 401.
+    assert client.get("/admin/api/margenes").status_code == 401
+
+
 def test_triage_solo_no_activa(client):
     """Contraste: el triage clásico aprueba pero NO activa. Ahora exige token."""
     r = _reclamo()

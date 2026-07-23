@@ -56,6 +56,10 @@ class CanalRequest(BaseModel):
     canal: str
 
 
+class BancoRequest(BaseModel):
+    pct: float
+
+
 class MarketingConfigRequest(BaseModel):
     landing_soles: float | None = None
     redes_soles: float | None = None
@@ -270,6 +274,45 @@ def set_comision_admin(req: ComisionRequest,
         if val is not None:
             stores.config[f"comision_matricula_pct_{iso}"] = str(max(0.0, float(val)))
     return get_comision_admin(x_admin_token)
+
+
+def _banco_pct() -> float:
+    """Tasa efectiva de la pasarela/banco (Culqi) sobre el bruto (config)."""
+    try:
+        return max(0.0, float(stores.cfg("comision_banco_pct")))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+@router.get("/admin/api/margenes")
+def get_margenes_admin(x_admin_token: str | None = Header(default=None)) -> dict:
+    """DESGLOSE de la comisión de cobro digital de matrículas: cuánto se llevó el
+    banco/pasarela (Culqi) y cuánto es el MARGEN neto de Pichangol. El banco cobra
+    sobre el BRUTO; la comisión a la academia es lo que PCG le retiene."""
+    _check(x_admin_token)
+    ms = [p for p in stores.pagos if p.tipo == "matricula_online"]
+    bruto = sum(p.monto_centimos for p in ms)
+    comision_ac = sum(p.comision_centimos for p in ms)
+    banco_pct = _banco_pct()
+    costo_banco = int(round(bruto * banco_pct / 100.0))
+    margen = comision_ac - costo_banco
+    return {
+        "cobros": len(ms),
+        "bruto_soles": bruto / 100.0,
+        "comision_academias_soles": comision_ac / 100.0,
+        "banco_pct": banco_pct,
+        "costo_banco_soles": costo_banco / 100.0,
+        "margen_pcg_soles": margen / 100.0,
+    }
+
+
+@router.post("/admin/api/margenes/banco")
+def set_banco_admin(req: BancoRequest,
+                    x_admin_token: str | None = Header(default=None)) -> dict:
+    """Fija la tasa de la pasarela/banco (Culqi) y devuelve el desglose recalculado."""
+    _check(x_admin_token)
+    stores.config["comision_banco_pct"] = str(max(0.0, float(req.pct)))
+    return get_margenes_admin(x_admin_token)
 
 
 @router.get("/config/contacto")
@@ -546,6 +589,7 @@ _HTML = r"""<!DOCTYPE html>
         <div id="contacto"></div>
         <div id="marketing"></div>
         <div id="comision"></div>
+        <div id="margenes"></div>
         <div id="mantenimiento"></div>
       </div>
     </section>
@@ -607,6 +651,7 @@ function mostrarApp(){
   cargarContacto();
   cargarMarketing();
   cargarComision();
+  cargarMargenes();
   renderMantenimiento();
   cargarLiquidaciones();
   cargar();
@@ -758,6 +803,42 @@ async function guardarComision(){
     body:JSON.stringify({pe:f('com_pe'),ec:f('com_ec'),bo:f('com_bo')})});
   if(r.status===401){ salir(); return; }
   if(r.ok){ com = await r.json(); renderComision(); toast('Comisión actualizada'); }
+  else toast('No se pudo guardar');
+}
+
+// --- Márgenes Pichangol: desglose de la comisión (banco vs PCG) -------------
+async function cargarMargenes(){
+  const r = await fetch('/admin/api/margenes',{headers:headers()});
+  if(!r.ok) return;
+  renderMargenes(await r.json());
+}
+function renderMargenes(m){
+  const s = v => 'S/ ' + (Number(v)||0).toFixed(2);
+  document.getElementById('margenes').innerHTML =
+    `<div class="card"><div class="top"><h3>Márgenes Pichangol (comisiones)</h3></div>
+      <div class="row">Desglose de la comisión que cobras a las academias por cobro
+        digital: cuánto se lleva el banco/pasarela (Culqi, sobre el bruto) y cuánto
+        es tu MARGEN neto. Ajusta la tasa del banco con tu tarifa real.</div>
+      <div class="row" style="display:flex;justify-content:space-between"><span>Cobrado digital (bruto) · ${m.cobros} cobros</span><b>${s(m.bruto_soles)}</b></div>
+      <div class="row" style="display:flex;justify-content:space-between"><span>Comisión cobrada a academias</span><b>${s(m.comision_academias_soles)}</b></div>
+      <div style="display:flex;align-items:center;gap:8px;margin:8px 0">
+        <span style="flex:1;font-weight:600;font-size:13px">− Costo pasarela/banco (Culqi)</span>
+        <input id="banco_pct" value="${m.banco_pct}" inputmode="decimal" style="width:80px;padding:9px 10px;
+          border:1px solid var(--border);border-radius:10px;font-family:inherit;font-size:14px;text-align:right">
+        <span style="color:var(--muted);font-size:13px;min-width:16px">%</span>
+      </div>
+      <div class="row" style="display:flex;justify-content:space-between;color:var(--muted)"><span>Costo banco estimado</span><span>− ${s(m.costo_banco_soles)}</span></div>
+      <hr style="border:none;border-top:1px solid var(--border);margin:8px 0">
+      <div class="row" style="display:flex;justify-content:space-between;font-weight:800;color:#14463A"><span>Margen neto Pichangol</span><span>${s(m.margen_pcg_soles)}</span></div>
+      <div class="actions"><button class="btn-ap" onclick="guardarBanco()">Guardar tasa banco</button></div>
+    </div>`;
+}
+async function guardarBanco(){
+  const pct = parseFloat((document.getElementById('banco_pct').value||'0').replace(',','.'))||0;
+  const r = await fetch('/admin/api/margenes/banco',{method:'POST',headers:headers(),
+    body:JSON.stringify({pct})});
+  if(r.status===401){ salir(); return; }
+  if(r.ok){ renderMargenes(await r.json()); toast('Tasa del banco actualizada'); }
   else toast('No se pudo guardar');
 }
 

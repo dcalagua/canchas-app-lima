@@ -77,6 +77,12 @@ CONFIG_DEFAULT: dict[str, str] = {
     # desde donde se envió coincide con la ubicación de la cancha (anti-fraude
     # ligero: "estar en el lugar" al reclamar). "0" = no se exige (piloto).
     "exigir_ubicacion_reclamo": "0",
+    # Tasa efectiva de la PASARELA/BANCO (Culqi) sobre el BRUTO de cada cobro
+    # digital: es el COSTO real que paga Pichangol al procesar la tarjeta. Se
+    # resta de la comisión que PCG le cobra a la academia para saber el MARGEN
+    # neto de Pichangol (torre de control → Márgenes). Culqi Perú ≈ 3.44% + IGV
+    # ≈ 4.06%; editable por el operador con su tarifa real.
+    "comision_banco_pct": "4.06",
     # Canal de comunicación que muestra el APK en la ficha de la academia/cancha:
     # "pcg_primero" (chat interno principal + WhatsApp de respaldo) |
     # "solo_pcg" (oculta WhatsApp: todos usan el chat del app) |
