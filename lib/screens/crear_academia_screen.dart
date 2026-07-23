@@ -67,6 +67,218 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
   late Deporte _deporte = widget.academia?.deporte ?? Deporte.tenis;
   late final List<Plan> _planes = [...(widget.academia?.planes ?? const [])];
 
+  // Multi-sede: locales de la academia + horarios por (sede, programa). Vacío =
+  // academia de una sola sede (usa la sede principal de arriba).
+  late final List<Sede> _sedesAcademia =
+      [...(widget.academia?.sedes ?? const [])];
+  final Map<String, TextEditingController> _horarioCtrl = {};
+
+  TextEditingController _ctrlHorario(String sedeId, String programa) {
+    final k = '$sedeId|$programa';
+    return _horarioCtrl.putIfAbsent(
+        k,
+        () => TextEditingController(
+            text: widget.academia?.horarios[k] ?? ''));
+  }
+
+  /// Programas distintos del tarifario (para el horario por sede). Los planes
+  /// sin programa se agrupan como "General".
+  List<String> _programasDistintos() {
+    final vistos = <String>[];
+    for (final p in _planes) {
+      final prog = p.programa.isNotEmpty ? p.programa : 'General';
+      if (!vistos.contains(prog)) vistos.add(prog);
+    }
+    return vistos;
+  }
+
+  Widget _seccionSedesHorarios() {
+    final programas = _programasDistintos();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Sedes y horarios',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+        const SizedBox(height: 4),
+        const Text(
+            '¿Entrenas en varios lugares? Agrega tus sedes. Cada programa puede '
+            'tener su horario en cada sede.',
+            style: TextStyle(color: textoTenue, fontSize: 13)),
+        const SizedBox(height: 10),
+        for (var i = 0; i < _sedesAcademia.length; i++)
+          _tarjetaSede(_sedesAcademia[i], i, programas),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton.icon(
+            onPressed: _agregarSede,
+            style: OutlinedButton.styleFrom(
+                foregroundColor: lima, side: const BorderSide(color: lima)),
+            icon: const Icon(Icons.add_location_alt_outlined, size: 18),
+            label: const Text('Agregar sede'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _tarjetaSede(Sede s, int index, List<String> programas) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: trazo),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.place, size: 18, color: lima),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(s.nombre,
+                        style: const TextStyle(fontWeight: FontWeight.w800)),
+                    if (s.direccion.isNotEmpty)
+                      Text(s.direccion,
+                          style:
+                              const TextStyle(color: textoTenue, fontSize: 12)),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                onPressed: () => setState(() => _sedesAcademia.removeAt(index)),
+              ),
+            ],
+          ),
+          if (programas.isNotEmpty) ...[
+            const Divider(),
+            const Text('Horario por programa',
+                style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12.5,
+                    color: textoTenue)),
+            const SizedBox(height: 6),
+            for (final prog in programas)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: TextField(
+                  controller: _ctrlHorario(s.id, prog),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    labelText: prog,
+                    hintText: 'ej. Lun-Mié-Vie 4-6pm',
+                  ),
+                ),
+              ),
+          ] else
+            const Text('Agrega programas en "Planes y tarifario" para fijar '
+                'sus horarios por sede.',
+                style: TextStyle(color: textoTenue, fontSize: 12)),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _agregarSede() async {
+    final nombreCtrl = TextEditingController();
+    var direccion = '';
+    LatLng? ubic;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Agregar sede'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nombreCtrl,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(
+                    labelText: 'Nombre de la sede',
+                    hintText: 'ej. Sede San Borja'),
+              ),
+              const SizedBox(height: 10),
+              Autocomplete<LugarSugerido>(
+                displayStringForOption: (o) => o.nombre,
+                optionsBuilder: _opcionesSede,
+                onSelected: (sel) {
+                  direccion =
+                      sel.direccion.isNotEmpty ? sel.direccion : sel.nombre;
+                  ubic = sel.ubicacion;
+                },
+                fieldViewBuilder: (c, controller, focus, onSubmit) => TextField(
+                  controller: controller,
+                  focusNode: focus,
+                  onChanged: (v) => direccion = v,
+                  decoration: const InputDecoration(
+                    labelText: 'Dirección',
+                    hintText: 'Escribe y elige de la lista',
+                    prefixIcon: Icon(Icons.place_outlined),
+                  ),
+                ),
+                optionsViewBuilder: (c, onSel, options) => Align(
+                  alignment: Alignment.topLeft,
+                  child: Material(
+                    elevation: 4,
+                    borderRadius: BorderRadius.circular(12),
+                    child: ConstrainedBox(
+                      constraints:
+                          const BoxConstraints(maxHeight: 220, maxWidth: 300),
+                      child: ListView(
+                        padding: EdgeInsets.zero,
+                        shrinkWrap: true,
+                        children: [
+                          for (final o in options)
+                            ListTile(
+                              dense: true,
+                              title: Text(o.nombre,
+                                  maxLines: 1, overflow: TextOverflow.ellipsis),
+                              subtitle: o.direccion.isEmpty
+                                  ? null
+                                  : Text(o.direccion,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis),
+                              onTap: () => onSel(o),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: lima),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Agregar')),
+        ],
+      ),
+    );
+    if (ok == true && nombreCtrl.text.trim().isNotEmpty) {
+      setState(() {
+        _sedesAcademia.add(Sede(
+          id: 'sede_${DateTime.now().microsecondsSinceEpoch}',
+          nombre: nombreCtrl.text.trim(),
+          direccion: direccion.trim(),
+          ubicacion: ubic,
+        ));
+      });
+    }
+  }
+
   // "Plan simple" oculto por ahora (el tarifario se arma con "Programa").
   static const bool _mostrarPlanSimple = false;
 
@@ -210,6 +422,9 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
     _retribClub.dispose();
     _landing.dispose();
     for (final c in _redesCtrl.values) {
+      c.dispose();
+    }
+    for (final c in _horarioCtrl.values) {
       c.dispose();
     }
     super.dispose();
@@ -578,6 +793,17 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       if (v.isNotEmpty) redes[clave] = v;
     }
 
+    // Recolecta los horarios por (sede, programa) desde los controladores; solo
+    // los de sedes que siguen existiendo y con texto.
+    final sedeIds = _sedesAcademia.map((s) => s.id).toSet();
+    final horarios = <String, String>{};
+    _horarioCtrl.forEach((k, c) {
+      final v = c.text.trim();
+      if (v.isNotEmpty && sedeIds.contains(k.split('|').first)) {
+        horarios[k] = v;
+      }
+    });
+
     final dueno = appState.usuario?.email ?? '';
     final base = widget.academia;
     final academia = (base ??
@@ -609,6 +835,8 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       logoUrl: _logoUrl,
       redes: redes,
       fotos: fotos,
+      sedes: _sedesAcademia,
+      horarios: horarios,
     );
     final okNube = await appState.guardarAcademia(academia);
     if (!mounted) return;
@@ -997,6 +1225,8 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
             const Text('Aún no agregas planes (mensualidad, paquetes, por clase).',
                 style: TextStyle(color: textoTenue, fontSize: 13)),
           ..._listaProgramas(),
+          const SizedBox(height: 24),
+          _seccionSedesHorarios(),
           const SizedBox(height: 18),
           // Opciones avanzadas plegadas: una academia "normal" (sin convenio de
           // club) no las necesita. Se abren solas si ya traen valores (Jartur).

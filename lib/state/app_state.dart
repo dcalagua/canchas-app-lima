@@ -1212,6 +1212,7 @@ class AppState extends ChangeNotifier {
     String apoderadoWhatsapp = '',
     int? edad,
     String operacionId = '', // N.º de operación del pago (para el comprobante)
+    String sedeId = '', // sede (local) elegida en academias multi-sede
   }) {
     final n = cantidad < 1 ? 1 : cantidad;
     final esMenor = apoderadoNombre.trim().isNotEmpty;
@@ -1225,6 +1226,7 @@ class AppState extends ChangeNotifier {
       apoderadoNombre: apoderadoNombre.trim(),
       apoderadoWhatsapp: apoderadoWhatsapp.trim(),
       edad: edad,
+      sedeId: sedeId,
     );
     alumnos.add(alumno);
     final hoy = DateTime.now();

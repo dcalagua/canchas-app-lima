@@ -1204,6 +1204,15 @@ class AlumnoDetalleScreen extends StatelessWidget {
           final ac = appState.miAcademia;
           final cuotas = appState.cuotasDeAlumno(al.id);
           final hoy = DateTime.now();
+          var sedeNombre = '';
+          if (al.sedeId.isNotEmpty && ac != null) {
+            for (final s in ac.sedes) {
+              if (s.id == al.sedeId) {
+                sedeNombre = s.nombre;
+                break;
+              }
+            }
+          }
           return ListView(
             padding: const EdgeInsets.all(18),
             children: [
@@ -1219,6 +1228,19 @@ class AlumnoDetalleScreen extends StatelessWidget {
                 Text(
                     '${al.esMenor ? 'WhatsApp apoderado' : 'WhatsApp'}: ${al.whatsappContacto}',
                     style: const TextStyle(color: textoTenue)),
+              if (sedeNombre.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.place, size: 14, color: textoTenue),
+                      const SizedBox(width: 4),
+                      Text('Sede: $sedeNombre',
+                          style: const TextStyle(
+                              color: textoTenue, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
               _SuscripcionAlumnoInfoProfe(
                   alumnoId: al.id, moneda: ac?.monedaSimbolo ?? monedaSimbolo),
               const SizedBox(height: 16),

@@ -123,6 +123,14 @@ class Academia {
   /// cobrado (liquidación). CONFIGURABLE; 0 = la academia no le paga nada al club
   /// (clubes que no usan esta opción). Caso Jartur (El Bosque): 11.
   final double retribucionClubPct;
+  /// SEDES de la academia (multi-local). Una academia de fútbol puede operar en
+  /// varios lugares con horarios distintos. Vacío = academia de una sola sede
+  /// (se usa la sede principal `sedeClub`/`sedeUbicacion`).
+  final List<Sede> sedes;
+  /// HORARIOS por SEDE y PROGRAMA. Clave = "sedeId|programa" → texto del horario
+  /// (ej. "Lun-Mié-Vie 4-6pm"). Así cada programa (Sub-8, Sub-10…) tiene su
+  /// horario en cada sede.
+  final Map<String, String> horarios;
 
   const Academia({
     required this.id,
@@ -145,7 +153,27 @@ class Academia {
     this.mesesMinPrepago = 3,
     this.landingUrl = '',
     this.retribucionClubPct = 0,
+    this.sedes = const [],
+    this.horarios = const {},
   });
+
+  /// Sedes EFECTIVAS: las declaradas; si no hay ninguna, una sede única derivada
+  /// de la sede principal (compatibilidad con academias de un solo local).
+  List<Sede> get sedesEfectivas => sedes.isNotEmpty
+      ? sedes
+      : [
+          Sede(
+              id: 'principal',
+              nombre: sedeClub.isNotEmpty ? sedeClub : 'Sede principal',
+              ubicacion: sedeUbicacion)
+        ];
+
+  /// ¿Opera en más de una sede?
+  bool get multiSede => sedes.length > 1;
+
+  /// Horario configurado para (sede, programa). Vacío si no se fijó.
+  String horarioDe(String sedeId, String programa) =>
+      horarios['$sedeId|$programa'] ?? '';
 
   /// ¿Aplica el descuento de prepago al pagar [meses] adelantados de golpe?
   bool aplicaPrepago(int meses) =>
@@ -282,6 +310,8 @@ class Academia {
     int? mesesMinPrepago,
     String? landingUrl,
     double? retribucionClubPct,
+    List<Sede>? sedes,
+    Map<String, String>? horarios,
   }) =>
       Academia(
         id: id ?? this.id,
@@ -304,6 +334,8 @@ class Academia {
         mesesMinPrepago: mesesMinPrepago ?? this.mesesMinPrepago,
         landingUrl: landingUrl ?? this.landingUrl,
         retribucionClubPct: retribucionClubPct ?? this.retribucionClubPct,
+        sedes: sedes ?? this.sedes,
+        horarios: horarios ?? this.horarios,
       );
 
   Map<String, dynamic> toJson() => {
@@ -328,6 +360,8 @@ class Academia {
         'mesesMinPrepago': mesesMinPrepago,
         'landingUrl': landingUrl,
         'retribucionClubPct': retribucionClubPct,
+        'sedes': sedes.map((s) => s.toJson()).toList(),
+        'horarios': horarios,
       };
 
   factory Academia.fromJson(Map<String, dynamic> j) => Academia(
@@ -361,6 +395,53 @@ class Academia {
         landingUrl: (j['landingUrl'] ?? '') as String,
         retribucionClubPct:
             ((j['retribucionClubPct'] ?? 0) as num).toDouble(),
+        sedes: (j['sedes'] as List?)
+                ?.map((e) => Sede.fromJson(e as Map<String, dynamic>))
+                .toList() ??
+            const [],
+        horarios: (j['horarios'] as Map?)
+                ?.map((k, v) => MapEntry(k.toString(), v.toString())) ??
+            const {},
+      );
+}
+
+/// Una SEDE (local) de una academia multi-sede: nombre + dirección + ubicación.
+/// El horario NO va aquí: se guarda por (sede, programa) en `Academia.horarios`,
+/// porque cada programa (Sub-8, Sub-10…) entrena en días/horas distintos.
+class Sede {
+  final String id;
+  final String nombre;
+  final String direccion;
+  final LatLng? ubicacion;
+  const Sede({
+    required this.id,
+    required this.nombre,
+    this.direccion = '',
+    this.ubicacion,
+  });
+
+  Sede copyWith({String? nombre, String? direccion, LatLng? ubicacion}) => Sede(
+        id: id,
+        nombre: nombre ?? this.nombre,
+        direccion: direccion ?? this.direccion,
+        ubicacion: ubicacion ?? this.ubicacion,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'nombre': nombre,
+        'direccion': direccion,
+        if (ubicacion != null) 'lat': ubicacion!.latitude,
+        if (ubicacion != null) 'lng': ubicacion!.longitude,
+      };
+
+  factory Sede.fromJson(Map<String, dynamic> j) => Sede(
+        id: (j['id'] ?? '') as String,
+        nombre: (j['nombre'] ?? '') as String,
+        direccion: (j['direccion'] ?? '') as String,
+        ubicacion: (j['lat'] != null && j['lng'] != null)
+            ? LatLng((j['lat'] as num).toDouble(), (j['lng'] as num).toDouble())
+            : null,
       );
 }
 
@@ -391,6 +472,9 @@ class Alumno {
   /// 1 = único/1º (sin descuento), 2 = 2º hermano, 3 = 3º o más. Lo marca el
   /// profe al inscribir. Ver `Academia.descuentoHermano2/3`.
   final int ordenHermano;
+  /// SEDE (local) donde entrena el alumno, en academias multi-sede. Vacío = la
+  /// sede única/principal. Ver `Academia.sedes`.
+  final String sedeId;
 
   const Alumno({
     required this.id,
@@ -404,6 +488,7 @@ class Alumno {
     this.edad,
     this.esSocioSede = true,
     this.ordenHermano = 1,
+    this.sedeId = '',
   });
 
   /// ¿Es un alumno que usa la app (se unió con código)?
@@ -428,6 +513,7 @@ class Alumno {
         if (edad != null) 'edad': edad,
         'esSocioSede': esSocioSede,
         'ordenHermano': ordenHermano,
+        'sedeId': sedeId,
       };
 
   factory Alumno.fromJson(Map<String, dynamic> j) => Alumno(
@@ -442,6 +528,7 @@ class Alumno {
         edad: (j['edad'] as num?)?.toInt(),
         esSocioSede: (j['esSocioSede'] ?? true) as bool,
         ordenHermano: ((j['ordenHermano'] ?? 1) as num).toInt(),
+        sedeId: (j['sedeId'] ?? '') as String,
       );
 }
 

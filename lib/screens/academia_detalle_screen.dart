@@ -259,6 +259,16 @@ class _Contenido extends StatelessWidget {
                     ),
                   ],
                 ),
+                // Sedes y horarios (solo academias multi-sede).
+                if (academia.sedes.isNotEmpty) ...[
+                  const SizedBox(height: 24),
+                  Text('Sedes y horarios',
+                      style:
+                          t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 10),
+                  for (final s in academia.sedes)
+                    _TarjetaSedeInfo(sede: s, academia: academia),
+                ],
                 // Planes con matrícula.
                 const SizedBox(height: 26),
                 Text('Planes y matrícula',
@@ -390,6 +400,82 @@ class _ChipAccion extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Tarjeta pública de una SEDE: nombre + dirección + horarios por programa +
+/// "cómo llegar". Solo se muestra en academias multi-sede.
+class _TarjetaSedeInfo extends StatelessWidget {
+  const _TarjetaSedeInfo({required this.sede, required this.academia});
+  final Sede sede;
+  final Academia academia;
+
+  @override
+  Widget build(BuildContext context) {
+    final programas = academia.planesPorPrograma.keys
+        .map((p) => p.isEmpty ? 'General' : p)
+        .toList();
+    final horarios = <MapEntry<String, String>>[];
+    for (final prog in programas) {
+      final h = academia.horarioDe(sede.id, prog);
+      if (h.isNotEmpty) horarios.add(MapEntry(prog, h));
+    }
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: trazo),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.place, size: 18, color: lima),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(sede.nombre,
+                        style: const TextStyle(fontWeight: FontWeight.w800)),
+                    if (sede.direccion.isNotEmpty)
+                      Text(sede.direccion,
+                          style:
+                              const TextStyle(color: textoTenue, fontSize: 12)),
+                  ],
+                ),
+              ),
+              if (sede.ubicacion != null)
+                IconButton(
+                  icon: const Icon(Icons.directions, color: lima),
+                  tooltip: 'Cómo llegar',
+                  onPressed: () => UbicacionShare.abrirMapa(sede.ubicacion!),
+                ),
+            ],
+          ),
+          if (horarios.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            for (final e in horarios)
+              Padding(
+                padding: const EdgeInsets.only(top: 3),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.schedule, size: 14, color: textoTenue),
+                    const SizedBox(width: 6),
+                    Expanded(
+                        child: Text('${e.key}: ${e.value}',
+                            style: const TextStyle(fontSize: 12.5))),
+                  ],
+                ),
+              ),
+          ],
+        ],
       ),
     );
   }
@@ -562,7 +648,7 @@ class _TarjetaPlan extends StatelessWidget {
     if (!context.mounted) return;
     // 1) Datos del alumno + MODO (mes a mes / adelantado) + cantidad + total.
     final datos = await showModalBottomSheet<
-        (String, String, int, bool, double, bool, int?)>(
+        (String, String, int, bool, double, bool, int?, String)>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Theme.of(context).colorScheme.surface,
@@ -578,10 +664,12 @@ class _TarjetaPlan extends StatelessWidget {
         esMensual: plan.tipo == TipoPlan.mensual,
         descuentoPrepago: academia.descuentoPrepago,
         mesesMinPrepago: academia.mesesMinPrepago,
+        sedes: academia.sedes,
       ),
     );
     if (datos == null) return;
-    final (nombre, whatsapp, cantidad, mesAMes, totalAhora, esHijo, edad) =
+    final (nombre, whatsapp, cantidad, mesAMes, totalAhora, esHijo, edad,
+            sedeId) =
         datos;
     final monto = totalAhora.round();
 
@@ -628,6 +716,7 @@ class _TarjetaPlan extends StatelessWidget {
       apoderadoWhatsapp: esHijo ? whatsapp : '',
       edad: esHijo ? edad : null,
       operacionId: operacionId ?? '',
+      sedeId: sedeId,
     );
 
     // 3b) Mes a mes: activa el débito automático de los meses restantes con la
@@ -696,6 +785,7 @@ class _HojaDatosAlumno extends StatefulWidget {
     this.esMensual = false,
     this.descuentoPrepago = 0,
     this.mesesMinPrepago = 3,
+    this.sedes = const [],
   });
   final String nombreInicial;
   final String academia;
@@ -705,6 +795,7 @@ class _HojaDatosAlumno extends StatefulWidget {
   final bool esMensual; // ¿el plan es mensual? (habilita "mes a mes")
   final double descuentoPrepago; // % de descuento por pago adelantado
   final int mesesMinPrepago; // desde cuántos meses aplica el descuento
+  final List<Sede> sedes; // sedes de la academia (elige una si hay varias)
 
   @override
   State<_HojaDatosAlumno> createState() => _HojaDatosAlumnoState();
@@ -718,6 +809,9 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
   bool _mesAMes = false; // solo aplica a planes mensuales
   bool _esHijo = false; // ¿matriculo a mi hijo(a)? (yo soy el apoderado)
   String? _error; // mensaje de validación inline (visible)
+  // Sede elegida (academias multi-sede): por defecto la primera.
+  late String? _sedeId =
+      widget.sedes.isNotEmpty ? widget.sedes.first.id : null;
 
   Plan get _plan => widget.planObj;
 
@@ -845,6 +939,32 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
                 prefixText: '$codigoTelActual ',
                 prefixIcon: const Icon(Icons.chat_outlined)),
           ),
+          // Sede (academias multi-sede): elige dónde entrenará el alumno.
+          if (widget.sedes.length > 1) ...[
+            const SizedBox(height: 18),
+            const Text('¿En qué sede entrenará?',
+                style: TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final s in widget.sedes)
+                  ChoiceChip(
+                    avatar: Icon(Icons.place,
+                        size: 16,
+                        color: _sedeId == s.id ? Colors.white : lima),
+                    label: Text(s.nombre),
+                    selected: _sedeId == s.id,
+                    selectedColor: lima,
+                    labelStyle: TextStyle(
+                        color: _sedeId == s.id ? Colors.white : null,
+                        fontWeight: FontWeight.w600),
+                    onSelected: (_) => setState(() => _sedeId = s.id),
+                  ),
+              ],
+            ),
+          ],
           const SizedBox(height: 18),
           // Modo de pago (solo planes mensuales): mes a mes vs adelantado.
           if (widget.esMensual) ...[
@@ -995,6 +1115,7 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
                   _total,
                   _esHijo,
                   int.tryParse(_edad.text.trim()),
+                  _sedeId ?? '',
                 ));
               },
               child: Text(_mesAMes
