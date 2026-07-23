@@ -171,6 +171,26 @@ def test_rate_limit_corta_el_spam_de_reclamos(client, monkeypatch):
     assert codes[3] == 429
 
 
+def test_canal_comunicacion_default_y_cambio(client):
+    """El canal por defecto es 'pcg_primero' y el APK lo lee por /config/canal
+    (público). El admin lo cambia por /admin/api/canal (con token)."""
+    h = {"X-Admin-Token": TOKEN}
+    # Público: default.
+    r = client.get("/config/canal")
+    assert r.status_code == 200 and r.json()["canal"] == "pcg_primero"
+    # Admin sin token -> 401.
+    assert client.post("/admin/api/canal", json={"canal": "solo_pcg"}).status_code == 401
+    # Admin cambia a solo_pcg.
+    r = client.post("/admin/api/canal", json={"canal": "solo_pcg"}, headers=h)
+    assert r.status_code == 200 and r.json()["ok"] is True
+    # El APK ahora lee solo_pcg (ocultará WhatsApp).
+    assert client.get("/config/canal").json()["canal"] == "solo_pcg"
+    # Canal inválido -> no cambia.
+    r = client.post("/admin/api/canal", json={"canal": "xxx"}, headers=h)
+    assert r.json()["ok"] is False
+    assert client.get("/config/canal").json()["canal"] == "solo_pcg"
+
+
 def test_triage_solo_no_activa(client):
     """Contraste: el triage clásico aprueba pero NO activa. Ahora exige token."""
     r = _reclamo()

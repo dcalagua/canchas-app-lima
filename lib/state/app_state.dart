@@ -2525,7 +2525,28 @@ class AppState extends ChangeNotifier {
       // Trae la disponibilidad compartida (reservas de otros dispositivos) para
       // que el anti-doble-reserva y el panel del dueño arranquen al día. Best-effort.
       cargarReservasRemotas();
+      cargarCanalComunicacion(); // política de canal (WhatsApp vs chat PCG)
     } catch (_) {}
+  }
+
+  /// Canal de comunicación configurado en la torre de control: decide si el APK
+  /// muestra el botón de WhatsApp. 'pcg_primero' (chat + WhatsApp respaldo) |
+  /// 'solo_pcg' (oculta WhatsApp) | 'whatsapp_libre'. Se refresca al arrancar;
+  /// mientras tanto usa 'pcg_primero' (fail-safe: no bloquea contactar).
+  String canalComunicacion = 'pcg_primero';
+
+  /// ¿El APK debe MOSTRAR el botón de WhatsApp? Solo se oculta en 'solo_pcg'.
+  bool get mostrarWhatsapp => canalComunicacion != 'solo_pcg';
+
+  /// ¿WhatsApp va tan visible como el chat interno? (modo 'whatsapp_libre').
+  bool get whatsappLibre => canalComunicacion == 'whatsapp_libre';
+
+  Future<void> cargarCanalComunicacion() async {
+    final c = await GrowthService.canalComunicacion();
+    if (c != null && c != canalComunicacion) {
+      canalComunicacion = c;
+      notifyListeners();
+    }
   }
 
   /// Carga una lista JSON persistida en [destino] (fail-safe).

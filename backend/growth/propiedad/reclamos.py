@@ -24,7 +24,14 @@ import math
 import secrets
 
 import config
-from db.store import MODOS_APROBACION, ReclamoPropiedad, ahora, como_dict, stores
+from db.store import (
+    CANALES_COMUNICACION,
+    MODOS_APROBACION,
+    ReclamoPropiedad,
+    ahora,
+    como_dict,
+    stores,
+)
 from propiedad import identidad, twilio_adapter, whatsapp_adapter
 
 
@@ -43,6 +50,26 @@ def set_modo_global(modo: str) -> dict:
                 "modos": list(MODOS_APROBACION)}
     stores.config["modo_aprobacion"] = modo
     return {"ok": True, "global": modo}
+
+
+def canal_comunicacion() -> str:
+    """Canal que el APK muestra para contactar al profe: 'pcg_primero' |
+    'solo_pcg' | 'whatsapp_libre'. Editable desde la torre de control."""
+    valor = stores.cfg("canal_comunicacion")
+    return valor if valor in CANALES_COMUNICACION else "pcg_primero"
+
+
+def config_canal() -> dict:
+    """Config del canal de comunicación (global + valores válidos)."""
+    return {"canal": canal_comunicacion(), "canales": list(CANALES_COMUNICACION)}
+
+
+def set_canal_comunicacion(canal: str) -> dict:
+    if canal not in CANALES_COMUNICACION:
+        return {"ok": False, "error": "canal_invalido",
+                "canales": list(CANALES_COMUNICACION)}
+    stores.config["canal_comunicacion"] = canal
+    return {"ok": True, "canal": canal}
 
 
 def exigir_ubicacion() -> bool:

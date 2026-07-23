@@ -43,6 +43,24 @@ class GrowthService {
     }
   }
 
+  /// Canal de comunicación GLOBAL configurado en la torre de control: decide qué
+  /// muestra el APK para contactar al profe. Valores: 'pcg_primero' (chat interno
+  /// + WhatsApp de respaldo) | 'solo_pcg' (oculta WhatsApp) | 'whatsapp_libre'
+  /// (ambos por igual). Devuelve null si no se pudo (la app cae a 'pcg_primero').
+  static Future<String?> canalComunicacion() async {
+    if (!disponible) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/config/canal');
+      final resp = await http.get(uri).timeout(const Duration(seconds: 6));
+      if (resp.statusCode != 200) return null;
+      final j = jsonDecode(resp.body) as Map<String, dynamic>;
+      final c = (j['canal'] ?? '').toString();
+      return c.isNotEmpty ? c : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Carril informal: corre la IA primero (reusa el módulo de existencia en el
   /// servidor) y, si no concluye, agenda una visita. Devuelve null si el servicio
   /// no está configurado / no respondió.

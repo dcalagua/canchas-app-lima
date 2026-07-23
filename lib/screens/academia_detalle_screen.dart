@@ -210,9 +210,35 @@ class _Contenido extends StatelessWidget {
                     onPressed: () => _abrirChatProfe(context),
                   ),
                 ),
+                // Modo 'whatsapp_libre' (torre de control): WhatsApp también como
+                // botón visible (co-primario), no solo chip.
+                if (academia.whatsapp.isNotEmpty &&
+                    appState.mostrarWhatsapp &&
+                    appState.whatsappLibre) ...[
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF25D366),
+                          side: const BorderSide(
+                              color: Color(0xFF25D366), width: 1.4),
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14))),
+                      icon: const Icon(FontAwesomeIcons.whatsapp, size: 18),
+                      label: const Text('Contactar por WhatsApp',
+                          style: TextStyle(fontWeight: FontWeight.w800)),
+                      onPressed: () => WhatsAppLink.abrir(academia.whatsapp,
+                          'Hola, vi ${academia.nombre} en Pichangol y quiero info de las clases.'),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 10),
                 // Accesos rápidos a la MISMA altura (nada escondido abajo):
-                // ubicación · WhatsApp (respaldo) · campeonatos.
+                // ubicación · WhatsApp (respaldo) · campeonatos. El chip de
+                // WhatsApp se OCULTA en 'solo_pcg' y no se duplica en
+                // 'whatsapp_libre' (allí ya está como botón arriba).
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
@@ -225,7 +251,9 @@ class _Contenido extends StatelessWidget {
                             punto: academia.sedeUbicacion!,
                             titulo: academia.nombre),
                       ),
-                    if (academia.whatsapp.isNotEmpty)
+                    if (academia.whatsapp.isNotEmpty &&
+                        appState.mostrarWhatsapp &&
+                        !appState.whatsappLibre)
                       _ChipAccion(
                         icon: FontAwesomeIcons.whatsapp,
                         label: 'WhatsApp',

@@ -52,6 +52,10 @@ class ContactoRequest(BaseModel):
     contactos: dict[str, str]
 
 
+class CanalRequest(BaseModel):
+    canal: str
+
+
 class MarketingConfigRequest(BaseModel):
     landing_soles: float | None = None
     redes_soles: float | None = None
@@ -164,6 +168,21 @@ def set_contacto_admin(req: ContactoRequest,
     return reclamos.set_contactos_whatsapp(req.contactos)
 
 
+@router.get("/admin/api/canal")
+def get_canal_admin(x_admin_token: str | None = Header(default=None)) -> dict:
+    """Canal de comunicación que muestra el APK (torre de control)."""
+    _check(x_admin_token)
+    return reclamos.config_canal()
+
+
+@router.post("/admin/api/canal")
+def set_canal_admin(req: CanalRequest,
+                    x_admin_token: str | None = Header(default=None)) -> dict:
+    """Cambia el canal GLOBAL (pcg_primero | solo_pcg | whatsapp_libre)."""
+    _check(x_admin_token)
+    return reclamos.set_canal_comunicacion(req.canal)
+
+
 @router.get("/admin/api/marketing")
 def get_marketing_admin(x_admin_token: str | None = Header(default=None)) -> dict:
     """Precios de los servicios de marketing + tope mensual de posts IA."""
@@ -247,6 +266,13 @@ def get_contacto_publico(pais: str | None = None) -> dict:
     """PÚBLICO: el APK lee el WhatsApp de contacto COMPLETO del país detectado
     (?pais=PE|EC|BO). Sin país, devuelve el primero configurado."""
     return {"whatsapp": reclamos.contacto_whatsapp(pais)}
+
+
+@router.get("/config/canal")
+def get_canal_publico() -> dict:
+    """PÚBLICO: el APK lee el canal de comunicación para decidir si muestra el
+    botón de WhatsApp (pcg_primero | solo_pcg | whatsapp_libre)."""
+    return {"canal": reclamos.canal_comunicacion()}
 
 
 @router.get("/admin", response_class=HTMLResponse)
@@ -503,6 +529,7 @@ _HTML = r"""<!DOCTYPE html>
       <h1 class="page-h">Configuración</h1>
       <div class="cfg-grid">
         <div id="modo"></div>
+        <div id="canal"></div>
         <div id="pichangaModo"></div>
         <div id="ubic"></div>
         <div id="contacto"></div>
@@ -563,6 +590,7 @@ function mostrarApp(){
   restaurarSide();
   renderTabs();
   cargarModo();
+  cargarCanal();
   cargarPichangaModo();
   cargarUbicacion();
   cargarContacto();
@@ -877,6 +905,36 @@ async function setModo(m){
   const j = await r.json();
   if(j.ok){ toast('Modo: '+(m==='marcha_blanca'?'Marcha blanca':'Nuevo flujo')); renderModo(m); }
   else toast('No se pudo cambiar el modo');
+}
+// --- Canal de comunicación (qué muestra el APK para contactar al profe) -----
+const CANAL_DESC = {
+  pcg_primero:'Chat Pichangol como botón principal + WhatsApp visible como respaldo. Recomendado en el piloto.',
+  solo_pcg:'Se OCULTA WhatsApp: todos escriben por el chat del app (máxima retención). Úsalo cuando el chat notifique bien al profe.',
+  whatsapp_libre:'Chat y WhatsApp visibles por igual. Para nichos que exigen WhatsApp.'
+};
+const CANAL_NOMBRE = {pcg_primero:'PCG primero', solo_pcg:'Solo PCG', whatsapp_libre:'WhatsApp libre'};
+async function cargarCanal(){
+  const r = await fetch('/admin/api/canal',{headers:headers()});
+  if(!r.ok) return;
+  const j = await r.json();
+  renderCanal(j.canal || 'pcg_primero');
+}
+function renderCanal(g){
+  document.getElementById('canal').innerHTML =
+    `<div class="card"><div class="top"><h3>Canal de comunicación (app)</h3></div>
+      <div class="row" id="canalDesc">${esc(CANAL_DESC[g]||'')}</div>
+      <div class="actions">
+        <button class="seg ${g==='pcg_primero'?'on':''}" onclick="setCanal('pcg_primero')">PCG primero</button>
+        <button class="seg ${g==='solo_pcg'?'on':''}" onclick="setCanal('solo_pcg')">Solo PCG</button>
+        <button class="seg ${g==='whatsapp_libre'?'on':''}" onclick="setCanal('whatsapp_libre')">WhatsApp libre</button>
+      </div></div>`;
+}
+async function setCanal(c){
+  const r = await fetch('/admin/api/canal',{method:'POST',headers:headers(),body:JSON.stringify({canal:c})});
+  if(r.status===401){ salir(); return; }
+  const j = await r.json();
+  if(j.ok){ toast('Canal: '+(CANAL_NOMBRE[c]||c)); renderCanal(c); }
+  else toast('No se pudo cambiar el canal');
 }
 // --- Pichangas: modo global de asignación de cupos (convocatorias) ---------
 let pichangaModo = 'orden_llegada';

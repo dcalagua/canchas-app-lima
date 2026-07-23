@@ -77,6 +77,12 @@ CONFIG_DEFAULT: dict[str, str] = {
     # desde donde se envió coincide con la ubicación de la cancha (anti-fraude
     # ligero: "estar en el lugar" al reclamar). "0" = no se exige (piloto).
     "exigir_ubicacion_reclamo": "0",
+    # Canal de comunicación que muestra el APK en la ficha de la academia/cancha:
+    # "pcg_primero" (chat interno principal + WhatsApp de respaldo) |
+    # "solo_pcg" (oculta WhatsApp: todos usan el chat del app) |
+    # "whatsapp_libre" (chat + WhatsApp visibles por igual). Política de PCG
+    # para empujar la retención por el chat propio sin perder al que usa WhatsApp.
+    "canal_comunicacion": "pcg_primero",
     # --- CONVOCATORIAS ("pichangas" programadas) ---------------------------
     # Modo GLOBAL de asignación de cupos cuando una convocatoria no fija el suyo
     # (se puede sobreescribir por convocatoria). Los 3 modos son configurables por
@@ -96,6 +102,9 @@ CONFIG_DEFAULT: dict[str, str] = {
 
 # Modos de aprobación válidos.
 MODOS_APROBACION = ("marcha_blanca", "nuevo_flujo")
+
+# Canales de comunicación válidos (qué muestra el APK para contactar al profe).
+CANALES_COMUNICACION = ("pcg_primero", "solo_pcg", "whatsapp_libre")
 
 # Modos de asignación de cupos de una convocatoria válidos.
 MODOS_ASIGNACION = ("orden_llegada", "sorteo", "equidad")
