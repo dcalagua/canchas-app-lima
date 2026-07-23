@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 import '../models/academia.dart';
 import '../services/pagos_service.dart';
@@ -60,6 +63,18 @@ class _ReporteAcademiaScreenState extends State<ReporteAcademiaScreen> {
       !d.isBefore(DateTime(r.start.year, r.start.month, r.start.day)) &&
       !d.isAfter(r.end);
 
+  /// Numeración CORRELATIVA de boletas: cada cuota PAGADA recibe un N.º por su
+  /// orden de cobro (sobre TODO el historial, para que el número sea estable sin
+  /// importar el filtro de período).
+  Map<String, int> _boletas(List<Cuota> todas) {
+    final pagadas = todas.where((c) => c.pagada).toList()
+      ..sort((a, b) => _ref(a).compareTo(_ref(b)));
+    return {for (var i = 0; i < pagadas.length; i++) pagadas[i].id: i + 1};
+  }
+
+  String _fechaLarga(DateTime d) =>
+      '${d.day} ${_mesesCorto[d.month - 1]} ${d.year}';
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -96,6 +111,7 @@ class _ReporteAcademiaScreenState extends State<ReporteAcademiaScreen> {
           final nombres = <String, String>{
             for (final a in appState.alumnos) a.id: a.nombre
           };
+          final boletas = _boletas(todas);
 
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 30),
@@ -115,6 +131,23 @@ class _ReporteAcademiaScreenState extends State<ReporteAcademiaScreen> {
                 ],
               ),
               if (academia != null) ...[
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                        foregroundColor: bosque,
+                        side: const BorderSide(color: bosque, width: 1.4),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14))),
+                    icon: const Icon(Icons.picture_as_pdf_outlined, size: 20),
+                    label: const Text('Descargar estado de cuenta (PDF)',
+                        style: TextStyle(fontWeight: FontWeight.w800)),
+                    onPressed: () => _descargarEstadoCuenta(
+                        academia!, enRango, nombres, boletas, mon, rango),
+                  ),
+                ),
                 const SizedBox(height: 14),
                 _ComisionDigital(
                     academia: academia,
@@ -159,13 +192,127 @@ class _ReporteAcademiaScreenState extends State<ReporteAcademiaScreen> {
                       ref: _ref(c),
                       hoy: hoy,
                       mesesCorto: _mesesCorto,
-                      moneda: mon),
+                      moneda: mon,
+                      boleta: c.pagada ? boletas[c.id] : null),
             ],
           );
         },
       ),
     );
   }
+
+  /// Genera y comparte el ESTADO DE CUENTA en PDF: encabezado con logo, período,
+  /// totales y la tabla de movimientos con boletas numeradas.
+  Future<void> _descargarEstadoCuenta(
+      Academia ac,
+      List<Cuota> movimientos,
+      Map<String, String> nombres,
+      Map<String, int> boletas,
+      String mon,
+      DateTimeRange rango) async {
+    final doc = pw.Document();
+    pw.ImageProvider? logo;
+    final url = ac.logoUrl;
+    if (url != null && url.isNotEmpty) {
+      try {
+        logo = await networkImage(url);
+      } catch (_) {}
+    }
+    final hoy = DateTime.now();
+    final orden = [...movimientos]..sort((a, b) => _ref(b).compareTo(_ref(a)));
+    double cobrado = 0, porCobrar = 0, vencido = 0;
+    for (final c in orden) {
+      if (c.pagada) {
+        cobrado += c.monto;
+      } else {
+        porCobrar += c.monto;
+        if (c.vencidaAl(hoy)) vencido += c.monto;
+      }
+    }
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(28),
+        build: (context) => [
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.center,
+            children: [
+              if (logo != null) ...[
+                pw.SizedBox(width: 46, height: 46, child: pw.Image(logo)),
+                pw.SizedBox(width: 10),
+              ],
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(ac.nombre,
+                        style: pw.TextStyle(
+                            fontSize: 18, fontWeight: pw.FontWeight.bold)),
+                    pw.Text('Estado de cuenta',
+                        style: pw.TextStyle(
+                            fontSize: 13, color: PdfColors.grey700)),
+                  ],
+                ),
+              ),
+              pw.Text('${_fechaLarga(rango.start)} – ${_fechaLarga(rango.end)}',
+                  style: pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
+            ],
+          ),
+          pw.Divider(),
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              _pdfTotal('Cobrado', '$mon ${cobrado.toStringAsFixed(2)}'),
+              _pdfTotal('Por cobrar', '$mon ${porCobrar.toStringAsFixed(2)}'),
+              _pdfTotal('Vencido', '$mon ${vencido.toStringAsFixed(2)}'),
+            ],
+          ),
+          pw.SizedBox(height: 14),
+          pw.TableHelper.fromTextArray(
+            headers: const ['N.º', 'Alumno', 'Concepto', 'Fecha', 'Estado', 'Monto'],
+            headerStyle:
+                pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10),
+            cellStyle: const pw.TextStyle(fontSize: 9),
+            headerDecoration:
+                const pw.BoxDecoration(color: PdfColors.grey200),
+            cellAlignments: const {5: pw.Alignment.centerRight},
+            data: [
+              for (final c in orden)
+                [
+                  c.pagada
+                      ? (boletas[c.id] ?? 0).toString().padLeft(4, '0')
+                      : '—',
+                  nombres[c.alumnoId] ?? 'Alumno',
+                  c.concepto,
+                  _fechaLarga(_ref(c)),
+                  c.pagada
+                      ? 'Pagada'
+                      : (c.vencidaAl(hoy) ? 'Vencida' : 'Pendiente'),
+                  '$mon ${c.monto.toStringAsFixed(2)}',
+                ],
+            ],
+          ),
+          pw.SizedBox(height: 16),
+          pw.Text('Generado por Pichangol · ${_fechaLarga(hoy)}',
+              style: pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
+        ],
+      ),
+    );
+    final bytes = await doc.save();
+    await Printing.sharePdf(
+        bytes: bytes,
+        filename: 'estado_cuenta_${ac.nombre.replaceAll(' ', '_')}.pdf');
+  }
+
+  pw.Widget _pdfTotal(String k, String v) => pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(k, style: pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
+          pw.Text(v,
+              style:
+                  pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+        ],
+      );
 
   Widget _filtro() {
     Widget chip(String t, _Rango r) => ChoiceChip(
@@ -529,13 +676,16 @@ class _FilaPago extends StatelessWidget {
       required this.ref,
       required this.hoy,
       required this.mesesCorto,
-      required this.moneda});
+      required this.moneda,
+      this.boleta});
   final Cuota cuota;
   final String alumno;
   final DateTime ref;
   final DateTime hoy;
   final List<String> mesesCorto;
   final String moneda;
+  // N.º de boleta (correlativo) si la cuota está pagada; null si no.
+  final int? boleta;
 
   @override
   Widget build(BuildContext context) {
@@ -577,7 +727,10 @@ class _FilaPago extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                         fontWeight: FontWeight.w700, color: cs.onSurface)),
-                Text('${cuota.concepto} · $estado',
+                Text(
+                    boleta != null
+                        ? 'Boleta N.º ${boleta.toString().padLeft(4, '0')} · ${cuota.concepto}'
+                        : '${cuota.concepto} · $estado',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(color: textoTenue, fontSize: 12)),
