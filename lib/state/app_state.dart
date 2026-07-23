@@ -1213,8 +1213,11 @@ class AppState extends ChangeNotifier {
     int? edad,
     String operacionId = '', // N.º de operación del pago (para el comprobante)
     String sedeId = '', // sede (local) elegida en academias multi-sede
+    double? precioMesOverride, // precio de la sede (multi-sede con tarifa propia)
   }) {
     final n = cantidad < 1 ? 1 : cantidad;
+    // Precio mensual/por-clase efectivo: el de la sede si vino, si no el del plan.
+    final precioMes = precioMesOverride ?? plan.precioMes;
     final esMenor = apoderadoNombre.trim().isNotEmpty;
     final alumno = Alumno(
       id: 'al_${DateTime.now().microsecondsSinceEpoch}',
@@ -1240,7 +1243,7 @@ class AppState extends ChangeNotifier {
         alumnoId: alumno.id,
         concepto:
             '$n clase${n == 1 ? '' : 's'} particular${n == 1 ? '' : 'es'} · ${plan.nombre}',
-        monto: plan.precioMes * n,
+        monto: precioMes * n,
         vencimiento: hoy,
         pagada: true,
         fechaPago: hoy,
@@ -1260,7 +1263,7 @@ class AppState extends ChangeNotifier {
           academiaId: academiaId,
           alumnoId: alumno.id,
           concepto: '${plan.nombre} · ${_mesNombre(venc)}',
-          monto: plan.precioMes,
+          monto: precioMes,
           vencimiento: venc,
           pagada: pagada,
           fechaPago: pagada ? hoy : null,

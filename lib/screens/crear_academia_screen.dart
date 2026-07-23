@@ -72,6 +72,8 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
   late final List<Sede> _sedesAcademia =
       [...(widget.academia?.sedes ?? const [])];
   final Map<String, TextEditingController> _horarioCtrl = {};
+  // Precio por (sede, plan): vacío = usa el precio base del plan.
+  final Map<String, TextEditingController> _precioSedeCtrl = {};
 
   TextEditingController _ctrlHorario(String sedeId, String programa) {
     final k = '$sedeId|$programa';
@@ -79,6 +81,15 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
         k,
         () => TextEditingController(
             text: widget.academia?.horarios[k] ?? ''));
+  }
+
+  TextEditingController _ctrlPrecioSede(String sedeId, String planId) {
+    final k = '$sedeId|$planId';
+    final v = widget.academia?.preciosSede[k];
+    return _precioSedeCtrl.putIfAbsent(
+        k,
+        () => TextEditingController(
+            text: (v != null && v > 0) ? v.toStringAsFixed(2) : ''));
   }
 
   /// Programas distintos del tarifario (para el horario por sede). Los planes
@@ -180,6 +191,40 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
             const Text('Agrega programas en "Planes y tarifario" para fijar '
                 'sus horarios por sede.',
                 style: TextStyle(color: textoTenue, fontSize: 12)),
+          if (_planes.isNotEmpty) ...[
+            const Divider(),
+            Row(
+              children: [
+                const Text('Precios en esta sede',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12.5,
+                        color: textoTenue)),
+                const SizedBox(width: 6),
+                const Text('(opcional)',
+                    style: TextStyle(fontSize: 11, color: textoTenue)),
+              ],
+            ),
+            const SizedBox(height: 2),
+            const Text('Déjalo vacío para usar el precio base del plan.',
+                style: TextStyle(color: textoTenue, fontSize: 11)),
+            const SizedBox(height: 6),
+            for (final p in _planes)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: TextField(
+                  controller: _ctrlPrecioSede(s.id, p.id),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    labelText: p.nombre,
+                    prefixText: '${_paisAcademia.moneda} ',
+                    hintText: 'Base: ${p.precioMes.toStringAsFixed(2)}',
+                  ),
+                ),
+              ),
+          ],
         ],
       ),
     );
@@ -425,6 +470,9 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       c.dispose();
     }
     for (final c in _horarioCtrl.values) {
+      c.dispose();
+    }
+    for (final c in _precioSedeCtrl.values) {
       c.dispose();
     }
     super.dispose();
@@ -804,6 +852,21 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       }
     });
 
+    // Recolecta los precios por (sede, plan): solo sedes/planes vigentes y con
+    // un monto > 0. Los vacíos caen al precio base del plan. OJO: el id del plan
+    // puede contener '|' (ej. "Fútbol | 3x"), por eso separo por el PRIMER '|'.
+    final planIds = _planes.map((p) => p.id).toSet();
+    final preciosSede = <String, double>{};
+    _precioSedeCtrl.forEach((k, c) {
+      final i = k.indexOf('|');
+      if (i < 0) return;
+      final sedeId = k.substring(0, i);
+      final planId = k.substring(i + 1);
+      if (!sedeIds.contains(sedeId) || !planIds.contains(planId)) return;
+      final v = double.tryParse(c.text.trim().replaceAll(',', '.'));
+      if (v != null && v > 0) preciosSede[k] = v;
+    });
+
     final dueno = appState.usuario?.email ?? '';
     final base = widget.academia;
     final academia = (base ??
@@ -837,6 +900,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       fotos: fotos,
       sedes: _sedesAcademia,
       horarios: horarios,
+      preciosSede: preciosSede,
     );
     final okNube = await appState.guardarAcademia(academia);
     if (!mounted) return;

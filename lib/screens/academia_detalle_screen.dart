@@ -602,6 +602,21 @@ class _TarjetaPlan extends StatelessWidget {
                   color: Theme.of(context).colorScheme.onSurface)),
           const SizedBox(height: 4),
           Text(_detalle, style: const TextStyle(color: textoTenue, fontSize: 13)),
+          if (academia.tienePreciosPorSede(plan)) ...[
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                const Icon(Icons.store_mall_directory_outlined,
+                    size: 14, color: textoTenue),
+                const SizedBox(width: 4),
+                Text('El precio varía según la sede',
+                    style: TextStyle(
+                        color: Theme.of(context).colorScheme.primary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ],
           if (academia.tieneTarifaInvitado &&
               plan.tipo != TipoPlan.porClase) ...[
             const SizedBox(height: 4),
@@ -665,6 +680,7 @@ class _TarjetaPlan extends StatelessWidget {
         descuentoPrepago: academia.descuentoPrepago,
         mesesMinPrepago: academia.mesesMinPrepago,
         sedes: academia.sedes,
+        preciosSede: academia.preciosSede,
       ),
     );
     if (datos == null) return;
@@ -672,6 +688,10 @@ class _TarjetaPlan extends StatelessWidget {
             sedeId) =
         datos;
     final monto = totalAhora.round();
+    // Precio mensual y total del plan EN LA SEDE elegida (multi-sede con tarifas
+    // por local): así las cuotas y el débito automático usan el precio correcto.
+    final precioMesSede = academia.precioMesEnSede(plan, sedeId);
+    final totalPlanSede = academia.totalPlanEnSede(plan, sedeId);
 
     // 2) Pago del total a cobrar AHORA (mes a mes = 1 mes; adelantado = N meses
     // con descuento si aplica). Capturamos el token para el débito automático.
@@ -717,6 +737,7 @@ class _TarjetaPlan extends StatelessWidget {
       edad: esHijo ? edad : null,
       operacionId: operacionId ?? '',
       sedeId: sedeId,
+      precioMesOverride: precioMesSede,
     );
 
     // 3b) Mes a mes: activa el débito automático de los meses restantes con la
@@ -727,7 +748,7 @@ class _TarjetaPlan extends StatelessWidget {
         academiaId: academia.id,
         email: appState.usuario?.email ?? '',
         token: tokenUsado!,
-        montoSoles: plan.total,
+        montoSoles: totalPlanSede,
         nombre: nombre,
         pais: academia.pais.iso,
         concepto: 'Mensualidad ${academia.nombre} · ${plan.nombre}',
@@ -743,7 +764,7 @@ class _TarjetaPlan extends StatelessWidget {
         title: const Text('¡Matrícula lista!'),
         content: Text(mesAMes
             ? 'Ya estás inscrito en ${academia.nombre} (${plan.nombre}). '
-                'Se debitará ${academia.monedaSimbolo} ${plan.total.toStringAsFixed(2)} '
+                'Se debitará ${academia.monedaSimbolo} ${totalPlanSede.toStringAsFixed(2)} '
                 'automático cada mes; puedes cancelar cuando quieras.'
             : 'Ya estás inscrito en ${academia.nombre} (${plan.nombre}). '
                 'Te contactarán por WhatsApp para coordinar tus horarios.'),
@@ -786,6 +807,7 @@ class _HojaDatosAlumno extends StatefulWidget {
     this.descuentoPrepago = 0,
     this.mesesMinPrepago = 3,
     this.sedes = const [],
+    this.preciosSede = const {},
   });
   final String nombreInicial;
   final String academia;
@@ -796,6 +818,8 @@ class _HojaDatosAlumno extends StatefulWidget {
   final double descuentoPrepago; // % de descuento por pago adelantado
   final int mesesMinPrepago; // desde cuántos meses aplica el descuento
   final List<Sede> sedes; // sedes de la academia (elige una si hay varias)
+  // Precios por sede (clave "sedeId|planId"): la tarifa cambia según el local.
+  final Map<String, double> preciosSede;
 
   @override
   State<_HojaDatosAlumno> createState() => _HojaDatosAlumnoState();
@@ -835,11 +859,26 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
       widget.descuentoPrepago > 0 &&
       _cantidad >= widget.mesesMinPrepago;
 
-  double get _totalSinDto => _plan.total * _cantidad;
+  // Precio mensual/por-clase EFECTIVO según la sede elegida (multi-sede con
+  // tarifas por local); si la sede no tiene precio propio, usa el del plan.
+  double get _precioMesEf {
+    final id = _sedeId;
+    if (id != null && id.isNotEmpty) {
+      final v = widget.preciosSede['$id|${_plan.id}'];
+      if (v != null) return v;
+    }
+    return _plan.precioMes;
+  }
+
+  // Total del plan a este precio (por clase = precio; mensual/prepago = ×meses).
+  double get _planTotalEf =>
+      _plan.tipo == TipoPlan.porClase ? _precioMesEf : _precioMesEf * _plan.meses;
+
+  double get _totalSinDto => _planTotalEf * _cantidad;
   double get _ahorro =>
       _aplicaDescuento ? _totalSinDto * widget.descuentoPrepago / 100 : 0;
   // Lo que se cobra AHORA: mes a mes = 1 mes; adelantado = total − descuento.
-  double get _total => _mesAMes ? _plan.total : (_totalSinDto - _ahorro);
+  double get _total => _mesAMes ? _planTotalEf : (_totalSinDto - _ahorro);
 
   @override
   void initState() {

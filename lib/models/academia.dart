@@ -131,6 +131,11 @@ class Academia {
   /// (ej. "Lun-Mié-Vie 4-6pm"). Así cada programa (Sub-8, Sub-10…) tiene su
   /// horario en cada sede.
   final Map<String, String> horarios;
+  /// PRECIOS por SEDE y PLAN (multi-sede con tarifas distintas por local).
+  /// Clave = "sedeId|planId" → precio mensual (o por clase) en esa sede. Si un
+  /// (sede, plan) no está aquí, se usa el `Plan.precioMes` base. Vacío = todas
+  /// las sedes cobran el precio base del plan.
+  final Map<String, double> preciosSede;
 
   const Academia({
     required this.id,
@@ -155,6 +160,7 @@ class Academia {
     this.retribucionClubPct = 0,
     this.sedes = const [],
     this.horarios = const {},
+    this.preciosSede = const {},
   });
 
   /// Sedes EFECTIVAS: las declaradas; si no hay ninguna, una sede única derivada
@@ -174,6 +180,24 @@ class Academia {
   /// Horario configurado para (sede, programa). Vacío si no se fijó.
   String horarioDe(String sedeId, String programa) =>
       horarios['$sedeId|$programa'] ?? '';
+
+  /// Precio mensual (o por clase) EFECTIVO de un plan en una sede: el override
+  /// de `preciosSede` si existe; si no, el precio base del plan. `sedeId` vacío
+  /// (sede única) siempre cae al precio base.
+  double precioMesEnSede(Plan p, String sedeId) {
+    if (sedeId.isEmpty) return p.precioMes;
+    return preciosSede['$sedeId|${p.id}'] ?? p.precioMes;
+  }
+
+  /// Total del plan en una sede (respeta el override de precio de esa sede).
+  double totalPlanEnSede(Plan p, String sedeId) {
+    final precio = precioMesEnSede(p, sedeId);
+    return p.tipo == TipoPlan.porClase ? precio : precio * p.meses;
+  }
+
+  /// ¿Alguna sede tiene un precio distinto al base para este plan?
+  bool tienePreciosPorSede(Plan p) =>
+      sedes.any((s) => preciosSede.containsKey('${s.id}|${p.id}'));
 
   /// ¿Aplica el descuento de prepago al pagar [meses] adelantados de golpe?
   bool aplicaPrepago(int meses) =>
@@ -312,6 +336,7 @@ class Academia {
     double? retribucionClubPct,
     List<Sede>? sedes,
     Map<String, String>? horarios,
+    Map<String, double>? preciosSede,
   }) =>
       Academia(
         id: id ?? this.id,
@@ -336,6 +361,7 @@ class Academia {
         retribucionClubPct: retribucionClubPct ?? this.retribucionClubPct,
         sedes: sedes ?? this.sedes,
         horarios: horarios ?? this.horarios,
+        preciosSede: preciosSede ?? this.preciosSede,
       );
 
   Map<String, dynamic> toJson() => {
@@ -362,6 +388,7 @@ class Academia {
         'retribucionClubPct': retribucionClubPct,
         'sedes': sedes.map((s) => s.toJson()).toList(),
         'horarios': horarios,
+        'preciosSede': preciosSede,
       };
 
   factory Academia.fromJson(Map<String, dynamic> j) => Academia(
@@ -401,6 +428,9 @@ class Academia {
             const [],
         horarios: (j['horarios'] as Map?)
                 ?.map((k, v) => MapEntry(k.toString(), v.toString())) ??
+            const {},
+        preciosSede: (j['preciosSede'] as Map?)?.map(
+                (k, v) => MapEntry(k.toString(), (v as num).toDouble())) ??
             const {},
       );
 }
