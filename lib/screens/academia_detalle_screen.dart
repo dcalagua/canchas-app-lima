@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/academia.dart';
@@ -226,9 +227,9 @@ class _Contenido extends StatelessWidget {
                       ),
                     if (academia.whatsapp.isNotEmpty)
                       _ChipAccion(
-                        icon: Icons.chat,
+                        icon: FontAwesomeIcons.whatsapp,
                         label: 'WhatsApp',
-                        color: verde,
+                        color: const Color(0xFF25D366), // verde WhatsApp oficial
                         onTap: () => WhatsAppLink.abrir(academia.whatsapp,
                             'Hola, vi ${academia.nombre} en Pichangol y quiero info de las clases.'),
                       ),
