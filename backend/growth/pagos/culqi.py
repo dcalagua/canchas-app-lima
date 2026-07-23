@@ -116,14 +116,23 @@ def crear_customer(*, email: str, nombre: str = "", apellido: str = "",
     Devuelve {ok, customer_id} o {ok:false, error}."""
     if not disponible():
         return {"ok": False, "error": "culqi_no_configurado"}
+
+    # Culqi valida largos MÍNIMOS: first/last_name 2–50, address 5–100,
+    # address_city 2–30, phone_number 5–15, email ≤50. Un valor corto (p. ej.
+    # address="Lima", 4 chars) dispara `parameter_error` al crear el cliente.
+    def _campo(v: str, fallback: str, minimo: int, maximo: int) -> str:
+        t = (v or "").strip()[:maximo]
+        return t if len(t) >= minimo else fallback
+
+    solo_digitos = "".join(c for c in (telefono or "") if c.isdigit())
     body = {
-        "first_name": (nombre or "Cliente").strip()[:50] or "Cliente",
-        "last_name": (apellido or "Pichangol").strip()[:50] or "Pichangol",
-        "email": email,
-        "address": "Lima",
+        "first_name": _campo(nombre, "Cliente", 2, 50),
+        "last_name": _campo(apellido, "Pichangol", 2, 50),
+        "email": (email or "").strip()[:50],
+        "address": "Lima - Peru",     # ≥ 5 chars (Culqi lo exige)
         "address_city": "Lima",
         "country_code": "PE",
-        "phone_number": (telefono or "999999999").strip()[:15],
+        "phone_number": solo_digitos[:15] if len(solo_digitos) >= 5 else "999999999",
     }
     r = _request("POST", "/customers", body)
     if not r["ok"]:

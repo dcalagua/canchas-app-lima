@@ -30,12 +30,14 @@ class _FakeCulqi:
         self.cargos = {}
         self.n = 0
         self.forzar_error = False
+        self.ultimo_customer = None  # último body enviado a /customers
 
     def request(self, metodo, path, body=None):
         if self.forzar_error:
             return {"ok": False, "status": 402, "error": "Tarjeta rechazada"}
         if metodo == "POST" and path == "/customers":
             self.n += 1
+            self.ultimo_customer = body
             return {"ok": True, "data": {"id": f"cus_test_{self.n}"}}
         if metodo == "POST" and path == "/cards":
             self.n += 1
@@ -483,6 +485,21 @@ def test_guardar_metodo_de_pago():
     lst = client.get("/pagos/metodos/juan@x.com").json()["metodos"]
     assert len(lst) == 2
     assert len(stores.customers) == 1  # un solo customer
+
+
+def test_customer_cumple_minimos_de_culqi(_setup):
+    # Culqi valida largos mínimos (address ≥5, nombre/apellido ≥2, phone ≥5). El
+    # cliente que enviamos debe cumplirlos aunque el APK mande datos cortos/vacíos.
+    client.post("/pagos/metodos", json={
+        "token": "t", "user_id": "d@x.com", "email": "d@x.com",
+        "nombre": "D", "apellido": ""})  # nombre corto + apellido vacío
+    b = _setup.ultimo_customer
+    assert b is not None
+    assert len(b["address"]) >= 5           # antes "Lima" (4) → parameter_error
+    assert len(b["first_name"]) >= 2        # "D" → cae al fallback
+    assert len(b["last_name"]) >= 2
+    assert len(b["phone_number"]) >= 5
+    assert len(b["email"]) <= 50
 
 
 def test_eliminar_metodo_de_pago():
