@@ -248,6 +248,10 @@ class _ComisionDigitalState extends State<_ComisionDigital> {
     final comision = (res?['comision_soles'] as num?)?.toDouble() ?? 0;
     final neto = (res?['neto_soles'] as num?)?.toDouble() ?? 0;
     final pctTxt = pct.toStringAsFixed(pct % 1 == 0 ? 0 : 1);
+    // % EFECTIVO de la comisión sobre lo cobrado (evita mostrar "5%" cuando esos
+    // cobros se registraron con 0% —etapa piloto— y la comisión real es 0).
+    final pctEf = bruto > 0 ? (comision / bruto * 100) : pct;
+    final pctEfTxt = pctEf.toStringAsFixed(pctEf % 1 == 0 ? 0 : 1);
 
     Widget fila(String t, double v, {Color? color, bool fuerte = false}) =>
         Padding(
@@ -307,8 +311,8 @@ class _ComisionDigitalState extends State<_ComisionDigital> {
           if (cobros > 0) ...[
             const Divider(height: 18),
             fila('Cobrado por la app ($cobros)', bruto),
-            if (tienePct)
-              fila('Comisión ($pctTxt%)', -comision, color: clayOscuro),
+            fila('Comisión ($pctEfTxt%)', comision == 0 ? 0 : -comision,
+                color: clayOscuro),
             const Divider(height: 16),
             fila('Neto para tu academia', neto, fuerte: true, color: lima),
           ],

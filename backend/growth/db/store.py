@@ -448,6 +448,20 @@ class Stores:
         self.pagos.append(p)
         return p
 
+    def borrar_cobros_matricula(self, academia_id: str | None = None) -> int:
+        """PRUEBAS: elimina los cobros digitales de matrícula (tipo
+        'matricula_online') del libro de pagos, para que el reporte del profe no
+        arrastre registros de pruebas viejas tras 'Empezar de cero'. Si se pasa
+        [academia_id], borra solo los de esa academia; si no, todos. Devuelve
+        cuántos borró. No toca liquidaciones ni saldos."""
+        antes = len(self.pagos)
+        self.pagos = [
+            p for p in self.pagos
+            if not (p.tipo == "matricula_online"
+                    and (academia_id is None or p.dueno_id == academia_id))
+        ]
+        return antes - len(self.pagos)
+
     def liquidaciones(self, dueno_id: str | None = None,
                       solo_pendientes: bool = False) -> "list[PagoRegistro]":
         """Liquidaciones online (neto que Pichangol le debe al dueño). Filtra por

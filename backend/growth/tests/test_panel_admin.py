@@ -191,6 +191,29 @@ def test_canal_comunicacion_default_y_cambio(client):
     assert client.get("/config/canal").json()["canal"] == "solo_pcg"
 
 
+def test_borrar_cobros_matricula_limpia_el_reporte(client):
+    """PRUEBAS: el reporte del profe (resumen de matrícula) se puede resetear sin
+    tocar saldos, para que no arrastre cobros de pruebas viejas."""
+    h = {"X-Admin-Token": TOKEN}
+    # Registra 2 cobros de matrícula de la academia 'ac1'.
+    for i in range(2):
+        r = client.post("/pagos/matricula", json={
+            "academia_id": "ac1", "monto_soles": 300,
+            "matricula_id": f"mat_{i}", "pais": "pe",
+            "concepto": "Matrícula"})
+        assert r.status_code == 200
+    res = client.get("/pagos/matricula/resumen/ac1").json()
+    assert res["cobros"] == 2 and res["bruto_soles"] == 600.0
+    # Borra los cobros de matrícula (mantenimiento).
+    out = client.post("/admin/api/borrar-cobros-matricula", headers=h).json()
+    assert out["ok"] and out["borrados"] == 2
+    # El reporte queda en cero.
+    res = client.get("/pagos/matricula/resumen/ac1").json()
+    assert res["cobros"] == 0 and res["bruto_soles"] == 0.0
+    # Sin token -> 401.
+    assert client.post("/admin/api/borrar-cobros-matricula").status_code == 401
+
+
 def test_triage_solo_no_activa(client):
     """Contraste: el triage clásico aprueba pero NO activa. Ahora exige token."""
     r = _reclamo()

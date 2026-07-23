@@ -235,6 +235,17 @@ def borrar_suscripciones_alumno_admin(
     return {"ok": True, "borradas": n}
 
 
+@router.post("/admin/api/borrar-cobros-matricula")
+def borrar_cobros_matricula_admin(
+        x_admin_token: str | None = Header(default=None)) -> dict:
+    """PRUEBAS: borra los cobros digitales de matrícula del libro de pagos, para
+    que el 'Reporte de pagos' del profe no arrastre montos de pruebas viejas tras
+    'Empezar de cero'. No toca liquidaciones, saldos ni suscripciones."""
+    _check(x_admin_token)
+    n = stores.borrar_cobros_matricula()
+    return {"ok": True, "borrados": n}
+
+
 @router.get("/admin/api/comision")
 def get_comision_admin(x_admin_token: str | None = Header(default=None)) -> dict:
     """Comisión por cobro digital de matrícula, por país (torre de control)."""
@@ -614,9 +625,22 @@ function renderMantenimiento(){
       </div>
       <div class="row" style="margin-top:12px;color:var(--muted)">Al limpiar academias/alumnos
         (SQL en Supabase), borra también los débitos automáticos para que no queden cobrando huérfanos:</div>
-      <div class="actions"><button class="btn-rc" onclick="borrarSuscripcionesAlumno()">Borrar suscripciones de alumnos (pruebas)</button></div>
+      <div class="actions" style="flex-wrap:wrap;gap:8px">
+        <button class="btn-rc" onclick="borrarSuscripcionesAlumno()">Borrar suscripciones de alumnos (pruebas)</button>
+        <button class="btn-rc" onclick="borrarCobrosMatricula()">Borrar cobros de matrícula del reporte (pruebas)</button>
+      </div>
       <div id="mant_res" class="row" style="margin-top:10px;color:var(--muted)"></div>
     </div>`;
+}
+async function borrarCobrosMatricula(){
+  if(!confirm('¿Borrar los cobros de matrícula del reporte? (pruebas). No toca saldos ni liquidaciones.')) return;
+  try{
+    const r = await fetch('/admin/api/borrar-cobros-matricula',{method:'POST',headers:headers()});
+    if(r.status===401){ salir(); return; }
+    const j = await r.json();
+    document.getElementById('mant_res').textContent = `Cobros de matrícula borrados: ${j.borrados||0}.`;
+    toast('Cobros de matrícula borrados');
+  }catch(e){ document.getElementById('mant_res').textContent='No se pudo.'; }
 }
 async function borrarSuscripcionesAlumno(){
   if(!confirm('¿Borrar TODAS las suscripciones mes a mes de alumnos? (pruebas)')) return;
