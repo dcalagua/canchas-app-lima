@@ -61,6 +61,32 @@ class _Contenido extends StatelessWidget {
   const _Contenido({required this.academia});
   final Academia academia;
 
+  /// Etiqueta del chip de campeonatos (con conteo si hay).
+  String _campeonatosLabel() {
+    final n = appState.campeonatosDe(academia.id).length;
+    return n == 0 ? 'Campeonatos' : 'Campeonatos ($n)';
+  }
+
+  /// Abre el CHAT INTERNO con el profe (lo preferido: deja historial, notifica
+  /// al profe, retención). Exige cuenta; si no hay sesión, pide login con el
+  /// portón único. Disponible para cualquiera (interesado o ya matriculado).
+  Future<void> _abrirChatProfe(BuildContext context) async {
+    if (!await LoginGoogleSheet.mostrar(context,
+        motivo: 'escribirle al profe')) {
+      return;
+    }
+    if (!context.mounted) return;
+    final email = appState.usuario!.email;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ChatScreen(
+        academiaId: academia.id,
+        cuentaEmail: email,
+        titulo: academia.nombre,
+        soyProfe: false,
+      ),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
@@ -504,32 +530,6 @@ class _TarjetaPlan extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  /// Etiqueta del chip de campeonatos (con conteo si hay).
-  String _campeonatosLabel() {
-    final n = appState.campeonatosDe(academia.id).length;
-    return n == 0 ? 'Campeonatos' : 'Campeonatos ($n)';
-  }
-
-  /// Abre el CHAT INTERNO con el profe (lo preferido: deja historial, notifica
-  /// al profe, retención). Exige cuenta; si no hay sesión, pide login con el
-  /// portón único. Disponible para cualquiera (interesado o ya matriculado).
-  Future<void> _abrirChatProfe(BuildContext context) async {
-    if (!await LoginGoogleSheet.mostrar(context,
-        motivo: 'escribirle al profe')) {
-      return;
-    }
-    if (!context.mounted) return;
-    final email = appState.usuario!.email;
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => ChatScreen(
-        academiaId: academia.id,
-        cuentaEmail: email,
-        titulo: academia.nombre,
-        soyProfe: false,
-      ),
-    ));
   }
 
   Future<void> _matricular(BuildContext context) async {
