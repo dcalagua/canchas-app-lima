@@ -353,7 +353,16 @@ class PagosService {
       if (r.statusCode == 200 && j['ok'] == true) {
         return {'ok': true, 'metodo': j['metodo']};
       }
-      return {'ok': false, 'error': j['error'] ?? 'No se pudo guardar la tarjeta.'};
+      // Mensaje diagnosticable: detalle de Culqi + código + paso que falló.
+      final det = (j['error'] ?? j['detail'] ?? 'No se pudo guardar la tarjeta.')
+          .toString();
+      final code = (j['codigo'] ?? '').toString();
+      final paso = (j['paso'] ?? '').toString();
+      final extra = [
+        if (code.isNotEmpty) 'cód: $code',
+        if (paso.isNotEmpty) 'paso: $paso',
+      ].join(' · ');
+      return {'ok': false, 'error': extra.isEmpty ? det : '$det\n$extra'};
     } catch (e) {
       return {'ok': false, 'error': 'Sin conexión con el servidor de pagos.'};
     }

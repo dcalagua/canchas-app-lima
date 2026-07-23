@@ -996,12 +996,16 @@ def post_metodo(req: MetodoReq) -> dict:
             email=req.email, nombre=req.nombre, apellido=req.apellido,
             telefono=req.telefono)
         if not rc["ok"]:
-            return {"ok": False, "error": rc.get("error", "no_se_pudo_crear_cliente")}
+            return {"ok": False, "paso": "cliente",
+                    "error": rc.get("error", "no_se_pudo_crear_cliente"),
+                    "codigo": rc.get("codigo"), "merchant": rc.get("merchant")}
         cus = rc["customer_id"]
         stores.customers[req.user_id] = cus
     rcard = culqi.crear_card(customer_id=cus, token=req.token)
     if not rcard["ok"]:
-        return {"ok": False, "error": rcard.get("error", "no_se_pudo_guardar_tarjeta")}
+        return {"ok": False, "paso": "tarjeta",
+                "error": rcard.get("error", "no_se_pudo_guardar_tarjeta"),
+                "codigo": rcard.get("codigo"), "merchant": rcard.get("merchant")}
     metodo = {
         "id": rcard["card_id"],
         "marca": rcard["marca"],

@@ -21,6 +21,7 @@ class MetodosPagoScreen extends StatefulWidget {
 class _MetodosPagoScreenState extends State<MetodosPagoScreen> {
   bool _cargando = true;
   String? _pk;
+  String _modo = ''; // 'test' | 'live' | '' (según la llave Culqi del backend)
   List<Map<String, dynamic>> _metodos = [];
 
   String get _userId => appState.usuario?.email ?? '';
@@ -38,6 +39,7 @@ class _MetodosPagoScreenState extends State<MetodosPagoScreen> {
     setState(() {
       _cargando = false;
       _pk = (cfg?['disponible'] == true) ? (cfg?['public_key'] as String?) : null;
+      _modo = (cfg?['modo'] ?? '').toString();
       _metodos = lista;
     });
   }
@@ -54,7 +56,8 @@ class _MetodosPagoScreenState extends State<MetodosPagoScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (_) => _AgregarTarjetaSheet(publicKey: _pk!, userId: _userId),
+      builder: (_) =>
+          _AgregarTarjetaSheet(publicKey: _pk!, userId: _userId, modo: _modo),
     );
     if (ok == true) _cargar();
   }
@@ -209,9 +212,11 @@ class _TarjetaGuardada extends StatelessWidget {
 
 /// Hoja para agregar una tarjeta: tokeniza con la llave pública y la guarda.
 class _AgregarTarjetaSheet extends StatefulWidget {
-  const _AgregarTarjetaSheet({required this.publicKey, required this.userId});
+  const _AgregarTarjetaSheet(
+      {required this.publicKey, required this.userId, this.modo = ''});
   final String publicKey;
   final String userId;
+  final String modo; // 'test' | 'live' | ''
 
   @override
   State<_AgregarTarjetaSheet> createState() => _AgregarTarjetaSheetState();
@@ -274,6 +279,19 @@ class _AgregarTarjetaSheetState extends State<_AgregarTarjetaSheet> {
     });
   }
 
+  // Solo en modo prueba: rellena la tarjeta de test de Culqi para probar rápido.
+  void _autocompletarPrueba() {
+    setState(() {
+      _num.text = '4111 1111 1111 1111';
+      _exp.text = '09/28';
+      _cvv.text = '123';
+      if (_nombre.text.trim().isEmpty) {
+        _nombre.text = appState.usuario?.nombre ?? 'Test Pichangol';
+      }
+      _error = null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -283,9 +301,55 @@ class _AgregarTarjetaSheetState extends State<_AgregarTarjetaSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Agregar tarjeta',
-              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+          Row(
+            children: [
+              const Text('Agregar tarjeta',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+              const Spacer(),
+              if (widget.modo == 'test' || widget.modo == 'live')
+                _ModoBadge(live: widget.modo == 'live'),
+            ],
+          ),
+          if (widget.modo == 'live') ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF4E5),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.info_outline, size: 18, color: Color(0xFFB26A00)),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                        'Modo real: usa una tarjeta real. Las tarjetas de prueba '
+                        '(4111 1111 1111 1111) serán rechazadas por el antifraude.',
+                        style: TextStyle(
+                            color: Color(0xFF8A5300),
+                            fontSize: 12.5,
+                            height: 1.3)),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 14),
+          if (widget.modo == 'test') ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _autocompletarPrueba,
+                style: TextButton.styleFrom(
+                    foregroundColor: bosque, padding: EdgeInsets.zero),
+                icon: const Icon(Icons.bolt, size: 18),
+                label: const Text('Autocompletar datos de prueba'),
+              ),
+            ),
+            const SizedBox(height: 6),
+          ],
           TextField(
             controller: _num,
             keyboardType: TextInputType.number,
@@ -352,6 +416,24 @@ class _AgregarTarjetaSheetState extends State<_AgregarTarjetaSheet> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Chip que indica si el backend de pagos está en modo PRUEBA o REAL (según la
+/// llave Culqi). Ayuda a entender por qué una tarjeta de test es o no aceptada.
+class _ModoBadge extends StatelessWidget {
+  const _ModoBadge({required this.live});
+  final bool live;
+  @override
+  Widget build(BuildContext context) {
+    final bg = live ? const Color(0xFFE7F5EC) : const Color(0xFFFFF4E5);
+    final fg = live ? const Color(0xFF176B3A) : const Color(0xFFB26A00);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
+      child: Text(live ? 'Modo real' : 'Modo prueba',
+          style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.w800)),
     );
   }
 }
