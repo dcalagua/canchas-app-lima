@@ -412,7 +412,9 @@ _HTML = r"""<!DOCTYPE html>
   footer .ebim{font-size:12px}
   /* Dashboard: config en fila (grid), listas a ancho completo. */
   .sec{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;
-    color:var(--muted);margin:26px 2px 4px}
+    color:var(--green-deep);margin:30px 0 14px;padding-bottom:9px;
+    border-bottom:2px solid var(--limaSuave)}
+  .sec:first-of-type{margin-top:6px}
   .cfg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
     gap:16px;align-items:stretch}
   .cfg-grid > div{display:flex}
@@ -609,15 +611,29 @@ _HTML = r"""<!DOCTYPE html>
     </section>
     <section id="page-config" class="page" style="display:none">
       <h1 class="page-h">Configuración</h1>
+
+      <div class="sec">💳 Cobros, comisiones y márgenes</div>
       <div class="cfg-grid">
-        <div id="modo"></div>
-        <div id="canal"></div>
-        <div id="pichangaModo"></div>
-        <div id="ubic"></div>
-        <div id="contacto"></div>
-        <div id="marketing"></div>
         <div id="comision"></div>
         <div id="margenes"></div>
+        <div id="marketing"></div>
+      </div>
+
+      <div class="sec">✅ Aprobación y verificación</div>
+      <div class="cfg-grid">
+        <div id="modo"></div>
+        <div id="ubic"></div>
+        <div id="pichangaModo"></div>
+      </div>
+
+      <div class="sec">💬 Comunicación con la app</div>
+      <div class="cfg-grid">
+        <div id="canal"></div>
+        <div id="contacto"></div>
+      </div>
+
+      <div class="sec">🧪 Pruebas y mantenimiento</div>
+      <div class="cfg-grid">
         <div id="mantenimiento"></div>
       </div>
     </section>
