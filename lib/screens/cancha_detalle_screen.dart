@@ -4,8 +4,10 @@ import '../data/reservas_repo.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/chat_burbuja.dart';
 import '../widgets/court_lines.dart';
 import '../widgets/pago_tarjeta_sheet.dart';
+import 'chat_screen.dart';
 import 'login_google_sheet.dart';
 import 'registrar_cancha_screen.dart';
 import '../utils/moneda.dart';
@@ -146,9 +148,38 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
     ));
   }
 
+  /// Chat interno con el DUEÑO de la cancha. Exige cuenta (portón único).
+  Future<void> _chatearConDueno() async {
+    if (!await LoginGoogleSheet.mostrar(context,
+        motivo: 'escribirle al dueño')) {
+      return;
+    }
+    if (!mounted) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ChatScreen(
+        academiaId: '',
+        cuentaEmail: appState.usuario!.email,
+        titulo: cancha.club.isNotEmpty ? cancha.club : cancha.nombre,
+        soyProfe: false,
+        tipo: 'cancha',
+        refId: cancha.dueno,
+      ),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
+    final email = appState.usuario?.email ?? '';
+    final soyDueno = email.isNotEmpty && cancha.dueno == email;
     return Scaffold(
+      // Globo de chat con el dueño (si hay dueño y no soy yo): siempre a la mano.
+      floatingActionButton: (cancha.dueno.isNotEmpty && !soyDueno)
+          ? ChatBurbuja(
+              heroTag: 'chat_cancha_${cancha.id}',
+              etiqueta: '',
+              onTap: _chatearConDueno,
+            )
+          : null,
       body: CustomScrollView(
         slivers: [
           SliverAppBar(

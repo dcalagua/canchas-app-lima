@@ -8,6 +8,7 @@ import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/redes.dart';
+import '../widgets/chat_burbuja.dart';
 import '../utils/ubicacion_share.dart';
 import '../widgets/logo_academia.dart';
 import '../widgets/pago_tarjeta_sheet.dart';
@@ -26,23 +27,23 @@ class AcademiaDetalleScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: ListenableBuilder(
-        listenable: appState,
-        builder: (context, _) {
-          Academia? academia;
-          for (final a in appState.academias) {
-            if (a.id == academiaId) {
-              academia = a;
-              break;
-            }
+    // _Contenido y _NoExiste traen su propio Scaffold (así el globo de chat
+    // flotante vive con la academia ya resuelta).
+    return ListenableBuilder(
+      listenable: appState,
+      builder: (context, _) {
+        Academia? academia;
+        for (final a in appState.academias) {
+          if (a.id == academiaId) {
+            academia = a;
+            break;
           }
-          if (academia == null) {
-            return const _NoExiste();
-          }
-          return _Contenido(academia: academia);
-        },
-      ),
+        }
+        if (academia == null) {
+          return const _NoExiste();
+        }
+        return _Contenido(academia: academia);
+      },
     );
   }
 }
@@ -91,7 +92,15 @@ class _Contenido extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    return CustomScrollView(
+    return Scaffold(
+      // Globo de chat SIEMPRE a la mano (no se pierde al hacer scroll): escribirle
+      // al profe por el chat interno. Es nuestra "burbuja" (identidad Pichangol).
+      floatingActionButton: ChatBurbuja(
+        heroTag: 'chat_academia_${academia.id}',
+        etiqueta: '',
+        onTap: () => _abrirChatProfe(context),
+      ),
+      body: CustomScrollView(
       slivers: [
         SliverAppBar(
           expandedHeight: academia.fotos.isEmpty ? 0 : 260,
@@ -350,6 +359,7 @@ class _Contenido extends StatelessWidget {
           ),
         ),
       ],
+      ),
     );
   }
 }

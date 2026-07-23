@@ -8,8 +8,10 @@ import '../services/location_service.dart';
 import '../services/propiedad_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/chat_burbuja.dart';
 import '../widgets/court_lines.dart';
 import '../widgets/marca.dart';
+import 'chat_screen.dart';
 import 'editar_cancha_screen.dart';
 import '../utils/moneda.dart';
 import '../utils/ubicacion_share.dart';
@@ -142,6 +144,26 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
   bool get _soyDueno {
     final email = appState.usuario?.email ?? '';
     return email.isNotEmpty && _cancha.dueno == email;
+  }
+
+  /// Chat interno con el DUEÑO del local (dudas de horarios/precios antes de
+  /// reservar). Exige cuenta; si no hay sesión, pide login con el portón único.
+  Future<void> _chatearConDueno() async {
+    if (!await LoginGoogleSheet.mostrar(context,
+        motivo: 'escribirle al dueño')) {
+      return;
+    }
+    if (!mounted) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ChatScreen(
+        academiaId: '',
+        cuentaEmail: appState.usuario!.email,
+        titulo: _cancha.club.isNotEmpty ? _cancha.club : _cancha.nombre,
+        soyProfe: false,
+        tipo: 'cancha',
+        refId: _cancha.dueno,
+      ),
+    ));
   }
 
   /// Abre la edición de la cancha (precio, horarios, deporte…) y, al volver,
@@ -298,6 +320,15 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         !_cancha.verificada &&
         !_reclamablePorRechazo;
     return Scaffold(
+      // Globo de chat con el dueño (solo si hay dueño y no soy yo): siempre a la
+      // mano, sin scroll. Es nuestra "burbuja" (chat interno Pichangol).
+      floatingActionButton: (_cancha.dueno.isNotEmpty && !_soyDueno)
+          ? ChatBurbuja(
+              heroTag: 'chat_cancha_${_cancha.id}',
+              etiqueta: '',
+              onTap: _chatearConDueno,
+            )
+          : null,
       body: RefreshIndicator(
         onRefresh: _pullRefresh,
         child: CustomScrollView(
