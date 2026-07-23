@@ -232,15 +232,20 @@ def test_margenes_unifica_matriculas_reservas_y_banco(client):
     stores.registrar_pago(tipo="comision_reserva", monto_centimos=500,
                           moneda="PEN", estado="aprobado", dueno_id="due@x.com",
                           culqi_charge_id="rsv1")
+    #  - servicio (landing/redes) S/50 que la academia le paga a PCG por tarjeta
+    stores.registrar_pago(tipo="suscripcion", monto_centimos=5000, moneda="PEN",
+                          estado="aprobado", dueno_id="acM", culqi_charge_id="srv1")
     # Tasa banco 4% y desglose.
     m = client.post("/admin/api/margenes/banco", json={"pct": 4}, headers=h).json()
     assert m["cobros_matricula"] == 1 and m["cobros_reserva"] == 1
+    assert m["cobros_servicios"] == 1
     assert m["comision_matricula_soles"] == 15.0               # 5% de 300
     assert m["comision_reserva_soles"] == 5.0
-    assert m["ingresos_pcg_soles"] == 20.0                     # 15 + 5
-    assert m["bruto_procesado_soles"] == 400.0                 # 300 matrícula + 100 recarga
-    assert m["costo_banco_soles"] == 16.0                      # 4% de 400
-    assert m["margen_pcg_soles"] == 4.0                        # 20 − 16
+    assert m["ingresos_servicios_soles"] == 50.0
+    assert m["ingresos_pcg_soles"] == 70.0                     # 15 + 5 + 50
+    assert m["bruto_procesado_soles"] == 450.0                 # 300 + 100 + 50
+    assert m["costo_banco_soles"] == 18.0                      # 4% de 450
+    assert m["margen_pcg_soles"] == 52.0                       # 70 − 18
     # Sin token -> 401.
     assert client.get("/admin/api/margenes").status_code == 401
 

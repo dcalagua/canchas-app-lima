@@ -295,20 +295,26 @@ def get_margenes_admin(x_admin_token: str | None = Header(default=None)) -> dict
     mat = [p for p in stores.pagos if p.tipo == "matricula_online"]
     res = [p for p in stores.pagos if p.tipo == "comision_reserva"]
     rec = [p for p in stores.pagos if p.tipo == "recarga"]
+    srv = [p for p in stores.pagos if p.tipo == "suscripcion"]
     mat_bruto = sum(p.monto_centimos for p in mat)
     comision_mat = sum(p.comision_centimos for p in mat)
     comision_res = sum(p.monto_centimos for p in res)  # la comisión ES el monto
     rec_bruto = sum(p.monto_centimos for p in rec)
-    bruto_procesado = mat_bruto + rec_bruto            # todo lo cobrado a tarjeta
-    ingresos = comision_mat + comision_res             # ingreso bruto de PCG
+    # Servicios (landing/redes/marketing): la academia le paga a PCG por tarjeta;
+    # el monto COMPLETO es ingreso de Pichangol (no hay neto que devolver).
+    ingresos_srv = sum(p.monto_centimos for p in srv)
+    bruto_procesado = mat_bruto + rec_bruto + ingresos_srv  # todo lo cobrado a tarjeta
+    ingresos = comision_mat + comision_res + ingresos_srv    # ingreso bruto de PCG
     banco_pct = _banco_pct()
     costo_banco = int(round(bruto_procesado * banco_pct / 100.0))
     margen = ingresos - costo_banco
     return {
         "cobros_matricula": len(mat),
         "cobros_reserva": len(res),
+        "cobros_servicios": len(srv),
         "comision_matricula_soles": comision_mat / 100.0,
         "comision_reserva_soles": comision_res / 100.0,
+        "ingresos_servicios_soles": ingresos_srv / 100.0,
         "ingresos_pcg_soles": ingresos / 100.0,
         "banco_pct": banco_pct,
         "bruto_procesado_soles": bruto_procesado / 100.0,
@@ -834,7 +840,8 @@ function renderMargenes(m){
         banco con tu tarifa real.</div>
       ${fila('Comisión de matrículas · '+m.cobros_matricula, '<b>'+s(m.comision_matricula_soles)+'</b>')}
       ${fila('Comisión de reservas · '+m.cobros_reserva, '<b>'+s(m.comision_reserva_soles)+'</b>')}
-      ${fila('= Ingresos Pichangol (comisiones)', '<b>'+s(m.ingresos_pcg_soles)+'</b>', 'color:#14463A')}
+      ${fila('Ingresos por servicios · '+(m.cobros_servicios||0), '<b>'+s(m.ingresos_servicios_soles)+'</b>')}
+      ${fila('= Ingresos Pichangol (total)', '<b>'+s(m.ingresos_pcg_soles)+'</b>', 'color:#14463A')}
       <hr style="border:none;border-top:1px solid var(--border);margin:8px 0">
       ${fila('Bruto procesado por tarjeta (matrículas + recargas)', s(m.bruto_procesado_soles), 'color:var(--muted)')}
       <div style="display:flex;align-items:center;gap:8px;margin:8px 0">
