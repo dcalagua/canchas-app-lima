@@ -4,10 +4,11 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../theme.dart';
 
 /// Globo flotante de CHAT interno (siempre a la mano). Con identidad Pichangol:
-/// - Si la academia/cancha tiene LOGO ([logoUrl]) → muestra el logo como avatar
-///   con una insignia verde de chat (matiz "WhatsApp") → se siente personal.
-/// - Si NO tiene logo → un robot (asistente), verde de marca, con la puntita
-///   amarilla (la "o" pelota de Pichang·o·l).
+/// - Si hay una imagen ([logoUrl]: LOGO de la academia o FOTO de la cancha) →
+///   la usa como avatar con una insignia verde de chat (matiz "WhatsApp") → se
+///   siente personal.
+/// - Si NO hay imagen (o falla la carga) → un robot (asistente), verde de marca,
+///   con la puntita amarilla (la "o" pelota de Pichang·o·l).
 /// Se usa como `floatingActionButton` en las fichas (academia, cancha/club).
 class ChatBurbuja extends StatelessWidget {
   const ChatBurbuja({

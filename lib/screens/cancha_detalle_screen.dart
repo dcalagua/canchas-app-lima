@@ -174,7 +174,7 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
     return Scaffold(
       // Globo de chat con el dueño (si hay dueño y no soy yo): siempre a la mano.
       floatingActionButton: (cancha.dueno.isNotEmpty && !soyDueno)
-          ? ChatBurbuja(onTap: _chatearConDueno)
+          ? ChatBurbuja(logoUrl: cancha.fotoUrl, onTap: _chatearConDueno)
           : null,
       body: CustomScrollView(
         slivers: [
