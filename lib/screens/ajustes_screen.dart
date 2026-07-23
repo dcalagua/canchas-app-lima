@@ -46,6 +46,39 @@ class AjustesScreen extends StatelessWidget {
         content: Text('Listo: app en blanco. Inicia sesión para probar.')));
   }
 
+  /// "Dejar en virgen": borra alumnos, reservas y todo lo transaccional pero
+  /// CONSERVA las canchas reclamadas y las academias creadas (y la sesión).
+  Future<void> _dejarEnVirgen(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('¿Dejar en virgen?'),
+        content: const Text(
+            'Borra alumnos, reservas y todo lo transaccional (cobros, cuotas, '
+            'saldo, movimientos) — como si nunca hubiera pasado nada.\n\n'
+            'CONSERVA tus canchas reclamadas y tus academias creadas (y tu '
+            'sesión). No se puede deshacer.\n\n'
+            'Ojo: el saldo/pagos del servidor se limpian aparte desde la torre '
+            'de control (botón "Dejar el servidor en virgen").'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: clayOscuro),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Sí, dejar en virgen')),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    await appState.resetVirgen();
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Listo: sin alumnos ni reservas. Tus canchas y '
+            'academias se conservan.')));
+  }
+
   /// Depurar academias: lista TODAS (con su dueño) y deja borrar cualquiera,
   /// aunque no sea tuya. Sirve para limpiar academias basura (ej. las creadas
   /// con la cuenta demo). El borrado es durable (también en la nube).
@@ -165,6 +198,20 @@ class AjustesScreen extends StatelessWidget {
                             .onSurface
                             .withOpacity(0.6))),
                 const SizedBox(height: 12),
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: lima,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size.fromHeight(50),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                  ),
+                  icon: const Icon(Icons.auto_awesome),
+                  label: const Text('Dejar en virgen (conservar canchas y academias)',
+                      style: TextStyle(fontWeight: FontWeight.w800)),
+                  onPressed: () => _dejarEnVirgen(context),
+                ),
+                const SizedBox(height: 10),
                 OutlinedButton.icon(
                   style: OutlinedButton.styleFrom(
                     foregroundColor: clayOscuro,

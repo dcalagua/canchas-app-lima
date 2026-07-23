@@ -2749,6 +2749,50 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// "DEJAR EN VIRGEN" (quirúrgico): deja el sistema como si NUNCA hubiera habido
+  /// una transacción —sin alumnos, sin reservas, sin cobros ni saldo— pero
+  /// CONSERVA las canchas reclamadas, las academias creadas y la sesión. Es lo
+  /// contrario de "Empezar de cero" (que borra todo y cierra sesión).
+  ///
+  /// Nube (best-effort, solo lo del usuario logueado): borra las matrículas de
+  /// SUS academias y las suyas como alumno, y las reservas de SUS canchas. NO
+  /// borra academias ni canchas. El saldo/pagos/suscripciones del servidor se
+  /// limpian aparte desde la torre de control (botón "Dejar el servidor en
+  /// virgen").
+  Future<void> resetVirgen() async {
+    final email = usuario?.email.toLowerCase();
+    if (email != null && email.isNotEmpty) {
+      final misAcademiaIds = academias
+          .where((a) => a.dueno.toLowerCase() == email)
+          .map((a) => a.id)
+          .toSet();
+      // Matrículas (alumnos + cuotas embebidas) de mis academias + las mías.
+      for (final al in List<Alumno>.from(alumnos)) {
+        if (misAcademiaIds.contains(al.academiaId) ||
+            al.email.toLowerCase() == email) {
+          await MatriculasRepo.eliminar(al.id);
+        }
+      }
+      // Reservas de mis canchas (registradas/reclamadas).
+      for (final c in misCanchas.where((c) => c.registrada)) {
+        await ReservasRepo.eliminarDeCancha(c.id);
+      }
+    }
+    // Memoria local: borra lo transaccional, CONSERVA academias, canchas y sesión.
+    reservas.clear();
+    agenda.clear();
+    misReservas.clear();
+    alumnos.clear();
+    cuotas.clear();
+    asistencias.clear();
+    movimientos.clear();
+    saldoClub = 0;
+    _saldoOtrosPaises.clear();
+    _ultimoSyncMatriculas = null;
+    notifyListeners();
+    await _persistirDatos();
+  }
+
   Future<void> _persistirUsuario() async {
     try {
       final prefs = await SharedPreferences.getInstance();
