@@ -7,7 +7,7 @@ import '../config/pais.dart';
 /// Todo (suscripción, landing, redes, tarjeta de débito automático, saldo de
 /// marketing) se llavea por [id].
 class Negocio {
-  final String id; // clave de landing/redes/suscripción/saldo de marketing
+  final String id; // clave de landing/redes/suscripción
   final String nombre;
   final String monedaSimbolo;
   final PaisConfig pais;
@@ -15,6 +15,10 @@ class Negocio {
   final bool tieneRedesRegistradas; // ¿ya declaró IG/FB/TikTok?
   final String landingUrl; // '' si aún no se generó
   final Map<String, dynamic> datosLanding; // datos para landing + posts
+  /// Correo del DUEÑO = llave de la BILLETERA ÚNICA de la que se cobran los
+  /// servicios y sale el saldo/nivel. No se llavea por [id] (eso partía el saldo
+  /// en bolsas por negocio); todo lo del mismo dueño comparte una billetera.
+  final String dueno;
 
   const Negocio({
     required this.id,
@@ -25,6 +29,7 @@ class Negocio {
     required this.tieneRedesRegistradas,
     required this.landingUrl,
     required this.datosLanding,
+    this.dueno = '',
   });
 
   bool get esAcademia => tipo == 'academia';

@@ -54,6 +54,10 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
 
   String get _mon => widget.negocio.monedaSimbolo;
   String get _idAcademia => widget.negocio.id;
+  // BILLETERA ÚNICA: llave del saldo del que se cobran los servicios = correo del
+  // dueño; si el negocio no lo trae (compat), cae al id.
+  String get _billetera =>
+      widget.negocio.dueno.isNotEmpty ? widget.negocio.dueno : widget.negocio.id;
 
   // ¿Tiene un servicio con landing activo (landing o presencia)?
   bool get _landingContratada => _subs.any((s) =>
@@ -146,7 +150,7 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
     final clave = plan['clave'] as String;
     setState(() => _procesando = clave);
     final r = await PagosService.contratarServicio(
-        duenoId: _idAcademia,
+        duenoId: _billetera,
         academiaId: _idAcademia,
         servicio: clave,
         tipo: widget.negocio.tipo);
@@ -200,7 +204,7 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
   Future<void> _pushRecarga() async {
     await Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => RecargarSaldoScreen(
-          duenoId: _idAcademia,
+          duenoId: _billetera,
           titulo: 'Recargar saldo',
           pais: widget.negocio.pais),
     ));

@@ -153,7 +153,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
       }
       final res = await PagosService.recargar(
         token: tok['token'].toString(),
-        duenoId: widget.duenoId ?? _email, // academia = su id; si no, el correo
+        duenoId: widget.duenoId ?? _email, // billetera única: siempre el correo del dueño
         email: _email,
         montoSoles: _monto.toDouble(),
       );

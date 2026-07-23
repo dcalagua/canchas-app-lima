@@ -58,7 +58,11 @@ class _ConectarRedesScreenState extends State<ConectarRedesScreen> {
   Future<void> _conectar() async {
     setState(() => _conectando = true);
     final r = await PagosService.conectarRedes(
-        academiaId: _idAcademia, duenoId: _idAcademia);
+        academiaId: _idAcademia,
+        // BILLETERA ÚNICA: el dueño (correo) es la llave del saldo.
+        duenoId: widget.negocio.dueno.isNotEmpty
+            ? widget.negocio.dueno
+            : _idAcademia);
     if (!mounted) return;
     setState(() => _conectando = false);
     if (r == null || r['ok'] != true) {

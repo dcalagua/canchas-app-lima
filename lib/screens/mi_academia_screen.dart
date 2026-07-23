@@ -437,8 +437,10 @@ class _DestacarCardState extends State<_DestacarCard> {
 
   Future<void> _recargar() async {
     final monto = await Navigator.of(context).push<int>(MaterialPageRoute(
+      // BILLETERA ÚNICA: la recarga entra a la billetera del DUEÑO (su correo),
+      // no a una bolsa por academia. Así "Mi cuenta" y la academia ven lo mismo.
       builder: (_) => RecargarSaldoScreen(
-          duenoId: widget.academia.id, titulo: 'Destacar academia'),
+          duenoId: widget.academia.dueno, titulo: 'Destacar academia'),
     ));
     if (monto != null && mounted) {
       await appState.sincronizarSaldoAcademia(widget.academia.id);
@@ -786,8 +788,9 @@ class _SaldoPill extends StatelessWidget {
 
   Future<void> _recargar(BuildContext context) async {
     await Navigator.of(context).push(MaterialPageRoute(
+      // BILLETERA ÚNICA: recarga a la billetera del dueño (su correo).
       builder: (_) => RecargarSaldoScreen(
-          duenoId: academia.id,
+          duenoId: academia.dueno,
           titulo: 'Recargar saldo',
           pais: academia.pais),
     ));

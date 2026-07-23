@@ -279,6 +279,7 @@ class AppState extends ChangeNotifier {
         nombre: a.nombre,
         monedaSimbolo: a.monedaSimbolo,
         pais: a.pais,
+        dueno: a.dueno,
         tipo: 'academia',
         tieneRedesRegistradas:
             (a.redes['instagram']?.trim().isNotEmpty ?? false) ||
@@ -297,6 +298,7 @@ class AppState extends ChangeNotifier {
       nombre: c.nombre,
       monedaSimbolo: monedaDeCoordenadas(lat, lng),
       pais: paisDeCoordenadas(lat, lng),
+      dueno: usuario?.email ?? '',
       tipo: 'club',
       tieneRedesRegistradas: false,
       landingUrl: tieneLanding ? (PagosService.landingUrl(id) ?? '') : '',
@@ -428,6 +430,7 @@ class AppState extends ChangeNotifier {
       nombre: ac.nombre,
       monedaSimbolo: ac.monedaSimbolo,
       pais: ac.pais,
+      dueno: ac.dueno.isNotEmpty ? ac.dueno : email,
       tipo: 'mixto',
       tieneRedesRegistradas:
           (ac.redes['instagram']?.trim().isNotEmpty ?? false) ||
@@ -2161,28 +2164,50 @@ class AppState extends ChangeNotifier {
 
   bool esDestacada(Cancha c) => nivelDestacado(c) > 0;
 
-  /// Nivel de destacado de una ACADEMIA (por su propio saldo prepago, guardado
-  /// en el backend con la academia como dueno_id). 0 = no destacada.
+  /// Nivel de destacado de una ACADEMIA. BILLETERA ÚNICA: sale del saldo del
+  /// DUEÑO (su correo), igual que sus canchas. Durante la transición, si el
+  /// saldo aún no se consolidó, cae al que quedó bajo el id de la academia (se
+  /// toma el mayor de ambos). 0 = no destacada.
   int nivelDestacadoAcademia(Academia a) {
+    final email = a.dueno.toLowerCase().trim();
     final id = a.id.toLowerCase().trim();
-    if (id.isEmpty) return 0;
-    return _destacadosPorDueno[id] ?? 0;
+    final porCorreo = email.isEmpty ? 0 : (_destacadosPorDueno[email] ?? 0);
+    final porId = id.isEmpty ? 0 : (_destacadosPorDueno[id] ?? 0);
+    return porCorreo > porId ? porCorreo : porId;
   }
 
   bool esDestacadaAcademia(Academia a) => nivelDestacadoAcademia(a) > 0;
 
-  // Saldo prepago por academia (cache para mostrar en "Mi academia").
-  final Map<String, int> _saldoAcademia = {};
-  int saldoAcademiaDe(String academiaId) => _saldoAcademia[academiaId] ?? 0;
+  Academia? _academiaPorId(String id) {
+    for (final a in academias) {
+      if (a.id == id) return a;
+    }
+    return null;
+  }
 
-  /// Sincroniza el saldo de una academia desde el backend (best-effort).
+  /// Saldo prepago que ve una academia. BILLETERA ÚNICA: es el mismo saldo del
+  /// DUEÑO (su correo), por país, que se ve en "Mi cuenta" —no una bolsa aparte.
+  int saldoAcademiaDe(String academiaId) {
+    final a = _academiaPorId(academiaId);
+    return saldoDePais(a?.pais.iso ?? 'PE');
+  }
+
+  /// Sincroniza el saldo de la academia con la BILLETERA ÚNICA del dueño. Primero
+  /// CONSOLIDA (junta el saldo que hubiera quedado bajo el id de la academia en la
+  /// billetera del correo del dueño; idempotente) y luego refresca el saldo del
+  /// correo. Solo corre en el panel del dueño (best-effort).
   Future<void> sincronizarSaldoAcademia(String academiaId) async {
     if (!PagosService.disponible || academiaId.isEmpty) return;
-    final s = await PagosService.saldo(academiaId);
-    if (s != null) {
-      _saldoAcademia[academiaId] = s.round();
-      notifyListeners();
-    }
+    final a = _academiaPorId(academiaId);
+    final email =
+        ((a?.dueno.isNotEmpty ?? false) ? a!.dueno : (usuario?.email ?? ''))
+            .trim();
+    if (email.isEmpty) return;
+    await PagosService.consolidarSaldo(academiaId, email);
+    // Refresca la billetera del correo (Perú vive en saldoClub, respaldado por
+    // el backend). Los demás países usan su bolsa local, ya per-usuario.
+    await sincronizarSaldo();
+    notifyListeners();
   }
 
   /// Trae del backend el conjunto de dueños destacados (best-effort). Si el
@@ -2192,11 +2217,19 @@ class AppState extends ChangeNotifier {
     if (!PagosService.disponible) return;
     final m = await PagosService.destacados();
     if (m == null) return;
+    // Normaliza las llaves a minúsculas (los correos pueden venir con distinta
+    // caja): así el lookup por dueño/academia es consistente.
+    final norm = <String, int>{};
+    m.forEach((k, v) {
+      final key = k.toLowerCase().trim();
+      final nivel = norm[key] ?? 0;
+      if (v > nivel) norm[key] = v; else norm.putIfAbsent(key, () => v);
+    });
     final email = usuario?.email?.toLowerCase().trim();
     if (email != null && email.isNotEmpty && saldoClub > 0) {
-      m.putIfAbsent(email, () => 1);
+      norm.putIfAbsent(email, () => 1);
     }
-    _destacadosPorDueno = m;
+    _destacadosPorDueno = norm;
     notifyListeners();
   }
 

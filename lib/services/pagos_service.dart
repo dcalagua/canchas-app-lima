@@ -373,6 +373,28 @@ class PagosService {
     }
   }
 
+  /// BILLETERA ÚNICA: mueve el saldo que quedó bajo una llave secundaria
+  /// ([desdeId], p. ej. el id de una academia) a la billetera del dueño
+  /// ([haciaId] = su correo). Idempotente en el backend. Devuelve el saldo
+  /// resultante (soles) o null si no se pudo. Best-effort: no bloquea la UI.
+  static Future<double?> consolidarSaldo(String desdeId, String haciaId) async {
+    if (!disponible || desdeId.isEmpty || haciaId.isEmpty) return null;
+    if (desdeId == haciaId) return null;
+    try {
+      final r = await http.post(
+        Uri.parse('$_baseUrl/pagos/consolidar'),
+        headers: _appHeaders(json: true),
+        body: jsonEncode({'desde_id': desdeId, 'hacia_id': haciaId}),
+      ).timeout(const Duration(seconds: 12));
+      if (r.statusCode != 200) return null;
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      if (j['ok'] != true) return null;
+      return (j['saldo_soles'] as num?)?.toDouble();
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Saldo actual del dueño (en soles). Null si no se pudo.
   static Future<double?> saldo(String duenoId) async {
     if (!disponible) return null;
