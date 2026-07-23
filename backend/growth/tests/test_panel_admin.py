@@ -214,6 +214,21 @@ def test_borrar_cobros_matricula_limpia_el_reporte(client):
     assert client.post("/admin/api/borrar-cobros-matricula").status_code == 401
 
 
+def test_reiniciar_pagos_deja_margenes_en_cero(client):
+    """El reinicio total del libro de pagos deja el reporte de márgenes en cero."""
+    h = {"X-Admin-Token": TOKEN}
+    stores.registrar_pago(tipo="matricula_online", monto_centimos=30000,
+                          moneda="PEN", estado="aprobado", dueno_id="acM",
+                          culqi_charge_id="mM", comision_centimos=1500)
+    stores.registrar_pago(tipo="suscripcion", monto_centimos=5000, moneda="PEN",
+                          estado="aprobado", dueno_id="acM", culqi_charge_id="s1")
+    out = client.post("/admin/api/reiniciar-pagos", headers=h).json()
+    assert out["ok"] and out["borrados"] == 2
+    m = client.get("/admin/api/margenes", headers=h).json()
+    assert m["ingresos_pcg_soles"] == 0.0 and m["bruto_procesado_soles"] == 0.0
+    assert client.post("/admin/api/reiniciar-pagos").status_code == 401
+
+
 def test_margenes_unifica_matriculas_reservas_y_banco(client):
     """La torre de control ve el margen total de Pichangol: comisiones (matrículas
     + reservas) menos el costo del banco sobre lo procesado por tarjeta

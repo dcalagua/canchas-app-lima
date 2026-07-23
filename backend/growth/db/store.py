@@ -468,6 +468,14 @@ class Stores:
         ]
         return antes - len(self.pagos)
 
+    def reiniciar_libro_pagos(self) -> int:
+        """PRUEBAS: vacía TODO el libro de pagos (matrículas, reservas, recargas,
+        servicios, liquidaciones). Deja el reporte de márgenes en cero para
+        re-probar desde limpio. No toca saldos (se guardan aparte)."""
+        n = len(self.pagos)
+        self.pagos = []
+        return n
+
     def liquidaciones(self, dueno_id: str | None = None,
                       solo_pendientes: bool = False) -> "list[PagoRegistro]":
         """Liquidaciones online (neto que Pichangol le debe al dueño). Filtra por

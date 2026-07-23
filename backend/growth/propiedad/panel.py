@@ -250,6 +250,17 @@ def borrar_cobros_matricula_admin(
     return {"ok": True, "borrados": n}
 
 
+@router.post("/admin/api/reiniciar-pagos")
+def reiniciar_pagos_admin(
+        x_admin_token: str | None = Header(default=None)) -> dict:
+    """PRUEBAS: vacía TODO el libro de pagos (matrículas, reservas, recargas,
+    servicios, liquidaciones) para dejar el reporte de márgenes en cero y probar
+    desde limpio. No toca saldos."""
+    _check(x_admin_token)
+    n = stores.reiniciar_libro_pagos()
+    return {"ok": True, "borrados": n}
+
+
 @router.get("/admin/api/comision")
 def get_comision_admin(x_admin_token: str | None = Header(default=None)) -> dict:
     """Comisión por cobro digital de matrícula, por país (torre de control)."""
@@ -690,6 +701,7 @@ function renderMantenimiento(){
       <div class="actions" style="flex-wrap:wrap;gap:8px">
         <button class="btn-rc" onclick="borrarSuscripcionesAlumno()">Borrar suscripciones de alumnos (pruebas)</button>
         <button class="btn-rc" onclick="borrarCobrosMatricula()">Borrar cobros de matrícula del reporte (pruebas)</button>
+        <button class="btn-rc" onclick="reiniciarPagos()">Reiniciar TODO el libro de pagos (pruebas)</button>
       </div>
       <div id="mant_res" class="row" style="margin-top:10px;color:var(--muted)"></div>
     </div>`;
@@ -702,6 +714,17 @@ async function borrarCobrosMatricula(){
     const j = await r.json();
     document.getElementById('mant_res').textContent = `Cobros de matrícula borrados: ${j.borrados||0}.`;
     toast('Cobros de matrícula borrados');
+  }catch(e){ document.getElementById('mant_res').textContent='No se pudo.'; }
+}
+async function reiniciarPagos(){
+  if(!confirm('¿Reiniciar TODO el libro de pagos? (pruebas). Borra matrículas, reservas, recargas, servicios y liquidaciones del reporte. No toca saldos.')) return;
+  try{
+    const r = await fetch('/admin/api/reiniciar-pagos',{method:'POST',headers:headers()});
+    if(r.status===401){ salir(); return; }
+    const j = await r.json();
+    document.getElementById('mant_res').textContent = `Libro de pagos reiniciado: ${j.borrados||0} registros.`;
+    toast('Libro de pagos reiniciado');
+    cargarMargenes();
   }catch(e){ document.getElementById('mant_res').textContent='No se pudo.'; }
 }
 async function borrarSuscripcionesAlumno(){
@@ -834,16 +857,16 @@ function renderMargenes(m){
   const fila = (t,v,extra='') => `<div class="row" style="display:flex;justify-content:space-between;${extra}"><span>${t}</span><span>${v}</span></div>`;
   document.getElementById('margenes').innerHTML =
     `<div class="card"><div class="top"><h3>Márgenes Pichangol (comisiones)</h3></div>
-      <div class="row">Tus INGRESOS por comisiones (matrículas + reservas) menos el
-        COSTO real del banco/pasarela (Culqi) sobre todo lo que pasa por tarjeta
-        (matrículas de alumnos + recargas de saldo de dueños). Ajusta la tasa del
+      <div class="row">Tus INGRESOS (comisiones de matrículas y reservas + servicios)
+        menos el COSTO real del banco/pasarela (Culqi) sobre todo lo cobrado por
+        tarjeta (matrículas + recargas de saldo + servicios). Ajusta la tasa del
         banco con tu tarifa real.</div>
       ${fila('Comisión de matrículas · '+m.cobros_matricula, '<b>'+s(m.comision_matricula_soles)+'</b>')}
       ${fila('Comisión de reservas · '+m.cobros_reserva, '<b>'+s(m.comision_reserva_soles)+'</b>')}
       ${fila('Ingresos por servicios · '+(m.cobros_servicios||0), '<b>'+s(m.ingresos_servicios_soles)+'</b>')}
       ${fila('= Ingresos Pichangol (total)', '<b>'+s(m.ingresos_pcg_soles)+'</b>', 'color:#14463A')}
       <hr style="border:none;border-top:1px solid var(--border);margin:8px 0">
-      ${fila('Bruto procesado por tarjeta (matrículas + recargas)', s(m.bruto_procesado_soles), 'color:var(--muted)')}
+      ${fila('Bruto procesado por tarjeta (matrículas + recargas + servicios)', s(m.bruto_procesado_soles), 'color:var(--muted)')}
       <div style="display:flex;align-items:center;gap:8px;margin:8px 0">
         <span style="flex:1;font-weight:600;font-size:13px">− Costo pasarela/banco (Culqi)</span>
         <input id="banco_pct" value="${m.banco_pct}" inputmode="decimal" style="width:80px;padding:9px 10px;
