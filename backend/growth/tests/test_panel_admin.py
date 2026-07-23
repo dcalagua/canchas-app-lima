@@ -229,6 +229,46 @@ def test_reiniciar_pagos_deja_margenes_en_cero(client):
     assert client.post("/admin/api/reiniciar-pagos").status_code == 401
 
 
+def test_reset_virgen_borra_transaccional_y_conserva_reclamos(client):
+    """'Dejar en virgen' borra pagos, saldos, suscripciones, tarjetas y vistas,
+    pero CONSERVA los reclamos de propiedad (las canchas siguen reclamadas)."""
+    h = {"X-Admin-Token": TOKEN}
+    # Estado transaccional poblado.
+    stores.registrar_pago(tipo="matricula_online", monto_centimos=30000,
+                          moneda="PEN", estado="aprobado", dueno_id="ac1",
+                          culqi_charge_id="m1", comision_centimos=1500)
+    stores.saldos["due@x.com"] = 17000
+    stores.suscripciones["ac1:landing"] = {"academia_id": "ac1",
+                                           "dueno_id": "due@x.com",
+                                           "servicio": "landing"}
+    stores.suscripciones_alumno["al1"] = {"academia_id": "ac1"}
+    stores.metodos["due@x.com"] = [{"id": "crd_1", "marca": "Visa"}]
+    stores.customers["due@x.com"] = "cus_1"
+    stores.vistas["ac1"] = {"2026-07-01": 5}
+    # Un reclamo que DEBE conservarse.
+    stores.reclamos.append("reclamo-marcador")
+    reclamos_antes = len(stores.reclamos)
+
+    out = client.post("/admin/api/reset-virgen", headers=h).json()
+    assert out["ok"] is True
+    assert out["borrado"]["pagos"] == 1
+    assert out["borrado"]["saldos"] == 1
+    assert out["borrado"]["metodos_pago"] == 1
+
+    assert stores.pagos == []
+    assert stores.saldos == {}
+    assert stores.suscripciones == {}
+    assert stores.suscripciones_alumno == {}
+    assert stores.metodos == {}
+    assert stores.customers == {}
+    assert stores.vistas == {}
+    # Reclamos intactos → las canchas siguen reclamadas.
+    assert len(stores.reclamos) == reclamos_antes
+    assert "reclamo-marcador" in stores.reclamos
+    # Sin token, 401.
+    assert client.post("/admin/api/reset-virgen").status_code == 401
+
+
 def test_margenes_unifica_matriculas_reservas_y_banco(client):
     """La torre de control ve el margen total de Pichangol: comisiones (matrículas
     + reservas) menos el costo del banco sobre lo procesado por tarjeta

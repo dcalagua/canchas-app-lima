@@ -499,6 +499,33 @@ class Stores:
         self.pagos = []
         return n
 
+    def reset_virgen(self) -> dict:
+        """Deja el sistema VIRGEN conservando SOLO los reclamos de propiedad (para
+        que las canchas sigan RECLAMADAS) y la config del operador. Borra todo lo
+        transaccional del servidor: libro de pagos, saldos de billetera,
+        suscripciones de servicios y de alumnos, tarjetas guardadas + customers de
+        Culqi, y métricas de vistas. NO toca `reclamos` ni la config. Devuelve un
+        conteo de lo borrado para confirmar."""
+        conteo = {
+            "pagos": len(self.pagos),
+            "saldos": len(self.saldos),
+            "suscripciones": len(self.suscripciones),
+            "suscripciones_alumno": len(self.suscripciones_alumno),
+            "metodos_pago": sum(len(v) for v in self.metodos.values()),
+            "customers": len(self.customers),
+            "vistas": len(self.vistas),
+        }
+        self.pagos = []
+        self.saldos = {}
+        self.suscripciones = {}
+        self.suscripciones_alumno = {}
+        self.metodo_suscripcion = {}
+        self.metodos = {}
+        self.customers = {}
+        self.vistas = {}
+        # Se conservan: reclamos (propiedad), config/incentivos/modo del operador.
+        return conteo
+
     def liquidaciones(self, dueno_id: str | None = None,
                       solo_pendientes: bool = False) -> "list[PagoRegistro]":
         """Liquidaciones online (neto que Pichangol le debe al dueño). Filtra por

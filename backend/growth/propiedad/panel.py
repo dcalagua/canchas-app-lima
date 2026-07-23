@@ -261,6 +261,19 @@ def reiniciar_pagos_admin(
     return {"ok": True, "borrados": n}
 
 
+@router.post("/admin/api/reset-virgen")
+def reset_virgen_admin(
+        x_admin_token: str | None = Header(default=None)) -> dict:
+    """DEJAR EN VIRGEN: borra TODO lo transaccional del servidor (pagos, saldos,
+    suscripciones de servicios y de alumnos, tarjetas guardadas, customers y
+    vistas) CONSERVANDO los reclamos de propiedad (las canchas siguen reclamadas)
+    y la config del operador. El lado del cliente (alumnos y reservas en Supabase)
+    se limpia desde la app."""
+    _check(x_admin_token)
+    conteo = stores.reset_virgen()
+    return {"ok": True, "borrado": conteo}
+
+
 @router.get("/admin/api/comision")
 def get_comision_admin(x_admin_token: str | None = Header(default=None)) -> dict:
     """Comisión por cobro digital de matrícula, por país (torre de control)."""
@@ -726,8 +739,35 @@ function renderMantenimiento(){
         <button class="btn-rc" onclick="borrarCobrosMatricula()">Borrar cobros de matrícula del reporte (pruebas)</button>
         <button class="btn-rc" onclick="reiniciarPagos()">Reiniciar TODO el libro de pagos (pruebas)</button>
       </div>
+      <div class="row" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+        <b>🧼 Dejar en virgen (servidor)</b><br/>
+        Borra TODO lo transaccional del servidor: pagos, saldos de billetera,
+        suscripciones (servicios + alumnos), tarjetas guardadas y métricas de
+        vistas. <b>CONSERVA las canchas reclamadas</b> (reclamos de propiedad) y la
+        config. Los alumnos y reservas viven en Supabase: límpialos desde la app
+        (Ajustes → “Dejar en virgen”).
+      </div>
+      <div class="actions" style="flex-wrap:wrap;gap:8px">
+        <button class="btn-rc" style="font-weight:800" onclick="resetVirgen()">🧼 Dejar el servidor en virgen</button>
+      </div>
       <div id="mant_res" class="row" style="margin-top:10px;color:var(--muted)"></div>
     </div>`;
+}
+async function resetVirgen(){
+  if(!confirm('¿DEJAR EL SERVIDOR EN VIRGEN?\\n\\nBorra pagos, saldos, suscripciones, tarjetas guardadas y vistas. CONSERVA las canchas reclamadas y la config. Esto NO se puede deshacer.')) return;
+  if(!confirm('Confirma otra vez: se pondrán TODOS los saldos en 0 y se borrará todo el historial de transacciones.')) return;
+  try{
+    const r = await fetch('/admin/api/reset-virgen',{method:'POST',headers:headers()});
+    if(r.status===401){ salir(); return; }
+    const j = await r.json();
+    const b = j.borrado||{};
+    document.getElementById('mant_res').textContent =
+      `Servidor en virgen. Borrado: ${b.pagos||0} pagos, ${b.saldos||0} saldos, `+
+      `${(b.suscripciones||0)+(b.suscripciones_alumno||0)} suscripciones, `+
+      `${b.metodos_pago||0} tarjetas, ${b.vistas||0} vistas. Reclamos conservados.`;
+    toast('Servidor en virgen');
+    cargarMargenes();
+  }catch(e){ document.getElementById('mant_res').textContent='No se pudo.'; }
 }
 async function borrarCobrosMatricula(){
   if(!confirm('¿Borrar los cobros de matrícula del reporte? (pruebas). No toca saldos ni liquidaciones.')) return;
