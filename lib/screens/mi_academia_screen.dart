@@ -494,6 +494,22 @@ class _DestacarCardState extends State<_DestacarCard> {
             style: t.bodySmall
                 ?.copyWith(color: Colors.white.withOpacity(0.92), height: 1.3),
           ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              const Icon(Icons.account_balance_wallet,
+                  size: 14, color: Colors.white70),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                    'Es tu saldo único: el mismo de “Mi cuenta” y de tus canchas.',
+                    style: t.bodySmall?.copyWith(
+                        color: Colors.white.withOpacity(0.85),
+                        fontStyle: FontStyle.italic,
+                        height: 1.25)),
+              ),
+            ],
+          ),
           if (_vistas != null && (_vistas!['semana'] ?? 0) > 0) ...[
             const SizedBox(height: 10),
             Container(
@@ -814,9 +830,13 @@ class _SaldoPill extends StatelessWidget {
               const Icon(Icons.account_balance_wallet,
                   size: 18, color: Colors.white),
               const SizedBox(width: 8),
-              Text('Saldo  ',
-                  style: TextStyle(
-                      color: Colors.white.withOpacity(0.85), fontSize: 13)),
+              Flexible(
+                child: Text('Saldo Pichangol  ',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        color: Colors.white.withOpacity(0.85), fontSize: 13)),
+              ),
               Text('${academia.monedaSimbolo} $saldo',
                   style: const TextStyle(
                       color: Colors.white,

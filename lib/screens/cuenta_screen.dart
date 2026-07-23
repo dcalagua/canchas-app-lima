@@ -232,7 +232,8 @@ class _TarjetaSaldo extends StatelessWidget {
               style: t.displaySmall?.copyWith(
                   color: Colors.white, fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
-          Text('Las comisiones de cada reserva nueva se descuentan de aquí.',
+          Text('Es tu saldo único: el mismo para tus canchas y academias. '
+              'Las comisiones de cada reserva se descuentan de aquí.',
               style: t.bodySmall?.copyWith(color: Colors.white60)),
           const SizedBox(height: 18),
           SizedBox(
