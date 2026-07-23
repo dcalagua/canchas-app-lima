@@ -13,6 +13,7 @@ import '../widgets/pago_tarjeta_sheet.dart';
 import 'campeonatos_screen.dart';
 import 'chat_screen.dart';
 import 'login_google_sheet.dart';
+import 'mis_clases_screen.dart';
 import '../utils/moneda.dart';
 import '../config/pais.dart';
 
@@ -672,6 +673,11 @@ class _TarjetaPlan extends StatelessWidget {
         ],
       ),
     );
+    // Tras confirmar, lleva al alumno a "Mis clases y pagos": ahí ve su
+    // matrícula, el comprobante y el cronograma de cuotas.
+    if (!context.mounted) return;
+    Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const MisClasesScreen()));
   }
 }
 
