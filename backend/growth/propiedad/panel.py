@@ -590,8 +590,14 @@ _HTML = r"""<!DOCTYPE html>
         <span class="ico">📋</span> Reclamos</button>
       <button class="nav-i" data-sec="liquidaciones" onclick="mostrarSeccion('liquidaciones')" title="Liquidaciones">
         <span class="ico">💸</span> Liquidaciones</button>
-      <button class="nav-i" data-sec="config" onclick="mostrarSeccion('config')" title="Configuración">
-        <span class="ico">⚙️</span> Configuración</button>
+      <button class="nav-i" data-sec="cobros" onclick="mostrarSeccion('cobros')" title="Cobros">
+        <span class="ico">💳</span> Cobros</button>
+      <button class="nav-i" data-sec="operacion" onclick="mostrarSeccion('operacion')" title="Operación">
+        <span class="ico">✅</span> Operación</button>
+      <button class="nav-i" data-sec="comunicacion" onclick="mostrarSeccion('comunicacion')" title="Comunicación">
+        <span class="ico">💬</span> Comunicación</button>
+      <button class="nav-i" data-sec="pruebas" onclick="mostrarSeccion('pruebas')" title="Pruebas">
+        <span class="ico">🧪</span> Pruebas</button>
     </nav>
     <div class="side-foot">
       <button class="side-btn" onclick="cargar();cargarLiquidaciones()" title="Actualizar"><span class="ico">↻</span><span class="lbl">Actualizar</span></button>
@@ -609,30 +615,31 @@ _HTML = r"""<!DOCTYPE html>
       <h1 class="page-h">Liquidaciones a dueños</h1>
       <div id="liquidaciones"></div>
     </section>
-    <section id="page-config" class="page" style="display:none">
-      <h1 class="page-h">Configuración</h1>
-
-      <div class="sec">💳 Cobros, comisiones y márgenes</div>
+    <section id="page-cobros" class="page" style="display:none">
+      <h1 class="page-h">💳 Cobros, comisiones y márgenes</h1>
       <div class="cfg-grid">
         <div id="comision"></div>
         <div id="margenes"></div>
         <div id="marketing"></div>
       </div>
-
-      <div class="sec">✅ Aprobación y verificación</div>
+    </section>
+    <section id="page-operacion" class="page" style="display:none">
+      <h1 class="page-h">✅ Aprobación y operación</h1>
       <div class="cfg-grid">
         <div id="modo"></div>
         <div id="ubic"></div>
         <div id="pichangaModo"></div>
       </div>
-
-      <div class="sec">💬 Comunicación con la app</div>
+    </section>
+    <section id="page-comunicacion" class="page" style="display:none">
+      <h1 class="page-h">💬 Comunicación con la app</h1>
       <div class="cfg-grid">
         <div id="canal"></div>
         <div id="contacto"></div>
       </div>
-
-      <div class="sec">🧪 Pruebas y mantenimiento</div>
+    </section>
+    <section id="page-pruebas" class="page" style="display:none">
+      <h1 class="page-h">🧪 Pruebas y mantenimiento</h1>
       <div class="cfg-grid">
         <div id="mantenimiento"></div>
       </div>
