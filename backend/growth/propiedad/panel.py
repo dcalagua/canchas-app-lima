@@ -794,28 +794,39 @@ async function cargarMarketing(){
   }catch(e){}
 }
 function renderMarketing(){
-  const campo = (id,lbl,val,suf)=>`
-    <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
-      <span style="flex:1;font-weight:600;font-size:13px">${lbl}</span>
-      <input id="${id}" value="${val}" inputmode="numeric" style="width:96px;padding:9px 10px;
-        border:1px solid var(--border);border-radius:10px;font-family:inherit;font-size:14px;text-align:right">
-      <span style="color:var(--muted);font-size:13px;min-width:44px">${suf}</span>
+  const campo = (id,lbl,val,suf,desc)=>`
+    <div style="margin-top:12px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="flex:1;font-weight:700;font-size:13.5px">${lbl}</span>
+        <input id="${id}" value="${val}" inputmode="numeric" style="width:96px;padding:9px 10px;
+          border:1px solid var(--border);border-radius:10px;font-family:inherit;font-size:14px;text-align:right">
+        <span style="color:var(--muted);font-size:13px;min-width:44px">${suf}</span>
+      </div>
+      ${desc?`<div style="color:var(--muted);font-size:12px;margin-top:2px">${desc}</div>`:''}
     </div>`;
+  const sub = t=>`<div style="font-weight:800;font-size:11.5px;text-transform:uppercase;
+    letter-spacing:.06em;color:var(--green-deep);margin:18px 0 2px">${t}</div>`;
   document.getElementById('marketing').innerHTML =
     `<div class="card"><div class="top"><h3>Servicios de marketing</h3></div>
-      <div class="row">Precios MENSUALES de cada servicio (se debitan del saldo del
-        dueño) y tope de generaciones de posts con IA por academia/mes (control de
-        costo; la landing no cuenta).</div>
-      ${campo('mkt_landing','Landing web', mkt.landing_soles, 'S/ /mes')}
-      ${campo('mkt_redes','Manejo de redes (contenido IA + publicación)', mkt.redes_soles, 'S/ /mes')}
-      ${campo('mkt_presencia','Presencia digital', mkt.presencia_soles, 'S/ /mes')}
-      ${campo('mkt_limite','Tope de posts IA', mkt.posts_limite_mes, '/mes')}
-      <div class="row" style="margin-top:14px;font-weight:600">Tarifa propia para clubes / canchas
-        <span style="font-weight:400;color:var(--muted)"> — dejar en 0 usa la tarifa base de arriba. El
-        negocio unificado (academia + canchas) usa la base.</span></div>
-      ${campo('mkt_landing_club','Landing web (club)', mkt.landing_soles_club||0, 'S/ /mes')}
-      ${campo('mkt_redes_club','Manejo de redes (club)', mkt.redes_soles_club||0, 'S/ /mes')}
-      ${campo('mkt_presencia_club','Presencia digital (club)', mkt.presencia_soles_club||0, 'S/ /mes')}
+      <div class="row">Precios MENSUALES; se cobran del saldo del dueño. La academia
+        contrata UNO de estos servicios.</div>
+      ${sub('Precios para academias')}
+      ${campo('mkt_landing','Landing web', mkt.landing_soles, 'S/ /mes',
+        'Página web propia de la academia.')}
+      ${campo('mkt_redes','Manejo de redes', mkt.redes_soles, 'S/ /mes',
+        'Contenido con IA + publicación en sus redes.')}
+      ${campo('mkt_presencia','Presencia digital', mkt.presencia_soles, 'S/ /mes',
+        '📦 PAQUETE: incluye Landing web + Manejo de redes (todo junto, no se paga por separado).')}
+      ${sub('Límite de uso')}
+      ${campo('mkt_limite','Tope de posts con IA', mkt.posts_limite_mes, '/mes',
+        'Máx. de posts que la IA genera por academia al mes (control de costo). La landing no cuenta.')}
+      ${sub('Precios para clubes / canchas (opcional)')}
+      <div class="row" style="color:var(--muted);font-size:12px;margin-top:2px">Déjalos en 0
+        para cobrar lo MISMO que a las academias. El negocio unificado (academia + canchas)
+        siempre usa el precio de academia.</div>
+      ${campo('mkt_landing_club','Landing web', mkt.landing_soles_club||0, 'S/ /mes')}
+      ${campo('mkt_redes_club','Manejo de redes', mkt.redes_soles_club||0, 'S/ /mes')}
+      ${campo('mkt_presencia_club','Presencia digital', mkt.presencia_soles_club||0, 'S/ /mes')}
       <div class="actions"><button class="btn-ap" onclick="guardarMarketing()">Guardar</button></div>
     </div>`;
 }
