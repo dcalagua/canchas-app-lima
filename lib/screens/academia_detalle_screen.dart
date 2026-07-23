@@ -162,49 +162,56 @@ class _Contenido extends StatelessWidget {
                     ],
                   ),
                 ],
-                // Acciones principales: ubicación + contactar.
+                // Acciones. PRIMARIO = chat DENTRO del app (lo que queremos que
+                // use la gente: deja historial, notifica al profe, retención).
+                // Disponible para CUALQUIERA (un interesado pregunta ANTES de
+                // matricularse). WhatsApp queda como respaldo secundario.
                 const SizedBox(height: 20),
-                Row(
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                        backgroundColor: limaSuave,
+                        foregroundColor: bosque,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14))),
+                    icon: const Icon(Icons.forum_rounded, size: 20),
+                    label: const Text('Escríbele al profe',
+                        style: TextStyle(fontWeight: FontWeight.w800)),
+                    onPressed: () => _abrirChatProfe(context),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                // Accesos rápidos a la MISMA altura (nada escondido abajo):
+                // ubicación · WhatsApp (respaldo) · campeonatos.
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
                   children: [
-                    if (academia.sedeUbicacion != null) ...[
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor:
-                                Theme.of(context).colorScheme.primary,
-                            side: BorderSide(
-                                color: Theme.of(context).colorScheme.primary,
-                                width: 1.4),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14)),
-                          ),
-                          onPressed: () => UbicacionShare.menu(context,
-                              punto: academia.sedeUbicacion!,
-                              titulo: academia.nombre),
-                          icon: const Icon(Icons.share_location, size: 20),
-                          label: const Text('Ubicación'),
-                        ),
+                    if (academia.sedeUbicacion != null)
+                      _ChipAccion(
+                        icon: Icons.share_location,
+                        label: 'Ubicación',
+                        onTap: () => UbicacionShare.menu(context,
+                            punto: academia.sedeUbicacion!,
+                            titulo: academia.nombre),
                       ),
-                      const SizedBox(width: 10),
-                    ],
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: verde,
-                          side: const BorderSide(color: verde, width: 1.4),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14)),
-                        ),
-                        onPressed: academia.whatsapp.isEmpty
-                            ? null
-                            : () => WhatsAppLink.abrir(
-                                academia.whatsapp,
-                                'Hola, vi ${academia.nombre} en Pichangol y quiero info de las clases.'),
-                        icon: const Icon(Icons.chat, size: 18),
-                        label: const Text('Contactar'),
+                    if (academia.whatsapp.isNotEmpty)
+                      _ChipAccion(
+                        icon: Icons.chat,
+                        label: 'WhatsApp',
+                        color: verde,
+                        onTap: () => WhatsAppLink.abrir(academia.whatsapp,
+                            'Hola, vi ${academia.nombre} en Pichangol y quiero info de las clases.'),
                       ),
+                    _ChipAccion(
+                      icon: Icons.emoji_events,
+                      label: _campeonatosLabel(),
+                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) =>
+                              CampeonatosScreen(academiaId: academia.id))),
                     ),
                   ],
                 ),
@@ -272,108 +279,8 @@ class _Contenido extends StatelessWidget {
                           tituloOverride:
                               entrada.key.isEmpty ? null : p.frecuenciaLabel),
                   ],
-                // Chat con el profe (solo si el usuario está matriculado aquí).
-                Builder(builder: (context) {
-                  final email = appState.usuario?.email;
-                  if (email == null || email.isEmpty) {
-                    return const SizedBox.shrink();
-                  }
-                  final matriculado = appState.alumnos.any((al) =>
-                      al.academiaId == academia.id &&
-                      al.email.toLowerCase() == email.toLowerCase());
-                  if (!matriculado) return const SizedBox.shrink();
-                  final cs = Theme.of(context).colorScheme;
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 22),
-                    child: Material(
-                      color: cs.surface,
-                      borderRadius: BorderRadius.circular(16),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(16),
-                        onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                                builder: (_) => ChatScreen(
-                                      academiaId: academia.id,
-                                      cuentaEmail: email,
-                                      titulo: academia.nombre,
-                                      soyProfe: false,
-                                    ))),
-                        child: Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: trazo)),
-                          child: Row(
-                            children: [
-                              Icon(Icons.forum_outlined, color: cs.primary),
-                              const SizedBox(width: 12),
-                              const Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text('Chatear con el profe',
-                                        style: TextStyle(
-                                            fontWeight: FontWeight.w800)),
-                                    Text('Dudas de horarios, pagos y clases',
-                                        style: TextStyle(
-                                            color: textoTenue, fontSize: 12)),
-                                  ],
-                                ),
-                              ),
-                              Icon(Icons.chevron_right, color: cs.primary),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                }),
-                // Acceso a los campeonatos de la academia (llaves/tabla).
-                const SizedBox(height: 22),
-                Builder(builder: (context) {
-                  final n = appState.campeonatosDe(academia.id).length;
-                  final cs = Theme.of(context).colorScheme;
-                  return Material(
-                    color: cs.surface,
-                    borderRadius: BorderRadius.circular(16),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(16),
-                      onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                              builder: (_) => CampeonatosScreen(
-                                  academiaId: academia.id))),
-                      child: Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: trazo)),
-                        child: Row(
-                          children: [
-                            Icon(Icons.emoji_events, color: cs.primary),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text('Campeonatos',
-                                      style: TextStyle(
-                                          fontWeight: FontWeight.w800)),
-                                  Text(
-                                      n == 0
-                                          ? 'Aún sin campeonatos'
-                                          : '$n campeonato${n == 1 ? '' : 's'} · llaves y tabla',
-                                      style: const TextStyle(
-                                          color: textoTenue, fontSize: 12)),
-                                ],
-                              ),
-                            ),
-                            Icon(Icons.chevron_right, color: cs.primary),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                }),
+                // (El chat con el profe y campeonatos ahora van ARRIBA, en la
+                // fila de acciones — ya no escondidos aquí.)
                 // Galería completa del feed.
                 if (academia.fotos.length > 1) ...[
                   const SizedBox(height: 26),
@@ -388,6 +295,57 @@ class _Contenido extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Chip de acción (estilo Airbnb): blanco, borde suave, esquinas redondeadas.
+/// Se usa en la fila de accesos rápidos (ubicación, WhatsApp, campeonatos).
+class _ChipAccion extends StatelessWidget {
+  const _ChipAccion({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.color,
+  });
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = color ?? Theme.of(context).colorScheme.primary;
+    return Material(
+      color: Theme.of(context).colorScheme.surface,
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: const Color(0xFFE4E4E4)),
+            boxShadow: const [
+              BoxShadow(
+                  color: Color(0x0F000000), blurRadius: 6, offset: Offset(0, 2)),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 18, color: c),
+              const SizedBox(width: 7),
+              Text(label,
+                  style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13.5,
+                      color: Theme.of(context).colorScheme.onSurface)),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -546,6 +504,32 @@ class _TarjetaPlan extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// Etiqueta del chip de campeonatos (con conteo si hay).
+  String _campeonatosLabel() {
+    final n = appState.campeonatosDe(academia.id).length;
+    return n == 0 ? 'Campeonatos' : 'Campeonatos ($n)';
+  }
+
+  /// Abre el CHAT INTERNO con el profe (lo preferido: deja historial, notifica
+  /// al profe, retención). Exige cuenta; si no hay sesión, pide login con el
+  /// portón único. Disponible para cualquiera (interesado o ya matriculado).
+  Future<void> _abrirChatProfe(BuildContext context) async {
+    if (!await LoginGoogleSheet.mostrar(context,
+        motivo: 'escribirle al profe')) {
+      return;
+    }
+    if (!context.mounted) return;
+    final email = appState.usuario!.email;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ChatScreen(
+        academiaId: academia.id,
+        cuentaEmail: email,
+        titulo: academia.nombre,
+        soyProfe: false,
+      ),
+    ));
   }
 
   Future<void> _matricular(BuildContext context) async {
