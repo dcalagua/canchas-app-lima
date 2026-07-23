@@ -708,10 +708,19 @@ class PagosService {
 
   /// Resumen de cobros digitales de matrícula de una academia (para el reporte):
   /// {cobros, bruto_soles, comision_soles, neto_soles}. Null si no se pudo.
-  static Future<Map<String, dynamic>?> resumenMatricula(String academiaId) async {
+  /// Resumen de cobros digitales de matrícula. Con [desde]/[hasta] filtra por
+  /// fecha del cobro, para que cuadre con el período elegido en el reporte
+  /// (Este mes / Mes pasado / 3 meses / Fechas). Sin rango = histórico.
+  static Future<Map<String, dynamic>?> resumenMatricula(String academiaId,
+      {DateTime? desde, DateTime? hasta}) async {
     if (!disponible) return null;
     try {
-      final uri = Uri.parse('$_baseUrl/pagos/matricula/resumen/$academiaId');
+      final q = <String, String>{
+        if (desde != null) 'desde': desde.toUtc().toIso8601String(),
+        if (hasta != null) 'hasta': hasta.toUtc().toIso8601String(),
+      };
+      final uri = Uri.parse('$_baseUrl/pagos/matricula/resumen/$academiaId')
+          .replace(queryParameters: q.isEmpty ? null : q);
       final r = await http.get(uri, headers: _appHeaders())
           .timeout(const Duration(seconds: 12));
       if (r.statusCode != 200) return null;

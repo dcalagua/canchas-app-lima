@@ -745,12 +745,30 @@ def post_matricula(req: MatriculaReq) -> dict:
             "pct": pct}
 
 
+def _parse_utc(s: str | None) -> datetime | None:
+    """Parsea una fecha ISO (query param) a UTC-aware para comparar con
+    creado_en. Si no trae zona, asume UTC. Devuelve None si no se puede."""
+    if not s:
+        return None
+    try:
+        d = datetime.fromisoformat(s)
+        return d.replace(tzinfo=timezone.utc) if d.tzinfo is None else d
+    except ValueError:
+        return None
+
+
 @router.get("/matricula/resumen/{academia_id}", dependencies=_APP)
-def get_matricula_resumen(academia_id: str) -> dict:
+def get_matricula_resumen(academia_id: str, desde: str | None = None,
+                          hasta: str | None = None) -> dict:
     """Resumen de cobros digitales de matrícula de una academia (para el reporte
-    del profe): bruto, comisión y neto acumulados por cobro por la app."""
+    del profe): bruto, comisión y neto acumulados por cobro por la app. Con
+    [desde]/[hasta] (ISO) filtra por fecha del cobro, para que cuadre con el
+    período que muestran las tarjetas de arriba (Este mes / Mes pasado / …)."""
+    d0, d1 = _parse_utc(desde), _parse_utc(hasta)
     ms = [p for p in stores.pagos
-          if p.tipo == "matricula_online" and p.dueno_id == academia_id]
+          if p.tipo == "matricula_online" and p.dueno_id == academia_id
+          and (d0 is None or p.creado_en >= d0)
+          and (d1 is None or p.creado_en <= d1)]
     bruto = sum(p.monto_centimos for p in ms)
     comision = sum(p.comision_centimos for p in ms)
     return {"academia_id": academia_id, "cobros": len(ms),

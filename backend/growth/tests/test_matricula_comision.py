@@ -65,6 +65,15 @@ def test_comision_por_pais_y_neto(client):
     assert res["comision_soles"] == 12.5
     assert res["neto_soles"] == 237.5
 
+    # Filtro por fecha (para cuadrar con el período del reporte): un rango que NO
+    # incluye hoy deja el resumen en cero; uno que sí lo incluye, lo mantiene.
+    fuera = client.get(
+        "/pagos/matricula/resumen/ac1?hasta=2000-01-01T00:00:00").json()
+    assert fuera["cobros"] == 0 and fuera["bruto_soles"] == 0.0
+    dentro = client.get(
+        "/pagos/matricula/resumen/ac1?desde=2000-01-01T00:00:00").json()
+    assert dentro["cobros"] == 1 and dentro["bruto_soles"] == 250.0
+
 
 def test_comision_congelada_no_se_recalcula(client):
     client.post("/admin/api/comision", json={"pe": 10},

@@ -116,7 +116,11 @@ class _ReporteAcademiaScreenState extends State<ReporteAcademiaScreen> {
               ),
               if (academia != null) ...[
                 const SizedBox(height: 14),
-                _ComisionDigital(academia: academia, moneda: mon),
+                _ComisionDigital(
+                    academia: academia,
+                    moneda: mon,
+                    desde: rango.start,
+                    hasta: rango.end),
               ],
               if (academia != null && academia.tieneRetribucionClub) ...[
                 const SizedBox(height: 14),
@@ -209,9 +213,17 @@ class _ReporteAcademiaScreenState extends State<ReporteAcademiaScreen> {
 /// a lo que los alumnos pagan por la app; el efectivo es 0%. Muestra el % y, si
 /// hubo cobros digitales, el neto que le queda a la academia (del backend).
 class _ComisionDigital extends StatefulWidget {
-  const _ComisionDigital({required this.academia, required this.moneda});
+  const _ComisionDigital(
+      {required this.academia,
+      required this.moneda,
+      required this.desde,
+      required this.hasta});
   final Academia academia;
   final String moneda;
+  // Período seleccionado en el reporte: la comisión digital lo respeta para
+  // cuadrar con las tarjetas de arriba (antes era histórico y "no cuadraba").
+  final DateTime desde;
+  final DateTime hasta;
   @override
   State<_ComisionDigital> createState() => _ComisionDigitalState();
 }
@@ -226,9 +238,19 @@ class _ComisionDigitalState extends State<_ComisionDigital> {
     _cargar();
   }
 
+  @override
+  void didUpdateWidget(_ComisionDigital old) {
+    super.didUpdateWidget(old);
+    // Cambió el período: vuelve a pedir el resumen para ese rango.
+    if (old.desde != widget.desde || old.hasta != widget.hasta) {
+      _cargar();
+    }
+  }
+
   Future<void> _cargar() async {
     final pct = await PagosService.comisionMatricula(widget.academia.pais.iso);
-    final res = await PagosService.resumenMatricula(widget.academia.id);
+    final res = await PagosService.resumenMatricula(widget.academia.id,
+        desde: widget.desde, hasta: widget.hasta);
     if (!mounted) return;
     setState(() {
       _pct = pct;
