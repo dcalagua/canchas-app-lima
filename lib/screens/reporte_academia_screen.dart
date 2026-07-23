@@ -24,6 +24,8 @@ enum _Rango { esteMes, mesPasado, tresMeses, todo, personalizado }
 class _ReporteAcademiaScreenState extends State<ReporteAcademiaScreen> {
   _Rango _sel = _Rango.esteMes;
   DateTimeRange? _custom;
+  // Filtro por SEDE (academias multi-local). '' = todas las sedes.
+  String _sedeSel = '';
 
   static const _mesesCorto = [
     'ene', 'feb', 'mar', 'abr', 'may', 'jun',
@@ -97,8 +99,31 @@ class _ReporteAcademiaScreenState extends State<ReporteAcademiaScreen> {
               todas.where((c) => _enRango(_ref(c), rango)).toList()
                 ..sort((a, b) => _ref(b).compareTo(_ref(a)));
 
+          // Multi-sede: sedes de la academia y mapa alumno→sede para poder
+          // filtrar y desglosar el reporte por local.
+          final alumnosAc =
+              academia != null ? appState.alumnosDe(academia.id) : const <Alumno>[];
+          final sedes = academia?.sedesEfectivas ?? const <Sede>[];
+          final multiSede = (academia?.sedes.length ?? 0) > 1;
+          final sedeDeAlumno = <String, String>{
+            for (final a in alumnosAc)
+              a.id: (a.sedeId.isNotEmpty
+                  ? a.sedeId
+                  : (sedes.isNotEmpty ? sedes.first.id : ''))
+          };
+          final nombreSede = <String, String>{
+            for (final s in sedes) s.id: s.nombre
+          };
+          String sedeDeCuota(Cuota c) => sedeDeAlumno[c.alumnoId] ?? '';
+
+          // Vista sede-filtrada (KPIs + movimientos). El desglose por sede usa
+          // `enRango` (todas las sedes) para poder rankear.
+          final visibles = (!multiSede || _sedeSel.isEmpty)
+              ? enRango
+              : enRango.where((c) => sedeDeCuota(c) == _sedeSel).toList();
+
           double cobrado = 0, porCobrar = 0, vencido = 0;
-          for (final c in enRango) {
+          for (final c in visibles) {
             if (c.pagada) {
               cobrado += c.monto;
             } else {
@@ -117,6 +142,10 @@ class _ReporteAcademiaScreenState extends State<ReporteAcademiaScreen> {
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 30),
             children: [
               _filtro(),
+              if (multiSede) ...[
+                const SizedBox(height: 10),
+                _filtroSede(sedes),
+              ],
               const SizedBox(height: 14),
               Row(
                 children: [
@@ -130,6 +159,19 @@ class _ReporteAcademiaScreenState extends State<ReporteAcademiaScreen> {
                   Expanded(child: _Kpi('Vencido', vencido, clayOscuro, mon)),
                 ],
               ),
+              if (multiSede) ...[
+                const SizedBox(height: 14),
+                _DesgloseSede(
+                  sedes: sedes,
+                  nombreSede: nombreSede,
+                  cuotasEnRango: enRango,
+                  alumnos: alumnosAc,
+                  sedeDeCuota: sedeDeCuota,
+                  moneda: mon,
+                  sedeSel: _sedeSel,
+                  onSede: (id) => setState(() => _sedeSel = id),
+                ),
+              ],
               if (academia != null) ...[
                 const SizedBox(height: 12),
                 SizedBox(
@@ -145,7 +187,7 @@ class _ReporteAcademiaScreenState extends State<ReporteAcademiaScreen> {
                     label: const Text('Descargar estado de cuenta (PDF)',
                         style: TextStyle(fontWeight: FontWeight.w800)),
                     onPressed: () => _descargarEstadoCuenta(
-                        academia!, enRango, nombres, boletas, mon, rango),
+                        academia!, visibles, nombres, boletas, mon, rango),
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -170,22 +212,22 @@ class _ReporteAcademiaScreenState extends State<ReporteAcademiaScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Movimientos (${enRango.length})',
+                  Text('Movimientos (${visibles.length})',
                       style: const TextStyle(
                           fontWeight: FontWeight.w800, fontSize: 15)),
-                  Text('${enRango.where((c) => c.pagada).length} pagadas',
+                  Text('${visibles.where((c) => c.pagada).length} pagadas',
                       style: const TextStyle(color: textoTenue, fontSize: 12)),
                 ],
               ),
               const SizedBox(height: 8),
-              if (enRango.isEmpty)
+              if (visibles.isEmpty)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 16),
                   child: Text('Sin movimientos en este rango.',
                       style: TextStyle(color: textoTenue)),
                 )
               else
-                for (final c in enRango)
+                for (final c in visibles)
                   _FilaPago(
                       cuota: c,
                       alumno: nombres[c.alumnoId] ?? 'Alumno',
@@ -352,6 +394,184 @@ class _ReporteAcademiaScreenState extends State<ReporteAcademiaScreen> {
           },
         ),
       ],
+    );
+  }
+
+  /// Chips para filtrar el reporte por SEDE (solo academias multi-local).
+  Widget _filtroSede(List<Sede> sedes) {
+    Widget chip(String t, String id) => ChoiceChip(
+          label: Text(t),
+          selected: _sedeSel == id,
+          selectedColor: limaSuave,
+          onSelected: (_) => setState(() => _sedeSel = id),
+        );
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        chip('Todas las sedes', ''),
+        for (final s in sedes) chip(s.nombre, s.id),
+      ],
+    );
+  }
+}
+
+/// Desglose por SEDE: cuánto se cobró en el rango por cada local y cuántos
+/// alumnos activos tiene cada uno. Tocar una fila filtra el reporte a esa sede.
+class _DesgloseSede extends StatelessWidget {
+  const _DesgloseSede({
+    required this.sedes,
+    required this.nombreSede,
+    required this.cuotasEnRango,
+    required this.alumnos,
+    required this.sedeDeCuota,
+    required this.moneda,
+    required this.sedeSel,
+    required this.onSede,
+  });
+  final List<Sede> sedes;
+  final Map<String, String> nombreSede;
+  final List<Cuota> cuotasEnRango;
+  final List<Alumno> alumnos;
+  final String Function(Cuota) sedeDeCuota;
+  final String moneda;
+  final String sedeSel;
+  final ValueChanged<String> onSede;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    // Cobrado por sede (solo cuotas pagadas del rango).
+    final cobradoPorSede = <String, double>{for (final s in sedes) s.id: 0};
+    for (final c in cuotasEnRango) {
+      if (!c.pagada) continue;
+      final id = sedeDeCuota(c);
+      cobradoPorSede[id] = (cobradoPorSede[id] ?? 0) + c.monto;
+    }
+    // Alumnos por sede.
+    final alumnosPorSede = <String, int>{for (final s in sedes) s.id: 0};
+    for (final a in alumnos) {
+      final id = a.sedeId.isNotEmpty
+          ? a.sedeId
+          : (sedes.isNotEmpty ? sedes.first.id : '');
+      if (alumnosPorSede.containsKey(id)) {
+        alumnosPorSede[id] = alumnosPorSede[id]! + 1;
+      }
+    }
+    final maxCobrado =
+        cobradoPorSede.values.fold<double>(0, (a, b) => b > a ? b : a);
+    // Ordena las sedes por lo cobrado (ranking).
+    final orden = [...sedes]..sort((a, b) =>
+        (cobradoPorSede[b.id] ?? 0).compareTo(cobradoPorSede[a.id] ?? 0));
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: trazo),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.store_mall_directory_outlined,
+                  size: 18, color: lima),
+              const SizedBox(width: 8),
+              Text('Cobrado y alumnos por sede',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 14,
+                      color: cs.onSurface)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          for (final s in orden)
+            _FilaSede(
+              nombre: nombreSede[s.id] ?? s.nombre,
+              cobrado: cobradoPorSede[s.id] ?? 0,
+              alumnos: alumnosPorSede[s.id] ?? 0,
+              maxCobrado: maxCobrado,
+              moneda: moneda,
+              seleccionada: sedeSel == s.id,
+              onTap: () => onSede(sedeSel == s.id ? '' : s.id),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FilaSede extends StatelessWidget {
+  const _FilaSede({
+    required this.nombre,
+    required this.cobrado,
+    required this.alumnos,
+    required this.maxCobrado,
+    required this.moneda,
+    required this.seleccionada,
+    required this.onTap,
+  });
+  final String nombre;
+  final double cobrado;
+  final int alumnos;
+  final double maxCobrado;
+  final String moneda;
+  final bool seleccionada;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final frac = maxCobrado <= 0 ? 0.0 : (cobrado / maxCobrado).clamp(0.0, 1.0);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+        decoration: BoxDecoration(
+          color: seleccionada ? limaSuave : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(nombre,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13.5,
+                          color: cs.onSurface)),
+                ),
+                Text('$moneda ${cobrado.toStringAsFixed(2)}',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13.5,
+                        color: cs.primary)),
+              ],
+            ),
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                value: frac,
+                minHeight: 6,
+                backgroundColor: trazo,
+                valueColor: const AlwaysStoppedAnimation(lima),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text('$alumnos alumno${alumnos == 1 ? '' : 's'}',
+                style: const TextStyle(color: textoTenue, fontSize: 11.5)),
+          ],
+        ),
+      ),
     );
   }
 }
