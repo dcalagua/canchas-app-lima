@@ -223,6 +223,68 @@ def test_saldo_endpoint():
     assert r["saldo_centimos"] == 1500 and r["saldo_soles"] == 15.0
 
 
+def test_consolidar_mueve_saldo_de_academia_a_correo():
+    # El dueño recargó S/ 170 en su billetera (correo) y S/ 71 quedaron bajo la
+    # llave de la academia. Consolidar los junta en el correo → S/ 241.
+    client.post("/pagos/recarga", json={
+        "token": "t1", "dueno_id": "due@x.com", "email": "due@x.com",
+        "monto_soles": 170})
+    client.post("/pagos/recarga", json={
+        "token": "t2", "dueno_id": "aca_1", "email": "due@x.com",
+        "monto_soles": 71})
+    r = client.post("/pagos/consolidar", json={
+        "desde_id": "aca_1", "hacia_id": "due@x.com"}).json()
+    assert r["ok"] is True
+    assert r["saldo_centimos"] == 24100 and r["saldo_soles"] == 241.0
+    assert stores.saldo_centimos("due@x.com") == 24100
+    assert stores.saldo_centimos("aca_1") == 0  # la academia queda en 0
+
+
+def test_consolidar_es_idempotente():
+    client.post("/pagos/recarga", json={
+        "token": "t", "dueno_id": "aca_1", "email": "d@x.com",
+        "monto_soles": 50})
+    body = {"desde_id": "aca_1", "hacia_id": "d@x.com"}
+    client.post("/pagos/consolidar", json=body)
+    r2 = client.post("/pagos/consolidar", json=body).json()  # segundo golpe
+    assert r2["saldo_centimos"] == 5000  # no duplica
+    assert stores.saldo_centimos("d@x.com") == 5000
+
+
+def test_consolidar_misma_llave_no_hace_nada():
+    client.post("/pagos/recarga", json={
+        "token": "t", "dueno_id": "d@x.com", "email": "d@x.com",
+        "monto_soles": 30})
+    r = client.post("/pagos/consolidar", json={
+        "desde_id": "d@x.com", "hacia_id": "d@x.com"}).json()
+    assert r["saldo_centimos"] == 3000
+    assert stores.saldo_centimos("d@x.com") == 3000
+
+
+def test_consolidar_no_altera_libro_de_recargas():
+    # Consolidar mueve saldo pero NO crea/borra recargas: el reporte de márgenes
+    # (que suma recargas) no debe cambiar.
+    client.post("/pagos/recarga", json={
+        "token": "t", "dueno_id": "aca_1", "email": "d@x.com",
+        "monto_soles": 40})
+    recargas_antes = sum(1 for p in stores.pagos if p.tipo == "recarga")
+    client.post("/pagos/consolidar", json={
+        "desde_id": "aca_1", "hacia_id": "d@x.com"})
+    recargas_despues = sum(1 for p in stores.pagos if p.tipo == "recarga")
+    assert recargas_antes == recargas_despues
+
+
+def test_consolidar_reapunta_suscripciones_al_correo():
+    # Suscripción que cobraba de la academia; tras consolidar debe cobrar del
+    # correo del dueño (para que el cron de servicios no falle por falta_saldo).
+    stores.suscripciones["aca_1:landing"] = {
+        "academia_id": "aca_1", "dueno_id": "aca_1", "servicio": "landing",
+        "estado": "activa"}
+    client.post("/pagos/consolidar", json={
+        "desde_id": "aca_1", "hacia_id": "d@x.com"})
+    assert stores.suscripciones["aca_1:landing"]["dueno_id"] == "d@x.com"
+
+
 def test_webhook_es_idempotente(_setup):
     # Cargo directo en Culqi (como si el APK hubiera cobrado) sin pasar por el
     # endpoint, para que el webhook sea quien acredite.

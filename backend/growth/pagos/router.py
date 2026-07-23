@@ -192,6 +192,27 @@ def get_saldo(dueno_id: str) -> dict:
     return {"dueno_id": dueno_id, "saldo_centimos": c, "saldo_soles": c / 100.0}
 
 
+class ConsolidarReq(BaseModel):
+    desde_id: str              # llave secundaria (p. ej. id de una academia)
+    hacia_id: str              # billetera del dueño (su correo)
+
+
+@router.post("/consolidar", dependencies=_APP)
+def post_consolidar(req: ConsolidarReq) -> dict:
+    """BILLETERA ÚNICA por usuario: mueve el saldo prepago que quedó bajo una
+    llave secundaria (el id de una academia) a la billetera del dueño (su
+    correo), para que vea UN solo saldo en 'Mi cuenta' y en cada academia.
+    Idempotente (tras mover, la llave secundaria queda en 0). El APK lo llama al
+    abrir el panel de la academia. OJO: `hacia_id` debe ser EXACTAMENTE la misma
+    llave con la que el APK lee la billetera del dueño (su correo, sin
+    transformar), para no partir el saldo en dos llaves por diferencias de caja."""
+    hacia = req.hacia_id.strip()
+    desde = req.desde_id.strip()
+    nuevo = stores.transferir_saldo(desde, hacia)
+    return {"ok": True, "hacia_id": hacia,
+            "saldo_centimos": nuevo, "saldo_soles": nuevo / 100.0}
+
+
 @router.post("/comision-reserva", dependencies=_APP)
 def post_comision_reserva(req: ComisionReservaReq) -> dict:
     """Descuenta la comisión de Pichangol del SALDO del dueño cuando entra una

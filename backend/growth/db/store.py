@@ -441,6 +441,29 @@ class Stores:
         self.saldos[dueno_id] = nuevo
         return nuevo
 
+    def transferir_saldo(self, desde_id: str, hacia_id: str) -> int:
+        """BILLETERA ÚNICA por usuario: mueve TODO el saldo prepago de [desde_id]
+        a [hacia_id]. Se usa para consolidar el saldo que quedó bajo una llave
+        secundaria (p. ej. el id de una academia) en la billetera del dueño (su
+        correo). Idempotente: tras mover, [desde_id] queda en 0, así que re-llamar
+        mueve 0. Devuelve el nuevo saldo de [hacia_id]. No registra un pago (no
+        crea ni destruye recargas: el libro de márgenes no se altera)."""
+        if not desde_id or not hacia_id or desde_id == hacia_id:
+            return self.saldos.get(hacia_id, 0)
+        # Re-apunta las suscripciones que cobraban de la llave secundaria para que
+        # el cron de servicios siga debitando de la billetera del dueño (correo).
+        # Corre SIEMPRE (aunque no haya saldo que mover): una sub puede existir
+        # sin saldo actual y hay que reencaminar su cobro igual.
+        for s in self.suscripciones.values():
+            if s.get("dueno_id") == desde_id:
+                s["dueno_id"] = hacia_id
+        monto = self.saldos.get(desde_id, 0)
+        if monto <= 0:
+            return self.saldos.get(hacia_id, 0)
+        self.saldos[desde_id] = 0
+        self.saldos[hacia_id] = self.saldos.get(hacia_id, 0) + monto
+        return self.saldos[hacia_id]
+
     def pago_por_charge(self, charge_id: str | None) -> "PagoRegistro | None":
         if not charge_id:
             return None
