@@ -323,11 +323,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
       // Globo de chat con el dueño (solo si hay dueño y no soy yo): siempre a la
       // mano, sin scroll. Es nuestra "burbuja" (chat interno Pichangol).
       floatingActionButton: (_cancha.dueno.isNotEmpty && !_soyDueno)
-          ? ChatBurbuja(
-              heroTag: 'chat_cancha_${_cancha.id}',
-              etiqueta: '',
-              onTap: _chatearConDueno,
-            )
+          ? ChatBurbuja(onTap: _chatearConDueno)
           : null,
       body: RefreshIndicator(
         onRefresh: _pullRefresh,

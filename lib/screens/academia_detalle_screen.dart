@@ -96,8 +96,7 @@ class _Contenido extends StatelessWidget {
       // Globo de chat SIEMPRE a la mano (no se pierde al hacer scroll): escribirle
       // al profe por el chat interno. Es nuestra "burbuja" (identidad Pichangol).
       floatingActionButton: ChatBurbuja(
-        heroTag: 'chat_academia_${academia.id}',
-        etiqueta: '',
+        logoUrl: academia.logoUrl,
         onTap: () => _abrirChatProfe(context),
       ),
       body: CustomScrollView(

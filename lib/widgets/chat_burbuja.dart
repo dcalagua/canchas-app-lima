@@ -3,41 +3,36 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import '../theme.dart';
 
-/// Globo flotante de CHAT interno (siempre a la mano, estilo "burbuja" de
-/// WhatsApp pero con identidad Pichangol: verde de marca + burbuja de diálogo,
-/// no el teléfono de WhatsApp). Se usa como `floatingActionButton` en las fichas
-/// (academia, cancha/club) para escribirle al profe / al dueño sin hacer scroll.
+/// Globo flotante de CHAT interno (siempre a la mano). Con identidad Pichangol:
+/// - Si la academia/cancha tiene LOGO ([logoUrl]) → muestra el logo como avatar
+///   con una insignia verde de chat (matiz "WhatsApp") → se siente personal.
+/// - Si NO tiene logo → un robot (asistente), verde de marca, con la puntita
+///   amarilla (la "o" pelota de Pichang·o·l).
+/// Se usa como `floatingActionButton` en las fichas (academia, cancha/club).
 class ChatBurbuja extends StatelessWidget {
   const ChatBurbuja({
     super.key,
     required this.onTap,
-    this.etiqueta = 'Chat',
-    this.heroTag,
+    this.logoUrl,
   });
 
   final VoidCallback onTap;
 
-  /// Texto corto junto al ícono (ej. "Chat", "Escríbenos"). Si es vacío, queda
-  /// como globo circular sin texto.
-  final String etiqueta;
-  final Object? heroTag;
+  /// Logo de la academia/cancha. Si viene (y carga), reemplaza al robot.
+  final String? logoUrl;
 
-  @override
-  Widget build(BuildContext context) {
-    // Ícono "asistente" (robot) importado de FontAwesome: más carácter que una
-    // burbuja simple y distinto a WhatsApp. La punta amarilla (la "o" pelota de
-    // Pichang·o·l) le da identidad de marca.
-    final icono = SizedBox(
-      width: 30,
-      height: 26,
-      child: Stack(
+  // Verde WhatsApp oficial: da el "matiz de chat" a la insignia sobre el logo.
+  static const _verdeWa = Color(0xFF25D366);
+
+  // Contenido del robot (sin fondo: el fondo lima lo pone el Material).
+  Widget _robotContenido() => Stack(
         clipBehavior: Clip.none,
         alignment: Alignment.center,
         children: [
-          const FaIcon(FontAwesomeIcons.robot, size: 22, color: Colors.white),
+          const FaIcon(FontAwesomeIcons.robot, size: 24, color: Colors.white),
           Positioned(
-            top: -3,
-            right: 1,
+            top: 8,
+            right: 12,
             child: Container(
               width: 6,
               height: 6,
@@ -46,28 +41,66 @@ class ChatBurbuja extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-
-    if (etiqueta.trim().isEmpty) {
-      return FloatingActionButton(
-        heroTag: heroTag,
-        onPressed: onTap,
-        backgroundColor: lima,
-        foregroundColor: Colors.white,
-        elevation: 4,
-        child: icono,
       );
-    }
-    return FloatingActionButton.extended(
-      heroTag: heroTag,
-      onPressed: onTap,
-      backgroundColor: lima,
-      foregroundColor: Colors.white,
-      elevation: 4,
-      icon: icono,
-      label: Text(etiqueta,
-          style: const TextStyle(fontWeight: FontWeight.w800)),
+
+  @override
+  Widget build(BuildContext context) {
+    final tieneLogo = (logoUrl ?? '').trim().isNotEmpty;
+
+    return SizedBox(
+      width: 60,
+      height: 60,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          // Círculo tappable con sombra (estilo FAB). El fondo va en el Material
+          // (blanco si hay logo, lima si es robot) para que la elevación renderice.
+          Material(
+            elevation: 4,
+            shape: const CircleBorder(),
+            clipBehavior: Clip.antiAlias,
+            color: tieneLogo ? Colors.white : lima,
+            child: InkWell(
+              onTap: onTap,
+              customBorder: const CircleBorder(),
+              child: SizedBox(
+                width: 56,
+                height: 56,
+                child: tieneLogo
+                    ? Image.network(
+                        logoUrl!.trim(),
+                        fit: BoxFit.cover,
+                        // Si el logo no carga, cae al robot sobre fondo lima.
+                        errorBuilder: (_, __, ___) => Container(
+                            color: lima,
+                            alignment: Alignment.center,
+                            child: _robotContenido()),
+                      )
+                    : _robotContenido(),
+              ),
+            ),
+          ),
+          // Insignia de chat (matiz WhatsApp) SOLO cuando hay logo: deja claro
+          // que el avatar es un botón para chatear.
+          if (tieneLogo)
+            Positioned(
+              right: -1,
+              bottom: -1,
+              child: Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  color: _verdeWa,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2),
+                ),
+                alignment: Alignment.center,
+                child: const Icon(Icons.chat_bubble_rounded,
+                    size: 10, color: Colors.white),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
