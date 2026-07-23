@@ -198,33 +198,14 @@ class _Contenido extends StatelessWidget {
                     ],
                   ),
                 ],
-                // Acciones. PRIMARIO = chat DENTRO del app (lo que queremos que
-                // use la gente: deja historial, notifica al profe, retención).
-                // Disponible para CUALQUIERA (un interesado pregunta ANTES de
-                // matricularse). WhatsApp queda como respaldo secundario.
+                // Acciones. El chat con el profe ya vive en el GLOBO flotante
+                // (siempre a la mano), así que aquí no repetimos el botón.
                 const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                        backgroundColor: limaSuave,
-                        foregroundColor: bosque,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14))),
-                    icon: const Icon(Icons.forum_rounded, size: 20),
-                    label: const Text('Escríbele al profe',
-                        style: TextStyle(fontWeight: FontWeight.w800)),
-                    onPressed: () => _abrirChatProfe(context),
-                  ),
-                ),
                 // Modo 'whatsapp_libre' (torre de control): WhatsApp también como
                 // botón visible (co-primario), no solo chip.
                 if (academia.whatsapp.isNotEmpty &&
                     appState.mostrarWhatsapp &&
                     appState.whatsappLibre) ...[
-                  const SizedBox(height: 10),
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import '../theme.dart';
 
@@ -23,21 +24,23 @@ class ChatBurbuja extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final icono = Container(
-      width: 26,
+    // Ícono "asistente" (robot) importado de FontAwesome: más carácter que una
+    // burbuja simple y distinto a WhatsApp. La punta amarilla (la "o" pelota de
+    // Pichang·o·l) le da identidad de marca.
+    final icono = SizedBox(
+      width: 30,
       height: 26,
-      alignment: Alignment.center,
       child: Stack(
+        clipBehavior: Clip.none,
         alignment: Alignment.center,
         children: [
-          const Icon(Icons.chat_bubble_rounded, size: 26, color: Colors.white),
-          // Punto lima/amarillo = guiño a la "o" pelota de Pichang·o·l: distingue
-          // la burbuja de la de WhatsApp.
+          const FaIcon(FontAwesomeIcons.robot, size: 22, color: Colors.white),
           Positioned(
-            bottom: 8,
+            top: -3,
+            right: 1,
             child: Container(
-              width: 5,
-              height: 5,
+              width: 6,
+              height: 6,
               decoration: const BoxDecoration(
                   color: Color(0xFFF2C94C), shape: BoxShape.circle),
             ),
