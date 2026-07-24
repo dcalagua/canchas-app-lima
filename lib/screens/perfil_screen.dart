@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../brand.dart';
-import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/google_logo.dart';
@@ -12,8 +11,6 @@ import 'login_google_sheet.dart';
 import 'billetera_screen.dart';
 import 'hazte_pro_screen.dart';
 import 'mis_retos_screen.dart';
-import 'referidos_screen.dart';
-import 'verificar_identidad_screen.dart';
 
 /// Pestaña PERFIL del jugador: sesión (login/logout), lo del jugador (academias,
 /// métodos de pago) y el acceso a **Modo anfitrión** (todo lo del anfitrión va
@@ -148,52 +145,22 @@ class PerfilScreen extends StatelessWidget {
                       ),
                     if (u != null)
                       _Tile(
-                        icon: appState.jugadorVerificado
-                            ? Icons.verified
-                            : Icons.verified_user_outlined,
-                        title: appState.jugadorVerificado
-                            ? 'Identidad verificada ✓'
-                            : 'Verifica tu identidad',
-                        subtitle: appState.jugadorVerificado
-                            ? 'Tu perfil muestra la insignia de jugador verificado'
-                            : 'Da confianza a los dueños y reserva sin fricción',
-                        onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                            builder: (_) => const VerificarIdentidadScreen())),
-                      ),
-                    if (u != null)
-                      _Tile(
                         icon: Icons.account_balance_wallet,
                         title: 'Mi billetera',
                         subtitle:
-                            'Tu saldo, recargas y recibos de lo que consumes',
+                            'Tu saldo, recargas y tarjetas guardadas',
                         onTap: () => Navigator.of(context).push(MaterialPageRoute(
                             builder: (_) => const BilleteraScreen())),
                       ),
-                    // "Métodos de pago" ahora vive DENTRO de "Mi billetera"
-                    // (todo lo del dinero en un solo lugar).
-                    _Tile(
-                      icon: Icons.card_giftcard,
-                      title: 'Invita y gana 🎁',
-                      subtitle: 'Comparte tu código; tú y tu amigo ganan un bono',
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => const ReferidosScreen())),
-                    ),
 
-                    // --- Ajustes (tema claro/oscuro) ---
+                    // --- Ajustes: apariencia + tu cuenta (identidad, invitar,
+                    // compartir) viven aquí para no saturar el Perfil. ---
                     _Tile(
                       icon: Icons.tune,
                       title: 'Ajustes',
-                      subtitle: 'Tema claro u oscuro y preferencias',
+                      subtitle: 'Tu cuenta, verificación, invitar y compartir',
                       onTap: () => Navigator.of(context).push(MaterialPageRoute(
                           builder: (_) => const AjustesScreen())),
-                    ),
-
-                    // --- Compartir la app ---
-                    _Tile(
-                      icon: Icons.ios_share,
-                      title: 'Comparte Pichangol',
-                      subtitle: 'Invita a tus amigos a reservar y jugar',
-                      onTap: () => _compartirApp(context),
                     ),
 
                     const SizedBox(height: 8),
@@ -230,22 +197,6 @@ class PerfilScreen extends StatelessWidget {
         },
       ),
     );
-  }
-}
-
-const _kReleaseUrl =
-    'https://github.com/dcalagua/canchas-app-lima/releases/tag/v0.1.0';
-
-/// Comparte la app (link de descarga) por WhatsApp — el canal que más usa la
-/// gente en Perú. Mismo mecanismo que compartir el código de una academia.
-Future<void> _compartirApp(BuildContext context) async {
-  final msg = '¡Descárgate $kBrandName! 🎾⚽ Reserva canchas de fútbol, tenis y '
-      'más cerca de ti, y únete a academias y campeonatos.\n\n'
-      'Bájala aquí: $_kReleaseUrl';
-  final ok = await WhatsAppLink.compartir(msg);
-  if (!ok && context.mounted) {
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('No pude abrir WhatsApp para compartir.')));
   }
 }
 

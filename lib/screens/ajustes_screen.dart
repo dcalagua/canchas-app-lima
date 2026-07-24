@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../brand.dart';
+import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'referidos_screen.dart';
+import 'verificar_identidad_screen.dart';
 
 /// Ajustes de la app. Por ahora: selector de tema (Claro / Oscuro / Automático).
 /// Theme-aware a propósito (usa el ColorScheme) para verse bien en ambos modos.
@@ -16,6 +20,23 @@ class AjustesScreen extends StatelessWidget {
   static const _ocultarPruebas =
       String.fromEnvironment('OCULTAR_PRUEBAS', defaultValue: '0');
   static bool get _mostrarHerramientasPrueba => _ocultarPruebas != '1';
+
+  static const _kReleaseUrl =
+      'https://github.com/dcalagua/canchas-app-lima/releases/tag/v0.1.0';
+
+  /// Comparte la app (link de descarga) por WhatsApp — el canal que más usa la
+  /// gente en Perú.
+  Future<void> _compartirApp(BuildContext context) async {
+    final msg =
+        '¡Descárgate $kBrandName! 🎾⚽ Reserva canchas de fútbol, tenis y '
+        'más cerca de ti, y únete a academias y campeonatos.\n\n'
+        'Bájala aquí: $_kReleaseUrl';
+    final ok = await WhatsAppLink.compartir(msg);
+    if (!ok && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No pude abrir WhatsApp para compartir.')));
+    }
+  }
 
   Future<void> _empezarDeCero(BuildContext context) async {
     final ok = await showDialog<bool>(
@@ -158,9 +179,41 @@ class AjustesScreen extends StatelessWidget {
       body: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
+          final u = appState.usuario;
           return ListView(
             padding: const EdgeInsets.fromLTRB(18, 12, 18, 30),
             children: [
+              Text('Tu cuenta',
+                  style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+              const SizedBox(height: 10),
+              if (u != null)
+                _AccionTile(
+                  icon: appState.jugadorVerificado
+                      ? Icons.verified
+                      : Icons.verified_user_outlined,
+                  title: appState.jugadorVerificado
+                      ? 'Identidad verificada ✓'
+                      : 'Verifica tu identidad',
+                  subtitle: appState.jugadorVerificado
+                      ? 'Tu perfil muestra la insignia de jugador verificado'
+                      : 'Da confianza a los dueños y reserva sin fricción',
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const VerificarIdentidadScreen())),
+                ),
+              _AccionTile(
+                icon: Icons.card_giftcard,
+                title: 'Invita y gana 🎁',
+                subtitle: 'Comparte tu código; tú y tu amigo ganan un bono',
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => const ReferidosScreen())),
+              ),
+              _AccionTile(
+                icon: Icons.ios_share,
+                title: 'Comparte Pichangol',
+                subtitle: 'Invita a tus amigos a reservar y jugar',
+                onTap: () => _compartirApp(context),
+              ),
+              const SizedBox(height: 28),
               Text('Apariencia',
                   style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
               const SizedBox(height: 4),
@@ -241,6 +294,48 @@ class AjustesScreen extends StatelessWidget {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+/// Tile de acción de cuenta (verificar, invitar, compartir) — estilo Airbnb.
+class _AccionTile extends StatelessWidget {
+  const _AccionTile(
+      {required this.icon,
+      required this.title,
+      required this.subtitle,
+      required this.onTap});
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: trazo),
+        boxShadow: const [
+          BoxShadow(color: Color(0x0F000000), blurRadius: 8, offset: Offset(0, 3)),
+        ],
+      ),
+      child: ListTile(
+        leading: CircleAvatar(
+          radius: 20,
+          backgroundColor: limaSuave,
+          child: Icon(icon, color: bosque, size: 20),
+        ),
+        title: Text(title,
+            style: t.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+        subtitle: Text(subtitle,
+            style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
+        trailing: const Icon(Icons.chevron_right, color: textoTenue),
+        onTap: onTap,
       ),
     );
   }
