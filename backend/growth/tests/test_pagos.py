@@ -350,6 +350,29 @@ def test_pro_renovar_vencidas_sin_saldo_no_renueva():
     assert out["renovadas"] == 0 and out["sin_saldo"] == 1
 
 
+def test_torneo_inscribir_cobra_saldo_y_acredita_neto_al_profe():
+    # Jugador con S/30 se inscribe a un torneo de S/20 → paga de su saldo, el
+    # profe recibe el neto (20 - comisión) en su billetera.
+    client.post("/pagos/recarga", json={
+        "token": "t", "dueno_id": "jug@x.com", "email": "jug@x.com",
+        "monto_soles": 30})
+    r = client.post("/pagos/torneo/inscribir", json={
+        "email": "jug@x.com", "academia_dueno": "profe@x.com",
+        "cuota_soles": 20}).json()
+    assert r["ok"] is True
+    assert stores.saldo_centimos("jug@x.com") == 1000  # 30 - 20
+    # comisión de 20 = 5% = 1.00 → mínimo 2.00 → neto 18.00
+    assert stores.saldo_centimos("profe@x.com") == 1800
+    assert any(p.tipo == "inscripcion_torneo" for p in stores.pagos)
+
+
+def test_torneo_inscribir_falta_saldo():
+    r = client.post("/pagos/torneo/inscribir", json={
+        "email": "pobre@x.com", "academia_dueno": "profe@x.com",
+        "cuota_soles": 20}).json()
+    assert r["ok"] is False and r["falta_saldo"] is True
+
+
 def test_webhook_es_idempotente(_setup):
     # Cargo directo en Culqi (como si el APK hubiera cobrado) sin pasar por el
     # endpoint, para que el webhook sea quien acredite.

@@ -11,6 +11,8 @@ X-Admin-Token. Si el token no está configurado, el panel responde 503.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -272,6 +274,55 @@ def reset_virgen_admin(
     _check(x_admin_token)
     conteo = stores.reset_virgen()
     return {"ok": True, "borrado": conteo}
+
+
+# ─────────────────────── PICHANGOL PRO (torre de control) ─────────────────────
+def _pro_precio_soles() -> float:
+    try:
+        return max(0.0, float(stores.cfg("pro_precio_soles")))
+    except (TypeError, ValueError):
+        return 12.0
+
+
+@router.get("/admin/api/pro")
+def get_pro_admin(x_admin_token: str | None = Header(default=None)) -> dict:
+    """Panel Pichangol Pro: precio, miembros y MRR (ingreso mensual recurrente
+    estimado = activos × precio)."""
+    _check(x_admin_token)
+    precio = _pro_precio_soles()
+    ahora = datetime.now(timezone.utc)
+    miembros = []
+    activos = 0
+    for email, m in stores.membresias_pro.items():
+        try:
+            dt = datetime.fromisoformat(m.get("hasta")) if m.get("hasta") else None
+        except (TypeError, ValueError):
+            dt = None
+        activa = dt is not None and dt > ahora
+        if activa:
+            activos += 1
+        miembros.append({"email": email, "hasta": m.get("hasta"),
+                         "activa": activa,
+                         "ultimo_cobro": m.get("ultimo_cobro")})
+    miembros.sort(key=lambda x: (not x["activa"], x["email"]))
+    return {"precio_soles": precio, "activos": activos,
+            "total": len(miembros), "mrr_soles": round(activos * precio, 2),
+            "miembros": miembros}
+
+
+class ProPrecioReq(BaseModel):
+    precio_soles: float
+
+
+@router.post("/admin/api/pro/precio")
+def set_pro_precio_admin(
+        req: ProPrecioReq,
+        x_admin_token: str | None = Header(default=None)) -> dict:
+    """Fija el precio mensual de Pichangol Pro (soles)."""
+    _check(x_admin_token)
+    precio = max(0.0, float(req.precio_soles))
+    stores.config["pro_precio_soles"] = str(precio if precio % 1 else int(precio))
+    return {"ok": True, "precio_soles": _pro_precio_soles()}
 
 
 @router.get("/admin/api/comision")
@@ -634,6 +685,7 @@ _HTML = r"""<!DOCTYPE html>
         <div id="comision"></div>
         <div id="margenes"></div>
         <div id="marketing"></div>
+        <div id="proPanel"></div>
       </div>
     </section>
     <section id="page-operacion" class="page" style="display:none">
@@ -716,6 +768,7 @@ function mostrarApp(){
   cargarMarketing();
   cargarComision();
   cargarMargenes();
+  cargarPro();
   renderMantenimiento();
   cargarLiquidaciones();
   cargar();
@@ -960,6 +1013,68 @@ async function guardarBanco(){
   if(r.status===401){ salir(); return; }
   if(r.ok){ renderMargenes(await r.json()); toast('Tasa del banco actualizada'); }
   else toast('No se pudo guardar');
+}
+
+// --- Pichangol Pro (membresía del jugador): precio + miembros + MRR ---------
+async function cargarPro(){
+  try{
+    const r = await fetch('/admin/api/pro',{headers:headers()});
+    if(r.status===401){ salir(); return; }
+    const j = await r.json();
+    const filas = (j.miembros||[]).map(m=>{
+      const est = m.activa
+        ? '<span style="color:#176B3A;font-weight:800">Activa</span>'
+        : '<span style="color:#B23A3A">Vencida</span>';
+      let hasta = '—';
+      try{ if(m.hasta) hasta = new Date(m.hasta).toLocaleDateString(); }catch(e){}
+      return `<tr><td style="padding:4px 6px">${esc(m.email)}</td>`+
+             `<td style="padding:4px 6px">${est}</td>`+
+             `<td style="padding:4px 6px">${hasta}</td></tr>`;
+    }).join('') || '<tr><td colspan="3" style="color:var(--muted);padding:6px">Sin miembros aún.</td></tr>';
+    document.getElementById('proPanel').innerHTML =
+      `<div class="card"><div class="top"><h3>⭐ Pichangol Pro (jugadores)</h3></div>
+        <div class="row">Membresía mensual del jugador. Se cobra de su billetera única
+          (saldo) y se renueva sola cada 12 h.</div>
+        <div class="actions" style="align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
+          <span style="font-weight:600;font-size:13px">Precio mensual S/</span>
+          <input id="proPrecio" value="${j.precio_soles}" inputmode="decimal"
+            style="width:80px;padding:9px 10px;border:1px solid var(--border);border-radius:10px;text-align:right">
+          <button class="btn-ap" onclick="guardarProPrecio()">Guardar precio</button>
+          <button class="btn-ap" onclick="renovarPro()">Renovar vencidas ahora</button>
+        </div>
+        <div style="display:flex;gap:22px;margin:14px 0 6px">
+          <div><div style="font-size:22px;font-weight:800;color:#14463A">${j.activos}</div><div class="row">Activos</div></div>
+          <div><div style="font-size:22px;font-weight:800;color:#14463A">S/ ${(Number(j.mrr_soles)||0).toFixed(2)}</div><div class="row">MRR estimado</div></div>
+          <div><div style="font-size:22px;font-weight:800;color:#14463A">${j.total}</div><div class="row">Total</div></div>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="border-bottom:1px solid var(--border)">
+            <th style="text-align:left;padding:4px 6px">Jugador</th>
+            <th style="text-align:left;padding:4px 6px">Estado</th>
+            <th style="text-align:left;padding:4px 6px">Vigente hasta</th></tr></thead>
+          <tbody>${filas}</tbody>
+        </table>
+        <div id="pro_res" class="row" style="margin-top:8px;color:var(--muted)"></div>
+      </div>`;
+  }catch(e){ document.getElementById('proPanel').innerHTML =
+      '<div class="card">No se pudo cargar Pichangol Pro.</div>'; }
+}
+async function guardarProPrecio(){
+  const v = parseFloat((document.getElementById('proPrecio').value||'0').replace(',','.'))||0;
+  const r = await fetch('/admin/api/pro/precio',{method:'POST',headers:headers(),
+    body:JSON.stringify({precio_soles:v})});
+  if(r.status===401){ salir(); return; }
+  if(r.ok){ await cargarPro(); toast('Precio Pro actualizado'); }
+  else toast('No se pudo guardar');
+}
+async function renovarPro(){
+  if(!confirm('¿Renovar ahora las membresías Pro vencidas? Cobra de la billetera de cada jugador.')) return;
+  const r = await fetch('/pagos/pro/renovar-vencidas',{method:'POST',headers:headers()});
+  if(r.status===401){ salir(); return; }
+  const j = await r.json();
+  document.getElementById('pro_res').textContent =
+    `Renovadas: ${j.renovadas||0} · sin saldo: ${j.sin_saldo||0}.`;
+  await cargarPro();
 }
 
 // --- WhatsApp de contacto por PAÍS (servicios: landing, redes) -------------

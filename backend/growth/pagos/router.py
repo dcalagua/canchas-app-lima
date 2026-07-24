@@ -326,6 +326,46 @@ def post_pro_renovar() -> dict:
     return procesar_renovaciones_pro()
 
 
+# ─────────────────────── INSCRIPCIÓN A TORNEO (billetera única) ───────────────
+class TorneoInscribirReq(BaseModel):
+    email: str                 # jugador que paga (de su saldo)
+    academia_dueno: str        # correo del profe (recibe el neto en su billetera)
+    cuota_soles: float
+    concepto: str = ""
+
+
+@router.post("/torneo/inscribir", dependencies=_APP)
+def post_torneo_inscribir(req: TorneoInscribirReq) -> dict:
+    """Cobra la inscripción a un torneo del SALDO del jugador (billetera única) y
+    acredita el NETO al profe (menos la comisión POS). Si no le alcanza, devuelve
+    falta_saldo (el APK lo manda a recargar). Movimiento interno saldo→saldo."""
+    email = req.email.strip().lower()
+    dueno = req.academia_dueno.strip().lower()
+    if not email:
+        return {"ok": False, "error": "email_requerido"}
+    cuota = _soles_a_centimos(req.cuota_soles)
+    if cuota <= 0:
+        return {"ok": False, "error": "cuota_invalida"}
+    if stores.saldo_centimos(email) < cuota:
+        return {"ok": False, "falta_saldo": True,
+                "requerido_centimos": cuota, "requerido_soles": cuota / 100.0,
+                "saldo_centimos": stores.saldo_centimos(email)}
+    comision = comision_centimos(req.cuota_soles)
+    neto = max(0, cuota - comision)
+    stores.debitar(email, cuota)
+    if dueno:
+        stores.acreditar(dueno, neto)
+    stores.registrar_pago(
+        tipo="inscripcion_torneo", monto_centimos=cuota, moneda="PEN",
+        estado="aprobado", dueno_id=dueno or email,
+        comision_centimos=comision,
+        concepto=req.concepto or "Inscripción a torneo")
+    return {"ok": True, "cuota_centimos": cuota, "comision_centimos": comision,
+            "neto_centimos": neto,
+            "saldo_centimos": stores.saldo_centimos(email),
+            "saldo_soles": stores.saldo_centimos(email) / 100.0}
+
+
 @router.post("/comision-reserva", dependencies=_APP)
 def post_comision_reserva(req: ComisionReservaReq) -> dict:
     """Descuenta la comisión de Pichangol del SALDO del dueño cuando entra una

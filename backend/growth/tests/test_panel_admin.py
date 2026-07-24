@@ -269,6 +269,26 @@ def test_reset_virgen_borra_transaccional_y_conserva_reclamos(client):
     assert client.post("/admin/api/reset-virgen").status_code == 401
 
 
+def test_pro_admin_lista_miembros_precio_y_mrr(client):
+    h = {"X-Admin-Token": TOKEN}
+    # Un miembro activo (hasta futuro) + uno vencido → MRR = activos × precio.
+    stores.membresias_pro["a@x.com"] = {"hasta": "2999-01-01T00:00:00+00:00"}
+    stores.membresias_pro["b@x.com"] = {"hasta": "2020-01-01T00:00:00+00:00"}
+    out = client.get("/admin/api/pro", headers=h).json()
+    assert out["precio_soles"] == 12.0
+    assert out["activos"] == 1 and out["total"] == 2
+    assert out["mrr_soles"] == 12.0
+    # Cambiar el precio.
+    r = client.post("/admin/api/pro/precio", json={"precio_soles": 15},
+                    headers=h).json()
+    assert r["ok"] and r["precio_soles"] == 15.0
+    out2 = client.get("/admin/api/pro", headers=h).json()
+    assert out2["mrr_soles"] == 15.0
+    # Protegido por token.
+    assert client.get("/admin/api/pro",
+                      headers={"X-Admin-Token": "malo"}).status_code == 401
+
+
 def test_margenes_unifica_matriculas_reservas_y_banco(client):
     """La torre de control ve el margen total de Pichangol: comisiones (matrículas
     + reservas) menos el costo del banco sobre lo procesado por tarjeta
