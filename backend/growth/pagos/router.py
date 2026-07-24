@@ -353,13 +353,18 @@ def post_torneo_inscribir(req: TorneoInscribirReq) -> dict:
     comision = comision_centimos(req.cuota_soles)
     neto = max(0, cuota - comision)
     stores.debitar(email, cuota)
-    if dueno:
-        stores.acreditar(dueno, neto)
+    # Débito del JUGADOR (aparece en su historial de billetera como egreso).
     stores.registrar_pago(
         tipo="inscripcion_torneo", monto_centimos=cuota, moneda="PEN",
-        estado="aprobado", dueno_id=dueno or email,
-        comision_centimos=comision,
+        estado="aprobado", dueno_id=email,
         concepto=req.concepto or "Inscripción a torneo")
+    # Ingreso NETO del profe (su historial lo ve como entrada).
+    if dueno and dueno != email:
+        stores.acreditar(dueno, neto)
+        stores.registrar_pago(
+            tipo="inscripcion_torneo_ingreso", monto_centimos=cuota, moneda="PEN",
+            estado="aprobado", dueno_id=dueno, comision_centimos=comision,
+            concepto=req.concepto or "Inscripción a torneo (ingreso)")
     return {"ok": True, "cuota_centimos": cuota, "comision_centimos": comision,
             "neto_centimos": neto,
             "saldo_centimos": stores.saldo_centimos(email),
@@ -1062,35 +1067,49 @@ def get_movimientos(dueno_id: str) -> dict:
     #  - comision_reserva   → sale de su saldo por reserva en efectivo (−)
     #  - liquidacion_online → reserva online: Pichangol cobró al jugador, se queda
     #                         la comisión y le debe el NETO al dueño (no toca saldo).
+    # Historial COMPLETO de la billetera única del usuario: entradas (recargas,
+    # ingresos por torneo) y salidas (comisión de reserva, servicios, Pichangol
+    # Pro, inscripción a torneo). Cada fila lleva su N.º de comprobante (p.id).
+    _EGRESOS = ("comision_reserva", "suscripcion", "suscripcion_pro",
+                "inscripcion_torneo")
+    _INCLUIR = ("recarga", "liquidacion_online",
+                "inscripcion_torneo_ingreso") + _EGRESOS
     propios = [
-        p
-        for p in stores.pagos
-        if p.dueno_id == dueno_id
-        and p.estado == "aprobado"
-        and p.tipo in ("recarga", "comision_reserva", "liquidacion_online")
+        p for p in stores.pagos
+        if p.dueno_id == dueno_id and p.estado == "aprobado"
+        and p.tipo in _INCLUIR
     ]
+    _NOMBRE = {
+        "recarga": "Recarga de saldo",
+        "comision_reserva": "Comisión de reserva",
+        "suscripcion": "Servicio de marketing",
+        "suscripcion_pro": "Pichangol Pro",
+        "inscripcion_torneo": "Inscripción a torneo",
+        "inscripcion_torneo_ingreso": "Inscripción a torneo (ingreso)",
+    }
 
     def _fila(p) -> dict:
-        base = {"tipo": p.tipo, "creado_en": p.creado_en.isoformat()}
+        base = {"tipo": p.tipo, "creado_en": p.creado_en.isoformat(),
+                "comprobante": p.id,
+                "concepto": p.concepto or _NOMBRE.get(p.tipo, "Movimiento")}
         if p.tipo == "recarga":
-            return {**base, "monto_soles": p.monto_centimos / 100.0,
-                    "concepto": p.concepto or "Recarga de saldo"}
-        if p.tipo == "comision_reserva":
+            return {**base, "monto_soles": p.monto_centimos / 100.0}
+        if p.tipo in _EGRESOS:
             # Egreso de saldo: negativo.
-            return {**base, "monto_soles": -(p.monto_centimos / 100.0),
-                    "concepto": p.concepto or "Comisión de reserva"}
-        # liquidacion_online: desglose bruto/comisión/neto (el neto es lo que
-        # Pichangol le debe al dueño por esa reserva).
+            return {**base, "monto_soles": -(p.monto_centimos / 100.0)}
+        # liquidacion_online / inscripcion_torneo_ingreso: entrada NETA (bruto −
+        # comisión); para torneo la comisión ya está congelada en el pago.
         bruto = p.monto_centimos
-        comision = comision_centimos(bruto / 100.0)
+        comision = (p.comision_centimos if p.tipo == "inscripcion_torneo_ingreso"
+                    else comision_centimos(bruto / 100.0))
         neto = bruto - comision
         return {**base,
-                "monto_soles": neto / 100.0,             # neto a recibir
+                "monto_soles": neto / 100.0,
                 "bruto_soles": bruto / 100.0,
                 "comision_soles": comision / 100.0,
                 "neto_soles": neto / 100.0,
-                "liquidado": p.liquidado,                # ¿ya te lo transfirieron?
-                "concepto": p.concepto or "Reserva online"}
+                "liquidado": (p.liquidado if p.tipo == "liquidacion_online"
+                              else True)}
 
     # stores.pagos está en orden de inserción (viejo→nuevo); lo invertimos para
     # mostrar el más reciente primero.

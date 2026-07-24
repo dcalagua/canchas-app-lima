@@ -373,6 +373,31 @@ def test_torneo_inscribir_falta_saldo():
     assert r["ok"] is False and r["falta_saldo"] is True
 
 
+def test_movimientos_incluye_pro_servicios_y_torneo():
+    # La billetera del jugador muestra recarga (+), Pro (−) e inscripción (−);
+    # el profe ve el ingreso por torneo (+). Cada fila trae comprobante.
+    client.post("/pagos/recarga", json={
+        "token": "t", "dueno_id": "jug@x.com", "email": "jug@x.com",
+        "monto_soles": 50})
+    client.post("/pagos/pro/suscribir", json={"email": "jug@x.com"})
+    client.post("/pagos/torneo/inscribir", json={
+        "email": "jug@x.com", "academia_dueno": "profe@x.com",
+        "cuota_soles": 20})
+    movs = client.get("/pagos/movimientos/jug@x.com").json()["movimientos"]
+    tipos = {m["tipo"] for m in movs}
+    assert "recarga" in tipos
+    assert "suscripcion_pro" in tipos
+    assert "inscripcion_torneo" in tipos
+    assert all("comprobante" in m for m in movs)
+    # El egreso de Pro va en negativo.
+    pro = next(m for m in movs if m["tipo"] == "suscripcion_pro")
+    assert pro["monto_soles"] < 0
+    # El profe ve el ingreso.
+    movs2 = client.get("/pagos/movimientos/profe@x.com").json()["movimientos"]
+    assert any(m["tipo"] == "inscripcion_torneo_ingreso" and m["monto_soles"] > 0
+               for m in movs2)
+
+
 def test_webhook_es_idempotente(_setup):
     # Cargo directo en Culqi (como si el APK hubiera cobrado) sin pasar por el
     # endpoint, para que el webhook sea quien acredite.
