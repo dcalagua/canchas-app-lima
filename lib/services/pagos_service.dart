@@ -406,10 +406,12 @@ class PagosService {
 
   // ── Pichangol PRO (membresía del jugador, se cobra del saldo) ─────────────
   /// Estado de la membresía Pro del usuario: {activa, hasta, precio_soles}.
-  static Future<Map<String, dynamic>?> proEstado(String email) async {
+  static Future<Map<String, dynamic>?> proEstado(String email,
+      {String pais = 'PE'}) async {
     if (!disponible || email.isEmpty) return null;
     try {
-      final r = await http.get(Uri.parse('$_baseUrl/pagos/pro/estado/$email'),
+      final r = await http.get(
+          Uri.parse('$_baseUrl/pagos/pro/estado/$email?pais=$pais'),
           headers: _appHeaders()).timeout(const Duration(seconds: 12));
       if (r.statusCode != 200) return null;
       return jsonDecode(r.body) as Map<String, dynamic>;
@@ -418,11 +420,12 @@ class PagosService {
     }
   }
 
-  /// Precio mensual de Pichangol Pro (soles). Null si no se pudo.
-  static Future<double?> proPrecio() async {
+  /// Precio mensual de Pichangol Pro (soles) del país. Null si no se pudo.
+  static Future<double?> proPrecio({String pais = 'PE'}) async {
     if (!disponible) return null;
     try {
-      final r = await http.get(Uri.parse('$_baseUrl/pagos/pro/config'),
+      final r = await http.get(
+          Uri.parse('$_baseUrl/pagos/pro/config?pais=$pais'),
           headers: _appHeaders()).timeout(const Duration(seconds: 10));
       if (r.statusCode != 200) return null;
       final j = jsonDecode(r.body) as Map<String, dynamic>;
@@ -434,12 +437,14 @@ class PagosService {
 
   /// Activa/renueva Pro debitando 1 mes del saldo del usuario. Devuelve el JSON
   /// del backend: {ok:true, hasta,...} o {ok:false, falta_saldo:true, requerido_soles}.
-  static Future<Map<String, dynamic>> proSuscribir(String email) async {
+  static Future<Map<String, dynamic>> proSuscribir(String email,
+      {String pais = 'PE'}) async {
     if (!disponible) return {'ok': false, 'error': 'Pagos no disponibles.'};
     try {
       final r = await http.post(Uri.parse('$_baseUrl/pagos/pro/suscribir'),
           headers: _appHeaders(json: true),
-          body: jsonEncode({'email': email})).timeout(const Duration(seconds: 20));
+          body: jsonEncode({'email': email, 'pais': pais}))
+          .timeout(const Duration(seconds: 20));
       final j = jsonDecode(r.body) as Map<String, dynamic>;
       return j;
     } catch (_) {

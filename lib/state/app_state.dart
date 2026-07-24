@@ -2548,7 +2548,7 @@ class AppState extends ChangeNotifier {
   Future<void> sincronizarPro() async {
     final email = usuario?.email;
     if (email == null || email.isEmpty || !PagosService.disponible) return;
-    final est = await PagosService.proEstado(email);
+    final est = await PagosService.proEstado(email, pais: paisActual.iso);
     if (est == null) return;
     proActivo = est['activa'] == true;
     proHasta = est['hasta'] as String?;
@@ -2561,7 +2561,7 @@ class AppState extends ChangeNotifier {
   Future<Map<String, dynamic>> suscribirPro() async {
     final email = usuario?.email ?? '';
     if (email.isEmpty) return {'ok': false, 'error': 'Inicia sesión primero.'};
-    final r = await PagosService.proSuscribir(email);
+    final r = await PagosService.proSuscribir(email, pais: paisActual.iso);
     if (r['ok'] == true) {
       proActivo = true;
       proHasta = r['hasta'] as String?;
