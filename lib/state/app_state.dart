@@ -178,8 +178,10 @@ class AppState extends ChangeNotifier {
       String academiaId, PartidoRanking partido) async {
     final i = academias.indexWhere((a) => a.id == academiaId);
     if (i < 0) return;
-    final nuevos = [...academias[i].partidos, partido];
-    await guardarAcademia(academias[i].copyWith(partidos: nuevos));
+    final actualizada =
+        academias[i].copyWith(partidos: [...academias[i].partidos, partido]);
+    await guardarAcademia(actualizada);
+    await _refrescarLandingAcademia(actualizada);
   }
 
   /// Borra un partido del ranking (corregir un error de carga).
@@ -188,7 +190,9 @@ class AppState extends ChangeNotifier {
     if (i < 0) return;
     final nuevos =
         academias[i].partidos.where((p) => p.id != partidoId).toList();
-    await guardarAcademia(academias[i].copyWith(partidos: nuevos));
+    final actualizada = academias[i].copyWith(partidos: nuevos);
+    await guardarAcademia(actualizada);
+    await _refrescarLandingAcademia(actualizada);
   }
 
   /// Fija (o limpia si viene vacía) la categoría de ranking de un alumno.
@@ -202,7 +206,19 @@ class AppState extends ChangeNotifier {
     } else {
       cats[alumnoId] = categoria.trim();
     }
-    await guardarAcademia(academias[i].copyWith(categorias: cats));
+    final actualizada = academias[i].copyWith(categorias: cats);
+    await guardarAcademia(actualizada);
+    await _refrescarLandingAcademia(actualizada);
+  }
+
+  /// Re-publica la landing PROPIA de la academia (id = ac.id) para que el
+  /// ranking embebido en la web se mantenga fresco. Las landings unificadas
+  /// (mixto/club) se regeneran desde Servicios para no perder las canchas
+  /// combinadas. Best-effort: no bloquea si falla la red.
+  Future<void> _refrescarLandingAcademia(Academia ac) async {
+    final url = ac.landingUrl.trim();
+    if (url.isEmpty || !url.endsWith('/l/${ac.id}')) return;
+    await PagosService.generarLanding(ac.id, _landingDatos(ac));
   }
 
   /// Al CONECTAR las redes (OAuth Meta en Servicios), auto-declara en la academia
@@ -275,6 +291,21 @@ class AppState extends ChangeNotifier {
       'fotos': ac.fotos,
       'programas': programas,
       'planes': simples,
+      // CIRCUITO: tabla de posiciones para embeber el ranking en la web (Fase 0-b).
+      // Solo si hay al menos un partido jugado (si no, no se muestra la sección).
+      'ranking': ac.partidos.isEmpty
+          ? const []
+          : [
+              for (final p in ac.ranking(alumnosDe(ac.id)).take(10))
+                {
+                  'nombre': p.nombre,
+                  'categoria': p.categoria,
+                  'pj': p.pj,
+                  'pg': p.pg,
+                  'puntos': p.puntos,
+                  'pct': p.pct.round(),
+                }
+            ],
     };
   }
 

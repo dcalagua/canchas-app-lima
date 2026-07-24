@@ -103,6 +103,33 @@ def render_landing(d: dict) -> str:
           <div class="planes">{cards}</div>
         </div></section>"""
 
+    # --- Ranking del circuito (Fase 0-b) -------------------------------------
+    ranking = d.get("ranking") or []
+    ranking_html = ""
+    if ranking:
+        filas = ""
+        for idx, r in enumerate(ranking):
+            pos = idx + 1
+            medalla = {1: "🥇", 2: "🥈", 3: "🥉"}.get(pos, str(pos))
+            cat = _e(r.get("categoria"))
+            cat_html = f"<span class='rk-cat'>{cat}</span>" if cat else ""
+            filas += (
+                f"<tr><td class='rk-pos'>{medalla}</td>"
+                f"<td class='rk-name'>{_e(r.get('nombre'))}{cat_html}</td>"
+                f"<td>{_num(r.get('pj'))}</td>"
+                f"<td>{_num(r.get('pg'))}</td>"
+                f"<td class='rk-pts'>{_num(r.get('puntos'))}</td></tr>")
+        ranking_html = f"""
+        <section class="section" id="ranking"><div class="wrap">
+          <div class="tag">Circuito</div>
+          <h2 class="h2">Ranking</h2>
+          <div class="tarifa-wrap"><table class="tarifa rk">
+            <thead><tr><th>#</th><th>Jugador</th><th>PJ</th><th>G</th><th>Pts</th></tr></thead>
+            <tbody>{filas}</tbody>
+          </table></div>
+          <p class='tleyenda'>Tabla de posiciones de la academia · vía Pichangol.</p>
+        </div></section>"""
+
     # --- Fotos ---------------------------------------------------------------
     fotos_html = ""
     if fotos:
@@ -172,6 +199,11 @@ table.tarifa tbody th{{text-align:left;background:#fafafa}}
 .socio{{font-family:'Anton';color:var(--verde);font-size:19px}}
 .inv{{display:block;color:var(--gris);font-size:12px}}
 .tleyenda{{color:var(--gris);font-size:13px;margin-top:10px}}
+table.tarifa.rk td{{text-align:center}}
+table.tarifa.rk td.rk-name{{text-align:left;font-weight:700;color:var(--verde-osc)}}
+.rk-cat{{display:block;color:var(--gris);font-size:12px;font-weight:500}}
+.rk-pos{{font-family:'Anton';font-size:18px;color:var(--verde-osc)}}
+.rk-pts{{font-family:'Anton';color:var(--verde);font-size:19px}}
 .planes{{display:flex;flex-wrap:wrap;gap:12px;margin-top:16px}}
 .plan{{background:#fff;border-radius:14px;padding:16px 18px;box-shadow:0 6px 18px rgba(15,46,18,.07)}}
 .plan b{{display:block;color:var(--verde-osc)}}.plan span{{font-family:'Anton';color:var(--verde);font-size:20px}}
@@ -193,7 +225,7 @@ footer{{background:var(--verde-osc);color:#cbd3c0;text-align:center;padding:22px
     {hero_photo}
   </div>
 </header>
-{prog_html}{simples_html}{fotos_html}
+{prog_html}{simples_html}{ranking_html}{fotos_html}
 <section class="section cta"><div class="wrap">
   <div class="tag" style="color:#dff">Inscripciones abiertas</div>
   <h2 class="h2">Reserva tu lugar</h2>
