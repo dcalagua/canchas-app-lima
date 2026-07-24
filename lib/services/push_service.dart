@@ -68,15 +68,25 @@ class PushService {
 
   static Future<void> _guardarToken(String email, String token) async {
     if (!SupabaseService.disponible) return;
+    final plataforma =
+        defaultTargetPlatform == TargetPlatform.iOS ? 'ios' : 'android';
     try {
       await SupabaseService.client.from('pichangol_push_tokens').upsert({
         'token': token,
         'email': email,
-        'plataforma': defaultTargetPlatform == TargetPlatform.iOS
-            ? 'ios'
-            : 'android',
+        'plataforma': plataforma,
         'actualizado': DateTime.now().toUtc().toIso8601String(),
       }, onConflict: 'token');
+      // Evita NOTIFICACIONES DOBLES: el token FCM rota (reinstalar/actualizar) y
+      // el viejo queda en la tabla, así que el push saldría 2 veces al MISMO
+      // dispositivo. Borra los tokens ANTERIORES de esta cuenta en esta
+      // plataforma (una cuenta usa un dispositivo activo por plataforma).
+      await SupabaseService.client
+          .from('pichangol_push_tokens')
+          .delete()
+          .eq('email', email)
+          .eq('plataforma', plataforma)
+          .neq('token', token);
     } catch (_) {}
   }
 

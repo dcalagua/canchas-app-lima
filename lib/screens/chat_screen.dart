@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../data/mensajes_repo.dart';
 import '../models/mensaje.dart';
@@ -481,22 +482,32 @@ class _Burbuja extends StatelessWidget {
             else if (mensaje.tieneFoto)
               Padding(
                 padding: const EdgeInsets.only(bottom: 4),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: Image.network(
-                    mensaje.mediaUrl,
-                    width: 220,
-                    fit: BoxFit.cover,
-                    loadingBuilder: (c, child, prog) => prog == null
-                        ? child
-                        : const SizedBox(
-                            width: 220,
-                            height: 150,
-                            child: Center(child: CircularProgressIndicator())),
-                    errorBuilder: (c, e, s) => const SizedBox(
+                child: GestureDetector(
+                  // Toca la foto → visor a pantalla completa (ampliar + descargar).
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                      fullscreenDialog: true,
+                      builder: (_) => _VisorFoto(url: mensaje.mediaUrl))),
+                  child: Hero(
+                    tag: mensaje.mediaUrl,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image.network(
+                        mensaje.mediaUrl,
                         width: 220,
-                        height: 90,
-                        child: Icon(Icons.broken_image_outlined, size: 32)),
+                        fit: BoxFit.cover,
+                        loadingBuilder: (c, child, prog) => prog == null
+                            ? child
+                            : const SizedBox(
+                                width: 220,
+                                height: 150,
+                                child: Center(
+                                    child: CircularProgressIndicator())),
+                        errorBuilder: (c, e, s) => const SizedBox(
+                            width: 220,
+                            height: 90,
+                            child: Icon(Icons.broken_image_outlined, size: 32)),
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -881,4 +892,60 @@ class _SinBackend extends StatelessWidget {
               style: TextStyle(color: textoTenue)),
         ),
       );
+}
+
+/// Visor de foto a PANTALLA COMPLETA (estilo WhatsApp): fondo negro, zoom/pan
+/// con doble toque o pellizco, y botón para descargar/compartir (abre la imagen
+/// en el navegador, desde donde se guarda o comparte).
+class _VisorFoto extends StatelessWidget {
+  const _VisorFoto({required this.url});
+  final String url;
+
+  Future<void> _descargar(BuildContext context) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo abrir la imagen.')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        actions: [
+          IconButton(
+            tooltip: 'Descargar / compartir',
+            icon: const Icon(Icons.download),
+            onPressed: () => _descargar(context),
+          ),
+        ],
+      ),
+      body: Center(
+        child: Hero(
+          tag: url,
+          child: InteractiveViewer(
+            minScale: 0.8,
+            maxScale: 5,
+            child: Image.network(
+              url,
+              fit: BoxFit.contain,
+              loadingBuilder: (c, child, prog) => prog == null
+                  ? child
+                  : const Center(
+                      child: CircularProgressIndicator(color: Colors.white)),
+              errorBuilder: (c, e, s) => const Icon(Icons.broken_image_outlined,
+                  color: Colors.white54, size: 60),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
