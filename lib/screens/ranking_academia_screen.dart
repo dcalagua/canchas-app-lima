@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 import '../models/academia.dart';
 import '../state/app_state.dart';
@@ -430,6 +433,18 @@ class _Carnet extends StatelessWidget {
                         bosque),
                   ],
                 ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _compartir(ac, p, posicion, esPro),
+                    style: OutlinedButton.styleFrom(
+                        foregroundColor: bosque,
+                        side: const BorderSide(color: bosque)),
+                    icon: const Icon(Icons.ios_share, size: 18),
+                    label: const Text('Compartir mi carnet'),
+                  ),
+                ),
                 if (esMio && !appState.proActivo) ...[
                   const SizedBox(height: 12),
                   SizedBox(
@@ -483,6 +498,164 @@ class _Carnet extends StatelessWidget {
         );
       },
     );
+  }
+
+  /// Genera el CARNET como una tarjeta PDF (marca Pichangol) y abre el share
+  /// nativo para mandarlo por WhatsApp/Instagram/etc. Marketing orgánico: el
+  /// jugador presume su carnet y difunde la academia.
+  Future<void> _compartir(
+      Academia ac, PosicionRanking p, int posicion, bool esPro) async {
+    pw.ImageProvider? foto;
+    final fu = p.fotoUrl;
+    if (fu != null && fu.isNotEmpty) {
+      try {
+        foto = await networkImage(fu);
+      } catch (_) {}
+    }
+    pw.ImageProvider? logo;
+    final lu = ac.logoUrl;
+    if (lu != null && lu.isNotEmpty) {
+      try {
+        logo = await networkImage(lu);
+      } catch (_) {}
+    }
+    final verde = PdfColor.fromInt(0xFF14463A);
+    final limaP = PdfColor.fromInt(0xFFAEEA94);
+
+    pw.Widget stat(String t, String v) => pw.Expanded(
+          child: pw.Column(children: [
+            pw.Text(v,
+                style: pw.TextStyle(
+                    fontSize: 18, fontWeight: pw.FontWeight.bold, color: verde)),
+            pw.SizedBox(height: 2),
+            pw.Text(t,
+                style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+          ]),
+        );
+
+    final doc = pw.Document();
+    doc.addPage(pw.Page(
+      pageFormat: PdfPageFormat(360, 520, marginAll: 20),
+      build: (context) => pw.Center(
+        child: pw.Container(
+          decoration: pw.BoxDecoration(
+            color: PdfColors.white,
+            borderRadius: pw.BorderRadius.circular(20),
+            border: pw.Border.all(color: PdfColors.grey300),
+          ),
+          child: pw.Column(
+            mainAxisSize: pw.MainAxisSize.min,
+            crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+            children: [
+              pw.Container(
+                padding: const pw.EdgeInsets.all(18),
+                decoration: pw.BoxDecoration(
+                  color: verde,
+                  borderRadius: const pw.BorderRadius.only(
+                    topLeft: pw.Radius.circular(20),
+                    topRight: pw.Radius.circular(20),
+                  ),
+                ),
+                child: pw.Row(children: [
+                  pw.Container(
+                    width: 62,
+                    height: 62,
+                    decoration: pw.BoxDecoration(
+                      color: limaP,
+                      shape: pw.BoxShape.circle,
+                      image: foto != null
+                          ? pw.DecorationImage(image: foto, fit: pw.BoxFit.cover)
+                          : null,
+                    ),
+                    child: foto == null
+                        ? pw.Center(
+                            child: pw.Text(
+                                p.nombre.isNotEmpty
+                                    ? p.nombre[0].toUpperCase()
+                                    : '?',
+                                style: pw.TextStyle(
+                                    fontSize: 28,
+                                    fontWeight: pw.FontWeight.bold,
+                                    color: verde)))
+                        : null,
+                  ),
+                  pw.SizedBox(width: 14),
+                  pw.Expanded(
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text(p.nombre,
+                            maxLines: 2,
+                            style: pw.TextStyle(
+                                fontSize: 17,
+                                fontWeight: pw.FontWeight.bold,
+                                color: PdfColors.white)),
+                        pw.SizedBox(height: 3),
+                        pw.Text(
+                            'Puesto #$posicion'
+                            '${p.categoria.isNotEmpty ? ' · ${p.categoria}' : ''}',
+                            style: pw.TextStyle(
+                                fontSize: 11,
+                                fontWeight: pw.FontWeight.bold,
+                                color: limaP)),
+                        if (esPro)
+                          pw.Container(
+                            margin: const pw.EdgeInsets.only(top: 5),
+                            padding: const pw.EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: pw.BoxDecoration(
+                                color: limaP,
+                                borderRadius: pw.BorderRadius.circular(4)),
+                            child: pw.Text('PRO',
+                                style: pw.TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: pw.FontWeight.bold,
+                                    color: verde)),
+                          ),
+                      ],
+                    ),
+                  ),
+                ]),
+              ),
+              pw.Padding(
+                padding: const pw.EdgeInsets.fromLTRB(18, 20, 18, 18),
+                child: pw.Column(children: [
+                  pw.Row(children: [
+                    stat('Puntos', '${p.puntos}'),
+                    stat('Jugados', '${p.pj}'),
+                    stat('Ganados', '${p.pg}'),
+                    stat('Efectividad', '${p.pct.toStringAsFixed(0)}%'),
+                  ]),
+                  pw.SizedBox(height: 20),
+                  pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.center,
+                    children: [
+                      if (logo != null) ...[
+                        pw.SizedBox(width: 18, height: 18, child: pw.Image(logo)),
+                        pw.SizedBox(width: 6),
+                      ],
+                      pw.Text(ac.nombre,
+                          style: pw.TextStyle(
+                              fontSize: 12,
+                              fontWeight: pw.FontWeight.bold,
+                              color: verde)),
+                    ],
+                  ),
+                  pw.SizedBox(height: 4),
+                  pw.Text('Pichangol · Circuito',
+                      style:
+                          const pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
+                ]),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ));
+    final bytes = await doc.save();
+    await Printing.sharePdf(
+        bytes: bytes,
+        filename: 'carnet_${p.nombre.replaceAll(' ', '_')}.pdf');
   }
 
   Future<void> _editarCategoria(
