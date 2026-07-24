@@ -313,6 +313,82 @@ class AppState extends ChangeNotifier {
     return filas;
   }
 
+  /// PERFIL GLOBAL de un jugador por su clave de identidad ([idKey] tal como la
+  /// devuelve `rankingGlobal`: 'e:correo' o 'a:academiaId|alumnoId'). Consolida
+  /// sus stats entre TODAS las academias, el desglose por academia y sus
+  /// partidos recientes. Null si no tiene partidos.
+  PerfilGlobalJugador? perfilGlobalDe(String idKey) {
+    final email = idKey.startsWith('e:') ? idKey.substring(2) : '';
+    var nombre = '', categoria = '';
+    var pj = 0, pg = 0, pp = 0;
+    final porAcad = <String, List<int>>{}; // academia -> [pj, pg, pp]
+    final partidos = <PartidoConAcademia>[];
+
+    bool esEl(Academia a, String playerId, String playerEmail) {
+      if (email.isNotEmpty) return playerEmail.trim().toLowerCase() == email;
+      return 'a:${a.id}|$playerId' == idKey;
+    }
+
+    for (final a in academias) {
+      for (final p in a.partidos) {
+        for (final id in [p.jugadorAId, p.jugadorBId]) {
+          if (id.isEmpty) continue;
+          if (!esEl(a, id, p.emailDe(id))) continue;
+          final gano = p.ganadorId == id;
+          pj++;
+          if (gano) {
+            pg++;
+          } else {
+            pp++;
+          }
+          final r = porAcad.putIfAbsent(a.nombre, () => [0, 0, 0]);
+          r[0]++;
+          if (gano) {
+            r[1]++;
+          } else {
+            r[2]++;
+          }
+          final nom = p.nombreDe(id);
+          if (nom.isNotEmpty) nombre = nom;
+          final cat = a.categoriaDe(id);
+          if (cat.isNotEmpty) categoria = cat;
+          final rivalId = id == p.jugadorAId ? p.jugadorBId : p.jugadorAId;
+          partidos.add(PartidoConAcademia(
+              partido: p,
+              academia: a.nombre,
+              gano: gano,
+              rival: p.nombreDe(rivalId)));
+        }
+      }
+    }
+    if (pj == 0) return null;
+    partidos.sort((x, y) => y.partido.fecha.compareTo(x.partido.fecha));
+    final porAcademia = porAcad.entries
+        .map((e) => RegistroPorAcademia(
+              academia: e.key,
+              pj: e.value[0],
+              pg: e.value[1],
+              pp: e.value[2],
+              puntos: e.value[1] * Academia.puntosVictoria +
+                  e.value[2] * Academia.puntosDerrota,
+            ))
+        .toList()
+      ..sort((a, b) => b.puntos.compareTo(a.puntos));
+    return PerfilGlobalJugador(
+      nombre: nombre,
+      categoria: categoria,
+      email: email,
+      pj: pj,
+      pg: pg,
+      pp: pp,
+      puntos:
+          pg * Academia.puntosVictoria + pp * Academia.puntosDerrota,
+      pct: pj == 0 ? 0 : pg / pj * 100,
+      porAcademia: porAcademia,
+      partidos: partidos,
+    );
+  }
+
   /// Al CONECTAR las redes (OAuth Meta en Servicios), auto-declara en la academia
   /// el @usuario de Instagram y la Página de Facebook reales, para no escribirlos
   /// dos veces. Solo rellena lo que esté VACÍO (no pisa lo que el dueño ya puso).

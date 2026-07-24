@@ -4,6 +4,7 @@ import '../models/academia.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'perfil_global_screen.dart';
 
 /// RANKING GLOBAL Pichangol: tabla cruzada de jugadores de TODAS las academias
 /// por deporte (estilo circuito abierto, rankingtenis.pe). Es el motor de
@@ -181,6 +182,9 @@ class _FilaGlobal extends StatelessWidget {
       child: ListTile(
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => PerfilGlobalScreen(
+                idKey: f.alumnoId, deporte: f.deporte, posicion: posicion))),
         leading: SizedBox(
           width: 54,
           child: Row(

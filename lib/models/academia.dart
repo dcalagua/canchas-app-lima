@@ -676,6 +676,64 @@ class RankingGlobalFila {
   });
 }
 
+/// El registro de un jugador en UNA academia (para su perfil global).
+class RegistroPorAcademia {
+  final String academia;
+  final int pj;
+  final int pg;
+  final int pp;
+  final int puntos;
+  const RegistroPorAcademia({
+    required this.academia,
+    required this.pj,
+    required this.pg,
+    required this.pp,
+    required this.puntos,
+  });
+}
+
+/// Un partido con la academia donde se jugó y la perspectiva del jugador del
+/// perfil (si ganó y contra quién). Para los "últimos partidos" del carnet global.
+class PartidoConAcademia {
+  final PartidoRanking partido;
+  final String academia;
+  final bool gano;
+  final String rival;
+  const PartidoConAcademia({
+    required this.partido,
+    required this.academia,
+    required this.gano,
+    required this.rival,
+  });
+}
+
+/// PERFIL GLOBAL de un jugador: sus stats CONSOLIDADAS entre todas las academias
+/// (identidad = correo), el desglose por academia y sus partidos recientes.
+class PerfilGlobalJugador {
+  final String nombre;
+  final String categoria;
+  final String email; // '' si identidad por academia (alumno manual)
+  final int pj;
+  final int pg;
+  final int pp;
+  final int puntos;
+  final double pct;
+  final List<RegistroPorAcademia> porAcademia;
+  final List<PartidoConAcademia> partidos;
+  const PerfilGlobalJugador({
+    required this.nombre,
+    required this.categoria,
+    required this.email,
+    required this.pj,
+    required this.pg,
+    required this.pp,
+    required this.puntos,
+    required this.pct,
+    required this.porAcademia,
+    required this.partidos,
+  });
+}
+
 /// Una SEDE (local) de una academia multi-sede: nombre + dirección + ubicación.
 /// El horario NO va aquí: se guarda por (sede, programa) en `Academia.horarios`,
 /// porque cada programa (Sub-8, Sub-10…) entrena en días/horas distintos.
