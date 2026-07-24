@@ -91,6 +91,10 @@ class Academia {
   final String descripcion;
   final String sedeClub; // dónde entrena AHORA (nombre del club/local)
   final LatLng? sedeUbicacion;
+  /// ZONA / distrito de la academia (ej. "San Borja", "Miraflores"). Texto libre
+  /// que el dueño fija. Se usa para segmentar el RANKING GLOBAL por ciudad/zona.
+  /// Vacío = sin zona (solo aparece en "Todas").
+  final String zona;
   final List<Plan> planes;
   final String? logoUrl; // logo de la academia (si tiene)
   final Map<String, String> redes; // red → handle/url (instagram, tiktok…)
@@ -153,6 +157,7 @@ class Academia {
     this.descripcion = '',
     this.sedeClub = '',
     this.sedeUbicacion,
+    this.zona = '',
     this.planes = const [],
     this.logoUrl,
     this.redes = const {},
@@ -331,6 +336,7 @@ class Academia {
     String? descripcion,
     String? sedeClub,
     LatLng? sedeUbicacion,
+    String? zona,
     List<Plan>? planes,
     String? logoUrl,
     Map<String, String>? redes,
@@ -358,6 +364,7 @@ class Academia {
         descripcion: descripcion ?? this.descripcion,
         sedeClub: sedeClub ?? this.sedeClub,
         sedeUbicacion: sedeUbicacion ?? this.sedeUbicacion,
+        zona: zona ?? this.zona,
         planes: planes ?? this.planes,
         logoUrl: logoUrl ?? this.logoUrl,
         redes: redes ?? this.redes,
@@ -385,6 +392,7 @@ class Academia {
         'whatsapp': whatsapp,
         'descripcion': descripcion,
         'sedeClub': sedeClub,
+        if (zona.isNotEmpty) 'zona': zona,
         if (sedeUbicacion != null) 'lat': sedeUbicacion!.latitude,
         if (sedeUbicacion != null) 'lng': sedeUbicacion!.longitude,
         'planes': planes.map((p) => p.toJson()).toList(),
@@ -415,6 +423,7 @@ class Academia {
         whatsapp: (j['whatsapp'] ?? '') as String,
         descripcion: (j['descripcion'] ?? '') as String,
         sedeClub: (j['sedeClub'] ?? '') as String,
+        zona: (j['zona'] ?? '') as String,
         sedeUbicacion: (j['lat'] != null && j['lng'] != null)
             ? LatLng((j['lat'] as num).toDouble(), (j['lng'] as num).toDouble())
             : null,

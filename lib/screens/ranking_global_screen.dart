@@ -18,6 +18,7 @@ class RankingGlobalScreen extends StatefulWidget {
 class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
   Deporte? _deporte;
   String _categoria = ''; // '' = todas
+  String _zona = ''; // '' = todas las zonas
 
   @override
   void initState() {
@@ -42,8 +43,12 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
               : deportes.first;
           final cats = appState.categoriasGlobalDe(dep);
           final catSel = cats.contains(_categoria) ? _categoria : '';
+          final zonas = appState.zonasGlobalDe(dep);
+          final zonaSel = zonas.contains(_zona) ? _zona : '';
           final tabla = appState.rankingGlobal(
-              deporte: dep, categoria: catSel.isEmpty ? null : catSel);
+              deporte: dep,
+              categoria: catSel.isEmpty ? null : catSel,
+              zona: zonaSel.isEmpty ? null : zonaSel);
 
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 30),
@@ -85,10 +90,34 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
                       onSelected: (_) => setState(() {
                         _deporte = d;
                         _categoria = '';
+                        _zona = '';
                       }),
                     ),
                 ],
               ),
+              if (zonas.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    ChoiceChip(
+                      avatar: const Icon(Icons.place_outlined, size: 16),
+                      label: const Text('Toda la ciudad'),
+                      selected: zonaSel.isEmpty,
+                      selectedColor: limaSuave,
+                      onSelected: (_) => setState(() => _zona = ''),
+                    ),
+                    for (final z in zonas)
+                      ChoiceChip(
+                        label: Text(z),
+                        selected: zonaSel == z,
+                        selectedColor: limaSuave,
+                        onSelected: (_) => setState(() => _zona = z),
+                      ),
+                  ],
+                ),
+              ],
               if (cats.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 Wrap(

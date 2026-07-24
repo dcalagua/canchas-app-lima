@@ -243,15 +243,29 @@ class AppState extends ChangeNotifier {
     return l;
   }
 
+  /// Zonas/distritos con academias que tienen partidos, para el filtro del
+  /// ranking global por ciudad. Solo cuentan las academias del [deporte].
+  List<String> zonasGlobalDe(Deporte deporte) {
+    final s = <String>{};
+    for (final a in academias) {
+      if (a.deporte != deporte || a.partidos.isEmpty) continue;
+      if (a.zona.trim().isNotEmpty) s.add(a.zona.trim());
+    }
+    final l = s.toList()..sort();
+    return l;
+  }
+
   /// RANKING GLOBAL Pichangol: agrega los partidos de TODAS las academias del
   /// [deporte] en una sola tabla, ordenada por puntos. Client-side (las
   /// academias ya vienen con sus partidos embebidos). DEDUPE POR IDENTIDAD: la
   /// misma persona (mismo correo) en varias academias es UNA sola fila con sus
   /// stats sumados. Los alumnos manuales (sin correo) no se dedupean.
-  List<RankingGlobalFila> rankingGlobal({Deporte? deporte, String? categoria}) {
+  List<RankingGlobalFila> rankingGlobal(
+      {Deporte? deporte, String? categoria, String? zona}) {
     final agg = <String, _AggGlobal>{};
     for (final a in academias) {
       if (deporte != null && a.deporte != deporte) continue;
+      if (zona != null && zona.isNotEmpty && a.zona.trim() != zona) continue;
       for (final p in a.partidos) {
         for (final id in [p.jugadorAId, p.jugadorBId]) {
           if (id.isEmpty) continue;

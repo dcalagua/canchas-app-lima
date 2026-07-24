@@ -38,6 +38,9 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       TextEditingController(text: widget.academia?.whatsapp ?? '');
   late final TextEditingController _sede =
       TextEditingController(text: widget.academia?.sedeClub ?? '');
+  // Zona / distrito (para el ranking global por ciudad).
+  late final TextEditingController _zona =
+      TextEditingController(text: widget.academia?.zona ?? '');
   late final TextEditingController _desc =
       TextEditingController(text: widget.academia?.descripcion ?? '');
   // Recargo fijo del INVITADO (no socio del club) sobre la tarifa socio. Vacío
@@ -456,6 +459,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
     _nombre.dispose();
     _whatsapp.dispose();
     _sede.dispose();
+    _zona.dispose();
     _nombreFocus.dispose();
     _whatsappFocus.dispose();
     _desc.dispose();
@@ -883,6 +887,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       deporte: _deporte,
       whatsapp: _whatsapp.text.trim(),
       sedeClub: _sede.text.trim(),
+      zona: _zona.text.trim(),
       sedeUbicacion: _sedes[_sede.text.trim()] ?? _sedeUbic,
       descripcion: _desc.text.trim(),
       planes: _planes,
@@ -1029,6 +1034,17 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                   ),
                 ),
               ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _zona,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(
+              labelText: 'Zona / distrito (para el ranking por ciudad)',
+              hintText: 'Ej.: San Borja, Miraflores…',
+              helperText: 'Tus jugadores aparecen en el ranking de esta zona',
+              prefixIcon: Icon(Icons.location_city_outlined),
             ),
           ),
           const SizedBox(height: 16),
