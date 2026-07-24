@@ -327,6 +327,58 @@ class AppState extends ChangeNotifier {
     return filas;
   }
 
+  /// Importa los resultados de un CAMPEONATO al ranking del circuito (y por ende
+  /// al global). Cada partido jugado con ganador se vuelve un PartidoRanking con
+  /// id determinista ('cmp_<campeonato>_<partido>'), así re-importar es idempotente
+  /// y refleja ediciones/borrados. Denormaliza el correo del participante para la
+  /// identidad global. Devuelve cuántos partidos se sumaron.
+  Future<int> importarCampeonatoAlRanking(Campeonato c) async {
+    final i = academias.indexWhere((a) => a.id == c.academiaId);
+    if (i < 0) return 0;
+    final academia = academias[i];
+    final prefijo = 'cmp_${c.id}_';
+    // Conserva la fecha de los ya importados (no reescribe la historia).
+    final fechaPrevia = <String, DateTime>{
+      for (final p in academia.partidos)
+        if (p.id.startsWith(prefijo)) p.id: p.fecha
+    };
+    final part = {for (final p in c.participantes) p.id: p};
+    final ahora = DateTime.now();
+    final nuevos = <PartidoRanking>[];
+    final cats = Map<String, String>.from(academia.categorias);
+    for (final pt in c.partidos) {
+      if (!pt.jugado) continue;
+      final aId = pt.aId, bId = pt.bId, gid = pt.ganadorId;
+      if (aId == null || bId == null || gid == null) continue; // bye/empate
+      final pa = part[aId], pb = part[bId];
+      if (pa == null || pb == null) continue;
+      final id = '$prefijo${pt.id}';
+      nuevos.add(PartidoRanking(
+        id: id,
+        fecha: fechaPrevia[id] ?? ahora,
+        jugadorAId: aId,
+        jugadorANombre: pa.nombre,
+        jugadorAEmail: pa.email.trim().toLowerCase(),
+        jugadorBId: bId,
+        jugadorBNombre: pb.nombre,
+        jugadorBEmail: pb.email.trim().toLowerCase(),
+        ganadorId: gid,
+        marcador: '${pt.marcadorA}-${pt.marcadorB}',
+      ));
+      if (c.categoria.isNotEmpty) {
+        cats.putIfAbsent(aId, () => c.categoria);
+        cats.putIfAbsent(bId, () => c.categoria);
+      }
+    }
+    final resto =
+        academia.partidos.where((p) => !p.id.startsWith(prefijo)).toList();
+    final actualizada =
+        academia.copyWith(partidos: [...resto, ...nuevos], categorias: cats);
+    await guardarAcademia(actualizada);
+    await _refrescarLandingAcademia(actualizada);
+    return nuevos.length;
+  }
+
   /// PERFIL GLOBAL de un jugador por su clave de identidad ([idKey] tal como la
   /// devuelve `rankingGlobal`: 'e:correo' o 'a:academiaId|alumnoId'). Consolida
   /// sus stats entre TODAS las academias, el desglose por academia y sus

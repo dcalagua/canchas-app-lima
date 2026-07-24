@@ -104,6 +104,30 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                 else
                   _Llave(campeonato: c, esDueno: esDueno),
               ],
+              if (esDueno && c.fixtureGenerado) ...[
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                        backgroundColor: lima,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 13)),
+                    onPressed: () => _sumarAlRanking(context, c),
+                    icon: const Icon(Icons.leaderboard, size: 20),
+                    label: const Text('Sumar resultados al ranking',
+                        style: TextStyle(fontWeight: FontWeight.w800)),
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.only(top: 6),
+                  child: Text(
+                      'Los partidos jugados suman puntos al ranking del circuito '
+                      '(y al global). Puedes volver a tocarlo si cargas más '
+                      'resultados.',
+                      style: TextStyle(color: textoTenue, fontSize: 12)),
+                ),
+              ],
               if (esDueno) ...[
                 const SizedBox(height: 20),
                 OutlinedButton.icon(
@@ -119,6 +143,18 @@ class CampeonatoDetalleScreen extends StatelessWidget {
         },
       ),
     );
+  }
+
+  Future<void> _sumarAlRanking(BuildContext context, Campeonato c) async {
+    final n = await appState.importarCampeonatoAlRanking(c);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      backgroundColor: bosque,
+      content: Text(n == 0
+          ? 'Aún no hay partidos jugados para sumar.'
+          : '$n partido${n == 1 ? '' : 's'} sumado${n == 1 ? '' : 's'} al '
+              'ranking del circuito.'),
+    ));
   }
 
   Future<void> _confirmarEliminar(BuildContext context, Campeonato c) async {
