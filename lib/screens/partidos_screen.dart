@@ -249,7 +249,12 @@ class _CircuitoPreview extends StatelessWidget {
     return ListenableBuilder(
       listenable: appState,
       builder: (context, _) {
-        final deportes = appState.deportesConRanking;
+        // El circuito es capa de TENIS: no ensuciar Partidos (matchmaking de
+        // todos los deportes) si no hay circuito de raqueta vivo ni el usuario
+        // se unió.
+        if (!appState.hayCircuitoTenis) return const SizedBox.shrink();
+        final deportes =
+            appState.deportesConRanking.where((d) => d.esRaqueta).toList();
         final dep = deportes.isNotEmpty ? deportes.first : null;
         final top = dep == null
             ? const <RankingGlobalFila>[]

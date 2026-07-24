@@ -380,10 +380,14 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                   final nCanchas =
                       clubs.fold<int>(0, (a, c) => a + c.canchas.length);
                   final hijos = <Widget>[
-                    _CircuitoBannerExplorar(
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => const RankingGlobalScreen())),
-                    ),
+                    // El circuito es una capa de TENIS: el banner solo aparece
+                    // cuando el usuario está navegando un deporte de raqueta.
+                    if (_filtro != null && _filtro!.esRaqueta)
+                      _CircuitoBannerExplorar(
+                        onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                                builder: (_) => const RankingGlobalScreen())),
+                      ),
                     Row(
                       children: [
                         Expanded(

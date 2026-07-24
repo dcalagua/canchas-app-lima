@@ -181,7 +181,7 @@ class _JugadoresDisponiblesScreenState
                         _cargar();
                       },
                     ),
-                    for (final d in deportesActivos)
+                    for (final d in deportesCircuito)
                       ChoiceChip(
                         label: Text(d.etiqueta),
                         selected: _filtro == d,
@@ -430,7 +430,7 @@ class _UnirseSheet extends StatefulWidget {
 }
 
 class _UnirseSheetState extends State<_UnirseSheet> {
-  Deporte _deporte = deportesActivos.first;
+  Deporte _deporte = deportesCircuito.first;
   final _zona = TextEditingController();
   final _categoria = TextEditingController();
   bool _guardando = false;
@@ -497,7 +497,7 @@ class _UnirseSheetState extends State<_UnirseSheet> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              for (final d in deportesActivos)
+              for (final d in deportesCircuito)
                 ChoiceChip(
                   label: Text(d.etiqueta),
                   selected: _deporte == d,

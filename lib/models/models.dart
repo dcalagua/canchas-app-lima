@@ -25,7 +25,23 @@ enum Deporte {
 
   final String etiqueta;
   const Deporte(this.etiqueta);
+
+  /// Deportes de RAQUETA. El CIRCUITO Pichangol (ranking, retos, Pro, jugadores
+  /// disponibles) es hoy una capa de TENIS para fortalecer academias, y aplica a
+  /// deportes de raqueta. El fútbol (y otros) usan solo reservar + partidos; su
+  /// circuito será otro tema más adelante.
+  bool get esRaqueta =>
+      this == Deporte.tenis ||
+      this == Deporte.padel ||
+      this == Deporte.pickleball;
 }
+
+/// Deportes con CIRCUITO (raqueta). Ver `Deporte.esRaqueta`.
+const List<Deporte> deportesCircuito = [
+  Deporte.tenis,
+  Deporte.padel,
+  Deporte.pickleball,
+];
 
 /// Parsea un nombre de `Deporte` de forma segura (null si no existe, p. ej. un
 /// valor viejo/desconocido en datos persistidos). Evita que `byName` reviente.

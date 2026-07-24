@@ -115,10 +115,10 @@ class AcademiasScreen extends StatelessWidget {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              if (appState.deportesConRanking.isNotEmpty) ...[
-                _RankingGlobalBanner(),
-                const SizedBox(height: 14),
-              ],
+              // Academias es la casa del TENIS → hub del circuito, siempre
+              // visible (aunque aún no haya datos: desde aquí se une la gente).
+              _RankingGlobalBanner(),
+              const SizedBox(height: 14),
               if (appState.misMatriculas.isNotEmpty) ...[
                 _misClasesAcceso(context),
                 const SizedBox(height: 12),
@@ -624,13 +624,14 @@ class _RankingGlobalBanner extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Ranking Global Pichangol',
+                    Text('Circuito Pichangol · Tenis',
                         style: TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.w800,
                             fontSize: 15)),
                     SizedBox(height: 2),
-                    Text('La tabla cruzada de todas las academias por deporte.',
+                    Text('Ranking de tu ciudad, retos entre jugadores y tu '
+                        'carnet oficial. Únete y sube.',
                         style: TextStyle(color: Colors.white70, fontSize: 12.5)),
                   ],
                 ),

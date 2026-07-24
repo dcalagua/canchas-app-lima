@@ -118,7 +118,11 @@ class PerfilScreen extends StatelessWidget {
                       onTap: () => Navigator.of(context).push(MaterialPageRoute(
                           builder: (_) => const AcademiasScreen())),
                     ),
-                    if (u != null)
+                    // Circuito (capa de TENIS): estos accesos solo salen si el
+                    // usuario YA usa el circuito, para no ensuciar el menú de
+                    // quien solo reserva o juega fútbol. La gente descubre el
+                    // circuito desde Academias / Explorar (tenis).
+                    if (u != null && appState.usaCircuito)
                       _Tile(
                         icon: Icons.sports_kabaddi,
                         title: 'Mis retos',
@@ -129,7 +133,7 @@ class PerfilScreen extends StatelessWidget {
                                 builder: (_) => const MisRetosScreen()))
                             .then((_) => appState.cargarRetosPendientes()),
                       ),
-                    if (u != null)
+                    if (u != null && appState.usaCircuito)
                       _Tile(
                         icon: appState.proActivo
                             ? Icons.workspace_premium

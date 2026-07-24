@@ -284,6 +284,17 @@ class AppState extends ChangeNotifier {
   /// ¿Ya me declaré disponible en el circuito?
   bool get estoyEnCircuito => _miPerfilCircuito != null;
 
+  /// ¿Hay circuito de TENIS vivo/relevante para mostrar sus accesos? (hay
+  /// ranking de raqueta con datos o el usuario ya se unió). El circuito es una
+  /// capa de tenis; en fútbol NO se muestra.
+  bool get hayCircuitoTenis =>
+      estoyEnCircuito || deportesConRanking.any((d) => d.esRaqueta);
+
+  /// ¿El usuario YA usa el circuito? (para mostrar sus accesos en Perfil sin
+  /// ensuciar el menú de quien solo reserva/juega fútbol).
+  bool get usaCircuito =>
+      estoyEnCircuito || proActivo || _retosPendientes > 0;
+
   /// Mi perfil de circuito (deporte/zona/categoría) o null si no me uní.
   Map<String, dynamic>? get miPerfilCircuito => _miPerfilCircuito;
 
