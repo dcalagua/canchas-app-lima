@@ -120,10 +120,23 @@ class _ChatScreenState extends State<ChatScreen> {
         if (mounted) setState(() {});
       });
     }
+    // Si la contraparte es una PERSONA (correo), trae su perfil para mostrar
+    // su nombre + foto en vez del correo.
+    if (_contraparteEmail.isNotEmpty) {
+      appState.cargarPerfiles([_contraparteEmail]).then((_) {
+        if (mounted) setState(() {});
+      });
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       appState.marcarChatLeido(_hilo);
     });
   }
+
+  /// Correo de la CONTRAPARTE persona (a quien le muestro nombre+foto). Cuando
+  /// soy el profe/dueño, es `cuentaEmail` (el alumno/jugador). En chats de grupo
+  /// no aplica (el título es el nombre del grupo).
+  String get _contraparteEmail =>
+      (widget.soyProfe && widget.tipo != 'grupo') ? widget.cuentaEmail : '';
 
   /// ¿Muestro la insignia de "verificado" en la cabecera? Solo cuando soy el
   /// dueño y el jugador (la contraparte) está verificado.
@@ -295,8 +308,20 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     final wa = _WA(Theme.of(context).brightness == Brightness.dark);
-    final inicial = widget.titulo.trim().isNotEmpty
-        ? widget.titulo.characters.first.toUpperCase()
+    // Nombre y foto a mostrar: si la contraparte es una persona con perfil, se
+    // usa su nombre + foto; si no, el título recibido (nombre de academia/grupo).
+    final nombrePerfil = _contraparteEmail.isEmpty
+        ? null
+        : appState.nombreMostrableDe(_contraparteEmail);
+    final fotoPerfil = _contraparteEmail.isEmpty
+        ? null
+        : appState.fotoDe(_contraparteEmail);
+    final tituloMostrar =
+        (nombrePerfil != null && nombrePerfil.isNotEmpty)
+            ? nombrePerfil
+            : widget.titulo;
+    final inicial = tituloMostrar.trim().isNotEmpty
+        ? tituloMostrar.characters.first.toUpperCase()
         : '?';
     return Scaffold(
       backgroundColor: wa.fondo,
@@ -309,13 +334,18 @@ class _ChatScreenState extends State<ChatScreen> {
             CircleAvatar(
               radius: 17,
               backgroundColor: Colors.white24,
-              child: Text(inicial,
-                  style: const TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.w800)),
+              backgroundImage: (fotoPerfil != null && fotoPerfil.isNotEmpty)
+                  ? NetworkImage(fotoPerfil)
+                  : null,
+              child: (fotoPerfil != null && fotoPerfil.isNotEmpty)
+                  ? null
+                  : Text(inicial,
+                      style: const TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.w800)),
             ),
             const SizedBox(width: 10),
             Flexible(
-              child: Text(widget.titulo,
+              child: Text(tituloMostrar,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontWeight: FontWeight.w700)),

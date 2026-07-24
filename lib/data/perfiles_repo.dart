@@ -1,0 +1,76 @@
+import '../services/supabase_service.dart';
+
+/// PERFILES públicos de usuario en Supabase (`pichangol_perfiles`): el nombre y
+/// la foto que la persona quiere mostrar (a veces su Gmail muestra cualquier
+/// cosa). Los usa el chat (y donde se muestre a otra persona) para pintar
+/// nombre + foto en vez del correo. Clave = email. Fail-safe.
+class PerfilesRepo {
+  static const _tabla = 'pichangol_perfiles';
+
+  static bool get disponible => SupabaseService.disponible;
+
+  /// Crea/actualiza el perfil del correo (upsert). Devuelve true si guardó.
+  static Future<bool> guardar({
+    required String email,
+    required String nombre,
+    String? fotoUrl,
+  }) async {
+    final e = email.trim().toLowerCase();
+    if (!disponible || e.isEmpty) return false;
+    try {
+      await SupabaseService.client.from(_tabla).upsert({
+        'email': e,
+        'nombre': nombre.trim(),
+        if (fotoUrl != null && fotoUrl.isNotEmpty) 'foto_url': fotoUrl,
+        'actualizado': DateTime.now().toUtc().toIso8601String(),
+      }, onConflict: 'email');
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Perfil de un correo, o null si no existe.
+  static Future<Map<String, dynamic>?> obtener(String email) async {
+    final e = email.trim().toLowerCase();
+    if (!disponible || e.isEmpty) return null;
+    try {
+      final rows = await SupabaseService.client
+          .from(_tabla)
+          .select()
+          .eq('email', e)
+          .limit(1);
+      final l = rows as List;
+      return l.isEmpty ? null : Map<String, dynamic>.from(l.first as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Perfiles de varios correos → mapa email→{nombre, foto_url}. Para listas
+  /// (bandeja de chats). Best-effort.
+  static Future<Map<String, Map<String, dynamic>>> obtenerVarios(
+      List<String> emails) async {
+    final es = emails
+        .map((e) => e.trim().toLowerCase())
+        .where((e) => e.isNotEmpty)
+        .toSet()
+        .toList();
+    if (!disponible || es.isEmpty) return const {};
+    try {
+      final rows = await SupabaseService.client
+          .from(_tabla)
+          .select()
+          .inFilter('email', es);
+      final out = <String, Map<String, dynamic>>{};
+      for (final r in rows as List) {
+        final m = Map<String, dynamic>.from(r as Map);
+        final e = (m['email'] ?? '').toString().toLowerCase();
+        if (e.isNotEmpty) out[e] = m;
+      }
+      return out;
+    } catch (_) {
+      return const {};
+    }
+  }
+}

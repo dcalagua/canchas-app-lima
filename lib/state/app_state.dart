@@ -11,6 +11,7 @@ import '../data/canchas_repo.dart';
 import '../data/invitaciones_repo.dart';
 import '../data/matriculas_repo.dart';
 import '../data/mensajes_repo.dart';
+import '../data/perfiles_repo.dart';
 import '../data/bloqueos_repo.dart';
 import '../data/referidos_repo.dart';
 import '../data/resenas_repo.dart';
@@ -51,6 +52,85 @@ class AppState extends ChangeNotifier {
   // Sesión del JUGADOR (Google). Navegar/buscar es libre; reservar exige login.
   Usuario? usuario;
   bool get logueado => usuario != null;
+
+  // ── Perfiles públicos (nombre/foto que la persona muestra) ────────────────
+  // Cache email→{nombre, foto_url}. Lo llena `cargarPerfiles`; lo usan el chat y
+  // donde se muestre a otra persona (nombre y foto en vez del correo).
+  final Map<String, Map<String, dynamic>> _perfiles = {};
+
+  /// Nombre a mostrar de un correo: el de su perfil si existe (no vacío), o null.
+  String? nombreMostrableDe(String? email) {
+    final e = (email ?? '').trim().toLowerCase();
+    final n = (_perfiles[e]?['nombre'] ?? '').toString().trim();
+    return n.isEmpty ? null : n;
+  }
+
+  /// Foto a mostrar de un correo (de su perfil), o null.
+  String? fotoDe(String? email) {
+    final e = (email ?? '').trim().toLowerCase();
+    final f = (_perfiles[e]?['foto_url'] ?? '').toString().trim();
+    return f.isEmpty ? null : f;
+  }
+
+  /// Trae de Supabase los perfiles de estos correos y los cachea (best-effort).
+  Future<void> cargarPerfiles(List<String> emails) async {
+    final faltan = emails
+        .map((e) => e.trim().toLowerCase())
+        .where((e) => e.isNotEmpty && !_perfiles.containsKey(e))
+        .toList();
+    if (faltan.isEmpty) return;
+    final res = await PerfilesRepo.obtenerVarios(faltan);
+    if (res.isEmpty) return;
+    _perfiles.addAll(res);
+    notifyListeners();
+  }
+
+  /// Sincroniza MI perfil público al iniciar sesión: si ya tengo un perfil
+  /// guardado (nombre/foto que elegí antes, incluso en otro dispositivo), lo
+  /// aplico; si no, subo mi nombre/foto de Google como base. Best-effort.
+  Future<void> _sincronizarMiPerfil() async {
+    final u = usuario;
+    if (u == null) return;
+    final mio = await PerfilesRepo.obtener(u.email);
+    if (mio != null && (mio['nombre'] ?? '').toString().trim().isNotEmpty) {
+      final nombre = mio['nombre'].toString().trim();
+      final foto = (mio['foto_url'] ?? '').toString().trim();
+      _perfiles[u.email.toLowerCase()] = mio;
+      usuario = Usuario(
+          nombre: nombre,
+          email: u.email,
+          fotoUrl: foto.isNotEmpty ? foto : u.fotoUrl);
+      await _persistirUsuario();
+      notifyListeners();
+    } else {
+      // Aún no tengo perfil: subo el de Google como base.
+      await PerfilesRepo.guardar(
+          email: u.email, nombre: u.nombre, fotoUrl: u.fotoUrl);
+      _perfiles[u.email.toLowerCase()] = {
+        'email': u.email.toLowerCase(),
+        'nombre': u.nombre,
+        'foto_url': u.fotoUrl,
+      };
+    }
+  }
+
+  /// El usuario cambia el nombre con el que se muestra (chat, ranking, etc.).
+  /// Actualiza la sesión local + lo sube a su perfil público. Devuelve true.
+  Future<bool> actualizarMiNombre(String nuevo) async {
+    final u = usuario;
+    final n = nuevo.trim();
+    if (u == null || n.isEmpty) return false;
+    usuario = Usuario(nombre: n, email: u.email, fotoUrl: u.fotoUrl);
+    _perfiles[u.email.toLowerCase()] = {
+      'email': u.email.toLowerCase(),
+      'nombre': n,
+      'foto_url': u.fotoUrl,
+    };
+    await _persistirUsuario();
+    notifyListeners();
+    await PerfilesRepo.guardar(email: u.email, nombre: n, fotoUrl: u.fotoUrl);
+    return true;
+  }
 
   // Reservas y agenda REALES: arrancan vacías. Se llenan con lo que llega de
   // Supabase (cargarReservasRemotas) y con las reservas que hacen los jugadores.
@@ -3085,6 +3165,7 @@ class AppState extends ChangeNotifier {
         usuario = Usuario.fromJson(jsonDecode(raw) as Map<String, dynamic>);
         // Sesión restaurada: re-registra el token push de este dispositivo.
         PushService.registrarParaUsuario(usuario?.email);
+        _sincronizarMiPerfil(); // trae mi nombre-foto elegido (otro dispositivo)
       }
 
       if (prefs.containsKey(_kSaldo)) {
@@ -3321,6 +3402,7 @@ class AppState extends ChangeNotifier {
   void _finalizarLogin(Usuario u) {
     usuario = u;
     _persistirUsuario();
+    _sincronizarMiPerfil(); // aplica/crea mi nombre-foto público (best-effort)
     PushService.registrarParaUsuario(u.email); // push del chat a este dispositivo
     _recomputarMisReservas(); // recupera sus reservas de otros dispositivos
     notifyListeners();

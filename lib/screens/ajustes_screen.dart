@@ -4,6 +4,7 @@ import '../brand.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'editar_perfil_screen.dart';
 import 'referidos_screen.dart';
 import 'verificar_identidad_screen.dart';
 
@@ -186,6 +187,14 @@ class AjustesScreen extends StatelessWidget {
               Text('Tu cuenta',
                   style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
               const SizedBox(height: 10),
+              if (u != null)
+                _AccionTile(
+                  icon: Icons.badge_outlined,
+                  title: 'Mi nombre y foto',
+                  subtitle: 'Edita cómo te ven en el chat, ranking y retos',
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const EditarPerfilScreen())),
+                ),
               if (u != null)
                 _AccionTile(
                   icon: appState.jugadorVerificado

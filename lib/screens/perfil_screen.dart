@@ -9,6 +9,7 @@ import 'ajustes_screen.dart';
 import 'anfitrion_screen.dart';
 import 'login_google_sheet.dart';
 import 'billetera_screen.dart';
+import 'editar_perfil_screen.dart';
 import 'hazte_pro_screen.dart';
 import 'mis_retos_screen.dart';
 
@@ -78,6 +79,16 @@ class PerfilScreen extends StatelessWidget {
                             ],
                           ),
                         ),
+                        // Editar mi nombre/foto (solo con sesión).
+                        if (u != null)
+                          IconButton(
+                            tooltip: 'Editar mi perfil',
+                            icon: const Icon(Icons.edit_outlined,
+                                color: Colors.white),
+                            onPressed: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                    builder: (_) => const EditarPerfilScreen())),
+                          ),
                       ],
                     ),
                   ],
