@@ -13,6 +13,7 @@ import '../utils/ubicacion_share.dart';
 import '../widgets/logo_academia.dart';
 import '../widgets/pago_tarjeta_sheet.dart';
 import 'campeonatos_screen.dart';
+import 'ranking_academia_screen.dart';
 import 'chat_screen.dart';
 import 'login_google_sheet.dart';
 import 'mis_clases_screen.dart';
@@ -256,6 +257,19 @@ class _Contenido extends StatelessWidget {
                       onTap: () => Navigator.of(context).push(MaterialPageRoute(
                           builder: (_) =>
                               CampeonatosScreen(academiaId: academia.id))),
+                    ),
+                    _ChipAccion(
+                      icon: Icons.leaderboard,
+                      label: 'Ranking',
+                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => RankingAcademiaScreen(
+                                academiaId: academia.id,
+                                esDueno:
+                                    (appState.usuario?.email ?? '')
+                                            .toLowerCase()
+                                            .trim() ==
+                                        academia.dueno.toLowerCase().trim(),
+                              ))),
                     ),
                   ],
                 ),

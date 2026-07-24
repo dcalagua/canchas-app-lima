@@ -171,6 +171,40 @@ class AppState extends ChangeNotifier {
     return ok;
   }
 
+  // ── Circuito / Ranking interno (Fase 0) ────────────────────────────────────
+  /// Registra un partido del ranking interno de una academia y lo persiste
+  /// (local + nube, embebido en la academia).
+  Future<void> registrarPartido(
+      String academiaId, PartidoRanking partido) async {
+    final i = academias.indexWhere((a) => a.id == academiaId);
+    if (i < 0) return;
+    final nuevos = [...academias[i].partidos, partido];
+    await guardarAcademia(academias[i].copyWith(partidos: nuevos));
+  }
+
+  /// Borra un partido del ranking (corregir un error de carga).
+  Future<void> eliminarPartido(String academiaId, String partidoId) async {
+    final i = academias.indexWhere((a) => a.id == academiaId);
+    if (i < 0) return;
+    final nuevos =
+        academias[i].partidos.where((p) => p.id != partidoId).toList();
+    await guardarAcademia(academias[i].copyWith(partidos: nuevos));
+  }
+
+  /// Fija (o limpia si viene vacía) la categoría de ranking de un alumno.
+  Future<void> setCategoriaAlumno(
+      String academiaId, String alumnoId, String categoria) async {
+    final i = academias.indexWhere((a) => a.id == academiaId);
+    if (i < 0) return;
+    final cats = Map<String, String>.from(academias[i].categorias);
+    if (categoria.trim().isEmpty) {
+      cats.remove(alumnoId);
+    } else {
+      cats[alumnoId] = categoria.trim();
+    }
+    await guardarAcademia(academias[i].copyWith(categorias: cats));
+  }
+
   /// Al CONECTAR las redes (OAuth Meta en Servicios), auto-declara en la academia
   /// el @usuario de Instagram y la Página de Facebook reales, para no escribirlos
   /// dos veces. Solo rellena lo que esté VACÍO (no pisa lo que el dueño ya puso).

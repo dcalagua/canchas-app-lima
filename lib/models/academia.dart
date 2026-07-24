@@ -136,6 +136,13 @@ class Academia {
   /// (sede, plan) no está aquí, se usa el `Plan.precioMes` base. Vacío = todas
   /// las sedes cobran el precio base del plan.
   final Map<String, double> preciosSede;
+  /// CIRCUITO / RANKING interno (Fase 0): partidos jugados entre alumnos de la
+  /// academia. Alimentan la tabla de posiciones (`ranking`). Se embeben en la
+  /// academia (sin tabla nueva). El profe los registra.
+  final List<PartidoRanking> partidos;
+  /// CATEGORÍA de cada alumno en el ranking (ej. "7ma", "Intermedio").
+  /// Clave = alumnoId → categoría. Vacío = sin categoría.
+  final Map<String, String> categorias;
 
   const Academia({
     required this.id,
@@ -161,6 +168,8 @@ class Academia {
     this.sedes = const [],
     this.horarios = const {},
     this.preciosSede = const {},
+    this.partidos = const [],
+    this.categorias = const {},
   });
 
   /// Sedes EFECTIVAS: las declaradas; si no hay ninguna, una sede única derivada
@@ -337,6 +346,8 @@ class Academia {
     List<Sede>? sedes,
     Map<String, String>? horarios,
     Map<String, double>? preciosSede,
+    List<PartidoRanking>? partidos,
+    Map<String, String>? categorias,
   }) =>
       Academia(
         id: id ?? this.id,
@@ -362,6 +373,8 @@ class Academia {
         sedes: sedes ?? this.sedes,
         horarios: horarios ?? this.horarios,
         preciosSede: preciosSede ?? this.preciosSede,
+        partidos: partidos ?? this.partidos,
+        categorias: categorias ?? this.categorias,
       );
 
   Map<String, dynamic> toJson() => {
@@ -389,6 +402,8 @@ class Academia {
         'sedes': sedes.map((s) => s.toJson()).toList(),
         'horarios': horarios,
         'preciosSede': preciosSede,
+        'partidos': partidos.map((p) => p.toJson()).toList(),
+        'categorias': categorias,
       };
 
   factory Academia.fromJson(Map<String, dynamic> j) => Academia(
@@ -432,6 +447,155 @@ class Academia {
         preciosSede: (j['preciosSede'] as Map?)?.map(
                 (k, v) => MapEntry(k.toString(), (v as num).toDouble())) ??
             const {},
+        partidos: (j['partidos'] as List?)
+                ?.map((e) =>
+                    PartidoRanking.fromJson(e as Map<String, dynamic>))
+                .toList() ??
+            const [],
+        categorias: (j['categorias'] as Map?)
+                ?.map((k, v) => MapEntry(k.toString(), v.toString())) ??
+            const {},
+      );
+
+  // ── Circuito / Ranking interno (Fase 0) ─────────────────────────────────────
+  /// Puntos por VICTORIA y por DERROTA (jugar suma; ganar suma más). Ajustables.
+  static const int puntosVictoria = 3;
+  static const int puntosDerrota = 1;
+
+  /// Categoría de ranking de un alumno ('' si no se fijó).
+  String categoriaDe(String alumnoId) => categorias[alumnoId] ?? '';
+
+  /// Tabla de posiciones del ranking interno. Incluye a TODOS los alumnos dados
+  /// en [alumnosAcademia] (los que no jugaron quedan al fondo con 0). Filtra por
+  /// [sedeId] y/o [categoria] si se indican. Orden: puntos → % victorias → PG.
+  List<PosicionRanking> ranking(List<Alumno> alumnosAcademia,
+      {String? sedeId, String? categoria}) {
+    final stats = <String, PosicionRanking>{};
+    for (final a in alumnosAcademia) {
+      if (categoria != null &&
+          categoria.isNotEmpty &&
+          categoriaDe(a.id) != categoria) {
+        continue;
+      }
+      stats[a.id] = PosicionRanking(
+        alumnoId: a.id,
+        nombre: a.nombre,
+        fotoUrl: a.fotoUrl,
+        categoria: categoriaDe(a.id),
+      );
+    }
+    for (final p in partidos) {
+      if (sedeId != null && sedeId.isNotEmpty && p.sedeId != sedeId) continue;
+      for (final jid in [p.jugadorAId, p.jugadorBId]) {
+        final s = stats[jid];
+        if (s == null) continue;
+        final gano = p.ganadorId == jid;
+        stats[jid] = s.conResultado(gano);
+      }
+    }
+    final lista = stats.values.toList()
+      ..sort((a, b) {
+        if (b.puntos != a.puntos) return b.puntos.compareTo(a.puntos);
+        if (b.pct != a.pct) return b.pct.compareTo(a.pct);
+        return b.pg.compareTo(a.pg);
+      });
+    return lista;
+  }
+
+  /// Partidos de un alumno (para su carnet), más recientes primero.
+  List<PartidoRanking> partidosDe(String alumnoId) =>
+      (partidos.where((p) => p.jugadorAId == alumnoId || p.jugadorBId == alumnoId)
+              .toList()
+        ..sort((a, b) => b.fecha.compareTo(a.fecha)));
+}
+
+/// Un PARTIDO del ranking interno de la academia (Fase 0 del Circuito): dos
+/// alumnos se enfrentan; el ganador suma más puntos. Alimenta la tabla de
+/// posiciones. Se embebe en la academia (no requiere tabla nueva en Supabase).
+class PartidoRanking {
+  final String id;
+  final DateTime fecha;
+  final String jugadorAId;
+  final String jugadorANombre; // denormalizado para mostrar sin cruzar tablas
+  final String jugadorBId;
+  final String jugadorBNombre;
+  final String marcador; // texto libre, ej. "6-3 6-4"
+  final String ganadorId; // == jugadorAId o jugadorBId
+  final String sedeId; // opcional (academias multi-sede)
+
+  const PartidoRanking({
+    required this.id,
+    required this.fecha,
+    required this.jugadorAId,
+    required this.jugadorANombre,
+    required this.jugadorBId,
+    required this.jugadorBNombre,
+    required this.ganadorId,
+    this.marcador = '',
+    this.sedeId = '',
+  });
+
+  String get perdedorId => ganadorId == jugadorAId ? jugadorBId : jugadorAId;
+  String nombreDe(String id) =>
+      id == jugadorAId ? jugadorANombre : jugadorBNombre;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'fecha': fecha.toIso8601String(),
+        'jugadorAId': jugadorAId,
+        'jugadorANombre': jugadorANombre,
+        'jugadorBId': jugadorBId,
+        'jugadorBNombre': jugadorBNombre,
+        'marcador': marcador,
+        'ganadorId': ganadorId,
+        'sedeId': sedeId,
+      };
+
+  factory PartidoRanking.fromJson(Map<String, dynamic> j) => PartidoRanking(
+        id: (j['id'] ?? '') as String,
+        fecha: DateTime.tryParse((j['fecha'] ?? '') as String) ?? DateTime.now(),
+        jugadorAId: (j['jugadorAId'] ?? '') as String,
+        jugadorANombre: (j['jugadorANombre'] ?? '') as String,
+        jugadorBId: (j['jugadorBId'] ?? '') as String,
+        jugadorBNombre: (j['jugadorBNombre'] ?? '') as String,
+        marcador: (j['marcador'] ?? '') as String,
+        ganadorId: (j['ganadorId'] ?? '') as String,
+        sedeId: (j['sedeId'] ?? '') as String,
+      );
+}
+
+/// Una fila de la tabla de posiciones (computada, no se persiste).
+class PosicionRanking {
+  final String alumnoId;
+  final String nombre;
+  final String? fotoUrl;
+  final String categoria;
+  final int pj; // partidos jugados
+  final int pg; // partidos ganados
+  final int pp; // partidos perdidos
+
+  const PosicionRanking({
+    required this.alumnoId,
+    required this.nombre,
+    this.fotoUrl,
+    this.categoria = '',
+    this.pj = 0,
+    this.pg = 0,
+    this.pp = 0,
+  });
+
+  int get puntos =>
+      pg * Academia.puntosVictoria + pp * Academia.puntosDerrota;
+  double get pct => pj == 0 ? 0 : pg / pj * 100;
+
+  PosicionRanking conResultado(bool gano) => PosicionRanking(
+        alumnoId: alumnoId,
+        nombre: nombre,
+        fotoUrl: fotoUrl,
+        categoria: categoria,
+        pj: pj + 1,
+        pg: pg + (gano ? 1 : 0),
+        pp: pp + (gano ? 0 : 1),
       );
 }
 

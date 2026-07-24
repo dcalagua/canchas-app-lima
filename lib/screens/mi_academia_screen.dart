@@ -12,6 +12,7 @@ import 'asistencia_screen.dart';
 import 'campeonatos_screen.dart';
 import 'chats_academia_screen.dart';
 import 'crear_academia_screen.dart';
+import 'ranking_academia_screen.dart';
 import 'recargar_saldo_screen.dart';
 import 'reporte_academia_screen.dart';
 import 'servicios_screen.dart';
@@ -61,6 +62,7 @@ class MiAcademiaScreen extends StatelessWidget {
               _Header(academia: ac),
               _CodigoCard(academia: ac),
               _DestacarCard(academia: ac),
+              _AccesoRanking(academiaId: ac.id),
               Padding(
                 padding: const EdgeInsets.fromLTRB(18, 16, 18, 8),
                 child: Row(
@@ -556,6 +558,65 @@ class _CargandoAcademia extends StatelessWidget {
           Text('Cargando tu academia…',
               style: TextStyle(color: textoTenue, fontWeight: FontWeight.w600)),
         ],
+      ),
+    );
+  }
+}
+
+/// Acceso al RANKING interno del circuito (Fase 0). El profe entra a ver la
+/// tabla y registrar resultados; los alumnos ven su carnet y compiten.
+class _AccesoRanking extends StatelessWidget {
+  const _AccesoRanking({required this.academiaId});
+  final String academiaId;
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
+      child: Material(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => RankingAcademiaScreen(
+                  academiaId: academiaId, esDueno: true))),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: trazo),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: limaSuave,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.leaderboard, color: bosque),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Ranking del circuito',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w800, fontSize: 15)),
+                      SizedBox(height: 2),
+                      Text('Registra resultados y arma la tabla de tus alumnos.',
+                          style: TextStyle(color: textoTenue, fontSize: 12.5)),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right, color: textoTenue),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
