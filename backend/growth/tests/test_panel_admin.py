@@ -338,6 +338,42 @@ def test_circuito_salud_directorio_y_lideres(client):
     assert out["lideres_retos"][0]["ganados"] == 1
 
 
+def test_limite_retos_editable_desde_torre(client):
+    h = {"X-Admin-Token": TOKEN}
+    # Bajar el tope gratis a 1 desde la torre.
+    r = client.post("/admin/api/circuito/limite-retos",
+                    json={"limite": 1}, headers=h).json()
+    assert r["ok"] is True and r["limite"] == 1
+    assert client.get("/admin/api/circuito", headers=h).json()["limite_retos_free"] == 1
+    # Mínimo 1 (un 0 se sube a 1).
+    r0 = client.post("/admin/api/circuito/limite-retos",
+                     json={"limite": 0}, headers=h).json()
+    assert r0["limite"] == 1
+    # Efecto real: con tope 1, el 2º reto de un no-Pro corta.
+    base = {"retador_email": "ana@x.com", "retado_email": "luis@x.com",
+            "deporte": "tenis"}
+    assert client.post("/retos/crear", json=base).json()["ok"] is True
+    assert client.post("/retos/crear", json=base).json()["error"] == "limite_retos_free"
+
+
+def test_ranking_snapshot_del_app_se_ve_en_la_torre(client):
+    h = {"X-Admin-Token": TOKEN}
+    # Sin snapshot: vacío.
+    assert client.get("/admin/api/ranking", headers=h).json()["deportes"] == []
+    # El APK empuja el ranking cruzado.
+    snap = {"por": "ana@x.com", "deportes": [{
+        "deporte": "tenis", "temporada": "2026-T3",
+        "top": [{"nombre": "Ana", "puntos": 9, "pg": 3, "pp": 0,
+                 "academia": "Club X", "pro": True}],
+        "campeon": {"nombre": "Ana", "puntos": 9}}]}
+    r = client.post("/circuito/ranking-snapshot", json=snap).json()
+    assert r["ok"] is True and r["deportes"] == 1
+    out = client.get("/admin/api/ranking", headers=h).json()
+    assert out["deportes"][0]["deporte"] == "tenis"
+    assert out["deportes"][0]["top"][0]["nombre"] == "Ana"
+    assert out["actualizado"]
+
+
 def test_margenes_unifica_matriculas_reservas_y_banco(client):
     """La torre de control ve el margen total de Pichangol: comisiones (matrículas
     + reservas) menos el costo del banco sobre lo procesado por tarjeta

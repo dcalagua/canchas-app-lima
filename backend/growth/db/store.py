@@ -64,6 +64,9 @@ CONFIG_DEFAULT: dict[str, str] = {
     "pro_precio_soles": "12",
     "pro_precio_soles_ec": "",
     "pro_precio_soles_bo": "",
+    # Retos que un jugador SIN Pichangol Pro puede enviar por semana (Pro =
+    # ilimitado). Editable desde la torre de control.
+    "retos_free_limite_semana": "3",
     "puntos_traer_cancha": "500",
     "puntos_invitar_jugador": "100",
     "puntos_pedir_cancha": "50",
@@ -379,6 +382,10 @@ class Stores:
         # aún no hayan jugado). Resuelve el arranque en frío del ranking.
         # email -> {nombre, deporte, zona, categoria, actualizado}.
         self.jugadores_circuito: dict[str, dict] = {}
+        # RANKING GLOBAL (vista para la torre): el ranking cruzado se computa en
+        # el APK (las academias viven en Supabase), así que el app EMPUJA un
+        # snapshot {deportes:[...], actualizado, por} que la torre solo lee.
+        self.ranking_snapshot: dict = {}
         # PAGOS (Culqi): saldo prepago por dueño (céntimos) + libro de pagos.
         self.saldos: dict[str, int] = {}          # dueno_id -> céntimos
         self.pagos: list[PagoRegistro] = []
@@ -580,6 +587,7 @@ class Stores:
         self.vistas = {}
         self.membresias_pro = {}
         self.jugadores_circuito = {}
+        self.ranking_snapshot = {}
         # Se conservan: reclamos (propiedad), config/incentivos/modo del operador.
         return conteo
 
@@ -744,6 +752,7 @@ class Stores:
                 k: dict(v) for k, v in self.membresias_pro.items()},
             "jugadores_circuito": {
                 k: dict(v) for k, v in self.jugadores_circuito.items()},
+            "ranking_snapshot": dict(self.ranking_snapshot),
         }
 
     def load_state(self, data: dict) -> None:
@@ -803,6 +812,7 @@ class Stores:
         self.jugadores_circuito = {
             k: dict(v) for k, v in (data.get("jugadores_circuito") or {}).items()
         }
+        self.ranking_snapshot = dict(data.get("ranking_snapshot") or {})
 
     # --- normalización a TABLAS SQL (fase 1: saldos/pagos/vistas/reclamos) ----
     # Estas colecciones (plata + impacto + reclamos) migran a tablas propias en

@@ -71,6 +71,19 @@ class CircuitoService {
     }
   }
 
+  /// Empuja a la torre el ranking global cruzado (que el APK computa con las
+  /// academias de Supabase). Best-effort: no bloquea nada.
+  static Future<void> publicarRanking(
+      {required List<Map<String, dynamic>> deportes, String por = ''}) async {
+    if (!disponible || deportes.isEmpty) return;
+    try {
+      await http.post(Uri.parse('$_baseUrl/circuito/ranking-snapshot'),
+          headers: _headers(json: true),
+          body: jsonEncode({'deportes': deportes, 'por': por}))
+          .timeout(const Duration(seconds: 12));
+    } catch (_) {}
+  }
+
   /// Directorio de jugadores disponibles para retar. Filtra por deporte/zona.
   static Future<List<Map<String, dynamic>>> jugadores(
       {String? deporte, String? zona}) async {

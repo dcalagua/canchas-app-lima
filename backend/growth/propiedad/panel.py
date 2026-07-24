@@ -400,7 +400,8 @@ def get_circuito_admin(x_admin_token: str | None = Header(default=None)) -> dict
         key=lambda x: (-x["ganados"], -x["jugados"]))[:5]
 
     try:
-        from retos.router import RETOS_FREE_LIMITE_SEMANA as _lim
+        from retos.router import _limite_free
+        _lim = _limite_free()
     except Exception:
         _lim = 3
 
@@ -417,6 +418,30 @@ def get_circuito_admin(x_admin_token: str | None = Header(default=None)) -> dict
         "lideres_retos": lideres,
         "limite_retos_free": _lim,
     }
+
+
+class LimiteRetosReq(BaseModel):
+    limite: int
+
+
+@router.post("/admin/api/circuito/limite-retos")
+def set_limite_retos_admin(
+        req: LimiteRetosReq,
+        x_admin_token: str | None = Header(default=None)) -> dict:
+    """Fija cuántos retos por semana puede enviar un jugador SIN Pichangol Pro
+    (Pro = ilimitado). Mínimo 1."""
+    _check(x_admin_token)
+    limite = max(1, int(req.limite))
+    stores.config["retos_free_limite_semana"] = str(limite)
+    return {"ok": True, "limite": limite}
+
+
+@router.get("/admin/api/ranking")
+def get_ranking_admin(x_admin_token: str | None = Header(default=None)) -> dict:
+    """Snapshot del ranking global cruzado que empuja el APK (las academias viven
+    en Supabase, no en el growth). La torre solo lo muestra."""
+    _check(x_admin_token)
+    return stores.ranking_snapshot or {"deportes": [], "actualizado": None}
 
 
 @router.get("/admin/api/comision")
@@ -780,6 +805,7 @@ _HTML = r"""<!DOCTYPE html>
         <div id="margenes"></div>
         <div id="marketing"></div>
         <div id="circuitoPanel"></div>
+        <div id="rankingPanel"></div>
         <div id="proPanel"></div>
       </div>
     </section>
@@ -864,6 +890,7 @@ function mostrarApp(){
   cargarComision();
   cargarMargenes();
   cargarCircuito();
+  cargarRanking();
   cargarPro();
   renderMantenimiento();
   cargarLiquidaciones();
@@ -1142,7 +1169,13 @@ async function cargarCircuito(){
       </div>
       <div class="card"><div class="top"><h3>⚡ Salud del circuito</h3></div>
         <div class="row">Actividad de la comunidad (retos + jugadores disponibles).
-          El límite gratis es ${j.limite_retos_free||3} retos/semana; Pro es ilimitado.</div>
+          Pro es ilimitado; el tope gratis es editable:</div>
+        <div class="actions" style="align-items:center;gap:8px;margin-top:6px">
+          <span style="font-size:12px;font-weight:600">Retos gratis / semana</span>
+          <input id="limiteRetos" value="${j.limite_retos_free||3}" inputmode="numeric"
+            style="width:60px;padding:8px;border:1px solid var(--border);border-radius:8px;text-align:right">
+          <button class="btn-ap" onclick="guardarLimiteRetos()">✓</button>
+        </div>
         <div style="display:flex;gap:20px;margin:12px 0 4px;flex-wrap:wrap">
           ${mini(dir.total, 'Disponibles')}
           ${mini(ret.total, 'Retos')}
@@ -1158,6 +1191,59 @@ async function cargarCircuito(){
       </div>`;
   }catch(e){ document.getElementById('circuitoPanel').innerHTML =
       '<div class="card">No se pudo cargar el circuito.</div>'; }
+}
+async function guardarLimiteRetos(){
+  const v = parseInt(document.getElementById('limiteRetos').value||'3',10);
+  if(!(v>=1)){ toast('Mínimo 1'); return; }
+  const r = await fetch('/admin/api/circuito/limite-retos',{method:'POST',headers:headers(),
+    body:JSON.stringify({limite:v})});
+  if(r.status===401){ salir(); return; }
+  if(r.ok){ await cargarCircuito(); toast('Límite de retos actualizado'); }
+  else toast('No se pudo guardar');
+}
+
+// --- Ranking global cruzado (snapshot que empuja el APK) --------------------
+async function cargarRanking(){
+  try{
+    const r = await fetch('/admin/api/ranking',{headers:headers()});
+    if(r.status===401){ salir(); return; }
+    const j = await r.json();
+    const deportes = j.deportes || [];
+    let fresco = '—';
+    try{ if(j.actualizado) fresco = new Date(j.actualizado).toLocaleString(); }catch(e){}
+    let cuerpo;
+    if(!deportes.length){
+      cuerpo = `<div class="row" style="color:var(--muted)">Aún no llega el ranking.
+        Se llena cuando alguien abre el Ranking Global en el app.</div>`;
+    } else {
+      cuerpo = deportes.map(d=>{
+        const camp = d.campeon
+          ? `<div class="row" style="color:#14463A">👑 Campeón ${esc(d.temporada||'')}: <b>${esc(d.campeon.nombre)}</b> · ${d.campeon.puntos} pts</div>`
+          : '';
+        const filas = (d.top||[]).map((p,i)=>{
+          const m = ['🥇','🥈','🥉'][i] || (i+1);
+          const pro = p.pro ? ' <span style="background:#14463A;color:#fff;border-radius:4px;padding:0 4px;font-size:9px;font-weight:800">PRO</span>' : '';
+          return `<tr><td style="padding:3px 6px">${m}</td>`+
+                 `<td style="padding:3px 6px">${esc(p.nombre)}${pro}</td>`+
+                 `<td style="padding:3px 6px;color:var(--muted);font-size:12px">${esc(p.academia||'')}</td>`+
+                 `<td style="padding:3px 6px;text-align:right"><b>${p.puntos}</b> · ${p.pg||0}G-${p.pp||0}P</td></tr>`;
+        }).join('');
+        return `<div style="margin-top:12px">
+          <div style="font-weight:800;color:#14463A">${esc((d.deporte||'').toUpperCase())}</div>
+          ${camp}
+          <table style="width:100%;border-collapse:collapse;font-size:13px"><tbody>${filas}</tbody></table>
+        </div>`;
+      }).join('');
+    }
+    document.getElementById('rankingPanel').innerHTML =
+      `<div class="card"><div class="top"><h3>📊 Ranking global (vista del app)</h3></div>
+        <div class="row">El ranking cruzado se calcula en el app (las academias viven
+          en Supabase). Esta es la última foto que envió un dispositivo.</div>
+        ${cuerpo}
+        <div class="row" style="margin-top:10px;color:var(--muted);font-size:12px">Actualizado: ${fresco}</div>
+      </div>`;
+  }catch(e){ document.getElementById('rankingPanel').innerHTML =
+      '<div class="card">No se pudo cargar el ranking.</div>'; }
 }
 
 // --- Pichangol Pro (membresía del jugador): precios por país + miembros + MRR -

@@ -322,6 +322,44 @@ class AppState extends ChangeNotifier {
     return true;
   }
 
+  /// Empuja a la torre de control el ranking global cruzado (top por deporte +
+  /// campeón de la temporada anterior + temporada actual). Como el ranking se
+  /// computa en el APK (academias de Supabase), la torre no lo puede calcular:
+  /// se lo enviamos cuando alguien abre el Ranking Global. Best-effort.
+  Future<void> publicarRankingSnapshot() async {
+    final deportes = deportesConRanking;
+    if (deportes.isEmpty) return;
+    final ahora = DateTime.now();
+    final tempActual = Temporada.de(ahora);
+    final tempAnterior = tempActual.anterior;
+    final out = <Map<String, dynamic>>[];
+    for (final d in deportes) {
+      final tabla = rankingGlobal(deporte: d).take(8).toList();
+      if (tabla.isEmpty) continue;
+      final campeon = campeonGlobal(deporte: d, temporada: tempAnterior);
+      out.add({
+        'deporte': d.name,
+        'temporada': tempActual.id,
+        'top': [
+          for (final f in tabla)
+            {
+              'nombre': f.nombre,
+              'puntos': f.puntos,
+              'pg': f.pg,
+              'pp': f.pp,
+              'academia': f.academiaNombre,
+              'pro': esProEmail(f.emailIdentidad),
+            }
+        ],
+        'campeon': campeon == null
+            ? null
+            : {'nombre': campeon.nombre, 'puntos': campeon.puntos},
+      });
+    }
+    await CircuitoService.publicarRanking(
+        deportes: out, por: (usuario?.email ?? '').toLowerCase());
+  }
+
   /// Me retiro del directorio de disponibles.
   Future<bool> salirCircuito() async {
     final email = usuario?.email ?? '';

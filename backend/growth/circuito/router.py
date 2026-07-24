@@ -71,6 +71,25 @@ def perfil(email: str) -> dict:
     return {"jugador": _perfil(email)}
 
 
+class RankingSnapshotReq(BaseModel):
+    # deportes: [{deporte, temporada, top:[{nombre,puntos,pg,pp,academia,pro}],
+    #            campeon:{nombre,puntos}|null}]
+    deportes: list[dict] = []
+    por: str = ""  # correo de quien lo envió (informativo)
+
+
+@router.post("/ranking-snapshot", dependencies=_APP)
+def ranking_snapshot(req: RankingSnapshotReq) -> dict:
+    """El APK EMPUJA el ranking global cruzado (que computa con las academias de
+    Supabase) para que la torre lo pueda mostrar. Guarda el último snapshot."""
+    stores.ranking_snapshot = {
+        "deportes": req.deportes,
+        "por": req.por.strip().lower(),
+        "actualizado": ahora().isoformat(),
+    }
+    return {"ok": True, "deportes": len(req.deportes)}
+
+
 @router.get("/jugadores", dependencies=_APP)
 def jugadores(deporte: str | None = None, zona: str | None = None) -> dict:
     """Directorio de jugadores disponibles para retar. Filtra por deporte/zona.

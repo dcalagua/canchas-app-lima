@@ -26,10 +26,13 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
   @override
   void initState() {
     super.initState();
-    appState.cargarAcademiasRemotas(); // asegura tener todas las academias
-    appState.cargarRetosResultados(); // retos jugados → se pliegan al ranking
     appState.cargarMiembrosPro(); // insignia PRO en la tabla
     appState.cargarMiPerfilCircuito(); // ¿ya me uní al circuito?
+    // Cuando tenga los datos, empuja el ranking a la torre de control.
+    Future.wait([
+      appState.cargarAcademiasRemotas(), // todas las academias
+      appState.cargarRetosResultados(), // retos jugados → ranking
+    ]).then((_) => appState.publicarRankingSnapshot());
   }
 
   void _abrirDisponibles() => Navigator.of(context).push(MaterialPageRoute(

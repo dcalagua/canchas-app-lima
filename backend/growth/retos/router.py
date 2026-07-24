@@ -16,8 +16,14 @@ from db.store import Reto, ahora, stores
 router = APIRouter(prefix="/retos", tags=["retos"])
 
 # Retos que un jugador SIN Pichangol Pro puede ENVIAR por semana (rolling 7 días).
-# Pro = ilimitado. Es el perk funcional que justifica la membresía.
+# Pro = ilimitado. Es el perk funcional que justifica la membresía. Este es el
+# valor por defecto; el efectivo se lee de la config (editable en la torre).
 RETOS_FREE_LIMITE_SEMANA = 3
+
+
+def _limite_free() -> int:
+    n = stores.cfg_int("retos_free_limite_semana")
+    return n if n > 0 else RETOS_FREE_LIMITE_SEMANA
 
 
 def _require_app_key(x_app_key: str | None = Header(default=None)) -> None:
@@ -69,12 +75,12 @@ def crear_reto(req: CrearRetoReq) -> dict:
         return {"ok": False, "error": "no_puedes_retarte"}
     # Perk Pro: los no-Pro tienen tope semanal de retos enviados.
     if not stores.pro_activo(retador):
+        limite = _limite_free()
         hace_semana = ahora() - timedelta(days=7)
         enviados = sum(1 for x in stores.retos
                        if x.retador_email == retador and x.creado_en >= hace_semana)
-        if enviados >= RETOS_FREE_LIMITE_SEMANA:
-            return {"ok": False, "error": "limite_retos_free",
-                    "limite": RETOS_FREE_LIMITE_SEMANA}
+        if enviados >= limite:
+            return {"ok": False, "error": "limite_retos_free", "limite": limite}
     r = Reto(
         id=stores.next_id("reto"),
         retador_email=retador, retador_nombre=req.retador_nombre.strip(),
