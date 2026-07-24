@@ -18,6 +18,7 @@ import 'buscar_direccion_screen.dart';
 import 'club_detalle_screen.dart';
 import 'login_google_sheet.dart';
 import 'home_shell.dart';
+import 'ranking_global_screen.dart';
 
 /// Pantalla de inicio estilo Airbnb: LISTA de canchas/locales (sin mapa) con
 /// barra de búsqueda flotante y filtros por deporte. La ubicación se usa para
@@ -379,6 +380,10 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                   final nCanchas =
                       clubs.fold<int>(0, (a, c) => a + c.canchas.length);
                   final hijos = <Widget>[
+                    _CircuitoBannerExplorar(
+                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => const RankingGlobalScreen())),
+                    ),
                     Row(
                       children: [
                         Expanded(
@@ -739,6 +744,45 @@ class _SinUbicacion extends StatelessWidget {
               label: const Text('Usar mi ubicación'),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Banner SLIM del Circuito Pichangol en Explorar: puente discreto al ranking y
+/// los retos desde la home (descubrimiento). Estilo Airbnb (tinte lima suave).
+class _CircuitoBannerExplorar extends StatelessWidget {
+  const _CircuitoBannerExplorar({required this.onTap});
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Material(
+        color: limaSuave,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+            child: Row(
+              children: [
+                const Icon(Icons.emoji_events, color: bosque, size: 20),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text(
+                      'Circuito Pichangol · ranking de tu ciudad y retos',
+                      style: TextStyle(
+                          color: bosque,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13)),
+                ),
+                const Icon(Icons.chevron_right, color: bosque),
+              ],
+            ),
+          ),
         ),
       ),
     );
