@@ -287,6 +287,69 @@ def test_consolidar_reapunta_suscripciones_al_correo():
     assert stores.suscripciones["aca_1:landing"]["dueno_id"] == "d@x.com"
 
 
+def test_pro_config_y_estado_default():
+    cfg = client.get("/pagos/pro/config").json()
+    assert cfg["precio_soles"] == 12.0  # default
+    est = client.get("/pagos/pro/estado/nadie@x.com").json()
+    assert est["activa"] is False and est["hasta"] is None
+
+
+def test_pro_suscribir_falta_saldo():
+    r = client.post("/pagos/pro/suscribir",
+                    json={"email": "juan@x.com"}).json()
+    assert r["ok"] is False and r["falta_saldo"] is True
+    assert r["requerido_soles"] == 12.0
+
+
+def test_pro_suscribir_debita_saldo_y_activa():
+    # Recarga S/30 → suscribe Pro (S/12) → queda activo y saldo 18.
+    client.post("/pagos/recarga", json={
+        "token": "t", "dueno_id": "juan@x.com", "email": "juan@x.com",
+        "monto_soles": 30})
+    r = client.post("/pagos/pro/suscribir",
+                    json={"email": "juan@x.com"}).json()
+    assert r["ok"] is True
+    assert r["saldo_soles"] == 18.0
+    est = client.get("/pagos/pro/estado/juan@x.com").json()
+    assert est["activa"] is True and est["hasta"] is not None
+    # Se registró el cobro Pro en el libro.
+    assert any(p.tipo == "suscripcion_pro" for p in stores.pagos)
+
+
+def test_pro_suscribir_renueva_extiende_desde_vencimiento():
+    client.post("/pagos/recarga", json={
+        "token": "t", "dueno_id": "ana@x.com", "email": "ana@x.com",
+        "monto_soles": 30})
+    r1 = client.post("/pagos/pro/suscribir", json={"email": "ana@x.com"}).json()
+    r2 = client.post("/pagos/pro/suscribir", json={"email": "ana@x.com"}).json()
+    # La 2.ª renovación extiende MÁS allá de la 1.ª (no pierde días).
+    assert r2["hasta"] > r1["hasta"]
+    assert stores.saldo_centimos("ana@x.com") == 600  # 30 - 12 - 12 = 6
+
+
+def test_pro_renovar_vencidas_cobra_del_saldo():
+    h = {"X-Admin-Token": "adm_test"}
+    # Membresía vencida (hasta en el pasado) + saldo suficiente → renueva.
+    stores.membresias_pro["lu@x.com"] = {"hasta": "2020-01-01T00:00:00+00:00"}
+    client.post("/pagos/recarga", json={
+        "token": "t", "dueno_id": "lu@x.com", "email": "lu@x.com",
+        "monto_soles": 20})
+    out = client.post("/pagos/pro/renovar-vencidas", headers=h).json()
+    assert out["renovadas"] == 1
+    assert stores.saldo_centimos("lu@x.com") == 800  # 20 - 12
+    assert client.get("/pagos/pro/estado/lu@x.com").json()["activa"] is True
+    # Con token admin inválido, 401 (endpoint protegido).
+    assert client.post("/pagos/pro/renovar-vencidas",
+                       headers={"X-Admin-Token": "malo"}).status_code == 401
+
+
+def test_pro_renovar_vencidas_sin_saldo_no_renueva():
+    h = {"X-Admin-Token": "adm_test"}
+    stores.membresias_pro["po@x.com"] = {"hasta": "2020-01-01T00:00:00+00:00"}
+    out = client.post("/pagos/pro/renovar-vencidas", headers=h).json()
+    assert out["renovadas"] == 0 and out["sin_saldo"] == 1
+
+
 def test_webhook_es_idempotente(_setup):
     # Cargo directo en Culqi (como si el APK hubiera cobrado) sin pasar por el
     # endpoint, para que el webhook sea quien acredite.

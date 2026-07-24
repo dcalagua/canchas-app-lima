@@ -16,7 +16,7 @@ La llave secreta vive sólo en el backend. Los POST del APK exigen X-App-Key
 from __future__ import annotations
 
 import html as _html
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse
@@ -211,6 +211,119 @@ def post_consolidar(req: ConsolidarReq) -> dict:
     nuevo = stores.transferir_saldo(desde, hacia)
     return {"ok": True, "hacia_id": hacia,
             "saldo_centimos": nuevo, "saldo_soles": nuevo / 100.0}
+
+
+# ─────────────────────── PICHANGOL PRO (membresía jugador) ────────────────────
+# Membresía mensual del JUGADOR que se cobra de su BILLETERA ÚNICA (saldo del
+# email). Suscribir debita 1 mes y extiende la vigencia +30 días; el cron
+# `/pro/renovar-vencidas` renueva desde el saldo. Si no hay saldo, no renueva
+# (la membresía vence) y el APK lo manda a recargar.
+
+def _pro_precio_centimos() -> int:
+    try:
+        return max(0, int(round(float(stores.cfg("pro_precio_soles")) * 100)))
+    except (TypeError, ValueError):
+        return 1200
+
+
+def _pro_estado(email: str) -> tuple[bool, str | None]:
+    m = stores.membresias_pro.get(email.strip().lower())
+    if not m:
+        return (False, None)
+    hasta = m.get("hasta")
+    try:
+        dt = datetime.fromisoformat(hasta) if hasta else None
+    except (TypeError, ValueError):
+        dt = None
+    return (dt is not None and dt > datetime.now(timezone.utc), hasta)
+
+
+@router.get("/pro/config", dependencies=_APP)
+def get_pro_config() -> dict:
+    c = _pro_precio_centimos()
+    return {"precio_centimos": c, "precio_soles": c / 100.0}
+
+
+@router.get("/pro/estado/{email}", dependencies=_APP)
+def get_pro_estado(email: str) -> dict:
+    activa, hasta = _pro_estado(email)
+    c = _pro_precio_centimos()
+    return {"email": email, "activa": activa, "hasta": hasta,
+            "precio_centimos": c, "precio_soles": c / 100.0}
+
+
+class ProSuscribirReq(BaseModel):
+    email: str
+
+
+@router.post("/pro/suscribir", dependencies=_APP)
+def post_pro_suscribir(req: ProSuscribirReq) -> dict:
+    """Activa/renueva Pichangol Pro debitando 1 mes de la billetera única del
+    jugador (su saldo). Si no le alcanza, devuelve falta_saldo (el APK lo manda a
+    recargar). Extiende la vigencia +30 días desde hoy o desde el vencimiento
+    vigente (lo que sea mayor), para no perder días al renovar anticipado."""
+    email = req.email.strip().lower()
+    if not email:
+        return {"ok": False, "error": "email_requerido"}
+    precio = _pro_precio_centimos()
+    saldo = stores.saldo_centimos(email)
+    if saldo < precio:
+        return {"ok": False, "falta_saldo": True,
+                "requerido_centimos": precio, "requerido_soles": precio / 100.0,
+                "saldo_centimos": saldo}
+    stores.debitar(email, precio)
+    ahora_dt = datetime.now(timezone.utc)
+    base = ahora_dt
+    m = stores.membresias_pro.get(email) or {}
+    try:
+        cur = datetime.fromisoformat(m["hasta"]) if m.get("hasta") else None
+        if cur and cur > base:
+            base = cur
+    except (KeyError, TypeError, ValueError):
+        pass
+    hasta = (base + timedelta(days=30)).isoformat()
+    stores.membresias_pro[email] = {
+        "hasta": hasta, "ultimo_cobro": ahora_dt.isoformat()}
+    stores.registrar_pago(
+        tipo="suscripcion_pro", monto_centimos=precio, moneda="PEN",
+        estado="aprobado", dueno_id=email, concepto="Pichangol Pro (1 mes)")
+    nuevo = stores.saldo_centimos(email)
+    return {"ok": True, "hasta": hasta,
+            "saldo_centimos": nuevo, "saldo_soles": nuevo / 100.0}
+
+
+def procesar_renovaciones_pro() -> dict:
+    """Renueva las membresías Pro vencidas debitando de la billetera del jugador.
+    Sin saldo suficiente → no renueva (queda vencida). La usan el endpoint
+    `/pro/renovar-vencidas` y el cron interno."""
+    precio = _pro_precio_centimos()
+    ahora_dt = datetime.now(timezone.utc)
+    renovadas, sin_saldo = 0, 0
+    for email, m in list(stores.membresias_pro.items()):
+        try:
+            cur = datetime.fromisoformat(m.get("hasta")) if m.get("hasta") else None
+        except (TypeError, ValueError):
+            cur = None
+        if cur and cur > ahora_dt:
+            continue  # aún vigente
+        if stores.saldo_centimos(email) >= precio:
+            stores.debitar(email, precio)
+            m["hasta"] = (ahora_dt + timedelta(days=30)).isoformat()
+            m["ultimo_cobro"] = ahora_dt.isoformat()
+            stores.registrar_pago(
+                tipo="suscripcion_pro", monto_centimos=precio, moneda="PEN",
+                estado="aprobado", dueno_id=email,
+                concepto="Pichangol Pro (renovación)")
+            renovadas += 1
+        else:
+            sin_saldo += 1
+    return {"ok": True, "renovadas": renovadas, "sin_saldo": sin_saldo}
+
+
+@router.post("/pro/renovar-vencidas", dependencies=_ADMIN)
+def post_pro_renovar() -> dict:
+    """Cron/manual: renueva las membresías Pro vencidas (cobra del saldo)."""
+    return procesar_renovaciones_pro()
 
 
 @router.post("/comision-reserva", dependencies=_APP)

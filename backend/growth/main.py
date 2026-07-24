@@ -19,7 +19,8 @@ from db.store import seed_verificadores, stores
 from legal.router import router as legal_router
 from models import ConfigRequest, ConsentimientoRequest
 from marketing.router import router as marketing_router
-from pagos.router import procesar_renovaciones, procesar_renovaciones_alumnos
+from pagos.router import (procesar_renovaciones, procesar_renovaciones_alumnos,
+                          procesar_renovaciones_pro)
 from pagos.router import router as pagos_router
 from propiedad.panel import router as panel_router
 from propiedad.router import _require_admin
@@ -99,9 +100,11 @@ async def _iniciar_cron_renovaciones() -> None:
             try:
                 r = procesar_renovaciones()
                 ra = procesar_renovaciones_alumnos()  # mensualidades mes a mes
+                rp = procesar_renovaciones_pro()  # membresías Pichangol Pro
                 cambio = (r.get("cobradas") or r.get("por_tarjeta")
                           or r.get("pendientes")
-                          or ra.get("cobradas") or ra.get("pendientes"))
+                          or ra.get("cobradas") or ra.get("pendientes")
+                          or rp.get("renovadas"))
                 if cambio and pg.habilitado:
                     pg.guardar(stores.to_state())
             except Exception:  # noqa: BLE001

@@ -58,6 +58,9 @@ CONFIG_DEFAULT: dict[str, str] = {
     # Tope de generaciones de posts con IA por academia/mes (control de costo).
     # Editable desde la torre de control. 0 = sin tope.
     "marketing_posts_limite_mes": "30",
+    # PICHANGOL PRO: membresía mensual del JUGADOR (se debita de su billetera
+    # única/saldo). Precio en soles, editable desde la torre de control.
+    "pro_precio_soles": "12",
     "puntos_traer_cancha": "500",
     "puntos_invitar_jugador": "100",
     "puntos_pedir_cancha": "50",
@@ -387,6 +390,9 @@ class Stores:
         # Clave = alumno_id -> {alumno_id, academia_id, email, card_id, marca,
         # ultimos4, monto_centimos, pais, proximo_cobro, estado, concepto}.
         self.suscripciones_alumno: dict[str, dict] = {}
+        # PICHANGOL PRO: membresía mensual del jugador. email -> {hasta: iso,
+        # ultimo_cobro: iso}. Se debita de la billetera única (saldo del email).
+        self.membresias_pro: dict[str, dict] = {}
         self._idem: dict[tuple[str, str], dict] = {}
         self._ids: dict[str, int] = {}
 
@@ -514,6 +520,7 @@ class Stores:
             "metodos_pago": sum(len(v) for v in self.metodos.values()),
             "customers": len(self.customers),
             "vistas": len(self.vistas),
+            "membresias_pro": len(self.membresias_pro),
         }
         self.pagos = []
         self.saldos = {}
@@ -523,6 +530,7 @@ class Stores:
         self.metodos = {}
         self.customers = {}
         self.vistas = {}
+        self.membresias_pro = {}
         # Se conservan: reclamos (propiedad), config/incentivos/modo del operador.
         return conteo
 
@@ -682,6 +690,8 @@ class Stores:
             "metodo_suscripcion": {k: dict(v) for k, v in self.metodo_suscripcion.items()},
             "suscripciones_alumno": {
                 k: dict(v) for k, v in self.suscripciones_alumno.items()},
+            "membresias_pro": {
+                k: dict(v) for k, v in self.membresias_pro.items()},
         }
 
     def load_state(self, data: dict) -> None:
@@ -733,6 +743,9 @@ class Stores:
         }
         self.suscripciones_alumno = {
             k: dict(v) for k, v in (data.get("suscripciones_alumno") or {}).items()
+        }
+        self.membresias_pro = {
+            k: dict(v) for k, v in (data.get("membresias_pro") or {}).items()
         }
 
     # --- normalización a TABLAS SQL (fase 1: saldos/pagos/vistas/reclamos) ----
