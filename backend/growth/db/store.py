@@ -59,8 +59,11 @@ CONFIG_DEFAULT: dict[str, str] = {
     # Editable desde la torre de control. 0 = sin tope.
     "marketing_posts_limite_mes": "30",
     # PICHANGOL PRO: membresía mensual del JUGADOR (se debita de su billetera
-    # única/saldo). Precio en soles, editable desde la torre de control.
+    # única/saldo). Precio BASE (Perú) editable desde la torre de control, con
+    # override por país (vacío = usa el base). Rollout LATAM.
     "pro_precio_soles": "12",
+    "pro_precio_soles_ec": "",
+    "pro_precio_soles_bo": "",
     "puntos_traer_cancha": "500",
     "puntos_invitar_jugador": "100",
     "puntos_pedir_cancha": "50",

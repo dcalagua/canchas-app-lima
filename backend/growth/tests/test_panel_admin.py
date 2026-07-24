@@ -275,18 +275,41 @@ def test_pro_admin_lista_miembros_precio_y_mrr(client):
     stores.membresias_pro["a@x.com"] = {"hasta": "2999-01-01T00:00:00+00:00"}
     stores.membresias_pro["b@x.com"] = {"hasta": "2020-01-01T00:00:00+00:00"}
     out = client.get("/admin/api/pro", headers=h).json()
-    assert out["precio_soles"] == 12.0
+    assert out["precios"]["pe"] == 12.0
     assert out["activos"] == 1 and out["total"] == 2
     assert out["mrr_soles"] == 12.0
-    # Cambiar el precio.
-    r = client.post("/admin/api/pro/precio", json={"precio_soles": 15},
-                    headers=h).json()
-    assert r["ok"] and r["precio_soles"] == 15.0
+    # Cambiar el precio de Perú.
+    r = client.post("/admin/api/pro/precio", json={"precio_soles": 15,
+                    "pais": "pe"}, headers=h).json()
+    assert r["ok"] and r["precios"]["pe"] == 15.0
     out2 = client.get("/admin/api/pro", headers=h).json()
     assert out2["mrr_soles"] == 15.0
+    # Precio por país: Ecuador override.
+    client.post("/admin/api/pro/precio", json={"precio_soles": 8, "pais": "ec"},
+                headers=h)
+    assert client.get("/admin/api/pro", headers=h).json()["precios"]["ec"] == 8.0
     # Protegido por token.
     assert client.get("/admin/api/pro",
                       headers={"X-Admin-Token": "malo"}).status_code == 401
+
+
+def test_circuito_ingresos_pro_y_torneos(client):
+    h = {"X-Admin-Token": TOKEN}
+    # 2 membresías Pro (S/12 c/u) + 1 ingreso de torneo (bruto 20, comisión 2).
+    stores.registrar_pago(tipo="suscripcion_pro", monto_centimos=1200,
+                          moneda="PEN", estado="aprobado", dueno_id="a@x.com")
+    stores.registrar_pago(tipo="suscripcion_pro", monto_centimos=1200,
+                          moneda="PEN", estado="aprobado", dueno_id="b@x.com")
+    stores.registrar_pago(tipo="inscripcion_torneo_ingreso", monto_centimos=2000,
+                          moneda="PEN", estado="aprobado", dueno_id="profe@x.com",
+                          comision_centimos=200)
+    out = client.get("/admin/api/circuito", headers=h).json()
+    assert out["pro"]["cobros"] == 2 and out["pro"]["total_soles"] == 24.0
+    assert out["torneos"]["inscripciones"] == 1
+    assert out["torneos"]["comision_soles"] == 2.0
+    assert out["torneos"]["bruto_soles"] == 20.0
+    # Ingreso Pichangol = Pro total + comisión torneos = 24 + 2 = 26.
+    assert out["ingreso_circuito_soles"] == 26.0
 
 
 def test_margenes_unifica_matriculas_reservas_y_banco(client):

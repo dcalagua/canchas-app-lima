@@ -219,9 +219,19 @@ def post_consolidar(req: ConsolidarReq) -> dict:
 # `/pro/renovar-vencidas` renueva desde el saldo. Si no hay saldo, no renueva
 # (la membresía vence) y el APK lo manda a recargar.
 
-def _pro_precio_centimos() -> int:
+def _pro_precio_centimos(pais: str = "PE") -> int:
+    """Precio Pro en céntimos según el país: override por país (EC/BO) o el base
+    (Perú) si el override está vacío."""
+    iso = (pais or "PE").upper()
+    val = ""
+    if iso == "EC":
+        val = stores.cfg("pro_precio_soles_ec")
+    elif iso == "BO":
+        val = stores.cfg("pro_precio_soles_bo")
+    if not val:
+        val = stores.cfg("pro_precio_soles")
     try:
-        return max(0, int(round(float(stores.cfg("pro_precio_soles")) * 100)))
+        return max(0, int(round(float(val) * 100)))
     except (TypeError, ValueError):
         return 1200
 
@@ -239,21 +249,22 @@ def _pro_estado(email: str) -> tuple[bool, str | None]:
 
 
 @router.get("/pro/config", dependencies=_APP)
-def get_pro_config() -> dict:
-    c = _pro_precio_centimos()
-    return {"precio_centimos": c, "precio_soles": c / 100.0}
+def get_pro_config(pais: str = "PE") -> dict:
+    c = _pro_precio_centimos(pais)
+    return {"pais": pais, "precio_centimos": c, "precio_soles": c / 100.0}
 
 
 @router.get("/pro/estado/{email}", dependencies=_APP)
-def get_pro_estado(email: str) -> dict:
+def get_pro_estado(email: str, pais: str = "PE") -> dict:
     activa, hasta = _pro_estado(email)
-    c = _pro_precio_centimos()
+    c = _pro_precio_centimos(pais)
     return {"email": email, "activa": activa, "hasta": hasta,
             "precio_centimos": c, "precio_soles": c / 100.0}
 
 
 class ProSuscribirReq(BaseModel):
     email: str
+    pais: str = "PE"
 
 
 @router.post("/pro/suscribir", dependencies=_APP)
@@ -265,7 +276,8 @@ def post_pro_suscribir(req: ProSuscribirReq) -> dict:
     email = req.email.strip().lower()
     if not email:
         return {"ok": False, "error": "email_requerido"}
-    precio = _pro_precio_centimos()
+    pais = (req.pais or "PE").upper()
+    precio = _pro_precio_centimos(pais)
     saldo = stores.saldo_centimos(email)
     if saldo < precio:
         return {"ok": False, "falta_saldo": True,
@@ -283,7 +295,7 @@ def post_pro_suscribir(req: ProSuscribirReq) -> dict:
         pass
     hasta = (base + timedelta(days=30)).isoformat()
     stores.membresias_pro[email] = {
-        "hasta": hasta, "ultimo_cobro": ahora_dt.isoformat()}
+        "hasta": hasta, "ultimo_cobro": ahora_dt.isoformat(), "pais": pais}
     stores.registrar_pago(
         tipo="suscripcion_pro", monto_centimos=precio, moneda="PEN",
         estado="aprobado", dueno_id=email, concepto="Pichangol Pro (1 mes)")
@@ -296,7 +308,6 @@ def procesar_renovaciones_pro() -> dict:
     """Renueva las membresías Pro vencidas debitando de la billetera del jugador.
     Sin saldo suficiente → no renueva (queda vencida). La usan el endpoint
     `/pro/renovar-vencidas` y el cron interno."""
-    precio = _pro_precio_centimos()
     ahora_dt = datetime.now(timezone.utc)
     renovadas, sin_saldo = 0, 0
     for email, m in list(stores.membresias_pro.items()):
@@ -306,6 +317,7 @@ def procesar_renovaciones_pro() -> dict:
             cur = None
         if cur and cur > ahora_dt:
             continue  # aún vigente
+        precio = _pro_precio_centimos(m.get("pais", "PE"))
         if stores.saldo_centimos(email) >= precio:
             stores.debitar(email, precio)
             m["hasta"] = (ahora_dt + timedelta(days=30)).isoformat()
