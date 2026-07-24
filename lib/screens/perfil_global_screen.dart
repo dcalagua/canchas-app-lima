@@ -10,6 +10,7 @@ import '../services/pagos_service.dart';
 import '../services/retos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'hazte_pro_screen.dart';
 import 'login_google_sheet.dart';
 
 /// PERFIL GLOBAL del jugador: su carnet CONSOLIDADO entre todas las academias
@@ -292,27 +293,62 @@ class _PerfilGlobalScreenState extends State<PerfilGlobalScreen> {
     if (!mounted) return;
     final u = appState.usuario;
     if (u == null) return;
-    final reto = await RetosService.crear(
+    final resp = await RetosService.crear(
       retadorEmail: u.email,
       retadorNombre: u.nombre,
       retadoEmail: _retadoEmail,
       retadoNombre: perfil.nombre,
       deporte: widget.deporte.name,
     );
-    if (reto != null) {
+    if (!mounted) return;
+    final ok = resp != null && resp['ok'] == true;
+    // Perk Pro: si un no-Pro llega al tope semanal, ofrecerle Pro.
+    if (resp != null && resp['error'] == 'limite_retos_free') {
+      _ofrecerPro(resp['limite']);
+      return;
+    }
+    if (ok) {
       AvisosService.retoRecibido(
           retadoEmail: _retadoEmail,
           retadorNombre: u.nombre,
           deporte: widget.deporte.name); // push al retado (best-effort)
     }
-    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      backgroundColor: reto != null ? bosque : null,
-      content: Text(reto != null
+      backgroundColor: ok ? bosque : null,
+      content: Text(ok
           ? 'Reto enviado a ${perfil.nombre}. Coordinen la cancha y reporten el '
               'resultado desde "Mis retos".'
           : 'No se pudo enviar el reto. Reintenta.'),
     ));
+  }
+
+  /// El no-Pro llegó al tope semanal de retos: le ofrecemos Pichangol Pro.
+  Future<void> _ofrecerPro(dynamic limite) async {
+    final n = (limite is num) ? limite.toInt() : 3;
+    final ir = await showDialog<bool>(
+      context: context,
+      builder: (dctx) => AlertDialog(
+        title: const Text('Llegaste a tu límite de retos'),
+        content: Text(
+            'Los jugadores sin Pichangol Pro pueden enviar $n retos por semana. '
+            'Hazte Pro y reta sin límites, además de tu carnet oficial y la '
+            'insignia PRO en el ranking.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dctx, false),
+              child: const Text('Ahora no')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: lima),
+            onPressed: () => Navigator.pop(dctx, true),
+            child: const Text('Hazte Pro'),
+          ),
+        ],
+      ),
+    );
+    if (ir == true && mounted) {
+      Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const HazteProScreen()));
+    }
   }
 
   Future<void> _compartir(PerfilGlobalJugador p) async {

@@ -262,6 +262,13 @@ def get_pro_estado(email: str, pais: str = "PE") -> dict:
             "precio_centimos": c, "precio_soles": c / 100.0}
 
 
+@router.get("/pro/miembros", dependencies=_APP)
+def get_pro_miembros() -> dict:
+    """Correos con Pichangol Pro vigente. El APK los usa para pintar la insignia
+    PRO en el ranking global (prueba social). Solo correos, sin datos sensibles."""
+    return {"emails": stores.pro_emails_activos()}
+
+
 class ProSuscribirReq(BaseModel):
     email: str
     pais: str = "PE"

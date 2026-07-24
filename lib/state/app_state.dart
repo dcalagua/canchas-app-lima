@@ -2725,6 +2725,22 @@ class AppState extends ChangeNotifier {
   String? proHasta; // ISO de vigencia (si activa)
   double proPrecio = 12; // precio mensual (se refresca del backend)
 
+  // Correos con Pichangol Pro vigente (para la insignia PRO en el ranking).
+  Set<String> _proEmails = {};
+
+  /// ¿Este correo tiene Pichangol Pro vigente? (para pintar la insignia PRO).
+  bool esProEmail(String? email) {
+    final e = (email ?? '').trim().toLowerCase();
+    return e.isNotEmpty && _proEmails.contains(e);
+  }
+
+  /// Trae del backend los correos Pro para pintar la insignia en el ranking.
+  Future<void> cargarMiembrosPro() async {
+    final l = await PagosService.proMiembros();
+    _proEmails = l.map((e) => e.toLowerCase()).toSet();
+    notifyListeners();
+  }
+
   /// Sincroniza el estado Pro del usuario con el backend (best-effort).
   Future<void> sincronizarPro() async {
     final email = usuario?.email;
@@ -2734,6 +2750,13 @@ class AppState extends ChangeNotifier {
     proActivo = est['activa'] == true;
     proHasta = est['hasta'] as String?;
     proPrecio = (est['precio_soles'] as num?)?.toDouble() ?? proPrecio;
+    // Mantén el set de Pro coherente con mi propio estado al instante.
+    final mail = email.trim().toLowerCase();
+    if (proActivo) {
+      _proEmails = {..._proEmails, mail};
+    } else {
+      _proEmails = _proEmails.where((e) => e != mail).toSet();
+    }
     notifyListeners();
   }
 

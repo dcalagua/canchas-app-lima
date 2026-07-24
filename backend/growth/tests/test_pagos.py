@@ -314,6 +314,9 @@ def test_pro_suscribir_debita_saldo_y_activa():
     assert est["activa"] is True and est["hasta"] is not None
     # Se registró el cobro Pro en el libro.
     assert any(p.tipo == "suscripcion_pro" for p in stores.pagos)
+    # Aparece en la lista de miembros Pro (para la insignia del ranking).
+    miembros = client.get("/pagos/pro/miembros").json()["emails"]
+    assert "juan@x.com" in miembros
 
 
 def test_pro_suscribir_renueva_extiende_desde_vencimiento():

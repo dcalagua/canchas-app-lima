@@ -683,6 +683,11 @@ class RankingGlobalFila {
     required this.pct,
     this.academias = 1,
   });
+
+  /// Correo de identidad de la fila (clave 'e:correo'), o '' si es un alumno
+  /// manual sin correo. Sirve para saber si es Pro / retarlo / abrir su perfil.
+  String get emailIdentidad =>
+      alumnoId.startsWith('e:') ? alumnoId.substring(2) : '';
 }
 
 /// El registro de un jugador en UNA academia (para su perfil global).

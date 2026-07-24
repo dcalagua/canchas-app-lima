@@ -45,6 +45,22 @@ def test_no_puedes_retarte_a_ti_mismo():
     assert r["ok"] is False and r["error"] == "no_puedes_retarte"
 
 
+def test_free_tiene_tope_semanal_pro_ilimitado():
+    from datetime import timedelta
+
+    from db.store import ahora
+    # Sin Pro: 3 retos pasan, el 4º corta.
+    for _ in range(3):
+        assert _crear()["ok"] is True
+    bloqueado = _crear()
+    assert bloqueado["ok"] is False and bloqueado["error"] == "limite_retos_free"
+    assert bloqueado["limite"] == 3
+    # Con Pro vigente: ilimitado.
+    stores.membresias_pro["ana@x.com"] = {
+        "hasta": (ahora() + timedelta(days=30)).isoformat()}
+    assert _crear()["ok"] is True
+
+
 def test_responder_y_resultado_suma_al_ranking():
     rid = _crear()["reto"]["id"]
     # Aceptar.

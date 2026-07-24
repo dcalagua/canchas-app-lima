@@ -27,6 +27,7 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
     super.initState();
     appState.cargarAcademiasRemotas(); // asegura tener todas las academias
     appState.cargarRetosResultados(); // retos jugados → se pliegan al ranking
+    appState.cargarMiembrosPro(); // insignia PRO en la tabla
   }
 
   @override
@@ -62,6 +63,13 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
               zona: zonaSel.isEmpty ? null : zonaSel,
               temporada: tempSel);
           final ahora = DateTime.now();
+          // Campeón vigente = ganador de la temporada cerrada anterior (para la
+          // corona 👑 en la tabla viva).
+          final campeon = appState.campeonGlobal(
+              deporte: dep,
+              temporada: Temporada.de(ahora).anterior,
+              zona: zonaSel.isEmpty ? null : zonaSel);
+          final campeonEmail = campeon?.emailIdentidad ?? '';
 
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 30),
@@ -209,7 +217,16 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
                 )
               else
                 for (var i = 0; i < tabla.length; i++)
-                  _FilaGlobal(posicion: i + 1, f: tabla[i]),
+                  _FilaGlobal(
+                    posicion: i + 1,
+                    f: tabla[i],
+                    esPro: appState.esProEmail(tabla[i].emailIdentidad),
+                    // Corona al campeón vigente (de la temporada cerrada anterior)
+                    // solo en las vistas "vivas" (Histórico o temporada en curso).
+                    esCampeon: campeonEmail.isNotEmpty &&
+                        (tempSel == null || tempSel.esActual(ahora)) &&
+                        tabla[i].emailIdentidad == campeonEmail,
+                  ),
             ],
           );
         },
@@ -321,10 +338,38 @@ class _TemporadaAviso extends StatelessWidget {
   }
 }
 
+/// Insignia PRO (Pichangol Pro) — píldora bosque compacta, estilo Airbnb.
+class _ProChip extends StatelessWidget {
+  const _ProChip();
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: bosque,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: const Text('PRO',
+          style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+              fontSize: 9.5,
+              letterSpacing: 0.5)),
+    );
+  }
+}
+
 class _FilaGlobal extends StatelessWidget {
-  const _FilaGlobal({required this.posicion, required this.f});
+  const _FilaGlobal({
+    required this.posicion,
+    required this.f,
+    this.esPro = false,
+    this.esCampeon = false,
+  });
   final int posicion;
   final RankingGlobalFila f;
+  final bool esPro;
+  final bool esCampeon;
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -373,10 +418,24 @@ class _FilaGlobal extends StatelessWidget {
             ],
           ),
         ),
-        title: Text(f.nombre,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.w700)),
+        title: Row(
+          children: [
+            Flexible(
+              child: Text(f.nombre,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
+            ),
+            if (esCampeon) ...[
+              const SizedBox(width: 4),
+              const Text('👑', style: TextStyle(fontSize: 14)),
+            ],
+            if (esPro) ...[
+              const SizedBox(width: 6),
+              const _ProChip(),
+            ],
+          ],
+        ),
         subtitle: Text(
             '${f.academiaNombre}'
             '${f.academias > 1 ? ' +${f.academias - 1}' : ''}'

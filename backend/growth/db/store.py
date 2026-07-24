@@ -447,6 +447,22 @@ class Stores:
                 return ov
         return glob
 
+    def pro_activo(self, email: str) -> bool:
+        """¿El correo tiene membresía Pichangol Pro vigente (hasta > ahora)?"""
+        m = self.membresias_pro.get((email or "").strip().lower())
+        if not m:
+            return False
+        hasta = m.get("hasta")
+        try:
+            dt = datetime.fromisoformat(hasta) if hasta else None
+        except (TypeError, ValueError):
+            dt = None
+        return dt is not None and dt > ahora()
+
+    def pro_emails_activos(self) -> list[str]:
+        """Correos con Pro vigente (para pintar la insignia PRO en el ranking)."""
+        return [e for e in self.membresias_pro if self.pro_activo(e)]
+
     def modo_asignacion(self, override: str | None = None) -> str:
         """Modo de asignación efectivo de una convocatoria: el override de la
         convocatoria si es válido, si no el global. Siempre devuelve válido."""

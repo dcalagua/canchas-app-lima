@@ -420,6 +420,23 @@ class PagosService {
     }
   }
 
+  /// Correos con Pichangol Pro vigente (para pintar la insignia PRO en el
+  /// ranking). Lista vacía si no se pudo.
+  static Future<List<String>> proMiembros() async {
+    if (!disponible) return const [];
+    try {
+      final r = await http.get(Uri.parse('$_baseUrl/pagos/pro/miembros'),
+          headers: _appHeaders()).timeout(const Duration(seconds: 12));
+      if (r.statusCode != 200) return const [];
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      return ((j['emails'] as List?) ?? const [])
+          .map((e) => e.toString().toLowerCase())
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
   /// Precio mensual de Pichangol Pro (soles) del país. Null si no se pudo.
   static Future<double?> proPrecio({String pais = 'PE'}) async {
     if (!disponible) return null;

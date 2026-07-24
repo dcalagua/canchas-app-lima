@@ -5,6 +5,8 @@ Une reservas y circuito. Público (app del jugador), protegido por X-App-Key.
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
@@ -12,6 +14,10 @@ import config
 from db.store import Reto, ahora, stores
 
 router = APIRouter(prefix="/retos", tags=["retos"])
+
+# Retos que un jugador SIN Pichangol Pro puede ENVIAR por semana (rolling 7 días).
+# Pro = ilimitado. Es el perk funcional que justifica la membresía.
+RETOS_FREE_LIMITE_SEMANA = 3
 
 
 def _require_app_key(x_app_key: str | None = Header(default=None)) -> None:
@@ -61,6 +67,14 @@ def crear_reto(req: CrearRetoReq) -> dict:
         return {"ok": False, "error": "correos_requeridos"}
     if retador == retado:
         return {"ok": False, "error": "no_puedes_retarte"}
+    # Perk Pro: los no-Pro tienen tope semanal de retos enviados.
+    if not stores.pro_activo(retador):
+        hace_semana = ahora() - timedelta(days=7)
+        enviados = sum(1 for x in stores.retos
+                       if x.retador_email == retador and x.creado_en >= hace_semana)
+        if enviados >= RETOS_FREE_LIMITE_SEMANA:
+            return {"ok": False, "error": "limite_retos_free",
+                    "limite": RETOS_FREE_LIMITE_SEMANA}
     r = Reto(
         id=stores.next_id("reto"),
         retador_email=retador, retador_nombre=req.retador_nombre.strip(),

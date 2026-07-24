@@ -16,7 +16,8 @@ class RetosService {
         if (json) 'Content-Type': 'application/json',
       };
 
-  /// Crea un reto. Devuelve el reto creado o null.
+  /// Crea un reto. Devuelve la respuesta completa del backend
+  /// (`{ok, reto}` o `{ok:false, error, ...}`), o null si falló la red.
   static Future<Map<String, dynamic>?> crear({
     required String retadorEmail,
     required String retadorNombre,
@@ -39,8 +40,7 @@ class RetosService {
             'zona': zona,
             'mensaje': mensaje,
           })).timeout(const Duration(seconds: 15));
-      final j = jsonDecode(r.body) as Map<String, dynamic>;
-      return j['ok'] == true ? (j['reto'] as Map<String, dynamic>) : null;
+      return jsonDecode(r.body) as Map<String, dynamic>;
     } catch (_) {
       return null;
     }
