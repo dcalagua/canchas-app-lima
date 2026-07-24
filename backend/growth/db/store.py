@@ -321,6 +321,7 @@ class Reto:
     ganador_email: str = ""
     marcador: str = ""
     mensaje: str = ""
+    jugado_en: datetime | None = None  # cuándo se reportó el resultado (temporada)
 
 
 @dataclass
@@ -921,7 +922,7 @@ def _reto_from(d: dict) -> Reto:
         deporte=d.get("deporte", ""), creado_en=_dt(d["creado_en"]),
         zona=d.get("zona", ""), estado=d.get("estado", "pendiente"),
         ganador_email=d.get("ganador_email", ""), marcador=d.get("marcador", ""),
-        mensaje=d.get("mensaje", ""))
+        mensaje=d.get("mensaje", ""), jugado_en=_dt(d.get("jugado_en")))
 
 
 def _pago_from(d: dict) -> PagoRegistro:

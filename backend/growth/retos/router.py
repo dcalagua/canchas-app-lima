@@ -38,6 +38,7 @@ def _dict(r: Reto) -> dict:
         "marcador": r.marcador,
         "mensaje": r.mensaje,
         "creado_en": r.creado_en.isoformat(),
+        "jugado_en": r.jugado_en.isoformat() if r.jugado_en else None,
     }
 
 
@@ -117,6 +118,7 @@ def resultado_reto(reto_id: int, req: ResultadoReq) -> dict:
     r.ganador_email = g
     r.marcador = req.marcador.strip()
     r.estado = "jugado"
+    r.jugado_en = ahora()  # marca de temporada del resultado
     return {"ok": True, "reto": _dict(r)}
 
 

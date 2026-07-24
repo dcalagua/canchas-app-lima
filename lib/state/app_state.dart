@@ -24,6 +24,7 @@ import '../models/invitacion.dart';
 import '../models/models.dart';
 import '../models/negocio.dart';
 import '../models/resena.dart';
+import '../models/temporada.dart';
 import '../models/usuario.dart';
 import '../services/auth_service.dart';
 import '../services/pagos_service.dart';
@@ -276,6 +277,45 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
+  /// Fecha de un reto jugado para ubicarlo en su temporada: `jugado_en` (cuándo
+  /// se reportó el resultado) y, si el backend no la trae, `creado_en`.
+  DateTime _fechaReto(Map<String, dynamic> r) {
+    final j = (r['jugado_en'] ?? r['creado_en'] ?? '').toString();
+    return DateTime.tryParse(j)?.toLocal() ?? DateTime.now();
+  }
+
+  /// El campeón (fila #1) del ranking global de una temporada, o null si esa
+  /// temporada no tuvo partidos. Sirve para coronar cuando la temporada cerró.
+  RankingGlobalFila? campeonGlobal(
+      {required Deporte deporte, required Temporada temporada, String? zona}) {
+    final t = rankingGlobal(deporte: deporte, temporada: temporada, zona: zona);
+    return t.isEmpty ? null : t.first;
+  }
+
+  /// Temporadas que tienen al menos un partido/reto del [deporte] (para el
+  /// selector). Incluye siempre la temporada ACTUAL aunque esté vacía (para
+  /// invitar a empezar a jugarla). Más reciente primero.
+  List<Temporada> temporadasConDatos(Deporte deporte) {
+    final ahora = DateTime.now();
+    final actual = Temporada.de(ahora);
+    final set = <String, Temporada>{actual.id: actual};
+    for (final a in academias) {
+      if (a.deporte != deporte) continue;
+      for (final p in a.partidos) {
+        final t = Temporada.de(p.fecha);
+        set[t.id] = t;
+      }
+    }
+    for (final r in _retosResultados) {
+      if (_deporteDe(r['deporte']) != deporte) continue;
+      final t = Temporada.de(_fechaReto(r));
+      set[t.id] = t;
+    }
+    final l = set.values.toList()
+      ..sort((x, y) => y.inicio.compareTo(x.inicio));
+    return l;
+  }
+
   /// Deportes con partidos de ranking (academias) o retos jugados.
   List<Deporte> get deportesConRanking {
     final s = <Deporte>{};
@@ -324,12 +364,13 @@ class AppState extends ChangeNotifier {
   /// misma persona (mismo correo) en varias academias es UNA sola fila con sus
   /// stats sumados. Los alumnos manuales (sin correo) no se dedupean.
   List<RankingGlobalFila> rankingGlobal(
-      {Deporte? deporte, String? categoria, String? zona}) {
+      {Deporte? deporte, String? categoria, String? zona, Temporada? temporada}) {
     final agg = <String, _AggGlobal>{};
     for (final a in academias) {
       if (deporte != null && a.deporte != deporte) continue;
       if (zona != null && zona.isNotEmpty && a.zona.trim() != zona) continue;
       for (final p in a.partidos) {
+        if (temporada != null && !temporada.contiene(p.fecha)) continue;
         for (final id in [p.jugadorAId, p.jugadorBId]) {
           if (id.isEmpty) continue;
           final cat = a.categoriaDe(id);
@@ -363,6 +404,7 @@ class AppState extends ChangeNotifier {
         if (zona != null &&
             zona.isNotEmpty &&
             (r['zona'] ?? '').toString().trim() != zona) continue;
+        if (temporada != null && !temporada.contiene(_fechaReto(r))) continue;
         final ganador =
             (r['ganador_email'] ?? '').toString().trim().toLowerCase();
         if (ganador.isEmpty) continue;

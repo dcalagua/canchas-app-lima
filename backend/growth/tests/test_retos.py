@@ -54,9 +54,12 @@ def test_responder_y_resultado_suma_al_ranking():
     r2 = client.post(f"/retos/{rid}/resultado", json={
         "ganador_email": "ana@x.com", "marcador": "6-3 6-4"}).json()
     assert r2["ok"] is True and r2["reto"]["estado"] == "jugado"
+    # Al reportar se marca la fecha (para ubicar el reto en su temporada).
+    assert r2["reto"]["jugado_en"]
     # Aparece en resultados (para el ranking), filtrable por deporte.
     res = client.get("/retos?deporte=tenis").json()["resultados"]
     assert len(res) == 1 and res[0]["ganador_email"] == "ana@x.com"
+    assert res[0]["jugado_en"]
     # Otro deporte no lo trae.
     assert client.get("/retos?deporte=futbol").json()["resultados"] == []
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/academia.dart';
 import '../models/models.dart';
+import '../models/temporada.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'perfil_global_screen.dart';
@@ -19,6 +20,7 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
   Deporte? _deporte;
   String _categoria = ''; // '' = todas
   String _zona = ''; // '' = todas las zonas
+  String _temporadaId = ''; // '' = histórico (todas las temporadas)
 
   @override
   void initState() {
@@ -46,10 +48,20 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
           final catSel = cats.contains(_categoria) ? _categoria : '';
           final zonas = appState.zonasGlobalDe(dep);
           final zonaSel = zonas.contains(_zona) ? _zona : '';
+          final temporadas = appState.temporadasConDatos(dep);
+          Temporada? tempSel; // null = histórico
+          for (final t in temporadas) {
+            if (t.id == _temporadaId) {
+              tempSel = t;
+              break;
+            }
+          }
           final tabla = appState.rankingGlobal(
               deporte: dep,
               categoria: catSel.isEmpty ? null : catSel,
-              zona: zonaSel.isEmpty ? null : zonaSel);
+              zona: zonaSel.isEmpty ? null : zonaSel,
+              temporada: tempSel);
+          final ahora = DateTime.now();
 
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 30),
@@ -119,6 +131,34 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
                   ],
                 ),
               ],
+              const SizedBox(height: 10),
+              // Temporadas (trimestres): el ranking se reinicia cada temporada.
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  ChoiceChip(
+                    avatar: const Icon(Icons.all_inclusive, size: 16),
+                    label: const Text('Histórico'),
+                    selected: tempSel == null,
+                    selectedColor: limaSuave,
+                    onSelected: (_) => setState(() => _temporadaId = ''),
+                  ),
+                  for (final t in temporadas)
+                    ChoiceChip(
+                      avatar: Icon(
+                          t.esActual(ahora)
+                              ? Icons.local_fire_department
+                              : Icons.emoji_events_outlined,
+                          size: 16),
+                      label: Text(
+                          t.esActual(ahora) ? '${t.corto} · en curso' : t.corto),
+                      selected: tempSel?.id == t.id,
+                      selectedColor: limaSuave,
+                      onSelected: (_) => setState(() => _temporadaId = t.id),
+                    ),
+                ],
+              ),
               if (cats.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 Wrap(
@@ -140,6 +180,24 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
                       ),
                   ],
                 ),
+              ],
+              // Campeón (temporada cerrada) o aviso de temporada en curso.
+              if (tempSel != null) ...[
+                const SizedBox(height: 14),
+                if (tempSel.finalizada(ahora) && tabla.isNotEmpty)
+                  _CampeonBanner(temporada: tempSel, campeon: tabla.first)
+                else if (tempSel.esActual(ahora))
+                  _TemporadaAviso(
+                    icono: Icons.local_fire_department,
+                    texto:
+                        'Temporada ${tempSel.nombre} en curso. Juega y reporta '
+                        'resultados: el ranking se reinicia cada trimestre.',
+                  )
+                else if (tabla.isEmpty)
+                  _TemporadaAviso(
+                    icono: Icons.emoji_events_outlined,
+                    texto: 'La temporada ${tempSel.nombre} no tuvo partidos.',
+                  ),
               ],
               const SizedBox(height: 14),
               if (tabla.isEmpty)
@@ -184,6 +242,80 @@ class _Vacio extends StatelessWidget {
                 style: TextStyle(color: textoTenue)),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Banner del CAMPEÓN de una temporada ya cerrada (el #1 de esa ventana). Es el
+/// premio simbólico del circuito y el gancho para presumir/renovar Pro.
+class _CampeonBanner extends StatelessWidget {
+  const _CampeonBanner({required this.temporada, required this.campeon});
+  final Temporada temporada;
+  final RankingGlobalFila campeon;
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(colors: [bosque, teal]),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Row(
+        children: [
+          const Text('🏆', style: TextStyle(fontSize: 34)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Campeón · ${temporada.nombre}',
+                    style: const TextStyle(
+                        color: Colors.white70,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12.5)),
+                const SizedBox(height: 2),
+                Text(campeon.nombre,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 18)),
+                Text('${campeon.puntos} pts · ${campeon.pg}G-${campeon.pp}P',
+                    style: const TextStyle(color: Colors.white70, fontSize: 12)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Aviso liviano de temporada (en curso / sin partidos), estilo Airbnb.
+class _TemporadaAviso extends StatelessWidget {
+  const _TemporadaAviso({required this.icono, required this.texto});
+  final IconData icono;
+  final String texto;
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: limaSuave,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Icon(icono, color: bosque, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(texto,
+                style: const TextStyle(
+                    fontSize: 12.5, color: bosque, height: 1.3)),
+          ),
+        ],
       ),
     );
   }
