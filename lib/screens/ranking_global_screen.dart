@@ -24,6 +24,7 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
   void initState() {
     super.initState();
     appState.cargarAcademiasRemotas(); // asegura tener todas las academias
+    appState.cargarRetosResultados(); // retos jugados → se pliegan al ranking
   }
 
   @override

@@ -51,6 +51,7 @@ class _SplashScreenState extends State<SplashScreen>
     await appState.cargarSesion();
     appState.sincronizarSaldo(); // saldo real del backend (sobrevive reinstalar)
     appState.sincronizarPro(); // membresía Pichangol Pro del jugador
+    appState.cargarRetosResultados(); // retos jugados → ranking global
     appState.cargarDestacados(); // dueños destacados (saldo>0) para resaltar canchas
     appState.cargarCanchasRemotas() // canchas compartidas (best-effort)
         .then((_) => appState.sincronizarPropiedades()); // ¿el admin ya aprobó?

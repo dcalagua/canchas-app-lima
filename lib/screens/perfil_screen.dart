@@ -11,6 +11,7 @@ import 'anfitrion_screen.dart';
 import 'login_google_sheet.dart';
 import 'billetera_screen.dart';
 import 'hazte_pro_screen.dart';
+import 'mis_retos_screen.dart';
 import 'metodos_pago_screen.dart';
 import 'referidos_screen.dart';
 import 'verificar_identidad_screen.dart';
@@ -117,6 +118,14 @@ class PerfilScreen extends StatelessWidget {
                       onTap: () => Navigator.of(context).push(MaterialPageRoute(
                           builder: (_) => const AcademiasScreen())),
                     ),
+                    if (u != null)
+                      _Tile(
+                        icon: Icons.sports_kabaddi,
+                        title: 'Mis retos',
+                        subtitle: 'Rétalos, juega y sube en el ranking',
+                        onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => const MisRetosScreen())),
+                      ),
                     if (u != null)
                       _Tile(
                         icon: appState.proActivo

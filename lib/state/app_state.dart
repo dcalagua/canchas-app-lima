@@ -27,6 +27,7 @@ import '../models/resena.dart';
 import '../models/usuario.dart';
 import '../services/auth_service.dart';
 import '../services/pagos_service.dart';
+import '../services/retos_service.dart';
 import '../services/push_service.dart';
 import '../services/places_service.dart';
 import '../services/verificacion_service.dart';
@@ -221,12 +222,33 @@ class AppState extends ChangeNotifier {
     await PagosService.generarLanding(ac.id, _landingDatos(ac));
   }
 
-  /// Deportes que tienen al menos un partido registrado (para las pestañas del
-  /// ranking global).
+  // ── Retos P2P (se pliegan al ranking global por identidad = correo) ────────
+  List<Map<String, dynamic>> _retosResultados = const [];
+
+  /// Trae del backend los retos JUGADOS para plegarlos al ranking (best-effort).
+  Future<void> cargarRetosResultados() async {
+    final res = await RetosService.resultados();
+    _retosResultados = res;
+    notifyListeners();
+  }
+
+  Deporte? _deporteDe(dynamic name) {
+    final n = (name ?? '').toString();
+    for (final d in Deporte.values) {
+      if (d.name == n) return d;
+    }
+    return null;
+  }
+
+  /// Deportes con partidos de ranking (academias) o retos jugados.
   List<Deporte> get deportesConRanking {
     final s = <Deporte>{};
     for (final a in academias) {
       if (a.partidos.isNotEmpty) s.add(a.deporte);
+    }
+    for (final r in _retosResultados) {
+      final d = _deporteDe(r['deporte']);
+      if (d != null) s.add(d);
     }
     final l = s.toList()..sort((x, y) => x.index.compareTo(y.index));
     return l;
@@ -250,6 +272,11 @@ class AppState extends ChangeNotifier {
     for (final a in academias) {
       if (a.deporte != deporte || a.partidos.isEmpty) continue;
       if (a.zona.trim().isNotEmpty) s.add(a.zona.trim());
+    }
+    for (final r in _retosResultados) {
+      if (_deporteDe(r['deporte']) != deporte) continue;
+      final z = (r['zona'] ?? '').toString().trim();
+      if (z.isNotEmpty) s.add(z);
     }
     final l = s.toList()..sort();
     return l;
@@ -292,6 +319,37 @@ class AppState extends ChangeNotifier {
         }
       }
     }
+    // Pliega los RETOS jugados por identidad (correo). No tienen categoría, así
+    // que solo cuentan cuando no se filtra por categoría.
+    if (categoria == null || categoria.isEmpty) {
+      for (final r in _retosResultados) {
+        if (deporte != null && _deporteDe(r['deporte']) != deporte) continue;
+        if (zona != null &&
+            zona.isNotEmpty &&
+            (r['zona'] ?? '').toString().trim() != zona) continue;
+        final ganador =
+            (r['ganador_email'] ?? '').toString().trim().toLowerCase();
+        if (ganador.isEmpty) continue;
+        for (final side in const ['retador', 'retado']) {
+          final email = (r['${side}_email'] ?? '').toString().trim().toLowerCase();
+          if (email.isEmpty) continue;
+          final nombre = (r['${side}_nombre'] ?? '').toString();
+          final g = agg.putIfAbsent(
+              'e:$email',
+              () => _AggGlobal(
+                  deporte: deporte ?? (_deporteDe(r['deporte']) ?? Deporte.tenis)));
+          g.pj++;
+          if (ganador == email) {
+            g.pg++;
+          } else {
+            g.pp++;
+          }
+          if (nombre.isNotEmpty) g.nombre = nombre;
+          g.porAcademia['Retos'] = (g.porAcademia['Retos'] ?? 0) + 1;
+        }
+      }
+    }
+
     final filas = <RankingGlobalFila>[];
     agg.forEach((key, g) {
       if (g.pj == 0) return;
@@ -424,6 +482,51 @@ class AppState extends ChangeNotifier {
               academia: a.nombre,
               gano: gano,
               rival: p.nombreDe(rivalId)));
+        }
+      }
+    }
+    // Pliega los RETOS jugados de esta persona (solo identidad por correo).
+    if (email.isNotEmpty) {
+      for (final r in _retosResultados) {
+        for (final side in const ['retador', 'retado']) {
+          final e = (r['${side}_email'] ?? '').toString().trim().toLowerCase();
+          if (e != email) continue;
+          final otro = side == 'retador' ? 'retado' : 'retador';
+          final rival = (r['${otro}_nombre'] ?? '').toString();
+          final gano =
+              (r['ganador_email'] ?? '').toString().trim().toLowerCase() == email;
+          pj++;
+          if (gano) {
+            pg++;
+          } else {
+            pp++;
+          }
+          final rec = porAcad.putIfAbsent('Retos', () => [0, 0, 0]);
+          rec[0]++;
+          if (gano) {
+            rec[1]++;
+          } else {
+            rec[2]++;
+          }
+          final nom = (r['${side}_nombre'] ?? '').toString();
+          if (nom.isNotEmpty) nombre = nom;
+          final rivalId = '${otro}_${r['id']}';
+          partidos.add(PartidoConAcademia(
+            partido: PartidoRanking(
+              id: 'reto_${r['id']}',
+              fecha: DateTime.tryParse((r['creado_en'] ?? '').toString()) ??
+                  DateTime.now(),
+              jugadorAId: email,
+              jugadorANombre: nom,
+              jugadorBId: rivalId,
+              jugadorBNombre: rival,
+              ganadorId: gano ? email : rivalId,
+              marcador: (r['marcador'] ?? '').toString(),
+            ),
+            academia: 'Reto',
+            gano: gano,
+            rival: rival,
+          ));
         }
       }
     }

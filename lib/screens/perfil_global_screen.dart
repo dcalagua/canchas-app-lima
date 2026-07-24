@@ -6,8 +6,10 @@ import 'package:printing/printing.dart';
 import '../models/academia.dart';
 import '../models/models.dart';
 import '../services/pagos_service.dart';
+import '../services/retos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'login_google_sheet.dart';
 
 /// PERFIL GLOBAL del jugador: su carnet CONSOLIDADO entre todas las academias
 /// (identidad = correo). Se abre al tocar una fila del ranking global. Cierra el
@@ -143,6 +145,20 @@ class _PerfilGlobalScreenState extends State<PerfilGlobalScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
+                if (_puedeRetar())
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                          backgroundColor: lima,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12)),
+                      icon: const Icon(Icons.sports_kabaddi, size: 20),
+                      label: Text('Retar a ${perfil.nombre.split(' ').first}'),
+                      onPressed: () => _retar(perfil),
+                    ),
+                  ),
+                if (_puedeRetar()) const SizedBox(height: 8),
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(
@@ -255,6 +271,41 @@ class _PerfilGlobalScreenState extends State<PerfilGlobalScreen> {
               ],
             ),
     );
+  }
+
+  String get _retadoEmail =>
+      widget.idKey.startsWith('e:') ? widget.idKey.substring(2) : '';
+
+  /// ¿Se puede retar a este jugador? Solo si tiene cuenta (identidad por correo)
+  /// y no soy yo mismo.
+  bool _puedeRetar() {
+    if (_retadoEmail.isEmpty) return false;
+    final yo = (appState.usuario?.email ?? '').toLowerCase().trim();
+    return yo != _retadoEmail;
+  }
+
+  Future<void> _retar(PerfilGlobalJugador perfil) async {
+    if (!await LoginGoogleSheet.mostrar(context, motivo: 'retar a un jugador')) {
+      return;
+    }
+    if (!mounted) return;
+    final u = appState.usuario;
+    if (u == null) return;
+    final reto = await RetosService.crear(
+      retadorEmail: u.email,
+      retadorNombre: u.nombre,
+      retadoEmail: _retadoEmail,
+      retadoNombre: perfil.nombre,
+      deporte: widget.deporte.name,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      backgroundColor: reto != null ? bosque : null,
+      content: Text(reto != null
+          ? 'Reto enviado a ${perfil.nombre}. Coordinen la cancha y reporten el '
+              'resultado desde "Mis retos".'
+          : 'No se pudo enviar el reto. Reintenta.'),
+    ));
   }
 
   Future<void> _compartir(PerfilGlobalJugador p) async {
