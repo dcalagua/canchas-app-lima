@@ -310,6 +310,32 @@ def test_circuito_ingresos_pro_y_torneos(client):
     assert out["torneos"]["bruto_soles"] == 20.0
     # Ingreso Pichangol = Pro total + comisión torneos = 24 + 2 = 26.
     assert out["ingreso_circuito_soles"] == 26.0
+    # Salud del circuito: expone directorio, retos y límite gratis.
+    assert out["directorio"]["total"] == 0
+    assert out["retos"]["total"] == 0
+    assert out["limite_retos_free"] == 3
+
+
+def test_circuito_salud_directorio_y_lideres(client):
+    h = {"X-Admin-Token": TOKEN}
+    # 2 jugadores en el directorio (uno tenis, uno fútbol).
+    client.post("/circuito/unirse", json={
+        "email": "ana@x.com", "nombre": "Ana", "deporte": "tenis"})
+    client.post("/circuito/unirse", json={
+        "email": "luis@x.com", "nombre": "Luis", "deporte": "futbol"})
+    # Un reto jugado que gana Ana → aparece de líder.
+    rid = client.post("/retos/crear", json={
+        "retador_email": "ana@x.com", "retador_nombre": "Ana",
+        "retado_email": "luis@x.com", "retado_nombre": "Luis",
+        "deporte": "tenis"}).json()["reto"]["id"]
+    client.post(f"/retos/{rid}/responder", json={"aceptar": True})
+    client.post(f"/retos/{rid}/resultado", json={"ganador_email": "ana@x.com"})
+    out = client.get("/admin/api/circuito", headers=h).json()
+    assert out["directorio"]["total"] == 2
+    assert out["directorio"]["por_deporte"]["tenis"] == 1
+    assert out["retos"]["jugados"] == 1
+    assert out["lideres_retos"][0]["email"] == "ana@x.com"
+    assert out["lideres_retos"][0]["ganados"] == 1
 
 
 def test_margenes_unifica_matriculas_reservas_y_banco(client):

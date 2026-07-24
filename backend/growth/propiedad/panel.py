@@ -365,12 +365,57 @@ def get_circuito_admin(x_admin_token: str | None = Header(default=None)) -> dict
             torneo_bruto += p.monto_centimos
             torneo_comision += p.comision_centimos
     ingreso = pro_total + torneo_comision
+
+    # Salud del circuito (datos que vive el growth): directorio de jugadores
+    # disponibles + actividad de retos + líderes por retos ganados.
+    por_deporte: dict[str, int] = {}
+    for d in stores.jugadores_circuito.values():
+        dep = (d.get("deporte") or "—")
+        por_deporte[dep] = por_deporte.get(dep, 0) + 1
+
+    retos_pend = retos_acep = retos_jug = 0
+    wins: dict[str, int] = {}
+    plays: dict[str, int] = {}
+    names: dict[str, str] = {}
+    for r in stores.retos:
+        if r.estado == "pendiente":
+            retos_pend += 1
+        elif r.estado == "aceptado":
+            retos_acep += 1
+        elif r.estado == "jugado":
+            retos_jug += 1
+        if r.estado == "jugado" and r.ganador_email:
+            for email, name in ((r.retador_email, r.retador_nombre),
+                                (r.retado_email, r.retado_nombre)):
+                if not email:
+                    continue
+                plays[email] = plays.get(email, 0) + 1
+                if name:
+                    names[email] = name
+            wins[r.ganador_email] = wins.get(r.ganador_email, 0) + 1
+    lideres = sorted(
+        ({"email": e, "nombre": names.get(e, e),
+          "ganados": wins.get(e, 0), "jugados": plays.get(e, 0)}
+         for e in plays),
+        key=lambda x: (-x["ganados"], -x["jugados"]))[:5]
+
+    try:
+        from retos.router import RETOS_FREE_LIMITE_SEMANA as _lim
+    except Exception:
+        _lim = 3
+
     return {
         "pro": {"cobros": pro_n, "total_soles": pro_total / 100.0},
         "torneos": {"inscripciones": torneo_n,
                     "bruto_soles": torneo_bruto / 100.0,
                     "comision_soles": torneo_comision / 100.0},
         "ingreso_circuito_soles": round(ingreso / 100.0, 2),
+        "directorio": {"total": len(stores.jugadores_circuito),
+                       "por_deporte": por_deporte},
+        "retos": {"total": len(stores.retos), "pendientes": retos_pend,
+                  "aceptados": retos_acep, "jugados": retos_jug},
+        "lideres_retos": lideres,
+        "limite_retos_free": _lim,
     }
 
 
@@ -1074,6 +1119,17 @@ async function cargarCircuito(){
     const j = await r.json();
     const s = v => 'S/ ' + (Number(v)||0).toFixed(2);
     const fila = (t,v,extra='') => `<div class="row" style="display:flex;justify-content:space-between;${extra}"><span>${t}</span><span>${v}</span></div>`;
+    const dir = j.directorio || {total:0, por_deporte:{}};
+    const ret = j.retos || {total:0, pendientes:0, aceptados:0, jugados:0};
+    const porDep = Object.entries(dir.por_deporte||{})
+      .map(([d,n])=>`${esc(d)} ${n}`).join(' · ') || '—';
+    const lideres = (j.lideres_retos||[]).map((l,i)=>{
+      const m = ['🥇','🥈','🥉'][i] || (i+1);
+      return `<tr><td style="padding:4px 6px">${m}</td>`+
+             `<td style="padding:4px 6px">${esc(l.nombre||l.email)}</td>`+
+             `<td style="padding:4px 6px;text-align:right">${l.ganados}G / ${l.jugados}J</td></tr>`;
+    }).join('') || '<tr><td colspan="3" style="color:var(--muted);padding:6px">Aún sin retos jugados.</td></tr>';
+    const mini = (n,t) => `<div><div style="font-size:20px;font-weight:800;color:#14463A">${n}</div><div class="row">${t}</div></div>`;
     document.getElementById('circuitoPanel').innerHTML =
       `<div class="card"><div class="top"><h3>🏆 Ingresos del circuito</h3></div>
         <div class="row">Lo que genera la capa de comunidad: membresías Pro (todo el
@@ -1083,6 +1139,22 @@ async function cargarCircuito(){
         ${fila('(volumen bruto de torneos)', s(j.torneos.bruto_soles), 'color:var(--muted);font-size:12px')}
         <hr style="border:none;border-top:1px solid var(--border);margin:8px 0">
         ${fila('= Ingreso del circuito', '<b>'+s(j.ingreso_circuito_soles)+'</b>', 'font-weight:800;color:#14463A')}
+      </div>
+      <div class="card"><div class="top"><h3>⚡ Salud del circuito</h3></div>
+        <div class="row">Actividad de la comunidad (retos + jugadores disponibles).
+          El límite gratis es ${j.limite_retos_free||3} retos/semana; Pro es ilimitado.</div>
+        <div style="display:flex;gap:20px;margin:12px 0 4px;flex-wrap:wrap">
+          ${mini(dir.total, 'Disponibles')}
+          ${mini(ret.total, 'Retos')}
+          ${mini(ret.pendientes, 'Pendientes')}
+          ${mini(ret.aceptados, 'Aceptados')}
+          ${mini(ret.jugados, 'Jugados')}
+        </div>
+        ${fila('Jugadores por deporte', porDep, 'color:var(--muted);font-size:12px')}
+        <div class="row" style="margin-top:10px;font-weight:700">Líderes por retos</div>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <tbody>${lideres}</tbody>
+        </table>
       </div>`;
   }catch(e){ document.getElementById('circuitoPanel').innerHTML =
       '<div class="card">No se pudo cargar el circuito.</div>'; }
