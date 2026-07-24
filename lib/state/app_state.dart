@@ -27,6 +27,7 @@ import '../models/resena.dart';
 import '../models/temporada.dart';
 import '../models/usuario.dart';
 import '../services/auth_service.dart';
+import '../services/circuito_service.dart';
 import '../services/pagos_service.dart';
 import '../services/retos_service.dart';
 import '../services/push_service.dart';
@@ -275,6 +276,62 @@ class AppState extends ChangeNotifier {
       if (d.name == n) return d;
     }
     return null;
+  }
+
+  // ── Circuito: mi perfil "disponible para retar" (onboarding al ranking) ────
+  Map<String, dynamic>? _miPerfilCircuito;
+
+  /// ¿Ya me declaré disponible en el circuito?
+  bool get estoyEnCircuito => _miPerfilCircuito != null;
+
+  /// Mi perfil de circuito (deporte/zona/categoría) o null si no me uní.
+  Map<String, dynamic>? get miPerfilCircuito => _miPerfilCircuito;
+
+  /// Trae del backend mi perfil de circuito (para saber si ya me uní).
+  Future<void> cargarMiPerfilCircuito() async {
+    final email = (usuario?.email ?? '').toLowerCase().trim();
+    if (email.isEmpty) {
+      if (_miPerfilCircuito != null) {
+        _miPerfilCircuito = null;
+        notifyListeners();
+      }
+      return;
+    }
+    _miPerfilCircuito = await CircuitoService.perfil(email);
+    notifyListeners();
+  }
+
+  /// Me declaro disponible para retar (crea/actualiza mi perfil de circuito).
+  Future<bool> unirseCircuito({
+    required Deporte deporte,
+    String zona = '',
+    String categoria = '',
+  }) async {
+    final u = usuario;
+    if (u == null) return false;
+    final j = await CircuitoService.unirse(
+      email: u.email,
+      nombre: u.nombre,
+      deporte: deporte.name,
+      zona: zona,
+      categoria: categoria,
+    );
+    if (j == null) return false;
+    _miPerfilCircuito = j;
+    notifyListeners();
+    return true;
+  }
+
+  /// Me retiro del directorio de disponibles.
+  Future<bool> salirCircuito() async {
+    final email = usuario?.email ?? '';
+    if (email.isEmpty) return false;
+    final ok = await CircuitoService.salir(email);
+    if (ok) {
+      _miPerfilCircuito = null;
+      notifyListeners();
+    }
+    return ok;
   }
 
   /// Fecha de un reto jugado para ubicarlo en su temporada: `jugado_en` (cuándo

@@ -5,6 +5,7 @@ import '../models/models.dart';
 import '../models/temporada.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'jugadores_disponibles_screen.dart';
 import 'perfil_global_screen.dart';
 
 /// RANKING GLOBAL Pichangol: tabla cruzada de jugadores de TODAS las academias
@@ -28,18 +29,31 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
     appState.cargarAcademiasRemotas(); // asegura tener todas las academias
     appState.cargarRetosResultados(); // retos jugados → se pliegan al ranking
     appState.cargarMiembrosPro(); // insignia PRO en la tabla
+    appState.cargarMiPerfilCircuito(); // ¿ya me uní al circuito?
   }
+
+  void _abrirDisponibles() => Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => const JugadoresDisponiblesScreen()));
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Ranking Global')),
+      appBar: AppBar(
+        title: const Text('Ranking Global'),
+        actions: [
+          IconButton(
+            tooltip: 'Jugadores disponibles',
+            icon: const Icon(Icons.person_add_alt_1),
+            onPressed: _abrirDisponibles,
+          ),
+        ],
+      ),
       body: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
           final deportes = appState.deportesConRanking;
           if (deportes.isEmpty) {
-            return const _Vacio();
+            return _Vacio(onUnirme: _abrirDisponibles);
           }
           // Deporte por defecto: el primero con datos.
           final dep = (_deporte != null && deportes.contains(_deporte))
@@ -92,6 +106,35 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
                               fontSize: 13, color: bosque, height: 1.3)),
                     ),
                   ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              // CTA: unirse / ver jugadores disponibles (onboarding al circuito).
+              InkWell(
+                onTap: _abrirDisponibles,
+                borderRadius: BorderRadius.circular(14),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: trazo),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.person_add_alt_1, color: bosque, size: 20),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                            appState.estoyEnCircuito
+                                ? 'Estás en el circuito · ver jugadores para retar'
+                                : 'Únete al circuito y deja que te reten',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w700, fontSize: 13)),
+                      ),
+                      const Icon(Icons.chevron_right, color: textoTenue),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: 12),
@@ -236,7 +279,8 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
 }
 
 class _Vacio extends StatelessWidget {
-  const _Vacio();
+  const _Vacio({required this.onUnirme});
+  final VoidCallback onUnirme;
   @override
   Widget build(BuildContext context) {
     return Center(
@@ -253,10 +297,18 @@ class _Vacio extends StatelessWidget {
                 style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
             const SizedBox(height: 6),
             const Text(
-                'Cuando las academias registren resultados en su circuito, '
-                'aquí aparecerá la tabla cruzada por deporte.',
+                'Únete al circuito, reta a otros jugadores y sé de los primeros '
+                'en aparecer en la tabla de tu ciudad.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: textoTenue)),
+            const SizedBox(height: 18),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(
+                  backgroundColor: lima, foregroundColor: Colors.white),
+              onPressed: onUnirme,
+              icon: const Icon(Icons.person_add_alt_1, size: 18),
+              label: const Text('Unirme al circuito'),
+            ),
           ],
         ),
       ),

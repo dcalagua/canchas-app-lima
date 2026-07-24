@@ -54,6 +54,7 @@ class _SplashScreenState extends State<SplashScreen>
     appState.cargarRetosResultados(); // retos jugados → ranking global
     appState.cargarRetosPendientes(); // retos por responder/reportar → badge
     appState.cargarMiembrosPro(); // insignia PRO en el ranking
+    appState.cargarMiPerfilCircuito(); // ¿ya me uní al circuito?
     appState.cargarDestacados(); // dueños destacados (saldo>0) para resaltar canchas
     appState.cargarCanchasRemotas() // canchas compartidas (best-effort)
         .then((_) => appState.sincronizarPropiedades()); // ¿el admin ya aprobó?

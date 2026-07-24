@@ -375,6 +375,10 @@ class Stores:
         self.inscripciones: list[Inscripcion] = []
         # RETOS P2P (jugador reta a jugador; el resultado suma al ranking).
         self.retos: list[Reto] = []
+        # CIRCUITO: jugadores que se declararon "disponibles para retar" (aunque
+        # aún no hayan jugado). Resuelve el arranque en frío del ranking.
+        # email -> {nombre, deporte, zona, categoria, actualizado}.
+        self.jugadores_circuito: dict[str, dict] = {}
         # PAGOS (Culqi): saldo prepago por dueño (céntimos) + libro de pagos.
         self.saldos: dict[str, int] = {}          # dueno_id -> céntimos
         self.pagos: list[PagoRegistro] = []
@@ -563,6 +567,7 @@ class Stores:
             "vistas": len(self.vistas),
             "membresias_pro": len(self.membresias_pro),
             "retos": len(self.retos),
+            "jugadores_circuito": len(self.jugadores_circuito),
         }
         self.pagos = []
         self.retos = []
@@ -574,6 +579,7 @@ class Stores:
         self.customers = {}
         self.vistas = {}
         self.membresias_pro = {}
+        self.jugadores_circuito = {}
         # Se conservan: reclamos (propiedad), config/incentivos/modo del operador.
         return conteo
 
@@ -736,6 +742,8 @@ class Stores:
                 k: dict(v) for k, v in self.suscripciones_alumno.items()},
             "membresias_pro": {
                 k: dict(v) for k, v in self.membresias_pro.items()},
+            "jugadores_circuito": {
+                k: dict(v) for k, v in self.jugadores_circuito.items()},
         }
 
     def load_state(self, data: dict) -> None:
@@ -791,6 +799,9 @@ class Stores:
         }
         self.membresias_pro = {
             k: dict(v) for k, v in (data.get("membresias_pro") or {}).items()
+        }
+        self.jugadores_circuito = {
+            k: dict(v) for k, v in (data.get("jugadores_circuito") or {}).items()
         }
 
     # --- normalización a TABLAS SQL (fase 1: saldos/pagos/vistas/reclamos) ----
