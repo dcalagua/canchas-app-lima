@@ -447,6 +447,31 @@ class PagosService {
     }
   }
 
+  /// Inscribe a un torneo cobrando la cuota del SALDO del jugador (billetera
+  /// única) y acreditando el neto al profe. {ok:true,...} o {ok:false,
+  /// falta_saldo:true, requerido_soles}.
+  static Future<Map<String, dynamic>> inscribirTorneo({
+    required String email,
+    required String academiaDueno,
+    required double cuotaSoles,
+    String concepto = '',
+  }) async {
+    if (!disponible) return {'ok': false, 'error': 'Pagos no disponibles.'};
+    try {
+      final r = await http.post(Uri.parse('$_baseUrl/pagos/torneo/inscribir'),
+          headers: _appHeaders(json: true),
+          body: jsonEncode({
+            'email': email,
+            'academia_dueno': academiaDueno,
+            'cuota_soles': cuotaSoles,
+            'concepto': concepto,
+          })).timeout(const Duration(seconds: 20));
+      return jsonDecode(r.body) as Map<String, dynamic>;
+    } catch (_) {
+      return {'ok': false, 'error': 'Sin conexión con el servidor de pagos.'};
+    }
+  }
+
   /// Saldo actual del dueño (en soles). Null si no se pudo.
   static Future<double?> saldo(String duenoId) async {
     if (!disponible) return null;

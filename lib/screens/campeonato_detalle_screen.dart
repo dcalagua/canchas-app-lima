@@ -4,11 +4,12 @@ import 'package:flutter/services.dart';
 import '../models/campeonato.dart';
 import '../services/supabase_service.dart';
 import '../services/whatsapp_link.dart';
+import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/ubicacion_share.dart';
-import '../widgets/pago_tarjeta_sheet.dart';
 import 'login_google_sheet.dart';
+import 'recargar_saldo_screen.dart';
 import '../utils/moneda.dart';
 import '../config/pais.dart';
 
@@ -307,16 +308,52 @@ class CampeonatoDetalleScreen extends StatelessWidget {
     );
     // El diálogo sólo devuelve datos ya validados (nombre + consentimiento).
     if (datos == null || !context.mounted) return;
-    // Cobro de inscripción (si tiene costo).
+    // Cobro de inscripción (si tiene costo): se paga del SALDO (billetera única).
     if (c.costoInscripcion > 0) {
-      final pagado = await PagoTarjeta.cobrar(
-        context,
-        monto: c.costoInscripcion.round(),
+      final email = appState.usuario?.email ?? '';
+      final r = await PagosService.inscribirTorneo(
+        email: email,
+        academiaDueno: c.dueno,
+        cuotaSoles: c.costoInscripcion,
         concepto: 'Inscripción ${c.nombre}',
-        email: appState.usuario?.email ?? '',
-        moneda: c.monedaSimbolo,
       );
-      if (!pagado) return;
+      if (!context.mounted) return;
+      if (r['ok'] != true) {
+        if (r['falta_saldo'] == true) {
+          final req =
+              (r['requerido_soles'] as num?)?.toDouble() ?? c.costoInscripcion;
+          final ok = await showDialog<bool>(
+            context: context,
+            builder: (_) => AlertDialog(
+              title: const Text('Te falta saldo'),
+              content: Text(
+                  'La inscripción cuesta ${c.monedaSimbolo} ${req.toStringAsFixed(2)} '
+                  'y se paga de tu saldo Pichangol. Recarga y vuelve a inscribirte.'),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Ahora no')),
+                FilledButton(
+                    style: FilledButton.styleFrom(backgroundColor: lima),
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('Recargar saldo')),
+              ],
+            ),
+          );
+          if (ok == true && context.mounted) {
+            await Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => RecargarSaldoScreen(
+                    duenoId: email, titulo: 'Recargar saldo')));
+            await appState.sincronizarSaldo();
+          }
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(
+                  (r['error'] ?? 'No se pudo cobrar la inscripción.').toString())));
+        }
+        return;
+      }
+      await appState.sincronizarSaldo();
     }
     final res = appState.inscribirseCampeonato(
       c.id,
