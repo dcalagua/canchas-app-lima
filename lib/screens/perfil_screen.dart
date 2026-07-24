@@ -9,6 +9,7 @@ import 'academias_screen.dart';
 import 'ajustes_screen.dart';
 import 'anfitrion_screen.dart';
 import 'login_google_sheet.dart';
+import 'billetera_screen.dart';
 import 'hazte_pro_screen.dart';
 import 'metodos_pago_screen.dart';
 import 'referidos_screen.dart';
@@ -143,6 +144,15 @@ class PerfilScreen extends StatelessWidget {
                             : 'Da confianza a los dueños y reserva sin fricción',
                         onTap: () => Navigator.of(context).push(MaterialPageRoute(
                             builder: (_) => const VerificarIdentidadScreen())),
+                      ),
+                    if (u != null)
+                      _Tile(
+                        icon: Icons.account_balance_wallet,
+                        title: 'Mi billetera',
+                        subtitle:
+                            'Tu saldo, recargas y recibos de lo que consumes',
+                        onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => const BilleteraScreen())),
                       ),
                     if (u != null)
                       _Tile(

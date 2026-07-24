@@ -567,12 +567,18 @@ enum TipoMovimiento { recarga, consumo, liquidacion }
 
 class MovimientoSaldo {
   final TipoMovimiento tipo;
-  final int monto; // soles
+  final int monto; // soles (redondeado, para la lista)
   final String concepto;
   final String cuando; // etiqueta simple ("Ahora", "Hoy", etc.)
   /// Solo para [TipoMovimiento.liquidacion]: ¿Pichangol ya transfirió el neto?
   /// false = "por recibir"; true = "recibido".
   final bool liquidado;
+  /// Monto EXACTO con decimales (para el recibo). Puede ser negativo (egreso).
+  final double montoSoles;
+  /// N.º de comprobante (id del pago en el backend). 0 = sin comprobante.
+  final int comprobante;
+  /// Fecha ISO del movimiento (para el recibo). Vacío si no se conoce.
+  final String fechaIso;
 
   const MovimientoSaldo({
     required this.tipo,
@@ -580,7 +586,13 @@ class MovimientoSaldo {
     required this.concepto,
     required this.cuando,
     this.liquidado = false,
+    this.montoSoles = 0,
+    this.comprobante = 0,
+    this.fechaIso = '',
   });
+
+  bool get esIngreso =>
+      tipo == TipoMovimiento.recarga || tipo == TipoMovimiento.liquidacion;
 
   Map<String, dynamic> toJson() => {
         'tipo': tipo.name,
@@ -588,6 +600,9 @@ class MovimientoSaldo {
         'concepto': concepto,
         'cuando': cuando,
         'liquidado': liquidado,
+        'montoSoles': montoSoles,
+        'comprobante': comprobante,
+        'fechaIso': fechaIso,
       };
 
   factory MovimientoSaldo.fromJson(Map<String, dynamic> j) => MovimientoSaldo(
@@ -596,5 +611,8 @@ class MovimientoSaldo {
         concepto: j['concepto'] as String,
         cuando: j['cuando'] as String,
         liquidado: (j['liquidado'] ?? false) as bool,
+        montoSoles: ((j['montoSoles'] ?? 0) as num).toDouble(),
+        comprobante: ((j['comprobante'] ?? 0) as num).toInt(),
+        fechaIso: (j['fechaIso'] ?? '') as String,
       );
 }

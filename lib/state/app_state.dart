@@ -2364,29 +2364,37 @@ class AppState extends ChangeNotifier {
         ..clear()
         ..addAll(movs.map((m) {
           final tipoStr = (m['tipo'] as String?) ?? 'recarga';
+          // Egresos de la billetera (Pro, servicios, torneo, comisión) → consumo.
           final tipo = switch (tipoStr) {
-            'comision_reserva' => TipoMovimiento.consumo,
+            'comision_reserva' ||
+            'suscripcion' ||
+            'suscripcion_pro' ||
+            'inscripcion_torneo' =>
+              TipoMovimiento.consumo,
             'liquidacion_online' => TipoMovimiento.liquidacion,
-            _ => TipoMovimiento.recarga,
+            _ => TipoMovimiento.recarga, // recarga, inscripcion_torneo_ingreso
           };
           var concepto = (m['concepto'] as String?) ?? '';
-          if (tipo == TipoMovimiento.liquidacion) {
-            // Agrega el desglose de la comisión a la línea de liquidación.
+          if (tipoStr == 'liquidacion_online') {
             final com = (m['comision_soles'] as num?)?.round();
             final txt = 'comisión $monedaSaldoSimbolo$com';
             concepto = concepto.isEmpty ? 'Reserva online · $txt' : '$concepto · $txt';
           } else if (concepto.isEmpty) {
             concepto = tipo == TipoMovimiento.consumo
-                ? 'Comisión de reserva'
+                ? 'Consumo de saldo'
                 : 'Recarga de saldo';
           }
+          final montoExacto = (m['monto_soles'] as num?)?.toDouble() ?? 0;
           return MovimientoSaldo(
-            // El signo lo pone el tipo en la UI; el monto va en positivo.
+            // El signo lo pone el tipo en la UI; el monto (lista) va en positivo.
             tipo: tipo,
-            monto: ((m['monto_soles'] as num?)?.abs() ?? 0).round(),
+            monto: montoExacto.abs().round(),
             concepto: concepto,
             cuando: _fechaRelativa(m['creado_en'] as String?),
             liquidado: (m['liquidado'] ?? false) as bool,
+            montoSoles: montoExacto,
+            comprobante: ((m['comprobante'] ?? 0) as num).toInt(),
+            fechaIso: (m['creado_en'] as String?) ?? '',
           );
         }));
       notifyListeners();
