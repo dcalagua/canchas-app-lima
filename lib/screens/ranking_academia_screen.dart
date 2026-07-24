@@ -815,19 +815,23 @@ class _RegistrarResultadoSheetState extends State<_RegistrarResultadoSheet> {
       return;
     }
     final alumnos = appState.alumnosDe(ac.id);
-    String nombre(String id) =>
-        alumnos.firstWhere((a) => a.id == id, orElse: () => alumnos.first).nombre;
+    Alumno alumnoDe(String id) =>
+        alumnos.firstWhere((a) => a.id == id, orElse: () => alumnos.first);
     setState(() {
       _guardando = true;
       _error = null;
     });
+    final a = alumnoDe(_aId!);
+    final b = alumnoDe(_bId!);
     final partido = PartidoRanking(
       id: 'pr_${DateTime.now().microsecondsSinceEpoch}',
       fecha: DateTime.now(),
       jugadorAId: _aId!,
-      jugadorANombre: nombre(_aId!),
+      jugadorANombre: a.nombre,
+      jugadorAEmail: a.email.trim().toLowerCase(),
       jugadorBId: _bId!,
-      jugadorBNombre: nombre(_bId!),
+      jugadorBNombre: b.nombre,
+      jugadorBEmail: b.email.trim().toLowerCase(),
       ganadorId: _ganadorId!,
       marcador: _marcador.text.trim(),
       sedeId: _sedeId,

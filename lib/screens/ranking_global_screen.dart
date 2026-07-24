@@ -213,6 +213,7 @@ class _FilaGlobal extends StatelessWidget {
             style: const TextStyle(fontWeight: FontWeight.w700)),
         subtitle: Text(
             '${f.academiaNombre}'
+            '${f.academias > 1 ? ' +${f.academias - 1}' : ''}'
             '${f.categoria.isNotEmpty ? ' · ${f.categoria}' : ''} · ${f.pg}G-${f.pp}P',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,

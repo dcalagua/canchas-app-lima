@@ -548,6 +548,11 @@ class PartidoRanking {
   final String jugadorANombre; // denormalizado para mostrar sin cruzar tablas
   final String jugadorBId;
   final String jugadorBNombre;
+  /// Correo de cada jugador (denormalizado del alumno al registrar). Es la
+  /// IDENTIDAD GLOBAL: el ranking global une a la misma persona entre academias
+  /// por este correo. Vacío = alumno manual (no se dedupe entre academias).
+  final String jugadorAEmail;
+  final String jugadorBEmail;
   final String marcador; // texto libre, ej. "6-3 6-4"
   final String ganadorId; // == jugadorAId o jugadorBId
   final String sedeId; // opcional (academias multi-sede)
@@ -560,9 +565,14 @@ class PartidoRanking {
     required this.jugadorBId,
     required this.jugadorBNombre,
     required this.ganadorId,
+    this.jugadorAEmail = '',
+    this.jugadorBEmail = '',
     this.marcador = '',
     this.sedeId = '',
   });
+
+  /// Correo del jugador con [id] (para la identidad global).
+  String emailDe(String id) => id == jugadorAId ? jugadorAEmail : jugadorBEmail;
 
   String get perdedorId => ganadorId == jugadorAId ? jugadorBId : jugadorAId;
   String nombreDe(String id) =>
@@ -575,6 +585,8 @@ class PartidoRanking {
         'jugadorANombre': jugadorANombre,
         'jugadorBId': jugadorBId,
         'jugadorBNombre': jugadorBNombre,
+        if (jugadorAEmail.isNotEmpty) 'jugadorAEmail': jugadorAEmail,
+        if (jugadorBEmail.isNotEmpty) 'jugadorBEmail': jugadorBEmail,
         'marcador': marcador,
         'ganadorId': ganadorId,
         'sedeId': sedeId,
@@ -587,6 +599,8 @@ class PartidoRanking {
         jugadorANombre: (j['jugadorANombre'] ?? '') as String,
         jugadorBId: (j['jugadorBId'] ?? '') as String,
         jugadorBNombre: (j['jugadorBNombre'] ?? '') as String,
+        jugadorAEmail: (j['jugadorAEmail'] ?? '') as String,
+        jugadorBEmail: (j['jugadorBEmail'] ?? '') as String,
         marcador: (j['marcador'] ?? '') as String,
         ganadorId: (j['ganadorId'] ?? '') as String,
         sedeId: (j['sedeId'] ?? '') as String,
@@ -643,6 +657,9 @@ class RankingGlobalFila {
   final int pp;
   final int puntos;
   final double pct;
+  /// En cuántas academias juega esta persona (≥1). >1 = ranking dedupeado por su
+  /// correo (misma persona en varias academias).
+  final int academias;
   const RankingGlobalFila({
     required this.academiaId,
     required this.academiaNombre,
@@ -655,6 +672,7 @@ class RankingGlobalFila {
     required this.pp,
     required this.puntos,
     required this.pct,
+    this.academias = 1,
   });
 }
 

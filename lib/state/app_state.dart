@@ -245,29 +245,66 @@ class AppState extends ChangeNotifier {
 
   /// RANKING GLOBAL Pichangol: agrega los partidos de TODAS las academias del
   /// [deporte] en una sola tabla, ordenada por puntos. Client-side (las
-  /// academias ya vienen con sus partidos embebidos). Cada jugador-en-academia
-  /// es una fila (dedupe por identidad global = fase posterior).
+  /// academias ya vienen con sus partidos embebidos). DEDUPE POR IDENTIDAD: la
+  /// misma persona (mismo correo) en varias academias es UNA sola fila con sus
+  /// stats sumados. Los alumnos manuales (sin correo) no se dedupean.
   List<RankingGlobalFila> rankingGlobal({Deporte? deporte, String? categoria}) {
-    final filas = <RankingGlobalFila>[];
+    final agg = <String, _AggGlobal>{};
     for (final a in academias) {
       if (deporte != null && a.deporte != deporte) continue;
-      for (final p in a.rankingDePartidos(categoria: categoria)) {
-        if (p.pj == 0) continue; // solo quienes jugaron
-        filas.add(RankingGlobalFila(
-          academiaId: a.id,
-          academiaNombre: a.nombre,
-          deporte: a.deporte,
-          alumnoId: p.alumnoId,
-          nombre: p.nombre,
-          categoria: p.categoria,
-          pj: p.pj,
-          pg: p.pg,
-          pp: p.pp,
-          puntos: p.puntos,
-          pct: p.pct,
-        ));
+      for (final p in a.partidos) {
+        for (final id in [p.jugadorAId, p.jugadorBId]) {
+          if (id.isEmpty) continue;
+          final cat = a.categoriaDe(id);
+          if (categoria != null && categoria.isNotEmpty && cat != categoria) {
+            continue;
+          }
+          final nombre = p.nombreDe(id);
+          final email = p.emailDe(id).trim().toLowerCase();
+          // Identidad: por correo (une academias) o por (academia, alumno).
+          final key = email.isNotEmpty ? 'e:$email' : 'a:${a.id}|$id';
+          final g = agg.putIfAbsent(
+              key, () => _AggGlobal(deporte: a.deporte));
+          g.pj++;
+          if (p.ganadorId == id) {
+            g.pg++;
+          } else {
+            g.pp++;
+          }
+          if (nombre.isNotEmpty) g.nombre = nombre;
+          if (cat.isNotEmpty) g.categoria = cat;
+          g.academiasIds.add(a.id);
+          g.porAcademia[a.nombre] = (g.porAcademia[a.nombre] ?? 0) + 1;
+        }
       }
     }
+    final filas = <RankingGlobalFila>[];
+    agg.forEach((key, g) {
+      if (g.pj == 0) return;
+      // Academia primaria = donde tiene más partidos.
+      var primaria = '';
+      var maxN = -1;
+      g.porAcademia.forEach((n, c) {
+        if (c > maxN) {
+          maxN = c;
+          primaria = n;
+        }
+      });
+      filas.add(RankingGlobalFila(
+        academiaId: '',
+        academiaNombre: primaria,
+        deporte: g.deporte,
+        alumnoId: key,
+        nombre: g.nombre,
+        categoria: g.categoria,
+        pj: g.pj,
+        pg: g.pg,
+        pp: g.pp,
+        puntos: g.pg * Academia.puntosVictoria + g.pp * Academia.puntosDerrota,
+        pct: g.pj == 0 ? 0 : g.pg / g.pj * 100,
+        academias: g.academiasIds.length,
+      ));
+    });
     filas.sort((x, y) {
       if (y.puntos != x.puntos) return y.puntos.compareTo(x.puntos);
       if (y.pct != x.pct) return y.pct.compareTo(x.pct);
@@ -3233,4 +3270,19 @@ class AppState extends ChangeNotifier {
     if (h == null) return hora;
     return '${(h + 1).toString().padLeft(2, '0')}:00';
   }
+}
+
+/// Acumulador interno del RANKING GLOBAL: junta las stats de una MISMA identidad
+/// (correo) entre academias. `porAcademia` cuenta partidos por academia para
+/// elegir la academia "primaria" a mostrar.
+class _AggGlobal {
+  _AggGlobal({required this.deporte});
+  final Deporte deporte;
+  String nombre = '';
+  String categoria = '';
+  int pj = 0;
+  int pg = 0;
+  int pp = 0;
+  final Set<String> academiasIds = {};
+  final Map<String, int> porAcademia = {};
 }
