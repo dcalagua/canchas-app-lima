@@ -305,6 +305,25 @@ class Inscripcion:
 
 
 @dataclass
+class Reto:
+    """Un RETO P2P: un jugador reta a otro (por correo). Coordinan la cancha y
+    reportan el resultado; el resultado suma al ranking global. Une reservas y
+    circuito. Identidad = correo (misma que el ranking global)."""
+    id: int
+    retador_email: str
+    retador_nombre: str
+    retado_email: str
+    retado_nombre: str
+    deporte: str
+    creado_en: datetime
+    zona: str = ""
+    estado: str = "pendiente"   # pendiente | aceptado | rechazado | jugado
+    ganador_email: str = ""
+    marcador: str = ""
+    mensaje: str = ""
+
+
+@dataclass
 class PagoRegistro:
     """Un movimiento de pasarela (Culqi). Es plata: autoritativo en el backend.
     - tipo=recarga → acredita saldo del dueño (dueno_id).
@@ -353,6 +372,8 @@ class Stores:
         # Convocatorias ("pichangas" programadas) y sus inscripciones.
         self.convocatorias: list[Convocatoria] = []
         self.inscripciones: list[Inscripcion] = []
+        # RETOS P2P (jugador reta a jugador; el resultado suma al ranking).
+        self.retos: list[Reto] = []
         # PAGOS (Culqi): saldo prepago por dueño (céntimos) + libro de pagos.
         self.saldos: dict[str, int] = {}          # dueno_id -> céntimos
         self.pagos: list[PagoRegistro] = []
@@ -524,8 +545,10 @@ class Stores:
             "customers": len(self.customers),
             "vistas": len(self.vistas),
             "membresias_pro": len(self.membresias_pro),
+            "retos": len(self.retos),
         }
         self.pagos = []
+        self.retos = []
         self.saldos = {}
         self.suscripciones = {}
         self.suscripciones_alumno = {}
@@ -680,6 +703,7 @@ class Stores:
             "reclamos": [como_dict(r) for r in self.reclamos],
             "modo_aprobacion_overrides": dict(self.modo_aprobacion_overrides),
             "convocatorias": [como_dict(c) for c in self.convocatorias],
+            "retos": [como_dict(r) for r in self.retos],
             "inscripciones": [como_dict(i) for i in self.inscripciones],
             "saldos": dict(self.saldos),
             "pagos": [como_dict(p) for p in self.pagos],
@@ -718,6 +742,7 @@ class Stores:
         self.modo_aprobacion_overrides = dict(
             data.get("modo_aprobacion_overrides") or {})
         self.convocatorias = [_conv_from(d) for d in data.get("convocatorias", [])]
+        self.retos = [_reto_from(d) for d in data.get("retos", [])]
         self.inscripciones = [_insc_from(d) for d in data.get("inscripciones", [])]
         self.saldos = {k: int(v) for k, v in (data.get("saldos") or {}).items()}
         self.pagos = [_pago_from(d) for d in data.get("pagos", [])]
@@ -886,6 +911,17 @@ def _conv_from(d: dict) -> Convocatoria:
         cierre=_dt(d.get("cierre")), modo_asignacion=d.get("modo_asignacion"),
         semilla=d.get("semilla"), creado_por=d.get("creado_por", ""),
         cerrado_en=_dt(d.get("cerrado_en")))
+
+
+def _reto_from(d: dict) -> Reto:
+    return Reto(
+        id=d["id"], retador_email=d["retador_email"],
+        retador_nombre=d.get("retador_nombre", ""),
+        retado_email=d["retado_email"], retado_nombre=d.get("retado_nombre", ""),
+        deporte=d.get("deporte", ""), creado_en=_dt(d["creado_en"]),
+        zona=d.get("zona", ""), estado=d.get("estado", "pendiente"),
+        ganador_email=d.get("ganador_email", ""), marcador=d.get("marcador", ""),
+        mensaje=d.get("mensaje", ""))
 
 
 def _pago_from(d: dict) -> PagoRegistro:

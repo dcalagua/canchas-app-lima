@@ -22,6 +22,7 @@ from marketing.router import router as marketing_router
 from pagos.router import (procesar_renovaciones, procesar_renovaciones_alumnos,
                           procesar_renovaciones_pro)
 from pagos.router import router as pagos_router
+from retos.router import router as retos_router
 from propiedad.panel import router as panel_router
 from propiedad.router import _require_admin
 from propiedad.router import router as propiedad_router
@@ -84,6 +85,7 @@ app.include_router(propiedad_router)
 app.include_router(panel_router)
 app.include_router(convocatorias_router)
 app.include_router(pagos_router)
+app.include_router(retos_router)
 app.include_router(marketing_router)
 app.include_router(legal_router)
 app.include_router(concierge_router)
