@@ -300,7 +300,9 @@ def get_pro_admin(x_admin_token: str | None = Header(default=None)) -> dict:
     ahora = datetime.now(timezone.utc)
     miembros = []
     activos = 0
-    mrr = 0.0
+    # MRR POR PAÍS (cada uno en SU moneda: no se pueden sumar S/, $ y Bs).
+    mrr_pais = {"pe": 0.0, "ec": 0.0, "bo": 0.0}
+    activos_pais = {"pe": 0, "ec": 0, "bo": 0}
     for email, m in stores.membresias_pro.items():
         try:
             dt = datetime.fromisoformat(m.get("hasta")) if m.get("hasta") else None
@@ -310,7 +312,9 @@ def get_pro_admin(x_admin_token: str | None = Header(default=None)) -> dict:
         pais = (m.get("pais") or "PE").lower()
         if activa:
             activos += 1
-            mrr += _pro_precio_pais(pais)
+            if pais in mrr_pais:
+                mrr_pais[pais] += _pro_precio_pais(pais)
+                activos_pais[pais] += 1
         miembros.append({"email": email, "hasta": m.get("hasta"),
                          "activa": activa, "pais": pais.upper(),
                          "ultimo_cobro": m.get("ultimo_cobro")})
@@ -320,7 +324,11 @@ def get_pro_admin(x_admin_token: str | None = Header(default=None)) -> dict:
                         "ec": _pro_precio_pais("ec"),
                         "bo": _pro_precio_pais("bo")},
             "activos": activos, "total": len(miembros),
-            "mrr_soles": round(mrr, 2), "miembros": miembros}
+            # MRR de Perú por compatibilidad + desglose por país (en su moneda).
+            "mrr_soles": round(mrr_pais["pe"], 2),
+            "mrr_por_pais": {k: round(v, 2) for k, v in mrr_pais.items()},
+            "activos_por_pais": activos_pais,
+            "miembros": miembros}
 
 
 class ProPrecioReq(BaseModel):
@@ -1253,6 +1261,10 @@ async function cargarPro(){
     if(r.status===401){ salir(); return; }
     const j = await r.json();
     const pr = j.precios || {pe:j.precio_soles, ec:0, bo:0};
+    // Cada país cobra en SU moneda (no todo es soles).
+    const SYM = {pe:'S/', ec:'$', bo:'Bs'};
+    const mrrP = j.mrr_por_pais || {pe:j.mrr_soles||0, ec:0, bo:0};
+    const actP = j.activos_por_pais || {pe:0, ec:0, bo:0};
     const filas = (j.miembros||[]).map(m=>{
       const est = m.activa
         ? '<span style="color:#176B3A;font-weight:800">Activa</span>'
@@ -1266,7 +1278,7 @@ async function cargarPro(){
     }).join('') || '<tr><td colspan="4" style="color:var(--muted);padding:6px">Sin miembros aún.</td></tr>';
     const precioInput = (iso,label) =>
       `<div style="display:flex;align-items:center;gap:6px">
-         <span style="font-size:12px;font-weight:600">${label} S/</span>
+         <span style="font-size:12px;font-weight:600">${label} ${SYM[iso]||''}</span>
          <input id="proPrecio_${iso}" value="${pr[iso]}" inputmode="decimal"
            style="width:66px;padding:8px;border:1px solid var(--border);border-radius:8px;text-align:right">
          <button class="btn-ap" onclick="guardarProPrecio('${iso}')">✓</button>
@@ -1283,8 +1295,13 @@ async function cargarPro(){
         </div>
         <div style="display:flex;gap:22px;margin:14px 0 6px">
           <div><div style="font-size:22px;font-weight:800;color:#14463A">${j.activos}</div><div class="row">Activos</div></div>
-          <div><div style="font-size:22px;font-weight:800;color:#14463A">S/ ${(Number(j.mrr_soles)||0).toFixed(2)}</div><div class="row">MRR estimado</div></div>
           <div><div style="font-size:22px;font-weight:800;color:#14463A">${j.total}</div><div class="row">Total</div></div>
+        </div>
+        <div class="row" style="font-weight:700;margin-top:4px">MRR estimado (cada país en su moneda)</div>
+        <div style="display:flex;gap:18px;margin:4px 0 6px;flex-wrap:wrap">
+          <div><div style="font-size:18px;font-weight:800;color:#14463A">S/ ${(Number(mrrP.pe)||0).toFixed(2)}</div><div class="row">🇵🇪 Perú · ${actP.pe||0}</div></div>
+          <div><div style="font-size:18px;font-weight:800;color:#14463A">$ ${(Number(mrrP.ec)||0).toFixed(2)}</div><div class="row">🇪🇨 Ecuador · ${actP.ec||0}</div></div>
+          <div><div style="font-size:18px;font-weight:800;color:#14463A">Bs ${(Number(mrrP.bo)||0).toFixed(2)}</div><div class="row">🇧🇴 Bolivia · ${actP.bo||0}</div></div>
         </div>
         <table style="width:100%;border-collapse:collapse;font-size:13px">
           <thead><tr style="border-bottom:1px solid var(--border)">

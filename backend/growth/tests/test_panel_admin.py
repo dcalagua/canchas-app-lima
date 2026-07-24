@@ -293,6 +293,22 @@ def test_pro_admin_lista_miembros_precio_y_mrr(client):
                       headers={"X-Admin-Token": "malo"}).status_code == 401
 
 
+def test_pro_mrr_por_pais_en_su_moneda(client):
+    """El MRR NO suma monedas distintas: se reporta por país (S/, $, Bs)."""
+    h = {"X-Admin-Token": TOKEN}
+    client.post("/admin/api/pro/precio", json={"precio_soles": 8, "pais": "ec"},
+                headers=h)
+    stores.membresias_pro["pe@x.com"] = {
+        "hasta": "2999-01-01T00:00:00+00:00", "pais": "PE"}
+    stores.membresias_pro["ec@x.com"] = {
+        "hasta": "2999-01-01T00:00:00+00:00", "pais": "EC"}
+    out = client.get("/admin/api/pro", headers=h).json()
+    assert out["mrr_por_pais"]["pe"] == 12.0  # Perú en soles
+    assert out["mrr_por_pais"]["ec"] == 8.0   # Ecuador en dólares (no sumado a PE)
+    assert out["mrr_por_pais"]["bo"] == 0.0
+    assert out["activos_por_pais"] == {"pe": 1, "ec": 1, "bo": 0}
+
+
 def test_circuito_ingresos_pro_y_torneos(client):
     h = {"X-Admin-Token": TOKEN}
     # 2 membresías Pro (S/12 c/u) + 1 ingreso de torneo (bruto 20, comisión 2).
