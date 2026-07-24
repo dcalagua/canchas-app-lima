@@ -4,6 +4,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../config/pais.dart';
 import '../data/partidos_repo.dart';
+import '../models/academia.dart';
 import '../models/club.dart';
 import '../models/models.dart';
 import '../models/partido.dart';
@@ -13,6 +14,7 @@ import '../theme.dart';
 import 'chat_screen.dart';
 import 'convocatorias_screen.dart';
 import 'login_google_sheet.dart';
+import 'ranking_global_screen.dart';
 
 /// "Partidos abiertos" — el **Match** del benchmark: cualquier jugador publica un
 /// partido con cupos ("busco 2 para completar fulbito el sábado") y otros se
@@ -34,6 +36,10 @@ class _PartidosScreenState extends State<PartidosScreen> {
   void initState() {
     super.initState();
     _cargar();
+    // Datos del circuito para la tarjeta de descubrimiento (best-effort).
+    appState.cargarAcademiasRemotas();
+    appState.cargarRetosResultados();
+    appState.cargarMiembrosPro();
   }
 
   Future<void> _cargar() async {
@@ -198,6 +204,7 @@ class _PartidosScreenState extends State<PartidosScreen> {
                 ],
               ),
             ),
+            const _CircuitoPreview(),
             Expanded(
               child: RefreshIndicator(
                 onRefresh: _cargar,
@@ -223,6 +230,156 @@ class _PartidosScreenState extends State<PartidosScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Tarjeta de DESCUBRIMIENTO del Circuito Pichangol en la pestaña Partidos:
+/// muestra el top-3 del ranking global (o invita a arrancarlo) y lleva al
+/// Ranking Global. Es el gancho para que el jugador entre al loop competitivo.
+class _CircuitoPreview extends StatelessWidget {
+  const _CircuitoPreview();
+
+  void _abrir(BuildContext context) => Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const RankingGlobalScreen()));
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: appState,
+      builder: (context, _) {
+        final deportes = appState.deportesConRanking;
+        final dep = deportes.isNotEmpty ? deportes.first : null;
+        final top = dep == null
+            ? const <RankingGlobalFila>[]
+            : appState.rankingGlobal(deporte: dep).take(3).toList();
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 2),
+          child: Material(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(18),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(18),
+              onTap: () => _abrir(context),
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: trazo),
+                ),
+                padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                              color: limaSuave,
+                              borderRadius: BorderRadius.circular(11)),
+                          child: const Icon(Icons.emoji_events,
+                              color: bosque, size: 21),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Circuito Pichangol',
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 15.5)),
+                              Text('Ranking de tu ciudad · rétalos y sube',
+                                  style: TextStyle(
+                                      color: textoTenue, fontSize: 12.5)),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.chevron_right, color: textoTenue),
+                      ],
+                    ),
+                    if (top.isEmpty) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                          '¡Arranca el circuito! Reta a un jugador y aparece en '
+                          'el ranking de tu ciudad.',
+                          style: TextStyle(
+                              color: textoTenueDe(context),
+                              fontSize: 12.5,
+                              height: 1.3)),
+                    ] else ...[
+                      const SizedBox(height: 8),
+                      for (var i = 0; i < top.length; i++)
+                        _MiniFila(
+                            posicion: i + 1,
+                            f: top[i],
+                            esPro: appState.esProEmail(top[i].emailIdentidad)),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Fila compacta del top-3 en la tarjeta del circuito.
+class _MiniFila extends StatelessWidget {
+  const _MiniFila(
+      {required this.posicion, required this.f, required this.esPro});
+  final int posicion;
+  final RankingGlobalFila f;
+  final bool esPro;
+  @override
+  Widget build(BuildContext context) {
+    final medalla = switch (posicion) {
+      1 => '🥇',
+      2 => '🥈',
+      3 => '🥉',
+      _ => '$posicion',
+    };
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: [
+          SizedBox(
+              width: 22,
+              child: Text(medalla,
+                  style: const TextStyle(fontSize: 15),
+                  textAlign: TextAlign.center)),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(f.nombre,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    fontWeight: FontWeight.w600, fontSize: 13.5)),
+          ),
+          if (esPro) ...[
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              decoration: BoxDecoration(
+                  color: bosque, borderRadius: BorderRadius.circular(5)),
+              child: const Text('PRO',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 8.5)),
+            ),
+          ],
+          const Spacer(),
+          Text('${f.puntos} pts',
+              style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13,
+                  color: bosque)),
+        ],
       ),
     );
   }
