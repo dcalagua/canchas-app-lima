@@ -502,6 +502,35 @@ class Academia {
     return lista;
   }
 
+  /// Ranking derivado SOLO de los partidos (los jugadores son los que aparecen
+  /// en ellos, con su nombre denormalizado). Sirve para el RANKING GLOBAL, que
+  /// agrega academias sin cargar sus rosters de alumnos. Filtra por [categoria].
+  List<PosicionRanking> rankingDePartidos({String? categoria}) {
+    final stats = <String, PosicionRanking>{};
+    void asegurar(String id, String nombre) {
+      if (id.isEmpty || stats.containsKey(id)) return;
+      final cat = categoriaDe(id);
+      if (categoria != null && categoria.isNotEmpty && cat != categoria) return;
+      stats[id] = PosicionRanking(alumnoId: id, nombre: nombre, categoria: cat);
+    }
+
+    for (final p in partidos) {
+      asegurar(p.jugadorAId, p.jugadorANombre);
+      asegurar(p.jugadorBId, p.jugadorBNombre);
+    }
+    for (final p in partidos) {
+      final sa = stats[p.jugadorAId];
+      if (sa != null) {
+        stats[p.jugadorAId] = sa.conResultado(p.ganadorId == p.jugadorAId);
+      }
+      final sb = stats[p.jugadorBId];
+      if (sb != null) {
+        stats[p.jugadorBId] = sb.conResultado(p.ganadorId == p.jugadorBId);
+      }
+    }
+    return stats.values.toList();
+  }
+
   /// Partidos de un alumno (para su carnet), más recientes primero.
   List<PartidoRanking> partidosDe(String alumnoId) =>
       (partidos.where((p) => p.jugadorAId == alumnoId || p.jugadorBId == alumnoId)
@@ -597,6 +626,36 @@ class PosicionRanking {
         pg: pg + (gano ? 1 : 0),
         pp: pp + (gano ? 0 : 1),
       );
+}
+
+/// Una fila del RANKING GLOBAL Pichangol: un jugador de alguna academia, con su
+/// academia y deporte, para el ranking cruzado por deporte (estilo circuito
+/// abierto). Se computa agregando los partidos de todas las academias.
+class RankingGlobalFila {
+  final String academiaId;
+  final String academiaNombre;
+  final Deporte deporte;
+  final String alumnoId;
+  final String nombre;
+  final String categoria;
+  final int pj;
+  final int pg;
+  final int pp;
+  final int puntos;
+  final double pct;
+  const RankingGlobalFila({
+    required this.academiaId,
+    required this.academiaNombre,
+    required this.deporte,
+    required this.alumnoId,
+    required this.nombre,
+    required this.categoria,
+    required this.pj,
+    required this.pg,
+    required this.pp,
+    required this.puntos,
+    required this.pct,
+  });
 }
 
 /// Una SEDE (local) de una academia multi-sede: nombre + dirección + ubicación.

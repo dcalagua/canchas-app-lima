@@ -221,6 +221,61 @@ class AppState extends ChangeNotifier {
     await PagosService.generarLanding(ac.id, _landingDatos(ac));
   }
 
+  /// Deportes que tienen al menos un partido registrado (para las pestañas del
+  /// ranking global).
+  List<Deporte> get deportesConRanking {
+    final s = <Deporte>{};
+    for (final a in academias) {
+      if (a.partidos.isNotEmpty) s.add(a.deporte);
+    }
+    final l = s.toList()..sort((x, y) => x.index.compareTo(y.index));
+    return l;
+  }
+
+  /// Categorías presentes en el ranking global de un deporte (para el filtro).
+  List<String> categoriasGlobalDe(Deporte deporte) {
+    final s = <String>{};
+    for (final a in academias) {
+      if (a.deporte != deporte) continue;
+      s.addAll(a.categorias.values.where((c) => c.isNotEmpty));
+    }
+    final l = s.toList()..sort();
+    return l;
+  }
+
+  /// RANKING GLOBAL Pichangol: agrega los partidos de TODAS las academias del
+  /// [deporte] en una sola tabla, ordenada por puntos. Client-side (las
+  /// academias ya vienen con sus partidos embebidos). Cada jugador-en-academia
+  /// es una fila (dedupe por identidad global = fase posterior).
+  List<RankingGlobalFila> rankingGlobal({Deporte? deporte, String? categoria}) {
+    final filas = <RankingGlobalFila>[];
+    for (final a in academias) {
+      if (deporte != null && a.deporte != deporte) continue;
+      for (final p in a.rankingDePartidos(categoria: categoria)) {
+        if (p.pj == 0) continue; // solo quienes jugaron
+        filas.add(RankingGlobalFila(
+          academiaId: a.id,
+          academiaNombre: a.nombre,
+          deporte: a.deporte,
+          alumnoId: p.alumnoId,
+          nombre: p.nombre,
+          categoria: p.categoria,
+          pj: p.pj,
+          pg: p.pg,
+          pp: p.pp,
+          puntos: p.puntos,
+          pct: p.pct,
+        ));
+      }
+    }
+    filas.sort((x, y) {
+      if (y.puntos != x.puntos) return y.puntos.compareTo(x.puntos);
+      if (y.pct != x.pct) return y.pct.compareTo(x.pct);
+      return y.pg.compareTo(x.pg);
+    });
+    return filas;
+  }
+
   /// Al CONECTAR las redes (OAuth Meta en Servicios), auto-declara en la academia
   /// el @usuario de Instagram y la Página de Facebook reales, para no escribirlos
   /// dos veces. Solo rellena lo que esté VACÍO (no pisa lo que el dueño ya puso).

@@ -8,6 +8,7 @@ import '../theme.dart';
 import '../utils/redes.dart';
 import '../widgets/responsive.dart';
 import 'academia_detalle_screen.dart';
+import 'ranking_global_screen.dart';
 import 'login_google_sheet.dart';
 import 'mis_clases_screen.dart';
 import '../config/pais.dart';
@@ -114,6 +115,10 @@ class AcademiasScreen extends StatelessWidget {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              if (appState.deportesConRanking.isNotEmpty) ...[
+                _RankingGlobalBanner(),
+                const SizedBox(height: 14),
+              ],
               if (appState.misMatriculas.isNotEmpty) ...[
                 _misClasesAcceso(context),
                 const SizedBox(height: 12),
@@ -591,6 +596,48 @@ class _TarjetaAcademia extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Banner de acceso al RANKING GLOBAL (tabla cruzada por deporte). Solo se
+/// muestra cuando ya hay partidos registrados en alguna academia.
+class _RankingGlobalBanner extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: bosque,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => const RankingGlobalScreen())),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              const Icon(Icons.public, color: lima, size: 26),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Ranking Global Pichangol',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15)),
+                    SizedBox(height: 2),
+                    Text('La tabla cruzada de todas las academias por deporte.',
+                        style: TextStyle(color: Colors.white70, fontSize: 12.5)),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: Colors.white54),
+            ],
+          ),
         ),
       ),
     );
