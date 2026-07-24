@@ -5,6 +5,7 @@ import 'package:printing/printing.dart';
 
 import '../models/academia.dart';
 import '../models/models.dart';
+import '../services/avisos_service.dart';
 import '../services/pagos_service.dart';
 import '../services/retos_service.dart';
 import '../state/app_state.dart';
@@ -298,6 +299,12 @@ class _PerfilGlobalScreenState extends State<PerfilGlobalScreen> {
       retadoNombre: perfil.nombre,
       deporte: widget.deporte.name,
     );
+    if (reto != null) {
+      AvisosService.retoRecibido(
+          retadoEmail: _retadoEmail,
+          retadorNombre: u.nombre,
+          deporte: widget.deporte.name); // push al retado (best-effort)
+    }
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       backgroundColor: reto != null ? bosque : null,

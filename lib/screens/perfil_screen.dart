@@ -123,8 +123,11 @@ class PerfilScreen extends StatelessWidget {
                         icon: Icons.sports_kabaddi,
                         title: 'Mis retos',
                         subtitle: 'Rétalos, juega y sube en el ranking',
-                        onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                            builder: (_) => const MisRetosScreen())),
+                        badge: appState.retosPendientes,
+                        onTap: () => Navigator.of(context)
+                            .push(MaterialPageRoute(
+                                builder: (_) => const MisRetosScreen()))
+                            .then((_) => appState.cargarRetosPendientes()),
                       ),
                     if (u != null)
                       _Tile(
@@ -323,15 +326,33 @@ class _Tile extends StatelessWidget {
       {required this.icon,
       required this.title,
       required this.subtitle,
-      required this.onTap});
+      required this.onTap,
+      this.badge = 0});
   final IconData icon;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
 
+  /// Contador de "requiere tu atención" (0 = sin badge). Estilo Airbnb: punto
+  /// lima con el número, sobre el ícono del tile.
+  final int badge;
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    Widget avatar = CircleAvatar(
+      radius: 20,
+      backgroundColor: limaSuave,
+      child: Icon(icon, color: bosque, size: 20),
+    );
+    if (badge > 0) {
+      avatar = Badge.count(
+        count: badge,
+        backgroundColor: bosque,
+        textColor: Colors.white,
+        child: avatar,
+      );
+    }
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
@@ -343,11 +364,7 @@ class _Tile extends StatelessWidget {
         ],
       ),
       child: ListTile(
-        leading: CircleAvatar(
-          radius: 20,
-          backgroundColor: limaSuave,
-          child: Icon(icon, color: bosque, size: 20),
-        ),
+        leading: avatar,
         title: Text(title,
             style: t.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
         subtitle: Text(subtitle,

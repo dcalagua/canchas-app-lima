@@ -232,6 +232,42 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Retos que REQUIEREN mi atención (badge del perfil, sin push): retos
+  // recibidos pendientes de responder + retos aceptados (de ambos lados)
+  // pendientes de reportar el resultado. Es el aviso in-app del loop P2P.
+  int _retosPendientes = 0;
+  int get retosPendientes => _retosPendientes;
+
+  /// Cuenta los retos que requieren acción del usuario y actualiza el badge.
+  /// Best-effort: si no hay backend o sesión, deja el contador en 0.
+  Future<void> cargarRetosPendientes() async {
+    final email = (usuario?.email ?? '').toLowerCase().trim();
+    if (email.isEmpty) {
+      if (_retosPendientes != 0) {
+        _retosPendientes = 0;
+        notifyListeners();
+      }
+      return;
+    }
+    final r = await RetosService.mios(email);
+    if (r == null) return; // sin red: conserva el último valor conocido
+    final recibidos = (r['recibidos'] as List?) ?? const [];
+    final enviados = (r['enviados'] as List?) ?? const [];
+    var n = 0;
+    for (final e in recibidos) {
+      final estado = ((e as Map)['estado'] ?? '').toString();
+      if (estado == 'pendiente' || estado == 'aceptado') n++;
+    }
+    for (final e in enviados) {
+      final estado = ((e as Map)['estado'] ?? '').toString();
+      if (estado == 'aceptado') n++; // aceptado por el rival: falta reportar
+    }
+    if (_retosPendientes != n) {
+      _retosPendientes = n;
+      notifyListeners();
+    }
+  }
+
   Deporte? _deporteDe(dynamic name) {
     final n = (name ?? '').toString();
     for (final d in Deporte.values) {

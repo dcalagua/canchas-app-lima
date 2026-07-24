@@ -43,9 +43,14 @@ class _AppShellState extends State<AppShell> {
         listenable: appState,
         builder: (context, _) {
           final foto = appState.usuario?.fotoUrl;
+          final retos = appState.retosPendientes;
           return NavigationBar(
             selectedIndex: _index,
-            onDestinationSelected: (i) => setState(() => _index = i),
+            onDestinationSelected: (i) {
+              setState(() => _index = i);
+              // Al entrar a Perfil, refresca el contador de retos (badge).
+              if (i == 4) appState.cargarRetosPendientes();
+            },
             destinations: [
               const NavigationDestination(
                   icon: Icon(Icons.explore_outlined),
@@ -64,8 +69,12 @@ class _AppShellState extends State<AppShell> {
                   selectedIcon: Icon(Icons.chat_bubble),
                   label: 'Mensajes'),
               NavigationDestination(
-                icon: _PerfilIcono(fotoUrl: foto, seleccionado: false),
-                selectedIcon: _PerfilIcono(fotoUrl: foto, seleccionado: true),
+                icon: _ConBadge(
+                    count: retos,
+                    child: _PerfilIcono(fotoUrl: foto, seleccionado: false)),
+                selectedIcon: _ConBadge(
+                    count: retos,
+                    child: _PerfilIcono(fotoUrl: foto, seleccionado: true)),
                 label: 'Perfil',
               ),
             ],
@@ -73,6 +82,23 @@ class _AppShellState extends State<AppShell> {
         },
       ),
     );
+  }
+}
+
+/// Envuelve un ícono de la barra con un badge (punto verde con número) cuando
+/// hay retos pendientes de atención. count<=0 = sin badge.
+class _ConBadge extends StatelessWidget {
+  const _ConBadge({required this.count, required this.child});
+  final int count;
+  final Widget child;
+  @override
+  Widget build(BuildContext context) {
+    if (count <= 0) return child;
+    return Badge.count(
+        count: count,
+        backgroundColor: bosque,
+        textColor: Colors.white,
+        child: child);
   }
 }
 

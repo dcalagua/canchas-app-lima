@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/models.dart';
+import '../services/avisos_service.dart';
 import '../services/retos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -56,7 +57,13 @@ class _MisRetosScreenState extends State<MisRetosScreen> {
     final ok = await RetosService.responder((r['id'] as num).toInt(), aceptar);
     if (!mounted) return;
     if (ok) {
+      // Avisa al retador que respondí su reto (push, best-effort).
+      AvisosService.retoRespondido(
+          retadorEmail: (r['retador_email'] ?? '').toString(),
+          retadoNombre: (r['retado_nombre'] ?? 'Tu rival').toString(),
+          aceptado: aceptar);
       await _cargar();
+      await appState.cargarRetosPendientes(); // refresca el badge del perfil
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('No se pudo. Reintenta.')));
@@ -127,7 +134,17 @@ class _MisRetosScreenState extends State<MisRetosScreen> {
         marcador: marcador.text.trim());
     if (!mounted) return;
     if (done) {
+      // Avisa al OTRO jugador que reporté el resultado (push, best-effort).
+      final yo = _email;
+      final otroEmail = retadorEmail.toLowerCase() == yo
+          ? retadoEmail
+          : retadorEmail;
+      final miNombre =
+          retadorEmail.toLowerCase() == yo ? retadorNombre : retadoNombre;
+      AvisosService.resultadoReportado(
+          email: otroEmail, porNombre: miNombre, marcador: marcador.text.trim());
       await appState.cargarRetosResultados(); // refresca el ranking
+      await appState.cargarRetosPendientes(); // refresca el badge del perfil
       await _cargar();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
