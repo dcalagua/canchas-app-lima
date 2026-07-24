@@ -9,6 +9,7 @@ import 'academias_screen.dart';
 import 'ajustes_screen.dart';
 import 'anfitrion_screen.dart';
 import 'login_google_sheet.dart';
+import 'hazte_pro_screen.dart';
 import 'metodos_pago_screen.dart';
 import 'referidos_screen.dart';
 import 'verificar_identidad_screen.dart';
@@ -115,6 +116,20 @@ class PerfilScreen extends StatelessWidget {
                       onTap: () => Navigator.of(context).push(MaterialPageRoute(
                           builder: (_) => const AcademiasScreen())),
                     ),
+                    if (u != null)
+                      _Tile(
+                        icon: appState.proActivo
+                            ? Icons.workspace_premium
+                            : Icons.star_border,
+                        title: appState.proActivo
+                            ? 'Pichangol Pro ✓'
+                            : 'Hazte Pichangol Pro',
+                        subtitle: appState.proActivo
+                            ? 'Tu membresía está activa'
+                            : 'Tu carnet oficial y el ranking del circuito',
+                        onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => const HazteProScreen())),
+                      ),
                     if (u != null)
                       _Tile(
                         icon: appState.jugadorVerificado

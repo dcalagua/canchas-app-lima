@@ -2305,6 +2305,38 @@ class AppState extends ChangeNotifier {
     return c < 2 ? 2 : c;
   }
 
+  // ── PICHANGOL PRO (membresía del jugador) ──────────────────────────────────
+  bool proActivo = false; // ¿el usuario tiene la membresía Pro vigente?
+  String? proHasta; // ISO de vigencia (si activa)
+  double proPrecio = 12; // precio mensual (se refresca del backend)
+
+  /// Sincroniza el estado Pro del usuario con el backend (best-effort).
+  Future<void> sincronizarPro() async {
+    final email = usuario?.email;
+    if (email == null || email.isEmpty || !PagosService.disponible) return;
+    final est = await PagosService.proEstado(email);
+    if (est == null) return;
+    proActivo = est['activa'] == true;
+    proHasta = est['hasta'] as String?;
+    proPrecio = (est['precio_soles'] as num?)?.toDouble() ?? proPrecio;
+    notifyListeners();
+  }
+
+  /// Activa/renueva Pro debitando 1 mes del saldo (billetera única). Devuelve el
+  /// resultado del backend: {ok:true,...} o {ok:false, falta_saldo:true,...}.
+  Future<Map<String, dynamic>> suscribirPro() async {
+    final email = usuario?.email ?? '';
+    if (email.isEmpty) return {'ok': false, 'error': 'Inicia sesión primero.'};
+    final r = await PagosService.proSuscribir(email);
+    if (r['ok'] == true) {
+      proActivo = true;
+      proHasta = r['hasta'] as String?;
+      notifyListeners();
+      await sincronizarSaldo(); // el saldo bajó (se debitó el mes)
+    }
+    return r;
+  }
+
   /// Sincroniza el saldo con el BACKEND (fuente de verdad de los pagos reales).
   /// El saldo local solo vive en el teléfono, así que en una instalación limpia
   /// se pierde; el backend guarda las recargas por dueño (email). Best-effort:

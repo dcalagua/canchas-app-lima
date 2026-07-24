@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/academia.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'hazte_pro_screen.dart';
 
 /// CIRCUITO / RANKING interno de una academia (Fase 0 de Pichangol Circuito).
 /// Tabla de posiciones de los alumnos + carnet del jugador. El dueño (profe)
@@ -319,6 +320,13 @@ class _Carnet extends StatelessWidget {
         final p = tabla[idx];
         final partidos = ac.partidosDe(p.alumnoId);
         final cs = Theme.of(context).colorScheme;
+        // ¿Este carnet es el del usuario logueado? (para el badge/CTA Pro)
+        final alumnoMio =
+            alumnos.firstWhere((a) => a.id == alumnoId, orElse: () => alumnos.first);
+        final emailUser = (appState.usuario?.email ?? '').toLowerCase().trim();
+        final esMio =
+            emailUser.isNotEmpty && alumnoMio.email.toLowerCase().trim() == emailUser;
+        final esPro = esMio && appState.proActivo;
         return Padding(
           padding: EdgeInsets.fromLTRB(
               20, 18, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
@@ -371,12 +379,31 @@ class _Carnet extends StatelessWidget {
                                     fontWeight: FontWeight.w900,
                                     fontSize: 19)),
                             const SizedBox(height: 2),
-                            Text(
-                                'Puesto #$posicion'
-                                '${p.categoria.isNotEmpty ? ' · ${p.categoria}' : ''}',
-                                style: TextStyle(
-                                    color: Colors.white.withOpacity(0.85),
-                                    fontWeight: FontWeight.w700)),
+                            Row(
+                              children: [
+                                Text(
+                                    'Puesto #$posicion'
+                                    '${p.categoria.isNotEmpty ? ' · ${p.categoria}' : ''}',
+                                    style: TextStyle(
+                                        color: Colors.white.withOpacity(0.85),
+                                        fontWeight: FontWeight.w700)),
+                                if (esPro) ...[
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 7, vertical: 2),
+                                    decoration: BoxDecoration(
+                                        color: lima,
+                                        borderRadius: BorderRadius.circular(6)),
+                                    child: const Text('PRO',
+                                        style: TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: 10)),
+                                  ),
+                                ],
+                              ],
+                            ),
                             Text(ac.nombre,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -403,6 +430,26 @@ class _Carnet extends StatelessWidget {
                         bosque),
                   ],
                 ),
+                if (esMio && !appState.proActivo) ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                          backgroundColor: lima,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12)),
+                      icon: const Icon(Icons.workspace_premium, size: 18),
+                      label: const Text('Hazte Pichangol Pro',
+                          style: TextStyle(fontWeight: FontWeight.w800)),
+                      onPressed: () {
+                        Navigator.pop(context);
+                        Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => const HazteProScreen()));
+                      },
+                    ),
+                  ),
+                ],
                 if (esDueno) ...[
                   const SizedBox(height: 12),
                   OutlinedButton.icon(

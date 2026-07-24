@@ -404,6 +404,49 @@ class PagosService {
     }
   }
 
+  // ── Pichangol PRO (membresía del jugador, se cobra del saldo) ─────────────
+  /// Estado de la membresía Pro del usuario: {activa, hasta, precio_soles}.
+  static Future<Map<String, dynamic>?> proEstado(String email) async {
+    if (!disponible || email.isEmpty) return null;
+    try {
+      final r = await http.get(Uri.parse('$_baseUrl/pagos/pro/estado/$email'),
+          headers: _appHeaders()).timeout(const Duration(seconds: 12));
+      if (r.statusCode != 200) return null;
+      return jsonDecode(r.body) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Precio mensual de Pichangol Pro (soles). Null si no se pudo.
+  static Future<double?> proPrecio() async {
+    if (!disponible) return null;
+    try {
+      final r = await http.get(Uri.parse('$_baseUrl/pagos/pro/config'),
+          headers: _appHeaders()).timeout(const Duration(seconds: 10));
+      if (r.statusCode != 200) return null;
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      return (j['precio_soles'] as num?)?.toDouble();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Activa/renueva Pro debitando 1 mes del saldo del usuario. Devuelve el JSON
+  /// del backend: {ok:true, hasta,...} o {ok:false, falta_saldo:true, requerido_soles}.
+  static Future<Map<String, dynamic>> proSuscribir(String email) async {
+    if (!disponible) return {'ok': false, 'error': 'Pagos no disponibles.'};
+    try {
+      final r = await http.post(Uri.parse('$_baseUrl/pagos/pro/suscribir'),
+          headers: _appHeaders(json: true),
+          body: jsonEncode({'email': email})).timeout(const Duration(seconds: 20));
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      return j;
+    } catch (_) {
+      return {'ok': false, 'error': 'Sin conexión con el servidor de pagos.'};
+    }
+  }
+
   /// Saldo actual del dueño (en soles). Null si no se pudo.
   static Future<double?> saldo(String duenoId) async {
     if (!disponible) return null;
