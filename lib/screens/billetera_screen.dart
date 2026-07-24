@@ -6,6 +6,7 @@ import 'package:printing/printing.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'metodos_pago_screen.dart';
 import 'recargar_saldo_screen.dart';
 
 /// MI BILLETERA: saldo único del usuario + historial COMPLETO de movimientos
@@ -100,6 +101,32 @@ class _BilleteraScreenState extends State<BilleteraScreen> {
                         ),
                       ),
                     ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                // Métodos de pago (tarjetas guardadas): vive dentro de la
+                // billetera, que es el hub de todo lo del dinero del usuario.
+                Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: trazo),
+                  ),
+                  child: ListTile(
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                    leading: const CircleAvatar(
+                      radius: 18,
+                      backgroundColor: limaSuave,
+                      child: Icon(Icons.credit_card, color: bosque, size: 18),
+                    ),
+                    title: const Text('Métodos de pago',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                    subtitle: const Text('Tus tarjetas guardadas para pagar rápido',
+                        style: TextStyle(color: textoTenue, fontSize: 12)),
+                    trailing: const Icon(Icons.chevron_right, color: textoTenue),
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => const MetodosPagoScreen())),
                   ),
                 ),
                 const SizedBox(height: 20),

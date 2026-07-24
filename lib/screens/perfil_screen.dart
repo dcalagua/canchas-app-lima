@@ -12,7 +12,6 @@ import 'login_google_sheet.dart';
 import 'billetera_screen.dart';
 import 'hazte_pro_screen.dart';
 import 'mis_retos_screen.dart';
-import 'metodos_pago_screen.dart';
 import 'referidos_screen.dart';
 import 'verificar_identidad_screen.dart';
 
@@ -170,14 +169,8 @@ class PerfilScreen extends StatelessWidget {
                         onTap: () => Navigator.of(context).push(MaterialPageRoute(
                             builder: (_) => const BilleteraScreen())),
                       ),
-                    if (u != null)
-                      _Tile(
-                        icon: Icons.credit_card,
-                        title: 'Métodos de pago',
-                        subtitle: 'Tus tarjetas guardadas para pagar rápido',
-                        onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                            builder: (_) => const MetodosPagoScreen())),
-                      ),
+                    // "Métodos de pago" ahora vive DENTRO de "Mi billetera"
+                    // (todo lo del dinero en un solo lugar).
                     _Tile(
                       icon: Icons.card_giftcard,
                       title: 'Invita y gana 🎁',
