@@ -10,6 +10,7 @@ import '../data/campeonatos_repo.dart';
 import '../data/canchas_repo.dart';
 import '../data/invitaciones_repo.dart';
 import '../data/matriculas_repo.dart';
+import '../data/mensajes_repo.dart';
 import '../data/bloqueos_repo.dart';
 import '../data/referidos_repo.dart';
 import '../data/resenas_repo.dart';
@@ -2773,9 +2774,20 @@ class AppState extends ChangeNotifier {
           await MatriculasRepo.eliminar(al.id);
         }
       }
+      final misCanchaIds =
+          misCanchas.where((c) => c.registrada).map((c) => c.id).toList();
       // Reservas de mis canchas (registradas/reclamadas).
-      for (final c in misCanchas.where((c) => c.registrada)) {
-        await ReservasRepo.eliminarDeCancha(c.id);
+      for (final id in misCanchaIds) {
+        await ReservasRepo.eliminarDeCancha(id);
+      }
+      // Reseñas de mis canchas.
+      await ResenasRepo.eliminarDeCanchas(misCanchaIds);
+      // Chats: de mis academias + conversaciones de cancha donde participo.
+      await MensajesRepo.eliminarDeAcademias(misAcademiaIds.toList());
+      await MensajesRepo.eliminarCanchaDe(email);
+      // Campeonatos de mis academias.
+      for (final c in campeonatos.where((c) => misAcademiaIds.contains(c.academiaId))) {
+        await CampeonatosRepo.eliminar(c.id);
       }
     }
     // Memoria local: borra lo transaccional, CONSERVA academias, canchas y sesión.
@@ -2786,6 +2798,7 @@ class AppState extends ChangeNotifier {
     cuotas.clear();
     asistencias.clear();
     movimientos.clear();
+    campeonatos.clear();
     saldoClub = 0;
     _saldoOtrosPaises.clear();
     _ultimoSyncMatriculas = null;

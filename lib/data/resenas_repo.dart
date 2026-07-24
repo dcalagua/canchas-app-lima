@@ -41,4 +41,16 @@ class ResenasRepo {
       return false;
     }
   }
+
+  /// Borra las reseñas de un conjunto de canchas (para "Dejar en virgen").
+  /// Best-effort: no lanza.
+  static Future<void> eliminarDeCanchas(List<String> canchaIds) async {
+    if (!disponible || canchaIds.isEmpty) return;
+    try {
+      await SupabaseService.client
+          .from(_tabla)
+          .delete()
+          .inFilter('cancha_id', canchaIds);
+    } catch (_) {}
+  }
 }

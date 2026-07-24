@@ -145,4 +145,30 @@ class MensajesRepo {
       return false;
     }
   }
+
+  /// Borra los mensajes de un conjunto de academias (para "Dejar en virgen").
+  /// Best-effort: no lanza.
+  static Future<void> eliminarDeAcademias(List<String> ids) async {
+    if (!SupabaseService.disponible || ids.isEmpty) return;
+    try {
+      await SupabaseService.client
+          .from(_tabla)
+          .delete()
+          .inFilter('academia_id', ids);
+    } catch (_) {}
+  }
+
+  /// Borra las conversaciones de CANCHA donde el usuario participa (dueño =
+  /// ref_id, o jugador = cuenta_email). Best-effort.
+  static Future<void> eliminarCanchaDe(String email) async {
+    if (!SupabaseService.disponible || email.isEmpty) return;
+    try {
+      final e = email.trim().toLowerCase();
+      await SupabaseService.client
+          .from(_tabla)
+          .delete()
+          .eq('tipo', 'cancha')
+          .or('ref_id.eq.$e,cuenta_email.eq.$e');
+    } catch (_) {}
+  }
 }

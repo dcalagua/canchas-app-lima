@@ -54,8 +54,8 @@ class AjustesScreen extends StatelessWidget {
       builder: (_) => AlertDialog(
         title: const Text('¿Dejar en virgen?'),
         content: const Text(
-            'Borra alumnos, reservas y todo lo transaccional (cobros, cuotas, '
-            'saldo, movimientos) — como si nunca hubiera pasado nada.\n\n'
+            'Borra alumnos, reservas, cobros, cuotas, saldo, movimientos, '
+            'chats, reseñas y campeonatos — como si nunca hubiera pasado nada.\n\n'
             'CONSERVA tus canchas reclamadas y tus academias creadas (y tu '
             'sesión). No se puede deshacer.\n\n'
             'Ojo: el saldo/pagos del servidor se limpian aparte desde la torre '
