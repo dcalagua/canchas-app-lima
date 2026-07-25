@@ -2,13 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../config/pais.dart';
 import '../models/models.dart';
-import '../services/avisos_service.dart';
 import '../services/circuito_service.dart';
-import '../services/retos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/reto_flow.dart';
 import '../widgets/selector_ubicacion.dart';
-import 'hazte_pro_screen.dart';
 import 'login_google_sheet.dart';
 
 /// Abre la hoja "Unirme al circuito" (login + formulario) desde CUALQUIER
@@ -92,67 +90,17 @@ class _JugadoresDisponiblesScreenState
   }
 
   Future<void> _retar(Map<String, dynamic> j) async {
-    if (!await LoginGoogleSheet.mostrar(context, motivo: 'retar a un jugador')) {
-      return;
-    }
-    if (!mounted) return;
-    final u = appState.usuario;
-    if (u == null) return;
-    final retadoEmail = (j['email'] ?? '').toString();
     final retadoNombre =
         (j['nombre'] ?? '').toString().isNotEmpty ? j['nombre'].toString() : 'Jugador';
     final deporte = (j['deporte'] ?? _filtro?.name ?? '').toString();
-    final resp = await RetosService.crear(
-      retadorEmail: u.email,
-      retadorNombre: u.nombre,
-      retadoEmail: retadoEmail,
-      retadoNombre: retadoNombre,
+    // Un solo reto por click (guardia anti doble-clic + preload) centralizado.
+    await enviarRetoConGuardia(
+      context,
       deporte: deporte,
+      retadoEmail: (j['email'] ?? '').toString(),
+      retadoNombre: retadoNombre,
       zona: (j['zona'] ?? '').toString(),
     );
-    if (!mounted) return;
-    if (resp != null && resp['error'] == 'limite_retos_free') {
-      _ofrecerPro(resp['limite']);
-      return;
-    }
-    final ok = resp != null && resp['ok'] == true;
-    if (ok) {
-      AvisosService.retoRecibido(
-          retadoEmail: retadoEmail, retadorNombre: u.nombre, deporte: deporte);
-    }
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      backgroundColor: ok ? bosque : null,
-      content: Text(ok
-          ? 'Reto enviado a $retadoNombre. Coordinen y repórtenlo en "Mis retos".'
-          : 'No se pudo enviar el reto. Reintenta.'),
-    ));
-  }
-
-  Future<void> _ofrecerPro(dynamic limite) async {
-    final n = (limite is num) ? limite.toInt() : 3;
-    final ir = await showDialog<bool>(
-      context: context,
-      builder: (dctx) => AlertDialog(
-        title: const Text('Llegaste a tu límite de retos'),
-        content: Text(
-            'Sin Pichangol Pro puedes enviar $n retos por semana. Hazte Pro y '
-            'reta sin límites, con tu carnet oficial y la insignia PRO.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(dctx, false),
-              child: const Text('Ahora no')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: lima),
-            onPressed: () => Navigator.pop(dctx, true),
-            child: const Text('Hazte Pro'),
-          ),
-        ],
-      ),
-    );
-    if (ir == true && mounted) {
-      Navigator.of(context)
-          .push(MaterialPageRoute(builder: (_) => const HazteProScreen()));
-    }
   }
 
   @override

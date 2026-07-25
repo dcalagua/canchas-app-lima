@@ -255,12 +255,12 @@ class _RetoCard extends StatelessWidget {
     final otro = soyRetado
         ? (r['retador_nombre'] ?? 'Retador').toString()
         : (r['retado_nombre'] ?? 'Retado').toString();
-    final (String etiqueta, Color color) = switch (estado) {
-      'pendiente' => ('Pendiente', clayOscuro),
-      'aceptado' => ('Aceptado', bosque),
-      'jugado' => ('Jugado', lima),
-      'rechazado' => ('Rechazado', textoTenue),
-      _ => (estado, textoTenue),
+    final (String etiqueta, Color color, IconData icono) = switch (estado) {
+      'pendiente' => ('Pendiente', clayOscuro, Icons.hourglass_top),
+      'aceptado' => ('Aceptado', bosque, Icons.handshake),
+      'jugado' => ('Jugado', lima, Icons.emoji_events),
+      'rechazado' => ('Rechazado', textoTenue, Icons.close),
+      _ => (estado, textoTenue, Icons.sports_kabaddi),
     };
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -274,38 +274,61 @@ class _RetoCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Text(soyRetado ? 'Te retó $otro' : 'Retaste a $otro',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w800)),
+              // Ícono estilo Airbnb: círculo de color según el estado del reto.
+              CircleAvatar(
+                radius: 22,
+                backgroundColor: color,
+                child: Icon(icono, color: Colors.white, size: 22),
               ),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                    color: color.withOpacity(0.14),
-                    borderRadius: BorderRadius.circular(8)),
-                child: Text(etiqueta,
-                    style: TextStyle(
-                        color: color,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 11.5)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                              soyRetado ? 'Te retó $otro' : 'Retaste a $otro',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w800)),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                              color: color.withOpacity(0.14),
+                              borderRadius: BorderRadius.circular(8)),
+                          child: Text(etiqueta,
+                              style: TextStyle(
+                                  color: color,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 11.5)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                        '$deporte'
+                        '${(r['zona'] ?? '').toString().isNotEmpty ? ' · ${r['zona']}' : ''}',
+                        style:
+                            const TextStyle(color: textoTenue, fontSize: 12.5)),
+                    if (estado == 'jugado' &&
+                        (r['marcador'] ?? '').toString().isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text('Resultado: ${r['marcador']}',
+                          style: const TextStyle(
+                              color: textoTenue, fontSize: 12.5)),
+                    ],
+                  ],
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 2),
-          Text(
-              '$deporte'
-              '${(r['zona'] ?? '').toString().isNotEmpty ? ' · ${r['zona']}' : ''}',
-              style: const TextStyle(color: textoTenue, fontSize: 12.5)),
-          if (estado == 'jugado' &&
-              (r['marcador'] ?? '').toString().isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text('Resultado: ${r['marcador']}',
-                style: const TextStyle(color: textoTenue, fontSize: 12.5)),
-          ],
           if (estado == 'pendiente' && soyRetado) ...[
             const SizedBox(height: 10),
             Row(

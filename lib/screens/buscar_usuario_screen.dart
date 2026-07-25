@@ -5,13 +5,11 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import '../data/perfiles_repo.dart';
 import '../models/models.dart';
-import '../services/avisos_service.dart';
-import '../services/retos_service.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/reto_flow.dart';
 import 'chat_screen.dart';
-import 'hazte_pro_screen.dart';
 import 'login_google_sheet.dart';
 
 /// BUSCAR USUARIO (tipo WhatsApp): encuentra a un jugador por nombre o correo,
@@ -94,71 +92,16 @@ class _BuscarUsuarioScreenState extends State<BuscarUsuarioScreen> {
   }
 
   /// Reta a un jugador (solo si esta pantalla se abrió con [deporteReto]).
+  /// Un solo reto por click: guardia anti doble-clic + preload centralizados.
   Future<void> _retar(String email, String nombre) async {
     final dep = widget.deporteReto;
     if (dep == null) return;
-    if (!await LoginGoogleSheet.mostrar(context, motivo: 'retar a un jugador')) {
-      return;
-    }
-    if (!mounted) return;
-    final u = appState.usuario;
-    if (u == null) return;
-    if (email.toLowerCase().trim() == u.email.toLowerCase().trim()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No puedes retarte a ti mismo.')));
-      return;
-    }
-    final resp = await RetosService.crear(
-      retadorEmail: u.email,
-      retadorNombre: u.nombre,
-      retadoEmail: email,
-      retadoNombre: nombre.isNotEmpty ? nombre : email,
+    await enviarRetoConGuardia(
+      context,
       deporte: dep.name,
+      retadoEmail: email,
+      retadoNombre: nombre,
     );
-    if (!mounted) return;
-    // Tope semanal del free → ofrecer Pro.
-    if (resp != null && resp['error'] == 'limite_retos_free') {
-      _ofrecerPro(resp['limite']);
-      return;
-    }
-    final ok = resp != null && resp['ok'] == true;
-    if (ok) {
-      AvisosService.retoRecibido(
-          retadoEmail: email, retadorNombre: u.nombre, deporte: dep.name);
-    }
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      backgroundColor: ok ? bosque : null,
-      content: Text(ok
-          ? 'Reto enviado a ${nombre.isNotEmpty ? nombre : email}. Coordinen por '
-              'el chat y reporten el resultado en "Mis retos".'
-          : 'No se pudo enviar el reto. Reintenta.'),
-    ));
-  }
-
-  Future<void> _ofrecerPro(dynamic limite) async {
-    final n = (limite is num) ? limite.toInt() : 3;
-    final ir = await showDialog<bool>(
-      context: context,
-      builder: (dctx) => AlertDialog(
-        title: const Text('Llegaste a tu límite de retos'),
-        content: Text(
-            'Los jugadores sin Pichangol Pro pueden enviar $n retos por semana. '
-            'Hazte Pro y reta sin límites.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(dctx, false),
-              child: const Text('Ahora no')),
-          FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: lima),
-              onPressed: () => Navigator.pop(dctx, true),
-              child: const Text('Ver Pro')),
-        ],
-      ),
-    );
-    if (ir == true && mounted) {
-      Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const HazteProScreen()));
-    }
   }
 
   @override
