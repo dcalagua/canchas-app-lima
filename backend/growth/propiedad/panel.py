@@ -276,6 +276,60 @@ def reset_virgen_admin(
     return {"ok": True, "borrado": conteo}
 
 
+# ─────────────────────── DISPUTAS DEL MARKETPLACE ─────────────────────────────
+
+class ResolverDisputaRequest(BaseModel):
+    accion: str  # 'liberar' (dar razón al vendedor) | 'reembolsar' (al comprador)
+
+
+@router.get("/admin/api/ventas/disputas")
+def listar_disputas(x_admin_token: str | None = Header(default=None)) -> dict:
+    """Órdenes del marketplace EN DISPUTA, para que el operador resuelva."""
+    _check(x_admin_token)
+    from pagos.router import comision_centimos
+
+    out = []
+    for v in stores.ventas:
+        if v.estado != "disputado":
+            continue
+        neto = round(v.monto_soles - comision_centimos(v.monto_soles) / 100.0, 2)
+        out.append({
+            "id": v.id,
+            "producto_nombre": v.producto_nombre,
+            "comprador_email": v.comprador_email,
+            "comprador_nombre": v.comprador_nombre,
+            "vendedor_email": v.vendedor_email,
+            "vendedor_nombre": v.vendedor_nombre,
+            "monto_soles": v.monto_soles,
+            "neto_soles": neto,
+            "creado_en": v.creado_en.isoformat(),
+        })
+    out.sort(key=lambda d: d["creado_en"], reverse=True)
+    return {"disputas": out}
+
+
+@router.post("/admin/api/venta/{venta_id}/resolver")
+def resolver_disputa(venta_id: int, req: ResolverDisputaRequest,
+                     x_admin_token: str | None = Header(default=None)) -> dict:
+    """Resuelve una disputa: 'liberar' libera el pago al vendedor (estado
+    recibido); 'reembolsar' da razón al comprador (estado reembolsado; el neto NO
+    se libera y el operador devuelve al comprador fuera de la app)."""
+    _check(x_admin_token)
+    from db.store import ahora
+
+    v = next((x for x in stores.ventas if x.id == venta_id), None)
+    if v is None:
+        raise HTTPException(status_code=404, detail="venta_no_encontrada")
+    if req.accion == "liberar":
+        v.estado = "recibido"
+        v.recibido_en = ahora()
+    elif req.accion == "reembolsar":
+        v.estado = "reembolsado"
+    else:
+        return {"ok": False, "error": "accion_invalida"}
+    return {"ok": True, "estado": v.estado}
+
+
 # ─────────────────────── PICHANGOL PRO (torre de control) ─────────────────────
 def _pro_precio_pais(iso: str) -> float:
     """Precio Pro efectivo de un país (override EC/BO o base PE)."""
@@ -783,6 +837,8 @@ _HTML = r"""<!DOCTYPE html>
         <span class="ico">💸</span> Liquidaciones</button>
       <button class="nav-i" data-sec="cobros" onclick="mostrarSeccion('cobros')" title="Cobros">
         <span class="ico">💳</span> Cobros</button>
+      <button class="nav-i" data-sec="disputas" onclick="mostrarSeccion('disputas')" title="Disputas">
+        <span class="ico">⚖️</span> Disputas</button>
       <button class="nav-i" data-sec="operacion" onclick="mostrarSeccion('operacion')" title="Operación">
         <span class="ico">✅</span> Operación</button>
       <button class="nav-i" data-sec="comunicacion" onclick="mostrarSeccion('comunicacion')" title="Comunicación">
@@ -816,6 +872,10 @@ _HTML = r"""<!DOCTYPE html>
         <div id="rankingPanel"></div>
         <div id="proPanel"></div>
       </div>
+    </section>
+    <section id="page-disputas" class="page" style="display:none">
+      <h1 class="page-h">⚖️ Disputas del marketplace</h1>
+      <div id="disputas"></div>
     </section>
     <section id="page-operacion" class="page" style="display:none">
       <h1 class="page-h">✅ Aprobación y operación</h1>
@@ -1389,6 +1449,61 @@ function mostrarSeccion(sec){
   document.querySelectorAll('.nav-i').forEach(b=>{
     b.classList.toggle('on', b.dataset.sec===sec);
   });
+  if(sec==='disputas') cargarDisputas();
+}
+
+// --- Disputas del marketplace: el operador libera al vendedor o reembolsa ------
+async function cargarDisputas(){
+  const box = document.getElementById('disputas');
+  if(!box) return;
+  try{
+    const r = await fetch('/admin/api/ventas/disputas',{headers:headers()});
+    if(!r.ok){ box.innerHTML='<div class="card">No se pudo cargar.</div>'; return; }
+    const j = await r.json();
+    const d = j.disputas||[];
+    const filas = d.length ? d.map(v=>`
+      <div style="padding:14px 0;border-top:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;gap:10px">
+          <div>
+            <b>${esc(v.producto_nombre)||'Producto'}</b>
+            <div style="color:var(--muted);font-size:13px">
+              Comprador: ${esc(v.comprador_nombre)||esc(v.comprador_email)} ·
+              Vendedor: ${esc(v.vendedor_nombre)||esc(v.vendedor_email)}</div>
+            <div style="color:var(--muted);font-size:12px">${fmtFecha(v.creado_en)}</div>
+          </div>
+          <div style="text-align:right;white-space:nowrap">
+            <div style="font-weight:800;font-size:17px">S/${v.monto_soles}</div>
+            <div style="color:var(--muted);font-size:12px">neto S/${v.neto_soles}</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button onclick="resolverDisputa(${v.id},'liberar')"
+            style="background:var(--bosque);color:var(--lima);border:0;border-radius:12px;padding:9px 12px;font-family:inherit;font-weight:700;cursor:pointer">
+            Liberar al vendedor</button>
+          <button onclick="resolverDisputa(${v.id},'reembolsar')"
+            style="background:#fff;color:#C13515;border:1px solid #C13515;border-radius:12px;padding:9px 12px;font-family:inherit;font-weight:700;cursor:pointer">
+            Reembolsar al comprador</button>
+        </div>
+      </div>`).join('')
+      : '<div style="color:var(--muted);padding:8px 0">No hay disputas abiertas. 🎉</div>';
+    box.innerHTML = `<div class="card"><div class="top">
+      <h3 style="flex:1">Órdenes en disputa</h3>
+      <span style="font-weight:800;color:var(--bosque)">${d.length}</span></div>
+      <p style="color:var(--muted);font-size:13px;margin:6px 0 4px">
+        El comprador reportó un problema. Revisa (chat/pruebas) y decide: liberar
+        el pago al vendedor, o reembolsar al comprador (devuelves fuera de la app).</p>
+      ${filas}</div>`;
+  }catch(e){ box.innerHTML='<div class="card">Error al cargar disputas.</div>'; }
+}
+
+async function resolverDisputa(id, accion){
+  const txt = accion==='liberar'
+    ? '¿Liberar el pago al VENDEDOR?'
+    : '¿Reembolsar al COMPRADOR? (el neto NO se libera; devuélvelo fuera de la app)';
+  if(!confirm(txt)) return;
+  const r = await fetch('/admin/api/venta/'+id+'/resolver',
+    {method:'POST',headers:headers(),body:JSON.stringify({accion})});
+  if(r.ok){ cargarDisputas(); } else { alert('No se pudo resolver.'); }
 }
 
 // --- Liquidaciones: pagos pendientes de Pichangol al dueño (reservas online) ---

@@ -229,6 +229,7 @@ class _MisOrdenesScreenState extends State<MisOrdenesScreen> {
       'entregado' => ('Entregado · por confirmar', morado, Icons.local_shipping),
       'recibido' => ('Completado · liberado', lima, Icons.verified),
       'disputado' => ('En disputa', clayOscuro, Icons.report_gmailerrorred),
+      'reembolsado' => ('Reembolsado', teal, Icons.assignment_return),
       _ => (estado, teal, Icons.receipt_long),
     };
     final monto = ((v['monto_soles'] ?? 0) as num).toDouble();

@@ -438,3 +438,50 @@ def test_triage_solo_no_activa(client):
                       headers={"X-Admin-Token": TOKEN})
     assert res.status_code == 200 and res.json()["estado"] == "aprobado_triage"
     assert stores.cancha("c1").verificada is False
+
+
+# ── Panel de disputas del marketplace ────────────────────────────────────────
+
+def _venta_disputada(client):
+    """Crea una venta y la deja en disputa; devuelve su id."""
+    client.post("/pagos/venta", json={
+        "vendedor_id": "vend@x.com", "vendedor_nombre": "Vendedor",
+        "monto_soles": 100, "venta_id": "vd1", "producto_id": "p1",
+        "producto_nombre": "Raqueta", "comprador_email": "comp@x.com",
+        "comprador_nombre": "Comprador"})
+    vid = client.get("/ventas/vendedor/vend@x.com").json()["ventas"][0]["id"]
+    client.post(f"/ventas/{vid}/disputa", json={"por_email": "comp@x.com"})
+    return vid
+
+
+def test_panel_lista_disputas(client):
+    _venta_disputada(client)
+    r = client.get("/admin/api/ventas/disputas",
+                   headers={"X-Admin-Token": TOKEN}).json()
+    assert len(r["disputas"]) == 1
+    assert r["disputas"][0]["producto_nombre"] == "Raqueta"
+    assert r["disputas"][0]["neto_soles"] == 95.0  # 100 - 5%
+
+
+def test_panel_disputas_exige_token(client):
+    assert client.get("/admin/api/ventas/disputas").status_code == 401
+
+
+def test_panel_resolver_liberar(client):
+    vid = _venta_disputada(client)
+    r = client.post(f"/admin/api/venta/{vid}/resolver",
+                    json={"accion": "liberar"},
+                    headers={"X-Admin-Token": TOKEN}).json()
+    assert r["ok"] is True and r["estado"] == "recibido"
+    res = client.get("/ventas/vendedor/vend@x.com").json()
+    assert res["liberado_soles"] == 95.0  # ya no está en disputa
+
+
+def test_panel_resolver_reembolsar(client):
+    vid = _venta_disputada(client)
+    r = client.post(f"/admin/api/venta/{vid}/resolver",
+                    json={"accion": "reembolsar"},
+                    headers={"X-Admin-Token": TOKEN}).json()
+    assert r["ok"] is True and r["estado"] == "reembolsado"
+    res = client.get("/ventas/vendedor/vend@x.com").json()
+    assert res["liberado_soles"] == 0.0 and res["retenido_soles"] == 0.0
