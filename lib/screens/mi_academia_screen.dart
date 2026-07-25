@@ -807,6 +807,9 @@ class _Header extends StatelessWidget {
                     style: t.headlineSmall?.copyWith(
                         color: Colors.white, fontWeight: FontWeight.w800)),
               ),
+              // En TABLET estas acciones viven en el rail lateral (AcademiaShell),
+              // así la cabecera queda limpia. En móvil se muestran aquí.
+              if (MediaQuery.of(context).size.width < 720) ...[
               IconButton(
                 tooltip: 'Mensajes',
                 icon: const Icon(Icons.forum_outlined, color: Colors.white),
@@ -850,6 +853,7 @@ class _Header extends StatelessWidget {
                 onPressed: () => Navigator.of(context).push(MaterialPageRoute(
                     builder: (_) => CrearAcademiaScreen(academia: academia))),
               ),
+              ],
             ],
           ),
           const SizedBox(height: 2),
