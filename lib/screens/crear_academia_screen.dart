@@ -16,6 +16,7 @@ import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/responsive.dart';
+import '../widgets/selector_ubicacion.dart';
 import '../config/pais.dart';
 import 'servicios_screen.dart';
 
@@ -1037,15 +1038,20 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          TextField(
-            controller: _zona,
-            textCapitalization: TextCapitalization.words,
-            decoration: const InputDecoration(
-              labelText: 'Zona / distrito (para el ranking por ciudad)',
-              hintText: 'Ej.: San Borja, Miraflores…',
-              helperText: 'Tus jugadores aparecen en el ranking de esta zona',
-              prefixIcon: Icon(Icons.location_city_outlined),
-            ),
+          Text('Zona (para el ranking por ciudad)',
+              style: Theme.of(context).textTheme.labelLarge),
+          const Text('Tus jugadores aparecen en el ranking de esta zona',
+              style: TextStyle(color: textoTenue, fontSize: 12.5)),
+          // Cascada de la jerarquía del país de la SEDE (todo combo). Preselecta
+          // desde las coordenadas de la sede si están disponibles.
+          SelectorUbicacion(
+            key: ValueKey('zona-${_paisAcademia.iso}'),
+            iso: _paisAcademia.iso,
+            valorInicial: _zona.text,
+            lat: _ubicSede?.latitude,
+            lng: _ubicSede?.longitude,
+            detectarAlIniciar: true,
+            onSeleccion: (v) => _zona.text = v,
           ),
           const SizedBox(height: 16),
           TextField(
