@@ -73,14 +73,37 @@ class RetosService {
     }
   }
 
-  /// Reporta el resultado (ganador + marcador). Devuelve true si se pudo.
+  /// Reporta el resultado (ganador + marcador). Queda POR CONFIRMAR hasta que el
+  /// otro lo confirme o venza el plazo. [reportadoPor] = correo de quien reporta.
   static Future<bool> resultado(int id, String ganadorEmail,
-      {String marcador = ''}) async {
+      {String marcador = '', String reportadoPor = ''}) async {
     if (!disponible) return false;
     try {
       final r = await http.post(Uri.parse('$_baseUrl/retos/$id/resultado'),
           headers: _headers(json: true),
-          body: jsonEncode({'ganador_email': ganadorEmail, 'marcador': marcador}))
+          body: jsonEncode({
+            'ganador_email': ganadorEmail,
+            'marcador': marcador,
+            'reportado_por': reportadoPor,
+          }))
+          .timeout(const Duration(seconds: 15));
+      if (r.statusCode != 200) return false;
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      return j['ok'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// El OTRO jugador CONFIRMA (acepta=true) o DISPUTA (acepta=false) el resultado
+  /// reportado. Solo cuenta al ranking si se confirma.
+  static Future<bool> confirmar(int id, String porEmail,
+      {required bool acepta}) async {
+    if (!disponible) return false;
+    try {
+      final r = await http.post(Uri.parse('$_baseUrl/retos/$id/confirmar'),
+          headers: _headers(json: true),
+          body: jsonEncode({'por_email': porEmail, 'acepta': acepta}))
           .timeout(const Duration(seconds: 15));
       if (r.statusCode != 200) return false;
       final j = jsonDecode(r.body) as Map<String, dynamic>;

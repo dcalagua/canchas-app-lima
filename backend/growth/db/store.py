@@ -67,6 +67,10 @@ CONFIG_DEFAULT: dict[str, str] = {
     # Retos que un jugador SIN Pichangol Pro puede enviar por semana (Pro =
     # ilimitado). Editable desde la torre de control.
     "retos_free_limite_semana": "3",
+    # Horas para CONFIRMAR el resultado de un reto. Si el otro jugador no
+    # confirma ni disputa en este plazo, se da por ganador al reportado (auto-
+    # confirmación). Editable desde la torre. 0 = confirmación inmediata.
+    "retos_confirmacion_horas": "24",
     "puntos_traer_cancha": "500",
     "puntos_invitar_jugador": "100",
     "puntos_pedir_cancha": "50",
@@ -320,11 +324,17 @@ class Reto:
     deporte: str
     creado_en: datetime
     zona: str = ""
-    estado: str = "pendiente"   # pendiente | aceptado | rechazado | jugado
+    # pendiente | aceptado | rechazado | por_confirmar | jugado | disputado
+    estado: str = "pendiente"
     ganador_email: str = ""
     marcador: str = ""
     mensaje: str = ""
-    jugado_en: datetime | None = None  # cuándo se reportó el resultado (temporada)
+    jugado_en: datetime | None = None  # cuándo quedó CONFIRMADO (temporada/ranking)
+    # Doble confirmación del resultado: quién lo reportó y cuándo. Si el otro no
+    # confirma/disputa en el plazo, se auto-confirma a favor del reportado.
+    reportado_por: str = ""
+    reportado_en: datetime | None = None
+    auto_confirmado: bool = False
 
 
 @dataclass

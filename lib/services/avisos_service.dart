@@ -84,4 +84,57 @@ class AvisosService {
         tipo: 'reto',
         data: {'accion': 'resultado'},
       ).then((_) {});
+
+  /// Pide al otro jugador CONFIRMAR el resultado que se reportó (doble
+  /// confirmación). Si no responde a tiempo, se auto-confirma.
+  static Future<void> confirmarResultado({
+    required String email,
+    required String porNombre,
+    String marcador = '',
+  }) =>
+      enviar(
+        email: email,
+        titulo: 'Confirma el resultado 🎾',
+        cuerpo: marcador.isNotEmpty
+            ? '$porNombre reportó: $marcador. Confírmalo o dispútalo en "Mis retos".'
+            : '$porNombre reportó el resultado. Confírmalo o dispútalo en "Mis retos".',
+        tipo: 'reto',
+        data: {'accion': 'por_confirmar'},
+      ).then((_) {});
+
+  /// Avisa el desenlace final del reto (ganaste/perdiste). Siempre notifica,
+  /// también al que perdió.
+  static Future<void> desenlaceReto({
+    required String email,
+    required bool ganaste,
+    String rivalNombre = '',
+    bool automatico = false,
+  }) =>
+      enviar(
+        email: email,
+        titulo: ganaste ? '¡Ganaste! 🏆' : 'Resultado del reto',
+        cuerpo: ganaste
+            ? (automatico
+                ? 'Se confirmó tu victoria${rivalNombre.isNotEmpty ? ' vs $rivalNombre' : ''}. Sumaste al ranking.'
+                : '¡Felicidades! Sumaste al ranking de tenis.')
+            : (automatico
+                ? 'Se dio por válido el resultado${rivalNombre.isNotEmpty ? ' vs $rivalNombre' : ''}. Esta vez perdiste.'
+                : 'Se confirmó el resultado${rivalNombre.isNotEmpty ? ' vs $rivalNombre' : ''}. Esta vez perdiste.'),
+        tipo: 'reto',
+        data: {'accion': 'desenlace', 'gano': ganaste},
+      ).then((_) {});
+
+  /// Avisa al reportador que el otro DISPUTÓ el resultado.
+  static Future<void> resultadoDisputado({
+    required String email,
+    required String porNombre,
+  }) =>
+      enviar(
+        email: email,
+        titulo: 'Resultado en disputa ⚠️',
+        cuerpo: '$porNombre no está de acuerdo con el resultado. Coordinen y '
+            'vuelvan a reportarlo.',
+        tipo: 'reto',
+        data: {'accion': 'disputado'},
+      ).then((_) {});
 }

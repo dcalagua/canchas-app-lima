@@ -345,7 +345,11 @@ def test_circuito_salud_directorio_y_lideres(client):
         "retado_email": "luis@x.com", "retado_nombre": "Luis",
         "deporte": "tenis"}).json()["reto"]["id"]
     client.post(f"/retos/{rid}/responder", json={"aceptar": True})
-    client.post(f"/retos/{rid}/resultado", json={"ganador_email": "ana@x.com"})
+    client.post(f"/retos/{rid}/resultado", json={
+        "ganador_email": "ana@x.com", "reportado_por": "ana@x.com"})
+    # Doble confirmación: el otro (Luis) confirma → cuenta como jugado.
+    client.post(f"/retos/{rid}/confirmar", json={
+        "por_email": "luis@x.com", "acepta": True})
     out = client.get("/admin/api/circuito", headers=h).json()
     assert out["directorio"]["total"] == 2
     assert out["directorio"]["por_deporte"]["tenis"] == 1

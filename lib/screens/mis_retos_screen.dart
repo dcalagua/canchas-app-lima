@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/models.dart';
 import '../services/avisos_service.dart';
@@ -38,15 +39,74 @@ class _MisRetosScreenState extends State<MisRetosScreen> {
     setState(() => _cargando = true);
     final r = await RetosService.mios(_email);
     if (!mounted) return;
+    final recibidos = ((r?['recibidos'] as List?) ?? const [])
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+    final enviados = ((r?['enviados'] as List?) ?? const [])
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
     setState(() {
-      _recibidos = ((r?['recibidos'] as List?) ?? const [])
-          .map((e) => Map<String, dynamic>.from(e as Map))
-          .toList();
-      _enviados = ((r?['enviados'] as List?) ?? const [])
-          .map((e) => Map<String, dynamic>.from(e as Map))
-          .toList();
+      _recibidos = recibidos;
+      _enviados = enviados;
       _cargando = false;
     });
+    // Retos auto-confirmados por vencer el plazo → notificar siempre (al que
+    // ganó y al que perdió), una sola vez.
+    await _notificarAutoConfirmados([...recibidos, ...enviados]);
+  }
+
+  /// Detecta retos que se auto-confirmaron (nadie confirmó a tiempo) desde la
+  /// última vez, avisa al OTRO por push y muestra feedback en pantalla.
+  Future<void> _notificarAutoConfirmados(
+      List<Map<String, dynamic>> todos) async {
+    final prefs = await SharedPreferences.getInstance();
+    final vistos = (prefs.getStringList('retos_auto_vistos') ?? <String>[]).toSet();
+    bool mostrarGane = false, mostrarPerdi = false;
+    String ganadorNombre = '', ganadorFoto = '', rivalNombre = '';
+    var cambio = false;
+    for (final r in todos) {
+      if ((r['estado'] ?? '').toString() != 'jugado') continue;
+      if (r['auto_confirmado'] != true) continue;
+      final id = (r['id'] as num).toInt().toString();
+      if (vistos.contains(id)) continue;
+      vistos.add(id);
+      cambio = true;
+      final ganadorEmail = (r['ganador_email'] ?? '').toString().toLowerCase();
+      final retadorEmail = (r['retador_email'] ?? '').toString().toLowerCase();
+      final retadorNombre = (r['retador_nombre'] ?? 'Retador').toString();
+      final retadoNombre = (r['retado_nombre'] ?? 'Retado').toString();
+      final otroEmail =
+          _email == retadorEmail ? (r['retado_email'] ?? '').toString() : retadorEmail;
+      final otroGano = ganadorEmail == otroEmail.toLowerCase();
+      // Push al otro (best-effort): así ambos se enteran del desenlace.
+      AvisosService.desenlaceReto(
+          email: otroEmail,
+          ganaste: otroGano,
+          rivalNombre: _email == retadorEmail ? retadorNombre : retadoNombre,
+          automatico: true);
+      if (ganadorEmail == _email) {
+        mostrarGane = true;
+        ganadorNombre = ganadorEmail == retadorEmail ? retadorNombre : retadoNombre;
+        ganadorFoto = appState.fotoDe(ganadorEmail) ?? '';
+      } else {
+        mostrarPerdi = true;
+        rivalNombre = ganadorEmail == retadorEmail ? retadorNombre : retadoNombre;
+      }
+    }
+    if (cambio) await prefs.setStringList('retos_auto_vistos', vistos.toList());
+    if (!mounted) return;
+    if (mostrarGane) {
+      await showDialog(
+        context: context,
+        builder: (_) =>
+            _CelebracionGanador(nombre: ganadorNombre, foto: ganadorFoto),
+      );
+    } else if (mostrarPerdi && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(rivalNombre.isNotEmpty
+              ? 'Se dio por válido el resultado vs $rivalNombre. Esta vez perdiste.'
+              : 'Se dio por válido el resultado del reto. Esta vez perdiste.')));
+    }
   }
 
   String _deporte(String name) {
@@ -138,35 +198,77 @@ class _MisRetosScreenState extends State<MisRetosScreen> {
     if (ok != true || ganador == null) return;
     final done = await RetosService.resultado(
         (r['id'] as num).toInt(), ganador!,
-        marcador: marcador.text.trim());
+        marcador: marcador.text.trim(), reportadoPor: _email);
     if (!mounted) return;
     if (done) {
-      // Avisa al OTRO jugador que reporté el resultado (push, best-effort).
+      // Doble confirmación: el resultado NO cuenta hasta que el OTRO confirme.
+      // Le mando el aviso para que confirme/dispute.
       final yo = _email;
-      final otroEmail = retadorEmail.toLowerCase() == yo
-          ? retadoEmail
-          : retadorEmail;
+      final otroEmail =
+          retadorEmail.toLowerCase() == yo ? retadoEmail : retadorEmail;
       final miNombre =
           retadorEmail.toLowerCase() == yo ? retadorNombre : retadoNombre;
-      AvisosService.resultadoReportado(
+      AvisosService.confirmarResultado(
           email: otroEmail, porNombre: miNombre, marcador: marcador.text.trim());
-      await appState.cargarRetosResultados(); // refresca el ranking
-      await appState.cargarRetosPendientes(); // refresca el badge del perfil
       await _cargar();
-      // Celebración VIVA del ganador (animación) — sumó al ranking Pichangol.
-      final ganoRetador = ganador!.toLowerCase() == retadorEmail.toLowerCase();
-      final ganadorNombre = ganoRetador ? retadorNombre : retadoNombre;
-      final ganadorFoto = appState.fotoDe(ganador!);
       if (mounted) {
-        await showDialog(
-          context: context,
-          builder: (_) =>
-              _CelebracionGanador(nombre: ganadorNombre, foto: ganadorFoto),
-        );
+        final otroNombre =
+            retadorEmail.toLowerCase() == yo ? retadoNombre : retadorNombre;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            backgroundColor: bosque,
+            content: Text(
+                'Resultado enviado. Falta que $otroNombre lo confirme.')));
       }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('No se pudo guardar.')));
+    }
+  }
+
+  /// El OTRO jugador confirma o disputa el resultado reportado.
+  Future<void> _confirmar(Map<String, dynamic> r, bool acepta) async {
+    final id = (r['id'] as num).toInt();
+    final ok = await RetosService.confirmar(id, _email, acepta: acepta);
+    if (!mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo. Reintenta.')));
+      return;
+    }
+    final retadorEmail = (r['retador_email'] ?? '').toString().toLowerCase();
+    final retadorNombre = (r['retador_nombre'] ?? 'Retador').toString();
+    final retadoNombre = (r['retado_nombre'] ?? 'Retado').toString();
+    final ganadorEmail = (r['ganador_email'] ?? '').toString().toLowerCase();
+    final reportadoPor = (r['reportado_por'] ?? '').toString().toLowerCase();
+    final miNombre =
+        _email == retadorEmail ? retadorNombre : retadoNombre;
+
+    if (acepta) {
+      // Avisa al reportador el desenlace (ganó/perdió) — siempre notifica.
+      final reportadorGano = ganadorEmail == reportadoPor;
+      AvisosService.desenlaceReto(
+          email: reportadoPor, ganaste: reportadorGano, rivalNombre: miNombre);
+      await appState.cargarRetosResultados(); // suma al ranking
+      await appState.cargarRetosPendientes();
+      await _cargar();
+      // Celebración del ganador (quien haya sido).
+      final ganoRetador = ganadorEmail == retadorEmail;
+      final ganadorNombre = ganoRetador ? retadorNombre : retadoNombre;
+      if (mounted) {
+        await showDialog(
+          context: context,
+          builder: (_) => _CelebracionGanador(
+              nombre: ganadorNombre, foto: appState.fotoDe(ganadorEmail)),
+        );
+      }
+    } else {
+      AvisosService.resultadoDisputado(email: reportadoPor, porNombre: miNombre);
+      await _cargar();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Marcaste el resultado en disputa. Vuelvan a '
+                'reportarlo cuando coincidan.')));
+      }
     }
   }
 
@@ -216,11 +318,14 @@ class _MisRetosScreenState extends State<MisRetosScreen> {
                                 _RetoCard(
                                     r: r,
                                     soyRetado: true,
+                                    miEmail: _email,
                                     deporte: _deporte(
                                         (r['deporte'] ?? '').toString()),
                                     onAceptar: () => _responder(r, true),
                                     onRechazar: () => _responder(r, false),
-                                    onReportar: () => _reportar(r)),
+                                    onReportar: () => _reportar(r),
+                                    onConfirmar: () => _confirmar(r, true),
+                                    onDisputar: () => _confirmar(r, false)),
                               const SizedBox(height: 12),
                             ],
                             if (_enviados.isNotEmpty) ...[
@@ -233,9 +338,12 @@ class _MisRetosScreenState extends State<MisRetosScreen> {
                                 _RetoCard(
                                     r: r,
                                     soyRetado: false,
+                                    miEmail: _email,
                                     deporte: _deporte(
                                         (r['deporte'] ?? '').toString()),
-                                    onReportar: () => _reportar(r)),
+                                    onReportar: () => _reportar(r),
+                                    onConfirmar: () => _confirmar(r, true),
+                                    onDisputar: () => _confirmar(r, false)),
                             ],
                           ],
                         ),
@@ -448,16 +556,22 @@ class _RetoCard extends StatelessWidget {
     required this.r,
     required this.soyRetado,
     required this.deporte,
+    required this.miEmail,
     this.onAceptar,
     this.onRechazar,
     this.onReportar,
+    this.onConfirmar,
+    this.onDisputar,
   });
   final Map<String, dynamic> r;
   final bool soyRetado;
   final String deporte;
+  final String miEmail;
   final VoidCallback? onAceptar;
   final VoidCallback? onRechazar;
   final VoidCallback? onReportar;
+  final VoidCallback? onConfirmar;
+  final VoidCallback? onDisputar;
 
   @override
   Widget build(BuildContext context) {
@@ -472,10 +586,22 @@ class _RetoCard extends StatelessWidget {
     final (String etiqueta, Color color, IconData icono) = switch (estado) {
       'pendiente' => ('Pendiente', amarillo, Icons.hourglass_top),
       'aceptado' => ('Aceptado', lima, Icons.handshake),
+      'por_confirmar' => ('Por confirmar', naranja, Icons.hourglass_bottom),
       'jugado' => ('Jugado', morado, Icons.emoji_events),
+      'disputado' => ('En disputa', clayOscuro, Icons.report_gmailerrorred),
       'rechazado' => ('Rechazado', clayOscuro, Icons.close),
       _ => (estado, teal, Icons.sports_kabaddi),
     };
+    // Datos para la confirmación del resultado.
+    final ganadorEmail = (r['ganador_email'] ?? '').toString().toLowerCase();
+    final reportadoPor = (r['reportado_por'] ?? '').toString().toLowerCase();
+    final yoReporte = reportadoPor == miEmail.toLowerCase();
+    final ganadorNombre = ganadorEmail == (r['retador_email'] ?? '')
+            .toString()
+            .toLowerCase()
+        ? (r['retador_nombre'] ?? 'Retador').toString()
+        : (r['retado_nombre'] ?? 'Retado').toString();
+    final marcadorTxt = (r['marcador'] ?? '').toString();
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(14),
@@ -531,18 +657,73 @@ class _RetoCard extends StatelessWidget {
                         '${(r['zona'] ?? '').toString().isNotEmpty ? ' · ${r['zona']}' : ''}',
                         style:
                             const TextStyle(color: textoTenue, fontSize: 12.5)),
-                    if (estado == 'jugado' &&
-                        (r['marcador'] ?? '').toString().isNotEmpty) ...[
+                    if ((estado == 'jugado' || estado == 'por_confirmar') &&
+                        marcadorTxt.isNotEmpty) ...[
                       const SizedBox(height: 4),
-                      Text('Resultado: ${r['marcador']}',
+                      Text('Resultado: $marcadorTxt',
                           style: const TextStyle(
                               color: textoTenue, fontSize: 12.5)),
+                    ],
+                    // Quién reportó como ganador (mientras se confirma).
+                    if (estado == 'por_confirmar' && ganadorNombre.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text('Reportaron que ganó $ganadorNombre',
+                          style: const TextStyle(
+                              color: naranja,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700)),
                     ],
                   ],
                 ),
               ),
             ],
           ),
+          // Por confirmar: si yo reporté, espero; si no, confirmo o disputo.
+          if (estado == 'por_confirmar') ...[
+            const SizedBox(height: 10),
+            if (yoReporte)
+              Text('Esperando que $otro confirme el resultado…',
+                  style: const TextStyle(color: textoTenue, fontSize: 12.5))
+            else
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: onDisputar,
+                      style: OutlinedButton.styleFrom(
+                          foregroundColor: clayOscuro,
+                          side: const BorderSide(color: clayOscuro)),
+                      child: const Text('Disputar'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(backgroundColor: lima),
+                      onPressed: onConfirmar,
+                      icon: const Icon(Icons.check, size: 18),
+                      label: const Text('Confirmar'),
+                    ),
+                  ),
+                ],
+              ),
+          ],
+          // En disputa: cualquiera de los dos puede volver a reportar.
+          if (estado == 'disputado') ...[
+            const SizedBox(height: 10),
+            const Text('El resultado quedó en disputa. Coordinen y vuelvan a '
+                'reportarlo.',
+                style: TextStyle(color: textoTenue, fontSize: 12.5)),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: onReportar,
+                icon: const Icon(Icons.emoji_events, size: 18),
+                label: const Text('Reportar de nuevo'),
+              ),
+            ),
+          ],
           if (estado == 'pendiente' && soyRetado) ...[
             const SizedBox(height: 10),
             Row(

@@ -61,23 +61,67 @@ def test_free_tiene_tope_semanal_pro_ilimitado():
     assert _crear()["ok"] is True
 
 
-def test_responder_y_resultado_suma_al_ranking():
+def test_reporte_queda_por_confirmar_y_confirmacion_suma():
     rid = _crear()["reto"]["id"]
-    # Aceptar.
-    r = client.post(f"/retos/{rid}/responder", json={"aceptar": True}).json()
-    assert r["reto"]["estado"] == "aceptado"
-    # Resultado: gana Ana.
+    client.post(f"/retos/{rid}/responder", json={"aceptar": True})
+    # Ana reporta que ganó ella → queda POR CONFIRMAR (aún no cuenta).
     r2 = client.post(f"/retos/{rid}/resultado", json={
-        "ganador_email": "ana@x.com", "marcador": "6-3 6-4"}).json()
-    assert r2["ok"] is True and r2["reto"]["estado"] == "jugado"
-    # Al reportar se marca la fecha (para ubicar el reto en su temporada).
-    assert r2["reto"]["jugado_en"]
-    # Aparece en resultados (para el ranking), filtrable por deporte.
+        "ganador_email": "ana@x.com", "marcador": "6-3 6-4",
+        "reportado_por": "ana@x.com"}).json()
+    assert r2["ok"] is True and r2["reto"]["estado"] == "por_confirmar"
+    assert r2["reto"]["jugado_en"] is None
+    # No aparece en el ranking mientras no se confirme.
+    assert client.get("/retos?deporte=tenis").json()["resultados"] == []
+    # El reportador NO puede confirmar su propio reporte.
+    malo = client.post(f"/retos/{rid}/confirmar", json={
+        "por_email": "ana@x.com", "acepta": True}).json()
+    assert malo["ok"] is False and malo["error"] == "reportador_no_confirma"
+    # Luis (el otro) confirma → jugado; ahora sí suma al ranking.
+    ok = client.post(f"/retos/{rid}/confirmar", json={
+        "por_email": "luis@x.com", "acepta": True}).json()
+    assert ok["ok"] is True and ok["reto"]["estado"] == "jugado"
+    assert ok["reto"]["jugado_en"]
     res = client.get("/retos?deporte=tenis").json()["resultados"]
     assert len(res) == 1 and res[0]["ganador_email"] == "ana@x.com"
-    assert res[0]["jugado_en"]
-    # Otro deporte no lo trae.
     assert client.get("/retos?deporte=futbol").json()["resultados"] == []
+
+
+def test_disputa_no_suma_al_ranking():
+    rid = _crear()["reto"]["id"]
+    client.post(f"/retos/{rid}/responder", json={"aceptar": True})
+    client.post(f"/retos/{rid}/resultado", json={
+        "ganador_email": "ana@x.com", "reportado_por": "ana@x.com"})
+    r = client.post(f"/retos/{rid}/confirmar", json={
+        "por_email": "luis@x.com", "acepta": False}).json()
+    assert r["ok"] is True and r["reto"]["estado"] == "disputado"
+    assert client.get("/retos?deporte=tenis").json()["resultados"] == []
+
+
+def test_auto_confirmacion_al_vencer_el_plazo():
+    from datetime import timedelta
+
+    from db.store import ahora
+    rid = _crear()["reto"]["id"]
+    client.post(f"/retos/{rid}/responder", json={"aceptar": True})
+    client.post(f"/retos/{rid}/resultado", json={
+        "ganador_email": "ana@x.com", "reportado_por": "ana@x.com"})
+    # Simula que el reporte fue hace 48 h (mayor al plazo por defecto de 24 h).
+    reto = next(x for x in stores.retos if x.id == rid)
+    reto.reportado_en = ahora() - timedelta(hours=48)
+    # Al leer, se auto-confirma a favor del reportado.
+    res = client.get("/retos?deporte=tenis").json()["resultados"]
+    assert len(res) == 1 and res[0]["ganador_email"] == "ana@x.com"
+    assert res[0]["auto_confirmado"] is True
+
+
+def test_plazo_cero_confirma_al_instante():
+    stores.config["retos_confirmacion_horas"] = "0"
+    rid = _crear()["reto"]["id"]
+    client.post(f"/retos/{rid}/responder", json={"aceptar": True})
+    r = client.post(f"/retos/{rid}/resultado", json={
+        "ganador_email": "ana@x.com", "reportado_por": "ana@x.com"}).json()
+    assert r["reto"]["estado"] == "jugado"
+    assert client.get("/retos?deporte=tenis").json()["resultados"] != []
 
 
 def test_ganador_invalido_no_marca_jugado():

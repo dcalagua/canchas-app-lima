@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'hazte_pro_screen.dart';
 import 'jugadores_disponibles_screen.dart';
 import 'mis_retos_screen.dart';
+import 'perfil_global_screen.dart';
 import 'ranking_global_screen.dart';
 
 /// CIRCUITO (hub del deporte). Agrupa TODO lo competitivo del circuito —ranking,
@@ -85,6 +87,25 @@ class CircuitoScreen extends StatelessWidget {
                     .push(MaterialPageRoute(
                         builder: (_) => const MisRetosScreen()))
                     .then((_) => appState.cargarRetosPendientes()),
+              ),
+              _CircuitoTile(
+                icon: Icons.bar_chart,
+                color: teal,
+                title: 'Mis estadísticas',
+                subtitle: 'Tu carnet: jugados, ganados y puntos',
+                onTap: () async {
+                  final email = (appState.usuario?.email ?? '').toLowerCase();
+                  if (email.isEmpty) return;
+                  // Asegura los datos para consolidar el carnet.
+                  await appState.cargarAcademiasRemotas();
+                  await appState.cargarRetosResultados();
+                  if (!context.mounted) return;
+                  Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => PerfilGlobalScreen(
+                          idKey: 'e:$email',
+                          deporte: Deporte.tenis,
+                          posicion: 0)));
+                },
               ),
               _CircuitoTile(
                 icon: appState.proActivo
