@@ -5,6 +5,7 @@ import '../models/campeonato.dart';
 import '../services/supabase_service.dart';
 import '../services/whatsapp_link.dart';
 import '../services/pagos_service.dart';
+import '../services/propiedad_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/ubicacion_share.dart';
@@ -37,7 +38,8 @@ class CampeonatoDetalleScreen extends StatelessWidget {
           final puedeInscribirse = !esDueno &&
               !c.cerrado &&
               c.inscripcionAbierta &&
-              !c.fixtureGenerado;
+              !c.fixtureGenerado &&
+              !c.inscripcionVencida; // cerró el plazo de inscripción
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 30),
             children: [
@@ -75,6 +77,35 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                   ],
                 ],
               ),
+              // Cronograma / verificación (chips informativos).
+              if (c.inscripcionHasta != null ||
+                  c.relampago ||
+                  c.exigeDni ||
+                  c.edadMin != null ||
+                  c.edadMax != null) ...[
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    if (c.inscripcionHasta != null)
+                      _ChipInfo('🗓️ Cierre inscrip.: '
+                          '${_fmtDia(c.inscripcionHasta!)}'),
+                    if (c.relampago) const _ChipInfo('⚡ Relámpago'),
+                    if (c.exigeDni) const _ChipInfo('🪪 Exige DNI'),
+                    if (c.edadMin != null || c.edadMax != null)
+                      _ChipInfo('🎂 '
+                          '${c.edadMin != null ? 'desde ${c.edadMin}' : ''}'
+                          '${c.edadMax != null ? ' hasta ${c.edadMax} años' : ''}'
+                          .trim()),
+                  ],
+                ),
+              ],
+              if (c.inscripcionVencida && !c.fixtureGenerado && !esDueno) ...[
+                const SizedBox(height: 10),
+                const Text('Las inscripciones cerraron. Espera el fixture.',
+                    style: TextStyle(color: textoTenue, fontSize: 12.5)),
+              ],
               if (puedeInscribirse) ...[
                 const SizedBox(height: 12),
                 SizedBox(
@@ -198,6 +229,137 @@ class CampeonatoDetalleScreen extends StatelessWidget {
     }
   }
 
+  static const _meses = [
+    'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+    'jul', 'ago', 'set', 'oct', 'nov', 'dic'
+  ];
+  static String _fmtDia(DateTime d) => '${d.day} ${_meses[d.month - 1]}';
+
+  /// Calcula la edad actual desde una fecha de nacimiento en texto (Factiliza
+  /// suele dar dd/mm/yyyy; también acepta yyyy-mm-dd). null si no se puede.
+  static int? _edadDesde(String? fechaNac) {
+    final s = (fechaNac ?? '').trim();
+    if (s.isEmpty) return null;
+    DateTime? nac;
+    final m1 = RegExp(r'^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$').firstMatch(s);
+    final m2 = RegExp(r'^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$').firstMatch(s);
+    if (m1 != null) {
+      nac = DateTime(int.parse(m1.group(3)!), int.parse(m1.group(2)!),
+          int.parse(m1.group(1)!));
+    } else if (m2 != null) {
+      nac = DateTime(int.parse(m2.group(1)!), int.parse(m2.group(2)!),
+          int.parse(m2.group(3)!));
+    }
+    if (nac == null) return null;
+    final hoy = DateTime.now();
+    var edad = hoy.year - nac.year;
+    if (hoy.month < nac.month ||
+        (hoy.month == nac.month && hoy.day < nac.day)) edad--;
+    return edad < 0 || edad > 120 ? null : edad;
+  }
+
+  /// Gate de DNI (cuando el campeonato lo exige): valida identidad, calcula la
+  /// edad real y la compara con el rango de la categoría (Sub-N). Devuelve true
+  /// si puede inscribirse. Evita que alguien se haga pasar por otra edad.
+  Future<bool> _gateDni(BuildContext context, Campeonato c) async {
+    final dni = TextEditingController();
+    var cargando = false;
+    String? error;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dctx) => StatefulBuilder(
+        builder: (dctx, setSB) => AlertDialog(
+          title: const Text('Verifica tu DNI'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                  'Este campeonato exige DNI para validar identidad y edad'
+                  '${c.edadMax != null || c.edadMin != null ? ' (categoría ${c.edadMin != null ? 'desde ${c.edadMin}' : ''}${c.edadMax != null ? ' hasta ${c.edadMax} años' : ''})' : ''}.',
+                  style: const TextStyle(color: textoTenue, fontSize: 12.5)),
+              const SizedBox(height: 10),
+              TextField(
+                controller: dni,
+                keyboardType: TextInputType.number,
+                maxLength: 8,
+                decoration: const InputDecoration(
+                    labelText: 'DNI (8 dígitos)', counterText: ''),
+              ),
+              if (error != null) ...[
+                const SizedBox(height: 6),
+                Text(error!,
+                    style: const TextStyle(
+                        color: Colors.redAccent,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600)),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: cargando ? null : () => Navigator.pop(dctx, false),
+                child: const Text('Cancelar')),
+            FilledButton(
+              onPressed: cargando
+                  ? null
+                  : () async {
+                      final d = dni.text.trim();
+                      if (d.length != 8 || int.tryParse(d) == null) {
+                        setSB(() => error = 'El DNI son 8 dígitos.');
+                        return;
+                      }
+                      setSB(() {
+                        cargando = true;
+                        error = null;
+                      });
+                      final r = await PropiedadService.consultarDni(d);
+                      if (r == null || r['ok'] != true) {
+                        setSB(() {
+                          cargando = false;
+                          error = 'No pudimos verificar ese DNI. Reintenta.';
+                        });
+                        return;
+                      }
+                      final edad = _edadDesde(r['fecha_nacimiento'] as String?);
+                      if (edad == null) {
+                        // Sin fecha: valida identidad pero no edad (deja pasar).
+                        Navigator.pop(dctx, true);
+                        return;
+                      }
+                      if (c.edadMin != null && edad < c.edadMin!) {
+                        setSB(() {
+                          cargando = false;
+                          error =
+                              'Tienes $edad años; la categoría es desde ${c.edadMin}.';
+                        });
+                        return;
+                      }
+                      if (c.edadMax != null && edad > c.edadMax!) {
+                        setSB(() {
+                          cargando = false;
+                          error =
+                              'Tienes $edad años; la categoría es hasta ${c.edadMax}.';
+                        });
+                        return;
+                      }
+                      Navigator.pop(dctx, true);
+                    },
+              child: cargando
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2.2, color: Colors.white))
+                  : const Text('Verificar'),
+            ),
+          ],
+        ),
+      ),
+    );
+    return ok == true;
+  }
+
   /// El jugador se inscribe (queda como participante-app). Pregunta si compite
   /// él o un hijo (apoderado) y cobra la inscripción si tiene costo.
   Future<void> _inscribirme(BuildContext context, Campeonato c) async {
@@ -206,6 +368,11 @@ class CampeonatoDetalleScreen extends StatelessWidget {
       return;
     }
     if (!context.mounted) return;
+    // Gate de DNI/edad si el organizador lo exige (anti-suplantación de edad).
+    if (c.exigeDni) {
+      final pasa = await _gateDni(context, c);
+      if (!pasa || !context.mounted) return;
+    }
     final nombreNino = TextEditingController();
     final edad = TextEditingController();
     final wa = TextEditingController();
@@ -501,6 +668,25 @@ class _Cabecera extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Chip informativo (cronograma / verificación) del campeonato.
+class _ChipInfo extends StatelessWidget {
+  const _ChipInfo(this.texto);
+  final String texto;
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: limaSuave,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: trazo),
+      ),
+      child: Text(texto,
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
     );
   }
 }
