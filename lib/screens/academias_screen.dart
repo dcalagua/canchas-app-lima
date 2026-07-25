@@ -29,6 +29,8 @@ class AcademiasScreen extends StatefulWidget {
 class _AcademiasScreenState extends State<AcademiasScreen> {
   Deporte? _filtro; // null = todos los deportes
   LatLng? _ubicacion; // para ordenar por cercanía
+  final _buscar = TextEditingController();
+  String _query = ''; // texto de búsqueda por nombre / sede
 
   @override
   void initState() {
@@ -37,6 +39,20 @@ class _AcademiasScreenState extends State<AcademiasScreen> {
     LocationService.ubicacionActual().then((p) {
       if (mounted && p != null) setState(() => _ubicacion = p);
     });
+  }
+
+  @override
+  void dispose() {
+    _buscar.dispose();
+    super.dispose();
+  }
+
+  /// Normaliza para buscar sin tildes ni mayúsculas.
+  static String _norm(String s) {
+    var x = s.trim().toLowerCase();
+    const acc = {'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u', 'ü': 'u'};
+    acc.forEach((k, v) => x = x.replaceAll(k, v));
+    return x;
   }
 
   double? _distancia(Academia a) {
@@ -134,11 +150,16 @@ class _AcademiasScreenState extends State<AcademiasScreen> {
           final deportesDisponibles = <Deporte>{for (final a in academias) a.deporte}
               .toList()
             ..sort((x, y) => x.index.compareTo(y.index));
-          // Filtro por DEPORTE elegido + orden por CERCANÍA (las más cerca
-          // primero; los destacados conservan prioridad).
+          // Filtro por DEPORTE + por NOMBRE (o sede) escrito, y orden por
+          // CERCANÍA (las más cerca primero; los destacados conservan prioridad).
+          final q = _norm(_query);
           final filtradas = [
             for (final a in academias)
-              if (_filtro == null || a.deporte == _filtro) a
+              if ((_filtro == null || a.deporte == _filtro) &&
+                  (q.isEmpty ||
+                      _norm(a.nombre).contains(q) ||
+                      _norm(a.sedeClub).contains(q)))
+                a
           ];
           if (_ubicacion != null) {
             filtradas.sort((a, b) {
@@ -162,8 +183,18 @@ class _AcademiasScreenState extends State<AcademiasScreen> {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              // Buscador por DEPORTE (lo que el usuario espera al entrar): chips
-              // Todos + los deportes que hay. Ordena por cercanía.
+              // Buscador por NOMBRE (estilo Airbnb): barra blanca redondeada con
+              // lupa. Filtra por nombre de academia o sede mientras escribes.
+              _BarraBusqueda(
+                controller: _buscar,
+                onChanged: (v) => setState(() => _query = v),
+                onLimpiar: () => setState(() {
+                  _buscar.clear();
+                  _query = '';
+                }),
+              ),
+              const SizedBox(height: 12),
+              // Filtro por DEPORTE: chips Todos + los deportes que hay.
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
@@ -202,11 +233,14 @@ class _AcademiasScreenState extends State<AcademiasScreen> {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(8, 24, 8, 8),
                   child: Text(
-                      _filtro == null
-                          ? 'Todavía no hay academias publicadas. ¿Tienes una? '
-                              'Créala desde tu Perfil.'
-                          : 'Aún no hay academias de ${_filtro!.etiqueta} cerca. '
-                              'Prueba con otro deporte.',
+                      _query.trim().isNotEmpty
+                          ? 'No encontramos academias que coincidan con '
+                              '"${_query.trim()}". Prueba otro nombre o deporte.'
+                          : _filtro == null
+                              ? 'Todavía no hay academias publicadas. ¿Tienes una? '
+                                  'Créala desde tu Perfil.'
+                              : 'Aún no hay academias de ${_filtro!.etiqueta} cerca. '
+                                  'Prueba con otro deporte.',
                       textAlign: TextAlign.center,
                       style: const TextStyle(color: textoTenue)),
                 )
@@ -239,6 +273,58 @@ class _AcademiasScreenState extends State<AcademiasScreen> {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+/// Barra de búsqueda estilo Airbnb: pastilla blanca con lupa, sombra suave y
+/// botón para limpiar. Busca academias por nombre o sede.
+class _BarraBusqueda extends StatelessWidget {
+  const _BarraBusqueda({
+    required this.controller,
+    required this.onChanged,
+    required this.onLimpiar,
+  });
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onLimpiar;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: trazo),
+        boxShadow: const [
+          BoxShadow(color: Color(0x14000000), blurRadius: 10, offset: Offset(0, 3)),
+        ],
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: Row(
+        children: [
+          const Icon(Icons.search, color: bosque),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              textInputAction: TextInputAction.search,
+              onChanged: onChanged,
+              decoration: const InputDecoration(
+                isDense: true,
+                border: InputBorder.none,
+                hintText: 'Busca una academia por nombre',
+              ),
+            ),
+          ),
+          if (controller.text.isNotEmpty)
+            IconButton(
+              tooltip: 'Limpiar',
+              icon: const Icon(Icons.close, size: 20, color: textoTenue),
+              onPressed: onLimpiar,
+            ),
+        ],
       ),
     );
   }

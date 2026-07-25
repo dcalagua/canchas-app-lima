@@ -322,31 +322,10 @@ class _Contenido extends StatelessWidget {
                   const Text('Esta academia aún no publicó sus planes.',
                       style: TextStyle(color: textoTenue))
                 else
-                  // Planes AGRUPADOS por programa (Bola Roja/Naranja, Verde/
-                  // Amarilla…): un encabezado por programa y debajo sus
-                  // frecuencias. Los planes sin programa van sin encabezado.
-                  for (final entrada in academia.planesPorPrograma.entries) ...[
-                    if (entrada.key.isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      Text(entrada.key,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w800, fontSize: 16)),
-                      if (entrada.value.first.etapaEdad.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 2, bottom: 4),
-                          child: Text(entrada.value.first.etapaEdad,
-                              style: const TextStyle(
-                                  color: textoTenue, fontSize: 12.5)),
-                        ),
-                      const SizedBox(height: 8),
-                    ],
-                    for (final p in entrada.value)
-                      _TarjetaPlan(
-                          academia: academia,
-                          plan: p,
-                          tituloOverride:
-                              entrada.key.isEmpty ? null : p.frecuenciaLabel),
-                  ],
+                  // Planes agrupados por programa. Si hay MÁS de un programa, se
+                  // elige primero cuál (evita el scroll enorme); si hay uno solo
+                  // se muestra directo.
+                  _PlanesSection(academia: academia),
                 // (El chat con el profe y campeonatos ahora van ARRIBA, en la
                 // fila de acciones — ya no escondidos aquí.)
                 // Galería completa del feed.
@@ -573,6 +552,121 @@ class _Galeria extends StatelessWidget {
             fit: BoxFit.cover,
             errorBuilder: (_, __, ___) => Container(color: limaSuave)),
       ),
+    );
+  }
+}
+
+/// Sección de PLANES con selección de programa. Si la academia tiene más de un
+/// programa (Bola Roja/Naranja, Verde, Amarilla…), primero se elige cuál (chips)
+/// y solo se muestran los precios y horarios de ESE programa — así la ficha no
+/// escrolea de más. Con un solo programa se muestra todo directo.
+class _PlanesSection extends StatefulWidget {
+  const _PlanesSection({required this.academia});
+  final Academia academia;
+  @override
+  State<_PlanesSection> createState() => _PlanesSectionState();
+}
+
+class _PlanesSectionState extends State<_PlanesSection> {
+  String? _prog; // clave del programa elegido
+
+  /// Horarios (por sede) publicados para un programa. Empareja por el sufijo
+  /// `|programa` de la clave `sedeId|programa`, sin depender del id de sede.
+  List<String> _horariosDe(String prog) {
+    final out = <String>[];
+    for (final e in widget.academia.horarios.entries) {
+      if (e.key.endsWith('|$prog') && e.value.trim().isNotEmpty) {
+        out.add(e.value.trim());
+      }
+    }
+    return out;
+  }
+
+  /// Encabezado (nombre + etapa/edad) + horarios + tarjetas de plan del grupo.
+  List<Widget> _grupo(MapEntry<String, List<Plan>> entrada,
+      {bool conEncabezado = true}) {
+    final academia = widget.academia;
+    final horarios = entrada.key.isEmpty ? const <String>[] : _horariosDe(entrada.key);
+    return [
+      if (conEncabezado && entrada.key.isNotEmpty) ...[
+        const SizedBox(height: 6),
+        Text(entrada.key,
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+        if (entrada.value.first.etapaEdad.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 2, bottom: 4),
+            child: Text(entrada.value.first.etapaEdad,
+                style: const TextStyle(color: textoTenue, fontSize: 12.5)),
+          ),
+        const SizedBox(height: 8),
+      ],
+      if (horarios.isNotEmpty) ...[
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.schedule, size: 16, color: bosque),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(horarios.join(' · '),
+                    style: const TextStyle(fontSize: 12.5, color: textoTenue)),
+              ),
+            ],
+          ),
+        ),
+      ],
+      for (final p in entrada.value)
+        _TarjetaPlan(
+            academia: academia,
+            plan: p,
+            tituloOverride: entrada.key.isEmpty ? null : p.frecuenciaLabel),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final grupos = widget.academia.planesPorPrograma.entries.toList();
+
+    // Un solo programa (o planes sin programa): mostrar todo directo.
+    if (grupos.length <= 1) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [for (final g in grupos) ..._grupo(g)],
+      );
+    }
+
+    // Varios programas: elegir primero cuál.
+    final selKey = grupos.any((g) => g.key == _prog) ? _prog! : grupos.first.key;
+    final sel = grupos.firstWhere((g) => g.key == selKey);
+    String etiqueta(String k) => k.isEmpty ? 'General' : k;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('¿Qué programa te interesa?',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final g in grupos)
+              ChoiceChip(
+                label: Text(etiqueta(g.key)),
+                selected: g.key == selKey,
+                selectedColor: lima,
+                labelStyle: TextStyle(
+                    color: g.key == selKey
+                        ? Colors.white
+                        : Theme.of(context).colorScheme.onSurface,
+                    fontWeight: FontWeight.w600),
+                onSelected: (_) => setState(() => _prog = g.key),
+              ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        ..._grupo(sel),
+      ],
     );
   }
 }
