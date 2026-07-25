@@ -577,11 +577,17 @@ class _EstadoChip extends StatelessWidget {
       EstadoReserva.noShow => (estadoBadBg, estadoBadFg),
       _ => (estadoNeutroBg, estadoNeutroFg),
     };
+    // Emoji vivo por estado (mismo lenguaje que las notificaciones).
+    final emoji = switch (estado) {
+      EstadoReserva.confirmada || EstadoReserva.nueva => '✅',
+      EstadoReserva.completada => '🏁',
+      EstadoReserva.noShow => '🚫',
+    };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
       decoration:
           BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
-      child: Text(_estadoLabel(estado),
+      child: Text('$emoji  ${_estadoLabel(estado)}',
           style:
               TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.w700)),
     );

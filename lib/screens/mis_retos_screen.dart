@@ -623,14 +623,16 @@ class _RetoCard extends StatelessWidget {
     final otro = soyRetado ? ladoRetador : ladoRetado;
     // Colores VIVOS y distintos por estado (como los deportes de la home), no
     // tonos oscuros/apagados.
-    final (String etiqueta, Color color, IconData icono) = switch (estado) {
-      'pendiente' => ('Pendiente', amarillo, Icons.hourglass_top),
-      'aceptado' => ('Aceptado', lima, Icons.handshake),
-      'por_confirmar' => ('Por confirmar', naranja, Icons.hourglass_bottom),
-      'jugado' => ('Jugado', morado, Icons.emoji_events),
-      'disputado' => ('En disputa', clayOscuro, Icons.report_gmailerrorred),
-      'rechazado' => ('Rechazado', clayOscuro, Icons.close),
-      _ => (estado, teal, Icons.sports_kabaddi),
+    // Emoji VIVO por estado (mismo lenguaje que las notificaciones), sobre un
+    // círculo con tinte del color del estado.
+    final (String etiqueta, Color color, String emoji) = switch (estado) {
+      'pendiente' => ('Pendiente', amarillo, '⏳'),
+      'aceptado' => ('Aceptado', lima, '🤝'),
+      'por_confirmar' => ('Por confirmar', naranja, '🕓'),
+      'jugado' => ('Jugado', morado, '🏆'),
+      'disputado' => ('En disputa', clayOscuro, '⚠️'),
+      'rechazado' => ('Rechazado', clayOscuro, '❌'),
+      _ => (estado, teal, '🎾'),
     };
     // Datos para la confirmación del resultado.
     final ganadorEmail = (r['ganador_email'] ?? '').toString().toLowerCase();
@@ -657,11 +659,11 @@ class _RetoCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Ícono estilo Airbnb: círculo de color según el estado del reto.
+              // Ícono estilo Airbnb: emoji vivo sobre círculo con tinte del estado.
               CircleAvatar(
                 radius: 22,
-                backgroundColor: color,
-                child: Icon(icono, color: Colors.white, size: 22),
+                backgroundColor: color.withOpacity(0.16),
+                child: Text(emoji, style: const TextStyle(fontSize: 20)),
               ),
               const SizedBox(width: 12),
               Expanded(
