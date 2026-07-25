@@ -28,6 +28,7 @@ import '../models/resena.dart';
 import '../models/temporada.dart';
 import '../models/usuario.dart';
 import '../services/auth_service.dart';
+import '../services/avisos_service.dart';
 import '../services/circuito_service.dart';
 import '../services/pagos_service.dart';
 import '../services/retos_service.dart';
@@ -1358,6 +1359,40 @@ class AppState extends ChangeNotifier {
     guardarCampeonato(c.copyWith(partidos: partidos));
   }
 
+  /// AUTO-SORTEO: para cada campeonato cuyo plazo de inscripción venció y aún no
+  /// tiene fixture (≥2 participantes), genera el fixture y NOTIFICA a los
+  /// participantes con cuenta. Idempotente (una vez generado, ya no re-corre).
+  /// Lazy: se llama al cargar campeonatos, sin cron.
+  void autoSortearVencidos() {
+    var cambio = false;
+    for (final c in List<Campeonato>.from(campeonatos)) {
+      if (c.cerrado || c.fixtureGenerado || !c.inscripcionVencida) continue;
+      if (c.participantes.length < 2) continue;
+      final partidos = TorneoFixture.generar(c.formato, c.participantes);
+      if (partidos.isEmpty) continue;
+      final nuevo = c.copyWith(partidos: partidos);
+      final i = campeonatos.indexWhere((x) => x.id == c.id);
+      if (i >= 0) campeonatos[i] = nuevo;
+      CampeonatosRepo.guardar(nuevo);
+      cambio = true;
+      // Notifica a cada participante con cuenta (push, best-effort).
+      for (final p in c.participantes) {
+        if (p.email.trim().isEmpty) continue;
+        AvisosService.enviar(
+          email: p.email,
+          titulo: '¡Fixture publicado! 🏆',
+          cuerpo: 'Ya salió el fixture de "${c.nombre}". Revisa tus partidos.',
+          tipo: 'campeonato',
+          data: {'accion': 'fixture', 'campeonato': c.id},
+        );
+      }
+    }
+    if (cambio) {
+      notifyListeners();
+      _persistirDatos();
+    }
+  }
+
   /// Carga el marcador de un partido. En eliminación, propaga el ganador a la
   /// siguiente ronda.
   void setResultado(String campId, String partidoId, int a, int b) {
@@ -1391,6 +1426,8 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       _persistirDatos();
     }
+    // Al refrescar campeonatos, cierra los que vencieron y sortea su fixture.
+    autoSortearVencidos();
   }
 
   /// Trae las academias de la nube y las fusiona con las locales (por id). Así,
