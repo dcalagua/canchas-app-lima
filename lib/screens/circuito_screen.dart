@@ -19,7 +19,6 @@ class CircuitoScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
     return Scaffold(
       appBar: AppBar(title: const Text('Liga de tenis Pichangol')),
       body: ListenableBuilder(
@@ -28,37 +27,8 @@ class CircuitoScreen extends StatelessWidget {
           return ListView(
             padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
             children: [
-              // Encabezado: hoy el circuito es de tenis.
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                        color: limaSuave,
-                        borderRadius: BorderRadius.circular(999)),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.sports_tennis, size: 15, color: bosque),
-                        SizedBox(width: 6),
-                        Text('Tenis',
-                            style: TextStyle(
-                                color: bosque,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 12.5)),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Text('La liga de tenis de Pichangol',
-                  style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
-              const SizedBox(height: 4),
-              Text('Rankea por tu ciudad, reta a otros jugadores y sube en la '
-                  'tabla. Cada deporte tendrá su propio circuito.',
-                  style: TextStyle(color: textoTenueDe(context), fontSize: 13)),
+              // Hero de la liga: gradiente de marca, 🎾 y estado del circuito.
+              _HeroLiga(perfil: appState.miPerfilCircuito),
               const SizedBox(height: 16),
 
               _CircuitoTile(
@@ -124,6 +94,101 @@ class CircuitoScreen extends StatelessWidget {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+/// Hero de la Liga: tarjeta con gradiente de marca, la pelota 🎾 grande y el
+/// estado del jugador en el circuito. Le da vida a la pantalla.
+class _HeroLiga extends StatelessWidget {
+  const _HeroLiga({required this.perfil});
+  final Map<String, dynamic>? perfil;
+
+  @override
+  Widget build(BuildContext context) {
+    final enCircuito = perfil != null;
+    final zona = (perfil?['zona'] ?? '').toString();
+    final categoria = (perfil?['categoria'] ?? '').toString();
+    final detalle = [
+      if (zona.isNotEmpty) zona,
+      if (categoria.isNotEmpty) 'Cat. $categoria',
+    ].join(' · ');
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+            colors: [bosque, teal],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [
+          BoxShadow(color: Color(0x22000000), blurRadius: 14, offset: Offset(0, 6)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                    color: Colors.white24, shape: BoxShape.circle),
+                child: Text(emojiDeporte(Deporte.tenis),
+                    style: const TextStyle(fontSize: 30)),
+              ),
+              const SizedBox(width: 14),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Liga de tenis Pichangol',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 18)),
+                    SizedBox(height: 2),
+                    Text('Rankea, reta y sube en tu ciudad',
+                        style: TextStyle(color: Colors.white70, fontSize: 13)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          // Pastilla de estado: dentro del circuito o invitación a unirse.
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(999)),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(enCircuito ? Icons.check_circle : Icons.emoji_events,
+                    color: enCircuito ? lima : amarillo, size: 18),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                      enCircuito
+                          ? (detalle.isNotEmpty
+                              ? 'Estás en el circuito · $detalle'
+                              : 'Estás en el circuito')
+                          : 'Únete al circuito y deja que te reten',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12.5)),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
