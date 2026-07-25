@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
 
+import '../config/pais.dart';
 import '../data/distritos.dart';
+import '../data/geo_peru.dart';
 import '../models/models.dart';
 import '../services/avisos_service.dart';
 import '../services/circuito_service.dart';
@@ -449,6 +451,15 @@ class _UnirseSheetState extends State<_UnirseSheet> {
   bool _guardando = false;
   bool _detectando = false;
 
+  // Selección en cascada (Perú): Departamento → Provincia → Distrito. `_zona`
+  // sigue siendo la fuente canónica (= distrito) para guardar.
+  String? _dep, _prov, _dist;
+  bool _geoListo = false;
+
+  /// ¿Estamos en Perú? (país auto-detectado). Solo ahí mostramos la cascada
+  /// oficial de UBIGEO; en otros países cae al texto libre + catálogo.
+  bool get _esPeru => paisActual.iso == 'PE';
+
   @override
   void initState() {
     super.initState();
@@ -462,8 +473,36 @@ class _UnirseSheetState extends State<_UnirseSheet> {
       _zona.text = (p['zona'] ?? '').toString();
       _categoria = (p['categoria'] ?? '').toString();
     }
-    // Si aún no tiene zona, autodetecta su distrito por GPS (país incluido).
+    _prepararGeo();
+  }
+
+  /// Carga la jerarquía del Perú y preselecciona la cascada: si ya hay zona
+  /// (edición) la ubica en el árbol; si no, autodetecta por GPS.
+  Future<void> _prepararGeo() async {
+    if (_esPeru) await GeoPeru.cargar();
+    if (!mounted) return;
+    final z = _zona.text.trim();
+    if (_esPeru && z.isNotEmpty) _ubicarEnArbol(z);
+    setState(() => _geoListo = true);
     if (_zona.text.trim().isEmpty) _detectarDistrito();
+  }
+
+  /// Ubica un distrito ya guardado dentro del árbol para preseleccionar los tres
+  /// dropdowns (búsqueda lineal; ~1900 distritos, instantáneo).
+  void _ubicarEnArbol(String distrito) {
+    final nz = distrito.toLowerCase();
+    for (final dep in GeoPeru.departamentos()) {
+      for (final prov in GeoPeru.provincias(dep)) {
+        for (final dis in GeoPeru.distritos(dep, prov)) {
+          if (dis.toLowerCase() == nz) {
+            _dep = dep;
+            _prov = prov;
+            _dist = dis;
+            return;
+          }
+        }
+      }
+    }
   }
 
   @override
@@ -483,10 +522,39 @@ class _UnirseSheetState extends State<_UnirseSheet> {
       if (marks.isEmpty) return;
       final m = marks.first;
       String pick(String? s) => (s ?? '').trim();
-      // Prioriza el nivel DISTRITO (locality / subAdministrativeArea) sobre el
-      // barrio/urbanización (subLocality, que da "Urb Santa Maria de Chosica").
-      // normalizarDistrito además calza con el catálogo para usar el nombre
-      // estándar ("Lurigancho (Chosica)" en vez del barrio suelto).
+
+      // Perú: mapear a la cascada oficial UBIGEO.
+      //   administrativeArea → Departamento, subAdministrativeArea → Provincia,
+      //   locality/subLocality/name → Distrito.
+      if (_esPeru && GeoPeru.disponible) {
+        final dep = GeoPeru.matchDepartamento(pick(m.administrativeArea));
+        String? prov, dist;
+        if (dep != null) {
+          prov = GeoPeru.matchProvincia(dep, pick(m.subAdministrativeArea));
+          if (prov != null) {
+            for (final cand in [
+              pick(m.locality),
+              pick(m.subLocality),
+              pick(m.name),
+            ]) {
+              dist = GeoPeru.matchDistrito(dep, prov, cand);
+              if (dist != null) break;
+            }
+          }
+        }
+        if (mounted && dep != null) {
+          setState(() {
+            _dep = dep;
+            _prov = prov;
+            _dist = dist;
+            _zona.text = dist ?? '';
+          });
+        }
+        return;
+      }
+
+      // Otros países: nivel DISTRITO sobre barrio/urbanización, normalizado
+      // contra el catálogo ("Lurigancho (Chosica)" en vez del barrio suelto).
       final distrito = normalizarDistrito([
         pick(m.locality),
         pick(m.subAdministrativeArea),
@@ -519,6 +587,65 @@ class _UnirseSheetState extends State<_UnirseSheet> {
     }
   }
 
+  /// Un dropdown de la cascada. [onChanged] null = deshabilitado (aún falta
+  /// elegir el nivel de arriba).
+  Widget _drop(String label, String? value, List<String> items,
+      ValueChanged<String?>? onChanged, String hintDeshab) {
+    return DropdownButtonFormField<String>(
+      value: value,
+      isExpanded: true,
+      decoration: InputDecoration(
+          labelText: label, prefixIcon: const Icon(Icons.place_outlined)),
+      items: [
+        for (final it in items)
+          DropdownMenuItem(
+              value: it,
+              child: Text(it, overflow: TextOverflow.ellipsis)),
+      ],
+      onChanged: onChanged,
+      disabledHint: onChanged == null ? Text(hintDeshab) : null,
+    );
+  }
+
+  /// Cascada Departamento → Provincia → Distrito (Perú).
+  Widget _selectorCascada() {
+    final provs = _dep == null ? <String>[] : GeoPeru.provincias(_dep!);
+    final dists = (_dep == null || _prov == null)
+        ? <String>[]
+        : GeoPeru.distritos(_dep!, _prov!);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _drop('Departamento', _dep, GeoPeru.departamentos(),
+            (v) => setState(() {
+                  _dep = v;
+                  _prov = null;
+                  _dist = null;
+                  _zona.text = '';
+                }), ''),
+        const SizedBox(height: 10),
+        _drop('Provincia', _prov, provs,
+            _dep == null
+                ? null
+                : (v) => setState(() {
+                      _prov = v;
+                      _dist = null;
+                      _zona.text = '';
+                    }),
+            'Elige un departamento'),
+        const SizedBox(height: 10),
+        _drop('Distrito', _dist, dists,
+            _prov == null
+                ? null
+                : (v) => setState(() {
+                      _dist = v;
+                      _zona.text = v ?? '';
+                    }),
+            'Elige una provincia'),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
@@ -526,7 +653,8 @@ class _UnirseSheetState extends State<_UnirseSheet> {
     return Padding(
       padding: EdgeInsets.fromLTRB(
           20, 18, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
-      child: Column(
+      child: SingleChildScrollView(
+        child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -555,54 +683,63 @@ class _UnirseSheetState extends State<_UnirseSheet> {
             ],
           ),
           const SizedBox(height: 16),
-          TextField(
-            controller: _zona,
-            textCapitalization: TextCapitalization.words,
-            onChanged: (_) => setState(() {}), // refresca las sugerencias
-            decoration: InputDecoration(
-              labelText: 'Zona / distrito',
-              hintText: 'Ej.: San Isidro',
-              prefixIcon: const Icon(Icons.place_outlined),
-              // Botón para (re)detectar el distrito por GPS.
-              suffixIcon: _detectando
-                  ? const Padding(
-                      padding: EdgeInsets.all(12),
-                      child: SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2.2, color: lima)),
-                    )
-                  : IconButton(
-                      tooltip: 'Usar mi ubicación',
-                      icon: const Icon(Icons.my_location, color: bosque),
-                      onPressed: _detectarDistrito,
-                    ),
-            ),
-          ),
-          // Sugerencias de DISTRITO: populares cuando el campo está vacío,
-          // filtradas mientras escribe. Un toque completa el campo.
-          Builder(builder: (context) {
-            final actual = _zona.text.trim();
-            final sugeridos = sugerenciasDistrito(actual)
-                .where((d) => d.toLowerCase() != actual.toLowerCase())
-                .toList();
-            if (sugeridos.isEmpty) return const SizedBox(height: 16);
-            return Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final d in sugeridos)
-                    ActionChip(
-                      label: Text(d),
-                      onPressed: () => setState(() => _zona.text = d),
-                    ),
-                ],
+          Row(
+            children: [
+              Text('Zona', style: t.labelLarge),
+              const Spacer(),
+              // Autodetectar por GPS (departamento/provincia/distrito).
+              TextButton.icon(
+                onPressed: _detectando ? null : _detectarDistrito,
+                icon: _detectando
+                    ? const SizedBox(
+                        width: 15,
+                        height: 15,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2.2, color: lima))
+                    : const Icon(Icons.my_location, size: 18, color: bosque),
+                label: Text(_detectando ? 'Detectando…' : 'Usar mi ubicación',
+                    style: const TextStyle(color: bosque)),
               ),
-            );
-          }),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (_esPeru && _geoListo && GeoPeru.disponible)
+            _selectorCascada()
+          else ...[
+            // Fuera de Perú (o si la jerarquía no cargó): texto libre + chips
+            // del catálogo del país.
+            TextField(
+              controller: _zona,
+              textCapitalization: TextCapitalization.words,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                labelText: 'Zona / distrito',
+                hintText: 'Ej.: San Isidro',
+                prefixIcon: Icon(Icons.place_outlined),
+              ),
+            ),
+            Builder(builder: (context) {
+              final actual = _zona.text.trim();
+              final sugeridos = sugerenciasDistrito(actual)
+                  .where((d) => d.toLowerCase() != actual.toLowerCase())
+                  .toList();
+              if (sugeridos.isEmpty) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final d in sugeridos)
+                      ActionChip(
+                        label: Text(d),
+                        onPressed: () => setState(() => _zona.text = d),
+                      ),
+                  ],
+                ),
+              );
+            }),
+          ],
           const SizedBox(height: 16),
           Text('Nivel / categoría (opcional)', style: t.labelLarge),
           const SizedBox(height: 8),
@@ -642,6 +779,7 @@ class _UnirseSheetState extends State<_UnirseSheet> {
             ),
           ),
         ],
+        ),
       ),
     );
   }
