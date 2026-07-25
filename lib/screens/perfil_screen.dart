@@ -9,9 +9,8 @@ import 'ajustes_screen.dart';
 import 'anfitrion_screen.dart';
 import 'login_google_sheet.dart';
 import 'billetera_screen.dart';
+import 'circuito_screen.dart';
 import 'editar_perfil_screen.dart';
-import 'hazte_pro_screen.dart';
-import 'mis_retos_screen.dart';
 
 /// Pestaña PERFIL del jugador: sesión (login/logout), lo del jugador (academias,
 /// métodos de pago) y el acceso a **Modo anfitrión** (todo lo del anfitrión va
@@ -125,41 +124,23 @@ class PerfilScreen extends StatelessWidget {
                       onTap: () => Navigator.of(context).push(MaterialPageRoute(
                           builder: (_) => const AcademiasScreen())),
                     ),
-                    // Circuito (capa de TENIS): estos accesos solo salen si el
-                    // usuario YA usa el circuito, para no ensuciar el menú de
-                    // quien solo reserva o juega fútbol. La gente descubre el
-                    // circuito desde Academias / Explorar (tenis). Van bajo un
-                    // encabezado propio para que se lean como capa de raqueta.
-                    if (u != null && appState.usaCircuito)
-                      const _SeccionHeader('Tenis · Circuito'),
+                    // CIRCUITO (capa de TENIS): un solo contenedor. Adentro vive
+                    // todo lo del circuito de ese deporte (ranking, retos, Pro).
+                    // NO se listan sueltos aquí porque cuando entre fútbol cada
+                    // deporte tendrá su propio circuito y confundiría mezclarlos.
+                    // Solo aparece si el usuario YA usa el circuito (se descubre
+                    // desde Academias / Explorar · tenis).
                     if (u != null && appState.usaCircuito)
                       _Tile(
-                        icon: Icons.sports_kabaddi,
-                        title: 'Mis retos',
-                        subtitle: 'Rétalos, juega y sube en el ranking',
+                        icon: Icons.emoji_events,
+                        title: 'Circuito',
+                        subtitle: 'Ranking, retos y tu carnet Pro (tenis)',
                         badge: appState.retosPendientes,
                         onTap: () => Navigator.of(context)
                             .push(MaterialPageRoute(
-                                builder: (_) => const MisRetosScreen()))
+                                builder: (_) => const CircuitoScreen()))
                             .then((_) => appState.cargarRetosPendientes()),
                       ),
-                    if (u != null && appState.usaCircuito)
-                      _Tile(
-                        icon: appState.proActivo
-                            ? Icons.workspace_premium
-                            : Icons.star_border,
-                        title: appState.proActivo
-                            ? 'Pichangol Pro ✓'
-                            : 'Hazte Pichangol Pro',
-                        subtitle: appState.proActivo
-                            ? 'Tu membresía está activa'
-                            : 'Tu carnet oficial y el ranking del circuito',
-                        onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                            builder: (_) => const HazteProScreen())),
-                      ),
-                    // Cierra el grupo del circuito antes de los accesos generales.
-                    if (u != null && appState.usaCircuito)
-                      const SizedBox(height: 8),
                     if (u != null)
                       _Tile(
                         icon: Icons.account_balance_wallet,
@@ -336,28 +317,6 @@ class _Tile extends StatelessWidget {
             style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
         trailing: const Icon(Icons.chevron_right, color: textoTenue),
         onTap: onTap,
-      ),
-    );
-  }
-}
-
-/// Encabezado de sección del menú de Perfil (agrupa tiles bajo una etiqueta,
-/// p. ej. el circuito de tenis). Estilo Airbnb: texto tenue, discreto.
-class _SeccionHeader extends StatelessWidget {
-  const _SeccionHeader(this.texto);
-  final String texto;
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 4, top: 4, bottom: 8),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Text(texto.toUpperCase(),
-            style: const TextStyle(
-                color: textoTenue,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.6)),
       ),
     );
   }
