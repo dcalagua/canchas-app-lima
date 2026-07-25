@@ -60,7 +60,8 @@ class CircuitoScreen extends StatelessWidget {
               const SizedBox(height: 16),
 
               _CircuitoTile(
-                icon: Icons.emoji_events_outlined,
+                icon: Icons.emoji_events,
+                color: amarillo,
                 title: 'Ranking global',
                 subtitle: 'La tabla del circuito por ciudad',
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(
@@ -68,6 +69,7 @@ class CircuitoScreen extends StatelessWidget {
               ),
               _CircuitoTile(
                 icon: Icons.person_add_alt_1,
+                color: morado,
                 title: 'Retar a alguien',
                 subtitle: 'Jugadores disponibles para un partido',
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(
@@ -75,6 +77,7 @@ class CircuitoScreen extends StatelessWidget {
               ),
               _CircuitoTile(
                 icon: Icons.sports_kabaddi,
+                color: naranja,
                 title: 'Mis retos',
                 subtitle: 'Rétalos, juega y sube en el ranking',
                 badge: appState.retosPendientes,
@@ -86,7 +89,8 @@ class CircuitoScreen extends StatelessWidget {
               _CircuitoTile(
                 icon: appState.proActivo
                     ? Icons.workspace_premium
-                    : Icons.star_border,
+                    : Icons.star,
+                color: amarillo,
                 title: appState.proActivo
                     ? 'Pichangol Pro ✓'
                     : 'Hazte Pichangol Pro',
@@ -108,6 +112,7 @@ class CircuitoScreen extends StatelessWidget {
 class _CircuitoTile extends StatelessWidget {
   const _CircuitoTile({
     required this.icon,
+    required this.color,
     required this.title,
     required this.subtitle,
     required this.onTap,
@@ -115,6 +120,7 @@ class _CircuitoTile extends StatelessWidget {
   });
 
   final IconData icon;
+  final Color color;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
@@ -125,8 +131,8 @@ class _CircuitoTile extends StatelessWidget {
     final t = Theme.of(context).textTheme;
     Widget avatar = CircleAvatar(
       radius: 20,
-      backgroundColor: limaSuave,
-      child: Icon(icon, color: bosque, size: 20),
+      backgroundColor: color,
+      child: Icon(icon, color: Colors.white, size: 20),
     );
     if (badge > 0) {
       avatar = Badge.count(

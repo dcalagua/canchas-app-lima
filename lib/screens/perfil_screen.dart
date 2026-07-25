@@ -119,6 +119,7 @@ class PerfilScreen extends StatelessWidget {
                     // --- Jugador ---
                     _Tile(
                       icon: Icons.school,
+                      color: teal,
                       title: 'Academias',
                       subtitle: 'Clases de tenis, fútbol y más cerca de ti',
                       onTap: () => Navigator.of(context).push(MaterialPageRoute(
@@ -133,6 +134,7 @@ class PerfilScreen extends StatelessWidget {
                     if (u != null && appState.usaCircuito)
                       _Tile(
                         icon: Icons.emoji_events,
+                        color: amarillo,
                         title: 'Circuito',
                         subtitle: 'Ranking, retos y tu carnet Pro (tenis)',
                         badge: appState.retosPendientes,
@@ -144,6 +146,7 @@ class PerfilScreen extends StatelessWidget {
                     if (u != null)
                       _Tile(
                         icon: Icons.account_balance_wallet,
+                        color: lima,
                         title: 'Mi billetera',
                         subtitle:
                             'Tu saldo, recargas y tarjetas guardadas',
@@ -155,6 +158,7 @@ class PerfilScreen extends StatelessWidget {
                     // compartir) viven aquí para no saturar el Perfil. ---
                     _Tile(
                       icon: Icons.tune,
+                      color: textoTenue,
                       title: 'Ajustes',
                       subtitle: 'Tu cuenta, verificación, invitar y compartir',
                       onTap: () => Navigator.of(context).push(MaterialPageRoute(
@@ -273,11 +277,16 @@ class _Tile extends StatelessWidget {
       required this.title,
       required this.subtitle,
       required this.onTap,
+      this.color = lima,
       this.badge = 0});
   final IconData icon;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
+
+  /// Color del ícono (círculo relleno + ícono blanco, estilo del selector de
+  /// deporte). Cada acceso con su color para distinguirlos de un vistazo.
+  final Color color;
 
   /// Contador de "requiere tu atención" (0 = sin badge). Estilo Airbnb: punto
   /// lima con el número, sobre el ícono del tile.
@@ -288,8 +297,8 @@ class _Tile extends StatelessWidget {
     final t = Theme.of(context).textTheme;
     Widget avatar = CircleAvatar(
       radius: 20,
-      backgroundColor: limaSuave,
-      child: Icon(icon, color: bosque, size: 20),
+      backgroundColor: color,
+      child: Icon(icon, color: Colors.white, size: 20),
     );
     if (badge > 0) {
       avatar = Badge.count(
