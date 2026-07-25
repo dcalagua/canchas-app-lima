@@ -21,10 +21,10 @@ class RetoDoblesScreen extends StatefulWidget {
 }
 
 class _RetoDoblesScreenState extends State<RetoDoblesScreen> {
-  // Cada slot: (email, nombre). Null = sin elegir.
-  (String, String)? _companero;
-  (String, String)? _rival1;
-  (String, String)? _rival2;
+  // Cada slot: (email, nombre, foto). Null = sin elegir.
+  (String, String, String)? _companero;
+  (String, String, String)? _rival1;
+  (String, String, String)? _rival2;
   bool _enviando = false;
 
   String get _yo => (appState.usuario?.email ?? '').toLowerCase().trim();
@@ -36,8 +36,8 @@ class _RetoDoblesScreenState extends State<RetoDoblesScreen> {
         if (_rival2 != null) _rival2!.$1.toLowerCase(),
       ];
 
-  Future<void> _elegir(void Function((String, String)) set) async {
-    final r = await showModalBottomSheet<(String, String)>(
+  Future<void> _elegir(void Function((String, String, String)) set) async {
+    final r = await showModalBottomSheet<(String, String, String)>(
       context: context,
       isScrollControlled: true,
       builder: (_) => _PickerJugador(excluir: _yaElegidos),
@@ -89,6 +89,7 @@ class _RetoDoblesScreenState extends State<RetoDoblesScreen> {
             sub: yoNombre,
             fijo: true,
             color: lima,
+            foto: appState.usuario?.fotoUrl ?? appState.fotoDe(_yo),
           ),
           const SizedBox(height: 8),
           _SlotJugador(
@@ -96,6 +97,7 @@ class _RetoDoblesScreenState extends State<RetoDoblesScreen> {
             sub: _companero?.$2 ?? 'Elegir compañero',
             elegido: _companero != null,
             color: lima,
+            foto: _companero?.$3,
             onTap: () => _elegir((v) => _companero = v),
           ),
           const SizedBox(height: 18),
@@ -105,6 +107,7 @@ class _RetoDoblesScreenState extends State<RetoDoblesScreen> {
             sub: _rival1?.$2 ?? 'Elegir rival',
             elegido: _rival1 != null,
             color: naranja,
+            foto: _rival1?.$3,
             onTap: () => _elegir((v) => _rival1 = v),
           ),
           const SizedBox(height: 8),
@@ -113,6 +116,7 @@ class _RetoDoblesScreenState extends State<RetoDoblesScreen> {
             sub: _rival2?.$2 ?? 'Elegir rival',
             elegido: _rival2 != null,
             color: naranja,
+            foto: _rival2?.$3,
             onTap: () => _elegir((v) => _rival2 = v),
           ),
           const SizedBox(height: 24),
@@ -160,6 +164,7 @@ class _SlotJugador extends StatelessWidget {
     required this.color,
     this.elegido = false,
     this.fijo = false,
+    this.foto,
     this.onTap,
   });
   final String titulo;
@@ -167,11 +172,16 @@ class _SlotJugador extends StatelessWidget {
   final Color color;
   final bool elegido;
   final bool fijo;
+
+  /// Foto del jugador de este slot (tú / compañero / rival). Si está, se muestra
+  /// en el avatar; si no, el ícono.
+  final String? foto;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final tieneFoto = (foto ?? '').trim().isNotEmpty;
     return Material(
       color: cs.surface,
       borderRadius: BorderRadius.circular(14),
@@ -192,8 +202,12 @@ class _SlotJugador extends StatelessWidget {
                 backgroundColor: (elegido || fijo)
                     ? color
                     : color.withOpacity(0.14),
-                child: Icon(fijo ? Icons.person : Icons.person_add_alt_1,
-                    color: (elegido || fijo) ? Colors.white : color),
+                backgroundImage:
+                    tieneFoto ? NetworkImage(foto!.trim()) : null,
+                child: tieneFoto
+                    ? null
+                    : Icon(fijo ? Icons.person : Icons.person_add_alt_1,
+                        color: (elegido || fijo) ? Colors.white : color),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -325,7 +339,8 @@ class _PickerJugadorState extends State<_PickerJugador> {
                                   onTap: () => Navigator.pop(
                                       context,
                                       (email,
-                                          nombre.isNotEmpty ? nombre : email)),
+                                          nombre.isNotEmpty ? nombre : email,
+                                          foto)),
                                   leading: CircleAvatar(
                                     backgroundColor: teal,
                                     backgroundImage: foto.isNotEmpty
