@@ -1007,7 +1007,10 @@ class _Participantes extends StatelessWidget {
               decoration: InputDecoration(
                   labelText: esFutbol
                       ? 'Nombre del equipo'
-                      : 'Nombre (jugador o pareja "A / B")'),
+                      // Tenis por ahora solo singles → sin "pareja".
+                      : campeonato.deporte.name == 'tenis'
+                          ? 'Nombre del jugador'
+                          : 'Nombre (jugador o pareja "A / B")'),
             ),
             TextField(
               controller: wa,

@@ -639,7 +639,8 @@ class _CrearPartidoSheetState extends State<_CrearPartidoSheet> {
   /// Atajos de "jugadores en total" según el deporte (etiqueta, total). El
   /// total incluye al creador. Ej.: dobles de tenis = 4; fútbol 7 = 14.
   List<(String, int)> _presetsDe(Deporte d) => switch (d) {
-        Deporte.tenis ||
+        // Tenis: por ahora SOLO singles (el ranking/retos contempla 1 vs 1).
+        Deporte.tenis => const [('Singles', 2)],
         Deporte.padel ||
         Deporte.pickleball =>
           const [('Singles', 2), ('Dobles', 4)],
