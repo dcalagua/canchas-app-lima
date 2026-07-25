@@ -68,7 +68,11 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
         builder: (context, _) {
           final deportes = appState.deportesConRanking;
           if (deportes.isEmpty) {
-            return _Vacio(onUnirme: _unirme);
+            return _Vacio(
+              enCircuito: appState.estoyEnCircuito,
+              onUnirme: _unirme,
+              onVerDisponibles: _abrirDisponibles,
+            );
           }
           // Deporte por defecto: el primero con datos.
           final dep = (_deporte != null && deportes.contains(_deporte))
@@ -303,8 +307,18 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
 }
 
 class _Vacio extends StatelessWidget {
-  const _Vacio({required this.onUnirme});
+  const _Vacio({
+    required this.enCircuito,
+    required this.onUnirme,
+    required this.onVerDisponibles,
+  });
+
+  /// Si el usuario YA está en el circuito no se le vuelve a pedir unirse: el
+  /// ranking está vacío porque aún nadie jugó, así que lo empujamos a retar.
+  final bool enCircuito;
   final VoidCallback onUnirme;
+  final VoidCallback onVerDisponibles;
+
   @override
   Widget build(BuildContext context) {
     return Center(
@@ -320,18 +334,24 @@ class _Vacio extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
             const SizedBox(height: 6),
-            const Text(
-                'Únete al circuito, reta a otros jugadores y sé de los primeros '
-                'en aparecer en la tabla de tu ciudad.',
+            Text(
+                enCircuito
+                    ? 'Ya estás en el circuito. Reta a otros jugadores para ser '
+                        'de los primeros en aparecer en la tabla de tu ciudad.'
+                    : 'Únete al circuito, reta a otros jugadores y sé de los '
+                        'primeros en aparecer en la tabla de tu ciudad.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: textoTenue)),
+                style: const TextStyle(color: textoTenue)),
             const SizedBox(height: 18),
             FilledButton.icon(
               style: FilledButton.styleFrom(
                   backgroundColor: lima, foregroundColor: Colors.white),
-              onPressed: onUnirme,
-              icon: const Icon(Icons.person_add_alt_1, size: 18),
-              label: const Text('Unirme al circuito'),
+              onPressed: enCircuito ? onVerDisponibles : onUnirme,
+              icon: Icon(
+                  enCircuito ? Icons.sports_tennis : Icons.person_add_alt_1,
+                  size: 18),
+              label: Text(
+                  enCircuito ? 'Ver jugadores para retar' : 'Unirme al circuito'),
             ),
           ],
         ),

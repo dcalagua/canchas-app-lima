@@ -128,7 +128,10 @@ class PerfilScreen extends StatelessWidget {
                     // Circuito (capa de TENIS): estos accesos solo salen si el
                     // usuario YA usa el circuito, para no ensuciar el menú de
                     // quien solo reserva o juega fútbol. La gente descubre el
-                    // circuito desde Academias / Explorar (tenis).
+                    // circuito desde Academias / Explorar (tenis). Van bajo un
+                    // encabezado propio para que se lean como capa de raqueta.
+                    if (u != null && appState.usaCircuito)
+                      const _SeccionHeader('Tenis · Circuito'),
                     if (u != null && appState.usaCircuito)
                       _Tile(
                         icon: Icons.sports_kabaddi,
@@ -154,6 +157,9 @@ class PerfilScreen extends StatelessWidget {
                         onTap: () => Navigator.of(context).push(MaterialPageRoute(
                             builder: (_) => const HazteProScreen())),
                       ),
+                    // Cierra el grupo del circuito antes de los accesos generales.
+                    if (u != null && appState.usaCircuito)
+                      const SizedBox(height: 8),
                     if (u != null)
                       _Tile(
                         icon: Icons.account_balance_wallet,
@@ -330,6 +336,28 @@ class _Tile extends StatelessWidget {
             style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
         trailing: const Icon(Icons.chevron_right, color: textoTenue),
         onTap: onTap,
+      ),
+    );
+  }
+}
+
+/// Encabezado de sección del menú de Perfil (agrupa tiles bajo una etiqueta,
+/// p. ej. el circuito de tenis). Estilo Airbnb: texto tenue, discreto.
+class _SeccionHeader extends StatelessWidget {
+  const _SeccionHeader(this.texto);
+  final String texto;
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, top: 4, bottom: 8),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(texto.toUpperCase(),
+            style: const TextStyle(
+                color: textoTenue,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.6)),
       ),
     );
   }
