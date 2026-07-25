@@ -14,6 +14,7 @@ import 'editar_cancha_screen.dart';
 import 'recargar_saldo_screen.dart';
 import 'registrar_cancha_screen.dart';
 import '../utils/moneda.dart';
+import '../widgets/ancho_lectura.dart';
 
 /// Canchas del dueño agrupadas por LOCAL (un local = varias canchas, posibles
 /// de distintos deportes). Cada local permite agregar más canchas y editar las
@@ -50,7 +51,7 @@ class _MisCanchasScreenState extends State<MisCanchasScreen> {
         icon: const Icon(Icons.add_location_alt),
         label: const Text('Nuevo local'),
       ),
-      body: ListenableBuilder(
+      body: AnchoLectura(child: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
           final canchas = appState.misCanchas;
@@ -114,7 +115,7 @@ class _MisCanchasScreenState extends State<MisCanchasScreen> {
             ],
           );
         },
-      ),
+      )),
     );
   }
 }

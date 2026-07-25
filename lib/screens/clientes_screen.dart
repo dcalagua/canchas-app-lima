@@ -4,6 +4,7 @@ import '../models/models.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/ancho_lectura.dart';
 import 'chat_screen.dart';
 
 /// BASE DE CLIENTES del dueño (CRM ligero) — refuerzo del panel de gestión al
@@ -100,7 +101,7 @@ class _ClientesScreenState extends State<ClientesScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Base de clientes')),
-      body: ListenableBuilder(
+      body: AnchoLectura(child: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
           final todos = _clientes();
@@ -174,7 +175,7 @@ class _ClientesScreenState extends State<ClientesScreen> {
             ],
           );
         },
-      ),
+      )),
     );
   }
 

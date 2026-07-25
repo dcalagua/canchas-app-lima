@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/growth_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/ancho_lectura.dart';
 import 'campeonato_detalle_screen.dart';
 import 'crear_campeonato_screen.dart';
 import 'home_shell.dart';
@@ -60,7 +61,8 @@ class AnfitrionScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     return Scaffold(
-      body: ListView(
+      body: AnchoLectura(
+        child: ListView(
         padding: EdgeInsets.zero,
         children: [
           // Header degradado.
@@ -151,7 +153,7 @@ class AnfitrionScreen extends StatelessWidget {
           ),
           const SizedBox(height: 30),
         ],
-      ),
+      )),
     );
   }
 }

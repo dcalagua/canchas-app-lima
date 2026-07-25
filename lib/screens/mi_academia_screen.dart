@@ -7,6 +7,7 @@ import '../services/pagos_service.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/ancho_lectura.dart';
 import '../widgets/logo_academia.dart';
 import 'asistencia_screen.dart';
 import 'campeonatos_screen.dart';
@@ -27,7 +28,8 @@ class MiAcademiaScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: ListenableBuilder(
+      body: AnchoLectura(
+        child: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
           final ac = appState.miAcademia;
@@ -116,7 +118,7 @@ class MiAcademiaScreen extends StatelessWidget {
             ),
           );
         },
-      ),
+      )),
     );
   }
 

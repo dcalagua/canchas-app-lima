@@ -4,6 +4,7 @@ import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/moneda.dart';
+import '../widgets/ancho_lectura.dart';
 
 /// Reportes REALES del dueño: ingresos del mes (cobrado), reservas, por cobrar
 /// y ocupación de hoy, calculados sobre sus canchas y reservas reales. Sin
@@ -31,7 +32,7 @@ class ReportesScreen extends StatelessWidget {
       backgroundColor: Theme.of(context).brightness == Brightness.dark
           ? Theme.of(context).scaffoldBackgroundColor
           : papelCalido,
-      body: ListenableBuilder(
+      body: AnchoLectura(child: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
           final canchas = appState.misCanchas;
@@ -219,7 +220,7 @@ class ReportesScreen extends StatelessWidget {
                       child: contenido))
               : contenido;
         },
-      ),
+      )),
     );
   }
 }

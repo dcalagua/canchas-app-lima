@@ -8,6 +8,7 @@ import '../theme.dart';
 import 'pago_sheet.dart';
 import 'recargar_saldo_screen.dart';
 import '../utils/moneda.dart';
+import '../widgets/ancho_lectura.dart';
 
 /// Cuenta del club: saldo prepago (modelo inDrive), recargas y movimientos.
 class CuentaScreen extends StatelessWidget {
@@ -22,7 +23,7 @@ class CuentaScreen extends StatelessWidget {
       backgroundColor: Theme.of(context).brightness == Brightness.dark
           ? Theme.of(context).scaffoldBackgroundColor
           : papelCalido,
-      body: ListenableBuilder(
+      body: AnchoLectura(child: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
           return ListView(
@@ -121,7 +122,7 @@ class CuentaScreen extends StatelessWidget {
             ],
           );
         },
-      ),
+      )),
     );
   }
 

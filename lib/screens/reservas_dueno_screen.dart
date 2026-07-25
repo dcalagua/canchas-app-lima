@@ -4,6 +4,7 @@ import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/moneda.dart';
+import '../widgets/ancho_lectura.dart';
 import 'chat_screen.dart';
 import 'reporte_canchas_screen.dart';
 import 'reserva_manual_screen.dart';
@@ -66,7 +67,7 @@ class _ReservasDuenoScreenState extends State<ReservasDuenoScreen> {
         onPressed: () => Navigator.of(context).push(MaterialPageRoute(
             builder: (_) => const ReservaManualScreen())),
       ),
-      body: ListenableBuilder(
+      body: AnchoLectura(child: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
           // Canchas del dueño → mapa id→nombre para etiquetar cada reserva.
@@ -141,7 +142,7 @@ class _ReservasDuenoScreenState extends State<ReservasDuenoScreen> {
                   ),
           );
         },
-      ),
+      )),
     );
   }
 }

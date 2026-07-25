@@ -5,6 +5,7 @@ import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/moneda.dart';
+import '../widgets/ancho_lectura.dart';
 
 /// Agenda REAL del dueño: las franjas del día de SUS canchas con las reservas
 /// reales. Se trabaja dentro de UN local: selector de local (si tiene varios) +
@@ -44,7 +45,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
       backgroundColor: Theme.of(context).brightness == Brightness.dark
           ? Theme.of(context).scaffoldBackgroundColor
           : papelCalido,
-      body: ListenableBuilder(
+      body: AnchoLectura(child: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
           final canchas = appState.misCanchas;
@@ -259,7 +260,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
             ],
           );
         },
-      ),
+      )),
     );
   }
 }
