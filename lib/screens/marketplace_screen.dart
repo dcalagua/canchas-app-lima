@@ -5,6 +5,7 @@ import '../models/producto.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'mis_ordenes_screen.dart';
+import 'mis_productos_screen.dart';
 import 'producto_detalle_screen.dart';
 
 /// Marketplace Pichangol (comprador): feed único de productos que publican los
@@ -84,6 +85,16 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
           ),
         ],
       ),
+      // "Vender" vive DENTRO del marketplace (no en el Perfil): abre Mi tienda,
+      // que gatea la publicación si el usuario no está verificado.
+      floatingActionButton: FloatingActionButton.extended(
+        backgroundColor: lima,
+        foregroundColor: Colors.white,
+        onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => const MisProductosScreen())),
+        icon: const Icon(Icons.sell_outlined),
+        label: const Text('Vender'),
+      ),
       body: Column(
         children: [
           Padding(
@@ -125,7 +136,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                     : RefreshIndicator(
                         onRefresh: _cargar,
                         child: GridView.builder(
-                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 90),
                           gridDelegate:
                               const SliverGridDelegateWithFixedCrossAxisCount(
                             crossAxisCount: 2,

@@ -6,7 +6,6 @@ import '../theme.dart';
 import '../widgets/google_logo.dart';
 import 'academias_screen.dart';
 import 'marketplace_screen.dart';
-import 'mis_productos_screen.dart';
 import 'ajustes_screen.dart';
 import 'anfitrion_screen.dart';
 import 'login_google_sheet.dart';
@@ -132,21 +131,11 @@ class PerfilScreen extends StatelessWidget {
                       color: morado,
                       title: 'Marketplace Pichangol',
                       subtitle:
-                          'Raquetas, pelotas y más de los locales y academias',
+                          'Compra y vende: raquetas, pelotas y más de los '
+                          'locales y academias',
                       onTap: () => Navigator.of(context).push(MaterialPageRoute(
                           builder: (_) => const MarketplaceScreen())),
                     ),
-                    if (u != null)
-                      _Tile(
-                        icon: Icons.sell_outlined,
-                        color: lima,
-                        title: 'Vender en el Marketplace',
-                        subtitle: appState.puedeVender
-                            ? 'Publica lo que quieras vender'
-                            : 'Verifícate y vende tus cosas de deporte',
-                        onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                            builder: (_) => const MisProductosScreen())),
-                      ),
                     // CIRCUITO (capa de TENIS): un solo contenedor. Adentro vive
                     // todo lo del circuito de ese deporte (ranking, retos, Pro).
                     // NO se listan sueltos aquí porque cuando entre fútbol cada
