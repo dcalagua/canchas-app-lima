@@ -8,6 +8,7 @@ import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/redes.dart';
+import '../widgets/ancho_lectura.dart';
 import '../widgets/chat_burbuja.dart';
 import '../utils/ubicacion_share.dart';
 import '../widgets/logo_academia.dart';
@@ -114,7 +115,8 @@ class _Contenido extends StatelessWidget {
                 ),
         ),
         SliverToBoxAdapter(
-          child: Padding(
+          child: AnchoLectura(
+            child: Padding(
             padding: const EdgeInsets.fromLTRB(18, 18, 18, 28),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -342,7 +344,7 @@ class _Contenido extends StatelessWidget {
                 ],
               ],
             ),
-          ),
+          )),
         ),
       ],
       ),

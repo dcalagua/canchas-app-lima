@@ -8,6 +8,7 @@ import '../services/location_service.dart';
 import '../services/propiedad_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/ancho_lectura.dart';
 import '../widgets/chat_burbuja.dart';
 import '../widgets/court_lines.dart';
 import '../widgets/marca.dart';
@@ -399,7 +400,8 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
             ],
           ),
           SliverToBoxAdapter(
-            child: Padding(
+            child: AnchoLectura(
+              child: Padding(
               // El "labio" redondeado que monta sobre la foto lo dibuja el hero
               // (ver _HeroGaleria); aquí el contenido sigue seamless sobre papel.
               padding: const EdgeInsets.fromLTRB(22, 14, 22, 110),
@@ -661,7 +663,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                   ],
                 ],
               ),
-            ),
+            )),
           ),
         ],
         ),
