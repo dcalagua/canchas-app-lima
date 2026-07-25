@@ -178,6 +178,12 @@ sigue el lenguaje Airbnb sobre la paleta EBIM:
 - **Pagos/estados:** caja centrada animada (procesando → check), logos de marca
   reales (Yape morado, Visa/Mastercard). Ver `widgets/marcas_pago.dart`,
   `widgets/pago_procesando.dart`.
+- **Avatares SIEMPRE con foto real:** cualquier avatar de jugador (ranking,
+  jugadores disponibles, retos —incluido el reto de dobles—, chat, perfil, etc.)
+  DEBE mostrar la foto del perfil (`appState.fotoDe(email)` o `usuario.fotoUrl`),
+  cayendo a la inicial de color solo si no hay foto. Nunca dejar un ícono
+  genérico donde va una persona. Si la lista trae correos, precargar perfiles
+  con `appState.cargarPerfiles([...])` para que la foto esté disponible.
 
 ## Pendientes / backlog
 
