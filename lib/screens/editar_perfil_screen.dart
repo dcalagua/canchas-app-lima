@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../config/pais.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 
@@ -18,12 +20,26 @@ class EditarPerfilScreen extends StatefulWidget {
 class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
   late final TextEditingController _nombre =
       TextEditingController(text: appState.usuario?.nombre ?? '');
+  // Celular guardado SIN el código de país (se muestra con el prefijo aparte).
+  late final TextEditingController _celular =
+      TextEditingController(text: _celularLocal(appState.miCelular));
   bool _guardando = false;
   bool _subiendoFoto = false;
+
+  /// Quita el código de país del celular guardado, para editarlo local.
+  String _celularLocal(String full) {
+    var d = full.replaceAll(RegExp(r'[^0-9]'), '');
+    final cc = paisActual.codigoTel;
+    if (d.startsWith(cc) && d.length > paisActual.telLongitud) {
+      d = d.substring(cc.length);
+    }
+    return d;
+  }
 
   @override
   void dispose() {
     _nombre.dispose();
+    _celular.dispose();
     super.dispose();
   }
 
@@ -85,7 +101,10 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
       return;
     }
     setState(() => _guardando = true);
-    final ok = await appState.actualizarMiNombre(n);
+    // Celular en formato internacional (con código de país), o '' si lo borró.
+    final celDigits = _celular.text.replaceAll(RegExp(r'[^0-9]'), '');
+    final cel = celDigits.isEmpty ? '' : '${paisActual.codigoTel}$celDigits';
+    final ok = await appState.actualizarMiNombre(n, celular: cel);
     if (!mounted) return;
     setState(() => _guardando = false);
     if (ok) {
@@ -173,6 +192,28 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
                 const Text(
                     'Este es el nombre que verán los demás en el chat, el ranking '
                     'y los retos (aunque tu Gmail muestre otra cosa).',
+                    style: TextStyle(color: textoTenue, fontSize: 12.5)),
+                const SizedBox(height: 20),
+                const Text('Celular / WhatsApp (opcional)',
+                    style: TextStyle(fontWeight: FontWeight.w800)),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _celular,
+                  keyboardType: TextInputType.phone,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(paisActual.telLongitud),
+                  ],
+                  decoration: InputDecoration(
+                    prefixText: '${banderaActual} $codigoTelActual  ',
+                    hintText: 'Tu número',
+                    prefixIcon: const Icon(Icons.chat, color: Color(0xFF25D366)),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                    'Si lo pones, los demás verán un botón "WhatsApp" para '
+                    'escribirte por ahí. Es opcional; puedes dejarlo vacío.',
                     style: TextStyle(color: textoTenue, fontSize: 12.5)),
                 const SizedBox(height: 24),
                 SizedBox(

@@ -12,8 +12,13 @@ create table if not exists public.pichangol_perfiles (
   email       text        primary key,
   nombre      text        not null default '',
   foto_url    text,
+  celular     text,        -- opcional: para el botón "Contactar por WhatsApp"
   actualizado timestamptz not null default now()
 );
+
+-- Para proyectos donde la tabla ya existía sin la columna.
+alter table public.pichangol_perfiles
+  add column if not exists celular text;
 
 alter table public.pichangol_perfiles enable row level security;
 

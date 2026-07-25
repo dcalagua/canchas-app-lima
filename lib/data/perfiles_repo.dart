@@ -18,6 +18,7 @@ class PerfilesRepo {
     required String email,
     required String nombre,
     String? fotoUrl,
+    String? celular,
   }) async {
     final e = email.trim().toLowerCase();
     if (!disponible || e.isEmpty) return false;
@@ -26,6 +27,8 @@ class PerfilesRepo {
         'email': e,
         'nombre': nombre.trim(),
         if (fotoUrl != null && fotoUrl.isNotEmpty) 'foto_url': fotoUrl,
+        // celular: se envía siempre que no sea null (permite BORRARLO con '').
+        if (celular != null) 'celular': celular.trim(),
         'actualizado': DateTime.now().toUtc().toIso8601String(),
       }, onConflict: 'email');
       return true;

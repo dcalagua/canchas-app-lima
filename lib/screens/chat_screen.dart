@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
@@ -363,6 +364,19 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
           ],
         ),
+        actions: [
+          // Si la contraparte compartió su celular, botón "Contactar por WhatsApp".
+          if (_contraparteEmail.isNotEmpty &&
+              appState.celularDe(_contraparteEmail) != null)
+            IconButton(
+              tooltip: 'Contactar por WhatsApp',
+              icon: const FaIcon(FontAwesomeIcons.whatsapp,
+                  color: Color(0xFF25D366)),
+              onPressed: () => WhatsAppLink.abrir(
+                  appState.celularDe(_contraparteEmail)!,
+                  'Hola, te escribo desde Pichangol.'),
+            ),
+        ],
       ),
       body: Column(
         children: [

@@ -72,6 +72,18 @@ class AppState extends ChangeNotifier {
     return f.isEmpty ? null : f;
   }
 
+  /// Celular (WhatsApp) de un correo, o null si no lo puso.
+  String? celularDe(String? email) {
+    final e = (email ?? '').trim().toLowerCase();
+    final c = (_perfiles[e]?['celular'] ?? '').toString().trim();
+    return c.isEmpty ? null : c;
+  }
+
+  /// Mi propio celular guardado (del perfil), o '' si no tengo.
+  String get miCelular =>
+      (_perfiles[(usuario?.email ?? '').toLowerCase()]?['celular'] ?? '')
+          .toString();
+
   // ── Contactos guardados (tipo WhatsApp): correos que el usuario guardó ─────
   final Set<String> _contactos = {};
   static const _kContactos = 'contactos_json';
@@ -146,21 +158,25 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// El usuario cambia el nombre con el que se muestra (chat, ranking, etc.).
-  /// Actualiza la sesión local + lo sube a su perfil público. Devuelve true.
-  Future<bool> actualizarMiNombre(String nuevo) async {
+  /// El usuario cambia su nombre (y opcionalmente su celular de WhatsApp) con el
+  /// que se muestra en el chat, ranking, etc. Actualiza la sesión local + su
+  /// perfil público. Devuelve true.
+  Future<bool> actualizarMiNombre(String nuevo, {String? celular}) async {
     final u = usuario;
     final n = nuevo.trim();
     if (u == null || n.isEmpty) return false;
+    final cel = celular ?? miCelular;
     usuario = Usuario(nombre: n, email: u.email, fotoUrl: u.fotoUrl);
     _perfiles[u.email.toLowerCase()] = {
       'email': u.email.toLowerCase(),
       'nombre': n,
       'foto_url': u.fotoUrl,
+      'celular': cel,
     };
     await _persistirUsuario();
     notifyListeners();
-    await PerfilesRepo.guardar(email: u.email, nombre: n, fotoUrl: u.fotoUrl);
+    await PerfilesRepo.guardar(
+        email: u.email, nombre: n, fotoUrl: u.fotoUrl, celular: cel);
     return true;
   }
 
@@ -171,15 +187,18 @@ class AppState extends ChangeNotifier {
     if (u == null) return false;
     final url = await PerfilesRepo.subirFoto(u.email, bytes);
     if (url == null) return false;
+    final cel = miCelular;
     usuario = Usuario(nombre: u.nombre, email: u.email, fotoUrl: url);
     _perfiles[u.email.toLowerCase()] = {
       'email': u.email.toLowerCase(),
       'nombre': u.nombre,
       'foto_url': url,
+      'celular': cel,
     };
     await _persistirUsuario();
     notifyListeners();
-    await PerfilesRepo.guardar(email: u.email, nombre: u.nombre, fotoUrl: url);
+    await PerfilesRepo.guardar(
+        email: u.email, nombre: u.nombre, fotoUrl: url, celular: cel);
     return true;
   }
 

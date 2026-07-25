@@ -1,8 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import '../data/perfiles_repo.dart';
+import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'chat_screen.dart';
@@ -176,6 +178,7 @@ class _Contactos extends StatelessWidget {
               'email': e,
               'nombre': appState.nombreMostrableDe(e) ?? e,
               'foto_url': appState.fotoDe(e),
+              'celular': appState.celularDe(e),
             },
             onChatear: onChatear,
           ),
@@ -196,6 +199,7 @@ class _FilaUsuario extends StatelessWidget {
     final foto = (perfil['foto_url'] ?? '').toString();
     final mostrar = nombre.isNotEmpty ? nombre : email;
     final guardado = appState.esContacto(email);
+    final celular = (perfil['celular'] ?? '').toString();
     return ListTile(
       onTap: () => onChatear(email, nombre),
       leading: CircleAvatar(
@@ -233,6 +237,14 @@ class _FilaUsuario extends StatelessWidget {
               }
             },
           ),
+          if (celular.isNotEmpty)
+            IconButton(
+              tooltip: 'WhatsApp',
+              icon: const FaIcon(FontAwesomeIcons.whatsapp,
+                  color: Color(0xFF25D366), size: 20),
+              onPressed: () => WhatsAppLink.abrir(
+                  celular, 'Hola, te escribo desde Pichangol.'),
+            ),
           IconButton(
             tooltip: 'Enviar mensaje',
             icon: const Icon(Icons.chat_bubble_outline, color: bosque),
