@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../models/models.dart';
@@ -104,6 +107,7 @@ class _MisRetosScreenState extends State<MisRetosScreen> {
                 (retadoEmail, retadoNombre),
               ])
                 _OpcionGanador(
+                  email: o.$1,
                   nombre: o.$2,
                   seleccionado: ganador == o.$1,
                   onTap: () => setSB(() => ganador = o.$1),
@@ -149,10 +153,16 @@ class _MisRetosScreenState extends State<MisRetosScreen> {
       await appState.cargarRetosResultados(); // refresca el ranking
       await appState.cargarRetosPendientes(); // refresca el badge del perfil
       await _cargar();
+      // Celebración VIVA del ganador (animación) — sumó al ranking Pichangol.
+      final ganoRetador = ganador!.toLowerCase() == retadorEmail.toLowerCase();
+      final ganadorNombre = ganoRetador ? retadorNombre : retadoNombre;
+      final ganadorFoto = appState.fotoDe(ganador!);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            backgroundColor: bosque,
-            content: Text('Resultado guardado. Sumó al ranking.')));
+        await showDialog(
+          context: context,
+          builder: (_) =>
+              _CelebracionGanador(nombre: ganadorNombre, foto: ganadorFoto),
+        );
       }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -234,11 +244,148 @@ class _MisRetosScreenState extends State<MisRetosScreen> {
   }
 }
 
+/// Celebración VIVA del ganador al reportar el resultado: copa que rebota,
+/// estallido de confeti de colores y el nombre/foto del ganador. Se cierra sola
+/// (~2.5s) o al tocar. Da la sensación de "gif" sin usar assets ni paquetes.
+class _CelebracionGanador extends StatefulWidget {
+  const _CelebracionGanador({required this.nombre, this.foto});
+  final String nombre;
+  final String? foto;
+  @override
+  State<_CelebracionGanador> createState() => _CelebracionGanadorState();
+}
+
+class _CelebracionGanadorState extends State<_CelebracionGanador>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c;
+  Timer? _cierre;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 2400))
+      ..forward();
+    _cierre = Timer(const Duration(milliseconds: 2500),
+        () => mounted ? Navigator.of(context).maybePop() : null);
+  }
+
+  @override
+  void dispose() {
+    _cierre?.cancel();
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const colores = [lima, teal, amarillo, naranja, morado, clayOscuro];
+    final foto = widget.foto;
+    final inicial =
+        widget.nombre.trim().isNotEmpty ? widget.nombre.trim()[0].toUpperCase() : '?';
+    return GestureDetector(
+      onTap: () => Navigator.of(context).maybePop(),
+      child: Dialog(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        child: AnimatedBuilder(
+          animation: _c,
+          builder: (context, _) {
+            final t = _c.value;
+            final trofeo = Curves.elasticOut.transform((t / 0.45).clamp(0.0, 1.0));
+            final burst = Curves.easeOut.transform(((t - 0.1) / 0.6).clamp(0.0, 1.0));
+            final textoOp = ((t - 0.35) / 0.3).clamp(0.0, 1.0);
+            return SizedBox(
+              width: 260,
+              height: 320,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  // Estallido de confeti de colores.
+                  for (int i = 0; i < 12; i++)
+                    Transform.translate(
+                      offset: Offset(
+                          math.cos(i / 12 * 2 * math.pi) * (20 + burst * 115),
+                          math.sin(i / 12 * 2 * math.pi) * (20 + burst * 115) -
+                              30),
+                      child: Opacity(
+                        opacity: (1 - burst).clamp(0.0, 1.0),
+                        child: Container(
+                          width: 12,
+                          height: 12,
+                          decoration: BoxDecoration(
+                              color: colores[i % colores.length],
+                              shape: BoxShape.circle),
+                        ),
+                      ),
+                    ),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Transform.scale(
+                        scale: trofeo,
+                        child: Container(
+                          width: 96,
+                          height: 96,
+                          decoration: const BoxDecoration(
+                              color: amarillo, shape: BoxShape.circle),
+                          child: const Icon(Icons.emoji_events,
+                              color: Colors.white, size: 52),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Opacity(
+                        opacity: textoOp,
+                        child: Column(
+                          children: [
+                            CircleAvatar(
+                              radius: 22,
+                              backgroundColor: teal,
+                              backgroundImage: (foto != null && foto.isNotEmpty)
+                                  ? NetworkImage(foto)
+                                  : null,
+                              child: (foto != null && foto.isNotEmpty)
+                                  ? null
+                                  : Text(inicial,
+                                      style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w800)),
+                            ),
+                            const SizedBox(height: 10),
+                            Text('¡${widget.nombre} ganó!',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 20)),
+                            const SizedBox(height: 4),
+                            const Text('Sumó al ranking de tenis 🎾',
+                                style: TextStyle(
+                                    color: Colors.white70, fontSize: 13)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
 /// Opción de ganador en "Reportar resultado": tarjeta con avatar de color +
 /// nombre, resaltada al elegirla. Más viva y clara que un radio pelado.
 class _OpcionGanador extends StatelessWidget {
   const _OpcionGanador(
-      {required this.nombre, required this.seleccionado, required this.onTap});
+      {required this.email,
+      required this.nombre,
+      required this.seleccionado,
+      required this.onTap});
+  final String email;
   final String nombre;
   final bool seleccionado;
   final VoidCallback onTap;
@@ -246,6 +393,7 @@ class _OpcionGanador extends StatelessWidget {
   Widget build(BuildContext context) {
     final inicial =
         nombre.trim().isNotEmpty ? nombre.trim()[0].toUpperCase() : '?';
+    final foto = appState.fotoDe(email);
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: InkWell(
@@ -267,9 +415,13 @@ class _OpcionGanador extends StatelessWidget {
               CircleAvatar(
                 radius: 18,
                 backgroundColor: teal,
-                child: Text(inicial,
-                    style: const TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.w800)),
+                backgroundImage:
+                    (foto != null && foto.isNotEmpty) ? NetworkImage(foto) : null,
+                child: (foto != null && foto.isNotEmpty)
+                    ? null
+                    : Text(inicial,
+                        style: const TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.w800)),
               ),
               const SizedBox(width: 12),
               Expanded(
