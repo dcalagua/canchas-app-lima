@@ -363,6 +363,38 @@ def configurar_min_sdk():
         print("  minSdk forzado a 23")
 
 
+def configurar_r8_release():
+    """Desactiva la minificación R8 en el buildType release.
+
+    Un plugin nativo (google_mlkit_text_recognition) referencia reconocedores
+    opcionales (chino/japonés/coreano/devanagari) que no incluimos; R8 los marca
+    como "missing class" y rompe `minifyReleaseWithR8`. Para el piloto no
+    necesitamos shrink/obfuscation, así que apagamos R8 en release (elimina toda
+    esa clase de fallos). El APK pesa un poco más, nada crítico. El DSL del
+    buildType es la fuente de verdad de `minifyEnabled`, así que esto gana."""
+    path = "android/app/build.gradle"
+    if not os.path.exists(path):
+        return
+    with open(path, "r", encoding="utf-8") as f:
+        g = f.read()
+    # Inyecta minify/shrink OFF dentro del buildType release (no en signingConfigs).
+    nuevo, n = re.subn(
+        r"(buildTypes\s*\{\s*release\s*\{)",
+        r"\1\n            minifyEnabled false\n            shrinkResources false",
+        g,
+        count=1,
+    )
+    # Si ya hubiera un minifyEnabled true explícito, lo forzamos a false también.
+    nuevo = re.sub(r"minifyEnabled\s+true", "minifyEnabled false", nuevo)
+    nuevo = re.sub(r"shrinkResources\s+true", "shrinkResources false", nuevo)
+    if nuevo != g:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(nuevo)
+        print(f"  R8/minify: desactivado en release ({n} bloque)")
+    else:
+        print("  R8/minify: no se encontró buildTypes release (sin cambios)")
+
+
 def configurar_firebase_android():
     """Habilita FCM (notificaciones push del chat) en Android SOLO si hay config.
 
@@ -435,6 +467,7 @@ def main():
     patch("ios/Runner/Info.plist", ios_infoplist)
     patch("ios/Podfile", ios_podfile)
     configurar_firma_android()
+    configurar_r8_release()
     configurar_firebase_android()
     configurar_google_signin_ios()
 
