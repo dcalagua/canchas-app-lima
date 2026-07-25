@@ -514,7 +514,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                         const _Badge('⏳ PENDIENTE DE VERIFICACIÓN',
                             bg: Color(0xFFFBEAD2), fg: clayOscuro)
                       else
-                        const _Badge('DIGITALIZADA',
+                        const _Badge('📋 DIGITALIZADA',
                             bg: Color(0xFFF0ECE2), fg: Color(0xFF5C574E)),
                       if (!descubierta && _cancha.verificada) ...[
                         const SizedBox(width: 6),
@@ -1785,7 +1785,11 @@ class _PanelPendienteState extends State<_PanelPendiente> {
         children: [
           Row(
             children: [
-              const Icon(Icons.verified_user_outlined, color: clayOscuro),
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: clayOscuro.withOpacity(0.14),
+                child: const Text('⏳', style: TextStyle(fontSize: 16)),
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text('Cancha pendiente de verificación',

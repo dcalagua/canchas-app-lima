@@ -45,6 +45,11 @@ class CampeonatoDetalleScreen extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 30),
             children: [
               _Cabecera(campeonato: c),
+              const SizedBox(height: 10),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: _EstadoCampeonato(c),
+              ),
               if (c.sedeUbicacion != null) ...[
                 const SizedBox(height: 10),
                 SizedBox(
@@ -872,6 +877,33 @@ class _ChipInfo extends StatelessWidget {
       ),
       child: Text(texto,
           style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+    );
+  }
+}
+
+/// Pastilla de ESTADO del campeonato con emoji vivo (mismo lenguaje que retos/
+/// reservas): inscripciones abiertas → cerradas → en juego → finalizado.
+class _EstadoCampeonato extends StatelessWidget {
+  const _EstadoCampeonato(this.c);
+  final Campeonato c;
+  @override
+  Widget build(BuildContext context) {
+    final (String texto, Color color, String emoji) = c.cerrado
+        ? ('Finalizado', teal, '🏁')
+        : c.fixtureGenerado
+            ? ('En juego', morado, '🏆')
+            : c.inscripcionVencida
+                ? ('Inscripciones cerradas · esperando fixture', naranja, '⏳')
+                : ('Inscripciones abiertas', lima, '📝');
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.14),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text('$emoji  $texto',
+          style: TextStyle(
+              fontSize: 12.5, fontWeight: FontWeight.w800, color: color)),
     );
   }
 }
