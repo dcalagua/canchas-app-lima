@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart' show LatLng;
 
 import '../models/academia.dart';
 import '../models/invitacion.dart';
+import '../models/models.dart';
+import '../services/location_service.dart';
 import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../utils/geo.dart';
 import '../utils/redes.dart';
 import '../widgets/responsive.dart';
 import 'academia_detalle_screen.dart';
@@ -16,8 +20,30 @@ import '../config/pais.dart';
 /// Directorio público de academias (Fase 1): el jugador ve las academias, su
 /// deporte, dónde entrenan y sus planes. Al tocar una entra a la ficha, donde
 /// ve el feed de fotos, se matricula (pago simulado) y sigue sus redes.
-class AcademiasScreen extends StatelessWidget {
+class AcademiasScreen extends StatefulWidget {
   const AcademiasScreen({super.key});
+  @override
+  State<AcademiasScreen> createState() => _AcademiasScreenState();
+}
+
+class _AcademiasScreenState extends State<AcademiasScreen> {
+  Deporte? _filtro; // null = todos los deportes
+  LatLng? _ubicacion; // para ordenar por cercanía
+
+  @override
+  void initState() {
+    super.initState();
+    // Ubicación del usuario (best-effort) para mostrar las academias más cerca.
+    LocationService.ubicacionActual().then((p) {
+      if (mounted && p != null) setState(() => _ubicacion = p);
+    });
+  }
+
+  double? _distancia(Academia a) {
+    final u = _ubicacion, s = a.sedeUbicacion;
+    if (u == null || s == null) return null;
+    return distanciaKm(u, s);
+  }
 
   /// Acceso a "Mis clases y pagos" del alumno (comprobantes + próximos pagos).
   Widget _misClasesAcceso(BuildContext context) {
@@ -104,9 +130,30 @@ class AcademiasScreen extends StatelessWidget {
                   '${a.dueno.trim().toLowerCase()}|${a.nombre.trim().toLowerCase()}'))
                 a
           ];
+          // Deportes que hay en el directorio (para armar los chips de filtro).
+          final deportesDisponibles = <Deporte>{for (final a in academias) a.deporte}
+              .toList()
+            ..sort((x, y) => x.index.compareTo(y.index));
+          // Filtro por DEPORTE elegido + orden por CERCANÍA (las más cerca
+          // primero; los destacados conservan prioridad).
+          final filtradas = [
+            for (final a in academias)
+              if (_filtro == null || a.deporte == _filtro) a
+          ];
+          if (_ubicacion != null) {
+            filtradas.sort((a, b) {
+              final d = appState
+                  .nivelDestacadoAcademia(b)
+                  .compareTo(appState.nivelDestacadoAcademia(a));
+              if (d != 0) return d;
+              final da = _distancia(a) ?? double.infinity;
+              final db = _distancia(b) ?? double.infinity;
+              return da.compareTo(db);
+            });
+          }
           // Métrica de impacto: impresión por cada academia destacada mostrada.
           final destacadasVistas = [
-            for (final a in academias)
+            for (final a in filtradas)
               if (appState.esDestacadaAcademia(a)) a.id
           ];
           if (destacadasVistas.isNotEmpty) {
@@ -115,10 +162,35 @@ class AcademiasScreen extends StatelessWidget {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              // Academias es la casa del TENIS → hub del circuito, siempre
-              // visible (aunque aún no haya datos: desde aquí se une la gente).
-              _RankingGlobalBanner(),
-              const SizedBox(height: 14),
+              // Buscador por DEPORTE (lo que el usuario espera al entrar): chips
+              // Todos + los deportes que hay. Ordena por cercanía.
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  ChoiceChip(
+                    label: const Text('Todos'),
+                    selected: _filtro == null,
+                    selectedColor: limaSuave,
+                    onSelected: (_) => setState(() => _filtro = null),
+                  ),
+                  for (final d in deportesDisponibles)
+                    ChoiceChip(
+                      avatar: Icon(iconoDeporte(d), size: 16),
+                      label: Text(d.etiqueta),
+                      selected: _filtro == d,
+                      selectedColor: limaSuave,
+                      onSelected: (_) => setState(() => _filtro = d),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              // El circuito es una capa de TENIS: el banner sale solo cuando el
+              // usuario filtra un deporte de raqueta (deja de dominar el resto).
+              if (_filtro != null && _filtro!.esRaqueta) ...[
+                _RankingGlobalBanner(),
+                const SizedBox(height: 14),
+              ],
               if (appState.misMatriculas.isNotEmpty) ...[
                 _misClasesAcceso(context),
                 const SizedBox(height: 12),
@@ -126,13 +198,17 @@ class AcademiasScreen extends StatelessWidget {
               const _MisInvitaciones(),
               const _UnirmeConCodigo(),
               const SizedBox(height: 16),
-              if (academias.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(8, 24, 8, 8),
+              if (filtradas.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 24, 8, 8),
                   child: Text(
-                      'Todavía no hay academias publicadas. ¿Tienes una? Créala desde tu Perfil.',
+                      _filtro == null
+                          ? 'Todavía no hay academias publicadas. ¿Tienes una? '
+                              'Créala desde tu Perfil.'
+                          : 'Aún no hay academias de ${_filtro!.etiqueta} cerca. '
+                              'Prueba con otro deporte.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: textoTenue)),
+                      style: const TextStyle(color: textoTenue)),
                 )
               else if (esTablet(context))
                 // Tablet/landscape: academias en grilla de 2-3 columnas.
@@ -142,11 +218,12 @@ class AcademiasScreen extends StatelessWidget {
                   return Wrap(
                     spacing: 14,
                     children: [
-                      for (final a in academias)
+                      for (final a in filtradas)
                         SizedBox(
                           width: w,
                           child: _TarjetaAcademia(
                               academia: a,
+                              distancia: _distancia(a),
                               nivelDestacado:
                                   appState.nivelDestacadoAcademia(a)),
                         ),
@@ -154,9 +231,10 @@ class AcademiasScreen extends StatelessWidget {
                   );
                 })
               else
-                for (final a in academias)
+                for (final a in filtradas)
                   _TarjetaAcademia(
                       academia: a,
+                      distancia: _distancia(a),
                       nivelDestacado: appState.nivelDestacadoAcademia(a)),
             ],
           );
@@ -470,12 +548,22 @@ class _TarjetaInvitacionRecibida extends StatelessWidget {
 }
 
 class _TarjetaAcademia extends StatelessWidget {
-  const _TarjetaAcademia({required this.academia, this.nivelDestacado = 0});
+  const _TarjetaAcademia(
+      {required this.academia, this.nivelDestacado = 0, this.distancia});
   final Academia academia;
 
   /// Nivel de destacado (0 = no; 1 bronce, 2 plata, 3 oro). Su dueño puso
   /// saldo → badge con medalla + va arriba en la lista.
   final int nivelDestacado;
+
+  /// Distancia en km al usuario (null si no se conoce su ubicación).
+  final double? distancia;
+
+  String get _distanciaLabel {
+    final d = distancia;
+    if (d == null) return '';
+    return d < 1 ? ' · ${(d * 1000).round()} m' : ' · ${d.toStringAsFixed(1)} km';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -557,7 +645,8 @@ class _TarjetaAcademia extends StatelessWidget {
                                     ?.copyWith(fontWeight: FontWeight.w800)),
                             Text(
                                 '${academia.deporte.etiqueta}'
-                                '${academia.sedeClub.isNotEmpty ? ' · ${academia.sedeClub}' : ''}',
+                                '${academia.sedeClub.isNotEmpty ? ' · ${academia.sedeClub}' : ''}'
+                                '$_distanciaLabel',
                                 style:
                                     t.bodySmall?.copyWith(color: textoTenueDe(context))),
                           ],
