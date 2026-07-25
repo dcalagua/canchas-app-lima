@@ -14,6 +14,7 @@ import '../services/location_service.dart';
 import '../services/pagos_service.dart';
 import '../utils/geo.dart';
 import '../utils/moneda.dart';
+import 'academias_screen.dart';
 import 'buscar_direccion_screen.dart';
 import 'club_detalle_screen.dart';
 import 'login_google_sheet.dart';
@@ -380,6 +381,12 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                   final nCanchas =
                       clubs.fold<int>(0, (a, c) => a + c.canchas.length);
                   final hijos = <Widget>[
+                    // Acceso a ACADEMIAS (buscar clases por deporte cerca) desde
+                    // la home: a un toque, no solo desde Perfil.
+                    _AccesoAcademias(
+                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => const AcademiasScreen())),
+                    ),
                     // El circuito es una capa de TENIS: el banner solo aparece
                     // cuando el usuario está navegando un deporte de raqueta.
                     if (_filtro != null && _filtro!.esRaqueta)
@@ -748,6 +755,61 @@ class _SinUbicacion extends StatelessWidget {
               label: const Text('Usar mi ubicación'),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Acceso a ACADEMIAS desde la home (buscar clases por deporte cerca de ti).
+/// Tarjeta blanca estilo Airbnb con ícono de escuela.
+class _AccesoAcademias extends StatelessWidget {
+  const _AccesoAcademias({required this.onTap});
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: trazo),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                      color: limaSuave,
+                      borderRadius: BorderRadius.circular(11)),
+                  child: const Icon(Icons.school, color: bosque, size: 21),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Academias',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w800, fontSize: 15)),
+                      Text('Clases por deporte, cerca de ti',
+                          style:
+                              TextStyle(color: textoTenue, fontSize: 12.5)),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right, color: textoTenue),
+              ],
+            ),
+          ),
         ),
       ),
     );

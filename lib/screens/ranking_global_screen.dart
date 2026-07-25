@@ -38,6 +38,18 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
   void _abrirDisponibles() => Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => const JugadoresDisponiblesScreen()));
 
+  /// Abre la hoja "Unirme al circuito" directo (sin pasar por Jugadores
+  /// disponibles) y avisa al unirse.
+  Future<void> _unirme() async {
+    final ok = await mostrarUnirseCircuito(context);
+    if (ok && mounted) {
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          backgroundColor: bosque,
+          content: Text('¡Estás en el circuito! Ya pueden retarte.')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -56,7 +68,7 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
         builder: (context, _) {
           final deportes = appState.deportesConRanking;
           if (deportes.isEmpty) {
-            return _Vacio(onUnirme: _abrirDisponibles);
+            return _Vacio(onUnirme: _unirme);
           }
           // Deporte por defecto: el primero con datos.
           final dep = (_deporte != null && deportes.contains(_deporte))
@@ -112,30 +124,45 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
                 ),
               ),
               const SizedBox(height: 10),
-              // CTA: unirse / ver jugadores disponibles (onboarding al circuito).
+              // CTA: si NO estoy en el circuito → abre "Unirme" directo; si ya
+              // estoy → ver jugadores disponibles para retar.
               InkWell(
-                onTap: _abrirDisponibles,
+                onTap: appState.estoyEnCircuito ? _abrirDisponibles : _unirme,
                 borderRadius: BorderRadius.circular(14),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surface,
+                    color: appState.estoyEnCircuito
+                        ? Theme.of(context).colorScheme.surface
+                        : lima,
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: trazo),
+                    border: Border.all(
+                        color: appState.estoyEnCircuito ? trazo : lima),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.person_add_alt_1, color: bosque, size: 20),
+                      Icon(Icons.person_add_alt_1,
+                          color: appState.estoyEnCircuito
+                              ? bosque
+                              : Colors.white,
+                          size: 20),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
                             appState.estoyEnCircuito
                                 ? 'Estás en el circuito · ver jugadores para retar'
                                 : 'Únete al circuito y deja que te reten',
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w700, fontSize: 13)),
+                            style: TextStyle(
+                                color: appState.estoyEnCircuito
+                                    ? null
+                                    : Colors.white,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13)),
                       ),
-                      const Icon(Icons.chevron_right, color: textoTenue),
+                      Icon(Icons.chevron_right,
+                          color: appState.estoyEnCircuito
+                              ? textoTenue
+                              : Colors.white),
                     ],
                   ),
                 ),

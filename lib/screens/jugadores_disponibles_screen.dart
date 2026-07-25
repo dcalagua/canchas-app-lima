@@ -11,6 +11,26 @@ import '../theme.dart';
 import 'hazte_pro_screen.dart';
 import 'login_google_sheet.dart';
 
+/// Abre la hoja "Unirme al circuito" (login + formulario) desde CUALQUIER
+/// pantalla. Devuelve true si el usuario se unió/actualizó. Refresca el perfil
+/// de circuito para que la UI se entere al instante.
+Future<bool> mostrarUnirseCircuito(BuildContext context) async {
+  if (!await LoginGoogleSheet.mostrar(context, motivo: 'unirte al circuito')) {
+    return false;
+  }
+  if (!context.mounted) return false;
+  final hecho = await showModalBottomSheet<bool>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Theme.of(context).colorScheme.surface,
+    shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+    builder: (_) => const _UnirseSheet(),
+  );
+  if (hecho == true) await appState.cargarMiPerfilCircuito();
+  return hecho == true;
+}
+
 /// JUGADORES DISPONIBLES del circuito: el directorio de quienes se declararon
 /// "disponibles para retar". Resuelve el arranque en frío del ranking — puedes
 /// retar a alguien aunque nadie haya jugado todavía. Aquí también te unes tú.
@@ -54,19 +74,8 @@ class _JugadoresDisponiblesScreenState
   }
 
   Future<void> _unirme() async {
-    if (!await LoginGoogleSheet.mostrar(context, motivo: 'unirte al circuito')) {
-      return;
-    }
-    if (!mounted) return;
-    final hecho = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (_) => const _UnirseSheet(),
-    );
-    if (hecho == true && mounted) {
+    final hecho = await mostrarUnirseCircuito(context);
+    if (hecho && mounted) {
       _cargar();
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           backgroundColor: bosque,
