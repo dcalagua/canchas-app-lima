@@ -5,6 +5,8 @@ import '../models/producto.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'editar_producto_screen.dart';
+import 'login_google_sheet.dart';
+import 'verificar_identidad_screen.dart';
 
 /// "Mi tienda": el vendedor (dueño/academia) gestiona sus productos del
 /// Marketplace Pichangol — publicar, editar, pausar y borrar.
@@ -38,9 +40,45 @@ class _MisProductosScreenState extends State<MisProductosScreen> {
   }
 
   Future<void> _nuevo() async {
+    if (!await LoginGoogleSheet.mostrar(context, motivo: 'vender en el marketplace')) {
+      return;
+    }
+    if (!mounted) return;
+    // Candado anti-fraude: para publicar hay que estar verificado (o ser dueño).
+    if (!appState.puedeVender) {
+      await _pedirVerificacion();
+      return;
+    }
     final ok = await Navigator.of(context).push<bool>(
         MaterialPageRoute(builder: (_) => const EditarProductoScreen()));
     if (ok == true) _cargar();
+  }
+
+  Future<void> _pedirVerificacion() async {
+    final ir = await showDialog<bool>(
+      context: context,
+      builder: (dctx) => AlertDialog(
+        title: const Text('Verifícate para vender'),
+        content: const Text(
+            'Para publicar en el Marketplace Pichangol necesitas verificar tu '
+            'identidad. Así los compradores confían en quién les vende. Es '
+            'rápido.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dctx, false),
+              child: const Text('Ahora no')),
+          FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: lima),
+              onPressed: () => Navigator.pop(dctx, true),
+              child: const Text('Verificar identidad')),
+        ],
+      ),
+    );
+    if (ir == true && mounted) {
+      await Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => const VerificarIdentidadScreen()));
+      if (mounted) setState(() {}); // refresca por si ya se verificó
+    }
   }
 
   Future<void> _editar(Producto p) async {

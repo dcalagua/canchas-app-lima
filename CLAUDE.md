@@ -158,6 +158,28 @@ off → redeploy inmediato en cada push). URL pública:
   `https://github.com/dcalagua/canchas-app-lima/releases/tag/v0.1.0`.
 - Tras instalar, confirmar versión en Ajustes → Apps → Pichangol → build N.
 
+## Marketplace Pichangol
+
+Feed **global único** de productos (raquetas, pelotas, indumentaria…) que
+publican **dueños/academias y cualquier usuario VERIFICADO**. El comprador paga
+en la app (Culqi) y **coordina la entrega por chat** con el vendedor; Pichangol
+cobra su comisión (5% mín S/2) y deja el **neto "por recibir"** del vendedor
+(misma contabilidad que una reserva online).
+- **Modelo/datos:** `lib/models/producto.dart`, `lib/data/productos_repo.dart`
+  (Supabase tabla `pichangol_productos` + bucket público `productos`, fail-safe).
+- **Comprador:** `marketplace_screen.dart` (feed + buscador + categorías) →
+  `producto_detalle_screen.dart` (Comprar con `PagoTarjeta.cobrar` →
+  `PagosService.venta` → coordinar por chat). Acceso: Perfil → "Marketplace".
+- **Vendedor:** `mis_productos_screen.dart` + `editar_producto_screen.dart`.
+  Acceso: Perfil → "Vender en el Marketplace" y Modo anfitrión → "Mi tienda".
+  **Candado:** publicar exige `appState.puedeVender` (verificado **o** dueño);
+  si no, manda a "Verificar identidad". Badge "Vendedor verificado ✓" (icono
+  `Icons.verified` lima) en el feed y la ficha vía `appState.estaVerificado`.
+- **Backend:** `POST /pagos/venta` (`backend/growth/pagos/router.py`), tipo de
+  pago `venta_producto`, idempotente por `venta_id`; entra en
+  `liquidaciones()`/"por recibir". El catálogo NO vive en el backend growth (es
+  Supabase).
+
 ## Diseño (handoff)
 
 `docs/handoff_v2/` (referencia). Paleta oficial EBIM, **DM Sans**, premium

@@ -24,6 +24,17 @@ class _ProductoDetalleScreenState extends State<ProductoDetalleScreen> {
 
   Producto get p => widget.producto;
 
+  @override
+  void initState() {
+    super.initState();
+    // Foto + badge de verificación del vendedor.
+    appState.cargarPerfiles([p.vendedorEmail]);
+    appState
+        .sincronizarVerificados([p.vendedorEmail]).then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
   bool get _soyElVendedor =>
       (appState.usuario?.email ?? '').toLowerCase() ==
       p.vendedorEmail.toLowerCase();
@@ -200,12 +211,26 @@ class _ProductoDetalleScreenState extends State<ProductoDetalleScreen> {
                           const Text('Vendedor',
                               style: TextStyle(
                                   color: textoTenue, fontSize: 12)),
-                          Text(
-                              p.vendedorNombre.isNotEmpty
-                                  ? p.vendedorNombre
-                                  : 'Vendedor',
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w700, fontSize: 15)),
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                    p.vendedorNombre.isNotEmpty
+                                        ? p.vendedorNombre
+                                        : 'Vendedor',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 15)),
+                              ),
+                              if (appState.estaVerificado(p.vendedorEmail)) ...[
+                                const SizedBox(width: 5),
+                                const Icon(Icons.verified,
+                                    size: 16, color: lima),
+                              ],
+                            ],
+                          ),
                         ],
                       ),
                     ),

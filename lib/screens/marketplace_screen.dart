@@ -42,13 +42,17 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
       _todos = l;
       _cargando = false;
     });
-    // Fotos de los vendedores (avatar en la ficha).
+    // Fotos + estado de verificación de los vendedores (avatar y badge).
     final emails = l
         .map((p) => p.vendedorEmail)
         .where((e) => e.isNotEmpty)
         .toSet()
         .toList();
-    if (emails.isNotEmpty) appState.cargarPerfiles(emails);
+    if (emails.isNotEmpty) {
+      appState.cargarPerfiles(emails);
+      await appState.sincronizarVerificados(emails);
+      if (mounted) setState(() {}); // refresca los badges
+    }
   }
 
   List<Producto> get _filtrados {
@@ -211,11 +215,22 @@ class _Card extends StatelessWidget {
                           fontSize: 14.5,
                           color: bosque)),
                   const SizedBox(height: 2),
-                  Text(p.vendedorNombre,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style:
-                          const TextStyle(color: textoTenue, fontSize: 11.5)),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(p.vendedorNombre,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                color: textoTenue, fontSize: 11.5)),
+                      ),
+                      if (appState.estaVerificado(p.vendedorEmail)) ...[
+                        const SizedBox(width: 3),
+                        const Icon(Icons.verified,
+                            size: 13, color: lima),
+                      ],
+                    ],
+                  ),
                 ],
               ),
             ),

@@ -3154,6 +3154,19 @@ class AppState extends ChangeNotifier {
   String estadoVerificacion = 'no';
   bool get jugadorVerificado => estadoVerificacion == 'verificado';
 
+  /// ¿Soy dueño de al menos una cancha PROPIA? (no cuenta el "legado
+  /// reclamable"). Los dueños/academias son vendedores de confianza.
+  bool get soyDueno {
+    final email = usuario?.email ?? '';
+    if (email.isEmpty) return false;
+    return [...canchasRemotas, ...canchasExtra].any((c) => c.dueno == email);
+  }
+
+  /// ¿Puedo PUBLICAR en el Marketplace? Cualquier usuario verificado, o un dueño
+  /// de cancha (aunque no haya verificado su identidad como jugador). Es el
+  /// candado anti-fraude: para vender hay que estar identificado.
+  bool get puedeVender => jugadorVerificado || soyDueno;
+
   // Datos que devuelve la consulta oficial del documento (Factiliza/DNI en Perú).
   // La fecha de nacimiento permite CATEGORIZAR por edad en campeonatos (Sub-30,
   // etc.) sin volver a pedir el documento. Dato personal (Ley 29733): solo se
