@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
 
+import '../data/distritos.dart';
 import '../models/models.dart';
 import '../services/avisos_service.dart';
 import '../services/circuito_service.dart';
@@ -482,11 +483,16 @@ class _UnirseSheetState extends State<_UnirseSheet> {
       if (marks.isEmpty) return;
       final m = marks.first;
       String pick(String? s) => (s ?? '').trim();
-      final distrito = pick(m.subLocality).isNotEmpty
-          ? pick(m.subLocality)
-          : pick(m.locality).isNotEmpty
-              ? pick(m.locality)
-              : pick(m.subAdministrativeArea);
+      // Prioriza el nivel DISTRITO (locality / subAdministrativeArea) sobre el
+      // barrio/urbanización (subLocality, que da "Urb Santa Maria de Chosica").
+      // normalizarDistrito además calza con el catálogo para usar el nombre
+      // estándar ("Lurigancho (Chosica)" en vez del barrio suelto).
+      final distrito = normalizarDistrito([
+        pick(m.locality),
+        pick(m.subAdministrativeArea),
+        pick(m.subLocality),
+        pick(m.name),
+      ]);
       if (distrito.isNotEmpty && mounted) {
         setState(() => _zona.text = distrito);
       }
@@ -552,9 +558,10 @@ class _UnirseSheetState extends State<_UnirseSheet> {
           TextField(
             controller: _zona,
             textCapitalization: TextCapitalization.words,
+            onChanged: (_) => setState(() {}), // refresca las sugerencias
             decoration: InputDecoration(
               labelText: 'Zona / distrito',
-              hintText: 'Ej.: San Borja',
+              hintText: 'Ej.: San Isidro',
               prefixIcon: const Icon(Icons.place_outlined),
               // Botón para (re)detectar el distrito por GPS.
               suffixIcon: _detectando
@@ -573,6 +580,29 @@ class _UnirseSheetState extends State<_UnirseSheet> {
                     ),
             ),
           ),
+          // Sugerencias de DISTRITO: populares cuando el campo está vacío,
+          // filtradas mientras escribe. Un toque completa el campo.
+          Builder(builder: (context) {
+            final actual = _zona.text.trim();
+            final sugeridos = sugerenciasDistrito(actual)
+                .where((d) => d.toLowerCase() != actual.toLowerCase())
+                .toList();
+            if (sugeridos.isEmpty) return const SizedBox(height: 16);
+            return Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final d in sugeridos)
+                    ActionChip(
+                      label: Text(d),
+                      onPressed: () => setState(() => _zona.text = d),
+                    ),
+                ],
+              ),
+            );
+          }),
           const SizedBox(height: 16),
           Text('Nivel / categoría (opcional)', style: t.labelLarge),
           const SizedBox(height: 8),
