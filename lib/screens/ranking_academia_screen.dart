@@ -252,7 +252,7 @@ class _FilaRanking extends StatelessWidget {
               const SizedBox(width: 4),
               CircleAvatar(
                 radius: 16,
-                backgroundColor: limaSuave,
+                backgroundColor: teal,
                 backgroundImage: (p.fotoUrl != null && p.fotoUrl!.isNotEmpty)
                     ? NetworkImage(p.fotoUrl!)
                     : null,
@@ -260,7 +260,7 @@ class _FilaRanking extends StatelessWidget {
                     ? Text(
                         p.nombre.isNotEmpty ? p.nombre[0].toUpperCase() : '?',
                         style: const TextStyle(
-                            color: bosque, fontWeight: FontWeight.w800))
+                            color: Colors.white, fontWeight: FontWeight.w800))
                     : null,
               ),
             ],

@@ -279,12 +279,12 @@ class _FilaUsuario extends StatelessWidget {
           : onChatear(email, nombre),
       leading: CircleAvatar(
         radius: 22,
-        backgroundColor: limaSuave,
+        backgroundColor: teal,
         backgroundImage: foto.isNotEmpty ? NetworkImage(foto) : null,
         child: foto.isEmpty
             ? Text(mostrar.isNotEmpty ? mostrar[0].toUpperCase() : '?',
                 style: const TextStyle(
-                    color: bosque, fontWeight: FontWeight.w800))
+                    color: Colors.white, fontWeight: FontWeight.w800))
             : null,
       ),
       title: Text(mostrar,

@@ -175,8 +175,8 @@ class _FilaValor extends StatelessWidget {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-                color: limaSuave, borderRadius: BorderRadius.circular(11)),
-            child: Icon(icono, color: bosque, size: 21),
+                color: teal, borderRadius: BorderRadius.circular(11)),
+            child: Icon(icono, color: Colors.white, size: 21),
           ),
           const SizedBox(width: 12),
           Expanded(

@@ -320,10 +320,10 @@ class _JugadorCard extends StatelessWidget {
         children: [
           CircleAvatar(
             radius: 20,
-            backgroundColor: limaSuave,
+            backgroundColor: teal,
             child: Text(nombre.isNotEmpty ? nombre[0].toUpperCase() : '?',
                 style: const TextStyle(
-                    color: bosque, fontWeight: FontWeight.w800)),
+                    color: Colors.white, fontWeight: FontWeight.w800)),
           ),
           const SizedBox(width: 12),
           Expanded(

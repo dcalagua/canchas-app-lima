@@ -256,10 +256,10 @@ class _Beneficio extends StatelessWidget {
             width: 38,
             height: 38,
             decoration: BoxDecoration(
-              color: limaSuave,
+              color: morado,
               borderRadius: BorderRadius.circular(11),
             ),
-            child: Icon(icon, color: bosque, size: 20),
+            child: Icon(icon, color: Colors.white, size: 20),
           ),
           const SizedBox(width: 12),
           Expanded(

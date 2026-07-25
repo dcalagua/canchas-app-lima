@@ -141,7 +141,7 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
                     children: [
                       CircleAvatar(
                         radius: 44,
-                        backgroundColor: limaSuave,
+                        backgroundColor: teal,
                         backgroundImage: (foto != null && foto.isNotEmpty)
                             ? NetworkImage(foto)
                             : null,
@@ -149,7 +149,7 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
                             ? const CircularProgressIndicator(color: bosque)
                             : (foto == null || foto.isEmpty)
                                 ? const Icon(Icons.person,
-                                    size: 40, color: bosque)
+                                    size: 40, color: Colors.white)
                                 : null,
                       ),
                       Positioned(

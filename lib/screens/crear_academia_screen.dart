@@ -1544,11 +1544,11 @@ class _LogoPicker extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 46,
-                backgroundColor: limaSuave,
+                backgroundColor: colorDeporte(deporte),
                 backgroundImage: img,
                 child: img == null
                     ? Icon(iconoDeporte(deporte),
-                        size: 34, color: colorDeporte(deporte))
+                        size: 34, color: Colors.white)
                     : null,
               ),
               Container(

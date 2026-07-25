@@ -117,8 +117,8 @@ class _BilleteraScreenState extends State<BilleteraScreen> {
                         borderRadius: BorderRadius.circular(14)),
                     leading: const CircleAvatar(
                       radius: 18,
-                      backgroundColor: limaSuave,
-                      child: Icon(Icons.credit_card, color: bosque, size: 18),
+                      backgroundColor: teal,
+                      child: Icon(Icons.credit_card, color: Colors.white, size: 18),
                     ),
                     title: const Text('Métodos de pago',
                         style: TextStyle(fontWeight: FontWeight.w700)),

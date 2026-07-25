@@ -516,11 +516,11 @@ class _FilaGlobal extends StatelessWidget {
               const SizedBox(width: 6),
               CircleAvatar(
                 radius: 15,
-                backgroundColor: limaSuave,
+                backgroundColor: teal,
                 child: Text(
                     f.nombre.isNotEmpty ? f.nombre[0].toUpperCase() : '?',
                     style: const TextStyle(
-                        color: bosque, fontWeight: FontWeight.w800, fontSize: 13)),
+                        color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13)),
               ),
             ],
           ),
