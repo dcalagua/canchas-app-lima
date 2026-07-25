@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/menu_lateral_scroll.dart';
 import 'agenda_screen.dart';
 import 'clientes_screen.dart';
 import 'cuenta_screen.dart';
@@ -65,18 +66,20 @@ class _HomeShellState extends State<HomeShell> {
         body: SafeArea(
           child: Row(
             children: [
-              NavigationRail(
-                selectedIndex: _index,
-                onDestinationSelected: (i) => setState(() => _index = i),
-                labelType: NavigationRailLabelType.all,
-                groupAlignment: -0.85,
-                destinations: [
-                  for (var i = 0; i < _iconos.length; i++)
-                    NavigationRailDestination(
-                      icon: Icon(_iconos[i]),
-                      label: Text(_etiquetas[i]),
-                    ),
-                ],
+              MenuLateralScroll(
+                rail: NavigationRail(
+                  selectedIndex: _index,
+                  onDestinationSelected: (i) => setState(() => _index = i),
+                  labelType: NavigationRailLabelType.all,
+                  groupAlignment: -0.85,
+                  destinations: [
+                    for (var i = 0; i < _iconos.length; i++)
+                      NavigationRailDestination(
+                        icon: Icon(_iconos[i]),
+                        label: Text(_etiquetas[i]),
+                      ),
+                  ],
+                ),
               ),
               const VerticalDivider(width: 1),
               Expanded(child: body),

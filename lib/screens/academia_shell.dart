@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../state/app_state.dart';
+import '../widgets/menu_lateral_scroll.dart';
 import 'asistencia_screen.dart';
 import 'campeonatos_screen.dart';
 import 'chats_academia_screen.dart';
@@ -55,18 +56,20 @@ class _AcademiaShellState extends State<AcademiaShell> {
           body: SafeArea(
             child: Row(
               children: [
-                NavigationRail(
-                  selectedIndex: idx,
-                  onDestinationSelected: (i) => setState(() => _index = i),
-                  labelType: NavigationRailLabelType.all,
-                  groupAlignment: -0.9,
-                  destinations: [
-                    for (final it in items)
-                      NavigationRailDestination(
-                        icon: Icon(it.$1),
-                        label: Text(it.$2),
-                      ),
-                  ],
+                MenuLateralScroll(
+                  rail: NavigationRail(
+                    selectedIndex: idx,
+                    onDestinationSelected: (i) => setState(() => _index = i),
+                    labelType: NavigationRailLabelType.all,
+                    groupAlignment: -0.9,
+                    destinations: [
+                      for (final it in items)
+                        NavigationRailDestination(
+                          icon: Icon(it.$1),
+                          label: Text(it.$2),
+                        ),
+                    ],
+                  ),
                 ),
                 const VerticalDivider(width: 1),
                 Expanded(
