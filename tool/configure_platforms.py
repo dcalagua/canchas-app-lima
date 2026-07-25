@@ -151,24 +151,26 @@ def ios_infoplist(text):
 
 
 def ios_podfile(text):
+    # iOS 15.5: lo exige el pod de ML Kit (google_mlkit_text_recognition). Es
+    # compatible hacia atrás con Google Maps/Supabase (sus mínimos son menores).
     if re.search(r"^\s*#?\s*platform :ios", text, re.MULTILINE):
         text = re.sub(
             r"^\s*#?\s*platform :ios.*$",
-            "platform :ios, '14.0'",
+            "platform :ios, '15.5'",
             text,
             count=1,
             flags=re.MULTILINE,
         )
     else:
-        text = "platform :ios, '14.0'\n" + text
+        text = "platform :ios, '15.5'\n" + text
 
-    # Asegura que cada pod use iOS 14 (lo exige el SDK de Google Maps).
-    if "IPHONEOS_DEPLOYMENT_TARGET'] = '14.0'" not in text:
+    # Fuerza el deployment target de cada pod a 15.5 (mínimo de ML Kit).
+    if "IPHONEOS_DEPLOYMENT_TARGET'] = '15.5'" not in text:
         text = text.replace(
             "flutter_additional_ios_build_settings(target)",
             "flutter_additional_ios_build_settings(target)\n"
             "    target.build_configurations.each do |config|\n"
-            "      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '14.0'\n"
+            "      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.5'\n"
             "    end",
             1,
         )

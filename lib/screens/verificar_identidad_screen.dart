@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../config/pais.dart';
+import '../services/ocr_documento.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 
@@ -40,6 +41,10 @@ class _VerificarIdentidadScreenState extends State<VerificarIdentidadScreen> {
   bool _verificando = false;
   String? _errorDni;
 
+  // Camino con OCR (Bolivia/CI): valida que la foto ES un documento.
+  ResultadoOcr? _ocr;
+  bool _ocrCargando = false;
+
   @override
   void dispose() {
     _dniCtrl.dispose();
@@ -69,6 +74,45 @@ class _VerificarIdentidadScreenState extends State<VerificarIdentidadScreen> {
     if (_doc == null || _selfie == null) return;
     setState(() => _enviando = true);
     final ok = await appState.enviarVerificacion(_doc!, _selfie!);
+    if (!mounted) return;
+    setState(() => _enviando = false);
+    if (ok) {
+      _dialogoOk();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No se pudo enviar. Revisa tu conexión.')));
+    }
+  }
+
+  /// Elige la foto del documento y la pasa por OCR (Bolivia). El resultado
+  /// decide si es un documento válido (bloquea imágenes cualquiera).
+  Future<void> _elegirDocOcr() async {
+    final XFile? f = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1600,
+      imageQuality: 85,
+    );
+    if (f == null) return;
+    final bytes = await f.readAsBytes();
+    if (!mounted) return;
+    setState(() {
+      _doc = bytes;
+      _ocr = null;
+      _ocrCargando = true;
+    });
+    final r = await OcrDocumento.analizar(f.path);
+    if (!mounted) return;
+    setState(() {
+      _ocr = r;
+      _ocrCargando = false;
+    });
+  }
+
+  Future<void> _enviarOcr() async {
+    if (_doc == null || _selfie == null || _ocr?.esDocumento != true) return;
+    setState(() => _enviando = true);
+    final ok = await appState.verificarConOcr(
+        doc: _doc!, selfie: _selfie!, nacimiento: _ocr!.nacimiento);
     if (!mounted) return;
     setState(() => _enviando = false);
     if (ok) {
@@ -142,6 +186,8 @@ class _VerificarIdentidadScreenState extends State<VerificarIdentidadScreen> {
             _CajaVerificado(edad: appState.edadActual)
           else if (paisActual.consultaDoc)
             _porNumero()
+          else if (paisActual.iso == 'BO')
+            _porOcr()
           else
             _porFoto(),
         ],
@@ -235,6 +281,92 @@ class _VerificarIdentidadScreenState extends State<VerificarIdentidadScreen> {
         _NotaPrivacidad(
           'Solo usamos tu $doc para confirmar tu identidad y tu edad. No '
           'guardamos foto de tu documento ni lo mostramos a nadie.',
+        ),
+      ],
+    );
+  }
+
+  // ── Camino OCR: valida on-device que la foto ES un documento (Bolivia) ─────
+  Widget _porOcr() {
+    final doc = paisActual.docId; // "CI"
+    final ocr = _ocr;
+    final esDoc = ocr?.esDocumento == true;
+    final edad = ocr?.nacimiento == null
+        ? null
+        : appState.edadDesdeFecha(ocr!.nacimiento!);
+    // Estado del análisis para el subtítulo del tile del documento.
+    String subtituloDoc;
+    Color colorDoc;
+    if (_ocrCargando) {
+      subtituloDoc = 'Analizando el documento…';
+      colorDoc = textoTenue;
+    } else if (ocr == null) {
+      subtituloDoc = 'Foto legible de tu $doc (dato privado, no se publica)';
+      colorDoc = textoTenue;
+    } else if (esDoc) {
+      subtituloDoc = edad != null
+          ? '✓ Documento detectado · edad $edad'
+          : '✓ Documento detectado';
+      colorDoc = lima;
+    } else {
+      subtituloDoc = 'Eso no parece un $doc. Sube una foto legible del documento.';
+      colorDoc = Colors.redAccent;
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Jugador verificado',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+        const SizedBox(height: 6),
+        Text(
+          'Validamos tu $doc en tu propio teléfono (no se envía a ningún lado '
+          'para leerlo). Sube una foto legible y una selfie.',
+          style: TextStyle(color: textoTenue, height: 1.35),
+        ),
+        const SizedBox(height: 18),
+        _Tile(
+          titulo: 'Foto del documento',
+          subtitulo: subtituloDoc,
+          subtituloColor: colorDoc,
+          icono: Icons.badge_outlined,
+          preview: _doc,
+          cargando: _ocrCargando,
+          onTap: _elegirDocOcr,
+        ),
+        const SizedBox(height: 12),
+        _Tile(
+          titulo: 'Selfie',
+          subtitulo: 'Una foto tuya de frente',
+          icono: Icons.face_outlined,
+          preview: _selfie,
+          onTap: () => _elegir(selfie: true),
+        ),
+        const SizedBox(height: 20),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            style: FilledButton.styleFrom(
+                backgroundColor: lima,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 15)),
+            onPressed: (!esDoc || _selfie == null || _enviando)
+                ? null
+                : _enviarOcr,
+            icon: _enviando
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.verified_user_outlined),
+            label: const Text('Enviar y verificar',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _NotaPrivacidad(
+          'El OCR corre en tu teléfono. Guardamos tu $doc de forma privada '
+          'solo como respaldo; no se muestra a nadie.',
         ),
       ],
     );
@@ -388,6 +520,8 @@ class _Tile extends StatelessWidget {
     required this.icono,
     required this.onTap,
     this.preview,
+    this.subtituloColor,
+    this.cargando = false,
   });
   final String titulo;
   final String subtitulo;
@@ -398,22 +532,38 @@ class _Tile extends StatelessWidget {
   /// miniatura para que el jugador confirme que salió bien (y pueda re-tomarla).
   final Uint8List? preview;
 
+  /// Color del subtítulo cuando el llamador maneja el estado (p. ej. OCR: verde
+  /// = documento detectado, rojo = no parece documento). Si es null, se usa el
+  /// comportamiento por defecto ("Listo · toca para cambiar").
+  final Color? subtituloColor;
+
+  /// Muestra un spinner (análisis OCR en curso).
+  final bool cargando;
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final listo = preview != null;
+    // Si el llamador maneja el estado (subtituloColor), respetamos su texto y
+    // color; si no, mostramos el default "Listo · toca para cambiar".
+    final manejado = subtituloColor != null;
+    final acento = subtituloColor ?? (listo ? lima : trazo);
+    final subTexto = manejado
+        ? subtitulo
+        : (listo ? 'Listo · toca para cambiar' : subtitulo);
+    final subColor = manejado ? subtituloColor! : (listo ? lima : textoTenue);
     return Material(
       color: cs.surface,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
-        onTap: onTap,
+        onTap: cargando ? null : onTap,
         borderRadius: BorderRadius.circular(16),
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-                color: listo ? lima : trazo, width: listo ? 1.5 : 1),
+                color: acento, width: (listo || manejado) ? 1.5 : 1),
           ),
           child: Row(
             children: [
@@ -437,17 +587,28 @@ class _Tile extends StatelessWidget {
                     Text(titulo,
                         style: const TextStyle(fontWeight: FontWeight.w700)),
                     const SizedBox(height: 2),
-                    Text(listo ? 'Listo · toca para cambiar' : subtitulo,
+                    Text(subTexto,
                         style: TextStyle(
-                            color: listo ? lima : textoTenue,
+                            color: subColor,
                             fontSize: 12.5,
-                            fontWeight:
-                                listo ? FontWeight.w600 : FontWeight.w400)),
+                            fontWeight: (listo || manejado)
+                                ? FontWeight.w600
+                                : FontWeight.w400)),
                   ],
                 ),
               ),
-              Icon(listo ? Icons.check_circle : Icons.chevron_right,
-                  color: listo ? lima : textoTenue),
+              if (cargando)
+                const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+              else
+                Icon(
+                  subtituloColor == Colors.redAccent
+                      ? Icons.error_outline
+                      : (listo ? Icons.check_circle : Icons.chevron_right),
+                  color: acento == trazo ? textoTenue : acento,
+                ),
             ],
           ),
         ),

@@ -40,6 +40,11 @@ dependencies:
   # `pdf` es Dart puro; `printing` da la hoja de compartir/guardar del SO.
   pdf: ^3.11.1
   printing: ^5.13.3
+  # OCR on-device para validar el documento donde NO hay API oficial (Bolivia/CI):
+  # confirma que la foto ES un documento (palabras clave) y extrae nº + fecha de
+  # nacimiento. Gratis/offline (ML Kit). Plugin nativo: el CI ya fuerza
+  # compileSdk 34 en subproyectos y minSdk 23; en iOS se sube el target a 15.5.
+  google_mlkit_text_recognition: ^0.13.1
 
 dev_dependencies:
   flutter_test:

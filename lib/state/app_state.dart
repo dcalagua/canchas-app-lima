@@ -3016,7 +3016,12 @@ class AppState extends ChangeNotifier {
   /// Edad ACTUAL calculada a partir de [fechaNacimiento] (null si no hay dato).
   int? get edadActual {
     final f = fechaNacimiento;
-    if (f == null) return null;
+    return f == null ? null : edadDesdeFecha(f);
+  }
+
+  /// Edad actual (años cumplidos) a partir de una fecha de nacimiento dada.
+  /// Devuelve null si el resultado no es plausible (fecha corrupta).
+  int? edadDesdeFecha(DateTime f) {
     final hoy = DateTime.now();
     var edad = hoy.year - f.year;
     if (hoy.month < f.month || (hoy.month == f.month && hoy.day < f.day)) {
@@ -3110,6 +3115,26 @@ class AppState extends ChangeNotifier {
       _verificados.addAll(set);
       notifyListeners();
     }
+  }
+
+  /// Verificación por OCR on-device (países sin registro oficial, hoy Bolivia).
+  /// El documento ya pasó el filtro OCR (es un documento, no una imagen
+  /// cualquiera). Sube doc + selfie al bucket privado como evidencia y guarda la
+  /// fecha de nacimiento si el OCR la detectó (para categorizar por edad).
+  Future<bool> verificarConOcr(
+      {required Uint8List doc,
+      required Uint8List selfie,
+      DateTime? nacimiento}) async {
+    final u = usuario;
+    if (u == null) return false;
+    final st = await VerificacionRepo.enviar(
+        email: u.email, nombre: u.nombre, doc: doc, selfie: selfie);
+    if (st == null) return false;
+    estadoVerificacion = st;
+    if (nacimiento != null) fechaNacimiento = nacimiento;
+    notifyListeners();
+    _persistirDatos();
+    return true;
   }
 
   /// Envía doc + selfie para verificar la identidad. Devuelve true si quedó
