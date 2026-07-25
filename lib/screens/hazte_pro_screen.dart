@@ -194,8 +194,7 @@ class _HazteProScreenState extends State<HazteProScreen> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.account_balance_wallet,
-                        size: 18, color: bosque),
+                    const CircleAvatar(radius: 16, backgroundColor: lima, child: Icon(Icons.account_balance_wallet, size: 17, color: Colors.white)),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(

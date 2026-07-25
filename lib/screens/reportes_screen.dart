@@ -194,7 +194,7 @@ class ReportesScreen extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.insights, color: bosque),
+                      const CircleAvatar(radius: 16, backgroundColor: teal, child: Icon(Icons.insights, size: 17, color: Colors.white)),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(

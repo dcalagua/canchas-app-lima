@@ -126,8 +126,12 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.public, color: bosque, size: 22),
-                    const SizedBox(width: 10),
+                    const CircleAvatar(
+                        radius: 18,
+                        backgroundColor: teal,
+                        child: Icon(Icons.public,
+                            color: Colors.white, size: 20)),
+                    const SizedBox(width: 12),
                     const Expanded(
                       child: Text(
                           'Ranking cruzado de todas las academias. Juega, sube en '
@@ -432,7 +436,10 @@ class _TemporadaAviso extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(icono, color: bosque, size: 20),
+          CircleAvatar(
+              radius: 18,
+              backgroundColor: amarillo,
+              child: Icon(icono, color: Colors.white, size: 20)),
           const SizedBox(width: 10),
           Expanded(
             child: Text(texto,

@@ -186,7 +186,10 @@ class _Explicacion extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.emoji_events, color: bosque, size: 22),
+          const CircleAvatar(
+              radius: 18,
+              backgroundColor: teal,
+              child: Icon(Icons.emoji_events, color: Colors.white, size: 20)),
           const SizedBox(width: 10),
           Expanded(
             child: Text(

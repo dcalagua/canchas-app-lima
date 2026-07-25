@@ -301,9 +301,12 @@ class _Contenido extends StatelessWidget {
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.local_offer_outlined,
-                            size: 18, color: lima),
-                        const SizedBox(width: 8),
+                        const CircleAvatar(
+                            radius: 18,
+                            backgroundColor: amarillo,
+                            child: Icon(Icons.local_offer_outlined,
+                                color: Colors.white, size: 20)),
+                        const SizedBox(width: 10),
                         Expanded(
                           child: Text(_descuentosTexto(academia),
                               style: TextStyle(

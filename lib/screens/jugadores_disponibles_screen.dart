@@ -259,7 +259,10 @@ class _MiEstadoCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.check_circle, color: bosque),
+          const CircleAvatar(
+              radius: 18,
+              backgroundColor: teal,
+              child: Icon(Icons.check_circle, color: Colors.white, size: 20)),
           const SizedBox(width: 12),
           Expanded(
             child: Column(

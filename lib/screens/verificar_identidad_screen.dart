@@ -166,7 +166,7 @@ class _CajaVerificado extends StatelessWidget {
       ),
       child: Column(
         children: [
-          const Icon(Icons.verified, color: pino, size: 56),
+          const CircleAvatar(radius: 30, backgroundColor: lima, child: Icon(Icons.verified, size: 30, color: Colors.white)),
           const SizedBox(height: 10),
           const Text('¡Ya estás verificado!',
               style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),

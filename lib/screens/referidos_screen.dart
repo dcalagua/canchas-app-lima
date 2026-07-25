@@ -208,7 +208,7 @@ class _ReferidosScreenState extends State<ReferidosScreen> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.groups, color: bosque),
+                    const CircleAvatar(radius: 16, backgroundColor: morado, child: Icon(Icons.groups, size: 17, color: Colors.white)),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(

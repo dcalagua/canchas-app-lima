@@ -316,7 +316,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
               color: limaSuave, borderRadius: BorderRadius.circular(14)),
           child: Row(
             children: [
-              const Icon(Icons.info_outline, color: bosque, size: 20),
+              const CircleAvatar(radius: 16, backgroundColor: teal, child: Icon(Icons.info_outline, size: 17, color: Colors.white)),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
@@ -353,8 +353,8 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
                 border: Border.all(color: const Color(0xFFF2C94C))),
             child: const Row(
               children: [
-                Icon(Icons.info_outline, color: Color(0xFFB8860B), size: 20),
-                SizedBox(width: 8),
+                CircleAvatar(radius: 16, backgroundColor: amarillo, child: Icon(Icons.info_outline, size: 17, color: Colors.white)),
+                SizedBox(width: 10),
                 Expanded(
                   child: Text(
                       'En modo prueba, Yape no valida (limitación de Culqi). '
