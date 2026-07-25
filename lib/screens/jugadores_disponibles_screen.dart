@@ -175,7 +175,6 @@ class _JugadoresDisponiblesScreenState
                     ChoiceChip(
                       label: const Text('Todos'),
                       selected: _filtro == null,
-                      selectedColor: limaSuave,
                       onSelected: (_) {
                         setState(() => _filtro = null);
                         _cargar();
@@ -185,7 +184,6 @@ class _JugadoresDisponiblesScreenState
                       ChoiceChip(
                         label: Text(d.etiqueta),
                         selected: _filtro == d,
-                        selectedColor: limaSuave,
                         onSelected: (_) {
                           setState(() => _filtro = d);
                           _cargar();

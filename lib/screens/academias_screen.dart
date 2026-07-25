@@ -171,7 +171,6 @@ class _AcademiasScreenState extends State<AcademiasScreen> {
                   ChoiceChip(
                     label: const Text('Todos'),
                     selected: _filtro == null,
-                    selectedColor: limaSuave,
                     onSelected: (_) => setState(() => _filtro = null),
                   ),
                   for (final d in deportesDisponibles)
@@ -179,7 +178,6 @@ class _AcademiasScreenState extends State<AcademiasScreen> {
                       avatar: Icon(iconoDeporte(d), size: 16),
                       label: Text(d.etiqueta),
                       selected: _filtro == d,
-                      selectedColor: limaSuave,
                       onSelected: (_) => setState(() => _filtro = d),
                     ),
                 ],

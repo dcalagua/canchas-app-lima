@@ -172,14 +172,12 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
                       avatar: const Icon(Icons.place_outlined, size: 16),
                       label: const Text('Toda la ciudad'),
                       selected: zonaSel.isEmpty,
-                      selectedColor: limaSuave,
                       onSelected: (_) => setState(() => _zona = ''),
                     ),
                     for (final z in zonas)
                       ChoiceChip(
                         label: Text(z),
                         selected: zonaSel == z,
-                        selectedColor: limaSuave,
                         onSelected: (_) => setState(() => _zona = z),
                       ),
                   ],
@@ -195,7 +193,6 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
                     avatar: const Icon(Icons.all_inclusive, size: 16),
                     label: const Text('Histórico'),
                     selected: tempSel == null,
-                    selectedColor: limaSuave,
                     onSelected: (_) => setState(() => _temporadaId = ''),
                   ),
                   for (final t in temporadas)
@@ -208,7 +205,6 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
                       label: Text(
                           t.esActual(ahora) ? '${t.corto} · en curso' : t.corto),
                       selected: tempSel?.id == t.id,
-                      selectedColor: limaSuave,
                       onSelected: (_) => setState(() => _temporadaId = t.id),
                     ),
                 ],
@@ -222,14 +218,12 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
                     ChoiceChip(
                       label: const Text('Todas'),
                       selected: catSel.isEmpty,
-                      selectedColor: limaSuave,
                       onSelected: (_) => setState(() => _categoria = ''),
                     ),
                     for (final c in cats)
                       ChoiceChip(
                         label: Text(c),
                         selected: catSel == c,
-                        selectedColor: limaSuave,
                         onSelected: (_) => setState(() => _categoria = c),
                       ),
                   ],

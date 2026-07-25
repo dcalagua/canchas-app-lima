@@ -126,7 +126,6 @@ class _RankingAcademiaScreenState extends State<RankingAcademiaScreen> {
               ChoiceChip(
                 label: Text(label),
                 selected: sel == val,
-                selectedColor: limaSuave,
                 onSelected: (_) => onSel(val),
               ),
           ],

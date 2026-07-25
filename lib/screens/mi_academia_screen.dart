@@ -173,7 +173,6 @@ class MiAcademiaScreen extends StatelessWidget {
                         ChoiceChip(
                           label: Text(_labelHermano(ac, o)),
                           selected: orden == o,
-                          selectedColor: limaSuave,
                           onSelected: (_) => setSt(() => orden = o),
                         ),
                     ],
