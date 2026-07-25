@@ -224,13 +224,15 @@ class _MisOrdenesScreenState extends State<MisOrdenesScreen> {
 
   Widget _tarjeta(Map<String, dynamic> v) {
     final estado = (v['estado'] ?? '').toString();
-    final (String etiqueta, Color color, IconData icono) = switch (estado) {
-      'pagado' => ('Pagado · retenido', naranja, Icons.lock_clock),
-      'entregado' => ('Entregado · por confirmar', morado, Icons.local_shipping),
-      'recibido' => ('Completado · liberado', lima, Icons.verified),
-      'disputado' => ('En disputa', clayOscuro, Icons.report_gmailerrorred),
-      'reembolsado' => ('Reembolsado', teal, Icons.assignment_return),
-      _ => (estado, teal, Icons.receipt_long),
+    // Ícono VIVO por estado: el mismo emoji que llega en la notificación, sobre
+    // un círculo de color (estilo Airbnb) para que la pantalla tenga vida.
+    final (String etiqueta, Color color, String emoji) = switch (estado) {
+      'pagado' => ('Pagado · retenido', naranja, '🛍️'),
+      'entregado' => ('Entregado · por confirmar', morado, '📦'),
+      'recibido' => ('Completado · liberado', lima, '✅'),
+      'disputado' => ('En disputa', clayOscuro, '⚠️'),
+      'reembolsado' => ('Reembolsado', teal, '↩️'),
+      _ => (estado, teal, '🧾'),
     };
     final monto = ((v['monto_soles'] ?? 0) as num).toDouble();
     final otroNombre = (widget.esVendedor
@@ -257,8 +259,8 @@ class _MisOrdenesScreenState extends State<MisOrdenesScreen> {
             children: [
               CircleAvatar(
                   radius: 18,
-                  backgroundColor: color,
-                  child: Icon(icono, color: Colors.white, size: 18)),
+                  backgroundColor: color.withOpacity(0.16),
+                  child: Text(emoji, style: const TextStyle(fontSize: 18))),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
