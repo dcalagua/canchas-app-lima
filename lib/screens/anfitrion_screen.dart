@@ -90,6 +90,7 @@ class AnfitrionScreen extends StatelessWidget {
               children: [
                 _Tile(
                   icon: Icons.storefront,
+                  color: teal,
                   title: 'Mis canchas',
                   subtitle:
                       'Registra y administra: canchas, agenda, reservas, cuenta',
@@ -97,6 +98,7 @@ class AnfitrionScreen extends StatelessWidget {
                 ),
                 _Tile(
                   icon: Icons.sports,
+                  color: naranja,
                   title: 'Mi academia',
                   subtitle: 'Soy profe: alumnos, cuotas y cobros',
                   onTap: () => _abrirMiAcademia(context),
@@ -104,6 +106,7 @@ class AnfitrionScreen extends StatelessWidget {
                 if (GrowthService.disponible)
                   _Tile(
                     icon: Icons.verified_user,
+                    color: lima,
                     title: 'Verificador',
                     subtitle: 'Rol de campo: visitas con foto, GPS y firma',
                     onTap: () => Navigator.of(context).push(MaterialPageRoute(
@@ -124,11 +127,13 @@ class _Tile extends StatelessWidget {
       {required this.icon,
       required this.title,
       required this.subtitle,
-      required this.onTap});
+      required this.onTap,
+      this.color = lima});
   final IconData icon;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
@@ -146,8 +151,8 @@ class _Tile extends StatelessWidget {
       child: ListTile(
         leading: CircleAvatar(
           radius: 20,
-          backgroundColor: limaSuave,
-          child: Icon(icon, color: bosque, size: 20),
+          backgroundColor: color,
+          child: Icon(icon, color: Colors.white, size: 20),
         ),
         title: Text(title,
             style: t.titleSmall?.copyWith(fontWeight: FontWeight.w700)),

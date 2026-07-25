@@ -190,6 +190,7 @@ class AjustesScreen extends StatelessWidget {
               if (u != null)
                 _AccionTile(
                   icon: Icons.badge_outlined,
+                  color: teal,
                   title: 'Mi nombre y foto',
                   subtitle: 'Edita cómo te ven en el chat, ranking y retos',
                   onTap: () => Navigator.of(context).push(MaterialPageRoute(
@@ -200,6 +201,7 @@ class AjustesScreen extends StatelessWidget {
                   icon: appState.jugadorVerificado
                       ? Icons.verified
                       : Icons.verified_user_outlined,
+                  color: lima,
                   title: appState.jugadorVerificado
                       ? 'Identidad verificada ✓'
                       : 'Verifica tu identidad',
@@ -211,6 +213,7 @@ class AjustesScreen extends StatelessWidget {
                 ),
               _AccionTile(
                 icon: Icons.card_giftcard,
+                color: amarillo,
                 title: 'Invita y gana 🎁',
                 subtitle: 'Comparte tu código; tú y tu amigo ganan un bono',
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(
@@ -218,6 +221,7 @@ class AjustesScreen extends StatelessWidget {
               ),
               _AccionTile(
                 icon: Icons.ios_share,
+                color: morado,
                 title: 'Comparte Pichangol',
                 subtitle: 'Invita a tus amigos a reservar y jugar',
                 onTap: () => _compartirApp(context),
@@ -314,11 +318,13 @@ class _AccionTile extends StatelessWidget {
       {required this.icon,
       required this.title,
       required this.subtitle,
-      required this.onTap});
+      required this.onTap,
+      this.color = lima});
   final IconData icon;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
@@ -336,8 +342,8 @@ class _AccionTile extends StatelessWidget {
       child: ListTile(
         leading: CircleAvatar(
           radius: 20,
-          backgroundColor: limaSuave,
-          child: Icon(icon, color: bosque, size: 20),
+          backgroundColor: color,
+          child: Icon(icon, color: Colors.white, size: 20),
         ),
         title: Text(title,
             style: t.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
