@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../config/pais.dart';
+import '../services/avisos_service.dart';
 import '../services/ventas_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -76,6 +77,11 @@ class _MisOrdenesScreenState extends State<MisOrdenesScreen> {
     final done = await VentasService.recibido((v['id'] as num).toInt(), _yo);
     if (!mounted) return;
     if (done) {
+      AvisosService.ventaRecibida(
+        vendedorEmail: (v['vendedor_email'] ?? '').toString(),
+        compradorNombre: appState.usuario?.nombre ?? 'El comprador',
+        producto: (v['producto_nombre'] ?? 'el producto').toString(),
+      );
       _cargar();
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           backgroundColor: bosque,
@@ -106,6 +112,11 @@ class _MisOrdenesScreenState extends State<MisOrdenesScreen> {
     );
     if (ok != true) return;
     await VentasService.disputa((v['id'] as num).toInt(), _yo);
+    AvisosService.ventaDisputa(
+      vendedorEmail: (v['vendedor_email'] ?? '').toString(),
+      compradorNombre: appState.usuario?.nombre ?? 'El comprador',
+      producto: (v['producto_nombre'] ?? 'el producto').toString(),
+    );
     if (mounted) _cargar();
   }
 
@@ -113,6 +124,11 @@ class _MisOrdenesScreenState extends State<MisOrdenesScreen> {
     final done = await VentasService.entregado((v['id'] as num).toInt(), _yo);
     if (!mounted) return;
     if (done) {
+      AvisosService.ventaEntregada(
+        compradorEmail: (v['comprador_email'] ?? '').toString(),
+        vendedorNombre: appState.usuario?.nombre ?? 'El vendedor',
+        producto: (v['producto_nombre'] ?? 'el producto').toString(),
+      );
       _cargar();
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           backgroundColor: bosque,

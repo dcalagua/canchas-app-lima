@@ -137,4 +137,71 @@ class AvisosService {
         tipo: 'reto',
         data: {'accion': 'disputado'},
       ).then((_) {});
+
+  // ── Marketplace (ventas) ───────────────────────────────────────────────────
+
+  /// Avisa al VENDEDOR que le compraron un producto.
+  static Future<void> ventaNueva({
+    required String vendedorEmail,
+    required String compradorNombre,
+    required String producto,
+    required String montoTexto,
+  }) =>
+      enviar(
+        email: vendedorEmail,
+        titulo: '¡Te compraron! 🛍️',
+        cuerpo:
+            '$compradorNombre compró "$producto" ($montoTexto). Entrégalo y '
+            'coordina por chat; el pago se libera cuando confirme la recepción.',
+        tipo: 'venta',
+        data: {'accion': 'nueva'},
+      ).then((_) {});
+
+  /// Avisa al COMPRADOR que el vendedor marcó su pedido como entregado.
+  static Future<void> ventaEntregada({
+    required String compradorEmail,
+    required String vendedorNombre,
+    required String producto,
+  }) =>
+      enviar(
+        email: compradorEmail,
+        titulo: 'Tu pedido fue marcado como entregado 📦',
+        cuerpo:
+            '$vendedorNombre marcó "$producto" como entregado. Cuando lo tengas '
+            'en mano, confirma la recepción para liberar el pago.',
+        tipo: 'venta',
+        data: {'accion': 'entregado'},
+      ).then((_) {});
+
+  /// Avisa al VENDEDOR que el comprador confirmó → pago liberado.
+  static Future<void> ventaRecibida({
+    required String vendedorEmail,
+    required String compradorNombre,
+    required String producto,
+  }) =>
+      enviar(
+        email: vendedorEmail,
+        titulo: 'Pago liberado ✅',
+        cuerpo:
+            '$compradorNombre confirmó la recepción de "$producto". El neto ya '
+            'es tuyo por cobrar.',
+        tipo: 'venta',
+        data: {'accion': 'recibido'},
+      ).then((_) {});
+
+  /// Avisa al VENDEDOR que el comprador reportó un problema (disputa).
+  static Future<void> ventaDisputa({
+    required String vendedorEmail,
+    required String compradorNombre,
+    required String producto,
+  }) =>
+      enviar(
+        email: vendedorEmail,
+        titulo: 'Problema con una venta ⚠️',
+        cuerpo:
+            '$compradorNombre reportó un problema con "$producto". El pago '
+            'queda retenido. Coordinen por chat para resolverlo.',
+        tipo: 'venta',
+        data: {'accion': 'disputa'},
+      ).then((_) {});
 }

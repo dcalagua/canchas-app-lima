@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/producto.dart';
+import '../services/avisos_service.dart';
 import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -94,6 +95,13 @@ class _ProductoDetalleScreenState extends State<ProductoDetalleScreen> {
       compradorEmail: u.email.toLowerCase(),
       compradorNombre: u.nombre,
       vendedorNombre: p.vendedorNombre,
+    );
+    // Avisa al vendedor que le compraron (push best-effort).
+    AvisosService.ventaNueva(
+      vendedorEmail: p.vendedorEmail,
+      compradorNombre: u.nombre,
+      producto: p.nombre,
+      montoTexto: p.precioTexto,
     );
     if (!mounted) return;
     setState(() => _comprando = false);
