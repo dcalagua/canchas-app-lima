@@ -1351,6 +1351,146 @@ class AppState extends ChangeNotifier {
     );
   }
 
+  String _nuevoCodigoEquipo() {
+    final base =
+        DateTime.now().microsecondsSinceEpoch.toRadixString(36).toUpperCase();
+    return base.substring(base.length - 6);
+  }
+
+  /// Crea un EQUIPO (fútbol) con el usuario como CAPITÁN y un CÓDIGO para que sus
+  /// jugadores se auto-inscriban al plantel. Devuelve el código a compartir.
+  ({bool ok, String mensaje, String codigo, String equipoId})
+      crearEquipoCampeonato(String campId, String nombreEquipo) {
+    final u = usuario;
+    if (u == null) {
+      return (ok: false, mensaje: 'Inicia sesión.', codigo: '', equipoId: '');
+    }
+    final c = campeonatoPorId(campId);
+    if (c == null) {
+      return (
+        ok: false,
+        mensaje: 'Campeonato no encontrado.',
+        codigo: '',
+        equipoId: ''
+      );
+    }
+    if (c.cerrado ||
+        !c.inscripcionAbierta ||
+        c.fixtureGenerado ||
+        c.inscripcionVencida) {
+      return (
+        ok: false,
+        mensaje: 'Las inscripciones están cerradas.',
+        codigo: '',
+        equipoId: ''
+      );
+    }
+    final nombre = nombreEquipo.trim();
+    if (nombre.isEmpty) {
+      return (
+        ok: false,
+        mensaje: 'Ponle nombre al equipo.',
+        codigo: '',
+        equipoId: ''
+      );
+    }
+    final mio = c.participantes.where(
+        (p) => p.capitanEmail.toLowerCase() == u.email.toLowerCase());
+    if (mio.isNotEmpty) {
+      return (
+        ok: true,
+        mensaje: 'Ya tienes un equipo aquí.',
+        codigo: mio.first.codigo,
+        equipoId: mio.first.id
+      );
+    }
+    final codigo = _nuevoCodigoEquipo();
+    final micro = DateTime.now().microsecondsSinceEpoch;
+    final p = Participante(
+      id: 'eq_$micro',
+      nombre: nombre,
+      email: u.email,
+      fotoUrl: u.fotoUrl,
+      capitanEmail: u.email,
+      codigo: codigo,
+      roster: [
+        Integrante(id: 'in_$micro', nombre: u.nombre, email: u.email,
+            fotoUrl: u.fotoUrl),
+      ],
+    );
+    guardarCampeonato(c.copyWith(participantes: [...c.participantes, p]));
+    return (
+      ok: true,
+      mensaje: 'Equipo "$nombre" creado.',
+      codigo: codigo,
+      equipoId: p.id
+    );
+  }
+
+  /// Un jugador se UNE a un equipo por su CÓDIGO (queda en el roster, verificado
+  /// por tener cuenta). Avisa al capitán.
+  ({bool ok, String mensaje}) unirseAEquipoPorCodigo(String campId, String codigo,
+      {String? nombre}) {
+    final u = usuario;
+    if (u == null) return (ok: false, mensaje: 'Inicia sesión.');
+    final c = campeonatoPorId(campId);
+    if (c == null) return (ok: false, mensaje: 'Campeonato no encontrado.');
+    if (c.fixtureGenerado || c.inscripcionVencida) {
+      return (ok: false, mensaje: 'Las inscripciones cerraron.');
+    }
+    final cod = codigo.trim().toUpperCase();
+    final idx = c.participantes.indexWhere((p) => p.codigo.toUpperCase() == cod);
+    if (idx < 0) {
+      return (ok: false, mensaje: 'Código no válido. Pídeselo a tu capitán.');
+    }
+    final eq = c.participantes[idx];
+    if (eq.roster
+        .any((r) => r.email.toLowerCase() == u.email.toLowerCase())) {
+      return (ok: true, mensaje: 'Ya estás en "${eq.nombre}".');
+    }
+    final integrante = Integrante(
+      id: 'in_${DateTime.now().microsecondsSinceEpoch}',
+      nombre: (nombre != null && nombre.trim().isNotEmpty)
+          ? nombre.trim()
+          : u.nombre,
+      email: u.email,
+      fotoUrl: u.fotoUrl,
+    );
+    final parts = [...c.participantes];
+    parts[idx] = eq.copyWith(roster: [...eq.roster, integrante]);
+    guardarCampeonato(c.copyWith(participantes: parts));
+    if (eq.capitanEmail.isNotEmpty &&
+        eq.capitanEmail.toLowerCase() != u.email.toLowerCase()) {
+      AvisosService.enviar(
+        email: eq.capitanEmail,
+        titulo: 'Nuevo jugador en tu equipo ⚽',
+        cuerpo: '${integrante.nombre} se unió a "${eq.nombre}".',
+        tipo: 'campeonato',
+        data: {'accion': 'roster', 'campeonato': c.id},
+      );
+    }
+    return (ok: true, mensaje: 'Te uniste a "${eq.nombre}". 🎽');
+  }
+
+  /// El capitán agrega un integrante A MANO (sin cuenta / invitado).
+  ({bool ok, String mensaje}) agregarIntegranteManual(
+      String campId, String equipoId, String nombre) {
+    final c = campeonatoPorId(campId);
+    if (c == null) return (ok: false, mensaje: 'No encontrado.');
+    final idx = c.participantes.indexWhere((p) => p.id == equipoId);
+    if (idx < 0) return (ok: false, mensaje: 'Equipo no encontrado.');
+    final n = nombre.trim();
+    if (n.isEmpty) return (ok: false, mensaje: 'Escribe el nombre.');
+    final eq = c.participantes[idx];
+    final parts = [...c.participantes];
+    parts[idx] = eq.copyWith(roster: [
+      ...eq.roster,
+      Integrante(id: 'in_${DateTime.now().microsecondsSinceEpoch}', nombre: n),
+    ]);
+    guardarCampeonato(c.copyWith(participantes: parts));
+    return (ok: true, mensaje: 'Agregaste a "$n".');
+  }
+
   /// (Re)genera el fixture del campeonato según su formato. Borra resultados.
   void generarFixture(String campId) {
     final c = campeonatoPorId(campId);

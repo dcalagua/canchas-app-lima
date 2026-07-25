@@ -108,16 +108,37 @@ class CampeonatoDetalleScreen extends StatelessWidget {
               ],
               if (puedeInscribirse) ...[
                 const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: () => _inscribirme(context, c),
-                    icon: const Icon(Icons.how_to_reg),
-                    label: Text(c.costoInscripcion > 0
-                        ? 'Inscribirme · ${c.monedaSimbolo} ${c.costoInscripcion.toStringAsFixed(2)}'
-                        : 'Inscribirme'),
+                if (c.deporte.name == 'futbol') ...[
+                  // Fútbol = equipos: el capitán crea equipo (con código) y los
+                  // jugadores se unen con ese código.
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () => _crearEquipo(context, c),
+                      icon: const Icon(Icons.groups),
+                      label: const Text('Crear mi equipo'),
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => _unirmeAEquipo(context, c),
+                      icon: const Icon(Icons.login),
+                      label: const Text('Unirme a un equipo (código)'),
+                    ),
+                  ),
+                ] else
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () => _inscribirme(context, c),
+                      icon: const Icon(Icons.how_to_reg),
+                      label: Text(c.costoInscripcion > 0
+                          ? 'Inscribirme · ${c.monedaSimbolo} ${c.costoInscripcion.toStringAsFixed(2)}'
+                          : 'Inscribirme'),
+                    ),
+                  ),
               ],
               const SizedBox(height: 14),
               _Participantes(campeonato: c, esDueno: esDueno),
@@ -572,6 +593,128 @@ class CampeonatoDetalleScreen extends StatelessWidget {
     }
   }
 
+  /// Fútbol: el CAPITÁN crea su equipo y recibe un código para compartir.
+  Future<void> _crearEquipo(BuildContext context, Campeonato c) async {
+    if (!await LoginGoogleSheet.mostrar(context, motivo: 'crear tu equipo')) {
+      return;
+    }
+    if (!context.mounted) return;
+    if (c.exigeDni && !await _gateDni(context, c)) return;
+    if (!context.mounted) return;
+    final nombre = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dctx) => AlertDialog(
+        title: const Text('Crear mi equipo'),
+        content: TextField(
+          controller: nombre,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(
+              labelText: 'Nombre del equipo', hintText: 'Los Tigres FC'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dctx, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+              onPressed: () => Navigator.pop(dctx, true),
+              child: const Text('Crear')),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    final res = appState.crearEquipoCampeonato(c.id, nombre.text);
+    if (!context.mounted) return;
+    if (!res.ok) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(res.mensaje)));
+      return;
+    }
+    await _mostrarCodigo(context, c, res.codigo);
+  }
+
+  /// Muestra el código del equipo para compartir (los jugadores se auto-inscriben).
+  Future<void> _mostrarCodigo(
+      BuildContext context, Campeonato c, String codigo) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dctx) => AlertDialog(
+        title: const Text('¡Equipo creado! ⚽'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Comparte este código con tus jugadores para que se '
+                'inscriban a tu equipo:'),
+            const SizedBox(height: 14),
+            SelectableText(codigo,
+                style: const TextStyle(
+                    fontSize: 30,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 4,
+                    color: bosque)),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dctx),
+              child: const Text('Listo')),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(backgroundColor: lima),
+            onPressed: () {
+              WhatsAppLink.compartir(
+                  'Únete a mi equipo en "${c.nombre}" (Pichangol). '
+                  'Código: $codigo');
+              Navigator.pop(dctx);
+            },
+            icon: const Icon(Icons.share, size: 18),
+            label: const Text('Compartir'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Fútbol: un jugador se une a un equipo con el código del capitán.
+  Future<void> _unirmeAEquipo(BuildContext context, Campeonato c) async {
+    if (!await LoginGoogleSheet.mostrar(context,
+        motivo: 'unirte a un equipo')) {
+      return;
+    }
+    if (!context.mounted) return;
+    if (c.exigeDni && !await _gateDni(context, c)) return;
+    if (!context.mounted) return;
+    final codigo = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dctx) => AlertDialog(
+        title: const Text('Unirme a un equipo'),
+        content: TextField(
+          controller: codigo,
+          autofocus: true,
+          textCapitalization: TextCapitalization.characters,
+          decoration: const InputDecoration(
+              labelText: 'Código del equipo', hintText: 'Ej.: 4KZ9AB'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dctx, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+              onPressed: () => Navigator.pop(dctx, true),
+              child: const Text('Unirme')),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    final res = appState.unirseAEquipoPorCodigo(c.id, codigo.text);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(res.mensaje),
+          backgroundColor: res.ok ? bosque : null));
+    }
+  }
+
   static String _resumen(Campeonato c) {
     final sb = StringBuffer();
     sb.writeln('🏆 ${c.nombre}');
@@ -696,6 +839,115 @@ class _Participantes extends StatelessWidget {
   final Campeonato campeonato;
   final bool esDueno;
 
+  /// Muestra el plantel del equipo; si soy el capitán, el código para compartir
+  /// y agregar integrantes a mano.
+  Future<void> _verEquipo(
+      BuildContext context, Campeonato c, Participante eq) async {
+    final yo = (appState.usuario?.email ?? '').toLowerCase();
+    final soyCapitan = eq.capitanEmail.toLowerCase() == yo;
+    await showDialog<void>(
+      context: context,
+      builder: (dctx) => AlertDialog(
+        title: Text(eq.nombre),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (soyCapitan && eq.codigo.isNotEmpty) ...[
+                const Text('Código del equipo (compártelo):',
+                    style: TextStyle(color: textoTenue, fontSize: 12.5)),
+                Row(
+                  children: [
+                    SelectableText(eq.codigo,
+                        style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 3,
+                            color: bosque)),
+                    const Spacer(),
+                    IconButton(
+                      tooltip: 'Compartir',
+                      icon: const Icon(Icons.share, color: lima),
+                      onPressed: () => WhatsAppLink.compartir(
+                          'Únete a mi equipo en "${c.nombre}" (Pichangol). '
+                          'Código: ${eq.codigo}'),
+                    ),
+                  ],
+                ),
+                const Divider(),
+              ],
+              Text('Plantel (${eq.roster.length})',
+                  style: const TextStyle(fontWeight: FontWeight.w800)),
+              const SizedBox(height: 6),
+              if (eq.roster.isEmpty)
+                const Text('Aún sin jugadores.',
+                    style: TextStyle(color: textoTenue, fontSize: 12.5)),
+              for (final m in eq.roster)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Row(
+                    children: [
+                      Icon(m.verificado ? Icons.verified : Icons.person_outline,
+                          size: 18,
+                          color: m.verificado ? lima : textoTenue),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(m.nombre)),
+                      if (m.email.toLowerCase() == eq.capitanEmail.toLowerCase())
+                        const Text('Capitán',
+                            style: TextStyle(
+                                color: textoTenue,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          if (soyCapitan)
+            TextButton.icon(
+              onPressed: () async {
+                final nombre = TextEditingController();
+                final add = await showDialog<bool>(
+                  context: dctx,
+                  builder: (d2) => AlertDialog(
+                    title: const Text('Agregar jugador (a mano)'),
+                    content: TextField(
+                      controller: nombre,
+                      autofocus: true,
+                      textCapitalization: TextCapitalization.words,
+                      decoration:
+                          const InputDecoration(labelText: 'Nombre'),
+                    ),
+                    actions: [
+                      TextButton(
+                          onPressed: () => Navigator.pop(d2, false),
+                          child: const Text('Cancelar')),
+                      FilledButton(
+                          onPressed: () => Navigator.pop(d2, true),
+                          child: const Text('Agregar')),
+                    ],
+                  ),
+                );
+                if (add == true) {
+                  appState.agregarIntegranteManual(
+                      c.id, eq.id, nombre.text);
+                  if (dctx.mounted) Navigator.pop(dctx);
+                }
+              },
+              icon: const Icon(Icons.person_add_alt, size: 18),
+              label: const Text('Agregar'),
+            ),
+          TextButton(
+              onPressed: () => Navigator.pop(dctx),
+              child: const Text('Cerrar')),
+        ],
+      ),
+    );
+  }
+
   Future<void> _agregar(BuildContext context) async {
     final nombre = TextEditingController();
     final wa = TextEditingController();
@@ -801,20 +1053,26 @@ class _Participantes extends StatelessWidget {
           children: [
             for (final p in c.participantes)
               InputChip(
-                avatar: p.esApp
-                    ? (p.fotoUrl != null && p.fotoUrl!.isNotEmpty
-                        ? CircleAvatar(
-                            backgroundImage: NetworkImage(p.fotoUrl!))
-                        : Icon(
-                            p.esMenor
-                                ? Icons.child_care
-                                : Icons.verified_user,
-                            size: 18,
-                            color: cs.primary))
-                    : null,
-                label: Text(p.esMenor
-                    ? '${p.nombre} · apod. ${p.apoderadoNombre}'
-                    : p.nombre),
+                avatar: p.esEquipo
+                    ? const Icon(Icons.groups, size: 18, color: bosque)
+                    : p.esApp
+                        ? (p.fotoUrl != null && p.fotoUrl!.isNotEmpty
+                            ? CircleAvatar(
+                                backgroundImage: NetworkImage(p.fotoUrl!))
+                            : Icon(
+                                p.esMenor
+                                    ? Icons.child_care
+                                    : Icons.verified_user,
+                                size: 18,
+                                color: cs.primary))
+                        : null,
+                label: Text(p.esEquipo
+                    ? '${p.nombre} · ${p.roster.length} jug.'
+                    : p.esMenor
+                        ? '${p.nombre} · apod. ${p.apoderadoNombre}'
+                        : p.nombre),
+                onPressed:
+                    p.esEquipo ? () => _verEquipo(context, c, p) : null,
                 onDeleted: esDueno
                     ? () => appState.eliminarParticipante(c.id, p.id)
                     : null,

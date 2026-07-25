@@ -18,6 +18,42 @@ extension FormatoTorneoX on FormatoTorneo {
       s == 'liga' ? FormatoTorneo.liga : FormatoTorneo.eliminacion;
 }
 
+/// Un INTEGRANTE del plantel de un equipo (fútbol). [email] no vacío = jugador
+/// con cuenta (verificado, se auto-inscribió con el código); vacío = lo agregó
+/// el capitán a mano (invitado/menor).
+class Integrante {
+  final String id;
+  final String nombre;
+  final String email;
+  final String? fotoUrl;
+  final int? edad;
+  const Integrante({
+    required this.id,
+    required this.nombre,
+    this.email = '',
+    this.fotoUrl,
+    this.edad,
+  });
+
+  bool get verificado => email.isNotEmpty;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'nombre': nombre,
+        'email': email,
+        if (fotoUrl != null) 'fotoUrl': fotoUrl,
+        if (edad != null) 'edad': edad,
+      };
+
+  factory Integrante.fromJson(Map<String, dynamic> j) => Integrante(
+        id: j['id'] as String,
+        nombre: (j['nombre'] ?? '') as String,
+        email: (j['email'] ?? '') as String,
+        fotoUrl: j['fotoUrl'] as String?,
+        edad: (j['edad'] as num?)?.toInt(),
+      );
+}
+
 /// Un participante del campeonato: jugador (tenis individual), pareja ("A / B")
 /// o equipo (fútbol). Modelo genérico para cubrir ambos deportes.
 ///
@@ -32,6 +68,14 @@ class Participante {
   final String? fotoUrl;
   final String apoderadoNombre; // '' si es adulto
   final int? edad;
+  // ── Equipo (fútbol): capitán + código + plantel ──────────────────────────
+  /// Correo del CAPITÁN del equipo ('' si no es equipo). El capitán administra
+  /// el plantel y comparte el código.
+  final String capitanEmail;
+  /// Código para que los jugadores se AUTO-INSCRIBAN al equipo ('' si no aplica).
+  final String codigo;
+  /// Plantel del equipo (integrantes). Vacío para individuales/parejas.
+  final List<Integrante> roster;
 
   const Participante({
     required this.id,
@@ -41,10 +85,32 @@ class Participante {
     this.fotoUrl,
     this.apoderadoNombre = '',
     this.edad,
+    this.capitanEmail = '',
+    this.codigo = '',
+    this.roster = const [],
   });
 
   bool get esApp => email.isNotEmpty;
   bool get esMenor => apoderadoNombre.isNotEmpty;
+  bool get esEquipo => capitanEmail.isNotEmpty || codigo.isNotEmpty;
+
+  Participante copyWith({
+    String? nombre,
+    List<Integrante>? roster,
+    String? codigo,
+  }) =>
+      Participante(
+        id: id,
+        nombre: nombre ?? this.nombre,
+        contacto: contacto,
+        email: email,
+        fotoUrl: fotoUrl,
+        apoderadoNombre: apoderadoNombre,
+        edad: edad,
+        capitanEmail: capitanEmail,
+        codigo: codigo ?? this.codigo,
+        roster: roster ?? this.roster,
+      );
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -54,6 +120,10 @@ class Participante {
         if (fotoUrl != null) 'fotoUrl': fotoUrl,
         'apoderadoNombre': apoderadoNombre,
         if (edad != null) 'edad': edad,
+        if (capitanEmail.isNotEmpty) 'capitanEmail': capitanEmail,
+        if (codigo.isNotEmpty) 'codigo': codigo,
+        if (roster.isNotEmpty)
+          'roster': roster.map((r) => r.toJson()).toList(),
       };
 
   factory Participante.fromJson(Map<String, dynamic> j) => Participante(
@@ -64,6 +134,13 @@ class Participante {
         fotoUrl: j['fotoUrl'] as String?,
         apoderadoNombre: (j['apoderadoNombre'] ?? '') as String,
         edad: (j['edad'] as num?)?.toInt(),
+        capitanEmail: (j['capitanEmail'] ?? '') as String,
+        codigo: (j['codigo'] ?? '') as String,
+        roster: (j['roster'] as List?)
+                ?.map((e) =>
+                    Integrante.fromJson(Map<String, dynamic>.from(e as Map)))
+                .toList() ??
+            const [],
       );
 }
 
