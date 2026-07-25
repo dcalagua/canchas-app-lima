@@ -8,7 +8,7 @@ import 'campeonato_detalle_screen.dart';
 import 'crear_campeonato_screen.dart';
 import 'home_shell.dart';
 import 'login_google_sheet.dart';
-import 'mi_academia_screen.dart';
+import 'academia_shell.dart';
 import 'mis_productos_screen.dart';
 import 'verificador_screen.dart';
 
@@ -39,7 +39,7 @@ class AnfitrionScreen extends StatelessWidget {
     // hay ninguna. Así evitamos crear una academia DUPLICADA por adelantarnos a
     // que Supabase responda (típico tras reinstalar el APK).
     Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const MiAcademiaScreen()));
+        MaterialPageRoute(builder: (_) => const AcademiaShell()));
   }
 
   /// Organizar un campeonato SIN academia (cualquier usuario): crea el torneo
