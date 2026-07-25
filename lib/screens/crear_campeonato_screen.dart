@@ -147,9 +147,7 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
               for (final d in Deporte.values)
                 ChoiceChip(
                   label: Text(d.etiqueta),
-                  avatar: Icon(iconoDeporte(d),
-                      size: 18,
-                      color: _deporte == d ? cs.onPrimary : colorDeporte(d)),
+                  avatar: Text(emojiDeporte(d), style: const TextStyle(fontSize: 15)),
                   selected: _deporte == d,
                   onSelected: (_) => setState(() {
                     _deporte = d;

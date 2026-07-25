@@ -123,6 +123,18 @@ IconData iconoDeporte(Deporte d) => switch (d) {
       Deporte.basquet => Icons.sports_basketball,
     };
 
+/// EMOJI canónico por deporte — la identidad visual del deporte en TODA la app
+/// (chips de filtro, selectores, etiquetas). Es el mismo que se ve en la home,
+/// para que "tenis" se vea igual en todos lados (y fútbol, etc.).
+String emojiDeporte(Deporte d) => switch (d) {
+      Deporte.futbol => '⚽',
+      Deporte.tenis => '🎾',
+      Deporte.padel => '🏸',
+      Deporte.pickleball => '🏓',
+      Deporte.voley => '🏐',
+      Deporte.basquet => '🏀',
+    };
+
 // ── Amenities / servicios de la cancha (editable por el dueño) ────────────
 /// Catálogo de servicios que el dueño puede marcar en su cancha. Se guarda por
 /// `clave` en `Cancha.amenidades`; aquí viven la etiqueta y el ícono.

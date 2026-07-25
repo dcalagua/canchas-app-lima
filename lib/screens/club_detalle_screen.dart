@@ -484,11 +484,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                       children: [
                         for (final d in _cancha.deportesJugables)
                           ChoiceChip(
-                            avatar: Icon(iconoDeporte(d),
-                                size: 16,
-                                color: _deporteEfectivo == d
-                                    ? Colors.white
-                                    : colorDeporte(d)),
+                            avatar: Text(emojiDeporte(d), style: const TextStyle(fontSize: 15)),
                             label: Text(d.etiqueta),
                             selected: _deporteEfectivo == d,
                             selectedColor: colorDeporte(d),

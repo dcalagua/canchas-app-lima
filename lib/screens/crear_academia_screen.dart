@@ -949,9 +949,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
             children: [
               for (final d in deportesActivos)
                 ChoiceChip(
-                  avatar: Icon(iconoDeporte(d),
-                      size: 18,
-                      color: _deporte == d ? Colors.white : colorDeporte(d)),
+                  avatar: Text(emojiDeporte(d), style: const TextStyle(fontSize: 15)),
                   label: Text(d.etiqueta),
                   selected: _deporte == d,
                   selectedColor: colorDeporte(d),

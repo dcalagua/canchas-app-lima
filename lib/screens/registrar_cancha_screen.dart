@@ -660,11 +660,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
               children: [
                 for (final d in deportesActivos)
                   FilterChip(
-                    avatar: Icon(iconoDeporte(d),
-                        size: 18,
-                        color: _deportes.contains(d)
-                            ? Colors.white
-                            : colorDeporte(d)),
+                    avatar: Text(emojiDeporte(d), style: const TextStyle(fontSize: 15)),
                     label: Text(d.etiqueta),
                     selected: _deportes.contains(d),
                     selectedColor: colorDeporte(d),
@@ -773,7 +769,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
               for (final d in deportesActivos.where(_deportes.contains)) ...[
                 Row(
                   children: [
-                    Icon(iconoDeporte(d), size: 16, color: colorDeporte(d)),
+                    Text(emojiDeporte(d), style: const TextStyle(fontSize: 15)),
                     const SizedBox(width: 6),
                     Text(d.etiqueta,
                         style: const TextStyle(fontWeight: FontWeight.w600)),

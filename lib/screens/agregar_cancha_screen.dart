@@ -159,10 +159,7 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
             children: [
               for (final d in deportesActivos)
                 ChoiceChip(
-                  avatar: Icon(iconoDeporte(d),
-                      size: 18,
-                      color:
-                          _deportes.contains(d) ? Colors.white : colorDeporte(d)),
+                  avatar: Text(emojiDeporte(d), style: const TextStyle(fontSize: 15)),
                   label: Text(d.etiqueta),
                   selected: _deportes.contains(d),
                   selectedColor: colorDeporte(d),
