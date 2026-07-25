@@ -72,6 +72,38 @@ class AppState extends ChangeNotifier {
     return f.isEmpty ? null : f;
   }
 
+  // ── Contactos guardados (tipo WhatsApp): correos que el usuario guardó ─────
+  final Set<String> _contactos = {};
+  static const _kContactos = 'contactos_json';
+
+  /// Correos guardados como contacto (para chatear rápido).
+  List<String> get contactos => _contactos.toList();
+  bool esContacto(String? email) =>
+      _contactos.contains((email ?? '').trim().toLowerCase());
+
+  Future<void> _persistirContactos() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kContactos, jsonEncode(_contactos.toList()));
+    } catch (_) {}
+  }
+
+  /// Guarda un contacto (y cachea su perfil para mostrar nombre/foto).
+  Future<void> guardarContacto(String email, {Map<String, dynamic>? perfil}) async {
+    final e = email.trim().toLowerCase();
+    if (e.isEmpty || e == (usuario?.email ?? '').toLowerCase()) return;
+    _contactos.add(e);
+    if (perfil != null) _perfiles[e] = perfil;
+    notifyListeners();
+    await _persistirContactos();
+  }
+
+  Future<void> quitarContacto(String email) async {
+    _contactos.remove(email.trim().toLowerCase());
+    notifyListeners();
+    await _persistirContactos();
+  }
+
   /// Trae de Supabase los perfiles de estos correos y los cachea (best-effort).
   Future<void> cargarPerfiles(List<String> emails) async {
     final faltan = emails
@@ -3185,6 +3217,16 @@ class AppState extends ChangeNotifier {
         // Sesión restaurada: re-registra el token push de este dispositivo.
         PushService.registrarParaUsuario(usuario?.email);
         _sincronizarMiPerfil(); // trae mi nombre-foto elegido (otro dispositivo)
+      }
+
+      final contactosRaw = prefs.getString(_kContactos);
+      if (contactosRaw != null) {
+        try {
+          _contactos
+            ..clear()
+            ..addAll((jsonDecode(contactosRaw) as List)
+                .map((e) => e.toString().toLowerCase()));
+        } catch (_) {}
       }
 
       if (prefs.containsKey(_kSaldo)) {

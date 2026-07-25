@@ -106,6 +106,9 @@ serve(async (req) => {
       destinos = mm
         .map((x) => (x.email ?? "").toLowerCase())
         .filter((e) => e && e !== autor);
+    } else if (m.tipo === "directo") {
+      // Directo 1:1: cuenta_email es el destinatario (el otro participante).
+      destinos = [(m.cuenta_email ?? "").toLowerCase()];
     } else if (m.tipo === "cancha") {
       // Cancha: ref_id = email del dueño, cuenta_email = jugador.
       destinos = [

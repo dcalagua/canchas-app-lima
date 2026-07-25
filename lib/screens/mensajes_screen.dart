@@ -5,6 +5,7 @@ import '../data/mensajes_repo.dart';
 import '../models/mensaje.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'buscar_usuario_screen.dart';
 import 'chat_screen.dart';
 import 'crear_grupo_screen.dart';
 import 'login_google_sheet.dart';
@@ -206,6 +207,51 @@ class _MensajesScreenState extends State<MensajesScreen> {
       ));
     }
 
+    // Conversaciones DIRECTAS 1:1 (buscador / contactos, tipo WhatsApp).
+    final msgsDir = await MensajesRepo.mensajesDirectosDe(email);
+    await appState.cargarPerfiles([
+      for (final m in msgsDir) m.autorEmail,
+      for (final m in msgsDir) m.cuentaEmail,
+    ]);
+    final porHiloD = <String, List<Mensaje>>{};
+    for (final m in msgsDir) {
+      porHiloD.putIfAbsent(m.hilo, () => []).add(m);
+    }
+    porHiloD.forEach((hilo, list) {
+      // El "otro" = el participante que no soy yo.
+      var otro = '';
+      for (final m in list) {
+        if (m.autorEmail.toLowerCase() != email) {
+          otro = m.autorEmail;
+          break;
+        }
+        if (m.cuentaEmail.toLowerCase() != email) {
+          otro = m.cuentaEmail;
+          break;
+        }
+      }
+      if (otro.isEmpty) return;
+      final ultimo = list.last;
+      final leida = appState.chatUltimaLectura(hilo);
+      var noLeidos = 0;
+      for (final x in list) {
+        if (x.autorEmail.toLowerCase() == email) continue;
+        if (leida == null || x.creado.isAfter(leida)) noLeidos++;
+      }
+      convs.add(_Conv(
+        hilo: hilo,
+        academiaId: '',
+        cuentaEmail: otro,
+        titulo: appState.nombreMostrableDe(otro) ?? otro,
+        preview: ultimo.texto,
+        soyProfe: false,
+        cuando: ultimo.creado,
+        noLeidos: noLeidos,
+        tipo: 'directo',
+        refId: '',
+      ));
+    });
+
     convs.sort((a, b) => b.cuando.compareTo(a.cuando));
     if (!mounted) return;
     setState(() {
@@ -278,7 +324,19 @@ class _MensajesScreenState extends State<MensajesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Mensajes')),
+      appBar: AppBar(
+        title: const Text('Mensajes'),
+        actions: [
+          IconButton(
+            tooltip: 'Buscar jugador',
+            icon: const Icon(Icons.person_search),
+            onPressed: () => Navigator.of(context)
+                .push(MaterialPageRoute(
+                    builder: (_) => const BuscarUsuarioScreen()))
+                .then((_) => _cargar()),
+          ),
+        ],
+      ),
       floatingActionButton: appState.logueado
           ? FloatingActionButton.extended(
               onPressed: () => Navigator.of(context)
@@ -384,9 +442,9 @@ class _FilaConv extends StatelessWidget {
     final inicial =
         conv.titulo.trim().isNotEmpty ? conv.titulo.characters.first.toUpperCase() : '?';
     // Foto de la contraparte (chat 1:1 con una persona), si tiene perfil.
-    final foto = (conv.soyProfe &&
-            conv.tipo != 'grupo' &&
-            conv.cuentaEmail.isNotEmpty)
+    final esPersona =
+        conv.tipo == 'directo' || (conv.soyProfe && conv.tipo != 'grupo');
+    final foto = (esPersona && conv.cuentaEmail.isNotEmpty)
         ? appState.fotoDe(conv.cuentaEmail)
         : null;
     return ListTile(

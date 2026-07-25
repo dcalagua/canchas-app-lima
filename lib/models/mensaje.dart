@@ -71,6 +71,15 @@ class Mensaje {
   /// Clave de una conversación de GRUPO.
   static String hiloGrupo(String grupoId) => 'grupo_$grupoId';
 
+  /// Clave de un MENSAJE DIRECTO 1:1 entre dos usuarios (por correo). Simétrica:
+  /// los dos participantes calculan el mismo hilo sin importar quién lo abra.
+  static String hiloDirecto(String a, String b) {
+    final par = [a.trim().toLowerCase(), b.trim().toLowerCase()]..sort();
+    return 'directo_${par[0]}|${par[1]}';
+  }
+
+  bool get esDirecto => tipo == 'directo';
+
   /// Fila para INSERT en Supabase (columnas snake_case). Omite `creado` para que
   /// use el default now() del servidor (hora consistente entre dispositivos).
   Map<String, dynamic> toInsert() => {

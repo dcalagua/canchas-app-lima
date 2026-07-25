@@ -74,6 +74,9 @@ class _ChatScreenState extends State<ChatScreen> {
         return Mensaje.hiloCancha(_refId, widget.cuentaEmail);
       case 'grupo':
         return Mensaje.hiloGrupo(_refId);
+      case 'directo':
+        return Mensaje.hiloDirecto(
+            appState.usuario?.email ?? '', widget.cuentaEmail);
       default:
         return Mensaje.hiloDe(widget.academiaId, widget.cuentaEmail);
     }
@@ -133,11 +136,13 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  /// Correo de la CONTRAPARTE persona (a quien le muestro nombre+foto). Cuando
-  /// soy el profe/dueño, es `cuentaEmail` (el alumno/jugador). En chats de grupo
-  /// no aplica (el título es el nombre del grupo).
-  String get _contraparteEmail =>
-      (widget.soyProfe && widget.tipo != 'grupo') ? widget.cuentaEmail : '';
+  /// Correo de la CONTRAPARTE persona (a quien le muestro nombre+foto). En un
+  /// chat DIRECTO siempre es la otra persona; cuando soy el profe/dueño, es
+  /// `cuentaEmail` (el alumno/jugador). En grupos no aplica.
+  String get _contraparteEmail {
+    if (widget.tipo == 'directo') return widget.cuentaEmail;
+    return (widget.soyProfe && widget.tipo != 'grupo') ? widget.cuentaEmail : '';
+  }
 
   /// ¿Muestro la insignia de "verificado" en la cabecera? Solo cuando soy el
   /// dueño y el jugador (la contraparte) está verificado.

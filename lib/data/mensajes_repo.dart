@@ -78,6 +78,25 @@ class MensajesRepo {
     }
   }
 
+  /// Mensajes DIRECTOS 1:1 del usuario (los que envió o recibió), para el inbox.
+  static Future<List<Mensaje>> mensajesDirectosDe(String email) async {
+    if (!SupabaseService.disponible || email.isEmpty) return const <Mensaje>[];
+    try {
+      final e = email.trim().toLowerCase();
+      final rows = await SupabaseService.client
+          .from(_tabla)
+          .select()
+          .eq('tipo', 'directo')
+          .or('autor_email.eq.$e,cuenta_email.eq.$e')
+          .order('creado', ascending: true);
+      return (rows as List)
+          .map((r) => Mensaje.fromRow(r as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return const <Mensaje>[];
+    }
+  }
+
   /// Mensajes de un conjunto de GRUPOS (one-shot), para el inbox.
   static Future<List<Mensaje>> mensajesDeGrupos(List<String> grupoIds) async {
     if (!SupabaseService.disponible || grupoIds.isEmpty) {

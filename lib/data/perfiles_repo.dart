@@ -72,6 +72,27 @@ class PerfilesRepo {
     }
   }
 
+  /// Busca usuarios por NOMBRE o CORREO (para el buscador tipo WhatsApp).
+  /// Devuelve hasta [limite] perfiles. Fail-safe.
+  static Future<List<Map<String, dynamic>>> buscar(String query,
+      {int limite = 25}) async {
+    final q = query.trim();
+    if (!disponible || q.length < 2) return const [];
+    try {
+      final patron = '%${q.toLowerCase()}%';
+      final rows = await SupabaseService.client
+          .from(_tabla)
+          .select()
+          .or('nombre.ilike.$patron,email.ilike.$patron')
+          .limit(limite);
+      return (rows as List)
+          .map((r) => Map<String, dynamic>.from(r as Map))
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
   /// Perfiles de varios correos → mapa email→{nombre, foto_url}. Para listas
   /// (bandeja de chats). Best-effort.
   static Future<Map<String, Map<String, dynamic>>> obtenerVarios(
