@@ -3006,6 +3006,80 @@ class AppState extends ChangeNotifier {
   String estadoVerificacion = 'no';
   bool get jugadorVerificado => estadoVerificacion == 'verificado';
 
+  // Datos que devuelve la consulta oficial del documento (Factiliza/DNI en Perú).
+  // La fecha de nacimiento permite CATEGORIZAR por edad en campeonatos (Sub-30,
+  // etc.) sin volver a pedir el documento. Dato personal (Ley 29733): solo se
+  // guarda localmente en el dispositivo del dueño de la cuenta, no se publica.
+  DateTime? fechaNacimiento;
+  String dniVerificado = '';
+
+  /// Edad ACTUAL calculada a partir de [fechaNacimiento] (null si no hay dato).
+  int? get edadActual {
+    final f = fechaNacimiento;
+    if (f == null) return null;
+    final hoy = DateTime.now();
+    var edad = hoy.year - f.year;
+    if (hoy.month < f.month || (hoy.month == f.month && hoy.day < f.day)) {
+      edad--;
+    }
+    return edad >= 0 && edad < 130 ? edad : null;
+  }
+
+  /// Parsea una fecha de nacimiento en los formatos que puede devolver la API
+  /// (dd/mm/yyyy o yyyy-mm-dd). Devuelve null si no reconoce el formato.
+  static DateTime? _parseNacimiento(String? raw) {
+    final s = (raw ?? '').trim();
+    if (s.isEmpty) return null;
+    // dd/mm/yyyy
+    final m1 = RegExp(r'^(\d{1,2})/(\d{1,2})/(\d{4})$').firstMatch(s);
+    if (m1 != null) {
+      final d = int.tryParse(m1.group(1)!), mo = int.tryParse(m1.group(2)!);
+      final y = int.tryParse(m1.group(3)!);
+      if (d != null && mo != null && y != null) return DateTime(y, mo, d);
+    }
+    // yyyy-mm-dd (ISO, con o sin hora)
+    final m2 = RegExp(r'^(\d{4})-(\d{1,2})-(\d{1,2})').firstMatch(s);
+    if (m2 != null) {
+      final y = int.tryParse(m2.group(1)!), mo = int.tryParse(m2.group(2)!);
+      final d = int.tryParse(m2.group(3)!);
+      if (y != null && mo != null && d != null) return DateTime(y, mo, d);
+    }
+    return null;
+  }
+
+  /// Verifica la identidad del jugador consultando su documento contra el
+  /// registro oficial (Perú: DNI vía Factiliza). Es la validación ANTI-FRAUDE
+  /// real: si el número no existe en RENIEC, no se verifica (a diferencia de
+  /// subir una foto cualquiera). Al validar, guarda la fecha de nacimiento para
+  /// categorizar por edad. Devuelve `(ok, mensajeError)`.
+  Future<(bool, String?)> verificarConDni(String dni) async {
+    final u = usuario;
+    if (u == null) return (false, 'Inicia sesión primero.');
+    if (!PropiedadService.disponible) {
+      return (false, 'Servicio de verificación no disponible.');
+    }
+    final numero = dni.trim();
+    final data = await PropiedadService.consultarDni(numero);
+    if (data == null) {
+      return (false, 'No pudimos conectar. Revisa tu conexión.');
+    }
+    if (data['ok'] != true) {
+      return (false, 'Ese número no figura en el registro. Revísalo.');
+    }
+    // Válido: guarda nacimiento + marca verificado (marcha blanca del piloto).
+    fechaNacimiento = _parseNacimiento(data['fecha_nacimiento'] as String?);
+    dniVerificado = numero;
+    estadoVerificacion = 'verificado';
+    // Best-effort: registra en el backend para que otros vean la insignia.
+    try {
+      await VerificacionRepo.registrarVerificado(
+          email: u.email, nombre: u.nombre);
+    } catch (_) {}
+    notifyListeners();
+    _persistirDatos();
+    return (true, null);
+  }
+
   /// Sincroniza el estado de verificación desde el backend (best-effort).
   Future<void> sincronizarVerificacion() async {
     final email = usuario?.email;
@@ -3440,6 +3514,8 @@ class AppState extends ChangeNotifier {
   static const _kMonedaSaldo = 'moneda_saldo';
   static const _kBienvenidaDueno = 'bienvenida_dueno_vista';
   static const _kVerif = 'verificacion_estado';
+  static const _kNacimiento = 'fecha_nacimiento_iso';
+  static const _kDniVerif = 'dni_verificado';
   static const _kMovs = 'movimientos_json';
   static const _kMisReservas = 'mis_reservas_json';
   static const _kCanchas = 'canchas_extra_json';
@@ -3501,6 +3577,10 @@ class AppState extends ChangeNotifier {
       if (prefs.containsKey(_kVerif)) {
         estadoVerificacion = prefs.getString(_kVerif) ?? estadoVerificacion;
       }
+      if (prefs.containsKey(_kNacimiento)) {
+        fechaNacimiento = DateTime.tryParse(prefs.getString(_kNacimiento) ?? '');
+      }
+      dniVerificado = prefs.getString(_kDniVerif) ?? dniVerificado;
 
       bienvenidaDuenoVista =
           prefs.getBool(_kBienvenidaDueno) ?? bienvenidaDuenoVista;
@@ -3652,6 +3732,13 @@ class AppState extends ChangeNotifier {
       await prefs.setString(_kSaldoOtros, jsonEncode(_saldoOtrosPaises));
       await prefs.setString(_kMonedaSaldo, monedaSaldo);
       await prefs.setString(_kVerif, estadoVerificacion);
+      if (fechaNacimiento != null) {
+        await prefs.setString(
+            _kNacimiento, fechaNacimiento!.toIso8601String());
+      }
+      if (dniVerificado.isNotEmpty) {
+        await prefs.setString(_kDniVerif, dniVerificado);
+      }
       await prefs.setBool(_kBienvenidaDueno, bienvenidaDuenoVista);
       await prefs.setString(
           _kMovs, jsonEncode(movimientos.map((m) => m.toJson()).toList()));

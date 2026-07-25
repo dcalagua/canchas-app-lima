@@ -50,6 +50,28 @@ class VerificacionRepo {
     }
   }
 
+  /// Registra al jugador como VERIFICADO sin subir imágenes. Se usa cuando la
+  /// identidad se validó contra el registro oficial (DNI/RENIEC vía Factiliza):
+  /// el número existe y trae la persona, así que no hace falta guardar foto del
+  /// documento (menos dato personal = mejor para la Ley 29733). Devuelve el
+  /// estado ('verificado') o null si falló.
+  static Future<String?> registrarVerificado({
+    required String email,
+    required String nombre,
+  }) async {
+    if (!disponible || email.trim().isEmpty) return null;
+    try {
+      await SupabaseService.client.from(_tabla).upsert({
+        'email': email.trim().toLowerCase(),
+        'nombre': nombre,
+        'estado': 'verificado',
+      });
+      return 'verificado';
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// De un conjunto de correos, cuáles están VERIFICADOS. Para que el dueño vea
   /// la insignia junto a cada jugador (reservas/chat).
   static Future<Set<String>> verificados(List<String> emails) async {

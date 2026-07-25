@@ -1,15 +1,26 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../config/pais.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 
-/// Verificación de identidad del jugador (piloto "lite"): sube documento +
-/// selfie → queda "verificado" (marcha blanca: auto-aprobado). El documento es
-/// dato personal (Ley 29733): se guarda en un bucket PRIVADO y no se muestra.
+/// Verificación de identidad del jugador.
+///
+/// Dos caminos según el país:
+///  • **Con registro oficial** (`paisActual.consultaDoc`, hoy Perú/DNI): el
+///    jugador escribe su número y lo validamos contra RENIEC (Factiliza). Es la
+///    validación ANTI-FRAUDE real — una foto cualquiera no pasa, el número tiene
+///    que existir y traer a la persona. De paso obtenemos la fecha de nacimiento
+///    para CATEGORIZAR por edad en campeonatos (Sub-30, etc.) sin volver a pedir
+///    nada. No guardamos foto del documento (menos dato personal, Ley 29733).
+///  • **Sin registro oficial** (Bolivia/Ecuador por ahora): flujo "lite" con
+///    foto del documento + selfie (bucket privado, marcha blanca). La validación
+///    automática de esos documentos está en el backlog (Ecuador: API propia
+///    pendiente de enchufar; Bolivia: OCR on-device).
 class VerificarIdentidadScreen extends StatefulWidget {
   const VerificarIdentidadScreen({super.key});
 
@@ -19,9 +30,21 @@ class VerificarIdentidadScreen extends StatefulWidget {
 }
 
 class _VerificarIdentidadScreenState extends State<VerificarIdentidadScreen> {
+  // Camino con foto (países sin consulta oficial).
   Uint8List? _doc;
   Uint8List? _selfie;
   bool _enviando = false;
+
+  // Camino con número de documento (Perú/DNI).
+  final _dniCtrl = TextEditingController();
+  bool _verificando = false;
+  String? _errorDni;
+
+  @override
+  void dispose() {
+    _dniCtrl.dispose();
+    super.dispose();
+  }
 
   Future<void> _elegir({required bool selfie}) async {
     final XFile? f = await ImagePicker().pickImage(
@@ -49,28 +72,62 @@ class _VerificarIdentidadScreenState extends State<VerificarIdentidadScreen> {
     if (!mounted) return;
     setState(() => _enviando = false);
     if (ok) {
-      showDialog<void>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('¡Identidad verificada! ✓'),
-          content: const Text(
-              'Tu perfil ahora muestra la insignia de jugador verificado. '
-              'Los dueños de cancha confían más en jugadores verificados.'),
-          actions: [
-            FilledButton(
-              onPressed: () {
-                Navigator.of(ctx).pop();
-                Navigator.of(context).pop();
-              },
-              child: const Text('Listo'),
-            ),
-          ],
-        ),
-      );
+      _dialogoOk();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('No se pudo enviar. Revisa tu conexión.')));
     }
+  }
+
+  Future<void> _verificarConDni() async {
+    final dni = _dniCtrl.text.trim();
+    final largo = paisActual.docLongitud;
+    if (largo != null && dni.length != largo) {
+      setState(() => _errorDni =
+          'El ${paisActual.docId} tiene $largo dígitos.');
+      return;
+    }
+    if (dni.isEmpty) {
+      setState(() => _errorDni = 'Escribe tu número de ${paisActual.docId}.');
+      return;
+    }
+    setState(() {
+      _errorDni = null;
+      _verificando = true;
+    });
+    final (ok, err) = await appState.verificarConDni(dni);
+    if (!mounted) return;
+    setState(() => _verificando = false);
+    if (ok) {
+      _dialogoOk();
+    } else {
+      setState(() => _errorDni = err);
+    }
+  }
+
+  void _dialogoOk() {
+    final edad = appState.edadActual;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('¡Identidad verificada! ✓'),
+        content: Text(
+          'Tu perfil ahora muestra la insignia de jugador verificado. '
+          'Los dueños de cancha confían más en jugadores verificados.'
+          '${edad != null ? '\n\nEdad registrada: $edad años '
+              '(se usa para categorizarte en campeonatos).' : ''}',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              Navigator.of(context).pop();
+            },
+            child: const Text('Listo'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -82,80 +139,216 @@ class _VerificarIdentidadScreenState extends State<VerificarIdentidadScreen> {
         padding: const EdgeInsets.all(18),
         children: [
           if (verificado)
-            _CajaVerificado()
-          else ...[
-            const Text('Jugador verificado',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
-            const SizedBox(height: 6),
-            Text(
-              'Verifica tu identidad para dar confianza a los dueños de cancha '
-              'y reservar sin fricción. Es rápido: una foto de tu documento y '
-              'una selfie.',
-              style: TextStyle(color: textoTenue, height: 1.35),
-            ),
-            const SizedBox(height: 18),
-            _Tile(
-              titulo: 'Foto del documento',
-              // Nombre del documento según el país (DNI/CI/Cédula) + pasaporte
-              // como opción para extranjeros. La verificación es igual en todos
-              // los países (no valida contra ningún registro nacional).
-              subtitulo:
-                  '$docIdActual, carné o pasaporte (dato privado, no se publica)',
-              icono: Icons.badge_outlined,
-              preview: _doc,
-              onTap: () => _elegir(selfie: false),
-            ),
-            const SizedBox(height: 12),
-            _Tile(
-              titulo: 'Selfie',
-              subtitulo: 'Una foto tuya de frente',
-              icono: Icons.face_outlined,
-              preview: _selfie,
-              onTap: () => _elegir(selfie: true),
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                style: FilledButton.styleFrom(
-                    backgroundColor: lima,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 15)),
-                onPressed:
-                    (_doc == null || _selfie == null || _enviando) ? null : _enviar,
-                icon: _enviando
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white))
-                    : const Icon(Icons.verified_user_outlined),
-                label: const Text('Enviar y verificar',
-                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Icon(Icons.lock_outline, size: 15, color: textoTenue),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    'Tu documento se guarda de forma privada y no se muestra a '
-                    'nadie. Solo se usa para validar tu identidad.',
-                    style: TextStyle(color: textoTenue, fontSize: 12),
-                  ),
-                ),
-              ],
-            ),
-          ],
+            _CajaVerificado(edad: appState.edadActual)
+          else if (paisActual.consultaDoc)
+            _porNumero()
+          else
+            _porFoto(),
         ],
       ),
+    );
+  }
+
+  // ── Camino OFICIAL: número de documento validado contra el registro ────────
+  Widget _porNumero() {
+    final doc = paisActual.docId; // "DNI"
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Jugador verificado',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+        const SizedBox(height: 6),
+        Text(
+          'Validamos tu $doc contra el registro oficial (RENIEC). Es rápido y '
+          'da confianza a los dueños de cancha para reservar sin fricción.',
+          style: TextStyle(color: textoTenue, height: 1.35),
+        ),
+        const SizedBox(height: 18),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: trazo),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: lima.withOpacity(0.16),
+                    child: const Icon(Icons.badge_outlined, color: bosque),
+                  ),
+                  const SizedBox(width: 12),
+                  Text('Número de $doc',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700, fontSize: 15)),
+                ],
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: _dniCtrl,
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  if (paisActual.docLongitud != null)
+                    LengthLimitingTextInputFormatter(paisActual.docLongitud),
+                ],
+                onChanged: (_) {
+                  if (_errorDni != null) setState(() => _errorDni = null);
+                },
+                decoration: InputDecoration(
+                  hintText: paisActual.docLongitud != null
+                      ? '${paisActual.docLongitud} dígitos'
+                      : 'Número de $doc',
+                  errorText: _errorDni,
+                  border: const OutlineInputBorder(),
+                  prefixIcon: const Icon(Icons.pin_outlined),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            style: FilledButton.styleFrom(
+                backgroundColor: lima,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 15)),
+            onPressed: _verificando ? null : _verificarConDni,
+            icon: _verificando
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.verified_user_outlined),
+            label: Text(_verificando ? 'Validando…' : 'Verificar $doc',
+                style: const TextStyle(
+                    fontWeight: FontWeight.w800, fontSize: 15)),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _NotaPrivacidad(
+          'Solo usamos tu $doc para confirmar tu identidad y tu edad. No '
+          'guardamos foto de tu documento ni lo mostramos a nadie.',
+        ),
+      ],
+    );
+  }
+
+  // ── Camino LITE: foto de documento + selfie (países sin consulta) ──────────
+  Widget _porFoto() {
+    // Ecuador ya tiene API propia (pendiente de enchufar); el resto (Bolivia)
+    // irá con OCR on-device. Mientras, foto + selfie con revisión.
+    final esEcuador = paisActual.iso == 'EC';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Jugador verificado',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+        const SizedBox(height: 6),
+        Text(
+          'Verifica tu identidad para dar confianza a los dueños de cancha. '
+          'Es rápido: una foto de tu ${paisActual.docId} y una selfie.',
+          style: TextStyle(color: textoTenue, height: 1.35),
+        ),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: amarillo.withOpacity(0.14),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.info_outline, size: 18, color: bosque),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  esEcuador
+                      ? 'Pronto validaremos tu cédula automáticamente contra '
+                          'el registro. Por ahora, sube tu documento y selfie.'
+                      : 'Sube una foto legible de tu documento. Pronto '
+                          'sumaremos validación automática.',
+                  style: const TextStyle(fontSize: 12.5, color: bosque),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        _Tile(
+          titulo: 'Foto del documento',
+          subtitulo:
+              '${paisActual.docId}, carné o pasaporte (dato privado, no se publica)',
+          icono: Icons.badge_outlined,
+          preview: _doc,
+          onTap: () => _elegir(selfie: false),
+        ),
+        const SizedBox(height: 12),
+        _Tile(
+          titulo: 'Selfie',
+          subtitulo: 'Una foto tuya de frente',
+          icono: Icons.face_outlined,
+          preview: _selfie,
+          onTap: () => _elegir(selfie: true),
+        ),
+        const SizedBox(height: 20),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            style: FilledButton.styleFrom(
+                backgroundColor: lima,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 15)),
+            onPressed:
+                (_doc == null || _selfie == null || _enviando) ? null : _enviar,
+            icon: _enviando
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.verified_user_outlined),
+            label: const Text('Enviar y verificar',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _NotaPrivacidad(
+          'Tu documento se guarda de forma privada y no se muestra a nadie. '
+          'Solo se usa para validar tu identidad.',
+        ),
+      ],
+    );
+  }
+}
+
+class _NotaPrivacidad extends StatelessWidget {
+  const _NotaPrivacidad(this.texto);
+  final String texto;
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(Icons.lock_outline, size: 15, color: textoTenue),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(texto,
+              style: TextStyle(color: textoTenue, fontSize: 12)),
+        ),
+      ],
     );
   }
 }
 
 class _CajaVerificado extends StatelessWidget {
+  const _CajaVerificado({this.edad});
+  final int? edad;
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -166,13 +359,19 @@ class _CajaVerificado extends StatelessWidget {
       ),
       child: Column(
         children: [
-          const CircleAvatar(radius: 30, backgroundColor: lima, child: Icon(Icons.verified, size: 30, color: Colors.white)),
+          const CircleAvatar(
+              radius: 30,
+              backgroundColor: lima,
+              child: Icon(Icons.verified, size: 30, color: Colors.white)),
           const SizedBox(height: 10),
           const Text('¡Ya estás verificado!',
               style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
           const SizedBox(height: 6),
           Text(
-            'Tu perfil muestra la insignia de jugador verificado.',
+            edad != null
+                ? 'Tu perfil muestra la insignia de jugador verificado. '
+                    'Edad registrada: $edad años.'
+                : 'Tu perfil muestra la insignia de jugador verificado.',
             textAlign: TextAlign.center,
             style: TextStyle(color: textoTenue),
           ),
@@ -213,7 +412,8 @@ class _Tile extends StatelessWidget {
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: listo ? lima : trazo, width: listo ? 1.5 : 1),
+            border: Border.all(
+                color: listo ? lima : trazo, width: listo ? 1.5 : 1),
           ),
           child: Row(
             children: [

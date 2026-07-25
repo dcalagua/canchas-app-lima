@@ -300,11 +300,31 @@ class CampeonatoDetalleScreen extends StatelessWidget {
   /// Gate de DNI (cuando el campeonato lo exige): valida identidad, calcula la
   /// edad real y la compara con el rango de la categoría (Sub-N). Devuelve true
   /// si puede inscribirse. Evita que alguien se haga pasar por otra edad.
+  void _avisoEdad(BuildContext context, String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        backgroundColor: bosque, content: Text(msg)));
+  }
+
   Future<bool> _gateDni(BuildContext context, Campeonato c) async {
-    // Si el jugador YA está verificado en el app y la categoría no tiene rango
-    // de edad, la identidad ya está confirmada: no hace falta re-pedir el DNI.
-    final sinRangoEdad = c.edadMin == null && c.edadMax == null;
-    if (appState.jugadorVerificado && sinRangoEdad) return true;
+    // Si el jugador YA está verificado en el app no re-pedimos el documento: la
+    // identidad ya está confirmada. Si además tenemos su edad (la trajimos del
+    // registro oficial al verificar), la categorizamos aquí mismo.
+    if (appState.jugadorVerificado) {
+      final edad = appState.edadActual;
+      final sinRangoEdad = c.edadMin == null && c.edadMax == null;
+      if (sinRangoEdad || edad == null) return true; // identidad basta
+      if (c.edadMin != null && edad < c.edadMin!) {
+        _avisoEdad(context,
+            'Tienes $edad años; la categoría es desde ${c.edadMin}.');
+        return false;
+      }
+      if (c.edadMax != null && edad > c.edadMax!) {
+        _avisoEdad(context,
+            'Tienes $edad años; la categoría es hasta ${c.edadMax}.');
+        return false;
+      }
+      return true; // verificado y dentro del rango
+    }
     final dni = TextEditingController();
     var cargando = false;
     String? error;
