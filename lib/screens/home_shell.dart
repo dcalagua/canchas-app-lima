@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'agenda_screen.dart';
 import 'clientes_screen.dart';
 import 'cuenta_screen.dart';
+import 'mensajes_screen.dart';
 import 'mis_canchas_screen.dart';
 import 'reportes_screen.dart';
 import 'reservas_dueno_screen.dart';
@@ -28,8 +29,9 @@ class _HomeShellState extends State<HomeShell> {
     AgendaScreen(),         // agenda de hoy (real)
     ReservasDuenoScreen(),  // reservas reales de tus canchas + caja
     ClientesScreen(),       // base de clientes (CRM ligero, derivado de reservas)
+    MensajesScreen(),       // chat con clientes (inbox del dueño/profe)
     ReportesScreen(),       // reportes / KPIs (reales)
-    CuentaScreen(),         // saldo prepago + recargar (Culqi)
+    CuentaScreen(),         // BILLETERA: saldo único + recargar + por recibir
   ];
 
   // Íconos/etiquetas de las secciones (compartidos por barra inferior y rail).
@@ -38,6 +40,7 @@ class _HomeShellState extends State<HomeShell> {
     Icons.calendar_month,
     Icons.event_note,
     Icons.groups,
+    Icons.chat_bubble,
     Icons.bar_chart,
     Icons.account_balance_wallet,
   ];
@@ -46,8 +49,9 @@ class _HomeShellState extends State<HomeShell> {
     'Agenda',
     'Reservas',
     'Clientes',
+    'Mensajes',
     'Reportes',
-    'Cuenta',
+    'Billetera',
   ];
 
   @override

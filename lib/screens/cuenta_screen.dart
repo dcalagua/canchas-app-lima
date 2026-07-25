@@ -5,6 +5,7 @@ import '../services/pagos_service.dart';
 import '../services/payments_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'metodos_pago_screen.dart';
 import 'pago_sheet.dart';
 import 'recargar_saldo_screen.dart';
 import '../utils/moneda.dart';
@@ -41,7 +42,7 @@ class CuentaScreen extends StatelessWidget {
                           size: 20),
                     ),
                   ),
-                  Text('Mi cuenta', style: t.headlineSmall),
+                  Text('Mi billetera', style: t.headlineSmall),
                 ],
               ),
               const SizedBox(height: 16),
@@ -110,6 +111,26 @@ class CuentaScreen extends StatelessWidget {
                   ),
                 );
               }),
+              const SizedBox(height: 16),
+              // Tarjetas guardadas (Culqi One-Click): parte de la billetera única.
+              Material(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(16),
+                child: ListTile(
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(color: trazo)),
+                  leading: const CircleAvatar(
+                      backgroundColor: limaSuave,
+                      child: Icon(Icons.credit_card, color: bosque)),
+                  title: const Text('Tarjetas guardadas',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: const Text('Para pagar y recargar rápido'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const MetodosPagoScreen())),
+                ),
+              ),
               const SizedBox(height: 22),
               Text('Movimientos',
                   style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),

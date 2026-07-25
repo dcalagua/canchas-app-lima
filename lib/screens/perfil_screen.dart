@@ -9,7 +9,7 @@ import 'marketplace_screen.dart';
 import 'ajustes_screen.dart';
 import 'anfitrion_screen.dart';
 import 'login_google_sheet.dart';
-import 'billetera_screen.dart';
+import 'cuenta_screen.dart';
 import 'circuito_screen.dart';
 import 'editar_perfil_screen.dart';
 
@@ -160,9 +160,11 @@ class PerfilScreen extends StatelessWidget {
                         color: lima,
                         title: 'Mi billetera',
                         subtitle:
-                            'Tu saldo, recargas y tarjetas guardadas',
+                            'Saldo único, recargas, tarjetas y por recibir',
+                        // Billetera ÚNICA: la misma pantalla que ve el dueño en
+                        // su panel (no duplicamos el concepto de "cuenta").
                         onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                            builder: (_) => const BilleteraScreen())),
+                            builder: (_) => const CuentaScreen())),
                       ),
 
                     // --- Ajustes: apariencia + tu cuenta (identidad, invitar,
