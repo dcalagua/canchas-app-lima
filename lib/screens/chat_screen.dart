@@ -46,6 +46,7 @@ class ChatScreen extends StatefulWidget {
     required this.soyProfe,
     this.tipo = 'academia',
     this.refId = '',
+    this.embebido = false,
   });
 
   final String academiaId;
@@ -54,6 +55,9 @@ class ChatScreen extends StatefulWidget {
   final bool soyProfe; // true = soy el anfitrión (profe/dueño)
   final String tipo; // 'academia' | 'cancha' | 'grupo'
   final String refId; // canchaId/grupoId cuando no es academia
+  // Cuando se muestra dentro de un panel (master-detail en tablet), no lleva
+  // flecha de "volver" (no hay ruta que cerrar: el menú lateral sigue visible).
+  final bool embebido;
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -336,6 +340,7 @@ class _ChatScreenState extends State<ChatScreen> {
       appBar: AppBar(
         backgroundColor: wa.appBar,
         foregroundColor: Colors.white,
+        automaticallyImplyLeading: !widget.embebido,
         titleSpacing: 0,
         title: Row(
           children: [
