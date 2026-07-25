@@ -695,17 +695,22 @@ class _RankingGlobalBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: bosque,
+      color: Colors.transparent,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () => Navigator.of(context).push(MaterialPageRoute(
             builder: (_) => const RankingGlobalScreen())),
-        child: Padding(
+        child: Container(
+          decoration: BoxDecoration(
+            // Verde de marca (antes bosque #222 se veía como bloque negro).
+            gradient: const LinearGradient(colors: [lima, teal]),
+            borderRadius: BorderRadius.circular(16),
+          ),
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              const Icon(Icons.public, color: lima, size: 26),
+              const Icon(Icons.public, color: Colors.white, size: 26),
               const SizedBox(width: 12),
               const Expanded(
                 child: Column(
