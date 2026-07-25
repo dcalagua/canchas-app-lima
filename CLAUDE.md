@@ -171,7 +171,8 @@ cobra su comisión (5% mín S/2) y deja el **neto "por recibir"** del vendedor
   `producto_detalle_screen.dart` (Comprar con `PagoTarjeta.cobrar` →
   `PagosService.venta` → coordinar por chat). Acceso: Perfil → "Marketplace".
 - **Vendedor:** `mis_productos_screen.dart` + `editar_producto_screen.dart`.
-  Acceso: Perfil → "Vender en el Marketplace" y Modo anfitrión → "Mi tienda".
+  Acceso: **botón flotante "Vender" DENTRO del Marketplace** (no en el Perfil) y
+  Modo anfitrión → "Mi tienda".
   **Candado:** publicar exige `appState.puedeVender` (verificado **o** dueño);
   si no, manda a "Verificar identidad". Badge "Vendedor verificado ✓" (icono
   `Icons.verified` lima) en el feed y la ficha vía `appState.estaVerificado`.
