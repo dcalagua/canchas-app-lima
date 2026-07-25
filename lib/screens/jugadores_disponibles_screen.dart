@@ -62,6 +62,12 @@ class _JugadoresDisponiblesScreenState
       _jugadores = l;
       _cargando = false;
     });
+    // Trae las fotos (perfiles) de los jugadores listados.
+    final emails = l
+        .map((j) => (j['email'] ?? '').toString())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    if (emails.isNotEmpty) appState.cargarPerfiles(emails);
   }
 
   String _deporteEtiqueta(String name) {
@@ -310,7 +316,12 @@ class _JugadorCard extends StatelessWidget {
       if (zona.isNotEmpty) zona,
       if (cat.isNotEmpty) cat,
     ].join(' · ');
-    final esPro = appState.esProEmail((j['email'] ?? '').toString());
+    final email = (j['email'] ?? '').toString();
+    final esPro = appState.esProEmail(email);
+    // Foto real: la del jugador viene en el propio dato o del perfil cacheado.
+    final foto = (j['foto_url'] ?? '').toString().trim().isNotEmpty
+        ? (j['foto_url'] ?? '').toString()
+        : (appState.fotoDe(email) ?? '');
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
@@ -324,9 +335,12 @@ class _JugadorCard extends StatelessWidget {
           CircleAvatar(
             radius: 20,
             backgroundColor: teal,
-            child: Text(nombre.isNotEmpty ? nombre[0].toUpperCase() : '?',
-                style: const TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.w800)),
+            backgroundImage: foto.isNotEmpty ? NetworkImage(foto) : null,
+            child: foto.isEmpty
+                ? Text(nombre.isNotEmpty ? nombre[0].toUpperCase() : '?',
+                    style: const TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w800))
+                : null,
           ),
           const SizedBox(width: 12),
           Expanded(

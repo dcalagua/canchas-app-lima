@@ -93,13 +93,42 @@ def ranking_snapshot(req: RankingSnapshotReq) -> dict:
 @router.get("/jugadores", dependencies=_APP)
 def jugadores(deporte: str | None = None, zona: str | None = None) -> dict:
     """Directorio de jugadores disponibles para retar. Filtra por deporte/zona.
-    Más recientes primero."""
-    out = []
+    Más recientes primero.
+
+    Incluye DOS fuentes, unidas por correo:
+      1) quienes se declararon disponibles (`/circuito/unirse`), y
+      2) quienes YA JUGARON un reto (aparecen en el ranking) — así cualquiera
+         que compite es retable de nuevo aunque no haya tocado "Unirme". El
+         perfil explícito tiene prioridad (conserva su zona/categoría)."""
+    por_email: dict[str, dict] = {}
+    # 1) Directorio explícito.
     for email, d in stores.jugadores_circuito.items():
+        por_email[email] = {"email": email, **d}
+    # 2) Participantes de retos (retador/retado + parejas en dobles).
+    for r in stores.retos:
+        for em, nm in (
+            (r.retador_email, r.retador_nombre),
+            (r.retado_email, r.retado_nombre),
+            (r.retador2_email, r.retador2_nombre),
+            (r.retado2_email, r.retado2_nombre),
+        ):
+            e = (em or "").strip().lower()
+            if not e or e in por_email:
+                continue
+            por_email[e] = {
+                "email": e,
+                "nombre": (nm or "").strip(),
+                "deporte": r.deporte,
+                "zona": "",
+                "categoria": "",
+                "actualizado": r.creado_en.isoformat(),
+            }
+    out = []
+    for d in por_email.values():
         if deporte and d.get("deporte", "") != deporte:
             continue
         if zona and d.get("zona", "") != zona:
             continue
-        out.append({"email": email, **d})
+        out.append(d)
     out.sort(key=lambda j: j.get("actualizado", ""), reverse=True)
     return {"jugadores": out}

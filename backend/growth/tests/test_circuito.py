@@ -59,3 +59,26 @@ def test_perfil_y_salir():
     r = client.post("/circuito/salir", json={"email": "ana@x.com"}).json()
     assert r["ok"] is True and r["estaba"] is True
     assert client.get("/circuito/perfil/ana@x.com").json()["jugador"] is None
+
+
+def test_directorio_incluye_a_quien_jugo_un_reto():
+    """Quien participó en un reto aparece como disponible aunque no se haya unido
+    (resuelve: 'están en el ranking pero no salen para retar')."""
+    client.post("/retos/crear", json={
+        "retador_email": "ana@x.com", "retador_nombre": "Ana",
+        "retado_email": "luis@x.com", "retado_nombre": "Luis",
+        "deporte": "tenis"})
+    js = client.get("/circuito/jugadores?deporte=tenis").json()["jugadores"]
+    correos = {j["email"] for j in js}
+    assert "ana@x.com" in correos and "luis@x.com" in correos
+
+
+def test_directorio_reto_no_pisa_perfil_explicito():
+    """Si el jugador ya se unió con su zona, un reto no le borra esos datos."""
+    _unirse(email="ana@x.com", deporte="tenis", zona="San Borja")
+    client.post("/retos/crear", json={
+        "retador_email": "ana@x.com", "retado_email": "luis@x.com",
+        "deporte": "tenis"})
+    js = client.get("/circuito/jugadores?deporte=tenis").json()["jugadores"]
+    ana = next(j for j in js if j["email"] == "ana@x.com")
+    assert ana["zona"] == "San Borja"

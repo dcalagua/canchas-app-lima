@@ -40,7 +40,10 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
     Future.wait([
       appState.cargarAcademiasRemotas(), // todas las academias
       appState.cargarRetosResultados(), // retos jugados → ranking
-    ]).then((_) => appState.publicarRankingSnapshot());
+    ]).then((_) {
+      appState.publicarRankingSnapshot();
+      appState.cargarFotosDeParticipantes(); // fotos reales en las filas
+    });
   }
 
   void _abrirDisponibles() => Navigator.of(context).push(MaterialPageRoute(
@@ -564,14 +567,26 @@ class _FilaGlobal extends StatelessWidget {
                         color: textoTenue)),
               ),
               const SizedBox(width: 6),
-              CircleAvatar(
-                radius: 15,
-                backgroundColor: teal,
-                child: Text(
-                    f.nombre.isNotEmpty ? f.nombre[0].toUpperCase() : '?',
-                    style: const TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13)),
-              ),
+              Builder(builder: (_) {
+                // Foto real del jugador (singles). En parejas no hay una sola
+                // foto → inicial. La foto se resuelve del perfil cacheado.
+                final foto = esPareja ? null : appState.fotoDe(f.emailIdentidad);
+                return CircleAvatar(
+                  radius: 15,
+                  backgroundColor: teal,
+                  backgroundImage: (foto != null && foto.isNotEmpty)
+                      ? NetworkImage(foto)
+                      : null,
+                  child: (foto == null || foto.isEmpty)
+                      ? Text(
+                          f.nombre.isNotEmpty ? f.nombre[0].toUpperCase() : '?',
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 13))
+                      : null,
+                );
+              }),
             ],
           ),
         ),

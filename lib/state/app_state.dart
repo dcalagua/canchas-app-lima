@@ -117,6 +117,35 @@ class AppState extends ChangeNotifier {
     await _persistirContactos();
   }
 
+  /// Carga (best-effort) los perfiles —para tener NOMBRE y FOTO— de todos los
+  /// jugadores que aparecen en el ranking: participantes de retos (incluidos los
+  /// compañeros de dobles) y de partidos de academia. Así las filas del ranking
+  /// muestran la foto real en vez de la inicial.
+  Future<void> cargarFotosDeParticipantes() async {
+    final emails = <String>{};
+    for (final r in _retosResultados) {
+      for (final k in const [
+        'retador_email',
+        'retado_email',
+        'retador2_email',
+        'retado2_email'
+      ]) {
+        final e = (r[k] ?? '').toString().trim().toLowerCase();
+        if (e.isNotEmpty) emails.add(e);
+      }
+    }
+    for (final a in academias) {
+      for (final p in a.partidos) {
+        for (final id in [p.jugadorAId, p.jugadorBId]) {
+          if (id.isEmpty) continue;
+          final e = p.emailDe(id).trim().toLowerCase();
+          if (e.isNotEmpty) emails.add(e);
+        }
+      }
+    }
+    if (emails.isNotEmpty) await cargarPerfiles(emails.toList());
+  }
+
   /// Trae de Supabase los perfiles de estos correos y los cachea (best-effort).
   Future<void> cargarPerfiles(List<String> emails) async {
     final faltan = emails
