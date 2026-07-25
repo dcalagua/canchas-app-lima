@@ -447,17 +447,26 @@ class _FilaConv extends StatelessWidget {
     final foto = (esPersona && conv.cuentaEmail.isNotEmpty)
         ? appState.fotoDe(conv.cuentaEmail)
         : null;
+    // Ícono estilo Airbnb: círculo de color sólido + contenido blanco. Color e
+    // ícono según el TIPO de conversación (grupo, cancha, persona/academia).
+    final (Color colAvatar, IconData? icoTipo) = switch (conv.tipo) {
+      'grupo' => (morado, Icons.groups),
+      'cancha' => (naranja, Icons.sports_tennis),
+      _ => (teal, null), // directo / academia → inicial del nombre
+    };
     return ListTile(
       onTap: onTap,
       leading: CircleAvatar(
-        backgroundColor: cs.primary.withOpacity(0.15),
+        backgroundColor: colAvatar,
         backgroundImage:
             (foto != null && foto.isNotEmpty) ? NetworkImage(foto) : null,
         child: (foto != null && foto.isNotEmpty)
             ? null
-            : Text(inicial,
-                style:
-                    TextStyle(color: cs.primary, fontWeight: FontWeight.w800)),
+            : (icoTipo != null
+                ? Icon(icoTipo, color: Colors.white, size: 20)
+                : Text(inicial,
+                    style: const TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w800))),
       ),
       title: Text(conv.titulo,
           maxLines: 1,
