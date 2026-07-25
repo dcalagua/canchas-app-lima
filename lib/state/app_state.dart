@@ -1220,6 +1220,12 @@ class AppState extends ChangeNotifier {
     LatLng? sedeUbicacion,
     String fechas = '',
     double costoInscripcion = 0,
+    DateTime? inscripcionHasta,
+    DateTime? inicio,
+    bool relampago = false,
+    bool exigeDni = false,
+    int? edadMin,
+    int? edadMax,
   }) {
     final c = Campeonato(
       id: 'camp_${DateTime.now().microsecondsSinceEpoch}',
@@ -1233,6 +1239,12 @@ class AppState extends ChangeNotifier {
       sedeUbicacion: sedeUbicacion,
       fechas: fechas,
       costoInscripcion: costoInscripcion,
+      inscripcionHasta: inscripcionHasta,
+      inicio: inicio,
+      relampago: relampago,
+      exigeDni: exigeDni,
+      edadMin: edadMin,
+      edadMax: edadMax,
       // Congela la moneda por el país de la SEDE (no el del dispositivo): un
       // torneo en Lima queda en S/ aunque el profe lo cree desde Bolivia.
       moneda: sedeUbicacion != null

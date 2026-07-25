@@ -160,6 +160,21 @@ class Campeonato {
   final bool cerrado;
   /// Moneda del costo de inscripción, congelada al crear ('' = 'S/', Perú).
   final String moneda;
+  // ── Cronograma (Fase 1) ──────────────────────────────────────────────────
+  /// Cierre de inscripciones: al llegar, se sortea el fixture. null = sin plazo.
+  final DateTime? inscripcionHasta;
+  /// Inicio del campeonato (primera fecha de juego). null = sin definir.
+  final DateTime? inicio;
+  /// Relámpago = todo en un día; false = por varias fechas.
+  final bool relampago;
+  // ── Verificación por DNI (opcional del organizador) ──────────────────────
+  /// Exige DNI para inscribirse: valida identidad y calcula la EDAD real (evita
+  /// que alguien se haga pasar por otra edad en categorías Sub-N).
+  final bool exigeDni;
+  /// Rango de edad de la categoría (para validar con la edad del DNI). null =
+  /// sin tope. Ej.: Sub-30 → edadMax=30; Máster 35+ → edadMin=35.
+  final int? edadMin;
+  final int? edadMax;
 
   const Campeonato({
     required this.id,
@@ -178,7 +193,17 @@ class Campeonato {
     this.partidos = const [],
     this.cerrado = false,
     this.moneda = '',
+    this.inscripcionHasta,
+    this.inicio,
+    this.relampago = false,
+    this.exigeDni = false,
+    this.edadMin,
+    this.edadMax,
   });
+
+  /// ¿Las inscripciones ya cerraron por fecha? (para auto-sorteo / bloqueo).
+  bool get inscripcionVencida =>
+      inscripcionHasta != null && DateTime.now().isAfter(inscripcionHasta!);
 
   /// Símbolo de moneda del campeonato. La UBICACIÓN de la sede es la fuente de
   /// verdad (un torneo en Lima cobra en S/, aunque el profe abra la app desde
@@ -206,6 +231,12 @@ class Campeonato {
     List<PartidoTorneo>? partidos,
     bool? cerrado,
     String? moneda,
+    DateTime? inscripcionHasta,
+    DateTime? inicio,
+    bool? relampago,
+    bool? exigeDni,
+    int? edadMin,
+    int? edadMax,
   }) =>
       Campeonato(
         id: id,
@@ -224,6 +255,12 @@ class Campeonato {
         partidos: partidos ?? this.partidos,
         cerrado: cerrado ?? this.cerrado,
         moneda: moneda ?? this.moneda,
+        inscripcionHasta: inscripcionHasta ?? this.inscripcionHasta,
+        inicio: inicio ?? this.inicio,
+        relampago: relampago ?? this.relampago,
+        exigeDni: exigeDni ?? this.exigeDni,
+        edadMin: edadMin ?? this.edadMin,
+        edadMax: edadMax ?? this.edadMax,
       );
 
   Participante? participante(String? pid) {
@@ -252,6 +289,13 @@ class Campeonato {
         'partidos': partidos.map((p) => p.toJson()).toList(),
         'cerrado': cerrado,
         'moneda': moneda,
+        if (inscripcionHasta != null)
+          'inscripcionHasta': inscripcionHasta!.toIso8601String(),
+        if (inicio != null) 'inicio': inicio!.toIso8601String(),
+        'relampago': relampago,
+        'exigeDni': exigeDni,
+        if (edadMin != null) 'edadMin': edadMin,
+        if (edadMax != null) 'edadMax': edadMax,
       };
 
   factory Campeonato.fromJson(Map<String, dynamic> j) => Campeonato(
@@ -281,6 +325,16 @@ class Campeonato {
             const [],
         cerrado: (j['cerrado'] ?? false) as bool,
         moneda: (j['moneda'] ?? '') as String,
+        inscripcionHasta: j['inscripcionHasta'] != null
+            ? DateTime.tryParse(j['inscripcionHasta'] as String)
+            : null,
+        inicio: j['inicio'] != null
+            ? DateTime.tryParse(j['inicio'] as String)
+            : null,
+        relampago: (j['relampago'] ?? false) as bool,
+        exigeDni: (j['exigeDni'] ?? false) as bool,
+        edadMin: (j['edadMin'] as num?)?.toInt(),
+        edadMax: (j['edadMax'] as num?)?.toInt(),
       );
 }
 

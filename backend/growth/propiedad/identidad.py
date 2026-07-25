@@ -61,6 +61,9 @@ def consultar_dni(dni: str) -> dict:
         "nombres": nombres,
         "apellido_paterno": ap,
         "apellido_materno": am,
+        # Para calcular la EDAD real (categorías Sub-N de campeonatos). Formato
+        # de Factiliza; el APK parsea y calcula la edad actual.
+        "fecha_nacimiento": data.get("fecha_nacimiento"),
     }
 
 

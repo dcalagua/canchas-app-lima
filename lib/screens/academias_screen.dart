@@ -206,9 +206,7 @@ class _AcademiasScreenState extends State<AcademiasScreen> {
                   ),
                   for (final d in deportesDisponibles)
                     ChoiceChip(
-                      avatar: Text(emojiDeporte(d),
-                          style: const TextStyle(fontSize: 15)),
-                      label: Text(d.etiqueta),
+                      label: Text('${emojiDeporte(d)}  ${d.etiqueta}'),
                       selected: _filtro == d,
                       onSelected: (_) => setState(() => _filtro = d),
                     ),

@@ -660,8 +660,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
               children: [
                 for (final d in deportesActivos)
                   FilterChip(
-                    avatar: Text(emojiDeporte(d), style: const TextStyle(fontSize: 15)),
-                    label: Text(d.etiqueta),
+                    label: Text('${emojiDeporte(d)}  ${d.etiqueta}'),
                     selected: _deportes.contains(d),
                     selectedColor: colorDeporte(d),
                     checkmarkColor: Colors.white,

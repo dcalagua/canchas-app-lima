@@ -28,6 +28,12 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
   DateTimeRange? _rango;
   String _sedeNombre = '';
   LatLng? _sedeUbicacion;
+  // Cronograma + verificación (Fase 1).
+  DateTime? _cierreInscripcion;
+  bool _relampago = false;
+  bool _exigeDni = false;
+  final _edadMin = TextEditingController();
+  final _edadMax = TextEditingController();
 
   /// Moneda del país de la SEDE del torneo (no la del dispositivo): el costo de
   /// inscripción se muestra y congela en ella. Sin sede ubicada, cae al país
@@ -81,6 +87,21 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
     if (r != null) setState(() => _rango = r);
   }
 
+  String _fmtFecha(DateTime d) =>
+      '${d.day} ${_meses[d.month - 1]} ${d.year}';
+
+  Future<void> _elegirCierre() async {
+    final hoy = DateTime.now();
+    final r = await showDatePicker(
+      context: context,
+      firstDate: DateTime(hoy.year, hoy.month, hoy.day),
+      lastDate: DateTime(hoy.year + 1, 12, 31),
+      initialDate: _cierreInscripcion ?? hoy,
+      helpText: 'Cierre de inscripciones',
+    );
+    if (r != null) setState(() => _cierreInscripcion = r);
+  }
+
   Future<void> _elegirSede() async {
     final sel = await showModalBottomSheet<Cancha>(
       context: context,
@@ -116,6 +137,12 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
       fechas: _rango == null ? '' : _fmtRango(_rango!),
       costoInscripcion:
           double.tryParse(_costo.text.trim().replaceAll(',', '.')) ?? 0,
+      inscripcionHasta: _cierreInscripcion,
+      inicio: _rango?.start,
+      relampago: _relampago,
+      exigeDni: _exigeDni,
+      edadMin: int.tryParse(_edadMin.text.trim()),
+      edadMax: int.tryParse(_edadMax.text.trim()),
     );
     Navigator.of(context).pop(c);
   }
@@ -146,8 +173,7 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
             children: [
               for (final d in Deporte.values)
                 ChoiceChip(
-                  label: Text(d.etiqueta),
-                  avatar: Text(emojiDeporte(d), style: const TextStyle(fontSize: 15)),
+                  label: Text('${emojiDeporte(d)}  ${d.etiqueta}'),
                   selected: _deporte == d,
                   onSelected: (_) => setState(() {
                     _deporte = d;
@@ -186,12 +212,33 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
           // Fechas (calendario).
           _CampoTap(
             icon: Icons.event,
-            label: 'Fechas',
+            label: _relampago ? 'Fecha (relámpago, un día)' : 'Fechas de juego',
             valor: _rango == null ? 'Elegir en el calendario' : _fmtRango(_rango!),
             vacio: _rango == null,
             onTap: _elegirFechas,
           ),
           const SizedBox(height: 12),
+          // Cronograma: cierre de inscripciones (al llegar se sortea el fixture).
+          _CampoTap(
+            icon: Icons.how_to_reg,
+            label: 'Cierre de inscripciones',
+            valor: _cierreInscripcion == null
+                ? 'Hasta cuándo pueden inscribirse'
+                : _fmtFecha(_cierreInscripcion!),
+            vacio: _cierreInscripcion == null,
+            onTap: _elegirCierre,
+          ),
+          const SizedBox(height: 4),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            value: _relampago,
+            activeColor: lima,
+            onChanged: (v) => setState(() => _relampago = v),
+            title: const Text('Relámpago (todo en un día)'),
+            subtitle: const Text(
+                'Apágalo si el campeonato se juega en varias fechas.'),
+          ),
+          const SizedBox(height: 8),
           // Sede (del listado de ubicaciones del app + mapa).
           _CampoTap(
             icon: Icons.place,
@@ -211,6 +258,48 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
                 labelText: 'Costo de inscripción (opcional)',
                 prefixText: '$_monedaSede '),
           ),
+          const SizedBox(height: 18),
+          // Verificación por DNI (opcional del organizador).
+          Text('Verificación',
+              style:
+                  TextStyle(fontWeight: FontWeight.w700, color: cs.onSurface)),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            value: _exigeDni,
+            activeColor: lima,
+            onChanged: (v) => setState(() => _exigeDni = v),
+            title: const Text('Exigir DNI para inscribirse'),
+            subtitle: const Text(
+                'Valida identidad y calcula la edad real (evita que se hagan '
+                'pasar por otra edad en categorías Sub-N). Solo Perú.'),
+          ),
+          if (_exigeDni) ...[
+            const SizedBox(height: 4),
+            Text('Rango de edad de la categoría (opcional)',
+                style: const TextStyle(color: textoTenue, fontSize: 12.5)),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _edadMin,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                        labelText: 'Edad mín', hintText: 'ej. 18'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: _edadMax,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                        labelText: 'Edad máx', hintText: 'ej. 30 (Sub-30)'),
+                  ),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,

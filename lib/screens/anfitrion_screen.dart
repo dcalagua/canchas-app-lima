@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../services/growth_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'campeonato_detalle_screen.dart';
+import 'crear_campeonato_screen.dart';
 import 'home_shell.dart';
 import 'login_google_sheet.dart';
 import 'mi_academia_screen.dart';
@@ -36,6 +38,21 @@ class AnfitrionScreen extends StatelessWidget {
     // que Supabase responda (típico tras reinstalar el APK).
     Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => const MiAcademiaScreen()));
+  }
+
+  /// Organizar un campeonato SIN academia (cualquier usuario): crea el torneo
+  /// como organizador independiente y salta a su ficha para invitar/inscribir.
+  Future<void> _organizarCampeonato(BuildContext context) async {
+    if (!await LoginGoogleSheet.mostrar(context,
+        motivo: 'organizar un campeonato')) {
+      return;
+    }
+    if (!context.mounted) return;
+    final c = await Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => const CrearCampeonatoScreen(academiaId: '')));
+    if (c == null || !context.mounted) return;
+    Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => CampeonatoDetalleScreen(campeonatoId: c.id)));
   }
 
   @override
@@ -102,6 +119,13 @@ class AnfitrionScreen extends StatelessWidget {
                   title: 'Mi academia',
                   subtitle: 'Soy profe: alumnos, cuotas y cobros',
                   onTap: () => _abrirMiAcademia(context),
+                ),
+                _Tile(
+                  icon: Icons.emoji_events,
+                  color: amarillo,
+                  title: 'Organizar campeonato',
+                  subtitle: 'Torneo de fútbol, tenis y más: invita, sortea y juega',
+                  onTap: () => _organizarCampeonato(context),
                 ),
                 if (GrowthService.disponible)
                   _Tile(
