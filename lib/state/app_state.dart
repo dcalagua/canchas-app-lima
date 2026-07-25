@@ -4234,6 +4234,7 @@ class AppState extends ChangeNotifier {
     String hora, {
     required String nombreCliente,
     String telefono = '',
+    String clienteEmail = '',
     bool pagado = false,
     int? precioOverride,
     Deporte? deporte,
@@ -4259,7 +4260,9 @@ class AppState extends ChangeNotifier {
       precio: precio,
       sena: 0,
       pagado: pagado,
-      usuario: '', // cliente offline: sin cuenta de la app
+      // El cliente debe ser un usuario registrado del app: ligamos la reserva a
+      // su cuenta para que también la vea en su app (y cuente en su historial).
+      usuario: clienteEmail.trim().toLowerCase(),
       deporte: (deporte ?? cancha.deporte).name,
       moneda: cancha.monedaSimbolo,
       telefono: telefono.trim(),

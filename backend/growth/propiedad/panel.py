@@ -330,6 +330,48 @@ def resolver_disputa(venta_id: int, req: ResolverDisputaRequest,
     return {"ok": True, "estado": v.estado}
 
 
+# ─────────────────── VERIFICACIONES DE IDENTIDAD (DNI) ────────────────────────
+# Registro anti-fraude "1 DNI = 1 cuenta": `stores.dni_verificados` liga el HASH
+# del DNI (nunca el número, Ley 29733) a un correo. El operador puede REVOCAR ese
+# vínculo para liberar un DNI (p. ej. si alguien lo tomó y el dueño legítimo quedó
+# bloqueado, o para limpiar un duplicado). Revocar aquí libera el DNI para que se
+# pueda volver a verificar; el flag "verificado" del lado app (Supabase
+# pichangol_verificaciones) se limpia aparte desde la app.
+
+class RevocarDniRequest(BaseModel):
+    email: str
+
+
+@router.get("/admin/api/dni/verificaciones")
+def listar_dni_verificaciones(
+        x_admin_token: str | None = Header(default=None)) -> dict:
+    """Lista los DNI verificados agrupados por correo (sin exponer el número:
+    solo un prefijo del hash para poder distinguirlos)."""
+    _check(x_admin_token)
+    por_correo: dict[str, list[str]] = {}
+    for h, email in stores.dni_verificados.items():
+        por_correo.setdefault(email, []).append(h[:10])
+    out = [{"email": e, "dnis": len(hs), "hashes": sorted(hs)}
+           for e, hs in por_correo.items()]
+    out.sort(key=lambda d: d["email"])
+    return {"total": len(stores.dni_verificados), "cuentas": out}
+
+
+@router.post("/admin/api/dni/revocar")
+def revocar_dni(req: RevocarDniRequest,
+                x_admin_token: str | None = Header(default=None)) -> dict:
+    """Revoca (libera) TODAS las verificaciones de DNI ligadas a un correo, para
+    que ese DNI se pueda volver a verificar en la cuenta correcta."""
+    _check(x_admin_token)
+    email = req.email.strip().lower()
+    if not email:
+        return {"ok": False, "error": "correo_requerido"}
+    quitar = [h for h, e in stores.dni_verificados.items() if e == email]
+    for h in quitar:
+        stores.dni_verificados.pop(h, None)
+    return {"ok": True, "revocados": len(quitar)}
+
+
 # ─────────────────────── PICHANGOL PRO (torre de control) ─────────────────────
 def _pro_precio_pais(iso: str) -> float:
     """Precio Pro efectivo de un país (override EC/BO o base PE)."""
@@ -839,6 +881,8 @@ _HTML = r"""<!DOCTYPE html>
         <span class="ico">💳</span> Cobros</button>
       <button class="nav-i" data-sec="disputas" onclick="mostrarSeccion('disputas')" title="Disputas">
         <span class="ico">⚖️</span> Disputas</button>
+      <button class="nav-i" data-sec="identidad" onclick="mostrarSeccion('identidad')" title="Identidad">
+        <span class="ico">🪪</span> Identidad</button>
       <button class="nav-i" data-sec="operacion" onclick="mostrarSeccion('operacion')" title="Operación">
         <span class="ico">✅</span> Operación</button>
       <button class="nav-i" data-sec="comunicacion" onclick="mostrarSeccion('comunicacion')" title="Comunicación">
@@ -876,6 +920,10 @@ _HTML = r"""<!DOCTYPE html>
     <section id="page-disputas" class="page" style="display:none">
       <h1 class="page-h">⚖️ Disputas del marketplace</h1>
       <div id="disputas"></div>
+    </section>
+    <section id="page-identidad" class="page" style="display:none">
+      <h1 class="page-h">🪪 Verificaciones de identidad (DNI)</h1>
+      <div id="dniPanel"></div>
     </section>
     <section id="page-operacion" class="page" style="display:none">
       <h1 class="page-h">✅ Aprobación y operación</h1>
@@ -1450,6 +1498,47 @@ function mostrarSeccion(sec){
     b.classList.toggle('on', b.dataset.sec===sec);
   });
   if(sec==='disputas') cargarDisputas();
+  if(sec==='identidad') cargarDni();
+}
+
+// --- Identidad (DNI): revocar la verificación 1 DNI = 1 cuenta ------------------
+async function cargarDni(){
+  const box = document.getElementById('dniPanel');
+  if(!box) return;
+  try{
+    const r = await fetch('/admin/api/dni/verificaciones',{headers:headers()});
+    if(!r.ok){ box.innerHTML='<div class="card">No se pudo cargar.</div>'; return; }
+    const j = await r.json();
+    const cuentas = j.cuentas||[];
+    const filas = cuentas.length ? cuentas.map(c=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 0;border-top:1px solid var(--border)">
+        <div style="min-width:0">
+          <b style="word-break:break-all">${esc(c.email)}</b>
+          <div style="color:var(--muted);font-size:12px">
+            ${c.dnis} DNI · hash ${c.hashes.map(esc).join(', ')}…</div>
+        </div>
+        <button onclick="revocarDni('${esc(c.email)}')"
+          style="background:#fff;color:#C13515;border:1px solid #C13515;border-radius:12px;padding:9px 12px;font-family:inherit;font-weight:700;cursor:pointer;white-space:nowrap">
+          Revocar</button>
+      </div>`).join('')
+      : '<div style="color:var(--muted);padding:8px 0">Aún no hay DNI verificados.</div>';
+    box.innerHTML = `<div class="card"><div class="top">
+      <h3 style="flex:1">DNI verificados</h3>
+      <span style="font-weight:800;color:var(--bosque)">${j.total||0}</span></div>
+      <p style="color:var(--muted);font-size:13px;margin:6px 0 4px">
+        Cada DNI (guardado solo como hash, nunca el número) queda ligado a una
+        cuenta. <b>Revocar</b> libera ese DNI para que se pueda volver a verificar
+        en la cuenta correcta. Ojo: el estado "verificado" del lado app (Supabase)
+        se limpia aparte desde la app del usuario.</p>
+      ${filas}</div>`;
+  }catch(e){ box.innerHTML='<div class="card">Error al cargar.</div>'; }
+}
+
+async function revocarDni(email){
+  if(!confirm('¿Revocar la verificación de DNI de '+email+'? Ese DNI quedará libre para volver a verificarse.')) return;
+  const r = await fetch('/admin/api/dni/revocar',
+    {method:'POST',headers:headers(),body:JSON.stringify({email})});
+  if(r.ok){ cargarDni(); } else { alert('No se pudo revocar.'); }
 }
 
 // --- Disputas del marketplace: el operador libera al vendedor o reembolsa ------

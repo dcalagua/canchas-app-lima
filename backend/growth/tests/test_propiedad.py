@@ -19,6 +19,7 @@ client = TestClient(app)
 def _setup(monkeypatch):
     stores.reset()
     monkeypatch.setattr(config, "APP_API_KEY", "")
+    monkeypatch.setattr(config, "ADMIN_PANEL_TOKEN", "test-admin")
     # Simula Factiliza OK (no llamamos a la API real en tests).
     from propiedad import identidad
     monkeypatch.setattr(identidad, "consultar_dni", lambda dni: {
@@ -49,3 +50,25 @@ def test_verificar_dni_otro_dni_si_puede():
     r = client.post("/propiedad/verificar-dni",
                     json={"dni": "87654321", "email": "otro@x.com"}).json()
     assert r["ok"] is True
+
+
+def test_admin_revocar_dni_libera_para_reverificar():
+    tok = {"X-Admin-Token": "test-admin"}
+    # Ana verifica; otro queda bloqueado con el mismo DNI.
+    client.post("/propiedad/verificar-dni",
+                json={"dni": "12345678", "email": "ana@x.com"})
+    bloq = client.post("/propiedad/verificar-dni",
+                       json={"dni": "12345678", "email": "otro@x.com"}).json()
+    assert bloq["error"] == "dni_en_uso"
+    # El admin revoca la verificación de Ana → libera el DNI.
+    rev = client.post("/admin/api/dni/revocar",
+                      json={"email": "ana@x.com"}, headers=tok).json()
+    assert rev["ok"] is True and rev["revocados"] == 1
+    # Ahora la cuenta correcta sí puede verificar ese DNI.
+    ok = client.post("/propiedad/verificar-dni",
+                     json={"dni": "12345678", "email": "otro@x.com"}).json()
+    assert ok["ok"] is True
+    # Y aparece en el listado del panel.
+    lst = client.get("/admin/api/dni/verificaciones", headers=tok).json()
+    assert lst["total"] == 1
+    assert any(c["email"] == "otro@x.com" for c in lst["cuentas"])

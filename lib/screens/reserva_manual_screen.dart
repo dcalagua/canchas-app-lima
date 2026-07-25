@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../data/perfiles_repo.dart';
 import '../data/reservas_repo.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
@@ -25,7 +28,11 @@ class _ReservaManualScreenState extends State<ReservaManualScreen> {
   String? _canchaId;
   DateTime _fecha = _hoy();
   String? _hora;
-  final _nombre = TextEditingController();
+  // Cliente = usuario REGISTRADO del app (no texto libre): se elige con el
+  // buscador y se liga la reserva a su cuenta.
+  String _clienteEmail = '';
+  String _clienteNombre = '';
+  String _clienteFoto = '';
   final _telefono = TextEditingController();
   final _precio = TextEditingController();
   bool _pagado = false;
@@ -57,10 +64,27 @@ class _ReservaManualScreenState extends State<ReservaManualScreen> {
 
   @override
   void dispose() {
-    _nombre.dispose();
     _telefono.dispose();
     _precio.dispose();
     super.dispose();
+  }
+
+  /// Abre el buscador de usuarios registrados y fija el cliente elegido.
+  Future<void> _elegirCliente() async {
+    final sel = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const _BuscadorClienteSheet(),
+    );
+    if (sel == null || !mounted) return;
+    setState(() {
+      _clienteEmail = (sel['email'] ?? '').toString().toLowerCase().trim();
+      _clienteNombre = (sel['nombre'] ?? '').toString().trim();
+      _clienteFoto = (sel['foto_url'] ?? '').toString().trim();
+      final cel = (sel['celular'] ?? '').toString().trim();
+      if (cel.isNotEmpty) _telefono.text = cel;
+    });
   }
 
   void _sugerirPrecio() {
@@ -118,8 +142,8 @@ class _ReservaManualScreenState extends State<ReservaManualScreen> {
       _aviso('Elige una hora.');
       return;
     }
-    if (_nombre.text.trim().isEmpty) {
-      _aviso('Escribe el nombre del cliente.');
+    if (_clienteEmail.isEmpty) {
+      _aviso('Elige al cliente (debe estar registrado en el app).');
       return;
     }
     final precio = int.tryParse(_precio.text.trim());
@@ -129,8 +153,9 @@ class _ReservaManualScreenState extends State<ReservaManualScreen> {
       _isoFecha,
       _diaLabel,
       _hora!,
-      nombreCliente: _nombre.text,
+      nombreCliente: _clienteNombre.isNotEmpty ? _clienteNombre : _clienteEmail,
       telefono: _telefono.text,
+      clienteEmail: _clienteEmail,
       pagado: _pagado,
       precioOverride: precio,
     );
@@ -142,10 +167,11 @@ class _ReservaManualScreenState extends State<ReservaManualScreen> {
       return;
     }
     // ok / sinConexion / error → se guardó local igual (fail-safe offline).
+    final quien = _clienteNombre.isNotEmpty ? _clienteNombre : _clienteEmail;
     Navigator.of(context).pop(true);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Reserva de ${_nombre.text.trim()} registrada.'),
+        content: Text('Reserva de $quien registrada.'),
         backgroundColor: lima,
       ),
     );
@@ -232,10 +258,16 @@ class _ReservaManualScreenState extends State<ReservaManualScreen> {
                 const SizedBox(height: 18),
                 _Etiqueta('Cliente'),
                 const SizedBox(height: 6),
-                TextField(
-                  controller: _nombre,
-                  textCapitalization: TextCapitalization.words,
-                  decoration: _dec(hint: 'Nombre del cliente'),
+                _SelectorCliente(
+                  email: _clienteEmail,
+                  nombre: _clienteNombre,
+                  foto: _clienteFoto,
+                  onElegir: _elegirCliente,
+                  onQuitar: () => setState(() {
+                    _clienteEmail = '';
+                    _clienteNombre = '';
+                    _clienteFoto = '';
+                  }),
                 ),
                 const SizedBox(height: 10),
                 TextField(
@@ -316,6 +348,271 @@ class _ReservaManualScreenState extends State<ReservaManualScreen> {
   }
 }
 
+/// Casilla del cliente elegido: si no hay nadie, invita a buscar; si ya se
+/// eligió, muestra su avatar/nombre/correo y permite cambiarlo.
+class _SelectorCliente extends StatelessWidget {
+  const _SelectorCliente({
+    required this.email,
+    required this.nombre,
+    required this.foto,
+    required this.onElegir,
+    required this.onQuitar,
+  });
+  final String email;
+  final String nombre;
+  final String foto;
+  final VoidCallback onElegir;
+  final VoidCallback onQuitar;
+
+  @override
+  Widget build(BuildContext context) {
+    final vacio = email.isEmpty;
+    final mostrar = nombre.isNotEmpty ? nombre : email;
+    return InkWell(
+      onTap: onElegir,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFE4E4E4)),
+        ),
+        child: vacio
+            ? Row(
+                children: [
+                  const Icon(Icons.person_search, color: textoTenue),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text('Buscar cliente registrado…',
+                        style: TextStyle(color: textoTenueDe(context))),
+                  ),
+                  const Icon(Icons.chevron_right, color: textoTenue),
+                ],
+              )
+            : Row(
+                children: [
+                  CircleAvatar(
+                    radius: 20,
+                    backgroundColor: teal,
+                    backgroundImage:
+                        foto.isNotEmpty ? NetworkImage(foto) : null,
+                    child: foto.isEmpty
+                        ? Text(
+                            mostrar.isNotEmpty
+                                ? mostrar[0].toUpperCase()
+                                : '?',
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800))
+                        : null,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(mostrar,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w700, fontSize: 15)),
+                        if (nombre.isNotEmpty)
+                          Text(email,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  color: textoTenue, fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Cambiar',
+                    icon: const Icon(Icons.close, color: textoTenue),
+                    onPressed: onQuitar,
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+}
+
+/// Hoja para BUSCAR un usuario registrado (por nombre o correo). Devuelve el
+/// perfil elegido {email, nombre, foto_url, celular} vía `Navigator.pop`.
+class _BuscadorClienteSheet extends StatefulWidget {
+  const _BuscadorClienteSheet();
+
+  @override
+  State<_BuscadorClienteSheet> createState() => _BuscadorClienteSheetState();
+}
+
+class _BuscadorClienteSheetState extends State<_BuscadorClienteSheet> {
+  final _q = TextEditingController();
+  Timer? _debounce;
+  bool _buscando = false;
+  List<Map<String, dynamic>> _resultados = const [];
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _q.dispose();
+    super.dispose();
+  }
+
+  void _onCambio(String v) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), () => _buscar(v));
+  }
+
+  Future<void> _buscar(String v) async {
+    final q = v.trim();
+    if (q.length < 2) {
+      setState(() {
+        _resultados = const [];
+        _buscando = false;
+      });
+      return;
+    }
+    setState(() => _buscando = true);
+    final r = await PerfilesRepo.buscar(q);
+    if (!mounted) return;
+    setState(() {
+      _resultados = r;
+      _buscando = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final inset = MediaQuery.of(context).viewInsets.bottom;
+    final hayQuery = _q.text.trim().length >= 2;
+    return Padding(
+      padding: EdgeInsets.only(bottom: inset),
+      child: DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.7,
+        minChildSize: 0.5,
+        maxChildSize: 0.92,
+        builder: (context, scroll) => Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              const SizedBox(height: 10),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                    color: trazo,
+                    borderRadius: BorderRadius.circular(999)),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                child: TextField(
+                  controller: _q,
+                  autofocus: true,
+                  onChanged: _onCambio,
+                  decoration: InputDecoration(
+                    hintText: 'Nombre o correo del cliente…',
+                    prefixIcon: const Icon(Icons.search),
+                    filled: true,
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide.none),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: _buscando
+                    ? const Center(
+                        child: CircularProgressIndicator(color: lima))
+                    : !hayQuery
+                        ? _mensaje(context,
+                            'Escribe el nombre o correo del cliente. Debe haber '
+                            'entrado al app al menos una vez.')
+                        : _resultados.isEmpty
+                            ? _mensaje(context,
+                                'No se encontró a nadie. El cliente debe estar '
+                                'registrado en el app.')
+                            : ListView.separated(
+                                controller: scroll,
+                                itemCount: _resultados.length,
+                                separatorBuilder: (_, __) => Divider(
+                                    height: 1, color: trazo.withOpacity(0.5)),
+                                itemBuilder: (_, i) {
+                                  final p = _resultados[i];
+                                  final email =
+                                      (p['email'] ?? '').toString();
+                                  final nombre =
+                                      (p['nombre'] ?? '').toString();
+                                  final foto =
+                                      (p['foto_url'] ?? '').toString();
+                                  final mostrar =
+                                      nombre.isNotEmpty ? nombre : email;
+                                  return ListTile(
+                                    onTap: () => Navigator.pop(context, p),
+                                    leading: CircleAvatar(
+                                      radius: 22,
+                                      backgroundColor: teal,
+                                      backgroundImage: foto.isNotEmpty
+                                          ? NetworkImage(foto)
+                                          : null,
+                                      child: foto.isEmpty
+                                          ? Text(
+                                              mostrar.isNotEmpty
+                                                  ? mostrar[0].toUpperCase()
+                                                  : '?',
+                                              style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontWeight:
+                                                      FontWeight.w800))
+                                          : null,
+                                    ),
+                                    title: Text(mostrar,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.w700)),
+                                    subtitle: nombre.isNotEmpty
+                                        ? Text(email,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                                color: textoTenue,
+                                                fontSize: 12))
+                                        : null,
+                                  );
+                                },
+                              ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _mensaje(BuildContext context, String texto) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(30),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.person_search, size: 54, color: textoTenue),
+              const SizedBox(height: 12),
+              Text(texto,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: textoTenue)),
+            ],
+          ),
+        ),
+      );
+}
+
 class _Etiqueta extends StatelessWidget {
   const _Etiqueta(this.texto);
   final String texto;
@@ -340,8 +637,9 @@ class _Nota extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Anota aquí a tu cliente de siempre (llamó o vino). Ocupa la hora '
-              'para que nadie reserve encima. No genera comisión.',
+              'Anota aquí a tu cliente de siempre (llamó o vino). Debe tener '
+              'cuenta en el app: la reserva le aparece también a él. Ocupa la '
+              'hora para que nadie reserve encima. No genera comisión.',
               style: TextStyle(
                   fontSize: 12.5,
                   color: bosque,
