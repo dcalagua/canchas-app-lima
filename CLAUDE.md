@@ -188,6 +188,20 @@ sigue el lenguaje Airbnb sobre la paleta EBIM:
 - Validación en sitio (motorizado) como fase de endurecimiento.
 - Apelación a Meta (cuenta bloqueada) + Twilio Sandbox como respaldo OTP.
 - Idea biométrica para validación de dueño (madurar).
+- **Validación de documento en "Verificar identidad" (por país):** ya implementado
+  Perú (DNI vs RENIEC/Factiliza; trae fecha de nacimiento → edad para categorías
+  de campeonato; no guarda foto del doc). Pendientes:
+  1. **Ecuador (cédula):** el usuario tiene un API propio → falta enchufarlo
+     (endpoint + token) y activar el camino "por número" poniendo `consultaDoc:
+     true` en `PaisConfig['EC']` + `consultar_cedula` en el backend (espejo de
+     `identidad.consultar_dni`). Devolver también fecha de nacimiento.
+  2. **Bolivia (CI):** no hay API oficial → **OCR on-device** (recomendado:
+     `google_mlkit_text_recognition`, gratis/offline) para (a) confirmar que la
+     imagen ES un documento (palabras "CÉDULA/IDENTIDAD/ESTADO PLURINACIONAL",
+     patrón de número/fecha) y bloquear imágenes cualquiera, y (b) extraer nº +
+     nacimiento. **Ojo build:** agregar plugin nativo puede romper Flutter 3.24.5
+     → probar en CI aislado antes de mergear. Alternativa sin plugin: OCR en la
+     nube (Google Vision), pero cuesta y viaja el dato personal.
 - **Explorar carga rápida (idea del usuario, para más adelante):**
   1. **GPS colgado con mala señal:** Explorar se queda en "Detectando tu
      ubicación…" indefinidamente. Fix: timeout al GPS + caer a última ubicación
