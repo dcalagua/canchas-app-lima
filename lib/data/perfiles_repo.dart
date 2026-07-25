@@ -1,3 +1,7 @@
+import 'dart:typed_data';
+
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../services/supabase_service.dart';
 
 /// PERFILES públicos de usuario en Supabase (`pichangol_perfiles`): el nombre y
@@ -27,6 +31,27 @@ class PerfilesRepo {
       return true;
     } catch (_) {
       return false;
+    }
+  }
+
+  /// Sube la foto de perfil del usuario al bucket `chat` (carpeta `perfiles/`) y
+  /// devuelve su URL pública, o null si falla. Reusa el bucket público del chat.
+  static Future<String?> subirFoto(String email, Uint8List bytes) async {
+    final e = email.trim().toLowerCase();
+    if (!disponible || e.isEmpty) return null;
+    try {
+      final carpeta =
+          'perfiles/${e.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_')}';
+      final path = '$carpeta/${DateTime.now().microsecondsSinceEpoch}.jpg';
+      await SupabaseService.client.storage.from('chat').uploadBinary(
+            path,
+            bytes,
+            fileOptions:
+                const FileOptions(contentType: 'image/jpeg', upsert: true),
+          );
+      return SupabaseService.client.storage.from('chat').getPublicUrl(path);
+    } catch (_) {
+      return null;
     }
   }
 

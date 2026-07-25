@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -18,11 +19,62 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
   late final TextEditingController _nombre =
       TextEditingController(text: appState.usuario?.nombre ?? '');
   bool _guardando = false;
+  bool _subiendoFoto = false;
 
   @override
   void dispose() {
     _nombre.dispose();
     super.dispose();
+  }
+
+  /// Elige una foto (galería o cámara), la sube y actualiza el perfil.
+  Future<void> _cambiarFoto(ImageSource source) async {
+    try {
+      final XFile? file = await ImagePicker()
+          .pickImage(source: source, maxWidth: 800, imageQuality: 82);
+      if (file == null || !mounted) return;
+      setState(() => _subiendoFoto = true);
+      final bytes = await file.readAsBytes();
+      final ok = await appState.actualizarMiFoto(bytes);
+      if (!mounted) return;
+      setState(() => _subiendoFoto = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: ok ? bosque : null,
+          content: Text(ok
+              ? 'Foto actualizada.'
+              : 'No se pudo subir la foto. Reintenta.')));
+    } catch (_) {
+      if (mounted) setState(() => _subiendoFoto = false);
+    }
+  }
+
+  void _menuFoto() {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Elegir de la galería'),
+              onTap: () {
+                Navigator.pop(context);
+                _cambiarFoto(ImageSource.gallery);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Tomar una foto'),
+              onTap: () {
+                Navigator.pop(context);
+                _cambiarFoto(ImageSource.camera);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _guardar() async {
@@ -66,14 +118,39 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
               children: [
                 Center(
-                  child: CircleAvatar(
-                    radius: 44,
-                    backgroundColor: limaSuave,
-                    backgroundImage:
-                        (foto != null && foto.isNotEmpty) ? NetworkImage(foto) : null,
-                    child: (foto == null || foto.isEmpty)
-                        ? const Icon(Icons.person, size: 40, color: bosque)
-                        : null,
+                  child: Stack(
+                    children: [
+                      CircleAvatar(
+                        radius: 44,
+                        backgroundColor: limaSuave,
+                        backgroundImage: (foto != null && foto.isNotEmpty)
+                            ? NetworkImage(foto)
+                            : null,
+                        child: _subiendoFoto
+                            ? const CircularProgressIndicator(color: bosque)
+                            : (foto == null || foto.isEmpty)
+                                ? const Icon(Icons.person,
+                                    size: 40, color: bosque)
+                                : null,
+                      ),
+                      Positioned(
+                        right: 0,
+                        bottom: 0,
+                        child: Material(
+                          color: bosque,
+                          shape: const CircleBorder(),
+                          child: InkWell(
+                            customBorder: const CircleBorder(),
+                            onTap: _subiendoFoto ? null : _menuFoto,
+                            child: const Padding(
+                              padding: EdgeInsets.all(7),
+                              child: Icon(Icons.photo_camera,
+                                  color: Colors.white, size: 18),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -116,16 +193,15 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                Row(
+                const Row(
                   children: [
-                    const Icon(Icons.photo_camera_outlined,
-                        size: 18, color: textoTenue),
-                    const SizedBox(width: 8),
+                    Icon(Icons.info_outline, size: 18, color: textoTenue),
+                    SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                          'Cambiar tu foto por una propia estará disponible pronto. '
-                          'Por ahora se usa la de tu cuenta de Google.',
-                          style: const TextStyle(
+                          'Toca la cámara para cambiar tu foto (galería o cámara). '
+                          'El nombre se guarda con el botón de arriba.',
+                          style: TextStyle(
                               color: textoTenue, fontSize: 12, height: 1.3)),
                     ),
                   ],

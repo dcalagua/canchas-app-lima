@@ -77,6 +77,12 @@ class _MensajesScreenState extends State<MensajesScreen> {
     }
     final ids = {...owned, ...student}.toList();
     final msgs = await MensajesRepo.mensajesDeAcademias(ids);
+    // Carga los perfiles (nombre/foto elegidos) de las contrapartes para
+    // mostrar su NOMBRE y foto en vez del correo.
+    await appState.cargarPerfiles([
+      for (final m in msgs) m.cuentaEmail,
+      for (final m in msgs) m.autorEmail,
+    ]);
 
     // Agrupa por hilo (vienen en orden ascendente → el último es el más nuevo).
     final porHilo = <String, List<Mensaje>>{};
@@ -122,6 +128,10 @@ class _MensajesScreenState extends State<MensajesScreen> {
 
     // Conversaciones de CANCHA (dueño ↔ jugador). refId = email del dueño.
     final msgsCancha = await MensajesRepo.mensajesCanchaDe(email);
+    await appState.cargarPerfiles([
+      for (final m in msgsCancha) m.cuentaEmail,
+      for (final m in msgsCancha) m.autorEmail,
+    ]);
     final porHiloC = <String, List<Mensaje>>{};
     for (final m in msgsCancha) {
       porHiloC.putIfAbsent(m.hilo, () => []).add(m);
@@ -205,6 +215,9 @@ class _MensajesScreenState extends State<MensajesScreen> {
   }
 
   String _nombreAlumno(String acId, String cuenta) {
+    // El nombre que la persona eligió (perfil) manda sobre el correo.
+    final perfil = appState.nombreMostrableDe(cuenta);
+    if (perfil != null) return perfil;
     for (final al in appState.alumnos) {
       if (al.academiaId == acId &&
           al.email.toLowerCase() == cuenta.toLowerCase()) {
@@ -224,8 +237,10 @@ class _MensajesScreenState extends State<MensajesScreen> {
     return 'Academia';
   }
 
-  /// Nombre del jugador en una conversación de cancha (de sus mensajes).
+  /// Nombre del jugador en una conversación de cancha (perfil > mensajes > correo).
   String _nombreJugador(List<Mensaje> list, String cuenta) {
+    final perfil = appState.nombreMostrableDe(cuenta);
+    if (perfil != null) return perfil;
     for (final m in list) {
       if (m.autorEmail.toLowerCase() == cuenta.toLowerCase() &&
           m.autorNombre.isNotEmpty) {
@@ -368,12 +383,23 @@ class _FilaConv extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final inicial =
         conv.titulo.trim().isNotEmpty ? conv.titulo.characters.first.toUpperCase() : '?';
+    // Foto de la contraparte (chat 1:1 con una persona), si tiene perfil.
+    final foto = (conv.soyProfe &&
+            conv.tipo != 'grupo' &&
+            conv.cuentaEmail.isNotEmpty)
+        ? appState.fotoDe(conv.cuentaEmail)
+        : null;
     return ListTile(
       onTap: onTap,
       leading: CircleAvatar(
         backgroundColor: cs.primary.withOpacity(0.15),
-        child: Text(inicial,
-            style: TextStyle(color: cs.primary, fontWeight: FontWeight.w800)),
+        backgroundImage:
+            (foto != null && foto.isNotEmpty) ? NetworkImage(foto) : null,
+        child: (foto != null && foto.isNotEmpty)
+            ? null
+            : Text(inicial,
+                style:
+                    TextStyle(color: cs.primary, fontWeight: FontWeight.w800)),
       ),
       title: Text(conv.titulo,
           maxLines: 1,

@@ -132,6 +132,25 @@ class AppState extends ChangeNotifier {
     return true;
   }
 
+  /// El usuario sube una foto PROPIA (galería/cámara). La sube a Storage,
+  /// actualiza la sesión + su perfil público. Devuelve true si se pudo.
+  Future<bool> actualizarMiFoto(Uint8List bytes) async {
+    final u = usuario;
+    if (u == null) return false;
+    final url = await PerfilesRepo.subirFoto(u.email, bytes);
+    if (url == null) return false;
+    usuario = Usuario(nombre: u.nombre, email: u.email, fotoUrl: url);
+    _perfiles[u.email.toLowerCase()] = {
+      'email': u.email.toLowerCase(),
+      'nombre': u.nombre,
+      'foto_url': url,
+    };
+    await _persistirUsuario();
+    notifyListeners();
+    await PerfilesRepo.guardar(email: u.email, nombre: u.nombre, fotoUrl: url);
+    return true;
+  }
+
   // Reservas y agenda REALES: arrancan vacías. Se llenan con lo que llega de
   // Supabase (cargarReservasRemotas) y con las reservas que hacen los jugadores.
   // (Antes se sembraban datos de demostración; el producto ya no los usa.)
