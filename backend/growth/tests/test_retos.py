@@ -140,3 +140,63 @@ def test_rechazar_reto():
 def test_resultado_reto_inexistente_404():
     assert client.post("/retos/999/resultado",
                        json={"ganador_email": "a@x.com"}).status_code == 404
+
+
+# ── DOBLES (2 vs 2) ──────────────────────────────────────────────────────────
+
+def _crear_dobles():
+    return client.post("/retos/crear", json={
+        "retador_email": "ana@x.com", "retador_nombre": "Ana",
+        "retador2_email": "bea@x.com", "retador2_nombre": "Bea",
+        "retado_email": "luis@x.com", "retado_nombre": "Luis",
+        "retado2_email": "mario@x.com", "retado2_nombre": "Mario",
+        "deporte": "tenis", "zona": "San Borja", "modalidad": "dobles"}).json()
+
+
+def test_dobles_crear_lo_ven_los_cuatro():
+    r = _crear_dobles()
+    assert r["ok"] is True
+    assert r["reto"]["modalidad"] == "dobles"
+    assert r["reto"]["retador2_email"] == "bea@x.com"
+    assert r["reto"]["retado2_email"] == "mario@x.com"
+    # Los del lado retador lo ven en "enviados"; los del retado en "recibidos".
+    assert len(client.get("/retos/bea@x.com").json()["enviados"]) == 1
+    assert len(client.get("/retos/mario@x.com").json()["recibidos"]) == 1
+
+
+def test_dobles_requiere_los_dos_companeros():
+    r = client.post("/retos/crear", json={
+        "retador_email": "ana@x.com", "retado_email": "luis@x.com",
+        "retado2_email": "mario@x.com", "modalidad": "dobles"}).json()
+    assert r["ok"] is False and r["error"] == "faltan_companeros"
+
+
+def test_dobles_no_admite_jugadores_repetidos():
+    r = client.post("/retos/crear", json={
+        "retador_email": "ana@x.com", "retador2_email": "bea@x.com",
+        "retado_email": "luis@x.com", "retado2_email": "ana@x.com",
+        "modalidad": "dobles"}).json()
+    assert r["ok"] is False and r["error"] == "jugadores_repetidos"
+
+
+def test_dobles_ganador_puede_ser_cualquiera_del_lado_y_confirma_el_rival():
+    stores.config["retos_confirmacion_horas"] = "24"
+    rid = _crear_dobles()["reto"]["id"]
+    client.post(f"/retos/{rid}/responder", json={"aceptar": True})
+    # Bea (lado retador) reporta que ganó su pareja (ganador = ella).
+    r2 = client.post(f"/retos/{rid}/resultado", json={
+        "ganador_email": "bea@x.com", "marcador": "6-4 6-2",
+        "reportado_por": "bea@x.com"}).json()
+    assert r2["ok"] is True and r2["reto"]["estado"] == "por_confirmar"
+    # El COMPAÑERO del reportador (Ana) no puede confirmar: juez y parte.
+    juez_y_parte = client.post(f"/retos/{rid}/confirmar", json={
+        "por_email": "ana@x.com", "acepta": True}).json()
+    assert juez_y_parte["ok"] is False
+    assert juez_y_parte["error"] == "reportador_no_confirma"
+    # Un rival (Mario) confirma → jugado y suma al ranking.
+    ok = client.post(f"/retos/{rid}/confirmar", json={
+        "por_email": "mario@x.com", "acepta": True}).json()
+    assert ok["ok"] is True and ok["reto"]["estado"] == "jugado"
+    res = client.get("/retos?deporte=tenis").json()["resultados"]
+    assert len(res) == 1 and res[0]["modalidad"] == "dobles"
+    assert res[0]["ganador_email"] == "bea@x.com"

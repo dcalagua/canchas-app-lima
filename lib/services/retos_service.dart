@@ -26,6 +26,13 @@ class RetosService {
     required String deporte,
     String zona = '',
     String mensaje = '',
+    // DOBLES (2v2): compañero del retador + compañero del retado. Si se pasan
+    // los dos, el backend crea un reto de dobles con 4 jugadores.
+    String modalidad = 'singles',
+    String retador2Email = '',
+    String retador2Nombre = '',
+    String retado2Email = '',
+    String retado2Nombre = '',
   }) async {
     if (!disponible) return null;
     try {
@@ -39,6 +46,11 @@ class RetosService {
             'deporte': deporte,
             'zona': zona,
             'mensaje': mensaje,
+            'modalidad': modalidad,
+            'retador2_email': retador2Email,
+            'retador2_nombre': retador2Nombre,
+            'retado2_email': retado2Email,
+            'retado2_nombre': retado2Nombre,
           })).timeout(const Duration(seconds: 15));
       return jsonDecode(r.body) as Map<String, dynamic>;
     } catch (_) {

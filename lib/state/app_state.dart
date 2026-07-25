@@ -663,6 +663,8 @@ class AppState extends ChangeNotifier {
     // que solo cuentan cuando no se filtra por categoría.
     if (categoria == null || categoria.isEmpty) {
       for (final r in _retosResultados) {
+        // Los retos de DOBLES van a su propia tabla (rankingDobles), no aquí.
+        if ((r['modalidad'] ?? 'singles').toString() == 'dobles') continue;
         if (deporte != null && _deporteDe(r['deporte']) != deporte) continue;
         if (zona != null &&
             zona.isNotEmpty &&
@@ -761,6 +763,123 @@ class AppState extends ChangeNotifier {
       return y.pg.compareTo(x.pg);
     });
     return filas;
+  }
+
+  /// Ranking de DOBLES (parejas), SEPARADO del de singles. Se arma solo con los
+  /// retos de modalidad 'dobles': cada partido suma a las DOS parejas y da la
+  /// victoria a la pareja del ganador reportado. La identidad de la fila es la
+  /// pareja (clave canónica `d:correoA|correoB` con los correos ordenados, así
+  /// "A/B" y "B/A" son la misma pareja). `alumnoId` guarda esa clave.
+  List<RankingGlobalFila> rankingDobles(
+      {Deporte? deporte, String? zona, Temporada? temporada}) {
+    final agg = <String, _AggGlobal>{};
+    final nombres = <String, String>{}; // clave pareja → "NombreA / NombreB"
+    for (final r in _retosResultados) {
+      if ((r['modalidad'] ?? 'singles').toString() != 'dobles') continue;
+      final dep = _deporteDe(r['deporte']) ?? Deporte.tenis;
+      if (deporte != null && dep != deporte) continue;
+      if (zona != null &&
+          zona.isNotEmpty &&
+          (r['zona'] ?? '').toString().trim() != zona) continue;
+      if (temporada != null && !temporada.contiene(_fechaReto(r))) continue;
+      final ganador =
+          (r['ganador_email'] ?? '').toString().trim().toLowerCase();
+      if (ganador.isEmpty) continue;
+
+      // Cada lado es una pareja: (correo, nombre) x2.
+      final ladoRetador = [
+        (r['retador_email'], r['retador_nombre']),
+        (r['retador2_email'], r['retador2_nombre']),
+      ];
+      final ladoRetado = [
+        (r['retado_email'], r['retado_nombre']),
+        (r['retado2_email'], r['retado2_nombre']),
+      ];
+      final claveRetador = _clavePareja(ladoRetador);
+      final claveRetado = _clavePareja(ladoRetado);
+      if (claveRetador == null || claveRetado == null) continue;
+      nombres[claveRetador] ??= _nombrePareja(ladoRetador);
+      nombres[claveRetado] ??= _nombrePareja(ladoRetado);
+
+      // ¿Qué lado ganó? El que contiene al correo ganador.
+      final correosRetador = ladoRetador
+          .map((e) => (e.$1 ?? '').toString().trim().toLowerCase())
+          .toSet();
+      final ganoRetador = correosRetador.contains(ganador);
+
+      for (final entry in [
+        (claveRetador, ganoRetador),
+        (claveRetado, !ganoRetador),
+      ]) {
+        final g = agg.putIfAbsent(entry.$1, () => _AggGlobal(deporte: dep));
+        g.pj++;
+        if (entry.$2) {
+          g.pg++;
+        } else {
+          g.pp++;
+        }
+        g.nombre = nombres[entry.$1] ?? g.nombre;
+        g.porAcademia['Dobles'] = (g.porAcademia['Dobles'] ?? 0) + 1;
+      }
+    }
+
+    final filas = <RankingGlobalFila>[];
+    agg.forEach((key, g) {
+      if (g.pj == 0) return;
+      filas.add(RankingGlobalFila(
+        academiaId: '',
+        academiaNombre: 'Dobles',
+        deporte: g.deporte,
+        alumnoId: key,
+        nombre: g.nombre,
+        categoria: '',
+        pj: g.pj,
+        pg: g.pg,
+        pp: g.pp,
+        puntos: g.pg * Academia.puntosVictoria + g.pp * Academia.puntosDerrota,
+        pct: g.pj == 0 ? 0 : g.pg / g.pj * 100,
+        academias: 0,
+      ));
+    });
+    filas.sort((x, y) {
+      if (y.puntos != x.puntos) return y.puntos.compareTo(x.puntos);
+      if (y.pct != x.pct) return y.pct.compareTo(x.pct);
+      return y.pg.compareTo(x.pg);
+    });
+    return filas;
+  }
+
+  /// Clave canónica de una pareja a partir de sus dos (correo, nombre). Ordena
+  /// los correos para que "A/B" == "B/A". Null si falta algún correo.
+  String? _clavePareja(List<(dynamic, dynamic)> lado) {
+    final correos = lado
+        .map((e) => (e.$1 ?? '').toString().trim().toLowerCase())
+        .where((e) => e.isNotEmpty)
+        .toList()
+      ..sort();
+    if (correos.length != 2) return null;
+    return 'd:${correos[0]}|${correos[1]}';
+  }
+
+  /// Nombre visible de una pareja: "NombreA / NombreB" (cae al correo si falta).
+  String _nombrePareja(List<(dynamic, dynamic)> lado) {
+    final ns = lado.map((e) {
+      final n = (e.$2 ?? '').toString().trim();
+      if (n.isNotEmpty) return n;
+      final c = (e.$1 ?? '').toString().trim();
+      return c.contains('@') ? c.split('@').first : c;
+    }).where((n) => n.isNotEmpty).toList();
+    return ns.join(' / ');
+  }
+
+  /// ¿Hay al menos un reto de dobles jugado para este deporte? (para mostrar la
+  /// pestaña de dobles solo cuando tiene sentido).
+  bool hayRankingDobles(Deporte deporte) {
+    for (final r in _retosResultados) {
+      if ((r['modalidad'] ?? 'singles').toString() != 'dobles') continue;
+      if ((_deporteDe(r['deporte']) ?? Deporte.tenis) == deporte) return true;
+    }
+    return false;
   }
 
   /// Importa los resultados de un CAMPEONATO al ranking del circuito (y por ende

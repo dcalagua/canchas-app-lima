@@ -82,6 +82,96 @@ Future<void> enviarRetoConGuardia(
   ));
 }
 
+/// Envía un reto de DOBLES (2v2): yo + [companero] retamos a [rival1]+[rival2].
+/// Mismo preload/guardia que singles. Los 4 correos deben ser distintos.
+Future<void> enviarRetoDoblesConGuardia(
+  BuildContext context, {
+  required String deporte,
+  required String companeroEmail,
+  required String companeroNombre,
+  required String rival1Email,
+  required String rival1Nombre,
+  required String rival2Email,
+  required String rival2Nombre,
+  String zona = '',
+}) async {
+  final u = appState.usuario;
+  if (u == null) {
+    if (!await LoginGoogleSheet.mostrar(context, motivo: 'retar en dobles')) {
+      return;
+    }
+  }
+  if (!context.mounted) return;
+  final yo = (appState.usuario?.email ?? '').toLowerCase().trim();
+  final comp = companeroEmail.toLowerCase().trim();
+  final r1 = rival1Email.toLowerCase().trim();
+  final r2 = rival2Email.toLowerCase().trim();
+  final cuatro = {yo, comp, r1, r2};
+  if (yo.isEmpty || comp.isEmpty || r1.isEmpty || r2.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Elige a tu compañero y a los dos rivales.')));
+    return;
+  }
+  if (cuatro.length != 4) {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Los cuatro jugadores deben ser distintos.')));
+    return;
+  }
+  final clave = 'dobles:$r1|$r2';
+  if (_retosEnVuelo.contains(clave)) return;
+  _retosEnVuelo.add(clave);
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => const _RetandoDialog(),
+  );
+
+  Map<String, dynamic>? resp;
+  try {
+    resp = await RetosService.crear(
+      retadorEmail: appState.usuario!.email,
+      retadorNombre: appState.usuario!.nombre,
+      retadoEmail: rival1Email,
+      retadoNombre: rival1Nombre.trim().isNotEmpty ? rival1Nombre.trim() : 'Rival',
+      deporte: deporte,
+      zona: zona,
+      modalidad: 'dobles',
+      retador2Email: companeroEmail,
+      retador2Nombre:
+          companeroNombre.trim().isNotEmpty ? companeroNombre.trim() : 'Compañero',
+      retado2Email: rival2Email,
+      retado2Nombre:
+          rival2Nombre.trim().isNotEmpty ? rival2Nombre.trim() : 'Rival 2',
+    );
+  } finally {
+    _retosEnVuelo.remove(clave);
+    if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+  }
+  if (!context.mounted) return;
+
+  if (resp != null && resp['error'] == 'limite_retos_free') {
+    await _ofrecerPro(context, resp['limite']);
+    return;
+  }
+  final ok = resp != null && resp['ok'] == true;
+  if (ok) {
+    // Avisa a los rivales (ambos) y al compañero.
+    for (final e in [r1, r2]) {
+      AvisosService.retoRecibido(
+          retadoEmail: e, retadorNombre: appState.usuario!.nombre, deporte: deporte);
+    }
+  }
+  if (!context.mounted) return;
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    backgroundColor: ok ? bosque : null,
+    content: Text(ok
+        ? 'Reto de dobles enviado. Coordinen y repórtenlo en "Mis retos".'
+        : (resp != null && resp['error'] == 'jugadores_repetidos'
+            ? 'Los cuatro jugadores deben ser distintos.'
+            : 'No se pudo enviar el reto. Reintenta.')),
+  ));
+}
+
 Future<void> _ofrecerPro(BuildContext context, dynamic limite) async {
   final n = (limite is num) ? limite.toInt() : 3;
   final ir = await showDialog<bool>(

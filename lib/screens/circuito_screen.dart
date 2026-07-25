@@ -8,6 +8,7 @@ import 'jugadores_disponibles_screen.dart';
 import 'mis_retos_screen.dart';
 import 'perfil_global_screen.dart';
 import 'ranking_global_screen.dart';
+import 'reto_dobles_screen.dart';
 
 /// CIRCUITO (hub del deporte). Agrupa TODO lo competitivo del circuito —ranking,
 /// retos, jugadores disponibles y la membresía Pro— en un solo lugar. Hoy el
@@ -46,6 +47,15 @@ class CircuitoScreen extends StatelessWidget {
                 subtitle: 'Jugadores disponibles para un partido',
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(
                     builder: (_) => const JugadoresDisponiblesScreen())),
+              ),
+              _CircuitoTile(
+                icon: Icons.groups,
+                color: lima,
+                title: 'Reto de dobles',
+                subtitle: 'Tú y tu pareja contra otra pareja (2 vs 2)',
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) =>
+                        const RetoDoblesScreen(deporte: Deporte.tenis))),
               ),
               _CircuitoTile(
                 icon: Icons.sports_kabaddi,

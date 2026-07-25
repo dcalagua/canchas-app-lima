@@ -28,6 +28,7 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
   String _categoria = ''; // '' = todas
   String _zona = ''; // '' = todas las zonas
   String _temporadaId = ''; // '' = histórico (todas las temporadas)
+  bool _dobles = false; // false = singles | true = ranking de dobles (parejas)
 
   @override
   void initState() {
@@ -107,11 +108,18 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
               break;
             }
           }
-          final tabla = appState.rankingGlobal(
-              deporte: dep,
-              categoria: catSel.isEmpty ? null : catSel,
-              zona: zonaSel.isEmpty ? null : zonaSel,
-              temporada: tempSel);
+          final hayDobles = appState.hayRankingDobles(dep);
+          final dobles = _dobles && hayDobles;
+          final tabla = dobles
+              ? appState.rankingDobles(
+                  deporte: dep,
+                  zona: zonaSel.isEmpty ? null : zonaSel,
+                  temporada: tempSel)
+              : appState.rankingGlobal(
+                  deporte: dep,
+                  categoria: catSel.isEmpty ? null : catSel,
+                  zona: zonaSel.isEmpty ? null : zonaSel,
+                  temporada: tempSel);
           final ahora = DateTime.now();
           // Campeón vigente = ganador de la temporada cerrada anterior (para la
           // corona 👑 en la tabla viva).
@@ -214,6 +222,25 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
                     ),
                 ],
               ),
+              // Modalidad Singles / Dobles (solo si hay dobles en este deporte).
+              if (hayDobles) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final m in const [('Singles', false), ('Dobles', true)])
+                      ChoiceChip(
+                        label: Text(m.$1),
+                        selected: dobles == m.$2,
+                        selectedColor: lima,
+                        labelStyle: TextStyle(
+                            color: dobles == m.$2 ? Colors.white : null,
+                            fontWeight: FontWeight.w700),
+                        onSelected: (_) => setState(() => _dobles = m.$2),
+                      ),
+                  ],
+                ),
+              ],
               if (zonas.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 Wrap(
@@ -261,7 +288,7 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
                     ),
                 ],
               ),
-              if (cats.isNotEmpty) ...[
+              if (!dobles && cats.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 Wrap(
                   spacing: 8,
@@ -282,7 +309,7 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
                 ),
               ],
               // Campeón (temporada cerrada) o aviso de temporada en curso.
-              if (tempSel != null) ...[
+              if (!dobles && tempSel != null) ...[
                 const SizedBox(height: 14),
                 if (tempSel.finalizada(ahora) && tabla.isNotEmpty)
                   _CampeonBanner(temporada: tempSel, campeon: tabla.first)
@@ -312,7 +339,9 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
                   _FilaGlobal(
                     posicion: i + 1,
                     f: tabla[i],
-                    esPro: appState.esProEmail(tabla[i].emailIdentidad),
+                    esPareja: dobles,
+                    esPro: !dobles &&
+                        appState.esProEmail(tabla[i].emailIdentidad),
                     // Corona al campeón vigente (de la temporada cerrada anterior)
                     // solo en las vistas "vivas" (Histórico o temporada en curso).
                     esCampeon: campeonEmail.isNotEmpty &&
@@ -485,11 +514,15 @@ class _FilaGlobal extends StatelessWidget {
     required this.f,
     this.esPro = false,
     this.esCampeon = false,
+    this.esPareja = false,
   });
   final int posicion;
   final RankingGlobalFila f;
   final bool esPro;
   final bool esCampeon;
+
+  /// Fila de PAREJA (ranking de dobles): no navega al carnet individual.
+  final bool esPareja;
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -509,9 +542,13 @@ class _FilaGlobal extends StatelessWidget {
       child: ListTile(
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        onTap: () => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => PerfilGlobalScreen(
-                idKey: f.alumnoId, deporte: f.deporte, posicion: posicion))),
+        onTap: esPareja
+            ? null
+            : () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => PerfilGlobalScreen(
+                    idKey: f.alumnoId,
+                    deporte: f.deporte,
+                    posicion: posicion))),
         leading: SizedBox(
           width: 54,
           child: Row(

@@ -54,7 +54,33 @@ def _dict(r: Reto) -> dict:
         "reportado_por": r.reportado_por,
         "reportado_en": r.reportado_en.isoformat() if r.reportado_en else None,
         "auto_confirmado": r.auto_confirmado,
+        "modalidad": r.modalidad,
+        "retador2_email": r.retador2_email,
+        "retador2_nombre": r.retador2_nombre,
+        "retado2_email": r.retado2_email,
+        "retado2_nombre": r.retado2_nombre,
     }
+
+
+def _lado_retador(r: Reto) -> set[str]:
+    return {e for e in (r.retador_email, r.retador2_email) if e}
+
+
+def _lado_retado(r: Reto) -> set[str]:
+    return {e for e in (r.retado_email, r.retado2_email) if e}
+
+
+def _participantes(r: Reto) -> set[str]:
+    return _lado_retador(r) | _lado_retado(r)
+
+
+def _lado_de(r: Reto, email: str) -> str:
+    """'retador' | 'retado' | '' según a qué pareja/lado pertenece el correo."""
+    if email in _lado_retador(r):
+        return "retador"
+    if email in _lado_retado(r):
+        return "retado"
+    return ""
 
 
 def _confirmacion_horas() -> int:
@@ -85,18 +111,36 @@ class CrearRetoReq(BaseModel):
     deporte: str = ""
     zona: str = ""
     mensaje: str = ""
+    # DOBLES (2v2): compañero del retador + compañero del retado. Si ambos vienen
+    # (o modalidad == 'dobles'), es un reto de dobles con 4 jugadores.
+    modalidad: str = "singles"
+    retador2_email: str = ""
+    retador2_nombre: str = ""
+    retado2_email: str = ""
+    retado2_nombre: str = ""
 
 
 @router.post("/crear", dependencies=_APP)
 def crear_reto(req: CrearRetoReq) -> dict:
-    """Crea un reto pendiente del retador al retado."""
+    """Crea un reto pendiente del retador al retado (singles o dobles)."""
     retador = req.retador_email.strip().lower()
     retado = req.retado_email.strip().lower()
     if not retador or not retado:
         return {"ok": False, "error": "correos_requeridos"}
     if retador == retado:
         return {"ok": False, "error": "no_puedes_retarte"}
-    # Perk Pro: los no-Pro tienen tope semanal de retos enviados.
+
+    r2 = req.retador2_email.strip().lower()
+    d2 = req.retado2_email.strip().lower()
+    es_dobles = req.modalidad.strip().lower() == "dobles" or bool(r2 and d2)
+    if es_dobles:
+        if not r2 or not d2:
+            return {"ok": False, "error": "faltan_companeros"}
+        cuatro = [retador, r2, retado, d2]
+        if len({e for e in cuatro if e}) != 4:
+            return {"ok": False, "error": "jugadores_repetidos"}
+
+    # Perk Pro: los no-Pro tienen tope semanal de retos ENVIADOS (por quien reta).
     if not stores.pro_activo(retador):
         limite = _limite_free()
         hace_semana = ahora() - timedelta(days=7)
@@ -109,7 +153,12 @@ def crear_reto(req: CrearRetoReq) -> dict:
         retador_email=retador, retador_nombre=req.retador_nombre.strip(),
         retado_email=retado, retado_nombre=req.retado_nombre.strip(),
         deporte=req.deporte.strip(), zona=req.zona.strip(),
-        mensaje=req.mensaje.strip(), creado_en=ahora())
+        mensaje=req.mensaje.strip(), creado_en=ahora(),
+        modalidad="dobles" if es_dobles else "singles",
+        retador2_email=r2 if es_dobles else "",
+        retador2_nombre=req.retador2_nombre.strip() if es_dobles else "",
+        retado2_email=d2 if es_dobles else "",
+        retado2_nombre=req.retado2_nombre.strip() if es_dobles else "")
     stores.retos.append(r)
     return {"ok": True, "reto": _dict(r)}
 
@@ -120,12 +169,13 @@ def listar_retos(email: str) -> dict:
     reciente al más antiguo."""
     _auto_confirmar()  # promueve los por_confirmar vencidos antes de listar
     e = email.strip().lower()
-    mios = [r for r in stores.retos
-            if r.retador_email == e or r.retado_email == e]
+    # En dobles cuenta a los 4 participantes: uno ve el reto si es de su lado.
+    mios = [r for r in stores.retos if e in _participantes(r)]
     mios.sort(key=lambda r: r.creado_en, reverse=True)
+    # "Recibidos" = soy del lado RETADO (me retaron); "enviados" = lado RETADOR.
     return {
-        "recibidos": [_dict(r) for r in mios if r.retado_email == e],
-        "enviados": [_dict(r) for r in mios if r.retador_email == e],
+        "recibidos": [_dict(r) for r in mios if e in _lado_retado(r)],
+        "enviados": [_dict(r) for r in mios if e in _lado_retador(r)],
     }
 
 
@@ -161,7 +211,8 @@ def resultado_reto(reto_id: int, req: ResultadoReq) -> dict:
     if r is None:
         raise HTTPException(status_code=404, detail="reto_no_encontrado")
     g = req.ganador_email.strip().lower()
-    if g not in (r.retador_email, r.retado_email):
+    # En dobles el ganador puede ser CUALQUIERA de los 4 (define el lado ganador).
+    if g not in _participantes(r):
         return {"ok": False, "error": "ganador_invalido"}
     r.ganador_email = g
     r.marcador = req.marcador.strip()
@@ -195,9 +246,11 @@ def confirmar_reto(reto_id: int, req: ConfirmarReq) -> dict:
     quien = req.por_email.strip().lower()
     if r.estado != "por_confirmar":
         return {"ok": True, "reto": _dict(r)}  # idempotente
-    if quien not in (r.retador_email, r.retado_email):
+    if quien not in _participantes(r):
         return {"ok": False, "error": "no_participa"}
-    if quien == r.reportado_por:
+    # Confirma/disputa el LADO CONTRARIO al que reportó (en dobles, el compañero
+    # del reportador tampoco confirma: sería juez y parte).
+    if _lado_de(r, quien) == _lado_de(r, r.reportado_por):
         return {"ok": False, "error": "reportador_no_confirma"}
     if req.acepta:
         r.estado = "jugado"

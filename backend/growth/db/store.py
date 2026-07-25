@@ -335,6 +335,16 @@ class Reto:
     reportado_por: str = ""
     reportado_en: datetime | None = None
     auto_confirmado: bool = False
+    # ── DOBLES (2 vs 2) ──────────────────────────────────────────────────────
+    # modalidad: 'singles' (1v1, por defecto) | 'dobles' (2v2). En dobles, cada
+    # lado tiene un COMPAÑERO: lado retador = {retador, retador2}, lado retado =
+    # {retado, retado2}. El `ganador_email` es CUALQUIER integrante del lado
+    # ganador; el lado se deriva de a qué pareja pertenece ese correo.
+    modalidad: str = "singles"
+    retador2_email: str = ""
+    retador2_nombre: str = ""
+    retado2_email: str = ""
+    retado2_nombre: str = ""
 
 
 @dataclass
@@ -969,7 +979,15 @@ def _reto_from(d: dict) -> Reto:
         deporte=d.get("deporte", ""), creado_en=_dt(d["creado_en"]),
         zona=d.get("zona", ""), estado=d.get("estado", "pendiente"),
         ganador_email=d.get("ganador_email", ""), marcador=d.get("marcador", ""),
-        mensaje=d.get("mensaje", ""), jugado_en=_dt(d.get("jugado_en")))
+        mensaje=d.get("mensaje", ""), jugado_en=_dt(d.get("jugado_en")),
+        reportado_por=d.get("reportado_por", ""),
+        reportado_en=_dt(d.get("reportado_en")),
+        auto_confirmado=bool(d.get("auto_confirmado", False)),
+        modalidad=d.get("modalidad", "singles"),
+        retador2_email=d.get("retador2_email", ""),
+        retador2_nombre=d.get("retador2_nombre", ""),
+        retado2_email=d.get("retado2_email", ""),
+        retado2_nombre=d.get("retado2_nombre", ""))
 
 
 def _pago_from(d: dict) -> PagoRegistro:

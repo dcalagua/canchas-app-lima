@@ -138,6 +138,15 @@ class _MisRetosScreenState extends State<MisRetosScreen> {
     final retadoEmail = (r['retado_email'] ?? '').toString();
     final retadorNombre = (r['retador_nombre'] ?? 'Retador').toString();
     final retadoNombre = (r['retado_nombre'] ?? 'Retado').toString();
+    final esDobles = (r['modalidad'] ?? 'singles').toString() == 'dobles';
+    // En dobles, cada opción es una PAREJA; el "email representante" es el del
+    // capitán de ese lado (el backend acepta cualquier integrante del lado).
+    final retadorLabel = esDobles
+        ? '$retadorNombre / ${r['retador2_nombre'] ?? ''}'
+        : retadorNombre;
+    final retadoLabel = esDobles
+        ? '$retadoNombre / ${r['retado2_nombre'] ?? ''}'
+        : retadoNombre;
     final marcador = TextEditingController();
     String? ganador;
     final ok = await showDialog<bool>(
@@ -159,12 +168,12 @@ class _MisRetosScreenState extends State<MisRetosScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('¿Quién ganó?',
-                  style: TextStyle(fontWeight: FontWeight.w700)),
+              Text(esDobles ? '¿Qué pareja ganó?' : '¿Quién ganó?',
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
               const SizedBox(height: 10),
               for (final o in [
-                (retadorEmail, retadorNombre),
-                (retadoEmail, retadoNombre),
+                (retadorEmail, retadorLabel),
+                (retadoEmail, retadoLabel),
               ])
                 _OpcionGanador(
                   email: o.$1,
@@ -202,18 +211,25 @@ class _MisRetosScreenState extends State<MisRetosScreen> {
     if (!mounted) return;
     if (done) {
       // Doble confirmación: el resultado NO cuenta hasta que el OTRO confirme.
-      // Le mando el aviso para que confirme/dispute.
+      // Le mando el aviso al LADO CONTRARIO para que confirme/dispute (en dobles
+      // son dos personas; cualquiera puede confirmar).
       final yo = _email;
-      final otroEmail =
-          retadorEmail.toLowerCase() == yo ? retadoEmail : retadorEmail;
-      final miNombre =
-          retadorEmail.toLowerCase() == yo ? retadorNombre : retadoNombre;
-      AvisosService.confirmarResultado(
-          email: otroEmail, porNombre: miNombre, marcador: marcador.text.trim());
+      final soyRetador = [
+        retadorEmail.toLowerCase(),
+        (r['retador2_email'] ?? '').toString().toLowerCase(),
+      ].contains(yo);
+      final miNombre = soyRetador ? retadorNombre : retadoNombre;
+      final otrosEmails = (soyRetador
+              ? [retadoEmail, (r['retado2_email'] ?? '').toString()]
+              : [retadorEmail, (r['retador2_email'] ?? '').toString()])
+          .where((e) => e.trim().isNotEmpty);
+      for (final otro in otrosEmails) {
+        AvisosService.confirmarResultado(
+            email: otro, porNombre: miNombre, marcador: marcador.text.trim());
+      }
       await _cargar();
       if (mounted) {
-        final otroNombre =
-            retadorEmail.toLowerCase() == yo ? retadoNombre : retadorNombre;
+        final otroNombre = soyRetador ? retadoLabel : retadorLabel;
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             backgroundColor: bosque,
             content: Text(
@@ -240,20 +256,39 @@ class _MisRetosScreenState extends State<MisRetosScreen> {
     final retadoNombre = (r['retado_nombre'] ?? 'Retado').toString();
     final ganadorEmail = (r['ganador_email'] ?? '').toString().toLowerCase();
     final reportadoPor = (r['reportado_por'] ?? '').toString().toLowerCase();
-    final miNombre =
-        _email == retadorEmail ? retadorNombre : retadoNombre;
+    final esDobles = (r['modalidad'] ?? 'singles').toString() == 'dobles';
+    final soyRetador = [
+      retadorEmail.toLowerCase(),
+      (r['retador2_email'] ?? '').toString().toLowerCase(),
+    ].contains(_email);
+    final miNombre = soyRetador ? retadorNombre : retadoNombre;
+    // El lado ganador se deriva de a qué pareja pertenece el correo ganador.
+    final ganoRetador = [
+      retadorEmail.toLowerCase(),
+      (r['retador2_email'] ?? '').toString().toLowerCase(),
+    ].contains(ganadorEmail);
+    final labelRetador = esDobles
+        ? '$retadorNombre / ${r['retador2_nombre'] ?? ''}'
+        : retadorNombre;
+    final labelRetado = esDobles
+        ? '$retadoNombre / ${r['retado2_nombre'] ?? ''}'
+        : retadoNombre;
 
     if (acepta) {
       // Avisa al reportador el desenlace (ganó/perdió) — siempre notifica.
-      final reportadorGano = ganadorEmail == reportadoPor;
+      // ¿El lado del reportador fue el que ganó?
+      final reporterEsRetador = [
+        retadorEmail.toLowerCase(),
+        (r['retador2_email'] ?? '').toString().toLowerCase(),
+      ].contains(reportadoPor);
+      final reportadorGano = reporterEsRetador == ganoRetador;
       AvisosService.desenlaceReto(
           email: reportadoPor, ganaste: reportadorGano, rivalNombre: miNombre);
       await appState.cargarRetosResultados(); // suma al ranking
       await appState.cargarRetosPendientes();
       await _cargar();
-      // Celebración del ganador (quien haya sido).
-      final ganoRetador = ganadorEmail == retadorEmail;
-      final ganadorNombre = ganoRetador ? retadorNombre : retadoNombre;
+      // Celebración del ganador (pareja o jugador).
+      final ganadorNombre = ganoRetador ? labelRetador : labelRetado;
       if (mounted) {
         await showDialog(
           context: context,
@@ -577,10 +612,15 @@ class _RetoCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final estado = (r['estado'] ?? '').toString();
-    // El "otro" jugador según mi rol.
-    final otro = soyRetado
-        ? (r['retador_nombre'] ?? 'Retador').toString()
-        : (r['retado_nombre'] ?? 'Retado').toString();
+    final esDobles = (r['modalidad'] ?? 'singles').toString() == 'dobles';
+    String _lado(String n1, String n2) =>
+        esDobles && n2.trim().isNotEmpty ? '$n1 / $n2' : n1;
+    final ladoRetador = _lado((r['retador_nombre'] ?? 'Retador').toString(),
+        (r['retador2_nombre'] ?? '').toString());
+    final ladoRetado = _lado((r['retado_nombre'] ?? 'Retado').toString(),
+        (r['retado2_nombre'] ?? '').toString());
+    // El "otro" lado según mi rol (en dobles, la pareja rival).
+    final otro = soyRetado ? ladoRetador : ladoRetado;
     // Colores VIVOS y distintos por estado (como los deportes de la home), no
     // tonos oscuros/apagados.
     final (String etiqueta, Color color, IconData icono) = switch (estado) {
@@ -596,11 +636,12 @@ class _RetoCard extends StatelessWidget {
     final ganadorEmail = (r['ganador_email'] ?? '').toString().toLowerCase();
     final reportadoPor = (r['reportado_por'] ?? '').toString().toLowerCase();
     final yoReporte = reportadoPor == miEmail.toLowerCase();
-    final ganadorNombre = ganadorEmail == (r['retador_email'] ?? '')
-            .toString()
-            .toLowerCase()
-        ? (r['retador_nombre'] ?? 'Retador').toString()
-        : (r['retado_nombre'] ?? 'Retado').toString();
+    // Lado ganador (en dobles, la pareja): el correo ganador pertenece a él.
+    final ganoRetador = [
+      (r['retador_email'] ?? '').toString().toLowerCase(),
+      (r['retador2_email'] ?? '').toString().toLowerCase(),
+    ].contains(ganadorEmail);
+    final ganadorNombre = ganoRetador ? ladoRetador : ladoRetado;
     final marcadorTxt = (r['marcador'] ?? '').toString();
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
