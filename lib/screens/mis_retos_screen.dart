@@ -81,31 +81,34 @@ class _MisRetosScreenState extends State<MisRetosScreen> {
       context: context,
       builder: (dctx) => StatefulBuilder(
         builder: (dctx, setSB) => AlertDialog(
-          title: const Text('Reportar resultado'),
+          title: Row(
+            children: const [
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: amarillo,
+                child: Icon(Icons.emoji_events, color: Colors.white, size: 18),
+              ),
+              SizedBox(width: 10),
+              Text('Reportar resultado'),
+            ],
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text('¿Quién ganó?',
                   style: TextStyle(fontWeight: FontWeight.w700)),
-              const SizedBox(height: 6),
-              RadioListTile<String>(
-                value: retadorEmail,
-                groupValue: ganador,
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                title: Text(retadorNombre),
-                onChanged: (v) => setSB(() => ganador = v),
-              ),
-              RadioListTile<String>(
-                value: retadoEmail,
-                groupValue: ganador,
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                title: Text(retadoNombre),
-                onChanged: (v) => setSB(() => ganador = v),
-              ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 10),
+              for (final o in [
+                (retadorEmail, retadorNombre),
+                (retadoEmail, retadoNombre),
+              ])
+                _OpcionGanador(
+                  nombre: o.$2,
+                  seleccionado: ganador == o.$1,
+                  onTap: () => setSB(() => ganador = o.$1),
+                ),
+              const SizedBox(height: 8),
               TextField(
                 controller: marcador,
                 decoration: const InputDecoration(
@@ -227,6 +230,63 @@ class _MisRetosScreenState extends State<MisRetosScreen> {
                           ],
                         ),
                 ),
+    );
+  }
+}
+
+/// Opción de ganador en "Reportar resultado": tarjeta con avatar de color +
+/// nombre, resaltada al elegirla. Más viva y clara que un radio pelado.
+class _OpcionGanador extends StatelessWidget {
+  const _OpcionGanador(
+      {required this.nombre, required this.seleccionado, required this.onTap});
+  final String nombre;
+  final bool seleccionado;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) {
+    final inicial =
+        nombre.trim().isNotEmpty ? nombre.trim()[0].toUpperCase() : '?';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: seleccionado
+                ? limaSuave
+                : Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+                color: seleccionado ? lima : trazo,
+                width: seleccionado ? 1.5 : 1),
+          ),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 18,
+                backgroundColor: teal,
+                child: Text(inicial,
+                    style: const TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w800)),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(nombre,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
+              ),
+              Icon(
+                  seleccionado
+                      ? Icons.check_circle
+                      : Icons.radio_button_unchecked,
+                  color: seleccionado ? lima : textoTenue),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
