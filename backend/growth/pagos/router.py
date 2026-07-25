@@ -103,6 +103,13 @@ class LiquidacionOnlineReq(BaseModel):
     concepto: str | None = None
 
 
+class VentaProductoReq(BaseModel):
+    vendedor_id: str           # vendedor (dueño/academia) a quien se le debe el neto
+    monto_soles: float         # precio BRUTO que pagó el comprador (Culqi)
+    venta_id: str              # idempotencia (id de la venta/producto+comprador)
+    concepto: str | None = None
+
+
 class MarcarLiquidacionReq(BaseModel):
     metodo: str | None = None       # yape | transferencia | efectivo
     referencia: str | None = None   # nº de operación / nota
@@ -435,6 +442,28 @@ def post_liquidacion_online(req: LiquidacionOnlineReq) -> dict:
         estado="aprobado", dueno_id=req.dueno_id,
         culqi_charge_id=req.reserva_id,
         concepto=req.concepto or "Reserva online")
+    return {"ok": True, "duplicada": False, "bruto_centimos": bruto,
+            "comision_centimos": comision, "neto_centimos": bruto - comision}
+
+
+@router.post("/venta", dependencies=_APP)
+def post_venta(req: VentaProductoReq) -> dict:
+    """MARKETPLACE: registra una VENTA de producto pagada online. El comprador ya
+    le pagó a Pichangol (Culqi, vía /pagos/cobrar); aquí se descuenta la comisión
+    y el NETO queda como "por recibir" del vendedor (misma contabilidad que una
+    reserva online). Idempotente por `venta_id`."""
+    bruto = _soles_a_centimos(req.monto_soles)
+    comision = comision_centimos(req.monto_soles)
+    ya = stores.pago_por_charge(req.venta_id)
+    if ya is not None and ya.tipo == "venta_producto":
+        com = comision_centimos(ya.monto_centimos / 100.0)
+        return {"ok": True, "duplicada": True, "bruto_centimos": ya.monto_centimos,
+                "comision_centimos": com, "neto_centimos": ya.monto_centimos - com}
+    stores.registrar_pago(
+        tipo="venta_producto", monto_centimos=bruto, moneda="PEN",
+        estado="aprobado", dueno_id=req.vendedor_id,
+        culqi_charge_id=req.venta_id,
+        concepto=req.concepto or "Venta de producto (marketplace)")
     return {"ok": True, "duplicada": False, "bruto_centimos": bruto,
             "comision_centimos": comision, "neto_centimos": bruto - comision}
 

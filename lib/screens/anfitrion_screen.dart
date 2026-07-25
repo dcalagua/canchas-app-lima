@@ -8,6 +8,7 @@ import 'crear_campeonato_screen.dart';
 import 'home_shell.dart';
 import 'login_google_sheet.dart';
 import 'mi_academia_screen.dart';
+import 'mis_productos_screen.dart';
 import 'verificador_screen.dart';
 
 /// Modo anfitrión (estilo Airbnb): un solo lugar con todo lo del anfitrión —
@@ -126,6 +127,15 @@ class AnfitrionScreen extends StatelessWidget {
                   title: 'Organizar campeonato',
                   subtitle: 'Torneo de fútbol, tenis y más: invita, sortea y juega',
                   onTap: () => _organizarCampeonato(context),
+                ),
+                _Tile(
+                  icon: Icons.storefront,
+                  color: morado,
+                  title: 'Mi tienda',
+                  subtitle:
+                      'Vende en el Marketplace Pichangol: raquetas, pelotas y más',
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const MisProductosScreen())),
                 ),
                 if (GrowthService.disponible)
                   _Tile(

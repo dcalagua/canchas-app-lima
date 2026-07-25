@@ -623,3 +623,27 @@ def test_eliminar_metodo_de_pago():
     client.delete("/pagos/metodos/ana@x.com/$cid".replace("$cid", cid))
     lst = client.get("/pagos/metodos/ana@x.com").json()["metodos"]
     assert lst == []
+
+
+def test_venta_marketplace_desglosa_y_va_a_por_recibir():
+    # Comprador pagó S/200 online (Culqi). La venta deja el neto por recibir al
+    # vendedor y NO toca su saldo prepago.
+    r = client.post("/pagos/venta", json={
+        "vendedor_id": "vend@x.com", "monto_soles": 200,
+        "venta_id": "venta_1", "concepto": "Venta: Raqueta Wilson"}).json()
+    assert r["ok"] is True and r["duplicada"] is False
+    assert r["bruto_centimos"] == 20000
+    assert r["comision_centimos"] == 1000          # 5% de 200
+    assert r["neto_centimos"] == 19000
+    assert stores.saldo_centimos("vend@x.com") == 0
+    pr = client.get("/pagos/por-recibir/vend@x.com").json()
+    assert pr["por_recibir_soles"] == 190.0
+
+
+def test_venta_marketplace_idempotente():
+    body = {"vendedor_id": "v", "monto_soles": 50, "venta_id": "venta_9"}
+    client.post("/pagos/venta", json=body)
+    client.post("/pagos/venta", json=body)
+    pr = client.get("/pagos/por-recibir/v").json()
+    # 50 - 2.50 = 47.50, una sola vez (no se duplica).
+    assert pr["por_recibir_soles"] == 47.5

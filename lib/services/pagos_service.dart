@@ -309,6 +309,38 @@ class PagosService {
     }
   }
 
+  /// MARKETPLACE: registra la venta de un producto pagada online. El comprador
+  /// ya pagó con Culqi (vía [cobrar]); esto deja el NETO "por recibir" del
+  /// vendedor y descuenta la comisión de Pichangol. Idempotente por [ventaId].
+  static Future<Map<String, dynamic>?> venta({
+    required String vendedorId,
+    required double montoSoles,
+    required String ventaId,
+    String? concepto,
+  }) async {
+    if (!disponible || vendedorId.isEmpty) return null;
+    try {
+      final r = await http
+          .post(
+            Uri.parse('$_baseUrl/pagos/venta'),
+            headers: _appHeaders(json: true),
+            body: jsonEncode({
+              'vendedor_id': vendedorId,
+              'monto_soles': montoSoles,
+              'venta_id': ventaId,
+              if (concepto != null) 'concepto': concepto,
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
+      if (r.statusCode == 200) {
+        return jsonDecode(r.body) as Map<String, dynamic>;
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   // --- 4) Métodos de pago guardados (Culqi One Click) ---------------------
   /// Lista las tarjetas guardadas del usuario: [{id, marca, ultimos4}].
   static Future<List<Map<String, dynamic>>> metodos(String userId) async {

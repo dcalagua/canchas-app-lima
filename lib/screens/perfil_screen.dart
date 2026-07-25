@@ -5,6 +5,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/google_logo.dart';
 import 'academias_screen.dart';
+import 'marketplace_screen.dart';
 import 'ajustes_screen.dart';
 import 'anfitrion_screen.dart';
 import 'login_google_sheet.dart';
@@ -124,6 +125,15 @@ class PerfilScreen extends StatelessWidget {
                       subtitle: 'Clases de tenis, fútbol y más cerca de ti',
                       onTap: () => Navigator.of(context).push(MaterialPageRoute(
                           builder: (_) => const AcademiasScreen())),
+                    ),
+                    _Tile(
+                      icon: Icons.storefront,
+                      color: morado,
+                      title: 'Marketplace Pichangol',
+                      subtitle:
+                          'Raquetas, pelotas y más de los locales y academias',
+                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => const MarketplaceScreen())),
                     ),
                     // CIRCUITO (capa de TENIS): un solo contenedor. Adentro vive
                     // todo lo del circuito de ese deporte (ranking, retos, Pro).

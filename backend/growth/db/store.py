@@ -613,11 +613,11 @@ class Stores:
 
     def liquidaciones(self, dueno_id: str | None = None,
                       solo_pendientes: bool = False) -> "list[PagoRegistro]":
-        """Liquidaciones online (neto que Pichangol le debe al dueño). Filtra por
-        dueño y/o solo las pendientes de pago."""
+        """Liquidaciones (neto que Pichangol le debe al dueño): reservas online y
+        ventas del marketplace. Filtra por dueño y/o solo las pendientes."""
         out = []
         for p in self.pagos:
-            if p.tipo != "liquidacion_online":
+            if p.tipo not in ("liquidacion_online", "venta_producto"):
                 continue
             if dueno_id is not None and p.dueno_id != dueno_id:
                 continue
@@ -631,7 +631,8 @@ class Stores:
         """Marca una liquidación como PAGADA (Pichangol transfirió el neto al
         dueño). Idempotente: si ya estaba pagada, la devuelve igual."""
         for p in self.pagos:
-            if p.tipo == "liquidacion_online" and p.culqi_charge_id == reserva_id:
+            if (p.tipo in ("liquidacion_online", "venta_producto")
+                    and p.culqi_charge_id == reserva_id):
                 if not p.liquidado:
                     p.liquidado = True
                     p.liquidado_en = ahora()
