@@ -3225,11 +3225,17 @@ class AppState extends ChangeNotifier {
       return (false, 'Servicio de verificación no disponible.');
     }
     final numero = dni.trim();
-    final data = await PropiedadService.consultarDni(numero);
+    // Verifica contra RENIEC + regla "1 DNI = 1 cuenta" (anti-fraude).
+    final data = await PropiedadService.verificarDni(numero, u.email);
     if (data == null) {
       return (false, 'No pudimos conectar. Revisa tu conexión.');
     }
     if (data['ok'] != true) {
+      if (data['error'] == 'dni_en_uso') {
+        return (false,
+            'Ese DNI ya está verificado en otra cuenta. Cada persona verifica '
+            'una sola cuenta.');
+      }
       return (false, 'Ese número no figura en el registro. Revísalo.');
     }
     // Válido: guarda nacimiento + marca verificado (marcha blanca del piloto).

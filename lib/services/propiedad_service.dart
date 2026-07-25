@@ -43,6 +43,25 @@ class PropiedadService {
     }
   }
 
+  /// Verifica identidad por DNI con la regla ANTI-FRAUDE **1 DNI = 1 cuenta**.
+  /// Valida contra RENIEC y liga el DNI (solo su hash) al correo. Devuelve
+  /// {ok, nombre_completo, fecha_nacimiento} o {ok:false, error:'dni_en_uso'|...}.
+  static Future<Map<String, dynamic>?> verificarDni(
+      String dni, String email) async {
+    if (!disponible) return null;
+    try {
+      final resp = await http
+          .post(Uri.parse('$_baseUrl/propiedad/verificar-dni'),
+              headers: _appHeaders(json: true),
+              body: jsonEncode({'dni': dni, 'email': email}))
+          .timeout(const Duration(seconds: 12));
+      if (resp.statusCode != 200) return null;
+      return Map<String, dynamic>.from(jsonDecode(resp.body) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Consulta el RUC (negocio) vía backend → Factiliza.
   /// Devuelve {ok, razon_social, ...} o null si no se pudo.
   static Future<Map<String, dynamic>?> consultarRuc(String ruc) async {

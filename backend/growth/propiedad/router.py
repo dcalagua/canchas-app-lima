@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 import time
 import urllib.parse
@@ -9,8 +10,10 @@ from collections import defaultdict, deque
 from xml.sax.saxutils import escape as _xml_esc
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
+from pydantic import BaseModel
 
 import config
+from db.store import stores
 from models import (
     AprobarManualRequest,
     OtpConfirmarRequest,
@@ -88,6 +91,39 @@ _APP_RL = [Depends(_require_app_key), Depends(_rate_limit)]
 @router.get("/dni/{dni}", dependencies=_APP)
 def get_dni(dni: str) -> dict:
     return identidad.consultar_dni(dni)
+
+
+# Pimienta fija para el hash del DNI: no guardamos el número (Ley 29733), solo su
+# hash, y así podemos comprobar unicidad sin exponer el dato.
+_DNI_PEPPER = "pichangol-dni-v1"
+
+
+def _dni_hash(dni: str) -> str:
+    return hashlib.sha256((dni.strip() + "|" + _DNI_PEPPER).encode()).hexdigest()
+
+
+class VerificarDniReq(BaseModel):
+    dni: str
+    email: str
+
+
+@router.post("/verificar-dni", dependencies=_APP)
+def post_verificar_dni(req: VerificarDniReq) -> dict:
+    """Verifica identidad por DNI con la regla ANTI-FRAUDE **1 DNI = 1 cuenta**.
+    Valida contra RENIEC (Factiliza) y liga el DNI (solo su HASH) al correo. Si
+    ese DNI ya está verificado en OTRA cuenta, rechaza (`dni_en_uso`)."""
+    email = req.email.strip().lower()
+    if not email:
+        return {"ok": False, "error": "correo_requerido"}
+    data = identidad.consultar_dni(req.dni)
+    if not data.get("ok"):
+        return data  # {ok: False, error: ...} (dni inválido / no encontrado)
+    h = _dni_hash(req.dni)
+    dueno = stores.dni_verificados.get(h)
+    if dueno and dueno != email:
+        return {"ok": False, "error": "dni_en_uso"}
+    stores.dni_verificados[h] = email  # liga (o confirma) el DNI a esta cuenta
+    return data  # ok + nombre_completo + fecha_nacimiento
 
 
 @router.get("/ruc/{ruc}", dependencies=_APP)
