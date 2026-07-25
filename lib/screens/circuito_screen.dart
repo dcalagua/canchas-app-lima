@@ -19,7 +19,7 @@ class CircuitoScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('Circuito')),
+      appBar: AppBar(title: const Text('Liga de tenis Pichangol')),
       body: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {

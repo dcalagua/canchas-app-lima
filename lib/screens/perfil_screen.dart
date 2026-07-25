@@ -135,8 +135,8 @@ class PerfilScreen extends StatelessWidget {
                       _Tile(
                         icon: Icons.emoji_events,
                         color: amarillo,
-                        title: 'Circuito',
-                        subtitle: 'Ranking, retos y tu carnet Pro (tenis)',
+                        title: 'Liga de tenis Pichangol',
+                        subtitle: 'Ranking, retos y tu carnet Pro',
                         badge: appState.retosPendientes,
                         onTap: () => Navigator.of(context)
                             .push(MaterialPageRoute(

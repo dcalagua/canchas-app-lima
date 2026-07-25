@@ -387,9 +387,12 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                       onTap: () => Navigator.of(context).push(MaterialPageRoute(
                           builder: (_) => const AcademiasScreen())),
                     ),
-                    // El circuito es una capa de TENIS: el banner solo aparece
-                    // cuando el usuario está navegando un deporte de raqueta.
-                    if (_filtro != null && _filtro!.esRaqueta)
+                    // La liga es una capa de TENIS: el banner de descubrimiento
+                    // sale al filtrar raqueta y SOLO si aún no eres del circuito
+                    // (si ya lo eres, lo tienes en tu Perfil).
+                    if (_filtro != null &&
+                        _filtro!.esRaqueta &&
+                        !appState.usaCircuito)
                       _CircuitoBannerExplorar(
                         onTap: () => Navigator.of(context).push(
                             MaterialPageRoute(
@@ -839,7 +842,7 @@ class _CircuitoBannerExplorar extends StatelessWidget {
                 const SizedBox(width: 10),
                 const Expanded(
                   child: Text(
-                      'Circuito Pichangol · ranking de tu ciudad y retos',
+                      'Liga de tenis Pichangol · ranking de tu ciudad y retos',
                       style: TextStyle(
                           color: bosque,
                           fontWeight: FontWeight.w700,

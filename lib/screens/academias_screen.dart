@@ -183,9 +183,11 @@ class _AcademiasScreenState extends State<AcademiasScreen> {
                 ],
               ),
               const SizedBox(height: 12),
-              // El circuito es una capa de TENIS: el banner sale solo cuando el
-              // usuario filtra un deporte de raqueta (deja de dominar el resto).
-              if (_filtro != null && _filtro!.esRaqueta) ...[
+              // La liga es una capa de TENIS: el banner de DESCUBRIMIENTO sale
+              // solo al filtrar raqueta y SOLO si el usuario aún NO es del
+              // circuito (si ya lo es, lo tiene en su Perfil → no duplicar).
+              if (_filtro != null && _filtro!.esRaqueta && !appState.usaCircuito)
+                ...[
                 _RankingGlobalBanner(),
                 const SizedBox(height: 14),
               ],
@@ -716,7 +718,7 @@ class _RankingGlobalBanner extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Circuito Pichangol · Tenis',
+                    Text('Liga de tenis Pichangol',
                         style: TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.w800,
