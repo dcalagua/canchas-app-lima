@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:geocoding/geocoding.dart';
 
 import '../models/models.dart';
 import '../services/avisos_service.dart';
 import '../services/circuito_service.dart';
+import '../services/location_service.dart';
 import '../services/retos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -428,10 +430,14 @@ class _UnirseSheet extends StatefulWidget {
 }
 
 class _UnirseSheetState extends State<_UnirseSheet> {
+  // Escalera de categorías de tenis (Perú): de principiante a avanzado.
+  static const _categorias = ['5P', '5A', '5B', '4ta', '3ra', '2da', '1ra'];
+
   Deporte _deporte = deportesCircuito.first;
   final _zona = TextEditingController();
-  final _categoria = TextEditingController();
+  String _categoria = ''; // '' = sin categoría
   bool _guardando = false;
+  bool _detectando = false;
 
   @override
   void initState() {
@@ -444,15 +450,41 @@ class _UnirseSheetState extends State<_UnirseSheet> {
         if (d.name == dName) _deporte = d;
       }
       _zona.text = (p['zona'] ?? '').toString();
-      _categoria.text = (p['categoria'] ?? '').toString();
+      _categoria = (p['categoria'] ?? '').toString();
     }
+    // Si aún no tiene zona, autodetecta su distrito por GPS (país incluido).
+    if (_zona.text.trim().isEmpty) _detectarDistrito();
   }
 
   @override
   void dispose() {
     _zona.dispose();
-    _categoria.dispose();
     super.dispose();
+  }
+
+  /// Detecta el distrito por la ubicación actual (reverse-geocode). Respeta el
+  /// país donde está el usuario (la geocodificación devuelve el distrito local).
+  Future<void> _detectarDistrito() async {
+    setState(() => _detectando = true);
+    try {
+      final pos = await LocationService.ubicacionActual();
+      if (pos == null) return;
+      final marks = await placemarkFromCoordinates(pos.latitude, pos.longitude);
+      if (marks.isEmpty) return;
+      final m = marks.first;
+      String pick(String? s) => (s ?? '').trim();
+      final distrito = pick(m.subLocality).isNotEmpty
+          ? pick(m.subLocality)
+          : pick(m.locality).isNotEmpty
+              ? pick(m.locality)
+              : pick(m.subAdministrativeArea);
+      if (distrito.isNotEmpty && mounted) {
+        setState(() => _zona.text = distrito);
+      }
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _detectando = false);
+    }
   }
 
   Future<void> _guardar() async {
@@ -460,7 +492,7 @@ class _UnirseSheetState extends State<_UnirseSheet> {
     final ok = await appState.unirseCircuito(
       deporte: _deporte,
       zona: _zona.text.trim(),
-      categoria: _categoria.text.trim(),
+      categoria: _categoria.trim(),
     );
     if (!mounted) return;
     setState(() => _guardando = false);
@@ -511,19 +543,46 @@ class _UnirseSheetState extends State<_UnirseSheet> {
           TextField(
             controller: _zona,
             textCapitalization: TextCapitalization.words,
-            decoration: const InputDecoration(
-                labelText: 'Zona / distrito',
-                hintText: 'Ej.: San Borja',
-                prefixIcon: Icon(Icons.place_outlined)),
+            decoration: InputDecoration(
+              labelText: 'Zona / distrito',
+              hintText: 'Ej.: San Borja',
+              prefixIcon: const Icon(Icons.place_outlined),
+              // Botón para (re)detectar el distrito por GPS.
+              suffixIcon: _detectando
+                  ? const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2.2, color: lima)),
+                    )
+                  : IconButton(
+                      tooltip: 'Usar mi ubicación',
+                      icon: const Icon(Icons.my_location, color: bosque),
+                      onPressed: _detectarDistrito,
+                    ),
+            ),
           ),
-          const SizedBox(height: 14),
-          TextField(
-            controller: _categoria,
-            textCapitalization: TextCapitalization.words,
-            decoration: const InputDecoration(
-                labelText: 'Nivel / categoría (opcional)',
-                hintText: 'Ej.: Intermedio, 4ta',
-                prefixIcon: Icon(Icons.military_tech_outlined)),
+          const SizedBox(height: 16),
+          Text('Nivel / categoría (opcional)', style: t.labelLarge),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ChoiceChip(
+                label: const Text('Sin categoría'),
+                selected: _categoria.isEmpty,
+                onSelected: (_) => setState(() => _categoria = ''),
+              ),
+              for (final c in _categorias)
+                ChoiceChip(
+                  label: Text(c),
+                  selected: _categoria == c,
+                  onSelected: (_) => setState(() => _categoria = c),
+                ),
+            ],
           ),
           const SizedBox(height: 20),
           SizedBox(
