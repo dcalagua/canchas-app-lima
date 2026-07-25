@@ -34,6 +34,11 @@ class Plan {
   final String etapaEdad;
   /// Duración de la clase (ej. "1 h 30 min", "2 h"). Igual dentro del programa.
   final String duracionClase;
+  /// Días y horario del programa (opcional, texto libre; ej. "Lun, Mié y Vie ·
+  /// 5:00–6:30 pm"). Compartido por todas las frecuencias del programa. Es el
+  /// horario "por defecto"; en academias multi-sede, el horario por sede
+  /// (`Academia.horarios[sede|programa]`) manda si está puesto.
+  final String horario;
 
   const Plan({
     required this.id,
@@ -45,6 +50,7 @@ class Plan {
     this.frecuenciaSemana = 0,
     this.etapaEdad = '',
     this.duracionClase = '',
+    this.horario = '',
   });
 
   /// Total del plan (para mostrar "paga todo").
@@ -64,6 +70,7 @@ class Plan {
         'frecuenciaSemana': frecuenciaSemana,
         'etapaEdad': etapaEdad,
         'duracionClase': duracionClase,
+        'horario': horario,
       };
 
   factory Plan.fromJson(Map<String, dynamic> j) => Plan(
@@ -77,6 +84,7 @@ class Plan {
         frecuenciaSemana: ((j['frecuenciaSemana'] ?? 0) as num).toInt(),
         etapaEdad: (j['etapaEdad'] ?? '') as String,
         duracionClase: (j['duracionClase'] ?? '') as String,
+        horario: (j['horario'] ?? '') as String,
       );
 }
 

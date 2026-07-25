@@ -586,7 +586,13 @@ class _PlanesSectionState extends State<_PlanesSection> {
   List<Widget> _grupo(MapEntry<String, List<Plan>> entrada,
       {bool conEncabezado = true}) {
     final academia = widget.academia;
-    final horarios = entrada.key.isEmpty ? const <String>[] : _horariosDe(entrada.key);
+    // Horario por SEDE (multi-sede) manda; si no hay, cae al horario del
+    // programa (campo opcional que puso el profe en el editor).
+    final perSede = entrada.key.isEmpty ? const <String>[] : _horariosDe(entrada.key);
+    final progHorario = entrada.value.first.horario.trim();
+    final horarios = perSede.isNotEmpty
+        ? perSede
+        : (progHorario.isNotEmpty ? [progHorario] : const <String>[]);
     return [
       if (conEncabezado && entrada.key.isNotEmpty) ...[
         const SizedBox(height: 6),

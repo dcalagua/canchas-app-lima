@@ -651,6 +651,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       final sub = [
         if (first.etapaEdad.isNotEmpty) first.etapaEdad,
         if (first.duracionClase.isNotEmpty) 'Duración: ${first.duracionClase}',
+        if (first.horario.isNotEmpty) '🕐 ${first.horario}',
       ].join(' · ');
       w.add(Card(
         margin: const EdgeInsets.only(bottom: 8),
@@ -1741,6 +1742,7 @@ class _EditorProgramaState extends State<_EditorPrograma> {
   final _prog = TextEditingController();
   final _etapa = TextEditingController();
   final _duracion = TextEditingController();
+  final _horario = TextEditingController();
   static const _frecs = [2, 3, 4, 5];
   final Map<int, TextEditingController> _precio = {
     for (final f in [2, 3, 4, 5]) f: TextEditingController(),
@@ -1757,6 +1759,7 @@ class _EditorProgramaState extends State<_EditorPrograma> {
       _prog.text = first.programa;
       _etapa.text = first.etapaEdad;
       _duracion.text = first.duracionClase;
+      _horario.text = first.horario;
       for (final p in base) {
         final c = _precio[p.frecuenciaSemana];
         if (c != null && p.precioMes > 0) {
@@ -1771,6 +1774,7 @@ class _EditorProgramaState extends State<_EditorPrograma> {
     _prog.dispose();
     _etapa.dispose();
     _duracion.dispose();
+    _horario.dispose();
     for (final c in _precio.values) {
       c.dispose();
     }
@@ -1782,6 +1786,7 @@ class _EditorProgramaState extends State<_EditorPrograma> {
     if (prog.isEmpty) return;
     final etapa = _etapa.text.trim();
     final duracion = _duracion.text.trim();
+    final horario = _horario.text.trim();
     final planes = <Plan>[];
     for (final f in _frecs) {
       final v = double.tryParse(_precio[f]!.text.trim().replaceAll(',', '.'));
@@ -1796,6 +1801,7 @@ class _EditorProgramaState extends State<_EditorPrograma> {
           frecuenciaSemana: f,
           etapaEdad: etapa,
           duracionClase: duracion,
+          horario: horario,
         ));
       }
     }
@@ -1851,6 +1857,15 @@ class _EditorProgramaState extends State<_EditorPrograma> {
             decoration: const InputDecoration(
                 labelText: 'Duración de clase',
                 hintText: 'Ej.: 1 h 30 min',
+                isDense: true),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _horario,
+            decoration: const InputDecoration(
+                labelText: 'Días y horario (opcional)',
+                hintText: 'Ej.: Lun, Mié y Vie · 5:00–6:30 pm',
+                helperText: 'Cuándo son las clases de este programa',
                 isDense: true),
           ),
           const SizedBox(height: 6),

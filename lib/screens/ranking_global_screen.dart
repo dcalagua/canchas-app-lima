@@ -5,6 +5,7 @@ import '../models/models.dart';
 import '../models/temporada.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'buscar_usuario_screen.dart';
 import 'jugadores_disponibles_screen.dart';
 import 'perfil_global_screen.dart';
 
@@ -38,6 +39,11 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
   void _abrirDisponibles() => Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => const JugadoresDisponiblesScreen()));
 
+  /// Buscar un jugador por nombre para RETARLO o CHATEAR y coordinar.
+  void _buscarJugador() => Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => BuscarUsuarioScreen(
+          deporteReto: _deporte ?? deportesCircuito.first)));
+
   /// Abre la hoja "Unirme al circuito" directo (sin pasar por Jugadores
   /// disponibles) y avisa al unirse.
   Future<void> _unirme() async {
@@ -56,6 +62,11 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
       appBar: AppBar(
         title: const Text('Ranking Global'),
         actions: [
+          IconButton(
+            tooltip: 'Buscar jugador',
+            icon: const Icon(Icons.search),
+            onPressed: _buscarJugador,
+          ),
           IconButton(
             tooltip: 'Jugadores disponibles',
             icon: const Icon(Icons.person_add_alt_1),

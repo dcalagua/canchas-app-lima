@@ -4,17 +4,28 @@ import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import '../data/perfiles_repo.dart';
+import '../models/models.dart';
+import '../services/avisos_service.dart';
+import '../services/retos_service.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'chat_screen.dart';
+import 'hazte_pro_screen.dart';
 import 'login_google_sheet.dart';
 
 /// BUSCAR USUARIO (tipo WhatsApp): encuentra a un jugador por nombre o correo,
 /// chatéale directo y guárdalo como contacto. Con la búsqueda vacía muestra tus
 /// contactos guardados para escribir rápido.
+///
+/// Si se pasa [deporteReto], además de chatear se puede **RETAR** al jugador
+/// (para el circuito): cada fila ofrece Retar + Chatear para coordinar.
 class BuscarUsuarioScreen extends StatefulWidget {
-  const BuscarUsuarioScreen({super.key});
+  const BuscarUsuarioScreen({super.key, this.deporteReto});
+
+  /// Deporte del reto (p. ej. tenis del circuito). Null = solo chatear.
+  final Deporte? deporteReto;
+
   @override
   State<BuscarUsuarioScreen> createState() => _BuscarUsuarioScreenState();
 }
@@ -82,6 +93,74 @@ class _BuscarUsuarioScreenState extends State<BuscarUsuarioScreen> {
     ));
   }
 
+  /// Reta a un jugador (solo si esta pantalla se abrió con [deporteReto]).
+  Future<void> _retar(String email, String nombre) async {
+    final dep = widget.deporteReto;
+    if (dep == null) return;
+    if (!await LoginGoogleSheet.mostrar(context, motivo: 'retar a un jugador')) {
+      return;
+    }
+    if (!mounted) return;
+    final u = appState.usuario;
+    if (u == null) return;
+    if (email.toLowerCase().trim() == u.email.toLowerCase().trim()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No puedes retarte a ti mismo.')));
+      return;
+    }
+    final resp = await RetosService.crear(
+      retadorEmail: u.email,
+      retadorNombre: u.nombre,
+      retadoEmail: email,
+      retadoNombre: nombre.isNotEmpty ? nombre : email,
+      deporte: dep.name,
+    );
+    if (!mounted) return;
+    // Tope semanal del free → ofrecer Pro.
+    if (resp != null && resp['error'] == 'limite_retos_free') {
+      _ofrecerPro(resp['limite']);
+      return;
+    }
+    final ok = resp != null && resp['ok'] == true;
+    if (ok) {
+      AvisosService.retoRecibido(
+          retadoEmail: email, retadorNombre: u.nombre, deporte: dep.name);
+    }
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      backgroundColor: ok ? bosque : null,
+      content: Text(ok
+          ? 'Reto enviado a ${nombre.isNotEmpty ? nombre : email}. Coordinen por '
+              'el chat y reporten el resultado en "Mis retos".'
+          : 'No se pudo enviar el reto. Reintenta.'),
+    ));
+  }
+
+  Future<void> _ofrecerPro(dynamic limite) async {
+    final n = (limite is num) ? limite.toInt() : 3;
+    final ir = await showDialog<bool>(
+      context: context,
+      builder: (dctx) => AlertDialog(
+        title: const Text('Llegaste a tu límite de retos'),
+        content: Text(
+            'Los jugadores sin Pichangol Pro pueden enviar $n retos por semana. '
+            'Hazte Pro y reta sin límites.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dctx, false),
+              child: const Text('Ahora no')),
+          FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: lima),
+              onPressed: () => Navigator.pop(dctx, true),
+              child: const Text('Ver Pro')),
+        ],
+      ),
+    );
+    if (ir == true && mounted) {
+      Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const HazteProScreen()));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -124,7 +203,9 @@ class _BuscarUsuarioScreenState extends State<BuscarUsuarioScreen> {
                       child: CircularProgressIndicator(color: lima));
                 }
                 if (!hayQuery) {
-                  return _Contactos(onChatear: _chatear);
+                  return _Contactos(
+                      onChatear: _chatear,
+                      onRetar: widget.deporteReto != null ? _retar : null);
                 }
                 if (_resultados.isEmpty) {
                   return const _Vacio(
@@ -140,6 +221,7 @@ class _BuscarUsuarioScreenState extends State<BuscarUsuarioScreen> {
                   itemBuilder: (_, i) => _FilaUsuario(
                     perfil: _resultados[i],
                     onChatear: _chatear,
+                    onRetar: widget.deporteReto != null ? _retar : null,
                   ),
                 );
               },
@@ -153,8 +235,9 @@ class _BuscarUsuarioScreenState extends State<BuscarUsuarioScreen> {
 
 /// Lista de mis contactos guardados (búsqueda vacía).
 class _Contactos extends StatelessWidget {
-  const _Contactos({required this.onChatear});
+  const _Contactos({required this.onChatear, this.onRetar});
   final void Function(String email, String nombre) onChatear;
+  final void Function(String email, String nombre)? onRetar;
   @override
   Widget build(BuildContext context) {
     final emails = appState.contactos;
@@ -181,6 +264,7 @@ class _Contactos extends StatelessWidget {
               'celular': appState.celularDe(e),
             },
             onChatear: onChatear,
+            onRetar: onRetar,
           ),
       ],
     );
@@ -188,9 +272,55 @@ class _Contactos extends StatelessWidget {
 }
 
 class _FilaUsuario extends StatelessWidget {
-  const _FilaUsuario({required this.perfil, required this.onChatear});
+  const _FilaUsuario(
+      {required this.perfil, required this.onChatear, this.onRetar});
   final Map<String, dynamic> perfil;
   final void Function(String email, String nombre) onChatear;
+  final void Function(String email, String nombre)? onRetar;
+
+  /// Hoja con las dos acciones cuando se puede retar: Retar / Chatear.
+  void _opciones(BuildContext context, String email, String nombre) {
+    final mostrar = nombre.isNotEmpty ? nombre : email;
+    showModalBottomSheet(
+      context: context,
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 6),
+              child: Text(mostrar,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w800, fontSize: 16)),
+            ),
+            ListTile(
+              leading: const CircleAvatar(
+                  backgroundColor: naranja,
+                  child: Icon(Icons.sports_kabaddi, color: Colors.white)),
+              title: const Text('Retar a un partido'),
+              subtitle: const Text('Le llega una notificación del reto'),
+              onTap: () {
+                Navigator.pop(context);
+                onRetar!(email, nombre);
+              },
+            ),
+            ListTile(
+              leading: const CircleAvatar(
+                  backgroundColor: teal,
+                  child: Icon(Icons.chat_bubble, color: Colors.white)),
+              title: const Text('Chatear para coordinar'),
+              subtitle: const Text('Ponte de acuerdo en cancha y hora'),
+              onTap: () {
+                Navigator.pop(context);
+                onChatear(email, nombre);
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -201,7 +331,9 @@ class _FilaUsuario extends StatelessWidget {
     final guardado = appState.esContacto(email);
     final celular = (perfil['celular'] ?? '').toString();
     return ListTile(
-      onTap: () => onChatear(email, nombre),
+      onTap: () => onRetar != null
+          ? _opciones(context, email, nombre)
+          : onChatear(email, nombre),
       leading: CircleAvatar(
         radius: 22,
         backgroundColor: limaSuave,
@@ -244,6 +376,12 @@ class _FilaUsuario extends StatelessWidget {
                   color: Color(0xFF25D366), size: 20),
               onPressed: () => WhatsAppLink.abrir(
                   celular, 'Hola, te escribo desde Pichangol.'),
+            ),
+          if (onRetar != null)
+            IconButton(
+              tooltip: 'Retar',
+              icon: const Icon(Icons.sports_kabaddi, color: naranja),
+              onPressed: () => onRetar!(email, nombre),
             ),
           IconButton(
             tooltip: 'Enviar mensaje',
