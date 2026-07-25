@@ -10,6 +10,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/ubicacion_share.dart';
 import 'login_google_sheet.dart';
+import 'ranking_global_screen.dart';
 import 'recargar_saldo_screen.dart';
 import '../utils/moneda.dart';
 import '../config/pais.dart';
@@ -155,6 +156,23 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                   _Liga(campeonato: c, esDueno: esDueno)
                 else
                   _Llave(campeonato: c, esDueno: esDueno),
+                if (c.academiaId.isEmpty) ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => RankingGlobalScreen(
+                              deporteInicial: c.deporte),
+                        ),
+                      ),
+                      icon: Text(emojiDeporte(c.deporte),
+                          style: const TextStyle(fontSize: 16)),
+                      label: Text('Ver ranking de ${c.deporte.etiqueta}'),
+                    ),
+                  ),
+                ],
               ],
               if (esDueno && c.fixtureGenerado) ...[
                 const SizedBox(height: 20),
@@ -283,6 +301,10 @@ class CampeonatoDetalleScreen extends StatelessWidget {
   /// edad real y la compara con el rango de la categoría (Sub-N). Devuelve true
   /// si puede inscribirse. Evita que alguien se haga pasar por otra edad.
   Future<bool> _gateDni(BuildContext context, Campeonato c) async {
+    // Si el jugador YA está verificado en el app y la categoría no tiene rango
+    // de edad, la identidad ya está confirmada: no hace falta re-pedir el DNI.
+    final sinRangoEdad = c.edadMin == null && c.edadMax == null;
+    if (appState.jugadorVerificado && sinRangoEdad) return true;
     final dni = TextEditingController();
     var cargando = false;
     String? error;

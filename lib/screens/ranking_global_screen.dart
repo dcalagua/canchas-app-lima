@@ -13,7 +13,12 @@ import 'perfil_global_screen.dart';
 /// por deporte (estilo circuito abierto, rankingtenis.pe). Es el motor de
 /// comunidad e identidad a escala ciudad — y el gancho para la membresía Pro.
 class RankingGlobalScreen extends StatefulWidget {
-  const RankingGlobalScreen({super.key});
+  const RankingGlobalScreen({super.key, this.deporteInicial});
+
+  /// Deporte a pre-seleccionar (p. ej. abrir el ranking de FÚTBOL desde un
+  /// campeonato). Null = el primero con datos (tenis por defecto).
+  final Deporte? deporteInicial;
+
   @override
   State<RankingGlobalScreen> createState() => _RankingGlobalScreenState();
 }
@@ -27,6 +32,7 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
   @override
   void initState() {
     super.initState();
+    _deporte = widget.deporteInicial; // pre-selección (p. ej. fútbol)
     appState.cargarMiembrosPro(); // insignia PRO en la tabla
     appState.cargarMiPerfilCircuito(); // ¿ya me uní al circuito?
     // Cuando tenga los datos, empuja el ranking a la torre de control.

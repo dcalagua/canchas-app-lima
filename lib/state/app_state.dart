@@ -583,6 +583,12 @@ class AppState extends ChangeNotifier {
       final d = _deporteDe(r['deporte']);
       if (d != null) s.add(d);
     }
+    // Campeonatos independientes con al menos un partido jugado.
+    for (final c in campeonatos) {
+      if (c.academiaId.isEmpty && c.partidos.any((p) => p.jugado)) {
+        s.add(c.deporte);
+      }
+    }
     final l = s.toList()..sort((x, y) => x.index.compareTo(y.index));
     return l;
   }
@@ -681,6 +687,43 @@ class AppState extends ChangeNotifier {
           }
           if (nombre.isNotEmpty) g.nombre = nombre;
           g.porAcademia['Retos'] = (g.porAcademia['Retos'] ?? 0) + 1;
+        }
+      }
+    }
+    // Pliega los CAMPEONATOS INDEPENDIENTES (sin academia) — los de academia ya
+    // entran por academia.partidos. Cada partido jugado suma al equipo/jugador.
+    // (Fútbol: la fila es el EQUIPO; individuales, por correo.)
+    for (final camp in campeonatos) {
+      if (camp.academiaId.isNotEmpty) continue; // ya contado vía academia
+      if (deporte != null && camp.deporte != deporte) continue;
+      if (zona != null && zona.isNotEmpty) continue; // los torneos no tienen zona
+      if (categoria != null &&
+          categoria.isNotEmpty &&
+          camp.categoria != categoria) continue;
+      final fecha = camp.inicio ?? camp.inscripcionHasta ?? DateTime.now();
+      if (temporada != null && !temporada.contiene(fecha)) continue;
+      final byId = {for (final p in camp.participantes) p.id: p};
+      for (final pt in camp.partidos) {
+        if (!pt.jugado) continue;
+        final aId = pt.aId, bId = pt.bId, gid = pt.ganadorId;
+        if (aId == null || bId == null || gid == null) continue;
+        for (final id in [aId, bId]) {
+          final p = byId[id];
+          if (p == null) continue;
+          final email = p.email.trim().toLowerCase();
+          final key = p.esEquipo
+              ? 't:${camp.id}|$id'
+              : (email.isNotEmpty ? 'e:$email' : 'c:${camp.id}|$id');
+          final g = agg.putIfAbsent(key, () => _AggGlobal(deporte: camp.deporte));
+          g.pj++;
+          if (gid == id) {
+            g.pg++;
+          } else {
+            g.pp++;
+          }
+          if (p.nombre.isNotEmpty) g.nombre = p.nombre;
+          if (camp.categoria.isNotEmpty) g.categoria = camp.categoria;
+          g.porAcademia[camp.nombre] = (g.porAcademia[camp.nombre] ?? 0) + 1;
         }
       }
     }
