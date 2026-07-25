@@ -50,6 +50,10 @@ class _Conv {
 class _MensajesScreenState extends State<MensajesScreen> {
   bool _cargando = true;
   List<_Conv> _convs = const [];
+  // Panel derecho (tablet, master-detail): conversación abierta.
+  _Conv? _sel;
+  // Hilos ya abiertos en el panel → se muestran sin badge de no leídos.
+  final Set<String> _abiertos = {};
 
   @override
   void initState() {
@@ -306,19 +310,60 @@ class _MensajesScreenState extends State<MensajesScreen> {
     return 'Dueño de cancha';
   }
 
-  void _abrir(_Conv c) {
-    Navigator.of(context)
-        .push(MaterialPageRoute(
-          builder: (_) => ChatScreen(
-            academiaId: c.academiaId,
-            cuentaEmail: c.cuentaEmail,
-            titulo: c.titulo,
-            soyProfe: c.soyProfe,
-            tipo: c.tipo,
-            refId: c.refId,
+  /// Abre una conversación. En pantallas anchas (tablet) la muestra en el panel
+  /// derecho (el menú lateral sigue visible); en móvil, a pantalla completa.
+  void _abrir(_Conv c, bool ancho) {
+    if (ancho) {
+      setState(() {
+        _sel = c;
+        _abiertos.add(c.hilo);
+      });
+    } else {
+      Navigator.of(context)
+          .push(MaterialPageRoute(
+            builder: (_) => ChatScreen(
+              academiaId: c.academiaId,
+              cuentaEmail: c.cuentaEmail,
+              titulo: c.titulo,
+              soyProfe: c.soyProfe,
+              tipo: c.tipo,
+              refId: c.refId,
+            ),
+          ))
+          .then((_) => _cargar()); // al volver, refresca no-leídos/preview
+    }
+  }
+
+  /// Panel derecho: el chat abierto (embebido, sin flecha de volver) o un aviso.
+  Widget _panelDetalle() {
+    final c = _sel;
+    if (c == null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              Icon(Icons.forum_outlined, size: 54, color: textoTenue),
+              SizedBox(height: 12),
+              Text('Elige una conversación para chatear.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: textoTenue)),
+            ],
           ),
-        ))
-        .then((_) => _cargar()); // al volver, refresca no-leídos/preview
+        ),
+      );
+    }
+    return ChatScreen(
+      key: ValueKey(c.hilo),
+      academiaId: c.academiaId,
+      cuentaEmail: c.cuentaEmail,
+      titulo: c.titulo,
+      soyProfe: c.soyProfe,
+      tipo: c.tipo,
+      refId: c.refId,
+      embebido: true,
+    );
   }
 
   @override
@@ -367,24 +412,44 @@ class _MensajesScreenState extends State<MensajesScreen> {
             );
           }
           if (!MensajesRepo.disponible) return const _Aviso(_kSinBackend);
-          return RefreshIndicator(
-            onRefresh: _cargar,
-            child: _cargando
-                ? const Center(child: CircularProgressIndicator())
-                : _convs.isEmpty
-                    ? ListView(children: const [
-                        SizedBox(height: 80),
-                        _Aviso(_kVacio),
-                      ])
-                    : ListView.separated(
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                        itemCount: _convs.length,
-                        separatorBuilder: (_, __) =>
-                            Divider(height: 1, color: trazo.withOpacity(0.6)),
-                        itemBuilder: (_, i) =>
-                            _FilaConv(conv: _convs[i], onTap: () => _abrir(_convs[i])),
-                      ),
-          );
+          return LayoutBuilder(builder: (context, cons) {
+            final ancho = cons.maxWidth >= 640;
+            final lista = RefreshIndicator(
+              onRefresh: _cargar,
+              child: _cargando
+                  ? const Center(child: CircularProgressIndicator())
+                  : _convs.isEmpty
+                      ? ListView(children: const [
+                          SizedBox(height: 80),
+                          _Aviso(_kVacio),
+                        ])
+                      : ListView.separated(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          itemCount: _convs.length,
+                          separatorBuilder: (_, __) => Divider(
+                              height: 1, color: trazo.withOpacity(0.6)),
+                          itemBuilder: (_, i) {
+                            final c = _convs[i];
+                            return _FilaConv(
+                              conv: c,
+                              noLeidos:
+                                  _abiertos.contains(c.hilo) ? 0 : c.noLeidos,
+                              seleccionado: ancho && _sel?.hilo == c.hilo,
+                              onTap: () => _abrir(c, ancho),
+                            );
+                          },
+                        ),
+            );
+            if (!ancho) return lista;
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(width: 340, child: lista),
+                const VerticalDivider(width: 1),
+                Expanded(child: _panelDetalle()),
+              ],
+            );
+          });
         },
       ),
     );
@@ -423,8 +488,15 @@ class _Aviso extends StatelessWidget {
 }
 
 class _FilaConv extends StatelessWidget {
-  const _FilaConv({required this.conv, required this.onTap});
+  const _FilaConv({
+    required this.conv,
+    required this.noLeidos,
+    required this.seleccionado,
+    required this.onTap,
+  });
   final _Conv conv;
+  final int noLeidos; // efectivo (0 si ya se abrió en el panel)
+  final bool seleccionado;
   final VoidCallback onTap;
 
   String _cuando(DateTime d) {
@@ -456,6 +528,8 @@ class _FilaConv extends StatelessWidget {
     };
     return ListTile(
       onTap: onTap,
+      selected: seleccionado,
+      selectedTileColor: cs.primary.withOpacity(0.08),
       leading: CircleAvatar(
         backgroundColor: colAvatar,
         backgroundImage:
@@ -483,15 +557,15 @@ class _FilaConv extends StatelessWidget {
           Text(_cuando(conv.cuando),
               style: TextStyle(
                   fontSize: 11,
-                  color: conv.noLeidos > 0 ? cs.primary : textoTenue,
+                  color: noLeidos > 0 ? cs.primary : textoTenue,
                   fontWeight:
-                      conv.noLeidos > 0 ? FontWeight.w800 : FontWeight.w400)),
+                      noLeidos > 0 ? FontWeight.w800 : FontWeight.w400)),
           const SizedBox(height: 6),
-          if (conv.noLeidos > 0)
+          if (noLeidos > 0)
             Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(color: cs.primary, shape: BoxShape.circle),
-              child: Text('${conv.noLeidos}',
+              child: Text('$noLeidos',
                   style: TextStyle(
                       color: cs.onPrimary,
                       fontSize: 10,
