@@ -255,12 +255,14 @@ class _RetoCard extends StatelessWidget {
     final otro = soyRetado
         ? (r['retador_nombre'] ?? 'Retador').toString()
         : (r['retado_nombre'] ?? 'Retado').toString();
+    // Colores VIVOS y distintos por estado (como los deportes de la home), no
+    // tonos oscuros/apagados.
     final (String etiqueta, Color color, IconData icono) = switch (estado) {
-      'pendiente' => ('Pendiente', clayOscuro, Icons.hourglass_top),
-      'aceptado' => ('Aceptado', bosque, Icons.handshake),
-      'jugado' => ('Jugado', lima, Icons.emoji_events),
-      'rechazado' => ('Rechazado', textoTenue, Icons.close),
-      _ => (estado, textoTenue, Icons.sports_kabaddi),
+      'pendiente' => ('Pendiente', amarillo, Icons.hourglass_top),
+      'aceptado' => ('Aceptado', lima, Icons.handshake),
+      'jugado' => ('Jugado', morado, Icons.emoji_events),
+      'rechazado' => ('Rechazado', clayOscuro, Icons.close),
+      _ => (estado, teal, Icons.sports_kabaddi),
     };
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -359,7 +361,7 @@ class _RetoCard extends StatelessWidget {
               width: double.infinity,
               child: FilledButton.icon(
                 style: FilledButton.styleFrom(
-                    backgroundColor: bosque, foregroundColor: Colors.white),
+                    backgroundColor: lima, foregroundColor: Colors.white),
                 onPressed: onReportar,
                 icon: const Icon(Icons.emoji_events, size: 18),
                 label: const Text('Reportar resultado'),
