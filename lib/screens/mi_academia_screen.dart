@@ -62,8 +62,22 @@ class MiAcademiaScreen extends StatelessWidget {
               padding: EdgeInsets.zero,
               children: [
               _Header(academia: ac),
-              _CodigoCard(academia: ac),
-              _DestacarCard(academia: ac),
+              // En tablet (ancho) las dos tarjetas van lado a lado; en móvil,
+              // apiladas. Aprovecha el ancho sin estirar cada tarjeta.
+              LayoutBuilder(builder: (context, cons) {
+                final codigo = _CodigoCard(academia: ac);
+                final destacar = _DestacarCard(academia: ac);
+                if (cons.maxWidth >= 680) {
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: codigo),
+                      Expanded(child: destacar),
+                    ],
+                  );
+                }
+                return Column(children: [codigo, destacar]);
+              }),
               _AccesoRanking(academiaId: ac.id),
               Padding(
                 padding: const EdgeInsets.fromLTRB(18, 16, 18, 8),
