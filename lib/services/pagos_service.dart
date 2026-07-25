@@ -317,6 +317,11 @@ class PagosService {
     required double montoSoles,
     required String ventaId,
     String? concepto,
+    String productoId = '',
+    String productoNombre = '',
+    String compradorEmail = '',
+    String compradorNombre = '',
+    String vendedorNombre = '',
   }) async {
     if (!disponible || vendedorId.isEmpty) return null;
     try {
@@ -329,6 +334,11 @@ class PagosService {
               'monto_soles': montoSoles,
               'venta_id': ventaId,
               if (concepto != null) 'concepto': concepto,
+              'producto_id': productoId,
+              'producto_nombre': productoNombre,
+              'comprador_email': compradorEmail,
+              'comprador_nombre': compradorNombre,
+              'vendedor_nombre': vendedorNombre,
             }),
           )
           .timeout(const Duration(seconds: 15));

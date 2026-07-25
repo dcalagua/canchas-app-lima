@@ -71,6 +71,9 @@ CONFIG_DEFAULT: dict[str, str] = {
     # confirma ni disputa en este plazo, se da por ganador al reportado (auto-
     # confirmación). Editable desde la torre. 0 = confirmación inmediata.
     "retos_confirmacion_horas": "24",
+    # Días para que una venta del marketplace se libere sola si el comprador no
+    # confirma recepción ni disputa (auto-liberación a favor del vendedor).
+    "ventas_liberacion_dias": "7",
     "puntos_traer_cancha": "500",
     "puntos_invitar_jugador": "100",
     "puntos_pedir_cancha": "50",
@@ -348,6 +351,31 @@ class Reto:
 
 
 @dataclass
+class Venta:
+    """Una ORDEN del Marketplace (escrow simple). El comprador ya pagó (Culqi);
+    el dinero queda RETENIDO hasta que confirme la recepción, y recién ahí se
+    libera el neto al vendedor. Estados:
+      pagado    → pagado, retenido (esperando entrega/recepción)
+      entregado → el vendedor marcó que entregó (sigue retenido)
+      recibido  → el comprador confirmó → LIBERADO (neto pagable al vendedor)
+      disputado → el comprador abrió disputa (no se libera; lo revisa el operador)
+    """
+    id: int
+    producto_id: str
+    producto_nombre: str
+    comprador_email: str
+    comprador_nombre: str
+    vendedor_email: str
+    vendedor_nombre: str
+    monto_soles: float
+    creado_en: datetime
+    estado: str = "pagado"
+    entregado_en: datetime | None = None
+    recibido_en: datetime | None = None
+    auto_liberado: bool = False  # se liberó por vencimiento del plazo, no por el comprador
+
+
+@dataclass
 class PagoRegistro:
     """Un movimiento de pasarela (Culqi). Es plata: autoritativo en el backend.
     - tipo=recarga → acredita saldo del dueño (dueno_id).
@@ -398,6 +426,8 @@ class Stores:
         self.inscripciones: list[Inscripcion] = []
         # RETOS P2P (jugador reta a jugador; el resultado suma al ranking).
         self.retos: list[Reto] = []
+        # VENTAS del Marketplace (escrow: retenido hasta que el comprador confirme).
+        self.ventas: list[Venta] = []
         # CIRCUITO: jugadores que se declararon "disponibles para retar" (aunque
         # aún no hayan jugado). Resuelve el arranque en frío del ranking.
         # email -> {nombre, deporte, zona, categoria, actualizado}.
@@ -598,6 +628,7 @@ class Stores:
         }
         self.pagos = []
         self.retos = []
+        self.ventas = []
         self.saldos = {}
         self.suscripciones = {}
         self.suscripciones_alumno = {}
@@ -756,6 +787,7 @@ class Stores:
             "modo_aprobacion_overrides": dict(self.modo_aprobacion_overrides),
             "convocatorias": [como_dict(c) for c in self.convocatorias],
             "retos": [como_dict(r) for r in self.retos],
+            "ventas": [como_dict(v) for v in self.ventas],
             "inscripciones": [como_dict(i) for i in self.inscripciones],
             "saldos": dict(self.saldos),
             "pagos": [como_dict(p) for p in self.pagos],
@@ -798,6 +830,7 @@ class Stores:
             data.get("modo_aprobacion_overrides") or {})
         self.convocatorias = [_conv_from(d) for d in data.get("convocatorias", [])]
         self.retos = [_reto_from(d) for d in data.get("retos", [])]
+        self.ventas = [_venta_from(d) for d in data.get("ventas", [])]
         self.inscripciones = [_insc_from(d) for d in data.get("inscripciones", [])]
         self.saldos = {k: int(v) for k, v in (data.get("saldos") or {}).items()}
         self.pagos = [_pago_from(d) for d in data.get("pagos", [])]
@@ -989,6 +1022,21 @@ def _reto_from(d: dict) -> Reto:
         retador2_nombre=d.get("retador2_nombre", ""),
         retado2_email=d.get("retado2_email", ""),
         retado2_nombre=d.get("retado2_nombre", ""))
+
+
+def _venta_from(d: dict) -> Venta:
+    return Venta(
+        id=d["id"], producto_id=d.get("producto_id", ""),
+        producto_nombre=d.get("producto_nombre", ""),
+        comprador_email=d.get("comprador_email", ""),
+        comprador_nombre=d.get("comprador_nombre", ""),
+        vendedor_email=d.get("vendedor_email", ""),
+        vendedor_nombre=d.get("vendedor_nombre", ""),
+        monto_soles=float(d.get("monto_soles", 0) or 0),
+        creado_en=_dt(d["creado_en"]), estado=d.get("estado", "pagado"),
+        entregado_en=_dt(d.get("entregado_en")),
+        recibido_en=_dt(d.get("recibido_en")),
+        auto_liberado=bool(d.get("auto_liberado", False)))
 
 
 def _pago_from(d: dict) -> PagoRegistro:

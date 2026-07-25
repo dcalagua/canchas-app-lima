@@ -6,6 +6,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import 'editar_producto_screen.dart';
 import 'login_google_sheet.dart';
+import 'mis_ordenes_screen.dart';
 import 'verificar_identidad_screen.dart';
 
 /// "Mi tienda": el vendedor (dueño/academia) gestiona sus productos del
@@ -112,7 +113,17 @@ class _MisProductosScreenState extends State<MisProductosScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Mi tienda')),
+      appBar: AppBar(
+        title: const Text('Mi tienda'),
+        actions: [
+          IconButton(
+            tooltip: 'Mis ventas',
+            icon: const Icon(Icons.point_of_sale_outlined),
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => const MisOrdenesScreen(esVendedor: true))),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: lima,
         foregroundColor: Colors.white,

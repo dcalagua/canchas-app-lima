@@ -89,6 +89,11 @@ class _ProductoDetalleScreenState extends State<ProductoDetalleScreen> {
       montoSoles: p.precio,
       ventaId: ventaId,
       concepto: 'Venta: ${p.nombre}',
+      productoId: p.id,
+      productoNombre: p.nombre,
+      compradorEmail: u.email.toLowerCase(),
+      compradorNombre: u.nombre,
+      vendedorNombre: p.vendedorNombre,
     );
     if (!mounted) return;
     setState(() => _comprando = false);

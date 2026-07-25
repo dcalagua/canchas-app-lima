@@ -4,6 +4,7 @@ import '../data/productos_repo.dart';
 import '../models/producto.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'mis_ordenes_screen.dart';
 import 'producto_detalle_screen.dart';
 
 /// Marketplace Pichangol (comprador): feed único de productos que publican los
@@ -72,7 +73,17 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
     final catsPresentes = <String>{for (final p in _todos) p.categoria};
     final items = _filtrados;
     return Scaffold(
-      appBar: AppBar(title: const Text('Marketplace Pichangol')),
+      appBar: AppBar(
+        title: const Text('Marketplace Pichangol'),
+        actions: [
+          IconButton(
+            tooltip: 'Mis compras',
+            icon: const Icon(Icons.shopping_bag_outlined),
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => const MisOrdenesScreen(esVendedor: false))),
+          ),
+        ],
+      ),
       body: Column(
         children: [
           Padding(

@@ -108,6 +108,12 @@ class VentaProductoReq(BaseModel):
     monto_soles: float         # precio BRUTO que pagó el comprador (Culqi)
     venta_id: str              # idempotencia (id de la venta/producto+comprador)
     concepto: str | None = None
+    # Datos de la ORDEN (escrow) — para "marcar entregado/recibido".
+    producto_id: str = ""
+    producto_nombre: str = ""
+    comprador_email: str = ""
+    comprador_nombre: str = ""
+    vendedor_nombre: str = ""
 
 
 class MarcarLiquidacionReq(BaseModel):
@@ -452,6 +458,8 @@ def post_venta(req: VentaProductoReq) -> dict:
     le pagó a Pichangol (Culqi, vía /pagos/cobrar); aquí se descuenta la comisión
     y el NETO queda como "por recibir" del vendedor (misma contabilidad que una
     reserva online). Idempotente por `venta_id`."""
+    from db.store import Venta, ahora  # local para no ensuciar el import global
+
     bruto = _soles_a_centimos(req.monto_soles)
     comision = comision_centimos(req.monto_soles)
     ya = stores.pago_por_charge(req.venta_id)
@@ -464,6 +472,17 @@ def post_venta(req: VentaProductoReq) -> dict:
         estado="aprobado", dueno_id=req.vendedor_id,
         culqi_charge_id=req.venta_id,
         concepto=req.concepto or "Venta de producto (marketplace)")
+    # Crea la ORDEN (escrow): retenida hasta que el comprador confirme recepción.
+    stores.ventas.append(Venta(
+        id=stores.next_id("venta"),
+        producto_id=req.producto_id,
+        producto_nombre=req.producto_nombre or (req.concepto or "Producto"),
+        comprador_email=req.comprador_email.strip().lower(),
+        comprador_nombre=req.comprador_nombre.strip(),
+        vendedor_email=req.vendedor_id.strip().lower(),
+        vendedor_nombre=req.vendedor_nombre.strip(),
+        monto_soles=req.monto_soles,
+        creado_en=ahora(), estado="pagado"))
     return {"ok": True, "duplicada": False, "bruto_centimos": bruto,
             "comision_centimos": comision, "neto_centimos": bruto - comision}
 
