@@ -10,6 +10,7 @@ import '../utils/input_formatos.dart';
 import '../widgets/marcas_pago.dart';
 import '../widgets/pago_libelula.dart';
 import '../widgets/pago_procesando.dart';
+import '../widgets/responsive.dart';
 import '../widgets/sesion_requerida.dart';
 import '../utils/moneda.dart';
 
@@ -227,7 +228,9 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
               : _cargando
           ? const CargandoPichangol()
           : ListView(
-              padding: const EdgeInsets.all(18),
+              // Regla app: contenido centrado (ancho máx) en pantallas anchas.
+              padding: EdgeInsets.symmetric(
+                  horizontal: ladoTablet(context, 18, 600), vertical: 18),
               children: [
                 Text('¿Cuánto quieres recargar?',
                     style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),

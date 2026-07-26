@@ -6,6 +6,7 @@ import '../theme.dart';
 import '../utils/ubicacion_share.dart';
 import '../widgets/court_lines.dart';
 import '../utils/moneda.dart';
+import '../widgets/responsive.dart';
 import '../widgets/sesion_requerida.dart';
 import 'chat_screen.dart';
 
@@ -75,7 +76,9 @@ class _MisReservasScreenState extends State<MisReservasScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(18, 4, 18, 12),
+                // Regla app: contenido centrado (ancho máx) en pantallas anchas.
+                padding: EdgeInsets.fromLTRB(
+                    ladoTablet(context, 18, 760), 4, ladoTablet(context, 18, 760), 12),
                 child: _SegTabs(
                   seleccion: _tab,
                   etiquetas: const ['Próximas', 'Historial'],
@@ -86,7 +89,9 @@ class _MisReservasScreenState extends State<MisReservasScreen> {
                 child: lista.isEmpty
                     ? _Vacio(historial: _tab == 1)
                     : ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(18, 4, 18, 28),
+                        padding: EdgeInsets.fromLTRB(
+                            ladoTablet(context, 18, 760), 4,
+                            ladoTablet(context, 18, 760), 28),
                         itemCount: lista.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 14),
                         itemBuilder: (context, i) {

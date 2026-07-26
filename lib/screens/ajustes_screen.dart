@@ -4,6 +4,7 @@ import '../brand.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/responsive.dart';
 import 'editar_perfil_screen.dart';
 import 'referidos_screen.dart';
 import 'verificar_identidad_screen.dart';
@@ -182,7 +183,9 @@ class AjustesScreen extends StatelessWidget {
         builder: (context, _) {
           final u = appState.usuario;
           return ListView(
-            padding: const EdgeInsets.fromLTRB(18, 12, 18, 30),
+            // Regla app: contenido centrado (ancho máx) en pantallas anchas.
+            padding: EdgeInsets.fromLTRB(
+                ladoTablet(context, 18, 600), 12, ladoTablet(context, 18, 600), 30),
             children: [
               Text('Tu cuenta',
                   style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),

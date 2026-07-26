@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
+import '../widgets/responsive.dart';
 import 'recargar_saldo_screen.dart';
 
 /// PICHANGOL PRO: membresía mensual del jugador. Se cobra de la BILLETERA ÚNICA
@@ -110,7 +111,9 @@ class _HazteProScreenState extends State<HazteProScreen> {
           final mon = appState.monedaSaldoSimbolo;
           final saldo = appState.saldoClub;
           return ListView(
-            padding: const EdgeInsets.fromLTRB(18, 16, 18, 30),
+            // Regla app: contenido centrado (ancho máx) en pantallas anchas.
+            padding: EdgeInsets.fromLTRB(
+                ladoTablet(context, 18, 640), 16, ladoTablet(context, 18, 640), 30),
             children: [
               // Tarjeta hero.
               Container(

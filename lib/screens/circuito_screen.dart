@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/responsive.dart';
 import 'hazte_pro_screen.dart';
 import 'jugadores_disponibles_screen.dart';
 import 'mis_retos_screen.dart';
@@ -26,7 +27,9 @@ class CircuitoScreen extends StatelessWidget {
         listenable: appState,
         builder: (context, _) {
           return ListView(
-            padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
+            // Regla app: contenido centrado (ancho máx) en pantallas anchas.
+            padding: EdgeInsets.fromLTRB(
+                ladoTablet(context, 18, 640), 8, ladoTablet(context, 18, 640), 24),
             children: [
               // Hero de la liga: gradiente de marca, 🎾 y estado del circuito.
               _HeroLiga(perfil: appState.miPerfilCircuito),
