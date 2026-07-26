@@ -5,6 +5,7 @@ import '../screens/pago_sheet.dart';
 import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'cargando_pichangol.dart';
 
 /// Cobro con LIBÉLULA (Bolivia). Modelo "deuda + pasarela hospedada": el backend
 /// registra la deuda y devuelve una URL; aquí abrimos esa URL en un WebView para
@@ -14,6 +15,10 @@ import '../theme.dart';
 /// Devuelve true si el pago se confirmó. Si Libélula no está configurada en el
 /// backend, cae a la pasarela SIMULADA (para no romper la demo/pruebas).
 class PagoLibelula {
+  // Anti doble-click: mientras hay un cobro en curso, los taps extra se ignoran
+  // (evita que se registren varias deudas y se abran varias pasarelas).
+  static bool _enCurso = false;
+
   static Future<bool> cobrar(
     BuildContext context, {
     required int monto,
@@ -24,19 +29,63 @@ class PagoLibelula {
     String ref = '',
     String duenoId = '',
   }) async {
+    if (_enCurso) return false; // ya hay un pago abriéndose
+    _enCurso = true; // se setea SÍNCRONO: bloquea incluso el doble-tap de 1 frame
+    try {
+      return await _flujo(context,
+          monto: monto, concepto: concepto, email: email, moneda: moneda,
+          tipo: tipo, ref: ref, duenoId: duenoId);
+    } finally {
+      _enCurso = false;
+    }
+  }
+
+  static Future<bool> _flujo(
+    BuildContext context, {
+    required int monto,
+    required String concepto,
+    required String email,
+    required String moneda,
+    required String tipo,
+    required String ref,
+    required String duenoId,
+  }) async {
     final correo = (appState.usuario?.email ?? email).trim();
     final nombre = appState.usuario?.nombre ?? '';
     // 1) Registrar la deuda en el backend (que llama a Libélula). El [tipo]
     //    'recarga' + [duenoId] hace que el backend acredite el saldo al pagarse.
-    final r = await PagosService.crearDeudaBo(
-      email: correo,
-      montoBs: monto.toDouble(),
-      concepto: concepto,
-      nombre: nombre,
-      tipo: tipo,
-      ref: ref,
-      duenoId: duenoId,
+    //    Mientras tanto, preload de marca (registrar la deuda puede demorar).
+    final nav = Navigator.of(context, rootNavigator: true);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      useRootNavigator: true,
+      builder: (_) => const PopScope(
+        canPop: false,
+        child: Dialog(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: 28),
+            child: CargandoPichangol(texto: 'Preparando tu pago…'),
+          ),
+        ),
+      ),
     );
+    Map<String, dynamic>? r;
+    try {
+      r = await PagosService.crearDeudaBo(
+        email: correo,
+        montoBs: monto.toDouble(),
+        concepto: concepto,
+        nombre: nombre,
+        tipo: tipo,
+        ref: ref,
+        duenoId: duenoId,
+      );
+    } finally {
+      if (nav.canPop()) nav.pop(); // cierra el preload
+    }
     if (!context.mounted) return false;
 
     // Sin pasarela configurada → demo simulada (igual que Culqi).
