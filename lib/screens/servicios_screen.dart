@@ -153,13 +153,22 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
   Future<void> _contratar(Map<String, dynamic> plan) async {
     final clave = plan['clave'] as String;
     setState(() => _procesando = clave);
-    final r = await PagosService.contratarServicio(
-        duenoId: _billetera,
-        academiaId: _idAcademia,
-        servicio: clave,
-        tipo: widget.negocio.tipo);
+    Map<String, dynamic>? r;
+    try {
+      // Regla: acción que demora → preload de marca (overlay), nunca círculo.
+      r = await conPreload(
+        context,
+        () => PagosService.contratarServicio(
+            duenoId: _billetera,
+            academiaId: _idAcademia,
+            servicio: clave,
+            tipo: widget.negocio.tipo),
+        texto: 'Contratando…',
+      );
+    } finally {
+      if (mounted) setState(() => _procesando = null);
+    }
     if (!mounted) return;
-    setState(() => _procesando = null);
     if (r == null) {
       _msg('No se pudo contratar. Revisa tu conexión.');
       return;
@@ -246,13 +255,21 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
   }
 
   Future<void> _generarLanding() async {
+    if (_generandoLanding) return;
     setState(() => _generandoLanding = true);
-    final url = await appState.generarLandingNegocio(widget.negocio);
+    String? url;
+    try {
+      // Regla: acción que demora → preload de marca (overlay), nunca círculo.
+      url = await conPreload(
+        context,
+        () => appState.generarLandingNegocio(widget.negocio),
+        texto: 'Publicando tu landing…',
+      );
+    } finally {
+      if (mounted) setState(() => _generandoLanding = false);
+    }
     if (!mounted) return;
-    setState(() {
-      _generandoLanding = false;
-      if (url != null) _landingUrl = url;
-    });
+    if (url != null) setState(() => _landingUrl = url!);
     if (url == null) {
       _msg('No se pudo generar la landing. Revisa tu conexión.');
     } else {
@@ -266,11 +283,20 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
   }
 
   Future<void> _generarPosts() async {
+    if (_generandoPosts) return;
     setState(() => _generandoPosts = true);
-    final r =
-        await appState.generarPostsNegocio(widget.negocio, _tema.text.trim());
+    Map<String, dynamic>? r;
+    try {
+      // Regla: acción que demora → preload de marca (overlay), nunca círculo.
+      r = await conPreload(
+        context,
+        () => appState.generarPostsNegocio(widget.negocio, _tema.text.trim()),
+        texto: 'Generando tus posts…',
+      );
+    } finally {
+      if (mounted) setState(() => _generandoPosts = false);
+    }
     if (!mounted) return;
-    setState(() => _generandoPosts = false);
     if (r == null) {
       _msg('No se pudo generar. Revisa tu conexión.');
       return;
@@ -336,35 +362,49 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
     final completo =
         hashtags.isEmpty ? texto : '$texto\n\n${hashtags.join(' ')}';
 
-    String? imagenUrl;
+    // La foto se ELIGE antes del preload (es interacción del usuario). La subida
+    // y la publicación (lo que demora) van bajo el preload de marca.
+    List<int>? bytes;
+    String? ct;
     if (opcion == 'foto') {
       final f = await ImagePicker()
           .pickImage(source: ImageSource.gallery, maxWidth: 1080);
       if (f == null) return;
-      final bytes = await f.readAsBytes();
-      if (!mounted) return;
-      setState(() => _publicando = idx);
-      final ct = (f.mimeType != null && f.mimeType!.startsWith('image/'))
+      bytes = await f.readAsBytes();
+      ct = (f.mimeType != null && f.mimeType!.startsWith('image/'))
           ? f.mimeType!
           : (f.path.toLowerCase().endsWith('.png')
               ? 'image/png'
               : 'image/jpeg');
-      imagenUrl = await PagosService.subirImagen(
-          academiaId: _idAcademia, bytes: bytes, contentType: ct);
-      if (!mounted) return;
-      if (imagenUrl == null) {
-        setState(() => _publicando = null);
-        _msg('No se pudo subir la imagen. Reintenta.');
-        return;
-      }
-    } else {
-      setState(() => _publicando = idx);
     }
-
-    final r = await PagosService.publicarPost(
-        academiaId: _idAcademia, texto: completo, imagenUrl: imagenUrl);
     if (!mounted) return;
-    setState(() => _publicando = null);
+
+    setState(() => _publicando = idx);
+    Map<String, dynamic>? r;
+    var imgFallo = false;
+    try {
+      // Regla: acción que demora → preload de marca (overlay), nunca círculo.
+      r = await conPreload(context, () async {
+        String? imagenUrl;
+        if (bytes != null) {
+          imagenUrl = await PagosService.subirImagen(
+              academiaId: _idAcademia, bytes: bytes!, contentType: ct!);
+          if (imagenUrl == null) {
+            imgFallo = true;
+            return null;
+          }
+        }
+        return PagosService.publicarPost(
+            academiaId: _idAcademia, texto: completo, imagenUrl: imagenUrl);
+      }, texto: 'Publicando en tus redes…');
+    } finally {
+      if (mounted) setState(() => _publicando = null);
+    }
+    if (!mounted) return;
+    if (imgFallo) {
+      _msg('No se pudo subir la imagen. Reintenta.');
+      return;
+    }
     if (r == null) {
       _msg('No se pudo publicar. Revisa tu conexión.');
       return;
@@ -572,12 +612,7 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
                     WhatsAppLink.compartir('Mira nuestra página: $url'),
               ),
               TextButton.icon(
-                icon: _generandoLanding
-                    ? const SizedBox(
-                        height: 16,
-                        width: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.refresh, size: 18),
+                icon: const Icon(Icons.refresh, size: 18),
                 label: const Text('Actualizar'),
                 onPressed: _generandoLanding ? null : _generarLanding,
               ),
@@ -592,13 +627,7 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 13)),
               onPressed: _generandoLanding ? null : _generarLanding,
-              child: _generandoLanding
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2.4, color: Colors.white))
-                  : const Text('Generar mi landing'),
+              child: const Text('Generar mi landing'),
             ),
           ),
       ],
@@ -661,13 +690,7 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
                 backgroundColor: lima,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 12)),
-            icon: _generandoPosts
-                ? const SizedBox(
-                    height: 18,
-                    width: 18,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2.2, color: Colors.white))
-                : const Icon(Icons.auto_awesome, size: 18),
+            icon: const Icon(Icons.auto_awesome, size: 18),
             label: Text(_posts == null ? 'Generar posts' : 'Generar otros'),
             onPressed: _generandoPosts ? null : _generarPosts,
           ),
@@ -688,7 +711,6 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
     final completo = hashtags.isEmpty ? texto : '$texto\n\n${hashtags.join(' ')}';
     // Publicar directo sólo si contrató Manejo de redes y está conectado.
     final puedePublicar = _redesContratada && _redesConectada;
-    final publicandoEste = _publicando == idx;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
@@ -728,12 +750,7 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
               ),
               if (puedePublicar)
                 TextButton.icon(
-                  icon: publicandoEste
-                      ? const SizedBox(
-                          height: 14,
-                          width: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.send, size: 16, color: lima),
+                  icon: const Icon(Icons.send, size: 16, color: lima),
                   label: const Text('Publicar',
                       style: TextStyle(
                           color: lima, fontWeight: FontWeight.w800)),
@@ -880,13 +897,7 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 13)),
                 onPressed: procesando ? null : () => _contratar(plan),
-                child: procesando
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2.4, color: Colors.white))
-                    : Text('Contratar · $_mon ${soles.toStringAsFixed(0)}/mes'),
+                child: Text('Contratar · $_mon ${soles.toStringAsFixed(0)}/mes'),
               ),
             ),
         ],

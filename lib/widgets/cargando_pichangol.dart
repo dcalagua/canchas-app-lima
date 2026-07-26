@@ -5,6 +5,41 @@ import 'package:flutter/material.dart';
 import '../theme.dart';
 import 'marca.dart';
 
+/// REGLA de la app: cuando una acción puede DEMORAR, se muestra SIEMPRE el
+/// preload de marca (la pelota de Pichangol), nunca un spinner/círculo pelado.
+/// [conPreload] ejecuta [accion] mostrando ese preload como overlay y lo cierra
+/// al terminar (pase lo que pase). Devuelve el resultado de [accion].
+///
+/// Uso: `final r = await conPreload(context, () => servicio.algo(), texto: '…');`
+Future<T> conPreload<T>(
+  BuildContext context,
+  Future<T> Function() accion, {
+  String texto = 'Cargando…',
+}) async {
+  final nav = Navigator.of(context, rootNavigator: true);
+  showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    useRootNavigator: true,
+    builder: (_) => PopScope(
+      canPop: false,
+      child: Dialog(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 28),
+          child: CargandoPichangol(texto: texto),
+        ),
+      ),
+    ),
+  );
+  try {
+    return await accion();
+  } finally {
+    if (nav.canPop()) nav.pop();
+  }
+}
+
 /// Loader de marca (mini-splash) para los estados de PRELOAD: en vez de un
 /// spinner pelado, muestra la pelota de Pichangol rebotando y CAMBIANDO de
 /// deporte (fútbol, tenis, básquet, vóley…) + el wordmark + "Cargando…", igual
