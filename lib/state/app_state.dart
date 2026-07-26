@@ -21,6 +21,7 @@ import '../data/sample_data.dart';
 import '../data/verificacion_repo.dart';
 import '../models/academia.dart';
 import '../models/campeonato.dart';
+import '../models/cierre_caja.dart';
 import '../models/club.dart';
 import '../models/invitacion.dart';
 import '../models/models.dart';
@@ -4047,6 +4048,7 @@ class AppState extends ChangeNotifier {
   static const _kRecordAuto = 'recordatorios_auto'; // avisos proactivos on/off
   static const _kAsistAvisada = 'asistencia_avisada_json'; // "alumnoId|dia"
   static const _kDescuentosSlot = 'descuentos_slot_json'; // "cancha|fecha|hora"→pct
+  static const _kCierresCaja = 'cierres_caja_json';
   static const _kNacimiento = 'fecha_nacimiento_iso';
   static const _kDniVerif = 'dni_verificado';
   static const _kMovs = 'movimientos_json';
@@ -4141,6 +4143,15 @@ class AppState extends ChangeNotifier {
             ..clear()
             ..addAll((jsonDecode(ds) as Map)
                 .map((k, v) => MapEntry(k.toString(), (v as num).toInt())));
+        } catch (_) {}
+      }
+      final cc = prefs.getString(_kCierresCaja);
+      if (cc != null && cc.isNotEmpty) {
+        try {
+          cierresCaja
+            ..clear()
+            ..addAll((jsonDecode(cc) as List)
+                .map((e) => CierreCaja.fromJson(Map<String, dynamic>.from(e))));
         } catch (_) {}
       }
       // Migración de instalaciones previas (sin titular guardado): atribuye la
@@ -4314,6 +4325,8 @@ class AppState extends ChangeNotifier {
       await prefs.setString(
           _kAsistAvisada, jsonEncode(_asistenciaAvisada.toList()));
       await prefs.setString(_kDescuentosSlot, jsonEncode(_descuentosSlot));
+      await prefs.setString(_kCierresCaja,
+          jsonEncode(cierresCaja.map((c) => c.toJson()).toList()));
       if (fechaNacimiento != null) {
         await prefs.setString(
             _kNacimiento, fechaNacimiento!.toIso8601String());
@@ -4690,6 +4703,76 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     _persistirDatos();
     ReservasRepo.actualizar(upd); // best-effort
+  }
+
+  // ── CAJA DEL DÍA (dueño) ──────────────────────────────────────────────────
+  /// ISO 'YYYY-MM-DD' de una fecha.
+  String isoDe(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
+
+  /// Reservas del día [iso] de las canchas del dueño (excluye no-shows).
+  List<Reserva> reservasDelDiaDueno(String iso) {
+    final ids = misCanchas.map((c) => c.id).toSet();
+    return reservas
+        .where((r) =>
+            ids.contains(r.canchaId) &&
+            r.fecha == iso &&
+            r.estado != EstadoReserva.noShow)
+        .toList()
+      ..sort((a, b) => a.horaInicio.compareTo(b.horaInicio));
+  }
+
+  /// Caja del día: cobrado, por cobrar (con extras), reservas y % ocupación.
+  ({int cobrado, int porCobrar, int reservas, int ocupacion}) cajaDia(
+      String iso) {
+    final list = reservasDelDiaDueno(iso);
+    var cobrado = 0, porCobrar = 0;
+    for (final r in list) {
+      final t = r.totalConExtras.round();
+      if (r.pagado) {
+        cobrado += t;
+      } else {
+        porCobrar += t;
+      }
+    }
+    final slots = misCanchas.fold<int>(0, (s, c) => s + c.horariosSlots().length);
+    final ocupacion = slots == 0 ? 0 : (list.length * 100) ~/ slots;
+    return (
+      cobrado: cobrado,
+      porCobrar: porCobrar,
+      reservas: list.length,
+      ocupacion: ocupacion
+    );
+  }
+
+  // Cierres de caja (arqueo por día). Se persisten local.
+  final List<CierreCaja> cierresCaja = [];
+
+  /// Cierre de un día (null si aún no se cerró).
+  CierreCaja? cierreDe(String iso) {
+    for (final c in cierresCaja) {
+      if (c.fecha == iso) return c;
+    }
+    return null;
+  }
+
+  /// Cierra (o recierra) la caja del día: guarda la foto de cobrado/por cobrar.
+  void cerrarCaja(String iso) {
+    final c = cajaDia(iso);
+    cierresCaja.removeWhere((x) => x.fecha == iso);
+    cierresCaja.insert(
+        0,
+        CierreCaja(
+          fecha: iso,
+          cobrado: c.cobrado,
+          porCobrar: c.porCobrar,
+          reservas: c.reservas,
+          cerradaEn: DateTime.now(),
+        ));
+    notifyListeners();
+    _persistirDatos();
   }
 
   /// El JUGADOR cancela / elimina una de sus reservas (próxima o del historial).

@@ -7,6 +7,7 @@ import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'agregar_cancha_screen.dart';
+import 'caja_dia_screen.dart';
 import 'servicios_screen.dart';
 import 'bienvenida_dueno_sheet.dart';
 import 'bloquear_horarios_screen.dart';
@@ -82,6 +83,8 @@ class _MisCanchasScreenState extends State<MisCanchasScreen> {
                       : ListView(
                           padding: const EdgeInsets.fromLTRB(18, 16, 18, 90),
                           children: [
+                            const _CajaHoyCard(),
+                            const SizedBox(height: 14),
                             _GeneradoCard(canchas: canchas),
                             const SizedBox(height: 14),
                             const _DestacarCanchasCard(),
@@ -116,6 +119,119 @@ class _MisCanchasScreenState extends State<MisCanchasScreen> {
           );
         },
       )),
+    );
+  }
+}
+
+/// "Caja de hoy": el resumen del día que recibe al dueño al abrir — cuánto
+/// cobró, cuánto le falta cobrar y cuántas reservas tiene hoy. Abre la Caja del
+/// día completa. Es el ancla del hábito: se abre a diario para cuadrar.
+class _CajaHoyCard extends StatelessWidget {
+  const _CajaHoyCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final iso = appState.isoDe(DateTime.now());
+    final caja = appState.cajaDia(iso);
+    final mon = appState.misCanchas.isEmpty
+        ? 'S/'
+        : appState.misCanchas.first.monedaSimbolo;
+    final cerrada = appState.cierreDe(iso) != null;
+    return InkWell(
+      onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const CajaDiaScreen())),
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF128C7E), Color(0xFF075E54)],
+          ),
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.point_of_sale, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                const Text('Caja de hoy',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16)),
+                const Spacer(),
+                if (cerrada)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(999)),
+                    child: const Text('Cerrada',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w800)),
+                  )
+                else
+                  const Icon(Icons.chevron_right, color: Colors.white70),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Cobrado',
+                          style:
+                              TextStyle(color: Colors.white70, fontSize: 12)),
+                      Text('$mon ${caja.cobrado}',
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 22)),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Por cobrar',
+                          style:
+                              TextStyle(color: Colors.white70, fontSize: 12)),
+                      Text('$mon ${caja.porCobrar}',
+                          style: const TextStyle(
+                              color: Color(0xFFF2C94C),
+                              fontWeight: FontWeight.w900,
+                              fontSize: 22)),
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text('${caja.reservas}',
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 22)),
+                    Text('reserva${caja.reservas == 1 ? '' : 's'} · ${caja.ocupacion}%',
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 11)),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
