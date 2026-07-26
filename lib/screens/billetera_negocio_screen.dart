@@ -285,42 +285,43 @@ class _BilleteraNegocioScreenState extends State<BilleteraNegocioScreen> {
                             guardando = true;
                             error = null;
                           });
-                          final tok = await PagosService.tokenizarTarjeta(
-                              publicKey: pk,
-                              numero: num,
-                              cvv: cvv.text.trim(),
-                              mesExp: mes,
-                              anioExp: anio,
-                              email: email);
-                          if (tok['ok'] != true) {
-                            setSt(() {
-                              guardando = false;
-                              error = tok['error']?.toString() ??
+                          // Regla: tokenizar + guardar demora → preload de marca.
+                          String? err;
+                          final ok = await conPreload(ctx, () async {
+                            final tok = await PagosService.tokenizarTarjeta(
+                                publicKey: pk,
+                                numero: num,
+                                cvv: cvv.text.trim(),
+                                mesExp: mes,
+                                anioExp: anio,
+                                email: email);
+                            if (tok['ok'] != true) {
+                              err = tok['error']?.toString() ??
                                   'No se pudo validar la tarjeta.';
-                            });
-                            return;
-                          }
-                          final r = await PagosService.guardarMetodoSuscripcion(
-                              academiaId: _id,
-                              token: tok['token'].toString(),
-                              email: email);
-                          if (r['ok'] == true) {
+                              return false;
+                            }
+                            final r =
+                                await PagosService.guardarMetodoSuscripcion(
+                                    academiaId: _id,
+                                    token: tok['token'].toString(),
+                                    email: email);
+                            if (r['ok'] != true) {
+                              err = r['error']?.toString() ??
+                                  'No se pudo guardar la tarjeta.';
+                              return false;
+                            }
+                            return true;
+                          }, texto: 'Guardando tarjeta…');
+                          if (ok) {
                             if (ctx.mounted) Navigator.pop(ctx);
                           } else {
                             setSt(() {
                               guardando = false;
-                              error = r['error']?.toString() ??
-                                  'No se pudo guardar la tarjeta.';
+                              error = err ?? 'No se pudo guardar la tarjeta.';
                             });
                           }
                         },
-                  child: guardando
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2.4, color: Colors.white))
-                      : const Text('Guardar tarjeta'),
+                  child: const Text('Guardar tarjeta'),
                 ),
               ),
             ],

@@ -9,6 +9,7 @@ import '../services/propiedad_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/ubicacion_share.dart';
+import '../widgets/cargando_pichangol.dart';
 import 'login_google_sheet.dart';
 import 'ranking_global_screen.dart';
 import 'recargar_saldo_screen.dart';
@@ -450,10 +451,13 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                         error = null;
                       });
                       // País-aware: Ecuador consulta la cédula (CipherByte);
-                      // el resto, el DNI (Factiliza).
-                      final r = paisActual.iso == 'EC'
-                          ? await PropiedadService.consultarCedula(d)
-                          : await PropiedadService.consultarDni(d);
+                      // el resto, el DNI (Factiliza). Demora → preload de marca.
+                      final r = await conPreload(
+                          dctx,
+                          () => paisActual.iso == 'EC'
+                              ? PropiedadService.consultarCedula(d)
+                              : PropiedadService.consultarDni(d),
+                          texto: 'Verificando…');
                       if (r == null || r['ok'] != true) {
                         setSB(() {
                           cargando = false;
@@ -485,13 +489,7 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                       }
                       Navigator.pop(dctx, true);
                     },
-              child: cargando
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2.2, color: Colors.white))
-                  : const Text('Verificar'),
+              child: const Text('Verificar'),
             ),
           ],
         ),

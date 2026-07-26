@@ -251,24 +251,35 @@ class _AgregarTarjetaSheetState extends State<_AgregarTarjetaSheet> {
     var anio = int.tryParse(exp[1].trim()) ?? 0;
     if (anio < 100) anio += 2000;
 
+    if (_guardando) return;
     setState(() => _guardando = true);
     final email = widget.userId;
-    final tok = await PagosService.tokenizarTarjeta(
-        publicKey: widget.publicKey, numero: numero, cvv: _cvv.text.trim(),
-        mesExp: mes, anioExp: anio, email: email);
+    // Regla: tokenizar + guardar la tarjeta demora → preload de marca.
+    String? err;
+    final ok = await conPreload(context, () async {
+      final tok = await PagosService.tokenizarTarjeta(
+          publicKey: widget.publicKey, numero: numero, cvv: _cvv.text.trim(),
+          mesExp: mes, anioExp: anio, email: email);
+      if (tok['ok'] != true) {
+        err = tok['error']?.toString() ?? 'Tarjeta rechazada.';
+        return false;
+      }
+      final partes = _nombre.text.trim().split(' ');
+      final res = await PagosService.guardarMetodo(
+        token: tok['token'].toString(),
+        userId: widget.userId,
+        email: email,
+        nombre: partes.isNotEmpty ? partes.first : '',
+        apellido: partes.length > 1 ? partes.sublist(1).join(' ') : '',
+      );
+      if (res['ok'] != true) {
+        err = res['error']?.toString() ?? 'No se pudo guardar.';
+        return false;
+      }
+      return true;
+    }, texto: 'Guardando tarjeta…');
     if (!mounted) return;
-    if (tok['ok'] != true) return _fail(tok['error']?.toString() ?? 'Tarjeta rechazada.');
-
-    final partes = _nombre.text.trim().split(' ');
-    final res = await PagosService.guardarMetodo(
-      token: tok['token'].toString(),
-      userId: widget.userId,
-      email: email,
-      nombre: partes.isNotEmpty ? partes.first : '',
-      apellido: partes.length > 1 ? partes.sublist(1).join(' ') : '',
-    );
-    if (!mounted) return;
-    if (res['ok'] != true) return _fail(res['error']?.toString() ?? 'No se pudo guardar.');
+    if (!ok) return _fail(err ?? 'No se pudo guardar.');
     Navigator.of(context).pop(true);
   }
 
@@ -407,12 +418,7 @@ class _AgregarTarjetaSheetState extends State<_AgregarTarjetaSheet> {
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 14)),
               onPressed: _guardando ? null : _guardar,
-              child: _guardando
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
-                  : const Text('Guardar tarjeta'),
+              child: const Text('Guardar tarjeta'),
             ),
           ),
         ],

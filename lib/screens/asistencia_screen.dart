@@ -6,6 +6,7 @@ import '../models/mensaje.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 
 /// Toma de ASISTENCIA por día: el profe marca quién vino (upsert por alumno+día)
 /// y con un tap AVISA a los padres — por la app (chat + push) a quienes tienen
@@ -99,36 +100,45 @@ class _AsistenciaScreenState extends State<AsistenciaScreen> {
     );
     if (go != true) return;
 
+    if (_avisando) return;
     setState(() => _avisando = true);
-    var enviadosApp = 0;
     final sinApp = <Alumno>[];
-    for (final a in pendientes) {
-      final presente = appState.asistio(a.id, _dia);
-      if (a.esApp) {
-        final msg = Mensaje(
-          id: 'msg_${DateTime.now().microsecondsSinceEpoch}_${a.id}',
-          hilo: Mensaje.hiloDe(widget.academiaId, a.email),
-          tipo: 'academia',
-          refId: widget.academiaId,
-          academiaId: widget.academiaId,
-          cuentaEmail: a.email,
-          autorEmail: u.email,
-          autorNombre: u.nombre,
-          esProfe: true,
-          texto: _texto(a, presente),
-          creado: DateTime.now(),
-        );
-        final ok = await MensajesRepo.enviar(msg);
-        if (ok) {
-          enviadosApp++;
-          appState.marcarAsistenciaAvisada(a.id, _dia);
+    int enviadosApp;
+    try {
+      // Regla: avisar (envía por la app a cada padre) demora → preload de marca.
+      enviadosApp = await conPreload(context, () async {
+        var n = 0;
+        for (final a in pendientes) {
+          final presente = appState.asistio(a.id, _dia);
+          if (a.esApp) {
+            final msg = Mensaje(
+              id: 'msg_${DateTime.now().microsecondsSinceEpoch}_${a.id}',
+              hilo: Mensaje.hiloDe(widget.academiaId, a.email),
+              tipo: 'academia',
+              refId: widget.academiaId,
+              academiaId: widget.academiaId,
+              cuentaEmail: a.email,
+              autorEmail: u.email,
+              autorNombre: u.nombre,
+              esProfe: true,
+              texto: _texto(a, presente),
+              creado: DateTime.now(),
+            );
+            final ok = await MensajesRepo.enviar(msg);
+            if (ok) {
+              n++;
+              appState.marcarAsistenciaAvisada(a.id, _dia);
+            }
+          } else {
+            sinApp.add(a);
+          }
         }
-      } else {
-        sinApp.add(a);
-      }
+        return n;
+      }, texto: 'Avisando a los padres…');
+    } finally {
+      if (mounted) setState(() => _avisando = false);
     }
     if (!mounted) return;
-    setState(() => _avisando = false);
     _msg(enviadosApp > 0
         ? '✅ Avisé a $enviadosApp padre(s) por la app.'
         : (sinApp.isEmpty ? 'Listo.' : 'Ningún padre tiene la app aún.'));
@@ -315,13 +325,7 @@ class _AsistenciaScreenState extends State<AsistenciaScreen> {
                                 borderRadius: BorderRadius.circular(14))),
                         onPressed:
                             (_avisando || porAvisar == 0) ? null : _avisar,
-                        icon: _avisando
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: Colors.white))
-                            : const Icon(Icons.campaign),
+                        icon: const Icon(Icons.campaign),
                         label: Text(
                             porAvisar == 0
                                 ? 'Padres avisados ✓'
