@@ -433,7 +433,7 @@ class _CapturaScreenState extends State<_CapturaScreen> {
           ),
           const SizedBox(height: 14),
           Text(
-            'Las fotos son del establecimiento, no documentos personales. No se piden DNI ni recibos.',
+            'Las fotos son del establecimiento, no documentos personales. No se piden documentos de identidad ni recibos.',
             style: t.bodySmall
                 ?.copyWith(color: textoTenue, fontStyle: FontStyle.italic),
           ),

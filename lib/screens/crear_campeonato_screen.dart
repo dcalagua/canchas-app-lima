@@ -268,10 +268,11 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
             value: _exigeDni,
             activeColor: lima,
             onChanged: (v) => setState(() => _exigeDni = v),
-            title: const Text('Exigir DNI para inscribirse'),
+            title: Text('Exigir $docIdActual para inscribirse'),
             subtitle: const Text(
                 'Valida identidad y calcula la edad real (evita que se hagan '
-                'pasar por otra edad en categorías Sub-N). Solo Perú.'),
+                'pasar por otra edad en categorías Sub-N). Donde hay registro '
+                'oficial (Perú, Ecuador).'),
           ),
           if (_exigeDni) ...[
             const SizedBox(height: 4),

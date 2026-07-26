@@ -98,7 +98,7 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                       _ChipInfo('🗓️ Cierre inscrip.: '
                           '${_fmtDia(c.inscripcionHasta!)}'),
                     if (c.relampago) const _ChipInfo('⚡ Relámpago'),
-                    if (c.exigeDni) const _ChipInfo('🪪 Exige DNI'),
+                    if (c.exigeDni) _ChipInfo('🪪 Exige $docIdActual'),
                     if (c.edadMin != null || c.edadMax != null)
                       _ChipInfo('🎂 '
                           '${c.edadMin != null ? 'desde ${c.edadMin}' : ''}'
@@ -337,22 +337,25 @@ class CampeonatoDetalleScreen extends StatelessWidget {
       context: context,
       builder: (dctx) => StatefulBuilder(
         builder: (dctx, setSB) => AlertDialog(
-          title: const Text('Verifica tu DNI'),
+          title: Text('Verifica tu $docIdActual'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                  'Este campeonato exige DNI para validar identidad y edad'
+                  'Este campeonato exige $docIdActual para validar identidad y edad'
                   '${c.edadMax != null || c.edadMin != null ? ' (categoría ${c.edadMin != null ? 'desde ${c.edadMin}' : ''}${c.edadMax != null ? ' hasta ${c.edadMax} años' : ''})' : ''}.',
                   style: const TextStyle(color: textoTenue, fontSize: 12.5)),
               const SizedBox(height: 10),
               TextField(
                 controller: dni,
                 keyboardType: TextInputType.number,
-                maxLength: 8,
-                decoration: const InputDecoration(
-                    labelText: 'DNI (8 dígitos)', counterText: ''),
+                maxLength: paisActual.docLongitud,
+                decoration: InputDecoration(
+                    labelText: paisActual.docLongitud != null
+                        ? '$docIdActual (${paisActual.docLongitud} dígitos)'
+                        : docIdActual,
+                    counterText: ''),
               ),
               if (error != null) ...[
                 const SizedBox(height: 6),
@@ -373,19 +376,27 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                   ? null
                   : () async {
                       final d = dni.text.trim();
-                      if (d.length != 8 || int.tryParse(d) == null) {
-                        setSB(() => error = 'El DNI son 8 dígitos.');
+                      final largo = paisActual.docLongitud;
+                      if ((largo != null && d.length != largo) ||
+                          int.tryParse(d) == null) {
+                        setSB(() => error = largo != null
+                            ? 'El $docIdActual son $largo dígitos.'
+                            : 'Escribe tu $docIdActual.');
                         return;
                       }
                       setSB(() {
                         cargando = true;
                         error = null;
                       });
-                      final r = await PropiedadService.consultarDni(d);
+                      // País-aware: Ecuador consulta la cédula (CipherByte);
+                      // el resto, el DNI (Factiliza).
+                      final r = paisActual.iso == 'EC'
+                          ? await PropiedadService.consultarCedula(d)
+                          : await PropiedadService.consultarDni(d);
                       if (r == null || r['ok'] != true) {
                         setSB(() {
                           cargando = false;
-                          error = 'No pudimos verificar ese DNI. Reintenta.';
+                          error = 'No pudimos verificar ese $docIdActual. Reintenta.';
                         });
                         return;
                       }

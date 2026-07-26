@@ -66,8 +66,9 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
       ]));
 
   Future<void> _consultarDni(String v) async {
-    // Solo Perú tiene consulta automática (RENIEC/Factiliza). En otros países
-    // el documento se ingresa sin verificación en línea.
+    // Consulta automática donde hay registro oficial (Perú: DNI/RENIEC vía
+    // Factiliza; Ecuador: cédula vía CipherByte). En otros países el documento
+    // se ingresa sin verificación en línea.
     if (!paisActual.consultaDoc) return;
     final d = v.replaceAll(RegExp(r'[^0-9]'), '');
     if (d.length != (paisActual.docLongitud ?? 8)) {
@@ -75,7 +76,9 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
       return;
     }
     setState(() => _dniCargando = true);
-    final r = await PropiedadService.consultarDni(d);
+    final r = paisActual.iso == 'EC'
+        ? await PropiedadService.consultarCedula(d)
+        : await PropiedadService.consultarDni(d);
     if (!mounted) return;
     setState(() {
       _dniCargando = false;
