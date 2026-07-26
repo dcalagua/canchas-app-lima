@@ -7,6 +7,7 @@ import '../models/academia.dart';
 import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/responsive.dart';
 import '../widgets/logo_academia.dart';
 import '../widgets/pago_tarjeta_sheet.dart';
 import '../widgets/sesion_requerida.dart';
@@ -53,7 +54,9 @@ class MisClasesScreen extends StatelessWidget {
             );
           }
           return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 30),
+            // Regla app: contenido centrado (ancho máx) en pantallas anchas.
+            padding: EdgeInsets.fromLTRB(
+                ladoTablet(context, 16, 760), 14, ladoTablet(context, 16, 760), 30),
             children: [
               for (final al in matriculas) _cardMatricula(context, al),
             ],

@@ -7,6 +7,7 @@ import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
+import '../widgets/responsive.dart';
 
 /// Toma de ASISTENCIA por día: el profe marca quién vino (upsert por alumno+día)
 /// y con un tap AVISA a los padres — por la app (chat + push) a quienes tienen
@@ -296,7 +297,10 @@ class _AsistenciaScreenState extends State<AsistenciaScreen> {
                 ),
                 Expanded(
                   child: ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
+                    // Regla app: contenido centrado en pantallas anchas.
+                    padding: EdgeInsets.fromLTRB(
+                        ladoTablet(context, 16, 760), 10,
+                        ladoTablet(context, 16, 760), 24),
                     children: [
                       for (final al in alumnos)
                         _FilaAsistencia(

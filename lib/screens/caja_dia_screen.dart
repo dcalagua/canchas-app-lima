@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/responsive.dart';
 
 /// CAJA DEL DÍA del dueño: la plata de hoy de un vistazo (cobrado, por cobrar,
 /// reservas, ocupación), la lista de reservas del día con "marcar pagado", y el
@@ -118,7 +119,10 @@ class _CajaDiaScreenState extends State<CajaDiaScreen> {
               ),
               Expanded(
                 child: ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
+                  // Regla app: contenido centrado en pantallas anchas.
+                  padding: EdgeInsets.fromLTRB(
+                      ladoTablet(context, 16, 760), 6,
+                      ladoTablet(context, 16, 760), 24),
                   children: [
                     // Caja (cobrado / por cobrar).
                     Container(

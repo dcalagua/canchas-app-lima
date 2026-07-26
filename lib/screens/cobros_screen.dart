@@ -6,6 +6,7 @@ import '../models/mensaje.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/responsive.dart';
 import 'mi_academia_screen.dart' show AlumnoDetalleScreen;
 
 /// TABLERO DE COBROS de la academia: lo que el profe abre a diario para cobrar.
@@ -248,7 +249,9 @@ class _CobrosScreenState extends State<CobrosScreen> {
           final morosos = appState.morososDe(_id);
           final porRecordar = appState.porRecordarDe(_id);
           return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
+            // Regla app: contenido centrado (ancho máx) en pantallas anchas.
+            padding: EdgeInsets.fromLTRB(
+                ladoTablet(context, 16, 760), 14, ladoTablet(context, 16, 760), 28),
             children: [
               // KPIs
               Row(
