@@ -59,11 +59,6 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
   String get _billetera =>
       widget.negocio.dueno.isNotEmpty ? widget.negocio.dueno : widget.negocio.id;
 
-  // ¿Tiene un servicio con landing activo (landing o presencia)?
-  bool get _landingContratada => _subs.any((s) =>
-      (s['servicio'] == 'landing' || s['servicio'] == 'presencia') &&
-      (s['estado'] == 'activa' || s['estado'] == 'pendiente_pago'));
-
   // ¿Tiene "Manejo de redes" (unificado: contenido IA + publicación)? Incluye
   // "presencia" (lo trae todo) y el legado "gestion".
   bool get _redesContratada => _subs.any((s) =>
@@ -97,12 +92,19 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
 
   Future<void> _cargar() async {
     setState(() => _cargando = true);
-    await appState.sincronizarSaldoAcademia(_idAcademia);
-    final planes =
-        await PagosService.planesServicios(tipo: widget.negocio.tipo);
-    final subs = await PagosService.estadoServicios(_idAcademia);
-    final conn = await PagosService.estadoRedes(_idAcademia);
-    final metodo = await PagosService.metodoSuscripcion(_idAcademia);
+    // Todas las consultas EN PARALELO (antes iban en serie → carga lenta).
+    final saldoF = appState.sincronizarSaldoAcademia(_idAcademia);
+    final resultados = await Future.wait([
+      PagosService.planesServicios(tipo: widget.negocio.tipo),
+      PagosService.estadoServicios(_idAcademia),
+      PagosService.estadoRedes(_idAcademia),
+      PagosService.metodoSuscripcion(_idAcademia),
+    ]);
+    await saldoF;
+    final planes = resultados[0] as List<Map<String, dynamic>>?;
+    final subs = resultados[1] as List<Map<String, dynamic>>?;
+    final conn = resultados[2] as Map<String, dynamic>?;
+    final metodo = resultados[3] as Map<String, dynamic>?;
     if (!mounted) return;
     setState(() {
       _planes = planes;
@@ -385,9 +387,18 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final saldo = appState.saldoAcademiaDe(_idAcademia);
     return Scaffold(
-      appBar: AppBar(title: const Text('Servicios Pichangol')),
+      appBar: AppBar(
+        title: const Text('Servicios Pichangol'),
+        actions: [
+          // "Mi billetera": método de pago + saldo, fuera del flujo principal.
+          IconButton(
+            tooltip: 'Mi billetera',
+            icon: const Icon(Icons.account_balance_wallet_outlined),
+            onPressed: _cargando ? null : _abrirBilletera,
+          ),
+        ],
+      ),
       body: _cargando
           ? const Center(child: CircularProgressIndicator(color: lima))
           : RefreshIndicator(
@@ -396,51 +407,15 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 30),
                 children: [
-                  if (widget.negocio.esMixto) ...[
-                    _bannerUnificado(),
-                    const SizedBox(height: 10),
-                  ],
-                  // Método de pago (tarjeta) PRIMERO: con qué se cobran las
-                  // suscripciones cada mes.
-                  _cardDebitoAuto(),
-                  // Saldo PREPAGO opcional (degradado a una línea): se usa primero
-                  // si lo tienes; si no, se cobra a la tarjeta.
-                  InkWell(
-                    onTap: _pushRecarga,
-                    borderRadius: BorderRadius.circular(10),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 4, vertical: 10),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.account_balance_wallet_outlined,
-                              color: textoTenue, size: 18),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text('Saldo prepago (opcional): $_mon $saldo',
-                                style: const TextStyle(
-                                    color: textoTenue, fontSize: 13)),
-                          ),
-                          const Text('Recargar',
-                              style: TextStyle(
-                                  color: lima,
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 13)),
-                        ],
-                      ),
-                    ),
-                  ),
+                  const Text('Impulsa tu negocio',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w800, fontSize: 19)),
                   const SizedBox(height: 4),
-                  if (_landingContratada) _cardLanding(),
-                  if (_redesContratada) _cardGestion(),
-                  if (_redesContratada) _cardRedes(),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8, horizontal: 2),
-                    child: Text(
-                        'Contrata tu presencia digital. Se cobra a tu tarjeta cada '
-                        'mes (o de tu saldo si tienes); cancela cuando quieras.',
-                        style: TextStyle(color: textoTenue, fontSize: 13)),
-                  ),
+                  const Text(
+                      'Contrata solo lo que necesitas. Se cobra a tu billetera '
+                      'cada mes; cancela cuando quieras.',
+                      style: TextStyle(color: textoTenue, fontSize: 13)),
+                  const SizedBox(height: 14),
                   if (_planes == null)
                     const Padding(
                       padding: EdgeInsets.all(24),
@@ -448,54 +423,93 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
                           style: TextStyle(color: textoTenue)),
                     )
                   else
-                    for (final p in _planes!) _tarjetaPlan(p),
+                    for (final p in _planes!) _addonCard(p),
                 ],
               ),
             ),
     );
   }
 
-  /// Aviso de PRESENCIA UNIFICADA: cuando el dueño tiene academia + canchas, un
-  /// solo plan cubre ambos (no paga doble). La landing deja reservar y matricular.
-  Widget _bannerUnificado() {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: limaSuave,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: lima.withOpacity(0.35)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.hub_outlined, color: bosque, size: 22),
-          const SizedBox(width: 10),
-          Expanded(
+  /// "MI BILLETERA": hoja con el método de pago (tarjeta de débito automático) y
+  /// el saldo prepago opcional. Aquí se paga la suscripción de los servicios.
+  Future<void> _abrirBilletera() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSt) {
+          final saldo = appState.saldoAcademiaDe(_idAcademia);
+          return SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(
+                18, 12, 18, 20 + MediaQuery.of(ctx).viewInsets.bottom),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Presencia unificada',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 15,
-                        color: bosque)),
+                Center(
+                  child: Container(
+                    width: 44,
+                    height: 5,
+                    decoration: BoxDecoration(
+                        color: trazo,
+                        borderRadius: BorderRadius.circular(999)),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text('Mi billetera',
+                    style:
+                        TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
                 const SizedBox(height: 2),
-                Text(
-                    'Tienes academia y canchas. Un solo plan las cubre a ambas: '
-                    'tu página deja reservar cancha y matricularse. No pagas doble.',
-                    style: TextStyle(fontSize: 13, color: bosque.withOpacity(0.85))),
+                const Text('Con esto se pagan tus servicios cada mes.',
+                    style: TextStyle(color: textoTenue, fontSize: 13)),
+                const SizedBox(height: 14),
+                _cardDebitoAuto(() => setSt(() {})),
+                const Divider(height: 26),
+                Row(
+                  children: [
+                    const Icon(Icons.savings_outlined,
+                        color: textoTenue, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Saldo prepago (opcional)',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w700, fontSize: 14)),
+                          Text('$_mon $saldo · se usa antes que la tarjeta',
+                              style: const TextStyle(
+                                  color: textoTenue, fontSize: 12.5)),
+                        ],
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        await _pushRecarga();
+                        if (ctx.mounted) setSt(() {});
+                      },
+                      child: const Text('Recargar',
+                          style: TextStyle(
+                              color: lima, fontWeight: FontWeight.w800)),
+                    ),
+                  ],
+                ),
               ],
             ),
-          ),
-        ],
+          );
+        },
       ),
     );
+    if (mounted) await _cargar();
   }
 
   /// MÉTODO DE PAGO (recurrente): la academia guarda una tarjeta (One-Click) para
   /// que las suscripciones se cobren solas cada mes. Es lo principal; el saldo
   /// prepago quedó como opción secundaria. Yape no es recurrente (pago único).
-  Widget _cardDebitoAuto() {
+  Widget _cardDebitoAuto([VoidCallback? onRefresh]) {
     final tiene = _metodoSus?['tiene_tarjeta'] == true;
     final marca = (_metodoSus?['marca'] ?? '').toString();
     final u4 = (_metodoSus?['ultimos4'] ?? '').toString();
@@ -552,7 +566,7 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
                 icon: const Icon(Icons.delete_outline, size: 18, color: clayOscuro),
                 label: const Text('Quitar tarjeta',
                     style: TextStyle(color: clayOscuro)),
-                onPressed: _quitarTarjeta,
+                onPressed: () => _quitarTarjeta(onRefresh),
               ),
             )
           else
@@ -566,7 +580,7 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
                 icon: const Icon(Icons.add_card, size: 18),
                 label: const Text('Agregar tarjeta',
                     style: TextStyle(fontWeight: FontWeight.w800)),
-                onPressed: _agregarTarjeta,
+                onPressed: () => _agregarTarjeta(onRefresh),
               ),
             ),
         ],
@@ -574,7 +588,7 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
     );
   }
 
-  Future<void> _quitarTarjeta() async {
+  Future<void> _quitarTarjeta([VoidCallback? onRefresh]) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -596,11 +610,12 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
     if (ok == true) {
       await PagosService.eliminarMetodoSuscripcion(_idAcademia);
       await _cargar();
+      onRefresh?.call();
     }
   }
 
   /// Hoja para tokenizar y guardar la tarjeta de débito automático (Culqi).
-  Future<void> _agregarTarjeta() async {
+  Future<void> _agregarTarjeta([VoidCallback? onRefresh]) async {
     final cfg = await PagosService.config();
     final pk = (cfg?['public_key'] ?? '').toString();
     if (!mounted) return;
@@ -751,283 +766,243 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
       ),
     );
     if (mounted) await _cargar();
+    onRefresh?.call();
   }
 
-  /// Tarjeta "Publicación automática": conectar el IG/FB del dueño para que
-  /// Pichangol publique por él (parte de Manejo de redes; permiso revocable).
-  Widget _cardGestion() {
+  /// Sub-título de una herramienta dentro del addon (estilo congruente).
+  Widget _tituloTool(IconData ico, String texto) => Padding(
+        padding: const EdgeInsets.only(top: 2, bottom: 6),
+        child: Row(
+          children: [
+            Icon(ico, size: 18, color: lima),
+            const SizedBox(width: 6),
+            Text(texto,
+                style: const TextStyle(
+                    fontWeight: FontWeight.w800, fontSize: 14.5)),
+          ],
+        ),
+      );
+
+  /// Herramienta "Publicación automática": conectar el IG/FB del dueño para que
+  /// Pichangol publique por él (permiso revocable). Contenido plano (va dentro
+  /// del addon), sin contenedor propio.
+  Widget _publicacionTools() {
     final conectada = _redesConectada;
     final modo = (_redesConn?['modo'] ?? '').toString();
     final ig = (_redesConn?['ig_username'] ?? '').toString();
     final page = (_redesConn?['page_nombre'] ?? '').toString();
     final pubs = (_redesConn?['publicaciones'] as num?)?.toInt() ?? 0;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: bosque,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.hub, color: lima),
-              const SizedBox(width: 8),
-              const Expanded(
-                child: Text('Publicación automática',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 16,
-                        color: Colors.white)),
-              ),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: conectada ? lima : Colors.white24,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(conectada ? '● Conectada' : 'Sin conectar',
-                    style: TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w800,
-                        color: conectada ? bosque : Colors.white)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-              conectada
-                  ? 'Publicamos por ti en tus redes. ${ig.isNotEmpty ? '@$ig' : ''}'
-                      '${page.isNotEmpty ? (ig.isNotEmpty ? ' · ' : '') + page : ''}'
-                  : 'Conecta tu Instagram/Facebook y nosotros publicamos por ti. '
-                      'Tú das el permiso a Meta y lo puedes revocar cuando quieras.',
-              style: const TextStyle(color: Colors.white70, fontSize: 13)),
-          if (conectada && pubs > 0) ...[
-            const SizedBox(height: 6),
-            Text('$pubs publicación${pubs == 1 ? '' : 'es'} realizada'
-                '${pubs == 1 ? '' : 's'}.',
-                style: const TextStyle(color: Colors.white54, fontSize: 12)),
-          ],
-          if (modo == 'sandbox') ...[
-            const SizedBox(height: 8),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                  conectada
+                      ? 'Publicamos por ti. ${ig.isNotEmpty ? '@$ig' : ''}'
+                          '${page.isNotEmpty ? (ig.isNotEmpty ? ' · ' : '') + page : ''}'
+                      : 'Conecta tu Instagram/Facebook y publicamos por ti. Das '
+                          'el permiso a Meta y lo revocas cuando quieras.',
+                  style: const TextStyle(color: textoTenue, fontSize: 13)),
+            ),
+            const SizedBox(width: 8),
             Container(
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.10),
-                borderRadius: BorderRadius.circular(10),
+                color: conectada ? limaSuave : trazo.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(999),
               ),
-              child: const Text(
-                  '🧪 Modo prueba: el flujo funciona pero aún no se publica en '
-                  'redes reales (falta la aprobación de Meta). Se activará solo '
-                  'cuando esté lista, sin que hagas nada.',
-                  style: TextStyle(color: Colors.white70, fontSize: 11.5)),
+              child: Text(conectada ? '● Conectada' : 'Sin conectar',
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
+                      color: conectada ? lima : textoTenue)),
             ),
           ],
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              style: FilledButton.styleFrom(
-                  backgroundColor: lima,
-                  foregroundColor: bosque,
-                  padding: const EdgeInsets.symmetric(vertical: 13)),
-              icon: Icon(conectada ? Icons.settings : Icons.link, size: 18),
-              label: Text(
-                  conectada ? 'Gestionar conexión' : 'Conectar Instagram / Facebook',
-                  style: const TextStyle(fontWeight: FontWeight.w800)),
-              onPressed: _gestionarRedes,
+        ),
+        if (conectada && pubs > 0) ...[
+          const SizedBox(height: 4),
+          Text('$pubs publicación${pubs == 1 ? '' : 'es'} realizada'
+              '${pubs == 1 ? '' : 's'}.',
+              style: const TextStyle(color: textoTenue, fontSize: 12)),
+        ],
+        if (modo == 'sandbox') ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFBEAD2),
+              borderRadius: BorderRadius.circular(10),
             ),
+            child: const Text(
+                '🧪 Modo prueba: el flujo funciona pero aún no se publica en '
+                'redes reales (falta la aprobación de Meta). Se activará solo '
+                'cuando esté lista.',
+                style: TextStyle(color: clayOscuro, fontSize: 11.5)),
           ),
         ],
-      ),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+                foregroundColor: lima,
+                side: const BorderSide(color: lima),
+                padding: const EdgeInsets.symmetric(vertical: 12)),
+            icon: Icon(conectada ? Icons.settings : Icons.link, size: 18),
+            label: Text(
+                conectada ? 'Gestionar conexión' : 'Conectar Instagram / Facebook',
+                style: const TextStyle(fontWeight: FontWeight.w800)),
+            onPressed: _gestionarRedes,
+          ),
+        ),
+      ],
     );
   }
 
-  /// Tarjeta "Tu landing" (fulfillment): genera / ve / comparte la página web.
-  Widget _cardLanding() {
+  /// Herramienta "Tu landing web": genera / ve / comparte la página. Contenido
+  /// plano (va dentro del addon).
+  Widget _landingTools() {
     final url = _landingUrl;
     final tiene = url.isNotEmpty;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: limaSuave,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+            tiene
+                ? 'Publicada y lista para compartir. Se arma con los datos de tu '
+                    'negocio (actualízala si cambias precios o fotos).'
+                : 'Genera tu página web con los datos de tu negocio. Queda con un '
+                    'enlace público para compartir.',
+            style: const TextStyle(color: textoTenue, fontSize: 13)),
+        const SizedBox(height: 10),
+        if (tiene)
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
-              const Icon(Icons.public, color: lima),
-              const SizedBox(width: 8),
-              const Expanded(
-                child: Text('Tu landing web',
-                    style:
-                        TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-              tiene
-                  ? 'Publicada y lista para compartir. Se arma con los datos de '
-                      'tu negocio (actualízala si cambias precios o fotos).'
-                  : 'Genera tu página web con los datos de tu negocio. Queda con '
-                      'un enlace público para compartir.',
-              style: const TextStyle(color: textoTenue, fontSize: 13)),
-          const SizedBox(height: 12),
-          if (tiene) ...[
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                      backgroundColor: lima, foregroundColor: Colors.white),
-                  icon: const Icon(Icons.open_in_new, size: 18),
-                  label: const Text('Ver'),
-                  onPressed: () => _abrir(url),
-                ),
-                OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                      foregroundColor: lima,
-                      side: const BorderSide(color: lima)),
-                  icon: const Icon(Icons.share_outlined, size: 18),
-                  label: const Text('Compartir'),
-                  onPressed: () => WhatsAppLink.compartir(
-                      'Mira nuestra página: $url'),
-                ),
-                TextButton.icon(
-                  icon: _generandoLanding
-                      ? const SizedBox(
-                          height: 16,
-                          width: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.refresh, size: 18),
-                  label: const Text('Actualizar'),
-                  onPressed: _generandoLanding ? null : _generarLanding,
-                ),
-              ],
-            ),
-          ] else
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
+              FilledButton.icon(
                 style: FilledButton.styleFrom(
-                    backgroundColor: lima,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 13)),
-                onPressed: _generandoLanding ? null : _generarLanding,
-                child: _generandoLanding
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2.4, color: Colors.white))
-                    : const Text('Generar mi landing'),
+                    backgroundColor: lima, foregroundColor: Colors.white),
+                icon: const Icon(Icons.open_in_new, size: 18),
+                label: const Text('Ver'),
+                onPressed: () => _abrir(url),
               ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  /// Tarjeta "Community manager IA": genera posts para redes a partir de un tema.
-  Widget _cardRedes() {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: trazo),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: const [
-              Icon(Icons.auto_awesome, color: lima),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text('Community manager con IA',
-                    style:
-                        TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                    foregroundColor: lima, side: const BorderSide(color: lima)),
+                icon: const Icon(Icons.share_outlined, size: 18),
+                label: const Text('Compartir'),
+                onPressed: () =>
+                    WhatsAppLink.compartir('Mira nuestra página: $url'),
+              ),
+              TextButton.icon(
+                icon: _generandoLanding
+                    ? const SizedBox(
+                        height: 16,
+                        width: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.refresh, size: 18),
+                label: const Text('Actualizar'),
+                onPressed: _generandoLanding ? null : _generarLanding,
               ),
             ],
-          ),
-          const SizedBox(height: 4),
-          const Text(
-              'Genera posts listos (texto + hashtags + mejor hora). Los revisas '
-              'y compartes a tus redes con un tap.',
-              style: TextStyle(color: textoTenue, fontSize: 13)),
-          if (!_tieneRedes) ...[
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFBEAD2),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                      '💡 Aún no registraste tu Instagram/Facebook. Puedes generar '
-                      'el contenido igual, y si no tienes cuentas, nosotros te las '
-                      'creamos y las manejamos.',
-                      style: TextStyle(fontSize: 12.5, color: clayOscuro)),
-                  const SizedBox(height: 8),
-                  OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                        foregroundColor: clayOscuro,
-                        side: const BorderSide(color: clayOscuro)),
-                    icon: const Icon(Icons.support_agent, size: 18),
-                    label: const Text('Ayúdenme a crear mis redes'),
-                    onPressed: _pedirCrearRedes,
-                  ),
-                ],
-              ),
-            ),
-          ],
-          const SizedBox(height: 10),
-          TextField(
-            controller: _tema,
-            decoration: const InputDecoration(
-              labelText: '¿Sobre qué quieres postear? (opcional)',
-              hintText: 'Ej.: apertura, torneo, promo de vacaciones',
-              isDense: true,
-            ),
-          ),
-          const SizedBox(height: 10),
+          )
+        else
           SizedBox(
             width: double.infinity,
-            child: FilledButton.icon(
+            child: FilledButton(
               style: FilledButton.styleFrom(
                   backgroundColor: lima,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12)),
-              icon: _generandoPosts
+                  padding: const EdgeInsets.symmetric(vertical: 13)),
+              onPressed: _generandoLanding ? null : _generarLanding,
+              child: _generandoLanding
                   ? const SizedBox(
-                      height: 18,
-                      width: 18,
+                      height: 20,
+                      width: 20,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2.2, color: Colors.white))
-                  : const Icon(Icons.auto_awesome, size: 18),
-              label: Text(_posts == null ? 'Generar posts' : 'Generar otros'),
-              onPressed: _generandoPosts ? null : _generarPosts,
+                          strokeWidth: 2.4, color: Colors.white))
+                  : const Text('Generar mi landing'),
             ),
           ),
-          if (_posts != null) ...[
-            const SizedBox(height: 12),
-            for (final e in _posts!.asMap().entries) _postItem(e.key, e.value),
-          ],
+      ],
+    );
+  }
+
+  /// Herramienta "Community manager IA": genera posts a partir de un tema.
+  /// Contenido plano (va dentro del addon).
+  Widget _postsTools() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+            'Genera posts listos (texto + hashtags + mejor hora). Los revisas y '
+            'compartes a tus redes con un tap.',
+            style: TextStyle(color: textoTenue, fontSize: 13)),
+        if (!_tieneRedes) ...[
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFBEAD2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                    '💡 Aún no registraste tu Instagram/Facebook. Puedes generar '
+                    'el contenido igual, y si no tienes cuentas, nosotros te las '
+                    'creamos y las manejamos.',
+                    style: TextStyle(fontSize: 12.5, color: clayOscuro)),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                      foregroundColor: clayOscuro,
+                      side: const BorderSide(color: clayOscuro)),
+                  icon: const Icon(Icons.support_agent, size: 18),
+                  label: const Text('Ayúdenme a crear mis redes'),
+                  onPressed: _pedirCrearRedes,
+                ),
+              ],
+            ),
+          ),
         ],
-      ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: _tema,
+          decoration: const InputDecoration(
+            labelText: '¿Sobre qué quieres postear? (opcional)',
+            hintText: 'Ej.: apertura, torneo, promo de vacaciones',
+            isDense: true,
+          ),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            style: FilledButton.styleFrom(
+                backgroundColor: lima,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12)),
+            icon: _generandoPosts
+                ? const SizedBox(
+                    height: 18,
+                    width: 18,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2.2, color: Colors.white))
+                : const Icon(Icons.auto_awesome, size: 18),
+            label: Text(_posts == null ? 'Generar posts' : 'Generar otros'),
+            onPressed: _generandoPosts ? null : _generarPosts,
+          ),
+        ),
+        if (_posts != null) ...[
+          const SizedBox(height: 12),
+          for (final e in _posts!.asMap().entries) _postItem(e.key, e.value),
+        ],
+      ],
     );
   }
 
@@ -1098,7 +1073,44 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
     );
   }
 
-  Widget _tarjetaPlan(Map<String, dynamic> plan) {
+  /// Ícono representativo de cada addon (marketplace).
+  IconData _iconoAddon(String clave) {
+    switch (clave) {
+      case 'landing':
+        return Icons.public;
+      case 'redes':
+        return Icons.campaign_outlined;
+      case 'presencia':
+        return Icons.auto_awesome;
+      default:
+        return Icons.widgets_outlined;
+    }
+  }
+
+  /// Herramientas (fulfillment) que incluye un addon activo, según su clave.
+  List<Widget> _toolsDe(String clave) {
+    final daLanding = clave == 'landing' || clave == 'presencia';
+    final daRedes = clave == 'redes' || clave == 'presencia';
+    return [
+      if (daLanding) ...[
+        _tituloTool(Icons.public, 'Tu landing web'),
+        _landingTools(),
+      ],
+      if (daRedes) ...[
+        if (daLanding) const SizedBox(height: 18),
+        _tituloTool(Icons.hub, 'Publicación automática'),
+        _publicacionTools(),
+        const SizedBox(height: 18),
+        _tituloTool(Icons.auto_awesome, 'Community manager con IA'),
+        _postsTools(),
+      ],
+    ];
+  }
+
+  /// Tarjeta UNIFORME de un addon (estilo marketplace): mismo formato para todos.
+  /// Si está activo, sus herramientas se abren en un panel colapsable
+  /// ("Administrar") para no alargar la vista.
+  Widget _addonCard(Map<String, dynamic> plan) {
     final clave = plan['clave'] as String;
     final nombre = (plan['nombre'] ?? '') as String;
     final desc = (plan['desc'] ?? '') as String;
@@ -1108,39 +1120,58 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
     final activa = estado == 'activa';
     final pendiente = estado == 'pendiente_pago';
     final procesando = _procesando == clave;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: trazo),
-      ),
+    final incluido = _incluidoEnPresencia(clave);
+    final cs = Theme.of(context).colorScheme;
+
+    final header = Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Text(nombre,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w800, fontSize: 17)),
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                    color: limaSuave, borderRadius: BorderRadius.circular(12)),
+                child: Icon(_iconoAddon(clave), color: lima, size: 22),
               ),
-              Text('$_mon ${soles.toStringAsFixed(0)}',
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w900, fontSize: 18, color: lima)),
-              const Text(' /mes',
-                  style: TextStyle(color: textoTenue, fontSize: 12)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(nombre,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 16.5)),
+                    const SizedBox(height: 2),
+                    Text(desc,
+                        style: const TextStyle(
+                            color: textoTenue, fontSize: 12.8, height: 1.25)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text('$_mon ${soles.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 17,
+                          color: lima)),
+                  const Text('/mes',
+                      style: TextStyle(color: textoTenue, fontSize: 11)),
+                ],
+              ),
             ],
           ),
-          const SizedBox(height: 4),
-          Text(desc, style: const TextStyle(color: textoTenue, fontSize: 13)),
           const SizedBox(height: 12),
-          if (activa || pendiente) ...[
+          if (activa || pendiente)
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
                 color: pendiente ? const Color(0xFFFBEAD2) : limaSuave,
                 borderRadius: BorderRadius.circular(999),
@@ -1154,24 +1185,12 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
                     fontWeight: FontWeight.w700,
                     color: pendiente ? clayOscuro : lima),
               ),
-            ),
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: () => _cancelar(clave, nombre),
-                child: const Text('Cancelar suscripción',
-                    style: TextStyle(color: clayOscuro)),
-              ),
-            ),
-          ] else if (_incluidoEnPresencia(clave))
+            )
+          else if (incluido)
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: limaSuave,
-                borderRadius: BorderRadius.circular(999),
-              ),
+                  color: limaSuave, borderRadius: BorderRadius.circular(999)),
               child: const Text('✓ Incluido en Presencia digital',
                   style: TextStyle(
                       fontSize: 12.5,
@@ -1194,6 +1213,47 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
                         child: CircularProgressIndicator(
                             strokeWidth: 2.4, color: Colors.white))
                     : Text('Contratar · $_mon ${soles.toStringAsFixed(0)}/mes'),
+              ),
+            ),
+        ],
+      ),
+    );
+
+    final tools = <Widget>[];
+    if (activa || pendiente) {
+      tools.addAll(_toolsDe(clave));
+      tools.add(Align(
+        alignment: Alignment.centerRight,
+        child: TextButton(
+          onPressed: () => _cancelar(clave, nombre),
+          child: const Text('Cancelar suscripción',
+              style: TextStyle(color: clayOscuro)),
+        ),
+      ));
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: trazo),
+      ),
+      child: Column(
+        children: [
+          header,
+          if (tools.isNotEmpty)
+            Theme(
+              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+                childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                expandedCrossAxisAlignment: CrossAxisAlignment.start,
+                leading: const Icon(Icons.build_outlined, size: 20, color: lima),
+                title: const Text('Administrar',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                children: tools,
               ),
             ),
         ],
