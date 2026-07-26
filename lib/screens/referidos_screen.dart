@@ -6,6 +6,7 @@ import '../data/referidos_repo.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/responsive.dart';
 import 'login_google_sheet.dart';
 
 const _kReleaseUrl =
@@ -134,7 +135,9 @@ class _ReferidosScreenState extends State<ReferidosScreen> {
         listenable: appState,
         builder: (context, _) {
           return ListView(
-            padding: const EdgeInsets.all(18),
+            // Regla app: contenido centrado (ancho máx) en pantallas anchas.
+            padding: EdgeInsets.symmetric(
+                horizontal: ladoTablet(context, 18, 600), vertical: 18),
             children: [
               // Tarjeta con el código.
               Container(

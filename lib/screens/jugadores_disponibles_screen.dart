@@ -6,6 +6,7 @@ import '../services/circuito_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
+import '../widgets/responsive.dart';
 import '../widgets/reto_flow.dart';
 import '../widgets/selector_ubicacion.dart';
 import 'login_google_sheet.dart';
@@ -122,7 +123,9 @@ class _JugadoresDisponiblesScreenState
             color: lima,
             onRefresh: _cargar,
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 30),
+              // Regla app: contenido centrado (ancho máx) en pantallas anchas.
+              padding: EdgeInsets.fromLTRB(
+                  ladoTablet(context, 16, 700), 14, ladoTablet(context, 16, 700), 30),
               children: [
                 // Tarjeta de mi estado en el circuito.
                 _MiEstadoCard(
@@ -458,8 +461,9 @@ class _UnirseSheetState extends State<_UnirseSheet> {
     final t = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-          20, 18, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
+      // Regla app: en pantallas anchas la hoja se centra con ancho máximo.
+      padding: EdgeInsets.fromLTRB(ladoTablet(context, 20, 560), 18,
+          ladoTablet(context, 20, 560), 20 + MediaQuery.of(context).viewInsets.bottom),
       child: SingleChildScrollView(
         child: Column(
         mainAxisSize: MainAxisSize.min,

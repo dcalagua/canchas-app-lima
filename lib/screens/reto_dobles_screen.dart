@@ -7,6 +7,7 @@ import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
+import '../widgets/responsive.dart';
 import '../widgets/reto_flow.dart';
 
 /// Reto de DOBLES (2 vs 2): eliges a tu **compañero** y a los **dos rivales**
@@ -73,7 +74,9 @@ class _RetoDoblesScreenState extends State<RetoDoblesScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Reto de dobles')),
       body: ListView(
-        padding: const EdgeInsets.all(18),
+        // Regla app: contenido centrado (ancho máx) en pantallas anchas.
+        padding: EdgeInsets.symmetric(
+            horizontal: ladoTablet(context, 18, 640), vertical: 18),
         children: [
           Text('${emojiDeporte(widget.deporte)}  Dobles de ${widget.deporte.etiqueta}',
               style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),

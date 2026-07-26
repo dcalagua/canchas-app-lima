@@ -5,6 +5,7 @@ import '../services/convocatorias_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
+import '../widgets/responsive.dart';
 import 'convocatorias_screen.dart' show EstadoChip, ModoChip;
 import 'login_google_sheet.dart';
 
@@ -198,7 +199,10 @@ class _ConvocatoriaDetalleScreenState extends State<ConvocatoriaDetalleScreen> {
               : RefreshIndicator(
                   onRefresh: _cargar,
                   child: ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
+                    // Regla app: contenido centrado en pantallas anchas.
+                    padding: EdgeInsets.fromLTRB(
+                        ladoTablet(context, 16, 700), 16,
+                        ladoTablet(context, 16, 700), 40),
                     children: [
                       _Cabecera(conv: d.convocatoria),
                       const SizedBox(height: 16),

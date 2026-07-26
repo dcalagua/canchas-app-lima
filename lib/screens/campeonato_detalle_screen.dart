@@ -10,6 +10,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/ubicacion_share.dart';
 import '../widgets/cargando_pichangol.dart';
+import '../widgets/responsive.dart';
 import 'login_google_sheet.dart';
 import 'ranking_global_screen.dart';
 import 'recargar_saldo_screen.dart';
@@ -43,7 +44,9 @@ class CampeonatoDetalleScreen extends StatelessWidget {
               !c.fixtureGenerado &&
               !c.inscripcionVencida; // cerró el plazo de inscripción
           return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 30),
+            // Regla app: contenido centrado (ancho máx) en pantallas anchas.
+            padding: EdgeInsets.fromLTRB(
+                ladoTablet(context, 16, 760), 16, ladoTablet(context, 16, 760), 30),
             children: [
               _Cabecera(campeonato: c),
               const SizedBox(height: 10),
