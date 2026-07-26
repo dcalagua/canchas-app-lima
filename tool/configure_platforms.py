@@ -82,6 +82,16 @@ def android_manifest(text):
             text,
             count=1,
         )
+    # Ícono + color por defecto de las notificaciones push (FCM). Sin esto,
+    # Android pinta un ícono genérico (cuadrito) en vez del pin de Pichangol.
+    if "default_notification_icon" not in text:
+        notif = (
+            '        <meta-data android:name="com.google.firebase.messaging.default_notification_icon" '
+            'android:resource="@drawable/ic_stat_pichangol"/>\n'
+            '        <meta-data android:name="com.google.firebase.messaging.default_notification_color" '
+            'android:resource="@color/pichangol_notif"/>\n    </application>'
+        )
+        text = text.replace("</application>", notif, 1)
     if "com.google.android.geo.API_KEY" not in text:
         meta = (
             '        <meta-data android:name="com.google.android.geo.API_KEY" '
@@ -457,6 +467,55 @@ def configurar_firebase_android():
     print("  Firebase/FCM: ACTIVADO (google-services.json + plugin)")
 
 
+def configurar_notificacion_android():
+    """Ícono pequeño (monocromo) + color de las notificaciones push. El small
+    icon de Android DEBE ser una silueta blanca sobre transparente (el sistema lo
+    tiñe); si no se declara, sale un ícono genérico. Usamos el pin de Pichangol."""
+    raiz = "android/app/src/main"
+    if not os.path.isdir(raiz):
+        print("  Notif icon: omitido (no hay android/app/src/main)")
+        return
+    draw = os.path.join(raiz, "res", "drawable")
+    vals = os.path.join(raiz, "res", "values")
+    os.makedirs(draw, exist_ok=True)
+    os.makedirs(vals, exist_ok=True)
+
+    # Pin de ubicación (estilo del logo Pichangol), silueta blanca.
+    icono = (
+        '<vector xmlns:android="http://schemas.android.com/apk/res/android"\n'
+        '    android:width="24dp"\n'
+        '    android:height="24dp"\n'
+        '    android:viewportWidth="24"\n'
+        '    android:viewportHeight="24">\n'
+        '    <path\n'
+        '        android:fillColor="#FFFFFFFF"\n'
+        '        android:pathData="M12,2C8.13,2 5,5.13 5,9c0,5.25 7,13 7,13s7,-7.75 '
+        '7,-13c0,-3.87 -3.13,-7 -7,-7zM12,11.5c-1.38,0 -2.5,-1.12 -2.5,-2.5s1.12,-2.5 '
+        '2.5,-2.5 2.5,1.12 2.5,2.5 -1.12,2.5 -2.5,2.5z"/>\n'
+        '</vector>\n'
+    )
+    with open(os.path.join(draw, "ic_stat_pichangol.xml"), "w", encoding="utf-8") as f:
+        f.write(icono)
+
+    # Color de acento del ícono en la notificación (verde bosque de la marca).
+    colors_path = os.path.join(vals, "colors.xml")
+    color_line = '    <color name="pichangol_notif">#14463A</color>'
+    if os.path.exists(colors_path):
+        with open(colors_path, "r", encoding="utf-8") as f:
+            c = f.read()
+        if "pichangol_notif" not in c:
+            c = c.replace("</resources>", color_line + "\n</resources>", 1)
+            with open(colors_path, "w", encoding="utf-8") as f:
+                f.write(c)
+    else:
+        with open(colors_path, "w", encoding="utf-8") as f:
+            f.write(
+                '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n'
+                + color_line + "\n</resources>\n"
+            )
+    print("  Notif icon: ic_stat_pichangol + color pichangol_notif configurados")
+
+
 def main():
     print(f"Configurando plataformas (MAPS_API_KEY {'definida' if KEY != 'YOUR_MAPS_API_KEY_HERE' else 'placeholder'})")
     configurar_min_sdk()
@@ -469,6 +528,7 @@ def main():
     configurar_firma_android()
     configurar_r8_release()
     configurar_firebase_android()
+    configurar_notificacion_android()
     configurar_google_signin_ios()
 
 
