@@ -69,12 +69,16 @@ class MiAcademiaScreen extends StatelessWidget {
                 final codigo = _CodigoCard(academia: ac);
                 final destacar = _DestacarCard(academia: ac);
                 if (cons.maxWidth >= 680) {
-                  return Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(child: codigo),
-                      Expanded(child: destacar),
-                    ],
+                  // IntrinsicHeight + stretch: las dos tarjetas quedan del MISMO
+                  // alto (congruentes), aunque una tenga más contenido.
+                  return IntrinsicHeight(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(child: codigo),
+                        Expanded(child: destacar),
+                      ],
+                    ),
                   );
                 }
                 return Column(children: [codigo, destacar]);
@@ -472,7 +476,8 @@ class _DestacarCardState extends State<_DestacarCard> {
     final nivel = appState.nivelDestacadoAcademia(widget.academia);
     final destacada = nivel > 0;
     return Container(
-      margin: const EdgeInsets.fromLTRB(18, 12, 18, 4),
+      // Mismo margen que _CodigoCard: en tablet quedan alineadas y del mismo alto.
+      margin: const EdgeInsets.fromLTRB(18, 16, 18, 0),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
