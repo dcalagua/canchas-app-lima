@@ -6,6 +6,7 @@ import '../theme.dart';
 import '../utils/moneda.dart';
 import '../widgets/ancho_lectura.dart';
 import 'chat_screen.dart';
+import 'recordar_reservas_screen.dart';
 import 'reporte_canchas_screen.dart';
 import 'reserva_manual_screen.dart';
 import 'reservas_fijas_screen.dart';
@@ -51,6 +52,12 @@ class _ReservasDuenoScreenState extends State<ReservasDuenoScreen> {
       appBar: AppBar(
         title: const Text('Reservas'),
         actions: [
+          IconButton(
+            tooltip: 'Recordar reservas (anti no-show)',
+            icon: const Icon(Icons.notifications_active_outlined),
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => const RecordarReservasScreen())),
+          ),
           IconButton(
             tooltip: 'Clientes fijos (pensionados)',
             icon: const Icon(Icons.event_repeat),

@@ -4051,6 +4051,7 @@ class AppState extends ChangeNotifier {
   static const _kDescuentosSlot = 'descuentos_slot_json'; // "cancha|fecha|hora"→pct
   static const _kCierresCaja = 'cierres_caja_json';
   static const _kReservasFijas = 'reservas_fijas_json';
+  static const _kResRecordadas = 'reservas_recordadas_json';
   static const _kNacimiento = 'fecha_nacimiento_iso';
   static const _kDniVerif = 'dni_verificado';
   static const _kMovs = 'movimientos_json';
@@ -4163,6 +4164,14 @@ class AppState extends ChangeNotifier {
             ..clear()
             ..addAll((jsonDecode(rf) as List)
                 .map((e) => ReservaFija.fromJson(Map<String, dynamic>.from(e))));
+        } catch (_) {}
+      }
+      final rr = prefs.getString(_kResRecordadas);
+      if (rr != null && rr.isNotEmpty) {
+        try {
+          _reservasRecordadas
+            ..clear()
+            ..addAll((jsonDecode(rr) as List).map((e) => e.toString()));
         } catch (_) {}
       }
       // Migración de instalaciones previas (sin titular guardado): atribuye la
@@ -4340,6 +4349,8 @@ class AppState extends ChangeNotifier {
           jsonEncode(cierresCaja.map((c) => c.toJson()).toList()));
       await prefs.setString(_kReservasFijas,
           jsonEncode(reservasFijas.map((f) => f.toJson()).toList()));
+      await prefs.setString(
+          _kResRecordadas, jsonEncode(_reservasRecordadas.toList()));
       if (fechaNacimiento != null) {
         await prefs.setString(
             _kNacimiento, fechaNacimiento!.toIso8601String());
@@ -4784,6 +4795,18 @@ class AppState extends ChangeNotifier {
           reservas: c.reservas,
           cerradaEn: DateTime.now(),
         ));
+    notifyListeners();
+    _persistirDatos();
+  }
+
+  // ── ANTI NO-SHOW: recordatorio de reserva al jugador ──────────────────────
+  // Reservas ya recordadas (por id) para no repetir el aviso. Se persiste.
+  final Set<String> _reservasRecordadas = {};
+
+  bool reservaRecordada(String id) => _reservasRecordadas.contains(id);
+
+  void marcarReservaRecordada(String id) {
+    _reservasRecordadas.add(id);
     notifyListeners();
     _persistirDatos();
   }
