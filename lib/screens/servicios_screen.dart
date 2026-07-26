@@ -13,6 +13,7 @@ import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
 import 'billetera_negocio_screen.dart';
 import 'conectar_redes_screen.dart';
+import 'cuenta_screen.dart';
 import 'recargar_saldo_screen.dart';
 
 /// "Servicios Pichangol": el dueño de un NEGOCIO (academia o club) contrata
@@ -393,14 +394,14 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
         title: const Text('Servicios Pichangol'),
         actions: [
           // "Mi billetera": solo cuando NO hay menú lateral (club / móvil). En la
-          // academia va como ítem del rail, así que aquí se oculta.
+          // academia va como ítem del rail, así que aquí se oculta. Es el mismo
+          // módulo de billetera (saldo + movimientos) que el resto del app.
           if (widget.mostrarBilleteraEnAppBar)
             IconButton(
               tooltip: 'Mi billetera',
               icon: const Icon(Icons.account_balance_wallet_outlined),
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) =>
-                      BilleteraNegocioScreen(negocio: widget.negocio))),
+              onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const CuentaScreen())),
             ),
         ],
       ),
@@ -420,6 +421,28 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
                       'Contrata solo lo que necesitas. Se cobra a tu billetera '
                       'cada mes; cancela cuando quieras.',
                       style: TextStyle(color: textoTenue, fontSize: 13)),
+                  const SizedBox(height: 12),
+                  // Método de pago con el que se RENUEVAN los servicios cada mes.
+                  Material(
+                    color: Theme.of(context).colorScheme.surface,
+                    borderRadius: BorderRadius.circular(14),
+                    child: ListTile(
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          side: const BorderSide(color: trazo)),
+                      leading: const CircleAvatar(
+                          backgroundColor: limaSuave,
+                          child: Icon(Icons.credit_card, color: bosque)),
+                      title: const Text('Método de pago de servicios',
+                          style: TextStyle(fontWeight: FontWeight.w700)),
+                      subtitle: const Text(
+                          'Tarjeta para la renovación automática mensual'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) =>
+                              BilleteraNegocioScreen(negocio: widget.negocio))),
+                    ),
+                  ),
                   const SizedBox(height: 14),
                   if (_planes == null)
                     const Padding(

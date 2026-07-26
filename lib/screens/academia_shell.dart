@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 import '../state/app_state.dart';
 import '../widgets/menu_lateral_scroll.dart';
 import 'asistencia_screen.dart';
-import 'billetera_negocio_screen.dart';
 import 'campeonatos_screen.dart';
 import 'chats_academia_screen.dart';
 import 'cobros_screen.dart';
 import 'crear_academia_screen.dart';
+import 'cuenta_screen.dart';
 import 'mi_academia_screen.dart';
 import 'reporte_academia_screen.dart';
 import 'servicios_screen.dart';
@@ -90,8 +90,7 @@ class _AcademiaShellState extends State<AcademiaShell> {
                           negocio: appState.negocioServiciosDeAcademia(ac),
                           mostrarBilleteraEnAppBar: false),
                       CrearAcademiaScreen(academia: ac),
-                      BilleteraNegocioScreen(
-                          negocio: appState.negocioServiciosDeAcademia(ac)),
+                      const CuentaScreen(), // billetera única (saldo + movimientos)
                     ],
                   ),
                 ),

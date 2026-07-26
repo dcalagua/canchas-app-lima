@@ -5,12 +5,11 @@ import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
-import 'recargar_saldo_screen.dart';
 
-/// "MI BILLETERA" del negocio (academia/club): el método de pago (tarjeta de
-/// débito automático con el que se cobran las suscripciones cada mes) + el saldo
-/// prepago opcional. Antes vivía dentro de "Servicios Pichangol"; ahora es su
-/// propia sección (ítem del menú lateral de la academia).
+/// MÉTODO DE PAGO DE SERVICIOS: la tarjeta (débito automático One-Click) con la
+/// que se RENUEVAN cada mes las suscripciones de "Servicios Pichangol". El saldo
+/// y los movimientos viven en la billetera única (CuentaScreen); esto es solo la
+/// tarjeta de renovación. Se abre desde Servicios Pichangol.
 class BilleteraNegocioScreen extends StatefulWidget {
   const BilleteraNegocioScreen({super.key, required this.negocio});
   final Negocio negocio;
@@ -23,12 +22,7 @@ class _BilleteraNegocioScreenState extends State<BilleteraNegocioScreen> {
   Map<String, dynamic>? _metodo;
   bool _cargando = true;
 
-  String get _mon => widget.negocio.monedaSimbolo;
   String get _id => widget.negocio.id;
-  // Billetera única: el saldo/tarjeta se llevan por correo del dueño; si no lo
-  // trae (compat), cae al id.
-  String get _billetera =>
-      widget.negocio.dueno.isNotEmpty ? widget.negocio.dueno : widget.negocio.id;
 
   @override
   void initState() {
@@ -38,9 +32,7 @@ class _BilleteraNegocioScreenState extends State<BilleteraNegocioScreen> {
 
   Future<void> _cargar() async {
     setState(() => _cargando = true);
-    final saldoF = appState.sincronizarSaldoAcademia(_id);
     final m = await PagosService.metodoSuscripcion(_id);
-    await saldoF;
     if (!mounted) return;
     setState(() {
       _metodo = m;
@@ -53,21 +45,10 @@ class _BilleteraNegocioScreenState extends State<BilleteraNegocioScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t)));
   }
 
-  Future<void> _pushRecarga() async {
-    await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => RecargarSaldoScreen(
-          duenoId: _billetera,
-          titulo: 'Recargar saldo',
-          pais: widget.negocio.pais),
-    ));
-    await _cargar();
-  }
-
   @override
   Widget build(BuildContext context) {
-    final saldo = appState.saldoAcademiaDe(_id);
     return Scaffold(
-      appBar: AppBar(title: const Text('Mi billetera')),
+      appBar: AppBar(title: const Text('Método de pago de servicios')),
       body: _cargando
           ? const CargandoPichangol()
           : RefreshIndicator(
@@ -76,37 +57,13 @@ class _BilleteraNegocioScreenState extends State<BilleteraNegocioScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
                 children: [
-                  const Text('Con esto se pagan tus servicios cada mes.',
+                  const Text(
+                      'La tarjeta con la que se renuevan automáticamente tus '
+                      'servicios cada mes. El saldo y los movimientos están en tu '
+                      'billetera.',
                       style: TextStyle(color: textoTenue, fontSize: 13)),
                   const SizedBox(height: 14),
                   _cardDebitoAuto(),
-                  const Divider(height: 26),
-                  Row(
-                    children: [
-                      const Icon(Icons.savings_outlined,
-                          color: textoTenue, size: 20),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text('Saldo prepago (opcional)',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.w700, fontSize: 14)),
-                            Text('$_mon $saldo · se usa antes que la tarjeta',
-                                style: const TextStyle(
-                                    color: textoTenue, fontSize: 12.5)),
-                          ],
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: _pushRecarga,
-                        child: const Text('Recargar',
-                            style: TextStyle(
-                                color: lima, fontWeight: FontWeight.w800)),
-                      ),
-                    ],
-                  ),
                 ],
               ),
             ),
