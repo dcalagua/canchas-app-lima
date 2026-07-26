@@ -5,6 +5,7 @@ import '../data/mensajes_repo.dart';
 import '../models/mensaje.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 import 'buscar_usuario_screen.dart';
 import 'chat_screen.dart';
 import 'crear_grupo_screen.dart';
@@ -455,7 +456,7 @@ class _MensajesScreenState extends State<MensajesScreen> {
             final lista = RefreshIndicator(
               onRefresh: _cargar,
               child: _cargando
-                  ? const Center(child: CircularProgressIndicator())
+                  ? const CargandoPichangol()
                   : _convs.isEmpty
                       ? ListView(children: const [
                           SizedBox(height: 80),

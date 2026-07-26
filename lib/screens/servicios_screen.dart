@@ -10,6 +10,7 @@ import '../services/pagos_service.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 import 'billetera_negocio_screen.dart';
 import 'conectar_redes_screen.dart';
 import 'recargar_saldo_screen.dart';
@@ -404,7 +405,7 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
         ],
       ),
       body: _cargando
-          ? const Center(child: CircularProgressIndicator(color: lima))
+          ? const CargandoPichangol()
           : RefreshIndicator(
               onRefresh: _cargar,
               color: lima,

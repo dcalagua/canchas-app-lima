@@ -4,6 +4,7 @@ import '../data/productos_repo.dart';
 import '../models/producto.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 import 'mis_ordenes_screen.dart';
 import 'mis_productos_screen.dart';
 import 'producto_detalle_screen.dart';
@@ -130,7 +131,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
             ),
           Expanded(
             child: _cargando
-                ? const Center(child: CircularProgressIndicator(color: lima))
+                ? const CargandoPichangol()
                 : items.isEmpty
                     ? _vacio()
                     : RefreshIndicator(

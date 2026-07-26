@@ -4,6 +4,7 @@ import '../brand.dart';
 import '../services/auth_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 import '../widgets/google_logo.dart';
 import '../widgets/marca.dart';
 
@@ -162,7 +163,7 @@ class _LoginGoogleSheetState extends State<LoginGoogleSheet> {
           ),
           const SizedBox(height: 22),
           if (_cargando)
-            const Center(child: CircularProgressIndicator(color: lima))
+            const CargandoPichangol()
           else ...[
             // Login REAL con Google (siempre disponible). Si falla, muestra el
             // error para diagnóstico (ver _entrar).

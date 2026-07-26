@@ -5,6 +5,7 @@ import '../services/avisos_service.dart';
 import '../services/ventas_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 import 'chat_screen.dart';
 
 /// Órdenes del Marketplace (escrow). Modo COMPRADOR ("Mis compras": confirmar
@@ -160,7 +161,7 @@ class _MisOrdenesScreenState extends State<MisOrdenesScreen> {
       appBar: AppBar(
           title: Text(widget.esVendedor ? 'Mis ventas' : 'Mis compras')),
       body: _cargando
-          ? const Center(child: CircularProgressIndicator(color: lima))
+          ? const CargandoPichangol()
           : _items.isEmpty
               ? _vacio()
               : RefreshIndicator(

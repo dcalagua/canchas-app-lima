@@ -5,6 +5,7 @@ import '../models/models.dart';
 import '../services/circuito_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 import '../widgets/reto_flow.dart';
 import '../widgets/selector_ubicacion.dart';
 import 'login_google_sheet.dart';
@@ -160,7 +161,7 @@ class _JugadoresDisponiblesScreenState
                 if (_cargando)
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 40),
-                    child: Center(child: CircularProgressIndicator(color: lima)),
+                    child: CargandoPichangol(),
                   )
                 else if (_jugadores.where((j) => (j['email'] ?? '') != _yo).isEmpty)
                   Padding(

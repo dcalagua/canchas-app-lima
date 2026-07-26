@@ -4,6 +4,7 @@ import '../models/negocio.dart';
 import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 import 'recargar_saldo_screen.dart';
 
 /// "MI BILLETERA" del negocio (academia/club): el método de pago (tarjeta de
@@ -68,7 +69,7 @@ class _BilleteraNegocioScreenState extends State<BilleteraNegocioScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Mi billetera')),
       body: _cargando
-          ? const Center(child: CircularProgressIndicator(color: lima))
+          ? const CargandoPichangol()
           : RefreshIndicator(
               onRefresh: _cargar,
               color: lima,

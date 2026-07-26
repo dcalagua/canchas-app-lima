@@ -6,6 +6,7 @@ import '../data/perfiles_repo.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 import '../widgets/reto_flow.dart';
 
 /// Reto de DOBLES (2 vs 2): eliges a tu **compañero** y a los **dos rivales**
@@ -317,7 +318,7 @@ class _PickerJugadorState extends State<_PickerJugador> {
             ),
             Expanded(
               child: _buscando
-                  ? const Center(child: CircularProgressIndicator(color: lima))
+                  ? const CargandoPichangol()
                   : _q.text.trim().length < 2
                       ? _pista('Escribe al menos 2 letras para buscar.')
                       : _resultados.isEmpty

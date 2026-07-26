@@ -7,6 +7,7 @@ import '../services/growth_service.dart';
 import '../services/pagos_service.dart';
 import '../services/whatsapp_link.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 
 /// Flujo GUIADO para que el dueño conecte su Instagram/Facebook y Pichangol
 /// publique por él (Gestión de redes / Nivel 2). Verifica requisitos, abre el
@@ -139,7 +140,7 @@ class _ConectarRedesScreenState extends State<ConectarRedesScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Conectar tus redes')),
       body: _cargando
-          ? const Center(child: CircularProgressIndicator(color: lima))
+          ? const CargandoPichangol()
           : RefreshIndicator(
               color: lima,
               onRefresh: _cargar,

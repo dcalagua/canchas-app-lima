@@ -9,6 +9,7 @@ import '../services/avisos_service.dart';
 import '../services/retos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 
 /// MIS RETOS P2P: retos recibidos (aceptar/rechazar) y enviados; reportar el
 /// resultado de los aceptados (suma al ranking global).
@@ -321,7 +322,7 @@ class _MisRetosScreenState extends State<MisRetosScreen> {
               ),
             )
           : _cargando
-              ? const Center(child: CircularProgressIndicator(color: lima))
+              ? const CargandoPichangol()
               : RefreshIndicator(
                   color: lima,
                   onRefresh: _cargar,

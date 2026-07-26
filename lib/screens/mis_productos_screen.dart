@@ -4,6 +4,7 @@ import '../data/productos_repo.dart';
 import '../models/producto.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 import 'editar_producto_screen.dart';
 import 'login_google_sheet.dart';
 import 'mis_ordenes_screen.dart';
@@ -132,7 +133,7 @@ class _MisProductosScreenState extends State<MisProductosScreen> {
         label: const Text('Publicar'),
       ),
       body: _cargando
-          ? const Center(child: CircularProgressIndicator(color: lima))
+          ? const CargandoPichangol()
           : _items.isEmpty
               ? _vacio()
               : RefreshIndicator(
