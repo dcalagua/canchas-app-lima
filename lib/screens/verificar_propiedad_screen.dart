@@ -6,6 +6,7 @@ import '../models/models.dart';
 import '../services/propiedad_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 
 /// Verifica la **PROPIEDAD** de una cancha por OTP de WhatsApp: el código llega
 /// al teléfono del local. Probar que controlas ese teléfono es lo que te habilita
@@ -48,10 +49,17 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
       _enviando = true;
       _msg = null;
     });
-    final r = await PropiedadService.solicitarOtp(
-        canchaId: widget.cancha.id, telefono: tel);
+    Map<String, dynamic>? r;
+    try {
+      r = await conPreload(
+          context,
+          () => PropiedadService.solicitarOtp(
+              canchaId: widget.cancha.id, telefono: tel),
+          texto: 'Enviando código…');
+    } finally {
+      if (mounted) setState(() => _enviando = false);
+    }
     if (!mounted) return;
-    setState(() => _enviando = false);
 
     if (r == null) {
       setState(() => _msg =
@@ -86,13 +94,20 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
       _enviando = true;
       _msg = null;
     });
-    final r = await PropiedadService.confirmarOtp(
-      canchaId: widget.cancha.id,
-      codigo: cod,
-      solicitanteId: email,
-    );
+    Map<String, dynamic>? r;
+    try {
+      r = await conPreload(
+          context,
+          () => PropiedadService.confirmarOtp(
+                canchaId: widget.cancha.id,
+                codigo: cod,
+                solicitanteId: email,
+              ),
+          texto: 'Verificando…');
+    } finally {
+      if (mounted) setState(() => _enviando = false);
+    }
     if (!mounted) return;
-    setState(() => _enviando = false);
 
     if (r == null) {
       setState(() => _msg = 'No se pudo confirmar. Revisa tu conexión.');
@@ -179,10 +194,8 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
                 style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 15)),
                 onPressed: _enviando ? null : _solicitar,
-                icon: _enviando
-                    ? const _Spin()
-                    : const Icon(Icons.send_to_mobile),
-                label: Text(_enviando ? 'Enviando…' : 'Enviar código'),
+                icon: const Icon(Icons.send_to_mobile),
+                label: const Text('Enviar código'),
               ),
             ),
           if (_otpEnviado) ...[
@@ -212,8 +225,8 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
                 style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 15)),
                 onPressed: _enviando ? null : _confirmar,
-                icon: _enviando ? const _Spin() : const Icon(Icons.verified),
-                label: Text(_enviando ? 'Verificando…' : 'Verificar propiedad'),
+                icon: const Icon(Icons.verified),
+                label: const Text('Verificar propiedad'),
               ),
             ),
             const SizedBox(height: 6),
@@ -254,13 +267,4 @@ class _AppBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context) =>
       AppBar(title: const Text('Verificar propiedad'));
-}
-
-class _Spin extends StatelessWidget {
-  const _Spin();
-  @override
-  Widget build(BuildContext context) => const SizedBox(
-      width: 18,
-      height: 18,
-      child: CircularProgressIndicator(strokeWidth: 2, color: lima));
 }
