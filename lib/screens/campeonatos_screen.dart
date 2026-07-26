@@ -71,7 +71,9 @@ class CampeonatosScreen extends StatelessWidget {
             );
           }
           return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
+            // Regla app: contenido centrado (ancho máx) en pantallas anchas.
+            padding: EdgeInsets.fromLTRB(
+                ladoTablet(context, 16, 900), 16, ladoTablet(context, 16, 900), 90),
             children: [
               // Tablet/landscape: campeonatos en grilla de 2-3 columnas.
               if (esTablet(context))

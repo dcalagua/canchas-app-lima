@@ -5,6 +5,7 @@ import '../services/avisos_service.dart';
 import '../services/ventas_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/responsive.dart';
 import '../widgets/cargando_pichangol.dart';
 import 'chat_screen.dart';
 
@@ -167,7 +168,10 @@ class _MisOrdenesScreenState extends State<MisOrdenesScreen> {
               : RefreshIndicator(
                   onRefresh: _cargar,
                   child: ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                    // Regla app: contenido centrado en pantallas anchas.
+                    padding: EdgeInsets.fromLTRB(
+                        ladoTablet(context, 16, 700), 12,
+                        ladoTablet(context, 16, 700), 24),
                     children: [
                       if (widget.esVendedor) _resumen(),
                       for (final v in _items) _tarjeta(v),

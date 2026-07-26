@@ -5,6 +5,7 @@ import '../models/models.dart';
 import '../models/temporada.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/responsive.dart';
 import 'buscar_usuario_screen.dart';
 import 'jugadores_disponibles_screen.dart';
 import 'perfil_global_screen.dart';
@@ -133,7 +134,9 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
           final campeonEmail = campeon?.emailIdentidad ?? '';
 
           return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 30),
+            // Regla app: contenido centrado (ancho máx) en pantallas anchas.
+            padding: EdgeInsets.fromLTRB(
+                ladoTablet(context, 16, 700), 12, ladoTablet(context, 16, 700), 30),
             children: [
               Container(
                 padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
