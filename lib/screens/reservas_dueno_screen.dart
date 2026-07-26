@@ -8,6 +8,7 @@ import '../widgets/ancho_lectura.dart';
 import 'chat_screen.dart';
 import 'reporte_canchas_screen.dart';
 import 'reserva_manual_screen.dart';
+import 'reservas_fijas_screen.dart';
 
 /// Panel de RESERVAS del dueño (piloto): lista las reservas reales de sus
 /// canchas, con botones para registrar el pago en efectivo o marcar no-show,
@@ -50,6 +51,12 @@ class _ReservasDuenoScreenState extends State<ReservasDuenoScreen> {
       appBar: AppBar(
         title: const Text('Reservas'),
         actions: [
+          IconButton(
+            tooltip: 'Clientes fijos (pensionados)',
+            icon: const Icon(Icons.event_repeat),
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => const ReservasFijasScreen())),
+          ),
           IconButton(
             tooltip: 'Reporte de cobros',
             icon: const Icon(Icons.bar_chart),

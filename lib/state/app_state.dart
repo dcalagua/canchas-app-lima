@@ -27,6 +27,7 @@ import '../models/invitacion.dart';
 import '../models/models.dart';
 import '../models/negocio.dart';
 import '../models/resena.dart';
+import '../models/reserva_fija.dart';
 import '../models/temporada.dart';
 import '../models/usuario.dart';
 import '../services/auth_service.dart';
@@ -4049,6 +4050,7 @@ class AppState extends ChangeNotifier {
   static const _kAsistAvisada = 'asistencia_avisada_json'; // "alumnoId|dia"
   static const _kDescuentosSlot = 'descuentos_slot_json'; // "cancha|fecha|hora"→pct
   static const _kCierresCaja = 'cierres_caja_json';
+  static const _kReservasFijas = 'reservas_fijas_json';
   static const _kNacimiento = 'fecha_nacimiento_iso';
   static const _kDniVerif = 'dni_verificado';
   static const _kMovs = 'movimientos_json';
@@ -4152,6 +4154,15 @@ class AppState extends ChangeNotifier {
             ..clear()
             ..addAll((jsonDecode(cc) as List)
                 .map((e) => CierreCaja.fromJson(Map<String, dynamic>.from(e))));
+        } catch (_) {}
+      }
+      final rf = prefs.getString(_kReservasFijas);
+      if (rf != null && rf.isNotEmpty) {
+        try {
+          reservasFijas
+            ..clear()
+            ..addAll((jsonDecode(rf) as List)
+                .map((e) => ReservaFija.fromJson(Map<String, dynamic>.from(e))));
         } catch (_) {}
       }
       // Migración de instalaciones previas (sin titular guardado): atribuye la
@@ -4327,6 +4338,8 @@ class AppState extends ChangeNotifier {
       await prefs.setString(_kDescuentosSlot, jsonEncode(_descuentosSlot));
       await prefs.setString(_kCierresCaja,
           jsonEncode(cierresCaja.map((c) => c.toJson()).toList()));
+      await prefs.setString(_kReservasFijas,
+          jsonEncode(reservasFijas.map((f) => f.toJson()).toList()));
       if (fechaNacimiento != null) {
         await prefs.setString(
             _kNacimiento, fechaNacimiento!.toIso8601String());
@@ -4773,6 +4786,103 @@ class AppState extends ChangeNotifier {
         ));
     notifyListeners();
     _persistirDatos();
+  }
+
+  // ── RESERVAS FIJAS / "pensionados" (dueño) ────────────────────────────────
+  final List<ReservaFija> reservasFijas = [];
+
+  /// Reservas fijas de las canchas del dueño (todas las que administra).
+  List<ReservaFija> get misReservasFijas {
+    final ids = misCanchas.map((c) => c.id).toSet();
+    return reservasFijas.where((f) => ids.contains(f.canchaId)).toList();
+  }
+
+  /// Crea una reserva fija y genera de una vez sus próximas ocurrencias.
+  Future<void> agregarReservaFija({
+    required String canchaId,
+    required int diaSemana,
+    required String hora,
+    required String clienteNombre,
+    String clienteEmail = '',
+    String clienteTelefono = '',
+  }) async {
+    reservasFijas.add(ReservaFija(
+      id: 'fija_${DateTime.now().microsecondsSinceEpoch}',
+      canchaId: canchaId,
+      diaSemana: diaSemana,
+      hora: hora,
+      clienteNombre: clienteNombre.trim(),
+      clienteEmail: clienteEmail.trim().toLowerCase(),
+      clienteTelefono: clienteTelefono.trim(),
+    ));
+    notifyListeners();
+    _persistirDatos();
+    await generarReservasFijas();
+  }
+
+  /// Pausa/activa una reserva fija (deja de generar sin borrar el registro).
+  void pausarReservaFija(String id, bool activo) {
+    final i = reservasFijas.indexWhere((f) => f.id == id);
+    if (i < 0) return;
+    reservasFijas[i] = reservasFijas[i].copyWith(activo: activo);
+    notifyListeners();
+    _persistirDatos();
+  }
+
+  /// Elimina la reserva fija (no borra las reservas ya generadas).
+  void quitarReservaFija(String id) {
+    reservasFijas.removeWhere((f) => f.id == id);
+    notifyListeners();
+    _persistirDatos();
+  }
+
+  /// GENERA las reservas de las próximas [semanas] ocurrencias de cada fija
+  /// activa (idempotente: no duplica si el slot ya está reservado). Llamar al
+  /// abrir el panel del dueño.
+  Future<void> generarReservasFijas({int semanas = 4}) async {
+    final hoy = DateTime.now();
+    final base = DateTime(hoy.year, hoy.month, hoy.day);
+    for (final f in reservasFijas.where((x) => x.activo)) {
+      Cancha? cancha;
+      for (final c in misCanchas) {
+        if (c.id == f.canchaId) {
+          cancha = c;
+          break;
+        }
+      }
+      if (cancha == null) continue;
+      // Día de esta semana (o el mismo día si es hoy) + próximas semanas.
+      final delta = (f.diaSemana - base.weekday) % 7;
+      for (var w = 0; w < semanas; w++) {
+        final fecha = base.add(Duration(days: delta + w * 7));
+        final iso = isoDe(fecha);
+        final ocupado = reservas.any((r) =>
+            r.canchaId == f.canchaId &&
+            r.fecha == iso &&
+            r.horaInicio == f.hora);
+        if (ocupado) continue;
+        await agregarReservaManual(
+          cancha,
+          iso,
+          _diaLabelDe(fecha),
+          f.hora,
+          nombreCliente: f.clienteNombre,
+          telefono: f.clienteTelefono,
+          clienteEmail: f.clienteEmail,
+        );
+      }
+    }
+  }
+
+  /// Etiqueta de día para una fecha (Hoy/Mañana/ISO), coherente con la agenda.
+  String _diaLabelDe(DateTime fecha) {
+    final hoy = DateTime.now();
+    final base = DateTime(hoy.year, hoy.month, hoy.day);
+    final d = DateTime(fecha.year, fecha.month, fecha.day);
+    final diff = d.difference(base).inDays;
+    if (diff == 0) return 'Hoy';
+    if (diff == 1) return 'Mañana';
+    return isoDe(fecha);
   }
 
   /// El JUGADOR cancela / elimina una de sus reservas (próxima o del historial).
