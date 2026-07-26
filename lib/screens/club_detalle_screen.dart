@@ -40,7 +40,10 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
   Deporte? _deporteSel;
   Deporte get _deporteEfectivo => _deporteSel ?? _cancha.deporte;
   String _dia = 'Hoy';
-  String? _hora;
+  // Horas SELECCIONADAS (bloque contiguo). El jugador puede reservar 1 o varias
+  // horas seguidas; el bloque siempre queda ordenado (inicio = primera, fin =
+  // última + duración), así nunca hay un rango invertido (fin antes del inicio).
+  final List<String> _slots = [];
   bool _reclamoRechazado = false; // MI reclamo de esta cancha fue rechazado
   bool _reclamablePorRechazo = false; // reclamo AJENO rechazado → libre para reclamar
 
@@ -209,6 +212,67 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     return _esValle(hora) ? _cancha.descuentoValle : 0;
   }
 
+  /// Selección de un BLOQUE CONTIGUO de horas (para reservar más de una hora).
+  /// Tap: si no hay nada, elige esa hora; si tocas un extremo del bloque lo
+  /// achica; si tocas otra hora y TODAS las del rango entre el bloque y ella
+  /// están libres, rellena el bloque (18:00 → 20:00 = 2 h); si hay una hora
+  /// ocupada en medio, empieza un bloque nuevo en la hora tocada.
+  void _tapSlot(String h) {
+    if (_ocupada(h)) return;
+    final todas = _horas;
+    setState(() {
+      if (_slots.isEmpty) {
+        _slots.add(h);
+        return;
+      }
+      if (_slots.contains(h)) {
+        // Tocar un extremo lo quita; una hora interna reinicia a esa sola.
+        if (h == _slotsOrd.first || h == _slotsOrd.last) {
+          _slots.remove(h);
+        } else {
+          _slots
+            ..clear()
+            ..add(h);
+        }
+        return;
+      }
+      final iH = todas.indexOf(h);
+      final iFirst = todas.indexOf(_slotsOrd.first);
+      final iLast = todas.indexOf(_slotsOrd.last);
+      if (iH < 0 || iFirst < 0 || iLast < 0) {
+        _slots
+          ..clear()
+          ..add(h);
+        return;
+      }
+      final lo = iH < iFirst ? iH : iFirst;
+      final hi = iH > iLast ? iH : iLast;
+      final rango = [for (var i = lo; i <= hi; i++) todas[i]];
+      // El bloque solo se forma si TODAS las horas del rango están libres.
+      if (rango.every((s) => !_ocupada(s))) {
+        _slots
+          ..clear()
+          ..addAll(rango);
+      } else {
+        _slots
+          ..clear()
+          ..add(h);
+      }
+    });
+  }
+
+  /// Horas del bloque, ordenadas.
+  List<String> get _slotsOrd {
+    final l = [..._slots];
+    l.sort();
+    return l;
+  }
+
+  /// Total base (sin extras) del bloque: suma del precio efectivo de cada hora
+  /// (respeta valle/descuento por hora, así 2 h no es un simple ×2).
+  double get _totalBloque => _slots.fold(
+      0.0, (a, h) => a + appState.precioSlotEfectivo(_cancha, _fechaIso, h));
+
   /// El dueño bloquea/desbloquea un horario (los reservados no se tocan).
   Future<void> _alternarBloqueo(String hora) async {
     if (_reservado(hora)) return; // no bloquear un slot ya reservado
@@ -223,7 +287,8 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
   /// método elegido: 'online' (Yape/Tarjeta) o 'cancha' (efectivo), o null si se
   /// cancela. El efectivo SOLO se ofrece si el dueño tiene saldo (destacado): así
   /// PCG cobra su comisión de ese saldo; sin saldo, solo online (comisión al pagar).
-  Future<ResumenResultado?> _mostrarResumen(String hora, num total) async {
+  Future<ResumenResultado?> _mostrarResumen(List<String> slots, num total) async {
+    final ord = [...slots]..sort();
     return showModalBottomSheet<ResumenResultado>(
       context: context,
       isScrollControlled: true,
@@ -231,8 +296,9 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
       builder: (_) => _ResumenReserva(
         cancha: _cancha,
         dia: _dia,
-        hora: hora,
-        horaFin: _cancha.horaFinDe(hora),
+        hora: ord.first,
+        horaFin: _cancha.horaFinDe(ord.last),
+        nSlots: ord.length,
         deporte: _deporteEfectivo,
         nombreCliente: appState.usuario?.nombre ?? '',
         total: total,
@@ -242,76 +308,71 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
   }
 
   Future<void> _reservar() async {
-    final hora = _hora;
-    if (hora == null) return;
+    if (_slots.isEmpty) return;
     if (!_cancha.reservable) return; // no se reserva si está pendiente/descubierta
     if (!await LoginGoogleSheet.mostrar(context, motivo: 'reservar tu cancha')) {
       return;
     }
     if (!mounted) return;
-    // El jugador SIEMPRE paga el precio de la cancha (su precio de siempre),
-    // tenga o no saldo el dueño. La comisión de Pichangol es 100% del lado del
-    // dueño: sale de su saldo si tiene (recibe el precio completo) o se descuenta
-    // de su liquidación si no. Nunca se le suma al jugador; la del banco tampoco.
-    // Precio efectivo: hora feliz de mañanas + descuento puntual del dueño.
-    final base = appState.precioHoraEfectivo(_cancha, _fechaIso, hora);
-    // Resumen estilo Airbnb ANTES de pagar (confianza + claridad). Devuelve el
-    // método ('online'/'cancha') + los servicios extra elegidos (árbitro…).
-    final r = await _mostrarResumen(hora, base);
+    final slots = _slotsOrd; // bloque contiguo ordenado (1 o varias horas)
+    // Total del bloque = SUMA del precio efectivo de cada hora (respeta valle/
+    // descuento por hora, así 2 h no es un simple ×2). La comisión de Pichangol
+    // es 100% del lado del dueño; nunca se le suma al jugador.
+    final base = _totalBloque;
+    // Resumen estilo Airbnb ANTES de pagar. Devuelve método + servicios extra.
+    final r = await _mostrarResumen(slots, base);
     if (r == null || !mounted) return;
     final metodo = r.metodo; // 'online' | 'sena' | 'cancha'
     final extras = r.extras;
-    // El jugador paga el precio de la cancha + los servicios extra que eligió.
+    // El jugador paga las horas + los servicios extra que eligió (una sola vez).
     final total = base + extras.fold(0.0, (a, s) => a + s.precio);
-    // Seña anti no-show: % del precio de la cancha (sobre `base`, sin extras).
-    // Solo aplica si la cancha la exige y el jugador eligió pagar la seña.
+    // Seña anti no-show: % del TOTAL de las horas (sin extras).
     final esSena = metodo == 'sena';
     final senaMonto =
         _cancha.senaPct > 0 ? (base * _cancha.senaPct / 100).round() : 0;
     final mon = _cancha.monedaSimbolo;
+    // Etiqueta del bloque para conceptos/mensajes ('18:00–20:00' o '18:00').
+    final etiqueta = slots.length > 1
+        ? '${slots.first}–${_cancha.horaFinDe(slots.last)}'
+        : slots.first;
     if (metodo == 'online') {
-      // Pago con tarjeta/Yape (Culqi). Si el usuario cancela o el pago falla, no
-      // se reserva. Si Culqi no está configurado, cae a la pasarela simulada.
+      // Pago con tarjeta/Yape (Culqi/Libélula). Si cancela o falla, no reserva.
       final pagado = await PagoTarjeta.cobrar(
         context,
         monto: total.round(),
-        concepto: 'Reserva · ${_cancha.nombre} · $_dia $hora',
+        concepto: 'Reserva · ${_cancha.nombre} · $_dia $etiqueta',
         email: appState.usuario?.email ?? '',
         moneda: mon,
       );
       if (!pagado || !mounted) return;
     } else if (esSena) {
-      // El jugador ADELANTA la seña (Culqi). El resto lo paga en la cancha. Si
-      // cancela o falla el pago, no se reserva. La seña no es reembolsable.
+      // El jugador ADELANTA la seña (del total). El resto lo paga en la cancha.
       final pagado = await PagoTarjeta.cobrar(
         context,
         monto: senaMonto,
-        concepto: 'Seña · ${_cancha.nombre} · $_dia $hora',
+        concepto: 'Seña · ${_cancha.nombre} · $_dia $etiqueta',
         email: appState.usuario?.email ?? '',
         moneda: mon,
       );
       if (!pagado || !mounted) return;
     }
-    // 'cancha' → sin pasarela: se reserva y el dueño cobra en efectivo (la
-    // comisión de PCG sale de su saldo, por eso el efectivo solo se ofrece con
-    // saldo). El pago se marca en el panel del dueño.
+    // 'cancha' → sin pasarela: se reserva y el dueño cobra en efectivo.
     final pagoOnline = metodo == 'online';
     final messenger = ScaffoldMessenger.of(context);
     final nav = Navigator.of(context);
-    final res = await appState.agregarReservaJugador(
-        _cancha, _fechaIso, _dia, hora,
+    // Crea una Reserva por hora (mismo grupo). Verifica que TODAS estén libres.
+    final res = await appState.agregarReservasJugadorMulti(
+        _cancha, _fechaIso, _dia, slots,
         deporte: _deporteEfectivo, extras: extras,
-        // 'cancha' = efectivo (comisión del saldo del dueño); 'online' = el
-        // jugador pagó todo por la app; 'sena' = adelantó la seña (resto en
-        // la cancha). Se registra la liquidación / neto al dueño.
         cobro: metodo == 'cancha' ? 'efectivo' : metodo,
-        sena: esSena ? senaMonto : 0);
+        conSena: esSena);
     if (!mounted) return;
     if (res == ResultadoReserva.ocupado) {
-      setState(() => _hora = null); // libera selección; la grilla se refresca
+      setState(() => _slots.clear()); // libera selección; la grilla se refresca
       messenger.showSnackBar(const SnackBar(
         backgroundColor: Colors.redAccent,
-        content: Text('Ese horario acaba de tomarse. Elige otro, por favor.'),
+        content:
+            Text('Alguna de esas horas acaba de tomarse. Elige otras, por favor.'),
       ));
       return;
     }
@@ -326,10 +387,10 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         content: Text(
             confirmada
                 ? (esSena
-                    ? '✅ Seña pagada · Reserva confirmada en ${_cancha.nombre} · $_dia $hora · paga $mon ${(total - senaMonto).toStringAsFixed(2)} en la cancha'
+                    ? '✅ Seña pagada · Reserva confirmada en ${_cancha.nombre} · $_dia $etiqueta · paga $mon ${(total - senaMonto).toStringAsFixed(2)} en la cancha'
                     : pagoOnline
-                        ? '✅ Pago OK · Reserva confirmada en ${_cancha.nombre} · $_dia $hora'
-                        : '✅ Reserva confirmada en ${_cancha.nombre} · $_dia $hora · pagas en la cancha')
+                        ? '✅ Pago OK · Reserva confirmada en ${_cancha.nombre} · $_dia $etiqueta'
+                        : '✅ Reserva confirmada en ${_cancha.nombre} · $_dia $etiqueta · pagas en la cancha')
                 : '⚠️ Guardamos tu reserva, pero no pudimos confirmarla con el '
                     'servidor. Otra persona podría tomar el mismo horario; '
                     'reconéctate para asegurarla.',
@@ -465,7 +526,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                           return GestureDetector(
                             onTap: () => setState(() {
                               _cancha = cc;
-                              _hora = null;
+                              _slots.clear();
                               _deporteSel = null; // se ajusta a la nueva cancha
                             }),
                             child: Container(
@@ -640,10 +701,10 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                     Row(
                       children: [
                         _DiaChip('Hoy', _dia == 'Hoy',
-                            () => setState(() { _dia = 'Hoy'; _hora = null; })),
+                            () => setState(() { _dia = 'Hoy'; _slots.clear(); })),
                         const SizedBox(width: 10),
                         _DiaChip('Mañana', _dia == 'Mañana',
-                            () => setState(() { _dia = 'Mañana'; _hora = null; })),
+                            () => setState(() { _dia = 'Mañana'; _slots.clear(); })),
                       ],
                     ),
                     const SizedBox(height: 20),
@@ -663,7 +724,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                             : 'Sin horarios disponibles.',
                         style: t.bodyMedium?.copyWith(color: textoTenueDe(context)),
                       )
-                    else
+                    else ...[
                       Wrap(
                         spacing: 9,
                         runSpacing: 9,
@@ -674,11 +735,27 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                               ocupada: _ocupada(h),
                               valle: _esValle(h),
                               descuento: _descEfectivo(h),
-                              seleccionada: _hora == h,
-                              onTap: () => setState(() => _hora = h),
+                              seleccionada: _slots.contains(h),
+                              onTap: () => _tapSlot(h),
                             ),
                         ],
                       ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Icon(Icons.touch_app_outlined,
+                              size: 15, color: textoTenueDe(context)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                                'Toca varias horas seguidas para reservar más '
+                                'tiempo (ej. 18:00–20:00 = 2 h).',
+                                style: t.bodySmall
+                                    ?.copyWith(color: textoTenueDe(context))),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                   // Reseñas del local: reputación real (visible para dueño y
                   // jugadores en canchas ya registradas).
@@ -700,13 +777,14 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
       bottomNavigationBar: (descubierta || pendiente || _soyDueno)
           ? null
           : _ReservarBar(
-              // Precio efectivo del slot elegido (hora feliz + descuento puntual).
-              precio: _hora != null
-                  ? appState.precioHoraEfectivo(_cancha, _fechaIso, _hora!)
-                  : _cancha.precioHora,
+              // Sin selección: precio base /hora. Con bloque: TOTAL de las horas.
+              monto: _slots.isEmpty ? _cancha.precioHora : _totalBloque,
+              sufijo: _slots.isEmpty ? ' /hora' : '',
               moneda: _cancha.monedaSimbolo,
-              hora: _hora,
-              onReservar: _hora == null ? null : _reservar,
+              detalle: _slots.isEmpty
+                  ? 'Elige una hora'
+                  : '${_slots.length} h · ${_slotsOrd.first}–${_cancha.horaFinDe(_slotsOrd.last)}',
+              onReservar: _slots.isEmpty ? null : _reservar,
             ),
     );
   }
@@ -956,13 +1034,15 @@ class _FilaAmenities extends StatelessWidget {
 
 class _ReservarBar extends StatelessWidget {
   const _ReservarBar(
-      {required this.precio,
+      {required this.monto,
       required this.moneda,
-      required this.hora,
+      required this.sufijo,
+      required this.detalle,
       required this.onReservar});
-  final double precio;
+  final double monto; // /hora cuando no hay selección; total del bloque si hay
   final String moneda;
-  final String? hora;
+  final String sufijo; // ' /hora' o '' (total)
+  final String detalle; // 'Elige una hora' o '2 h · 18:00–20:00'
   final VoidCallback? onReservar;
 
   @override
@@ -988,15 +1068,15 @@ class _ReservarBar extends StatelessWidget {
                     style: t.bodySmall?.copyWith(color: textoTenueDe(context)),
                     children: [
                       TextSpan(
-                        text: '$moneda${precio.toStringAsFixed(2)}',
+                        text: '$moneda${monto.toStringAsFixed(2)}',
                         style: t.titleLarge?.copyWith(
                             color: cs.onSurface, fontWeight: FontWeight.w700),
                       ),
-                      const TextSpan(text: ' /hora'),
+                      TextSpan(text: sufijo),
                     ],
                   ),
                 ),
-                Text(hora == null ? 'Elige una hora' : 'Hora $hora',
+                Text(detalle,
                     style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
               ],
             ),
@@ -1039,6 +1119,7 @@ class _ResumenReserva extends StatefulWidget {
     required this.dia,
     required this.hora,
     required this.horaFin,
+    required this.nSlots,
     required this.deporte,
     required this.nombreCliente,
     required this.total,
@@ -1049,9 +1130,10 @@ class _ResumenReserva extends StatefulWidget {
   final String dia;
   final String hora;
   final String horaFin;
+  final int nSlots; // cuántas horas seguidas (1 = una hora)
   final Deporte deporte;
   final String nombreCliente;
-  final num total; // precio base de la cancha (sin extras)
+  final num total; // precio base del bloque (suma de las horas, sin extras)
   final bool permiteEfectivo; // efectivo solo si el dueño tiene saldo
 
   @override
@@ -1064,7 +1146,9 @@ class _ResumenReservaState extends State<_ResumenReserva> {
   Cancha get cancha => widget.cancha;
 
   String get _duracion {
-    final min = cancha.duracionSlotMin <= 0 ? 60 : cancha.duracionSlotMin;
+    // Duración TOTAL del bloque = nº de horas × duración del slot.
+    final unit = cancha.duracionSlotMin <= 0 ? 60 : cancha.duracionSlotMin;
+    final min = unit * (widget.nSlots <= 0 ? 1 : widget.nSlots);
     final h = min ~/ 60;
     final m = min % 60;
     if (h == 0) return '$m min';

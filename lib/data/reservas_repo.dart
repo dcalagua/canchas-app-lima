@@ -148,6 +148,10 @@ class ReservasRepo {
         // Teléfono del cliente en reservas manuales del dueño (columna nueva;
         // va bajo el mismo guard para no romper si aún no se corrió el ALTER).
         if (conDeporte && r.telefono.isNotEmpty) 'telefono': r.telefono,
+        // Grupo de una reserva de varias horas seguidas (columna nueva; mismo
+        // guard para no romper si aún no se corrió el ALTER en Supabase).
+        if (conDeporte && r.grupoReservaId.isNotEmpty)
+          'grupo_reserva_id': r.grupoReservaId,
       };
 
   static Reserva _fromRow(Map<String, dynamic> r) => Reserva(
@@ -169,6 +173,7 @@ class ReservasRepo {
         moneda: (r['moneda'] ?? '') as String,
         extras: ServicioExtra.listaDe(r['extras']),
         telefono: (r['telefono'] ?? '') as String,
+        grupoReservaId: (r['grupo_reserva_id'] ?? '') as String,
       );
 
   static EstadoReserva _estado(String? s) {

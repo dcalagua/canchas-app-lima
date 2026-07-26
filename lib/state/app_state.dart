@@ -4594,7 +4594,8 @@ class AppState extends ChangeNotifier {
       {Deporte? deporte,
       List<ServicioExtra> extras = const [],
       String cobro = 'ninguno',
-      int sena = 0}) async {
+      int sena = 0,
+      String grupoReservaId = ''}) async {
     // Chequeo local rápido (doble toque / feedback inmediato sin conexión).
     // La agenda es COMPARTIDA entre deportes: se ocupa por (cancha, fecha, hora),
     // sin importar el deporte (es la misma superficie física).
@@ -4624,6 +4625,7 @@ class AppState extends ChangeNotifier {
       deporte: (deporte ?? cancha.deporte).name,
       moneda: cancha.monedaSimbolo, // moneda de la cancha (Perú S/, Bolivia Bs…)
       extras: extras, // servicios extra elegidos (árbitro/pelotero…)
+      grupoReservaId: grupoReservaId, // agrupa las horas de una reserva multi-hora
     );
 
     // Fuente de verdad anti-doble-reserva: Supabase con
@@ -4676,6 +4678,52 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     _persistirDatos();
     return res == ResultadoReserva.ok ? ResultadoReserva.ok : res;
+  }
+
+  /// RESERVA DE VARIAS HORAS SEGUIDAS (ej. 18:00–20:00 = 2 Reservas del mismo
+  /// grupo). Primero verifica que TODAS las horas estén libres (si una está
+  /// tomada, no reserva ninguna); luego crea una Reserva por hora con su precio
+  /// propio (respeta valle/descuento por hora) y un `grupoReservaId` compartido
+  /// para mostrarlas como un solo bloque en "Mis reservas". [conSena] cobra la
+  /// seña por hora (% de cada hora). Los [extras] se cargan una sola vez.
+  Future<ResultadoReserva> agregarReservasJugadorMulti(
+      Cancha cancha, String fecha, String diaLabel, List<String> horas,
+      {Deporte? deporte,
+      List<ServicioExtra> extras = const [],
+      String cobro = 'ninguno',
+      bool conSena = false}) async {
+    if (horas.isEmpty) return ResultadoReserva.error;
+    final ordenadas = [...horas]..sort();
+    // Pre-chequeo: TODAS deben estar libres (atómico local). Si una está tomada,
+    // no reservo nada (evita medias reservas).
+    for (final h in ordenadas) {
+      final ocupada = reservas.any((r) =>
+          r.canchaId == cancha.id && r.fecha == fecha && r.horaInicio == h);
+      if (ocupada) return ResultadoReserva.ocupado;
+    }
+    // Grupo solo si son 2+ horas (una sola hora se guarda como reserva suelta).
+    final grupo = ordenadas.length > 1
+        ? 'grp_${DateTime.now().millisecondsSinceEpoch}'
+        : '';
+    var peor = ResultadoReserva.ok;
+    for (var i = 0; i < ordenadas.length; i++) {
+      final h = ordenadas[i];
+      final senaSlot = conSena && cancha.senaPct > 0
+          ? (precioSlotEfectivo(cancha, fecha, h) * cancha.senaPct / 100).round()
+          : 0;
+      final res = await agregarReservaJugador(
+        cancha, fecha, diaLabel, h,
+        deporte: deporte,
+        // Los servicios extra (árbitro/pelotero…) se cobran una sola vez.
+        extras: i == 0 ? extras : const [],
+        cobro: cobro,
+        sena: senaSlot,
+        grupoReservaId: grupo,
+      );
+      if (res == ResultadoReserva.ocupado) return ResultadoReserva.ocupado;
+      if (res != ResultadoReserva.ok) peor = res; // sinConexion / error
+    }
+    return peor;
   }
 
   /// RESERVA MANUAL del dueño: registra la reserva de un cliente que llamó por
@@ -4935,15 +4983,27 @@ class AppState extends ChangeNotifier {
   /// borra de Supabase (best-effort) para que el horario vuelva a estar libre y
   /// no reaparezca al sincronizar.
   Future<void> cancelarReserva(Reserva r) async {
-    misReservas.removeWhere((x) => x.id == r.id);
-    reservas.removeWhere((x) => x.id == r.id);
-    final i = agenda.indexWhere((b) => b.reservaId == r.id);
-    if (i >= 0) {
-      agenda[i] = agenda[i].copyWith(limpiarReserva: true, disponible: true);
+    // Reserva de varias horas seguidas: cancelar el bloque cancela TODAS sus
+    // horas (mismo grupo). Una hora suelta solo se cancela a sí misma.
+    final ids = r.grupoReservaId.isNotEmpty
+        ? reservas
+            .where((x) => x.grupoReservaId == r.grupoReservaId)
+            .map((x) => x.id)
+            .toSet()
+        : {r.id};
+    misReservas.removeWhere((x) => ids.contains(x.id));
+    reservas.removeWhere((x) => ids.contains(x.id));
+    for (final id in ids) {
+      final i = agenda.indexWhere((b) => b.reservaId == id);
+      if (i >= 0) {
+        agenda[i] = agenda[i].copyWith(limpiarReserva: true, disponible: true);
+      }
     }
     notifyListeners();
     _persistirDatos();
-    await ReservasRepo.eliminar(r.id); // libera el slot en la nube
+    for (final id in ids) {
+      await ReservasRepo.eliminar(id); // libera cada slot en la nube
+    }
   }
 
   /// El dueño marca que el jugador no se presentó.

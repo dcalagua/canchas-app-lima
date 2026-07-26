@@ -466,6 +466,9 @@ class Reserva {
   final String moneda; // símbolo de moneda de la cancha al reservar ('' = 'S/')
   final List<ServicioExtra> extras; // servicios extra elegidos al reservar
   final String telefono; // teléfono del cliente (solo en reservas manuales del dueño)
+  // Agrupa las horas de UNA reserva de varias horas seguidas (18:00–20:00 = 2
+  // Reservas con el mismo grupo). '' = reserva suelta de una sola hora (legado).
+  final String grupoReservaId;
 
   /// Moneda de la reserva (default 'S/'), congelada de la cancha al reservar.
   String get monedaSimbolo => moneda.isNotEmpty ? moneda : 'S/';
@@ -495,6 +498,7 @@ class Reserva {
     this.moneda = '',
     this.extras = const [],
     this.telefono = '',
+    this.grupoReservaId = '',
   });
 
   Reserva copyWith({EstadoReserva? estado, bool? pagado}) => Reserva(
@@ -516,6 +520,7 @@ class Reserva {
         moneda: moneda,
         extras: extras,
         telefono: telefono,
+        grupoReservaId: grupoReservaId,
       );
 
   Map<String, dynamic> toJson() => {
@@ -537,6 +542,7 @@ class Reserva {
         'moneda': moneda,
         'extras': extras.map((s) => s.toJson()).toList(),
         'telefono': telefono,
+        'grupoReservaId': grupoReservaId,
       };
 
   factory Reserva.fromJson(Map<String, dynamic> j) => Reserva(
@@ -558,6 +564,7 @@ class Reserva {
         moneda: (j['moneda'] ?? '') as String,
         extras: ServicioExtra.listaDe(j['extras']),
         telefono: (j['telefono'] ?? '') as String,
+        grupoReservaId: (j['grupoReservaId'] ?? '') as String,
       );
 }
 

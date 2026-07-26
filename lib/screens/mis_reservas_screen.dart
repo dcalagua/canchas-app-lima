@@ -39,6 +39,48 @@ class _MisReservasScreenState extends State<MisReservasScreen> {
     }
   }
 
+  /// Colapsa las reservas de varias horas seguidas (mismo `grupoReservaId`) en
+  /// UNA sola tarjeta: rango completo (18:00–20:00) y precio/seña sumados. Las
+  /// reservas sueltas (grupo vacío) quedan igual.
+  List<Reserva> _agrupar(List<Reserva> rs) {
+    final porGrupo = <String, List<Reserva>>{};
+    final salida = <Reserva>[];
+    for (final r in rs) {
+      if (r.grupoReservaId.isEmpty) {
+        salida.add(r);
+      } else {
+        porGrupo.putIfAbsent(r.grupoReservaId, () => []).add(r);
+      }
+    }
+    for (final grupo in porGrupo.values) {
+      grupo.sort((a, b) => a.horaInicio.compareTo(b.horaInicio));
+      final p = grupo.first;
+      final u = grupo.last;
+      salida.add(Reserva(
+        id: p.id,
+        canchaId: p.canchaId,
+        jugador: p.jugador,
+        nivel: p.nivel,
+        fecha: p.fecha,
+        dia: p.dia,
+        horaInicio: p.horaInicio,
+        horaFin: u.horaFin, // rango completo del bloque
+        estado: p.estado,
+        traidaPorApp: p.traidaPorApp,
+        precio: grupo.fold<int>(0, (a, r) => a + r.precio),
+        sena: grupo.fold<int>(0, (a, r) => a + r.sena),
+        pagado: p.pagado,
+        usuario: p.usuario,
+        deporte: p.deporte,
+        moneda: p.moneda,
+        extras: p.extras,
+        telefono: p.telefono,
+        grupoReservaId: p.grupoReservaId,
+      ));
+    }
+    return salida;
+  }
+
   /// Una reserva es "próxima" si aún no terminó y no está jugada/no-show.
   bool _esProxima(Reserva r) {
     if (r.estado == EstadoReserva.completada ||
@@ -65,10 +107,12 @@ class _MisReservasScreenState extends State<MisReservasScreen> {
             );
           }
           final todas = appState.misReservas;
-          final proximas = todas.where(_esProxima).toList()
+          // Reservas de varias horas seguidas (mismo grupo) se muestran como UNA
+          // tarjeta: rango completo (18:00–20:00) y precio sumado.
+          final proximas = _agrupar(todas.where(_esProxima).toList())
             ..sort((a, b) => (_fechaHora(a.fecha, a.horaInicio) ?? DateTime.now())
                 .compareTo(_fechaHora(b.fecha, b.horaInicio) ?? DateTime.now()));
-          final historial = todas.where((r) => !_esProxima(r)).toList()
+          final historial = _agrupar(todas.where((r) => !_esProxima(r)).toList())
             ..sort((a, b) => (_fechaHora(b.fecha, b.horaInicio) ?? DateTime(2000))
                 .compareTo(_fechaHora(a.fecha, a.horaInicio) ?? DateTime(2000)));
           final lista = _tab == 0 ? proximas : historial;
