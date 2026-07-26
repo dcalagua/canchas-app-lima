@@ -9,6 +9,7 @@ import '../data/productos_repo.dart';
 import '../models/producto.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 
 /// Publicar o editar un producto del Marketplace Pichangol. El vendedor pone
 /// foto, nombre, precio, categoría y (opcional) stock. Al guardar, sube la foto
@@ -88,41 +89,52 @@ class _EditarProductoScreenState extends State<EditarProductoScreen> {
       _err('Inicia sesión para publicar.');
       return;
     }
+    if (_guardando) return;
     setState(() => _guardando = true);
 
     final id = widget.producto?.id ??
         'prod_${DateTime.now().microsecondsSinceEpoch}';
-    var fotoUrl = _fotoUrl;
-    if (_fotoNueva != null) {
-      final url = await ProductosRepo.subirFoto(id, _fotoNueva!);
-      if (url == null) {
-        setState(() => _guardando = false);
-        _err(ProductosRepo.ultimoErrorFoto ?? 'No se pudo subir la foto.');
-        return;
-      }
-      fotoUrl = url;
-    }
-
     final stock = _stock.text.trim().isEmpty
         ? null
         : int.tryParse(_stock.text.trim());
-    final prod = Producto(
-      id: id,
-      vendedorEmail: u.email.toLowerCase(),
-      vendedorNombre: u.nombre,
-      nombre: nombre,
-      descripcion: _desc.text.trim(),
-      precio: precio,
-      moneda: widget.producto?.moneda ?? paisActual.moneda,
-      categoria: _categoria,
-      fotoUrl: fotoUrl,
-      stock: stock,
-      activo: _activo,
-      creadoEn: widget.producto?.creadoEn ?? DateTime.now(),
-    );
-    final ok = await ProductosRepo.guardar(prod);
+    String? errFoto;
+    bool ok;
+    try {
+      // Regla: acción que demora (subir foto + guardar) → preload de marca.
+      ok = await conPreload(context, () async {
+        var fotoUrl = _fotoUrl;
+        if (_fotoNueva != null) {
+          final url = await ProductosRepo.subirFoto(id, _fotoNueva!);
+          if (url == null) {
+            errFoto = ProductosRepo.ultimoErrorFoto ?? 'No se pudo subir la foto.';
+            return false;
+          }
+          fotoUrl = url;
+        }
+        final prod = Producto(
+          id: id,
+          vendedorEmail: u.email.toLowerCase(),
+          vendedorNombre: u.nombre,
+          nombre: nombre,
+          descripcion: _desc.text.trim(),
+          precio: precio,
+          moneda: widget.producto?.moneda ?? paisActual.moneda,
+          categoria: _categoria,
+          fotoUrl: fotoUrl,
+          stock: stock,
+          activo: _activo,
+          creadoEn: widget.producto?.creadoEn ?? DateTime.now(),
+        );
+        return ProductosRepo.guardar(prod);
+      }, texto: 'Guardando…');
+    } finally {
+      if (mounted) setState(() => _guardando = false);
+    }
     if (!mounted) return;
-    setState(() => _guardando = false);
+    if (errFoto != null) {
+      _err(errFoto!);
+      return;
+    }
     if (ok) {
       Navigator.of(context).pop(true);
     } else {
@@ -259,13 +271,7 @@ class _EditarProductoScreenState extends State<EditarProductoScreen> {
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 15)),
               onPressed: _guardando ? null : _guardar,
-              icon: _guardando
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
-                  : const Icon(Icons.check),
+              icon: const Icon(Icons.check),
               label: Text(_esNuevo ? 'Publicar' : 'Guardar cambios',
                   style: const TextStyle(
                       fontWeight: FontWeight.w800, fontSize: 15)),

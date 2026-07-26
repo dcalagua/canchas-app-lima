@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import '../config/pais.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 
 /// EDITAR MI PERFIL: el nombre (y foto) con que la persona se muestra en el chat,
 /// el ranking, los retos, etc. Muchos usuarios tienen cualquier cosa en su Gmail;
@@ -100,13 +101,20 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
           const SnackBar(content: Text('Escribe tu nombre.')));
       return;
     }
+    if (_guardando) return;
     setState(() => _guardando = true);
     // Celular en formato internacional (con código de país), o '' si lo borró.
     final celDigits = _celular.text.replaceAll(RegExp(r'[^0-9]'), '');
     final cel = celDigits.isEmpty ? '' : '${paisActual.codigoTel}$celDigits';
-    final ok = await appState.actualizarMiNombre(n, celular: cel);
+    bool ok;
+    try {
+      ok = await conPreload(
+          context, () => appState.actualizarMiNombre(n, celular: cel),
+          texto: 'Guardando…');
+    } finally {
+      if (mounted) setState(() => _guardando = false);
+    }
     if (!mounted) return;
-    setState(() => _guardando = false);
     if (ok) {
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -224,13 +232,7 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 15)),
                     onPressed: _guardando ? null : _guardar,
-                    child: _guardando
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2.4, color: Colors.white))
-                        : const Text('Guardar'),
+                    child: const Text('Guardar'),
                   ),
                 ),
                 const SizedBox(height: 14),

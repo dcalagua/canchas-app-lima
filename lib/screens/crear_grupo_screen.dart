@@ -4,6 +4,7 @@ import '../data/grupos_repo.dart';
 import '../models/grupo.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 import 'chat_screen.dart';
 
 /// Crea un grupo de chat: nombre + miembros por email (cuentas registradas).
@@ -64,6 +65,7 @@ class _CrearGrupoScreenState extends State<CrearGrupoScreen> {
       _aviso('Agrega al menos un miembro por su correo.');
       return;
     }
+    if (_creando) return;
     setState(() => _creando = true);
     final id = 'grp_${DateTime.now().microsecondsSinceEpoch}';
     final grupo = Grupo(id: id, nombre: nombre, creadorEmail: me.email);
@@ -71,9 +73,15 @@ class _CrearGrupoScreenState extends State<CrearGrupoScreen> {
       {'email': me.email, 'nombre': me.nombre},
       for (final e in _miembros) {'email': e, 'nombre': ''},
     ];
-    final ok = await GruposRepo.crear(grupo, miembros);
+    bool ok;
+    try {
+      ok = await conPreload(
+          context, () => GruposRepo.crear(grupo, miembros),
+          texto: 'Creando grupo…');
+    } finally {
+      if (mounted) setState(() => _creando = false);
+    }
     if (!mounted) return;
-    setState(() => _creando = false);
     if (!ok) {
       _aviso('No se pudo crear el grupo. Revisa tu conexión.');
       return;
@@ -164,13 +172,7 @@ class _CrearGrupoScreenState extends State<CrearGrupoScreen> {
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 15)),
               onPressed: _creando ? null : _crear,
-              icon: _creando
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
-                  : const Icon(Icons.check),
+              icon: const Icon(Icons.check),
               label: const Text('Crear grupo',
                   style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
             ),

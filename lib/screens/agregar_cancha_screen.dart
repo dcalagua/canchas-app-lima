@@ -232,14 +232,8 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 15)),
               onPressed: _guardando ? null : _guardar,
-              icon: _guardando
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
-                  : const Icon(Icons.add),
-              label: Text(_guardando ? 'Agregando…' : 'Agregar cancha'),
+              icon: const Icon(Icons.add),
+              label: const Text('Agregar cancha'),
             ),
           ),
         ],
