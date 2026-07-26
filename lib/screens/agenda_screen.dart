@@ -6,6 +6,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/moneda.dart';
 import '../widgets/ancho_lectura.dart';
+import 'llenar_cancha_screen.dart';
 
 /// Agenda REAL del dueño: las franjas del día de SUS canchas con las reservas
 /// reales. Se trabaja dentro de UN local: selector de local (si tiene varios) +
@@ -45,6 +46,17 @@ class _AgendaScreenState extends State<AgendaScreen> {
       backgroundColor: Theme.of(context).brightness == Brightness.dark
           ? Theme.of(context).scaffoldBackgroundColor
           : papelCalido,
+      floatingActionButton: appState.misCanchas.isEmpty
+          ? null
+          : FloatingActionButton.extended(
+              backgroundColor: lima,
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.campaign),
+              label: const Text('Llenar cancha'),
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) =>
+                      LlenarCanchaScreen(canchaInicial: _cancha))),
+            ),
       body: AnchoLectura(child: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {

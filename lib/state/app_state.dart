@@ -2871,6 +2871,47 @@ class AppState extends ChangeNotifier {
   bool estaBloqueado(String canchaId, String fecha, String hora) =>
       _bloqueos.contains(BloqueosRepo.clave(canchaId, fecha, hora));
 
+  // ── LLENAR LA CANCHA VACÍA (dueño) ────────────────────────────────────────
+  /// Horas LIBRES de una cancha en una fecha (ISO): están en su grilla, no
+  /// reservadas y no bloqueadas. Si la fecha es HOY, omite las horas ya pasadas.
+  List<String> horasLibresDe(Cancha c, String fechaIso) {
+    final hoy = DateTime.now();
+    final esHoy = fechaIso ==
+        '${hoy.year.toString().padLeft(4, '0')}-'
+            '${hoy.month.toString().padLeft(2, '0')}-'
+            '${hoy.day.toString().padLeft(2, '0')}';
+    final desde = esHoy ? hoy.hour * 60 + hoy.minute : null;
+    final slots = c.horariosSlots(desdeMinutos: desde);
+    return slots.where((h) {
+      final reservado = reservas.any((r) =>
+          r.canchaId == c.id && r.fecha == fechaIso && r.horaInicio == h);
+      return !reservado && !estaBloqueado(c.id, fechaIso, h);
+    }).toList();
+  }
+
+  /// Clientes del dueño (agregados de las reservas de SUS canchas) a los que se
+  /// les puede avisar: con correo (tienen la app → chat/push) o con teléfono
+  /// (WhatsApp). Deduplicados. Para difundir horas libres/promos.
+  List<({String nombre, String email, String telefono})> clientesParaAvisar() {
+    final misIds = misCanchas.map((c) => c.id).toSet();
+    final out = <String, ({String nombre, String email, String telefono})>{};
+    for (final r in reservas) {
+      if (!misIds.contains(r.canchaId)) continue;
+      final email = r.usuario.trim().toLowerCase();
+      final tel = r.telefono.trim();
+      if (email.isEmpty && tel.isEmpty) continue; // sin forma de contactar
+      final key = email.isNotEmpty ? email : 't:$tel';
+      out.putIfAbsent(
+          key,
+          () => (
+                nombre: r.jugador.trim().isEmpty ? 'Cliente' : r.jugador.trim(),
+                email: email,
+                telefono: tel
+              ));
+    }
+    return out.values.toList();
+  }
+
   /// Carga los bloqueos desde la nube (al abrir una ficha de cancha).
   Future<void> cargarBloqueos() async {
     final s = await BloqueosRepo.fetch();
