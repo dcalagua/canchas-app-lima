@@ -2577,6 +2577,41 @@ class AppState extends ChangeNotifier {
     _persistirDatos();
   }
 
+  /// Marca a VARIOS alumnos de una vez el mismo día (upsert), notificando una
+  /// sola vez. Para el botón "Todos presentes" de la asistencia rápida.
+  void marcarAsistenciaTodos(
+      String academiaId, List<String> alumnoIds, String dia, bool presente) {
+    for (final alumnoId in alumnoIds) {
+      final i = asistencias
+          .indexWhere((a) => a.alumnoId == alumnoId && a.dia == dia);
+      final reg = Asistencia(
+          academiaId: academiaId,
+          alumnoId: alumnoId,
+          dia: dia,
+          presente: presente);
+      if (i >= 0) {
+        asistencias[i] = reg;
+      } else {
+        asistencias.add(reg);
+      }
+    }
+    notifyListeners();
+    _persistirDatos();
+  }
+
+  // Memoria de "a qué alumno ya le avisé la asistencia" (clave "alumnoId|dia"),
+  // para no reenviar y mostrar el estado. Se persiste.
+  final Set<String> _asistenciaAvisada = {};
+
+  bool asistenciaAvisada(String alumnoId, String dia) =>
+      _asistenciaAvisada.contains('$alumnoId|$dia');
+
+  void marcarAsistenciaAvisada(String alumnoId, String dia) {
+    _asistenciaAvisada.add('$alumnoId|$dia');
+    notifyListeners();
+    _persistirDatos();
+  }
+
   static String _mesNombre(DateTime d) {
     const meses = [
       'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio',
@@ -3857,6 +3892,7 @@ class AppState extends ChangeNotifier {
   static const _kVerifEmail = 'verificacion_email'; // titular de la verificación
   static const _kRecordCobro = 'recordatorios_cobro_json'; // alumnoId→ISO
   static const _kRecordAuto = 'recordatorios_auto'; // avisos proactivos on/off
+  static const _kAsistAvisada = 'asistencia_avisada_json'; // "alumnoId|dia"
   static const _kNacimiento = 'fecha_nacimiento_iso';
   static const _kDniVerif = 'dni_verificado';
   static const _kMovs = 'movimientos_json';
@@ -3934,6 +3970,14 @@ class AppState extends ChangeNotifier {
             ..clear()
             ..addAll((jsonDecode(rc) as Map)
                 .map((k, v) => MapEntry(k.toString(), v.toString())));
+        } catch (_) {}
+      }
+      final aa = prefs.getString(_kAsistAvisada);
+      if (aa != null && aa.isNotEmpty) {
+        try {
+          _asistenciaAvisada
+            ..clear()
+            ..addAll((jsonDecode(aa) as List).map((e) => e.toString()));
         } catch (_) {}
       }
       // Migración de instalaciones previas (sin titular guardado): atribuye la
@@ -4104,6 +4148,8 @@ class AppState extends ChangeNotifier {
       await prefs.setString(_kVerifEmail, _verifEmail);
       await prefs.setString(_kRecordCobro, jsonEncode(_recordatoriosCobro));
       await prefs.setBool(_kRecordAuto, recordatoriosAutoActivos);
+      await prefs.setString(
+          _kAsistAvisada, jsonEncode(_asistenciaAvisada.toList()));
       if (fechaNacimiento != null) {
         await prefs.setString(
             _kNacimiento, fechaNacimiento!.toIso8601String());
