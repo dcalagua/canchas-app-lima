@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../data/mensajes_repo.dart';
 import '../models/academia.dart';
+import '../models/mensaje.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -29,24 +31,66 @@ class _CobrosScreenState extends State<CobrosScreen> {
 
   String _mon(double v) => '$_moneda ${v.toStringAsFixed(0)}';
 
-  /// Mensaje de recordatorio (mismo tono que el resto del app).
+  String _saludo(Alumno a) => a.esMenor ? a.apoderadoNombre : a.nombre;
+
+  /// Mensaje para WhatsApp (padres SIN la app).
   String _mensaje(Alumno a, double deuda) {
-    final saludo = a.esMenor ? a.apoderadoNombre : a.nombre;
     final deQuien = a.esMenor ? ' de ${a.nombre}' : '';
-    return 'Hola $saludo, te recuerdo el pago pendiente$deQuien por '
+    return 'Hola ${_saludo(a)}, te recuerdo el pago pendiente$deQuien por '
         '$_moneda ${deuda.toStringAsFixed(2)}. ¡Gracias! 🙌';
   }
 
-  /// Envía el recordatorio por WhatsApp y lo marca como recordado (memoria).
+  /// Mensaje IN-APP (padres CON la app): lo invita a pagar dentro de Pichangol.
+  String _mensajeApp(Alumno a, double deuda) {
+    final deQuien = a.esMenor ? ' de ${a.nombre}' : '';
+    return 'Hola ${_saludo(a)}, tienes una cuota pendiente$deQuien por '
+        '$_moneda ${deuda.toStringAsFixed(2)}. Puedes pagarla ahora mismo desde '
+        'la app en “Mis clases y pagos”. ¡Gracias! 🙌';
+  }
+
+  /// Envía el recordatorio por el chat de la academia (in-app + push) al alumno
+  /// con cuenta. Devuelve true si se envió. Marca recordado.
+  Future<bool> _enviarChatCobro(Alumno a, double deuda) async {
+    final u = appState.usuario;
+    if (u == null) return false;
+    final msg = Mensaje(
+      id: 'msg_${DateTime.now().microsecondsSinceEpoch}_${a.id}',
+      hilo: Mensaje.hiloDe(_id, a.email),
+      tipo: 'academia',
+      refId: _id,
+      academiaId: _id,
+      cuentaEmail: a.email,
+      autorEmail: u.email,
+      autorNombre: u.nombre,
+      esProfe: true,
+      texto: _mensajeApp(a, deuda),
+      creado: DateTime.now(),
+    );
+    final ok = await MensajesRepo.enviar(msg);
+    if (ok) appState.marcarRecordado(a.id);
+    return ok;
+  }
+
+  /// Recuerda el pago: por la APP (chat + push) si el padre la tiene, o por
+  /// WhatsApp si no. Así se empuja el pago dentro de Pichangol.
   Future<void> _recordar(Alumno a) async {
-    final tel = a.whatsappContacto;
-    if (tel.isEmpty) {
-      _msg('${a.nombre} no tiene WhatsApp registrado.');
+    final deuda = appState.deudaDeAlumno(a.id).deuda;
+    if (a.esApp) {
+      final ok = await _enviarChatCobro(a, deuda);
+      if (mounted) {
+        _msg(ok
+            ? 'Le recordé a ${a.nombre} por la app 📲'
+            : 'No se pudo enviar por la app.');
+      }
       return;
     }
-    final deuda = appState.deudaDeAlumno(a.id).deuda;
+    final tel = a.whatsappContacto;
+    if (tel.isEmpty) {
+      _msg('${a.nombre} no tiene WhatsApp ni cuenta en la app.');
+      return;
+    }
     final ok = await WhatsAppLink.abrir(tel, _mensaje(a, deuda));
-    appState.marcarRecordado(a.id); // recuerda que ya se avisó (aunque no envíe)
+    appState.marcarRecordado(a.id);
     if (!ok && mounted) _msg('No pude abrir WhatsApp.');
   }
 
@@ -55,9 +99,30 @@ class _CobrosScreenState extends State<CobrosScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t)));
   }
 
-  /// Hoja para recordar a TODOS los morosos, uno por uno (WhatsApp abre un chat
-  /// a la vez): la lista queda a la mano y vas tocando "Enviar".
+  /// Recuerda a TODOS los morosos: automático por la APP a los que la tienen
+  /// (chat + push, sin taps), y luego WhatsApp para los que no.
   Future<void> _recordarATodos() async {
+    final morosos = appState.morososDe(_id);
+    final conApp = morosos.where((a) => a.esApp).toList();
+    final sinApp = morosos.where((a) => !a.esApp).toList();
+    var enviados = 0;
+    for (final a in conApp) {
+      final ok = await _enviarChatCobro(a, appState.deudaDeAlumno(a.id).deuda);
+      if (ok) enviados++;
+    }
+    if (mounted && enviados > 0) {
+      _msg('Recordé a $enviados padre(s) por la app 📲');
+    }
+    if (sinApp.isNotEmpty) {
+      if (mounted) await _whatsappSheet(sinApp);
+    } else if (enviados == 0 && mounted) {
+      _msg('¡Nadie debe! 🎉');
+    }
+    if (mounted) setState(() {});
+  }
+
+  /// Hoja para recordar por WhatsApp a los morosos SIN app, uno por uno.
+  Future<void> _whatsappSheet(List<Alumno> morosos) async {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -66,7 +131,6 @@ class _CobrosScreenState extends State<CobrosScreen> {
           borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSt) {
-          final morosos = appState.morososDe(_id);
           return DraggableScrollableSheet(
             expand: false,
             initialChildSize: 0.7,
@@ -84,7 +148,7 @@ class _CobrosScreenState extends State<CobrosScreen> {
                   padding: EdgeInsets.fromLTRB(20, 14, 20, 4),
                   child: Align(
                     alignment: Alignment.centerLeft,
-                    child: Text('Recordar a morosos',
+                    child: Text('Avisar por WhatsApp',
                         style: TextStyle(
                             fontWeight: FontWeight.w800, fontSize: 18)),
                   ),
@@ -94,8 +158,8 @@ class _CobrosScreenState extends State<CobrosScreen> {
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
-                        'WhatsApp abre un chat a la vez. Toca “Enviar” en cada '
-                        'uno; se marca en verde cuando ya lo hiciste.',
+                        'Estos padres aún no tienen la app. WhatsApp abre un chat '
+                        'a la vez; toca “Enviar” en cada uno.',
                         style: TextStyle(color: textoTenue, fontSize: 12.5)),
                   ),
                 ),
