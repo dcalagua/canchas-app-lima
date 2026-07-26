@@ -1,18 +1,20 @@
+import 'dart:async';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 
+import '../state/app_state.dart';
+import '../theme.dart';
 import 'supabase_service.dart';
 
 /// Handler de mensajes en SEGUNDO PLANO / app cerrada. Debe ser una función de
 /// nivel superior con este pragma (Firebase la ejecuta en un isolate aparte).
 /// No necesita lógica: el sistema ya muestra la notificación (`notification`
-/// del payload). Aquí sólo se deja el gancho.
+/// del payload). El TAP se maneja en `onMessageOpenedApp` / `getInitialMessage`.
 @pragma('vm:entry-point')
-Future<void> pushBackgroundHandler(RemoteMessage message) async {
-  // Sin lógica: la notificación la pinta el sistema. (Si luego se quiere
-  // navegar a un chat concreto, se lee message.data aquí / en onMessageOpenedApp.)
-}
+Future<void> pushBackgroundHandler(RemoteMessage message) async {}
 
 /// Notificaciones push del chat (Etapa B, FCM). TODO es **fail-safe**: si el APK
 /// no trae la configuración de Firebase (google-services.json) o falla algo, el
@@ -23,12 +25,30 @@ Future<void> pushBackgroundHandler(RemoteMessage message) async {
 /// obtiene el token del dispositivo y lo guarda en `pichangol_push_tokens`
 /// (asociado al correo). El envío del push lo hace la Edge Function `push-mensaje`
 /// cuando entra un mensaje nuevo.
+///
+/// Recepción:
+///  - **App abierta (foreground):** el sistema NO pinta la notificación; aquí un
+///    listener muestra un aviso IN-APP (estilo WhatsApp) —salvo que ya estés en
+///    ese chat—. Al tocarlo, abre el chat.
+///  - **App en segundo plano / cerrada:** el sistema pinta la notificación; al
+///    TOCARLA, `onMessageOpenedApp`/`getInitialMessage` abren el chat.
 class PushService {
   static bool _ok = false;
   static bool get disponible => _ok;
 
   static String? _token;
   static String _email = '';
+  static StreamSubscription<String>? _tokenSub;
+  static bool _listenersListos = false;
+
+  /// Navegador global: permite abrir el chat desde una notificación (fuera del
+  /// árbol de widgets normal). Se conecta al `MaterialApp` en main.dart.
+  static final GlobalKey<NavigatorState> navigatorKey =
+      GlobalKey<NavigatorState>();
+
+  /// Callback que abre el chat de un `hilo` (lo define main.dart, que sí conoce
+  /// las pantallas). Así este servicio no importa la capa de UI.
+  static void Function(String hilo)? alAbrirChat;
 
   /// Inicializa Firebase + messaging. Fail-safe: sin config → queda desactivado.
   static Future<void> init() async {
@@ -36,10 +56,120 @@ class PushService {
     try {
       await Firebase.initializeApp();
       FirebaseMessaging.onBackgroundMessage(pushBackgroundHandler);
+      _configurarListeners();
       _ok = true;
     } catch (_) {
       _ok = false; // sin google-services.json / sin Firebase: push off
     }
+  }
+
+  /// Listeners de recepción: foreground (aviso in-app) y tap (abrir chat).
+  static void _configurarListeners() {
+    if (_listenersListos) return;
+    _listenersListos = true;
+    // Mensaje con la app ABIERTA: muestra el aviso in-app (el sistema no lo pinta).
+    FirebaseMessaging.onMessage.listen(_enForeground);
+    // Tap en la notificación del sistema con la app en segundo plano.
+    FirebaseMessaging.onMessageOpenedApp.listen((m) => _abrir(m.data));
+    // Tap que ABRIÓ la app estando cerrada: se procesa cuando el navegador ya
+    // está montado (tras el primer frame).
+    FirebaseMessaging.instance.getInitialMessage().then((m) {
+      if (m == null) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _abrir(m.data));
+    });
+  }
+
+  static void _abrir(Map<String, dynamic> data) {
+    final hilo = (data['hilo'] ?? '').toString();
+    if (hilo.isNotEmpty) alAbrirChat?.call(hilo);
+  }
+
+  /// Aviso IN-APP cuando llega un mensaje con la app abierta. No se muestra si ya
+  /// estás dentro de ese chat (ahí el mensaje llega solo por Realtime).
+  static void _enForeground(RemoteMessage m) {
+    final hilo = (m.data['hilo'] ?? '').toString();
+    if (hilo.isEmpty || hilo == appState.hiloChatAbierto) return;
+    final n = m.notification;
+    final titulo = (n?.title ?? '').trim().isNotEmpty ? n!.title! : 'Nuevo mensaje';
+    final cuerpo = (n?.body ?? '').trim();
+    _mostrarBanner(titulo, cuerpo, hilo);
+  }
+
+  /// Tarjeta flotante superior (estilo heads-up), tocable, auto-oculta a los 5 s.
+  static void _mostrarBanner(String titulo, String cuerpo, String hilo) {
+    final overlay = navigatorKey.currentState?.overlay;
+    if (overlay == null) return;
+    late OverlayEntry entry;
+    var cerrado = false;
+    void cerrar() {
+      if (cerrado) return;
+      cerrado = true;
+      entry.remove();
+    }
+
+    entry = OverlayEntry(
+      builder: (context) => Positioned(
+        top: MediaQuery.of(context).padding.top + 8,
+        left: 10,
+        right: 10,
+        child: Material(
+          color: Colors.transparent,
+          child: GestureDetector(
+            onTap: () {
+              cerrar();
+              alAbrirChat?.call(hilo);
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: bosque,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: const [
+                  BoxShadow(
+                      color: Color(0x33000000), blurRadius: 12, offset: Offset(0, 4)),
+                ],
+              ),
+              child: Row(
+                children: [
+                  const CircleAvatar(
+                    radius: 18,
+                    backgroundColor: Colors.white24,
+                    child: Icon(Icons.chat_bubble, color: Colors.white, size: 18),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(titulo,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 14.5)),
+                        if (cuerpo.isNotEmpty)
+                          Text(cuerpo,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  color: Colors.white70, fontSize: 13)),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white70, size: 18),
+                    onPressed: cerrar,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    overlay.insert(entry);
+    Future.delayed(const Duration(seconds: 5), cerrar);
   }
 
   /// Pide permiso de notificaciones, obtiene el token FCM y lo guarda para
@@ -56,8 +186,10 @@ class PushService {
         _token = token;
         await _guardarToken(e, token);
       }
-      // El token puede rotar: lo re-guardamos cuando cambie.
-      fm.onTokenRefresh.listen((t) {
+      // El token puede rotar: lo re-guardamos cuando cambie. Cancela la
+      // suscripción anterior para no acumular listeners al re-registrar.
+      _tokenSub?.cancel();
+      _tokenSub = fm.onTokenRefresh.listen((t) {
         _token = t;
         _guardarToken(_email, t);
       });
@@ -77,16 +209,10 @@ class PushService {
         'plataforma': plataforma,
         'actualizado': DateTime.now().toUtc().toIso8601String(),
       }, onConflict: 'token');
-      // Evita NOTIFICACIONES DOBLES: el token FCM rota (reinstalar/actualizar) y
-      // el viejo queda en la tabla, así que el push saldría 2 veces al MISMO
-      // dispositivo. Borra los tokens ANTERIORES de esta cuenta en esta
-      // plataforma (una cuenta usa un dispositivo activo por plataforma).
-      await SupabaseService.client
-          .from('pichangol_push_tokens')
-          .delete()
-          .eq('email', email)
-          .eq('plataforma', plataforma)
-          .neq('token', token);
+      // Un token pertenece a UN dispositivo: si estaba asociado a otra cuenta
+      // (se cambió de sesión en este equipo), el upsert por 'token' lo reasigna.
+      // No borramos otros tokens de la misma cuenta para permitir multi-dispositivo
+      // (cel + tablet): la Edge Function deduplica por token al enviar.
     } catch (_) {}
   }
 
@@ -95,6 +221,8 @@ class PushService {
   static Future<void> olvidar() async {
     final t = _token;
     _email = '';
+    _tokenSub?.cancel();
+    _tokenSub = null;
     if (t == null || !SupabaseService.disponible) return;
     try {
       await SupabaseService.client

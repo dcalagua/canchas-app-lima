@@ -137,6 +137,9 @@ class _ChatScreenState extends State<ChatScreen> {
         if (mounted) setState(() {});
       });
     }
+    // Este es el chat visible ahora: mientras esté abierto, los mensajes de este
+    // hilo no disparan el aviso de push (llegan solos por Realtime).
+    appState.hiloChatAbierto = _hilo;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       appState.marcarChatLeido(_hilo);
     });
@@ -160,6 +163,8 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() {
     appState.marcarChatLeido(_hilo);
+    // Deja de ser el chat visible (solo si sigo siendo yo el abierto).
+    if (appState.hiloChatAbierto == _hilo) appState.hiloChatAbierto = '';
     _texto.dispose();
     _scroll.dispose();
     _focus.dispose();

@@ -2245,6 +2245,11 @@ class AppState extends ChangeNotifier {
 
   // ── Chat (Etapa A) ────────────────────────────────────────────────────────
 
+  /// Hilo del chat abierto AHORA en pantalla (no se persiste). Sirve para NO
+  /// mostrar el aviso de push cuando el mensaje llega al chat que ya estás viendo
+  /// (como WhatsApp: si estás dentro, el mensaje aparece solo, sin banner).
+  String hiloChatAbierto = '';
+
   /// Marca un hilo como leído hasta ahora (limpia el contador de no leídos).
   void marcarChatLeido(String hilo) {
     chatLecturas[hilo] = DateTime.now().toIso8601String();

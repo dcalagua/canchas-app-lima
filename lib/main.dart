@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'brand.dart';
 import 'config/pais.dart';
+import 'screens/mensajes_screen.dart';
 import 'screens/splash_screen.dart';
 import 'services/push_service.dart';
 import 'services/supabase_service.dart';
@@ -22,6 +23,14 @@ void main() async {
   // Notificaciones push del chat (Etapa B). Fail-safe: sin config de Firebase
   // queda desactivado y la app sigue igual.
   await PushService.init();
+  // Al tocar una notificación (o el aviso in-app), abre la bandeja en el chat
+  // correspondiente. Se usa el navegador global de PushService.
+  PushService.alAbrirChat = (hilo) {
+    final nav = PushService.navigatorKey.currentState;
+    if (nav == null || hilo.isEmpty) return;
+    nav.push(MaterialPageRoute(
+        builder: (_) => MensajesScreen(abrirHilo: hilo)));
+  };
   runApp(const PichangolApp());
 }
 
@@ -35,6 +44,7 @@ class PichangolApp extends StatelessWidget {
       listenable: appState,
       builder: (context, _) => MaterialApp(
         title: kBrandName,
+        navigatorKey: PushService.navigatorKey,
         debugShowCheckedModeBanner: false,
         theme: buildTheme(),
         darkTheme: buildThemeOscuro(),

@@ -15,7 +15,10 @@ import 'login_google_sheet.dart';
 /// pertenece). Es la pestaña fija de chat, siempre a la mano. Preparado para
 /// sumar chats de canchas y grupos más adelante.
 class MensajesScreen extends StatefulWidget {
-  const MensajesScreen({super.key});
+  const MensajesScreen({super.key, this.abrirHilo});
+
+  /// Si se abre desde una notificación, el hilo a abrir automáticamente al cargar.
+  final String? abrirHilo;
 
   @override
   State<MensajesScreen> createState() => _MensajesScreenState();
@@ -261,6 +264,41 @@ class _MensajesScreenState extends State<MensajesScreen> {
     setState(() {
       _convs = convs;
       _cargando = false;
+    });
+    _abrirHiloPendiente(); // si vino de una notificación, entra al chat
+  }
+
+  bool _autoAbierto = false;
+
+  /// Abre automáticamente el chat indicado por [widget.abrirHilo] (deep-link de
+  /// notificación), una sola vez, a pantalla completa.
+  void _abrirHiloPendiente() {
+    final hilo = widget.abrirHilo;
+    if (hilo == null || hilo.isEmpty || _autoAbierto) return;
+    _Conv? match;
+    for (final c in _convs) {
+      if (c.hilo == hilo) {
+        match = c;
+        break;
+      }
+    }
+    if (match == null) return;
+    _autoAbierto = true;
+    final c = match;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Navigator.of(context)
+          .push(MaterialPageRoute(
+            builder: (_) => ChatScreen(
+              academiaId: c.academiaId,
+              cuentaEmail: c.cuentaEmail,
+              titulo: c.titulo,
+              soyProfe: c.soyProfe,
+              tipo: c.tipo,
+              refId: c.refId,
+            ),
+          ))
+          .then((_) => _cargar());
     });
   }
 
