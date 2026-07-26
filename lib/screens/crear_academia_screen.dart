@@ -15,6 +15,7 @@ import '../services/places_service.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 import '../widgets/responsive.dart';
 import '../widgets/selector_ubicacion.dart';
 import '../config/pais.dart';
@@ -818,100 +819,108 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
   Future<void> _guardar() async {
     if (!_validar()) return;
     final nombre = _nombre.text.trim();
+    if (_guardando) return;
     setState(() => _guardando = true);
 
-    // Sube el logo nuevo (si eligió uno) y toma su URL pública.
-    if (_logoNueva != null) {
-      final url = await CanchasRepo.subirFoto('academia_$_id', _logoNueva!,
-          sufijo: 'logo');
-      if (url != null) {
-        _logoUrl = url;
-      } else {
-        _avisar(
-            'No se pudo subir el logo (${CanchasRepo.ultimoErrorFoto ?? 'sin red'}). Guardo el resto.');
+    // Regla: guardar (sube logo + fotos del feed + guarda en la nube) demora →
+    // preload de marca. El aviso del logo se recolecta y se muestra al terminar.
+    String? warnLogo;
+    final okNube = await conPreload(context, () async {
+      // Sube el logo nuevo (si eligió uno) y toma su URL pública.
+      if (_logoNueva != null) {
+        final url = await CanchasRepo.subirFoto('academia_$_id', _logoNueva!,
+            sufijo: 'logo');
+        if (url != null) {
+          _logoUrl = url;
+        } else {
+          warnLogo =
+              'No se pudo subir el logo (${CanchasRepo.ultimoErrorFoto ?? 'sin red'}). Guardo el resto.';
+        }
       }
-    }
 
-    // Sube las fotos nuevas del feed y las agrega a las ya guardadas.
-    final fotos = [..._fotos];
-    for (var i = 0; i < _fotosNuevas.length; i++) {
-      final url = await CanchasRepo.subirFoto('academia_$_id', _fotosNuevas[i],
-          sufijo: 'foto_${DateTime.now().microsecondsSinceEpoch}_$i');
-      if (url != null) fotos.add(url);
-    }
-
-    // Recolecta las redes seleccionadas con dato escrito.
-    final redes = <String, String>{};
-    for (final clave in _redesSel) {
-      final v = _redesCtrl[clave]?.text.trim() ?? '';
-      if (v.isNotEmpty) redes[clave] = v;
-    }
-
-    // Recolecta los horarios por (sede, programa) desde los controladores; solo
-    // los de sedes que siguen existiendo y con texto.
-    final sedeIds = _sedesAcademia.map((s) => s.id).toSet();
-    final horarios = <String, String>{};
-    _horarioCtrl.forEach((k, c) {
-      final v = c.text.trim();
-      if (v.isNotEmpty && sedeIds.contains(k.split('|').first)) {
-        horarios[k] = v;
+      // Sube las fotos nuevas del feed y las agrega a las ya guardadas.
+      final fotos = [..._fotos];
+      for (var i = 0; i < _fotosNuevas.length; i++) {
+        final url = await CanchasRepo.subirFoto('academia_$_id', _fotosNuevas[i],
+            sufijo: 'foto_${DateTime.now().microsecondsSinceEpoch}_$i');
+        if (url != null) fotos.add(url);
       }
-    });
 
-    // Recolecta los precios por (sede, plan): solo sedes/planes vigentes y con
-    // un monto > 0. Los vacíos caen al precio base del plan. OJO: el id del plan
-    // puede contener '|' (ej. "Fútbol | 3x"), por eso separo por el PRIMER '|'.
-    final planIds = _planes.map((p) => p.id).toSet();
-    final preciosSede = <String, double>{};
-    _precioSedeCtrl.forEach((k, c) {
-      final i = k.indexOf('|');
-      if (i < 0) return;
-      final sedeId = k.substring(0, i);
-      final planId = k.substring(i + 1);
-      if (!sedeIds.contains(sedeId) || !planIds.contains(planId)) return;
-      final v = double.tryParse(c.text.trim().replaceAll(',', '.'));
-      if (v != null && v > 0) preciosSede[k] = v;
-    });
+      // Recolecta las redes seleccionadas con dato escrito.
+      final redes = <String, String>{};
+      for (final clave in _redesSel) {
+        final v = _redesCtrl[clave]?.text.trim() ?? '';
+        if (v.isNotEmpty) redes[clave] = v;
+      }
 
-    final dueno = appState.usuario?.email ?? '';
-    final base = widget.academia;
-    final academia = (base ??
-            Academia(
-              id: _id,
-              nombre: nombre,
-              deporte: _deporte,
-              dueno: dueno,
-              // Congela la moneda por el país de la SEDE (no el del dispositivo).
-              moneda: _paisAcademia.moneda,
-            ))
-        .copyWith(
-      nombre: nombre,
-      deporte: _deporte,
-      whatsapp: _whatsapp.text.trim(),
-      sedeClub: _sede.text.trim(),
-      zona: _zona.text.trim(),
-      sedeUbicacion: _sedes[_sede.text.trim()] ?? _sedeUbic,
-      descripcion: _desc.text.trim(),
-      planes: _planes,
-      recargoInvitado:
-          double.tryParse(_recargoInvitado.text.trim().replaceAll(',', '.')) ?? 0,
-      descuentoHermano2: _pct(_dtoHermano2),
-      descuentoHermano3: _pct(_dtoHermano3),
-      descuentoPrepago: _pct(_dtoPrepago),
-      mesesMinPrepago: (int.tryParse(_mesesMinPrepago.text.trim()) ?? 3)
-          .clamp(1, 36),
-      retribucionClubPct: _pct(_retribClub),
-      landingUrl: _landing.text.trim(),
-      logoUrl: _logoUrl,
-      redes: redes,
-      fotos: fotos,
-      sedes: _sedesAcademia,
-      horarios: horarios,
-      preciosSede: preciosSede,
-    );
-    final okNube = await appState.guardarAcademia(academia);
+      // Recolecta los horarios por (sede, programa) desde los controladores; solo
+      // los de sedes que siguen existiendo y con texto.
+      final sedeIds = _sedesAcademia.map((s) => s.id).toSet();
+      final horarios = <String, String>{};
+      _horarioCtrl.forEach((k, c) {
+        final v = c.text.trim();
+        if (v.isNotEmpty && sedeIds.contains(k.split('|').first)) {
+          horarios[k] = v;
+        }
+      });
+
+      // Recolecta los precios por (sede, plan): solo sedes/planes vigentes y con
+      // un monto > 0. Los vacíos caen al precio base del plan. OJO: el id del plan
+      // puede contener '|' (ej. "Fútbol | 3x"), por eso separo por el PRIMER '|'.
+      final planIds = _planes.map((p) => p.id).toSet();
+      final preciosSede = <String, double>{};
+      _precioSedeCtrl.forEach((k, c) {
+        final i = k.indexOf('|');
+        if (i < 0) return;
+        final sedeId = k.substring(0, i);
+        final planId = k.substring(i + 1);
+        if (!sedeIds.contains(sedeId) || !planIds.contains(planId)) return;
+        final v = double.tryParse(c.text.trim().replaceAll(',', '.'));
+        if (v != null && v > 0) preciosSede[k] = v;
+      });
+
+      final dueno = appState.usuario?.email ?? '';
+      final base = widget.academia;
+      final academia = (base ??
+              Academia(
+                id: _id,
+                nombre: nombre,
+                deporte: _deporte,
+                dueno: dueno,
+                // Congela la moneda por el país de la SEDE (no el del dispositivo).
+                moneda: _paisAcademia.moneda,
+              ))
+          .copyWith(
+        nombre: nombre,
+        deporte: _deporte,
+        whatsapp: _whatsapp.text.trim(),
+        sedeClub: _sede.text.trim(),
+        zona: _zona.text.trim(),
+        sedeUbicacion: _sedes[_sede.text.trim()] ?? _sedeUbic,
+        descripcion: _desc.text.trim(),
+        planes: _planes,
+        recargoInvitado:
+            double.tryParse(_recargoInvitado.text.trim().replaceAll(',', '.')) ??
+                0,
+        descuentoHermano2: _pct(_dtoHermano2),
+        descuentoHermano3: _pct(_dtoHermano3),
+        descuentoPrepago: _pct(_dtoPrepago),
+        mesesMinPrepago:
+            (int.tryParse(_mesesMinPrepago.text.trim()) ?? 3).clamp(1, 36),
+        retribucionClubPct: _pct(_retribClub),
+        landingUrl: _landing.text.trim(),
+        logoUrl: _logoUrl,
+        redes: redes,
+        fotos: fotos,
+        sedes: _sedesAcademia,
+        horarios: horarios,
+        preciosSede: preciosSede,
+      );
+      return appState.guardarAcademia(academia);
+    }, texto: 'Guardando…');
     if (!mounted) return;
     setState(() => _guardando = false);
+    if (warnLogo != null) _avisar(warnLogo!);
     Navigator.of(context).pop();
     if (okNube) {
       _avisar('✅ Academia guardada.');
@@ -1483,14 +1492,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 15)),
               onPressed: _guardando ? null : _guardar,
-              child: _guardando
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2.4, color: Colors.white),
-                    )
-                  : const Text('Guardar academia'),
+              child: const Text('Guardar academia'),
             ),
           ),
         ],
