@@ -5,6 +5,7 @@ import '../models/producto.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
+import '../widgets/responsive.dart';
 import 'mis_ordenes_screen.dart';
 import 'mis_productos_screen.dart';
 import 'producto_detalle_screen.dart';
@@ -99,7 +100,9 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+            // Regla app: contenido centrado (ancho máx) en pantallas anchas.
+            padding: EdgeInsets.fromLTRB(
+                ladoTablet(context, 16, 900), 10, ladoTablet(context, 16, 900), 6),
             child: TextField(
               controller: _q,
               onChanged: (_) => setState(() {}),
@@ -118,7 +121,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
               height: 44,
               child: ListView(
                 scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: EdgeInsets.symmetric(
+                    horizontal: ladoTablet(context, 16, 900)),
                 children: [
                   _chip('Todo', _categoria.isEmpty,
                       () => setState(() => _categoria = '')),
@@ -137,7 +141,9 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                     : RefreshIndicator(
                         onRefresh: _cargar,
                         child: GridView.builder(
-                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 90),
+                          padding: EdgeInsets.fromLTRB(
+                              ladoTablet(context, 16, 900), 8,
+                              ladoTablet(context, 16, 900), 90),
                           gridDelegate:
                               const SliverGridDelegateWithFixedCrossAxisCount(
                             crossAxisCount: 2,

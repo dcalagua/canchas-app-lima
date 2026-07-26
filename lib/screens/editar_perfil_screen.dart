@@ -6,6 +6,7 @@ import '../config/pais.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
+import '../widgets/responsive.dart';
 
 /// EDITAR MI PERFIL: el nombre (y foto) con que la persona se muestra en el chat,
 /// el ranking, los retos, etc. Muchos usuarios tienen cualquier cosa en su Gmail;
@@ -142,7 +143,9 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
               ),
             )
           : ListView(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
+              // Regla app: contenido centrado (ancho máx) en pantallas anchas.
+              padding: EdgeInsets.fromLTRB(
+                  ladoTablet(context, 20, 600), 20, ladoTablet(context, 20, 600), 30),
               children: [
                 Center(
                   child: Stack(

@@ -5,6 +5,7 @@ import '../models/producto.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
+import '../widgets/responsive.dart';
 import 'editar_producto_screen.dart';
 import 'login_google_sheet.dart';
 import 'mis_ordenes_screen.dart';
@@ -139,7 +140,10 @@ class _MisProductosScreenState extends State<MisProductosScreen> {
               : RefreshIndicator(
                   onRefresh: _cargar,
                   child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 90),
+                    // Regla app: contenido centrado en pantallas anchas.
+                    padding: EdgeInsets.fromLTRB(
+                        ladoTablet(context, 16, 700), 12,
+                        ladoTablet(context, 16, 700), 90),
                     itemCount: _items.length + 1,
                     separatorBuilder: (_, __) => const SizedBox(height: 10),
                     itemBuilder: (_, i) {

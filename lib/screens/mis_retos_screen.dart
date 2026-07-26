@@ -10,6 +10,7 @@ import '../services/retos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
+import '../widgets/responsive.dart';
 
 /// MIS RETOS P2P: retos recibidos (aceptar/rechazar) y enviados; reportar el
 /// resultado de los aceptados (suma al ranking global).
@@ -342,7 +343,10 @@ class _MisRetosScreenState extends State<MisRetosScreen> {
                           ),
                         ])
                       : ListView(
-                          padding: const EdgeInsets.fromLTRB(16, 14, 16, 30),
+                          // Regla app: contenido centrado en pantallas anchas.
+                          padding: EdgeInsets.fromLTRB(
+                              ladoTablet(context, 16, 700), 14,
+                              ladoTablet(context, 16, 700), 30),
                           children: [
                             if (_recibidos.isNotEmpty) ...[
                               const Text('Recibidos',

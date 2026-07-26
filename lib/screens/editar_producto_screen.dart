@@ -10,6 +10,7 @@ import '../models/producto.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
+import '../widgets/responsive.dart';
 
 /// Publicar o editar un producto del Marketplace Pichangol. El vendedor pone
 /// foto, nombre, precio, categoría y (opcional) stock. Al guardar, sube la foto
@@ -151,7 +152,9 @@ class _EditarProductoScreenState extends State<EditarProductoScreen> {
       appBar: AppBar(
           title: Text(_esNuevo ? 'Publicar producto' : 'Editar producto')),
       body: ListView(
-        padding: const EdgeInsets.all(18),
+        // Regla app: contenido centrado (ancho máx) en pantallas anchas.
+        padding: EdgeInsets.symmetric(
+            horizontal: ladoTablet(context, 18, 600), vertical: 18),
         children: [
           // Foto.
           GestureDetector(

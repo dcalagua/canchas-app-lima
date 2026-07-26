@@ -5,6 +5,7 @@ import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
+import '../widgets/responsive.dart';
 import '../utils/input_formatos.dart';
 import '../widgets/marcas_pago.dart';
 import '../widgets/sesion_requerida.dart';
@@ -104,7 +105,9 @@ class _MetodosPagoScreenState extends State<MetodosPagoScreen> {
                   onLogueado: _cargar,
                 )
               : ListView(
-                  padding: const EdgeInsets.all(18),
+                  // Regla app: contenido centrado en pantallas anchas.
+                  padding: EdgeInsets.symmetric(
+                      horizontal: ladoTablet(context, 18, 600), vertical: 18),
                   children: [
                     if (_metodos.isEmpty)
                       Container(

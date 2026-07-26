@@ -5,6 +5,7 @@ import '../models/grupo.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
+import '../widgets/responsive.dart';
 import 'chat_screen.dart';
 
 /// Crea un grupo de chat: nombre + miembros por email (cuentas registradas).
@@ -105,7 +106,9 @@ class _CrearGrupoScreenState extends State<CrearGrupoScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Nuevo grupo')),
       body: ListView(
-        padding: const EdgeInsets.all(18),
+        // Regla app: contenido centrado (ancho máx) en pantallas anchas.
+        padding: EdgeInsets.symmetric(
+            horizontal: ladoTablet(context, 18, 600), vertical: 18),
         children: [
           TextField(
             controller: _nombre,

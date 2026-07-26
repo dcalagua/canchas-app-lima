@@ -9,6 +9,7 @@ import '../services/ocr_documento.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
+import '../widgets/responsive.dart';
 
 /// Verificación de identidad del jugador.
 ///
@@ -200,7 +201,9 @@ class _VerificarIdentidadScreenState extends State<VerificarIdentidadScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Verificar identidad')),
       body: ListView(
-        padding: const EdgeInsets.all(18),
+        // Regla app: contenido centrado (ancho máx) en pantallas anchas.
+        padding: EdgeInsets.symmetric(
+            horizontal: ladoTablet(context, 18, 600), vertical: 18),
         children: [
           if (verificado)
             _CajaVerificado(edad: appState.edadActual)
