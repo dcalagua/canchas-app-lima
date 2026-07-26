@@ -11,6 +11,7 @@ import '../models/partido.dart';
 import '../services/convocatorias_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 import 'chat_screen.dart';
 import 'convocatorias_screen.dart';
 import 'login_google_sheet.dart';
@@ -209,7 +210,7 @@ class _PartidosScreenState extends State<PartidosScreen> {
               child: RefreshIndicator(
                 onRefresh: _cargar,
                 child: _cargando
-                    ? const Center(child: CircularProgressIndicator())
+                    ? const CargandoPichangol()
                     : _partidos.isEmpty
                         ? ListView(children: const [
                             SizedBox(height: 80),

@@ -5,6 +5,7 @@ import '../config/pais.dart';
 import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 import '../utils/input_formatos.dart';
 import '../widgets/marcas_pago.dart';
 import '../widgets/pago_libelula.dart';
@@ -224,7 +225,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
               : _esLibelula
               ? _formLibelula()
               : _cargando
-          ? const Center(child: CircularProgressIndicator())
+          ? const CargandoPichangol()
           : ListView(
               padding: const EdgeInsets.all(18),
               children: [

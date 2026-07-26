@@ -4,6 +4,7 @@ import '../models/convocatoria.dart';
 import '../services/convocatorias_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 import 'convocatoria_detalle_screen.dart';
 import 'crear_convocatoria_screen.dart';
 import 'ranking_socios_screen.dart';
@@ -90,7 +91,7 @@ class _ConvocatoriasScreenState extends State<ConvocatoriasScreen> {
                 future: _futuro,
                 builder: (context, snap) {
                   if (snap.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
+                    return const CargandoPichangol();
                   }
                   final lista = snap.data ?? const [];
                   if (lista.isEmpty) {

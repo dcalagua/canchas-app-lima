@@ -7,6 +7,7 @@ import '../screens/pago_sheet.dart';
 import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'cargando_pichangol.dart';
 import '../utils/input_formatos.dart';
 import 'marcas_pago.dart';
 import 'pago_libelula.dart';
@@ -265,7 +266,7 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
       child: _cargando
           ? const Padding(
               padding: EdgeInsets.all(30),
-              child: Center(child: CircularProgressIndicator()))
+              child: CargandoPichangol())
           : Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,

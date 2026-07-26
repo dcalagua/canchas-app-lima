@@ -8,6 +8,7 @@ import '../data/canchas_repo.dart';
 import '../services/growth_service.dart';
 import '../services/location_service.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 import 'validar_reclamo_screen.dart';
 
 /// Mini-app del VERIFICADOR: cola de visitas (priorizada por demanda), captura de
@@ -163,7 +164,7 @@ class _VerificadorScreenState extends State<VerificadorScreen> {
             child: RefreshIndicator(
               onRefresh: _cargar,
               child: _cargando
-                  ? const Center(child: CircularProgressIndicator())
+                  ? const CargandoPichangol()
                   : _visitas.isEmpty
                       ? ListView(children: const [
                           SizedBox(height: 80),

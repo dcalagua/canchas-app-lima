@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/convocatorias_service.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 import 'convocatorias_screen.dart' show EstadoChip;
 
 /// Ranking de recurrencia por socio (la trazabilidad pedida): quién se inscribe
@@ -43,7 +44,7 @@ class _RankingSociosScreenState extends State<RankingSociosScreen> {
           future: _futuro,
           builder: (context, snap) {
             if (snap.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
+              return const CargandoPichangol();
             }
             final filas = snap.data ?? const [];
             if (filas.isEmpty) {

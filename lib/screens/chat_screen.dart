@@ -13,6 +13,7 @@ import '../models/mensaje.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 
 // ── Paleta estilo WhatsApp (theme-aware) ─────────────────────────────────────
 // Se calcula según el brillo del tema. Fondo del chat, burbujas y barra imitan
@@ -397,7 +398,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     stream: _stream,
                     builder: (context, snap) {
                       if (snap.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator());
+                        return const CargandoPichangol();
                       }
                       final msgs = snap.data ?? const <Mensaje>[];
                       // Solo reaccionar cuando LLEGA un mensaje nuevo (no en cada

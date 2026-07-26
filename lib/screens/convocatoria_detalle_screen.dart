@@ -4,6 +4,7 @@ import '../models/convocatoria.dart';
 import '../services/convocatorias_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 import 'convocatorias_screen.dart' show EstadoChip, ModoChip;
 import 'login_google_sheet.dart';
 
@@ -181,7 +182,7 @@ class _ConvocatoriaDetalleScreenState extends State<ConvocatoriaDetalleScreen> {
     return Scaffold(
       appBar: AppBar(title: Text(d?.convocatoria.titulo ?? 'Pichanga')),
       body: _cargando
-          ? const Center(child: CircularProgressIndicator())
+          ? const CargandoPichangol()
           : d == null
               ? _ErrorCarga(onReintentar: _cargar)
               : RefreshIndicator(
