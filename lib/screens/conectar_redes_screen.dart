@@ -57,15 +57,25 @@ class _ConectarRedesScreenState extends State<ConectarRedesScreen> {
   }
 
   Future<void> _conectar() async {
+    if (_conectando) return;
     setState(() => _conectando = true);
-    final r = await PagosService.conectarRedes(
-        academiaId: _idAcademia,
-        // BILLETERA ÚNICA: el dueño (correo) es la llave del saldo.
-        duenoId: widget.negocio.dueno.isNotEmpty
-            ? widget.negocio.dueno
-            : _idAcademia);
+    Map<String, dynamic>? res;
+    try {
+      res = await conPreload(
+          context,
+          () => PagosService.conectarRedes(
+              academiaId: _idAcademia,
+              // BILLETERA ÚNICA: el dueño (correo) es la llave del saldo.
+              duenoId: widget.negocio.dueno.isNotEmpty
+                  ? widget.negocio.dueno
+                  : _idAcademia),
+          texto: 'Conectando…');
+    } finally {
+      if (mounted) setState(() => _conectando = false);
+    }
     if (!mounted) return;
-    setState(() => _conectando = false);
+    // Copia a un final: Dart no promueve una variable asignada dentro de `try`.
+    final r = res;
     if (r == null || r['ok'] != true) {
       _msg('No se pudo iniciar la conexión. Reintenta.');
       return;
@@ -192,13 +202,7 @@ class _ConectarRedesScreenState extends State<ConectarRedesScreen> {
               backgroundColor: lima,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 15)),
-          icon: _conectando
-              ? const SizedBox(
-                  height: 20,
-                  width: 20,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2.4, color: Colors.white))
-              : const Icon(Icons.link),
+          icon: const Icon(Icons.link),
           label: const Text('Conectar Instagram / Facebook',
               style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
           onPressed: _conectando ? null : _conectar,

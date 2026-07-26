@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 import 'recargar_saldo_screen.dart';
 
 /// PICHANGOL PRO: membresía mensual del jugador. Se cobra de la BILLETERA ÚNICA
@@ -36,10 +37,16 @@ class _HazteProScreenState extends State<HazteProScreen> {
   }
 
   Future<void> _activar() async {
+    if (_procesando) return;
     setState(() => _procesando = true);
-    final r = await appState.suscribirPro();
+    Map<String, dynamic> r;
+    try {
+      r = await conPreload(context, () => appState.suscribirPro(),
+          texto: 'Activando…');
+    } finally {
+      if (mounted) setState(() => _procesando = false);
+    }
     if (!mounted) return;
-    setState(() => _procesando = false);
     if (r['ok'] == true) {
       showDialog<void>(
         context: context,
@@ -217,13 +224,7 @@ class _HazteProScreenState extends State<HazteProScreen> {
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14))),
                   onPressed: _procesando ? null : _activar,
-                  child: _procesando
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2.4, color: Colors.white))
-                      : Text(
+                  child: Text(
                           activo
                               ? 'Renovar 1 mes ($mon ${precio.toStringAsFixed(precio % 1 == 0 ? 0 : 2)})'
                               : 'Activar por $mon ${precio.toStringAsFixed(precio % 1 == 0 ? 0 : 2)}/mes',
