@@ -405,22 +405,57 @@ class _MensajesScreenState extends State<MensajesScreen> {
     );
   }
 
+  /// Verde de la cabecera (igual al del chat), para que master y detalle queden
+  /// alineados y con la misma barra superior (estilo WhatsApp Web).
+  Color _headerBg(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF1F2C34)
+          : const Color(0xFF008069);
+
+  /// Cabecera del panel MASTER (lista). En tablet trae el botón de COLAPSAR; en
+  /// móvil, el de volver. Misma altura/color que la cabecera del chat → alineadas.
+  Widget _headerMaster(BuildContext context, {required bool colapsable}) {
+    final bg = _headerBg(context);
+    return Material(
+      color: bg,
+      child: SizedBox(
+        height: kToolbarHeight,
+        child: Row(
+          children: [
+            IconButton(
+              tooltip: colapsable ? 'Ocultar lista' : 'Volver',
+              icon: Icon(colapsable ? Icons.chevron_left : Icons.arrow_back,
+                  color: Colors.white),
+              onPressed: colapsable
+                  ? () => setState(() => _listaColapsada = true)
+                  : () => Navigator.of(context).maybePop(),
+            ),
+            const Text('Mensajes',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 20)),
+            const Spacer(),
+            IconButton(
+              tooltip: 'Buscar jugador',
+              icon: const Icon(Icons.person_search, color: Colors.white),
+              onPressed: () => Navigator.of(context)
+                  .push(MaterialPageRoute(
+                      builder: (_) => const BuscarUsuarioScreen()))
+                  .then((_) => _cargar()),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Panel derecho colapsado: franja delgada para volver a mostrar la lista.
+  bool _listaColapsada = false;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Mensajes'),
-        actions: [
-          IconButton(
-            tooltip: 'Buscar jugador',
-            icon: const Icon(Icons.person_search),
-            onPressed: () => Navigator.of(context)
-                .push(MaterialPageRoute(
-                    builder: (_) => const BuscarUsuarioScreen()))
-                .then((_) => _cargar()),
-          ),
-        ],
-      ),
       floatingActionButton: appState.logueado
           ? FloatingActionButton.extended(
               onPressed: () => Navigator.of(context)
@@ -431,65 +466,113 @@ class _MensajesScreenState extends State<MensajesScreen> {
               label: const Text('Nuevo grupo'),
             )
           : null,
-      body: ListenableBuilder(
-        listenable: appState,
-        builder: (context, _) {
-          if (!appState.logueado) {
-            return _Aviso(
-              _kSinSesion,
-              accion: FilledButton.icon(
-                style: FilledButton.styleFrom(backgroundColor: lima),
-                onPressed: () async {
-                  if (await LoginGoogleSheet.mostrar(context,
-                      motivo: 'ver tus mensajes')) {
-                    _cargar();
-                  }
-                },
-                icon: const Icon(Icons.login, size: 18),
-                label: const Text('Iniciar sesión'),
-              ),
-            );
-          }
-          if (!MensajesRepo.disponible) return const _Aviso(_kSinBackend);
-          return LayoutBuilder(builder: (context, cons) {
-            final ancho = cons.maxWidth >= 640;
-            final lista = RefreshIndicator(
-              onRefresh: _cargar,
-              child: _cargando
-                  ? const CargandoPichangol()
-                  : _convs.isEmpty
-                      ? ListView(children: const [
-                          SizedBox(height: 80),
-                          _Aviso(_kVacio),
-                        ])
-                      : ListView.separated(
-                          padding: const EdgeInsets.symmetric(vertical: 6),
-                          itemCount: _convs.length,
-                          separatorBuilder: (_, __) => Divider(
-                              height: 1, color: trazo.withOpacity(0.6)),
-                          itemBuilder: (_, i) {
-                            final c = _convs[i];
-                            return _FilaConv(
-                              conv: c,
-                              noLeidos:
-                                  _abiertos.contains(c.hilo) ? 0 : c.noLeidos,
-                              seleccionado: ancho && _sel?.hilo == c.hilo,
-                              onTap: () => _abrir(c, ancho),
-                            );
-                          },
+      body: SafeArea(
+        bottom: false,
+        child: ListenableBuilder(
+          listenable: appState,
+          builder: (context, _) {
+            if (!appState.logueado) {
+              return Column(children: [
+                _headerMaster(context, colapsable: false),
+                Expanded(
+                  child: _Aviso(
+                    _kSinSesion,
+                    accion: FilledButton.icon(
+                      style: FilledButton.styleFrom(backgroundColor: lima),
+                      onPressed: () async {
+                        if (await LoginGoogleSheet.mostrar(context,
+                            motivo: 'ver tus mensajes')) {
+                          _cargar();
+                        }
+                      },
+                      icon: const Icon(Icons.login, size: 18),
+                      label: const Text('Iniciar sesión'),
+                    ),
+                  ),
+                ),
+              ]);
+            }
+            if (!MensajesRepo.disponible) {
+              return Column(children: [
+                _headerMaster(context, colapsable: false),
+                const Expanded(child: _Aviso(_kSinBackend)),
+              ]);
+            }
+            return LayoutBuilder(builder: (context, cons) {
+              final ancho = cons.maxWidth >= 640;
+              final lista = RefreshIndicator(
+                onRefresh: _cargar,
+                child: _cargando
+                    ? const CargandoPichangol()
+                    : _convs.isEmpty
+                        ? ListView(children: const [
+                            SizedBox(height: 80),
+                            _Aviso(_kVacio),
+                          ])
+                        : ListView.separated(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            itemCount: _convs.length,
+                            separatorBuilder: (_, __) => Divider(
+                                height: 1, color: trazo.withOpacity(0.6)),
+                            itemBuilder: (_, i) {
+                              final c = _convs[i];
+                              return _FilaConv(
+                                conv: c,
+                                noLeidos: _abiertos.contains(c.hilo)
+                                    ? 0
+                                    : c.noLeidos,
+                                seleccionado: ancho && _sel?.hilo == c.hilo,
+                                onTap: () => _abrir(c, ancho),
+                              );
+                            },
+                          ),
+              );
+              // Móvil: solo la lista (con su cabecera).
+              if (!ancho) {
+                return Column(children: [
+                  _headerMaster(context, colapsable: false),
+                  Expanded(child: lista),
+                ]);
+              }
+              // Tablet (master-detail). La lista es COLAPSABLE para dar más
+              // espacio al chat. Ambas cabeceras van al mismo nivel (alineadas).
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (!_listaColapsada) ...[
+                    SizedBox(
+                      width: 340,
+                      child: Column(children: [
+                        _headerMaster(context, colapsable: true),
+                        Expanded(child: lista),
+                      ]),
+                    ),
+                    const VerticalDivider(width: 1),
+                  ] else
+                    // Franja delgada con botón para reabrir la lista.
+                    Column(children: [
+                      Material(
+                        color: _headerBg(context),
+                        child: SizedBox(
+                          height: kToolbarHeight,
+                          width: 48,
+                          child: IconButton(
+                            tooltip: 'Mostrar conversaciones',
+                            icon: const Icon(Icons.chevron_right,
+                                color: Colors.white),
+                            onPressed: () =>
+                                setState(() => _listaColapsada = false),
+                          ),
                         ),
-            );
-            if (!ancho) return lista;
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SizedBox(width: 340, child: lista),
-                const VerticalDivider(width: 1),
-                Expanded(child: _panelDetalle()),
-              ],
-            );
-          });
-        },
+                      ),
+                      const Expanded(child: SizedBox(width: 48)),
+                    ]),
+                  Expanded(child: _panelDetalle()),
+                ],
+              );
+            });
+          },
+        ),
       ),
     );
   }
