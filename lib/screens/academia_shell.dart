@@ -5,6 +5,7 @@ import '../widgets/menu_lateral_scroll.dart';
 import 'asistencia_screen.dart';
 import 'campeonatos_screen.dart';
 import 'chats_academia_screen.dart';
+import 'cobros_screen.dart';
 import 'crear_academia_screen.dart';
 import 'mi_academia_screen.dart';
 import 'reporte_academia_screen.dart';
@@ -43,6 +44,7 @@ class _AcademiaShellState extends State<AcademiaShell> {
         // de cada sección al alternar).
         final items = <(IconData, String)>[
           (Icons.sports_tennis, 'Academia'),
+          (Icons.payments_outlined, 'Cobros'),
           (Icons.forum_outlined, 'Mensajes'),
           (Icons.emoji_events_outlined, 'Campeonatos'),
           (Icons.fact_check_outlined, 'Asistencia'),
@@ -77,6 +79,7 @@ class _AcademiaShellState extends State<AcademiaShell> {
                     index: idx,
                     children: [
                       const MiAcademiaScreen(),
+                      CobrosScreen(academiaId: ac.id),
                       ChatsAcademiaScreen(academiaId: ac.id),
                       CampeonatosScreen(academiaId: ac.id),
                       AsistenciaScreen(academiaId: ac.id),

@@ -2273,6 +2273,108 @@ class AppState extends ChangeNotifier {
       .toList()
     ..sort((a, b) => a.vencimiento.compareTo(b.vencimiento));
 
+  // ── TABLERO DE COBROS (academia) ──────────────────────────────────────────
+  // Memoria de "a quién ya le recordé" (alumnoId → ISO de la última vez). Evita
+  // repetir el aviso y permite mostrar "recordado hace X". Se persiste.
+  final Map<String, String> _recordatoriosCobro = {};
+  // ¿Mostrar los avisos proactivos de "por recordar"? (config del profe).
+  bool recordatoriosAutoActivos = true;
+
+  /// Deuda de un alumno (suma de cuotas impagas) y si alguna está vencida.
+  ({double deuda, bool vencido}) deudaDeAlumno(String alumnoId) {
+    final hoy = DateTime.now();
+    double deuda = 0;
+    var vencido = false;
+    for (final c in cuotas) {
+      if (c.alumnoId != alumnoId || c.pagada) continue;
+      deuda += c.monto;
+      if (c.vencidaAl(hoy)) vencido = true;
+    }
+    return (deuda: deuda, vencido: vencido);
+  }
+
+  /// Total por cobrar de la academia (todas las cuotas impagas).
+  double porCobrarDe(String academiaId) {
+    double t = 0;
+    for (final c in cuotasDe(academiaId)) {
+      if (!c.pagada) t += c.monto;
+    }
+    return t;
+  }
+
+  /// Total VENCIDO de la academia (impagas ya pasadas de fecha).
+  double vencidoDe(String academiaId) {
+    final hoy = DateTime.now();
+    double t = 0;
+    for (final c in cuotasDe(academiaId)) {
+      if (!c.pagada && c.vencidaAl(hoy)) t += c.monto;
+    }
+    return t;
+  }
+
+  /// Cobrado en el MES actual (cuotas pagadas con fecha de pago en el mes).
+  double cobradoMesDe(String academiaId) {
+    final hoy = DateTime.now();
+    double t = 0;
+    for (final c in cuotasDe(academiaId)) {
+      final f = c.fechaPago;
+      if (c.pagada && f != null && f.year == hoy.year && f.month == hoy.month) {
+        t += c.monto;
+      }
+    }
+    return t;
+  }
+
+  /// Alumnos de la academia que DEBEN, ordenados por deuda (mayor primero);
+  /// dentro de igual deuda, primero los vencidos.
+  List<Alumno> morososDe(String academiaId) {
+    final lista = alumnosDe(academiaId)
+        .where((a) => deudaDeAlumno(a.id).deuda > 0)
+        .toList();
+    lista.sort((a, b) {
+      final da = deudaDeAlumno(a.id), db = deudaDeAlumno(b.id);
+      if (da.vencido != db.vencido) return da.vencido ? -1 : 1;
+      return db.deuda.compareTo(da.deuda);
+    });
+    return lista;
+  }
+
+  /// Marca que se le RECORDÓ el pago a un alumno (ahora).
+  void marcarRecordado(String alumnoId) {
+    _recordatoriosCobro[alumnoId] = DateTime.now().toIso8601String();
+    notifyListeners();
+    _persistirDatos();
+  }
+
+  /// Última vez que se le recordó a un alumno (null si nunca).
+  DateTime? ultimoRecordatorioDe(String alumnoId) {
+    final iso = _recordatoriosCobro[alumnoId];
+    return iso == null ? null : DateTime.tryParse(iso);
+  }
+
+  /// Días desde el último recordatorio (null si nunca se le recordó).
+  int? diasDesdeRecordatorio(String alumnoId) {
+    final u = ultimoRecordatorioDe(alumnoId);
+    if (u == null) return null;
+    return DateTime.now().difference(u).inDays;
+  }
+
+  /// Morosos que TOCA recordar: deudores a los que no se les recordó en los
+  /// últimos [cadaDias] días (o nunca). Es la lista "automática" del tablero.
+  List<Alumno> porRecordarDe(String academiaId, {int cadaDias = 7}) {
+    return morososDe(academiaId).where((a) {
+      final d = diasDesdeRecordatorio(a.id);
+      return d == null || d >= cadaDias;
+    }).toList();
+  }
+
+  /// Activa/desactiva los avisos proactivos de cobranza.
+  void setRecordatoriosAuto(bool v) {
+    recordatoriosAutoActivos = v;
+    notifyListeners();
+    _persistirDatos();
+  }
+
   /// Inscribe a un alumno en un plan: genera las cuotas mensuales (mensual /
   /// prepago). Para [TipoPlan.porClase] no genera nada (se cobra por clase).
   void inscribir(Alumno alumno, Plan plan, {DateTime? inicio, int? duracionMeses}) {
@@ -3753,6 +3855,8 @@ class AppState extends ChangeNotifier {
   static const _kBienvenidaDueno = 'bienvenida_dueno_vista';
   static const _kVerif = 'verificacion_estado';
   static const _kVerifEmail = 'verificacion_email'; // titular de la verificación
+  static const _kRecordCobro = 'recordatorios_cobro_json'; // alumnoId→ISO
+  static const _kRecordAuto = 'recordatorios_auto'; // avisos proactivos on/off
   static const _kNacimiento = 'fecha_nacimiento_iso';
   static const _kDniVerif = 'dni_verificado';
   static const _kMovs = 'movimientos_json';
@@ -3821,6 +3925,17 @@ class AppState extends ChangeNotifier {
       }
       dniVerificado = prefs.getString(_kDniVerif) ?? dniVerificado;
       _verifEmail = (prefs.getString(_kVerifEmail) ?? '').toLowerCase();
+      recordatoriosAutoActivos =
+          prefs.getBool(_kRecordAuto) ?? recordatoriosAutoActivos;
+      final rc = prefs.getString(_kRecordCobro);
+      if (rc != null && rc.isNotEmpty) {
+        try {
+          _recordatoriosCobro
+            ..clear()
+            ..addAll((jsonDecode(rc) as Map)
+                .map((k, v) => MapEntry(k.toString(), v.toString())));
+        } catch (_) {}
+      }
       // Migración de instalaciones previas (sin titular guardado): atribuye la
       // verificación existente al usuario logueado.
       if (_verifEmail.isEmpty &&
@@ -3987,6 +4102,8 @@ class AppState extends ChangeNotifier {
       await prefs.setString(_kMonedaSaldo, monedaSaldo);
       await prefs.setString(_kVerif, estadoVerificacion);
       await prefs.setString(_kVerifEmail, _verifEmail);
+      await prefs.setString(_kRecordCobro, jsonEncode(_recordatoriosCobro));
+      await prefs.setBool(_kRecordAuto, recordatoriosAutoActivos);
       if (fechaNacimiento != null) {
         await prefs.setString(
             _kNacimiento, fechaNacimiento!.toIso8601String());

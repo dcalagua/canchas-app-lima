@@ -12,6 +12,7 @@ import '../widgets/logo_academia.dart';
 import 'asistencia_screen.dart';
 import 'campeonatos_screen.dart';
 import 'chats_academia_screen.dart';
+import 'cobros_screen.dart';
 import 'crear_academia_screen.dart';
 import 'ranking_academia_screen.dart';
 import 'recargar_saldo_screen.dart';
@@ -810,6 +811,12 @@ class _Header extends StatelessWidget {
               // En TABLET estas acciones viven en el rail lateral (AcademiaShell),
               // así la cabecera queda limpia. En móvil se muestran aquí.
               if (MediaQuery.of(context).size.width < 720) ...[
+              IconButton(
+                tooltip: 'Cobros',
+                icon: const Icon(Icons.payments_outlined, color: Colors.white),
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => CobrosScreen(academiaId: academia.id))),
+              ),
               IconButton(
                 tooltip: 'Mensajes',
                 icon: const Icon(Icons.forum_outlined, color: Colors.white),
