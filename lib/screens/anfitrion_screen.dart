@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../services/growth_service.dart';
 import '../state/app_state.dart';
@@ -18,14 +19,30 @@ import 'verificador_screen.dart';
 class AnfitrionScreen extends StatelessWidget {
   const AnfitrionScreen({super.key});
 
+  /// Los paneles de administración (Mis canchas / Mi academia) son master-detail
+  /// pensados para pantalla ANCHA: al entrar forzamos horizontal y al volver
+  /// restauramos la orientación libre.
+  static const _horizontal = [
+    DeviceOrientation.landscapeLeft,
+    DeviceOrientation.landscapeRight,
+  ];
+  Future<void> _restaurarOrientacion() =>
+      SystemChrome.setPreferredOrientations(DeviceOrientation.values);
+
   Future<void> _abrirPanel(BuildContext context) async {
     if (!await LoginGoogleSheet.mostrar(context,
         motivo: 'administrar tus canchas')) {
       return;
     }
     if (!context.mounted) return;
-    Navigator.of(context)
+    await SystemChrome.setPreferredOrientations(_horizontal);
+    if (!context.mounted) {
+      await _restaurarOrientacion();
+      return;
+    }
+    await Navigator.of(context)
         .push(MaterialPageRoute(builder: (_) => const HomeShell()));
+    await _restaurarOrientacion();
   }
 
   Future<void> _abrirMiAcademia(BuildContext context) async {
@@ -34,12 +51,18 @@ class AnfitrionScreen extends StatelessWidget {
       return;
     }
     if (!context.mounted) return;
+    await SystemChrome.setPreferredOrientations(_horizontal);
+    if (!context.mounted) {
+      await _restaurarOrientacion();
+      return;
+    }
     // Siempre a MiAcademiaScreen: él resuelve si mostrar la academia, un spinner
     // mientras baja de la nube, o "Crear mi academia" cuando ya es seguro que no
     // hay ninguna. Así evitamos crear una academia DUPLICADA por adelantarnos a
     // que Supabase responda (típico tras reinstalar el APK).
-    Navigator.of(context).push(
+    await Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => const AcademiaShell()));
+    await _restaurarOrientacion();
   }
 
   /// Organizar un campeonato SIN academia (cualquier usuario): crea el torneo

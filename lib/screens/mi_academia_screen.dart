@@ -70,15 +70,18 @@ class MiAcademiaScreen extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(18, 14, 18, 8),
                 child: Row(
                   children: [
+                    // Por cobrar / Vencido → llevan a Cobros (recordar morosos).
                     Expanded(
                         child: _Metrica(
                             'Por cobrar',
                             '${ac.monedaSimbolo} ${porCobrar.toStringAsFixed(2)}',
-                            Theme.of(context).colorScheme.primary)),
+                            Theme.of(context).colorScheme.primary,
+                            onTap: () => _abrirCobros(context, ac.id))),
                     const SizedBox(width: 10),
                     Expanded(
                         child: _Metrica('Vencido',
-                            '${ac.monedaSimbolo} ${vencido.toStringAsFixed(2)}', clayOscuro)),
+                            '${ac.monedaSimbolo} ${vencido.toStringAsFixed(2)}', clayOscuro,
+                            onTap: () => _abrirCobros(context, ac.id))),
                     const SizedBox(width: 10),
                     Expanded(
                         child: _Metrica('Alumnos', '${alumnos.length}',
@@ -158,6 +161,12 @@ class MiAcademiaScreen extends StatelessWidget {
         },
       )),
     );
+  }
+
+  /// Abre Cobros (morosidad + recordar a morosos) desde las métricas del home.
+  static void _abrirCobros(BuildContext context, String academiaId) {
+    Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => CobrosScreen(academiaId: academiaId)));
   }
 
   static Future<void> _agregarAlumno(
@@ -983,19 +992,20 @@ class _SaldoPill extends StatelessWidget {
 }
 
 class _Metrica extends StatelessWidget {
-  const _Metrica(this.titulo, this.valor, this.color);
+  const _Metrica(this.titulo, this.valor, this.color, {this.onTap});
   final String titulo;
   final String valor;
   final Color color;
+  final VoidCallback? onTap; // si != null, la métrica es tocable
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final card = Container(
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: trazo),
+        border: Border.all(color: onTap != null ? color.withOpacity(0.5) : trazo),
       ),
       child: Column(
         children: [
@@ -1003,11 +1013,21 @@ class _Metrica extends StatelessWidget {
               style: TextStyle(
                   fontWeight: FontWeight.w800, fontSize: 16, color: color)),
           const SizedBox(height: 2),
-          Text(titulo,
-              style: const TextStyle(color: textoTenue, fontSize: 12)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(titulo,
+                  style: const TextStyle(color: textoTenue, fontSize: 12)),
+              if (onTap != null)
+                const Icon(Icons.chevron_right, size: 14, color: textoTenue),
+            ],
+          ),
         ],
       ),
     );
+    if (onTap == null) return card;
+    return InkWell(
+        onTap: onTap, borderRadius: BorderRadius.circular(14), child: card);
   }
 }
 

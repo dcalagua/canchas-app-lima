@@ -117,6 +117,13 @@ class PerfilScreen extends StatelessWidget {
                       const SizedBox(height: 12),
                     ],
 
+                    // --- Modo anfitrión: acción PRINCIPAL, va primero ---
+                    _ModoAnfitrion(
+                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => const AnfitrionScreen())),
+                    ),
+                    const SizedBox(height: 14),
+
                     // --- Jugador ---
                     _Tile(
                       icon: Icons.school,
@@ -178,13 +185,6 @@ class PerfilScreen extends StatelessWidget {
                           builder: (_) => const AjustesScreen())),
                     ),
 
-                    const SizedBox(height: 8),
-                    // --- Modo anfitrión (Airbnb-style) ---
-                    _ModoAnfitrion(
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => const AnfitrionScreen())),
-                    ),
-
                     if (u != null) ...[
                       const SizedBox(height: 10),
                       Align(
@@ -226,40 +226,37 @@ class _ModoAnfitrion extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    final oscuro = Theme.of(context).brightness == Brightness.dark;
-    // En OSCURO se pintaba surface-sobre-surface y "no se notaba": ahora es una
-    // tarjeta verde WhatsApp sólida (resalta como acción principal, estilo Airbnb
-    // "cambiar a anfitrión"). En claro, el tinte lima suave premium.
-    final fondo = oscuro ? lima : limaSuave;
-    final borde = oscuro ? lima : lima.withOpacity(0.7);
-    final acento = oscuro ? Colors.white : bosque; // título + chevron
-    final chipBg = oscuro ? Colors.white.withOpacity(0.22) : bosque;
-    final chipIcon = oscuro ? Colors.white : lima;
-    final subColor =
-        oscuro ? Colors.white.withOpacity(0.9) : bosque.withOpacity(0.7);
+    // Tarjeta VERDE degradada (WhatsApp) sólida: acción principal, premium y
+    // clara en claro y oscuro (nunca un bloque negro/plano).
     return Material(
-      color: fondo,
+      color: Colors.transparent,
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(18),
         child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: borde),
-          ),
           padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [lima, teal],
+            ),
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: const [
+              BoxShadow(
+                  color: Color(0x22000000), blurRadius: 10, offset: Offset(0, 4)),
+            ],
+          ),
           child: Row(
             children: [
-              // Chip de marca: cuadrado bosque con ícono lima (resalta en claro
-              // y en oscuro).
               Container(
-                width: 44,
-                height: 44,
+                width: 46,
+                height: 46,
                 decoration: BoxDecoration(
-                    color: chipBg,
-                    borderRadius: BorderRadius.circular(12)),
-                child: Icon(Icons.real_estate_agent, color: chipIcon),
+                    color: Colors.white.withOpacity(0.22),
+                    borderRadius: BorderRadius.circular(13)),
+                child: const Icon(Icons.real_estate_agent, color: Colors.white),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -268,14 +265,15 @@ class _ModoAnfitrion extends StatelessWidget {
                   children: [
                     Text('Modo anfitrión',
                         style: t.titleMedium?.copyWith(
-                            color: acento, fontWeight: FontWeight.w800)),
+                            color: Colors.white, fontWeight: FontWeight.w800)),
                     const SizedBox(height: 2),
                     Text('Publica tu cancha o academia y recibe reservas',
-                        style: t.bodySmall?.copyWith(color: subColor)),
+                        style: t.bodySmall
+                            ?.copyWith(color: Colors.white.withOpacity(0.92))),
                   ],
                 ),
               ),
-              Icon(Icons.chevron_right, color: acento),
+              const Icon(Icons.chevron_right, color: Colors.white),
             ],
           ),
         ),
