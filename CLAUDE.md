@@ -207,6 +207,14 @@ sigue el lenguaje Airbnb sobre la paleta EBIM:
   cayendo a la inicial de color solo si no hay foto. Nunca dejar un ícono
   genérico donde va una persona. Si la lista trae correos, precargar perfiles
   con `appState.cargarPerfiles([...])` para que la foto esté disponible.
+- **Contenido CENTRADO en pantallas anchas (REGLA de todo el app):** en tablet u
+  horizontal el contenido NUNCA se estira de borde a borde; va **centrado con
+  ancho máximo**. Envolver el `body:` (o el ListView/formulario) con
+  `AnchoTablet` (`lib/widgets/responsive.dart`, canónico) — o el equivalente
+  `AnchoLectura`. `maxWidth` según el contenido: ~560–640 para menús/formularios
+  de una columna (p. ej. Perfil), ~760–900 para fichas/listas con tarjetas. En
+  móvil vertical no cambia nada (devuelve el hijo tal cual). Toda pantalla nueva
+  debe respetarlo; el spinner/loader también centrado.
 
 ## Pendientes / backlog
 

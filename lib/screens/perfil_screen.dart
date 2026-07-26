@@ -4,6 +4,7 @@ import '../brand.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/google_logo.dart';
+import '../widgets/responsive.dart';
 import 'academias_screen.dart';
 import 'marketplace_screen.dart';
 import 'ajustes_screen.dart';
@@ -23,7 +24,11 @@ class PerfilScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     return Scaffold(
-      body: ListenableBuilder(
+      // Regla app: en pantallas anchas (tablet/horizontal) el contenido va
+      // CENTRADO con ancho máximo, nunca estirado de borde a borde.
+      body: AnchoTablet(
+        maxWidth: 600,
+        child: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
           final u = appState.usuario;
@@ -210,7 +215,7 @@ class PerfilScreen extends StatelessWidget {
             ],
           );
         },
-      ),
+      )),
     );
   }
 }
