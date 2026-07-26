@@ -333,6 +333,11 @@ class CampeonatoDetalleScreen extends StatelessWidget {
     final dni = TextEditingController();
     var cargando = false;
     String? error;
+    DateTime? nac; // solo países SIN API de documento (Bolivia): fecha manual
+    // ¿El país tiene consulta automática del documento? Perú (DNI) y Ecuador
+    // (cédula) sí; Bolivia (CI) no → ingreso MANUAL, sin validar contra registro.
+    final manual = !paisActual.consultaDoc;
+    final conEdad = c.edadMin != null || c.edadMax != null;
     final ok = await showDialog<bool>(
       context: context,
       builder: (dctx) => StatefulBuilder(
@@ -343,13 +348,15 @@ class CampeonatoDetalleScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                  'Este campeonato exige $docIdActual para validar identidad y edad'
-                  '${c.edadMax != null || c.edadMin != null ? ' (categoría ${c.edadMin != null ? 'desde ${c.edadMin}' : ''}${c.edadMax != null ? ' hasta ${c.edadMax} años' : ''})' : ''}.',
+                  '${manual ? 'Ingresa tu $docIdActual para inscribirte' : 'Este campeonato exige $docIdActual para validar identidad y edad'}'
+                  '${conEdad ? ' (categoría ${c.edadMin != null ? 'desde ${c.edadMin}' : ''}${c.edadMax != null ? ' hasta ${c.edadMax} años' : ''})' : ''}.',
                   style: const TextStyle(color: textoTenue, fontSize: 12.5)),
               const SizedBox(height: 10),
               TextField(
                 controller: dni,
-                keyboardType: TextInputType.number,
+                // Bolivia (CI): texto (admite complemento); Perú/Ecuador: número.
+                keyboardType:
+                    manual ? TextInputType.text : TextInputType.number,
                 maxLength: paisActual.docLongitud,
                 decoration: InputDecoration(
                     labelText: paisActual.docLongitud != null
@@ -357,6 +364,28 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                         : docIdActual,
                     counterText: ''),
               ),
+              // Bolivia con categoría por edad: no hay registro que dé la fecha,
+              // así que la pedimos a mano para calcular la edad.
+              if (manual && conEdad) ...[
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final hoy = DateTime.now();
+                    final f = await showDatePicker(
+                      context: dctx,
+                      initialDate: DateTime(hoy.year - 15),
+                      firstDate: DateTime(hoy.year - 90),
+                      lastDate: hoy,
+                      helpText: 'Tu fecha de nacimiento',
+                    );
+                    if (f != null) setSB(() => nac = f);
+                  },
+                  icon: const Icon(Icons.cake_outlined, size: 18),
+                  label: Text(nac == null
+                      ? 'Fecha de nacimiento'
+                      : 'Nací: ${nac!.day}/${nac!.month}/${nac!.year}'),
+                ),
+              ],
               if (error != null) ...[
                 const SizedBox(height: 6),
                 Text(error!,
@@ -376,6 +405,38 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                   ? null
                   : () async {
                       final d = dni.text.trim();
+                      // ── BOLIVIA (manual, sin API): CI self-declarado ──────
+                      if (manual) {
+                        if (d.length < 5) {
+                          setSB(() => error = 'Escribe tu $docIdActual.');
+                          return;
+                        }
+                        if (conEdad) {
+                          if (nac == null) {
+                            setSB(() =>
+                                error = 'Selecciona tu fecha de nacimiento.');
+                            return;
+                          }
+                          final edad = appState.edadDesdeFecha(nac!);
+                          if (edad != null &&
+                              c.edadMin != null &&
+                              edad < c.edadMin!) {
+                            setSB(() => error =
+                                'Tienes $edad años; la categoría es desde ${c.edadMin}.');
+                            return;
+                          }
+                          if (edad != null &&
+                              c.edadMax != null &&
+                              edad > c.edadMax!) {
+                            setSB(() => error =
+                                'Tienes $edad años; la categoría es hasta ${c.edadMax}.');
+                            return;
+                          }
+                        }
+                        Navigator.pop(dctx, true);
+                        return;
+                      }
+                      // ── PERÚ / ECUADOR (con API): valida contra registro ──
                       final largo = paisActual.docLongitud;
                       if ((largo != null && d.length != largo) ||
                           int.tryParse(d) == null) {
