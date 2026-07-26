@@ -6,6 +6,7 @@ import '../models/models.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 
 /// ANTI NO-SHOW: recuerda a los jugadores su reserva próxima (hoy/mañana) para
 /// que no se olviden ni dejen plantada la cancha. In-app (chat + push) a los que
@@ -86,31 +87,40 @@ class _RecordarReservasScreenState extends State<RecordarReservasScreen> {
     final sinApp = pendientes
         .where((r) => r.usuario.trim().isEmpty && r.telefono.trim().isNotEmpty)
         .toList();
+    if (_enviando) return;
     setState(() => _enviando = true);
-    var enviados = 0;
     final u = appState.usuario;
-    if (u != null) {
-      for (final r in conApp) {
-        final msg = Mensaje(
-          id: 'msg_${DateTime.now().microsecondsSinceEpoch}_${r.id}',
-          hilo: Mensaje.hiloCancha(u.email, r.usuario.trim().toLowerCase()),
-          tipo: 'cancha',
-          refId: u.email,
-          cuentaEmail: r.usuario.trim().toLowerCase(),
-          autorEmail: u.email,
-          autorNombre: u.nombre,
-          esProfe: true,
-          texto: _texto(r),
-          creado: DateTime.now(),
-        );
-        if (await MensajesRepo.enviar(msg)) {
-          appState.marcarReservaRecordada(r.id);
-          enviados++;
+    int enviados;
+    try {
+      // Regla: acción que demora (envía recordatorios) → preload de marca.
+      enviados = await conPreload(context, () async {
+        var n = 0;
+        if (u != null) {
+          for (final r in conApp) {
+            final msg = Mensaje(
+              id: 'msg_${DateTime.now().microsecondsSinceEpoch}_${r.id}',
+              hilo: Mensaje.hiloCancha(u.email, r.usuario.trim().toLowerCase()),
+              tipo: 'cancha',
+              refId: u.email,
+              cuentaEmail: r.usuario.trim().toLowerCase(),
+              autorEmail: u.email,
+              autorNombre: u.nombre,
+              esProfe: true,
+              texto: _texto(r),
+              creado: DateTime.now(),
+            );
+            if (await MensajesRepo.enviar(msg)) {
+              appState.marcarReservaRecordada(r.id);
+              n++;
+            }
+          }
         }
-      }
+        return n;
+      }, texto: 'Recordando a tus clientes…');
+    } finally {
+      if (mounted) setState(() => _enviando = false);
     }
     if (!mounted) return;
-    setState(() => _enviando = false);
     if (enviados > 0) _msg('✅ Recordé a $enviados jugador(es) por la app 📲');
     if (sinApp.isNotEmpty) await _whatsappSheet(sinApp);
   }
@@ -268,13 +278,7 @@ class _RecordarReservasScreenState extends State<RecordarReservasScreen> {
                       onPressed: (_enviando || pendientes.isEmpty)
                           ? null
                           : () => _recordarATodos(pendientes),
-                      icon: _enviando
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: Colors.white))
-                          : const Icon(Icons.notifications_active),
+                      icon: const Icon(Icons.notifications_active),
                       label: Text(
                           pendientes.isEmpty
                               ? 'Todos recordados ✓'

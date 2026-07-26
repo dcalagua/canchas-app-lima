@@ -6,6 +6,7 @@ import '../models/models.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 
 /// LLENAR LA CANCHA VACÍA: el dueño ve las horas LIBRES de hoy/mañana y con un
 /// toque las AVISA a sus clientes — por la app (chat + push) a los que tienen
@@ -124,33 +125,42 @@ class _LlenarCanchaScreenState extends State<LlenarCanchaScreen> {
     );
     if (go != true) return;
 
+    if (_avisando) return;
     setState(() => _avisando = true);
-    // Aplica el descuento REAL a cada slot elegido: ese precio será el que se
-    // cobre al reservar (0 = deja el precio normal / quita descuentos previos).
     final c = _cancha;
-    if (c != null) {
-      for (final h in _sel) {
-        await appState.aplicarDescuentoSlot(c.id, _iso, h, _descuento);
-      }
-    }
-    var enviados = 0;
-    for (final cli in conApp) {
-      final msg = Mensaje(
-        id: 'msg_${DateTime.now().microsecondsSinceEpoch}_${enviados}',
-        hilo: Mensaje.hiloCancha(u.email, cli.email),
-        tipo: 'cancha',
-        refId: u.email, // hilo dueño↔jugador (mismo patrón del chat de cancha)
-        cuentaEmail: cli.email,
-        autorEmail: u.email,
-        autorNombre: u.nombre,
-        esProfe: true,
-        texto: _texto(cli.nombre),
-        creado: DateTime.now(),
-      );
-      if (await MensajesRepo.enviar(msg)) enviados++;
+    int enviados;
+    try {
+      // Regla: acción que demora (aplica descuentos + envía avisos) → preload.
+      enviados = await conPreload(context, () async {
+        // Aplica el descuento REAL a cada slot elegido: ese precio será el que
+        // se cobre al reservar (0 = precio normal / quita descuentos previos).
+        if (c != null) {
+          for (final h in _sel) {
+            await appState.aplicarDescuentoSlot(c.id, _iso, h, _descuento);
+          }
+        }
+        var n = 0;
+        for (final cli in conApp) {
+          final msg = Mensaje(
+            id: 'msg_${DateTime.now().microsecondsSinceEpoch}_$n',
+            hilo: Mensaje.hiloCancha(u.email, cli.email),
+            tipo: 'cancha',
+            refId: u.email, // hilo dueño↔jugador (patrón del chat de cancha)
+            cuentaEmail: cli.email,
+            autorEmail: u.email,
+            autorNombre: u.nombre,
+            esProfe: true,
+            texto: _texto(cli.nombre),
+            creado: DateTime.now(),
+          );
+          if (await MensajesRepo.enviar(msg)) n++;
+        }
+        return n;
+      }, texto: 'Avisando a tus clientes…');
+    } finally {
+      if (mounted) setState(() => _avisando = false);
     }
     if (!mounted) return;
-    setState(() => _avisando = false);
     _msg(enviados > 0
         ? '✅ Avisé a $enviados cliente(s) por la app 📲'
         : (sinApp.isEmpty ? 'Listo.' : 'Ningún cliente tiene la app aún.'));
@@ -410,13 +420,7 @@ class _LlenarCanchaScreenState extends State<LlenarCanchaScreen> {
                               borderRadius: BorderRadius.circular(14))),
                       onPressed:
                           (_avisando || _sel.isEmpty) ? null : _avisar,
-                      icon: _avisando
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: Colors.white))
-                          : const Icon(Icons.campaign),
+                      icon: const Icon(Icons.campaign),
                       label: Text(
                           _sel.isEmpty
                               ? 'Elige horas para avisar'

@@ -15,6 +15,7 @@ import '../models/models.dart';
 import '../services/propiedad_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 import '../widgets/responsive.dart';
 import '../widgets/selector_horario.dart';
 import 'agregar_cancha_screen.dart';
@@ -216,20 +217,24 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
     // Si alguna subida falla (bucket no configurado / sin red), lo contamos
     // para avisar al dueño: guardar la cancha "sin fotos" y decir ✅ sería un
     // falso éxito (por eso antes "no cargaban" al verlas como usuario).
-    final fotos = List<String>.of(_fotosUrl);
-    var fallidas = 0;
-    for (var i = 0; i < _fotosNuevas.length; i++) {
-      final url = await CanchasRepo.subirFoto(
-        widget.cancha.id,
-        _fotosNuevas[i],
-        sufijo: '${DateTime.now().millisecondsSinceEpoch}_$i',
-      );
-      if (url != null) {
-        fotos.add(url);
-      } else {
-        fallidas++;
+    // Regla: subir fotos demora → preload de marca (no un spinner en el botón).
+    final (fotos, fallidas) = await conPreload(context, () async {
+      final subidas = List<String>.of(_fotosUrl);
+      var fail = 0;
+      for (var i = 0; i < _fotosNuevas.length; i++) {
+        final url = await CanchasRepo.subirFoto(
+          widget.cancha.id,
+          _fotosNuevas[i],
+          sufijo: '${DateTime.now().millisecondsSinceEpoch}_$i',
+        );
+        if (url != null) {
+          subidas.add(url);
+        } else {
+          fail++;
+        }
       }
-    }
+      return (subidas, fail);
+    }, texto: 'Guardando…');
     // Si NINGUNA foto nueva subió (y no quedan URLs previas), no hay galería que
     // guardar: aborta y avisa, para no pisar el estado con una cancha sin fotos.
     if (fallidas > 0 && fotos.isEmpty) {
@@ -793,14 +798,8 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 15),
               ),
               onPressed: _guardando ? null : _guardar,
-              icon: _guardando
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
-                  : const Icon(Icons.save),
-              label: Text(_guardando ? 'Guardando…' : 'Guardar cambios'),
+              icon: const Icon(Icons.save),
+              label: const Text('Guardar cambios'),
             ),
           ),
         ],

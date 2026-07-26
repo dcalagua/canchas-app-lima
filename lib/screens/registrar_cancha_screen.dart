@@ -16,6 +16,7 @@ import '../services/propiedad_service.dart';
 import '../services/sport_detector.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 import '../widgets/responsive.dart';
 import '../widgets/selector_horario.dart';
 import 'login_google_sheet.dart';
@@ -374,74 +375,46 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
     final precio =
         double.tryParse(_precio.text.trim().replaceAll(',', '.')) ?? 100;
     final direccion = _direccion.text.trim();
-    final (distrito, barrio) = await _zonaDe(_ubicacion!);
-    final ts = DateTime.now().millisecondsSinceEpoch;
 
-    // Sube la foto nueva (si hay) y conserva las que ya traía de Google.
-    String? fotoSubida;
-    if (_foto != null) {
-      fotoSubida = await CanchasRepo.subirFoto('u$ts', _foto!);
-    }
-    final fotos = <String>[
-      if (fotoSubida != null) fotoSubida,
-      ..._fotosBase,
-    ];
-    final fotoUrl = fotos.isNotEmpty ? fotos.first : null;
+    // Regla: el envío real (geolocaliza la zona, sube la foto y crea el reclamo
+    // en el servidor) demora → se muestra el preload de marca, no un spinner.
+    final res = await conPreload(context, () async {
+      final (distrito, barrio) = await _zonaDe(_ubicacion!);
+      final ts = DateTime.now().millisecondsSinceEpoch;
 
-    // Atamos la cancha a la cuenta del dueño (correo) para recuperarla luego en
-    // "Mis canchas" desde cualquier dispositivo.
-    final dueno = appState.usuario?.email ?? '';
+      // Sube la foto nueva (si hay) y conserva las que ya traía de Google.
+      String? fotoSubida;
+      if (_foto != null) {
+        fotoSubida = await CanchasRepo.subirFoto('u$ts', _foto!);
+      }
+      final fotos = <String>[
+        if (fotoSubida != null) fotoSubida,
+        ..._fotosBase,
+      ];
+      final fotoUrl = fotos.isNotEmpty ? fotos.first : null;
 
-    final deportes = _deportes.toList();
-    final nombreCanchaInput = _nombreCancha.text.trim();
-    final creadas = <Cancha>[];
-    if (_esCanchaUnica) {
-      // UNA sola cancha: un deporte, o loza multiuso (varios deportes, misma
-      // superficie y AGENDA COMPARTIDA). El principal define ícono/color.
-      final principal = _deportePrincipal;
-      final nombreCancha = nombreCanchaInput.isNotEmpty
-          ? nombreCanchaInput
-          : (deportes.length == 1 ? '${principal.etiqueta} 1' : 'Cancha 1');
-      final cancha = Cancha(
-        id: 'u$ts',
-        nombre: nombreCancha,
-        club: nombre,
-        distrito: distrito,
-        barrio: barrio,
-        deporte: principal,
-        deportes: deportes, // todos los deportes jugables en esta loza
-        precioHora: precio,
-        ubicacion: _ubicacion!,
-        clubFundador: false,
-        digitalizada: true,
-        direccion: direccion.isEmpty ? null : direccion,
-        fotoUrl: fotoUrl,
-        fotos: fotos,
-        dueno: dueno,
-        verificada: false,
-        horaApertura: _apertura,
-        horaCierre: _cierre,
-        duracionSlotMin: _duracion,
-        superficie: _superficie,
-        // La moneda se congela por el país donde ESTÁ la cancha (su GPS), no por
-        // el país del dispositivo del dueño: una cancha en La Paz cobra en Bs
-        // aunque el dueño la registre desde Perú.
-        moneda: monedaDeCoordenadas(
-            _ubicacion!.latitude, _ubicacion!.longitude),
-      );
-      creadas.add(cancha);
-      appState.agregarCancha(cancha);
-    } else {
-      // Canchas SEPARADAS: una Cancha por deporte (superficies y agendas propias).
-      for (final dep in deportes) {
+      // Atamos la cancha a la cuenta del dueño (correo) para recuperarla luego en
+      // "Mis canchas" desde cualquier dispositivo.
+      final dueno = appState.usuario?.email ?? '';
+
+      final deportes = _deportes.toList();
+      final nombreCanchaInput = _nombreCancha.text.trim();
+      final creadas = <Cancha>[];
+      if (_esCanchaUnica) {
+        // UNA sola cancha: un deporte, o loza multiuso (varios deportes, misma
+        // superficie y AGENDA COMPARTIDA). El principal define ícono/color.
+        final principal = _deportePrincipal;
+        final nombreCancha = nombreCanchaInput.isNotEmpty
+            ? nombreCanchaInput
+            : (deportes.length == 1 ? '${principal.etiqueta} 1' : 'Cancha 1');
         final cancha = Cancha(
-          id: 'u${ts}_${dep.name}',
-          nombre: '${dep.etiqueta} 1',
-          club: nombre, // el local es su propio club
+          id: 'u$ts',
+          nombre: nombreCancha,
+          club: nombre,
           distrito: distrito,
           barrio: barrio,
-          deporte: dep,
-          deportes: [dep],
+          deporte: principal,
+          deportes: deportes, // todos los deportes jugables en esta loza
           precioHora: precio,
           ubicacion: _ubicacion!,
           clubFundador: false,
@@ -450,57 +423,99 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
           fotoUrl: fotoUrl,
           fotos: fotos,
           dueno: dueno,
-          verificada: false, // pendiente de verificación hasta validar al dueño
+          verificada: false,
           horaApertura: _apertura,
           horaCierre: _cierre,
           duracionSlotMin: _duracion,
-          superficie: _superficies[dep] ?? '',
-          // Moneda por la ubicación real de la cancha, no por el país del
-          // dispositivo del dueño (ver nota arriba).
+          superficie: _superficie,
+          // La moneda se congela por el país donde ESTÁ la cancha (su GPS), no
+          // por el país del dispositivo del dueño: una cancha en La Paz cobra en
+          // Bs aunque el dueño la registre desde Perú.
           moneda: monedaDeCoordenadas(
               _ubicacion!.latitude, _ubicacion!.longitude),
         );
         creadas.add(cancha);
         appState.agregarCancha(cancha);
+      } else {
+        // Canchas SEPARADAS: una Cancha por deporte (superficies y agendas propias).
+        for (final dep in deportes) {
+          final cancha = Cancha(
+            id: 'u${ts}_${dep.name}',
+            nombre: '${dep.etiqueta} 1',
+            club: nombre, // el local es su propio club
+            distrito: distrito,
+            barrio: barrio,
+            deporte: dep,
+            deportes: [dep],
+            precioHora: precio,
+            ubicacion: _ubicacion!,
+            clubFundador: false,
+            digitalizada: true,
+            direccion: direccion.isEmpty ? null : direccion,
+            fotoUrl: fotoUrl,
+            fotos: fotos,
+            dueno: dueno,
+            verificada: false, // pendiente de verificación hasta validar al dueño
+            horaApertura: _apertura,
+            horaCierre: _cierre,
+            duracionSlotMin: _duracion,
+            superficie: _superficies[dep] ?? '',
+            // Moneda por la ubicación real de la cancha, no por el país del
+            // dispositivo del dueño (ver nota arriba).
+            moneda: monedaDeCoordenadas(
+                _ubicacion!.latitude, _ubicacion!.longitude),
+          );
+          creadas.add(cancha);
+          appState.agregarCancha(cancha);
+        }
       }
-    }
 
-    // Verificación de EXISTENCIA en segundo plano (no bloquea el cierre). Confirma
-    // que el local es real, pero NO te da la propiedad: la cancha queda "en
-    // revisión de propiedad" hasta validar al dueño (código al teléfono del local,
-    // aprobación manual o visita). Recién ahí se habilitan reservas.
-    appState.verificarVenue(creadas, razonSocial: nombre);
+      // Verificación de EXISTENCIA en segundo plano (no bloquea el cierre).
+      // Confirma que el local es real, pero NO te da la propiedad: la cancha
+      // queda "en revisión de propiedad" hasta validar al dueño (código al
+      // teléfono del local, aprobación manual o visita). Recién ahí hay reservas.
+      appState.verificarVenue(creadas, razonSocial: nombre);
 
-    // Modelo concierge: al reclamar/registrar se crea una SOLICITUD DE RECLAMO y
-    // le llega un WhatsApp al equipo de Pichangol con un código para vetear al
-    // dueño. Nada se activa hasta validarlo (revisión + visita en sitio).
-    // Se ESPERA la respuesta para confirmar que el reclamo quedó en el servidor.
-    bool reclamoOk = true;
-    bool yaReclamada = false;
-    if (creadas.isNotEmpty) {
-      // GPS del dispositivo AL reclamar: el admin puede exigir (torre de control)
-      // que coincida con la cancha para aprobar (anti-fraude "estás en el lugar").
-      final desdeAqui = await LocationService.ubicacionPrecisa();
-      final r = await PropiedadService.crearReclamo(
-        canchaId: creadas.first.id,
-        solicitanteId: dueno,
-        nombreLocal: nombre,
-        telefonoContacto: contacto,
-        dni: dni, // opcional (puede ir vacío)
-        ubicacion: _ubicacion,
-        solicitanteUbicacion: desdeAqui,
+      // Modelo concierge: al reclamar/registrar se crea una SOLICITUD DE RECLAMO
+      // y le llega un WhatsApp al equipo de Pichangol con un código para vetear
+      // al dueño. Nada se activa hasta validarlo (revisión + visita en sitio).
+      // Se ESPERA la respuesta para confirmar que el reclamo quedó en el servidor.
+      var reclamoOk = true;
+      var yaReclamada = false;
+      if (creadas.isNotEmpty) {
+        // GPS del dispositivo AL reclamar: el admin puede exigir (torre de
+        // control) que coincida con la cancha para aprobar (anti-fraude).
+        final desdeAqui = await LocationService.ubicacionPrecisa();
+        final r = await PropiedadService.crearReclamo(
+          canchaId: creadas.first.id,
+          solicitanteId: dueno,
+          nombreLocal: nombre,
+          telefonoContacto: contacto,
+          dni: dni, // opcional (puede ir vacío)
+          ubicacion: _ubicacion,
+          solicitanteUbicacion: desdeAqui,
+        );
+        reclamoOk = r != null && r['ok'] == true;
+        yaReclamada = r != null && r['error'] == 'ya_reclamada';
+      }
+
+      // Si OTRO usuario ya reclamó esta cancha (o el mismo lugar), no puedes
+      // reclamarla: revierte las canchas locales recién creadas.
+      if (yaReclamada) {
+        for (final c in creadas) {
+          appState.eliminarCancha(c.id);
+        }
+      }
+      return (
+        creadas: creadas,
+        reclamoOk: reclamoOk,
+        yaReclamada: yaReclamada,
       );
-      reclamoOk = r != null && r['ok'] == true;
-      yaReclamada = r != null && r['error'] == 'ya_reclamada';
-    }
+    }, texto: 'Enviando tu solicitud…');
 
-    // Si OTRO usuario ya reclamó esta cancha (o el mismo lugar), no puedes
-    // reclamarla: revierte las canchas locales recién creadas.
-    if (yaReclamada) {
-      for (final c in creadas) {
-        appState.eliminarCancha(c.id);
-      }
-    }
+    final creadas = res.creadas;
+    final reclamoOk = res.reclamoOk;
+    final yaReclamada = res.yaReclamada;
 
     if (!mounted) return;
     // Devuelve la cancha creada (si no fue revertida) para que la ficha anterior
@@ -919,18 +934,10 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 15),
               ),
               onPressed: _enviando ? null : _publicar,
-              icon: _enviando
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
-                  : Icon(_esReclamo ? Icons.verified_user : Icons.send),
-              label: Text(_enviando
-                  ? 'Enviando...'
-                  : (_esReclamo
-                      ? 'Reclamar cancha'
-                      : 'Enviar para validación')),
+              icon: Icon(_esReclamo ? Icons.verified_user : Icons.send),
+              label: Text(_esReclamo
+                  ? 'Reclamar cancha'
+                  : 'Enviar para validación'),
             ),
           ),
         ],
