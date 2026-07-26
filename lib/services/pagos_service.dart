@@ -211,6 +211,59 @@ class PagosService {
     }
   }
 
+  // ── LIBÉLULA (Bolivia): deuda → pasarela hospedada → confirmación ─────────
+  /// Registra una deuda de pago en Libélula (Bolivia) y devuelve
+  /// {ok, identificador, url_pasarela, retorno} o {ok:false, error}. El APK abre
+  /// `url_pasarela` en un WebView para que el cliente pague (QR/tarjeta/Tigo).
+  static Future<Map<String, dynamic>?> crearDeudaBo({
+    required String email,
+    required double montoBs,
+    required String concepto,
+    String tipo = '',
+    String ref = '',
+    String duenoId = '',
+    String nombre = '',
+    String apellido = '',
+  }) async {
+    if (!disponible) return null;
+    try {
+      final r = await http.post(
+        Uri.parse('$_baseUrl/pagos/bo/deuda'),
+        headers: _appHeaders(json: true),
+        body: jsonEncode({
+          'email': email,
+          'monto_bs': montoBs,
+          'concepto': concepto,
+          'tipo': tipo,
+          'ref': ref,
+          'dueno_id': duenoId,
+          'nombre': nombre,
+          'apellido': apellido,
+        }),
+      ).timeout(const Duration(seconds: 25));
+      if (r.statusCode != 200) return {'ok': false, 'error': 'HTTP ${r.statusCode}'};
+      return Map<String, dynamic>.from(jsonDecode(r.body) as Map);
+    } catch (_) {
+      return {'ok': false, 'error': 'sin_conexion'};
+    }
+  }
+
+  /// Estado de una deuda de Libélula: {ok, pagado}. El backend reconcilia con
+  /// Libélula si el callback aún no llegó. null si no se pudo consultar.
+  static Future<Map<String, dynamic>?> estadoDeudaBo(String identificador) async {
+    if (!disponible || identificador.isEmpty) return null;
+    try {
+      final r = await http.get(
+        Uri.parse('$_baseUrl/pagos/bo/deuda/$identificador'),
+        headers: _appHeaders(),
+      ).timeout(const Duration(seconds: 15));
+      if (r.statusCode != 200) return null;
+      return Map<String, dynamic>.from(jsonDecode(r.body) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Cobra al jugador solo la comisión (fallback saldo cero). {ok, chargeId}.
   static Future<Map<String, dynamic>> feeReserva({
     required String token,

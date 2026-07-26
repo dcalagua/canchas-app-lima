@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../config/pais.dart';
 import '../screens/login_google_sheet.dart';
 import '../screens/pago_sheet.dart';
 import '../services/pagos_service.dart';
@@ -8,6 +9,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/input_formatos.dart';
 import 'marcas_pago.dart';
+import 'pago_libelula.dart';
 import 'pago_procesando.dart';
 import '../utils/moneda.dart';
 
@@ -28,6 +30,15 @@ class PagoTarjeta {
     ValueChanged<String>? onToken, // recibe el token (tkn_/crd_) usado si el pago fue OK
     ValueChanged<String>? onOperacion, // recibe el N.º de operación (charge_id)
   }) async {
+    // BOLIVIA: la pasarela es Libélula (no Culqi). Se detecta por el país actual
+    // (GPS/selección). El pago se hace en la página hospedada de Libélula dentro
+    // de un WebView (QR · tarjeta · Tigo Money).
+    if (paisActual.pasarela == 'libelula') {
+      return PagoLibelula.cobrar(context,
+          monto: monto, concepto: concepto, email: email,
+          moneda: moneda.isNotEmpty ? moneda : 'Bs');
+    }
+
     final cfg = await PagosService.config();
     final disponible = cfg != null && cfg['disponible'] == true;
     if (!context.mounted) return false;
