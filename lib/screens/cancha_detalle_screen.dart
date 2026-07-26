@@ -11,6 +11,7 @@ import 'chat_screen.dart';
 import 'login_google_sheet.dart';
 import 'registrar_cancha_screen.dart';
 import '../utils/moneda.dart';
+import '../utils/ubicacion_share.dart';
 
 /// Detalle de una cancha (estilo ficha de Airbnb) con selección de día/hora y
 /// flujo de reserva. Demo sin backend: la reserva se guarda en memoria.
@@ -241,11 +242,8 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
                       ],
                     ],
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    cancha.direccion ?? cancha.club,
-                    style: const TextStyle(color: Colors.grey, fontSize: 14),
-                  ),
+                  const SizedBox(height: 8),
+                  _FilaUbicacion(cancha: cancha),
                   const SizedBox(height: 16),
                   if (!cancha.registrada)
                     _PanelDescubierta(cancha: cancha)
@@ -514,6 +512,63 @@ class _PanelDescubierta extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Ubicación de la cancha: dirección REAL (tocar = abrir en Google Maps) + botón
+/// para compartir/“cómo llegar”. Nunca inventa distrito: si no hay dirección ni
+/// barrio real, cae al nombre del club (y el mapa siempre funciona por GPS).
+class _FilaUbicacion extends StatelessWidget {
+  const _FilaUbicacion({required this.cancha});
+  final Cancha cancha;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final dir = (cancha.direccion ?? '').trim();
+    final zona = cancha.zonaMostrable;
+    final texto = dir.isNotEmpty ? dir : (zona.isNotEmpty ? zona : cancha.club);
+    final tituloShare = dir.isNotEmpty ? '${cancha.nombre} · $dir' : cancha.nombre;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(Icons.place_outlined, size: 20, color: cs.primary),
+        const SizedBox(width: 6),
+        Expanded(
+          child: InkWell(
+            onTap: () => UbicacionShare.abrirMapa(cancha.ubicacion),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(texto,
+                    style: const TextStyle(
+                        color: Color(0xFF444444), fontSize: 14, height: 1.3)),
+                if (dir.isNotEmpty && zona.isNotEmpty && zona != dir)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(zona,
+                        style: const TextStyle(
+                            color: Colors.grey, fontSize: 12.5)),
+                  ),
+                const SizedBox(height: 2),
+                Text('Ver en el mapa',
+                    style: TextStyle(
+                        color: cs.primary,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700)),
+              ],
+            ),
+          ),
+        ),
+        TextButton.icon(
+          onPressed: () => UbicacionShare.menu(context,
+              punto: cancha.ubicacion, titulo: tituloShare),
+          icon: const Icon(Icons.ios_share, size: 18),
+          label: const Text('Compartir'),
+          style: TextButton.styleFrom(foregroundColor: cs.primary),
+        ),
+      ],
     );
   }
 }

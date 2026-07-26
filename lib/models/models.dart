@@ -114,8 +114,8 @@ class Cancha {
   final Distrito distrito;
   /// Barrio/zona REAL de la cancha (ej. "Sopocachi", "Equipetrol", "San Borja"),
   /// obtenido del reverse-geocode de sus coordenadas al registrarla. Es la zona
-  /// que ve el usuario en cualquier país. Vacío = dato viejo → se cae a
-  /// [distrito.etiqueta]. Usar el getter [zonaMostrable].
+  /// que ve el usuario en cualquier país. Vacío = dato viejo o cancha descubierta
+  /// → NO se muestra zona (la dirección real va aparte). Usar [zonaMostrable].
   final String barrio;
   final Deporte deporte; // deporte PRINCIPAL (ícono/color/categoría en el mapa)
   /// Todos los deportes que se pueden jugar en ESTA cancha (loza multiuso). Si
@@ -200,18 +200,13 @@ class Cancha {
   String get monedaSimbolo =>
       monedaDeCoordenadas(ubicacion.latitude, ubicacion.longitude);
 
-  /// Zona/barrio VISIBLE de la cancha, en cualquier país. Usa el barrio real
-  /// (reverse-geocode). Si aún no hay barrio (dato viejo o cancha descubierta de
-  /// Google), la etiqueta del distrito heredado SOLO tiene sentido en el piloto
-  /// de Lima: fuera de Perú se devuelve vacío para NO inventar "San Borja" (la
-  /// dirección real se muestra aparte). Puede quedar vacío: los llamadores deben
-  /// tolerarlo. Fuente única para mostrar la ubicación textual de una cancha.
-  String get zonaMostrable {
-    if (barrio.trim().isNotEmpty) return barrio.trim();
-    final enPeru =
-        paisDeCoordenadas(ubicacion.latitude, ubicacion.longitude).iso == 'PE';
-    return enPeru ? distrito.etiqueta : '';
-  }
+  /// Zona/barrio VISIBLE de la cancha, en cualquier país. Usa SOLO el barrio real
+  /// (reverse-geocode de sus coordenadas al registrarla). Si aún no hay barrio
+  /// (dato viejo o cancha descubierta de Google), queda **vacío**: NO se inventa
+  /// el distrito (`Distrito.sanBorja` es solo un valor referencial y mostrarlo
+  /// haría aparecer "San Borja" en canchas que no están ahí). La dirección real
+  /// se muestra aparte. Puede quedar vacío: los llamadores deben tolerarlo.
+  String get zonaMostrable => barrio.trim();
 
   /// Deportes jugables en esta cancha, garantizando al menos el principal.
   /// Es la fuente de verdad para filtros/visibilidad (una loza multiuso aparece
