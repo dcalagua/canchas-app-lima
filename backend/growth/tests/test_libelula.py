@@ -93,6 +93,25 @@ def test_reconcilia_por_consulta(monkeypatch):
     assert client.get(f"/pagos/bo/deuda/{ident}").json()["pagado"] is True
 
 
+def test_recarga_acredita_saldo(monkeypatch):
+    """Una deuda tipo 'recarga' pagada acredita el saldo del dueño (una vez)."""
+    monkeypatch.setattr(libelula, "registrar_deuda", lambda **kw: {
+        "ok": True, "url_pasarela": "u", "id_transaccion": "TXRC", "qr_url": None})
+    monkeypatch.setattr(libelula, "consultar_por_identificador",
+                        lambda ident: {"ok": True, "pagado": True})
+    stores.saldos.clear()
+    ident = client.post("/pagos/bo/deuda", json={
+        "email": "duo@b.com", "monto_bs": 100, "tipo": "recarga",
+        "dueno_id": "Duo@B.com"}).json()["identificador"]
+    # Confirmar por callback → acredita 100 Bs = 10000 céntimos.
+    assert client.get("/pagos/bo/callback",
+                      params={"transaction_id": "TXRC"}).json()["ok"] is True
+    assert stores.saldo_centimos("duo@b.com") == 10000
+    # Reconfirmar no duplica (idempotente).
+    client.get("/pagos/bo/callback", params={"transaction_id": "TXRC"})
+    assert stores.saldo_centimos("duo@b.com") == 10000
+
+
 def test_snapshot_roundtrip():
     stores.libelula_deudas["abc"] = {
         "identificador": "abc", "id_transaccion": "T", "email": "x@y.com",

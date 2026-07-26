@@ -7,6 +7,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/input_formatos.dart';
 import '../widgets/marcas_pago.dart';
+import '../widgets/pago_libelula.dart';
 import '../widgets/pago_procesando.dart';
 import '../widgets/sesion_requerida.dart';
 import '../utils/moneda.dart';
@@ -61,10 +62,15 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
   /// dueño (histórico Perú).
   String get _mon => widget.pais?.moneda ?? appState.monedaSaldoSimbolo;
 
-  /// ¿La pasarela del país está integrada? Hoy sólo Culqi (Perú). Los demás
-  /// países muestran el aviso "próximamente" en vez del formulario de cobro.
+  /// ¿La pasarela del país está integrada? Perú (Culqi) y Bolivia (Libélula).
+  /// Los demás muestran el aviso "próximamente" en vez del formulario de cobro.
   bool get _pasarelaLista =>
-      widget.pais == null || widget.pais!.pasarela == 'culqi';
+      widget.pais == null ||
+      widget.pais!.pasarela == 'culqi' ||
+      widget.pais!.pasarela == 'libelula';
+
+  /// Bolivia: el cobro es hospedado (Libélula), no tokenización en la app.
+  bool get _esLibelula => widget.pais?.pasarela == 'libelula';
 
   @override
   void initState() {
@@ -94,6 +100,30 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
     _exp.dispose();
     _cvv.dispose();
     super.dispose();
+  }
+
+  /// Recarga por LIBÉLULA (Bolivia): pago hospedado en WebView. Al confirmarse,
+  /// el backend acredita el saldo (tipo 'recarga'); aquí re-sincronizamos.
+  Future<void> _pagarLibelula() async {
+    setState(() => _error = null);
+    if (_email.isEmpty) {
+      setState(() => _error = 'Inicia sesión para recargar.');
+      return;
+    }
+    final ok = await PagoLibelula.cobrar(
+      context,
+      monto: _monto,
+      concepto: 'Recarga de saldo Pichangol',
+      email: _email,
+      moneda: _mon,
+      tipo: 'recarga',
+      duenoId: widget.duenoId ?? _email, // billetera única: el correo del dueño
+    );
+    if (!mounted) return;
+    if (ok) {
+      await appState.sincronizarSaldo(); // el backend ya acreditó; refresca
+      if (mounted) Navigator.of(context).pop(_monto);
+    }
   }
 
   Future<void> _pagar() async {
@@ -191,6 +221,8 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
             )
           : !_pasarelaLista
               ? _pasarelaProximamente()
+              : _esLibelula
+              ? _formLibelula()
               : _cargando
           ? const Center(child: CircularProgressIndicator())
           : ListView(
@@ -275,6 +307,76 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
                 ),
               ],
             ),
+    );
+  }
+
+  /// Formulario de recarga para BOLIVIA (Libélula): elegir monto y pagar en la
+  /// pasarela hospedada (QR · tarjeta · Tigo Money) dentro de un WebView.
+  Widget _formLibelula() {
+    final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    return ListView(
+      padding: const EdgeInsets.all(18),
+      children: [
+        Text('¿Cuánto quieres recargar?',
+            style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            for (final m in _montos)
+              ChoiceChip(
+                label: Text('$_mon $m'),
+                selected: _monto == m,
+                selectedColor: lima,
+                labelStyle: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: _monto == m ? Colors.white : cs.onSurface),
+                onSelected: (_) => setState(() => _monto = m),
+              ),
+          ],
+        ),
+        const SizedBox(height: 22),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+              color: limaSuave, borderRadius: BorderRadius.circular(14)),
+          child: Row(
+            children: [
+              const Icon(Icons.lock_outline, color: bosque, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                    'Pagas de forma segura con ${widget.pais!.pasarelaNombre}. '
+                    'Se abre la pasarela y, al confirmarse, se acredita tu saldo.',
+                    style: const TextStyle(color: bosque, fontSize: 13)),
+              ),
+            ],
+          ),
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: 14),
+          Text(_error!,
+              style: const TextStyle(
+                  color: Color(0xFFC0392B), fontWeight: FontWeight.w600)),
+        ],
+        const SizedBox(height: 22),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            style: FilledButton.styleFrom(
+                backgroundColor: lima,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 15)),
+            onPressed: _pagarLibelula,
+            icon: const Icon(Icons.lock, size: 18),
+            label: Text('Pagar $_mon $_monto',
+                style: const TextStyle(
+                    fontWeight: FontWeight.w800, fontSize: 15)),
+          ),
+        ),
+      ],
     );
   }
 

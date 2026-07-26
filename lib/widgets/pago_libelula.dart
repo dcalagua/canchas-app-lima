@@ -20,15 +20,22 @@ class PagoLibelula {
     required String concepto,
     required String email,
     String moneda = 'Bs',
+    String tipo = '',
+    String ref = '',
+    String duenoId = '',
   }) async {
     final correo = (appState.usuario?.email ?? email).trim();
     final nombre = appState.usuario?.nombre ?? '';
-    // 1) Registrar la deuda en el backend (que llama a Libélula).
+    // 1) Registrar la deuda en el backend (que llama a Libélula). El [tipo]
+    //    'recarga' + [duenoId] hace que el backend acredite el saldo al pagarse.
     final r = await PagosService.crearDeudaBo(
       email: correo,
       montoBs: monto.toDouble(),
       concepto: concepto,
       nombre: nombre,
+      tipo: tipo,
+      ref: ref,
+      duenoId: duenoId,
     );
     if (!context.mounted) return false;
 

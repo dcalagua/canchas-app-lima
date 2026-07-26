@@ -265,13 +265,24 @@ def post_bo_deuda(req: DeudaBoReq) -> dict:
 
 
 def _marcar_pagada(ident: str) -> dict | None:
-    """Marca una deuda como pagada (idempotente). Devuelve la deuda o None."""
+    """Marca una deuda como pagada (idempotente). Si es una RECARGA de saldo,
+    acredita al dueño (una sola vez, guardado por el flag `pagado`)."""
     d = stores.libelula_deudas.get(ident)
     if not d:
         return None
     if not d.get("pagado"):
         d["pagado"] = True
         d["fecha_pago"] = _ahora_iso()
+        # Recarga de billetera: el saldo lo acredita el BACKEND (no el APK) al
+        # confirmarse el pago. Bolivianos en Bs (moneda BOB).
+        if d.get("tipo") == "recarga" and d.get("dueno_id"):
+            centimos = int(round(float(d.get("monto_bs") or 0) * 100))
+            if centimos > 0:
+                stores.acreditar(d["dueno_id"], centimos)
+                stores.registrar_pago(
+                    tipo="recarga", monto_centimos=centimos, moneda="BOB",
+                    estado="aprobado", dueno_id=d["dueno_id"],
+                    email=d.get("email", ""), concepto="Recarga (Libélula)")
     return d
 
 
