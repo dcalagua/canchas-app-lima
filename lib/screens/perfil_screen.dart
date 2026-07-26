@@ -25,9 +25,10 @@ class PerfilScreen extends StatelessWidget {
     final t = Theme.of(context).textTheme;
     return Scaffold(
       // Regla app: en pantallas anchas (tablet/horizontal) el contenido va
-      // CENTRADO con ancho máximo, nunca estirado de borde a borde.
+      // CENTRADO con ancho máximo, nunca estirado de borde a borde. Perfil es un
+      // menú de una columna → ancho contenido (no una cabecera verde enorme).
       body: AnchoTablet(
-        maxWidth: 600,
+        maxWidth: 480,
         child: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
