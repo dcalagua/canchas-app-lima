@@ -5,6 +5,7 @@ import '../services/avisos_service.dart';
 import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 import '../widgets/pago_tarjeta_sheet.dart';
 import 'chat_screen.dart';
 import 'login_google_sheet.dart';
@@ -82,27 +83,30 @@ class _ProductoDetalleScreenState extends State<ProductoDetalleScreen> {
     }
     // 2) Registra la venta: Pichangol se queda la comisión y le debe el neto al
     //    vendedor (id de venta = operación Culqi o compuesto, para idempotencia).
+    //    Es un paso de red tras el pago → preload de marca mientras confirma.
     final ventaId = operacion.isNotEmpty
         ? operacion
         : '${p.id}_${u.email}_${DateTime.now().millisecondsSinceEpoch}';
-    await PagosService.venta(
-      vendedorId: p.vendedorEmail.toLowerCase(),
-      montoSoles: p.precio,
-      ventaId: ventaId,
-      concepto: 'Venta: ${p.nombre}',
-      productoId: p.id,
-      productoNombre: p.nombre,
-      compradorEmail: u.email.toLowerCase(),
-      compradorNombre: u.nombre,
-      vendedorNombre: p.vendedorNombre,
-    );
-    // Avisa al vendedor que le compraron (push best-effort).
-    AvisosService.ventaNueva(
-      vendedorEmail: p.vendedorEmail,
-      compradorNombre: u.nombre,
-      producto: p.nombre,
-      montoTexto: p.precioTexto,
-    );
+    await conPreload(context, () async {
+      await PagosService.venta(
+        vendedorId: p.vendedorEmail.toLowerCase(),
+        montoSoles: p.precio,
+        ventaId: ventaId,
+        concepto: 'Venta: ${p.nombre}',
+        productoId: p.id,
+        productoNombre: p.nombre,
+        compradorEmail: u.email.toLowerCase(),
+        compradorNombre: u.nombre,
+        vendedorNombre: p.vendedorNombre,
+      );
+      // Avisa al vendedor que le compraron (push best-effort).
+      AvisosService.ventaNueva(
+        vendedorEmail: p.vendedorEmail,
+        compradorNombre: u.nombre,
+        producto: p.nombre,
+        montoTexto: p.precioTexto,
+      );
+    }, texto: 'Confirmando tu compra…');
     if (!mounted) return;
     setState(() => _comprando = false);
     await _dialogoOk();
@@ -290,13 +294,7 @@ class _ProductoDetalleScreenState extends State<ProductoDetalleScreen> {
                     style: FilledButton.styleFrom(
                         backgroundColor: lima, foregroundColor: Colors.white),
                     onPressed: (_comprando || p.agotado) ? null : _comprar,
-                    icon: _comprando
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white))
-                        : const Icon(Icons.shopping_bag_outlined),
+                    icon: const Icon(Icons.shopping_bag_outlined),
                     label: Text(
                         p.agotado
                             ? 'Agotado'
