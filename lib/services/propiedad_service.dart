@@ -43,17 +43,34 @@ class PropiedadService {
     }
   }
 
-  /// Verifica identidad por DNI con la regla ANTI-FRAUDE **1 DNI = 1 cuenta**.
-  /// Valida contra RENIEC y liga el DNI (solo su hash) al correo. Devuelve
-  /// {ok, nombre_completo, fecha_nacimiento} o {ok:false, error:'dni_en_uso'|...}.
+  /// Consulta la CÉDULA ecuatoriana (identidad) vía backend → CipherByte.
+  /// Devuelve {ok, nombre_completo, ...} o null si no se pudo.
+  static Future<Map<String, dynamic>?> consultarCedula(String cedula) async {
+    if (!disponible) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/propiedad/cedula/$cedula');
+      final resp = await http.get(uri, headers: _appHeaders())
+          .timeout(const Duration(seconds: 12));
+      if (resp.statusCode != 200) return null;
+      return Map<String, dynamic>.from(jsonDecode(resp.body) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Verifica identidad por documento con la regla ANTI-FRAUDE
+  /// **1 documento = 1 cuenta**. Valida contra el registro oficial del país
+  /// ([pais]: 'PE' → DNI/RENIEC; 'EC' → cédula) y liga el documento (solo su
+  /// hash) al correo. Devuelve {ok, nombre_completo, fecha_nacimiento} o
+  /// {ok:false, error:'dni_en_uso'|...}.
   static Future<Map<String, dynamic>?> verificarDni(
-      String dni, String email) async {
+      String dni, String email, {String pais = 'PE'}) async {
     if (!disponible) return null;
     try {
       final resp = await http
           .post(Uri.parse('$_baseUrl/propiedad/verificar-dni'),
               headers: _appHeaders(json: true),
-              body: jsonEncode({'dni': dni, 'email': email}))
+              body: jsonEncode({'dni': dni, 'email': email, 'pais': pais}))
           .timeout(const Duration(seconds: 12));
       if (resp.statusCode != 200) return null;
       return Map<String, dynamic>.from(jsonDecode(resp.body) as Map);

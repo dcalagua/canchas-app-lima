@@ -26,6 +26,14 @@ MARKETING_MODEL = os.getenv("MARKETING_MODEL", "claude-haiku-4-5-20251001")
 FACTILIZA_API_TOKEN = os.getenv("FACTILIZA_API_TOKEN", "")
 FACTILIZA_BASE_URL = os.getenv("FACTILIZA_BASE_URL", "https://api.factiliza.com/v1")
 
+# --- Cédula ECUADOR (CipherByte) -------------------------------------------
+# Consulta de la cédula ecuatoriana (identidad) para "Verificar identidad" en
+# Ecuador, espejo de Factiliza para Perú. El token va en el header `X-Api-Key`,
+# se lee aquí (NUNCA en el APK). Sin token, la consulta queda inactiva
+# (fail-safe) y el flujo sigue con validación humana.
+CIPHERBYTE_API_TOKEN = os.getenv("CIPHERBYTE_API_TOKEN", "")
+CIPHERBYTE_BASE_URL = os.getenv("CIPHERBYTE_BASE_URL", "https://gateway.cipherbyte.ec/api")
+
 # --- WhatsApp Cloud API (OTP de PROPIEDAD) ---------------------------------
 # Credenciales que se cargan como secrets en Railway tras seguir la guía
 # docs/whatsapp-cloud-api-setup.md. Si el token está vacío, el adapter corre en

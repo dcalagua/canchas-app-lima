@@ -93,6 +93,12 @@ def get_dni(dni: str) -> dict:
     return identidad.consultar_dni(dni)
 
 
+@router.get("/cedula/{cedula}", dependencies=_APP)
+def get_cedula(cedula: str) -> dict:
+    """Consulta la cédula ecuatoriana (CipherByte). Espejo de /dni para EC."""
+    return identidad.consultar_cedula(cedula)
+
+
 # Pimienta fija para el hash del DNI: no guardamos el número (Ley 29733), solo su
 # hash, y así podemos comprobar unicidad sin exponer el dato.
 _DNI_PEPPER = "pichangol-dni-v1"
@@ -105,24 +111,34 @@ def _dni_hash(dni: str) -> str:
 class VerificarDniReq(BaseModel):
     dni: str
     email: str
+    pais: str = "PE"  # 'PE' → DNI (Factiliza); 'EC' → cédula (CipherByte)
 
 
 @router.post("/verificar-dni", dependencies=_APP)
 def post_verificar_dni(req: VerificarDniReq) -> dict:
-    """Verifica identidad por DNI con la regla ANTI-FRAUDE **1 DNI = 1 cuenta**.
-    Valida contra RENIEC (Factiliza) y liga el DNI (solo su HASH) al correo. Si
-    ese DNI ya está verificado en OTRA cuenta, rechaza (`dni_en_uso`)."""
+    """Verifica identidad por documento con la regla ANTI-FRAUDE
+    **1 documento = 1 cuenta**. Valida contra el registro oficial del país
+    (Perú: DNI/RENIEC vía Factiliza; Ecuador: cédula vía CipherByte) y liga el
+    documento (solo su HASH) al correo. Si ese documento ya está verificado en
+    OTRA cuenta, rechaza (`dni_en_uso`)."""
     email = req.email.strip().lower()
     if not email:
         return {"ok": False, "error": "correo_requerido"}
-    data = identidad.consultar_dni(req.dni)
+    pais = (req.pais or "PE").strip().upper()
+    # Registro oficial según el país. Default Perú (compat. con clientes viejos).
+    if pais == "EC":
+        data = identidad.consultar_cedula(req.dni)
+    else:
+        data = identidad.consultar_dni(req.dni)
     if not data.get("ok"):
-        return data  # {ok: False, error: ...} (dni inválido / no encontrado)
+        return data  # {ok: False, error: ...} (documento inválido / no encontrado)
+    # Hash del NÚMERO (no guardamos el dato): DNI (8) y cédula (10) no colisionan;
+    # la regla "1 documento = 1 cuenta" vale entre países.
     h = _dni_hash(req.dni)
     dueno = stores.dni_verificados.get(h)
     if dueno and dueno != email:
         return {"ok": False, "error": "dni_en_uso"}
-    stores.dni_verificados[h] = email  # liga (o confirma) el DNI a esta cuenta
+    stores.dni_verificados[h] = email  # liga (o confirma) el documento a la cuenta
     return data  # ok + nombre_completo + fecha_nacimiento
 
 

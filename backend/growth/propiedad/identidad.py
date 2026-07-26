@@ -67,6 +67,94 @@ def consultar_dni(dni: str) -> dict:
     }
 
 
+# --- Cédula ECUADOR (CipherByte), espejo de consultar_dni ------------------
+def cedula_disponible() -> bool:
+    return bool(config.CIPHERBYTE_API_TOKEN)
+
+
+def _cedula_valida(c: str | None) -> bool:
+    return bool(c) and c.isdigit() and len(c) == 10
+
+
+def _primero(d: dict, claves: list[str]):
+    """Primer valor no vacío entre varias claves candidatas (la respuesta de
+    CipherByte puede nombrar los campos de distintas formas)."""
+    for k in claves:
+        v = d.get(k)
+        if v not in (None, ""):
+            return v
+    return None
+
+
+def consultar_cedula(cedula: str) -> dict:
+    """Consulta la cédula ecuatoriana (CipherByte). Devuelve {ok, cedula,
+    nombre_completo, nombres, apellidos, fecha_nacimiento} o {ok: False, error}.
+    Parseo DEFENSIVO: la respuesta puede venir anidada y con nombres de campo
+    variados; se prueban varias variantes. Nunca lanza."""
+    if not _cedula_valida(cedula):
+        return {"ok": False, "error": "cedula_invalida"}
+    if not cedula_disponible():
+        return {"ok": False, "error": "no_configurado"}
+
+    url = f"{config.CIPHERBYTE_BASE_URL}/cedula/{cedula}"
+    req = urllib.request.Request(
+        url,
+        headers={
+            "X-Api-Key": config.CIPHERBYTE_API_TOKEN,
+            "Accept": "application/json",
+        },
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": str(e)[:160]}
+
+    if not isinstance(payload, dict):
+        return {"ok": False, "error": "respuesta_invalida"}
+
+    # Bandera de éxito explícita (si viene y es negativa, corta).
+    exito = payload.get("success", payload.get("ok", payload.get("status")))
+    if exito is False or (isinstance(exito, str)
+                          and exito.lower() in ("false", "error", "0", "fail")):
+        return {"ok": False, "error": "no_encontrado"}
+
+    # Desanida el contenedor de datos si la respuesta lo trae.
+    data = payload
+    for cont in ("data", "result", "resultado", "persona", "informacion",
+                 "response", "datos"):
+        if isinstance(payload.get(cont), dict):
+            data = payload[cont]
+            break
+
+    nombres = _primero(data, ["nombres", "nombre", "names", "primer_nombre",
+                              "firstName", "first_name"])
+    apellidos = _primero(data, ["apellidos", "apellido", "lastName",
+                                "last_name", "surname"])
+    completo = _primero(data, ["nombre_completo", "nombreCompleto", "fullName",
+                               "full_name", "nombres_completos",
+                               "nombre_apellidos", "razon_social"])
+    if not completo:
+        completo = " ".join(x for x in [nombres, apellidos] if x) or None
+    if not completo:
+        # Sin nombre reconocible: trátalo como no encontrado (no rompas el flujo).
+        return {"ok": False, "error": "no_encontrado"}
+
+    fnac = _primero(data, ["fecha_nacimiento", "fechaNacimiento",
+                           "fechanacimiento", "fecha_de_nacimiento",
+                           "birthDate", "birth_date", "fecha_nac", "nacimiento"])
+    return {
+        "ok": True,
+        "cedula": cedula,
+        "nombre_completo": completo,
+        "nombres": nombres,
+        "apellidos": apellidos,
+        # Para calcular la EDAD (categorías Sub-N). El APK parsea el formato.
+        "fecha_nacimiento": fnac,
+    }
+
+
 def _ruc_valido(ruc: str | None) -> bool:
     return bool(ruc) and ruc.isdigit() and len(ruc) == 11
 

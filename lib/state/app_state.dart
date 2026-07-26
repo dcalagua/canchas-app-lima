@@ -3537,15 +3537,19 @@ class AppState extends ChangeNotifier {
       return (false, 'Servicio de verificación no disponible.');
     }
     final numero = dni.trim();
-    // Verifica contra RENIEC + regla "1 DNI = 1 cuenta" (anti-fraude).
-    final data = await PropiedadService.verificarDni(numero, u.email);
+    final doc = paisActual.docId; // 'DNI' (PE) · 'Cédula' (EC)
+    // Verifica contra el registro oficial del país + regla "1 documento = 1
+    // cuenta" (anti-fraude). El país decide la fuente (RENIEC/Factiliza o
+    // CipherByte).
+    final data = await PropiedadService.verificarDni(numero, u.email,
+        pais: paisActual.iso);
     if (data == null) {
       return (false, 'No pudimos conectar. Revisa tu conexión.');
     }
     if (data['ok'] != true) {
       if (data['error'] == 'dni_en_uso') {
         return (false,
-            'Ese DNI ya está verificado en otra cuenta. Cada persona verifica '
+            'Ese $doc ya está verificado en otra cuenta. Cada persona verifica '
             'una sola cuenta.');
       }
       return (false, 'Ese número no figura en el registro. Revísalo.');

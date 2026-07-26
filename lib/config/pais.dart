@@ -141,7 +141,7 @@ const Map<String, PaisConfig> paisesSoportados = {
     docId: 'Cédula',
     telLongitud: 9, // celular ecuatoriano sin el 0 inicial = 9 dígitos
     docLongitud: 10, // cédula ecuatoriana = 10 dígitos
-    consultaDoc: false,
+    consultaDoc: true, // consulta la cédula vía CipherByte (backend)
     geocodeHint: 'Ecuador',
     zonas: [
       'quito',

@@ -197,7 +197,11 @@ class _VerificarIdentidadScreenState extends State<VerificarIdentidadScreen> {
 
   // ── Camino OFICIAL: número de documento validado contra el registro ────────
   Widget _porNumero() {
-    final doc = paisActual.docId; // "DNI"
+    final doc = paisActual.docId; // "DNI" (PE) · "Cédula" (EC)
+    // Registro oficial de cada país (para el texto de confianza).
+    final registro = paisActual.iso == 'EC'
+        ? 'el Registro Civil'
+        : (paisActual.iso == 'PE' ? 'RENIEC' : 'el registro oficial');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -205,8 +209,8 @@ class _VerificarIdentidadScreenState extends State<VerificarIdentidadScreen> {
             style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
         const SizedBox(height: 6),
         Text(
-          'Validamos tu $doc contra el registro oficial (RENIEC). Es rápido y '
-          'da confianza a los dueños de cancha para reservar sin fricción.',
+          'Validamos tu $doc contra $registro. Es rápido y da confianza a los '
+          'dueños de cancha para reservar sin fricción.',
           style: TextStyle(color: textoTenue, height: 1.35),
         ),
         const SizedBox(height: 18),
