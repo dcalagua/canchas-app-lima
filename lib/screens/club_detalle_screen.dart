@@ -259,10 +259,16 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     // método ('online'/'cancha') + los servicios extra elegidos (árbitro…).
     final r = await _mostrarResumen(hora, base);
     if (r == null || !mounted) return;
-    final metodo = r.metodo;
+    final metodo = r.metodo; // 'online' | 'sena' | 'cancha'
     final extras = r.extras;
     // El jugador paga el precio de la cancha + los servicios extra que eligió.
     final total = base + extras.fold(0.0, (a, s) => a + s.precio);
+    // Seña anti no-show: % del precio de la cancha (sobre `base`, sin extras).
+    // Solo aplica si la cancha la exige y el jugador eligió pagar la seña.
+    final esSena = metodo == 'sena';
+    final senaMonto =
+        _cancha.senaPct > 0 ? (base * _cancha.senaPct / 100).round() : 0;
+    final mon = _cancha.monedaSimbolo;
     if (metodo == 'online') {
       // Pago con tarjeta/Yape (Culqi). Si el usuario cancela o el pago falla, no
       // se reserva. Si Culqi no está configurado, cae a la pasarela simulada.
@@ -271,7 +277,18 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         monto: total.round(),
         concepto: 'Reserva · ${_cancha.nombre} · $_dia $hora',
         email: appState.usuario?.email ?? '',
-        moneda: _cancha.monedaSimbolo,
+        moneda: mon,
+      );
+      if (!pagado || !mounted) return;
+    } else if (esSena) {
+      // El jugador ADELANTA la seña (Culqi). El resto lo paga en la cancha. Si
+      // cancela o falla el pago, no se reserva. La seña no es reembolsable.
+      final pagado = await PagoTarjeta.cobrar(
+        context,
+        monto: senaMonto,
+        concepto: 'Seña · ${_cancha.nombre} · $_dia $hora',
+        email: appState.usuario?.email ?? '',
+        moneda: mon,
       );
       if (!pagado || !mounted) return;
     }
@@ -285,8 +302,10 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         _cancha, _fechaIso, _dia, hora,
         deporte: _deporteEfectivo, extras: extras,
         // 'cancha' = efectivo (comisión del saldo del dueño); 'online' = el
-        // jugador pagó por la app (se registra la liquidación / neto al dueño).
-        cobro: metodo == 'cancha' ? 'efectivo' : 'online');
+        // jugador pagó todo por la app; 'sena' = adelantó la seña (resto en
+        // la cancha). Se registra la liquidación / neto al dueño.
+        cobro: metodo == 'cancha' ? 'efectivo' : metodo,
+        sena: esSena ? senaMonto : 0);
     if (!mounted) return;
     if (res == ResultadoReserva.ocupado) {
       setState(() => _hora = null); // libera selección; la grilla se refresca
@@ -306,9 +325,11 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         duration: const Duration(seconds: 5),
         content: Text(
             confirmada
-                ? (pagoOnline
-                    ? '✅ Pago OK · Reserva confirmada en ${_cancha.nombre} · $_dia $hora'
-                    : '✅ Reserva confirmada en ${_cancha.nombre} · $_dia $hora · pagas en la cancha')
+                ? (esSena
+                    ? '✅ Seña pagada · Reserva confirmada en ${_cancha.nombre} · $_dia $hora · paga $mon ${(total - senaMonto).toStringAsFixed(2)} en la cancha'
+                    : pagoOnline
+                        ? '✅ Pago OK · Reserva confirmada en ${_cancha.nombre} · $_dia $hora'
+                        : '✅ Reserva confirmada en ${_cancha.nombre} · $_dia $hora · pagas en la cancha')
                 : '⚠️ Guardamos tu reserva, pero no pudimos confirmarla con el '
                     'servidor. Otra persona podría tomar el mismo horario; '
                     'reconéctate para asegurarla.',
@@ -1056,6 +1077,15 @@ class _ResumenReservaState extends State<_ResumenReserva> {
   double get _totalFinal =>
       widget.total + _elegidos.fold(0.0, (a, s) => a + s.precio);
 
+  /// ¿Esta cancha exige seña por adelantado (anti no-show)?
+  bool get _exigeSena => cancha.exigeSena;
+
+  /// Monto de la seña: % del precio de la cancha (no incluye servicios extra).
+  int get _senaMonto => (widget.total * cancha.senaPct / 100).round();
+
+  /// Lo que el jugador paga en la cancha si adelanta la seña (total − seña).
+  double get _restoEnCancha => _totalFinal - _senaMonto;
+
   void _cerrar(String metodo) =>
       Navigator.of(context).pop((metodo: metodo, extras: _elegidos));
 
@@ -1132,6 +1162,69 @@ class _ResumenReservaState extends State<_ResumenReserva> {
                         fontWeight: FontWeight.w800, color: cs.primary)),
               ],
             ),
+            // Con SEÑA: desglose claro de cuánto adelanta hoy y cuánto en la
+            // cancha, con el aviso de que la seña no se devuelve.
+            if (_exigeSena) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: lima.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: lima.withOpacity(0.25)),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.shield_outlined, size: 18, color: pino),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                              'Seña ahora (asegura tu hora)',
+                              style: t.bodyMedium
+                                  ?.copyWith(fontWeight: FontWeight.w700)),
+                        ),
+                        Text('$mon ${_senaMonto.toDouble().toStringAsFixed(2)}',
+                            style: t.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w800, color: pino)),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        const SizedBox(width: 26),
+                        Expanded(
+                          child: Text('Resto en la cancha',
+                              style: t.bodyMedium
+                                  ?.copyWith(color: textoTenue)),
+                        ),
+                        Text('$mon ${_restoEnCancha.toStringAsFixed(2)}',
+                            style: t.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: textoTenue)),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.info_outline,
+                            size: 14, color: textoTenue),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                              'La seña no es reembolsable: si no llegas, se '
+                              'queda a favor de la cancha.',
+                              style: t.bodySmall?.copyWith(
+                                  color: textoTenue, height: 1.3)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -1143,6 +1236,7 @@ class _ResumenReservaState extends State<_ResumenReserva> {
               ],
             ),
             const SizedBox(height: 16),
+            // Botón principal: con seña, pagar la seña; sin seña, pagar todo.
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
@@ -1150,13 +1244,38 @@ class _ResumenReservaState extends State<_ResumenReserva> {
                     backgroundColor: lima,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 15)),
-                onPressed: () => _cerrar('online'),
+                onPressed: () => _cerrar(_exigeSena ? 'sena' : 'online'),
                 icon: const Icon(Icons.lock, size: 18),
-                label: const Text('Pagar ahora (Yape / Tarjeta)',
-                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                label: Text(
+                    _exigeSena
+                        ? 'Pagar seña $mon ${_senaMonto.toDouble().toStringAsFixed(2)} y reservar'
+                        : 'Pagar ahora (Yape / Tarjeta)',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800, fontSize: 15)),
               ),
             ),
-            if (widget.permiteEfectivo) ...[
+            // Con seña, ofrecemos también pagar TODO ahora (sin ir a la cancha).
+            if (_exigeSena) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                      foregroundColor: lima,
+                      side: BorderSide(color: lima.withOpacity(0.6)),
+                      padding: const EdgeInsets.symmetric(vertical: 14)),
+                  onPressed: () => _cerrar('online'),
+                  icon: const Icon(Icons.credit_card, size: 18),
+                  label: Text(
+                      'Pagar todo ahora ($mon ${_totalFinal.toStringAsFixed(2)})',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w800, fontSize: 14)),
+                ),
+              ),
+            ],
+            // Efectivo puro (sin adelanto) solo si NO hay seña y el dueño tiene
+            // saldo (así PCG cobra su comisión de ese saldo).
+            if (!_exigeSena && widget.permiteEfectivo) ...[
               const SizedBox(height: 10),
               SizedBox(
                 width: double.infinity,

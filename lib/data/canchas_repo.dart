@@ -160,6 +160,7 @@ class CanchasRepo {
           'servicios_extra':
               c.serviciosExtra.map((s) => s.toJson()).toList(),
         if (conAmenidades) 'descuento_valle': c.descuentoValle,
+        if (conAmenidades) 'sena_pct': c.senaPct,
         if (conAmenidades) 'barrio': c.barrio,
       };
 
@@ -200,6 +201,7 @@ class CanchasRepo {
         moneda: (r['moneda'] ?? '') as String,
         serviciosExtra: ServicioExtra.listaDe(r['servicios_extra']),
         descuentoValle: ((r['descuento_valle'] ?? 0) as num).toInt(),
+        senaPct: ((r['sena_pct'] ?? 0) as num).toInt(),
       );
 
   static Distrito _enumDistrito(String? s) {

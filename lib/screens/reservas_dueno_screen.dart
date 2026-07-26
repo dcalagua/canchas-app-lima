@@ -304,6 +304,25 @@ class _ReservaCard extends StatelessWidget {
                     color: Theme.of(context).colorScheme.onSurface,
                     fontWeight: FontWeight.w800)),
           ],
+          // Seña anti no-show: ya pagada por adelantado (online). El dueño cobra
+          // el resto en la cancha; si hay no-show, se queda con la seña.
+          if (reserva.sena > 0) ...[
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                const Icon(Icons.shield_outlined, size: 15, color: pino),
+                const SizedBox(width: 5),
+                Expanded(
+                  child: Text(
+                      noShow
+                          ? 'Seña ${reserva.monedaSimbolo} ${reserva.sena} a tu favor (no vino)'
+                          : 'Seña ${reserva.monedaSimbolo} ${reserva.sena} pagada · cobra ${reserva.monedaSimbolo} ${(reserva.totalConExtras - reserva.sena).toStringAsFixed(2)} en la cancha',
+                      style: t.bodySmall?.copyWith(
+                          color: pino, fontWeight: FontWeight.w700)),
+                ),
+              ],
+            ),
+          ],
           if (!noShow) ...[
             const SizedBox(height: 12),
             Row(
@@ -361,7 +380,8 @@ class _ReservaCard extends StatelessWidget {
         title: const Text('Marcar no-show'),
         content: Text(
             '¿El jugador ${reserva.jugador} no se presentó a su reserva de '
-            '${reserva.horaInicio}?'),
+            '${reserva.horaInicio}?'
+            '${reserva.sena > 0 ? '\n\nLa seña de ${reserva.monedaSimbolo} ${reserva.sena} queda a tu favor (no es reembolsable).' : ''}'),
         actions: [
           TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),

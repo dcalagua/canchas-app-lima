@@ -234,7 +234,9 @@ class _ReservaDestacada extends StatelessWidget {
                           ?.copyWith(color: textoTenueDe(context)),
                     ),
                     if (reserva.sena > 0)
-                      Text('Seña pagada ${reserva.monedaSimbolo}${reserva.sena}',
+                      Text(
+                          'Seña pagada ${reserva.monedaSimbolo}${reserva.sena} · '
+                          'resto ${reserva.monedaSimbolo}${(reserva.totalConExtras - reserva.sena).toStringAsFixed(2)} en la cancha',
                           style: t.bodySmall?.copyWith(
                               color: lima, fontWeight: FontWeight.w700)),
                   ],

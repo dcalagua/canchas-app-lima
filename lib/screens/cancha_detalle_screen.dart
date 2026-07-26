@@ -67,9 +67,14 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
     if (!mounted) return;
 
     final total = cancha.precioHora * cancha.duracionSlotMin / 60;
+    // Seña anti no-show: si la cancha la exige, el jugador adelanta un % y paga
+    // el resto en la cancha (no reembolsable). Manda sobre el efectivo.
+    final exigeSena = cancha.exigeSena;
+    final senaMonto = exigeSena ? cancha.senaDe(total.round()) : 0;
+    final resto = total - senaMonto;
     // El efectivo (pago en la cancha) SOLO se ofrece si el dueño tiene saldo:
     // así PCG cobra su comisión de ese saldo. Sin saldo, el jugador paga online.
-    final efectivo = appState.esDestacada(cancha);
+    final efectivo = !exigeSena && appState.esDestacada(cancha);
     final confirmar = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -88,10 +93,16 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
                     fontWeight: FontWeight.w700)),
             const SizedBox(height: 8),
             Text(
-              efectivo
-                  ? 'Reservas ahora y pagas en la cancha (efectivo). El club '
-                      'confirma tu pago al llegar.'
-                  : 'Pagas ahora por la app (Yape/tarjeta) para asegurar tu hora.',
+              exigeSena
+                  ? 'Adelantas una seña de ${cancha.monedaSimbolo} '
+                      '${senaMonto.toDouble().toStringAsFixed(2)} (Yape/tarjeta) para '
+                      'asegurar tu hora y pagas ${cancha.monedaSimbolo} '
+                      '${resto.toStringAsFixed(2)} en la cancha. La seña no es '
+                      'reembolsable.'
+                  : efectivo
+                      ? 'Reservas ahora y pagas en la cancha (efectivo). El club '
+                          'confirma tu pago al llegar.'
+                      : 'Pagas ahora por la app (Yape/tarjeta) para asegurar tu hora.',
               style: const TextStyle(fontSize: 12, color: Colors.grey),
             ),
           ],
@@ -113,9 +124,19 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
 
     final messenger = ScaffoldMessenger.of(context);
     final nav = Navigator.of(context);
-    // Sin saldo del dueño → el jugador paga online ANTES de reservar (ahí queda
-    // la comisión de PCG). Si cancela o falla el pago, no se reserva.
-    if (!efectivo) {
+    // Con seña → cobra la seña; sin saldo del dueño → el jugador paga TODO online
+    // ANTES de reservar (ahí queda la comisión de PCG). Si cancela o falla el
+    // pago, no se reserva.
+    if (exigeSena) {
+      final pagado = await PagoTarjeta.cobrar(
+        context,
+        monto: senaMonto,
+        concepto: 'Seña · ${cancha.nombre} · $_dia $hora',
+        email: appState.usuario?.email ?? '',
+        moneda: cancha.monedaSimbolo,
+      );
+      if (!pagado || !mounted) return;
+    } else if (!efectivo) {
       final pagado = await PagoTarjeta.cobrar(
         context,
         monto: total.round(),
@@ -127,9 +148,11 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
     }
     final res = await appState.agregarReservaJugador(
         cancha, _fechaIso, _dia, hora,
-        // Con saldo → efectivo (comisión del saldo); sin saldo → online (ya se
-        // cobró al jugador; se registra la liquidación / neto al dueño).
-        cobro: efectivo ? 'efectivo' : 'online');
+        // seña → adelanto (resto en la cancha); con saldo → efectivo (comisión
+        // del saldo); sin saldo → online (ya se cobró al jugador; liquidación al
+        // dueño).
+        cobro: exigeSena ? 'sena' : (efectivo ? 'efectivo' : 'online'),
+        sena: exigeSena ? senaMonto : 0);
     if (!mounted) return;
 
     if (res == ResultadoReserva.ocupado) {
@@ -144,8 +167,9 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
     nav.pop(); // vuelve al mapa
     messenger.showSnackBar(SnackBar(
       backgroundColor: verdeCancha,
-      content:
-          Text('✅ Reserva confirmada en ${cancha.nombre} · $_dia $hora'),
+      content: Text(exigeSena
+          ? '✅ Seña pagada · Reserva confirmada en ${cancha.nombre} · $_dia $hora · paga ${cancha.monedaSimbolo} ${resto.toStringAsFixed(2)} en la cancha'
+          : '✅ Reserva confirmada en ${cancha.nombre} · $_dia $hora'),
     ));
   }
 

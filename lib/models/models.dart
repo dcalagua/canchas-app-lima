@@ -152,6 +152,19 @@ class Cancha {
   /// y el jugador (más barato).
   final int descuentoValle;
 
+  /// SEÑA anti no-show: % del precio que el jugador paga por adelantado (Culqi)
+  /// al reservar para GARANTIZAR el slot. 0 = sin seña (reserva sin adelanto).
+  /// Es NO REEMBOLSABLE: si el jugador no se presenta, el dueño se queda la seña.
+  /// El resto se paga en la cancha. Configurable por el dueño en "Editar cancha".
+  final int senaPct;
+
+  /// ¿Esta cancha exige seña al reservar? (dueño la configuró > 0).
+  bool get exigeSena => senaPct > 0;
+
+  /// Monto de la seña (redondeado) para un precio de slot dado.
+  int senaDe(int precioSlot) =>
+      senaPct <= 0 ? 0 : (precioSlot * senaPct.clamp(0, 100) / 100).round();
+
   /// ¿Una hora ("07:00") cae en el valle (mañana)? Regla simple: antes de mediodía.
   static bool horaEsValle(String hora) => hora.compareTo('12:00') < 0;
 
@@ -189,6 +202,7 @@ class Cancha {
     this.moneda = '',
     this.serviciosExtra = const [],
     this.descuentoValle = 0,
+    this.senaPct = 0,
   });
 
   /// Símbolo de moneda de la cancha. La UBICACIÓN de la cancha es la fuente de
@@ -301,6 +315,7 @@ class Cancha {
     String? moneda,
     List<ServicioExtra>? serviciosExtra,
     int? descuentoValle,
+    int? senaPct,
   }) {
     return Cancha(
       id: id,
@@ -329,6 +344,7 @@ class Cancha {
       moneda: moneda ?? this.moneda,
       serviciosExtra: serviciosExtra ?? this.serviciosExtra,
       descuentoValle: descuentoValle ?? this.descuentoValle,
+      senaPct: senaPct ?? this.senaPct,
     );
   }
 
@@ -360,6 +376,7 @@ class Cancha {
         'moneda': moneda,
         'serviciosExtra': serviciosExtra.map((s) => s.toJson()).toList(),
         'descuentoValle': descuentoValle,
+        'senaPct': senaPct,
       };
 
   factory Cancha.fromJson(Map<String, dynamic> j) => Cancha(
@@ -398,6 +415,7 @@ class Cancha {
         moneda: (j['moneda'] ?? '') as String,
         serviciosExtra: ServicioExtra.listaDe(j['serviciosExtra']),
         descuentoValle: (j['descuentoValle'] ?? 0) as int,
+        senaPct: ((j['senaPct'] ?? 0) as num).toInt(),
       );
 }
 

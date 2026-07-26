@@ -272,6 +272,8 @@ class _FilaReserva extends StatelessWidget {
   Widget build(BuildContext context) {
     final r = reserva;
     final total = r.totalConExtras.round();
+    final sena = r.sena.clamp(0, total);
+    final resto = total - sena; // lo que falta cobrar en efectivo
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
@@ -307,10 +309,17 @@ class _FilaReserva extends StatelessWidget {
                         color: r.pagado ? lima : textoTenueDe(context),
                         fontWeight: FontWeight.w700,
                         fontSize: 12.5)),
+                // Seña pagada por adelantado: el dueño solo cobra el resto.
+                if (!r.pagado && sena > 0)
+                  Text('Seña $mon $sena pagada · cobra $mon $resto',
+                      style: const TextStyle(
+                          color: pino,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 11)),
               ],
             ),
           ),
-          // Marcar pagado / cobrado.
+          // Marcar pagado / cobrado (el resto en efectivo).
           r.pagado
               ? TextButton.icon(
                   onPressed: () => appState.marcarPago(r, pagado: false),
@@ -326,7 +335,7 @@ class _FilaReserva extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 8)),
                   onPressed: () => appState.marcarPago(r, pagado: true),
-                  child: const Text('Cobrar'),
+                  child: Text(sena > 0 ? 'Cobrar $mon $resto' : 'Cobrar'),
                 ),
         ],
       ),

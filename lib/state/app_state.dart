@@ -4589,7 +4589,8 @@ class AppState extends ChangeNotifier {
       Cancha cancha, String fecha, String diaLabel, String hora,
       {Deporte? deporte,
       List<ServicioExtra> extras = const [],
-      String cobro = 'ninguno'}) async {
+      String cobro = 'ninguno',
+      int sena = 0}) async {
     // Chequeo local rápido (doble toque / feedback inmediato sin conexión).
     // La agenda es COMPARTIDA entre deportes: se ocupa por (cancha, fecha, hora),
     // sin importar el deporte (es la misma superficie física).
@@ -4611,7 +4612,9 @@ class AppState extends ChangeNotifier {
       estado: EstadoReserva.confirmada,
       traidaPorApp: true,
       precio: precio,
-      sena: 0, // piloto: pago en cancha, sin seña con tarjeta
+      // Seña anti no-show cobrada por adelantado (Culqi). 0 = sin seña / pago
+      // total online / efectivo puro. No reembolsable: se queda con el dueño.
+      sena: sena.clamp(0, precio),
       usuario: usuario?.email ?? '',
       // Deporte elegido para este slot (loza multiuso). Default: el principal.
       deporte: (deporte ?? cancha.deporte).name,
@@ -4652,6 +4655,17 @@ class AppState extends ChangeNotifier {
           montoSoles: precioHoraEfectivo(cancha, fecha, hora),
           reservaId: reserva.id,
           concepto: 'Reserva online · $etiqueta',
+        );
+      } else if (cobro == 'sena') {
+        // El jugador adelantó la SEÑA por la app (Culqi). PCG toma su comisión de
+        // la seña y deja el neto "por recibir" del dueño; el resto lo cobra el
+        // dueño en efectivo en la cancha. Si hay no-show, la seña ya está cobrada
+        // → el dueño se la queda (no reembolsable).
+        PagosService.liquidacionOnline(
+          duenoId: cancha.dueno,
+          montoSoles: sena.toDouble(),
+          reservaId: reserva.id,
+          concepto: 'Seña · $etiqueta',
         );
       }
     }
@@ -4758,7 +4772,11 @@ class AppState extends ChangeNotifier {
       if (r.pagado) {
         cobrado += t;
       } else {
-        porCobrar += t;
+        // La seña ya se pagó por adelantado (online): cuenta como cobrada y solo
+        // queda por cobrar el resto en efectivo en la cancha.
+        final sena = r.sena.clamp(0, t);
+        cobrado += sena;
+        porCobrar += t - sena;
       }
     }
     final slots = misCanchas.fold<int>(0, (s, c) => s + c.horariosSlots().length);

@@ -42,6 +42,8 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
       TextEditingController(text: widget.cancha.precioHora.toStringAsFixed(2));
   // "Hora feliz": descuento (%) en horas valle (mañanas). 0 = sin descuento.
   late int _descuentoValle = widget.cancha.descuentoValle;
+  // Seña anti no-show: % del precio que se cobra por adelantado. 0 = sin seña.
+  late int _senaPct = widget.cancha.senaPct;
   final TextEditingController _ruc =
       TextEditingController(); // opcional, refuerza la verificación al reclamar
   final TextEditingController _contacto =
@@ -297,6 +299,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
           ServicioExtra(clave: e.key, precio: e.value),
       ],
       descuentoValle: _descuentoValle,
+      senaPct: _senaPct,
     );
     appState.actualizarCancha(actualizada);
     if (club != widget.cancha.club) {
@@ -581,6 +584,44 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
               return Text(
                   'En la mañana: ${widget.cancha.monedaSimbolo} ${conDesc.toStringAsFixed(2)} '
                   '(en vez de ${widget.cancha.monedaSimbolo} ${base.toStringAsFixed(2)}).',
+                  style: const TextStyle(
+                      color: lima, fontWeight: FontWeight.w700, fontSize: 12.5));
+            }),
+          ],
+          const SizedBox(height: 18),
+          const Text('Seña para asegurar la reserva (anti no-show)',
+              style: TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 2),
+          Text(
+              'Si la activas, el jugador paga por adelantado (Yape/tarjeta) un % '
+              'del precio para reservar; el resto lo paga en la cancha. La seña '
+              'NO es reembolsable: si no se presenta, te la quedas. 🛡️',
+              style: TextStyle(color: textoTenue, fontSize: 12)),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final s in const [0, 20, 30, 50])
+                ChoiceChip(
+                  label: Text(s == 0 ? 'Sin seña' : 'Seña $s%'),
+                  selected: _senaPct == s,
+                  onSelected: (_) => setState(() => _senaPct = s),
+                ),
+            ],
+          ),
+          if (_senaPct > 0) ...[
+            const SizedBox(height: 6),
+            Builder(builder: (context) {
+              final base = double.tryParse(
+                      _precio.text.trim().replaceAll(',', '.')) ??
+                  widget.cancha.precioHora;
+              final mon = widget.cancha.monedaSimbolo;
+              final sena = base * _senaPct / 100;
+              final resto = base - sena;
+              return Text(
+                  'En una hora de $mon ${base.toStringAsFixed(2)}: el jugador '
+                  'adelanta $mon ${sena.toStringAsFixed(2)} y paga '
+                  '$mon ${resto.toStringAsFixed(2)} en la cancha.',
                   style: const TextStyle(
                       color: lima, fontWeight: FontWeight.w700, fontSize: 12.5));
             }),
