@@ -651,10 +651,18 @@ class _HeaderMisCanchas extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final padTop = MediaQuery.of(context).padding.top;
+    // Celular apaisado (poca altura) → cabecera compacta para no comer pantalla.
+    final compacto = MediaQuery.of(context).size.height < 520;
+    final subtitulo = nCanchas == 0
+        ? 'Registra o reclama tu primer local'
+        : '$nLocales ${nLocales == 1 ? 'local' : 'locales'} · '
+            '$nCanchas ${nCanchas == 1 ? 'cancha' : 'canchas'}';
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.fromLTRB(
-          22, 18 + MediaQuery.of(context).padding.top, 22, 20),
+      padding: compacto
+          ? EdgeInsets.fromLTRB(20, 10 + padTop, 20, 12)
+          : EdgeInsets.fromLTRB(22, 18 + padTop, 22, 20),
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -667,16 +675,11 @@ class _HeaderMisCanchas extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Mis canchas',
-              style: t.headlineSmall
+              style: (compacto ? t.titleLarge : t.headlineSmall)
                   ?.copyWith(color: Colors.white, fontWeight: FontWeight.w700)),
           const SizedBox(height: 2),
-          Text(
-            nCanchas == 0
-                ? 'Registra o reclama tu primer local'
-                : '$nLocales ${nLocales == 1 ? 'local' : 'locales'} · '
-                    '$nCanchas ${nCanchas == 1 ? 'cancha' : 'canchas'}',
-            style: t.bodyMedium?.copyWith(color: Colors.white70),
-          ),
+          Text(subtitulo,
+              style: t.bodyMedium?.copyWith(color: Colors.white70)),
         ],
       ),
     );

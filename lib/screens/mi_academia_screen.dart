@@ -809,10 +809,15 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final padTop = MediaQuery.of(context).padding.top;
+    // Celular apaisado (poca altura) → cabecera compacta: menos padding, título
+    // más chico y saldo pegado, para que el banner no ocupe media pantalla.
+    final compacto = MediaQuery.of(context).size.height < 520;
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.fromLTRB(
-          22, 20 + MediaQuery.of(context).padding.top, 22, 22),
+      padding: compacto
+          ? EdgeInsets.fromLTRB(20, 10 + padTop, 20, 12)
+          : EdgeInsets.fromLTRB(22, 20 + padTop, 22, 22),
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -832,13 +837,14 @@ class _Header extends StatelessWidget {
                 decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(10)),
-                child: LogoAcademia(logoUrl: academia.logoUrl, size: 34),
+                child: LogoAcademia(
+                    logoUrl: academia.logoUrl, size: compacto ? 28 : 34),
               ),
               Expanded(
                 child: Text(academia.nombre,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: t.headlineSmall?.copyWith(
+                    style: (compacto ? t.titleLarge : t.headlineSmall)?.copyWith(
                         color: Colors.white, fontWeight: FontWeight.w800)),
               ),
               // En TABLET estas acciones viven en el rail lateral (AcademiaShell),
@@ -908,7 +914,7 @@ class _Header extends StatelessWidget {
                   style: t.bodyMedium?.copyWith(color: Colors.white70)),
             ],
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: compacto ? 10 : 14),
           _SaldoPill(academia: academia),
         ],
       ),

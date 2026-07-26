@@ -313,35 +313,80 @@ class _HeaderAgenda extends StatelessWidget {
     // Moneda del local (sus canchas comparten país).
     final moneda = canchas.isNotEmpty ? canchas.first.monedaSimbolo : 'S/';
 
+    final padTop = MediaQuery.of(context).padding.top;
+    // Poca altura (celular apaisado) → cabecera COMPACTA: KPIs a la derecha del
+    // título en vez de debajo, y menos padding. Así el banner no se come media
+    // pantalla y se ve la agenda. En retrato/tablet queda el layout amplio.
+    final compacto = MediaQuery.of(context).size.height < 520;
+
+    const deco = BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [lima, teal], // verde WhatsApp
+      ),
+      borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
+    );
+
+    final saludoW = Text(saludoTxt,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: t.bodySmall?.copyWith(color: Colors.white70));
+    final localW = Text(local,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: (compacto ? t.titleMedium : t.titleLarge)
+            ?.copyWith(color: Colors.white, fontWeight: FontWeight.w700));
+    final barrioW = Row(
+      children: [
+        const Icon(Icons.location_on, size: 13, color: Colors.white70),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(barrio,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: t.bodySmall?.copyWith(color: Colors.white70)),
+        ),
+      ],
+    );
+
+    if (compacto) {
+      return Container(
+        width: double.infinity,
+        padding: EdgeInsets.fromLTRB(20, 10 + padTop, 20, 12),
+        decoration: deco,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [saludoW, localW, const SizedBox(height: 2), barrioW],
+              ),
+            ),
+            const SizedBox(width: 14),
+            _MiniKpi('${delDia.length}', 'Reservas', ancho: 92),
+            const SizedBox(width: 8),
+            _MiniKpi('$ocupacion%', 'Ocupación', ancho: 96),
+            const SizedBox(width: 8),
+            _MiniKpi('$moneda$porCobrar', 'Por cobrar', accent: true, ancho: 108),
+          ],
+        ),
+      );
+    }
+
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.fromLTRB(
-          22, 18 + MediaQuery.of(context).padding.top, 22, 20),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [lima, teal], // verde WhatsApp
-        ),
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
-      ),
+      padding: EdgeInsets.fromLTRB(22, 18 + padTop, 22, 20),
+      decoration: deco,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(saludoTxt,
-              style: t.bodyMedium?.copyWith(color: Colors.white70)),
-          Text(local,
-              style: t.titleLarge
-                  ?.copyWith(color: Colors.white, fontWeight: FontWeight.w700)),
+          saludoW,
+          localW,
           const SizedBox(height: 4),
-          Row(
-            children: [
-              const Icon(Icons.location_on, size: 14, color: Colors.white70),
-              const SizedBox(width: 4),
-              Text(barrio,
-                  style: t.bodySmall?.copyWith(color: Colors.white70)),
-            ],
-          ),
+          barrioW,
           const SizedBox(height: 16),
           Row(
             children: [
@@ -359,33 +404,46 @@ class _HeaderAgenda extends StatelessWidget {
 }
 
 class _MiniKpi extends StatelessWidget {
-  const _MiniKpi(this.valor, this.label, {this.accent = false});
+  const _MiniKpi(this.valor, this.label, {this.accent = false, this.ancho});
   final String valor;
   final String label;
   final bool accent;
 
+  /// null = ocupa el ancho disponible (Expanded, layout vertical de retrato).
+  /// Con valor = ancho fijo (layout horizontal compacto, p. ej. celular apaisado
+  /// donde los KPIs van a la derecha del título y no debajo).
+  final double? ancho;
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(valor,
-                style: t.titleLarge?.copyWith(
-                    color: accent ? lima : Colors.white,
-                    fontWeight: FontWeight.w700)),
-            Text(label, style: t.bodySmall?.copyWith(color: Colors.white70)),
-          ],
-        ),
+    final compacto = ancho != null;
+    final card = Container(
+      padding: EdgeInsets.symmetric(
+          vertical: compacto ? 8 : 12, horizontal: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(valor,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: (compacto ? t.titleMedium : t.titleLarge)?.copyWith(
+                  color: accent ? lima : Colors.white,
+                  fontWeight: FontWeight.w700)),
+          Text(label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: t.bodySmall?.copyWith(
+                  color: Colors.white70, fontSize: compacto ? 11 : null)),
+        ],
       ),
     );
+    return ancho == null ? Expanded(child: card) : SizedBox(width: ancho, child: card);
   }
 }
 
