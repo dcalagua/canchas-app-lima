@@ -83,11 +83,11 @@ class _MisCanchasScreenState extends State<MisCanchasScreen> {
                       : ListView(
                           padding: const EdgeInsets.fromLTRB(18, 16, 18, 90),
                           children: [
+                            // ARRIBA lo del día: la caja de hoy y, enseguida, tus
+                            // canchas (lo de trabajo). El resumen del mes y el
+                            // "destacar" bajan a una sección plegable para no
+                            // robar espacio.
                             const _CajaHoyCard(),
-                            const SizedBox(height: 14),
-                            _GeneradoCard(canchas: canchas),
-                            const SizedBox(height: 14),
-                            const _DestacarCanchasCard(),
                             const SizedBox(height: 14),
                             if (hayPendientes) ...[
                               const _AvisoPendiente(),
@@ -111,6 +111,9 @@ class _MisCanchasScreenState extends State<MisCanchasScreen> {
                                 ],
                               if (multiPais) const SizedBox(height: 8),
                             ],
+                            const SizedBox(height: 4),
+                            // Secundario y plegable: resumen del mes + destacar.
+                            _SeccionMetricasMes(canchas: canchas),
                           ],
                         ),
                 ),
@@ -231,6 +234,37 @@ class _CajaHoyCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Sección PLEGABLE con el resumen del mes ("lo que Pichangol te generó") y el
+/// "destacar tus canchas" (upsell). Colapsada por defecto: no roba espacio a la
+/// caja del día ni a la lista de canchas (el contenido de trabajo va arriba).
+class _SeccionMetricasMes extends StatelessWidget {
+  const _SeccionMetricasMes({required this.canchas});
+  final List<Cancha> canchas;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        tilePadding: EdgeInsets.zero,
+        leading: Icon(Icons.insights_outlined, color: cs.primary),
+        title: const Text('Resumen del mes y destacar',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+        subtitle: const Text(
+            'Lo que te generó Pichangol y cómo destacar tus canchas',
+            style: TextStyle(fontSize: 12)),
+        childrenPadding: const EdgeInsets.only(top: 4, bottom: 6),
+        children: [
+          _GeneradoCard(canchas: canchas),
+          const SizedBox(height: 14),
+          const _DestacarCanchasCard(),
+        ],
       ),
     );
   }
