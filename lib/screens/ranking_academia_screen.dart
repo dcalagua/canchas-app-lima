@@ -6,6 +6,7 @@ import 'package:printing/printing.dart';
 import '../models/academia.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 import 'hazte_pro_screen.dart';
 
 /// CIRCUITO / RANKING interno de una academia (Fase 0 de Pichangol Circuito).
@@ -838,7 +839,9 @@ class _RegistrarResultadoSheetState extends State<_RegistrarResultadoSheet> {
       marcador: _marcador.text.trim(),
       sedeId: _sedeId,
     );
-    await appState.registrarPartido(ac.id, partido);
+    await conPreload(
+        context, () => appState.registrarPartido(ac.id, partido),
+        texto: 'Guardando…');
     if (!mounted) return;
     Navigator.of(context).pop();
     ScaffoldMessenger.of(context).showSnackBar(
@@ -936,13 +939,7 @@ class _RegistrarResultadoSheetState extends State<_RegistrarResultadoSheet> {
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 14)),
                 onPressed: _guardando ? null : _guardar,
-                child: _guardando
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2.4, color: Colors.white))
-                    : const Text('Guardar resultado'),
+                child: const Text('Guardar resultado'),
               ),
             ),
           ],

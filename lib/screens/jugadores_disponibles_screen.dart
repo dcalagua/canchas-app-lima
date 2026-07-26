@@ -429,14 +429,22 @@ class _UnirseSheetState extends State<_UnirseSheet> {
   }
 
   Future<void> _guardar() async {
+    if (_guardando) return;
     setState(() => _guardando = true);
-    final ok = await appState.unirseCircuito(
-      deporte: _deporte,
-      zona: _zona.trim(),
-      categoria: _categoria.trim(),
-    );
+    bool ok;
+    try {
+      ok = await conPreload(
+          context,
+          () => appState.unirseCircuito(
+                deporte: _deporte,
+                zona: _zona.trim(),
+                categoria: _categoria.trim(),
+              ),
+          texto: 'Guardando…');
+    } finally {
+      if (mounted) setState(() => _guardando = false);
+    }
     if (!mounted) return;
-    setState(() => _guardando = false);
     if (ok) {
       Navigator.of(context).pop(true);
     } else {
@@ -520,13 +528,7 @@ class _UnirseSheetState extends State<_UnirseSheet> {
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 15)),
               onPressed: _guardando ? null : _guardar,
-              child: _guardando
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2.4, color: Colors.white))
-                  : const Text('Guardar y aparecer'),
+              child: const Text('Guardar y aparecer'),
             ),
           ),
         ],

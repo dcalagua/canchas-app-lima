@@ -61,9 +61,19 @@ class _ConvocatoriaDetalleScreenState extends State<ConvocatoriaDetalleScreen> {
     final email = appState.usuario?.email;
     if (email == null || email.isEmpty) return;
     setState(() => _ocupado = true);
-    final r = await ConvocatoriasService.inscribir(
-        widget.convId, email, appState.usuario?.nombre ?? email);
-    setState(() => _ocupado = false);
+    Map<String, dynamic>? res;
+    try {
+      res = await conPreload(
+          context,
+          () => ConvocatoriasService.inscribir(
+              widget.convId, email, appState.usuario?.nombre ?? email),
+          texto: 'Anotándote…');
+    } finally {
+      if (mounted) setState(() => _ocupado = false);
+    }
+    if (!mounted) return;
+    // Copia a un final: Dart no promueve una variable asignada dentro de `try`.
+    final r = res;
     if (r == null || r['ok'] != true) {
       _aviso(_mensajeError(r), error: true);
       return;
@@ -371,12 +381,7 @@ class _AccionesJugador extends StatelessWidget {
     }
     return FilledButton.icon(
       onPressed: ocupado ? null : onAnotarme,
-      icon: ocupado
-          ? const SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2, color: lima))
-          : const Icon(Icons.how_to_reg),
+      icon: const Icon(Icons.how_to_reg),
       label: const Text('Anotarme'),
     );
   }

@@ -6,6 +6,7 @@ import '../services/avisos_service.dart';
 import '../services/retos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'cargando_pichangol.dart';
 
 /// Retos que se están enviando AHORA (clave = correo del retado). Es la guardia
 /// anti doble-clic: mientras un reto a ese jugador está en vuelo, se ignora
@@ -209,22 +210,7 @@ class _RetandoDialog extends StatelessWidget {
           RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: const Padding(
         padding: EdgeInsets.symmetric(horizontal: 28, vertical: 26),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: 46,
-              height: 46,
-              child: CircularProgressIndicator(strokeWidth: 3, color: lima),
-            ),
-            SizedBox(height: 16),
-            Text('Enviando reto…',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-            SizedBox(height: 4),
-            Text('Un momento',
-                style: TextStyle(color: textoTenue, fontSize: 12.5)),
-          ],
-        ),
+        child: CargandoPichangol(texto: 'Enviando reto…'),
       ),
     );
   }

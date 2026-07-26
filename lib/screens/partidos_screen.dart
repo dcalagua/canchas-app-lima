@@ -688,9 +688,14 @@ class _CrearPartidoSheetState extends State<_CrearPartidoSheet> {
       nota: _nota.text.trim(),
       creado: DateTime.now(),
     );
-    final ok = await PartidosRepo.crear(partido);
+    bool ok;
+    try {
+      ok = await conPreload(context, () => PartidosRepo.crear(partido),
+          texto: 'Publicando…');
+    } finally {
+      if (mounted) setState(() => _guardando = false);
+    }
     if (!mounted) return;
-    setState(() => _guardando = false);
     if (ok) {
       Navigator.of(context).pop(true);
     } else {
@@ -864,13 +869,7 @@ class _CrearPartidoSheetState extends State<_CrearPartidoSheet> {
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 15)),
                 onPressed: _guardando ? null : _publicar,
-                child: _guardando
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2.4, color: Colors.white))
-                    : const Text('Publicar partido'),
+                child: const Text('Publicar partido'),
               ),
             ),
           ],

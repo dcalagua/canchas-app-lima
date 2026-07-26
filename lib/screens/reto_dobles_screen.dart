@@ -129,13 +129,7 @@ class _RetoDoblesScreenState extends State<RetoDoblesScreen> {
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 15)),
               onPressed: (_listo && !_enviando) ? _enviar : null,
-              icon: _enviando
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
-                  : const Icon(Icons.sports_kabaddi),
+              icon: const Icon(Icons.sports_kabaddi),
               label: const Text('Enviar reto de dobles',
                   style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
             ),

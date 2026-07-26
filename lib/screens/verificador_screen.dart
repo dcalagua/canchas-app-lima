@@ -319,36 +319,45 @@ class _CapturaScreenState extends State<_CapturaScreen> {
       _msg = null;
     });
 
-    // Ubicación del sitio (GPS).
-    final pos = await LocationService.ubicacionActual();
-    if (pos == null) {
-      setState(() {
-        _enviando = false;
-        _msg = 'No pude obtener tu ubicación. Activa el GPS y reintenta.';
-      });
+    // Regla: la captura (GPS + sube fotos + envía al servidor) demora → preload.
+    String? errorLocal;
+    Map<String, dynamic>? res;
+    try {
+      res = await conPreload<Map<String, dynamic>?>(context, () async {
+        // Ubicación del sitio (GPS).
+        final pos = await LocationService.ubicacionActual();
+        if (pos == null) {
+          errorLocal = 'No pude obtener tu ubicación. Activa el GPS y reintenta.';
+          return null;
+        }
+        // Sube las fotos del sitio a Storage y manda sus URLs.
+        final ts = DateTime.now().millisecondsSinceEpoch;
+        final urls = <String>[];
+        for (var i = 0; i < _fotos.length; i++) {
+          final url = await CanchasRepo.subirFoto('verif', _fotos[i],
+              sufijo: '${widget.visita['id']}_${i}_$ts');
+          if (url != null) urls.add(url);
+        }
+        return GrowthService.captura(
+          vfId: (widget.visita['id'] as num).toInt(),
+          fotosGeoUrls: urls,
+          latSitio: pos.latitude,
+          lngSitio: pos.longitude,
+          firma: _firma.text.trim(),
+          observaciones: 'Verificado en sitio (${_fotos.length} fotos).',
+        );
+      }, texto: 'Enviando…');
+    } finally {
+      if (mounted) setState(() => _enviando = false);
+    }
+    if (!mounted) return;
+    // Copia a un final: Dart no promueve una variable asignada dentro de `try`.
+    final r = res;
+
+    if (errorLocal != null) {
+      setState(() => _msg = errorLocal);
       return;
     }
-
-    // Sube las fotos del sitio a Storage y manda sus URLs.
-    final ts = DateTime.now().millisecondsSinceEpoch;
-    final urls = <String>[];
-    for (var i = 0; i < _fotos.length; i++) {
-      final url = await CanchasRepo.subirFoto('verif', _fotos[i],
-          sufijo: '${widget.visita['id']}_${i}_$ts');
-      if (url != null) urls.add(url);
-    }
-
-    final r = await GrowthService.captura(
-      vfId: (widget.visita['id'] as num).toInt(),
-      fotosGeoUrls: urls,
-      latSitio: pos.latitude,
-      lngSitio: pos.longitude,
-      firma: _firma.text.trim(),
-      observaciones: 'Verificado en sitio (${_fotos.length} fotos).',
-    );
-    if (!mounted) return;
-    setState(() => _enviando = false);
-
     if (r == null) {
       setState(() => _msg = 'No se pudo enviar. Revisa tu conexión.');
       return;
@@ -422,14 +431,8 @@ class _CapturaScreenState extends State<_CapturaScreen> {
               style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 15)),
               onPressed: _enviando ? null : _confirmar,
-              icon: _enviando
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: lima))
-                  : const Icon(Icons.verified),
-              label: Text(_enviando ? 'Enviando…' : 'Confirmar y firmar'),
+              icon: const Icon(Icons.verified),
+              label: const Text('Confirmar y firmar'),
             ),
           ),
           const SizedBox(height: 14),

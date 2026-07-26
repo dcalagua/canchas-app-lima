@@ -608,14 +608,8 @@ class _ProximosPagosState extends State<_ProximosPagos> {
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 12)),
             onPressed: (_sel.isEmpty || _pagando) ? null : _pagar,
-            child: _pagando
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white))
-                : Text('Pagar ${widget.moneda} ${_totalSel.toStringAsFixed(2)}',
-                    style: const TextStyle(fontWeight: FontWeight.w800)),
+            child: Text('Pagar ${widget.moneda} ${_totalSel.toStringAsFixed(2)}',
+                style: const TextStyle(fontWeight: FontWeight.w800)),
           ),
         ),
       ],

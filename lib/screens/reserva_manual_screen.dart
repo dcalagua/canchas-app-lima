@@ -7,6 +7,7 @@ import '../data/reservas_repo.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 
 /// RESERVA MANUAL del dueño: registra la reserva de un cliente que llamó por
 /// teléfono/WhatsApp (digitaliza el cuaderno). Queda como `traidaPorApp: false`
@@ -151,20 +152,29 @@ class _ReservaManualScreenState extends State<ReservaManualScreen> {
       return;
     }
     final precio = int.tryParse(_precio.text.trim());
+    if (_guardando) return;
     setState(() => _guardando = true);
-    final res = await appState.agregarReservaManual(
-      c,
-      _isoFecha,
-      _diaLabel,
-      _hora!,
-      nombreCliente: _clienteNombre.isNotEmpty ? _clienteNombre : _clienteEmail,
-      telefono: _telefono.text,
-      clienteEmail: _clienteEmail,
-      pagado: _pagado,
-      precioOverride: precio,
-    );
+    ResultadoReserva res;
+    try {
+      res = await conPreload(
+          context,
+          () => appState.agregarReservaManual(
+                c,
+                _isoFecha,
+                _diaLabel,
+                _hora!,
+                nombreCliente:
+                    _clienteNombre.isNotEmpty ? _clienteNombre : _clienteEmail,
+                telefono: _telefono.text,
+                clienteEmail: _clienteEmail,
+                pagado: _pagado,
+                precioOverride: precio,
+              ),
+          texto: 'Registrando…');
+    } finally {
+      if (mounted) setState(() => _guardando = false);
+    }
     if (!mounted) return;
-    setState(() => _guardando = false);
     if (res == ResultadoReserva.ocupado) {
       _aviso('Esa hora ya está reservada. Elige otra.');
       setState(() => _hora = null);
@@ -317,15 +327,9 @@ class _ReservaManualScreenState extends State<ReservaManualScreen> {
                           borderRadius: BorderRadius.circular(14)),
                     ),
                     onPressed: _guardando ? null : _guardar,
-                    icon: _guardando
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white))
-                        : const Icon(Icons.check),
-                    label: Text(_guardando ? 'Guardando…' : 'Registrar reserva',
-                        style: const TextStyle(
+                    icon: const Icon(Icons.check),
+                    label: const Text('Registrar reserva',
+                        style: TextStyle(
                             fontWeight: FontWeight.w700, fontSize: 16)),
                   ),
                 ),
