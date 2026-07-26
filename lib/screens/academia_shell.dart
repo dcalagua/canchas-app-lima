@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../state/app_state.dart';
 import '../widgets/menu_lateral_scroll.dart';
 import 'asistencia_screen.dart';
+import 'billetera_negocio_screen.dart';
 import 'campeonatos_screen.dart';
 import 'chats_academia_screen.dart';
 import 'cobros_screen.dart';
@@ -51,6 +52,7 @@ class _AcademiaShellState extends State<AcademiaShell> {
           (Icons.insights_outlined, 'Reporte'),
           (Icons.campaign_outlined, 'Publicidad'),
           (Icons.edit_outlined, 'Editar'),
+          (Icons.account_balance_wallet_outlined, 'Billetera'),
         ];
         // El índice no puede quedar fuera de rango (p. ej. si cambia la lista).
         final idx = _index.clamp(0, items.length - 1);
@@ -85,8 +87,11 @@ class _AcademiaShellState extends State<AcademiaShell> {
                       AsistenciaScreen(academiaId: ac.id),
                       ReporteAcademiaScreen(academiaId: ac.id),
                       ServiciosScreen(
-                          negocio: appState.negocioServiciosDeAcademia(ac)),
+                          negocio: appState.negocioServiciosDeAcademia(ac),
+                          mostrarBilleteraEnAppBar: false),
                       CrearAcademiaScreen(academia: ac),
+                      BilleteraNegocioScreen(
+                          negocio: appState.negocioServiciosDeAcademia(ac)),
                     ],
                   ),
                 ),
