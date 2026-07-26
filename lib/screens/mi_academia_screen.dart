@@ -63,29 +63,11 @@ class MiAcademiaScreen extends StatelessWidget {
               padding: EdgeInsets.zero,
               children: [
               _Header(academia: ac),
-              // En tablet (ancho) las dos tarjetas van lado a lado; en móvil,
-              // apiladas. Aprovecha el ancho sin estirar cada tarjeta.
-              LayoutBuilder(builder: (context, cons) {
-                final codigo = _CodigoCard(academia: ac);
-                final destacar = _DestacarCard(academia: ac);
-                if (cons.maxWidth >= 680) {
-                  // IntrinsicHeight + stretch: las dos tarjetas quedan del MISMO
-                  // alto (congruentes), aunque una tenga más contenido.
-                  return IntrinsicHeight(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Expanded(child: codigo),
-                        Expanded(child: destacar),
-                      ],
-                    ),
-                  );
-                }
-                return Column(children: [codigo, destacar]);
-              }),
-              _AccesoRanking(academiaId: ac.id),
+              // ARRIBA lo del día a día del profe: la PLATA (por cobrar/vencido)
+              // y sus ALUMNOS. El código/nivel/ranking bajan a una sección
+              // plegable para no robar visibilidad (antes tapaban lo importante).
               Padding(
-                padding: const EdgeInsets.fromLTRB(18, 16, 18, 8),
+                padding: const EdgeInsets.fromLTRB(18, 14, 18, 8),
                 child: Row(
                   children: [
                     Expanded(
@@ -132,6 +114,43 @@ class MiAcademiaScreen extends StatelessWidget {
               ),
               _RosterAlumnos(academia: ac),
               _SeccionInvitaciones(academia: ac),
+              // Secundario y PLEGABLE: compartir código, nivel/destacar y
+              // ranking. Colapsado por defecto → no roba espacio a lo importante.
+              Theme(
+                data: Theme.of(context)
+                    .copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  tilePadding: const EdgeInsets.symmetric(horizontal: 18),
+                  leading: Icon(Icons.ios_share,
+                      color: Theme.of(context).colorScheme.primary),
+                  title: const Text('Compartir código · Nivel · Ranking',
+                      style:
+                          TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5)),
+                  subtitle: const Text(
+                      'Invita alumnos con tu código y sube tu visibilidad',
+                      style: TextStyle(fontSize: 12)),
+                  children: [
+                    // En tablet las dos tarjetas van lado a lado (mismo alto).
+                    LayoutBuilder(builder: (context, cons) {
+                      final codigo = _CodigoCard(academia: ac);
+                      final destacar = _DestacarCard(academia: ac);
+                      if (cons.maxWidth >= 680) {
+                        return IntrinsicHeight(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Expanded(child: codigo),
+                              Expanded(child: destacar),
+                            ],
+                          ),
+                        );
+                      }
+                      return Column(children: [codigo, destacar]);
+                    }),
+                    _AccesoRanking(academiaId: ac.id),
+                  ],
+                ),
+              ),
               const SizedBox(height: 30),
             ],
             ),
