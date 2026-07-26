@@ -45,30 +45,74 @@ class _ChatsAcademiaScreenState extends State<ChatsAcademiaScreen> {
     });
   }
 
+  // Tablet: la lista de conversaciones se puede colapsar para dar más ancho al
+  // chat. Cabecera verde igual a la del chat → alineadas (estilo WhatsApp Web).
+  bool _listaColapsada = false;
+
+  Color _headerBg(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF1F2C34)
+          : const Color(0xFF008069);
+
+  /// Cabecera del panel MASTER (lista): en tablet trae el botón de COLAPSAR; en
+  /// móvil, el de volver. Misma altura/color que la cabecera del chat.
+  Widget _headerMaster(BuildContext context, {required bool colapsable}) {
+    return Material(
+      color: _headerBg(context),
+      child: SizedBox(
+        height: kToolbarHeight,
+        child: Row(children: [
+          IconButton(
+            tooltip: colapsable ? 'Ocultar lista' : 'Volver',
+            icon: Icon(colapsable ? Icons.chevron_left : Icons.arrow_back,
+                color: Colors.white),
+            onPressed: colapsable
+                ? () => setState(() => _listaColapsada = true)
+                : () => Navigator.of(context).maybePop(),
+          ),
+          const Text('Mensajes',
+              style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 20)),
+        ]),
+      ),
+    );
+  }
+
+  Widget _avisoConHeader(String texto) => Column(children: [
+        _headerMaster(context, colapsable: false),
+        Expanded(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(28),
+              child: Text(texto,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: textoTenue)),
+            ),
+          ),
+        ),
+      ]);
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Mensajes')),
-      body: MensajesRepo.disponible
-          ? StreamBuilder<List<Mensaje>>(
-              stream: MensajesRepo.streamAcademia(widget.academiaId),
-              builder: (context, snap) {
-                final msgs = snap.data ?? const <Mensaje>[];
-                return ListenableBuilder(
-                  listenable: appState,
-                  builder: (context, _) => _cuerpo(context, msgs),
-                );
-              },
-            )
-          : const Center(
-              child: Padding(
-                padding: EdgeInsets.all(28),
-                child: Text(
-                    'El chat necesita conexión con el servidor. Intenta más tarde.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: textoTenue)),
-              ),
-            ),
+      body: SafeArea(
+        bottom: false,
+        child: MensajesRepo.disponible
+            ? StreamBuilder<List<Mensaje>>(
+                stream: MensajesRepo.streamAcademia(widget.academiaId),
+                builder: (context, snap) {
+                  final msgs = snap.data ?? const <Mensaje>[];
+                  return ListenableBuilder(
+                    listenable: appState,
+                    builder: (context, _) => _cuerpo(context, msgs),
+                  );
+                },
+              )
+            : _avisoConHeader(
+                'El chat necesita conexión con el servidor. Intenta más tarde.'),
+      ),
     );
   }
 
@@ -104,16 +148,9 @@ class _ChatsAcademiaScreenState extends State<ChatsAcademiaScreen> {
     _pedirPerfiles(cuentas.keys);
 
     if (cuentas.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(28),
-          child: Text(
-              'Aún no tienes alumnos que usen la app. Invítalos por correo o '
-              'con tu código y podrás chatear con ellos aquí.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: textoTenue)),
-        ),
-      );
+      return _avisoConHeader(
+          'Aún no tienes alumnos que usen la app. Invítalos por correo o con tu '
+          'código y podrás chatear con ellos aquí.');
     }
 
     // Último mensaje por hilo.
@@ -146,12 +183,43 @@ class _ChatsAcademiaScreenState extends State<ChatsAcademiaScreen> {
         seleccion: ancho ? _hiloSel : null,
         onTap: (f) => _abrir(context, f, ancho),
       );
-      if (!ancho) return lista;
+      // Móvil: solo la lista, con su cabecera.
+      if (!ancho) {
+        return Column(children: [
+          _headerMaster(context, colapsable: false),
+          Expanded(child: lista),
+        ]);
+      }
+      // Tablet: master-detail con lista COLAPSABLE y cabeceras alineadas.
       return Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SizedBox(width: 340, child: lista),
-          const VerticalDivider(width: 1),
+          if (!_listaColapsada) ...[
+            SizedBox(
+              width: 340,
+              child: Column(children: [
+                _headerMaster(context, colapsable: true),
+                Expanded(child: lista),
+              ]),
+            ),
+            const VerticalDivider(width: 1),
+          ] else
+            Column(children: [
+              Material(
+                color: _headerBg(context),
+                child: SizedBox(
+                  height: kToolbarHeight,
+                  width: 48,
+                  child: IconButton(
+                    tooltip: 'Mostrar conversaciones',
+                    icon:
+                        const Icon(Icons.chevron_right, color: Colors.white),
+                    onPressed: () => setState(() => _listaColapsada = false),
+                  ),
+                ),
+              ),
+              const Expanded(child: SizedBox(width: 48)),
+            ]),
           Expanded(child: _panelDetalle()),
         ],
       );
