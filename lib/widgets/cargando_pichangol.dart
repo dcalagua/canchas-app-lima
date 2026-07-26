@@ -1,11 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
 import 'marca.dart';
 
 /// Loader de marca (mini-splash) para los estados de PRELOAD: en vez de un
-/// spinner pelado, muestra la pelota de Pichangol rebotando + el wordmark +
-/// "Cargando…", igual que el splash inicial. Reutilizable en cualquier pantalla.
+/// spinner pelado, muestra la pelota de Pichangol rebotando y CAMBIANDO de
+/// deporte (fútbol, tenis, básquet, vóley…) + el wordmark + "Cargando…", igual
+/// que el splash inicial. Reutilizable en cualquier pantalla.
 class CargandoPichangol extends StatefulWidget {
   const CargandoPichangol({
     super.key,
@@ -25,12 +28,32 @@ class CargandoPichangol extends StatefulWidget {
 
 class _CargandoPichangolState extends State<CargandoPichangol>
     with SingleTickerProviderStateMixin {
+  // Deportes que va rotando la pelota (como en el splash).
+  static const _deportes = <IconData>[
+    Icons.sports_soccer,
+    Icons.sports_tennis,
+    Icons.sports_basketball,
+    Icons.sports_volleyball,
+    Icons.sports_baseball,
+  ];
+  int _i = 0;
+  Timer? _ciclo;
+
   late final AnimationController _rebote = AnimationController(
       vsync: this, duration: const Duration(milliseconds: 560))
     ..repeat(reverse: true);
 
   @override
+  void initState() {
+    super.initState();
+    _ciclo = Timer.periodic(const Duration(milliseconds: 520), (_) {
+      if (mounted) setState(() => _i = (_i + 1) % _deportes.length);
+    });
+  }
+
+  @override
   void dispose() {
+    _ciclo?.cancel();
     _rebote.dispose();
     super.dispose();
   }
@@ -41,7 +64,7 @@ class _CargandoPichangolState extends State<CargandoPichangol>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Pelota lima que rebota (como en el splash).
+          // Pelota lima que rebota y cambia de deporte (como en el splash).
           AnimatedBuilder(
             animation: _rebote,
             builder: (context, child) {
@@ -61,8 +84,21 @@ class _CargandoPichangolState extends State<CargandoPichangol>
                       offset: Offset(0, 8)),
                 ],
               ),
-              child: const Icon(Icons.sports_soccer,
-                  color: Colors.white, size: 38),
+              child: Center(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 280),
+                  transitionBuilder: (child, anim) => ScaleTransition(
+                    scale: anim,
+                    child: FadeTransition(opacity: anim, child: child),
+                  ),
+                  child: Icon(
+                    _deportes[_i],
+                    key: ValueKey(_i),
+                    color: Colors.white,
+                    size: 38,
+                  ),
+                ),
+              ),
             ),
           ),
           if (widget.conMarca) ...[
