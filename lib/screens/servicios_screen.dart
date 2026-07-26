@@ -11,7 +11,7 @@ import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
-import 'billetera_negocio_screen.dart';
+import '../widgets/responsive.dart';
 import 'conectar_redes_screen.dart';
 import 'cuenta_screen.dart';
 import 'recargar_saldo_screen.dart';
@@ -410,7 +410,11 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
           : RefreshIndicator(
               onRefresh: _cargar,
               color: lima,
-              child: ListView(
+              // Centra el contenido en tablet (ancho máx.) para que las tarjetas
+              // no se estiren a todo lo ancho; en móvil no cambia nada.
+              child: AnchoTablet(
+                maxWidth: 640,
+                child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 30),
                 children: [
                   const Text('Impulsa tu negocio',
@@ -421,28 +425,8 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
                       'Contrata solo lo que necesitas. Se cobra a tu billetera '
                       'cada mes; cancela cuando quieras.',
                       style: TextStyle(color: textoTenue, fontSize: 13)),
-                  const SizedBox(height: 12),
-                  // Método de pago con el que se RENUEVAN los servicios cada mes.
-                  Material(
-                    color: Theme.of(context).colorScheme.surface,
-                    borderRadius: BorderRadius.circular(14),
-                    child: ListTile(
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          side: const BorderSide(color: trazo)),
-                      leading: const CircleAvatar(
-                          backgroundColor: limaSuave,
-                          child: Icon(Icons.credit_card, color: bosque)),
-                      title: const Text('Método de pago de servicios',
-                          style: TextStyle(fontWeight: FontWeight.w700)),
-                      subtitle: const Text(
-                          'Tarjeta para la renovación automática mensual'),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) =>
-                              BilleteraNegocioScreen(negocio: widget.negocio))),
-                    ),
-                  ),
+                  // El método de pago de los servicios ya no va aquí: se maneja
+                  // desde la billetera (mismo módulo de saldo/movimientos).
                   const SizedBox(height: 14),
                   if (_planes == null)
                     const Padding(
@@ -453,6 +437,7 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
                   else
                     for (final p in _planes!) _addonCard(p),
                 ],
+                ),
               ),
             ),
     );
