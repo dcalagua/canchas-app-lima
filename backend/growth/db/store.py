@@ -483,6 +483,11 @@ class Stores:
         # PICHANGOL PRO: membresía mensual del jugador. email -> {hasta: iso,
         # ultimo_cobro: iso}. Se debita de la billetera única (saldo del email).
         self.membresias_pro: dict[str, dict] = {}
+        # LIBÉLULA (Bolivia): deudas registradas para cobro. identificador ->
+        # {identificador, id_transaccion, email, monto_bs, concepto, pagado,
+        # fecha_pago, tipo, ref, dueno_id, creado_en}. La app la crea (pendiente),
+        # el callback la marca pagada; sobrevive reinicios vía snapshot.
+        self.libelula_deudas: dict[str, dict] = {}
         self._idem: dict[tuple[str, str], dict] = {}
         self._ids: dict[str, int] = {}
 
@@ -808,6 +813,8 @@ class Stores:
                 k: dict(v) for k, v in self.suscripciones_alumno.items()},
             "membresias_pro": {
                 k: dict(v) for k, v in self.membresias_pro.items()},
+            "libelula_deudas": {
+                k: dict(v) for k, v in self.libelula_deudas.items()},
             "jugadores_circuito": {
                 k: dict(v) for k, v in self.jugadores_circuito.items()},
             "ranking_snapshot": dict(self.ranking_snapshot),
@@ -869,6 +876,9 @@ class Stores:
         }
         self.membresias_pro = {
             k: dict(v) for k, v in (data.get("membresias_pro") or {}).items()
+        }
+        self.libelula_deudas = {
+            k: dict(v) for k, v in (data.get("libelula_deudas") or {}).items()
         }
         self.jugadores_circuito = {
             k: dict(v) for k, v in (data.get("jugadores_circuito") or {}).items()

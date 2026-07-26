@@ -16,6 +16,7 @@ La llave secreta vive sólo en el backend. Los POST del APK exigen X-App-Key
 from __future__ import annotations
 
 import html as _html
+import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -26,6 +27,7 @@ import config
 from db.store import stores
 
 from . import culqi
+from . import libelula
 
 router = APIRouter(prefix="/pagos", tags=["pagos"])
 
@@ -196,6 +198,131 @@ def get_checkout(amount: int, email: str, title: str = "Pichangol",
 </script>
 </body></html>"""
     # No cachear (la página lleva parámetros del cobro).
+    return HTMLResponse(content=page, headers={"Cache-Control": "no-store"})
+
+
+# ── LIBÉLULA (Bolivia): registrar deuda → pagar en la pasarela → callback ─────
+class DeudaBoReq(BaseModel):
+    email: str
+    monto_bs: float
+    concepto: str = "Pago Pichangol"
+    nombre: str = ""
+    apellido: str = ""
+    tipo: str = ""       # reserva | sena | matricula | producto | pro | recarga
+    ref: str = ""        # id de la reserva/matrícula/… (trazabilidad)
+    dueno_id: str = ""   # a quién se liquidará (opcional)
+
+
+def _ahora_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+@router.get("/bo/config", dependencies=_APP)
+def get_bo_config() -> dict:
+    """¿Está activa la pasarela de Bolivia? (el APK decide si puede cobrar)."""
+    return {"disponible": libelula.disponible(), "moneda": "BOB"}
+
+
+@router.post("/bo/deuda", dependencies=_APP)
+def post_bo_deuda(req: DeudaBoReq) -> dict:
+    """Registra una deuda en Libélula y devuelve la URL de la pasarela donde el
+    APK (WebView) manda a pagar. Guarda la deuda como PENDIENTE."""
+    if not libelula.disponible():
+        return {"ok": False, "error": "no_configurado"}
+    email = (req.email or "").strip().lower()
+    if not email:
+        return {"ok": False, "error": "correo_requerido"}
+    ident = uuid.uuid4().hex
+    base = (config.PUBLIC_BASE_URL or "").rstrip("/")
+    callback = f"{base}/pagos/bo/callback" if base else ""
+    retorno = f"{base}/pagos/bo/retorno?id={ident}" if base else ""
+    r = libelula.registrar_deuda(
+        identificador=ident, email=email, monto_bs=req.monto_bs,
+        concepto=req.concepto, callback_url=callback, url_retorno=retorno,
+        nombre=req.nombre, apellido=req.apellido)
+    if not r.get("ok"):
+        return r
+    stores.libelula_deudas[ident] = {
+        "identificador": ident,
+        "id_transaccion": r.get("id_transaccion"),
+        "email": email,
+        "monto_bs": round(float(req.monto_bs), 2),
+        "concepto": req.concepto,
+        "tipo": req.tipo,
+        "ref": req.ref,
+        "dueno_id": (req.dueno_id or "").strip().lower(),
+        "pagado": False,
+        "fecha_pago": None,
+        "creado_en": _ahora_iso(),
+    }
+    return {
+        "ok": True,
+        "identificador": ident,
+        "url_pasarela": r.get("url_pasarela"),
+        "qr_url": r.get("qr_url"),
+        "retorno": retorno,
+    }
+
+
+def _marcar_pagada(ident: str) -> dict | None:
+    """Marca una deuda como pagada (idempotente). Devuelve la deuda o None."""
+    d = stores.libelula_deudas.get(ident)
+    if not d:
+        return None
+    if not d.get("pagado"):
+        d["pagado"] = True
+        d["fecha_pago"] = _ahora_iso()
+    return d
+
+
+@router.api_route("/bo/callback", methods=["GET", "POST"])
+def bo_callback(transaction_id: str = "") -> dict:
+    """PAGO EXITOSO de Libélula (GET con ?transaction_id=<id_transaccion>). Antes
+    de marcar pagado se VERIFICA con Libélula (consultar por identificador), para
+    que un GET falso no confirme un pago. Público (lo llama Libélula)."""
+    tx = (transaction_id or "").strip()
+    if not tx:
+        return {"ok": False}
+    ident = None
+    for k, d in stores.libelula_deudas.items():
+        if str(d.get("id_transaccion")) == tx:
+            ident = k
+            break
+    if not ident:
+        return {"ok": False}
+    est = libelula.consultar_por_identificador(ident)
+    if est.get("ok") and est.get("pagado"):
+        _marcar_pagada(ident)
+        return {"ok": True}
+    return {"ok": False}
+
+
+@router.get("/bo/deuda/{identificador}", dependencies=_APP)
+def get_bo_deuda(identificador: str) -> dict:
+    """Estado de una deuda (el APK consulta si ya se pagó). Si sigue pendiente
+    localmente, RECONCILIA con Libélula (por si el callback no llegó)."""
+    d = stores.libelula_deudas.get(identificador)
+    if not d:
+        return {"ok": False, "error": "no_encontrada"}
+    if not d.get("pagado"):
+        est = libelula.consultar_por_identificador(identificador)
+        if est.get("ok") and est.get("pagado"):
+            _marcar_pagada(identificador)
+    return {"ok": True, "pagado": bool(d.get("pagado")),
+            "monto_bs": d.get("monto_bs"), "concepto": d.get("concepto")}
+
+
+@router.get("/bo/retorno", response_class=HTMLResponse)
+def bo_retorno(id: str = "") -> HTMLResponse:
+    """Página a la que Libélula devuelve al cliente tras pagar. El WebView del
+    APK la detecta y cierra confirmando; si abrió en el navegador, muestra un
+    mensaje claro para volver a la app."""
+    page = ("<!doctype html><meta charset=utf-8>"
+            "<meta name=viewport content='width=device-width,initial-scale=1'>"
+            "<title>Pago Pichangol</title>"
+            "<div style='font-family:system-ui;text-align:center;padding:44px;color:#14463A'>"
+            "<h2>¡Pago recibido! ✅</h2>"
+            "<p>Ya puedes volver a Pichangol.</p></div>")
     return HTMLResponse(content=page, headers={"Cache-Control": "no-store"})
 
 

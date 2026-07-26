@@ -176,6 +176,15 @@ CULQI_WEBHOOK_TOKEN = os.getenv("CULQI_WEBHOOK_TOKEN", "")
 COMISION_PORC = float(os.getenv("COMISION_PORC", "5"))
 COMISION_MIN_SOLES = float(os.getenv("COMISION_MIN_SOLES", "2"))
 
+# --- Libélula (pasarela de pagos de BOLIVIA: QR · tarjeta · Tigo Money) ------
+# Modelo distinto a Culqi: el backend REGISTRA una "deuda" (con el appkey) y
+# Libélula devuelve una URL de pasarela donde el cliente paga; al confirmarse,
+# Libélula hace un GET al callback. El appkey SÓLO vive aquí (variable de
+# Railway), nunca en el APK. Sin LIBELULA_APPKEY el módulo queda inactivo
+# (fail-safe). La llave de PRUEBAS y la de PRODUCCIÓN apuntan a la misma URL.
+LIBELULA_APPKEY = os.getenv("LIBELULA_APPKEY", "")
+LIBELULA_BASE_URL = os.getenv("LIBELULA_BASE_URL", "https://api.libelula.bo")
+
 ZONAS = ("lima_norte", "lima_sur", "lima_este", "lima_moderna", "callao")
 
 # Mapeo distrito -> zona (parcial; lo no mapeado cae a 'lima_moderna').

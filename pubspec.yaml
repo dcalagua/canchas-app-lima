@@ -25,6 +25,10 @@ dependencies:
   google_fonts: ^6.2.1
   font_awesome_flutter: 10.8.0
   url_launcher: ^6.3.0
+  # Pasarela de pago de BOLIVIA (Libélula): el pago se hace en la página hospedada
+  # de Libélula (QR · tarjeta · Tigo Money) DENTRO de un WebView. El compileSdk de
+  # su plugin nativo lo cubre el fix global de subproyectos (tool/configure_platforms).
+  webview_flutter: ^4.7.0
   # Notificaciones push del chat (Etapa B). Fail-safe: si el APK no trae la
   # config de Firebase (google-services.json), el push queda desactivado y la
   # app sigue igual (ver lib/services/push_service.dart).
