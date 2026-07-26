@@ -3154,6 +3154,21 @@ class AppState extends ChangeNotifier {
   String estadoVerificacion = 'no';
   bool get jugadorVerificado => estadoVerificacion == 'verificado';
 
+  // Correo TITULAR de la verificación local. La identidad es POR CUENTA, pero se
+  // guarda en el dispositivo; este campo evita que, al cambiar de cuenta en el
+  // mismo equipo, la nueva cuenta herede el "verificado" de la anterior.
+  String _verifEmail = '';
+
+  /// Limpia el estado de verificación LOCAL (al cambiar de cuenta / cerrar
+  /// sesión). El estado real de cada cuenta vive en el backend y se re-sincroniza
+  /// con [sincronizarVerificacion].
+  void _limpiarVerificacionLocal() {
+    estadoVerificacion = 'no';
+    fechaNacimiento = null;
+    dniVerificado = '';
+    _verifEmail = '';
+  }
+
   /// ¿Soy dueño de al menos una cancha PROPIA? (no cuenta el "legado
   /// reclamable"). Los dueños/academias son vendedores de confianza.
   bool get soyDueno {
@@ -3242,6 +3257,7 @@ class AppState extends ChangeNotifier {
     fechaNacimiento = _parseNacimiento(data['fecha_nacimiento'] as String?);
     dniVerificado = numero;
     estadoVerificacion = 'verificado';
+    _verifEmail = u.email.toLowerCase();
     // Best-effort: registra en el backend para que otros vean la insignia.
     try {
       await VerificacionRepo.registrarVerificado(
@@ -3252,13 +3268,36 @@ class AppState extends ChangeNotifier {
     return (true, null);
   }
 
-  /// Sincroniza el estado de verificación desde el backend (best-effort).
+  /// Sincroniza el estado de verificación desde el backend (best-effort). El
+  /// backend es la FUENTE DE VERDAD por cuenta: así, aunque el estado local haya
+  /// quedado de otra cuenta, aquí se corrige al valor real de la cuenta actual.
   Future<void> sincronizarVerificacion() async {
     final email = usuario?.email;
     if (email == null || email.isEmpty) return;
     final st = await VerificacionRepo.estadoDe(email);
+    final low = email.toLowerCase();
+    var cambio = false;
     if (st != estadoVerificacion) {
       estadoVerificacion = st;
+      cambio = true;
+    }
+    if (st == 'verificado') {
+      if (_verifEmail != low) {
+        _verifEmail = low;
+        cambio = true;
+      }
+    } else {
+      // El backend dice que esta cuenta NO está verificada: borra cualquier dato
+      // personal heredado (DNI/nacimiento) de otra cuenta en este equipo.
+      if (dniVerificado.isNotEmpty || fechaNacimiento != null ||
+          _verifEmail.isNotEmpty) {
+        dniVerificado = '';
+        fechaNacimiento = null;
+        _verifEmail = '';
+        cambio = true;
+      }
+    }
+    if (cambio) {
       notifyListeners();
       _persistirDatos();
     }
@@ -3298,6 +3337,7 @@ class AppState extends ChangeNotifier {
         email: u.email, nombre: u.nombre, doc: doc, selfie: selfie);
     if (st == null) return false;
     estadoVerificacion = st;
+    _verifEmail = u.email.toLowerCase();
     if (nacimiento != null) fechaNacimiento = nacimiento;
     notifyListeners();
     _persistirDatos();
@@ -3313,6 +3353,7 @@ class AppState extends ChangeNotifier {
         email: u.email, nombre: u.nombre, doc: doc, selfie: selfie);
     if (st == null) return false;
     estadoVerificacion = st;
+    _verifEmail = u.email.toLowerCase();
     notifyListeners();
     _persistirDatos();
     return true;
@@ -3706,6 +3747,7 @@ class AppState extends ChangeNotifier {
   static const _kMonedaSaldo = 'moneda_saldo';
   static const _kBienvenidaDueno = 'bienvenida_dueno_vista';
   static const _kVerif = 'verificacion_estado';
+  static const _kVerifEmail = 'verificacion_email'; // titular de la verificación
   static const _kNacimiento = 'fecha_nacimiento_iso';
   static const _kDniVerif = 'dni_verificado';
   static const _kMovs = 'movimientos_json';
@@ -3773,6 +3815,21 @@ class AppState extends ChangeNotifier {
         fechaNacimiento = DateTime.tryParse(prefs.getString(_kNacimiento) ?? '');
       }
       dniVerificado = prefs.getString(_kDniVerif) ?? dniVerificado;
+      _verifEmail = (prefs.getString(_kVerifEmail) ?? '').toLowerCase();
+      // Migración de instalaciones previas (sin titular guardado): atribuye la
+      // verificación existente al usuario logueado.
+      if (_verifEmail.isEmpty &&
+          estadoVerificacion != 'no' &&
+          (usuario?.email.isNotEmpty ?? false)) {
+        _verifEmail = usuario!.email.toLowerCase();
+      }
+      // Salvaguarda: si el estado local pertenece a OTRA cuenta que la logueada,
+      // límpialo (evita mostrar "verificado" heredado). El backend lo corrige.
+      if (estadoVerificacion != 'no' &&
+          (usuario?.email.isNotEmpty ?? false) &&
+          _verifEmail != usuario!.email.toLowerCase()) {
+        _limpiarVerificacionLocal();
+      }
 
       bienvenidaDuenoVista =
           prefs.getBool(_kBienvenidaDueno) ?? bienvenidaDuenoVista;
@@ -3924,12 +3981,17 @@ class AppState extends ChangeNotifier {
       await prefs.setString(_kSaldoOtros, jsonEncode(_saldoOtrosPaises));
       await prefs.setString(_kMonedaSaldo, monedaSaldo);
       await prefs.setString(_kVerif, estadoVerificacion);
+      await prefs.setString(_kVerifEmail, _verifEmail);
       if (fechaNacimiento != null) {
         await prefs.setString(
             _kNacimiento, fechaNacimiento!.toIso8601String());
+      } else {
+        await prefs.remove(_kNacimiento);
       }
       if (dniVerificado.isNotEmpty) {
         await prefs.setString(_kDniVerif, dniVerificado);
+      } else {
+        await prefs.remove(_kDniVerif);
       }
       await prefs.setBool(_kBienvenidaDueno, bienvenidaDuenoVista);
       await prefs.setString(
@@ -3992,7 +4054,12 @@ class AppState extends ChangeNotifier {
   /// refrescos remotos (reservas, saldo, academias→matrículas, invitaciones).
   void _finalizarLogin(Usuario u) {
     usuario = u;
+    // La verificación de identidad es POR CUENTA: si cambió el titular, limpia el
+    // estado local para que la nueva cuenta NO herede el "verificado" de la
+    // anterior en el mismo equipo. El estado real llega de sincronizarVerificacion.
+    if (_verifEmail != u.email.toLowerCase()) _limpiarVerificacionLocal();
     _persistirUsuario();
+    sincronizarVerificacion(); // estado REAL de verificación de esta cuenta
     _sincronizarMiPerfil(); // aplica/crea mi nombre-foto público (best-effort)
     PushService.registrarParaUsuario(u.email); // push del chat a este dispositivo
     _recomputarMisReservas(); // recupera sus reservas de otros dispositivos
@@ -4013,6 +4080,7 @@ class AppState extends ChangeNotifier {
     await AuthService.salir();
     usuario = null;
     misReservas.clear(); // no mezclar reservas entre cuentas
+    _limpiarVerificacionLocal(); // no arrastrar la verificación a otra cuenta
     await _persistirUsuario();
     _persistirDatos();
     notifyListeners();
@@ -4061,6 +4129,7 @@ class AppState extends ChangeNotifier {
     _saldoOtrosPaises.clear();
     saldoClub = 0;
     _ultimoSyncMatriculas = null;
+    _limpiarVerificacionLocal();
     usuario = null;
     // 3) Disco en blanco.
     try {
