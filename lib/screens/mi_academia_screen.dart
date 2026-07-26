@@ -1148,6 +1148,7 @@ class _RosterAlumnosState extends State<_RosterAlumnos> {
         for (final al in lista)
           _TarjetaAlumno(
             alumno: al,
+            academia: ac,
             moneda: ac.monedaSimbolo,
             deuda: deuda[al.id]!.deuda,
             vencido: deuda[al.id]!.vencido,
@@ -1203,13 +1204,28 @@ class _ChipFiltro extends StatelessWidget {
 class _TarjetaAlumno extends StatelessWidget {
   const _TarjetaAlumno(
       {required this.alumno,
+      required this.academia,
       required this.moneda,
       required this.deuda,
       required this.vencido});
   final Alumno alumno;
+  final Academia academia;
   final String moneda;
   final double deuda;
   final bool vencido;
+
+  /// Invita al padre/alumno a instalar la app y unirse con el código (así se
+  /// auto-vincula a ESTE registro y todo pasa a ser in-app: avisos y pagos).
+  Future<void> _invitar(BuildContext context) async {
+    final tel = alumno.whatsappContacto;
+    if (tel.isEmpty) return;
+    final saludo = alumno.esMenor ? alumno.apoderadoNombre : alumno.nombre;
+    final ok = await WhatsAppLink.abrir(tel, _mensajeInvitacion(academia, saludo));
+    if (!ok && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No pude abrir WhatsApp.')));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1272,6 +1288,14 @@ class _TarjetaAlumno extends StatelessWidget {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // Alumno SIN app: invitarlo (instala + se une con el código → todo
+            // pasa a ser in-app: avisos y pagos, y se auto-vincula a este registro).
+            if (!alumno.esApp && alumno.whatsappContacto.isNotEmpty)
+              IconButton(
+                tooltip: 'Invitar a la app',
+                icon: const Icon(Icons.person_add_alt_1, color: teal),
+                onPressed: () => _invitar(context),
+              ),
             // Cobranza de un toque: recuerda el total adeudado por WhatsApp.
             if (pend > 0 && alumno.whatsappContacto.isNotEmpty)
               IconButton(

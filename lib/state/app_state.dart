@@ -1935,6 +1935,53 @@ class AppState extends ChangeNotifier {
             : 'Ya estás matriculado en ${academia.nombre}.'
       );
     }
+    // AUTO-VINCULACIÓN: si el profe ya había registrado a este alumno a mano
+    // (sin cuenta, email vacío), lo RECLAMAMOS —mismo id, así conserva su
+    // asistencia y sus cuotas— en vez de crear un duplicado. Match por nombre o
+    // por WhatsApp (el del apoderado si es menor).
+    final telEntrante = esMenor ? (apoderadoWhatsapp?.trim() ?? '') : '';
+    Alumno? reclamable;
+    for (final al in alumnos) {
+      if (al.academiaId != academia.id || al.email.isNotEmpty) continue;
+      final nombreMatch =
+          al.nombre.trim().toLowerCase() == nombre.toLowerCase();
+      final telMatch = telEntrante.isNotEmpty &&
+          (_telCoincide(telEntrante, al.whatsapp) ||
+              _telCoincide(telEntrante, al.apoderadoWhatsapp));
+      if (nombreMatch || telMatch) {
+        reclamable = al;
+        break;
+      }
+    }
+    if (reclamable != null) {
+      final r = reclamable;
+      final vinculado = Alumno(
+        id: r.id, // MISMO id → conserva asistencia y cuotas
+        academiaId: r.academiaId,
+        nombre: r.nombre.isNotEmpty ? r.nombre : nombre,
+        whatsapp: r.whatsapp,
+        email: u.email,
+        fotoUrl: esMenor ? r.fotoUrl : (u.fotoUrl ?? r.fotoUrl),
+        apoderadoNombre: esMenor ? u.nombre : r.apoderadoNombre,
+        apoderadoWhatsapp: esMenor
+            ? (telEntrante.isNotEmpty ? telEntrante : r.apoderadoWhatsapp)
+            : r.apoderadoWhatsapp,
+        edad: edad ?? r.edad,
+        esSocioSede: r.esSocioSede,
+        ordenHermano: r.ordenHermano,
+        sedeId: r.sedeId,
+      );
+      final idx = alumnos.indexWhere((x) => x.id == r.id);
+      if (idx >= 0) alumnos[idx] = vinculado;
+      _marcarInvitacionesAceptadas(academia.id, u.email);
+      notifyListeners();
+      _persistirDatos();
+      MatriculasRepo.guardar(vinculado);
+      return (
+        ok: true,
+        mensaje: 'Te vinculamos a tu registro en ${academia.nombre}. 🎾'
+      );
+    }
     final alumno = Alumno(
       id: 'al_${DateTime.now().microsecondsSinceEpoch}',
       academiaId: academia.id,
@@ -1946,17 +1993,7 @@ class AppState extends ChangeNotifier {
       edad: edad,
     );
     alumnos.add(alumno);
-    // Si tenía una invitación por correo pendiente a esta academia, márcala
-    // aceptada para que el profe la vea resuelta (y no como pendiente).
-    for (var k = 0; k < invitaciones.length; k++) {
-      final inv = invitaciones[k];
-      if (inv.academiaId == academia.id &&
-          inv.estado == EstadoInvitacion.pendiente &&
-          inv.coincideEmail(u.email)) {
-        invitaciones[k] = inv.copyWith(estado: EstadoInvitacion.aceptada);
-        InvitacionesRepo.guardar(invitaciones[k]);
-      }
-    }
+    _marcarInvitacionesAceptadas(academia.id, u.email);
     notifyListeners();
     _persistirDatos();
     MatriculasRepo.guardar(alumno);
@@ -1966,6 +2003,29 @@ class AppState extends ChangeNotifier {
           ? 'Inscribiste a "$nombre" en ${academia.nombre}. 🎾'
           : 'Te uniste a ${academia.nombre}. ¡Listo! 🎾'
     );
+  }
+
+  /// Marca aceptadas las invitaciones por correo pendientes de [email] en una
+  /// academia (al unirse por código/aceptar), para que el profe las vea resueltas.
+  void _marcarInvitacionesAceptadas(String academiaId, String email) {
+    for (var k = 0; k < invitaciones.length; k++) {
+      final inv = invitaciones[k];
+      if (inv.academiaId == academiaId &&
+          inv.estado == EstadoInvitacion.pendiente &&
+          inv.coincideEmail(email)) {
+        invitaciones[k] = inv.copyWith(estado: EstadoInvitacion.aceptada);
+        InvitacionesRepo.guardar(invitaciones[k]);
+      }
+    }
+  }
+
+  /// ¿Dos teléfonos son el mismo número? Compara los últimos 8 dígitos (ignora
+  /// prefijo de país/espacios). Para vincular al alumno por su WhatsApp.
+  static bool _telCoincide(String a, String b) {
+    final x = a.replaceAll(RegExp(r'\D'), '');
+    final y = b.replaceAll(RegExp(r'\D'), '');
+    if (x.length < 8 || y.length < 8) return false;
+    return x.substring(x.length - 8) == y.substring(y.length - 8);
   }
 
   DateTime? _ultimoSyncMatriculas;
