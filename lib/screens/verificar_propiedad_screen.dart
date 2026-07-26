@@ -49,9 +49,9 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
       _enviando = true;
       _msg = null;
     });
-    Map<String, dynamic>? r;
+    Map<String, dynamic>? res;
     try {
-      r = await conPreload(
+      res = await conPreload(
           context,
           () => PropiedadService.solicitarOtp(
               canchaId: widget.cancha.id, telefono: tel),
@@ -60,6 +60,8 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
       if (mounted) setState(() => _enviando = false);
     }
     if (!mounted) return;
+    // Copia a un final: Dart no promueve una variable asignada dentro de `try`.
+    final r = res;
 
     if (r == null) {
       setState(() => _msg =
@@ -94,9 +96,9 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
       _enviando = true;
       _msg = null;
     });
-    Map<String, dynamic>? r;
+    Map<String, dynamic>? res;
     try {
-      r = await conPreload(
+      res = await conPreload(
           context,
           () => PropiedadService.confirmarOtp(
                 canchaId: widget.cancha.id,
@@ -108,6 +110,8 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
       if (mounted) setState(() => _enviando = false);
     }
     if (!mounted) return;
+    // Copia a un final: Dart no promueve una variable asignada dentro de `try`.
+    final r = res;
 
     if (r == null) {
       setState(() => _msg = 'No se pudo confirmar. Revisa tu conexión.');

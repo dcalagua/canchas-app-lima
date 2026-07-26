@@ -58,9 +58,9 @@ class _ValidarReclamoScreenState extends State<ValidarReclamoScreen> {
     // Regla: la validación (GPS + sube fotos + valida en el servidor) demora →
     // preload de marca en vez de un spinner en el botón.
     String? errorLocal;
-    Map<String, dynamic>? r;
+    Map<String, dynamic>? res;
     try {
-      r = await conPreload<Map<String, dynamic>?>(context, () async {
+      res = await conPreload<Map<String, dynamic>?>(context, () async {
         final pos = await LocationService.ubicacionActual();
         if (pos == null) {
           errorLocal =
@@ -87,6 +87,9 @@ class _ValidarReclamoScreenState extends State<ValidarReclamoScreen> {
       if (mounted) setState(() => _enviando = false);
     }
     if (!mounted) return;
+    // Copia a un final: Dart no promueve una variable asignada dentro de `try`,
+    // por eso r['ok'] fallaba el analyze. Sobre el final la promoción sí aplica.
+    final r = res;
 
     if (errorLocal != null) {
       setState(() => _msg = errorLocal);
