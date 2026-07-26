@@ -8,6 +8,7 @@ import '../config/pais.dart';
 import '../services/ocr_documento.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 
 /// Verificación de identidad del jugador.
 ///
@@ -73,9 +74,15 @@ class _VerificarIdentidadScreenState extends State<VerificarIdentidadScreen> {
   Future<void> _enviar() async {
     if (_doc == null || _selfie == null) return;
     setState(() => _enviando = true);
-    final ok = await appState.enviarVerificacion(_doc!, _selfie!);
+    bool ok;
+    try {
+      ok = await conPreload(
+          context, () => appState.enviarVerificacion(_doc!, _selfie!),
+          texto: 'Enviando…');
+    } finally {
+      if (mounted) setState(() => _enviando = false);
+    }
     if (!mounted) return;
-    setState(() => _enviando = false);
     if (ok) {
       _dialogoOk();
     } else {
@@ -111,10 +118,17 @@ class _VerificarIdentidadScreenState extends State<VerificarIdentidadScreen> {
   Future<void> _enviarOcr() async {
     if (_doc == null || _selfie == null || _ocr?.esDocumento != true) return;
     setState(() => _enviando = true);
-    final ok = await appState.verificarConOcr(
-        doc: _doc!, selfie: _selfie!, nacimiento: _ocr!.nacimiento);
+    bool ok;
+    try {
+      ok = await conPreload(
+          context,
+          () => appState.verificarConOcr(
+              doc: _doc!, selfie: _selfie!, nacimiento: _ocr!.nacimiento),
+          texto: 'Enviando…');
+    } finally {
+      if (mounted) setState(() => _enviando = false);
+    }
     if (!mounted) return;
-    setState(() => _enviando = false);
     if (ok) {
       _dialogoOk();
     } else {
@@ -139,9 +153,15 @@ class _VerificarIdentidadScreenState extends State<VerificarIdentidadScreen> {
       _errorDni = null;
       _verificando = true;
     });
-    final (ok, err) = await appState.verificarConDni(dni);
+    (bool, String?) res;
+    try {
+      res = await conPreload(context, () => appState.verificarConDni(dni),
+          texto: 'Validando tu ${paisActual.docId}…');
+    } finally {
+      if (mounted) setState(() => _verificando = false);
+    }
+    final (ok, err) = res;
     if (!mounted) return;
-    setState(() => _verificando = false);
     if (ok) {
       _dialogoOk();
     } else {
@@ -269,14 +289,8 @@ class _VerificarIdentidadScreenState extends State<VerificarIdentidadScreen> {
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 15)),
             onPressed: _verificando ? null : _verificarConDni,
-            icon: _verificando
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.verified_user_outlined),
-            label: Text(_verificando ? 'Validando…' : 'Verificar $doc',
+            icon: const Icon(Icons.verified_user_outlined),
+            label: Text('Verificar $doc',
                 style: const TextStyle(
                     fontWeight: FontWeight.w800, fontSize: 15)),
           ),
@@ -356,13 +370,7 @@ class _VerificarIdentidadScreenState extends State<VerificarIdentidadScreen> {
             onPressed: (!esDoc || _selfie == null || _enviando)
                 ? null
                 : _enviarOcr,
-            icon: _enviando
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.verified_user_outlined),
+            icon: const Icon(Icons.verified_user_outlined),
             label: const Text('Enviar y verificar',
                 style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
           ),
@@ -443,13 +451,7 @@ class _VerificarIdentidadScreenState extends State<VerificarIdentidadScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 15)),
             onPressed:
                 (_doc == null || _selfie == null || _enviando) ? null : _enviar,
-            icon: _enviando
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.verified_user_outlined),
+            icon: const Icon(Icons.verified_user_outlined),
             label: const Text('Enviar y verificar',
                 style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
           ),
