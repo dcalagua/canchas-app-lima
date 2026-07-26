@@ -246,6 +246,25 @@ class _Caja {
   }
 }
 
+/// Ubicación POR DEFECTO (ciudad principal) de cada país. Se usa cuando el GPS
+/// no resuelve (mala señal, permiso denegado, sin última ubicación conocida):
+/// Explorar muestra canchas de esa ciudad AL INSTANTE en vez de quedarse en
+/// blanco esperando el fix, y reordena por cercanía apenas llega el GPS real.
+/// Lima (PE), Santa Cruz de la Sierra (BO), Quito (EC).
+const Map<String, ({double lat, double lng})> _ciudadPorDefecto = {
+  'PE': (lat: -12.0908, lng: -77.0250), // Lima (San Isidro)
+  'BO': (lat: -17.7833, lng: -63.1821), // Santa Cruz de la Sierra
+  'EC': (lat: -0.1807, lng: -78.4678), // Quito
+};
+
+/// Coordenada por defecto del país [iso] (o del país actual si se omite). Nunca
+/// es null: cae a Lima si el país no está en el mapa. Fuente del "arranque sin
+/// GPS" de Explorar.
+({double lat, double lng}) ubicacionPorDefecto([String? iso]) {
+  final code = (iso ?? paisActual.iso).toUpperCase();
+  return _ciudadPorDefecto[code] ?? _ciudadPorDefecto['PE']!;
+}
+
 // Cajas ajustadas para que la zona clara de cada país sea inequívoca. El borde
 // este de Perú (-68.6) y el oeste de Bolivia (-69.7) se solapan poco; puntos al
 // oeste de -69.7 (p. ej. Puno, -70.0) quedan sólo en Perú.

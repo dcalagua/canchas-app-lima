@@ -10,6 +10,7 @@ import '../widgets/responsive.dart';
 import '../brand.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../config/pais.dart';
 import '../services/location_service.dart';
 import '../services/pagos_service.dart';
 import '../utils/geo.dart';
@@ -49,6 +50,9 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
   LatLng? _centroBusqueda; // zona buscada por el usuario (estilo Airbnb)
   String? _labelBusqueda;
   bool _ubicando = true; // true mientras se resuelve la ubicación inicial
+  // El centro actual es un DEFAULT por país (no la ubicación real todavía): la
+  // lista ya se muestra, pero al llegar el GPS se re-centra y re-etiqueta.
+  bool _ubicacionProvisional = false;
 
   /// Clubes derivados de las canchas filtradas (un local = varias canchas).
   /// En la pestaña "Clubes" solo quedan los clubes formales (country clubs…).
@@ -153,17 +157,29 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
 
   Future<void> _autoUbicar() async {
     if (mounted) setState(() => _ubicando = true);
+    // 0) DEFAULT por país AL INSTANTE: si aún no hay centro, muestra canchas de
+    //    la ciudad principal del país de una vez. Así Explorar NUNCA se queda en
+    //    "Detectando tu ubicación…" ni en blanco por un GPS colgado. Es
+    //    provisional: al llegar el fix real se re-centra y re-etiqueta.
+    if (_centroBusqueda == null) {
+      final d = ubicacionPorDefecto();
+      _aplicarUbicacion(LatLng(d.lat, d.lng),
+          descubrir: false, provisional: true);
+    }
     try {
-      // 1) Ubicación INSTANTÁNEA con la última conocida: reordena la lista a la
-      //    zona del usuario de inmediato (sin esperar el GPS) y dispara la
-      //    búsqueda de canchas reales cerca. Evita mostrar canchas lejanas.
-      final rapida = await LocationService.ultimaConocida();
+      // 1) Ubicación INSTANTÁNEA con la última conocida (con tope duro por si el
+      //    SO se cuelga leyéndola). Reordena la lista a la zona del usuario.
+      final rapida = await LocationService.ultimaConocida()
+          .timeout(const Duration(seconds: 2), onTimeout: () => null);
       if (rapida != null && mounted) _aplicarUbicacion(rapida);
 
-      // 2) Fix PRECISO (puede tardar). Solo re-busca si el usuario está lejos de
-      //    la posición rápida (evita una segunda llamada innecesaria).
-      final precisa = await LocationService.ubicacionActual();
+      // 2) Fix PRECISO. Tope duro extra sobre el interno del service: pase lo que
+      //    pase, esto resuelve y el spinner se apaga (nunca queda pegado).
+      final precisa = await LocationService.ubicacionActual()
+          .timeout(const Duration(seconds: 9), onTimeout: () => null);
       if (precisa != null && mounted) {
+        // Re-busca canchas reales solo si nos movimos lejos de la posición
+        // rápida (o si esa no existía): evita una llamada a Places innecesaria.
         final reUbicar = rapida == null || distanciaKm(rapida, precisa) > 2;
         _aplicarUbicacion(precisa, descubrir: reUbicar);
       }
@@ -173,12 +189,25 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
   }
 
   /// Aplica una ubicación: reordena la lista a lo cercano y (opcionalmente)
-  /// descubre canchas reales alrededor.
-  void _aplicarUbicacion(LatLng pos, {bool descubrir = true}) {
+  /// descubre canchas reales alrededor. [provisional] = default por país (aún no
+  /// es la ubicación real): no geocodifica ni descubre, y marca el estado para
+  /// re-resolver la zona cuando llegue el GPS.
+  void _aplicarUbicacion(LatLng pos,
+      {bool descubrir = true, bool provisional = false}) {
     setState(() {
       _centroBusqueda = pos;
-      _labelBusqueda ??= 'Tu ubicación'; // provisional hasta resolver la zona
+      if (provisional) {
+        _ubicacionProvisional = true;
+        _labelBusqueda = '${paisActual.nombre} · aprox.'; // hasta el fix real
+      } else {
+        // Ubicación real: si veníamos de un default provisional, limpia la
+        // etiqueta para que se resuelva la zona (distrito) verdadera.
+        if (_ubicacionProvisional) _labelBusqueda = null;
+        _ubicacionProvisional = false;
+        _labelBusqueda ??= 'Tu ubicación'; // provisional hasta resolver la zona
+      }
     });
+    if (provisional) return; // el default no geocodifica ni gasta Places
     _resolverNombreZona(pos); // identifica el nombre real de la zona (distrito)
     if (descubrir) appState.descubrirCanchasCerca(pos); // canchas reales (Places)
   }
