@@ -22,6 +22,7 @@ class _LlenarCanchaScreenState extends State<LlenarCanchaScreen> {
   String? _canchaId;
   int _dia = 0; // 0 = hoy, 1 = mañana
   final _sel = <String>{};
+  int _descuento = 0; // % de descuento REAL para las horas seleccionadas
   final _promo = TextEditingController();
   bool _avisando = false;
 
@@ -61,21 +62,29 @@ class _LlenarCanchaScreenState extends State<LlenarCanchaScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t)));
   }
 
-  /// Precio del slot (lo que pagaría el cliente) aplicando la hora feliz.
-  int _precioSlot(Cancha c, String hora) =>
-      (c.precioEn(hora) * c.duracionSlotMin / 60).round();
+  /// Precio del slot (lo que pagaría el cliente). Si el slot está SELECCIONADO y
+  /// hay descuento elegido, aplica ese %; si no, la hora feliz normal.
+  int _precioSlot(Cancha c, String hora, {bool conDescuento = false}) {
+    if (conDescuento && _descuento > 0) {
+      return (c.precioHora * (100 - _descuento) / 100 * c.duracionSlotMin / 60)
+          .round();
+    }
+    return (c.precioEn(hora) * c.duracionSlotMin / 60).round();
+  }
 
   /// Texto del aviso, personalizado con el nombre del cliente.
   String _texto(String nombre) {
     final c = _cancha!;
     final horas = (_sel.toList()..sort()).join(', ');
-    final precios = _sel.map((h) => _precioSlot(c, h)).toList()..sort();
+    final precios = _sel.map((h) => _precioSlot(c, h, conDescuento: true)).toList()
+      ..sort();
     final desde = precios.isEmpty ? 0 : precios.first;
     final donde = c.club.isNotEmpty ? '${c.club} · ${c.nombre}' : c.nombre;
+    final off = _descuento > 0 ? ' 🔥 $_descuento% OFF' : '';
     final promo = _promo.text.trim().isEmpty ? '' : '\n${_promo.text.trim()}';
     return '¡Hola $nombre! 🎾 Tengo libre $donde $_diaLabel: $horas '
-        '(desde ${c.monedaSimbolo} $desde). ¿La quieres? Resérvala en Pichangol '
-        'o respóndeme por aquí.$promo';
+        '(desde ${c.monedaSimbolo} $desde$off). ¿La quieres? Resérvala en '
+        'Pichangol o respóndeme por aquí.$promo';
   }
 
   Future<void> _avisar() async {
@@ -116,6 +125,14 @@ class _LlenarCanchaScreenState extends State<LlenarCanchaScreen> {
     if (go != true) return;
 
     setState(() => _avisando = true);
+    // Aplica el descuento REAL a cada slot elegido: ese precio será el que se
+    // cobre al reservar (0 = deja el precio normal / quita descuentos previos).
+    final c = _cancha;
+    if (c != null) {
+      for (final h in _sel) {
+        await appState.aplicarDescuentoSlot(c.id, _iso, h, _descuento);
+      }
+    }
     var enviados = 0;
     for (final cli in conApp) {
       final msg = Mensaje(
@@ -315,8 +332,8 @@ class _LlenarCanchaScreenState extends State<LlenarCanchaScreen> {
                           for (final h in libres)
                             _ChipHora(
                               hora: h,
-                              precio:
-                                  '${c!.monedaSimbolo} ${_precioSlot(c, h)}',
+                              precio: '${c!.monedaSimbolo} '
+                                  '${_precioSlot(c, h, conDescuento: _sel.contains(h))}',
                               sel: _sel.contains(h),
                               onTap: () => setState(() {
                                 if (!_sel.remove(h)) _sel.add(h);
@@ -343,6 +360,31 @@ class _LlenarCanchaScreenState extends State<LlenarCanchaScreen> {
                               : 'Seleccionar todas'),
                         ),
                       ),
+                    ],
+                    if (_sel.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      const Text('Descuento para llenar (opcional)',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w800, fontSize: 14)),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final p in const [0, 10, 15, 20, 30])
+                            _ChipDia(p == 0 ? 'Sin desc.' : '$p%',
+                                _descuento == p,
+                                () => setState(() => _descuento = p)),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                          _descuento > 0
+                              ? 'Se cobra $_descuento% menos en esas horas: es el '
+                                  'precio REAL al reservar (no solo el aviso).'
+                              : 'Sin descuento: precio normal.',
+                          style: TextStyle(
+                              color: textoTenueDe(context), fontSize: 12)),
                     ],
                     const SizedBox(height: 12),
                     TextField(

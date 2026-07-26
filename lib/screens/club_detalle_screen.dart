@@ -201,6 +201,14 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
 
   bool _esValle(String hora) => hora.compareTo('12:00') < 0;
 
+  /// Descuento efectivo del slot para mostrar: el puntual del dueño si lo tiene,
+  /// si no la hora feliz de las mañanas (valle).
+  int _descEfectivo(String hora) {
+    final slot = appState.descuentoSlotPct(_cancha.id, _fechaIso, hora);
+    if (slot > 0) return slot;
+    return _esValle(hora) ? _cancha.descuentoValle : 0;
+  }
+
   /// El dueño bloquea/desbloquea un horario (los reservados no se tocan).
   Future<void> _alternarBloqueo(String hora) async {
     if (_reservado(hora)) return; // no bloquear un slot ya reservado
@@ -245,8 +253,8 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     // tenga o no saldo el dueño. La comisión de Pichangol es 100% del lado del
     // dueño: sale de su saldo si tiene (recibe el precio completo) o se descuenta
     // de su liquidación si no. Nunca se le suma al jugador; la del banco tampoco.
-    // Precio efectivo: aplica "hora feliz" si la hora elegida es valle.
-    final base = _cancha.precioEn(hora);
+    // Precio efectivo: hora feliz de mañanas + descuento puntual del dueño.
+    final base = appState.precioHoraEfectivo(_cancha, _fechaIso, hora);
     // Resumen estilo Airbnb ANTES de pagar (confianza + claridad). Devuelve el
     // método ('online'/'cancha') + los servicios extra elegidos (árbitro…).
     final r = await _mostrarResumen(hora, base);
@@ -584,7 +592,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                               ocupada: _reservado(h),
                               bloqueada: _bloqueado(h),
                               valle: _esValle(h),
-                              descuento: _cancha.descuentoValle,
+                              descuento: _descEfectivo(h),
                               seleccionada: false,
                               onTap: () => _alternarBloqueo(h),
                             ),
@@ -644,7 +652,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                               hora: h,
                               ocupada: _ocupada(h),
                               valle: _esValle(h),
-                              descuento: _cancha.descuentoValle,
+                              descuento: _descEfectivo(h),
                               seleccionada: _hora == h,
                               onTap: () => setState(() => _hora = h),
                             ),
@@ -671,9 +679,9 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
       bottomNavigationBar: (descubierta || pendiente || _soyDueno)
           ? null
           : _ReservarBar(
-              // Precio efectivo del slot elegido (con "hora feliz" si aplica).
+              // Precio efectivo del slot elegido (hora feliz + descuento puntual).
               precio: _hora != null
-                  ? _cancha.precioEn(_hora!)
+                  ? appState.precioHoraEfectivo(_cancha, _fechaIso, _hora!)
                   : _cancha.precioHora,
               moneda: _cancha.monedaSimbolo,
               hora: _hora,
@@ -1351,28 +1359,26 @@ class _SlotChip extends StatelessWidget {
           children: [
             Text(hora,
                 style: TextStyle(color: texto, fontWeight: FontWeight.w700)),
-            if (valle && !seleccionada) ...[
+            // Con descuento (hora feliz de mañana o descuento puntual del dueño)
+            // se muestra "🔥 -N%" en cualquier hora; si no, "valle" en las valle.
+            if (!seleccionada && descuento > 0) ...[
               const SizedBox(width: 5),
-              // Con "hora feliz" activa se muestra el descuento; si no, "valle".
-              if (descuento > 0)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                  decoration: BoxDecoration(
-                      color: lima.withOpacity(0.14),
-                      borderRadius: BorderRadius.circular(999)),
-                  child: Text('🔥 -$descuento%',
-                      style: const TextStyle(
-                          color: lima,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800)),
-                )
-              else
-                const Text('valle',
-                    style: TextStyle(
-                        color: clayOscuro,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(
+                    color: lima.withOpacity(0.14),
+                    borderRadius: BorderRadius.circular(999)),
+                child: Text('🔥 -$descuento%',
+                    style: const TextStyle(
+                        color: lima, fontSize: 10, fontWeight: FontWeight.w800)),
+              ),
+            ] else if (valle && !seleccionada) ...[
+              const SizedBox(width: 5),
+              const Text('valle',
+                  style: TextStyle(
+                      color: clayOscuro,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700)),
             ],
           ],
         ),

@@ -90,7 +90,11 @@ class _ReservaManualScreenState extends State<ReservaManualScreen> {
   void _sugerirPrecio() {
     final c = _cancha;
     if (c == null) return;
-    final p = (c.precioHora * c.duracionSlotMin / 60).round();
+    // Precio efectivo del slot: aplica la hora feliz y el descuento puntual del
+    // dueño para la hora elegida (si ya eligió una).
+    final p = _hora != null
+        ? appState.precioSlotEfectivo(c, _isoFecha, _hora!)
+        : (c.precioHora * c.duracionSlotMin / 60).round();
     _precio.text = p.toString();
   }
 
@@ -253,7 +257,10 @@ class _ReservaManualScreenState extends State<ReservaManualScreen> {
                   slots: _cancha?.horariosSlots() ?? const [],
                   seleccion: _hora,
                   ocupada: _ocupada,
-                  onElegir: (h) => setState(() => _hora = h),
+                  onElegir: (h) => setState(() {
+                    _hora = h;
+                    _sugerirPrecio(); // precio del slot (con descuento si tiene)
+                  }),
                 ),
                 const SizedBox(height: 18),
                 _Etiqueta('Cliente'),

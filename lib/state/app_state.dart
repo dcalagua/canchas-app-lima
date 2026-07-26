@@ -13,6 +13,7 @@ import '../data/matriculas_repo.dart';
 import '../data/mensajes_repo.dart';
 import '../data/perfiles_repo.dart';
 import '../data/bloqueos_repo.dart';
+import '../data/descuentos_repo.dart';
 import '../data/referidos_repo.dart';
 import '../data/resenas_repo.dart';
 import '../data/reservas_repo.dart';
@@ -2921,6 +2922,57 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── DESCUENTO POR SLOT (hora feliz de una hora puntual) ───────────────────
+  // Mapa "canchaId|fecha|hora" → % (1..90). El dueño lo aplica para llenar la
+  // cancha; el precio rebajado es el que se COBRA al reservar ese slot.
+  final Map<String, int> _descuentosSlot = {};
+
+  /// % de descuento del slot (0 si no tiene).
+  int descuentoSlotPct(String canchaId, String fecha, String hora) =>
+      _descuentosSlot[DescuentosRepo.clave(canchaId, fecha, hora)] ?? 0;
+
+  /// Precio POR HORA efectivo de un slot en una fecha: si tiene descuento
+  /// puntual, ese manda; si no, el de la cancha (que ya aplica la hora feliz de
+  /// las mañanas). Fuente única para cobrar/mostrar el precio real de un slot.
+  double precioHoraEfectivo(Cancha c, String fecha, String hora) {
+    final pct = descuentoSlotPct(c.id, fecha, hora);
+    if (pct > 0) return c.precioHora * (100 - pct.clamp(0, 90)) / 100;
+    return c.precioEn(hora);
+  }
+
+  /// Precio del SLOT (lo que paga el cliente por el bloque) en una fecha, con el
+  /// descuento efectivo aplicado.
+  int precioSlotEfectivo(Cancha c, String fecha, String hora) =>
+      (precioHoraEfectivo(c, fecha, hora) * c.duracionSlotMin / 60).round();
+
+  /// El dueño aplica (pct>0) o quita (pct<=0) el descuento de un slot. Persiste
+  /// local + nube para que valga en todos los dispositivos.
+  Future<void> aplicarDescuentoSlot(
+      String canchaId, String fecha, String hora, int pct) async {
+    final k = DescuentosRepo.clave(canchaId, fecha, hora);
+    if (pct <= 0) {
+      _descuentosSlot.remove(k);
+      notifyListeners();
+      _persistirDatos();
+      await DescuentosRepo.quitar(canchaId, fecha, hora);
+    } else {
+      final p = pct.clamp(1, 90);
+      _descuentosSlot[k] = p;
+      notifyListeners();
+      _persistirDatos();
+      await DescuentosRepo.aplicar(canchaId, fecha, hora, p);
+    }
+  }
+
+  /// Carga los descuentos de slot desde la nube (best-effort).
+  Future<void> cargarDescuentosSlot() async {
+    final m = await DescuentosRepo.fetch();
+    _descuentosSlot
+      ..clear()
+      ..addAll(m);
+    notifyListeners();
+  }
+
   /// El dueño bloquea/desbloquea un horario. Actualiza al instante y sincroniza.
   Future<void> alternarBloqueo(
       String canchaId, String fecha, String hora) async {
@@ -3994,6 +4046,7 @@ class AppState extends ChangeNotifier {
   static const _kRecordCobro = 'recordatorios_cobro_json'; // alumnoId→ISO
   static const _kRecordAuto = 'recordatorios_auto'; // avisos proactivos on/off
   static const _kAsistAvisada = 'asistencia_avisada_json'; // "alumnoId|dia"
+  static const _kDescuentosSlot = 'descuentos_slot_json'; // "cancha|fecha|hora"→pct
   static const _kNacimiento = 'fecha_nacimiento_iso';
   static const _kDniVerif = 'dni_verificado';
   static const _kMovs = 'movimientos_json';
@@ -4079,6 +4132,15 @@ class AppState extends ChangeNotifier {
           _asistenciaAvisada
             ..clear()
             ..addAll((jsonDecode(aa) as List).map((e) => e.toString()));
+        } catch (_) {}
+      }
+      final ds = prefs.getString(_kDescuentosSlot);
+      if (ds != null && ds.isNotEmpty) {
+        try {
+          _descuentosSlot
+            ..clear()
+            ..addAll((jsonDecode(ds) as Map)
+                .map((k, v) => MapEntry(k.toString(), (v as num).toInt())));
         } catch (_) {}
       }
       // Migración de instalaciones previas (sin titular guardado): atribuye la
@@ -4251,6 +4313,7 @@ class AppState extends ChangeNotifier {
       await prefs.setBool(_kRecordAuto, recordatoriosAutoActivos);
       await prefs.setString(
           _kAsistAvisada, jsonEncode(_asistenciaAvisada.toList()));
+      await prefs.setString(_kDescuentosSlot, jsonEncode(_descuentosSlot));
       if (fechaNacimiento != null) {
         await prefs.setString(
             _kNacimiento, fechaNacimiento!.toIso8601String());
@@ -4497,8 +4560,8 @@ class AppState extends ChangeNotifier {
         r.canchaId == cancha.id && r.fecha == fecha && r.horaInicio == hora);
     if (yaLocal) return ResultadoReserva.ocupado;
 
-    // Precio efectivo del slot (aplica "hora feliz" si la hora es valle).
-    final precio = (cancha.precioEn(hora) * cancha.duracionSlotMin / 60).round();
+    // Precio efectivo del slot (hora feliz de mañanas + descuento puntual).
+    final precio = precioSlotEfectivo(cancha, fecha, hora);
     final reserva = Reserva(
       id: 'jug_${DateTime.now().millisecondsSinceEpoch}_${_contadorJugador++}',
       canchaId: cancha.id,
@@ -4542,14 +4605,14 @@ class AppState extends ChangeNotifier {
       if (cobro == 'efectivo') {
         PagosService.comisionReserva(
           duenoId: cancha.dueno,
-          montoSoles: cancha.precioEn(hora),
+          montoSoles: precioHoraEfectivo(cancha, fecha, hora),
           reservaId: reserva.id,
           concepto: 'Comisión · $etiqueta',
         );
       } else if (cobro == 'online') {
         PagosService.liquidacionOnline(
           duenoId: cancha.dueno,
-          montoSoles: cancha.precioEn(hora),
+          montoSoles: precioHoraEfectivo(cancha, fecha, hora),
           reservaId: reserva.id,
           concepto: 'Reserva online · $etiqueta',
         );
@@ -4581,8 +4644,7 @@ class AppState extends ChangeNotifier {
         r.canchaId == cancha.id && r.fecha == fecha && r.horaInicio == hora);
     if (yaLocal) return ResultadoReserva.ocupado;
 
-    final precio = precioOverride ??
-        (cancha.precioHora * cancha.duracionSlotMin / 60).round();
+    final precio = precioOverride ?? precioSlotEfectivo(cancha, fecha, hora);
     final nombre = nombreCliente.trim();
     final reserva = Reserva(
       id: 'man_${DateTime.now().millisecondsSinceEpoch}_${_contadorJugador++}',
