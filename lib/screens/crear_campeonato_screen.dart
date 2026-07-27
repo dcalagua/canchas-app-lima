@@ -8,6 +8,34 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/responsive.dart';
 
+/// Una categoría estándar de campeonato. Las de edad auto-setean edadMin/edadMax
+/// (Sub-N = hasta N años; +N = desde N). Al inscribirse, el sistema valida la
+/// edad real (DNI/Cédula/CI + nacimiento) contra ese rango y rechaza si no
+/// clasifica. `null` en ambos = sin tope de edad (Abierta/Libre).
+class CatCampeonato {
+  final String label;
+  final int? edadMin;
+  final int? edadMax;
+  const CatCampeonato(this.label, {this.edadMin, this.edadMax});
+}
+
+/// Catálogo de categorías propuestas en el combo (+ opción "Otra" libre).
+const List<CatCampeonato> catalogoCategorias = [
+  CatCampeonato('Sub-8', edadMax: 8),
+  CatCampeonato('Sub-10', edadMax: 10),
+  CatCampeonato('Sub-12', edadMax: 12),
+  CatCampeonato('Sub-14', edadMax: 14),
+  CatCampeonato('Sub-16', edadMax: 16),
+  CatCampeonato('Sub-18', edadMax: 18),
+  CatCampeonato('Sub-21', edadMax: 21),
+  CatCampeonato('Sub-23', edadMax: 23),
+  CatCampeonato('+35 (Máster)', edadMin: 35),
+  CatCampeonato('+40 (Máster)', edadMin: 40),
+  CatCampeonato('+45 (Máster)', edadMin: 45),
+  CatCampeonato('+50 (Máster)', edadMin: 50),
+  CatCampeonato('Abierta / Libre'),
+];
+
 /// Formulario para que el profe cree un campeonato de su academia.
 class CrearCampeonatoScreen extends StatefulWidget {
   const CrearCampeonatoScreen(
@@ -34,6 +62,9 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
   bool _exigeDni = false;
   final _edadMin = TextEditingController();
   final _edadMax = TextEditingController();
+  // Categoría elegida del combo (label del catálogo) o el sentinel 'otra'
+  // (texto libre). null = aún no elige (sin categoría).
+  String? _catSel;
 
   /// Moneda del país de la SEDE del torneo (no la del dispositivo): el costo de
   /// inscripción se muestra y congela en ella. Sin sede ubicada, cae al país
@@ -41,6 +72,34 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
   String get _monedaSede => _sedeUbicacion != null
       ? monedaDeCoordenadas(_sedeUbicacion!.latitude, _sedeUbicacion!.longitude)
       : paisActual.moneda;
+
+  /// Texto del combo: label + pista del rango de edad.
+  String _labelCat(CatCampeonato c) {
+    if (c.edadMax != null) return '${c.label} · hasta ${c.edadMax} años';
+    if (c.edadMin != null) return '${c.label} · desde ${c.edadMin} años';
+    return '${c.label} · sin límite de edad';
+  }
+
+  /// Al elegir categoría del combo: si es del catálogo, fija el nombre y la edad
+  /// automáticamente (y exige documento si es por edad); "otra" abre texto libre.
+  void _elegirCategoria(String? sel) {
+    setState(() {
+      _catSel = sel;
+      if (sel == null) return;
+      if (sel == 'otra') {
+        _categoria.clear();
+        _edadMin.clear();
+        _edadMax.clear();
+        return;
+      }
+      final cat = catalogoCategorias.firstWhere((c) => c.label == sel);
+      _categoria.text = cat.label;
+      _edadMin.text = cat.edadMin?.toString() ?? '';
+      _edadMax.text = cat.edadMax?.toString() ?? '';
+      // Una categoría por edad EXIGE documento para validar la edad real.
+      if (cat.edadMin != null || cat.edadMax != null) _exigeDni = true;
+    });
+  }
 
   static const _meses = [
     'ene', 'feb', 'mar', 'abr', 'may', 'jun',
@@ -201,13 +260,30 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
                   : 'Todos contra todos + tabla (ideal fútbol).'),
             ),
           const SizedBox(height: 8),
-          TextField(
-            controller: _categoria,
-            textCapitalization: TextCapitalization.words,
-            decoration: const InputDecoration(
-                labelText: 'Categoría (opcional)',
-                hintText: 'Sub-10, Libre, Damas B…'),
+          // Categoría: combo de categorías estándar (las de edad auto-setean el
+          // rango y exigen documento al inscribirse) + "Otra" texto libre.
+          DropdownButtonFormField<String>(
+            value: _catSel,
+            isExpanded: true,
+            decoration: const InputDecoration(labelText: 'Categoría (opcional)'),
+            items: [
+              for (final c in catalogoCategorias)
+                DropdownMenuItem(value: c.label, child: Text(_labelCat(c))),
+              const DropdownMenuItem(
+                  value: 'otra', child: Text('Otra… (escribir)')),
+            ],
+            onChanged: _elegirCategoria,
           ),
+          if (_catSel == 'otra') ...[
+            const SizedBox(height: 10),
+            TextField(
+              controller: _categoria,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                  labelText: 'Nombre de la categoría',
+                  hintText: 'Ej. Damas B, Nivel intermedio, Mixto…'),
+            ),
+          ],
           const SizedBox(height: 14),
           // Fechas (calendario).
           _CampoTap(
