@@ -26,13 +26,8 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
   final _nombre = TextEditingController();
   late final TextEditingController _precio =
       TextEditingController(text: widget.local.precioHora.toStringAsFixed(2));
-  // Deportes de esta cancha (loza multiuso: varios). El principal (para
-  // ícono/color/superficie) es el primero según el orden de catálogo.
-  final Set<Deporte> _deportes = {Deporte.futbol};
-  Deporte get _deporte => deportesActivos.firstWhere(
-        (d) => _deportes.contains(d),
-        orElse: () => _deportes.isEmpty ? Deporte.futbol : _deportes.first,
-      );
+  // Deporte de esta cancha (una cancha = un solo deporte). Fútbol por defecto.
+  Deporte _deporte = Deporte.futbol;
   String _superficie = ''; // tipo de piso (opcional, según deporte)
   late String _apertura = widget.local.horaApertura;
   late String _cierre = widget.local.horaCierre;
@@ -83,7 +78,7 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
       distrito: l.distrito,
       barrio: l.barrio, // misma zona real que el local
       deporte: _deporte,
-      deportes: _deportes.toList(),
+      deportes: [_deporte],
       precioHora: precio,
       ubicacion: l.ubicacion,
       clubFundador: l.clubFundador,
@@ -146,11 +141,9 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          const Text('Deportes', style: TextStyle(fontWeight: FontWeight.w700)),
+          const Text('Deporte', style: TextStyle(fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
-          const Text(
-              'Marca todos los que se juegan en esta cancha (loza multiuso = '
-              'varios). La agenda es compartida.',
+          const Text('Elige el deporte que se juega en esta cancha.',
               style: TextStyle(color: textoTenue, fontSize: 12)),
           const SizedBox(height: 8),
           Wrap(
@@ -160,23 +153,23 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
               for (final d in deportesActivos)
                 ChoiceChip(
                   label: Text('${emojiDeporte(d)}  ${d.etiqueta}'),
-                  selected: _deportes.contains(d),
+                  selected: _deporte == d,
                   selectedColor: colorDeporte(d),
                   labelStyle: TextStyle(
-                      color:
-                          _deportes.contains(d) ? Colors.white : cs.onSurface,
+                      color: _deporte == d ? Colors.white : cs.onSurface,
                       fontWeight: FontWeight.w600),
-                  onSelected: (sel) => setState(() {
-                    if (sel) {
-                      _deportes.add(d);
-                    } else if (_deportes.length > 1) {
-                      _deportes.remove(d);
-                    }
-                    // si el piso actual ya no aplica al principal, se resetea
-                    if (!superficiesDe(_deporte).contains(_superficie)) {
-                      _superficie = '';
-                    }
-                  }),
+                  // Selección única: al tocar otro deporte se cambia (no se
+                  // acumula) y el único marcado no se puede desmarcar.
+                  onSelected: (sel) {
+                    if (!sel) return;
+                    setState(() {
+                      _deporte = d;
+                      // si el piso actual ya no aplica al deporte, se resetea
+                      if (!superficiesDe(_deporte).contains(_superficie)) {
+                        _superficie = '';
+                      }
+                    });
+                  },
                 ),
             ],
           ),
