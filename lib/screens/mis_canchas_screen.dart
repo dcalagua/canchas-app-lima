@@ -134,12 +134,16 @@ class _CajaHoyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tenue = textoTenueDe(context);
     final iso = appState.isoDe(DateTime.now());
     final caja = appState.cajaDia(iso);
     final mon = appState.misCanchas.isEmpty
         ? 'S/'
         : appState.misCanchas.first.monedaSimbolo;
     final cerrada = appState.cierreDe(iso) != null;
+    // Tarjeta BLANCA (estilo Airbnb): se despega del header verde "Mis canchas"
+    // que va justo arriba, así el label "Caja de hoy" ya no se funde con él.
     return InkWell(
       onTap: () => Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => const CajaDiaScreen())),
@@ -147,23 +151,24 @@ class _CajaHoyCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF128C7E), Color(0xFF075E54)],
-          ),
+          color: cs.surface,
           borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: trazo),
+          boxShadow: const [
+            BoxShadow(
+                color: Color(0x0F000000), blurRadius: 10, offset: Offset(0, 3)),
+          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                const Icon(Icons.point_of_sale, color: Colors.white, size: 20),
+                const Icon(Icons.point_of_sale, color: lima, size: 20),
                 const SizedBox(width: 8),
-                const Text('Caja de hoy',
+                Text('Caja de hoy',
                     style: TextStyle(
-                        color: Colors.white,
+                        color: cs.onSurface,
                         fontWeight: FontWeight.w800,
                         fontSize: 16)),
                 const Spacer(),
@@ -172,16 +177,16 @@ class _CajaHoyCard extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
-                        color: Colors.white24,
+                        color: limaSuave,
                         borderRadius: BorderRadius.circular(999)),
                     child: const Text('Cerrada',
                         style: TextStyle(
-                            color: Colors.white,
+                            color: lima,
                             fontSize: 10.5,
                             fontWeight: FontWeight.w800)),
                   )
                 else
-                  const Icon(Icons.chevron_right, color: Colors.white70),
+                  Icon(Icons.chevron_right, color: tenue),
               ],
             ),
             const SizedBox(height: 12),
@@ -191,12 +196,11 @@ class _CajaHoyCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Cobrado',
-                          style:
-                              TextStyle(color: Colors.white70, fontSize: 12)),
+                      Text('Cobrado',
+                          style: TextStyle(color: tenue, fontSize: 12)),
                       Text('$mon ${caja.cobrado}',
                           style: const TextStyle(
-                              color: Colors.white,
+                              color: lima,
                               fontWeight: FontWeight.w900,
                               fontSize: 22)),
                     ],
@@ -206,12 +210,11 @@ class _CajaHoyCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Por cobrar',
-                          style:
-                              TextStyle(color: Colors.white70, fontSize: 12)),
+                      Text('Por cobrar',
+                          style: TextStyle(color: tenue, fontSize: 12)),
                       Text('$mon ${caja.porCobrar}',
                           style: const TextStyle(
-                              color: Color(0xFFF2C94C),
+                              color: amarillo,
                               fontWeight: FontWeight.w900,
                               fontSize: 22)),
                     ],
@@ -221,13 +224,12 @@ class _CajaHoyCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text('${caja.reservas}',
-                        style: const TextStyle(
-                            color: Colors.white,
+                        style: TextStyle(
+                            color: cs.onSurface,
                             fontWeight: FontWeight.w900,
                             fontSize: 22)),
                     Text('reserva${caja.reservas == 1 ? '' : 's'} · ${caja.ocupacion}%',
-                        style: const TextStyle(
-                            color: Colors.white70, fontSize: 11)),
+                        style: TextStyle(color: tenue, fontSize: 11)),
                   ],
                 ),
               ],
