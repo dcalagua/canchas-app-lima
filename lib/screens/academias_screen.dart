@@ -12,6 +12,7 @@ import '../utils/geo.dart';
 import '../utils/redes.dart';
 import '../widgets/responsive.dart';
 import 'academia_detalle_screen.dart';
+import 'jugadores_disponibles_screen.dart';
 import 'ranking_global_screen.dart';
 import 'login_google_sheet.dart';
 import 'mis_clases_screen.dart';
@@ -213,12 +214,12 @@ class _AcademiasScreenState extends State<AcademiasScreen> {
                 ],
               ),
               const SizedBox(height: 12),
-              // La liga es una capa de TENIS: el banner de DESCUBRIMIENTO sale
-              // solo al filtrar raqueta y SOLO si el usuario aún NO es del
-              // circuito (si ya lo es, lo tiene en su Perfil → no duplicar).
-              if (_filtro != null && _filtro!.esRaqueta && !appState.usaCircuito)
-                ...[
-                _RankingGlobalBanner(),
+              // La liga es una capa de TENIS: el banner sale al filtrar raqueta.
+              // Es CONTEXTUAL: si aún NO estás en el circuito, INVITA a unirte
+              // (no muestra el ranking directo); si ya estás, es el atajo a tu
+              // ranking.
+              if (_filtro != null && _filtro!.esRaqueta) ...[
+                _RankingGlobalBanner(inscrito: appState.usaCircuito),
                 const SizedBox(height: 14),
               ],
               if (appState.misMatriculas.isNotEmpty) ...[
@@ -779,6 +780,12 @@ class _TarjetaAcademia extends StatelessWidget {
 /// Banner de acceso al RANKING GLOBAL (tabla cruzada por deporte). Solo se
 /// muestra cuando ya hay partidos registrados en alguna academia.
 class _RankingGlobalBanner extends StatelessWidget {
+  const _RankingGlobalBanner({required this.inscrito});
+
+  /// ¿El usuario YA es del circuito? Si no, el banner INVITA a unirse (no abre
+  /// el ranking); si sí, es el atajo directo a su ranking.
+  final bool inscrito;
+
   @override
   Widget build(BuildContext context) {
     return Material(
@@ -786,32 +793,45 @@ class _RankingGlobalBanner extends StatelessWidget {
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: () => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => const RankingGlobalScreen())),
+        onTap: () async {
+          if (inscrito) {
+            // Ya en la liga → atajo a su ranking.
+            await Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => const RankingGlobalScreen()));
+          } else {
+            // Aún NO en la liga → INVITA a unirse (no muestra el ranking).
+            // Al unirse, appState notifica y la vista se refresca sola.
+            await mostrarUnirseCircuito(context);
+          }
+        },
         child: Container(
           decoration: BoxDecoration(
-            // Verde de marca (antes bosque #222 se veía como bloque negro).
             gradient: const LinearGradient(colors: [lima, teal]),
             borderRadius: BorderRadius.circular(16),
           ),
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              const Icon(Icons.public, color: Colors.white, size: 26),
+              Icon(inscrito ? Icons.leaderboard : Icons.public,
+                  color: Colors.white, size: 26),
               const SizedBox(width: 12),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Liga de tenis Pichangol',
+                    const Text('Liga de tenis Pichangol',
                         style: TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.w800,
                             fontSize: 15)),
-                    SizedBox(height: 2),
-                    Text('Ranking de tu ciudad, retos entre jugadores y tu '
-                        'carnet oficial. Únete y sube.',
-                        style: TextStyle(color: Colors.white70, fontSize: 12.5)),
+                    const SizedBox(height: 2),
+                    Text(
+                        inscrito
+                            ? 'Ver tu ranking, retar jugadores y subir en tu ciudad.'
+                            : 'Ranking de tu ciudad, retos entre jugadores y tu '
+                                'carnet oficial. Únete y sube.',
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 12.5)),
                   ],
                 ),
               ),
