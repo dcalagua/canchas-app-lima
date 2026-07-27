@@ -643,6 +643,8 @@ class _MensajesScreenState extends State<MensajesScreen> {
                       .push(MaterialPageRoute(
                           builder: (_) => const CrearGrupoScreen()))
                       .then((_) => _cargar());
+                } else if (v == 'recado') {
+                  _editarRecado();
                 }
               },
               itemBuilder: (_) => const [
@@ -660,6 +662,13 @@ class _MensajesScreenState extends State<MensajesScreen> {
                       leading: Icon(Icons.group_add),
                       title: Text('Nuevo grupo')),
                 ),
+                PopupMenuItem(
+                  value: 'recado',
+                  child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.mode_comment_outlined),
+                      title: Text('Mi recado')),
+                ),
               ],
             ),
           ],
@@ -676,7 +685,10 @@ class _MensajesScreenState extends State<MensajesScreen> {
     if (file == null || !mounted) return;
     final bytes = await file.readAsBytes();
     if (!mounted) return;
-    final c = await _elegirDestinatario();
+    final activos =
+        _convs.where((x) => !appState.chatArchivado(x.hilo)).toList();
+    final c = await Navigator.of(context).push<_Conv>(MaterialPageRoute(
+        builder: (_) => _SelectorEnviarFoto(convs: activos)));
     if (c == null || !mounted) return;
     Navigator.of(context)
         .push(MaterialPageRoute(
@@ -693,60 +705,61 @@ class _MensajesScreenState extends State<MensajesScreen> {
         .then((_) => _cargar());
   }
 
-  /// Hoja para elegir a quién enviar la foto (conversaciones existentes).
-  Future<_Conv?> _elegirDestinatario() {
-    final activos =
-        _convs.where((c) => !appState.chatArchivado(c.hilo)).toList();
-    return showModalBottomSheet<_Conv>(
+  /// "Mi recado" (3 puntos): texto corto que mis contactos ven en el chat, tipo
+  /// WhatsApp. Se guarda en el perfil (local + Supabase best-effort).
+  Future<void> _editarRecado() async {
+    if (!appState.logueado) {
+      if (await LoginGoogleSheet.mostrar(context, motivo: 'poner tu recado')) {
+        if (mounted) _editarRecado();
+      }
+      return;
+    }
+    final ctrl = TextEditingController(text: appState.miRecado);
+    final ok = await showDialog<bool>(
       context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Column(
+      builder: (ctx) => DialogoPichangol(
+        titulo: 'Mi recado',
+        icono: Icons.mode_comment_outlined,
+        contenido: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text('Enviar foto a…',
-                    style:
-                        TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-              ),
+            const Text('Un texto corto que tus contactos ven en el chat.',
+                style: TextStyle(color: textoTenue, fontSize: 13)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: ctrl,
+              maxLength: 80,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(
+                  hintText: 'Ej. Disponible para jugar 🎾'),
             ),
-            if (activos.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(24),
-                child: Text('Aún no tienes conversaciones.',
-                    style: TextStyle(color: textoTenue)),
-              )
-            else
-              Flexible(
-                child: ListView(
-                  shrinkWrap: true,
-                  children: [
-                    for (final c in activos)
-                      ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: teal,
-                          child: Text(
-                              c.titulo.trim().isNotEmpty
-                                  ? c.titulo.characters.first.toUpperCase()
-                                  : '?',
-                              style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w800)),
-                        ),
-                        title: Text(c.titulo,
-                            maxLines: 1, overflow: TextOverflow.ellipsis),
-                        onTap: () => Navigator.pop(ctx, c),
-                      ),
-                  ],
-                ),
-              ),
           ],
         ),
+        acciones: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              style: TextButton.styleFrom(foregroundColor: textoTenue),
+              child: const Text('Cancelar')),
+          FilledButton(
+              style: FilledButton.styleFrom(
+                  backgroundColor: lima,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Guardar',
+                  style: TextStyle(fontWeight: FontWeight.w800))),
+        ],
       ),
     );
+    if (ok != true) return;
+    await appState.guardarRecado(ctrl.text);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Recado guardado')));
   }
 
   // ── Acciones de la barra de selección (operan sobre TODOS los marcados) ──────
@@ -1185,6 +1198,117 @@ class _FilaConv extends StatelessWidget {
               else if (!fijado && !silenciado)
                 const SizedBox(height: 12),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Selector de contacto a pantalla completa (estilo WhatsApp) para enviar una
+/// foto tomada desde el inbox: buscador arriba + lista con avatares.
+class _SelectorEnviarFoto extends StatefulWidget {
+  const _SelectorEnviarFoto({required this.convs});
+  final List<_Conv> convs;
+  @override
+  State<_SelectorEnviarFoto> createState() => _SelectorEnviarFotoState();
+}
+
+class _SelectorEnviarFotoState extends State<_SelectorEnviarFoto> {
+  final _q = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _q.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final oscuro = Theme.of(context).brightness == Brightness.dark;
+    final bg = oscuro ? const Color(0xFF1F2C34) : const Color(0xFF008069);
+    final vis = _query.isEmpty
+        ? widget.convs
+        : widget.convs
+            .where((c) => c.titulo.toLowerCase().contains(_query))
+            .toList();
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: bg,
+        foregroundColor: Colors.white,
+        title: const Text('Enviar foto a…'),
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+            child: TextField(
+              controller: _q,
+              onChanged: (v) => setState(() => _query = v.trim().toLowerCase()),
+              decoration: InputDecoration(
+                hintText: 'Buscar',
+                prefixIcon:
+                    const Icon(Icons.search, size: 20, color: textoTenue),
+                isDense: true,
+                filled: true,
+                fillColor: oscuro ? Colors.white10 : const Color(0xFFEFEFEF),
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(999),
+                    borderSide: BorderSide.none),
+              ),
+            ),
+          ),
+          Expanded(
+            child: vis.isEmpty
+                ? const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(28),
+                      child: Text('Sin conversaciones.',
+                          style: TextStyle(color: textoTenue)),
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: vis.length,
+                    itemBuilder: (_, i) {
+                      final c = vis[i];
+                      final esPersona = c.tipo == 'directo' ||
+                          (c.soyProfe && c.tipo != 'grupo');
+                      final foto = (esPersona && c.cuentaEmail.isNotEmpty)
+                          ? appState.fotoDe(c.cuentaEmail)
+                          : null;
+                      final (Color col, IconData? ico) = switch (c.tipo) {
+                        'grupo' => (morado, Icons.groups),
+                        'cancha' => (naranja, Icons.sports_tennis),
+                        _ => (teal, null),
+                      };
+                      final inicial = c.titulo.trim().isNotEmpty
+                          ? c.titulo.characters.first.toUpperCase()
+                          : '?';
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: col,
+                          backgroundImage: (foto != null && foto.isNotEmpty)
+                              ? NetworkImage(foto)
+                              : null,
+                          child: (foto != null && foto.isNotEmpty)
+                              ? null
+                              : (ico != null
+                                  ? Icon(ico, color: Colors.white, size: 20)
+                                  : Text(inicial,
+                                      style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w800))),
+                        ),
+                        title: Text(c.titulo,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w700)),
+                        onTap: () => Navigator.pop(context, c),
+                      );
+                    },
+                  ),
           ),
         ],
       ),

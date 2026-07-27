@@ -19,6 +19,7 @@ class PerfilesRepo {
     required String nombre,
     String? fotoUrl,
     String? celular,
+    String? recado,
   }) async {
     final e = email.trim().toLowerCase();
     if (!disponible || e.isEmpty) return false;
@@ -29,6 +30,9 @@ class PerfilesRepo {
         if (fotoUrl != null && fotoUrl.isNotEmpty) 'foto_url': fotoUrl,
         // celular: se envía siempre que no sea null (permite BORRARLO con '').
         if (celular != null) 'celular': celular.trim(),
+        // recado/estado (tipo WhatsApp): se envía si no es null. Requiere la
+        // columna `recado` en la tabla (ver docs/piloto/supabase_recado.sql).
+        if (recado != null) 'recado': recado.trim(),
         'actualizado': DateTime.now().toUtc().toIso8601String(),
       }, onConflict: 'email');
       return true;

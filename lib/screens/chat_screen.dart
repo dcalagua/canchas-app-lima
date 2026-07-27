@@ -353,6 +353,10 @@ class _ChatScreenState extends State<ChatScreen> {
     final fotoPerfil = _contraparteEmail.isEmpty
         ? null
         : appState.fotoDe(_contraparteEmail);
+    // Recado (estado tipo WhatsApp) de la contraparte, si lo puso.
+    final recado = _contraparteEmail.isEmpty
+        ? null
+        : appState.recadoDe(_contraparteEmail);
     final tituloMostrar =
         (nombrePerfil != null && nombrePerfil.isNotEmpty)
             ? nombrePerfil
@@ -383,10 +387,22 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             const SizedBox(width: 10),
             Flexible(
-              child: Text(tituloMostrar,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w700)),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(tituloMostrar,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                  if (recado != null && recado.isNotEmpty)
+                    Text(recado,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 11.5)),
+                ],
+              ),
             ),
             if (_contraparteVerificada)
               const Padding(

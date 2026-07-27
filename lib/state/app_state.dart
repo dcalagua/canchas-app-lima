@@ -88,6 +88,31 @@ class AppState extends ChangeNotifier {
       (_perfiles[(usuario?.email ?? '').toLowerCase()]?['celular'] ?? '')
           .toString();
 
+  /// Recado/estado (tipo WhatsApp) de un correo, o null si no lo puso. Es un
+  /// texto corto que el usuario muestra a sus contactos (ej. "Disponible").
+  String? recadoDe(String? email) {
+    final e = (email ?? '').trim().toLowerCase();
+    final r = (_perfiles[e]?['recado'] ?? '').toString().trim();
+    return r.isEmpty ? null : r;
+  }
+
+  /// Mi propio recado guardado, o '' si no tengo.
+  String get miRecado =>
+      (_perfiles[(usuario?.email ?? '').toLowerCase()]?['recado'] ?? '')
+          .toString();
+
+  /// Guarda mi recado (estado) en el perfil: cache local + Supabase (best-effort,
+  /// requiere la columna `recado`). Mis contactos lo ven en el chat.
+  Future<void> guardarRecado(String texto) async {
+    final u = usuario;
+    if (u == null) return;
+    final e = u.email.toLowerCase();
+    final t = texto.trim();
+    _perfiles[e] = {...?_perfiles[e], 'email': e, 'recado': t};
+    notifyListeners();
+    await PerfilesRepo.guardar(email: u.email, nombre: u.nombre, recado: t);
+  }
+
   // ── Contactos guardados (tipo WhatsApp): correos que el usuario guardó ─────
   final Set<String> _contactos = {};
   static const _kContactos = 'contactos_json';
