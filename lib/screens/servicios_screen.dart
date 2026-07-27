@@ -10,6 +10,7 @@ import '../services/pagos_service.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/dialogo_pichangol.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/responsive.dart';
 import 'conectar_redes_screen.dart';
@@ -193,25 +194,16 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
   }
 
   Future<void> _faltaSaldo(double requerido) async {
-    final ir = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Saldo insuficiente'),
-        content: Text(
-            'Necesitas $_mon ${requerido.toStringAsFixed(0)} de saldo para '
-            'contratar este servicio. Recarga y vuelve a intentarlo.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Ahora no')),
-          FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: lima),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Recargar saldo')),
-        ],
-      ),
+    final ir = await confirmarPichangol(
+      context,
+      titulo: 'Saldo insuficiente',
+      mensaje: 'Necesitas $_mon ${requerido.toStringAsFixed(0)} de saldo para '
+          'contratar este servicio. Recarga y vuelve a intentarlo.',
+      textoConfirmar: 'Recargar saldo',
+      textoCancelar: 'Ahora no',
+      icono: Icons.account_balance_wallet_outlined,
     );
-    if (ir == true && mounted) await _pushRecarga();
+    if (ir && mounted) await _pushRecarga();
   }
 
   Future<void> _pushRecarga() async {
@@ -225,25 +217,17 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
   }
 
   Future<void> _cancelar(String clave, String nombre) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Cancelar $nombre'),
-        content: const Text(
-            'Se cancela la renovación del próximo mes. El mes en curso sigue '
-            'activo hasta su fecha.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('No')),
-          FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: clayOscuro),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Sí, cancelar')),
-        ],
-      ),
+    final ok = await confirmarPichangol(
+      context,
+      titulo: 'Cancelar $nombre',
+      mensaje: 'Se cancela la renovación del próximo mes. El mes en curso sigue '
+          'activo hasta su fecha.',
+      textoConfirmar: 'Sí, cancelar',
+      textoCancelar: 'No',
+      destructivo: true,
+      icono: Icons.cancel_outlined,
     );
-    if (ok == true) {
+    if (ok) {
       await PagosService.cancelarServicio(academiaId: _idAcademia, servicio: clave);
       await _cargar();
     }

@@ -8,6 +8,7 @@ import '../config/pais.dart';
 import '../services/ocr_documento.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/dialogo_pichangol.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/responsive.dart';
 
@@ -172,27 +173,18 @@ class _VerificarIdentidadScreenState extends State<VerificarIdentidadScreen> {
 
   void _dialogoOk() {
     final edad = appState.edadActual;
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('¡Identidad verificada! ✓'),
-        content: Text(
-          'Tu perfil ahora muestra la insignia de jugador verificado. '
+    avisarPichangol(
+      context,
+      titulo: '¡Identidad verificada! ✓',
+      icono: Icons.verified,
+      mensaje: 'Tu perfil ahora muestra la insignia de jugador verificado. '
           'Los dueños de cancha confían más en jugadores verificados.'
           '${edad != null ? '\n\nEdad registrada: $edad años '
               '(se usa para categorizarte en campeonatos).' : ''}',
-        ),
-        actions: [
-          FilledButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              Navigator.of(context).pop();
-            },
-            child: const Text('Listo'),
-          ),
-        ],
-      ),
-    );
+      textoBoton: 'Listo',
+    ).then((_) {
+      if (mounted) Navigator.of(context).pop();
+    });
   }
 
   @override

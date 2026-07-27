@@ -7,6 +7,7 @@ import '../services/growth_service.dart';
 import '../services/pagos_service.dart';
 import '../services/whatsapp_link.dart';
 import '../theme.dart';
+import '../widgets/dialogo_pichangol.dart';
 import '../widgets/cargando_pichangol.dart';
 
 /// Flujo GUIADO para que el dueño conecte su Instagram/Facebook y Pichangol
@@ -84,21 +85,15 @@ class _ConectarRedesScreenState extends State<ConectarRedesScreen> {
     if (loginUrl != null && loginUrl.isNotEmpty) {
       await _abrir(loginUrl);
       if (!mounted) return;
-      await showDialog<void>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Autoriza en Facebook'),
-          content: const Text(
-              'Se abrió una página de Facebook para que autorices a Pichangol a '
-              'publicar en tu Instagram/Facebook. Cuando termines y veas el '
-              'mensaje de confirmación, vuelve aquí y toca "Ya autoricé".'),
-          actions: [
-            FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: lima),
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Ya autoricé')),
-          ],
-        ),
+      await avisarPichangol(
+        context,
+        titulo: 'Autoriza en Facebook',
+        mensaje:
+            'Se abrió una página de Facebook para que autorices a Pichangol a '
+            'publicar en tu Instagram/Facebook. Cuando termines y veas el '
+            'mensaje de confirmación, vuelve aquí y toca "Ya autoricé".',
+        textoBoton: 'Ya autoricé',
+        icono: Icons.facebook,
       );
       await _cargar();
       if (_conectada) _msg('✅ Redes conectadas.');
@@ -111,25 +106,17 @@ class _ConectarRedesScreenState extends State<ConectarRedesScreen> {
   }
 
   Future<void> _desconectar() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Desconectar redes'),
-        content: const Text(
-            'Dejaremos de publicar por ti. Puedes volver a conectar cuando '
-            'quieras. También puedes revocar el permiso desde tu Facebook.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('No')),
-          FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: clayOscuro),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Desconectar')),
-        ],
-      ),
+    final ok = await confirmarPichangol(
+      context,
+      titulo: 'Desconectar redes',
+      mensaje: 'Dejaremos de publicar por ti. Puedes volver a conectar cuando '
+          'quieras. También puedes revocar el permiso desde tu Facebook.',
+      textoConfirmar: 'Desconectar',
+      textoCancelar: 'No',
+      destructivo: true,
+      icono: Icons.link_off,
     );
-    if (ok == true) {
+    if (ok) {
       await PagosService.desconectarRedes(_idAcademia);
       await _cargar();
     }

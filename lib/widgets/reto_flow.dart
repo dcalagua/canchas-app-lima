@@ -6,6 +6,7 @@ import '../services/avisos_service.dart';
 import '../services/retos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'dialogo_pichangol.dart';
 import 'cargando_pichangol.dart';
 
 /// Retos que se están enviando AHORA (clave = correo del retado). Es la guardia
@@ -175,25 +176,16 @@ Future<void> enviarRetoDoblesConGuardia(
 
 Future<void> _ofrecerPro(BuildContext context, dynamic limite) async {
   final n = (limite is num) ? limite.toInt() : 3;
-  final ir = await showDialog<bool>(
-    context: context,
-    builder: (dctx) => AlertDialog(
-      title: const Text('Llegaste a tu límite de retos'),
-      content: Text(
-          'Los jugadores sin Pichangol Pro pueden enviar $n retos por semana. '
-          'Hazte Pro y reta sin límites.'),
-      actions: [
-        TextButton(
-            onPressed: () => Navigator.pop(dctx, false),
-            child: const Text('Ahora no')),
-        FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: lima),
-            onPressed: () => Navigator.pop(dctx, true),
-            child: const Text('Ver Pro')),
-      ],
-    ),
+  final ir = await confirmarPichangol(
+    context,
+    titulo: 'Llegaste a tu límite de retos',
+    mensaje: 'Los jugadores sin Pichangol Pro pueden enviar $n retos por semana. '
+        'Hazte Pro y reta sin límites.',
+    textoConfirmar: 'Ver Pro',
+    textoCancelar: 'Ahora no',
+    icono: Icons.workspace_premium,
   );
-  if (ir == true && context.mounted) {
+  if (ir && context.mounted) {
     Navigator.of(context)
         .push(MaterialPageRoute(builder: (_) => const HazteProScreen()));
   }
