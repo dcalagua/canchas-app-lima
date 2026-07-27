@@ -956,7 +956,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
           Wrap(
             spacing: 10,
             children: [
-              for (final d in deportesActivos)
+              for (final d in deportesAcademia)
                 ChoiceChip(
                   label: Text('${emojiDeporte(d)}  ${d.etiqueta}'),
                   selected: _deporte == d,

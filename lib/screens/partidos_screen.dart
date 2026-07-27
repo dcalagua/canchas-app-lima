@@ -653,6 +653,7 @@ class _CrearPartidoSheetState extends State<_CrearPartidoSheet> {
           ],
         Deporte.voley => const [('4 vs 4', 8), ('6 vs 6', 12)],
         Deporte.basquet => const [('3 vs 3', 6), ('5 vs 5', 10)],
+        Deporte.natacion => const [], // sin modalidades de partido
       };
 
   Future<void> _publicar() async {

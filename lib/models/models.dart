@@ -21,7 +21,8 @@ enum Deporte {
   futbol('Fútbol'),
   pickleball('Pickleball'),
   voley('Vóley'),
-  basquet('Básquet');
+  basquet('Básquet'),
+  natacion('Natación');
 
   final String etiqueta;
   const Deporte(this.etiqueta);
@@ -62,6 +63,18 @@ const List<Deporte> deportesActivos = [
   Deporte.pickleball,
   Deporte.voley,
   Deporte.basquet,
+];
+
+/// Deportes ofrecibles al crear una ACADEMIA. Incluye natación (disciplina de
+/// academia/clases, no de cancha reservable), por eso va aparte de
+/// [deportesActivos] (que alimenta filtros de canchas y registro de canchas).
+const List<Deporte> deportesAcademia = [
+  Deporte.futbol,
+  Deporte.tenis,
+  Deporte.pickleball,
+  Deporte.voley,
+  Deporte.basquet,
+  Deporte.natacion,
 ];
 
 /// Un servicio EXTRA de pago que una cancha ofrece como add-on de la reserva
@@ -259,6 +272,8 @@ class Cancha {
         return 80;
       case Deporte.basquet:
         return 90;
+      case Deporte.natacion:
+        return 0; // natación es disciplina de academia, no cancha reservable
     }
   }
 

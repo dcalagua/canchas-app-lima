@@ -112,6 +112,7 @@ Color colorDeporte(Deporte d) => switch (d) {
       Deporte.pickleball => lima,   // Rausch (coral)
       Deporte.voley => const Color(0xFF3D8BC9),  // azul cielo
       Deporte.basquet => const Color(0xFFE07A3E), // naranja balón
+      Deporte.natacion => const Color(0xFF2AA9E0), // aqua piscina
     };
 
 IconData iconoDeporte(Deporte d) => switch (d) {
@@ -121,6 +122,7 @@ IconData iconoDeporte(Deporte d) => switch (d) {
       Deporte.pickleball => Icons.sports_tennis, // raqueta (lo más cercano)
       Deporte.voley => Icons.sports_volleyball,
       Deporte.basquet => Icons.sports_basketball,
+      Deporte.natacion => Icons.pool,
     };
 
 /// EMOJI canónico por deporte — la identidad visual del deporte en TODA la app
@@ -133,6 +135,7 @@ String emojiDeporte(Deporte d) => switch (d) {
       Deporte.pickleball => '🏓',
       Deporte.voley => '🏐',
       Deporte.basquet => '🏀',
+      Deporte.natacion => '🏊',
     };
 
 // ── Amenities / servicios de la cancha (editable por el dueño) ────────────
@@ -198,6 +201,8 @@ List<String> superficiesDe(Deporte d) => switch (d) {
           'Parquet',
           'Cemento',
         ],
+      // Natación es disciplina de academia (no cancha reservable): sin superficie.
+      Deporte.natacion => const [],
     };
 
 /// Ícono representativo de una superficie (por palabra clave). Fallback: grid.

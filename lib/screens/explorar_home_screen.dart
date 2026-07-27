@@ -992,26 +992,31 @@ class _FiltrosDeporte extends StatelessWidget {
       );
     }
 
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: SingleChildScrollView(
+    // En pantallas anchas (tablet/horizontal) los chips van CENTRADOS; si no
+    // caben (móvil angosto), scrollean desde la izquierda como siempre.
+    return LayoutBuilder(builder: (context, cons) {
+      return SingleChildScrollView(
         scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            chip('🏟️', 'Todos',
-                activo: !soloClubes && seleccion == null,
-                onTap: () => onSeleccion(null)),
-            chip(emojiDeporte(Deporte.futbol), 'Fútbol',
-                activo: !soloClubes && seleccion == Deporte.futbol,
-                onTap: () => onSeleccion(Deporte.futbol)),
-            chip(emojiDeporte(Deporte.tenis), 'Tenis',
-                activo: !soloClubes && seleccion == Deporte.tenis,
-                onTap: () => onSeleccion(Deporte.tenis)),
-            chip('🏛️', 'Clubes', activo: soloClubes, onTap: onClubes),
-          ],
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minWidth: cons.maxWidth),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              chip('🏟️', 'Todos',
+                  activo: !soloClubes && seleccion == null,
+                  onTap: () => onSeleccion(null)),
+              chip(emojiDeporte(Deporte.futbol), 'Fútbol',
+                  activo: !soloClubes && seleccion == Deporte.futbol,
+                  onTap: () => onSeleccion(Deporte.futbol)),
+              chip(emojiDeporte(Deporte.tenis), 'Tenis',
+                  activo: !soloClubes && seleccion == Deporte.tenis,
+                  onTap: () => onSeleccion(Deporte.tenis)),
+              chip('🏛️', 'Clubes', activo: soloClubes, onTap: onClubes),
+            ],
+          ),
         ),
-      ),
-    );
+      );
+    });
   }
 }
 
