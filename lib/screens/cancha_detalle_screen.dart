@@ -4,6 +4,7 @@ import '../data/reservas_repo.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/dialogo_pichangol.dart';
 import '../widgets/chat_burbuja.dart';
 import '../widgets/court_lines.dart';
 import '../widgets/pago_tarjeta_sheet.dart';
@@ -77,9 +78,10 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
     final efectivo = !exigeSena && appState.esDestacada(cancha);
     final confirmar = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Confirmar reserva'),
-        content: Column(
+      builder: (ctx) => DialogoPichangol(
+        titulo: 'Confirmar reserva',
+        icono: Icons.event_available,
+        contenido: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -103,19 +105,27 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
                       ? 'Reservas ahora y pagas en la cancha (efectivo). El club '
                           'confirma tu pago al llegar.'
                       : 'Pagas ahora por la app (Yape/tarjeta) para asegurar tu hora.',
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
+              style: const TextStyle(fontSize: 12, color: textoTenue),
             ),
           ],
         ),
-        actions: [
+        acciones: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
+            style: TextButton.styleFrom(foregroundColor: textoTenue),
             child: const Text('Cancelar'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: coral),
+            style: FilledButton.styleFrom(
+                backgroundColor: lima,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Reservar'),
+            child: const Text('Reservar',
+                style: TextStyle(fontWeight: FontWeight.w800)),
           ),
         ],
       ),

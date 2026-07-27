@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/reserva_fija.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/dialogo_pichangol.dart';
 
 /// RESERVAS FIJAS ("pensionados"): el dueño registra a los clientes que juegan
 /// SIEMPRE el mismo día y hora, y el app genera solas las reservas de las
@@ -305,28 +306,16 @@ class _FilaFija extends StatelessWidget {
     );
   }
 
-  void _confirmarBorrar(BuildContext context) {
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Quitar cliente fijo'),
-        content: const Text(
-            'Se deja de generar sus reservas. Las que ya están creadas siguen '
-            'en tu agenda (puedes cancelarlas aparte).'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancelar')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: clayOscuro),
-            onPressed: () {
-              appState.quitarReservaFija(fija.id);
-              Navigator.pop(ctx);
-            },
-            child: const Text('Quitar'),
-          ),
-        ],
-      ),
+  Future<void> _confirmarBorrar(BuildContext context) async {
+    final ok = await confirmarPichangol(
+      context,
+      titulo: 'Quitar cliente fijo',
+      mensaje: 'Se deja de generar sus reservas. Las que ya están creadas siguen '
+          'en tu agenda (puedes cancelarlas aparte).',
+      textoConfirmar: 'Quitar',
+      destructivo: true,
+      icono: Icons.person_remove_outlined,
     );
+    if (ok) appState.quitarReservaFija(fija.id);
   }
 }

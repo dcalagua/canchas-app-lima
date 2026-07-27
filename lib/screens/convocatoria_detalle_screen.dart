@@ -4,6 +4,7 @@ import '../models/convocatoria.dart';
 import '../services/convocatorias_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/dialogo_pichangol.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/responsive.dart';
 import 'convocatorias_screen.dart' show EstadoChip, ModoChip;
@@ -170,20 +171,12 @@ class _ConvocatoriaDetalleScreenState extends State<ConvocatoriaDetalleScreen> {
   }
 
   Future<bool?> _confirmar(String titulo, String cuerpo) {
-    return showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(titulo),
-        content: Text(cuerpo),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('No')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Sí')),
-        ],
-      ),
+    return confirmarPichangol(
+      context,
+      titulo: titulo,
+      mensaje: cuerpo,
+      textoConfirmar: 'Sí',
+      textoCancelar: 'No',
     );
   }
 

@@ -6,6 +6,7 @@ import '../data/referidos_repo.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/dialogo_pichangol.dart';
 import '../widgets/responsive.dart';
 import 'login_google_sheet.dart';
 
@@ -71,19 +72,13 @@ class _ReferidosScreenState extends State<ReferidosScreen> {
     setState(() => _canjeando = false);
     if (ok) {
       _codigoAmigo.clear();
-      showDialog<void>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('¡Bono acreditado! 🎁'),
-          content: Text(
-              'Se sumaron ${AppState.bonoReferido} ${paisActual.moneda} '
-              'a tu saldo. Tu amigo también recibe su bono.'),
-          actions: [
-            FilledButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Genial')),
-          ],
-        ),
+      avisarPichangol(
+        context,
+        titulo: '¡Bono acreditado! 🎁',
+        mensaje: 'Se sumaron ${AppState.bonoReferido} ${paisActual.moneda} '
+            'a tu saldo. Tu amigo también recibe su bono.',
+        textoBoton: 'Genial',
+        icono: Icons.card_giftcard,
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(

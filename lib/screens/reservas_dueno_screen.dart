@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/dialogo_pichangol.dart';
 import '../utils/moneda.dart';
 import '../widgets/ancho_lectura.dart';
 import 'chat_screen.dart';
@@ -374,26 +375,16 @@ class _ReservaCard extends StatelessWidget {
   }
 
   Future<void> _confirmarNoShow(BuildContext context) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Marcar no-show'),
-        content: Text(
-            '¿El jugador ${reserva.jugador} no se presentó a su reserva de '
-            '${reserva.horaInicio}?'
-            '${reserva.sena > 0 ? '\n\nLa seña de ${reserva.monedaSimbolo} ${reserva.sena} queda a tu favor (no es reembolsable).' : ''}'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Cancelar')),
-          FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: coral),
-              onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text('Sí, no vino')),
-        ],
-      ),
+    final ok = await confirmarPichangol(
+      context,
+      titulo: 'Marcar no-show',
+      mensaje: '¿El jugador ${reserva.jugador} no se presentó a su reserva de '
+          '${reserva.horaInicio}?'
+          '${reserva.sena > 0 ? '\n\nLa seña de ${reserva.monedaSimbolo} ${reserva.sena} queda a tu favor (no es reembolsable).' : ''}',
+      textoConfirmar: 'Sí, no vino',
+      icono: Icons.person_off_outlined,
     );
-    if (ok == true) appState.marcarNoShow(reserva);
+    if (ok) appState.marcarNoShow(reserva);
   }
 }
 

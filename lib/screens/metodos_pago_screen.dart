@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/dialogo_pichangol.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/responsive.dart';
 import '../utils/input_formatos.dart';
@@ -65,23 +66,15 @@ class _MetodosPagoScreenState extends State<MetodosPagoScreen> {
   }
 
   Future<void> _eliminar(Map<String, dynamic> m) async {
-    final si = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Quitar tarjeta'),
-        content: Text('¿Eliminar la tarjeta terminada en ${m['ultimos4']}?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancelar')),
-          FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: const Color(0xFFC0392B)),
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Eliminar')),
-        ],
-      ),
+    final si = await confirmarPichangol(
+      context,
+      titulo: 'Quitar tarjeta',
+      mensaje: '¿Eliminar la tarjeta terminada en ${m['ultimos4']}?',
+      textoConfirmar: 'Eliminar',
+      destructivo: true,
+      icono: Icons.credit_card_off_outlined,
     );
-    if (si != true) return;
+    if (!si) return;
     final borrado = await PagosService.eliminarMetodo(_userId, m['id'].toString());
     if (borrado) _cargar();
   }

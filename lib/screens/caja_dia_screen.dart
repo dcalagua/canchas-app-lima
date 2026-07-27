@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/dialogo_pichangol.dart';
 import '../widgets/responsive.dart';
 
 /// CAJA DEL DÍA del dueño: la plata de hoy de un vistazo (cobrado, por cobrar,
@@ -49,25 +50,15 @@ class _CajaDiaScreenState extends State<CajaDiaScreen> {
 
   Future<void> _cerrarCaja() async {
     final c = appState.cajaDia(_iso);
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Cerrar caja del día'),
-        content: Text(
-            'Cobrado: $_mon ${c.cobrado}\nPor cobrar: $_mon ${c.porCobrar}\n'
-            'Reservas: ${c.reservas}\n\nSe guarda el arqueo de $_label.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancelar')),
-          FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: lima),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Cerrar caja')),
-        ],
-      ),
+    final ok = await confirmarPichangol(
+      context,
+      titulo: 'Cerrar caja del día',
+      mensaje: 'Cobrado: $_mon ${c.cobrado}\nPor cobrar: $_mon ${c.porCobrar}\n'
+          'Reservas: ${c.reservas}\n\nSe guarda el arqueo de $_label.',
+      textoConfirmar: 'Cerrar caja',
+      icono: Icons.point_of_sale,
     );
-    if (ok == true) {
+    if (ok) {
       appState.cerrarCaja(_iso);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(

@@ -6,6 +6,7 @@ import 'package:printing/printing.dart';
 import '../models/academia.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/dialogo_pichangol.dart';
 import '../widgets/cargando_pichangol.dart';
 import 'hazte_pro_screen.dart';
 
@@ -666,9 +667,10 @@ class _Carnet extends StatelessWidget {
     final ctrl = TextEditingController(text: p.categoria);
     final ok = await showDialog<bool>(
       context: context,
-      builder: (dctx) => AlertDialog(
-        title: const Text('Categoría del jugador'),
-        content: TextField(
+      builder: (dctx) => DialogoPichangol(
+        titulo: 'Categoría del jugador',
+        icono: Icons.badge_outlined,
+        contenido: TextField(
           controller: ctrl,
           autofocus: true,
           textCapitalization: TextCapitalization.words,
@@ -676,14 +678,22 @@ class _Carnet extends StatelessWidget {
               labelText: 'Categoría',
               hintText: 'ej. 7ma, Intermedio, Sub-10'),
         ),
-        actions: [
+        acciones: [
           TextButton(
               onPressed: () => Navigator.pop(dctx, false),
+              style: TextButton.styleFrom(foregroundColor: textoTenue),
               child: const Text('Cancelar')),
           FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: lima),
+              style: FilledButton.styleFrom(
+                  backgroundColor: lima,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 20, vertical: 12)),
               onPressed: () => Navigator.pop(dctx, true),
-              child: const Text('Guardar')),
+              child: const Text('Guardar',
+                  style: TextStyle(fontWeight: FontWeight.w800))),
         ],
       ),
     );
