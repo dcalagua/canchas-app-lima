@@ -15,6 +15,7 @@ import '../services/places_service.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/dialogo_pichangol.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/responsive.dart';
 import '../widgets/selector_ubicacion.dart';
@@ -241,9 +242,10 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
     LatLng? ubic;
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Agregar sede'),
-        content: SingleChildScrollView(
+      builder: (ctx) => DialogoPichangol(
+        titulo: 'Agregar sede',
+        icono: Icons.add_location_alt_outlined,
+        contenido: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -306,7 +308,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
             ],
           ),
         ),
-        actions: [
+        acciones: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
               child: const Text('Cancelar')),

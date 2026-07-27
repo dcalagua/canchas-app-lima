@@ -9,6 +9,7 @@ import '../services/avisos_service.dart';
 import '../services/retos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/dialogo_pichangol.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/responsive.dart';
 
@@ -154,19 +155,10 @@ class _MisRetosScreenState extends State<MisRetosScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (dctx) => StatefulBuilder(
-        builder: (dctx, setSB) => AlertDialog(
-          title: Row(
-            children: const [
-              CircleAvatar(
-                radius: 16,
-                backgroundColor: amarillo,
-                child: Icon(Icons.emoji_events, color: Colors.white, size: 18),
-              ),
-              SizedBox(width: 10),
-              Text('Reportar resultado'),
-            ],
-          ),
-          content: Column(
+        builder: (dctx, setSB) => DialogoPichangol(
+          titulo: 'Reportar resultado',
+          icono: Icons.emoji_events,
+          contenido: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -191,7 +183,7 @@ class _MisRetosScreenState extends State<MisRetosScreen> {
               ),
             ],
           ),
-          actions: [
+          acciones: [
             TextButton(
                 onPressed: () => Navigator.pop(dctx, false),
                 child: const Text('Cancelar')),

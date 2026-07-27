@@ -252,22 +252,26 @@ class MisClasesScreen extends StatelessWidget {
     final logo = academia?.logoUrl;
     showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        icon: (logo != null && logo.isNotEmpty)
-            ? ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: Image.network(logo,
-                    width: 48,
-                    height: 48,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) =>
-                        const Icon(Icons.receipt_long, color: lima, size: 36)))
-            : const Icon(Icons.receipt_long, color: lima, size: 36),
-        title: const Text('Comprobante de pago'),
-        content: Column(
+      builder: (ctx) => DialogoPichangol(
+        titulo: 'Comprobante de pago',
+        icono: Icons.receipt_long,
+        contenido: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (logo != null && logo.isNotEmpty) ...[
+              Center(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.network(logo,
+                      width: 48,
+                      height: 48,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             _lineaComp('Academia', nombreAca),
             _lineaComp('Alumno', al.nombre),
             _lineaComp('Concepto', c.concepto),
@@ -282,15 +286,21 @@ class MisClasesScreen extends StatelessWidget {
                 style: TextStyle(color: textoTenue, fontSize: 12)),
           ],
         ),
-        actions: [
+        acciones: [
           TextButton(
               onPressed: () => Navigator.pop(ctx),
+              style: TextButton.styleFrom(foregroundColor: textoTenue),
               child: const Text('Cerrar')),
           FilledButton.icon(
             style: FilledButton.styleFrom(
-                backgroundColor: lima, foregroundColor: Colors.white),
+                backgroundColor: lima,
+                foregroundColor: Colors.white,
+                shape:
+                    RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12)),
             icon: const Icon(Icons.ios_share, size: 18),
-            label: const Text('Compartir / PDF'),
+            label: const Text('Compartir / PDF',
+                style: TextStyle(fontWeight: FontWeight.w800)),
             onPressed: () => _compartirComprobante(academia, al, c, mon),
           ),
         ],

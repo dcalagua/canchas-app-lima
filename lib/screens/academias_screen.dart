@@ -8,6 +8,7 @@ import '../services/location_service.dart';
 import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/dialogo_pichangol.dart';
 import '../utils/geo.dart';
 import '../utils/redes.dart';
 import '../widgets/responsive.dart';
@@ -352,9 +353,10 @@ class _UnirmeConCodigo extends StatelessWidget {
     final res = await showDialog<({bool ok, String mensaje})>(
       context: context,
       builder: (dctx) => StatefulBuilder(
-        builder: (dctx, setSB) => AlertDialog(
-          title: const Text('Unirme a una academia'),
-          content: SingleChildScrollView(
+        builder: (dctx, setSB) => DialogoPichangol(
+          titulo: 'Unirme a una academia',
+          icono: Icons.school_outlined,
+          contenido: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -450,7 +452,7 @@ class _UnirmeConCodigo extends StatelessWidget {
               ],
             ),
           ),
-          actions: [
+          acciones: [
             TextButton(
                 onPressed: () => Navigator.of(dctx).pop(),
                 child: const Text('Cancelar')),
