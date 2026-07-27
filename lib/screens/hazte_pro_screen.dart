@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/dialogo_pichangol.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/responsive.dart';
 import 'recargar_saldo_screen.dart';
@@ -49,44 +50,26 @@ class _HazteProScreenState extends State<HazteProScreen> {
     }
     if (!mounted) return;
     if (r['ok'] == true) {
-      showDialog<void>(
-        context: context,
-        builder: (_) => AlertDialog(
-          icon: const Icon(Icons.workspace_premium, color: lima, size: 42),
-          title: const Text('¡Ya eres Pro! 🎾'),
-          content: Text(
-              'Tu membresía Pichangol Pro está activa hasta el '
-              '${_fecha(r['hasta'] as String?)}. Se renueva sola desde tu saldo.'),
-          actions: [
-            FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: lima),
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Genial'),
-            ),
-          ],
-        ),
+      avisarPichangol(
+        context,
+        titulo: '¡Ya eres Pro! 🎾',
+        mensaje: 'Tu membresía Pichangol Pro está activa hasta el '
+            '${_fecha(r['hasta'] as String?)}. Se renueva sola desde tu saldo.',
+        textoBoton: 'Genial',
+        icono: Icons.workspace_premium,
       );
     } else if (r['falta_saldo'] == true) {
       final req = (r['requerido_soles'] as num?)?.toDouble() ?? appState.proPrecio;
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: const Text('Te falta saldo'),
-          content: Text(
-              'Pichangol Pro se cobra de tu saldo (${appState.monedaSaldoSimbolo} '
-              '${req.toStringAsFixed(2)}/mes). Recarga y actívalo al toque.'),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Ahora no')),
-            FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: lima),
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Recargar saldo')),
-          ],
-        ),
+      final ok = await confirmarPichangol(
+        context,
+        titulo: 'Te falta saldo',
+        mensaje: 'Pichangol Pro se cobra de tu saldo (${appState.monedaSaldoSimbolo} '
+            '${req.toStringAsFixed(2)}/mes). Recarga y actívalo al toque.',
+        textoConfirmar: 'Recargar saldo',
+        textoCancelar: 'Ahora no',
+        icono: Icons.account_balance_wallet_outlined,
       );
-      if (ok == true && mounted) {
+      if (ok && mounted) {
         await Navigator.of(context).push(MaterialPageRoute(
             builder: (_) => RecargarSaldoScreen(
                 duenoId: appState.usuario?.email, titulo: 'Recargar saldo')));

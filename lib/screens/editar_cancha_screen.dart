@@ -15,6 +15,7 @@ import '../models/models.dart';
 import '../services/propiedad_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/dialogo_pichangol.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/responsive.dart';
 import '../widgets/selector_horario.dart';
@@ -244,9 +245,10 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
           'No se pudieron subir las fotos.';
       await showDialog<void>(
         context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('No se subieron las fotos'),
-          content: Column(
+        builder: (ctx) => DialogoPichangol(
+          titulo: 'No se subieron las fotos',
+          icono: Icons.image_not_supported_outlined,
+          contenido: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -256,10 +258,18 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
                   style: const TextStyle(fontSize: 12, color: textoTenue)),
             ],
           ),
-          actions: [
-            TextButton(
+          acciones: [
+            FilledButton(
+                style: FilledButton.styleFrom(
+                    backgroundColor: lima,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 12)),
                 onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('Entendido')),
+                child: const Text('Entendido',
+                    style: TextStyle(fontWeight: FontWeight.w800))),
           ],
         ),
       );
@@ -351,25 +361,16 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
   }
 
   Future<void> _eliminar() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Eliminar cancha'),
-        content: Text('¿Seguro que quieres eliminar "${widget.cancha.nombre}"? '
-            'Dejará de aparecer en el mapa.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Cancelar')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: clayOscuro),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Eliminar'),
-          ),
-        ],
-      ),
+    final ok = await confirmarPichangol(
+      context,
+      titulo: 'Eliminar cancha',
+      mensaje: '¿Seguro que quieres eliminar "${widget.cancha.nombre}"? '
+          'Dejará de aparecer en el mapa.',
+      textoConfirmar: 'Eliminar',
+      destructivo: true,
+      icono: Icons.delete_outline,
     );
-    if (ok != true) return;
+    if (!ok) return;
     appState.eliminarCancha(widget.cancha.id);
     if (!mounted) return;
     Navigator.of(context).pop();

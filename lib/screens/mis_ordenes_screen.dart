@@ -5,6 +5,7 @@ import '../services/avisos_service.dart';
 import '../services/ventas_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/dialogo_pichangol.dart';
 import '../widgets/responsive.dart';
 import '../widgets/cargando_pichangol.dart';
 import 'chat_screen.dart';
@@ -57,25 +58,17 @@ class _MisOrdenesScreenState extends State<MisOrdenesScreen> {
   }
 
   Future<void> _confirmarRecepcion(Map<String, dynamic> v) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (dctx) => AlertDialog(
-        title: const Text('¿Recibiste el producto?'),
-        content: Text('Al confirmar, se libera el pago a '
-            '${v['vendedor_nombre'] ?? 'el vendedor'}. Hazlo solo cuando ya '
-            'tengas "${v['producto_nombre'] ?? 'el producto'}" en mano.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(dctx, false),
-              child: const Text('Todavía no')),
-          FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: lima),
-              onPressed: () => Navigator.pop(dctx, true),
-              child: const Text('Sí, lo recibí')),
-        ],
-      ),
+    final ok = await confirmarPichangol(
+      context,
+      titulo: '¿Recibiste el producto?',
+      mensaje: 'Al confirmar, se libera el pago a '
+          '${v['vendedor_nombre'] ?? 'el vendedor'}. Hazlo solo cuando ya '
+          'tengas "${v['producto_nombre'] ?? 'el producto'}" en mano.',
+      textoConfirmar: 'Sí, lo recibí',
+      textoCancelar: 'Todavía no',
+      icono: Icons.inventory_2_outlined,
     );
-    if (ok != true) return;
+    if (!ok) return;
     final done = await VentasService.recibido((v['id'] as num).toInt(), _yo);
     if (!mounted) return;
     if (done) {
@@ -94,25 +87,16 @@ class _MisOrdenesScreenState extends State<MisOrdenesScreen> {
   }
 
   Future<void> _reportar(Map<String, dynamic> v) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (dctx) => AlertDialog(
-        title: const Text('Reportar un problema'),
-        content: const Text(
-            'Se marca la compra en disputa y el pago NO se libera hasta que se '
-            'resuelva. Coordina primero por chat con el vendedor.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(dctx, false),
-              child: const Text('Cancelar')),
-          FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
-              onPressed: () => Navigator.pop(dctx, true),
-              child: const Text('Reportar')),
-        ],
-      ),
+    final ok = await confirmarPichangol(
+      context,
+      titulo: 'Reportar un problema',
+      mensaje: 'Se marca la compra en disputa y el pago NO se libera hasta que se '
+          'resuelva. Coordina primero por chat con el vendedor.',
+      textoConfirmar: 'Reportar',
+      destructivo: true,
+      icono: Icons.flag_outlined,
     );
-    if (ok != true) return;
+    if (!ok) return;
     await VentasService.disputa((v['id'] as num).toInt(), _yo);
     AvisosService.ventaDisputa(
       vendedorEmail: (v['vendedor_email'] ?? '').toString(),

@@ -7,6 +7,7 @@ import '../models/academia.dart';
 import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/dialogo_pichangol.dart';
 import '../widgets/responsive.dart';
 import '../widgets/logo_academia.dart';
 import '../widgets/pago_tarjeta_sheet.dart';
@@ -434,25 +435,17 @@ class _SuscripcionMesAMesState extends State<_SuscripcionMesAMes> {
   }
 
   Future<void> _cancelar() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('¿Cancelar el débito automático?'),
-        content: const Text(
-            'Dejarás de pagar automático cada mes. Podrás volver a matricularte '
-            'cuando quieras.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('No')),
-          FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: clayOscuro),
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Sí, cancelar')),
-        ],
-      ),
+    final ok = await confirmarPichangol(
+      context,
+      titulo: '¿Cancelar el débito automático?',
+      mensaje: 'Dejarás de pagar automático cada mes. Podrás volver a matricularte '
+          'cuando quieras.',
+      textoConfirmar: 'Sí, cancelar',
+      textoCancelar: 'No',
+      destructivo: true,
+      icono: Icons.credit_card_off_outlined,
     );
-    if (ok != true) return;
+    if (!ok) return;
     await PagosService.cancelarSuscripcionAlumno(widget.alumnoId);
     if (mounted) _cargar();
   }

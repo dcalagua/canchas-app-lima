@@ -4,6 +4,7 @@ import '../data/productos_repo.dart';
 import '../models/producto.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/dialogo_pichangol.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/responsive.dart';
 import 'editar_producto_screen.dart';
@@ -58,26 +59,16 @@ class _MisProductosScreenState extends State<MisProductosScreen> {
   }
 
   Future<void> _pedirVerificacion() async {
-    final ir = await showDialog<bool>(
-      context: context,
-      builder: (dctx) => AlertDialog(
-        title: const Text('Verifícate para vender'),
-        content: const Text(
-            'Para publicar en el Marketplace Pichangol necesitas verificar tu '
-            'identidad. Así los compradores confían en quién les vende. Es '
-            'rápido.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(dctx, false),
-              child: const Text('Ahora no')),
-          FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: lima),
-              onPressed: () => Navigator.pop(dctx, true),
-              child: const Text('Verificar identidad')),
-        ],
-      ),
+    final ir = await confirmarPichangol(
+      context,
+      titulo: 'Verifícate para vender',
+      mensaje: 'Para publicar en el Marketplace Pichangol necesitas verificar tu '
+          'identidad. Así los compradores confían en quién les vende. Es rápido.',
+      textoConfirmar: 'Verificar identidad',
+      textoCancelar: 'Ahora no',
+      icono: Icons.verified_user_outlined,
     );
-    if (ir == true && mounted) {
+    if (ir && mounted) {
       await Navigator.of(context).push(MaterialPageRoute(
           builder: (_) => const VerificarIdentidadScreen()));
       if (mounted) setState(() {}); // refresca por si ya se verificó
@@ -91,23 +82,15 @@ class _MisProductosScreenState extends State<MisProductosScreen> {
   }
 
   Future<void> _borrar(Producto p) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (dctx) => AlertDialog(
-        title: const Text('¿Borrar producto?'),
-        content: Text('Se quitará "${p.nombre}" del marketplace.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(dctx, false),
-              child: const Text('Cancelar')),
-          FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
-              onPressed: () => Navigator.pop(dctx, true),
-              child: const Text('Borrar')),
-        ],
-      ),
+    final ok = await confirmarPichangol(
+      context,
+      titulo: '¿Borrar producto?',
+      mensaje: 'Se quitará "${p.nombre}" del marketplace.',
+      textoConfirmar: 'Borrar',
+      destructivo: true,
+      icono: Icons.delete_outline,
     );
-    if (ok != true) return;
+    if (!ok) return;
     await ProductosRepo.eliminar(p.id);
     _cargar();
   }
