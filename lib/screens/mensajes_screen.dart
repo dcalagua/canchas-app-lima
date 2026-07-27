@@ -6,6 +6,7 @@ import '../models/mensaje.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
+import '../widgets/dialogo_pichangol.dart';
 import 'buscar_usuario_screen.dart';
 import 'chat_screen.dart';
 import 'crear_grupo_screen.dart';
@@ -537,24 +538,16 @@ class _MensajesScreenState extends State<MensajesScreen> {
 
   Future<void> _eliminarSeleccion() async {
     final n = _seleccion.length;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(n == 1 ? 'Eliminar conversación' : 'Eliminar $n conversaciones'),
-        content: const Text(
-            'Se quitan de tu bandeja. Si te vuelven a escribir, reaparecen.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancelar')),
-          FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: clayOscuro),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Eliminar')),
-        ],
-      ),
+    final ok = await confirmarPichangol(
+      context,
+      titulo:
+          n == 1 ? 'Eliminar conversación' : 'Eliminar $n conversaciones',
+      mensaje: 'Se quitan de tu bandeja. Si te vuelven a escribir, reaparecen.',
+      textoConfirmar: 'Eliminar',
+      destructivo: true,
+      icono: Icons.delete_outline,
     );
-    if (ok != true) return;
+    if (!ok) return;
     for (final h in _seleccion) {
       appState.ocultarChat(h);
       _abiertos.remove(h);

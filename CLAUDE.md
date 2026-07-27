@@ -201,6 +201,17 @@ sigue el lenguaje Airbnb sobre la paleta EBIM:
 - **Pagos/estados:** caja centrada animada (procesando → check), logos de marca
   reales (Yape morado, Visa/Mastercard). Ver `widgets/marcas_pago.dart`,
   `widgets/pago_procesando.dart`.
+- **Popups: UN SOLO formato (REGLA de todo el app).** Todo diálogo de
+  confirmación/aviso usa `widgets/dialogo_pichangol.dart`: `confirmarPichangol(
+  context, titulo:, mensaje:, textoConfirmar:, destructivo:, icono:)` (devuelve
+  `bool`) para Sí/No, o `avisarPichangol(...)` para un solo botón. Formato: tarjeta
+  blanca radio 24, ícono opcional en burbuja, título charcoal, mensaje tenue,
+  primario relleno lima (rojo `clayOscuro` si `destructivo`), secundario de texto.
+  **No** usar `AlertDialog`/`showDialog` suelto con estilos propios en pantallas
+  nuevas; migrar los viejos a este componente cuando se toquen.
+- **Íconos del menú lateral CON COLOR (Airbnb "con vida"):** los íconos de los
+  rails/barras de navegación van coloreados por sección (no gris plano). Mensajes
+  usa `widgets/icono_chat_pichan.dart` (burbuja verde WhatsApp con "P").
 - **Avatares SIEMPRE con foto real:** cualquier avatar de jugador (ranking,
   jugadores disponibles, retos —incluido el reto de dobles—, chat, perfil, etc.)
   DEBE mostrar la foto del perfil (`appState.fotoDe(email)` o `usuario.fotoUrl`),
