@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/academias_repo.dart';
+import '../data/agenda_repo.dart';
 import '../data/campeonatos_repo.dart';
 import '../data/canchas_repo.dart';
 import '../data/invitaciones_repo.dart';
@@ -85,6 +86,7 @@ class AppState extends ChangeNotifier {
     }
     notifyListeners();
     await _persistirDatos();
+    await _guardarAgendaRemota();
   }
 
   /// Nombre a mostrar de un correo: MI apodo si le puse uno; si no, el de su
@@ -173,12 +175,14 @@ class AppState extends ChangeNotifier {
     if (perfil != null) _perfiles[e] = perfil;
     notifyListeners();
     await _persistirContactos();
+    await _guardarAgendaRemota();
   }
 
   Future<void> quitarContacto(String email) async {
     _contactos.remove(email.trim().toLowerCase());
     notifyListeners();
     await _persistirContactos();
+    await _guardarAgendaRemota();
   }
 
   // ── Bloqueados (tipo WhatsApp): correos que el usuario bloqueó ─────────────
@@ -195,6 +199,48 @@ class AppState extends ChangeNotifier {
     if (!_bloqueados.remove(e)) _bloqueados.add(e);
     notifyListeners();
     await _persistirDatos();
+    await _guardarAgendaRemota();
+  }
+
+  /// Sube MI agenda (apodos + contactos + bloqueados) a Supabase para que siga a
+  /// todos mis dispositivos. Best-effort (requiere docs/piloto/supabase_agenda.sql).
+  Future<void> _guardarAgendaRemota() async {
+    final e = (usuario?.email ?? '').toLowerCase();
+    if (e.isEmpty) return;
+    await AgendaRepo.guardar(e,
+        apodos: _apodos,
+        contactos: _contactos.toList(),
+        bloqueados: _bloqueados.toList());
+  }
+
+  /// Trae MI agenda de Supabase al iniciar sesión y la fusiona con la local: los
+  /// contactos y bloqueados se UNEN; en los apodos el remoto manda por clave. Así
+  /// el apodo "BEBIM" (y mis contactos/bloqueos) me siguen en teléfono, tablet,
+  /// etc. Best-effort.
+  Future<void> sincronizarAgenda() async {
+    final e = (usuario?.email ?? '').toLowerCase();
+    if (e.isEmpty || !AgendaRepo.disponible) return;
+    final data = await AgendaRepo.cargar(e);
+    if (data == null) {
+      await _guardarAgendaRemota(); // primera vez: sube lo local
+      return;
+    }
+    final apodos = (data['apodos'] as Map?) ?? const {};
+    final cont = (data['contactos'] as List?) ?? const [];
+    final bloq = (data['bloqueados'] as List?) ?? const [];
+    for (final entry in apodos.entries) {
+      final v = entry.value.toString().trim();
+      if (v.isEmpty) {
+        _apodos.remove(entry.key.toString());
+      } else {
+        _apodos[entry.key.toString()] = v;
+      }
+    }
+    _contactos.addAll(cont.map((x) => x.toString().toLowerCase()));
+    _bloqueados.addAll(bloq.map((x) => x.toString().toLowerCase()));
+    notifyListeners();
+    await _persistirDatos();
+    await _persistirContactos();
   }
 
   /// Carga (best-effort) los perfiles —para tener NOMBRE y FOTO— de todos los
@@ -4639,6 +4685,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     cargarReservasRemotas(); // best-effort refresco
     sincronizarSaldo(); // saldo real del backend (sobrevive reinstalar)
+    sincronizarAgenda(); // apodos + contactos + bloqueados en todos mis dispositivos
     // Trae sus academias (por si las creó en otro dispositivo) y LUEGO las
     // matrículas, para que el profe vea a sus alumnos apenas entra.
     () async {
