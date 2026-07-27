@@ -586,40 +586,55 @@ class _ChatScreenState extends State<ChatScreen> {
         foregroundColor: Colors.white,
         automaticallyImplyLeading: !widget.embebido,
         titleSpacing: 0,
-        title: GestureDetector(
-          onTap: _contraparteEmail.isNotEmpty ? _verContacto : null,
-          behavior: HitTestBehavior.opaque,
-          child: Row(
+        title: Row(
           children: [
-            CircleAvatar(
-              radius: 17,
-              backgroundColor: Colors.white24,
-              backgroundImage: (fotoPerfil != null && fotoPerfil.isNotEmpty)
-                  ? NetworkImage(fotoPerfil)
-                  : null,
-              child: (fotoPerfil != null && fotoPerfil.isNotEmpty)
-                  ? null
-                  : Text(inicial,
-                      style: const TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.w800)),
+            // Tocar la FOTO → agrandarla a pantalla completa (WhatsApp). Si no
+            // tiene foto y es una persona, abre su info.
+            GestureDetector(
+              onTap: () {
+                if (fotoPerfil != null && fotoPerfil.isNotEmpty) {
+                  Navigator.of(context).push(MaterialPageRoute(
+                      fullscreenDialog: true,
+                      builder: (_) => _VisorFoto(url: fotoPerfil)));
+                } else if (_contraparteEmail.isNotEmpty) {
+                  _verContacto();
+                }
+              },
+              child: CircleAvatar(
+                radius: 17,
+                backgroundColor: Colors.white24,
+                backgroundImage: (fotoPerfil != null && fotoPerfil.isNotEmpty)
+                    ? NetworkImage(fotoPerfil)
+                    : null,
+                child: (fotoPerfil != null && fotoPerfil.isNotEmpty)
+                    ? null
+                    : Text(inicial,
+                        style: const TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.w800)),
+              ),
             ),
             const SizedBox(width: 10),
-            Flexible(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(tituloMostrar,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w700)),
-                  if (recado != null && recado.isNotEmpty)
-                    Text(recado,
+            // Tocar el NOMBRE → info del contacto.
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _contraparteEmail.isNotEmpty ? _verContacto : null,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(tituloMostrar,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            color: Colors.white70, fontSize: 11.5)),
-                ],
+                        style: const TextStyle(fontWeight: FontWeight.w700)),
+                    if (recado != null && recado.isNotEmpty)
+                      Text(recado,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              color: Colors.white70, fontSize: 11.5)),
+                  ],
+                ),
               ),
             ),
             if (_contraparteVerificada)
@@ -628,7 +643,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: Icon(Icons.verified, size: 18, color: Colors.white),
               ),
           ],
-        )),
+        ),
         actions: [
           // Llamar (marcador del teléfono) si la contraparte compartió su celular.
           if (_contraparteEmail.isNotEmpty &&
