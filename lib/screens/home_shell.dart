@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/icono_chat_pichan.dart';
 import '../widgets/menu_lateral_scroll.dart';
 import 'agenda_screen.dart';
 import 'clientes_screen.dart';
@@ -54,6 +55,8 @@ class _HomeShellState extends State<HomeShell> {
     'Reportes',
     'Billetera',
   ];
+  // Índice de la pestaña Mensajes → usa el ícono de chat con "P" (marca Pichan).
+  static const _iMensajes = 4;
 
   @override
   Widget build(BuildContext context) {
@@ -75,7 +78,9 @@ class _HomeShellState extends State<HomeShell> {
                   destinations: [
                     for (var i = 0; i < _iconos.length; i++)
                       NavigationRailDestination(
-                        icon: Icon(_iconos[i]),
+                        icon: i == _iMensajes
+                            ? const IconoChatPichan()
+                            : Icon(_iconos[i]),
                         label: Text(_etiquetas[i]),
                       ),
                   ],
@@ -95,7 +100,11 @@ class _HomeShellState extends State<HomeShell> {
         onDestinationSelected: (i) => setState(() => _index = i),
         destinations: [
           for (var i = 0; i < _iconos.length; i++)
-            NavigationDestination(icon: Icon(_iconos[i]), label: _etiquetas[i]),
+            NavigationDestination(
+                icon: i == _iMensajes
+                    ? const IconoChatPichan()
+                    : Icon(_iconos[i]),
+                label: _etiquetas[i]),
         ],
       ),
     );

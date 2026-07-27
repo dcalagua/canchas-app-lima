@@ -275,6 +275,11 @@ class AppState extends ChangeNotifier {
   // el contador de "no leídos" (Etapa A del chat).
   final Map<String, String> chatLecturas = {};
 
+  // Chats que el usuario "eliminó" de su bandeja (hilo → ISO de cuándo lo ocultó).
+  // Es por-usuario y local, igual que WhatsApp: se quita de TU lista; si luego
+  // llega un mensaje MÁS NUEVO que la fecha de ocultado, la conversación reaparece.
+  final Map<String, String> chatsOcultos = {};
+
   // ── Campeonatos de academias ──────────────────────────────────────────────
   final List<Campeonato> campeonatos = [];
   bool descubriendo = false; // true mientras se traen canchas cercanas (feedback UI)
@@ -2326,6 +2331,31 @@ class AppState extends ChangeNotifier {
     return iso == null ? null : DateTime.tryParse(iso);
   }
 
+  /// "Eliminar conversación" (estilo WhatsApp): la saca de MI bandeja. No borra
+  /// nada en el servidor ni para la otra persona; solo marca el hilo como oculto
+  /// desde ahora.
+  void ocultarChat(String hilo) {
+    chatsOcultos[hilo] = DateTime.now().toIso8601String();
+    notifyListeners();
+    _persistirDatos();
+  }
+
+  /// ¿El hilo debe ocultarse de la bandeja? Se oculta si el usuario lo eliminó y
+  /// no ha llegado ningún mensaje más nuevo que ese momento (si llega uno nuevo,
+  /// reaparece —como WhatsApp). [ultimoMensaje] = fecha del último mensaje del hilo.
+  bool chatOculto(String hilo, DateTime ultimoMensaje) {
+    final iso = chatsOcultos[hilo];
+    if (iso == null) return false;
+    final ocultadoEn = DateTime.tryParse(iso);
+    if (ocultadoEn == null) return false;
+    // Si hay un mensaje posterior al ocultado → reaparece (deja de estar oculto).
+    if (ultimoMensaje.isAfter(ocultadoEn)) {
+      chatsOcultos.remove(hilo);
+      return false;
+    }
+    return true;
+  }
+
   List<Cuota> cuotasDe(String academiaId) => cuotas
       .where((c) => c.academiaId == academiaId)
       .toList()
@@ -4074,6 +4104,7 @@ class AppState extends ChangeNotifier {
   static const _kCampeonatos = 'campeonatos_json';
   static const _kInvitaciones = 'invitaciones_json';
   static const _kChatLecturas = 'chat_lecturas_json';
+  static const _kChatsOcultos = 'chats_ocultos_json';
 
   /// Carga la sesión y los datos persistidos (al arrancar la app).
   Future<void> cargarSesion() async {
@@ -4293,6 +4324,16 @@ class AppState extends ChangeNotifier {
         } catch (_) {}
       }
 
+      final ocultosRaw = prefs.getString(_kChatsOcultos);
+      if (ocultosRaw != null) {
+        try {
+          final m = jsonDecode(ocultosRaw) as Map<String, dynamic>;
+          chatsOcultos
+            ..clear()
+            ..addAll(m.map((k, v) => MapEntry(k, v.toString())));
+        } catch (_) {}
+      }
+
       notifyListeners();
       // Trae la disponibilidad compartida (reservas de otros dispositivos) para
       // que el anti-doble-reserva y el panel del dueño arranquen al día. Best-effort.
@@ -4399,6 +4440,7 @@ class AppState extends ChangeNotifier {
       await prefs.setString(_kInvitaciones,
           jsonEncode(invitaciones.map((i) => i.toJson()).toList()));
       await prefs.setString(_kChatLecturas, jsonEncode(chatLecturas));
+      await prefs.setString(_kChatsOcultos, jsonEncode(chatsOcultos));
     } catch (_) {}
   }
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/icono_chat_pichan.dart';
 import 'explorar_home_screen.dart';
 import 'mensajes_screen.dart';
 import 'mis_reservas_screen.dart';
@@ -65,8 +66,8 @@ class _AppShellState extends State<AppShell> {
                   selectedIcon: Icon(Icons.event_note),
                   label: 'Reservas'),
               const NavigationDestination(
-                  icon: Icon(Icons.chat_bubble_outline),
-                  selectedIcon: Icon(Icons.chat_bubble),
+                  icon: IconoChatPichan(),
+                  selectedIcon: IconoChatPichan(),
                   label: 'Mensajes'),
               NavigationDestination(
                 icon: _ConBadge(

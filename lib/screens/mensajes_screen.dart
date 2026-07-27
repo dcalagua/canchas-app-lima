@@ -260,6 +260,9 @@ class _MensajesScreenState extends State<MensajesScreen> {
       ));
     });
 
+    // Quita los chats que el usuario eliminó de su bandeja. Reaparecen solos si
+    // llega un mensaje más nuevo que el momento en que se ocultaron (WhatsApp).
+    convs.removeWhere((c) => appState.chatOculto(c.hilo, c.cuando));
     convs.sort((a, b) => b.cuando.compareTo(a.cuando));
     if (!mounted) return;
     setState(() {
@@ -371,6 +374,39 @@ class _MensajesScreenState extends State<MensajesScreen> {
           ))
           .then((_) => _cargar()); // al volver, refresca no-leídos/preview
     }
+  }
+
+  /// "Eliminar conversación" (long-press), estilo WhatsApp: la quita de MI
+  /// bandeja (no borra nada en el servidor ni para la otra persona). Si me vuelven
+  /// a escribir, reaparece.
+  Future<void> _eliminarChat(_Conv c) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Eliminar conversación'),
+        content: Text(
+            'Se quitará "${c.titulo}" de tu bandeja. Si te vuelven a escribir, '
+            'la conversación reaparece.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: clayOscuro),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Eliminar')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    appState.ocultarChat(c.hilo);
+    if (_sel?.hilo == c.hilo) _sel = null;
+    _abiertos.remove(c.hilo);
+    await _cargar();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Conversación eliminada')),
+    );
   }
 
   /// Panel derecho: el chat abierto (embebido, sin flecha de volver) o un aviso.
@@ -523,6 +559,7 @@ class _MensajesScreenState extends State<MensajesScreen> {
                                     : c.noLeidos,
                                 seleccionado: ancho && _sel?.hilo == c.hilo,
                                 onTap: () => _abrir(c, ancho),
+                                onLongPress: () => _eliminarChat(c),
                               );
                             },
                           ),
@@ -615,11 +652,13 @@ class _FilaConv extends StatelessWidget {
     required this.noLeidos,
     required this.seleccionado,
     required this.onTap,
+    required this.onLongPress,
   });
   final _Conv conv;
   final int noLeidos; // efectivo (0 si ya se abrió en el panel)
   final bool seleccionado;
   final VoidCallback onTap;
+  final VoidCallback onLongPress;
 
   String _cuando(DateTime d) {
     final now = DateTime.now();
@@ -650,6 +689,7 @@ class _FilaConv extends StatelessWidget {
     };
     return ListTile(
       onTap: onTap,
+      onLongPress: onLongPress,
       selected: seleccionado,
       selectedTileColor: cs.primary.withOpacity(0.08),
       leading: CircleAvatar(

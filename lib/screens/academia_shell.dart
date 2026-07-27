@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../state/app_state.dart';
+import '../widgets/icono_chat_pichan.dart';
 import '../widgets/menu_lateral_scroll.dart';
 import 'asistencia_screen.dart';
 import 'campeonatos_screen.dart';
@@ -69,7 +70,9 @@ class _AcademiaShellState extends State<AcademiaShell> {
                     destinations: [
                       for (final it in items)
                         NavigationRailDestination(
-                          icon: Icon(it.$1),
+                          icon: it.$2 == 'Mensajes'
+                              ? const IconoChatPichan()
+                              : Icon(it.$1),
                           label: Text(it.$2),
                         ),
                     ],
