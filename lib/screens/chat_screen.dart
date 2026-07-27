@@ -252,6 +252,121 @@ class _ChatScreenState extends State<ChatScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t)));
   }
 
+  /// Info del contacto (tipo WhatsApp): identidad REAL (nombre en Pichangol,
+  /// correo, celular, recado) aunque le haya puesto un apodo. Desde aquí puede
+  /// renombrar o bloquear. Se abre al tocar el nombre en la cabecera.
+  Future<void> _verContacto() async {
+    final e = _contraparteEmail;
+    if (e.isEmpty) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        final apodo = appState.apodoDe(e);
+        final nombreReal = appState.nombreRealDe(e);
+        final display = apodo ?? nombreReal ?? e;
+        final foto = appState.fotoDe(e);
+        final celular = appState.celularDe(e);
+        final recado = appState.recadoDe(e);
+        final bloq = appState.bloqueado(e);
+        final inicial = display.trim().isNotEmpty
+            ? display.characters.first.toUpperCase()
+            : '?';
+        Widget fila(IconData ico, String label, Widget valor) => ListTile(
+              leading: Icon(ico, color: lima),
+              title: Text(label,
+                  style: const TextStyle(color: textoTenue, fontSize: 12)),
+              subtitle: valor,
+              dense: true,
+            );
+        return SafeArea(
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 4),
+                CircleAvatar(
+                  radius: 38,
+                  backgroundColor: teal,
+                  backgroundImage: (foto != null && foto.isNotEmpty)
+                      ? NetworkImage(foto)
+                      : null,
+                  child: (foto != null && foto.isNotEmpty)
+                      ? null
+                      : Text(inicial,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 30,
+                              fontWeight: FontWeight.w800)),
+                ),
+                const SizedBox(height: 10),
+                Text(display,
+                    style: const TextStyle(
+                        fontSize: 19, fontWeight: FontWeight.w800)),
+                if (apodo != null && nombreReal != null && nombreReal != apodo)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text('En Pichangol: $nombreReal',
+                        style:
+                            const TextStyle(color: textoTenue, fontSize: 13)),
+                  ),
+                const SizedBox(height: 8),
+                const Divider(height: 1),
+                fila(Icons.alternate_email, 'Correo',
+                    SelectableText(e, style: const TextStyle(fontSize: 14))),
+                if (celular != null)
+                  fila(
+                    Icons.phone_outlined,
+                    'Celular',
+                    Row(children: [
+                      Expanded(
+                          child: Text(celular,
+                              style: const TextStyle(fontSize: 14))),
+                      IconButton(
+                          tooltip: 'Llamar',
+                          icon: const Icon(Icons.call, color: lima, size: 20),
+                          onPressed: () => _llamar(celular)),
+                      IconButton(
+                          tooltip: 'WhatsApp',
+                          icon: const FaIcon(FontAwesomeIcons.whatsapp,
+                              color: Color(0xFF25D366), size: 20),
+                          onPressed: () => WhatsAppLink.abrir(
+                              celular, 'Hola, te escribo desde Pichangol.')),
+                    ]),
+                  ),
+                if (recado != null)
+                  fila(Icons.info_outline, 'Recado',
+                      Text(recado, style: const TextStyle(fontSize: 14))),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.drive_file_rename_outline),
+                  title: Text(apodo == null
+                      ? 'Guardar con otro nombre'
+                      : 'Editar nombre del contacto'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _editarApodo();
+                  },
+                ),
+                ListTile(
+                  leading: Icon(bloq ? Icons.lock_open : Icons.block,
+                      color: bloq ? null : clayOscuro),
+                  title: Text(bloq ? 'Desbloquear contacto' : 'Bloquear contacto',
+                      style: TextStyle(color: bloq ? null : clayOscuro)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _confirmarBloqueo();
+                  },
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   /// Abre el marcador del teléfono con el número de la contraparte (llamada por
   /// la red del celular; no es llamada dentro del app).
   Future<void> _llamar(String celular) async {
@@ -471,7 +586,10 @@ class _ChatScreenState extends State<ChatScreen> {
         foregroundColor: Colors.white,
         automaticallyImplyLeading: !widget.embebido,
         titleSpacing: 0,
-        title: Row(
+        title: GestureDetector(
+          onTap: _contraparteEmail.isNotEmpty ? _verContacto : null,
+          behavior: HitTestBehavior.opaque,
+          child: Row(
           children: [
             CircleAvatar(
               radius: 17,
@@ -510,7 +628,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: Icon(Icons.verified, size: 18, color: Colors.white),
               ),
           ],
-        ),
+        )),
         actions: [
           // Llamar (marcador del teléfono) si la contraparte compartió su celular.
           if (_contraparteEmail.isNotEmpty &&
@@ -540,7 +658,9 @@ class _ChatScreenState extends State<ChatScreen> {
               icon: const Icon(Icons.more_vert, color: Colors.white),
               onSelected: (v) async {
                 final e = _contraparteEmail;
-                if (v == 'apodo') {
+                if (v == 'info') {
+                  _verContacto();
+                } else if (v == 'apodo') {
                   _editarApodo();
                 } else if (v == 'contacto') {
                   if (appState.esContacto(e)) {
@@ -559,6 +679,14 @@ class _ChatScreenState extends State<ChatScreen> {
                 final bloq = appState.bloqueado(_contraparteEmail);
                 final tieneApodo = appState.apodoDe(_contraparteEmail) != null;
                 return [
+                  const PopupMenuItem(
+                    value: 'info',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.person_outline),
+                      title: Text('Ver contacto'),
+                    ),
+                  ),
                   PopupMenuItem(
                     value: 'contacto',
                     child: ListTile(

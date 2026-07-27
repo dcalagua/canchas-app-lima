@@ -97,6 +97,14 @@ class AppState extends ChangeNotifier {
     return n.isEmpty ? null : n;
   }
 
+  /// Nombre REAL del perfil (ignora mi apodo), o null. Para la "info del
+  /// contacto": ver su identidad real aunque le haya puesto un apodo.
+  String? nombreRealDe(String? email) {
+    final e = (email ?? '').trim().toLowerCase();
+    final n = (_perfiles[e]?['nombre'] ?? '').toString().trim();
+    return n.isEmpty ? null : n;
+  }
+
   /// Foto a mostrar de un correo (de su perfil), o null.
   String? fotoDe(String? email) {
     final e = (email ?? '').trim().toLowerCase();
