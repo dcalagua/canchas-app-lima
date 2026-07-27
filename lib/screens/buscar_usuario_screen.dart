@@ -19,10 +19,15 @@ import 'login_google_sheet.dart';
 /// Si se pasa [deporteReto], además de chatear se puede **RETAR** al jugador
 /// (para el circuito): cada fila ofrece Retar + Chatear para coordinar.
 class BuscarUsuarioScreen extends StatefulWidget {
-  const BuscarUsuarioScreen({super.key, this.deporteReto});
+  const BuscarUsuarioScreen({super.key, this.deporteReto, this.onAbrirChat});
 
   /// Deporte del reto (p. ej. tenis del circuito). Null = solo chatear.
   final Deporte? deporteReto;
+
+  /// Si se pasa, al elegir "chatear" se llama a este callback (para que quien
+  /// abrió el buscador reuse una conversación EXISTENTE con esa persona) en vez
+  /// de abrir una conversación directa nueva. Null = comportamiento por defecto.
+  final void Function(String email, String nombre)? onAbrirChat;
 
   @override
   State<BuscarUsuarioScreen> createState() => _BuscarUsuarioScreenState();
@@ -80,6 +85,12 @@ class _BuscarUsuarioScreenState extends State<BuscarUsuarioScreen> {
       return;
     }
     if (!mounted) return;
+    // Si quien abrió el buscador sabe reusar una conversación existente, que él
+    // decida (evita abrir un chat directo NUEVO cuando ya hay historial).
+    if (widget.onAbrirChat != null) {
+      widget.onAbrirChat!(email, nombre);
+      return;
+    }
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => ChatScreen(
         academiaId: '',

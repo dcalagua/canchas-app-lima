@@ -380,6 +380,54 @@ class _MensajesScreenState extends State<MensajesScreen> {
     }
   }
 
+  /// Abre el buscador de personas. Al elegir a alguien, si YA existe una
+  /// conversación con esa persona (directa, de academia o de cancha) la reabre;
+  /// si no, crea una directa nueva. Así buscar un contacto no abre un "chat
+  /// nuevo" duplicado cuando ya hay historial.
+  Future<void> _buscarYAbrir(bool ancho) async {
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => BuscarUsuarioScreen(
+        onAbrirChat: (email, nombre) {
+          Navigator.of(context).pop(); // cierra el buscador
+          _abrirPersona(email, nombre, ancho);
+        },
+      ),
+    ));
+    _cargar();
+  }
+
+  void _abrirPersona(String email, String nombre, bool ancho) {
+    final e = email.toLowerCase().trim();
+    _Conv? existente;
+    for (final c in _convs) {
+      if (c.tipo == 'grupo') continue;
+      if (c.cuentaEmail.toLowerCase().trim() == e) {
+        existente = c;
+        break;
+      }
+    }
+    if (existente != null) {
+      _abrir(existente, ancho);
+      return;
+    }
+    // Sin historial → conversación directa nueva.
+    _abrir(
+      _Conv(
+        hilo: Mensaje.hiloDirecto(appState.usuario?.email ?? '', email),
+        academiaId: '',
+        cuentaEmail: email,
+        titulo: nombre.isNotEmpty ? nombre : email,
+        preview: '',
+        soyProfe: false,
+        cuando: DateTime.now(),
+        noLeidos: 0,
+        tipo: 'directo',
+        refId: '',
+      ),
+      ancho,
+    );
+  }
+
   /// Alterna el marcado de un chat en modo selección (WhatsApp). Al quedar en 0,
   /// sale del modo selección solo.
   void _toggleSeleccion(String hilo) {
@@ -581,10 +629,7 @@ class _MensajesScreenState extends State<MensajesScreen> {
             IconButton(
               tooltip: 'Buscar jugador',
               icon: const Icon(Icons.person_search, color: Colors.white),
-              onPressed: () => Navigator.of(context)
-                  .push(MaterialPageRoute(
-                      builder: (_) => const BuscarUsuarioScreen()))
-                  .then((_) => _cargar()),
+              onPressed: () => _buscarYAbrir(colapsable),
             ),
           ],
         ),
