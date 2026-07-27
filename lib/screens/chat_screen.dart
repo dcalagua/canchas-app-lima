@@ -169,6 +169,22 @@ class _ChatScreenState extends State<ChatScreen> {
       widget.soyProfe &&
       appState.estaVerificado(widget.cuentaEmail);
 
+  /// Abre el marcador del teléfono con el número de la contraparte (llamada por
+  /// la red del celular; no es llamada dentro del app).
+  Future<void> _llamar(String celular) async {
+    final numero = celular.replaceAll(RegExp(r'[^0-9+]'), '');
+    if (numero.isEmpty) return;
+    try {
+      await launchUrl(Uri(scheme: 'tel', path: numero),
+          mode: LaunchMode.externalApplication);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('No se pudo abrir el marcador.')));
+      }
+    }
+  }
+
   @override
   void dispose() {
     appState.marcarChatLeido(_hilo);
@@ -412,6 +428,15 @@ class _ChatScreenState extends State<ChatScreen> {
           ],
         ),
         actions: [
+          // Llamar (marcador del teléfono) si la contraparte compartió su celular.
+          if (_contraparteEmail.isNotEmpty &&
+              appState.celularDe(_contraparteEmail) != null)
+            IconButton(
+              tooltip: 'Llamar',
+              icon: const Icon(Icons.call, color: Colors.white),
+              onPressed: () =>
+                  _llamar(appState.celularDe(_contraparteEmail)!),
+            ),
           // Si la contraparte compartió su celular, botón "Contactar por WhatsApp".
           if (_contraparteEmail.isNotEmpty &&
               appState.celularDe(_contraparteEmail) != null)
