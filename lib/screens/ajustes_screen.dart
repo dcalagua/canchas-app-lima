@@ -4,6 +4,7 @@ import '../brand.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/dialogo_pichangol.dart';
 import '../widgets/responsive.dart';
 import 'editar_perfil_screen.dart';
 import 'referidos_screen.dart';
@@ -41,26 +42,17 @@ class AjustesScreen extends StatelessWidget {
   }
 
   Future<void> _empezarDeCero(BuildContext context) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('¿Empezar de cero?'),
-        content: const Text(
-            'Borra TODO en este dispositivo (academias, alumnos, reservas, '
-            'saldo, sesión) y también tus academias/matrículas en la nube. '
-            'No se puede deshacer. Ideal para una prueba limpia.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancelar')),
-          FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: clayOscuro),
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Sí, borrar todo')),
-        ],
-      ),
+    final ok = await confirmarPichangol(
+      context,
+      titulo: '¿Empezar de cero?',
+      mensaje: 'Borra TODO en este dispositivo (academias, alumnos, reservas, '
+          'saldo, sesión) y también tus academias/matrículas en la nube. '
+          'No se puede deshacer. Ideal para una prueba limpia.',
+      textoConfirmar: 'Sí, borrar todo',
+      destructivo: true,
+      icono: Icons.delete_forever_outlined,
     );
-    if (ok != true || !context.mounted) return;
+    if (!ok || !context.mounted) return;
     await appState.borrarTodoParaPruebas();
     if (!context.mounted) return;
     // Vuelve al inicio: la app queda como recién instalada.
@@ -72,29 +64,20 @@ class AjustesScreen extends StatelessWidget {
   /// "Dejar en virgen": borra alumnos, reservas y todo lo transaccional pero
   /// CONSERVA las canchas reclamadas y las academias creadas (y la sesión).
   Future<void> _dejarEnVirgen(BuildContext context) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('¿Dejar en virgen?'),
-        content: const Text(
-            'Borra alumnos, reservas, cobros, cuotas, saldo, movimientos, '
-            'chats, reseñas y campeonatos — como si nunca hubiera pasado nada.\n\n'
-            'CONSERVA tus canchas reclamadas y tus academias creadas (y tu '
-            'sesión). No se puede deshacer.\n\n'
-            'Ojo: el saldo/pagos del servidor se limpian aparte desde la torre '
-            'de control (botón "Dejar el servidor en virgen").'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancelar')),
-          FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: clayOscuro),
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Sí, dejar en virgen')),
-        ],
-      ),
+    final ok = await confirmarPichangol(
+      context,
+      titulo: '¿Dejar en virgen?',
+      mensaje: 'Borra alumnos, reservas, cobros, cuotas, saldo, movimientos, '
+          'chats, reseñas y campeonatos — como si nunca hubiera pasado nada.\n\n'
+          'CONSERVA tus canchas reclamadas y tus academias creadas (y tu '
+          'sesión). No se puede deshacer.\n\n'
+          'Ojo: el saldo/pagos del servidor se limpian aparte desde la torre '
+          'de control (botón "Dejar el servidor en virgen").',
+      textoConfirmar: 'Sí, dejar en virgen',
+      destructivo: true,
+      icono: Icons.cleaning_services_outlined,
     );
-    if (ok != true || !context.mounted) return;
+    if (!ok || !context.mounted) return;
     await appState.resetVirgen();
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -108,9 +91,10 @@ class AjustesScreen extends StatelessWidget {
   Future<void> _depurarAcademias(BuildContext context) async {
     await showDialog<void>(
       context: context,
-      builder: (dctx) => AlertDialog(
-        title: const Text('Depurar academias'),
-        content: SizedBox(
+      builder: (dctx) => DialogoPichangol(
+        titulo: 'Depurar academias',
+        icono: Icons.cleaning_services_outlined,
+        contenido: SizedBox(
           width: double.maxFinite,
           child: ListenableBuilder(
             listenable: appState,
@@ -134,28 +118,16 @@ class AjustesScreen extends StatelessWidget {
                         icon: const Icon(Icons.delete_outline,
                             color: clayOscuro),
                         onPressed: () async {
-                          final ok = await showDialog<bool>(
-                            context: dctx,
-                            builder: (_) => AlertDialog(
-                              title: const Text('¿Borrar esta academia?'),
-                              content: Text(
-                                  '"${a.nombre}". Se borra también en la nube '
-                                  'y no reaparece. No se puede deshacer.'),
-                              actions: [
-                                TextButton(
-                                    onPressed: () =>
-                                        Navigator.pop(dctx, false),
-                                    child: const Text('Cancelar')),
-                                FilledButton(
-                                    style: FilledButton.styleFrom(
-                                        backgroundColor: clayOscuro),
-                                    onPressed: () =>
-                                        Navigator.pop(dctx, true),
-                                    child: const Text('Borrar')),
-                              ],
-                            ),
+                          final ok = await confirmarPichangol(
+                            dctx,
+                            titulo: '¿Borrar esta academia?',
+                            mensaje: '"${a.nombre}". Se borra también en la nube '
+                                'y no reaparece. No se puede deshacer.',
+                            textoConfirmar: 'Borrar',
+                            destructivo: true,
+                            icono: Icons.delete_outline,
                           );
-                          if (ok == true) appState.eliminarAcademia(a.id);
+                          if (ok) appState.eliminarAcademia(a.id);
                         },
                       ),
                     ),
@@ -164,9 +136,10 @@ class AjustesScreen extends StatelessWidget {
             },
           ),
         ),
-        actions: [
+        acciones: [
           TextButton(
               onPressed: () => Navigator.pop(dctx),
+              style: TextButton.styleFrom(foregroundColor: textoTenue),
               child: const Text('Cerrar')),
         ],
       ),

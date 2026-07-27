@@ -7,6 +7,7 @@ import '../services/pagos_service.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/dialogo_pichangol.dart';
 import '../widgets/ancho_lectura.dart';
 import '../widgets/logo_academia.dart';
 import 'asistencia_screen.dart';
@@ -1609,20 +1610,30 @@ class AlumnoDetalleScreen extends StatelessWidget {
     final monto = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Clase suelta'),
-        content: TextField(
+      builder: (ctx) => DialogoPichangol(
+        titulo: 'Clase suelta',
+        icono: Icons.sports_tennis,
+        contenido: TextField(
           controller: monto,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: InputDecoration(labelText: 'Monto', prefixText: '$mon '),
         ),
-        actions: [
+        acciones: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
+              style: TextButton.styleFrom(foregroundColor: textoTenue),
               child: const Text('Cancelar')),
           FilledButton(
+              style: FilledButton.styleFrom(
+                  backgroundColor: lima,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Registrar')),
+              child: const Text('Registrar',
+                  style: TextStyle(fontWeight: FontWeight.w800))),
         ],
       ),
     );
