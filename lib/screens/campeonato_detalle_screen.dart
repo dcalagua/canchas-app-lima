@@ -338,9 +338,10 @@ class CampeonatoDetalleScreen extends StatelessWidget {
     final ok = await showDialog<bool>(
       context: context,
       builder: (dctx) => StatefulBuilder(
-        builder: (dctx, setSB) => AlertDialog(
-          title: Text('Verifica tu $docIdActual'),
-          content: Column(
+        builder: (dctx, setSB) => DialogoPichangol(
+          titulo: 'Verifica tu $docIdActual',
+          icono: Icons.badge_outlined,
+          contenido: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -393,7 +394,7 @@ class CampeonatoDetalleScreen extends StatelessWidget {
               ],
             ],
           ),
-          actions: [
+          acciones: [
             TextButton(
                 onPressed: cargando ? null : () => Navigator.pop(dctx, false),
                 child: const Text('Cancelar')),
@@ -519,9 +520,10 @@ class CampeonatoDetalleScreen extends StatelessWidget {
         ({bool hijo, String nombre, int? edad, String wa, bool consiente})>(
       context: context,
       builder: (dctx) => StatefulBuilder(
-        builder: (dctx, setSB) => AlertDialog(
-          title: Text('Inscribirme · ${c.nombre}'),
-          content: SingleChildScrollView(
+        builder: (dctx, setSB) => DialogoPichangol(
+          titulo: 'Inscribirme · ${c.nombre}',
+          icono: Icons.how_to_reg_outlined,
+          contenido: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -609,7 +611,7 @@ class CampeonatoDetalleScreen extends StatelessWidget {
               ],
             ),
           ),
-          actions: [
+          acciones: [
             TextButton(
                 onPressed: () => Navigator.pop(dctx),
                 child: const Text('Cancelar')),
@@ -709,16 +711,17 @@ class CampeonatoDetalleScreen extends StatelessWidget {
     final nombre = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
-      builder: (dctx) => AlertDialog(
-        title: const Text('Crear mi equipo'),
-        content: TextField(
+      builder: (dctx) => DialogoPichangol(
+        titulo: 'Crear mi equipo',
+        icono: Icons.groups,
+        contenido: TextField(
           controller: nombre,
           autofocus: true,
           textCapitalization: TextCapitalization.words,
           decoration: const InputDecoration(
               labelText: 'Nombre del equipo', hintText: 'Los Tigres FC'),
         ),
-        actions: [
+        acciones: [
           TextButton(
               onPressed: () => Navigator.pop(dctx, false),
               child: const Text('Cancelar')),
@@ -744,9 +747,10 @@ class CampeonatoDetalleScreen extends StatelessWidget {
       BuildContext context, Campeonato c, String codigo) async {
     await showDialog<void>(
       context: context,
-      builder: (dctx) => AlertDialog(
-        title: const Text('¡Equipo creado! ⚽'),
-        content: Column(
+      builder: (dctx) => DialogoPichangol(
+        titulo: '¡Equipo creado! ⚽',
+        icono: Icons.emoji_events,
+        contenido: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text('Comparte este código con tus jugadores para que se '
@@ -760,7 +764,7 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                     color: bosque)),
           ],
         ),
-        actions: [
+        acciones: [
           TextButton(
               onPressed: () => Navigator.pop(dctx),
               child: const Text('Listo')),
@@ -792,16 +796,17 @@ class CampeonatoDetalleScreen extends StatelessWidget {
     final codigo = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
-      builder: (dctx) => AlertDialog(
-        title: const Text('Unirme a un equipo'),
-        content: TextField(
+      builder: (dctx) => DialogoPichangol(
+        titulo: 'Unirme a un equipo',
+        icono: Icons.group_add,
+        contenido: TextField(
           controller: codigo,
           autofocus: true,
           textCapitalization: TextCapitalization.characters,
           decoration: const InputDecoration(
               labelText: 'Código del equipo', hintText: 'Ej.: 4KZ9AB'),
         ),
-        actions: [
+        acciones: [
           TextButton(
               onPressed: () => Navigator.pop(dctx, false),
               child: const Text('Cancelar')),
@@ -979,9 +984,10 @@ class _Participantes extends StatelessWidget {
     final soyCapitan = eq.capitanEmail.toLowerCase() == yo;
     await showDialog<void>(
       context: context,
-      builder: (dctx) => AlertDialog(
-        title: Text(eq.nombre),
-        content: SingleChildScrollView(
+      builder: (dctx) => DialogoPichangol(
+        titulo: eq.nombre,
+        icono: Icons.groups,
+        contenido: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1037,23 +1043,24 @@ class _Participantes extends StatelessWidget {
             ],
           ),
         ),
-        actions: [
+        acciones: [
           if (soyCapitan)
             TextButton.icon(
               onPressed: () async {
                 final nombre = TextEditingController();
                 final add = await showDialog<bool>(
                   context: dctx,
-                  builder: (d2) => AlertDialog(
-                    title: const Text('Agregar jugador (a mano)'),
-                    content: TextField(
+                  builder: (d2) => DialogoPichangol(
+                    titulo: 'Agregar jugador (a mano)',
+                    icono: Icons.person_add_alt,
+                    contenido: TextField(
                       controller: nombre,
                       autofocus: true,
                       textCapitalization: TextCapitalization.words,
                       decoration:
                           const InputDecoration(labelText: 'Nombre'),
                     ),
-                    actions: [
+                    acciones: [
                       TextButton(
                           onPressed: () => Navigator.pop(d2, false),
                           child: const Text('Cancelar')),
@@ -1086,9 +1093,10 @@ class _Participantes extends StatelessWidget {
     final esFutbol = campeonato.deporte.name == 'futbol';
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(esFutbol ? 'Nuevo equipo' : 'Nuevo participante'),
-        content: Column(
+      builder: (ctx) => DialogoPichangol(
+        titulo: esFutbol ? 'Nuevo equipo' : 'Nuevo participante',
+        icono: Icons.group_add,
+        contenido: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
@@ -1107,7 +1115,7 @@ class _Participantes extends StatelessWidget {
             ),
           ],
         ),
-        actions: [
+        acciones: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
               child: const Text('Cancelar')),
@@ -1231,9 +1239,10 @@ Future<void> _cargarResultado(
   final cb = TextEditingController(text: m.marcadorB?.toString() ?? '');
   final ok = await showDialog<bool>(
     context: context,
-    builder: (ctx) => AlertDialog(
-      title: const Text('Cargar resultado'),
-      content: Column(
+    builder: (ctx) => DialogoPichangol(
+      titulo: 'Cargar resultado',
+      icono: Icons.scoreboard_outlined,
+      contenido: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           _FilaMarcador(nombre: na, controller: ca),
@@ -1241,7 +1250,7 @@ Future<void> _cargarResultado(
           _FilaMarcador(nombre: nb, controller: cb),
         ],
       ),
-      actions: [
+      acciones: [
         TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('Cancelar')),
