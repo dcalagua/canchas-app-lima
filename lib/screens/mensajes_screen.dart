@@ -376,110 +376,12 @@ class _MensajesScreenState extends State<MensajesScreen> {
     }
   }
 
-  /// Menú de acciones de una conversación (long-press), estilo WhatsApp: fijar,
-  /// archivar, silenciar y eliminar. Todo es por-usuario y local.
-  Future<void> _accionesChat(_Conv c) async {
-    final fijado = appState.chatFijado(c.hilo);
-    final archivado = appState.chatArchivado(c.hilo);
-    final silenciado = appState.chatSilenciado(c.hilo);
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              dense: true,
-              title: Text(c.titulo,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w800)),
-            ),
-            const Divider(height: 1),
-            ListTile(
-              leading: Icon(fijado ? Icons.push_pin : Icons.push_pin_outlined,
-                  color: teal),
-              title: Text(fijado ? 'Desfijar' : 'Fijar arriba'),
-              onTap: () {
-                Navigator.pop(ctx);
-                appState.toggleChatFijado(c.hilo);
-              },
-            ),
-            ListTile(
-              leading: Icon(
-                  archivado ? Icons.unarchive_outlined : Icons.archive_outlined,
-                  color: teal),
-              title: Text(archivado ? 'Desarchivar' : 'Archivar'),
-              onTap: () {
-                Navigator.pop(ctx);
-                appState.toggleChatArchivado(c.hilo);
-                // Si estaba abierto en el panel (tablet), lo cierro.
-                if (_sel?.hilo == c.hilo) setState(() => _sel = null);
-              },
-            ),
-            ListTile(
-              leading: Icon(
-                  silenciado
-                      ? Icons.notifications_active_outlined
-                      : Icons.notifications_off_outlined,
-                  color: teal),
-              title: Text(silenciado
-                  ? 'Activar notificaciones'
-                  : 'Silenciar notificaciones'),
-              onTap: () {
-                Navigator.pop(ctx);
-                appState.toggleChatSilenciado(c.hilo);
-              },
-            ),
-            const Divider(height: 1),
-            ListTile(
-              leading: const Icon(Icons.delete_outline, color: clayOscuro),
-              title: const Text('Eliminar conversación',
-                  style: TextStyle(
-                      color: clayOscuro, fontWeight: FontWeight.w700)),
-              onTap: () {
-                Navigator.pop(ctx);
-                _eliminarChat(c);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// "Eliminar conversación" (long-press), estilo WhatsApp: la quita de MI
-  /// bandeja (no borra nada en el servidor ni para la otra persona). Si me vuelven
-  /// a escribir, reaparece.
-  Future<void> _eliminarChat(_Conv c) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Eliminar conversación'),
-        content: Text(
-            'Se quitará "${c.titulo}" de tu bandeja. Si te vuelven a escribir, '
-            'la conversación reaparece.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancelar')),
-          FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: clayOscuro),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Eliminar')),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    appState.ocultarChat(c.hilo);
-    if (_sel?.hilo == c.hilo) _sel = null;
-    _abiertos.remove(c.hilo);
-    await _cargar();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Conversación eliminada')),
-    );
+  /// Alterna el marcado de un chat en modo selección (WhatsApp). Al quedar en 0,
+  /// sale del modo selección solo.
+  void _toggleSeleccion(String hilo) {
+    setState(() {
+      if (!_seleccion.remove(hilo)) _seleccion.add(hilo);
+    });
   }
 
   /// Panel derecho: el chat abierto (embebido, sin flecha de volver) o un aviso.
@@ -525,6 +427,54 @@ class _MensajesScreenState extends State<MensajesScreen> {
   /// móvil, el de volver. Misma altura/color que la cabecera del chat → alineadas.
   Widget _headerMaster(BuildContext context, {required bool colapsable}) {
     final bg = _headerBg(context);
+    // Modo selección: barra de acciones estilo WhatsApp (fijar/silenciar/
+    // archivar/eliminar) sobre los chats marcados.
+    if (_enSeleccion) {
+      final todosFijados = _seleccion.every(appState.chatFijado);
+      final todosArchivados = _seleccion.every(appState.chatArchivado);
+      return Material(
+        color: bg,
+        child: SizedBox(
+          height: kToolbarHeight,
+          child: Row(
+            children: [
+              IconButton(
+                tooltip: 'Cancelar',
+                icon: const Icon(Icons.arrow_back, color: Colors.white),
+                onPressed: () => setState(_seleccion.clear),
+              ),
+              Text('${_seleccion.length}',
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 20)),
+              const Spacer(),
+              IconButton(
+                tooltip: todosFijados ? 'Desfijar' : 'Fijar',
+                icon: const Icon(Icons.push_pin_outlined, color: Colors.white),
+                onPressed: _fijarSeleccion,
+              ),
+              IconButton(
+                tooltip: 'Silenciar',
+                icon: const Icon(Icons.notifications_off_outlined,
+                    color: Colors.white),
+                onPressed: _silenciarSeleccion,
+              ),
+              IconButton(
+                tooltip: todosArchivados ? 'Desarchivar' : 'Archivar',
+                icon: const Icon(Icons.archive_outlined, color: Colors.white),
+                onPressed: _archivarSeleccion,
+              ),
+              IconButton(
+                tooltip: 'Eliminar',
+                icon: const Icon(Icons.delete_outline, color: Colors.white),
+                onPressed: _eliminarSeleccion,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return Material(
       color: bg,
       child: SizedBox(
@@ -559,10 +509,74 @@ class _MensajesScreenState extends State<MensajesScreen> {
     );
   }
 
+  // ── Acciones de la barra de selección (operan sobre TODOS los marcados) ──────
+  void _fijarSeleccion() {
+    final target = !_seleccion.every(appState.chatFijado);
+    for (final h in _seleccion) {
+      if (appState.chatFijado(h) != target) appState.toggleChatFijado(h);
+    }
+    setState(_seleccion.clear);
+  }
+
+  void _silenciarSeleccion() {
+    final target = !_seleccion.every(appState.chatSilenciado);
+    for (final h in _seleccion) {
+      if (appState.chatSilenciado(h) != target) appState.toggleChatSilenciado(h);
+    }
+    setState(_seleccion.clear);
+  }
+
+  void _archivarSeleccion() {
+    final target = !_seleccion.every(appState.chatArchivado);
+    for (final h in _seleccion) {
+      if (appState.chatArchivado(h) != target) appState.toggleChatArchivado(h);
+    }
+    if (_sel != null && _seleccion.contains(_sel!.hilo)) _sel = null;
+    setState(_seleccion.clear);
+  }
+
+  Future<void> _eliminarSeleccion() async {
+    final n = _seleccion.length;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(n == 1 ? 'Eliminar conversación' : 'Eliminar $n conversaciones'),
+        content: const Text(
+            'Se quitan de tu bandeja. Si te vuelven a escribir, reaparecen.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: clayOscuro),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Eliminar')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    for (final h in _seleccion) {
+      appState.ocultarChat(h);
+      _abiertos.remove(h);
+      if (_sel?.hilo == h) _sel = null;
+    }
+    setState(_seleccion.clear);
+    await _cargar();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(n == 1 ? 'Conversación eliminada' : '$n eliminadas')),
+    );
+  }
+
   // Panel derecho colapsado: franja delgada para volver a mostrar la lista.
   bool _listaColapsada = false;
   // Viendo la bandeja de "Archivados" (en vez de la bandeja normal).
   bool _verArchivados = false;
+  // Modo selección (estilo WhatsApp): hilos marcados con long-press. Cuando hay
+  // al menos uno, la cabecera se vuelve una barra de acciones (fijar/silenciar/
+  // archivar/eliminar) que opera sobre TODOS los marcados.
+  final Set<String> _seleccion = {};
+  bool get _enSeleccion => _seleccion.isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -640,8 +654,12 @@ class _MensajesScreenState extends State<MensajesScreen> {
                         seleccionado: ancho && _sel?.hilo == c.hilo,
                         fijado: appState.chatFijado(c.hilo),
                         silenciado: appState.chatSilenciado(c.hilo),
-                        onTap: () => _abrir(c, ancho),
-                        onLongPress: () => _accionesChat(c),
+                        marcado: _seleccion.contains(c.hilo),
+                        // En modo selección, tocar marca/desmarca; si no, abre.
+                        onTap: () => _enSeleccion
+                            ? _toggleSeleccion(c.hilo)
+                            : _abrir(c, ancho),
+                        onLongPress: () => _toggleSeleccion(c.hilo),
                       ),
                       if (conSep)
                         Divider(height: 1, color: trazo.withOpacity(0.6)),
@@ -778,6 +796,7 @@ class _FilaConv extends StatelessWidget {
     required this.seleccionado,
     required this.fijado,
     required this.silenciado,
+    required this.marcado,
     required this.onTap,
     required this.onLongPress,
   });
@@ -786,6 +805,7 @@ class _FilaConv extends StatelessWidget {
   final bool seleccionado;
   final bool fijado;
   final bool silenciado;
+  final bool marcado; // marcado en modo selección (WhatsApp)
   final VoidCallback onTap;
   final VoidCallback onLongPress;
 
@@ -819,34 +839,41 @@ class _FilaConv extends StatelessWidget {
     return ListTile(
       onTap: onTap,
       onLongPress: onLongPress,
-      selected: seleccionado,
-      selectedTileColor: cs.primary.withOpacity(0.08),
-      leading: CircleAvatar(
-        backgroundColor: colAvatar,
-        backgroundImage:
-            (foto != null && foto.isNotEmpty) ? NetworkImage(foto) : null,
-        child: (foto != null && foto.isNotEmpty)
-            ? null
-            : (icoTipo != null
-                ? Icon(icoTipo, color: Colors.white, size: 20)
-                : Text(inicial,
-                    style: const TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.w800))),
-      ),
-      title: Row(
+      selected: seleccionado || marcado,
+      selectedTileColor:
+          cs.primary.withOpacity(marcado ? 0.16 : 0.08),
+      leading: Stack(
+        clipBehavior: Clip.none,
         children: [
-          Flexible(
-            child: Text(conv.titulo,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w700)),
+          CircleAvatar(
+            backgroundColor: colAvatar,
+            backgroundImage:
+                (foto != null && foto.isNotEmpty) ? NetworkImage(foto) : null,
+            child: (foto != null && foto.isNotEmpty)
+                ? null
+                : (icoTipo != null
+                    ? Icon(icoTipo, color: Colors.white, size: 20)
+                    : Text(inicial,
+                        style: const TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.w800))),
           ),
-          if (silenciado) ...[
-            const SizedBox(width: 6),
-            const Icon(Icons.notifications_off, size: 15, color: textoTenue),
-          ],
+          // Check de selección (esquina inferior derecha), estilo WhatsApp.
+          if (marcado)
+            Positioned(
+              right: -2,
+              bottom: -2,
+              child: Container(
+                decoration: BoxDecoration(
+                    color: cs.surface, shape: BoxShape.circle),
+                child: Icon(Icons.check_circle, color: cs.primary, size: 18),
+              ),
+            ),
         ],
       ),
+      title: Text(conv.titulo,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.w700)),
       subtitle: Text(conv.preview,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
@@ -865,6 +892,11 @@ class _FilaConv extends StatelessWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Campana silenciada (como WhatsApp: junto al contador).
+              if (silenciado) ...[
+                const Icon(Icons.notifications_off, size: 15, color: textoTenue),
+                const SizedBox(width: 4),
+              ],
               if (fijado) ...[
                 Transform.rotate(
                   angle: 0.785, // 45° → look de "chincheta" de WhatsApp
@@ -883,7 +915,7 @@ class _FilaConv extends StatelessWidget {
                           fontSize: 10,
                           fontWeight: FontWeight.w800)),
                 )
-              else if (!fijado)
+              else if (!fijado && !silenciado)
                 const SizedBox(height: 12),
             ],
           ),
