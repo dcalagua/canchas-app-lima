@@ -317,6 +317,8 @@ class _CircuitoPreview extends StatelessWidget {
                               height: 1.3)),
                     ] else ...[
                       const SizedBox(height: 8),
+                      const _MiniHeaderRanking(),
+                      const SizedBox(height: 2),
                       for (var i = 0; i < top.length; i++)
                         _MiniFila(
                             posicion: i + 1,
@@ -334,13 +336,62 @@ class _CircuitoPreview extends StatelessWidget {
   }
 }
 
-/// Fila compacta del top-3 en la tarjeta del circuito.
+// Anchos de las columnas numéricas del mini-ranking (comunes al encabezado y a
+// las filas → alineación perfecta entre sí y entre filas).
+const double _wPj = 30, _wG = 24, _wP = 24, _wPts = 40;
+
+/// Encabezado del mini-ranking: rótulos PJ · G · P · Pts alineados con las
+/// columnas de cada fila.
+class _MiniHeaderRanking extends StatelessWidget {
+  const _MiniHeaderRanking();
+  Widget _h(String t, double w, {bool fuerte = false}) => SizedBox(
+        width: w,
+        child: Text(t,
+            textAlign: TextAlign.right,
+            style: TextStyle(
+                color: textoTenue,
+                fontSize: 10.5,
+                fontWeight: fuerte ? FontWeight.w900 : FontWeight.w700)),
+      );
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Row(
+        children: [
+          const SizedBox(width: 30), // medalla + gap
+          const Expanded(child: SizedBox()),
+          _h('PJ', _wPj),
+          _h('G', _wG),
+          _h('P', _wP),
+          _h('Pts', _wPts, fuerte: true),
+        ],
+      ),
+    );
+  }
+}
+
+/// Fila compacta del top-3 en la tarjeta del circuito: medalla + nombre + tabla
+/// PJ · G · P · Pts (columnas de ancho fijo, alineadas).
 class _MiniFila extends StatelessWidget {
   const _MiniFila(
       {required this.posicion, required this.f, required this.esPro});
   final int posicion;
   final RankingGlobalFila f;
   final bool esPro;
+
+  Widget _num(String v, double w, Color c,
+          {bool fuerte = false, double size = 12.5}) =>
+      SizedBox(
+        width: w,
+        child: Text(v,
+            textAlign: TextAlign.right,
+            style: TextStyle(
+                color: c,
+                fontSize: size,
+                fontWeight: fuerte ? FontWeight.w900 : FontWeight.w700)),
+      );
+
   @override
   Widget build(BuildContext context) {
     final medalla = switch (posicion) {
@@ -359,38 +410,38 @@ class _MiniFila extends StatelessWidget {
                   style: const TextStyle(fontSize: 15),
                   textAlign: TextAlign.center)),
           const SizedBox(width: 8),
-          Flexible(
-            child: Text(f.nombre,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                    fontWeight: FontWeight.w600, fontSize: 13.5)),
-          ),
-          if (esPro) ...[
-            const SizedBox(width: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-              decoration: BoxDecoration(
-                  color: bosque, borderRadius: BorderRadius.circular(5)),
-              child: const Text('PRO',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 8.5)),
+          Expanded(
+            child: Row(
+              children: [
+                Flexible(
+                  child: Text(f.nombre,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 13.5)),
+                ),
+                if (esPro) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(
+                        color: bosque, borderRadius: BorderRadius.circular(5)),
+                    child: const Text('PRO',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 8.5)),
+                  ),
+                ],
+              ],
             ),
-          ],
-          const Spacer(),
-          // Puntos en una columna de ancho fijo, alineada a la derecha, para que
-          // queden en línea entre filas (no importa el largo del nombre).
-          SizedBox(
-            width: 56,
-            child: Text('${f.puntos} pts',
-                textAlign: TextAlign.right,
-                style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 13,
-                    color: bosque)),
           ),
+          // Tabla: partidos jugados, ganados (verde), perdidos (rojo) y puntos.
+          _num('${f.pj}', _wPj, textoTenue),
+          _num('${f.pg}', _wG, lima),
+          _num('${f.pp}', _wP, clayOscuro),
+          _num('${f.puntos}', _wPts, bosque, fuerte: true, size: 14),
         ],
       ),
     );
