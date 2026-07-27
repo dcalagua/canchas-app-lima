@@ -614,22 +614,49 @@ class _FilaGlobal extends StatelessWidget {
         subtitle: Text(
             '${f.academiaNombre}'
             '${f.academias > 1 ? ' +${f.academias - 1}' : ''}'
-            '${f.categoria.isNotEmpty ? ' · ${f.categoria}' : ''} · ${f.pg}G-${f.pp}P',
+            '${f.categoria.isNotEmpty ? ' · ${f.categoria}' : ''}',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(color: textoTenue, fontSize: 12)),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
+        // Tabla: columnas alineadas PJ · G · P · Pts (cada una con su etiqueta).
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Text('${f.puntos}',
-                style: TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 18,
-                    color: cs.primary)),
-            const Text('pts', style: TextStyle(color: textoTenue, fontSize: 11)),
+            _Stat('${f.pj}', 'PJ'),
+            _Stat('${f.pg}', 'G', color: pino),
+            _Stat('${f.pp}', 'P', color: coral),
+            _Stat('${f.puntos}', 'Pts', color: cs.primary, grande: true),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Columna de estadística de la tabla del ranking: número arriba + etiqueta
+/// abajo, ancho fijo para que queden alineadas entre filas.
+class _Stat extends StatelessWidget {
+  const _Stat(this.valor, this.label, {this.color, this.grande = false});
+  final String valor;
+  final String label;
+  final Color? color;
+  final bool grande;
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: grande ? 40 : 26,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(valor,
+              style: TextStyle(
+                  fontWeight: grande ? FontWeight.w900 : FontWeight.w700,
+                  fontSize: grande ? 18 : 14,
+                  color: color)),
+          Text(label,
+              style: const TextStyle(
+                  color: textoTenue, fontSize: 9.5, fontWeight: FontWeight.w600)),
+        ],
       ),
     );
   }

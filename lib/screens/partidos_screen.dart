@@ -380,11 +380,17 @@ class _MiniFila extends StatelessWidget {
             ),
           ],
           const Spacer(),
-          Text('${f.puntos} pts',
-              style: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 13,
-                  color: bosque)),
+          // Puntos en una columna de ancho fijo, alineada a la derecha, para que
+          // queden en línea entre filas (no importa el largo del nombre).
+          SizedBox(
+            width: 56,
+            child: Text('${f.puntos} pts',
+                textAlign: TextAlign.right,
+                style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                    color: bosque)),
+          ),
         ],
       ),
     );
