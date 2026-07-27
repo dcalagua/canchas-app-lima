@@ -62,9 +62,37 @@ class AppState extends ChangeNotifier {
   // donde se muestre a otra persona (nombre y foto en vez del correo).
   final Map<String, Map<String, dynamic>> _perfiles = {};
 
-  /// Nombre a mostrar de un correo: el de su perfil si existe (no vacío), o null.
+  // Apodos que YO le puse a un contacto (email→alias, local, tipo WhatsApp).
+  // Mandan sobre el nombre de su perfil al mostrarlo. Se persisten.
+  final Map<String, String> _apodos = {};
+
+  /// Apodo local que le puse a un correo, o null si no le puse.
+  String? apodoDe(String? email) {
+    final a = _apodos[(email ?? '').trim().toLowerCase()];
+    return (a != null && a.trim().isNotEmpty) ? a.trim() : null;
+  }
+
+  /// Guarda (o borra, con texto vacío) el apodo local de un contacto. Solo lo
+  /// veo yo; no cambia el perfil de la otra persona.
+  Future<void> guardarApodo(String email, String apodo) async {
+    final e = email.trim().toLowerCase();
+    if (e.isEmpty) return;
+    final a = apodo.trim();
+    if (a.isEmpty) {
+      _apodos.remove(e);
+    } else {
+      _apodos[e] = a;
+    }
+    notifyListeners();
+    await _persistirDatos();
+  }
+
+  /// Nombre a mostrar de un correo: MI apodo si le puse uno; si no, el de su
+  /// perfil (no vacío); si no, null.
   String? nombreMostrableDe(String? email) {
     final e = (email ?? '').trim().toLowerCase();
+    final apodo = apodoDe(e);
+    if (apodo != null) return apodo;
     final n = (_perfiles[e]?['nombre'] ?? '').toString().trim();
     return n.isEmpty ? null : n;
   }
@@ -4164,6 +4192,7 @@ class AppState extends ChangeNotifier {
   static const _kInvitaciones = 'invitaciones_json';
   static const _kChatLecturas = 'chat_lecturas_json';
   static const _kChatsOcultos = 'chats_ocultos_json';
+  static const _kApodos = 'apodos_json';
   static const _kChatsFijados = 'chats_fijados_json';
   static const _kChatsArchivados = 'chats_archivados_json';
   static const _kChatsSilenciados = 'chats_silenciados_json';
@@ -4396,6 +4425,16 @@ class AppState extends ChangeNotifier {
         } catch (_) {}
       }
 
+      final apodosRaw = prefs.getString(_kApodos);
+      if (apodosRaw != null) {
+        try {
+          final m = jsonDecode(apodosRaw) as Map<String, dynamic>;
+          _apodos
+            ..clear()
+            ..addAll(m.map((k, v) => MapEntry(k, v.toString())));
+        } catch (_) {}
+      }
+
       void cargarSetChat(String key, Set<String> target) {
         final raw = prefs.getString(key);
         if (raw == null) return;
@@ -4518,6 +4557,7 @@ class AppState extends ChangeNotifier {
           jsonEncode(invitaciones.map((i) => i.toJson()).toList()));
       await prefs.setString(_kChatLecturas, jsonEncode(chatLecturas));
       await prefs.setString(_kChatsOcultos, jsonEncode(chatsOcultos));
+      await prefs.setString(_kApodos, jsonEncode(_apodos));
       await prefs.setString(_kChatsFijados, jsonEncode(chatsFijados.toList()));
       await prefs.setString(
           _kChatsArchivados, jsonEncode(chatsArchivados.toList()));

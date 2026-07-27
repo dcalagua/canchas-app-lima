@@ -15,6 +15,7 @@ import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
+import '../widgets/dialogo_pichangol.dart';
 
 // ── Paleta estilo WhatsApp (theme-aware) ─────────────────────────────────────
 // Se calcula según el brillo del tema. Fondo del chat, burbujas y barra imitan
@@ -168,6 +169,58 @@ class _ChatScreenState extends State<ChatScreen> {
       widget.tipo == 'cancha' &&
       widget.soyProfe &&
       appState.estaVerificado(widget.cuentaEmail);
+
+  /// Guardar el contacto con OTRO nombre (apodo local, tipo WhatsApp): solo lo
+  /// veo yo; manda sobre el nombre de su perfil en todo el app.
+  Future<void> _editarApodo() async {
+    final e = _contraparteEmail;
+    if (e.isEmpty) return;
+    final ctrl = TextEditingController(text: appState.apodoDe(e) ?? '');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => DialogoPichangol(
+        titulo: 'Guardar contacto',
+        icono: Icons.drive_file_rename_outline,
+        contenido: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Ponle el nombre con el que quieres verlo. Solo lo ves '
+                'tú (no cambia su perfil).',
+                style: TextStyle(color: textoTenue, fontSize: 13)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: ctrl,
+              maxLength: 40,
+              textCapitalization: TextCapitalization.words,
+              decoration:
+                  const InputDecoration(hintText: 'Ej. Profe Gyanina'),
+            ),
+          ],
+        ),
+        acciones: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              style: TextButton.styleFrom(foregroundColor: textoTenue),
+              child: const Text('Cancelar')),
+          FilledButton(
+              style: FilledButton.styleFrom(
+                  backgroundColor: lima,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Guardar',
+                  style: TextStyle(fontWeight: FontWeight.w800))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await appState.guardarApodo(e, ctrl.text);
+    if (mounted) setState(() {}); // refresca el nombre del header
+  }
 
   /// Abre el marcador del teléfono con el número de la contraparte (llamada por
   /// la red del celular; no es llamada dentro del app).
@@ -447,6 +500,26 @@ class _ChatScreenState extends State<ChatScreen> {
               onPressed: () => WhatsAppLink.abrir(
                   appState.celularDe(_contraparteEmail)!,
                   'Hola, te escribo desde Pichangol.'),
+            ),
+          // Menú del contacto (tipo WhatsApp): guardar con otro nombre.
+          if (_contraparteEmail.isNotEmpty)
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, color: Colors.white),
+              onSelected: (v) {
+                if (v == 'apodo') _editarApodo();
+              },
+              itemBuilder: (_) => [
+                PopupMenuItem(
+                  value: 'apodo',
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.drive_file_rename_outline),
+                    title: Text(appState.apodoDe(_contraparteEmail) == null
+                        ? 'Guardar con otro nombre'
+                        : 'Editar nombre del contacto'),
+                  ),
+                ),
+              ],
             ),
         ],
       ),
