@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../data/grupos_repo.dart';
 import '../data/mensajes_repo.dart';
@@ -626,11 +627,122 @@ class _MensajesScreenState extends State<MensajesScreen> {
                     fontWeight: FontWeight.w700,
                     fontSize: 20)),
             const Spacer(),
+            // Formato WhatsApp: cámara + menú de 3 puntos.
             IconButton(
-              tooltip: 'Buscar jugador',
-              icon: const Icon(Icons.person_search, color: Colors.white),
-              onPressed: () => _buscarYAbrir(colapsable),
+              tooltip: 'Tomar foto',
+              icon: const Icon(Icons.photo_camera_outlined, color: Colors.white),
+              onPressed: _tomarFotoInbox,
             ),
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, color: Colors.white),
+              onSelected: (v) {
+                if (v == 'buscar') {
+                  _buscarYAbrir(colapsable);
+                } else if (v == 'grupo') {
+                  Navigator.of(context)
+                      .push(MaterialPageRoute(
+                          builder: (_) => const CrearGrupoScreen()))
+                      .then((_) => _cargar());
+                }
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'buscar',
+                  child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.person_search),
+                      title: Text('Buscar contacto')),
+                ),
+                PopupMenuItem(
+                  value: 'grupo',
+                  child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.group_add),
+                      title: Text('Nuevo grupo')),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Cámara del inbox (estilo WhatsApp): toma una foto y la envía al chat que
+  /// elijas. Abre el chat destino ya con la foto enviándose.
+  Future<void> _tomarFotoInbox() async {
+    final XFile? file = await ImagePicker()
+        .pickImage(source: ImageSource.camera, maxWidth: 1600, imageQuality: 80);
+    if (file == null || !mounted) return;
+    final bytes = await file.readAsBytes();
+    if (!mounted) return;
+    final c = await _elegirDestinatario();
+    if (c == null || !mounted) return;
+    Navigator.of(context)
+        .push(MaterialPageRoute(
+          builder: (_) => ChatScreen(
+            academiaId: c.academiaId,
+            cuentaEmail: c.cuentaEmail,
+            titulo: c.titulo,
+            soyProfe: c.soyProfe,
+            tipo: c.tipo,
+            refId: c.refId,
+            fotoInicial: bytes,
+          ),
+        ))
+        .then((_) => _cargar());
+  }
+
+  /// Hoja para elegir a quién enviar la foto (conversaciones existentes).
+  Future<_Conv?> _elegirDestinatario() {
+    final activos =
+        _convs.where((c) => !appState.chatArchivado(c.hilo)).toList();
+    return showModalBottomSheet<_Conv>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Enviar foto a…',
+                    style:
+                        TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+              ),
+            ),
+            if (activos.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(24),
+                child: Text('Aún no tienes conversaciones.',
+                    style: TextStyle(color: textoTenue)),
+              )
+            else
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final c in activos)
+                      ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: teal,
+                          child: Text(
+                              c.titulo.trim().isNotEmpty
+                                  ? c.titulo.characters.first.toUpperCase()
+                                  : '?',
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800)),
+                        ),
+                        title: Text(c.titulo,
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                        onTap: () => Navigator.pop(ctx, c),
+                      ),
+                  ],
+                ),
+              ),
           ],
         ),
       ),

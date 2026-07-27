@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
@@ -48,6 +49,7 @@ class ChatScreen extends StatefulWidget {
     this.tipo = 'academia',
     this.refId = '',
     this.embebido = false,
+    this.fotoInicial,
   });
 
   final String academiaId;
@@ -59,6 +61,10 @@ class ChatScreen extends StatefulWidget {
   // Cuando se muestra dentro de un panel (master-detail en tablet), no lleva
   // flecha de "volver" (no hay ruta que cerrar: el menú lateral sigue visible).
   final bool embebido;
+
+  /// Si se pasa (p. ej. desde la cámara del inbox), al abrir el chat se envía
+  /// esta foto automáticamente.
+  final Uint8List? fotoInicial;
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -143,6 +149,8 @@ class _ChatScreenState extends State<ChatScreen> {
     appState.hiloChatAbierto = _hilo;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       appState.marcarChatLeido(_hilo);
+      // Foto tomada desde la cámara del inbox → se envía al abrir el chat.
+      if (widget.fotoInicial != null) _enviarBytes(widget.fotoInicial!);
     });
   }
 
@@ -204,18 +212,29 @@ class _ChatScreenState extends State<ChatScreen> {
 
   /// Adjunta/toma una foto y la envía como mensaje con imagen.
   Future<void> _enviarFoto(ImageSource source) async {
-    final u = appState.usuario;
-    if (u == null || _enviando) return;
+    if (_enviando) return;
     try {
       final XFile? file = await ImagePicker()
           .pickImage(source: source, maxWidth: 1600, imageQuality: 80);
       if (file == null || !mounted) return;
-      setState(() => _enviando = true);
       final bytes = await file.readAsBytes();
+      await _enviarBytes(bytes);
+    } catch (_) {
+      // ignora: fail-safe
+    }
+  }
+
+  /// Sube y envía una imagen (bytes) como mensaje con foto en este hilo. Se usa
+  /// tanto desde el chat (galería/cámara) como al abrir con una foto inicial
+  /// (cámara del inbox).
+  Future<void> _enviarBytes(Uint8List bytes) async {
+    final u = appState.usuario;
+    if (u == null || _enviando) return;
+    setState(() => _enviando = true);
+    try {
       final url = await MensajesRepo.subirFoto(_hilo, bytes);
       if (url == null) {
         if (!mounted) return;
-        setState(() => _enviando = false);
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('No se pudo subir la foto. Revisa tu conexión.')));
         return;
