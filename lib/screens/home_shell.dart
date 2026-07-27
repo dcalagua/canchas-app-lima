@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme.dart';
 import '../widgets/icono_chat_pichan.dart';
 import '../widgets/menu_lateral_scroll.dart';
 import 'agenda_screen.dart';
@@ -55,6 +56,16 @@ class _HomeShellState extends State<HomeShell> {
     'Reportes',
     'Billetera',
   ];
+  // Color "con vida" (Airbnb) por sección; el ícono va coloreado en el menú.
+  static const _colores = <Color>[
+    lima,               // Canchas
+    Color(0xFF2AA9E0),  // Agenda (azul)
+    naranja,            // Reservas
+    morado,             // Clientes
+    lima,               // Mensajes (se ignora: va el ícono de WhatsApp)
+    teal,               // Reportes
+    amarillo,           // Billetera
+  ];
   // Índice de la pestaña Mensajes → usa el ícono de chat con "P" (marca Pichan).
   static const _iMensajes = 4;
 
@@ -80,7 +91,7 @@ class _HomeShellState extends State<HomeShell> {
                       NavigationRailDestination(
                         icon: i == _iMensajes
                             ? IconoChatPichan(activo: _index == _iMensajes)
-                            : Icon(_iconos[i]),
+                            : Icon(_iconos[i], color: _colores[i]),
                         label: Text(_etiquetas[i]),
                       ),
                   ],
@@ -103,7 +114,7 @@ class _HomeShellState extends State<HomeShell> {
             NavigationDestination(
                 icon: i == _iMensajes
                     ? IconoChatPichan(activo: _index == _iMensajes)
-                    : Icon(_iconos[i]),
+                    : Icon(_iconos[i], color: _colores[i]),
                 label: _etiquetas[i]),
         ],
       ),

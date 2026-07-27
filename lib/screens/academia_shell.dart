@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../state/app_state.dart';
+import '../theme.dart';
 import '../widgets/icono_chat_pichan.dart';
 import '../widgets/menu_lateral_scroll.dart';
 import 'asistencia_screen.dart';
@@ -44,16 +45,18 @@ class _AcademiaShellState extends State<AcademiaShell> {
         // Tablet + academia lista: menú lateral SIEMPRE visible; el cuerpo de la
         // derecha cambia según la opción elegida (IndexedStack conserva el estado
         // de cada sección al alternar).
-        final items = <(IconData, String)>[
-          (Icons.sports_tennis, 'Academia'),
-          (Icons.payments_outlined, 'Cobros'),
-          (Icons.forum_outlined, 'Mensajes'),
-          (Icons.emoji_events_outlined, 'Campeonatos'),
-          (Icons.fact_check_outlined, 'Asistencia'),
-          (Icons.insights_outlined, 'Reporte'),
-          (Icons.campaign_outlined, 'Publicidad'),
-          (Icons.edit_outlined, 'Editar'),
-          (Icons.account_balance_wallet_outlined, 'Billetera'),
+        // Color "con vida" (Airbnb) por sección; el ícono va coloreado.
+        const azul = Color(0xFF2AA9E0);
+        final items = <(IconData, String, Color)>[
+          (Icons.sports_tennis, 'Academia', teal),
+          (Icons.payments_outlined, 'Cobros', lima),
+          (Icons.forum_outlined, 'Mensajes', lima), // ignora: va ícono WhatsApp
+          (Icons.emoji_events_outlined, 'Campeonatos', amarillo),
+          (Icons.fact_check_outlined, 'Asistencia', azul),
+          (Icons.insights_outlined, 'Reporte', morado),
+          (Icons.campaign_outlined, 'Publicidad', naranja),
+          (Icons.edit_outlined, 'Editar', teal),
+          (Icons.account_balance_wallet_outlined, 'Billetera', amarillo),
         ];
         // El índice no puede quedar fuera de rango (p. ej. si cambia la lista).
         final idx = _index.clamp(0, items.length - 1);
@@ -72,7 +75,7 @@ class _AcademiaShellState extends State<AcademiaShell> {
                         NavigationRailDestination(
                           icon: it.$2 == 'Mensajes'
                               ? const IconoChatPichan()
-                              : Icon(it.$1),
+                              : Icon(it.$1, color: it.$3),
                           label: Text(it.$2),
                         ),
                     ],
