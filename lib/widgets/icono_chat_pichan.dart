@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
-/// Verde WhatsApp (el mismo que se usa para los accesos de WhatsApp en el app).
-const Color _verdeWhatsapp = Color(0xFF25D366);
-
-/// Ícono de "Mensajes": el logo de WhatsApp (glyph de Font Awesome) en verde,
-/// "con vida" (regla de UI Airbnb). No se apaga a gris cuando la pestaña no está
-/// seleccionada —resalta como marca—; solo baja un poco de opacidad.
+/// Ícono de "Mensajes": el logo de WhatsApp a color (verde con teléfono blanco),
+/// "con vida" (regla de UI Airbnb). Es una imagen (assets/icon/whatsapp.png), no
+/// un glyph, para conservar los dos colores. No se apaga a gris cuando la pestaña
+/// no está seleccionada —resalta como marca—; solo baja un poco de opacidad.
 class IconoChatPichan extends StatelessWidget {
   const IconoChatPichan({super.key, this.size = 24, this.activo = true});
   final double size;
@@ -18,7 +15,12 @@ class IconoChatPichan extends StatelessWidget {
   Widget build(BuildContext context) {
     return Opacity(
       opacity: activo ? 1 : 0.72,
-      child: FaIcon(FontAwesomeIcons.whatsapp, color: _verdeWhatsapp, size: size),
+      child: Image.asset(
+        'assets/icon/whatsapp.png',
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+      ),
     );
   }
 }
