@@ -461,9 +461,12 @@ class _UnirseSheetState extends State<_UnirseSheet> {
     final t = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
     return Padding(
-      // Regla app: en pantallas anchas la hoja se centra con ancho máximo.
-      padding: EdgeInsets.fromLTRB(ladoTablet(context, 20, 560), 18,
-          ladoTablet(context, 20, 560), 20 + MediaQuery.of(context).viewInsets.bottom),
+      // OJO: NO usar ladoTablet aquí. En tablet el bottom sheet ya viene con
+      // ancho limitado (~640, Material 3) y centrado; ladoTablet calcula el
+      // margen con el ancho de PANTALLA COMPLETA → padding > ancho de la hoja →
+      // ancho negativo → la hoja salía EN BLANCO. Padding fijo y listo.
+      padding: EdgeInsets.fromLTRB(
+          20, 18, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
       child: SingleChildScrollView(
         child: Column(
         mainAxisSize: MainAxisSize.min,
