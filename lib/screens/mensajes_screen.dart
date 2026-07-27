@@ -652,8 +652,8 @@ class _MensajesScreenState extends State<MensajesScreen> {
                   value: 'buscar',
                   child: ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.person_search),
-                      title: Text('Buscar contacto')),
+                      leading: Icon(Icons.contacts_outlined),
+                      title: Text('Mis contactos')),
                 ),
                 PopupMenuItem(
                   value: 'grupo',

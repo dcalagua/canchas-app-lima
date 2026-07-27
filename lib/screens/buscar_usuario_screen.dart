@@ -118,7 +118,9 @@ class _BuscarUsuarioScreenState extends State<BuscarUsuarioScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Buscar jugador')),
+      appBar: AppBar(
+          title: Text(
+              widget.deporteReto != null ? 'Buscar jugador' : 'Contactos')),
       body: Column(
         children: [
           Padding(
@@ -198,16 +200,17 @@ class _Contactos extends StatelessWidget {
     if (emails.isEmpty) {
       return const _Vacio(
           icono: Icons.contacts_outlined,
-          texto: 'Busca a un jugador por su nombre o correo para escribirle o '
-              'guardarlo como contacto.');
+          texto: 'Aún no tienes contactos.\nBusca a un jugador por su nombre o '
+              'correo para escribirle y guardarlo en tu agenda.');
     }
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 6),
       children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(18, 8, 18, 4),
-          child: Text('Tus contactos',
-              style: TextStyle(fontWeight: FontWeight.w800, color: textoTenue)),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 8, 18, 4),
+          child: Text('Mis contactos (${emails.length})',
+              style: const TextStyle(
+                  fontWeight: FontWeight.w800, color: textoTenue)),
         ),
         for (final e in emails)
           _FilaUsuario(
