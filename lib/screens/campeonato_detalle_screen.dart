@@ -8,6 +8,7 @@ import '../services/pagos_service.dart';
 import '../services/propiedad_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/dialogo_pichangol.dart';
 import '../utils/ubicacion_share.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/responsive.dart';
@@ -237,23 +238,15 @@ class CampeonatoDetalleScreen extends StatelessWidget {
   }
 
   Future<void> _confirmarEliminar(BuildContext context, Campeonato c) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Eliminar campeonato'),
-        content: Text('¿Eliminar "${c.nombre}"? No se puede deshacer.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancelar')),
-          FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Eliminar')),
-        ],
-      ),
+    final ok = await confirmarPichangol(
+      context,
+      titulo: 'Eliminar campeonato',
+      mensaje: '¿Eliminar "${c.nombre}"? No se puede deshacer.',
+      textoConfirmar: 'Eliminar',
+      destructivo: true,
+      icono: Icons.delete_outline,
     );
-    if (ok == true && context.mounted) {
+    if (ok && context.mounted) {
       appState.eliminarCampeonato(c.id);
       Navigator.of(context).pop();
     }
@@ -666,25 +659,17 @@ class CampeonatoDetalleScreen extends StatelessWidget {
         if (r['falta_saldo'] == true) {
           final req =
               (r['requerido_soles'] as num?)?.toDouble() ?? c.costoInscripcion;
-          final ok = await showDialog<bool>(
-            context: context,
-            builder: (_) => AlertDialog(
-              title: const Text('Te falta saldo'),
-              content: Text(
-                  'La inscripción cuesta ${c.monedaSimbolo} ${req.toStringAsFixed(2)} '
-                  'y se paga de tu saldo Pichangol. Recarga y vuelve a inscribirte.'),
-              actions: [
-                TextButton(
-                    onPressed: () => Navigator.pop(context, false),
-                    child: const Text('Ahora no')),
-                FilledButton(
-                    style: FilledButton.styleFrom(backgroundColor: lima),
-                    onPressed: () => Navigator.pop(context, true),
-                    child: const Text('Recargar saldo')),
-              ],
-            ),
+          final ok = await confirmarPichangol(
+            context,
+            titulo: 'Te falta saldo',
+            mensaje:
+                'La inscripción cuesta ${c.monedaSimbolo} ${req.toStringAsFixed(2)} '
+                'y se paga de tu saldo Pichangol. Recarga y vuelve a inscribirte.',
+            textoConfirmar: 'Recargar saldo',
+            textoCancelar: 'Ahora no',
+            icono: Icons.account_balance_wallet_outlined,
           );
-          if (ok == true && context.mounted) {
+          if (ok && context.mounted) {
             await Navigator.of(context).push(MaterialPageRoute(
                 builder: (_) => RecargarSaldoScreen(
                     duenoId: email, titulo: 'Recargar saldo')));
@@ -1145,24 +1130,16 @@ class _Participantes extends StatelessWidget {
       return;
     }
     if (campeonato.fixtureGenerado) {
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Regenerar fixture'),
-          content: const Text(
-              'Ya hay un fixture. Regenerarlo BORRA los resultados cargados. '
-              '¿Continuar?'),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancelar')),
-            FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Regenerar')),
-          ],
-        ),
+      final ok = await confirmarPichangol(
+        context,
+        titulo: 'Regenerar fixture',
+        mensaje: 'Ya hay un fixture. Regenerarlo BORRA los resultados cargados. '
+            '¿Continuar?',
+        textoConfirmar: 'Regenerar',
+        destructivo: true,
+        icono: Icons.refresh,
       );
-      if (ok != true) return;
+      if (!ok) return;
     }
     appState.generarFixture(campeonato.id);
   }
