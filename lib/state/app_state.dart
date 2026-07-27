@@ -280,6 +280,11 @@ class AppState extends ChangeNotifier {
   // llega un mensaje MÁS NUEVO que la fecha de ocultado, la conversación reaparece.
   final Map<String, String> chatsOcultos = {};
 
+  // Acciones de bandeja estilo WhatsApp (por-usuario, locales):
+  final Set<String> chatsFijados = {};      // pin: van primero en la lista
+  final Set<String> chatsArchivados = {};   // salen de la bandeja → "Archivados"
+  final Set<String> chatsSilenciados = {};  // sin aviso in-app de mensajes nuevos
+
   // ── Campeonatos de academias ──────────────────────────────────────────────
   final List<Campeonato> campeonatos = [];
   bool descubriendo = false; // true mientras se traen canchas cercanas (feedback UI)
@@ -2356,6 +2361,35 @@ class AppState extends ChangeNotifier {
     return true;
   }
 
+  // ── Acciones de bandeja (fijar / archivar / silenciar), estilo WhatsApp ──────
+  bool chatFijado(String hilo) => chatsFijados.contains(hilo);
+  bool chatArchivado(String hilo) => chatsArchivados.contains(hilo);
+  bool chatSilenciado(String hilo) => chatsSilenciados.contains(hilo);
+
+  /// Fija/desfija un hilo (pin). Los fijados van primero en la bandeja.
+  void toggleChatFijado(String hilo) {
+    if (!chatsFijados.remove(hilo)) chatsFijados.add(hilo);
+    notifyListeners();
+    _persistirDatos();
+  }
+
+  /// Archiva/desarchiva un hilo. Al archivar, también se desfija (como WhatsApp).
+  void toggleChatArchivado(String hilo) {
+    if (!chatsArchivados.remove(hilo)) {
+      chatsArchivados.add(hilo);
+      chatsFijados.remove(hilo);
+    }
+    notifyListeners();
+    _persistirDatos();
+  }
+
+  /// Silencia/activa los avisos de un hilo (la campanita).
+  void toggleChatSilenciado(String hilo) {
+    if (!chatsSilenciados.remove(hilo)) chatsSilenciados.add(hilo);
+    notifyListeners();
+    _persistirDatos();
+  }
+
   List<Cuota> cuotasDe(String academiaId) => cuotas
       .where((c) => c.academiaId == academiaId)
       .toList()
@@ -4105,6 +4139,9 @@ class AppState extends ChangeNotifier {
   static const _kInvitaciones = 'invitaciones_json';
   static const _kChatLecturas = 'chat_lecturas_json';
   static const _kChatsOcultos = 'chats_ocultos_json';
+  static const _kChatsFijados = 'chats_fijados_json';
+  static const _kChatsArchivados = 'chats_archivados_json';
+  static const _kChatsSilenciados = 'chats_silenciados_json';
 
   /// Carga la sesión y los datos persistidos (al arrancar la app).
   Future<void> cargarSesion() async {
@@ -4334,6 +4371,21 @@ class AppState extends ChangeNotifier {
         } catch (_) {}
       }
 
+      void cargarSetChat(String key, Set<String> target) {
+        final raw = prefs.getString(key);
+        if (raw == null) return;
+        try {
+          final l = jsonDecode(raw) as List;
+          target
+            ..clear()
+            ..addAll(l.map((e) => e.toString()));
+        } catch (_) {}
+      }
+
+      cargarSetChat(_kChatsFijados, chatsFijados);
+      cargarSetChat(_kChatsArchivados, chatsArchivados);
+      cargarSetChat(_kChatsSilenciados, chatsSilenciados);
+
       notifyListeners();
       // Trae la disponibilidad compartida (reservas de otros dispositivos) para
       // que el anti-doble-reserva y el panel del dueño arranquen al día. Best-effort.
@@ -4441,6 +4493,11 @@ class AppState extends ChangeNotifier {
           jsonEncode(invitaciones.map((i) => i.toJson()).toList()));
       await prefs.setString(_kChatLecturas, jsonEncode(chatLecturas));
       await prefs.setString(_kChatsOcultos, jsonEncode(chatsOcultos));
+      await prefs.setString(_kChatsFijados, jsonEncode(chatsFijados.toList()));
+      await prefs.setString(
+          _kChatsArchivados, jsonEncode(chatsArchivados.toList()));
+      await prefs.setString(
+          _kChatsSilenciados, jsonEncode(chatsSilenciados.toList()));
     } catch (_) {}
   }
 

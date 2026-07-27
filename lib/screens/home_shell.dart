@@ -79,7 +79,7 @@ class _HomeShellState extends State<HomeShell> {
                     for (var i = 0; i < _iconos.length; i++)
                       NavigationRailDestination(
                         icon: i == _iMensajes
-                            ? const IconoChatPichan()
+                            ? IconoChatPichan(activo: _index == _iMensajes)
                             : Icon(_iconos[i]),
                         label: Text(_etiquetas[i]),
                       ),
@@ -102,7 +102,7 @@ class _HomeShellState extends State<HomeShell> {
           for (var i = 0; i < _iconos.length; i++)
             NavigationDestination(
                 icon: i == _iMensajes
-                    ? const IconoChatPichan()
+                    ? IconoChatPichan(activo: _index == _iMensajes)
                     : Icon(_iconos[i]),
                 label: _etiquetas[i]),
         ],

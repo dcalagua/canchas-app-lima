@@ -376,6 +376,79 @@ class _MensajesScreenState extends State<MensajesScreen> {
     }
   }
 
+  /// Menú de acciones de una conversación (long-press), estilo WhatsApp: fijar,
+  /// archivar, silenciar y eliminar. Todo es por-usuario y local.
+  Future<void> _accionesChat(_Conv c) async {
+    final fijado = appState.chatFijado(c.hilo);
+    final archivado = appState.chatArchivado(c.hilo);
+    final silenciado = appState.chatSilenciado(c.hilo);
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              dense: true,
+              title: Text(c.titulo,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w800)),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: Icon(fijado ? Icons.push_pin : Icons.push_pin_outlined,
+                  color: teal),
+              title: Text(fijado ? 'Desfijar' : 'Fijar arriba'),
+              onTap: () {
+                Navigator.pop(ctx);
+                appState.toggleChatFijado(c.hilo);
+              },
+            ),
+            ListTile(
+              leading: Icon(
+                  archivado ? Icons.unarchive_outlined : Icons.archive_outlined,
+                  color: teal),
+              title: Text(archivado ? 'Desarchivar' : 'Archivar'),
+              onTap: () {
+                Navigator.pop(ctx);
+                appState.toggleChatArchivado(c.hilo);
+                // Si estaba abierto en el panel (tablet), lo cierro.
+                if (_sel?.hilo == c.hilo) setState(() => _sel = null);
+              },
+            ),
+            ListTile(
+              leading: Icon(
+                  silenciado
+                      ? Icons.notifications_active_outlined
+                      : Icons.notifications_off_outlined,
+                  color: teal),
+              title: Text(silenciado
+                  ? 'Activar notificaciones'
+                  : 'Silenciar notificaciones'),
+              onTap: () {
+                Navigator.pop(ctx);
+                appState.toggleChatSilenciado(c.hilo);
+              },
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: clayOscuro),
+              title: const Text('Eliminar conversación',
+                  style: TextStyle(
+                      color: clayOscuro, fontWeight: FontWeight.w700)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _eliminarChat(c);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// "Eliminar conversación" (long-press), estilo WhatsApp: la quita de MI
   /// bandeja (no borra nada en el servidor ni para la otra persona). Si me vuelven
   /// a escribir, reaparece.
@@ -488,6 +561,8 @@ class _MensajesScreenState extends State<MensajesScreen> {
 
   // Panel derecho colapsado: franja delgada para volver a mostrar la lista.
   bool _listaColapsada = false;
+  // Viendo la bandeja de "Archivados" (en vez de la bandeja normal).
+  bool _verArchivados = false;
 
   @override
   Widget build(BuildContext context) {
@@ -536,33 +611,83 @@ class _MensajesScreenState extends State<MensajesScreen> {
             }
             return LayoutBuilder(builder: (context, cons) {
               final ancho = cons.maxWidth >= 640;
+              // Separa activos / archivados y ordena los activos con los FIJADOS
+              // primero (el resto por fecha desc). Se hace en cada build para que
+              // fijar/archivar se reflejen al instante (sin recargar del backend).
+              final activos = <_Conv>[];
+              final archivados = <_Conv>[];
+              for (final c in _convs) {
+                if (appState.chatArchivado(c.hilo)) {
+                  archivados.add(c);
+                } else {
+                  activos.add(c);
+                }
+              }
+              activos.sort((a, b) {
+                final pa = appState.chatFijado(a.hilo);
+                final pb = appState.chatFijado(b.hilo);
+                if (pa != pb) return pa ? -1 : 1;
+                return b.cuando.compareTo(a.cuando);
+              });
+              final mostrando = _verArchivados ? archivados : activos;
+
+              Widget filaDe(_Conv c, bool conSep) => Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _FilaConv(
+                        conv: c,
+                        noLeidos: _abiertos.contains(c.hilo) ? 0 : c.noLeidos,
+                        seleccionado: ancho && _sel?.hilo == c.hilo,
+                        fijado: appState.chatFijado(c.hilo),
+                        silenciado: appState.chatSilenciado(c.hilo),
+                        onTap: () => _abrir(c, ancho),
+                        onLongPress: () => _accionesChat(c),
+                      ),
+                      if (conSep)
+                        Divider(height: 1, color: trazo.withOpacity(0.6)),
+                    ],
+                  );
+
+              final filas = <Widget>[];
+              // Cabecera de "Archivados": banner para entrar (bandeja normal) o
+              // para volver (viendo archivados), estilo WhatsApp.
+              if (_verArchivados) {
+                filas.add(ListTile(
+                  leading: const Icon(Icons.arrow_back, color: teal),
+                  title: const Text('Archivados',
+                      style: TextStyle(fontWeight: FontWeight.w800)),
+                  onTap: () => setState(() => _verArchivados = false),
+                ));
+                filas.add(Divider(height: 1, color: trazo.withOpacity(0.6)));
+              } else if (archivados.isNotEmpty) {
+                filas.add(ListTile(
+                  leading: const Icon(Icons.archive_outlined, color: textoTenue),
+                  title: const Text('Archivados',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+                  trailing: Text('${archivados.length}',
+                      style: const TextStyle(
+                          color: textoTenue, fontWeight: FontWeight.w800)),
+                  onTap: () => setState(() => _verArchivados = true),
+                ));
+                filas.add(Divider(height: 1, color: trazo.withOpacity(0.6)));
+              }
+              for (var i = 0; i < mostrando.length; i++) {
+                filas.add(filaDe(mostrando[i], i < mostrando.length - 1));
+              }
+              if (mostrando.isEmpty) {
+                filas.add(const SizedBox(height: 60));
+                filas.add(_Aviso(
+                    _verArchivados ? 'No tienes chats archivados.' : _kVacio));
+              }
+
               final lista = RefreshIndicator(
                 onRefresh: _cargar,
                 child: _cargando
                     ? const CargandoPichangol()
-                    : _convs.isEmpty
-                        ? ListView(children: const [
-                            SizedBox(height: 80),
-                            _Aviso(_kVacio),
-                          ])
-                        : ListView.separated(
-                            padding: const EdgeInsets.symmetric(vertical: 6),
-                            itemCount: _convs.length,
-                            separatorBuilder: (_, __) => Divider(
-                                height: 1, color: trazo.withOpacity(0.6)),
-                            itemBuilder: (_, i) {
-                              final c = _convs[i];
-                              return _FilaConv(
-                                conv: c,
-                                noLeidos: _abiertos.contains(c.hilo)
-                                    ? 0
-                                    : c.noLeidos,
-                                seleccionado: ancho && _sel?.hilo == c.hilo,
-                                onTap: () => _abrir(c, ancho),
-                                onLongPress: () => _eliminarChat(c),
-                              );
-                            },
-                          ),
+                    : ListView(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        children: filas,
+                      ),
               );
               // Móvil: solo la lista (con su cabecera).
               if (!ancho) {
@@ -651,12 +776,16 @@ class _FilaConv extends StatelessWidget {
     required this.conv,
     required this.noLeidos,
     required this.seleccionado,
+    required this.fijado,
+    required this.silenciado,
     required this.onTap,
     required this.onLongPress,
   });
   final _Conv conv;
   final int noLeidos; // efectivo (0 si ya se abrió en el panel)
   final bool seleccionado;
+  final bool fijado;
+  final bool silenciado;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
 
@@ -704,10 +833,20 @@ class _FilaConv extends StatelessWidget {
                     style: const TextStyle(
                         color: Colors.white, fontWeight: FontWeight.w800))),
       ),
-      title: Text(conv.titulo,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontWeight: FontWeight.w700)),
+      title: Row(
+        children: [
+          Flexible(
+            child: Text(conv.titulo,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w700)),
+          ),
+          if (silenciado) ...[
+            const SizedBox(width: 6),
+            const Icon(Icons.notifications_off, size: 15, color: textoTenue),
+          ],
+        ],
+      ),
       subtitle: Text(conv.preview,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
@@ -723,18 +862,31 @@ class _FilaConv extends StatelessWidget {
                   fontWeight:
                       noLeidos > 0 ? FontWeight.w800 : FontWeight.w400)),
           const SizedBox(height: 6),
-          if (noLeidos > 0)
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(color: cs.primary, shape: BoxShape.circle),
-              child: Text('$noLeidos',
-                  style: TextStyle(
-                      color: cs.onPrimary,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800)),
-            )
-          else
-            const SizedBox(height: 12),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (fijado) ...[
+                Transform.rotate(
+                  angle: 0.785, // 45° → look de "chincheta" de WhatsApp
+                  child: const Icon(Icons.push_pin, size: 15, color: textoTenue),
+                ),
+                if (noLeidos > 0) const SizedBox(width: 4),
+              ],
+              if (noLeidos > 0)
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration:
+                      BoxDecoration(color: cs.primary, shape: BoxShape.circle),
+                  child: Text('$noLeidos',
+                      style: TextStyle(
+                          color: cs.onPrimary,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800)),
+                )
+              else if (!fijado)
+                const SizedBox(height: 12),
+            ],
+          ),
         ],
       ),
     );

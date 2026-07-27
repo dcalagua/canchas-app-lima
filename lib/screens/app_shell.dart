@@ -66,8 +66,8 @@ class _AppShellState extends State<AppShell> {
                   selectedIcon: Icon(Icons.event_note),
                   label: 'Reservas'),
               const NavigationDestination(
-                  icon: IconoChatPichan(),
-                  selectedIcon: IconoChatPichan(),
+                  icon: IconoChatPichan(activo: false),
+                  selectedIcon: IconoChatPichan(activo: true),
                   label: 'Mensajes'),
               NavigationDestination(
                 icon: _ConBadge(

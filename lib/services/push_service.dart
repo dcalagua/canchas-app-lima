@@ -89,6 +89,8 @@ class PushService {
   static void _enForeground(RemoteMessage m) {
     final hilo = (m.data['hilo'] ?? '').toString();
     if (hilo.isEmpty || hilo == appState.hiloChatAbierto) return;
+    // Chat silenciado (campanita): no molestamos con el aviso in-app.
+    if (appState.chatSilenciado(hilo)) return;
     final n = m.notification;
     final titulo = (n?.title ?? '').trim().isNotEmpty ? n!.title! : 'Nuevo mensaje';
     final cuerpo = (n?.body ?? '').trim();
