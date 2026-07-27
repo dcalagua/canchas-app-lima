@@ -69,7 +69,10 @@ class DialogoPichangol extends StatelessWidget {
             ],
             if (contenido != null) ...[
               const SizedBox(height: 12),
-              contenido!,
+              // Flexible: da altura acotada al contenido para que un formulario
+              // alto (con su propio SingleChildScrollView) scrollee sin desbordar.
+              // Contenido corto simplemente se muestra a su tamaño.
+              Flexible(child: contenido!),
             ],
             const SizedBox(height: 20),
             Row(

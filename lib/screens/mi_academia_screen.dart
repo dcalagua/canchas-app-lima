@@ -179,9 +179,10 @@ class MiAcademiaScreen extends StatelessWidget {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSt) => AlertDialog(
-          title: const Text('Nuevo alumno'),
-          content: SingleChildScrollView(
+        builder: (ctx, setSt) => DialogoPichangol(
+          titulo: 'Nuevo alumno',
+          icono: Icons.person_add_alt_1,
+          contenido: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -231,13 +232,22 @@ class MiAcademiaScreen extends StatelessWidget {
               ],
             ),
           ),
-          actions: [
+          acciones: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
+                style: TextButton.styleFrom(foregroundColor: textoTenue),
                 child: const Text('Cancelar')),
             FilledButton(
+                style: FilledButton.styleFrom(
+                    backgroundColor: lima,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 12)),
                 onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Agregar')),
+                child: const Text('Agregar',
+                    style: TextStyle(fontWeight: FontWeight.w800))),
           ],
         ),
       ),
@@ -270,9 +280,10 @@ class MiAcademiaScreen extends StatelessWidget {
     final tel = TextEditingController();
     final res = await showDialog<({bool ok, String mensaje, String telWa})>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Invitar alumno'),
-        content: SingleChildScrollView(
+      builder: (ctx) => DialogoPichangol(
+        titulo: 'Invitar alumno',
+        icono: Icons.mail_outline,
+        contenido: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -302,11 +313,19 @@ class MiAcademiaScreen extends StatelessWidget {
             ],
           ),
         ),
-        actions: [
+        acciones: [
           TextButton(
               onPressed: () => Navigator.pop(ctx),
+              style: TextButton.styleFrom(foregroundColor: textoTenue),
               child: const Text('Cancelar')),
           FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: lima,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
             onPressed: () {
               final inv = appState.crearInvitacion(
                 academia: ac,
@@ -330,7 +349,8 @@ class MiAcademiaScreen extends StatelessWidget {
                 telWa: inv.telefono,
               ));
             },
-            child: const Text('Invitar'),
+            child: const Text('Invitar',
+                style: TextStyle(fontWeight: FontWeight.w800)),
           ),
         ],
       ),
@@ -1552,9 +1572,10 @@ class AlumnoDetalleScreen extends StatelessWidget {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSt) {
-          return AlertDialog(
-            title: const Text('¿Por cuántos meses?'),
-            content: Column(
+          return DialogoPichangol(
+            titulo: '¿Por cuántos meses?',
+            icono: Icons.event_repeat,
+            contenido: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(plan.nombre,
@@ -1589,14 +1610,22 @@ class AlumnoDetalleScreen extends StatelessWidget {
                     style: const TextStyle(color: textoTenue, fontSize: 12.5)),
               ],
             ),
-            actions: [
+            acciones: [
               TextButton(
                   onPressed: () => Navigator.pop(ctx),
+                  style: TextButton.styleFrom(foregroundColor: textoTenue),
                   child: const Text('Cancelar')),
               FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: lima),
+                style: FilledButton.styleFrom(
+                    backgroundColor: lima,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 12)),
                 onPressed: () => Navigator.pop(ctx, meses),
-                child: const Text('Inscribir'),
+                child: const Text('Inscribir',
+                    style: TextStyle(fontWeight: FontWeight.w800)),
               ),
             ],
           );
