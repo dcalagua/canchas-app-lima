@@ -173,6 +173,22 @@ class AppState extends ChangeNotifier {
     await _persistirContactos();
   }
 
+  // ── Bloqueados (tipo WhatsApp): correos que el usuario bloqueó ─────────────
+  final Set<String> _bloqueados = {};
+
+  bool bloqueado(String? email) =>
+      _bloqueados.contains((email ?? '').trim().toLowerCase());
+
+  /// Bloquea/desbloquea a un contacto (local). Bloqueado = no le puedo escribir
+  /// ni llamar desde el app hasta desbloquearlo.
+  Future<void> toggleBloqueado(String email) async {
+    final e = email.trim().toLowerCase();
+    if (e.isEmpty) return;
+    if (!_bloqueados.remove(e)) _bloqueados.add(e);
+    notifyListeners();
+    await _persistirDatos();
+  }
+
   /// Carga (best-effort) los perfiles —para tener NOMBRE y FOTO— de todos los
   /// jugadores que aparecen en el ranking: participantes de retos (incluidos los
   /// compañeros de dobles) y de partidos de academia. Así las filas del ranking
@@ -4193,6 +4209,7 @@ class AppState extends ChangeNotifier {
   static const _kChatLecturas = 'chat_lecturas_json';
   static const _kChatsOcultos = 'chats_ocultos_json';
   static const _kApodos = 'apodos_json';
+  static const _kBloqueados = 'bloqueados_json';
   static const _kChatsFijados = 'chats_fijados_json';
   static const _kChatsArchivados = 'chats_archivados_json';
   static const _kChatsSilenciados = 'chats_silenciados_json';
@@ -4435,6 +4452,16 @@ class AppState extends ChangeNotifier {
         } catch (_) {}
       }
 
+      final bloqRaw = prefs.getString(_kBloqueados);
+      if (bloqRaw != null) {
+        try {
+          final l = jsonDecode(bloqRaw) as List;
+          _bloqueados
+            ..clear()
+            ..addAll(l.map((e) => e.toString()));
+        } catch (_) {}
+      }
+
       void cargarSetChat(String key, Set<String> target) {
         final raw = prefs.getString(key);
         if (raw == null) return;
@@ -4558,6 +4585,7 @@ class AppState extends ChangeNotifier {
       await prefs.setString(_kChatLecturas, jsonEncode(chatLecturas));
       await prefs.setString(_kChatsOcultos, jsonEncode(chatsOcultos));
       await prefs.setString(_kApodos, jsonEncode(_apodos));
+      await prefs.setString(_kBloqueados, jsonEncode(_bloqueados.toList()));
       await prefs.setString(_kChatsFijados, jsonEncode(chatsFijados.toList()));
       await prefs.setString(
           _kChatsArchivados, jsonEncode(chatsArchivados.toList()));

@@ -222,6 +222,36 @@ class _ChatScreenState extends State<ChatScreen> {
     if (mounted) setState(() {}); // refresca el nombre del header
   }
 
+  /// Bloquear/desbloquear a la contraparte (tipo WhatsApp). Bloqueado = no le
+  /// puedo escribir ni llamar hasta desbloquearlo.
+  Future<void> _confirmarBloqueo() async {
+    final e = _contraparteEmail;
+    if (e.isEmpty) return;
+    if (appState.bloqueado(e)) {
+      await appState.toggleBloqueado(e);
+      if (mounted) setState(() {});
+      return;
+    }
+    final ok = await confirmarPichangol(
+      context,
+      titulo: 'Bloquear contacto',
+      mensaje: 'No podrás enviarle mensajes ni llamarlo desde el app hasta que '
+          'lo desbloquees.',
+      textoConfirmar: 'Bloquear',
+      destructivo: true,
+      icono: Icons.block,
+    );
+    if (ok && mounted) {
+      await appState.toggleBloqueado(e);
+      if (mounted) setState(() {});
+    }
+  }
+
+  void _msg(String t) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t)));
+  }
+
   /// Abre el marcador del teléfono con el número de la contraparte (llamada por
   /// la red del celular; no es llamada dentro del app).
   Future<void> _llamar(String celular) async {
@@ -254,6 +284,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final txt = _texto.text.trim();
     final u = appState.usuario;
     if (txt.isEmpty || u == null || _enviando) return;
+    if (appState.bloqueado(_contraparteEmail)) return; // contacto bloqueado
     setState(() => _enviando = true);
     final msg = Mensaje(
       id: 'msg_${DateTime.now().microsecondsSinceEpoch}',
@@ -483,7 +514,8 @@ class _ChatScreenState extends State<ChatScreen> {
         actions: [
           // Llamar (marcador del teléfono) si la contraparte compartió su celular.
           if (_contraparteEmail.isNotEmpty &&
-              appState.celularDe(_contraparteEmail) != null)
+              appState.celularDe(_contraparteEmail) != null &&
+              !appState.bloqueado(_contraparteEmail))
             IconButton(
               tooltip: 'Llamar',
               icon: const Icon(Icons.call, color: Colors.white),
@@ -492,7 +524,8 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           // Si la contraparte compartió su celular, botón "Contactar por WhatsApp".
           if (_contraparteEmail.isNotEmpty &&
-              appState.celularDe(_contraparteEmail) != null)
+              appState.celularDe(_contraparteEmail) != null &&
+              !appState.bloqueado(_contraparteEmail))
             IconButton(
               tooltip: 'Contactar por WhatsApp',
               icon: const FaIcon(FontAwesomeIcons.whatsapp,
@@ -501,25 +534,66 @@ class _ChatScreenState extends State<ChatScreen> {
                   appState.celularDe(_contraparteEmail)!,
                   'Hola, te escribo desde Pichangol.'),
             ),
-          // Menú del contacto (tipo WhatsApp): guardar con otro nombre.
+          // Menú del contacto (tipo WhatsApp): agenda + apodo + bloquear.
           if (_contraparteEmail.isNotEmpty)
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert, color: Colors.white),
-              onSelected: (v) {
-                if (v == 'apodo') _editarApodo();
+              onSelected: (v) async {
+                final e = _contraparteEmail;
+                if (v == 'apodo') {
+                  _editarApodo();
+                } else if (v == 'contacto') {
+                  if (appState.esContacto(e)) {
+                    await appState.quitarContacto(e);
+                    _msg('Quitado de tus contactos');
+                  } else {
+                    await appState.guardarContacto(e);
+                    _msg('Guardado en tus contactos');
+                  }
+                } else if (v == 'bloquear') {
+                  _confirmarBloqueo();
+                }
               },
-              itemBuilder: (_) => [
-                PopupMenuItem(
-                  value: 'apodo',
-                  child: ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.drive_file_rename_outline),
-                    title: Text(appState.apodoDe(_contraparteEmail) == null
-                        ? 'Guardar con otro nombre'
-                        : 'Editar nombre del contacto'),
+              itemBuilder: (_) {
+                final esCont = appState.esContacto(_contraparteEmail);
+                final bloq = appState.bloqueado(_contraparteEmail);
+                final tieneApodo = appState.apodoDe(_contraparteEmail) != null;
+                return [
+                  PopupMenuItem(
+                    value: 'contacto',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(esCont
+                          ? Icons.person_remove_outlined
+                          : Icons.person_add_alt),
+                      title: Text(esCont
+                          ? 'Quitar de mis contactos'
+                          : 'Guardar en mis contactos'),
+                    ),
                   ),
-                ),
-              ],
+                  PopupMenuItem(
+                    value: 'apodo',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.drive_file_rename_outline),
+                      title: Text(tieneApodo
+                          ? 'Editar nombre del contacto'
+                          : 'Guardar con otro nombre'),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'bloquear',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading:
+                          Icon(Icons.block, color: bloq ? null : clayOscuro),
+                      title: Text(
+                          bloq ? 'Desbloquear contacto' : 'Bloquear contacto',
+                          style: TextStyle(color: bloq ? null : clayOscuro)),
+                    ),
+                  ),
+                ];
+              },
             ),
         ],
       ),
@@ -567,20 +641,25 @@ class _ChatScreenState extends State<ChatScreen> {
                   )
                 : const _SinBackend(),
           ),
-          _Barra(
-            controller: _texto,
-            focus: _focus,
-            enviando: _enviando,
-            onEnviar: _enviar,
-            emojisAbiertos: _emojis,
-            onToggleEmojis: _toggleEmojis,
-            onGaleria: () => _enviarFoto(ImageSource.gallery),
-            onCamara: () => _enviarFoto(ImageSource.camera),
-            grabando: _grabando,
-            onMic: _toggleGrabacion,
-            wa: wa,
-          ),
-          if (_emojis) _EmojiPanel(onSelect: _insertarEmoji, wa: wa),
+          if (_contraparteEmail.isNotEmpty &&
+              appState.bloqueado(_contraparteEmail))
+            _BarraBloqueado(onDesbloquear: _confirmarBloqueo)
+          else ...[
+            _Barra(
+              controller: _texto,
+              focus: _focus,
+              enviando: _enviando,
+              onEnviar: _enviar,
+              emojisAbiertos: _emojis,
+              onToggleEmojis: _toggleEmojis,
+              onGaleria: () => _enviarFoto(ImageSource.gallery),
+              onCamara: () => _enviarFoto(ImageSource.camera),
+              grabando: _grabando,
+              onMic: _toggleGrabacion,
+              wa: wa,
+            ),
+            if (_emojis) _EmojiPanel(onSelect: _insertarEmoji, wa: wa),
+          ],
         ],
       ),
     );
@@ -830,6 +909,44 @@ class _BurbujaAudioState extends State<_BurbujaAudio> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Barra que reemplaza la de escribir cuando bloqueaste a la contraparte
+/// (tipo WhatsApp): no puedes enviar hasta desbloquear.
+class _BarraBloqueado extends StatelessWidget {
+  const _BarraBloqueado({required this.onDesbloquear});
+  final VoidCallback onDesbloquear;
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        width: double.infinity,
+        color: Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF1F2C34)
+            : const Color(0xFFF0F2F5),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.block, size: 18, color: clayOscuro),
+            const SizedBox(width: 8),
+            const Flexible(
+              child: Text('Bloqueaste a este contacto.',
+                  style: TextStyle(color: textoTenue, fontSize: 13)),
+            ),
+            const SizedBox(width: 8),
+            TextButton(
+              onPressed: onDesbloquear,
+              style: TextButton.styleFrom(foregroundColor: lima),
+              child: const Text('Desbloquear',
+                  style: TextStyle(fontWeight: FontWeight.w800)),
+            ),
+          ],
+        ),
       ),
     );
   }
