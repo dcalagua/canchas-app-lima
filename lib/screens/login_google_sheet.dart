@@ -5,6 +5,7 @@ import '../services/auth_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
+import '../widgets/dialogo_pichangol.dart';
 import '../widgets/google_logo.dart';
 import '../widgets/marca.dart';
 
@@ -75,22 +76,13 @@ class _LoginGoogleSheetState extends State<LoginGoogleSheet> {
     // diagnosticar (ej. ApiException: 10 = SHA-1/paquete que no calzan).
     final err = AuthService.ultimoError;
     if (err != null && mounted) {
-      await showDialog<void>(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: const Text('No se pudo entrar con Google'),
-          content: SingleChildScrollView(
-            child: Text(
-                'Detalle técnico (para diagnóstico):\n\n$err\n\n'
-                'Si dice "ApiException: 10", es el SHA-1/paquete del cliente '
-                'OAuth. Mientras tanto puedes entrar con tu correo abajo.'),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Entendido')),
-          ],
-        ),
+      await avisarPichangol(
+        context,
+        titulo: 'No se pudo entrar con Google',
+        mensaje: 'Detalle técnico (para diagnóstico):\n\n$err\n\n'
+            'Si dice "ApiException: 10", es el SHA-1/paquete del cliente '
+            'OAuth. Mientras tanto puedes entrar con tu correo abajo.',
+        icono: Icons.error_outline,
       );
     }
   }

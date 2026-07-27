@@ -7,6 +7,7 @@ import '../services/pagos_service.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/dialogo_pichangol.dart';
 import '../utils/redes.dart';
 import '../widgets/ancho_lectura.dart';
 import '../widgets/chat_burbuja.dart';
@@ -878,16 +879,16 @@ class _TarjetaPlan extends StatelessWidget {
     if (!context.mounted) return;
     await showDialog<void>(
       context: context,
-      builder: (_) => AlertDialog(
-        icon: const Icon(Icons.check_circle, color: verde, size: 40),
-        title: const Text('¡Matrícula lista!'),
-        content: Text(mesAMes
+      builder: (_) => DialogoPichangol(
+        titulo: '¡Matrícula lista!',
+        icono: Icons.check_circle,
+        mensaje: mesAMes
             ? 'Ya estás inscrito en ${academia.nombre} (${plan.nombre}). '
                 'Se debitará ${academia.monedaSimbolo} ${totalPlanSede.toStringAsFixed(2)} '
                 'automático cada mes; puedes cancelar cuando quieras.'
             : 'Ya estás inscrito en ${academia.nombre} (${plan.nombre}). '
-                'Te contactarán por WhatsApp para coordinar tus horarios.'),
-        actions: [
+                'Te contactarán por WhatsApp para coordinar tus horarios.',
+        acciones: [
           if (academia.whatsapp.isNotEmpty)
             TextButton.icon(
               onPressed: () {
@@ -895,12 +896,19 @@ class _TarjetaPlan extends StatelessWidget {
                     'Hola, acabo de matricularme en ${academia.nombre} (${plan.nombre}) por Pichangol. Soy $nombre.');
                 Navigator.of(context).pop();
               },
-              icon: const Icon(Icons.chat, color: verde),
+              icon: const Icon(Icons.chat, color: lima),
               label: const Text('Avisar al profe'),
             ),
           FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: lima,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Listo'),
+            child: const Text('Listo',
+                style: TextStyle(fontWeight: FontWeight.w800)),
           ),
         ],
       ),

@@ -6,6 +6,7 @@ import '../models/models.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/dialogo_pichangol.dart';
 import '../widgets/cargando_pichangol.dart';
 
 /// LLENAR LA CANCHA VACÍA: el dueño ve las horas LIBRES de hoy/mañana y con un
@@ -105,25 +106,15 @@ class _LlenarCanchaScreenState extends State<LlenarCanchaScreen> {
     }
     final conApp = clientes.where((c) => c.email.isNotEmpty).toList();
     final sinApp = clientes.where((c) => c.email.isEmpty).toList();
-    final go = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Avisar a tus clientes'),
-        content: Text(
-            'Se avisará a ${clientes.length} cliente(s): '
-            '${conApp.length} por la app y ${sinApp.length} por WhatsApp.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancelar')),
-          FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: lima),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Avisar')),
-        ],
-      ),
+    final go = await confirmarPichangol(
+      context,
+      titulo: 'Avisar a tus clientes',
+      mensaje: 'Se avisará a ${clientes.length} cliente(s): '
+          '${conApp.length} por la app y ${sinApp.length} por WhatsApp.',
+      textoConfirmar: 'Avisar',
+      icono: Icons.notifications_active_outlined,
     );
-    if (go != true) return;
+    if (!go) return;
 
     if (_avisando) return;
     setState(() => _avisando = true);
