@@ -26,6 +26,9 @@ class MensajesScreen extends StatefulWidget {
   State<MensajesScreen> createState() => _MensajesScreenState();
 }
 
+/// Filtros de la bandeja (chips estilo WhatsApp, look Airbnb).
+enum _FiltroChat { todos, noLeidos, grupos, fijados }
+
 /// Descriptor de una conversación para pintar la fila del inbox.
 class _Conv {
   _Conv({
@@ -385,6 +388,85 @@ class _MensajesScreenState extends State<MensajesScreen> {
     });
   }
 
+  /// Buscador + chips de filtro de la bandeja (Todos · No leídos · Grupos ·
+  /// Fijados), estilo WhatsApp con pastillas Airbnb.
+  Widget _buscadorYFiltros(BuildContext context, int noLeidos, int grupos) {
+    final cs = Theme.of(context).colorScheme;
+    final oscuro = Theme.of(context).brightness == Brightness.dark;
+    final fill = oscuro ? Colors.white10 : const Color(0xFFEFEFEF);
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+          child: TextField(
+            controller: _busqueda,
+            onChanged: (v) => setState(() => _q = v.trim().toLowerCase()),
+            textInputAction: TextInputAction.search,
+            decoration: InputDecoration(
+              hintText: 'Buscar',
+              prefixIcon: const Icon(Icons.search, size: 20, color: textoTenue),
+              suffixIcon: _q.isEmpty
+                  ? null
+                  : IconButton(
+                      icon: const Icon(Icons.close, size: 18),
+                      onPressed: () {
+                        _busqueda.clear();
+                        setState(() => _q = '');
+                      },
+                    ),
+              isDense: true,
+              filled: true,
+              fillColor: fill,
+              contentPadding:
+                  const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(999),
+                  borderSide: BorderSide.none),
+            ),
+          ),
+        ),
+        SizedBox(
+          height: 42,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            children: [
+              _chipFiltro(_FiltroChat.todos, 'Todos', null, cs),
+              _chipFiltro(_FiltroChat.noLeidos, 'No leídos', noLeidos, cs),
+              _chipFiltro(_FiltroChat.grupos, 'Grupos', grupos, cs),
+              _chipFiltro(_FiltroChat.fijados, 'Fijados', null, cs),
+            ],
+          ),
+        ),
+        const SizedBox(height: 2),
+      ],
+    );
+  }
+
+  Widget _chipFiltro(
+      _FiltroChat f, String label, int? count, ColorScheme cs) {
+    final sel = _filtro == f;
+    final txt = (count != null && count > 0) ? '$label $count' : label;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: ChoiceChip(
+        label: Text(txt),
+        selected: sel,
+        showCheckmark: false,
+        onSelected: (_) => setState(() => _filtro = f),
+        backgroundColor: cs.surface,
+        selectedColor: limaSuave,
+        side: BorderSide(color: sel ? lima : const Color(0xFFE4E4E4)),
+        labelStyle: TextStyle(
+            color: sel ? lima : cs.onSurface,
+            fontWeight: FontWeight.w700,
+            fontSize: 13),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+      ),
+    );
+  }
+
   /// Panel derecho: el chat abierto (embebido, sin flecha de volver) o un aviso.
   Widget _panelDetalle() {
     final c = _sel;
@@ -570,6 +652,16 @@ class _MensajesScreenState extends State<MensajesScreen> {
   // archivar/eliminar) que opera sobre TODOS los marcados.
   final Set<String> _seleccion = {};
   bool get _enSeleccion => _seleccion.isNotEmpty;
+  // Buscador + filtro de la bandeja (estilo WhatsApp, look Airbnb).
+  final TextEditingController _busqueda = TextEditingController();
+  String _q = '';
+  _FiltroChat _filtro = _FiltroChat.todos;
+
+  @override
+  void dispose() {
+    _busqueda.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -636,7 +728,32 @@ class _MensajesScreenState extends State<MensajesScreen> {
                 if (pa != pb) return pa ? -1 : 1;
                 return b.cuando.compareTo(a.cuando);
               });
-              final mostrando = _verArchivados ? archivados : activos;
+              // Contadores para los chips (sobre TODOS los activos, sin filtrar).
+              final nNoLeidos = activos.where((c) => c.noLeidos > 0).length;
+              final nGrupos = activos.where((c) => c.tipo == 'grupo').length;
+              // Búsqueda + filtro de chip → lista visible.
+              Iterable<_Conv> vis = activos;
+              if (_q.isNotEmpty) {
+                vis = vis.where((c) =>
+                    c.titulo.toLowerCase().contains(_q) ||
+                    c.preview.toLowerCase().contains(_q));
+              }
+              switch (_filtro) {
+                case _FiltroChat.noLeidos:
+                  vis = vis.where((c) => c.noLeidos > 0);
+                  break;
+                case _FiltroChat.grupos:
+                  vis = vis.where((c) => c.tipo == 'grupo');
+                  break;
+                case _FiltroChat.fijados:
+                  vis = vis.where((c) => appState.chatFijado(c.hilo));
+                  break;
+                case _FiltroChat.todos:
+                  break;
+              }
+              final visibles = vis.toList();
+              final hayFiltro = _q.isNotEmpty || _filtro != _FiltroChat.todos;
+              final mostrando = _verArchivados ? archivados : visibles;
 
               Widget filaDe(_Conv c, bool conSep) => Column(
                     mainAxisSize: MainAxisSize.min,
@@ -687,8 +804,11 @@ class _MensajesScreenState extends State<MensajesScreen> {
               }
               if (mostrando.isEmpty) {
                 filas.add(const SizedBox(height: 60));
-                filas.add(_Aviso(
-                    _verArchivados ? 'No tienes chats archivados.' : _kVacio));
+                filas.add(_Aviso(_verArchivados
+                    ? 'No tienes chats archivados.'
+                    : hayFiltro
+                        ? 'Sin resultados.'
+                        : _kVacio));
               }
 
               final lista = RefreshIndicator(
@@ -700,26 +820,23 @@ class _MensajesScreenState extends State<MensajesScreen> {
                         children: filas,
                       ),
               );
-              // Móvil: solo la lista (con su cabecera).
-              if (!ancho) {
-                return Column(children: [
-                  _headerMaster(context, colapsable: false),
-                  Expanded(child: lista),
-                ]);
-              }
+              // Columna maestra: cabecera + (buscador/chips, si no estás en
+              // selección ni en Archivados) + lista.
+              Widget masterCol(bool colapsable) => Column(children: [
+                    _headerMaster(context, colapsable: colapsable),
+                    if (!_enSeleccion && !_verArchivados)
+                      _buscadorYFiltros(context, nNoLeidos, nGrupos),
+                    Expanded(child: lista),
+                  ]);
+              // Móvil: solo la columna maestra.
+              if (!ancho) return masterCol(false);
               // Tablet (master-detail). La lista es COLAPSABLE para dar más
               // espacio al chat. Ambas cabeceras van al mismo nivel (alineadas).
               return Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   if (!_listaColapsada) ...[
-                    SizedBox(
-                      width: 340,
-                      child: Column(children: [
-                        _headerMaster(context, colapsable: true),
-                        Expanded(child: lista),
-                      ]),
-                    ),
+                    SizedBox(width: 340, child: masterCol(true)),
                     const VerticalDivider(width: 1),
                   ] else
                     // Franja delgada con botón para reabrir la lista.
