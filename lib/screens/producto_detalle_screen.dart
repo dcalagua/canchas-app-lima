@@ -5,6 +5,7 @@ import '../services/avisos_service.dart';
 import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/dialogo_pichangol.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/pago_tarjeta_sheet.dart';
 import 'chat_screen.dart';
@@ -115,23 +116,31 @@ class _ProductoDetalleScreenState extends State<ProductoDetalleScreen> {
   Future<void> _dialogoOk() async {
     await showDialog<void>(
       context: context,
-      builder: (dctx) => AlertDialog(
-        title: const Text('¡Compra realizada! ✓'),
-        content: Text(
-            'Pagaste ${p.precioTexto}. Ahora coordina la entrega con '
-            '${p.vendedorNombre} por chat.'),
-        actions: [
+      builder: (dctx) => DialogoPichangol(
+        titulo: '¡Compra realizada! ✓',
+        icono: Icons.check_circle_outline,
+        mensaje: 'Pagaste ${p.precioTexto}. Ahora coordina la entrega con '
+            '${p.vendedorNombre} por chat.',
+        acciones: [
           TextButton(
               onPressed: () => Navigator.pop(dctx),
+              style: TextButton.styleFrom(foregroundColor: textoTenue),
               child: const Text('Después')),
           FilledButton.icon(
-            style: FilledButton.styleFrom(backgroundColor: lima),
+            style: FilledButton.styleFrom(
+                backgroundColor: lima,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 12)),
             onPressed: () {
               Navigator.pop(dctx);
               _chatear();
             },
             icon: const Icon(Icons.chat_bubble_outline, size: 18),
-            label: const Text('Coordinar entrega'),
+            label: const Text('Coordinar entrega',
+                style: TextStyle(fontWeight: FontWeight.w800)),
           ),
         ],
       ),

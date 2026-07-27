@@ -6,6 +6,7 @@ import '../models/mensaje.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/dialogo_pichangol.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/responsive.dart';
 
@@ -80,26 +81,16 @@ class _AsistenciaScreenState extends State<AsistenciaScreen> {
     }
     final presentes = pendientes.where((a) => appState.asistio(a.id, _dia)).length;
     final ausentes = pendientes.length - presentes;
-    final go = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Avisar a los padres'),
-        content: Text(
-            'Se enviará: ✅ asistió a $presentes y ⚠️ faltó a $ausentes.\n\n'
-            'A los que tienen la app les llega al instante; a los demás se abre '
-            'WhatsApp para enviarlo.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancelar')),
-          FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: lima),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Avisar')),
-        ],
-      ),
+    final go = await confirmarPichangol(
+      context,
+      titulo: 'Avisar a los padres',
+      mensaje: 'Se enviará: ✅ asistió a $presentes y ⚠️ faltó a $ausentes.\n\n'
+          'A los que tienen la app les llega al instante; a los demás se abre '
+          'WhatsApp para enviarlo.',
+      textoConfirmar: 'Avisar',
+      icono: Icons.notifications_active_outlined,
     );
-    if (go != true) return;
+    if (!go) return;
 
     if (_avisando) return;
     setState(() => _avisando = true);

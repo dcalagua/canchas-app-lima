@@ -4,6 +4,7 @@ import '../models/negocio.dart';
 import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/dialogo_pichangol.dart';
 import '../widgets/cargando_pichangol.dart';
 
 /// MÉTODO DE PAGO DE SERVICIOS: la tarjeta (débito automático One-Click) con la
@@ -152,25 +153,17 @@ class _BilleteraNegocioScreenState extends State<BilleteraNegocioScreen> {
   }
 
   Future<void> _quitarTarjeta() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Quitar tarjeta'),
-        content: const Text(
-            'Se elimina la tarjeta de débito automático. Tus suscripciones se '
-            'cobrarán del saldo; recárgalo para que no se pausen.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('No')),
-          FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: clayOscuro),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Quitar')),
-        ],
-      ),
+    final ok = await confirmarPichangol(
+      context,
+      titulo: 'Quitar tarjeta',
+      mensaje: 'Se elimina la tarjeta de débito automático. Tus suscripciones se '
+          'cobrarán del saldo; recárgalo para que no se pausen.',
+      textoConfirmar: 'Quitar',
+      textoCancelar: 'No',
+      destructivo: true,
+      icono: Icons.credit_card_off_outlined,
     );
-    if (ok == true) {
+    if (ok) {
       await PagosService.eliminarMetodoSuscripcion(_id);
       await _cargar();
     }

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/dialogo_pichangol.dart';
 import '../utils/ubicacion_share.dart';
 import '../widgets/court_lines.dart';
 import '../utils/moneda.dart';
@@ -462,27 +463,19 @@ class _MenuReserva extends StatelessWidget {
 /// Confirma y ejecuta la cancelación/eliminación de una reserva del jugador.
 Future<void> _confirmarCancelar(BuildContext context, Reserva r) async {
   final historial = _esHistorial(r);
-  final ok = await showDialog<bool>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      title: Text(historial ? '¿Quitar del historial?' : '¿Cancelar esta reserva?'),
-      content: Text(historial
-          ? 'Se eliminará esta reserva de tu historial. No se puede deshacer.'
-          : 'Se liberará el horario ${r.dia} ${r.horaInicio}–${r.horaFin} y '
-              'dejará de aparecer en tus reservas.'),
-      actions: [
-        TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('No')),
-        FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: coral),
-          onPressed: () => Navigator.pop(ctx, true),
-          child: Text(historial ? 'Sí, quitar' : 'Sí, cancelar'),
-        ),
-      ],
-    ),
+  final ok = await confirmarPichangol(
+    context,
+    titulo: historial ? '¿Quitar del historial?' : '¿Cancelar esta reserva?',
+    mensaje: historial
+        ? 'Se eliminará esta reserva de tu historial. No se puede deshacer.'
+        : 'Se liberará el horario ${r.dia} ${r.horaInicio}–${r.horaFin} y '
+            'dejará de aparecer en tus reservas.',
+    textoConfirmar: historial ? 'Sí, quitar' : 'Sí, cancelar',
+    textoCancelar: 'No',
+    destructivo: historial,
+    icono: Icons.event_busy_outlined,
   );
-  if (ok != true) return;
+  if (!ok) return;
   await appState.cancelarReserva(r);
   if (context.mounted) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
