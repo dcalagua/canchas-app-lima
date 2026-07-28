@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -24,6 +25,9 @@ class _AppShellState extends State<AppShell> {
   int _index = 0;
   late final List<Widget> _paginas;
   late bool _ultimoLogueado;
+  // Recuerda la última pestaña para RETOMARLA al reabrir (si Android mató la app
+  // en segundo plano, vuelves donde estabas en vez de a Explorar).
+  static const _kUltimaTab = 'jugador_ultima_tab';
 
   @override
   void initState() {
@@ -37,6 +41,29 @@ class _AppShellState extends State<AppShell> {
     ];
     _ultimoLogueado = appState.logueado;
     appState.addListener(_alCambiarSesion);
+    _restaurarTab();
+  }
+
+  Future<void> _restaurarTab() async {
+    // Solo si hay sesión (si no, Explorar es el inicio natural).
+    if (!appState.logueado) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final t = prefs.getInt(_kUltimaTab);
+      if (t != null && t >= 0 && t < _paginas.length && mounted && _index == 0) {
+        setState(() => _index = t);
+        if (t == 4) appState.cargarRetosPendientes();
+      }
+    } catch (_) {}
+  }
+
+  void _irTab(int i) {
+    setState(() => _index = i);
+    if (i == 4) appState.cargarRetosPendientes();
+    try {
+      SharedPreferences.getInstance()
+          .then((p) => p.setInt(_kUltimaTab, i));
+    } catch (_) {}
   }
 
   @override
@@ -45,11 +72,15 @@ class _AppShellState extends State<AppShell> {
     super.dispose();
   }
 
-  /// Al iniciar o cerrar sesión, siempre volver a Explorar (inicio).
+  /// Al iniciar o cerrar sesión, siempre volver a Explorar (inicio) y olvidar la
+  /// pestaña recordada (para no aterrizar en un chat de la cuenta anterior).
   void _alCambiarSesion() {
     if (appState.logueado == _ultimoLogueado) return;
     _ultimoLogueado = appState.logueado;
     if (_index != 0 && mounted) setState(() => _index = 0);
+    try {
+      SharedPreferences.getInstance().then((p) => p.setInt(_kUltimaTab, 0));
+    } catch (_) {}
   }
 
   @override
@@ -65,11 +96,7 @@ class _AppShellState extends State<AppShell> {
           final retos = appState.retosPendientes;
           return NavigationBar(
             selectedIndex: _index,
-            onDestinationSelected: (i) {
-              setState(() => _index = i);
-              // Al entrar a Perfil, refresca el contador de retos (badge).
-              if (i == 4) appState.cargarRetosPendientes();
-            },
+            onDestinationSelected: _irTab,
             destinations: [
               const NavigationDestination(
                   icon: Icon(Icons.explore_outlined),

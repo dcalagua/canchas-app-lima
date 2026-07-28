@@ -74,7 +74,11 @@ class _SplashScreenState extends State<SplashScreen>
       onboardingVisto = prefs.getBool(kPrefOnboardingVisto) ?? false;
     } catch (_) {}
 
-    await Future.delayed(const Duration(milliseconds: 1800));
+    // Gancho visual COMPLETO (1.8s) solo la 1ª vez (antes del onboarding). En los
+    // arranques siguientes —incluye cuando Android mató la app en segundo plano y
+    // vuelves— el splash va CORTO para que volver sea casi instantáneo.
+    await Future.delayed(
+        Duration(milliseconds: onboardingVisto ? 450 : 1800));
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
