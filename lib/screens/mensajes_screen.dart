@@ -1009,7 +1009,7 @@ class _MensajesScreenState extends State<MensajesScreen> {
                         onLongPress: () => _toggleSeleccion(c.hilo),
                       ),
                       if (conSep)
-                        Divider(height: 1, color: Theme.of(context).brightness == Brightness.dark ? Colors.white10 : trazo.withOpacity(0.6)),
+                        Divider(height: 1, color: Theme.of(context).brightness == Brightness.dark ? Colors.transparent : trazo.withOpacity(0.6)),
                     ],
                   );
 
@@ -1025,7 +1025,7 @@ class _MensajesScreenState extends State<MensajesScreen> {
                       style: TextStyle(fontWeight: FontWeight.w800)),
                   onTap: () => setState(() => _verArchivados = false),
                 ));
-                filas.add(Divider(height: 1, color: Theme.of(context).brightness == Brightness.dark ? Colors.white10 : trazo.withOpacity(0.6)));
+                filas.add(Divider(height: 1, color: Theme.of(context).brightness == Brightness.dark ? Colors.transparent : trazo.withOpacity(0.6)));
               } else if (archivados.isNotEmpty) {
                 filas.add(ListTile(
                   leading: const Icon(Icons.archive_outlined, color: textoTenue),
@@ -1036,7 +1036,7 @@ class _MensajesScreenState extends State<MensajesScreen> {
                           color: textoTenue, fontWeight: FontWeight.w800)),
                   onTap: () => setState(() => _verArchivados = true),
                 ));
-                filas.add(Divider(height: 1, color: Theme.of(context).brightness == Brightness.dark ? Colors.white10 : trazo.withOpacity(0.6)));
+                filas.add(Divider(height: 1, color: Theme.of(context).brightness == Brightness.dark ? Colors.transparent : trazo.withOpacity(0.6)));
               }
               for (var i = 0; i < mostrando.length; i++) {
                 filas.add(filaDe(mostrando[i], i < mostrando.length - 1));
