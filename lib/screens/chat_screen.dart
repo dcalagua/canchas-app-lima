@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
@@ -18,6 +19,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/dialogo_pichangol.dart';
+import 'buscar_usuario_screen.dart';
 
 // ── Paleta estilo WhatsApp (theme-aware) ─────────────────────────────────────
 // Se calcula según el brillo del tema. Fondo del chat, burbujas y barra imitan
@@ -137,6 +139,65 @@ class _ChatScreenState extends State<ChatScreen> {
       _limite += _pagina;
       _stream = MensajesRepo.streamHilo(_hilo, limite: _limite);
     });
+  }
+
+  // Mensaje que estoy respondiendo (cita arriba del composer). Null = ninguno.
+  Mensaje? _respondiendo;
+
+  String _nombreAutorDe(Mensaje m) {
+    final yo = (appState.usuario?.email ?? '').toLowerCase();
+    if (m.autorEmail.toLowerCase() == yo) return 'Tú';
+    return m.autorNombre.trim().isNotEmpty
+        ? m.autorNombre
+        : (appState.nombreMostrableDe(m.autorEmail) ?? m.autorEmail);
+  }
+
+  /// Snippet legible de un mensaje (para la cita).
+  String _snippet(Mensaje m) {
+    if (m.esAudio) return '🎤 Nota de voz';
+    if (m.tieneFoto) return m.texto.isNotEmpty ? m.texto : '📷 Foto';
+    return m.texto;
+  }
+
+  void _responder(Mensaje m) {
+    setState(() => _respondiendo = m);
+    _focus.requestFocus();
+  }
+
+  /// Reenviar un mensaje: elige un contacto y se lo manda (con etiqueta
+  /// "Reenviado"). Conserva la foto (misma URL pública) o el texto.
+  Future<void> _reenviar(Mensaje m) async {
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => BuscarUsuarioScreen(
+        onAbrirChat: (email, nombre) async {
+          Navigator.of(context).pop();
+          final u = appState.usuario;
+          if (u == null) return;
+          final para = email.toLowerCase();
+          final msg = Mensaje(
+            id: 'msg_${DateTime.now().microsecondsSinceEpoch}',
+            hilo: Mensaje.hiloDirecto(u.email, para),
+            tipo: 'directo',
+            refId: '',
+            academiaId: '',
+            cuentaEmail: para,
+            autorEmail: u.email,
+            autorNombre: u.nombre,
+            esProfe: false,
+            texto: m.texto,
+            mediaUrl: m.mediaUrl,
+            reenviado: true,
+            creado: DateTime.now(),
+          );
+          final ok = await MensajesRepo.enviar(msg);
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(ok ? 'Reenviado a $nombre' : 'No se pudo reenviar'),
+            duration: const Duration(milliseconds: 1400),
+          ));
+        },
+      ),
+    ));
   }
 
   // Checks tipo WhatsApp: hasta cuándo tiene la OTRA persona entregado/leído este
@@ -468,11 +529,16 @@ class _ChatScreenState extends State<ChatScreen> {
       autorNombre: u.nombre,
       esProfe: widget.soyProfe,
       texto: txt,
+      respTexto: _respondiendo != null ? _snippet(_respondiendo!) : '',
+      respAutor: _respondiendo != null ? _nombreAutorDe(_respondiendo!) : '',
       creado: DateTime.now(),
     );
     final ok = await MensajesRepo.enviar(msg);
     if (!mounted) return;
-    setState(() => _enviando = false);
+    setState(() {
+      _enviando = false;
+      _respondiendo = null; // limpia la cita tras enviar
+    });
     if (ok) {
       _texto.clear();
     } else {
@@ -853,7 +919,9 @@ class _ChatScreenState extends State<ChatScreen> {
                               mio: mio,
                               wa: wa,
                               mostrarAutor: esGrupo && !mio,
-                              entrega: mio ? _estadoEntrega(m) : _Entrega.enviado);
+                              entrega: mio ? _estadoEntrega(m) : _Entrega.enviado,
+                              onResponder: () => _responder(m),
+                              onReenviar: () => _reenviar(m));
                         },
                       );
                     },
@@ -864,6 +932,13 @@ class _ChatScreenState extends State<ChatScreen> {
               appState.bloqueado(_contraparteEmail))
             _BarraBloqueado(onDesbloquear: _confirmarBloqueo)
           else ...[
+            if (_respondiendo != null)
+              _CitaComposer(
+                autor: _nombreAutorDe(_respondiendo!),
+                texto: _snippet(_respondiendo!),
+                wa: wa,
+                onCerrar: () => setState(() => _respondiendo = null),
+              ),
             _Barra(
               controller: _texto,
               focus: _focus,
@@ -891,12 +966,59 @@ class _Burbuja extends StatelessWidget {
       required this.mio,
       required this.wa,
       this.mostrarAutor = false,
-      this.entrega = _Entrega.enviado});
+      this.entrega = _Entrega.enviado,
+      this.onResponder,
+      this.onReenviar});
   final _Entrega entrega;
   final Mensaje mensaje;
   final bool mio;
   final _WA wa;
   final bool mostrarAutor; // en grupos: nombre del autor sobre el mensaje
+  final VoidCallback? onResponder;
+  final VoidCallback? onReenviar;
+
+  void _menu(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            ListTile(
+              leading: const Icon(Icons.reply, color: teal),
+              title: const Text('Responder'),
+              onTap: () {
+                Navigator.pop(context);
+                onResponder?.call();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.forward, color: teal),
+              title: const Text('Reenviar'),
+              onTap: () {
+                Navigator.pop(context);
+                onReenviar?.call();
+              },
+            ),
+            if (mensaje.texto.trim().isNotEmpty)
+              ListTile(
+                leading: const Icon(Icons.copy_outlined, color: teal),
+                title: const Text('Copiar'),
+                onTap: () {
+                  Clipboard.setData(ClipboardData(text: mensaje.texto));
+                  Navigator.pop(context);
+                },
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -905,7 +1027,13 @@ class _Burbuja extends StatelessWidget {
     final mm = hora.minute.toString().padLeft(2, '0');
     return Align(
       alignment: mio ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
+      child: GestureDetector(
+        onLongPress: () => _menu(context),
+        // Deslizar a la derecha = responder (swipe-to-reply, tipo WhatsApp).
+        onHorizontalDragEnd: (d) {
+          if ((d.primaryVelocity ?? 0) > 80) onResponder?.call();
+        },
+        child: Container(
         constraints:
             BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.80),
         margin: const EdgeInsets.symmetric(vertical: 3, horizontal: 2),
@@ -937,6 +1065,48 @@ class _Burbuja extends StatelessWidget {
                         color: wa.send,
                         fontSize: 12.5,
                         fontWeight: FontWeight.w700)),
+              ),
+            if (mensaje.reenviado)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.forward, size: 13, color: wa.hora),
+                  const SizedBox(width: 3),
+                  Text('Reenviado',
+                      style: TextStyle(
+                          fontSize: 11.5,
+                          fontStyle: FontStyle.italic,
+                          color: wa.hora)),
+                ]),
+              ),
+            if (mensaje.esRespuesta)
+              Container(
+                margin: const EdgeInsets.only(bottom: 4),
+                padding: const EdgeInsets.fromLTRB(8, 5, 8, 5),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.06),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border(left: BorderSide(color: wa.send, width: 3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                        mensaje.respAutor.isNotEmpty
+                            ? mensaje.respAutor
+                            : 'Mensaje',
+                        style: TextStyle(
+                            color: wa.send,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700)),
+                    Text(mensaje.respTexto,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 13,
+                            color: mio ? wa.textoMio : wa.textoOtro)),
+                  ],
+                ),
               ),
             if (mensaje.esAudio)
               Padding(
@@ -1012,6 +1182,7 @@ class _Burbuja extends StatelessWidget {
           ],
             ),
           ],
+        ),
         ),
       ),
     );
@@ -1142,6 +1313,59 @@ class _BurbujaAudioState extends State<_BurbujaAudio> {
 
 /// Barra que reemplaza la de escribir cuando bloqueaste a la contraparte
 /// (tipo WhatsApp): no puedes enviar hasta desbloquear.
+/// Cita del mensaje que se está respondiendo, encima del composer.
+class _CitaComposer extends StatelessWidget {
+  const _CitaComposer(
+      {required this.autor,
+      required this.texto,
+      required this.wa,
+      required this.onCerrar});
+  final String autor;
+  final String texto;
+  final _WA wa;
+  final VoidCallback onCerrar;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: wa.barra,
+      padding: const EdgeInsets.fromLTRB(8, 6, 6, 0),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
+        decoration: BoxDecoration(
+          color: wa.burbujaOtro,
+          borderRadius: BorderRadius.circular(8),
+          border: Border(left: BorderSide(color: wa.send, width: 4)),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(autor,
+                      style: TextStyle(
+                          color: wa.send,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13)),
+                  Text(texto,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: wa.textoOtro, fontSize: 13)),
+                ],
+              ),
+            ),
+            IconButton(
+              icon: Icon(Icons.close, color: wa.hora, size: 20),
+              onPressed: onCerrar,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _BarraBloqueado extends StatelessWidget {
   const _BarraBloqueado({required this.onDesbloquear});
   final VoidCallback onDesbloquear;

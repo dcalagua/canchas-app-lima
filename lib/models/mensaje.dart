@@ -24,6 +24,10 @@ class Mensaje {
   final String texto;
   final String mediaUrl; // URL de la foto adjunta ('' = solo texto)
   final DateTime creado;
+  // Responder citando (tipo WhatsApp): snippet + autor del mensaje citado.
+  final String respTexto;
+  final String respAutor;
+  final bool reenviado; // muestra la etiqueta "Reenviado"
 
   const Mensaje({
     required this.id,
@@ -38,7 +42,12 @@ class Mensaje {
     this.academiaId = '',
     this.cuentaEmail = '',
     this.mediaUrl = '',
+    this.respTexto = '',
+    this.respAutor = '',
+    this.reenviado = false,
   });
+
+  bool get esRespuesta => respTexto.isNotEmpty || respAutor.isNotEmpty;
 
   /// ¿El adjunto es una nota de voz? (se distingue por la extensión del archivo).
   bool get esAudio {
@@ -95,6 +104,9 @@ class Mensaje {
         'es_profe': esProfe,
         'texto': texto,
         if (mediaUrl.isNotEmpty) 'media_url': mediaUrl,
+        if (respTexto.isNotEmpty) 'resp_texto': respTexto,
+        if (respAutor.isNotEmpty) 'resp_autor': respAutor,
+        if (reenviado) 'reenviado': true,
       };
 
   /// Mapea una fila de Supabase (columnas snake_case).
@@ -110,6 +122,9 @@ class Mensaje {
         esProfe: (r['es_profe'] ?? false) as bool,
         texto: (r['texto'] ?? '').toString(),
         mediaUrl: (r['media_url'] ?? '').toString(),
+        respTexto: (r['resp_texto'] ?? '').toString(),
+        respAutor: (r['resp_autor'] ?? '').toString(),
+        reenviado: (r['reenviado'] ?? false) as bool,
         creado: DateTime.tryParse((r['creado'] ?? '').toString())?.toLocal() ??
             DateTime.now(),
       );
