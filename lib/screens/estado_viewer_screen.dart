@@ -215,7 +215,9 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
     final vistas = appState.vistasDe(e.id);
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF202C33)
+          : Colors.white,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (_) => SafeArea(
