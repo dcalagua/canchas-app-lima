@@ -65,6 +65,16 @@ class Mensaje {
   /// ¿El adjunto es una foto? (media que no es audio).
   bool get tieneFoto => mediaUrl.isNotEmpty && !esAudio;
 
+  /// ¿El adjunto es un GIF/sticker animado (Tenor)? Se muestra sin recorte y con
+  /// fondo transparente, no como una foto cuadrada.
+  bool get esGifSticker {
+    if (mediaUrl.isEmpty) return false;
+    final u = mediaUrl.toLowerCase();
+    return u.contains('.gif') ||
+        u.contains('tenor.com') ||
+        u.contains('tenor.googleapis');
+  }
+
   bool get esCancha => tipo == 'cancha';
   bool get esGrupo => tipo == 'grupo';
 

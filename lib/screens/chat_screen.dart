@@ -18,6 +18,7 @@ import '../data/mensajes_repo.dart';
 import '../data/reacciones_repo.dart';
 import '../models/grupo.dart';
 import '../models/mensaje.dart';
+import '../services/tenor_service.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -251,6 +252,7 @@ class _ChatScreenState extends State<ChatScreen> {
   /// Snippet legible de un mensaje (para la cita).
   String _snippet(Mensaje m) {
     if (m.esAudio) return '🎤 Nota de voz';
+    if (m.esGifSticker) return '🎞️ GIF';
     if (m.tieneFoto) return m.texto.isNotEmpty ? m.texto : '📷 Foto';
     return m.texto;
   }
@@ -680,6 +682,29 @@ class _ChatScreenState extends State<ChatScreen> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('No se pudo enviar. Revisa tu conexión.')));
     }
+  }
+
+  /// Envía un GIF/sticker de Tenor: la URL ya está hospedada por Tenor, no se
+  /// sube a nuestro bucket (viaja como mediaUrl y se anima solo en la burbuja).
+  Future<void> _enviarGif(String url) async {
+    final u = appState.usuario;
+    if (url.isEmpty || u == null) return;
+    setState(() => _emojis = false); // cierra el panel al enviar
+    final msg = Mensaje(
+      id: 'msg_${DateTime.now().microsecondsSinceEpoch}',
+      hilo: _hilo,
+      tipo: widget.tipo,
+      refId: _refId,
+      academiaId: widget.academiaId,
+      cuentaEmail: widget.cuentaEmail,
+      autorEmail: u.email,
+      autorNombre: u.nombre,
+      esProfe: widget.soyProfe,
+      texto: '',
+      mediaUrl: url,
+      creado: DateTime.now(),
+    );
+    await MensajesRepo.enviar(msg);
   }
 
   /// Adjunta/toma una foto y la envía como mensaje con imagen.
@@ -1138,7 +1163,9 @@ class _ChatScreenState extends State<ChatScreen> {
               onMic: _toggleGrabacion,
               wa: wa,
             ),
-            if (_emojis) _EmojiPanel(onSelect: _insertarEmoji, wa: wa),
+            if (_emojis)
+              _PanelExpresion(
+                  onEmoji: _insertarEmoji, onMedia: _enviarGif, wa: wa),
           ],
         ],
       ),
@@ -1357,6 +1384,26 @@ class _Burbuja extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(bottom: 2),
                 child: _BurbujaAudio(url: mensaje.mediaUrl, mio: mio, wa: wa),
+              )
+            else if (mensaje.esGifSticker)
+              // GIF/sticker (Tenor): sin recorte, fondo transparente, ya animado.
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Image.network(
+                  mensaje.mediaUrl,
+                  width: 170,
+                  fit: BoxFit.contain,
+                  loadingBuilder: (c, child, prog) => prog == null
+                      ? child
+                      : const SizedBox(
+                          width: 170,
+                          height: 130,
+                          child: Center(child: CircularProgressIndicator())),
+                  errorBuilder: (c, e, s) => const SizedBox(
+                      width: 120,
+                      height: 90,
+                      child: Icon(Icons.broken_image_outlined, size: 32)),
+                ),
               )
             else if (mensaje.tieneFoto)
               Padding(
@@ -1863,9 +1910,13 @@ class _Barra extends StatelessWidget {
 
 /// Panel de emojis propio (sin paquete): grilla de los más usados. Al tocar uno
 /// se inserta en el texto. Se muestra en vez del teclado, como WhatsApp.
-class _EmojiPanel extends StatelessWidget {
-  const _EmojiPanel({required this.onSelect, required this.wa});
-  final void Function(String) onSelect;
+/// Panel de expresión estilo WhatsApp: pestañas Emoji · GIF · Stickers.
+/// Los GIF/stickers vienen de Tenor (mismo motor de WhatsApp).
+class _PanelExpresion extends StatelessWidget {
+  const _PanelExpresion(
+      {required this.onEmoji, required this.onMedia, required this.wa});
+  final void Function(String) onEmoji;
+  final void Function(String url) onMedia;
   final _WA wa;
 
   static const _emojis = [
@@ -1879,21 +1930,166 @@ class _EmojiPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 240,
-      color: wa.barra,
-      child: GridView.count(
-        crossAxisCount: 8,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-        children: [
-          for (final e in _emojis)
-            InkWell(
-              onTap: () => onSelect(e),
-              borderRadius: BorderRadius.circular(8),
-              child: Center(child: Text(e, style: const TextStyle(fontSize: 26))),
+    return DefaultTabController(
+      length: 3,
+      child: Container(
+        height: 300,
+        color: wa.barra,
+        child: Column(
+          children: [
+            TabBar(
+              labelColor: wa.send,
+              unselectedLabelColor: wa.hora,
+              indicatorColor: wa.send,
+              tabs: const [
+                Tab(icon: Icon(Icons.emoji_emotions_outlined)),
+                Tab(icon: Icon(Icons.gif_box_outlined)),
+                Tab(icon: Icon(Icons.sticky_note_2_outlined)),
+              ],
             ),
-        ],
+            Expanded(
+              child: TabBarView(
+                children: [
+                  // Emoji
+                  GridView.count(
+                    crossAxisCount: 8,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                    children: [
+                      for (final e in _emojis)
+                        InkWell(
+                          onTap: () => onEmoji(e),
+                          borderRadius: BorderRadius.circular(8),
+                          child: Center(
+                              child: Text(e,
+                                  style: const TextStyle(fontSize: 26))),
+                        ),
+                    ],
+                  ),
+                  // GIF
+                  _TenorGrid(sticker: false, onSelect: onMedia, wa: wa),
+                  // Stickers
+                  _TenorGrid(sticker: true, onSelect: onMedia, wa: wa),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
+    );
+  }
+}
+
+/// Grilla de GIFs/stickers de Tenor con buscador (tendencia si el texto vacío).
+class _TenorGrid extends StatefulWidget {
+  const _TenorGrid(
+      {required this.sticker, required this.onSelect, required this.wa});
+  final bool sticker;
+  final void Function(String url) onSelect;
+  final _WA wa;
+
+  @override
+  State<_TenorGrid> createState() => _TenorGridState();
+}
+
+class _TenorGridState extends State<_TenorGrid> {
+  final _q = TextEditingController();
+  List<TenorItem> _items = const [];
+  bool _cargando = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (TenorService.configurado) _buscar('');
+  }
+
+  @override
+  void dispose() {
+    _q.dispose();
+    super.dispose();
+  }
+
+  Future<void> _buscar(String q) async {
+    setState(() => _cargando = true);
+    final r = await TenorService.buscar(q, sticker: widget.sticker);
+    if (!mounted) return;
+    setState(() {
+      _items = r;
+      _cargando = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!TenorService.configurado) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+              '${widget.sticker ? "Stickers" : "GIF"} aún no activados.\n'
+              'Falta configurar la clave de Tenor.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: widget.wa.hora)),
+        ),
+      );
+    }
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
+          child: TextField(
+            controller: _q,
+            style: TextStyle(color: widget.wa.pillTexto),
+            textInputAction: TextInputAction.search,
+            onSubmitted: _buscar,
+            decoration: InputDecoration(
+              isDense: true,
+              hintText: widget.sticker ? 'Buscar stickers' : 'Buscar GIF',
+              hintStyle: TextStyle(color: widget.wa.hora),
+              prefixIcon: Icon(Icons.search, color: widget.wa.hora, size: 20),
+              filled: true,
+              fillColor: widget.wa.pill,
+              contentPadding: const EdgeInsets.symmetric(vertical: 8),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(20),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
+        ),
+        Expanded(
+          child: _cargando
+              ? const Center(child: CircularProgressIndicator())
+              : _items.isEmpty
+                  ? Center(
+                      child: Text('Sin resultados',
+                          style: TextStyle(color: widget.wa.hora)))
+                  : GridView.count(
+                      crossAxisCount: widget.sticker ? 4 : 3,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      mainAxisSpacing: 6,
+                      crossAxisSpacing: 6,
+                      children: [
+                        for (final it in _items)
+                          InkWell(
+                            onTap: () => widget.onSelect(it.full),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.network(
+                                it.preview,
+                                fit: BoxFit.cover,
+                                errorBuilder: (c, e, s) => Container(
+                                    color: widget.wa.pill,
+                                    child: Icon(Icons.broken_image_outlined,
+                                        color: widget.wa.hora)),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+        ),
+      ],
     );
   }
 }

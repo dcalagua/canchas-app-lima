@@ -32,6 +32,14 @@ class MensajesScreen extends StatefulWidget {
 /// Filtros de la bandeja (chips estilo WhatsApp, look Airbnb).
 enum _FiltroChat { todos, noLeidos, academias, canchas, grupos, fijados }
 
+/// Texto de vista previa del inbox según el tipo de mensaje (media → etiqueta).
+String _previewMsg(Mensaje m) {
+  if (m.esAudio) return '🎤 Nota de voz';
+  if (m.esGifSticker) return '🎞️ GIF';
+  if (m.tieneFoto) return m.texto.isNotEmpty ? m.texto : '📷 Foto';
+  return m.texto;
+}
+
 /// Descriptor de una conversación para pintar la fila del inbox.
 class _Conv {
   _Conv({
@@ -219,7 +227,7 @@ class _MensajesScreenState extends State<MensajesScreen> {
         academiaId: acId,
         cuentaEmail: cuenta,
         titulo: titulo,
-        preview: ultimo.texto,
+        preview: _previewMsg(ultimo),
         soyProfe: esProfe,
         cuando: ultimo.creado,
         noLeidos: noLeidos,
@@ -262,7 +270,7 @@ class _MensajesScreenState extends State<MensajesScreen> {
         academiaId: '',
         cuentaEmail: cuenta,
         titulo: titulo,
-        preview: ultimo.texto,
+        preview: _previewMsg(ultimo),
         soyProfe: soyDueno,
         cuando: ultimo.creado,
         noLeidos: noLeidos,
@@ -344,7 +352,7 @@ class _MensajesScreenState extends State<MensajesScreen> {
         academiaId: '',
         cuentaEmail: otro,
         titulo: appState.nombreMostrableDe(otro) ?? otro,
-        preview: ultimo.texto,
+        preview: _previewMsg(ultimo),
         soyProfe: false,
         cuando: ultimo.creado,
         noLeidos: noLeidos,
