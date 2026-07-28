@@ -126,7 +126,12 @@ class _EstadoComposerScreenState extends State<EstadoComposerScreen> {
                         fontWeight: FontWeight.w700,
                         height: 1.3),
                     decoration: const InputDecoration(
+                      // El tema global rellena los TextField de BLANCO; sin esto
+                      // el texto blanco quedaba invisible (se veían "rayas").
+                      filled: false,
                       border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
                       counterText: '',
                       hintText: 'Escribe un estado',
                       hintStyle:
@@ -257,7 +262,7 @@ class _EstadoFotoComposerScreenState extends State<EstadoFotoComposerScreen> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 14),
                       decoration: BoxDecoration(
-                        color: Colors.white12,
+                        color: Colors.black.withOpacity(0.45),
                         borderRadius: BorderRadius.circular(24),
                       ),
                       child: TextField(
@@ -266,7 +271,12 @@ class _EstadoFotoComposerScreenState extends State<EstadoFotoComposerScreen> {
                         cursorColor: Colors.white,
                         style: const TextStyle(color: Colors.white),
                         decoration: const InputDecoration(
+                          // Sin esto, el tema rellena de blanco y el texto blanco
+                          // no se veía (la pastilla ya es el fondo semitranslúcido).
+                          filled: false,
                           border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
                           counterText: '',
                           hintText: 'Añade un pie…',
                           hintStyle: TextStyle(color: Colors.white54),
