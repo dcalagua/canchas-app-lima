@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import 'package:supabase_flutter/supabase_flutter.dart' show FileOptions;
+
 import '../models/grupo.dart';
 import '../services/supabase_service.dart';
 
