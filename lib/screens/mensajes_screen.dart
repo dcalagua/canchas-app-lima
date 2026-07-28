@@ -77,12 +77,6 @@ class _MensajesScreenState extends State<MensajesScreen> {
     appState.addListener(_alCambiarSesion);
   }
 
-  @override
-  void dispose() {
-    appState.removeListener(_alCambiarSesion);
-    super.dispose();
-  }
-
   /// Si cambió el usuario logueado, limpia el inbox del anterior y recarga.
   void _alCambiarSesion() {
     final e = (appState.usuario?.email ?? '').toLowerCase();
@@ -880,6 +874,7 @@ class _MensajesScreenState extends State<MensajesScreen> {
 
   @override
   void dispose() {
+    appState.removeListener(_alCambiarSesion);
     _busqueda.dispose();
     super.dispose();
   }
