@@ -46,6 +46,9 @@ class _BuscarUsuarioScreenState extends State<BuscarUsuarioScreen> {
     super.initState();
     // Carga los perfiles de mis contactos para mostrar nombre/foto.
     appState.cargarPerfiles(appState.contactos);
+    // Trae la agenda (apodos/contactos/bloqueados) desde la nube para reflejar
+    // cambios hechos en OTRO dispositivo sin tener que reiniciar la app.
+    appState.sincronizarAgenda();
   }
 
   @override

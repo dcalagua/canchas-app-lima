@@ -4802,6 +4802,14 @@ class AppState extends ChangeNotifier {
       // que el anti-doble-reserva y el panel del dueño arranquen al día. Best-effort.
       cargarReservasRemotas();
       cargarCanalComunicacion(); // política de canal (WhatsApp vs chat PCG)
+      // SESIÓN RESTAURADA (no pasa por _finalizarLogin): sincroniza la agenda
+      // (apodos/contactos/bloqueados) y las historias desde la nube para que los
+      // cambios hechos en OTRO dispositivo lleguen a este. Se hace al FINAL, tras
+      // cargar lo local, para no pisar el merge. Best-effort.
+      if (usuario != null) {
+        sincronizarAgenda();
+        cargarEstados();
+      }
     } catch (_) {}
   }
 
