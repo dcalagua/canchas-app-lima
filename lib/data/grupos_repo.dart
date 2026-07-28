@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import '../models/grupo.dart';
 import '../services/supabase_service.dart';
 
@@ -6,6 +8,7 @@ import '../services/supabase_service.dart';
 class GruposRepo {
   static const _tGrupos = 'pichangol_grupos';
   static const _tMiembros = 'pichangol_grupo_miembros';
+  static const _bucket = 'grupos'; // fotos de grupo (bucket público)
 
   static bool get disponible => SupabaseService.disponible;
 
@@ -86,6 +89,83 @@ class GruposRepo {
           .toList();
     } catch (_) {
       return const <Grupo>[];
+    }
+  }
+
+  /// Un grupo por id, con sus miembros cargados (o null si no existe/falla).
+  static Future<Grupo?> obtener(String grupoId) async {
+    if (!disponible || grupoId.isEmpty) return null;
+    try {
+      final row = await SupabaseService.client
+          .from(_tGrupos)
+          .select()
+          .eq('id', grupoId)
+          .maybeSingle();
+      if (row == null) return null;
+      final mRows = await SupabaseService.client
+          .from(_tMiembros)
+          .select('email')
+          .eq('grupo_id', grupoId);
+      final miembros = (mRows as List)
+          .map((r) => (r as Map)['email']?.toString() ?? '')
+          .where((s) => s.isNotEmpty)
+          .toList();
+      return Grupo.fromRow(row as Map<String, dynamic>)
+          .copyWith(miembros: miembros);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Cambia el nombre y/o la foto del grupo. Devuelve true si se guardó.
+  static Future<bool> actualizar(String grupoId,
+      {String? nombre, String? fotoUrl}) async {
+    if (!disponible || grupoId.isEmpty) return false;
+    final cambios = <String, dynamic>{};
+    if (nombre != null && nombre.trim().isNotEmpty) {
+      cambios['nombre'] = nombre.trim();
+    }
+    if (fotoUrl != null) cambios['foto_url'] = fotoUrl;
+    if (cambios.isEmpty) return true;
+    try {
+      await SupabaseService.client
+          .from(_tGrupos)
+          .update(cambios)
+          .eq('id', grupoId);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Sube la foto del grupo al bucket público `grupos` y devuelve su URL.
+  static Future<String?> subirFoto(String grupoId, Uint8List bytes) async {
+    if (!disponible || grupoId.isEmpty) return null;
+    try {
+      final ruta = '$grupoId.jpg';
+      final storage = SupabaseService.client.storage.from(_bucket);
+      await storage.uploadBinary(ruta, bytes,
+          fileOptions:
+              const FileOptions(upsert: true, contentType: 'image/jpeg'));
+      final base = storage.getPublicUrl(ruta);
+      return '$base?v=${DateTime.now().millisecondsSinceEpoch}';
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Saca a un miembro del grupo (salir del grupo = quitarme yo). Devuelve true.
+  static Future<bool> salir(String grupoId, String email) async {
+    if (!disponible || grupoId.isEmpty || email.trim().isEmpty) return false;
+    try {
+      await SupabaseService.client
+          .from(_tMiembros)
+          .delete()
+          .eq('grupo_id', grupoId)
+          .eq('email', email.trim().toLowerCase());
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 }

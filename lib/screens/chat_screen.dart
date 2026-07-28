@@ -12,15 +12,18 @@ import 'package:record/record.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../data/db_local.dart';
+import '../data/grupos_repo.dart';
 import '../data/lecturas_repo.dart';
 import '../data/mensajes_repo.dart';
 import '../data/reacciones_repo.dart';
+import '../models/grupo.dart';
 import '../models/mensaje.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/dialogo_pichangol.dart';
+import 'grupo_info_screen.dart';
 import 'selector_chat_screen.dart';
 
 // ── Paleta estilo WhatsApp (theme-aware) ─────────────────────────────────────
@@ -87,6 +90,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _enviando = false;
   bool _emojis = false; // panel de emojis abierto
   String _ultimoVisto = ''; // id del último mensaje ya procesado
+  Grupo? _grupo; // datos del grupo (solo tipo 'grupo'): nombre, foto, miembros
 
   String get _refId =>
       widget.refId.isNotEmpty ? widget.refId : widget.academiaId;
@@ -326,6 +330,13 @@ class _ChatScreenState extends State<ChatScreen> {
     if (_contraparteEmail.isNotEmpty) {
       appState.cargarPerfiles([_contraparteEmail]).then((_) {
         if (mounted) setState(() {});
+      });
+    }
+    // Grupo: carga nombre/foto/miembros para la cabecera y la ficha del grupo.
+    if (widget.tipo == 'grupo') {
+      GruposRepo.obtener(_refId).then((g) async {
+        if (g != null) await appState.cargarPerfiles(g.miembros);
+        if (mounted) setState(() => _grupo = g);
       });
     }
     // Este es el chat visible ahora: mientras esté abierto, los mensajes de este
@@ -591,6 +602,20 @@ class _ChatScreenState extends State<ChatScreen> {
 
   /// Abre el marcador del teléfono con el número de la contraparte (llamada por
   /// la red del celular; no es llamada dentro del app).
+  /// Abre la ficha del grupo (foto, nombre, integrantes). Si el usuario salió,
+  /// cierra el chat; si cambió nombre/foto, refresca la cabecera.
+  Future<void> _abrirInfoGrupo() async {
+    final r = await Navigator.of(context).push<String>(MaterialPageRoute(
+        builder: (_) => GrupoInfoScreen(grupoId: _refId)));
+    if (!mounted) return;
+    if (r == 'salio') {
+      Navigator.of(context).maybePop();
+      return;
+    }
+    final g = await GruposRepo.obtener(_refId);
+    if (mounted) setState(() => _grupo = g);
+  }
+
   Future<void> _llamar(String celular) async {
     final numero = celular.replaceAll(RegExp(r'[^0-9+]'), '');
     if (numero.isEmpty) return;
@@ -792,22 +817,28 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     final wa = _WA(Theme.of(context).brightness == Brightness.dark);
+    final esGrupo = widget.tipo == 'grupo';
     // Nombre y foto a mostrar: si la contraparte es una persona con perfil, se
     // usa su nombre + foto; si no, el título recibido (nombre de academia/grupo).
     final nombrePerfil = _contraparteEmail.isEmpty
         ? null
         : appState.nombreMostrableDe(_contraparteEmail);
-    final fotoPerfil = _contraparteEmail.isEmpty
-        ? null
-        : appState.fotoDe(_contraparteEmail);
+    final fotoPerfil = esGrupo
+        ? ((_grupo?.fotoUrl ?? '').isNotEmpty ? _grupo!.fotoUrl : null)
+        : (_contraparteEmail.isEmpty
+            ? null
+            : appState.fotoDe(_contraparteEmail));
     // Recado (estado tipo WhatsApp) de la contraparte, si lo puso.
-    final recado = _contraparteEmail.isEmpty
-        ? null
-        : appState.recadoDe(_contraparteEmail);
-    final tituloMostrar =
-        (nombrePerfil != null && nombrePerfil.isNotEmpty)
+    final recado = esGrupo
+        ? (_grupo != null ? '${_grupo!.miembros.length} integrantes' : null)
+        : (_contraparteEmail.isEmpty
+            ? null
+            : appState.recadoDe(_contraparteEmail));
+    final tituloMostrar = esGrupo
+        ? (_grupo?.nombre ?? widget.titulo)
+        : ((nombrePerfil != null && nombrePerfil.isNotEmpty)
             ? nombrePerfil
-            : widget.titulo;
+            : widget.titulo);
     final inicial = tituloMostrar.trim().isNotEmpty
         ? tituloMostrar.characters.first.toUpperCase()
         : '?';
@@ -824,7 +855,9 @@ class _ChatScreenState extends State<ChatScreen> {
             // tiene foto y es una persona, abre su info.
             GestureDetector(
               onTap: () {
-                if (fotoPerfil != null && fotoPerfil.isNotEmpty) {
+                if (esGrupo) {
+                  _abrirInfoGrupo();
+                } else if (fotoPerfil != null && fotoPerfil.isNotEmpty) {
                   Navigator.of(context).push(MaterialPageRoute(
                       fullscreenDialog: true,
                       builder: (_) => _VisorFoto(url: fotoPerfil)));
@@ -840,17 +873,22 @@ class _ChatScreenState extends State<ChatScreen> {
                     : null,
                 child: (fotoPerfil != null && fotoPerfil.isNotEmpty)
                     ? null
-                    : Text(inicial,
-                        style: const TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.w800)),
+                    : (esGrupo
+                        ? const Icon(Icons.groups, color: Colors.white, size: 20)
+                        : Text(inicial,
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800))),
               ),
             ),
             const SizedBox(width: 10),
-            // Tocar el NOMBRE → info del contacto.
+            // Tocar el NOMBRE → info (grupo: ficha del grupo; 1:1: contacto).
             Expanded(
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: _contraparteEmail.isNotEmpty ? _verContacto : null,
+                onTap: esGrupo
+                    ? _abrirInfoGrupo
+                    : (_contraparteEmail.isNotEmpty ? _verContacto : null),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -877,6 +915,35 @@ class _ChatScreenState extends State<ChatScreen> {
           ],
         ),
         actions: [
+          // ── GRUPO: llamada grupal (si algún integrante tiene número) + menú ──
+          if (esGrupo &&
+              _grupo != null &&
+              _grupo!.miembros.any((e) =>
+                  e.toLowerCase() != (appState.usuario?.email ?? '').toLowerCase() &&
+                  appState.celularDe(e) != null))
+            IconButton(
+              tooltip: 'Llamada grupal',
+              icon: const Icon(Icons.videocam, color: Colors.white),
+              onPressed: () => iniciarLlamadaGrupal(context,
+                  grupoId: _refId, grupoNombre: _grupo!.nombre),
+            ),
+          if (esGrupo)
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, color: Colors.white),
+              onSelected: (v) {
+                if (v == 'info') _abrirInfoGrupo();
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'info',
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.info_outline),
+                    title: Text('Info del grupo'),
+                  ),
+                ),
+              ],
+            ),
           // Llamar (marcador del teléfono) si la contraparte compartió su celular.
           if (_contraparteEmail.isNotEmpty &&
               appState.celularDe(_contraparteEmail) != null &&
