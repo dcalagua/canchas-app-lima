@@ -19,6 +19,7 @@ class DestinoChat {
     this.cuentaEmail = '',
     this.soyProfe = false,
     this.subtitulo = '',
+    this.fotoEmail = '',
   });
   final String hilo;
   final String tipo; // 'directo' | 'grupo' | 'academia' | 'cancha'
@@ -28,6 +29,7 @@ class DestinoChat {
   final String cuentaEmail;
   final bool soyProfe;
   final String subtitulo;
+  final String fotoEmail; // correo para buscar la foto de perfil ('' = sin foto)
 }
 
 /// Selector de un CHAT existente (grupos, academias y contactos) para reenviar.
@@ -60,10 +62,12 @@ class _SelectorChatScreenState extends State<SelectorChatScreen> {
   Future<void> _cargar() async {
     final email = (appState.usuario?.email ?? '').toLowerCase();
     final destinos = <DestinoChat>[];
-    final vistos = <String>{};
+    // Dedupe SEMÁNTICO: una sola entrada por persona/grupo/academia, aunque
+    // exista como chat de academia Y como contacto (mismo correo). Clave:
+    //   'g:<grupoId>' | 'p:<correo persona>' | 'a:<academiaId>'.
+    final claves = <String>{};
 
     if (email.isNotEmpty) {
-      // Nombre de academia por id (para títulos).
       final nombreAcademia = <String, String>{
         for (final a in appState.academias) a.id: a.nombre,
       };
@@ -72,10 +76,9 @@ class _SelectorChatScreenState extends State<SelectorChatScreen> {
       try {
         final grupos = await GruposRepo.gruposDe(email);
         for (final g in grupos) {
-          final hilo = Mensaje.hiloGrupo(g.id);
-          if (!vistos.add(hilo)) continue;
+          if (!claves.add('g:${g.id}')) continue;
           destinos.add(DestinoChat(
-              hilo: hilo,
+              hilo: Mensaje.hiloGrupo(g.id),
               tipo: 'grupo',
               refId: g.id,
               titulo: g.nombre,
@@ -83,7 +86,8 @@ class _SelectorChatScreenState extends State<SelectorChatScreen> {
         }
       } catch (_) {}
 
-      // 2) CHATS DE ACADEMIA existentes (profe ↔ alumno)
+      // 2) CHATS DE ACADEMIA existentes (profe ↔ alumno). Tienen historial real,
+      //    por eso van ANTES que los contactos sueltos.
       try {
         final owned = <String>{};
         for (final a in appState.academias) {
@@ -100,38 +104,47 @@ class _SelectorChatScreenState extends State<SelectorChatScreen> {
           porHilo.putIfAbsent(m.hilo, () => m);
         }
         porHilo.forEach((hilo, m) {
-          if (vistos.contains(hilo)) return;
           final soyProfe = owned.contains(m.academiaId);
-          // Si soy alumno, solo mi propio hilo.
           if (!soyProfe && m.cuentaEmail.toLowerCase() != email) return;
-          vistos.add(hilo);
+          // Clave por persona (profe↔alumno) o por academia (yo alumno).
+          final clave = soyProfe
+              ? 'p:${m.cuentaEmail.toLowerCase()}'
+              : 'a:${m.academiaId}';
+          if (!claves.add(clave)) return;
           final acad = nombreAcademia[m.academiaId] ?? 'Academia';
-          final titulo = soyProfe
-              ? (appState.nombreMostrableDe(m.cuentaEmail) ?? m.cuentaEmail)
-              : acad;
           destinos.add(DestinoChat(
               hilo: hilo,
               tipo: 'academia',
               academiaId: m.academiaId,
               cuentaEmail: soyProfe ? m.cuentaEmail : email,
               soyProfe: soyProfe,
-              titulo: titulo,
+              fotoEmail: soyProfe ? m.cuentaEmail : '',
+              titulo: soyProfe
+                  ? (appState.nombreMostrableDe(m.cuentaEmail) ?? m.cuentaEmail)
+                  : acad,
               subtitulo: soyProfe ? acad : 'Academia'));
         });
       } catch (_) {}
 
-      // 3) CONTACTOS (chats directos, existan o no)
+      // 3) CONTACTOS (chats directos). Se saltan si esa persona ya salió arriba.
       for (final c in appState.contactos) {
-        final hilo = Mensaje.hiloDirecto(email, c);
-        if (!vistos.add(hilo)) continue;
+        if (!claves.add('p:${c.toLowerCase()}')) continue;
         destinos.add(DestinoChat(
-            hilo: hilo,
+            hilo: Mensaje.hiloDirecto(email, c),
             tipo: 'directo',
             cuentaEmail: c,
+            fotoEmail: c,
             titulo: appState.nombreMostrableDe(c) ?? c,
             subtitulo: 'Contacto'));
       }
     }
+
+    // Precarga los perfiles (foto/nombre) de las contrapartes → avatar real.
+    final correos = destinos
+        .map((d) => d.fotoEmail)
+        .where((e) => e.isNotEmpty)
+        .toList();
+    if (correos.isNotEmpty) await appState.cargarPerfiles(correos);
 
     if (!mounted) return;
     setState(() {
@@ -193,15 +206,21 @@ class _SelectorChatScreenState extends State<SelectorChatScreen> {
                                   ? d.titulo.trim()[0]
                                   : '?')
                               .toUpperCase();
+                          final foto = appState.fotoDe(d.fotoEmail);
                           return ListTile(
                             leading: CircleAvatar(
                               backgroundColor: limaSuave,
+                              backgroundImage: (foto != null && foto.isNotEmpty)
+                                  ? NetworkImage(foto)
+                                  : null,
                               child: d.tipo == 'grupo'
                                   ? const Icon(Icons.groups, color: teal)
-                                  : Text(ini,
-                                      style: const TextStyle(
-                                          color: teal,
-                                          fontWeight: FontWeight.bold)),
+                                  : (foto == null || foto.isEmpty)
+                                      ? Text(ini,
+                                          style: const TextStyle(
+                                              color: teal,
+                                              fontWeight: FontWeight.bold))
+                                      : null,
                             ),
                             title: Text(d.titulo,
                                 maxLines: 1,
