@@ -40,6 +40,10 @@ dependencies:
   record: ^5.1.0
   audioplayers: ^6.1.0
   path_provider: ^2.1.4
+  # Caché LOCAL device-first del chat (SQLite): pinta al instante desde el
+  # teléfono aunque Android haya matado la app, y solo sincroniza lo nuevo.
+  # Plugin nativo: se prueba en build aislado antes de usarlo (Flutter 3.24.5).
+  sqflite: ^2.3.3+1
   # Comprobante de pago en PDF (generar) + compartir/descargar (hoja del sistema).
   # `pdf` es Dart puro; `printing` da la hoja de compartir/guardar del SO.
   pdf: ^3.11.1

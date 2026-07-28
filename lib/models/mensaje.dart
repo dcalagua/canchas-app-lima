@@ -112,6 +112,28 @@ class Mensaje {
         if (reenviado) 'reenviado': true,
       };
 
+  /// Serialización COMPLETA para caché local (SharedPreferences): incluye todos
+  /// los campos (incluido `creado`) para reconstruir el mensaje sin backend.
+  /// Se relee con [Mensaje.fromRow].
+  Map<String, dynamic> toCache() => {
+        'id': id,
+        'hilo': hilo,
+        'tipo': tipo,
+        'ref_id': refId,
+        'academia_id': academiaId,
+        'cuenta_email': cuentaEmail,
+        'autor_email': autorEmail,
+        'autor_nombre': autorNombre,
+        'es_profe': esProfe,
+        'texto': texto,
+        'media_url': mediaUrl,
+        'resp_texto': respTexto,
+        'resp_autor': respAutor,
+        'resp_media': respMedia,
+        'reenviado': reenviado,
+        'creado': creado.toIso8601String(),
+      };
+
   /// Mapea una fila de Supabase (columnas snake_case).
   factory Mensaje.fromRow(Map<String, dynamic> r) => Mensaje(
         id: (r['id'] ?? '').toString(),
