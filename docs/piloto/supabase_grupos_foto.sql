@@ -27,10 +27,22 @@ end $$;
 
 -- 3) Bucket público `grupos` para las fotos de grupo --------------------------
 --   En Supabase Studio → Storage → New bucket → nombre "grupos" → Public.
---   Luego las políticas de escritura (leer/subir/actualizar), igual que "estados":
-create policy "grupos_leer"       on storage.objects
-  for select to public using (bucket_id = 'grupos');
-create policy "grupos_subir"      on storage.objects
-  for insert to public with check (bucket_id = 'grupos');
-create policy "grupos_actualizar" on storage.objects
-  for update to public using (bucket_id = 'grupos');
+--   Luego las políticas de escritura (leer/subir/actualizar), igual que "estados".
+--   Idempotente: si ya existen, no falla (útil para re-correr el script).
+do $$ begin
+  if not exists (select 1 from pg_policies
+                 where schemaname='storage' and tablename='objects' and policyname='grupos_leer') then
+    create policy "grupos_leer" on storage.objects
+      for select to public using (bucket_id = 'grupos');
+  end if;
+  if not exists (select 1 from pg_policies
+                 where schemaname='storage' and tablename='objects' and policyname='grupos_subir') then
+    create policy "grupos_subir" on storage.objects
+      for insert to public with check (bucket_id = 'grupos');
+  end if;
+  if not exists (select 1 from pg_policies
+                 where schemaname='storage' and tablename='objects' and policyname='grupos_actualizar') then
+    create policy "grupos_actualizar" on storage.objects
+      for update to public using (bucket_id = 'grupos');
+  end if;
+end $$;
