@@ -300,6 +300,9 @@ class _MensajesScreenState extends State<MensajesScreen> {
       _convs = convs;
       _cargando = false;
     });
+    // Checks: al bajar los mensajes, marca ENTREGADOS mis hilos (2 grises para
+    // el remitente aunque aún no abra el chat).
+    appState.marcarEntregados(convs.map((c) => c.hilo));
     _abrirHiloPendiente(); // si vino de una notificación, entra al chat
   }
 

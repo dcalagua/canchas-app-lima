@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -9,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../data/lecturas_repo.dart';
 import '../data/mensajes_repo.dart';
 import '../models/mensaje.dart';
 import '../services/whatsapp_link.dart';
@@ -40,6 +42,9 @@ class _WA {
 /// Conversación 1:1 profe ↔ alumno de una academia (Etapa A: Realtime, sin
 /// push). Se usa igual desde el lado del profe ([soyProfe] = true) que del
 /// alumno ([soyProfe] = false); [cuentaEmail] identifica el lado alumno.
+/// Estado de un mensaje propio para los checks: 1 gris / 2 gris / 2 azul.
+enum _Entrega { enviado, entregado, leido }
+
 class ChatScreen extends StatefulWidget {
   const ChatScreen({
     super.key,
@@ -134,6 +139,24 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  // Checks tipo WhatsApp: hasta cuándo tiene la OTRA persona entregado/leído este
+  // hilo (llega en vivo por LecturasRepo.stream). Solo aplica a chats 1:1.
+  DateTime? _otroEntregado;
+  DateTime? _otroLeido;
+  StreamSubscription? _lecturaSub;
+
+  /// Estado de entrega de un mensaje MÍO (para los checks).
+  _Entrega _estadoEntrega(Mensaje m) {
+    if (widget.tipo == 'grupo') return _Entrega.enviado;
+    if (_otroLeido != null && !_otroLeido!.isBefore(m.creado)) {
+      return _Entrega.leido;
+    }
+    if (_otroEntregado != null && !_otroEntregado!.isBefore(m.creado)) {
+      return _Entrega.entregado;
+    }
+    return _Entrega.enviado;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -159,6 +182,27 @@ class _ChatScreenState extends State<ChatScreen> {
     // Este es el chat visible ahora: mientras esté abierto, los mensajes de este
     // hilo no disparan el aviso de push (llegan solos por Realtime).
     appState.hiloChatAbierto = _hilo;
+    // Checks: escucha en vivo hasta cuándo tiene la OTRA persona entregado/leído
+    // este hilo (solo 1:1).
+    if (widget.tipo != 'grupo' && _contraparteEmail.isNotEmpty) {
+      final otro = _contraparteEmail.toLowerCase();
+      _lecturaSub = LecturasRepo.stream(_hilo).listen((rows) {
+        for (final r in rows) {
+          if ((r['email'] ?? '').toString().toLowerCase() != otro) continue;
+          final ent =
+              DateTime.tryParse((r['entregado_hasta'] ?? '').toString())
+                  ?.toLocal();
+          final lei = DateTime.tryParse((r['leido_hasta'] ?? '').toString())
+              ?.toLocal();
+          if (mounted) {
+            setState(() {
+              _otroEntregado = ent;
+              _otroLeido = lei;
+            });
+          }
+        }
+      });
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       appState.marcarChatLeido(_hilo);
       // Foto tomada desde la cámara del inbox → se envía al abrir el chat.
@@ -399,6 +443,7 @@ class _ChatScreenState extends State<ChatScreen> {
     appState.marcarChatLeido(_hilo);
     // Deja de ser el chat visible (solo si sigo siendo yo el abierto).
     if (appState.hiloChatAbierto == _hilo) appState.hiloChatAbierto = '';
+    _lecturaSub?.cancel();
     _texto.dispose();
     _scroll.dispose();
     _focus.dispose();
@@ -807,7 +852,8 @@ class _ChatScreenState extends State<ChatScreen> {
                               mensaje: m,
                               mio: mio,
                               wa: wa,
-                              mostrarAutor: esGrupo && !mio);
+                              mostrarAutor: esGrupo && !mio,
+                              entrega: mio ? _estadoEntrega(m) : _Entrega.enviado);
                         },
                       );
                     },
@@ -844,7 +890,9 @@ class _Burbuja extends StatelessWidget {
       {required this.mensaje,
       required this.mio,
       required this.wa,
-      this.mostrarAutor = false});
+      this.mostrarAutor = false,
+      this.entrega = _Entrega.enviado});
+  final _Entrega entrega;
   final Mensaje mensaje;
   final bool mio;
   final _WA wa;
@@ -947,11 +995,16 @@ class _Burbuja extends StatelessWidget {
                       style: TextStyle(fontSize: 10.5, color: wa.hora)),
                   if (mio) ...[
                     const SizedBox(width: 3),
-                    Icon(Icons.done_all,
+                    Icon(
+                        entrega == _Entrega.enviado
+                            ? Icons.done // 1 check
+                            : Icons.done_all, // 2 checks
                         size: 14,
-                        color: wa.dark
-                            ? const Color(0xFF53BDEB)
-                            : const Color(0xFF34B7F1)),
+                        color: entrega == _Entrega.leido
+                            ? (wa.dark
+                                ? const Color(0xFF53BDEB)
+                                : const Color(0xFF34B7F1)) // azul = leído
+                            : wa.hora), // gris = enviado/entregado
                   ],
                 ],
               ),

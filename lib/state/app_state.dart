@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../data/academias_repo.dart';
 import '../data/agenda_repo.dart';
 import '../data/estados_repo.dart';
+import '../data/lecturas_repo.dart';
 import '../models/estado.dart';
 import '../data/campeonatos_repo.dart';
 import '../data/canchas_repo.dart';
@@ -2687,6 +2688,15 @@ class AppState extends ChangeNotifier {
     chatLecturas[hilo] = DateTime.now().toIso8601String();
     notifyListeners();
     _persistirDatos();
+    // Checks tipo WhatsApp: avisa al REMITENTE que YO leí este hilo (2 azules).
+    LecturasRepo.marcarLeido(hilo, _yo);
+  }
+
+  /// Marca ENTREGADOS (no leídos) varios hilos para MÍ: se llama cuando bajo los
+  /// mensajes (abro Mensajes) para que el remitente vea 2 checks grises aunque
+  /// no haya abierto el chat.
+  Future<void> marcarEntregados(Iterable<String> hilos) async {
+    await LecturasRepo.marcarEntregados(hilos.toList(), _yo);
   }
 
   /// Cuándo se leyó por última vez un hilo (null si nunca).
