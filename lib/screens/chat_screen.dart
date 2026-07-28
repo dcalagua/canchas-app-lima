@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -212,7 +213,7 @@ class _ChatScreenState extends State<ChatScreen> {
               radius: 16,
               backgroundColor: wa.send.withOpacity(0.15),
               backgroundImage:
-                  (foto != null && foto.isNotEmpty) ? NetworkImage(foto) : null,
+                  (foto != null && foto.isNotEmpty) ? CachedNetworkImageProvider(foto) : null,
               child: (foto == null || foto.isEmpty)
                   ? Icon(Icons.person_add_alt_1, color: wa.send, size: 18)
                   : null,
@@ -524,7 +525,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   radius: 38,
                   backgroundColor: teal,
                   backgroundImage: (foto != null && foto.isNotEmpty)
-                      ? NetworkImage(foto)
+                      ? CachedNetworkImageProvider(foto)
                       : null,
                   child: (foto != null && foto.isNotEmpty)
                       ? null
@@ -894,7 +895,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 radius: 17,
                 backgroundColor: Colors.white24,
                 backgroundImage: (fotoPerfil != null && fotoPerfil.isNotEmpty)
-                    ? NetworkImage(fotoPerfil)
+                    ? CachedNetworkImageProvider(fotoPerfil)
                     : null,
                 child: (fotoPerfil != null && fotoPerfil.isNotEmpty)
                     ? null
@@ -1369,11 +1370,12 @@ class _Burbuja extends StatelessWidget {
                       const SizedBox(width: 6),
                       ClipRRect(
                         borderRadius: BorderRadius.circular(4),
-                        child: Image.network(mensaje.respMedia,
+                        child: CachedNetworkImage(
+                            imageUrl: mensaje.respMedia,
                             width: 38,
                             height: 38,
                             fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) =>
+                            errorWidget: (_, __, ___) =>
                                 const SizedBox(width: 38, height: 38)),
                       ),
                     ],
@@ -1417,18 +1419,16 @@ class _Burbuja extends StatelessWidget {
                     tag: mensaje.mediaUrl,
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(10),
-                      child: Image.network(
-                        mensaje.mediaUrl,
+                      child: CachedNetworkImage(
+                        imageUrl: mensaje.mediaUrl,
                         width: 220,
                         fit: BoxFit.cover,
-                        loadingBuilder: (c, child, prog) => prog == null
-                            ? child
-                            : const SizedBox(
-                                width: 220,
-                                height: 150,
-                                child: Center(
-                                    child: CircularProgressIndicator())),
-                        errorBuilder: (c, e, s) => const SizedBox(
+                        placeholder: (c, u) => const SizedBox(
+                            width: 220,
+                            height: 150,
+                            child:
+                                Center(child: CircularProgressIndicator())),
+                        errorWidget: (c, u, e) => const SizedBox(
                             width: 220,
                             height: 90,
                             child: Icon(Icons.broken_image_outlined, size: 32)),
@@ -1696,9 +1696,10 @@ class _CitaComposer extends StatelessWidget {
               const SizedBox(width: 6),
               ClipRRect(
                 borderRadius: BorderRadius.circular(4),
-                child: Image.network(media,
+                child: CachedNetworkImage(
+                    imageUrl: media,
                     width: 40, height: 40, fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const SizedBox(
+                    errorWidget: (_, __, ___) => const SizedBox(
                         width: 40, height: 40)),
               ),
             ],
@@ -2160,14 +2161,13 @@ class _VisorFoto extends StatelessWidget {
           child: InteractiveViewer(
             minScale: 0.8,
             maxScale: 5,
-            child: Image.network(
-              url,
+            child: CachedNetworkImage(
+              imageUrl: url,
               fit: BoxFit.contain,
-              loadingBuilder: (c, child, prog) => prog == null
-                  ? child
-                  : const Center(
-                      child: CircularProgressIndicator(color: Colors.white)),
-              errorBuilder: (c, e, s) => const Icon(Icons.broken_image_outlined,
+              placeholder: (c, u) => const Center(
+                  child: CircularProgressIndicator(color: Colors.white)),
+              errorWidget: (c, u, e) => const Icon(
+                  Icons.broken_image_outlined,
                   color: Colors.white54, size: 60),
             ),
           ),

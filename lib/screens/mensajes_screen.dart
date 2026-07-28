@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -1278,7 +1279,7 @@ class _FilaConv extends StatelessWidget {
           CircleAvatar(
             backgroundColor: colAvatar,
             backgroundImage:
-                (foto != null && foto.isNotEmpty) ? NetworkImage(foto) : null,
+                (foto != null && foto.isNotEmpty) ? CachedNetworkImageProvider(foto) : null,
             child: (foto != null && foto.isNotEmpty)
                 ? null
                 : (icoTipo != null
@@ -1439,7 +1440,7 @@ class _SelectorEnviarFotoState extends State<_SelectorEnviarFoto> {
                         leading: CircleAvatar(
                           backgroundColor: col,
                           backgroundImage: (foto != null && foto.isNotEmpty)
-                              ? NetworkImage(foto)
+                              ? CachedNetworkImageProvider(foto)
                               : null,
                           child: (foto != null && foto.isNotEmpty)
                               ? null
