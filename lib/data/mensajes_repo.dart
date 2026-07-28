@@ -13,18 +13,22 @@ class MensajesRepo {
 
   static bool get disponible => SupabaseService.disponible;
 
-  /// Mensajes de UNA conversación, en vivo (orden cronológico).
-  static Stream<List<Mensaje>> streamHilo(String hilo) {
+  /// Mensajes de UNA conversación, en vivo, PAGINADO: solo trae los últimos
+  /// [limite] mensajes (los más recientes), sin importar cuán largo sea el hilo.
+  /// Así abrir un chat es instantáneo aunque tenga miles de mensajes. Se pide a
+  /// Supabase en DESC + limit (los N más nuevos) y se REVIERTE a orden
+  /// cronológico (el más nuevo abajo, estilo WhatsApp) para pintar. Para ver más
+  /// historia, se sube [limite] (botón "Cargar mensajes anteriores").
+  static Stream<List<Mensaje>> streamHilo(String hilo, {int limite = 50}) {
     if (!SupabaseService.disponible) return Stream<List<Mensaje>>.empty();
     return SupabaseService.client
         .from(_tabla)
         .stream(primaryKey: ['id'])
         .eq('hilo', hilo)
-        // ascending: true → orden cronológico real (el más nuevo abajo, estilo
-        // WhatsApp). Por defecto Supabase ordena DESC, que dejaba el reciente
-        // arriba y confundía cuál era el último mensaje.
-        .order('creado', ascending: true)
-        .map((rows) => rows.map((r) => Mensaje.fromRow(r)).toList());
+        .order('creado', ascending: false) // los más NUEVOS primero…
+        .limit(limite) // …y solo N (ventana reciente)
+        .map((rows) =>
+            rows.map((r) => Mensaje.fromRow(r)).toList().reversed.toList());
   }
 
   /// Todos los mensajes de una academia, en vivo (para la bandeja del profe:

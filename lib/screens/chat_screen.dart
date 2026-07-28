@@ -118,10 +118,21 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // Stream creado UNA sola vez: si se recreara en cada build (p. ej. al enviar,
-  // que hace setState), el StreamBuilder volvería al spinner y la pantalla
-  // parpadearía. Por eso es un campo late, no una llamada dentro de build().
-  late final Stream<List<Mensaje>> _stream = MensajesRepo.streamHilo(_hilo);
+  // Ventana de mensajes que traemos del hilo (paginación): arranca en los 50 más
+  // recientes y crece cuando el usuario pide "Cargar mensajes anteriores". Así
+  // abrir un chat es instantáneo aunque el hilo tenga miles de mensajes.
+  static const _pagina = 50;
+  int _limite = _pagina;
+  // Stream NO recreado en cada build (si no, parpadearía al enviar): solo se
+  // recrea al cambiar [_limite]. Por eso guardamos la referencia.
+  late Stream<List<Mensaje>> _stream = MensajesRepo.streamHilo(_hilo, limite: _limite);
+
+  void _cargarAnteriores() {
+    setState(() {
+      _limite += _pagina;
+      _stream = MensajesRepo.streamHilo(_hilo, limite: _limite);
+    });
+  }
 
   @override
   void initState() {
@@ -762,11 +773,30 @@ class _ChatScreenState extends State<ChatScreen> {
                         _alFinal();
                       }
                       if (msgs.isEmpty) return const _Vacio();
+                      // Si la ventana está llena, es probable que haya historia
+                      // anterior: mostramos un encabezado para traer más (arriba
+                      // del todo, índice 0).
+                      final hayMas = msgs.length >= _limite;
                       return ListView.builder(
                         controller: _scroll,
                         padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
-                        itemCount: msgs.length,
-                        itemBuilder: (_, i) {
+                        itemCount: msgs.length + (hayMas ? 1 : 0),
+                        itemBuilder: (_, idx) {
+                          if (hayMas && idx == 0) {
+                            return Center(
+                              child: Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: TextButton.icon(
+                                  onPressed: _cargarAnteriores,
+                                  icon: const Icon(Icons.history, size: 18),
+                                  label: const Text('Cargar mensajes anteriores'),
+                                  style: TextButton.styleFrom(
+                                      foregroundColor: teal),
+                                ),
+                              ),
+                            );
+                          }
+                          final i = hayMas ? idx - 1 : idx;
                           final m = msgs[i];
                           final esGrupo = widget.tipo == 'grupo';
                           final mio = esGrupo
