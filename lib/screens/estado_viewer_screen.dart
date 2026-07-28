@@ -6,6 +6,7 @@ import '../models/estado.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/dialogo_pichangol.dart';
+import 'chat_screen.dart';
 
 /// Visor de ESTADOS / HISTORIAS a pantalla completa (tipo WhatsApp): barras de
 /// progreso arriba, auto-avance, tap izquierda/derecha para retroceder/avanzar,
@@ -26,6 +27,8 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
   static const _duracionMusica = Duration(seconds: 15); // más tiempo si hay música
   late final AnimationController _ctrl;
   final AudioPlayer _audio = AudioPlayer();
+  final TextEditingController _respuesta = TextEditingController();
+  final FocusNode _focoResp = FocusNode();
   late List<Estado> _items;
   int _i = 0;
 
@@ -37,6 +40,14 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
   void initState() {
     super.initState();
     _items = appState.estadosDe(widget.autorEmail);
+    // Al escribir una respuesta, pausa el auto-avance (y reanuda al salir).
+    _focoResp.addListener(() {
+      if (_focoResp.hasFocus) {
+        _pausar();
+      } else {
+        _reanudar();
+      }
+    });
     _ctrl = AnimationController(vsync: this, duration: _duracion)
       ..addStatusListener((s) {
         if (s == AnimationStatus.completed) _siguiente();
@@ -53,8 +64,57 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
   @override
   void dispose() {
     _audio.dispose();
+    _respuesta.dispose();
+    _focoResp.dispose();
     _ctrl.dispose();
     super.dispose();
+  }
+
+  /// Envía una respuesta (texto o emoji) a la historia como mensaje directo.
+  Future<void> _enviarResp(String txt) async {
+    final t = txt.trim();
+    if (t.isEmpty) return;
+    _respuesta.clear();
+    _focoResp.unfocus();
+    final ok =
+        await appState.enviarMensajeDirecto(widget.autorEmail, '↪️ (historia) $t');
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(ok ? 'Respuesta enviada' : 'No se pudo enviar'),
+      duration: const Duration(milliseconds: 1200),
+    ));
+    _reanudar();
+  }
+
+  Future<void> _accionMenu(String v) async {
+    switch (v) {
+      case 'mensaje':
+        _pausar();
+        await Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => ChatScreen(
+                  academiaId: '',
+                  cuentaEmail: widget.autorEmail,
+                  titulo: appState.nombreMostrableDe(widget.autorEmail) ??
+                      _items[_i].autorNombre,
+                  soyProfe: false,
+                  tipo: 'directo',
+                )));
+        if (mounted) _reanudar();
+        break;
+      case 'silenciar':
+        await appState.alternarOcultarEstados(widget.autorEmail);
+        if (mounted) Navigator.of(context).maybePop();
+        break;
+      case 'reportar':
+        _pausar();
+        await avisarPichangol(context,
+            titulo: 'Gracias',
+            mensaje:
+                'Recibimos tu reporte de esta historia. Nuestro equipo la revisará.',
+            icono: Icons.flag_outlined);
+        if (mounted) _reanudar();
+        break;
+    }
   }
 
   void _mostrar(int idx) {
@@ -217,7 +277,10 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
 
     return Scaffold(
       backgroundColor: e.esFoto ? Colors.black : Color(e.bg),
-      body: GestureDetector(
+      body: Column(
+        children: [
+          Expanded(
+            child: GestureDetector(
         onTapUp: (d) {
           if (d.localPosition.dx < ancho * 0.32) {
             _anterior();
@@ -351,6 +414,38 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
                                 color: Colors.white),
                             onPressed: _eliminarActual,
                           ),
+                        if (!_esMio)
+                          PopupMenuButton<String>(
+                            icon: const Icon(Icons.more_vert,
+                                color: Colors.white),
+                            onOpened: _pausar,
+                            onCanceled: _reanudar,
+                            onSelected: _accionMenu,
+                            itemBuilder: (_) => [
+                              const PopupMenuItem(
+                                  value: 'mensaje',
+                                  child: ListTile(
+                                      contentPadding: EdgeInsets.zero,
+                                      leading: Icon(Icons.chat_bubble_outline),
+                                      title: Text('Mensaje'))),
+                              PopupMenuItem(
+                                  value: 'silenciar',
+                                  child: ListTile(
+                                      contentPadding: EdgeInsets.zero,
+                                      leading: const Icon(
+                                          Icons.notifications_off_outlined),
+                                      title: Text(appState.estadosOcultosDe(
+                                              widget.autorEmail)
+                                          ? 'Mostrar historias'
+                                          : 'Silenciar historias'))),
+                              const PopupMenuItem(
+                                  value: 'reportar',
+                                  child: ListTile(
+                                      contentPadding: EdgeInsets.zero,
+                                      leading: Icon(Icons.flag_outlined),
+                                      title: Text('Reportar'))),
+                            ],
+                          ),
                         IconButton(
                           icon: const Icon(Icons.close, color: Colors.white),
                           onPressed: () => Navigator.of(context).maybePop(),
@@ -398,6 +493,77 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
                   ),
                 ),
               ),
+          ],
+        ),
+            ),
+          ),
+          if (!_esMio && appState.logueado) _barraResponder(),
+        ],
+      ),
+    );
+  }
+
+  /// Barra inferior tipo WhatsApp para responder la historia: reacciones rápidas
+  /// + campo de texto + corazón. Envía un mensaje directo al autor.
+  Widget _barraResponder() {
+    return SafeArea(
+      top: false,
+      child: Container(
+        color: Colors.black.withOpacity(0.85),
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                for (final em in const ['😍', '😂', '😮', '👏', '🔥', '⚽'])
+                  InkWell(
+                    onTap: () => _enviarResp(em),
+                    borderRadius: BorderRadius.circular(20),
+                    child: Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: Text(em, style: const TextStyle(fontSize: 26)),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.white54),
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: TextField(
+                      controller: _respuesta,
+                      focusNode: _focoResp,
+                      style: const TextStyle(color: Colors.white),
+                      cursorColor: Colors.white,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: _enviarResp,
+                      decoration: const InputDecoration(
+                        filled: false,
+                        border: InputBorder.none,
+                        hintText: 'Responder…',
+                        hintStyle: TextStyle(color: Colors.white70),
+                      ),
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.favorite, color: Colors.white),
+                  onPressed: () => _enviarResp('❤️'),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.send, color: Colors.white),
+                  onPressed: () => _enviarResp(_respuesta.text),
+                ),
+              ],
+            ),
           ],
         ),
       ),

@@ -19,13 +19,31 @@ class _SelectorMusicaScreenState extends State<SelectorMusicaScreen> {
   final _player = AudioPlayer();
   List<PistaMusica> _res = const [];
   bool _cargando = false;
+  bool _destacadas = true; // mostrando el top (aún no buscó)
   int _sonando = -1; // índice que se está escuchando (-1 = ninguno)
+
+  @override
+  void initState() {
+    super.initState();
+    _cargarDestacadas();
+  }
 
   @override
   void dispose() {
     _player.dispose();
     _q.dispose();
     super.dispose();
+  }
+
+  Future<void> _cargarDestacadas() async {
+    setState(() => _cargando = true);
+    final r = await MusicaService.destacadas();
+    if (!mounted) return;
+    setState(() {
+      _res = r;
+      _destacadas = true;
+      _cargando = false;
+    });
   }
 
   Future<void> _buscar() async {
@@ -37,6 +55,7 @@ class _SelectorMusicaScreenState extends State<SelectorMusicaScreen> {
     if (!mounted) return;
     setState(() {
       _res = r;
+      _destacadas = false;
       _cargando = false;
     });
   }
@@ -72,7 +91,8 @@ class _SelectorMusicaScreenState extends State<SelectorMusicaScreen> {
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
             child: TextField(
               controller: _q,
-              autofocus: true,
+              // Sin autofocus: así se ven las canciones destacadas sin que el
+              // teclado las tape apenas entras.
               textInputAction: TextInputAction.search,
               onSubmitted: (_) => _buscar(),
               decoration: InputDecoration(
@@ -88,6 +108,18 @@ class _SelectorMusicaScreenState extends State<SelectorMusicaScreen> {
               ),
             ),
           ),
+          if (!_cargando && _res.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 2, 18, 6),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(_destacadas ? 'Destacadas' : 'Resultados',
+                    style: const TextStyle(
+                        color: textoTenue,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13)),
+              ),
+            ),
           Expanded(
             child: _cargando
                 ? const CargandoPichangol()

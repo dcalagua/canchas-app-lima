@@ -25,6 +25,51 @@ class PistaMusica {
 }
 
 class MusicaService {
+  /// Canciones DESTACADAS (top del país) para mostrar apenas se abre el selector,
+  /// sin que el usuario tenga que buscar. Usa el feed RSS de iTunes (trae el
+  /// preview de 30 s como "enclosure"). Fail-safe: lista vacía ante error.
+  static Future<List<PistaMusica>> destacadas({String pais = 'pe'}) async {
+    try {
+      final uri = Uri.parse(
+          'https://itunes.apple.com/$pais/rss/topsongs/limit=30/json');
+      final r = await http.get(uri).timeout(const Duration(seconds: 8));
+      if (r.statusCode != 200) return const [];
+      final data = jsonDecode(r.body) as Map<String, dynamic>;
+      final feed = (data['feed'] as Map?) ?? const {};
+      final entries = (feed['entry'] as List?) ?? const [];
+      final pistas = <PistaMusica>[];
+      for (final e in entries) {
+        try {
+          final m = e as Map<String, dynamic>;
+          // Preview: el <link> con rel="enclosure".
+          String preview = '';
+          for (final l in (m['link'] as List? ?? const [])) {
+            final attrs = (l as Map)['attributes'] as Map? ?? const {};
+            if (attrs['rel'] == 'enclosure') {
+              preview = (attrs['href'] ?? '').toString();
+              break;
+            }
+          }
+          if (preview.isEmpty) continue;
+          final imgs = (m['im:image'] as List?) ?? const [];
+          final art =
+              imgs.isNotEmpty ? ((imgs.last as Map)['label'] ?? '').toString() : '';
+          pistas.add(PistaMusica(
+            titulo: (((m['im:name'] as Map?) ?? const {})['label'] ?? '')
+                .toString(),
+            artista: (((m['im:artist'] as Map?) ?? const {})['label'] ?? '')
+                .toString(),
+            previewUrl: preview,
+            artUrl: art,
+          ));
+        } catch (_) {}
+      }
+      return pistas;
+    } catch (_) {
+      return const [];
+    }
+  }
+
   /// Busca canciones por texto. Devuelve pistas con preview de 30 s. Fail-safe:
   /// ante error o sin red, lista vacía.
   static Future<List<PistaMusica>> buscar(String q) async {

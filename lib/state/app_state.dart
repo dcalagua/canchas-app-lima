@@ -14,6 +14,7 @@ import '../data/canchas_repo.dart';
 import '../data/invitaciones_repo.dart';
 import '../data/matriculas_repo.dart';
 import '../data/mensajes_repo.dart';
+import '../models/mensaje.dart';
 import '../data/perfiles_repo.dart';
 import '../data/bloqueos_repo.dart';
 import '../data/descuentos_repo.dart';
@@ -252,9 +253,27 @@ class AppState extends ChangeNotifier {
   final List<Estado> _estados = [];
   final Set<String> _estadosVistos = {};
   final Map<String, List<String>> _vistasPorEstado = {};
+  // Autores cuyas historias OCULTO (no quiero verlas), tipo WhatsApp.
+  final Set<String> _estadosOcultos = {};
   static const _kEstadosVistos = 'estados_vistos_json';
+  static const _kEstadosOcultos = 'estados_ocultos_json';
 
   bool estadoVisto(String id) => _estadosVistos.contains(id);
+  bool estadosOcultosDe(String? email) =>
+      _estadosOcultos.contains((email ?? '').trim().toLowerCase());
+
+  /// Oculta/muestra las historias de un autor (no borra nada; solo dejo de verlas).
+  Future<void> alternarOcultarEstados(String email) async {
+    final e = email.trim().toLowerCase();
+    if (e.isEmpty) return;
+    if (!_estadosOcultos.remove(e)) _estadosOcultos.add(e);
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+          _kEstadosOcultos, jsonEncode(_estadosOcultos.toList()));
+    } catch (_) {}
+  }
 
   String get _yo => (usuario?.email ?? '').trim().toLowerCase();
 
@@ -265,7 +284,7 @@ class AppState extends ChangeNotifier {
     final s = <String>{...contactos, ..._perfiles.keys, ..._apodos.keys};
     s.remove('');
     s.remove(_yo);
-    s.removeWhere((e) => _bloqueados.contains(e));
+    s.removeWhere((e) => _bloqueados.contains(e) || _estadosOcultos.contains(e));
     return s;
   }
 
@@ -414,6 +433,29 @@ class AppState extends ChangeNotifier {
     _estadosVistos.add(e.id);
     notifyListeners();
     return e;
+  }
+
+  /// Envía un mensaje DIRECTO 1:1 a [paraEmail] (usado para "responder historia").
+  /// Devuelve true si se envió.
+  Future<bool> enviarMensajeDirecto(String paraEmail, String texto) async {
+    final u = usuario;
+    final t = texto.trim();
+    final para = paraEmail.trim().toLowerCase();
+    if (u == null || t.isEmpty || para.isEmpty || bloqueado(para)) return false;
+    final msg = Mensaje(
+      id: 'msg_${DateTime.now().microsecondsSinceEpoch}',
+      hilo: Mensaje.hiloDirecto(u.email, para),
+      tipo: 'directo',
+      refId: '',
+      academiaId: '',
+      cuentaEmail: para,
+      autorEmail: u.email,
+      autorNombre: u.nombre,
+      esProfe: false,
+      texto: t,
+      creado: DateTime.now(),
+    );
+    return MensajesRepo.enviar(msg);
   }
 
   /// Marca que YO vi un estado (aro gris + registra la vista para el autor).
@@ -4731,6 +4773,16 @@ class AppState extends ChangeNotifier {
         } catch (_) {}
       }
 
+      final ocEstRaw = prefs.getString(_kEstadosOcultos);
+      if (ocEstRaw != null) {
+        try {
+          final l = jsonDecode(ocEstRaw) as List;
+          _estadosOcultos
+            ..clear()
+            ..addAll(l.map((e) => e.toString()));
+        } catch (_) {}
+      }
+
       notifyListeners();
       // Trae la disponibilidad compartida (reservas de otros dispositivos) para
       // que el anti-doble-reserva y el panel del dueño arranquen al día. Best-effort.
@@ -4929,6 +4981,7 @@ class AppState extends ChangeNotifier {
     chatsSilenciados.clear();
     _estados.clear();
     _estadosVistos.clear();
+    _estadosOcultos.clear();
     _vistasPorEstado.clear();
     _perfiles.clear();
     _retosPendientes = 0;
