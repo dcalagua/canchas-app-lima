@@ -281,7 +281,11 @@ class AppState extends ChangeNotifier {
   /// con la que he chateado (perfiles cacheados) y a quien le puse apodo. Nunca
   /// los bloqueados.
   Set<String> _conocidos() {
-    final s = <String>{...contactos, ..._perfiles.keys, ..._apodos.keys};
+    // REGLA de privacidad: solo veo historias de contactos que YO agregué
+    // (`_contactos`). Antes se incluía `_perfiles.keys`, pero ese cache se llena
+    // con TODOS los autores de historias al cargarlas → cualquiera se volvía
+    // "conocido" y se filtraban historias ajenas. NO usar perfiles/apodos aquí.
+    final s = <String>{...contactos};
     s.remove('');
     s.remove(_yo);
     s.removeWhere((e) => _bloqueados.contains(e) || _estadosOcultos.contains(e));
