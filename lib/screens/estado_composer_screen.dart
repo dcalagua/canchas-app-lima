@@ -1,6 +1,9 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:video_player/video_player.dart';
 
 import '../data/estados_repo.dart';
 import '../services/musica_service.dart';
@@ -273,6 +276,170 @@ class _EstadoFotoComposerScreenState extends State<EstadoFotoComposerScreen> {
                         decoration: const InputDecoration(
                           // Sin esto, el tema rellena de blanco y el texto blanco
                           // no se veía (la pastilla ya es el fondo semitranslúcido).
+                          filled: false,
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          counterText: '',
+                          hintText: 'Añade un pie…',
+                          hintStyle: TextStyle(color: Colors.white54),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  FloatingActionButton(
+                    backgroundColor: lima,
+                    onPressed: _enviando ? null : _publicar,
+                    child: _enviando
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.send, color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Composer de ESTADO de VIDEO (tipo WhatsApp): previsualiza el clip elegido en
+/// bucle + pie opcional y lo publica (se sube al bucket como .mp4).
+class EstadoVideoComposerScreen extends StatefulWidget {
+  const EstadoVideoComposerScreen({super.key, required this.file});
+  final XFile file;
+
+  @override
+  State<EstadoVideoComposerScreen> createState() =>
+      _EstadoVideoComposerScreenState();
+}
+
+class _EstadoVideoComposerScreenState extends State<EstadoVideoComposerScreen> {
+  final _ctrl = TextEditingController();
+  bool _enviando = false;
+  PistaMusica? _musica;
+  VideoPlayerController? _video;
+
+  @override
+  void initState() {
+    super.initState();
+    _video = VideoPlayerController.file(File(widget.file.path))
+      ..initialize().then((_) {
+        if (!mounted) return;
+        _video!
+          ..setLooping(true)
+          ..setVolume(1)
+          ..play();
+        setState(() {});
+      }).catchError((_) {});
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    _video?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _elegirMusica() async {
+    final p = await Navigator.of(context).push<PistaMusica>(
+        MaterialPageRoute(builder: (_) => const SelectorMusicaScreen()));
+    if (p != null && mounted) setState(() => _musica = p);
+  }
+
+  Future<void> _publicar() async {
+    if (_enviando) return;
+    setState(() => _enviando = true);
+    final bytes = await widget.file.readAsBytes();
+    final e = await appState.publicarEstadoVideo(
+      bytes,
+      pie: _ctrl.text.trim(),
+      musicaTitulo: _musica?.titulo ?? '',
+      musicaArtista: _musica?.artista ?? '',
+      musicaPreview: _musica?.previewUrl ?? '',
+      musicaArt: _musica?.artUrl ?? '',
+    );
+    if (!mounted) return;
+    if (e == null) {
+      setState(() => _enviando = false);
+      await avisarPichangol(context,
+          titulo: 'No se pudo publicar',
+          mensaje: EstadosRepo.ultimoErrorFoto ??
+              'No pudimos subir tu video. Inténtalo de nuevo.',
+          icono: Icons.cloud_off);
+      return;
+    }
+    Navigator.of(context).pop(true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final v = _video;
+    final listo = v != null && v.value.isInitialized;
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: const Text('Estado',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+        actions: [
+          IconButton(
+            tooltip: 'Añadir música',
+            icon: Icon(
+                _musica != null ? Icons.music_note : Icons.music_note_outlined,
+                color: Colors.white),
+            onPressed: _elegirMusica,
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: Center(
+                child: listo
+                    ? AspectRatio(
+                        aspectRatio: v.value.aspectRatio,
+                        child: VideoPlayer(v),
+                      )
+                    : const CircularProgressIndicator(color: Colors.white),
+              ),
+            ),
+            if (_musica != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: ChipMusica(
+                      pista: _musica!,
+                      onQuitar: () => setState(() => _musica = null)),
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.45),
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      child: TextField(
+                        controller: _ctrl,
+                        maxLength: 200,
+                        cursorColor: Colors.white,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: const InputDecoration(
                           filled: false,
                           border: InputBorder.none,
                           enabledBorder: InputBorder.none,

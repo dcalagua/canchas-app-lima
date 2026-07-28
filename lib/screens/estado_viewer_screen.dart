@@ -1,6 +1,8 @@
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:video_player/video_player.dart';
 
 import '../models/estado.dart';
 import '../state/app_state.dart';
@@ -25,12 +27,14 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
     with SingleTickerProviderStateMixin {
   static const _duracion = Duration(seconds: 5);
   static const _duracionMusica = Duration(seconds: 15); // más tiempo si hay música
+  static const _maxVideo = Duration(seconds: 30); // tope de exhibición del clip
   late final AnimationController _ctrl;
   final AudioPlayer _audio = AudioPlayer();
   final TextEditingController _respuesta = TextEditingController();
   final FocusNode _focoResp = FocusNode();
   late List<Estado> _items;
   int _i = 0;
+  VideoPlayerController? _video; // solo cuando el estado actual es video
 
   bool get _esMio =>
       widget.autorEmail.toLowerCase() ==
@@ -64,6 +68,7 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
   @override
   void dispose() {
     _audio.dispose();
+    _video?.dispose();
     _respuesta.dispose();
     _focoResp.dispose();
     _ctrl.dispose();
@@ -80,12 +85,20 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
     final e = _items[_i];
     final autorNombre =
         appState.nombreMostrableDe(widget.autorEmail) ?? e.autorNombre;
+    final String respTexto;
+    if (e.esFoto) {
+      respTexto = e.texto.isNotEmpty ? e.texto : '📷 Foto';
+    } else if (e.esVideo) {
+      respTexto = e.texto.isNotEmpty ? e.texto : '🎥 Video';
+    } else {
+      respTexto = e.texto;
+    }
     final ok = await appState.enviarMensajeDirecto(
       widget.autorEmail,
       t,
       respAutor: autorNombre,
-      respTexto: e.esFoto ? (e.texto.isNotEmpty ? e.texto : 'Foto') : e.texto,
-      respMedia: e.esFoto ? e.fotoUrl : '',
+      respTexto: respTexto,
+      respMedia: e.esFoto ? e.fotoUrl : '', // el video no tiene miniatura
     );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -131,9 +144,41 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
     setState(() => _i = idx);
     final e = _items[idx];
     appState.marcarEstadoVisto(e.id);
-    // Música: reproduce el preview (o corta si el estado no tiene) y da más
-    // tiempo de exhibición para que la canción se escuche.
     _audio.stop();
+    // Al cambiar de estado, suelta cualquier video del estado anterior.
+    _video?.dispose();
+    _video = null;
+
+    if (e.esVideo) {
+      // VIDEO: la barra la maneja la duración real del clip (tope 30 s). No se
+      // reproduce la música (el video trae su propio audio). Mientras carga, la
+      // barra espera; al inicializar, arrancan barra + video juntos.
+      _ctrl
+        ..reset()
+        ..stop();
+      final vc = VideoPlayerController.networkUrl(Uri.parse(e.fotoUrl));
+      _video = vc;
+      vc.initialize().then((_) {
+        if (!mounted || _video != vc) return;
+        var dur = vc.value.duration;
+        if (dur > _maxVideo) dur = _maxVideo;
+        if (dur.inMilliseconds < 500) dur = const Duration(seconds: 5);
+        _ctrl.duration = dur;
+        vc
+          ..setLooping(false)
+          ..play();
+        _ctrl
+          ..reset()
+          ..forward();
+        setState(() {});
+      }).catchError((_) {
+        // Si el video no carga, no bloquear la historia: pasa al siguiente.
+        if (mounted && _video == vc) _ctrl.duration = _duracion;
+      });
+      return;
+    }
+
+    // FOTO / TEXTO: música opcional (más tiempo de exhibición si hay canción).
     if (e.tieneMusica) {
       _ctrl.duration = _duracionMusica;
       try {
@@ -145,6 +190,21 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
     _ctrl
       ..reset()
       ..forward();
+  }
+
+  /// Abre un enlace de una historia (texto o pie) en el navegador. Pausa el
+  /// auto-avance mientras el usuario sale y lo reanuda al volver.
+  Future<void> _abrirEnlace(String url) async {
+    _pausar();
+    var u = url.trim();
+    if (!u.startsWith('http://') && !u.startsWith('https://')) u = 'https://$u';
+    final uri = Uri.tryParse(u);
+    if (uri != null) {
+      try {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (_) {}
+    }
+    if (mounted) _reanudar();
   }
 
   Future<void> _abrirSpotify(Estado e) async {
@@ -178,11 +238,15 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
   void _pausar() {
     _ctrl.stop();
     _audio.pause();
+    _video?.pause();
   }
 
   void _reanudar() {
     if (!_ctrl.isAnimating) _ctrl.forward();
-    if (_items.isNotEmpty && _items[_i].tieneMusica) _audio.resume();
+    if (_items.isNotEmpty && _items[_i].tieneMusica && !_items[_i].esVideo) {
+      _audio.resume();
+    }
+    _video?.play();
   }
 
   String _hace(DateTime t) {
@@ -308,39 +372,50 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
           children: [
             // Contenido
             Positioned.fill(
-              child: e.esFoto
+              child: e.esVideo
                   ? Center(
-                      child: Image.network(
-                        e.fotoUrl,
-                        fit: BoxFit.contain,
-                        loadingBuilder: (c, w, p) => p == null
-                            ? w
-                            : const Center(
-                                child: CircularProgressIndicator(
-                                    color: Colors.white)),
-                        errorBuilder: (c, _, __) => const Center(
-                            child: Icon(Icons.broken_image_outlined,
-                                color: Colors.white54, size: 48)),
-                      ),
+                      child: (_video != null && _video!.value.isInitialized)
+                          ? AspectRatio(
+                              aspectRatio: _video!.value.aspectRatio,
+                              child: VideoPlayer(_video!),
+                            )
+                          : const CircularProgressIndicator(
+                              color: Colors.white),
                     )
-                  : Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(32),
-                        child: Text(
-                          e.texto,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 26,
-                            fontWeight: FontWeight.w700,
-                            height: 1.3,
+                  : e.esFoto
+                      ? Center(
+                          child: Image.network(
+                            e.fotoUrl,
+                            fit: BoxFit.contain,
+                            loadingBuilder: (c, w, p) => p == null
+                                ? w
+                                : const Center(
+                                    child: CircularProgressIndicator(
+                                        color: Colors.white)),
+                            errorBuilder: (c, _, __) => const Center(
+                                child: Icon(Icons.broken_image_outlined,
+                                    color: Colors.white54, size: 48)),
+                          ),
+                        )
+                      : Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(32),
+                            child: _TextoConLinks(
+                              texto: e.texto,
+                              onLink: _abrirEnlace,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 26,
+                                fontWeight: FontWeight.w700,
+                                height: 1.3,
+                              ),
+                              align: TextAlign.center,
+                            ),
                           ),
                         ),
-                      ),
-                    ),
             ),
-            // Pie de foto
-            if (e.esFoto && e.texto.isNotEmpty)
+            // Pie de foto/video (con links tappables)
+            if ((e.esFoto || e.esVideo) && e.texto.isNotEmpty)
               Positioned(
                 left: 0,
                 right: 0,
@@ -348,12 +423,15 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
                 child: Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                  child: Text(e.texto,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w600)),
+                  child: _TextoConLinks(
+                    texto: e.texto,
+                    onLink: _abrirEnlace,
+                    align: TextAlign.center,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600),
+                  ),
                 ),
               ),
             // Barras de progreso + cabecera
@@ -686,6 +764,74 @@ class _MiniAvatar extends StatelessWidget {
               style: const TextStyle(
                   color: teal, fontWeight: FontWeight.bold))
           : null,
+    );
+  }
+}
+
+/// Texto de una historia con los ENLACES detectados como tappables (tipo
+/// WhatsApp: "compartir link"). Toca un link → [onLink] lo abre. Gestiona sus
+/// propios TapGestureRecognizer (los libera al desmontar).
+class _TextoConLinks extends StatefulWidget {
+  const _TextoConLinks({
+    required this.texto,
+    required this.onLink,
+    required this.style,
+    this.align = TextAlign.start,
+  });
+  final String texto;
+  final void Function(String url) onLink;
+  final TextStyle style;
+  final TextAlign align;
+
+  @override
+  State<_TextoConLinks> createState() => _TextoConLinksState();
+}
+
+class _TextoConLinksState extends State<_TextoConLinks> {
+  // Detecta http(s)://..., www.algo... y dominios sueltos (algo.com/...).
+  static final _re = RegExp(
+    r'((https?:\/\/|www\.)[^\s]+|[a-zA-Z0-9.-]+\.(com|net|org|pe|app|io|co|gg|me)(\/[^\s]*)?)',
+    caseSensitive: false,
+  );
+  final List<TapGestureRecognizer> _recs = [];
+
+  @override
+  void dispose() {
+    for (final r in _recs) {
+      r.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    for (final r in _recs) {
+      r.dispose();
+    }
+    _recs.clear();
+    final spans = <InlineSpan>[];
+    final t = widget.texto;
+    var last = 0;
+    for (final m in _re.allMatches(t)) {
+      if (m.start > last) {
+        spans.add(TextSpan(text: t.substring(last, m.start)));
+      }
+      final url = m.group(0)!;
+      final rec = TapGestureRecognizer()..onTap = () => widget.onLink(url);
+      _recs.add(rec);
+      spans.add(TextSpan(
+        text: url,
+        style: const TextStyle(
+            decoration: TextDecoration.underline,
+            fontWeight: FontWeight.w800),
+        recognizer: rec,
+      ));
+      last = m.end;
+    }
+    if (last < t.length) spans.add(TextSpan(text: t.substring(last)));
+    return Text.rich(
+      TextSpan(style: widget.style, children: spans),
+      textAlign: widget.align,
     );
   }
 }

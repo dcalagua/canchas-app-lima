@@ -40,6 +40,10 @@ dependencies:
   record: ^5.1.0
   audioplayers: ^6.1.0
   path_provider: ^2.1.4
+  # Video en Estados/Historias (tipo WhatsApp): reproducir el clip subido.
+  # Plugin nativo → probar en CI (Flutter 3.24.5). La captura del video la hace
+  # image_picker.pickVideo (ya es dependencia); esto solo REPRODUCE.
+  video_player: ^2.9.2
   # Caché LOCAL device-first del chat (SQLite): pinta al instante desde el
   # teléfono aunque Android haya matado la app, y solo sincroniza lo nuevo.
   # Plugin nativo: se prueba en build aislado antes de usarlo (Flutter 3.24.5).

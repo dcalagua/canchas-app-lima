@@ -6,9 +6,9 @@ class Estado {
   final String id;
   final String autorEmail;
   final String autorNombre; // snapshot del nombre al publicar
-  final String tipo; // 'texto' | 'foto'
-  final String texto; // contenido (texto) o pie de foto
-  final String fotoUrl; // vacío si es de texto
+  final String tipo; // 'texto' | 'foto' | 'video'
+  final String texto; // contenido (texto) o pie de foto/video
+  final String fotoUrl; // URL de la foto O del video; vacío si es de texto
   final int bg; // color de fondo (para el de texto), ARGB
   final DateTime creadoEn;
   // Música opcional (preview 30s de iTunes/Apple + carátula). Se reproduce en el
@@ -34,6 +34,8 @@ class Estado {
   });
 
   bool get esFoto => tipo == 'foto';
+  bool get esVideo => tipo == 'video';
+  bool get tieneMedia => fotoUrl.isNotEmpty; // foto o video
   bool get tieneMusica => musicaPreview.isNotEmpty;
 
   /// Sigue vigente si no han pasado 24 h desde que se publicó.

@@ -131,4 +131,41 @@ class EstadosRepo {
       return null;
     }
   }
+
+  /// Sube el VIDEO de un estado al bucket público `estados` (.mp4) y devuelve su
+  /// URL. Null si falla (motivo en [ultimoErrorFoto]). Mismo bucket que las fotos.
+  static Future<String?> subirVideo(String estadoId, Uint8List bytes) async {
+    if (!disponible) {
+      ultimoErrorFoto = 'Supabase no está configurado en esta app.';
+      return null;
+    }
+    try {
+      final ruta = '$estadoId.mp4';
+      final storage = SupabaseService.client.storage.from(_bucket);
+      await storage.uploadBinary(ruta, bytes,
+          fileOptions:
+              const FileOptions(upsert: true, contentType: 'video/mp4'));
+      final base = storage.getPublicUrl(ruta);
+      ultimoErrorFoto = null;
+      return '$base?v=${DateTime.now().millisecondsSinceEpoch}';
+    } catch (e) {
+      final s = e.toString().toLowerCase();
+      if (s.contains('bucket') || s.contains('not found')) {
+        ultimoErrorFoto =
+            'Falta el bucket "estados" en Supabase Storage (créalo público).';
+      } else if (s.contains('policy') ||
+          s.contains('row-level') ||
+          s.contains('403') ||
+          s.contains('unauthorized')) {
+        ultimoErrorFoto =
+            'El bucket "estados" no permite subir videos (falta la política).';
+      } else if (s.contains('maximum') || s.contains('size') || s.contains('413')) {
+        ultimoErrorFoto =
+            'El video es muy pesado para el bucket. Graba uno más corto.';
+      } else {
+        ultimoErrorFoto = 'No se pudo subir el video. Detalle: $e';
+      }
+      return null;
+    }
+  }
 }

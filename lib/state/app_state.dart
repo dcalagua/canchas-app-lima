@@ -440,6 +440,42 @@ class AppState extends ChangeNotifier {
     return e;
   }
 
+  /// Publica un estado de VIDEO (con pie opcional). Sube el clip al bucket.
+  /// Devuelve el estado o null si falla (motivo en EstadosRepo.ultimoErrorFoto).
+  Future<Estado?> publicarEstadoVideo(
+    Uint8List bytes, {
+    String pie = '',
+    String musicaTitulo = '',
+    String musicaArtista = '',
+    String musicaPreview = '',
+    String musicaArt = '',
+  }) async {
+    final u = usuario;
+    if (u == null) return null;
+    final id = 'st_${DateTime.now().microsecondsSinceEpoch}';
+    final url = await EstadosRepo.subirVideo(id, bytes);
+    if (url == null) return null;
+    final e = Estado(
+      id: id,
+      autorEmail: u.email.toLowerCase(),
+      autorNombre: u.nombre,
+      tipo: 'video',
+      texto: pie.trim(),
+      fotoUrl: url,
+      creadoEn: DateTime.now(),
+      musicaTitulo: musicaTitulo,
+      musicaArtista: musicaArtista,
+      musicaPreview: musicaPreview,
+      musicaArt: musicaArt,
+    );
+    final ok = await EstadosRepo.publicar(e);
+    if (!ok) return null;
+    _estados.add(e);
+    _estadosVistos.add(e.id);
+    notifyListeners();
+    return e;
+  }
+
   /// Envía un mensaje DIRECTO 1:1 a [paraEmail] (usado para "responder historia").
   /// Acepta una CITA opcional (autor/texto/miniatura) para que la respuesta a una
   /// historia muestre la historia citada, tipo WhatsApp. Devuelve true si se envió.

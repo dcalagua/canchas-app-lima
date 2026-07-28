@@ -77,6 +77,14 @@ class _NovedadesScreenState extends State<NovedadesScreen> {
               title: const Text('Cámara'),
               onTap: () => Navigator.pop(context, 'camara'),
             ),
+            ListTile(
+              leading: const CircleAvatar(
+                  backgroundColor: limaSuave,
+                  child: Icon(Icons.videocam_outlined, color: teal)),
+              title: const Text('Video'),
+              subtitle: const Text('Hasta 30 segundos'),
+              onTap: () => Navigator.pop(context, 'video'),
+            ),
             const SizedBox(height: 8),
           ],
         ),
@@ -86,6 +94,17 @@ class _NovedadesScreenState extends State<NovedadesScreen> {
     if (r == 'texto') {
       await Navigator.of(context).push(MaterialPageRoute(
           builder: (_) => const EstadoComposerScreen(),
+          fullscreenDialog: true));
+      if (mounted) setState(() {});
+      return;
+    }
+    if (r == 'video') {
+      final XFile? vf = await ImagePicker().pickVideo(
+          source: ImageSource.gallery,
+          maxDuration: const Duration(seconds: 30));
+      if (vf == null || !mounted) return;
+      await Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => EstadoVideoComposerScreen(file: vf),
           fullscreenDialog: true));
       if (mounted) setState(() {});
       return;
@@ -264,7 +283,14 @@ class _AnilloAvatar extends StatelessWidget {
     // Contenido del círculo: miniatura de la historia si la hay.
     Widget circulo;
     final e = preview;
-    if (e != null && e.esFoto && e.fotoUrl.isNotEmpty) {
+    if (e != null && e.esVideo) {
+      // Historia de video: no hay miniatura del clip → círculo oscuro con ícono.
+      circulo = const CircleAvatar(
+        radius: 24,
+        backgroundColor: Colors.black54,
+        child: Icon(Icons.videocam, color: Colors.white, size: 22),
+      );
+    } else if (e != null && e.esFoto && e.fotoUrl.isNotEmpty) {
       circulo = CircleAvatar(radius: 24, backgroundImage: NetworkImage(e.fotoUrl));
     } else if (e != null && !e.esFoto) {
       // Historia de texto: círculo del color de fondo con un fragmento del texto.
