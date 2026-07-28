@@ -62,6 +62,27 @@ class MensajesRepo {
     }
   }
 
+  /// Conversaciones de ACADEMIA donde el usuario es el JUGADOR/alumno que escribió
+  /// (cuenta_email = su email), aunque NO esté matriculado. Así el chat con una
+  /// academia SIEMPRE aparece en su inbox. Para el inbox.
+  static Future<List<Mensaje>> mensajesAcademiaComoJugador(String email) async {
+    if (!SupabaseService.disponible || email.isEmpty) return const <Mensaje>[];
+    try {
+      final e = email.trim().toLowerCase();
+      final rows = await SupabaseService.client
+          .from(_tabla)
+          .select()
+          .eq('tipo', 'academia')
+          .eq('cuenta_email', e)
+          .order('creado', ascending: true);
+      return (rows as List)
+          .map((r) => Mensaje.fromRow(r as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return const <Mensaje>[];
+    }
+  }
+
   /// Conversaciones de CANCHA del usuario (one-shot): mensajes donde es el dueño
   /// (ref_id = su email) o el jugador (cuenta_email = su email). Para el inbox.
   static Future<List<Mensaje>> mensajesCanchaDe(String email) async {

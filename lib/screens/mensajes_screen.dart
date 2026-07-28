@@ -29,7 +29,7 @@ class MensajesScreen extends StatefulWidget {
 }
 
 /// Filtros de la bandeja (chips estilo WhatsApp, look Airbnb).
-enum _FiltroChat { todos, noLeidos, grupos, fijados }
+enum _FiltroChat { todos, noLeidos, academias, canchas, grupos, fijados }
 
 /// Descriptor de una conversación para pintar la fila del inbox.
 class _Conv {
@@ -116,7 +116,18 @@ class _MensajesScreenState extends State<MensajesScreen> {
       if (al.email.toLowerCase() == email) student.add(al.academiaId);
     }
     final ids = {...owned, ...student}.toList();
-    final msgs = await MensajesRepo.mensajesDeAcademias(ids);
+    // Mensajes de academia: como dueño/alumno (por id) + como JUGADOR que escribió
+    // (cuenta_email = yo), aunque no esté matriculado → el chat con la academia
+    // siempre sale en el inbox. Dedupe por id.
+    final acadMap = <String, Mensaje>{};
+    for (final m in await MensajesRepo.mensajesDeAcademias(ids)) {
+      acadMap[m.id] = m;
+    }
+    for (final m in await MensajesRepo.mensajesAcademiaComoJugador(email)) {
+      acadMap[m.id] = m;
+    }
+    final msgs = acadMap.values.toList()
+      ..sort((a, b) => a.creado.compareTo(b.creado));
     // Carga los perfiles (nombre/foto elegidos) de las contrapartes para
     // mostrar su NOMBRE y foto en vez del correo.
     await appState.cargarPerfiles([
@@ -511,6 +522,8 @@ class _MensajesScreenState extends State<MensajesScreen> {
             children: [
               _chipFiltro(_FiltroChat.todos, 'Todos', null, cs),
               _chipFiltro(_FiltroChat.noLeidos, 'No leídos', noLeidos, cs),
+              _chipFiltro(_FiltroChat.academias, 'Academias', null, cs),
+              _chipFiltro(_FiltroChat.canchas, 'Canchas', null, cs),
               _chipFiltro(_FiltroChat.grupos, 'Grupos', grupos, cs),
               _chipFiltro(_FiltroChat.fijados, 'Fijados', null, cs),
             ],
@@ -978,6 +991,12 @@ class _MensajesScreenState extends State<MensajesScreen> {
               switch (_filtro) {
                 case _FiltroChat.noLeidos:
                   vis = vis.where((c) => c.noLeidos > 0);
+                  break;
+                case _FiltroChat.academias:
+                  vis = vis.where((c) => c.tipo == 'academia');
+                  break;
+                case _FiltroChat.canchas:
+                  vis = vis.where((c) => c.tipo == 'cancha');
                   break;
                 case _FiltroChat.grupos:
                   vis = vis.where((c) => c.tipo == 'grupo');
