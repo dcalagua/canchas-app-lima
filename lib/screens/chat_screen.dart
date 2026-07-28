@@ -13,6 +13,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../data/lecturas_repo.dart';
 import '../data/mensajes_repo.dart';
+import '../data/reacciones_repo.dart';
 import '../models/mensaje.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
@@ -141,6 +142,17 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  // Reacciones del hilo en vivo: mensajeId → {correo: emoji}.
+  final Map<String, Map<String, String>> _reacciones = {};
+  StreamSubscription? _reaccionesSub;
+
+  /// Pone/cambia/quita MI reacción a un mensaje (toggle).
+  void _reaccionar(Mensaje m, String emoji) {
+    final yo = (appState.usuario?.email ?? '').toLowerCase();
+    final actual = _reacciones[m.id]?[yo];
+    ReaccionesRepo.alternar(_hilo, m.id, yo, emoji, emojiActual: actual);
+  }
+
   // Mensaje que estoy respondiendo (cita arriba del composer). Null = ninguno.
   Mensaje? _respondiendo;
 
@@ -260,6 +272,24 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       });
     }
+    // Reacciones del hilo en vivo (todos los tipos de chat).
+    _reaccionesSub = ReaccionesRepo.stream(_hilo).listen((rows) {
+      final m = <String, Map<String, String>>{};
+      for (final r in rows) {
+        final mid = (r['mensaje_id'] ?? '').toString();
+        final em = (r['email'] ?? '').toString().toLowerCase();
+        final emoji = (r['emoji'] ?? '').toString();
+        if (mid.isEmpty || em.isEmpty || emoji.isEmpty) continue;
+        (m[mid] ??= <String, String>{})[em] = emoji;
+      }
+      if (mounted) {
+        setState(() {
+          _reacciones
+            ..clear()
+            ..addAll(m);
+        });
+      }
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       appState.marcarChatLeido(_hilo);
       // Foto tomada desde la cámara del inbox → se envía al abrir el chat.
@@ -501,6 +531,7 @@ class _ChatScreenState extends State<ChatScreen> {
     // Deja de ser el chat visible (solo si sigo siendo yo el abierto).
     if (appState.hiloChatAbierto == _hilo) appState.hiloChatAbierto = '';
     _lecturaSub?.cancel();
+    _reaccionesSub?.cancel();
     _texto.dispose();
     _scroll.dispose();
     _focus.dispose();
@@ -916,8 +947,10 @@ class _ChatScreenState extends State<ChatScreen> {
                               wa: wa,
                               mostrarAutor: esGrupo && !mio,
                               entrega: mio ? _estadoEntrega(m) : _Entrega.enviado,
+                              reacciones: _reacciones[m.id] ?? const {},
                               onResponder: () => _responder(m),
-                              onReenviar: () => _reenviar(m));
+                              onReenviar: () => _reenviar(m),
+                              onReaccion: (emoji) => _reaccionar(m, emoji));
                         },
                       );
                     },
@@ -963,15 +996,22 @@ class _Burbuja extends StatelessWidget {
       required this.wa,
       this.mostrarAutor = false,
       this.entrega = _Entrega.enviado,
+      this.reacciones = const {},
       this.onResponder,
-      this.onReenviar});
+      this.onReenviar,
+      this.onReaccion});
   final _Entrega entrega;
   final Mensaje mensaje;
   final bool mio;
   final _WA wa;
   final bool mostrarAutor; // en grupos: nombre del autor sobre el mensaje
+  final Map<String, String> reacciones; // correo → emoji (de este mensaje)
   final VoidCallback? onResponder;
   final VoidCallback? onReenviar;
+  final void Function(String emoji)? onReaccion;
+
+  // Emojis rápidos de reacción (fila superior, tipo WhatsApp).
+  static const _emojisRapidos = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 
   void _menu(BuildContext context) {
     showModalBottomSheet(
@@ -984,6 +1024,30 @@ class _Burbuja extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             const SizedBox(height: 8),
+            // Fila de reacciones rápidas (como WhatsApp).
+            if (onReaccion != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    for (final em in _emojisRapidos)
+                      InkWell(
+                        borderRadius: BorderRadius.circular(24),
+                        onTap: () {
+                          Navigator.pop(context);
+                          onReaccion!(em);
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.all(6),
+                          child: Text(em, style: const TextStyle(fontSize: 28)),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            if (onReaccion != null)
+              const Divider(height: 12),
             ListTile(
               leading: const Icon(Icons.reply, color: teal),
               title: const Text('Responder'),
@@ -1029,7 +1093,12 @@ class _Burbuja extends StatelessWidget {
         onHorizontalDragEnd: (d) {
           if ((d.primaryVelocity ?? 0) > 80) onResponder?.call();
         },
-        child: Container(
+        child: Column(
+          crossAxisAlignment:
+              mio ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
         constraints:
             BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.80),
         margin: const EdgeInsets.symmetric(vertical: 3, horizontal: 2),
@@ -1179,6 +1248,49 @@ class _Burbuja extends StatelessWidget {
             ),
           ],
         ),
+            ),
+            if (reacciones.isNotEmpty) _chipReacciones(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Pastilla con las reacciones del mensaje (emojis distintos + total).
+  Widget _chipReacciones() {
+    final emojis = reacciones.values.toList();
+    final distintos = <String>[];
+    for (final e in emojis) {
+      if (!distintos.contains(e)) distintos.add(e);
+    }
+    return Transform.translate(
+      offset: const Offset(0, -6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+        decoration: BoxDecoration(
+          color: wa.burbujaOtro,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 1,
+                offset: const Offset(0, 1)),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(distintos.take(3).join(),
+                style: const TextStyle(fontSize: 13)),
+            if (emojis.length > 1) ...[
+              const SizedBox(width: 2),
+              Text('${emojis.length}',
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: wa.hora,
+                      fontWeight: FontWeight.w600)),
+            ],
+          ],
         ),
       ),
     );
