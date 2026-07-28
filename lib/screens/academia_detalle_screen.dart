@@ -312,12 +312,10 @@ class _Contenido extends StatelessWidget {
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(_descuentosTexto(academia),
-                              style: TextStyle(
+                              style: const TextStyle(
                                   fontSize: 12.5,
                                   fontWeight: FontWeight.w600,
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurface)),
+                                  color: bosque)),
                         ),
                       ],
                     ),
