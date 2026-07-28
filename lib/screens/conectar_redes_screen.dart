@@ -251,7 +251,7 @@ class _ConectarRedesScreenState extends State<ConectarRedesScreen> {
         child: const Text(
             'Ya podemos publicar por ti. Genera contenido en "Community manager '
             'con IA" y aprueba cada post con "Publicar".',
-            style: TextStyle(fontSize: 13.5, height: 1.3)),
+            style: TextStyle(color: bosque, fontSize: 13.5, height: 1.3)),
       ),
       const SizedBox(height: 8),
       if (modo == 'sandbox') _avisoSandbox(),

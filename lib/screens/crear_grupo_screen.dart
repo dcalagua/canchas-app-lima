@@ -352,7 +352,8 @@ class _ChipMiembro extends StatelessWidget {
             child: Text(mostrar,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w700)),
+                style: const TextStyle(
+                    color: bosque, fontWeight: FontWeight.w700)),
           ),
           const SizedBox(width: 4),
           InkWell(

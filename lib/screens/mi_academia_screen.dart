@@ -1856,8 +1856,10 @@ class _SuscripcionAlumnoInfoProfeState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text('Paga mes a mes (débito automático)',
-                    style:
-                        TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                    style: TextStyle(
+                        color: bosque,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13)),
                 Text(
                     '${widget.moneda} ${monto.toStringAsFixed(2)}/mes'
                     '${prox != null ? ' · próximo cobro: $prox' : ''}',

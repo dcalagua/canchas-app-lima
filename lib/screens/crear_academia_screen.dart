@@ -706,7 +706,9 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                       child: Text(
                           '${p.frecuenciaSemana}x · $mon ${p.precioMes.toStringAsFixed(0)}',
                           style: const TextStyle(
-                              fontSize: 12.5, fontWeight: FontWeight.w700)),
+                              color: bosque,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700)),
                     ),
                 ],
               ),

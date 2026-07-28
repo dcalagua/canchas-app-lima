@@ -110,7 +110,9 @@ class MisClasesScreen extends StatelessWidget {
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                              fontWeight: FontWeight.w800, fontSize: 16)),
+                              color: bosque,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16)),
                       Text('Alumno: ${al.nombre}',
                           style: const TextStyle(
                               color: textoTenue, fontSize: 12.5)),

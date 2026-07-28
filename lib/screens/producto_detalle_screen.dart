@@ -191,7 +191,9 @@ class _ProductoDetalleScreenState extends State<ProductoDetalleScreen> {
                           borderRadius: BorderRadius.circular(7)),
                       child: Text(p.categoriaEtiqueta,
                           style: const TextStyle(
-                              fontSize: 12, fontWeight: FontWeight.w700)),
+                              color: bosque,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700)),
                     ),
                     if (p.agotado) ...[
                       const SizedBox(width: 8),
