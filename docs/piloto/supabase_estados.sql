@@ -18,6 +18,13 @@ create table if not exists public.pichangol_estados (
 create index if not exists ix_estados_creado    on public.pichangol_estados (creado_en desc);
 create index if not exists ix_estados_autor      on public.pichangol_estados (autor_email);
 
+-- Música opcional (preview 30 s de iTunes/Apple + carátula). Si ya creaste la
+-- tabla antes, corre solo estos ALTER:
+alter table public.pichangol_estados add column if not exists musica_titulo  text default '';
+alter table public.pichangol_estados add column if not exists musica_artista text default '';
+alter table public.pichangol_estados add column if not exists musica_preview text default '';
+alter table public.pichangol_estados add column if not exists musica_art     text default '';
+
 -- 2) Vistas: quién vio cada estado (para "visto por N") -----------------------
 create table if not exists public.pichangol_estados_vistas (
   estado_id  text not null references public.pichangol_estados(id) on delete cascade,

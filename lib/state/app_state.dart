@@ -347,8 +347,15 @@ class AppState extends ChangeNotifier {
   }
 
   /// Publica un estado de TEXTO (sobre un color de fondo). Devuelve el estado o
-  /// null si falla.
-  Future<Estado?> publicarEstadoTexto(String texto, int bg) async {
+  /// null si falla. Acepta música opcional (preview 30 s).
+  Future<Estado?> publicarEstadoTexto(
+    String texto,
+    int bg, {
+    String musicaTitulo = '',
+    String musicaArtista = '',
+    String musicaPreview = '',
+    String musicaArt = '',
+  }) async {
     final u = usuario;
     final t = texto.trim();
     if (u == null || t.isEmpty) return null;
@@ -360,6 +367,10 @@ class AppState extends ChangeNotifier {
       texto: t,
       bg: bg,
       creadoEn: DateTime.now(),
+      musicaTitulo: musicaTitulo,
+      musicaArtista: musicaArtista,
+      musicaPreview: musicaPreview,
+      musicaArt: musicaArt,
     );
     final ok = await EstadosRepo.publicar(e);
     if (!ok) return null;
@@ -371,7 +382,14 @@ class AppState extends ChangeNotifier {
 
   /// Publica un estado de FOTO (con pie opcional). Sube la imagen al bucket.
   /// Devuelve el estado o null si falla (motivo en EstadosRepo.ultimoErrorFoto).
-  Future<Estado?> publicarEstadoFoto(Uint8List bytes, {String pie = ''}) async {
+  Future<Estado?> publicarEstadoFoto(
+    Uint8List bytes, {
+    String pie = '',
+    String musicaTitulo = '',
+    String musicaArtista = '',
+    String musicaPreview = '',
+    String musicaArt = '',
+  }) async {
     final u = usuario;
     if (u == null) return null;
     final id = 'st_${DateTime.now().microsecondsSinceEpoch}';
@@ -385,6 +403,10 @@ class AppState extends ChangeNotifier {
       texto: pie.trim(),
       fotoUrl: url,
       creadoEn: DateTime.now(),
+      musicaTitulo: musicaTitulo,
+      musicaArtista: musicaArtista,
+      musicaPreview: musicaPreview,
+      musicaArt: musicaArt,
     );
     final ok = await EstadosRepo.publicar(e);
     if (!ok) return null;

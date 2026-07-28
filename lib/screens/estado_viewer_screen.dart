@@ -1,4 +1,6 @@
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/estado.dart';
 import '../state/app_state.dart';
@@ -21,7 +23,9 @@ class EstadoViewerScreen extends StatefulWidget {
 class _EstadoViewerScreenState extends State<EstadoViewerScreen>
     with SingleTickerProviderStateMixin {
   static const _duracion = Duration(seconds: 5);
+  static const _duracionMusica = Duration(seconds: 15); // más tiempo si hay música
   late final AnimationController _ctrl;
+  final AudioPlayer _audio = AudioPlayer();
   late List<Estado> _items;
   int _i = 0;
 
@@ -48,6 +52,7 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
 
   @override
   void dispose() {
+    _audio.dispose();
     _ctrl.dispose();
     super.dispose();
   }
@@ -55,10 +60,32 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
   void _mostrar(int idx) {
     if (idx < 0 || idx >= _items.length) return;
     setState(() => _i = idx);
-    appState.marcarEstadoVisto(_items[idx].id);
+    final e = _items[idx];
+    appState.marcarEstadoVisto(e.id);
+    // Música: reproduce el preview (o corta si el estado no tiene) y da más
+    // tiempo de exhibición para que la canción se escuche.
+    _audio.stop();
+    if (e.tieneMusica) {
+      _ctrl.duration = _duracionMusica;
+      try {
+        _audio.play(UrlSource(e.musicaPreview));
+      } catch (_) {}
+    } else {
+      _ctrl.duration = _duracion;
+    }
     _ctrl
       ..reset()
       ..forward();
+  }
+
+  Future<void> _abrirSpotify(Estado e) async {
+    _pausar();
+    final q = Uri.encodeComponent('${e.musicaTitulo} ${e.musicaArtista}'.trim());
+    final url = Uri.parse('https://open.spotify.com/search/$q');
+    try {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    } catch (_) {}
+    if (mounted) _reanudar();
   }
 
   void _siguiente() {
@@ -79,9 +106,14 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
     }
   }
 
-  void _pausar() => _ctrl.stop();
+  void _pausar() {
+    _ctrl.stop();
+    _audio.pause();
+  }
+
   void _reanudar() {
     if (!_ctrl.isAnimating) _ctrl.forward();
+    if (_items.isNotEmpty && _items[_i].tieneMusica) _audio.resume();
   }
 
   String _hace(DateTime t) {
@@ -326,6 +358,16 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
                       ],
                     ),
                   ),
+                  // Sticker de música (si la historia trae canción).
+                  if (e.tieneMusica)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 2, 12, 0),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: _MusicaSticker(
+                            estado: e, onSpotify: () => _abrirSpotify(e)),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -386,6 +428,65 @@ class _Barra extends StatelessWidget {
                 ),
               )
             : Container(color: estado == 1 ? Colors.white : Colors.white30),
+      ),
+    );
+  }
+}
+
+/// Sticker de música en el visor: carátula + título/artista + "Spotify".
+class _MusicaSticker extends StatelessWidget {
+  const _MusicaSticker({required this.estado, required this.onSpotify});
+  final Estado estado;
+  final VoidCallback onSpotify;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(6, 5, 10, 5),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.4),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: estado.musicaArt.isNotEmpty
+                ? Image.network(estado.musicaArt,
+                    width: 26,
+                    height: 26,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const Icon(Icons.music_note,
+                        color: Colors.white, size: 20))
+                : const Icon(Icons.music_note, color: Colors.white, size: 20),
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              '${estado.musicaTitulo} · ${estado.musicaArtista}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12),
+            ),
+          ),
+          const SizedBox(width: 8),
+          InkWell(
+            onTap: onSpotify,
+            child: const Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.play_circle_fill, color: Color(0xFF1DB954), size: 18),
+              SizedBox(width: 3),
+              Text('Spotify',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12)),
+            ]),
+          ),
+        ],
       ),
     );
   }

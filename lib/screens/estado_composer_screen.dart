@@ -3,9 +3,12 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../data/estados_repo.dart';
+import '../services/musica_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/chip_musica.dart';
 import '../widgets/dialogo_pichangol.dart';
+import 'selector_musica_screen.dart';
 
 /// Paleta de fondos para el estado de TEXTO (colores de marca + vivos).
 const _fondos = <int>[
@@ -32,6 +35,7 @@ class _EstadoComposerScreenState extends State<EstadoComposerScreen> {
   final _ctrl = TextEditingController();
   int _bgIdx = 0;
   bool _enviando = false;
+  PistaMusica? _musica;
 
   @override
   void dispose() {
@@ -39,11 +43,24 @@ class _EstadoComposerScreenState extends State<EstadoComposerScreen> {
     super.dispose();
   }
 
+  Future<void> _elegirMusica() async {
+    final p = await Navigator.of(context).push<PistaMusica>(
+        MaterialPageRoute(builder: (_) => const SelectorMusicaScreen()));
+    if (p != null && mounted) setState(() => _musica = p);
+  }
+
   Future<void> _publicar() async {
     final t = _ctrl.text.trim();
     if (t.isEmpty || _enviando) return;
     setState(() => _enviando = true);
-    final e = await appState.publicarEstadoTexto(t, _fondos[_bgIdx]);
+    final e = await appState.publicarEstadoTexto(
+      t,
+      _fondos[_bgIdx],
+      musicaTitulo: _musica?.titulo ?? '',
+      musicaArtista: _musica?.artista ?? '',
+      musicaPreview: _musica?.previewUrl ?? '',
+      musicaArt: _musica?.artUrl ?? '',
+    );
     if (!mounted) return;
     if (e == null) {
       setState(() => _enviando = false);
@@ -70,6 +87,13 @@ class _EstadoComposerScreenState extends State<EstadoComposerScreen> {
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
         actions: [
           IconButton(
+            tooltip: 'Añadir música',
+            icon: Icon(
+                _musica != null ? Icons.music_note : Icons.music_note_outlined,
+                color: Colors.white),
+            onPressed: _elegirMusica,
+          ),
+          IconButton(
             tooltip: 'Cambiar color',
             icon: const Icon(Icons.palette_outlined, color: Colors.white),
             onPressed: () =>
@@ -78,33 +102,48 @@ class _EstadoComposerScreenState extends State<EstadoComposerScreen> {
         ],
       ),
       body: SafeArea(
-        // width infinito (acotado por el Scaffold) para que el TextField ocupe
-        // TODO el ancho; si no, con maxLines:null cada letra caía en su propia
-        // línea y se veían "rayas". El scroll deja crecer el texto con teclado.
-        child: SizedBox(
-          width: double.infinity,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
-            child: TextField(
-              controller: _ctrl,
-              autofocus: true,
-              textAlign: TextAlign.center,
-              maxLines: null,
-              maxLength: 280,
-              cursorColor: Colors.white,
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 26,
-                  fontWeight: FontWeight.w700,
-                  height: 1.3),
-              decoration: const InputDecoration(
-                border: InputBorder.none,
-                counterText: '',
-                hintText: 'Escribe un estado',
-                hintStyle: TextStyle(color: Colors.white70, fontSize: 24),
+        child: Column(
+          children: [
+            // width infinito (acotado por el Scaffold) para que el TextField
+            // ocupe TODO el ancho; si no, con maxLines:null cada letra caía en su
+            // propia línea y se veían "rayas". El scroll deja crecer con teclado.
+            Expanded(
+              child: SizedBox(
+                width: double.infinity,
+                child: SingleChildScrollView(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
+                  child: TextField(
+                    controller: _ctrl,
+                    autofocus: true,
+                    textAlign: TextAlign.center,
+                    maxLines: null,
+                    maxLength: 280,
+                    cursorColor: Colors.white,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 26,
+                        fontWeight: FontWeight.w700,
+                        height: 1.3),
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      counterText: '',
+                      hintText: 'Escribe un estado',
+                      hintStyle:
+                          TextStyle(color: Colors.white70, fontSize: 24),
+                    ),
+                  ),
+                ),
               ),
             ),
-          ),
+            if (_musica != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: ChipMusica(
+                    pista: _musica!,
+                    onQuitar: () => setState(() => _musica = null)),
+              ),
+          ],
         ),
       ),
       floatingActionButton: FloatingActionButton(
@@ -134,6 +173,7 @@ class EstadoFotoComposerScreen extends StatefulWidget {
 class _EstadoFotoComposerScreenState extends State<EstadoFotoComposerScreen> {
   final _ctrl = TextEditingController();
   bool _enviando = false;
+  PistaMusica? _musica;
 
   @override
   void dispose() {
@@ -141,11 +181,23 @@ class _EstadoFotoComposerScreenState extends State<EstadoFotoComposerScreen> {
     super.dispose();
   }
 
+  Future<void> _elegirMusica() async {
+    final p = await Navigator.of(context).push<PistaMusica>(
+        MaterialPageRoute(builder: (_) => const SelectorMusicaScreen()));
+    if (p != null && mounted) setState(() => _musica = p);
+  }
+
   Future<void> _publicar() async {
     if (_enviando) return;
     setState(() => _enviando = true);
-    final e = await appState.publicarEstadoFoto(widget.bytes,
-        pie: _ctrl.text.trim());
+    final e = await appState.publicarEstadoFoto(
+      widget.bytes,
+      pie: _ctrl.text.trim(),
+      musicaTitulo: _musica?.titulo ?? '',
+      musicaArtista: _musica?.artista ?? '',
+      musicaPreview: _musica?.previewUrl ?? '',
+      musicaArt: _musica?.artUrl ?? '',
+    );
     if (!mounted) return;
     if (e == null) {
       setState(() => _enviando = false);
@@ -169,6 +221,15 @@ class _EstadoFotoComposerScreenState extends State<EstadoFotoComposerScreen> {
         iconTheme: const IconThemeData(color: Colors.white),
         title: const Text('Estado',
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+        actions: [
+          IconButton(
+            tooltip: 'Añadir música',
+            icon: Icon(
+                _musica != null ? Icons.music_note : Icons.music_note_outlined,
+                color: Colors.white),
+            onPressed: _elegirMusica,
+          ),
+        ],
       ),
       body: SafeArea(
         child: Column(
@@ -178,6 +239,16 @@ class _EstadoFotoComposerScreenState extends State<EstadoFotoComposerScreen> {
                 child: Image.memory(widget.bytes, fit: BoxFit.contain),
               ),
             ),
+            if (_musica != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: ChipMusica(
+                      pista: _musica!,
+                      onQuitar: () => setState(() => _musica = null)),
+                ),
+              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
               child: Row(
