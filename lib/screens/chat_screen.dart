@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../data/db_local.dart';
 import '../data/lecturas_repo.dart';
 import '../data/mensajes_repo.dart';
 import '../data/reacciones_repo.dart';
@@ -133,12 +134,21 @@ class _ChatScreenState extends State<ChatScreen> {
   int _limite = _pagina;
   // Stream NO recreado en cada build (si no, parpadearía al enviar): solo se
   // recrea al cambiar [_limite]. Por eso guardamos la referencia.
-  late Stream<List<Mensaje>> _stream = MensajesRepo.streamHilo(_hilo, limite: _limite);
+  late Stream<List<Mensaje>> _stream = _streamConCache(_limite);
+
+  /// Caché device-first: emite PRIMERO los mensajes guardados en el teléfono
+  /// (pinta al instante, aunque Android haya matado la app) y LUEGO el stream en
+  /// vivo de Supabase. Así no hay spinner de red al volver.
+  Stream<List<Mensaje>> _streamConCache(int limite) async* {
+    final cache = await DbLocal.leerMensajes(_hilo, limite: limite);
+    if (cache.isNotEmpty) yield cache;
+    yield* MensajesRepo.streamHilo(_hilo, limite: limite);
+  }
 
   void _cargarAnteriores() {
     setState(() {
       _limite += _pagina;
-      _stream = MensajesRepo.streamHilo(_hilo, limite: _limite);
+      _stream = _streamConCache(_limite);
     });
   }
 
@@ -979,6 +989,9 @@ class _ChatScreenState extends State<ChatScreen> {
                       final ultimo = msgs.isNotEmpty ? msgs.last.id : '';
                       if (ultimo.isNotEmpty && ultimo != _ultimoVisto) {
                         _ultimoVisto = ultimo;
+                        // Persistir la ventana visible en la caché local (SQLite)
+                        // para pintarla al instante la próxima vez que se abra.
+                        DbLocal.guardarMensajes(_hilo, msgs);
                         WidgetsBinding.instance.addPostFrameCallback((_) {
                           if (mounted) appState.marcarChatLeido(_hilo);
                         });

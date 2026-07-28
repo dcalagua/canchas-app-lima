@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../data/db_local.dart';
 import '../data/grupos_repo.dart';
 import '../data/mensajes_repo.dart';
 import '../models/mensaje.dart';
@@ -55,6 +56,35 @@ class _Conv {
   final int noLeidos;
   final String tipo; // 'academia' | 'cancha'
   final String refId; // canchaId/dueño para cancha
+
+  /// JSON para caché local (SQLite). Incluye `hilo` y `cuando` sueltos para que
+  /// DbLocal pueda ordenar sin re-parsear todo.
+  Map<String, dynamic> toJson() => {
+        'hilo': hilo,
+        'academiaId': academiaId,
+        'cuentaEmail': cuentaEmail,
+        'titulo': titulo,
+        'preview': preview,
+        'soyProfe': soyProfe,
+        'cuando': cuando.toIso8601String(),
+        'noLeidos': noLeidos,
+        'tipo': tipo,
+        'refId': refId,
+      };
+
+  factory _Conv.fromJson(Map<String, dynamic> j) => _Conv(
+        hilo: (j['hilo'] ?? '').toString(),
+        academiaId: (j['academiaId'] ?? '').toString(),
+        cuentaEmail: (j['cuentaEmail'] ?? '').toString(),
+        titulo: (j['titulo'] ?? '').toString(),
+        preview: (j['preview'] ?? '').toString(),
+        soyProfe: (j['soyProfe'] ?? false) as bool,
+        cuando: DateTime.tryParse((j['cuando'] ?? '').toString()) ??
+            DateTime.now(),
+        noLeidos: (j['noLeidos'] ?? 0) as int,
+        tipo: (j['tipo'] ?? 'academia').toString(),
+        refId: (j['refId'] ?? '').toString(),
+      );
 }
 
 class _MensajesScreenState extends State<MensajesScreen> {
@@ -73,6 +103,7 @@ class _MensajesScreenState extends State<MensajesScreen> {
   void initState() {
     super.initState();
     _emailCargado = (appState.usuario?.email ?? '').toLowerCase();
+    _cargarCache(); // pinta el inbox al instante desde el teléfono (SQLite)
     _cargar();
     appState.addListener(_alCambiarSesion);
   }
@@ -89,7 +120,27 @@ class _MensajesScreenState extends State<MensajesScreen> {
         _abiertos.clear();
       });
     }
+    _cargarCache(); // inbox del nuevo usuario al instante (si hay caché)
     _cargar();
+  }
+
+  /// Pinta el inbox AL INSTANTE desde la caché local (SQLite) mientras `_cargar`
+  /// trae lo fresco de Supabase en segundo plano. Fail-safe: si no hay caché o
+  /// falla, no pasa nada (se queda el spinner hasta que llegue el backend).
+  Future<void> _cargarCache() async {
+    final email = (appState.usuario?.email ?? '').toLowerCase();
+    if (email.isEmpty) return;
+    final rows = await DbLocal.leerConvs(email);
+    if (rows.isEmpty || !mounted) return;
+    // Si el backend ya pintó (más nuevo), no piso su resultado.
+    if (_convs.isNotEmpty) return;
+    final convs = rows.map((r) => _Conv.fromJson(r)).toList()
+      ..removeWhere((c) => appState.chatOculto(c.hilo, c.cuando))
+      ..sort((a, b) => b.cuando.compareTo(a.cuando));
+    setState(() {
+      _convs = convs;
+      _cargando = false;
+    });
   }
 
   // [silencioso] = refresca en segundo plano SIN el spinner de pantalla completa
@@ -311,6 +362,9 @@ class _MensajesScreenState extends State<MensajesScreen> {
       _convs = convs;
       _cargando = false;
     });
+    // Persiste el inbox en la caché local (SQLite) para pintarlo al instante la
+    // próxima vez, aunque Android haya matado la app.
+    DbLocal.guardarConvs(email, [for (final c in convs) c.toJson()]);
     // Checks: al bajar los mensajes, marca ENTREGADOS mis hilos (2 grises para
     // el remitente aunque aún no abra el chat).
     appState.marcarEntregados(convs.map((c) => c.hilo));
