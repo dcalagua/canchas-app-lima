@@ -18,7 +18,7 @@ import '../data/mensajes_repo.dart';
 import '../data/reacciones_repo.dart';
 import '../models/grupo.dart';
 import '../models/mensaje.dart';
-import '../services/tenor_service.dart';
+import '../services/giphy_service.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -684,7 +684,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  /// Envía un GIF/sticker de Tenor: la URL ya está hospedada por Tenor, no se
+  /// Envía un GIF/sticker de Giphy: la URL ya está hospedada por Giphy, no se
   /// sube a nuestro bucket (viaja como mediaUrl y se anima solo en la burbuja).
   Future<void> _enviarGif(String url) async {
     final u = appState.usuario;
@@ -1386,7 +1386,7 @@ class _Burbuja extends StatelessWidget {
                 child: _BurbujaAudio(url: mensaje.mediaUrl, mio: mio, wa: wa),
               )
             else if (mensaje.esGifSticker)
-              // GIF/sticker (Tenor): sin recorte, fondo transparente, ya animado.
+              // GIF/sticker (Giphy): sin recorte, fondo transparente, ya animado.
               Padding(
                 padding: const EdgeInsets.only(bottom: 4),
                 child: Image.network(
@@ -1911,7 +1911,7 @@ class _Barra extends StatelessWidget {
 /// Panel de emojis propio (sin paquete): grilla de los más usados. Al tocar uno
 /// se inserta en el texto. Se muestra en vez del teclado, como WhatsApp.
 /// Panel de expresión estilo WhatsApp: pestañas Emoji · GIF · Stickers.
-/// Los GIF/stickers vienen de Tenor (mismo motor de WhatsApp).
+/// Los GIF/stickers vienen de Giphy.
 class _PanelExpresion extends StatelessWidget {
   const _PanelExpresion(
       {required this.onEmoji, required this.onMedia, required this.wa});
@@ -1967,9 +1967,9 @@ class _PanelExpresion extends StatelessWidget {
                     ],
                   ),
                   // GIF
-                  _TenorGrid(sticker: false, onSelect: onMedia, wa: wa),
+                  _GifGrid(sticker: false, onSelect: onMedia, wa: wa),
                   // Stickers
-                  _TenorGrid(sticker: true, onSelect: onMedia, wa: wa),
+                  _GifGrid(sticker: true, onSelect: onMedia, wa: wa),
                 ],
               ),
             ),
@@ -1980,27 +1980,27 @@ class _PanelExpresion extends StatelessWidget {
   }
 }
 
-/// Grilla de GIFs/stickers de Tenor con buscador (tendencia si el texto vacío).
-class _TenorGrid extends StatefulWidget {
-  const _TenorGrid(
+/// Grilla de GIFs/stickers de Giphy con buscador (tendencia si el texto vacío).
+class _GifGrid extends StatefulWidget {
+  const _GifGrid(
       {required this.sticker, required this.onSelect, required this.wa});
   final bool sticker;
   final void Function(String url) onSelect;
   final _WA wa;
 
   @override
-  State<_TenorGrid> createState() => _TenorGridState();
+  State<_GifGrid> createState() => _GifGridState();
 }
 
-class _TenorGridState extends State<_TenorGrid> {
+class _GifGridState extends State<_GifGrid> {
   final _q = TextEditingController();
-  List<TenorItem> _items = const [];
+  List<GifItem> _items = const [];
   bool _cargando = false;
 
   @override
   void initState() {
     super.initState();
-    if (TenorService.configurado) _buscar('');
+    if (GiphyService.configurado) _buscar('');
   }
 
   @override
@@ -2011,7 +2011,7 @@ class _TenorGridState extends State<_TenorGrid> {
 
   Future<void> _buscar(String q) async {
     setState(() => _cargando = true);
-    final r = await TenorService.buscar(q, sticker: widget.sticker);
+    final r = await GiphyService.buscar(q, sticker: widget.sticker);
     if (!mounted) return;
     setState(() {
       _items = r;
@@ -2021,13 +2021,13 @@ class _TenorGridState extends State<_TenorGrid> {
 
   @override
   Widget build(BuildContext context) {
-    if (!TenorService.configurado) {
+    if (!GiphyService.configurado) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Text(
               '${widget.sticker ? "Stickers" : "GIF"} aún no activados.\n'
-              'Falta configurar la clave de Tenor.',
+              'Falta configurar la clave de Giphy.',
               textAlign: TextAlign.center,
               style: TextStyle(color: widget.wa.hora)),
         ),
