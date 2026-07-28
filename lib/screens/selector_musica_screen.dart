@@ -101,7 +101,9 @@ class _SelectorMusicaScreenState extends State<SelectorMusicaScreen> {
                 suffixIcon: IconButton(
                     icon: const Icon(Icons.arrow_forward), onPressed: _buscar),
                 filled: true,
-                fillColor: const Color(0xFFF2F2F2),
+                fillColor: Theme.of(context).brightness == Brightness.dark
+                    ? const Color(0xFF1F2C34)
+                    : const Color(0xFFF2F2F2),
                 border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(24),
                     borderSide: BorderSide.none),
