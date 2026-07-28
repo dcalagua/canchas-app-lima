@@ -836,7 +836,11 @@ class _MensajesScreenState extends State<MensajesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      floatingActionButton: appState.logueado
+      // En tablet (master-detail) el chat se embebe al lado; el FAB flotaría
+      // encima del micro/enviar del chat. Como "Nuevo grupo" también está en el
+      // menú ⋮, ocultamos el FAB en pantallas anchas y lo dejamos solo en móvil.
+      floatingActionButton:
+          appState.logueado && MediaQuery.of(context).size.width < 640
           ? FloatingActionButton.extended(
               onPressed: () => Navigator.of(context)
                   .push(MaterialPageRoute(
