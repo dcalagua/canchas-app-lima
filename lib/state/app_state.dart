@@ -441,8 +441,15 @@ class AppState extends ChangeNotifier {
   }
 
   /// Envía un mensaje DIRECTO 1:1 a [paraEmail] (usado para "responder historia").
-  /// Devuelve true si se envió.
-  Future<bool> enviarMensajeDirecto(String paraEmail, String texto) async {
+  /// Acepta una CITA opcional (autor/texto/miniatura) para que la respuesta a una
+  /// historia muestre la historia citada, tipo WhatsApp. Devuelve true si se envió.
+  Future<bool> enviarMensajeDirecto(
+    String paraEmail,
+    String texto, {
+    String respTexto = '',
+    String respAutor = '',
+    String respMedia = '',
+  }) async {
     final u = usuario;
     final t = texto.trim();
     final para = paraEmail.trim().toLowerCase();
@@ -458,6 +465,9 @@ class AppState extends ChangeNotifier {
       autorNombre: u.nombre,
       esProfe: false,
       texto: t,
+      respTexto: respTexto,
+      respAutor: respAutor,
+      respMedia: respMedia,
       creado: DateTime.now(),
     );
     return MensajesRepo.enviar(msg);

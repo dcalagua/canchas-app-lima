@@ -70,14 +70,23 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
     super.dispose();
   }
 
-  /// Envía una respuesta (texto o emoji) a la historia como mensaje directo.
+  /// Envía una respuesta (texto o emoji) a la historia como mensaje directo,
+  /// CITANDO la historia (miniatura si es foto) para que se vea como WhatsApp.
   Future<void> _enviarResp(String txt) async {
     final t = txt.trim();
     if (t.isEmpty) return;
     _respuesta.clear();
     _focoResp.unfocus();
-    final ok =
-        await appState.enviarMensajeDirecto(widget.autorEmail, '↪️ (historia) $t');
+    final e = _items[_i];
+    final autorNombre =
+        appState.nombreMostrableDe(widget.autorEmail) ?? e.autorNombre;
+    final ok = await appState.enviarMensajeDirecto(
+      widget.autorEmail,
+      t,
+      respAutor: autorNombre,
+      respTexto: e.esFoto ? (e.texto.isNotEmpty ? e.texto : 'Foto') : e.texto,
+      respMedia: e.esFoto ? e.fotoUrl : '',
+    );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(ok ? 'Respuesta enviada' : 'No se pudo enviar'),
