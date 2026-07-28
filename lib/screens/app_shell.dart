@@ -6,11 +6,14 @@ import '../widgets/icono_chat_pichan.dart';
 import 'explorar_home_screen.dart';
 import 'mensajes_screen.dart';
 import 'mis_reservas_screen.dart';
+import 'novedades_screen.dart';
 import 'partidos_screen.dart';
 import 'perfil_screen.dart';
 
 /// Shell del JUGADOR con barra inferior (estilo Airbnb): Explorar · Partidos ·
-/// Reservas · Perfil. Es la raíz de la app del jugador.
+/// Reservas · Mensajes · Perfil. "Novedades" (historias) es una sección
+/// CONTEXTUAL: solo aparece en la barra cuando estás usando Mensajes (como el
+/// WhatsApp actual, pero sin ocupar espacio fijo en el resto de la app).
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
 
@@ -19,71 +22,102 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell> {
-  int _index = 0;
-  late final List<Widget> _paginas;
+  // Clave de la sección activa (evita índices frágiles al insertar/quitar
+  // "Novedades" dinámicamente).
+  String _sel = 'explorar';
 
-  @override
-  void initState() {
-    super.initState();
-    _paginas = [
-      const ExplorarHomeScreen(),
-      const PartidosScreen(), // "Match": partidos abiertos (+ pichangas de club)
-      const MisReservasScreen(),
-      const MensajesScreen(),
-      const PerfilScreen(),
-    ];
+  // Todas las páginas (IndexedStack conserva su estado aunque no estén en la
+  // barra). El orden acá es fijo; la barra decide qué se ve.
+  static const _claves = <String>[
+    'explorar',
+    'partidos',
+    'reservas',
+    'mensajes',
+    'novedades',
+    'perfil',
+  ];
+  late final List<Widget> _paginas = const [
+    ExplorarHomeScreen(),
+    PartidosScreen(),
+    MisReservasScreen(),
+    MensajesScreen(),
+    NovedadesScreen(),
+    PerfilScreen(),
+  ];
+
+  bool get _enMensajes => _sel == 'mensajes' || _sel == 'novedades';
+
+  void _ir(String clave) {
+    setState(() => _sel = clave);
+    if (clave == 'perfil') appState.cargarRetosPendientes();
+    if (clave == 'novedades') appState.cargarEstados();
   }
 
   @override
   Widget build(BuildContext context) {
+    final stackIndex = _claves.indexOf(_sel).clamp(0, _claves.length - 1);
     return Scaffold(
-      body: IndexedStack(index: _index, children: _paginas),
-      // La pestaña Perfil muestra la FOTO del usuario logueado (estilo Airbnb).
-      // ListenableBuilder para que reaccione al iniciar/cerrar sesión.
+      body: IndexedStack(index: stackIndex, children: _paginas),
       bottomNavigationBar: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
           final foto = appState.usuario?.fotoUrl;
           final retos = appState.retosPendientes;
-          return NavigationBar(
-            selectedIndex: _index,
-            onDestinationSelected: (i) {
-              setState(() => _index = i);
-              // Al entrar a Perfil, refresca el contador de retos (badge).
-              if (i == 4) appState.cargarRetosPendientes();
-            },
-            destinations: [
-              const NavigationDestination(
-                  icon: Icon(Icons.explore_outlined),
-                  selectedIcon: Icon(Icons.explore),
-                  label: 'Explorar'),
-              const NavigationDestination(
-                  icon: Icon(Icons.groups_outlined),
-                  selectedIcon: Icon(Icons.groups),
-                  label: 'Partidos'),
-              const NavigationDestination(
-                  icon: Icon(Icons.event_note_outlined),
-                  selectedIcon: Icon(Icons.event_note),
-                  label: 'Reservas'),
-              const NavigationDestination(
-                  icon: IconoChatPichan(activo: false),
-                  selectedIcon: IconoChatPichan(activo: true),
-                  label: 'Mensajes'),
-              NavigationDestination(
+
+          // Destinos visibles: los 5 fijos + "Novedades" insertado tras Mensajes
+          // SOLO cuando estás en ese contexto.
+          final items = <_NavItem>[
+            const _NavItem('explorar', 'Explorar',
+                icon: Icon(Icons.explore_outlined),
+                selectedIcon: Icon(Icons.explore)),
+            const _NavItem('partidos', 'Partidos',
+                icon: Icon(Icons.groups_outlined),
+                selectedIcon: Icon(Icons.groups)),
+            const _NavItem('reservas', 'Reservas',
+                icon: Icon(Icons.event_note_outlined),
+                selectedIcon: Icon(Icons.event_note)),
+            const _NavItem('mensajes', 'Mensajes',
+                icon: IconoChatPichan(activo: false),
+                selectedIcon: IconoChatPichan(activo: true)),
+            if (_enMensajes)
+              const _NavItem('novedades', 'Novedades',
+                  icon: Icon(Icons.donut_large_outlined, color: lima),
+                  selectedIcon: Icon(Icons.donut_large, color: lima)),
+            _NavItem('perfil', 'Perfil',
                 icon: _ConBadge(
                     count: retos,
                     child: _PerfilIcono(fotoUrl: foto, seleccionado: false)),
                 selectedIcon: _ConBadge(
                     count: retos,
-                    child: _PerfilIcono(fotoUrl: foto, seleccionado: true)),
-                label: 'Perfil',
-              ),
+                    child: _PerfilIcono(fotoUrl: foto, seleccionado: true))),
+          ];
+
+          final sel = items.indexWhere((it) => it.clave == _sel);
+          return NavigationBar(
+            selectedIndex: sel < 0 ? 0 : sel,
+            onDestinationSelected: (i) => _ir(items[i].clave),
+            destinations: [
+              for (final it in items)
+                NavigationDestination(
+                    icon: it.icon,
+                    selectedIcon: it.selectedIcon,
+                    label: it.label),
             ],
           );
         },
       ),
     );
   }
+}
+
+/// Descriptor de un destino de la barra (para armarla dinámicamente).
+class _NavItem {
+  const _NavItem(this.clave, this.label,
+      {required this.icon, required this.selectedIcon});
+  final String clave;
+  final String label;
+  final Widget icon;
+  final Widget selectedIcon;
 }
 
 /// Envuelve un ícono de la barra con un badge (punto verde con número) cuando

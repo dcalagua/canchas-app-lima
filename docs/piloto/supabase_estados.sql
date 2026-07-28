@@ -32,3 +32,12 @@ create table if not exists public.pichangol_estados_vistas (
 -- 4) Bucket público para las fotos de estado ----------------------------------
 --   En Supabase Studio → Storage → New bucket → nombre "estados" → Public.
 --   (Mismo esquema que el bucket "productos".)
+--
+--   OJO: "Public" solo da LECTURA pública; para SUBIR falta la política de
+--   escritura. Corre esto (igual que el bucket "productos"):
+create policy "estados_leer"       on storage.objects
+  for select to public using (bucket_id = 'estados');
+create policy "estados_subir"      on storage.objects
+  for insert to public with check (bucket_id = 'estados');
+create policy "estados_actualizar" on storage.objects
+  for update to public using (bucket_id = 'estados');
