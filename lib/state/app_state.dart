@@ -4850,6 +4850,12 @@ class AppState extends ChangeNotifier {
   /// Deja la sesión lista tras autenticar (Google o manual) y dispara los
   /// refrescos remotos (reservas, saldo, academias→matrículas, invitaciones).
   void _finalizarLogin(Usuario u) {
+    // Cambio directo de cuenta (sin cerrar sesión antes): no arrastrar la agenda
+    // ni los chats/estados de la cuenta anterior a la nueva.
+    final previo = (usuario?.email ?? '').toLowerCase();
+    if (previo.isNotEmpty && previo != u.email.toLowerCase()) {
+      _limpiarDatosDeSesion();
+    }
     usuario = u;
     // La verificación de identidad es POR CUENTA: si cambió el titular, limpia el
     // estado local para que la nueva cuenta NO herede el "verificado" de la
@@ -4880,9 +4886,30 @@ class AppState extends ChangeNotifier {
     usuario = null;
     misReservas.clear(); // no mezclar reservas entre cuentas
     _limpiarVerificacionLocal(); // no arrastrar la verificación a otra cuenta
+    _limpiarDatosDeSesion(); // agenda, chats y estados NO deben cruzarse de cuenta
     await _persistirUsuario();
     _persistirDatos();
+    _persistirContactos();
     notifyListeners();
+  }
+
+  /// Limpia TODO lo que es privado de una cuenta (agenda, estado de chats e
+  /// historias) para que al cambiar de usuario en el mismo equipo NO se vea nada
+  /// del anterior. La fuente de verdad de cada cuenta vuelve a bajarse de la nube
+  /// al iniciar sesión (sincronizarAgenda, cargarEstados, etc.).
+  void _limpiarDatosDeSesion() {
+    _apodos.clear();
+    _contactos.clear();
+    _bloqueados.clear();
+    chatsOcultos.clear();
+    chatsFijados.clear();
+    chatsArchivados.clear();
+    chatsSilenciados.clear();
+    _estados.clear();
+    _estadosVistos.clear();
+    _vistasPorEstado.clear();
+    _perfiles.clear();
+    _retosPendientes = 0;
   }
 
   /// "Empezar de cero" (solo pruebas dev/qas): deja el dispositivo VIRGEN.

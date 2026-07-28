@@ -65,9 +65,36 @@ class _MensajesScreenState extends State<MensajesScreen> {
   // Hilos ya abiertos en el panel → se muestran sin badge de no leídos.
   final Set<String> _abiertos = {};
 
+  // Correo cuyo inbox está cargado ahora mismo. Si cambia la sesión (logueo con
+  // otra cuenta o cierro sesión), recargamos para NO mostrar chats ajenos.
+  String _emailCargado = '';
+
   @override
   void initState() {
     super.initState();
+    _emailCargado = (appState.usuario?.email ?? '').toLowerCase();
+    _cargar();
+    appState.addListener(_alCambiarSesion);
+  }
+
+  @override
+  void dispose() {
+    appState.removeListener(_alCambiarSesion);
+    super.dispose();
+  }
+
+  /// Si cambió el usuario logueado, limpia el inbox del anterior y recarga.
+  void _alCambiarSesion() {
+    final e = (appState.usuario?.email ?? '').toLowerCase();
+    if (e == _emailCargado) return;
+    _emailCargado = e;
+    if (mounted) {
+      setState(() {
+        _convs = const [];
+        _sel = null;
+        _abiertos.clear();
+      });
+    }
     _cargar();
   }
 

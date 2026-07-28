@@ -23,6 +23,7 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int _index = 0;
   late final List<Widget> _paginas;
+  late bool _ultimoLogueado;
 
   @override
   void initState() {
@@ -34,6 +35,21 @@ class _AppShellState extends State<AppShell> {
       const MensajesScreen(),
       const PerfilScreen(),
     ];
+    _ultimoLogueado = appState.logueado;
+    appState.addListener(_alCambiarSesion);
+  }
+
+  @override
+  void dispose() {
+    appState.removeListener(_alCambiarSesion);
+    super.dispose();
+  }
+
+  /// Al iniciar o cerrar sesión, siempre volver a Explorar (inicio).
+  void _alCambiarSesion() {
+    if (appState.logueado == _ultimoLogueado) return;
+    _ultimoLogueado = appState.logueado;
+    if (_index != 0 && mounted) setState(() => _index = 0);
   }
 
   @override
