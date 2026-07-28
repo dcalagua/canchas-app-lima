@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/icono_chat_pichan.dart';
 import '../widgets/menu_lateral_scroll.dart';
@@ -9,14 +8,13 @@ import 'clientes_screen.dart';
 import 'cuenta_screen.dart';
 import 'mensajes_screen.dart';
 import 'mis_canchas_screen.dart';
-import 'novedades_screen.dart';
 import 'reportes_screen.dart';
 import 'reservas_dueno_screen.dart';
 
 /// Panel del DUEÑO unificado: un solo lugar con TODO lo del dueño en pestañas,
 /// con el mismo estilo premium. "Mis canchas" (reales) es la pestaña principal.
-/// "Novedades" (historias) es CONTEXTUAL: solo aparece junto a Mensajes cuando
-/// estás usando esa sección (igual que en la app del jugador).
+/// (Las "Novedades"/historias se abren desde el ícono de aro en la cabecera de
+/// Mensajes, para no recargar la barra/rail.)
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key, this.initialIndex = 0});
 
@@ -28,68 +26,56 @@ class HomeShell extends StatefulWidget {
 }
 
 class _HomeShellState extends State<HomeShell> {
-  late String _sel = _claves[widget.initialIndex.clamp(0, _claves.length - 1)];
+  late int _index = widget.initialIndex;
 
-  // Todas las secciones (IndexedStack conserva su estado aunque no estén en la
-  // barra). Orden fijo; la barra decide qué se ve.
-  static const _claves = <String>[
-    'canchas',
-    'agenda',
-    'reservas',
-    'clientes',
-    'mensajes',
-    'novedades',
-    'reportes',
-    'billetera',
-  ];
+  // Cuenta/Saldo (modelo inDrive): recarga real con Culqi (Yape/tarjeta).
   static const _paginas = <Widget>[
-    MisCanchasScreen(),
-    AgendaScreen(),
-    ReservasDuenoScreen(),
-    ClientesScreen(),
-    MensajesScreen(),
-    NovedadesScreen(),
-    ReportesScreen(),
-    CuentaScreen(),
+    MisCanchasScreen(),     // tus canchas reales (editar precio/horarios/servicios)
+    AgendaScreen(),         // agenda de hoy (real)
+    ReservasDuenoScreen(),  // reservas reales de tus canchas + caja
+    ClientesScreen(),       // base de clientes (CRM ligero, derivado de reservas)
+    MensajesScreen(),       // chat con clientes (inbox del dueño/profe)
+    ReportesScreen(),       // reportes / KPIs (reales)
+    CuentaScreen(),         // BILLETERA: saldo único + recargar + por recibir
   ];
 
-  bool get _enMensajes => _sel == 'mensajes' || _sel == 'novedades';
-
-  void _ir(String clave) {
-    setState(() => _sel = clave);
-    if (clave == 'novedades') appState.cargarEstados();
-  }
-
-  // Destinos visibles (dinámicos): las 7 secciones + "Novedades" insertado tras
-  // Mensajes SOLO en ese contexto.
-  List<_Nav> _items() {
-    return <_Nav>[
-      const _Nav('canchas', 'Canchas', Icons.sports_soccer, lima),
-      const _Nav('agenda', 'Agenda', Icons.calendar_month, Color(0xFF2AA9E0)),
-      const _Nav('reservas', 'Reservas', Icons.event_note, naranja),
-      const _Nav('clientes', 'Clientes', Icons.groups, morado),
-      const _Nav('mensajes', 'Mensajes', Icons.chat_bubble, lima,
-          esChat: true),
-      if (_enMensajes)
-        const _Nav('novedades', 'Novedades', Icons.donut_large, lima),
-      const _Nav('reportes', 'Reportes', Icons.bar_chart, teal),
-      const _Nav('billetera', 'Billetera', Icons.account_balance_wallet,
-          amarillo),
-    ];
-  }
-
-  Widget _icono(_Nav n) => n.esChat
-      ? IconoChatPichan(activo: _sel == n.clave)
-      : Icon(n.icono, color: n.color);
+  // Íconos/etiquetas de las secciones (compartidos por barra inferior y rail).
+  static const _iconos = <IconData>[
+    Icons.sports_soccer,
+    Icons.calendar_month,
+    Icons.event_note,
+    Icons.groups,
+    Icons.chat_bubble,
+    Icons.bar_chart,
+    Icons.account_balance_wallet,
+  ];
+  static const _etiquetas = <String>[
+    'Canchas',
+    'Agenda',
+    'Reservas',
+    'Clientes',
+    'Mensajes',
+    'Reportes',
+    'Billetera',
+  ];
+  // Color "con vida" (Airbnb) por sección; el ícono va coloreado en el menú.
+  static const _colores = <Color>[
+    lima,               // Canchas
+    Color(0xFF2AA9E0),  // Agenda (azul)
+    naranja,            // Reservas
+    morado,             // Clientes
+    lima,               // Mensajes (se ignora: va el ícono de WhatsApp)
+    teal,               // Reportes
+    amarillo,           // Billetera
+  ];
+  // Índice de la pestaña Mensajes → usa el ícono de chat con "P" (marca Pichan).
+  static const _iMensajes = 4;
 
   @override
   Widget build(BuildContext context) {
-    final stackIndex = _claves.indexOf(_sel).clamp(0, _claves.length - 1);
-    final body = IndexedStack(index: stackIndex, children: _paginas);
-    final items = _items();
-    final sel = items.indexWhere((it) => it.clave == _sel);
-    final selIndex = sel < 0 ? 0 : sel;
-
+    final body = IndexedStack(index: _index, children: _paginas);
+    // Tablet / horizontal: navegación LATERAL (NavigationRail), como un panel de
+    // control cómodo en pantalla ancha. Móvil / vertical: barra inferior.
     final tablet = MediaQuery.of(context).size.width >= 720;
     if (tablet) {
       return Scaffold(
@@ -98,15 +84,17 @@ class _HomeShellState extends State<HomeShell> {
             children: [
               MenuLateralScroll(
                 rail: NavigationRail(
-                  selectedIndex: selIndex,
-                  onDestinationSelected: (i) => _ir(items[i].clave),
+                  selectedIndex: _index,
+                  onDestinationSelected: (i) => setState(() => _index = i),
                   labelType: NavigationRailLabelType.all,
                   groupAlignment: -0.85,
                   destinations: [
-                    for (final n in items)
+                    for (var i = 0; i < _iconos.length; i++)
                       NavigationRailDestination(
-                        icon: _icono(n),
-                        label: Text(n.label),
+                        icon: i == _iMensajes
+                            ? IconoChatPichan(activo: _index == _iMensajes)
+                            : Icon(_iconos[i], color: _colores[i]),
+                        label: Text(_etiquetas[i]),
                       ),
                   ],
                 ),
@@ -121,24 +109,17 @@ class _HomeShellState extends State<HomeShell> {
     return Scaffold(
       body: body,
       bottomNavigationBar: NavigationBar(
-        selectedIndex: selIndex,
-        onDestinationSelected: (i) => _ir(items[i].clave),
+        selectedIndex: _index,
+        onDestinationSelected: (i) => setState(() => _index = i),
         destinations: [
-          for (final n in items)
-            NavigationDestination(icon: _icono(n), label: n.label),
+          for (var i = 0; i < _iconos.length; i++)
+            NavigationDestination(
+                icon: i == _iMensajes
+                    ? IconoChatPichan(activo: _index == _iMensajes)
+                    : Icon(_iconos[i], color: _colores[i]),
+                label: _etiquetas[i]),
         ],
       ),
     );
   }
-}
-
-/// Descriptor de una sección de navegación del dueño.
-class _Nav {
-  const _Nav(this.clave, this.label, this.icono, this.color,
-      {this.esChat = false});
-  final String clave;
-  final String label;
-  final IconData icono;
-  final Color color;
-  final bool esChat; // usa el ícono de chat "Pichan" en vez de [icono]
 }

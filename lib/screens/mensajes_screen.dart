@@ -12,6 +12,7 @@ import 'buscar_usuario_screen.dart';
 import 'chat_screen.dart';
 import 'crear_grupo_screen.dart';
 import 'login_google_sheet.dart';
+import 'novedades_screen.dart';
 
 /// Inbox unificado "Mensajes": junta en UN solo lugar todas las conversaciones
 /// del usuario logueado (como profe de sus academias y como alumno de las que
@@ -628,7 +629,17 @@ class _MensajesScreenState extends State<MensajesScreen> {
                     fontWeight: FontWeight.w700,
                     fontSize: 20)),
             const Spacer(),
-            // Formato WhatsApp: cámara + menú de 3 puntos.
+            // Formato WhatsApp: Novedades (historias) + cámara + menú 3 puntos.
+            IconButton(
+              tooltip: 'Novedades',
+              icon: _hayNovedadesNuevas()
+                  ? const Badge(
+                      smallSize: 9,
+                      backgroundColor: amarillo,
+                      child: Icon(Icons.donut_large, color: Colors.white))
+                  : const Icon(Icons.donut_large_outlined, color: Colors.white),
+              onPressed: _abrirNovedades,
+            ),
             IconButton(
               tooltip: 'Tomar foto',
               icon: const Icon(Icons.photo_camera_outlined, color: Colors.white),
@@ -677,6 +688,18 @@ class _MensajesScreenState extends State<MensajesScreen> {
       ),
     );
   }
+
+  /// Abre la sección Novedades (historias). Vive aquí, en el ícono junto a la
+  /// cámara, para no cargar la barra inferior.
+  void _abrirNovedades() {
+    appState.cargarEstados();
+    Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const NovedadesScreen()));
+  }
+
+  /// ¿Hay historias de conocidos que aún no vi? (para el puntito del ícono).
+  bool _hayNovedadesNuevas() =>
+      appState.autoresConEstado().any((e) => appState.autorTieneNoVisto(e));
 
   /// Cámara del inbox (estilo WhatsApp): toma una foto y la envía al chat que
   /// elijas. Abre el chat destino ya con la foto enviándose.
