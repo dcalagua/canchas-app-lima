@@ -8,6 +8,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/dialogo_pichangol.dart';
+import '../widgets/estados_strip.dart';
 import 'buscar_usuario_screen.dart';
 import 'chat_screen.dart';
 import 'crear_grupo_screen.dart';
@@ -72,6 +73,7 @@ class _MensajesScreenState extends State<MensajesScreen> {
 
   Future<void> _cargar() async {
     if (mounted) setState(() => _cargando = true);
+    appState.cargarEstados(); // refresca historias vigentes (best-effort)
     final email = (appState.usuario?.email ?? '').toLowerCase();
     if (email.isEmpty) {
       if (mounted) setState(() {
@@ -951,6 +953,12 @@ class _MensajesScreenState extends State<MensajesScreen> {
                   );
 
               final filas = <Widget>[];
+              // Tira de ESTADOS / HISTORIAS (tipo WhatsApp) arriba de todo, solo
+              // en la vista normal (sin selección, sin filtro, sin archivados).
+              if (!_enSeleccion && !_verArchivados && !hayFiltro) {
+                filas.add(const EstadosStrip());
+                filas.add(Divider(height: 8, thickness: 8, color: trazo.withOpacity(0.25)));
+              }
               // Cabecera de "Archivados": banner para entrar (bandeja normal) o
               // para volver (viendo archivados), estilo WhatsApp.
               if (_verArchivados) {

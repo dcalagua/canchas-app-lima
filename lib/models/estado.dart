@@ -1,0 +1,55 @@
+/// Un ESTADO / HISTORIA (tipo WhatsApp): publicación efímera que dura 24 h.
+/// Puede ser texto (sobre un fondo de color) o una foto con pie opcional.
+/// Se guarda en Supabase (`pichangol_estados`); la foto va al bucket público
+/// `estados`. Solo lo ven los contactos/conocidos del autor.
+class Estado {
+  final String id;
+  final String autorEmail;
+  final String autorNombre; // snapshot del nombre al publicar
+  final String tipo; // 'texto' | 'foto'
+  final String texto; // contenido (texto) o pie de foto
+  final String fotoUrl; // vacío si es de texto
+  final int bg; // color de fondo (para el de texto), ARGB
+  final DateTime creadoEn;
+
+  const Estado({
+    required this.id,
+    required this.autorEmail,
+    required this.autorNombre,
+    required this.tipo,
+    required this.creadoEn,
+    this.texto = '',
+    this.fotoUrl = '',
+    this.bg = 0xFF128C7E,
+  });
+
+  bool get esFoto => tipo == 'foto';
+
+  /// Sigue vigente si no han pasado 24 h desde que se publicó.
+  bool get vigente =>
+      DateTime.now().difference(creadoEn) < const Duration(hours: 24);
+
+  Map<String, dynamic> toRow() => {
+        'id': id,
+        'autor_email': autorEmail,
+        'autor_nombre': autorNombre,
+        'tipo': tipo,
+        'texto': texto,
+        'foto_url': fotoUrl,
+        'bg': bg,
+        'creado_en': creadoEn.toUtc().toIso8601String(),
+      };
+
+  factory Estado.fromRow(Map<String, dynamic> r) => Estado(
+        id: r['id'].toString(),
+        autorEmail: (r['autor_email'] ?? '').toString().toLowerCase(),
+        autorNombre: (r['autor_nombre'] ?? '').toString(),
+        tipo: (r['tipo'] ?? 'texto').toString(),
+        texto: (r['texto'] ?? '').toString(),
+        fotoUrl: (r['foto_url'] ?? '').toString(),
+        bg: r['bg'] == null ? 0xFF128C7E : (r['bg'] as num).toInt(),
+        creadoEn: DateTime.tryParse((r['creado_en'] ?? '').toString())
+                ?.toLocal() ??
+            DateTime.fromMillisecondsSinceEpoch(0),
+      );
+}

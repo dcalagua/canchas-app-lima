@@ -7,6 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/academias_repo.dart';
 import '../data/agenda_repo.dart';
+import '../data/estados_repo.dart';
+import '../models/estado.dart';
 import '../data/campeonatos_repo.dart';
 import '../data/canchas_repo.dart';
 import '../data/invitaciones_repo.dart';
@@ -241,6 +243,172 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     await _persistirDatos();
     await _persistirContactos();
+  }
+
+  // ── ESTADOS / HISTORIAS (tipo WhatsApp, duran 24 h) ───────────────────────
+  // Cache en memoria de los estados vigentes (todos los conocidos), el set de
+  // ids que YO ya vi (local + remoto, para el aro visto/no visto) y, para MIS
+  // estados, quién los vio.
+  final List<Estado> _estados = [];
+  final Set<String> _estadosVistos = {};
+  final Map<String, List<String>> _vistasPorEstado = {};
+  static const _kEstadosVistos = 'estados_vistos_json';
+
+  bool estadoVisto(String id) => _estadosVistos.contains(id);
+
+  String get _yo => (usuario?.email ?? '').trim().toLowerCase();
+
+  /// Correos "conocidos" cuyos estados me interesa ver: mis contactos, la gente
+  /// con la que he chateado (perfiles cacheados) y a quien le puse apodo. Nunca
+  /// los bloqueados.
+  Set<String> _conocidos() {
+    final s = <String>{...contactos, ..._perfiles.keys, ..._apodos.keys};
+    s.remove('');
+    s.remove(_yo);
+    s.removeWhere((e) => _bloqueados.contains(e));
+    return s;
+  }
+
+  /// Estados de un autor (vigentes), en orden de publicación (más antiguo
+  /// primero, como WhatsApp).
+  List<Estado> estadosDe(String? email) {
+    final e = (email ?? '').trim().toLowerCase();
+    final l = _estados.where((x) => x.autorEmail == e && x.vigente).toList();
+    l.sort((a, b) => a.creadoEn.compareTo(b.creadoEn));
+    return l;
+  }
+
+  /// Mis propios estados vigentes.
+  List<Estado> get misEstados => estadosDe(_yo);
+
+  /// ¿El autor tiene al menos un estado que YO no he visto? (aro lima vs gris).
+  bool autorTieneNoVisto(String? email) =>
+      estadosDe(email).any((x) => !_estadosVistos.contains(x.id));
+
+  /// Autores conocidos con estado vigente, ordenados: los que tienen algo no
+  /// visto primero; dentro de cada grupo, el más reciente arriba.
+  List<String> autoresConEstado() {
+    final conocidos = _conocidos();
+    final autores = <String>{};
+    for (final e in _estados) {
+      if (e.vigente && conocidos.contains(e.autorEmail)) autores.add(e.autorEmail);
+    }
+    final l = autores.toList();
+    l.sort((a, b) {
+      final na = autorTieneNoVisto(a);
+      final nb = autorTieneNoVisto(b);
+      if (na != nb) return na ? -1 : 1;
+      final ea = estadosDe(a);
+      final eb = estadosDe(b);
+      final ta = ea.isEmpty ? DateTime(0) : ea.last.creadoEn;
+      final tb = eb.isEmpty ? DateTime(0) : eb.last.creadoEn;
+      return tb.compareTo(ta);
+    });
+    return l;
+  }
+
+  /// Correos que vieron un estado mío (para "visto por N").
+  List<String> vistasDe(String id) => _vistasPorEstado[id] ?? const [];
+  int vistasCount(String id) => vistasDe(id).length;
+
+  /// Trae los estados vigentes de Supabase y, para los míos, quién los vio.
+  /// Best-effort (fail-safe). Se llama al iniciar sesión, al abrir Mensajes y
+  /// con pull-to-refresh.
+  Future<void> cargarEstados() async {
+    if (!EstadosRepo.disponible) return;
+    final vigentes = await EstadosRepo.fetchVigentes();
+    _estados
+      ..clear()
+      ..addAll(vigentes);
+    // Poda el set de vistos a lo que sigue vigente (no crece indefinidamente).
+    final ids = vigentes.map((e) => e.id).toSet();
+    _estadosVistos.retainWhere(ids.contains);
+    // Trae los perfiles de los autores para mostrar nombre/foto en el aro.
+    final autores = vigentes.map((e) => e.autorEmail).toSet().toList();
+    if (autores.isNotEmpty) await cargarPerfiles(autores);
+    // "Quién vio" MIS estados.
+    final mios = misEstados.map((e) => e.id).toList();
+    if (mios.isNotEmpty) {
+      final v = await EstadosRepo.vistas(mios);
+      _vistasPorEstado
+        ..clear()
+        ..addAll(v);
+    }
+    notifyListeners();
+    await _persistirEstadosVistos();
+  }
+
+  Future<void> _persistirEstadosVistos() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+          _kEstadosVistos, jsonEncode(_estadosVistos.toList()));
+    } catch (_) {}
+  }
+
+  /// Publica un estado de TEXTO (sobre un color de fondo). Devuelve el estado o
+  /// null si falla.
+  Future<Estado?> publicarEstadoTexto(String texto, int bg) async {
+    final u = usuario;
+    final t = texto.trim();
+    if (u == null || t.isEmpty) return null;
+    final e = Estado(
+      id: 'st_${DateTime.now().microsecondsSinceEpoch}',
+      autorEmail: u.email.toLowerCase(),
+      autorNombre: u.nombre,
+      tipo: 'texto',
+      texto: t,
+      bg: bg,
+      creadoEn: DateTime.now(),
+    );
+    final ok = await EstadosRepo.publicar(e);
+    if (!ok) return null;
+    _estados.add(e);
+    _estadosVistos.add(e.id); // los míos ya "vistos" por mí
+    notifyListeners();
+    return e;
+  }
+
+  /// Publica un estado de FOTO (con pie opcional). Sube la imagen al bucket.
+  /// Devuelve el estado o null si falla (motivo en EstadosRepo.ultimoErrorFoto).
+  Future<Estado?> publicarEstadoFoto(Uint8List bytes, {String pie = ''}) async {
+    final u = usuario;
+    if (u == null) return null;
+    final id = 'st_${DateTime.now().microsecondsSinceEpoch}';
+    final url = await EstadosRepo.subirFoto(id, bytes);
+    if (url == null) return null;
+    final e = Estado(
+      id: id,
+      autorEmail: u.email.toLowerCase(),
+      autorNombre: u.nombre,
+      tipo: 'foto',
+      texto: pie.trim(),
+      fotoUrl: url,
+      creadoEn: DateTime.now(),
+    );
+    final ok = await EstadosRepo.publicar(e);
+    if (!ok) return null;
+    _estados.add(e);
+    _estadosVistos.add(e.id);
+    notifyListeners();
+    return e;
+  }
+
+  /// Marca que YO vi un estado (aro gris + registra la vista para el autor).
+  Future<void> marcarEstadoVisto(String id) async {
+    if (id.isEmpty || _estadosVistos.contains(id)) return;
+    _estadosVistos.add(id);
+    notifyListeners();
+    await _persistirEstadosVistos();
+    await EstadosRepo.marcarVisto(id, _yo);
+  }
+
+  /// Borra un estado propio (local + Supabase).
+  Future<void> eliminarEstado(String id) async {
+    _estados.removeWhere((e) => e.id == id);
+    _vistasPorEstado.remove(id);
+    notifyListeners();
+    await EstadosRepo.eliminar(id);
   }
 
   /// Carga (best-effort) los perfiles —para tener NOMBRE y FOTO— de todos los
@@ -4531,6 +4699,16 @@ class AppState extends ChangeNotifier {
       cargarSetChat(_kChatsArchivados, chatsArchivados);
       cargarSetChat(_kChatsSilenciados, chatsSilenciados);
 
+      final vistosRaw = prefs.getString(_kEstadosVistos);
+      if (vistosRaw != null) {
+        try {
+          final l = jsonDecode(vistosRaw) as List;
+          _estadosVistos
+            ..clear()
+            ..addAll(l.map((e) => e.toString()));
+        } catch (_) {}
+      }
+
       notifyListeners();
       // Trae la disponibilidad compartida (reservas de otros dispositivos) para
       // que el anti-doble-reserva y el panel del dueño arranquen al día. Best-effort.
@@ -4686,6 +4864,7 @@ class AppState extends ChangeNotifier {
     cargarReservasRemotas(); // best-effort refresco
     sincronizarSaldo(); // saldo real del backend (sobrevive reinstalar)
     sincronizarAgenda(); // apodos + contactos + bloqueados en todos mis dispositivos
+    cargarEstados(); // historias vigentes (24 h) de mis conocidos
     // Trae sus academias (por si las creó en otro dispositivo) y LUEGO las
     // matrículas, para que el profe vea a sus alumnos apenas entra.
     () async {
