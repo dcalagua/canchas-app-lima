@@ -524,7 +524,11 @@ class _MensajesScreenState extends State<MensajesScreen> {
   Widget _chipFiltro(
       _FiltroChat f, String label, int? count, ColorScheme cs) {
     final sel = _filtro == f;
+    final oscuro = cs.brightness == Brightness.dark;
     final txt = (count != null && count > 0) ? '$label $count' : label;
+    // Estilo WhatsApp: en oscuro, chips con fondo/borde sutiles (no blanco) y el
+    // seleccionado con tinte verde.
+    final Color verdeSel = oscuro ? const Color(0xFF25D366) : lima;
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: ChoiceChip(
@@ -532,11 +536,14 @@ class _MensajesScreenState extends State<MensajesScreen> {
         selected: sel,
         showCheckmark: false,
         onSelected: (_) => setState(() => _filtro = f),
-        backgroundColor: cs.surface,
-        selectedColor: limaSuave,
-        side: BorderSide(color: sel ? lima : const Color(0xFFE4E4E4)),
+        backgroundColor: oscuro ? const Color(0xFF1F2C34) : cs.surface,
+        selectedColor: oscuro ? const Color(0xFF0B3D2E) : limaSuave,
+        side: BorderSide(
+            color: sel
+                ? verdeSel
+                : (oscuro ? const Color(0xFF2A3942) : const Color(0xFFE4E4E4))),
         labelStyle: TextStyle(
-            color: sel ? lima : cs.onSurface,
+            color: sel ? verdeSel : cs.onSurface,
             fontWeight: FontWeight.w700,
             fontSize: 13),
         shape:
@@ -888,6 +895,10 @@ class _MensajesScreenState extends State<MensajesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // Fondo negro-azulado tipo WhatsApp en modo oscuro.
+      backgroundColor: Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF111B21)
+          : null,
       // En tablet (master-detail) el chat se embebe al lado; el FAB flotaría
       // encima del micro/enviar del chat. Como "Nuevo grupo" también está en el
       // menú ⋮, ocultamos el FAB en pantallas anchas y lo dejamos solo en móvil.
@@ -998,7 +1009,7 @@ class _MensajesScreenState extends State<MensajesScreen> {
                         onLongPress: () => _toggleSeleccion(c.hilo),
                       ),
                       if (conSep)
-                        Divider(height: 1, color: trazo.withOpacity(0.6)),
+                        Divider(height: 1, color: Theme.of(context).brightness == Brightness.dark ? Colors.white10 : trazo.withOpacity(0.6)),
                     ],
                   );
 
@@ -1014,7 +1025,7 @@ class _MensajesScreenState extends State<MensajesScreen> {
                       style: TextStyle(fontWeight: FontWeight.w800)),
                   onTap: () => setState(() => _verArchivados = false),
                 ));
-                filas.add(Divider(height: 1, color: trazo.withOpacity(0.6)));
+                filas.add(Divider(height: 1, color: Theme.of(context).brightness == Brightness.dark ? Colors.white10 : trazo.withOpacity(0.6)));
               } else if (archivados.isNotEmpty) {
                 filas.add(ListTile(
                   leading: const Icon(Icons.archive_outlined, color: textoTenue),
@@ -1025,7 +1036,7 @@ class _MensajesScreenState extends State<MensajesScreen> {
                           color: textoTenue, fontWeight: FontWeight.w800)),
                   onTap: () => setState(() => _verArchivados = true),
                 ));
-                filas.add(Divider(height: 1, color: trazo.withOpacity(0.6)));
+                filas.add(Divider(height: 1, color: Theme.of(context).brightness == Brightness.dark ? Colors.white10 : trazo.withOpacity(0.6)));
               }
               for (var i = 0; i < mostrando.length; i++) {
                 filas.add(filaDe(mostrando[i], i < mostrando.length - 1));
