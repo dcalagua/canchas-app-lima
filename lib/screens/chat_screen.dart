@@ -156,6 +156,76 @@ class _ChatScreenState extends State<ChatScreen> {
   // Mensaje que estoy respondiendo (cita arriba del composer). Null = ninguno.
   Mensaje? _respondiendo;
 
+  // Banner "Agregar contacto" (tipo WhatsApp): sale arriba del chat cuando la
+  // contraparte NO está guardada; se oculta al agregarla o al descartarlo.
+  bool _bannerContactoDescartado = false;
+
+  bool get _mostrarBannerContacto =>
+      appState.logueado &&
+      _contraparteEmail.isNotEmpty &&
+      !_bannerContactoDescartado &&
+      !appState.esContacto(_contraparteEmail) &&
+      !appState.bloqueado(_contraparteEmail);
+
+  void _agregarContacto() {
+    appState.guardarContacto(_contraparteEmail, perfil: {
+      'email': _contraparteEmail,
+      'nombre': appState.nombreRealDe(_contraparteEmail) ?? widget.titulo,
+      'foto_url': appState.fotoDe(_contraparteEmail) ?? '',
+      'celular': appState.celularDe(_contraparteEmail) ?? '',
+    });
+    setState(() {}); // esContacto pasa a true → el banner se oculta
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Contacto guardado'),
+          duration: Duration(milliseconds: 1200)));
+    }
+  }
+
+  Widget _bannerAgregarContacto(_WA wa) {
+    final nombre = _contraparteEmail.isEmpty
+        ? widget.titulo
+        : (appState.nombreMostrableDe(_contraparteEmail) ?? widget.titulo);
+    final foto = appState.fotoDe(_contraparteEmail);
+    return Material(
+      color: wa.barra,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 16,
+              backgroundColor: wa.send.withOpacity(0.15),
+              backgroundImage:
+                  (foto != null && foto.isNotEmpty) ? NetworkImage(foto) : null,
+              child: (foto == null || foto.isEmpty)
+                  ? Icon(Icons.person_add_alt_1, color: wa.send, size: 18)
+                  : null,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text('¿Agregar a $nombre a tus contactos?',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: wa.textoOtro, fontSize: 13.5)),
+            ),
+            TextButton(
+              onPressed: _agregarContacto,
+              style: TextButton.styleFrom(foregroundColor: wa.send),
+              child: const Text('Agregar',
+                  style: TextStyle(fontWeight: FontWeight.w800)),
+            ),
+            IconButton(
+              icon: Icon(Icons.close, color: wa.hora, size: 20),
+              onPressed: () =>
+                  setState(() => _bannerContactoDescartado = true),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   String _nombreAutorDe(Mensaje m) {
     final yo = (appState.usuario?.email ?? '').toLowerCase();
     if (m.autorEmail.toLowerCase() == yo) return 'Tú';
@@ -894,6 +964,7 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       body: Column(
         children: [
+          if (_mostrarBannerContacto) _bannerAgregarContacto(wa),
           Expanded(
             child: MensajesRepo.disponible
                 ? StreamBuilder<List<Mensaje>>(
