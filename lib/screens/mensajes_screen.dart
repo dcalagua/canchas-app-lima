@@ -92,8 +92,11 @@ class _MensajesScreenState extends State<MensajesScreen> {
     _cargar();
   }
 
-  Future<void> _cargar() async {
-    if (mounted) setState(() => _cargando = true);
+  // [silencioso] = refresca en segundo plano SIN el spinner de pantalla completa
+  // (para no parpadear al volver de "Mis contactos" u otras pantallas). La lista
+  // ya está pintada desde caché; solo se actualiza cuando llegan los datos.
+  Future<void> _cargar({bool silencioso = false}) async {
+    if (!silencioso && mounted) setState(() => _cargando = true);
     appState.cargarEstados(); // refresca historias vigentes (best-effort)
     final email = (appState.usuario?.email ?? '').toLowerCase();
     if (email.isEmpty) {
@@ -330,7 +333,7 @@ class _MensajesScreenState extends State<MensajesScreen> {
               refId: c.refId,
             ),
           ))
-          .then((_) => _cargar());
+          .then((_) => _cargar(silencioso: true));
     });
   }
 
@@ -400,7 +403,7 @@ class _MensajesScreenState extends State<MensajesScreen> {
               refId: c.refId,
             ),
           ))
-          .then((_) => _cargar()); // al volver, refresca no-leídos/preview
+          .then((_) => _cargar(silencioso: true)); // al volver, refresca no-leídos/preview
     }
   }
 
@@ -417,7 +420,7 @@ class _MensajesScreenState extends State<MensajesScreen> {
         },
       ),
     ));
-    _cargar();
+    _cargar(silencioso: true); // refresca sin spinner al cerrar "Mis contactos"
   }
 
   void _abrirPersona(String email, String nombre, bool ancho) {
@@ -675,7 +678,7 @@ class _MensajesScreenState extends State<MensajesScreen> {
                   Navigator.of(context)
                       .push(MaterialPageRoute(
                           builder: (_) => const CrearGrupoScreen()))
-                      .then((_) => _cargar());
+                      .then((_) => _cargar(silencioso: true));
                 } else if (v == 'recado') {
                   _editarRecado();
                 }
@@ -747,7 +750,7 @@ class _MensajesScreenState extends State<MensajesScreen> {
             fotoInicial: bytes,
           ),
         ))
-        .then((_) => _cargar());
+        .then((_) => _cargar(silencioso: true));
   }
 
   /// "Mi recado" (3 puntos): texto corto que mis contactos ven en el chat, tipo
@@ -851,7 +854,7 @@ class _MensajesScreenState extends State<MensajesScreen> {
       if (_sel?.hilo == h) _sel = null;
     }
     setState(_seleccion.clear);
-    await _cargar();
+    await _cargar(silencioso: true);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(n == 1 ? 'Conversación eliminada' : '$n eliminadas')),
@@ -891,7 +894,7 @@ class _MensajesScreenState extends State<MensajesScreen> {
               onPressed: () => Navigator.of(context)
                   .push(MaterialPageRoute(
                       builder: (_) => const CrearGrupoScreen()))
-                  .then((_) => _cargar()),
+                  .then((_) => _cargar(silencioso: true)),
               icon: const Icon(Icons.group_add),
               label: const Text('Nuevo grupo'),
             )
