@@ -78,9 +78,13 @@ class _EstadoComposerScreenState extends State<EstadoComposerScreen> {
         ],
       ),
       body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
+        // width infinito (acotado por el Scaffold) para que el TextField ocupe
+        // TODO el ancho; si no, con maxLines:null cada letra caía en su propia
+        // línea y se veían "rayas". El scroll deja crecer el texto con teclado.
+        child: SizedBox(
+          width: double.infinity,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
             child: TextField(
               controller: _ctrl,
               autofocus: true,
