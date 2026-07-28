@@ -558,6 +558,9 @@ class _ChatScreenState extends State<ChatScreen> {
       texto: txt,
       respTexto: _respondiendo != null ? _snippet(_respondiendo!) : '',
       respAutor: _respondiendo != null ? _nombreAutorDe(_respondiendo!) : '',
+      respMedia: (_respondiendo?.tieneFoto ?? false)
+          ? _respondiendo!.mediaUrl
+          : '',
       creado: DateTime.now(),
     );
     final ok = await MensajesRepo.enviar(msg);
@@ -965,6 +968,9 @@ class _ChatScreenState extends State<ChatScreen> {
               _CitaComposer(
                 autor: _nombreAutorDe(_respondiendo!),
                 texto: _snippet(_respondiendo!),
+                media: (_respondiendo?.tieneFoto ?? false)
+                    ? _respondiendo!.mediaUrl
+                    : '',
                 wa: wa,
                 onCerrar: () => setState(() => _respondiendo = null),
               ),
@@ -1151,27 +1157,48 @@ class _Burbuja extends StatelessWidget {
                 margin: const EdgeInsets.only(bottom: 4),
                 padding: const EdgeInsets.fromLTRB(8, 5, 8, 5),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.06),
+                  color: wa.dark
+                      ? Colors.white.withOpacity(0.08)
+                      : Colors.black.withOpacity(0.06),
                   borderRadius: BorderRadius.circular(6),
                   border: Border(left: BorderSide(color: wa.send, width: 3)),
                 ),
-                child: Column(
+                child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                        mensaje.respAutor.isNotEmpty
-                            ? mensaje.respAutor
-                            : 'Mensaje',
-                        style: TextStyle(
-                            color: wa.send,
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w700)),
-                    Text(mensaje.respTexto,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: 13,
-                            color: mio ? wa.textoMio : wa.textoOtro)),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                              mensaje.respAutor.isNotEmpty
+                                  ? mensaje.respAutor
+                                  : 'Mensaje',
+                              style: TextStyle(
+                                  color: wa.send,
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w700)),
+                          Text(mensaje.respTexto,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  fontSize: 13,
+                                  color: mio ? wa.textoMio : wa.textoOtro)),
+                        ],
+                      ),
+                    ),
+                    if (mensaje.respMedia.isNotEmpty) ...[
+                      const SizedBox(width: 6),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: Image.network(mensaje.respMedia,
+                            width: 38,
+                            height: 38,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) =>
+                                const SizedBox(width: 38, height: 38)),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -1429,9 +1456,11 @@ class _CitaComposer extends StatelessWidget {
       {required this.autor,
       required this.texto,
       required this.wa,
-      required this.onCerrar});
+      required this.onCerrar,
+      this.media = ''});
   final String autor;
   final String texto;
+  final String media; // miniatura de la foto citada ('' si no hay)
   final _WA wa;
   final VoidCallback onCerrar;
 
@@ -1458,13 +1487,23 @@ class _CitaComposer extends StatelessWidget {
                           color: wa.send,
                           fontWeight: FontWeight.w700,
                           fontSize: 13)),
-                  Text(texto,
+                  Text(media.isNotEmpty ? '📷 Foto' : texto,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(color: wa.textoOtro, fontSize: 13)),
                 ],
               ),
             ),
+            if (media.isNotEmpty) ...[
+              const SizedBox(width: 6),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: Image.network(media,
+                    width: 40, height: 40, fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const SizedBox(
+                        width: 40, height: 40)),
+              ),
+            ],
             IconButton(
               icon: Icon(Icons.close, color: wa.hora, size: 20),
               onPressed: onCerrar,

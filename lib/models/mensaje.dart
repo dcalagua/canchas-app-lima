@@ -27,6 +27,7 @@ class Mensaje {
   // Responder citando (tipo WhatsApp): snippet + autor del mensaje citado.
   final String respTexto;
   final String respAutor;
+  final String respMedia; // URL de la foto citada ('' si el citado no es foto)
   final bool reenviado; // muestra la etiqueta "Reenviado"
 
   const Mensaje({
@@ -44,6 +45,7 @@ class Mensaje {
     this.mediaUrl = '',
     this.respTexto = '',
     this.respAutor = '',
+    this.respMedia = '',
     this.reenviado = false,
   });
 
@@ -106,6 +108,7 @@ class Mensaje {
         if (mediaUrl.isNotEmpty) 'media_url': mediaUrl,
         if (respTexto.isNotEmpty) 'resp_texto': respTexto,
         if (respAutor.isNotEmpty) 'resp_autor': respAutor,
+        if (respMedia.isNotEmpty) 'resp_media': respMedia,
         if (reenviado) 'reenviado': true,
       };
 
@@ -124,6 +127,7 @@ class Mensaje {
         mediaUrl: (r['media_url'] ?? '').toString(),
         respTexto: (r['resp_texto'] ?? '').toString(),
         respAutor: (r['resp_autor'] ?? '').toString(),
+        respMedia: (r['resp_media'] ?? '').toString(),
         reenviado: (r['reenviado'] ?? false) as bool,
         creado: DateTime.tryParse((r['creado'] ?? '').toString())?.toLocal() ??
             DateTime.now(),
