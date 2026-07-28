@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../models/estado.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/responsive.dart' show AnchoTablet;
@@ -157,12 +158,8 @@ class _NovedadesScreenState extends State<NovedadesScreen> {
                       email: appState.usuario?.email ?? '',
                       fotoUrl: appState.usuario?.fotoUrl,
                       nombre: appState.usuario?.nombre ?? '',
-                      aro: tengo
-                          ? (appState.autorTieneNoVisto(
-                                  appState.usuario?.email)
-                              ? 1
-                              : 2)
-                          : 0,
+                      preview: tengo ? misEstados.last : null,
+                      aro: tengo ? 1 : 0, // aro lima: tienes historia activa
                       mostrarMas: true,
                     ),
                     title: const Text('Mi estado',
@@ -195,6 +192,7 @@ class _NovedadesScreenState extends State<NovedadesScreen> {
                           email: e,
                           fotoUrl: appState.fotoDe(e),
                           nombre: appState.nombreMostrableDe(e) ?? e,
+                          preview: appState.estadosDe(e).last,
                           aro: appState.autorTieneNoVisto(e) ? 1 : 2,
                         ),
                         title: Text(
@@ -232,19 +230,23 @@ class _NovedadesScreenState extends State<NovedadesScreen> {
 }
 
 /// Avatar con aro de estado (0 sin aro, 1 lima=sin ver, 2 gris=visto) y badge +
-/// opcional (Mi estado).
+/// opcional (Mi estado). El círculo muestra un PREVIEW de la historia (la foto,
+/// o el color de fondo si es de texto), tipo WhatsApp; si no hay historia, cae a
+/// la foto de perfil / inicial.
 class _AnilloAvatar extends StatelessWidget {
   const _AnilloAvatar({
     required this.email,
     required this.fotoUrl,
     required this.nombre,
     required this.aro,
+    this.preview,
     this.mostrarMas = false,
   });
   final String email;
   final String? fotoUrl;
   final String nombre;
   final int aro;
+  final Estado? preview; // última historia, para la miniatura
   final bool mostrarMas;
 
   @override
@@ -256,6 +258,43 @@ class _AnilloAvatar extends StatelessWidget {
         : aro == 2
             ? trazo
             : Colors.transparent;
+
+    // Contenido del círculo: miniatura de la historia si la hay.
+    Widget circulo;
+    final e = preview;
+    if (e != null && e.esFoto && e.fotoUrl.isNotEmpty) {
+      circulo = CircleAvatar(radius: 24, backgroundImage: NetworkImage(e.fotoUrl));
+    } else if (e != null && !e.esFoto) {
+      // Historia de texto: círculo del color de fondo con un fragmento del texto.
+      circulo = CircleAvatar(
+        radius: 24,
+        backgroundColor: Color(e.bg),
+        child: Padding(
+          padding: const EdgeInsets.all(4),
+          child: Text(
+            e.texto,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+                color: Colors.white, fontSize: 8, fontWeight: FontWeight.w700),
+          ),
+        ),
+      );
+    } else {
+      circulo = CircleAvatar(
+        radius: 24,
+        backgroundColor: limaSuave,
+        backgroundImage:
+            (fotoUrl != null && fotoUrl!.isNotEmpty) ? NetworkImage(fotoUrl!) : null,
+        child: (fotoUrl == null || fotoUrl!.isEmpty)
+            ? Text(ini,
+                style: const TextStyle(
+                    color: teal, fontWeight: FontWeight.bold, fontSize: 18))
+            : null,
+      );
+    }
+
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -265,20 +304,7 @@ class _AnilloAvatar extends StatelessWidget {
             shape: BoxShape.circle,
             border: Border.all(width: 2.2, color: ring),
           ),
-          child: CircleAvatar(
-            radius: 24,
-            backgroundColor: limaSuave,
-            backgroundImage: (fotoUrl != null && fotoUrl!.isNotEmpty)
-                ? NetworkImage(fotoUrl!)
-                : null,
-            child: (fotoUrl == null || fotoUrl!.isEmpty)
-                ? Text(ini,
-                    style: const TextStyle(
-                        color: teal,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18))
-                : null,
-          ),
+          child: circulo,
         ),
         if (mostrarMas)
           Positioned(
