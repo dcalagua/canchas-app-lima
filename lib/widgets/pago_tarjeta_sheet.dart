@@ -501,7 +501,9 @@ class _FilaCard extends StatelessWidget {
               child: Text('$marca ···· $ultimos4',
                   style: TextStyle(
                       fontWeight: FontWeight.w700,
-                      color: Theme.of(context).colorScheme.onSurface)),
+                      color: sel
+                          ? bosque
+                          : Theme.of(context).colorScheme.onSurface)),
             ),
             if (sel) const Icon(Icons.check_circle, color: bosque, size: 20),
           ],
@@ -544,7 +546,9 @@ class _MetodoMini extends StatelessWidget {
                     const SizedBox(width: 8),
                     Text(etiqueta!,
                         style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSurface,
+                            color: sel
+                                ? bosque
+                                : Theme.of(context).colorScheme.onSurface,
                             fontWeight: FontWeight.w700)),
                   ],
                 ],
@@ -587,7 +591,9 @@ class _FilaNueva extends StatelessWidget {
               child: Text('Usar otra tarjeta',
                   style: TextStyle(
                       fontWeight: FontWeight.w700,
-                      color: Theme.of(context).colorScheme.onSurface)),
+                      color: sel
+                          ? bosque
+                          : Theme.of(context).colorScheme.onSurface)),
             ),
             if (sel) const Icon(Icons.check_circle, color: bosque, size: 20),
           ],

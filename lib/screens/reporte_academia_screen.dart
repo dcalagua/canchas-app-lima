@@ -546,7 +546,9 @@ class _FilaSede extends StatelessWidget {
                       style: TextStyle(
                           fontWeight: FontWeight.w700,
                           fontSize: 13.5,
-                          color: cs.onSurface)),
+                          // Al seleccionar, el fondo pasa a limaSuave (claro fijo)
+                          // → texto oscuro para que se lea en modo oscuro.
+                          color: seleccionada ? bosque : cs.onSurface)),
                 ),
                 Text('$moneda ${cobrado.toStringAsFixed(2)}',
                     style: TextStyle(
@@ -744,7 +746,8 @@ class _LiquidacionClub extends StatelessWidget {
                   style: TextStyle(
                       fontSize: 13.5,
                       fontWeight: fuerte ? FontWeight.w800 : FontWeight.w700,
-                      color: color ?? cs.onSurface)),
+                      // Fondo limaSuave fijo → texto oscuro (legible en oscuro).
+                      color: color ?? bosque)),
             ],
           ),
         );
@@ -763,10 +766,10 @@ class _LiquidacionClub extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text('Liquidación al club · $pct%',
-                    style: TextStyle(
+                    style: const TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 14,
-                        color: cs.onSurface)),
+                        color: bosque)),
               ),
             ],
           ),

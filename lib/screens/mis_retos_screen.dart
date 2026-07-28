@@ -568,7 +568,9 @@ class _OpcionGanador extends StatelessWidget {
                 child: Text(nombre,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: seleccionado ? bosque : null)),
               ),
               Icon(
                   seleccionado

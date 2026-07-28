@@ -233,8 +233,10 @@ class _ModoOption extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(modo.etiqueta,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w800, fontSize: 15)),
+                        style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                            color: seleccionado ? bosque : null)),
                     const SizedBox(height: 2),
                     Text(modo.descripcion,
                         style: TextStyle(color: textoTenue, fontSize: 13)),

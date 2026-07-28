@@ -939,7 +939,8 @@ class _ChipInfo extends StatelessWidget {
         border: Border.all(color: trazo),
       ),
       child: Text(texto,
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+          style: const TextStyle(
+              fontSize: 12, fontWeight: FontWeight.w600, color: bosque)),
     );
   }
 }

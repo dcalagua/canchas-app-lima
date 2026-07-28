@@ -710,7 +710,7 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
                 style: const TextStyle(
                     fontSize: 12, fontWeight: FontWeight.w700, color: lima)),
           const SizedBox(height: 4),
-          Text(texto, style: const TextStyle(fontSize: 14)),
+          Text(texto, style: const TextStyle(fontSize: 14, color: bosque)),
           if (hashtags.isNotEmpty) ...[
             const SizedBox(height: 6),
             Text(hashtags.join(' '),
