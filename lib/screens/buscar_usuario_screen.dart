@@ -345,7 +345,7 @@ class _FilaUsuario extends StatelessWidget {
             ),
           IconButton(
             tooltip: 'Enviar mensaje',
-            icon: const Icon(Icons.chat_bubble_outline, color: bosque),
+            icon: const Icon(Icons.chat_bubble_outline, color: teal),
             onPressed: () => onChatear(email, nombre),
           ),
         ],
