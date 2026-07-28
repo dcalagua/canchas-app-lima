@@ -19,7 +19,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/dialogo_pichangol.dart';
-import 'buscar_usuario_screen.dart';
+import 'selector_chat_screen.dart';
 
 // ── Paleta estilo WhatsApp (theme-aware) ─────────────────────────────────────
 // Se calcula según el brillo del tema. Fondo del chat, burbujas y barra imitan
@@ -164,39 +164,35 @@ class _ChatScreenState extends State<ChatScreen> {
     _focus.requestFocus();
   }
 
-  /// Reenviar un mensaje: elige un contacto y se lo manda (con etiqueta
-  /// "Reenviado"). Conserva la foto (misma URL pública) o el texto.
+  /// Reenviar un mensaje: elige un chat (grupo, academia o contacto) y se lo
+  /// manda con la etiqueta "Reenviado". Conserva la foto (misma URL) o el texto.
   Future<void> _reenviar(Mensaje m) async {
-    await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => BuscarUsuarioScreen(
-        onAbrirChat: (email, nombre) async {
-          Navigator.of(context).pop();
-          final u = appState.usuario;
-          if (u == null) return;
-          final para = email.toLowerCase();
-          final msg = Mensaje(
-            id: 'msg_${DateTime.now().microsecondsSinceEpoch}',
-            hilo: Mensaje.hiloDirecto(u.email, para),
-            tipo: 'directo',
-            refId: '',
-            academiaId: '',
-            cuentaEmail: para,
-            autorEmail: u.email,
-            autorNombre: u.nombre,
-            esProfe: false,
-            texto: m.texto,
-            mediaUrl: m.mediaUrl,
-            reenviado: true,
-            creado: DateTime.now(),
-          );
-          final ok = await MensajesRepo.enviar(msg);
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(ok ? 'Reenviado a $nombre' : 'No se pudo reenviar'),
-            duration: const Duration(milliseconds: 1400),
-          ));
-        },
-      ),
+    final destino = await Navigator.of(context).push<DestinoChat>(
+        MaterialPageRoute(builder: (_) => const SelectorChatScreen()));
+    if (destino == null || !mounted) return;
+    final u = appState.usuario;
+    if (u == null) return;
+    final msg = Mensaje(
+      id: 'msg_${DateTime.now().microsecondsSinceEpoch}',
+      hilo: destino.hilo,
+      tipo: destino.tipo,
+      refId: destino.refId,
+      academiaId: destino.academiaId,
+      cuentaEmail: destino.cuentaEmail,
+      autorEmail: u.email,
+      autorNombre: u.nombre,
+      esProfe: destino.soyProfe,
+      texto: m.texto,
+      mediaUrl: m.mediaUrl,
+      reenviado: true,
+      creado: DateTime.now(),
+    );
+    final ok = await MensajesRepo.enviar(msg);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content:
+          Text(ok ? 'Reenviado a ${destino.titulo}' : 'No se pudo reenviar'),
+      duration: const Duration(milliseconds: 1400),
     ));
   }
 
