@@ -95,6 +95,16 @@ def android_manifest(text):
             text,
             count=1,
         )
+    # Llamada entrante a pantalla completa (CallKit): Android 14+ exige declarar
+    # USE_FULL_SCREEN_INTENT para mostrar la pantalla de "te están llamando" con
+    # el teléfono bloqueado.
+    if "USE_FULL_SCREEN_INTENT" not in text:
+        text = re.sub(
+            r"(<manifest[^>]*>)",
+            r'\1\n    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>',
+            text,
+            count=1,
+        )
     # Compartir historia DIRECTO a IG/FB (intent "Add to Story"): Android 11+
     # exige declarar los paquetes que consultamos (package visibility).
     if "com.instagram.android" not in text:

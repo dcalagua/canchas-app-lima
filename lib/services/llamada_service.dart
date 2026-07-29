@@ -77,6 +77,11 @@ class LlamadaService {
       },
       android: const AndroidParams(
         isCustomNotification: true,
+        isShowLogo: false,
+        // Muestra la pantalla de llamada ENTRANTE a pantalla completa (también
+        // con el teléfono bloqueado/en reposo), como WhatsApp.
+        isShowFullLockedScreen: true,
+        isShowCallID: true,
         ringtonePath: 'system_ringtone_default',
         backgroundColor: '#14463A',
         actionColor: '#128C7E',
