@@ -449,6 +449,35 @@ def configurar_r8_release():
         print("  R8/minify: no se encontró buildTypes release (sin cambios)")
 
 
+def excluir_duplicados_media3():
+    """El SDK de Jitsi empaqueta su propio react-native-video con clases de
+    androidx.media3 (rtsp, etc.); video_player trae esos mismos módulos de
+    streaming como dependencia → `checkReleaseDuplicateClasses` falla. No usamos
+    RTSP/HLS/DASH/SmoothStreaming (solo reproducimos mp4 progresivo), así que
+    excluimos esos módulos standalone y dejamos que resuelva la copia de Jitsi."""
+    path = "android/app/build.gradle"
+    if not os.path.exists(path):
+        return
+    with open(path, "r", encoding="utf-8") as f:
+        g = f.read()
+    if "media3-exoplayer-rtsp" in g:
+        print("  media3: exclusiones ya presentes")
+        return
+    bloque = (
+        "\n// pichangol_media3_dedup: evita choque de clases media3 entre Jitsi\n"
+        "// (react-native-video-jitsi) y video_player. No usamos streaming.\n"
+        "configurations.all {\n"
+        "    exclude group: 'androidx.media3', module: 'media3-exoplayer-rtsp'\n"
+        "    exclude group: 'androidx.media3', module: 'media3-exoplayer-hls'\n"
+        "    exclude group: 'androidx.media3', module: 'media3-exoplayer-dash'\n"
+        "    exclude group: 'androidx.media3', module: 'media3-exoplayer-smoothstreaming'\n"
+        "}\n"
+    )
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(bloque)
+    print("  media3: exclusiones de streaming agregadas (dedup Jitsi)")
+
+
 def configurar_firebase_android():
     """Habilita FCM (notificaciones push del chat) en Android SOLO si hay config.
 
@@ -700,6 +729,7 @@ def main():
     patch("ios/Podfile", ios_podfile)
     configurar_firma_android()
     configurar_r8_release()
+    excluir_duplicados_media3()
     configurar_firebase_android()
     configurar_notificacion_android()
     configurar_sonido_notificacion()
