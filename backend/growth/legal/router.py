@@ -127,6 +127,74 @@ def privacidad() -> str:
     return _doc("Política de privacidad", cuerpo)
 
 
+@router.get("/legal/terminos", response_class=HTMLResponse)
+def terminos() -> str:
+    cuerpo = f"""
+    <p>Estos Términos y Condiciones regulan el uso de <b>Pichangol</b>, plataforma
+    operada por <b>Grupo EBIM SAC</b> (Lima, Perú). Al crear una cuenta o usar la
+    app aceptas estos términos.</p>
+
+    <h2>1. Qué es Pichangol</h2>
+    <p>Pichangol es un <b>marketplace</b> para descubrir y reservar canchas
+    deportivas, gestionar academias y publicar contenido. Facilitamos la conexión
+    entre jugadores, dueños de canchas y academias; el servicio deportivo lo presta
+    el establecimiento, no Pichangol.</p>
+
+    <h2>2. Cuenta y elegibilidad</h2>
+    <ul>
+      <li>Ingresas con tu cuenta de Google; eres responsable del uso de tu cuenta.</li>
+      <li>Debes brindar información veraz. Para publicar o vender puede exigirse una
+      <b>verificación</b> de identidad o de propiedad de la cancha.</li>
+    </ul>
+
+    <h2>3. Reservas y pagos</h2>
+    <ul>
+      <li>Al reservar puedes pagar una <b>seña</b> o el total según configure el
+      establecimiento. Los pagos se procesan mediante pasarelas de terceros.</li>
+      <li>Pichangol puede cobrar una <b>comisión</b> por las operaciones realizadas
+      en la plataforma (reservas y ventas del marketplace), informada al momento de
+      la operación.</li>
+      <li>Las políticas de cancelación y reembolso dependen de cada establecimiento.</li>
+    </ul>
+
+    <h2>4. Contenido que publicas</h2>
+    <p>Eres dueño del contenido que subes (fotos, textos, productos, publicaciones de
+    tu canal). Nos otorgas una licencia limitada para mostrarlo dentro de la
+    plataforma y, si activas <b>"Gestión de redes"</b>, para publicarlo en tus redes
+    en tu nombre. Eres responsable de tener los derechos sobre lo que publicas.</p>
+
+    <h2>5. Contenido generado con IA</h2>
+    <p>El servicio de <b>community manager con IA</b> genera borradores de posts como
+    sugerencia. <b>Tú los revisas, editas y apruebas</b> antes de publicar; eres
+    responsable del contenido final que difundes.</p>
+
+    <h2>6. Uso permitido</h2>
+    <p>No puedes usar Pichangol para fines ilícitos, publicar contenido falso,
+    ofensivo o que infrinja derechos de terceros, ni intentar vulnerar la seguridad
+    de la plataforma. Podemos suspender cuentas que incumplan estos términos.</p>
+
+    <h2>7. Responsabilidad</h2>
+    <p>Pichangol se ofrece "tal cual". No garantizamos la disponibilidad de las
+    canchas ni el resultado de los servicios de terceros. En lo permitido por la ley,
+    nuestra responsabilidad se limita a los montos efectivamente cobrados como
+    comisión por la operación involucrada.</p>
+
+    <h2>8. Privacidad</h2>
+    <p>El tratamiento de tus datos se rige por nuestra
+    <a href="/legal/privacidad">Política de privacidad</a>, conforme a la
+    <b>Ley N.° 29733</b>.</p>
+
+    <h2>9. Cambios y ley aplicable</h2>
+    <p>Podemos actualizar estos términos publicando la nueva versión en esta misma
+    dirección. Se rigen por las leyes de la <b>República del Perú</b> y cualquier
+    controversia se somete a los jueces de <b>Lima</b>.</p>
+
+    <h2>10. Contacto</h2>
+    <p>Escríbenos a <a href="mailto:{CONTACTO}">{CONTACTO}</a>.</p>
+    """
+    return _doc("Términos y Condiciones", cuerpo)
+
+
 @router.get("/legal/eliminacion-datos", response_class=HTMLResponse)
 def eliminacion_datos() -> str:
     cuerpo = f"""
