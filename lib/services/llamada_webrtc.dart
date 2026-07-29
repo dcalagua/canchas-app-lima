@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -277,6 +278,10 @@ class LlamadaWebRTC extends ChangeNotifier {
     if (estado == EstadoLlamada.finalizada) return;
     if (avisar) _enviar('bye', {});
     _set(EstadoLlamada.finalizada);
+    // Cierra la pantalla nativa de CallKit (la notificación "Llamada en curso").
+    try {
+      await FlutterCallkitIncoming.endAllCalls();
+    } catch (_) {}
     try {
       await _pc?.close();
     } catch (_) {}

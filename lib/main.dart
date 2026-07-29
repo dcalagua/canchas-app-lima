@@ -43,6 +43,11 @@ void main() async {
             callId: room, video: video, iniciar: false, nombreOtro: nombre)));
   };
   runApp(const PichangolApp());
+  // Si la app arrancó porque se CONTESTÓ una llamada con la app cerrada, abre la
+  // pantalla de llamada una vez montado el navegador.
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    LlamadaService.revisarLlamadaAlArrancar();
+  });
 }
 
 class PichangolApp extends StatelessWidget {

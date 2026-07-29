@@ -2,6 +2,8 @@ import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'llamada_webrtc.dart';
+
 /// Llamadas de Pichangol. La 1-a-1 va camino a WebRTC propio (UI tipo WhatsApp);
 /// mientras se construye esa pantalla, `unir()` abre la sala por enlace. La
 /// grupal se queda por enlace de Jitsi (grupo con WebRTC puro necesita un SFU).
@@ -106,27 +108,60 @@ class LlamadaService {
         } catch (_) {
           return;
         }
-        if (!tipo.contains('actionCallAccept')) return;
-        Map? extra;
-        try {
-          final b = evt.body;
-          if (b is Map) extra = b['extra'] as Map?;
-        } catch (_) {}
-        if (extra == null) {
-          try {
-            final e = evt.extra;
-            if (e is Map) extra = e;
-          } catch (_) {}
+        // Rechazar o colgar desde la pantalla nativa → termina la llamada
+        // (avisa al otro por WebRTC si estaba conectada).
+        if (tipo.contains('actionCallDecline') ||
+            tipo.contains('actionCallEnded')) {
+          await LlamadaWebRTC.instance.finalizar();
+          return;
         }
-        final room = ((extra?['room']) ?? '').toString();
-        final video =
-            extra?['video'] == true || extra?['video'] == 'true';
-        final nombre = ((extra?['caller']) ?? '').toString();
-        if (room.isNotEmpty) {
+        if (!tipo.contains('actionCallAccept')) return;
+        final datos = _extraDe(evt);
+        if (datos != null) {
           // Abre la pantalla de llamada WebRTC para CONTESTAR (lo hace main.dart).
-          alContestar?.call(room, video, nombre);
+          alContestar?.call(datos.$1, datos.$2, datos.$3);
         }
       });
     } catch (_) {}
   }
+
+  /// Lee (room, video, nombre) del `extra` de un evento/llamada de CallKit.
+  static (String, bool, String)? _extraDe(dynamic evt) {
+    Map? extra;
+    try {
+      final b = evt.body;
+      if (b is Map) extra = b['extra'] as Map?;
+    } catch (_) {}
+    if (extra == null) {
+      try {
+        final e = evt.extra;
+        if (e is Map) extra = e;
+      } catch (_) {}
+    }
+    final room = ((extra?['room']) ?? '').toString();
+    if (room.isEmpty) return null;
+    final video = extra?['video'] == true || extra?['video'] == 'true';
+    final nombre = ((extra?['caller']) ?? '').toString();
+    return (room, video, nombre);
+  }
+
+  /// Al ARRANCAR la app (p. ej. cuando se contestó con la app cerrada y arrancó
+  /// de cero), revisa si hay una llamada activa aceptada y abre su pantalla.
+  static Future<void> revisarLlamadaAlArrancar() async {
+    try {
+      final calls = await FlutterCallkitIncoming.activeCalls();
+      if (calls is List && calls.isNotEmpty) {
+        final c = calls.first;
+        final datos = _extraDe(_Wrap(c));
+        if (datos != null) alContestar?.call(datos.$1, datos.$2, datos.$3);
+      }
+    } catch (_) {}
+  }
+}
+
+/// Envuelve un Map de `activeCalls()` para reusar `_extraDe` (que espera algo con
+/// `.body`).
+class _Wrap {
+  _Wrap(this.body);
+  final dynamic body;
 }
