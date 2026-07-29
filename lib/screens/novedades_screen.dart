@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:video_player/video_player.dart';
 
 import '../models/estado.dart';
 import '../state/app_state.dart';
@@ -284,12 +285,14 @@ class _AnilloAvatar extends StatelessWidget {
     Widget circulo;
     final e = preview;
     if (e != null && e.esVideo) {
-      // Historia de video: no hay miniatura del clip → círculo oscuro con ícono.
-      circulo = const CircleAvatar(
-        radius: 24,
-        backgroundColor: Colors.black54,
-        child: Icon(Icons.videocam, color: Colors.white, size: 22),
-      );
+      // Historia de video: primer fotograma del clip como preview (WhatsApp).
+      circulo = e.fotoUrl.isNotEmpty
+          ? _VideoThumb(url: e.fotoUrl)
+          : const CircleAvatar(
+              radius: 24,
+              backgroundColor: Colors.black54,
+              child: Icon(Icons.videocam, color: Colors.white, size: 22),
+            );
     } else if (e != null && e.esFoto && e.fotoUrl.isNotEmpty) {
       circulo = CircleAvatar(radius: 24, backgroundImage: NetworkImage(e.fotoUrl));
     } else if (e != null && !e.esFoto) {
@@ -374,4 +377,67 @@ class _Aviso extends StatelessWidget {
           ),
         ),
       );
+}
+
+/// Preview circular del PRIMER FOTOGRAMA de un video (para el aro de Novedades).
+/// Usa video_player (ya presente): carga el clip, lo silencia y salta a ~100 ms
+/// para mostrar un fotograma con contenido (evita el negro del frame 0). Mientras
+/// carga, muestra un círculo con ícono de cámara. Libera el controlador al salir.
+class _VideoThumb extends StatefulWidget {
+  const _VideoThumb({required this.url, this.radio = 24});
+  final String url;
+  final double radio;
+
+  @override
+  State<_VideoThumb> createState() => _VideoThumbState();
+}
+
+class _VideoThumbState extends State<_VideoThumb> {
+  VideoPlayerController? _c;
+
+  @override
+  void initState() {
+    super.initState();
+    final c = VideoPlayerController.networkUrl(Uri.parse(widget.url));
+    _c = c;
+    c.initialize().then((_) async {
+      if (!mounted) return;
+      await c.setVolume(0);
+      await c.seekTo(const Duration(milliseconds: 100));
+      if (mounted) setState(() {});
+    }).catchError((_) {});
+  }
+
+  @override
+  void dispose() {
+    _c?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final d = widget.radio * 2;
+    final c = _c;
+    if (c == null || !c.value.isInitialized) {
+      return CircleAvatar(
+        radius: widget.radio,
+        backgroundColor: Colors.black54,
+        child: Icon(Icons.videocam, color: Colors.white, size: widget.radio),
+      );
+    }
+    return ClipOval(
+      child: SizedBox(
+        width: d,
+        height: d,
+        child: FittedBox(
+          fit: BoxFit.cover,
+          child: SizedBox(
+            width: c.value.size.width,
+            height: c.value.size.height,
+            child: VideoPlayer(c),
+          ),
+        ),
+      ),
+    );
+  }
 }
