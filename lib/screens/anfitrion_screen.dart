@@ -20,14 +20,25 @@ class AnfitrionScreen extends StatelessWidget {
   const AnfitrionScreen({super.key});
 
   /// Los paneles de administración (Mis canchas / Mi academia) son master-detail
-  /// pensados para pantalla ANCHA: al entrar forzamos horizontal y al volver
-  /// restauramos la orientación libre.
+  /// pensados para pantalla ANCHA. Regla: en TABLET entran en horizontal (para
+  /// aprovechar el ancho); en CELULAR se quedan en vertical (más cómodo). Al
+  /// volver se restaura la orientación libre.
   static const _horizontal = [
     DeviceOrientation.landscapeLeft,
     DeviceOrientation.landscapeRight,
   ];
+  static const _vertical = [DeviceOrientation.portraitUp];
+
   Future<void> _restaurarOrientacion() =>
       SystemChrome.setPreferredOrientations(DeviceOrientation.values);
+
+  /// Tablet = lado corto ≥ 600 dp (heurística estándar). En tablet los paneles
+  /// van en horizontal; en celular, en vertical.
+  Future<void> _fijarOrientacionPanel(BuildContext context) {
+    final esTablet = MediaQuery.of(context).size.shortestSide >= 600;
+    return SystemChrome.setPreferredOrientations(
+        esTablet ? _horizontal : _vertical);
+  }
 
   Future<void> _abrirPanel(BuildContext context) async {
     if (!await LoginGoogleSheet.mostrar(context,
@@ -35,7 +46,7 @@ class AnfitrionScreen extends StatelessWidget {
       return;
     }
     if (!context.mounted) return;
-    await SystemChrome.setPreferredOrientations(_horizontal);
+    await _fijarOrientacionPanel(context);
     if (!context.mounted) {
       await _restaurarOrientacion();
       return;
@@ -51,7 +62,7 @@ class AnfitrionScreen extends StatelessWidget {
       return;
     }
     if (!context.mounted) return;
-    await SystemChrome.setPreferredOrientations(_horizontal);
+    await _fijarOrientacionPanel(context);
     if (!context.mounted) {
       await _restaurarOrientacion();
       return;
