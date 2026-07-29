@@ -50,7 +50,27 @@ class LlamadaWebRTC extends ChangeNotifier {
           {'urls': 'stun:stun.l.google.com:19302'},
           {'urls': 'stun:stun1.l.google.com:19302'},
           if (_turnUrl.isNotEmpty)
-            {'urls': _turnUrl, 'username': _turnUser, 'credential': _turnPass},
+            {'urls': _turnUrl, 'username': _turnUser, 'credential': _turnPass}
+          else ...[
+            // TURN público de respaldo (OpenRelay/Metered): permite conectar
+            // también en DATOS MÓVILES sin configurar nada (como el relevo que usa
+            // WhatsApp). Recomendado poner uno propio por confiabilidad/volumen.
+            {
+              'urls': 'turn:openrelay.metered.ca:80',
+              'username': 'openrelayproject',
+              'credential': 'openrelayproject',
+            },
+            {
+              'urls': 'turn:openrelay.metered.ca:443',
+              'username': 'openrelayproject',
+              'credential': 'openrelayproject',
+            },
+            {
+              'urls': 'turn:openrelay.metered.ca:443?transport=tcp',
+              'username': 'openrelayproject',
+              'credential': 'openrelayproject',
+            },
+          ],
         ],
         'sdpSemantics': 'unified-plan',
       };
