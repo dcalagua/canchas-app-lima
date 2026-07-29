@@ -402,6 +402,8 @@ class AppState extends ChangeNotifier {
     String musicaArtista = '',
     String musicaPreview = '',
     String musicaArt = '',
+    int musicaInicioMs = 0,
+    String musicaTrackUrl = '',
   }) async {
     final u = usuario;
     final t = texto.trim();
@@ -418,6 +420,8 @@ class AppState extends ChangeNotifier {
       musicaArtista: musicaArtista,
       musicaPreview: musicaPreview,
       musicaArt: musicaArt,
+      musicaInicioMs: musicaInicioMs,
+      musicaTrackUrl: musicaTrackUrl,
     );
     final ok = await EstadosRepo.publicar(e);
     if (!ok) return null;
@@ -436,6 +440,8 @@ class AppState extends ChangeNotifier {
     String musicaArtista = '',
     String musicaPreview = '',
     String musicaArt = '',
+    int musicaInicioMs = 0,
+    String musicaTrackUrl = '',
   }) async {
     final u = usuario;
     if (u == null) return null;
@@ -454,6 +460,8 @@ class AppState extends ChangeNotifier {
       musicaArtista: musicaArtista,
       musicaPreview: musicaPreview,
       musicaArt: musicaArt,
+      musicaInicioMs: musicaInicioMs,
+      musicaTrackUrl: musicaTrackUrl,
     );
     final ok = await EstadosRepo.publicar(e);
     if (!ok) return null;
@@ -472,6 +480,8 @@ class AppState extends ChangeNotifier {
     String musicaArtista = '',
     String musicaPreview = '',
     String musicaArt = '',
+    int musicaInicioMs = 0,
+    String musicaTrackUrl = '',
   }) async {
     final u = usuario;
     if (u == null) return null;
@@ -490,6 +500,8 @@ class AppState extends ChangeNotifier {
       musicaArtista: musicaArtista,
       musicaPreview: musicaPreview,
       musicaArt: musicaArt,
+      musicaInicioMs: musicaInicioMs,
+      musicaTrackUrl: musicaTrackUrl,
     );
     final ok = await EstadosRepo.publicar(e);
     if (!ok) return null;

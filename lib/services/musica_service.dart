@@ -12,13 +12,26 @@ class PistaMusica {
   final String artista;
   final String previewUrl; // clip .m4a de ~30 s
   final String artUrl;
+  final String trackUrl; // enlace EXACTO a la canción en Apple Music
+  final int inicioMs; // desde qué ms del preview arranca en la historia
 
   const PistaMusica({
     required this.titulo,
     required this.artista,
     required this.previewUrl,
     required this.artUrl,
+    this.trackUrl = '',
+    this.inicioMs = 0,
   });
+
+  PistaMusica copyWith({int? inicioMs}) => PistaMusica(
+        titulo: titulo,
+        artista: artista,
+        previewUrl: previewUrl,
+        artUrl: artUrl,
+        trackUrl: trackUrl,
+        inicioMs: inicioMs ?? this.inicioMs,
+      );
 
   /// Consulta de búsqueda para "abrir en Spotify".
   String get consultaSpotify => Uri.encodeComponent('$titulo $artista');
@@ -54,6 +67,8 @@ class MusicaService {
           final imgs = (m['im:image'] as List?) ?? const [];
           final art =
               imgs.isNotEmpty ? ((imgs.last as Map)['label'] ?? '').toString() : '';
+          // El <id label="..."> del feed es el enlace a la canción en Apple Music.
+          final track = (((m['id'] as Map?) ?? const {})['label'] ?? '').toString();
           pistas.add(PistaMusica(
             titulo: (((m['im:name'] as Map?) ?? const {})['label'] ?? '')
                 .toString(),
@@ -61,6 +76,7 @@ class MusicaService {
                 .toString(),
             previewUrl: preview,
             artUrl: art,
+            trackUrl: track,
           ));
         } catch (_) {}
       }
@@ -99,6 +115,7 @@ class MusicaService {
           artista: (m['artistName'] ?? '').toString(),
           previewUrl: preview,
           artUrl: art,
+          trackUrl: (m['trackViewUrl'] ?? '').toString(),
         ));
       }
       return pistas;

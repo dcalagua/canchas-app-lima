@@ -63,6 +63,8 @@ class _EstadoComposerScreenState extends State<EstadoComposerScreen> {
       musicaArtista: _musica?.artista ?? '',
       musicaPreview: _musica?.previewUrl ?? '',
       musicaArt: _musica?.artUrl ?? '',
+      musicaInicioMs: _musica?.inicioMs ?? 0,
+      musicaTrackUrl: _musica?.trackUrl ?? '',
     );
     if (!mounted) return;
     if (e == null) {
@@ -205,6 +207,8 @@ class _EstadoFotoComposerScreenState extends State<EstadoFotoComposerScreen> {
       musicaArtista: _musica?.artista ?? '',
       musicaPreview: _musica?.previewUrl ?? '',
       musicaArt: _musica?.artUrl ?? '',
+      musicaInicioMs: _musica?.inicioMs ?? 0,
+      musicaTrackUrl: _musica?.trackUrl ?? '',
     );
     if (!mounted) return;
     if (e == null) {
@@ -364,6 +368,8 @@ class _EstadoVideoComposerScreenState extends State<EstadoVideoComposerScreen> {
       musicaArtista: _musica?.artista ?? '',
       musicaPreview: _musica?.previewUrl ?? '',
       musicaArt: _musica?.artUrl ?? '',
+      musicaInicioMs: _musica?.inicioMs ?? 0,
+      musicaTrackUrl: _musica?.trackUrl ?? '',
     );
     if (!mounted) return;
     if (e == null) {

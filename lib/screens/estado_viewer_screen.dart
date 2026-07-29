@@ -189,7 +189,12 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
     if (e.tieneMusica) {
       _ctrl.duration = _duracionMusica;
       try {
-        _audio.play(UrlSource(e.musicaPreview));
+        _audio.play(UrlSource(e.musicaPreview)).then((_) {
+          // Arranca desde el fragmento elegido por el autor (recorte).
+          if (e.musicaInicioMs > 0) {
+            _audio.seek(Duration(milliseconds: e.musicaInicioMs));
+          }
+        });
       } catch (_) {}
     } else {
       _ctrl.duration = _duracion;
@@ -299,10 +304,16 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
     }
   }
 
-  Future<void> _abrirSpotify(Estado e) async {
+  /// Abre la canción: el enlace EXACTO en Apple Music si lo hay; si no, la
+  /// búsqueda en Spotify (fallback).
+  Future<void> _abrirCancion(Estado e) async {
     _pausar();
-    final q = Uri.encodeComponent('${e.musicaTitulo} ${e.musicaArtista}'.trim());
-    final url = Uri.parse('https://open.spotify.com/search/$q');
+    Uri? url;
+    if (e.musicaTrackUrl.isNotEmpty) {
+      url = Uri.tryParse(e.musicaTrackUrl);
+    }
+    url ??= Uri.parse('https://open.spotify.com/search/'
+        '${Uri.encodeComponent('${e.musicaTitulo} ${e.musicaArtista}'.trim())}');
     try {
       await launchUrl(url, mode: LaunchMode.externalApplication);
     } catch (_) {}
@@ -679,7 +690,7 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
                       child: Align(
                         alignment: Alignment.centerLeft,
                         child: _MusicaSticker(
-                            estado: e, onSpotify: () => _abrirSpotify(e)),
+                            estado: e, onAbrir: () => _abrirCancion(e)),
                       ),
                     ),
                 ],
@@ -818,14 +829,16 @@ class _Barra extends StatelessWidget {
   }
 }
 
-/// Sticker de música en el visor: carátula + título/artista + "Spotify".
+/// Sticker de música en el visor: carátula + ecualizador animado + título/artista
+/// + botón para abrir la canción (Apple Music exacto o Spotify).
 class _MusicaSticker extends StatelessWidget {
-  const _MusicaSticker({required this.estado, required this.onSpotify});
+  const _MusicaSticker({required this.estado, required this.onAbrir});
   final Estado estado;
-  final VoidCallback onSpotify;
+  final VoidCallback onAbrir;
 
   @override
   Widget build(BuildContext context) {
+    final apple = estado.musicaTrackUrl.isNotEmpty;
     return Container(
       padding: const EdgeInsets.fromLTRB(6, 5, 10, 5),
       decoration: BoxDecoration(
@@ -846,7 +859,9 @@ class _MusicaSticker extends StatelessWidget {
                         color: Colors.white, size: 20))
                 : const Icon(Icons.music_note, color: Colors.white, size: 20),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 7),
+          const _Ecualizador(),
+          const SizedBox(width: 7),
           Flexible(
             child: Text(
               '${estado.musicaTitulo} · ${estado.musicaArtista}',
@@ -860,18 +875,78 @@ class _MusicaSticker extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           InkWell(
-            onTap: onSpotify,
-            child: const Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.play_circle_fill, color: Color(0xFF1DB954), size: 18),
-              SizedBox(width: 3),
-              Text('Spotify',
-                  style: TextStyle(
+            onTap: onAbrir,
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(apple ? Icons.music_note : Icons.play_circle_fill,
+                  color: apple
+                      ? const Color(0xFFFC3C44)
+                      : const Color(0xFF1DB954),
+                  size: 18),
+              const SizedBox(width: 3),
+              Text(apple ? 'Apple Music' : 'Spotify',
+                  style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.w700,
                       fontSize: 12)),
             ]),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Ecualizador animado (3 barritas) que da la sensación de "sonando".
+class _Ecualizador extends StatefulWidget {
+  const _Ecualizador();
+  @override
+  State<_Ecualizador> createState() => _EcualizadorState();
+}
+
+class _EcualizadorState extends State<_Ecualizador>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c;
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 700))
+      ..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 16,
+      height: 16,
+      child: AnimatedBuilder(
+        animation: _c,
+        builder: (_, __) {
+          double alto(double fase) {
+            final v = (0.4 + 0.6 * ((_c.value + fase) % 1.0));
+            return 4 + v * 10;
+          }
+
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              for (final f in [0.0, 0.33, 0.66])
+                Container(
+                    width: 3,
+                    height: alto(f),
+                    decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(2))),
+            ],
+          );
+        },
       ),
     );
   }

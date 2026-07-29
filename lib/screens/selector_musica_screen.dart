@@ -73,9 +73,14 @@ class _SelectorMusicaScreenState extends State<SelectorMusicaScreen> {
     } catch (_) {}
   }
 
-  void _usar(PistaMusica p) {
-    _player.stop();
-    Navigator.of(context).pop(p);
+  Future<void> _usar(PistaMusica p) async {
+    await _player.stop();
+    if (mounted) setState(() => _sonando = -1);
+    if (!mounted) return;
+    // Paso 2: elegir el fragmento (qué ~15 s suenan en la historia).
+    final elegido = await Navigator.of(context).push<PistaMusica>(
+        MaterialPageRoute(builder: (_) => RecorteMusicaScreen(pista: p)));
+    if (elegido != null && mounted) Navigator.of(context).pop(elegido);
   }
 
   @override
@@ -202,4 +207,163 @@ class _ArtVacia extends StatelessWidget {
         color: limaSuave,
         child: const Icon(Icons.music_note, color: teal),
       );
+}
+
+/// Paso 2 de "Añadir música": elige QUÉ fragmento (~15 s) de la canción suena en
+/// la historia (estilo Instagram/WhatsApp). Reproduce en bucle el fragmento
+/// elegido mientras arrastras. Devuelve la [PistaMusica] con `inicioMs`.
+class RecorteMusicaScreen extends StatefulWidget {
+  const RecorteMusicaScreen({super.key, required this.pista});
+  final PistaMusica pista;
+
+  @override
+  State<RecorteMusicaScreen> createState() => _RecorteMusicaScreenState();
+}
+
+class _RecorteMusicaScreenState extends State<RecorteMusicaScreen> {
+  static const _ventanaMs = 15000; // lo que dura la música en la historia
+  final _player = AudioPlayer();
+  int _inicioMs = 0;
+  int _durMs = 30000; // duración del preview (se corrige al cargar)
+  bool _listo = false;
+
+  int get _maxInicio => (_durMs - _ventanaMs).clamp(0, _durMs);
+
+  @override
+  void initState() {
+    super.initState();
+    _player.onDurationChanged.listen((d) {
+      if (d.inMilliseconds > 1000 && mounted) {
+        setState(() => _durMs = d.inMilliseconds);
+      }
+    });
+    // Bucle del fragmento: al pasar el final de la ventana, vuelve al inicio.
+    _player.onPositionChanged.listen((pos) {
+      if (!mounted) return;
+      if (pos.inMilliseconds >= _inicioMs + _ventanaMs ||
+          pos.inMilliseconds < _inicioMs - 500) {
+        _player.seek(Duration(milliseconds: _inicioMs));
+      }
+    });
+    _arrancar();
+  }
+
+  Future<void> _arrancar() async {
+    try {
+      await _player.play(UrlSource(widget.pista.previewUrl));
+      await _player.seek(Duration(milliseconds: _inicioMs));
+      if (mounted) setState(() => _listo = true);
+    } catch (_) {
+      if (mounted) setState(() => _listo = true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _player.dispose();
+    super.dispose();
+  }
+
+  void _mover(double v) {
+    _inicioMs = v.round();
+    _player.seek(Duration(milliseconds: _inicioMs));
+    setState(() {});
+  }
+
+  String _fmt(int ms) {
+    final s = ms ~/ 1000;
+    return '0:${(s % 60).toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = widget.pista;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Elegir fragmento',
+            style: TextStyle(fontWeight: FontWeight.w800)),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: p.artUrl.isNotEmpty
+                  ? Image.network(p.artUrl,
+                      width: 180,
+                      height: 180,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const _ArtVacia())
+                  : Container(
+                      width: 180,
+                      height: 180,
+                      color: limaSuave,
+                      child: const Icon(Icons.music_note, color: teal, size: 60)),
+            ),
+            const SizedBox(height: 16),
+            Text(p.titulo,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+            Text(p.artista,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: textoTenueDe(context))),
+            const Spacer(),
+            if (!_listo)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 12),
+                child: Text('Cargando preview…',
+                    style: TextStyle(color: textoTenue)),
+              ),
+            // Barra de recorte: la ventana de 15 s dentro del preview.
+            Row(
+              children: [
+                Text(_fmt(_inicioMs),
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Icon(Icons.graphic_eq, color: lima.withOpacity(0.7)),
+                ),
+                const SizedBox(width: 8),
+                Text('~${_ventanaMs ~/ 1000}s',
+                    style: TextStyle(color: textoTenueDe(context))),
+              ],
+            ),
+            Slider(
+              value: _inicioMs.toDouble().clamp(0, _maxInicio.toDouble()),
+              min: 0,
+              max: _maxInicio.toDouble() <= 0 ? 1 : _maxInicio.toDouble(),
+              activeColor: lima,
+              onChanged: _maxInicio <= 0 ? null : _mover,
+            ),
+            Text('Arrastra para elegir desde dónde suena en tu historia',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: textoTenueDe(context), fontSize: 12.5)),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                    backgroundColor: lima,
+                    minimumSize: const Size.fromHeight(50)),
+                onPressed: () {
+                  _player.stop();
+                  Navigator.of(context).pop(p.copyWith(inicioMs: _inicioMs));
+                },
+                icon: const Icon(Icons.check),
+                label: const Text('Usar este fragmento',
+                    style: TextStyle(fontWeight: FontWeight.w800)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

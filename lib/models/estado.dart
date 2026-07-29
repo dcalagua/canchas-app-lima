@@ -17,6 +17,8 @@ class Estado {
   final String musicaArtista;
   final String musicaPreview; // URL del clip de 30s (m4a)
   final String musicaArt; // URL de la carátula
+  final int musicaInicioMs; // desde qué ms del preview arranca (recorte)
+  final String musicaTrackUrl; // enlace exacto a la canción (Apple Music)
 
   const Estado({
     required this.id,
@@ -31,6 +33,8 @@ class Estado {
     this.musicaArtista = '',
     this.musicaPreview = '',
     this.musicaArt = '',
+    this.musicaInicioMs = 0,
+    this.musicaTrackUrl = '',
   });
 
   bool get esFoto => tipo == 'foto';
@@ -55,6 +59,8 @@ class Estado {
         if (musicaArtista.isNotEmpty) 'musica_artista': musicaArtista,
         if (musicaPreview.isNotEmpty) 'musica_preview': musicaPreview,
         if (musicaArt.isNotEmpty) 'musica_art': musicaArt,
+        if (musicaInicioMs > 0) 'musica_inicio_ms': musicaInicioMs,
+        if (musicaTrackUrl.isNotEmpty) 'musica_track_url': musicaTrackUrl,
       };
 
   factory Estado.fromRow(Map<String, dynamic> r) => Estado(
@@ -72,5 +78,7 @@ class Estado {
         musicaArtista: (r['musica_artista'] ?? '').toString(),
         musicaPreview: (r['musica_preview'] ?? '').toString(),
         musicaArt: (r['musica_art'] ?? '').toString(),
+        musicaInicioMs: (r['musica_inicio_ms'] as num?)?.toInt() ?? 0,
+        musicaTrackUrl: (r['musica_track_url'] ?? '').toString(),
       );
 }
