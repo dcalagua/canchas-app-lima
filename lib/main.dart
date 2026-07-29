@@ -3,8 +3,10 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'brand.dart';
 import 'config/pais.dart';
+import 'screens/llamada_screen.dart';
 import 'screens/mensajes_screen.dart';
 import 'screens/splash_screen.dart';
+import 'services/llamada_service.dart';
 import 'services/push_service.dart';
 import 'services/supabase_service.dart';
 import 'state/app_state.dart';
@@ -30,6 +32,15 @@ void main() async {
     if (nav == null || hilo.isEmpty) return;
     nav.push(MaterialPageRoute(
         builder: (_) => MensajesScreen(abrirHilo: hilo)));
+  };
+  // Al CONTESTAR una llamada entrante (CallKit), abre la pantalla de llamada
+  // WebRTC en modo "contestar".
+  LlamadaService.alContestar = (room, video, nombre) {
+    final nav = PushService.navigatorKey.currentState;
+    if (nav == null || room.isEmpty) return;
+    nav.push(MaterialPageRoute(
+        builder: (_) => LlamadaScreen(
+            callId: room, video: video, iniciar: false, nombreOtro: nombre)));
   };
   runApp(const PichangolApp());
 }

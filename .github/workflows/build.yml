@@ -84,6 +84,9 @@ jobs:
           APP_API_KEY: ${{ secrets.APP_API_KEY }}
           GIPHY_API_KEY: ${{ secrets.GIPHY_API_KEY }}
           FACEBOOK_APP_ID: ${{ secrets.FACEBOOK_APP_ID }}
+          TURN_URL: ${{ secrets.TURN_URL }}
+          TURN_USER: ${{ secrets.TURN_USER }}
+          TURN_PASS: ${{ secrets.TURN_PASS }}
         run: |
           # --split-per-abi: un APK por arquitectura (mucho más liviano que el
           # universal). El arm64-v8a sirve a la gran mayoría de teléfonos.
@@ -98,7 +101,10 @@ jobs:
             --dart-define=GROWTH_API_URL="$GROWTH_API_URL" \
             --dart-define=APP_API_KEY="$APP_API_KEY" \
             --dart-define=GIPHY_API_KEY="$GIPHY_API_KEY" \
-            --dart-define=FACEBOOK_APP_ID="$FACEBOOK_APP_ID"
+            --dart-define=FACEBOOK_APP_ID="$FACEBOOK_APP_ID" \
+            --dart-define=TURN_URL="$TURN_URL" \
+            --dart-define=TURN_USER="$TURN_USER" \
+            --dart-define=TURN_PASS="$TURN_PASS"
 
       # App Bundle (.aab) para subir a Google Play. Solo en builds manuales
       # (workflow_dispatch), para no gastar tiempo en cada push de desarrollo.

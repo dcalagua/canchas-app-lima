@@ -2,8 +2,6 @@ import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../state/app_state.dart';
-
 /// Llamadas de Pichangol. La 1-a-1 va camino a WebRTC propio (UI tipo WhatsApp);
 /// mientras se construye esa pantalla, `unir()` abre la sala por enlace. La
 /// grupal se queda por enlace de Jitsi (grupo con WebRTC puro necesita un SFU).
@@ -53,6 +51,10 @@ class LlamadaService {
   // ── Fase 2: llamada ENTRANTE con tono (CallKit / Android) ──────────────────
   static bool _escuchando = false;
 
+  /// Lo setea main.dart (que conoce las pantallas): abre la LlamadaScreen para
+  /// CONTESTAR cuando el usuario acepta la llamada entrante. (room, video, nombre)
+  static void Function(String room, bool video, String nombre)? alContestar;
+
   /// Muestra la pantalla de llamada entrante (suena aunque la app esté cerrada).
   /// La dispara el push de llamada (data). Al aceptar entra a la sala.
   static Future<void> mostrarEntrante({
@@ -66,7 +68,11 @@ class LlamadaService {
       nameCaller: caller.isEmpty ? 'Pichangol' : caller,
       appName: 'Pichangol',
       type: video ? 1 : 0, // 0 = voz, 1 = video
-      extra: <String, dynamic>{'room': room, 'video': video},
+      extra: <String, dynamic>{
+        'room': room,
+        'video': video,
+        'caller': caller,
+      },
       android: const AndroidParams(
         isCustomNotification: true,
         ringtonePath: 'system_ringtone_default',
@@ -115,13 +121,10 @@ class LlamadaService {
         final room = ((extra?['room']) ?? '').toString();
         final video =
             extra?['video'] == true || extra?['video'] == 'true';
+        final nombre = ((extra?['caller']) ?? '').toString();
         if (room.isNotEmpty) {
-          final u = appState.usuario;
-          await unir(
-              sala: room,
-              audioSolo: !video,
-              nombre: u?.nombre ?? '',
-              email: u?.email ?? '');
+          // Abre la pantalla de llamada WebRTC para CONTESTAR (lo hace main.dart).
+          alContestar?.call(room, video, nombre);
         }
       });
     } catch (_) {}

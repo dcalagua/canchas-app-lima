@@ -20,8 +20,9 @@ Future<void> pushBackgroundHandler(RemoteMessage message) async {
   // Llamada entrante (app en segundo plano / cerrada): muestra la pantalla que
   // suena (CallKit). El resto de mensajes ya los pinta el sistema.
   if (message.data['tipo'] == 'llamada') {
+    final hilo = (message.data['hilo'] ?? '').toString();
     await LlamadaService.mostrarEntrante(
-      room: (message.data['room'] ?? '').toString(),
+      room: LlamadaService.salaChat(hilo),
       caller: (message.data['caller'] ?? '').toString(),
       video: (message.data['video'] ?? '') == 'true',
     );
@@ -102,8 +103,9 @@ class PushService {
   static void _enForeground(RemoteMessage m) {
     // Llamada entrante con la app abierta: también muestra la pantalla que suena.
     if (m.data['tipo'] == 'llamada') {
+      final hilo = (m.data['hilo'] ?? '').toString();
       LlamadaService.mostrarEntrante(
-        room: (m.data['room'] ?? '').toString(),
+        room: LlamadaService.salaChat(hilo),
         caller: (m.data['caller'] ?? '').toString(),
         video: (m.data['video'] ?? '') == 'true',
       );

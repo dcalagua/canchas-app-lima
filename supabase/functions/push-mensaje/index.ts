@@ -144,16 +144,14 @@ serve(async (req) => {
       ? m.autor_nombre
       : (m.tipo !== "cancha" && m.es_profe ? "Tu profe" : "Nuevo mensaje");
 
-    // ¿Es un mensaje de LLAMADA? (trae el enlace de la sala Pichangol en Jitsi).
-    // Si lo es, se manda un push DATA de alta prioridad (sin `notification`) para
-    // que el APK muestre la pantalla de llamada entrante que suena (CallKit), en
-    // vez de una notificación de chat normal.
-    const salaMatch = String(m.texto ?? "").match(
-      /meet\.jit\.si\/(Pichangol[A-Za-z0-9]+)/,
-    );
-    const esLlamada = !!salaMatch;
-    const room = salaMatch ? salaMatch[1] : "";
-    const video = esLlamada && !String(m.texto).includes("startAudioOnly");
+    // ¿Es un mensaje de LLAMADA? El APK publica "📹 Videollamada" o "📞 Llamada
+    // de voz". Si lo es, se manda un push DATA de alta prioridad (sin
+    // `notification`) para que el APK muestre la pantalla de llamada entrante que
+    // suena (CallKit) y, al contestar, arranque WebRTC. La sala la deduce el APK
+    // del `hilo`.
+    const texto = String(m.texto ?? "");
+    const esLlamada = /Videollamada|Llamada de voz/.test(texto);
+    const video = /Videollamada/.test(texto);
 
     const url = `https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`;
     const resultados = await Promise.all(
@@ -170,10 +168,9 @@ serve(async (req) => {
                 token,
                 data: {
                   tipo: "llamada",
-                  room,
+                  hilo: String(m.hilo ?? ""),
                   caller: String(m.autor_nombre ?? ""),
                   video: String(video),
-                  hilo: String(m.hilo ?? ""),
                 },
                 android: { priority: "high" },
               }

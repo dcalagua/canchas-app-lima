@@ -14,6 +14,7 @@ import 'package:record/record.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/llamada_service.dart';
+import 'llamada_screen.dart';
 
 import '../data/db_local.dart';
 import '../data/grupos_repo.dart';
@@ -636,19 +637,16 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  /// Llamada de voz/video en la app (Jitsi Meet, gratis y sin backend), como la
-  /// grupal: sala estable por hilo (ambos caen en la MISMA), avisa en el chat con
-  /// el enlace (le llega el push a la otra persona) y abre la sala. Voz = arranca
-  /// en modo solo-audio.
+  /// Llamada 1-a-1 con WebRTC propio (pantalla tipo WhatsApp). Publica un aviso
+  /// en el chat ("📹 Videollamada"/"📞 Llamada de voz") que dispara el push
+  /// (CallKit) al otro, y abre la pantalla de llamada como quien LLAMA. La sala
+  /// es estable por hilo (ambos caen en la misma señalización).
   Future<void> _iniciarLlamada({required bool video}) async {
     final u = appState.usuario;
     if (u == null) return;
     if (appState.bloqueado(_contraparteEmail)) return;
     final sala = LlamadaService.salaChat(_hilo);
-    final url = LlamadaService.enlace(sala, audioSolo: !video);
-    final icono = video ? '📹' : '📞';
-    final etiqueta = video ? 'videollamada' : 'llamada de voz';
-    // Avisar en el chat para que la otra persona se una (y le llegue el push).
+    // Aviso en el chat → el backend manda el push de llamada al otro.
     await MensajesRepo.enviar(Mensaje(
       id: 'msg_${DateTime.now().microsecondsSinceEpoch}',
       hilo: _hilo,
@@ -659,22 +657,20 @@ class _ChatScreenState extends State<ChatScreen> {
       autorEmail: u.email,
       autorNombre: u.nombre,
       esProfe: widget.soyProfe,
-      texto: '$icono ${u.nombre} inició una $etiqueta. Únete: $url',
+      texto: video ? '📹 Videollamada' : '📞 Llamada de voz',
       creado: DateTime.now(),
     ));
-    // Abre la llamada DENTRO de la app (Jitsi embebido). Si falla, cae al enlace.
-    final ok = await LlamadaService.unir(
-        sala: sala, audioSolo: !video, nombre: u.nombre, email: u.email);
-    if (!ok) {
-      try {
-        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-      } catch (_) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('No se pudo abrir la llamada.')));
-        }
-      }
-    }
+    if (!mounted) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => LlamadaScreen(
+        callId: sala,
+        video: video,
+        iniciar: true,
+        nombreOtro:
+            appState.nombreMostrableDe(_contraparteEmail) ?? _contraparteEmail,
+        fotoUrl: appState.fotoDe(_contraparteEmail) ?? '',
+      ),
+    ));
   }
 
   @override
