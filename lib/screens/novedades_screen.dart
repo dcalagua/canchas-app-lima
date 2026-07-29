@@ -6,6 +6,7 @@ import '../models/estado.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/responsive.dart' show AnchoTablet;
+import 'canales_screen.dart';
 import 'estado_composer_screen.dart';
 import 'estado_viewer_screen.dart';
 import 'login_google_sheet.dart';
@@ -196,6 +197,19 @@ class _NovedadesScreenState extends State<NovedadesScreen> {
                             onPressed: _agregar,
                           )
                         : null,
+                  ),
+                  Divider(height: 8, thickness: 8, color: trazo.withOpacity(0.25)),
+                  // Canales (difusión tipo WhatsApp Channels).
+                  ListTile(
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => const CanalesScreen())),
+                    leading: const CircleAvatar(
+                        backgroundColor: limaSuave,
+                        child: Icon(Icons.campaign, color: lima)),
+                    title: const Text('Canales',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                    subtitle: const Text('Sigue novedades o crea el tuyo'),
+                    trailing: const Icon(Icons.chevron_right),
                   ),
                   Divider(height: 8, thickness: 8, color: trazo.withOpacity(0.25)),
                   if (autores.isNotEmpty) ...[
