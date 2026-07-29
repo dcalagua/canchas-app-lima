@@ -30,7 +30,7 @@ dependencies:
   # las clases nativas org.webrtc.*). Plugin nativo pesado → de-riskear en CI
   # (Flutter 3.24.5). Señalización sobre Supabase Realtime; la grupal sigue por
   # enlace de Jitsi (meet.jit.si) porque grupo con WebRTC puro necesita un SFU.
-  flutter_webrtc: 1.4.1
+  flutter_webrtc: 0.12.5+hotfix.2
   # Fase 2 de llamadas: pantalla de LLAMADA ENTRANTE con tono (suena aunque la
   # app esté cerrada) en Android. Plugin nativo → de-riskear en CI (Flutter
   # 3.24.5). Se dispara desde el push de llamada (data) y al aceptar une a Jitsi.
