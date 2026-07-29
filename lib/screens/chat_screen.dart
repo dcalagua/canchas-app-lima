@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -633,6 +634,43 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  /// Llamada de voz/video en la app (Jitsi Meet, gratis y sin backend), como la
+  /// grupal: sala estable por hilo (ambos caen en la MISMA), avisa en el chat con
+  /// el enlace (le llega el push a la otra persona) y abre la sala. Voz = arranca
+  /// en modo solo-audio.
+  Future<void> _iniciarLlamada({required bool video}) async {
+    final u = appState.usuario;
+    if (u == null) return;
+    if (appState.bloqueado(_contraparteEmail)) return;
+    final limpio = _hilo.replaceAll(RegExp(r'[^A-Za-z0-9]'), '');
+    var url = 'https://meet.jit.si/PichangolChat$limpio';
+    if (!video) url += '#config.startAudioOnly=true';
+    final icono = video ? '📹' : '📞';
+    final etiqueta = video ? 'videollamada' : 'llamada de voz';
+    // Avisar en el chat para que la otra persona se una (y le llegue el push).
+    await MensajesRepo.enviar(Mensaje(
+      id: 'msg_${DateTime.now().microsecondsSinceEpoch}',
+      hilo: _hilo,
+      tipo: widget.tipo,
+      refId: _refId,
+      academiaId: widget.academiaId,
+      cuentaEmail: widget.cuentaEmail,
+      autorEmail: u.email,
+      autorNombre: u.nombre,
+      esProfe: widget.soyProfe,
+      texto: '$icono ${u.nombre} inició una $etiqueta. Únete: $url',
+      creado: DateTime.now(),
+    ));
+    try {
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('No se pudo abrir la llamada.')));
+      }
+    }
+  }
+
   @override
   void dispose() {
     appState.marcarChatLeido(_hilo);
@@ -1025,16 +1063,20 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ],
             ),
-          // Llamar (marcador del teléfono) si la contraparte compartió su celular.
+          // ── 1-a-1: videollamada + llamada de voz (Jitsi, gratis) ──
           if (_contraparteEmail.isNotEmpty &&
-              appState.celularDe(_contraparteEmail) != null &&
-              !appState.bloqueado(_contraparteEmail))
+              !appState.bloqueado(_contraparteEmail)) ...[
             IconButton(
-              tooltip: 'Llamar',
-              icon: const Icon(Icons.call, color: Colors.white),
-              onPressed: () =>
-                  _llamar(appState.celularDe(_contraparteEmail)!),
+              tooltip: 'Videollamada',
+              icon: const Icon(Icons.videocam, color: Colors.white),
+              onPressed: () => _iniciarLlamada(video: true),
             ),
+            IconButton(
+              tooltip: 'Llamada de voz',
+              icon: const Icon(Icons.call, color: Colors.white),
+              onPressed: () => _iniciarLlamada(video: false),
+            ),
+          ],
           // Si la contraparte compartió su celular, botón "Contactar por WhatsApp".
           if (_contraparteEmail.isNotEmpty &&
               appState.celularDe(_contraparteEmail) != null &&
@@ -1055,6 +1097,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 final e = _contraparteEmail;
                 if (v == 'info') {
                   _verContacto();
+                } else if (v == 'llamar_tel') {
+                  final cel = appState.celularDe(e);
+                  if (cel != null) _llamar(cel);
                 } else if (v == 'apodo') {
                   _editarApodo();
                 } else if (v == 'contacto') {
@@ -1082,6 +1127,15 @@ class _ChatScreenState extends State<ChatScreen> {
                       title: Text('Ver contacto'),
                     ),
                   ),
+                  if (appState.celularDe(_contraparteEmail) != null)
+                    const PopupMenuItem(
+                      value: 'llamar_tel',
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(Icons.phone_outlined),
+                        title: Text('Llamar al número'),
+                      ),
+                    ),
                   PopupMenuItem(
                     value: 'contacto',
                     child: ListTile(
@@ -1506,9 +1560,10 @@ class _Burbuja extends StatelessWidget {
             if (mensaje.texto.isNotEmpty &&
                 !(mensaje.tieneFoto && mensaje.texto == '📷 Foto') &&
                 !(mensaje.esAudio && mensaje.texto == '🎤 Nota de voz'))
-              Text(mensaje.texto,
-                  style: TextStyle(
-                      color: mio ? wa.textoMio : wa.textoOtro, fontSize: 15.5)),
+              _TextoMensaje(
+                  texto: mensaje.texto,
+                  color: mio ? wa.textoMio : wa.textoOtro,
+                  linkColor: mio ? Colors.white : teal),
             const SizedBox(width: 8),
             Padding(
               padding: const EdgeInsets.only(top: 3),
@@ -2316,5 +2371,68 @@ class _VisorFoto extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Texto de un mensaje con los enlaces tocables (tipo WhatsApp). Sirve para el
+/// enlace de "Únete" de una llamada y para cualquier link que se comparta.
+class _TextoMensaje extends StatefulWidget {
+  const _TextoMensaje(
+      {required this.texto, required this.color, required this.linkColor});
+  final String texto;
+  final Color color;
+  final Color linkColor;
+
+  @override
+  State<_TextoMensaje> createState() => _TextoMensajeState();
+}
+
+class _TextoMensajeState extends State<_TextoMensaje> {
+  static final _re = RegExp(r'((https?:\/\/|www\.)[^\s]+)', caseSensitive: false);
+  final List<TapGestureRecognizer> _recs = [];
+
+  @override
+  void dispose() {
+    for (final r in _recs) {
+      r.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _abrir(String url) async {
+    var u = url;
+    if (!u.startsWith('http')) u = 'https://$u';
+    try {
+      await launchUrl(Uri.parse(u), mode: LaunchMode.externalApplication);
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    for (final r in _recs) {
+      r.dispose();
+    }
+    _recs.clear();
+    final t = widget.texto;
+    final spans = <InlineSpan>[];
+    var last = 0;
+    for (final m in _re.allMatches(t)) {
+      if (m.start > last) spans.add(TextSpan(text: t.substring(last, m.start)));
+      final url = m.group(0)!;
+      final rec = TapGestureRecognizer()..onTap = () => _abrir(url);
+      _recs.add(rec);
+      spans.add(TextSpan(
+        text: url,
+        style: TextStyle(
+            color: widget.linkColor,
+            decoration: TextDecoration.underline,
+            fontWeight: FontWeight.w600),
+        recognizer: rec,
+      ));
+      last = m.end;
+    }
+    if (last < t.length) spans.add(TextSpan(text: t.substring(last)));
+    return Text.rich(TextSpan(
+        style: TextStyle(color: widget.color, fontSize: 15.5), children: spans));
   }
 }
