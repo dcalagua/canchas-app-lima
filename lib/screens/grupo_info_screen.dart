@@ -9,6 +9,7 @@ import '../data/grupos_repo.dart';
 import '../data/mensajes_repo.dart';
 import '../models/grupo.dart';
 import '../models/mensaje.dart';
+import '../services/llamada_service.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -16,15 +17,9 @@ import '../widgets/cargando_pichangol.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/responsive.dart';
 
-/// Sala de reunión (Jitsi Meet, gratis y sin backend) única por grupo. Todos los
-/// integrantes que toquen "Únete" caen en la MISMA sala → llamada grupal real.
-String _salaJitsi(String grupoId) {
-  final limpio = grupoId.replaceAll(RegExp(r'[^A-Za-z0-9]'), '');
-  return 'https://meet.jit.si/PichangolGrupo$limpio';
-}
-
 /// Inicia la llamada grupal: publica el enlace en el chat del grupo (para que
-/// todos puedan unirse) y abre la sala. Compartido por la ficha y la cabecera.
+/// todos puedan unirse) y abre la sala DENTRO de la app (Jitsi embebido).
+/// Compartido por la ficha y la cabecera. Todos caen en la MISMA sala.
 Future<void> iniciarLlamadaGrupal(
   BuildContext context, {
   required String grupoId,
@@ -32,7 +27,8 @@ Future<void> iniciarLlamadaGrupal(
 }) async {
   final u = appState.usuario;
   if (u == null) return;
-  final url = _salaJitsi(grupoId);
+  final sala = LlamadaService.salaGrupo(grupoId);
+  final url = LlamadaService.enlace(sala);
   // Avisar en el chat del grupo para que los demás se unan.
   await MensajesRepo.enviar(Mensaje(
     id: 'msg_${DateTime.now().microsecondsSinceEpoch}',
@@ -42,15 +38,21 @@ Future<void> iniciarLlamadaGrupal(
     autorEmail: u.email,
     autorNombre: u.nombre,
     esProfe: false,
-    texto: '📞 ${u.nombre} inició una llamada grupal. Únete: $url',
+    texto: '📹 ${u.nombre} inició una llamada grupal. Únete: $url',
     creado: DateTime.now(),
   ));
-  try {
-    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-  } catch (_) {
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('No se pudo abrir la llamada.')));
+  // Abre la llamada dentro de la app; si falla, cae al enlace web.
+  final ok = await LlamadaService.unir(
+      sala: sala, audioSolo: false, nombre: u.nombre, email: u.email,
+      asunto: grupoNombre);
+  if (!ok) {
+    try {
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('No se pudo abrir la llamada.')));
+      }
     }
   }
 }

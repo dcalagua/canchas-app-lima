@@ -13,6 +13,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../services/llamada_service.dart';
+
 import '../data/db_local.dart';
 import '../data/grupos_repo.dart';
 import '../data/lecturas_repo.dart';
@@ -642,9 +644,8 @@ class _ChatScreenState extends State<ChatScreen> {
     final u = appState.usuario;
     if (u == null) return;
     if (appState.bloqueado(_contraparteEmail)) return;
-    final limpio = _hilo.replaceAll(RegExp(r'[^A-Za-z0-9]'), '');
-    var url = 'https://meet.jit.si/PichangolChat$limpio';
-    if (!video) url += '#config.startAudioOnly=true';
+    final sala = LlamadaService.salaChat(_hilo);
+    final url = LlamadaService.enlace(sala, audioSolo: !video);
     final icono = video ? '📹' : '📞';
     final etiqueta = video ? 'videollamada' : 'llamada de voz';
     // Avisar en el chat para que la otra persona se una (y le llegue el push).
@@ -661,12 +662,17 @@ class _ChatScreenState extends State<ChatScreen> {
       texto: '$icono ${u.nombre} inició una $etiqueta. Únete: $url',
       creado: DateTime.now(),
     ));
-    try {
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('No se pudo abrir la llamada.')));
+    // Abre la llamada DENTRO de la app (Jitsi embebido). Si falla, cae al enlace.
+    final ok = await LlamadaService.unir(
+        sala: sala, audioSolo: !video, nombre: u.nombre, email: u.email);
+    if (!ok) {
+      try {
+        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('No se pudo abrir la llamada.')));
+        }
       }
     }
   }
@@ -2400,6 +2406,18 @@ class _TextoMensajeState extends State<_TextoMensaje> {
   }
 
   Future<void> _abrir(String url) async {
+    // Si es una sala Pichangol, únete DENTRO de la app (Jitsi embebido).
+    final sala = LlamadaService.salaDeEnlace(url);
+    if (sala != null) {
+      final yo = appState.usuario;
+      final ok = await LlamadaService.unir(
+        sala: sala,
+        audioSolo: url.contains('startAudioOnly'),
+        nombre: yo?.nombre ?? '',
+        email: yo?.email ?? '',
+      );
+      if (ok) return;
+    }
     var u = url;
     if (!u.startsWith('http')) u = 'https://$u';
     try {
