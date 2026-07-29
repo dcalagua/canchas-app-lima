@@ -11,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
 import '../models/estado.dart';
+import '../services/historia_share.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/dialogo_pichangol.dart';
@@ -218,6 +219,21 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
   /// Comparte la historia actual a la hoja del sistema (Instagram, Facebook,
   /// WhatsApp…). Foto/video: descarga el archivo y lo comparte; texto: comparte
   /// el texto. Pausa el auto-avance mientras se abre la hoja.
+  /// Descarga la foto/video de la historia a un archivo temporal; devuelve la
+  /// ruta local (o null si falla). Reutilizado por compartir general y directo.
+  Future<String?> _guardarMediaTemp(Estado e) async {
+    if (!e.esFoto && !e.esVideo) return null;
+    final resp = await http.get(Uri.parse(e.fotoUrl));
+    if (resp.statusCode != 200) return null;
+    final dir = await getTemporaryDirectory();
+    final ext = e.esVideo ? 'mp4' : 'jpg';
+    final ruta = '${dir.path}/pichangol_historia_'
+        '${DateTime.now().millisecondsSinceEpoch}.$ext';
+    await File(ruta).writeAsBytes(resp.bodyBytes);
+    return ruta;
+  }
+
+  /// Compartir GENERAL (hoja del sistema): IG, FB, WhatsApp, etc.
   Future<void> _compartir() async {
     if (_compartiendo) return;
     _pausar();
@@ -225,13 +241,8 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
     setState(() => _compartiendo = true);
     try {
       if (e.esFoto || e.esVideo) {
-        final resp = await http.get(Uri.parse(e.fotoUrl));
-        if (resp.statusCode != 200) throw Exception('descarga');
-        final dir = await getTemporaryDirectory();
-        final ext = e.esVideo ? 'mp4' : 'jpg';
-        final ruta = '${dir.path}/pichangol_historia_'
-            '${DateTime.now().millisecondsSinceEpoch}.$ext';
-        await File(ruta).writeAsBytes(resp.bodyBytes);
+        final ruta = await _guardarMediaTemp(e);
+        if (ruta == null) throw Exception('descarga');
         await Share.shareXFiles(
           [XFile(ruta, mimeType: e.esVideo ? 'video/mp4' : 'image/jpeg')],
           text: e.texto.isNotEmpty ? e.texto : null,
@@ -239,6 +250,42 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
       } else {
         await Share.share(
           e.texto.isNotEmpty ? e.texto : 'Mira mi novedad en Pichangol',
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('No se pudo compartir. Inténtalo de nuevo.')));
+      }
+    } finally {
+      if (mounted) setState(() => _compartiendo = false);
+      if (mounted) _reanudar();
+    }
+  }
+
+  /// Compartir DIRECTO a la Historia de [red] ('instagram'|'facebook'). Si no
+  /// hay media, no está configurado el App ID, o la app no está instalada, cae a
+  /// la hoja de compartir general (con el archivo listo).
+  Future<void> _compartirRed(String red) async {
+    if (_compartiendo) return;
+    final e = _items[_i];
+    if ((!e.esFoto && !e.esVideo) || !HistoriaShare.configurado) {
+      await _compartir();
+      return;
+    }
+    _pausar();
+    setState(() => _compartiendo = true);
+    try {
+      final ruta = await _guardarMediaTemp(e);
+      if (ruta == null) throw Exception('descarga');
+      final ok = red == 'instagram'
+          ? await HistoriaShare.instagram(ruta, video: e.esVideo)
+          : await HistoriaShare.facebook(ruta, video: e.esVideo);
+      if (!ok) {
+        // App no instalada / falló → hoja de compartir con el archivo.
+        await Share.shareXFiles(
+          [XFile(ruta, mimeType: e.esVideo ? 'video/mp4' : 'image/jpeg')],
+          text: e.texto.isNotEmpty ? e.texto : null,
         );
       }
     } catch (_) {
@@ -492,14 +539,14 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
                       icono: FontAwesomeIcons.facebookF,
                       color: const Color(0xFF1877F2),
                       tooltip: 'Compartir en Facebook',
-                      onTap: _compartir,
+                      onTap: () => _compartirRed('facebook'),
                     ),
                     const SizedBox(width: 12),
                     _BotonRed(
                       icono: FontAwesomeIcons.instagram,
                       color: const Color(0xFFE1306C),
                       tooltip: 'Compartir en Instagram',
-                      onTap: _compartir,
+                      onTap: () => _compartirRed('instagram'),
                     ),
                   ],
                 ),

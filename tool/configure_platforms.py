@@ -83,6 +83,32 @@ def android_manifest(text):
             text,
             count=1,
         )
+    # Compartir historia DIRECTO a IG/FB (intent "Add to Story"): Android 11+
+    # exige declarar los paquetes que consultamos (package visibility).
+    if "com.instagram.android" not in text:
+        text = re.sub(
+            r"(<manifest[^>]*>)",
+            r'\1\n    <queries>\n'
+            r'        <package android:name="com.instagram.android"/>\n'
+            r'        <package android:name="com.facebook.katana"/>\n'
+            r'    </queries>',
+            text,
+            count=1,
+        )
+    # FileProvider: para pasar la foto/video de la historia como content:// URI a
+    # Instagram/Facebook (con permiso de lectura temporal).
+    if ".provider" not in text:
+        prov = (
+            '        <provider\n'
+            '            android:name="androidx.core.content.FileProvider"\n'
+            '            android:authorities="${applicationId}.provider"\n'
+            '            android:exported="false"\n'
+            '            android:grantUriPermissions="true">\n'
+            '            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" '
+            'android:resource="@xml/provider_paths_app"/>\n'
+            '        </provider>\n    </application>'
+        )
+        text = text.replace("</application>", prov, 1)
     # Ícono + color por defecto de las notificaciones push (FCM). Sin esto,
     # Android pinta un ícono genérico (cuadrito) en vez del pin de Pichangol.
     if "default_notification_icon" not in text:
@@ -540,7 +566,21 @@ def configurar_sonido_notificacion():
     os.makedirs(raw, exist_ok=True)
     shutil.copyfile(origen, os.path.join(raw, "pichan.mp3"))
 
-    # 2) Reescribir MainActivity.kt para crear el canal con el sonido.
+    # 2) provider_paths_app.xml para el FileProvider (temp/cache del app).
+    xmldir = os.path.join(raiz, "res", "xml")
+    os.makedirs(xmldir, exist_ok=True)
+    with open(os.path.join(xmldir, "provider_paths_app.xml"), "w", encoding="utf-8") as f:
+        f.write(
+            '<?xml version="1.0" encoding="utf-8"?>\n<paths>\n'
+            '    <cache-path name="cache" path="."/>\n'
+            '    <external-cache-path name="ext_cache" path="."/>\n'
+            '    <external-path name="ext" path="."/>\n'
+            '    <files-path name="files" path="."/>\n'
+            "</paths>\n"
+        )
+
+    # 3) Reescribir MainActivity.kt: canal de sonido + MethodChannel para
+    #    compartir la historia DIRECTO a IG/FB (intent "Add to Story").
     kt_dir = os.path.join(raiz, "kotlin", "pe", "ebim", "canchas_lima")
     kt = os.path.join(kt_dir, "MainActivity.kt")
     if not os.path.isdir(kt_dir):
@@ -551,14 +591,67 @@ def configurar_sonido_notificacion():
         "import android.app.NotificationChannel\n"
         "import android.app.NotificationManager\n"
         "import android.content.Context\n"
+        "import android.content.Intent\n"
         "import android.media.AudioAttributes\n"
         "import android.net.Uri\n"
         "import android.os.Build\n"
         "import android.os.Bundle\n"
-        "import io.flutter.embedding.android.FlutterActivity\n\n"
+        "import androidx.core.content.FileProvider\n"
+        "import io.flutter.embedding.android.FlutterActivity\n"
+        "import io.flutter.embedding.engine.FlutterEngine\n"
+        "import io.flutter.plugin.common.MethodChannel\n"
+        "import java.io.File\n\n"
         "class MainActivity : FlutterActivity() {\n"
+        "    private val canalShare = \"pichangol/share_story\"\n\n"
         "    override fun onCreate(savedInstanceState: Bundle?) {\n"
         "        super.onCreate(savedInstanceState)\n"
+        "        crearCanalNotif()\n"
+        "    }\n\n"
+        "    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {\n"
+        "        super.configureFlutterEngine(flutterEngine)\n"
+        "        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, canalShare)\n"
+        "            .setMethodCallHandler { call, result ->\n"
+        "                when (call.method) {\n"
+        "                    \"instagram\", \"facebook\" -> {\n"
+        "                        val path = call.argument<String>(\"path\")\n"
+        "                        val isVideo = call.argument<Boolean>(\"video\") ?: false\n"
+        "                        val appId = call.argument<String>(\"appId\") ?: \"\"\n"
+        "                        result.success(compartirHistoria(call.method, path, isVideo, appId))\n"
+        "                    }\n"
+        "                    else -> result.notImplemented()\n"
+        "                }\n"
+        "            }\n"
+        "    }\n\n"
+        "    private fun compartirHistoria(red: String, path: String?, isVideo: Boolean, appId: String): Boolean {\n"
+        "        if (path == null) return false\n"
+        "        return try {\n"
+        "            val uri = FileProvider.getUriForFile(this, \"$packageName.provider\", File(path))\n"
+        "            val mime = if (isVideo) \"video/*\" else \"image/jpeg\"\n"
+        "            val intent = if (red == \"instagram\") {\n"
+        "                Intent(\"com.instagram.share.ADD_TO_STORY\").apply {\n"
+        "                    putExtra(\"source_application\", appId)\n"
+        "                    setDataAndType(uri, mime)\n"
+        "                }\n"
+        "            } else {\n"
+        "                Intent(\"com.facebook.stories.ADD_TO_STORY\").apply {\n"
+        "                    putExtra(\"com.facebook.platform.extra.APPLICATION_ID\", appId)\n"
+        "                    setDataAndType(uri, mime)\n"
+        "                }\n"
+        "            }\n"
+        "            intent.flags = Intent.FLAG_GRANT_READ_URI_PERMISSION\n"
+        "            val pkg = if (red == \"instagram\") \"com.instagram.android\" else \"com.facebook.katana\"\n"
+        "            grantUriPermission(pkg, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)\n"
+        "            if (intent.resolveActivity(packageManager) != null) {\n"
+        "                startActivity(intent)\n"
+        "                true\n"
+        "            } else {\n"
+        "                false\n"
+        "            }\n"
+        "        } catch (e: Exception) {\n"
+        "            false\n"
+        "        }\n"
+        "    }\n\n"
+        "    private fun crearCanalNotif() {\n"
         "        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {\n"
         "            val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager\n"
         "            if (mgr.getNotificationChannel(\"pichan_msgs\") == null) {\n"
@@ -580,7 +673,7 @@ def configurar_sonido_notificacion():
     )
     with open(kt, "w", encoding="utf-8") as f:
         f.write(contenido)
-    print("  Sonido notif: pichan.mp3 en res/raw + canal pichan_msgs en MainActivity")
+    print("  MainActivity: canal pichan_msgs + MethodChannel share_story; provider_paths_app.xml")
 
 
 def main():

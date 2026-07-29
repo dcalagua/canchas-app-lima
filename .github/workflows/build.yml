@@ -83,6 +83,7 @@ jobs:
           GROWTH_API_URL: ${{ secrets.GROWTH_API_URL }}
           APP_API_KEY: ${{ secrets.APP_API_KEY }}
           GIPHY_API_KEY: ${{ secrets.GIPHY_API_KEY }}
+          FACEBOOK_APP_ID: ${{ secrets.FACEBOOK_APP_ID }}
         run: |
           # --split-per-abi: un APK por arquitectura (mucho más liviano que el
           # universal). El arm64-v8a sirve a la gran mayoría de teléfonos.
@@ -96,7 +97,8 @@ jobs:
             --dart-define=VERIF_API_URL="$VERIF_API_URL" \
             --dart-define=GROWTH_API_URL="$GROWTH_API_URL" \
             --dart-define=APP_API_KEY="$APP_API_KEY" \
-            --dart-define=GIPHY_API_KEY="$GIPHY_API_KEY"
+            --dart-define=GIPHY_API_KEY="$GIPHY_API_KEY" \
+            --dart-define=FACEBOOK_APP_ID="$FACEBOOK_APP_ID"
 
       # App Bundle (.aab) para subir a Google Play. Solo en builds manuales
       # (workflow_dispatch), para no gastar tiempo en cada push de desarrollo.
@@ -111,6 +113,7 @@ jobs:
           GROWTH_API_URL: ${{ secrets.GROWTH_API_URL }}
           APP_API_KEY: ${{ secrets.APP_API_KEY }}
           GIPHY_API_KEY: ${{ secrets.GIPHY_API_KEY }}
+          FACEBOOK_APP_ID: ${{ secrets.FACEBOOK_APP_ID }}
         run: |
           flutter build appbundle --release \
             --build-number=${{ github.run_number }} \
@@ -122,7 +125,8 @@ jobs:
             --dart-define=VERIF_API_URL="$VERIF_API_URL" \
             --dart-define=GROWTH_API_URL="$GROWTH_API_URL" \
             --dart-define=APP_API_KEY="$APP_API_KEY" \
-            --dart-define=GIPHY_API_KEY="$GIPHY_API_KEY"
+            --dart-define=GIPHY_API_KEY="$GIPHY_API_KEY" \
+            --dart-define=FACEBOOK_APP_ID="$FACEBOOK_APP_ID"
           mkdir -p dist
           cp build/app/outputs/bundle/release/app-release.aab \
              "dist/pichangol-${ENTORNO}-${{ github.run_number }}.aab"
