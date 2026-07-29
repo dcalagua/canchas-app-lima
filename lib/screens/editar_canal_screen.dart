@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import '../data/canales_repo.dart';
 import '../models/canal.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/responsive.dart';
 
@@ -51,16 +52,20 @@ class _EditarCanalScreenState extends State<EditarCanalScreen> {
     final nombre = _nombre.text.trim();
     if (nombre.isEmpty || _guardando) return;
     setState(() => _guardando = true);
-    var fotoUrl = widget.canal.fotoUrl;
-    if (_fotoNueva != null) {
-      final url = await CanalesRepo.subirMedia(
-          '${widget.canal.id}/portada.jpg', _fotoNueva!);
-      if (url != null) fotoUrl = url;
-    }
-    final ok = await CanalesRepo.actualizar(widget.canal.id,
-        nombre: nombre, descripcion: _desc.text.trim(), fotoUrl: fotoUrl);
+    // REGLA de la app: acción que demora → preload de marca (nunca spinner pelado).
+    final fotoUrl = await conPreload<String?>(context, () async {
+      var url = widget.canal.fotoUrl;
+      if (_fotoNueva != null) {
+        final subida = await CanalesRepo.subirMedia(
+            '${widget.canal.id}/portada.jpg', _fotoNueva!);
+        if (subida != null) url = subida;
+      }
+      final ok = await CanalesRepo.actualizar(widget.canal.id,
+          nombre: nombre, descripcion: _desc.text.trim(), fotoUrl: url);
+      return ok ? url : null;
+    }, texto: 'Guardando canal…');
     if (!mounted) return;
-    if (ok) {
+    if (fotoUrl != null) {
       Navigator.of(context).pop(widget.canal.copyWith(
           nombre: nombre, descripcion: _desc.text.trim(), fotoUrl: fotoUrl));
     } else {
@@ -136,15 +141,9 @@ class _EditarCanalScreenState extends State<EditarCanalScreen> {
               style: FilledButton.styleFrom(
                   backgroundColor: lima, minimumSize: const Size.fromHeight(50)),
               onPressed: _guardando ? null : _guardar,
-              child: _guardando
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
-                  : Text('Guardar cambios',
-                      style: TextStyle(
-                          color: cs.onPrimary, fontWeight: FontWeight.w800)),
+              child: Text('Guardar cambios',
+                  style: TextStyle(
+                      color: cs.onPrimary, fontWeight: FontWeight.w800)),
             ),
           ],
         ),

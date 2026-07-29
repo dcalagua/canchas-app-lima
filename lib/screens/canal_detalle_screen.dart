@@ -120,7 +120,9 @@ class _CanalDetalleScreenState extends State<CanalDetalleScreen> {
       texto: t,
       creado: DateTime.now(),
     );
-    final ok = await CanalesRepo.publicar(post);
+    // REGLA de la app: acción que demora → preload de marca (nunca spinner pelado).
+    final ok = await conPreload(context, () => CanalesRepo.publicar(post),
+        texto: 'Publicando…');
     if (!mounted) return;
     setState(() {
       _publicando = false;
@@ -158,34 +160,35 @@ class _CanalDetalleScreenState extends State<CanalDetalleScreen> {
     final u = appState.usuario!;
     final id = 'cp_${DateTime.now().microsecondsSinceEpoch}';
     final ext = video ? 'mp4' : 'jpg';
-    final url =
-        await CanalesRepo.subirMedia('${_canal.id}/$id.$ext', bytes, video: video);
-    if (url == null) {
-      if (mounted) {
-        setState(() => _publicando = false);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('No se pudo subir. Revisa el bucket "canales".')));
-      }
+    // REGLA de la app: acción que demora → preload de marca (nunca spinner pelado).
+    final post = await conPreload<CanalPost?>(context, () async {
+      final url = await CanalesRepo.subirMedia('${_canal.id}/$id.$ext', bytes,
+          video: video);
+      if (url == null) return null;
+      final p = CanalPost(
+        id: id,
+        canalId: _canal.id,
+        autorEmail: u.email,
+        autorNombre: u.nombre,
+        tipo: tipo,
+        texto: _texto.text.trim(),
+        mediaUrl: url,
+        creado: DateTime.now(),
+      );
+      final ok = await CanalesRepo.publicar(p);
+      return ok ? p : null;
+    }, texto: 'Publicando…');
+    if (!mounted) return;
+    if (post == null) {
+      setState(() => _publicando = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No se pudo subir. Revisa el bucket "canales".')));
       return;
     }
-    final post = CanalPost(
-      id: id,
-      canalId: _canal.id,
-      autorEmail: u.email,
-      autorNombre: u.nombre,
-      tipo: tipo,
-      texto: _texto.text.trim(),
-      mediaUrl: url,
-      creado: DateTime.now(),
-    );
-    final ok = await CanalesRepo.publicar(post);
-    if (!mounted) return;
     setState(() {
       _publicando = false;
-      if (ok) {
-        _texto.clear();
-        _posts = [post, ..._posts];
-      }
+      _texto.clear();
+      _posts = [post, ..._posts];
     });
   }
 

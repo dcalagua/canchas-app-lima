@@ -6,6 +6,7 @@ import '../models/canal.dart';
 import '../services/community_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/responsive.dart';
 
@@ -74,14 +75,19 @@ class _CommunityManagerScreenState extends State<CommunityManagerScreen> {
       'Tono $_tono',
     ].join('. ');
 
-    final r = await CommunityService.generarPosts(
-      academiaId: 'canal_${widget.canal.id}',
-      datos: {
-        'nombre': widget.canal.nombre,
-        'descripcion': widget.canal.descripcion,
-      },
-      contexto: contexto,
-      cantidad: _cantidad,
+    // REGLA de la app: acción que demora → preload de marca (nunca spinner pelado).
+    final r = await conPreload(
+      context,
+      () => CommunityService.generarPosts(
+        academiaId: 'canal_${widget.canal.id}',
+        datos: {
+          'nombre': widget.canal.nombre,
+          'descripcion': widget.canal.descripcion,
+        },
+        contexto: contexto,
+        cantidad: _cantidad,
+      ),
+      texto: 'Redactando con IA…',
     );
 
     if (!mounted) return;
@@ -122,7 +128,8 @@ class _CommunityManagerScreenState extends State<CommunityManagerScreen> {
       texto: texto,
       creado: DateTime.now(),
     );
-    final ok = await CanalesRepo.publicar(post);
+    final ok = await conPreload(context, () => CanalesRepo.publicar(post),
+        texto: 'Publicando…');
     if (!mounted) return;
     if (!ok) {
       await avisarPichangol(context,
@@ -195,19 +202,9 @@ class _CommunityManagerScreenState extends State<CommunityManagerScreen> {
                       backgroundColor: lima,
                       minimumSize: const Size.fromHeight(52)),
                   onPressed: _generando ? null : _generar,
-                  icon: _generando
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white))
-                      : const Icon(Icons.auto_awesome),
+                  icon: const Icon(Icons.auto_awesome),
                   label: Text(
-                      _generando
-                          ? 'Redactando…'
-                          : (_borradores.isEmpty
-                              ? 'Generar posts'
-                              : 'Generar más'),
+                      _borradores.isEmpty ? 'Generar posts' : 'Generar más',
                       style: const TextStyle(fontWeight: FontWeight.w800)),
                 ),
               ),

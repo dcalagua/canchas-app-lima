@@ -7,6 +7,7 @@ import '../data/canales_repo.dart';
 import '../models/canal.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/responsive.dart';
 
@@ -45,22 +46,26 @@ class _CrearCanalScreenState extends State<CrearCanalScreen> {
     if (nombre.isEmpty || u == null || _creando) return;
     setState(() => _creando = true);
     final id = 'ch_${DateTime.now().microsecondsSinceEpoch}';
-    var fotoUrl = '';
-    if (_foto != null) {
-      final url = await CanalesRepo.subirMedia('$id/portada.jpg', _foto!);
-      if (url != null) fotoUrl = url;
-    }
-    final canal = Canal(
-      id: id,
-      nombre: nombre,
-      descripcion: _desc.text.trim(),
-      fotoUrl: fotoUrl,
-      ownerEmail: u.email,
-      creado: DateTime.now(),
-    );
-    final ok = await CanalesRepo.crear(canal);
+    // REGLA de la app: acción que demora → preload de marca (nunca spinner pelado).
+    final canal = await conPreload<Canal?>(context, () async {
+      var fotoUrl = '';
+      if (_foto != null) {
+        final url = await CanalesRepo.subirMedia('$id/portada.jpg', _foto!);
+        if (url != null) fotoUrl = url;
+      }
+      final c = Canal(
+        id: id,
+        nombre: nombre,
+        descripcion: _desc.text.trim(),
+        fotoUrl: fotoUrl,
+        ownerEmail: u.email,
+        creado: DateTime.now(),
+      );
+      final ok = await CanalesRepo.crear(c);
+      return ok ? c : null;
+    }, texto: 'Creando canal…');
     if (!mounted) return;
-    if (ok) {
+    if (canal != null) {
       Navigator.of(context).pop(canal);
     } else {
       setState(() => _creando = false);
@@ -134,14 +139,8 @@ class _CrearCanalScreenState extends State<CrearCanalScreen> {
               style: FilledButton.styleFrom(
                   backgroundColor: lima, minimumSize: const Size.fromHeight(50)),
               onPressed: _creando ? null : _crear,
-              icon: _creando
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
-                  : const Icon(Icons.campaign_outlined),
-              label: Text(_creando ? 'Creando…' : 'Crear canal',
+              icon: const Icon(Icons.campaign_outlined),
+              label: Text('Crear canal',
                   style: TextStyle(
                       color: cs.onPrimary, fontWeight: FontWeight.w800)),
             ),
