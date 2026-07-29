@@ -1,6 +1,11 @@
+import 'dart:io';
+
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
@@ -205,6 +210,45 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
       } catch (_) {}
     }
     if (mounted) _reanudar();
+  }
+
+  bool _compartiendo = false;
+
+  /// Comparte la historia actual a la hoja del sistema (Instagram, Facebook,
+  /// WhatsApp…). Foto/video: descarga el archivo y lo comparte; texto: comparte
+  /// el texto. Pausa el auto-avance mientras se abre la hoja.
+  Future<void> _compartir() async {
+    if (_compartiendo) return;
+    _pausar();
+    final e = _items[_i];
+    setState(() => _compartiendo = true);
+    try {
+      if (e.esFoto || e.esVideo) {
+        final resp = await http.get(Uri.parse(e.fotoUrl));
+        if (resp.statusCode != 200) throw Exception('descarga');
+        final dir = await getTemporaryDirectory();
+        final ext = e.esVideo ? 'mp4' : 'jpg';
+        final ruta = '${dir.path}/pichangol_historia_'
+            '${DateTime.now().millisecondsSinceEpoch}.$ext';
+        await File(ruta).writeAsBytes(resp.bodyBytes);
+        await Share.shareXFiles(
+          [XFile(ruta, mimeType: e.esVideo ? 'video/mp4' : 'image/jpeg')],
+          text: e.texto.isNotEmpty ? e.texto : null,
+        );
+      } else {
+        await Share.share(
+          e.texto.isNotEmpty ? e.texto : 'Mira mi novedad en Pichangol',
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('No se pudo compartir. Inténtalo de nuevo.')));
+      }
+    } finally {
+      if (mounted) setState(() => _compartiendo = false);
+      if (mounted) _reanudar();
+    }
   }
 
   Future<void> _abrirSpotify(Estado e) async {
@@ -496,6 +540,19 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
                                       color: Colors.white70, fontSize: 12)),
                             ],
                           ),
+                        ),
+                        // Compartir la historia (Instagram, Facebook, WhatsApp…).
+                        IconButton(
+                          tooltip: 'Compartir',
+                          icon: _compartiendo
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: Colors.white))
+                              : const Icon(Icons.ios_share,
+                                  color: Colors.white),
+                          onPressed: _compartiendo ? null : _compartir,
                         ),
                         if (_esMio)
                           IconButton(

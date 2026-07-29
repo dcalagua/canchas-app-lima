@@ -48,6 +48,10 @@ dependencies:
   # un chat las fotos ya vistas salgan al instante en vez de re-descargarse.
   # Dart puro (usa flutter_cache_manager + sqflite/path_provider, ya presentes).
   cached_network_image: ^3.4.1
+  # Compartir historias a la hoja del sistema (Instagram, Facebook, WhatsApp…).
+  # Plugin nativo → validar en CI (Flutter 3.24.5). Se fija en 10.x para mantener
+  # Share.shareXFiles (la 11.x lo removió).
+  share_plus: ^10.1.4
   # Caché LOCAL device-first del chat (SQLite): pinta al instante desde el
   # teléfono aunque Android haya matado la app, y solo sincroniza lo nuevo.
   # Plugin nativo: se prueba en build aislado antes de usarlo (Flutter 3.24.5).
