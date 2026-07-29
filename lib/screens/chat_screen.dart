@@ -640,6 +640,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (appState.hiloChatAbierto == _hilo) appState.hiloChatAbierto = '';
     _lecturaSub?.cancel();
     _reaccionesSub?.cancel();
+    _timerGrab?.cancel();
     _texto.dispose();
     _scroll.dispose();
     _focus.dispose();
@@ -759,23 +760,17 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  // ── Notas de voz ──────────────────────────────────────────────────────────
+  // ── Notas de voz (estilo WhatsApp: mantener para grabar) ────────────────────
   final AudioRecorder _rec = AudioRecorder();
   bool _grabando = false;
+  bool _cancelandoGrab = false; // deslizó a la izquierda → soltar cancela
+  bool _grabBloqueada = false; // deslizó arriba → manos libres
+  int _segGrab = 0; // cronómetro
+  Timer? _timerGrab;
 
-  /// Inicia o detiene la grabación de una nota de voz. Al detener, la sube y la
-  /// envía como mensaje de audio.
-  Future<void> _toggleGrabacion() async {
-    if (_grabando) {
-      String? ruta;
-      try {
-        ruta = await _rec.stop();
-      } catch (_) {}
-      if (mounted) setState(() => _grabando = false);
-      if (ruta != null) await _enviarAudio(ruta);
-      return;
-    }
-    // Empezar: pide permiso de micrófono.
+  /// Empieza a grabar (al MANTENER presionado el micrófono).
+  Future<void> _iniciarGrabacion() async {
+    if (_grabando) return;
     try {
       if (!await _rec.hasPermission()) {
         if (mounted) {
@@ -789,10 +784,70 @@ class _ChatScreenState extends State<ChatScreen> {
           '${dir.path}/nota_${DateTime.now().microsecondsSinceEpoch}.m4a';
       await _rec.start(const RecordConfig(encoder: AudioEncoder.aacLc),
           path: ruta);
-      if (mounted) setState(() => _grabando = true);
+      _segGrab = 0;
+      _timerGrab?.cancel();
+      _timerGrab = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted) setState(() => _segGrab++);
+      });
+      if (mounted) {
+        setState(() {
+          _grabando = true;
+          _cancelandoGrab = false;
+          _grabBloqueada = false;
+        });
+      }
     } catch (_) {
       if (mounted) setState(() => _grabando = false);
     }
+  }
+
+  /// Mientras se mantiene, sigue el arrastre: izquierda = cancelar, arriba = bloquear.
+  void _arrastreGrab(Offset delta) {
+    if (!_grabando || _grabBloqueada) return;
+    if (delta.dy < -70) {
+      setState(() {
+        _grabBloqueada = true;
+        _cancelandoGrab = false;
+      });
+      return;
+    }
+    final cancelar = delta.dx < -90;
+    if (cancelar != _cancelandoGrab) setState(() => _cancelandoGrab = cancelar);
+  }
+
+  /// Se soltó el micrófono. Si está bloqueada, sigue grabando (manos libres);
+  /// si no, envía (o cancela si estaba deslizando a la izquierda).
+  Future<void> _soltarGrab() async {
+    if (!_grabando || _grabBloqueada) return;
+    await _finGrabacion(cancelar: _cancelandoGrab);
+  }
+
+  /// Termina la grabación: sube y envía, o descarta si se canceló / muy corta.
+  Future<void> _finGrabacion({required bool cancelar}) async {
+    _timerGrab?.cancel();
+    final segs = _segGrab;
+    String? ruta;
+    try {
+      ruta = await _rec.stop();
+    } catch (_) {}
+    if (mounted) {
+      setState(() {
+        _grabando = false;
+        _cancelandoGrab = false;
+        _grabBloqueada = false;
+        _segGrab = 0;
+      });
+    }
+    // Cancelada, sin archivo o demasiado corta (< 1 s) → se descarta.
+    if (cancelar || ruta == null || segs < 1) {
+      if (ruta != null) {
+        try {
+          await File(ruta).delete();
+        } catch (_) {}
+      }
+      return;
+    }
+    await _enviarAudio(ruta);
   }
 
   Future<void> _enviarAudio(String ruta) async {
@@ -1161,7 +1216,14 @@ class _ChatScreenState extends State<ChatScreen> {
               onGaleria: () => _enviarFoto(ImageSource.gallery),
               onCamara: () => _enviarFoto(ImageSource.camera),
               grabando: _grabando,
-              onMic: _toggleGrabacion,
+              cancelandoGrab: _cancelandoGrab,
+              grabBloqueada: _grabBloqueada,
+              segGrab: _segGrab,
+              onGrabInicio: _iniciarGrabacion,
+              onGrabArrastre: _arrastreGrab,
+              onGrabSoltar: _soltarGrab,
+              onGrabEnviarBloqueada: () => _finGrabacion(cancelar: false),
+              onGrabCancelarBloqueada: () => _finGrabacion(cancelar: true),
               wa: wa,
             ),
             if (_emojis)
@@ -1761,7 +1823,14 @@ class _Barra extends StatelessWidget {
     required this.onGaleria,
     required this.onCamara,
     required this.grabando,
-    required this.onMic,
+    required this.cancelandoGrab,
+    required this.grabBloqueada,
+    required this.segGrab,
+    required this.onGrabInicio,
+    required this.onGrabArrastre,
+    required this.onGrabSoltar,
+    required this.onGrabEnviarBloqueada,
+    required this.onGrabCancelarBloqueada,
     required this.wa,
   });
   final TextEditingController controller;
@@ -1773,8 +1842,17 @@ class _Barra extends StatelessWidget {
   final VoidCallback onGaleria;
   final VoidCallback onCamara;
   final bool grabando;
-  final VoidCallback onMic;
+  final bool cancelandoGrab;
+  final bool grabBloqueada;
+  final int segGrab;
+  final VoidCallback onGrabInicio;
+  final void Function(Offset delta) onGrabArrastre;
+  final VoidCallback onGrabSoltar;
+  final VoidCallback onGrabEnviarBloqueada;
+  final VoidCallback onGrabCancelarBloqueada;
   final _WA wa;
+
+  String _fmt(int s) => '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
 
   @override
   Widget build(BuildContext context) {
@@ -1786,8 +1864,8 @@ class _Barra extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            // Pastilla: mientras GRABA muestra "Grabando…"; si no, el campo de
-            // texto con emoji/adjuntar/cámara.
+            // Pastilla: mientras GRABA muestra el cronómetro + hint; si no, el
+            // campo de texto con emoji/adjuntar/cámara.
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
@@ -1798,20 +1876,44 @@ class _Barra extends StatelessWidget {
                 child: grabando
                     ? Padding(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 12),
+                            horizontal: 8, vertical: 10),
                         child: Row(
                           children: [
-                            const _PuntoGrabando(),
+                            // Bloqueada → botón papelera para cancelar; si no,
+                            // punto rojo parpadeando.
+                            if (grabBloqueada)
+                              GestureDetector(
+                                onTap: onGrabCancelarBloqueada,
+                                child: const Icon(Icons.delete_outline,
+                                    color: Colors.red, size: 22),
+                              )
+                            else
+                              const _PuntoGrabando(),
                             const SizedBox(width: 10),
+                            Text(_fmt(segGrab),
+                                style: TextStyle(
+                                    color: wa.pillTexto,
+                                    fontWeight: FontWeight.w700)),
+                            const SizedBox(width: 12),
                             Expanded(
-                              child: Text('Grabando nota de voz…',
-                                  style: TextStyle(
-                                      color: wa.pillTexto,
-                                      fontWeight: FontWeight.w600)),
+                              child: Text(
+                                grabBloqueada
+                                    ? 'Manos libres · toca ➤ para enviar'
+                                    : (cancelandoGrab
+                                        ? 'Suelta para cancelar'
+                                        : '‹ Desliza para cancelar  ·  ↑ bloquear'),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    color: cancelandoGrab
+                                        ? Colors.red
+                                        : wa.hora,
+                                    fontSize: 12.5,
+                                    fontWeight: cancelandoGrab
+                                        ? FontWeight.w700
+                                        : FontWeight.w500),
+                              ),
                             ),
-                            Text('toca ▶ para enviar',
-                                style:
-                                    TextStyle(color: wa.hora, fontSize: 12)),
                           ],
                         ),
                       )
@@ -1866,37 +1968,56 @@ class _Barra extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 6),
-            // Botón circular: grabando → enviar (verde); con texto → enviar;
-            // vacío → micrófono (empieza a grabar).
+            // Botón circular derecho: con texto → enviar; grabando bloqueada →
+            // enviar; vacío → MICRÓFONO (mantener presionado para grabar).
             ValueListenableBuilder<TextEditingValue>(
               valueListenable: controller,
               builder: (context, value, _) {
                 final hayTexto = value.text.trim().isNotEmpty;
-                final mostrarMic = !grabando && !hayTexto;
-                return Material(
-                  color: grabando ? Colors.red : wa.send,
-                  shape: const CircleBorder(),
-                  child: InkWell(
-                    customBorder: const CircleBorder(),
-                    onTap: enviando
-                        ? null
-                        : grabando
-                            ? onMic
-                            : (hayTexto ? onEnviar : onMic),
-                    child: Padding(
-                      padding: const EdgeInsets.all(11),
-                      child: enviando
-                          ? const SizedBox(
-                              width: 22,
-                              height: 22,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: Colors.white))
-                          : Icon(
-                              grabando
-                                  ? Icons.send
-                                  : (mostrarMic ? Icons.mic : Icons.send),
-                              color: Colors.white,
-                              size: 22),
+                if (enviando) {
+                  return const _BotonCircular(
+                      color: Color(0xFF00A884),
+                      child: SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white)));
+                }
+                // Con texto → enviar (no micrófono).
+                if (hayTexto && !grabando) {
+                  return _BotonCircular(
+                    color: wa.send,
+                    onTap: onEnviar,
+                    child: const Icon(Icons.send, color: Colors.white, size: 22),
+                  );
+                }
+                // Grabando y bloqueada → botón de enviar.
+                if (grabando && grabBloqueada) {
+                  return _BotonCircular(
+                    color: wa.send,
+                    onTap: onGrabEnviarBloqueada,
+                    child: const Icon(Icons.send, color: Colors.white, size: 22),
+                  );
+                }
+                // Micrófono: MANTENER para grabar; arrastrar para cancelar/bloquear.
+                final rec = grabando && !grabBloqueada;
+                return GestureDetector(
+                  onTap: () {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        duration: Duration(milliseconds: 1400),
+                        content: Text(
+                            'Mantén presionado para grabar, suelta para enviar')));
+                  },
+                  onLongPressStart: (_) => onGrabInicio(),
+                  onLongPressMoveUpdate: (d) =>
+                      onGrabArrastre(d.offsetFromOrigin),
+                  onLongPressEnd: (_) => onGrabSoltar(),
+                  child: AnimatedScale(
+                    scale: rec ? 1.25 : 1,
+                    duration: const Duration(milliseconds: 150),
+                    child: _BotonCircular(
+                      color: rec ? Colors.red : wa.send,
+                      child: const Icon(Icons.mic, color: Colors.white, size: 22),
                     ),
                   ),
                 );
@@ -1904,6 +2025,27 @@ class _Barra extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Botón circular relleno (reutilizado por la barra de escritura).
+class _BotonCircular extends StatelessWidget {
+  const _BotonCircular({required this.color, required this.child, this.onTap});
+  final Color color;
+  final Widget child;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: color,
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: Padding(padding: const EdgeInsets.all(11), child: child),
       ),
     );
   }
