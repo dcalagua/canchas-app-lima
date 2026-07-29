@@ -78,6 +78,12 @@ class _CanalDetalleScreenState extends State<CanalDetalleScreen> {
     final seguidos = await CanalesRepo.seguidosDe(_yo);
     final posts = await CanalesRepo.posts(_canal.id);
     await appState.cargarPerfiles([_canal.ownerEmail]);
+    // Marca el canal como visto hasta el post más nuevo → limpia el badge.
+    if (posts.isNotEmpty) {
+      appState.marcarCanalVisto(_canal.id, posts.first.creado);
+    } else {
+      appState.marcarCanalVisto(_canal.id, DateTime.now());
+    }
     if (!mounted) return;
     setState(() {
       _sigo = seguidos.contains(_canal.id);

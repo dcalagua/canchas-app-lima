@@ -25,8 +25,15 @@ class _CanalesScreenState extends State<CanalesScreen> {
   Set<String> _seguidos = {};
   Map<String, CanalPost> _ultimas = {};
   bool _cargando = true;
+  String _filtro = '';
 
   String get _yo => (appState.usuario?.email ?? '').toLowerCase();
+
+  bool _coincide(Canal c) {
+    if (_filtro.isEmpty) return true;
+    return c.nombre.toLowerCase().contains(_filtro) ||
+        c.descripcion.toLowerCase().contains(_filtro);
+  }
 
   @override
   void initState() {
@@ -69,12 +76,15 @@ class _CanalesScreenState extends State<CanalesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final misCanales = _todos.where((c) => c.ownerEmail == _yo).toList();
+    final misCanales =
+        _todos.where((c) => c.ownerEmail == _yo && _coincide(c)).toList();
     final sigo = _todos
-        .where((c) => _seguidos.contains(c.id) && c.ownerEmail != _yo)
+        .where((c) =>
+            _seguidos.contains(c.id) && c.ownerEmail != _yo && _coincide(c))
         .toList();
     final descubrir = _todos
-        .where((c) => !_seguidos.contains(c.id) && c.ownerEmail != _yo)
+        .where((c) =>
+            !_seguidos.contains(c.id) && c.ownerEmail != _yo && _coincide(c))
         .toList();
     return Scaffold(
       appBar: AppBar(
@@ -97,6 +107,27 @@ class _CanalesScreenState extends State<CanalesScreen> {
                 child: ListView(
                   padding: const EdgeInsets.only(bottom: 90),
                   children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+                      child: TextField(
+                        onChanged: (v) =>
+                            setState(() => _filtro = v.trim().toLowerCase()),
+                        decoration: InputDecoration(
+                          hintText: 'Buscar',
+                          prefixIcon: const Icon(Icons.search),
+                          isDense: true,
+                          filled: true,
+                          fillColor: Theme.of(context).brightness ==
+                                  Brightness.dark
+                              ? const Color(0xFF1F2C34)
+                              : const Color(0xFFF0F0F0),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                    ),
                     if (_todos.isEmpty)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(28, 60, 28, 20),

@@ -259,6 +259,29 @@ class AppState extends ChangeNotifier {
   static const _kEstadosVistos = 'estados_vistos_json';
   static const _kEstadosOcultos = 'estados_ocultos_json';
 
+  // ── Canales: última vez que abrí cada canal (para el badge de no leídos) ─────
+  final Map<String, DateTime> _canalVisto = {};
+  static const _kCanalVisto = 'canal_visto_json';
+
+  DateTime? canalUltimaVista(String canalId) => _canalVisto[canalId];
+
+  /// Marca un canal como visto hasta [hasta] (normalmente la fecha del último
+  /// post). Guarda el máximo para no "des-leer" al reabrir.
+  Future<void> marcarCanalVisto(String canalId, DateTime hasta) async {
+    if (canalId.isEmpty) return;
+    final actual = _canalVisto[canalId];
+    if (actual != null && !hasta.isAfter(actual)) return;
+    _canalVisto[canalId] = hasta;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+          _kCanalVisto,
+          jsonEncode(_canalVisto
+              .map((k, v) => MapEntry(k, v.toIso8601String()))));
+    } catch (_) {}
+  }
+
   bool estadoVisto(String id) => _estadosVistos.contains(id);
   bool estadosOcultosDe(String? email) =>
       _estadosOcultos.contains((email ?? '').trim().toLowerCase());
@@ -4840,6 +4863,18 @@ class AppState extends ChangeNotifier {
           _estadosOcultos
             ..clear()
             ..addAll(l.map((e) => e.toString()));
+        } catch (_) {}
+      }
+
+      final canalVistoRaw = prefs.getString(_kCanalVisto);
+      if (canalVistoRaw != null) {
+        try {
+          final m = jsonDecode(canalVistoRaw) as Map<String, dynamic>;
+          _canalVisto.clear();
+          m.forEach((k, v) {
+            final t = DateTime.tryParse(v.toString());
+            if (t != null) _canalVisto[k] = t;
+          });
         } catch (_) {}
       }
 

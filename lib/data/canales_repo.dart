@@ -176,6 +176,30 @@ class CanalesRepo {
     }
   }
 
+  /// Posts de VARIOS canales agrupados por canal (más nuevos primero). Sirve
+  /// para el inbox de canales: última publicación + conteo de no leídos.
+  static Future<Map<String, List<CanalPost>>> postsAgrupados(
+      List<String> canalIds,
+      {int limite = 400}) async {
+    if (!disponible || canalIds.isEmpty) return {};
+    try {
+      final rows = await SupabaseService.client
+          .from(_tPosts)
+          .select()
+          .inFilter('canal_id', canalIds)
+          .order('creado', ascending: false)
+          .limit(limite);
+      final m = <String, List<CanalPost>>{};
+      for (final r in (rows as List)) {
+        final p = CanalPost.fromRow(r as Map<String, dynamic>);
+        (m[p.canalId] ??= <CanalPost>[]).add(p);
+      }
+      return m;
+    } catch (_) {
+      return {};
+    }
+  }
+
   static Future<bool> publicar(CanalPost p) async {
     if (!disponible) return false;
     try {

@@ -1,11 +1,15 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
 
+import '../data/canales_repo.dart';
+import '../models/canal.dart';
 import '../models/estado.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/responsive.dart' show AnchoTablet;
+import 'canal_detalle_screen.dart';
 import 'canales_screen.dart';
 import 'estado_composer_screen.dart';
 import 'estado_viewer_screen.dart';
@@ -22,10 +26,116 @@ class NovedadesScreen extends StatefulWidget {
 }
 
 class _NovedadesScreenState extends State<NovedadesScreen> {
+  List<Canal> _canales = const [];
+  Map<String, List<CanalPost>> _postsCanal = {};
+
   @override
   void initState() {
     super.initState();
     appState.cargarEstados(); // refresca al entrar (best-effort)
+    _cargarCanales();
+  }
+
+  /// Canales visibles en Novedades: los que sigo + los míos, ordenados por su
+  /// última publicación (como el inbox de canales de WhatsApp).
+  Future<void> _cargarCanales() async {
+    final email = (appState.usuario?.email ?? '').toLowerCase();
+    if (email.isEmpty) return;
+    final todos = await CanalesRepo.todos();
+    final seguidos = await CanalesRepo.seguidosDe(email);
+    final visibles = todos
+        .where((c) => seguidos.contains(c.id) || c.ownerEmail == email)
+        .toList();
+    final posts =
+        await CanalesRepo.postsAgrupados(visibles.map((c) => c.id).toList());
+    visibles.sort((a, b) {
+      final ta = posts[a.id]?.first.creado ?? a.creado;
+      final tb = posts[b.id]?.first.creado ?? b.creado;
+      return tb.compareTo(ta);
+    });
+    if (!mounted) return;
+    setState(() {
+      _canales = visibles;
+      _postsCanal = posts;
+    });
+  }
+
+  int _noLeidos(Canal c) {
+    final email = (appState.usuario?.email ?? '').toLowerCase();
+    final posts = _postsCanal[c.id] ?? const [];
+    final visto = appState.canalUltimaVista(c.id);
+    return posts
+        .where((p) =>
+            p.autorEmail.toLowerCase() != email &&
+            (visto == null || p.creado.isAfter(visto)))
+        .length;
+  }
+
+  String _previewPost(CanalPost p) => p.esFoto
+      ? '📷 Foto'
+      : p.esVideo
+          ? '🎥 Video'
+          : p.texto;
+
+  Future<void> _abrirCanal(Canal c) async {
+    await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => CanalDetalleScreen(canal: c)));
+    _cargarCanales();
+  }
+
+  Widget _filaCanal(Canal c) {
+    final posts = _postsCanal[c.id] ?? const [];
+    final ultima = posts.isNotEmpty ? posts.first : null;
+    final noLeidos = _noLeidos(c);
+    final foto = c.fotoUrl;
+    return ListTile(
+      onTap: () => _abrirCanal(c),
+      leading: CircleAvatar(
+        radius: 26,
+        backgroundColor: limaSuave,
+        backgroundImage:
+            foto.isNotEmpty ? CachedNetworkImageProvider(foto) : null,
+        child: foto.isEmpty ? const Icon(Icons.campaign, color: lima) : null,
+      ),
+      title: Text(c.nombre,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.w700)),
+      subtitle: Text(
+          ultima != null
+              ? _previewPost(ultima)
+              : 'Se creó el canal "${c.nombre}"',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: textoTenueDe(context))),
+      trailing: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(ultima != null ? _hace(ultima.creado) : '',
+              style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: noLeidos > 0 ? FontWeight.w700 : FontWeight.w400,
+                  color: noLeidos > 0 ? lima : textoTenueDe(context))),
+          const SizedBox(height: 5),
+          if (noLeidos > 0)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              decoration: BoxDecoration(
+                  color: lima, borderRadius: BorderRadius.circular(12)),
+              constraints: const BoxConstraints(minWidth: 20),
+              child: Text(noLeidos > 999 ? '+999' : '$noLeidos',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800)),
+            )
+          else
+            const SizedBox(height: 18),
+        ],
+      ),
+    );
   }
 
   String _hace(DateTime t) {
@@ -199,18 +309,53 @@ class _NovedadesScreenState extends State<NovedadesScreen> {
                         : null,
                   ),
                   Divider(height: 8, thickness: 8, color: trazo.withOpacity(0.25)),
-                  // Canales (difusión tipo WhatsApp Channels).
-                  ListTile(
-                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) => const CanalesScreen())),
-                    leading: const CircleAvatar(
-                        backgroundColor: limaSuave,
-                        child: Icon(Icons.campaign, color: lima)),
-                    title: const Text('Canales',
-                        style: TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle: const Text('Sigue novedades o crea el tuyo'),
-                    trailing: const Icon(Icons.chevron_right),
+                  // ── Canales (difusión tipo WhatsApp Channels) ──────────────
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 8, 2),
+                    child: Row(
+                      children: [
+                        const Text('Canales',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w800, fontSize: 17)),
+                        const Spacer(),
+                        TextButton(
+                          onPressed: () async {
+                            await Navigator.of(context).push(MaterialPageRoute(
+                                builder: (_) => const CanalesScreen()));
+                            _cargarCanales();
+                          },
+                          style: TextButton.styleFrom(
+                              backgroundColor: Theme.of(context).brightness ==
+                                      Brightness.dark
+                                  ? const Color(0xFF2A3942)
+                                  : const Color(0xFFEDEDED),
+                              foregroundColor:
+                                  Theme.of(context).colorScheme.onSurface,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20))),
+                          child: const Text('Explorar'),
+                        ),
+                      ],
+                    ),
                   ),
+                  if (_canales.isEmpty)
+                    ListTile(
+                      onTap: () async {
+                        await Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => const CanalesScreen()));
+                        _cargarCanales();
+                      },
+                      leading: const CircleAvatar(
+                          backgroundColor: limaSuave,
+                          child: Icon(Icons.campaign, color: lima)),
+                      title: const Text('Sigue canales',
+                          style: TextStyle(fontWeight: FontWeight.w700)),
+                      subtitle: const Text(
+                          'Mantente al día o crea el tuyo para difundir'),
+                      trailing: const Icon(Icons.chevron_right),
+                    )
+                  else
+                    for (final c in _canales) _filaCanal(c),
                   Divider(height: 8, thickness: 8, color: trazo.withOpacity(0.25)),
                   if (autores.isNotEmpty) ...[
                     const Padding(
