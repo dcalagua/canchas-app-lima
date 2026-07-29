@@ -10,6 +10,7 @@ import 'package:video_player/video_player.dart';
 import '../data/canales_repo.dart';
 import '../data/reacciones_repo.dart';
 import '../models/canal.dart';
+import '../services/link_preview_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
@@ -436,6 +437,15 @@ class _CanalDetalleScreenState extends State<CanalDetalleScreen> {
               style: TextStyle(fontSize: 15, color: cs.onSurface, height: 1.35),
             ),
           ],
+          // Tarjeta de previsualización del enlace (Open Graph), tipo WhatsApp.
+          // Solo si el post no trae ya foto/video propio (para no duplicar imagen).
+          if (!p.tieneMedia && _primerEnlace(p.texto) != null) ...[
+            const SizedBox(height: 8),
+            _LinkPreview(
+              url: _primerEnlace(p.texto)!,
+              onTap: _abrirEnlace,
+            ),
+          ],
           const SizedBox(height: 8),
           Row(
             children: [
@@ -712,5 +722,165 @@ class _TextoConLinksState extends State<_TextoConLinks> {
     }
     if (last < t.length) spans.add(TextSpan(text: t.substring(last)));
     return Text.rich(TextSpan(style: widget.style, children: spans));
+  }
+}
+
+final _reEnlacePost = RegExp(
+  r'((https?:\/\/|www\.)[^\s]+|[a-zA-Z0-9.-]+\.(com|net|org|pe|app|io|co|gg|me)(\/[^\s]*)?)',
+  caseSensitive: false,
+);
+
+/// Primer enlace del texto (normalizado a https), o null si no hay.
+String? _primerEnlace(String texto) {
+  final m = _reEnlacePost.firstMatch(texto);
+  if (m == null) return null;
+  var u = m.group(0)!;
+  if (!u.startsWith('http://') && !u.startsWith('https://')) u = 'https://$u';
+  return u;
+}
+
+/// Tarjeta de previsualización de un enlace (Open Graph) al estilo WhatsApp:
+/// imagen + título + descripción + dominio. Carga los metadatos del backend; si
+/// no hay preview, no muestra nada (colapsa).
+class _LinkPreview extends StatefulWidget {
+  const _LinkPreview({required this.url, required this.onTap});
+  final String url;
+  final void Function(String url) onTap;
+
+  @override
+  State<_LinkPreview> createState() => _LinkPreviewState();
+}
+
+class _LinkPreviewState extends State<_LinkPreview> {
+  PreviewEnlace? _p;
+  bool _cargando = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  @override
+  void didUpdateWidget(_LinkPreview old) {
+    super.didUpdateWidget(old);
+    if (old.url != widget.url) _cargar();
+  }
+
+  Future<void> _cargar() async {
+    setState(() => _cargando = true);
+    final p = await LinkPreviewService.obtener(widget.url);
+    if (!mounted) return;
+    setState(() {
+      _p = p;
+      _cargando = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final oscuro = Theme.of(context).brightness == Brightness.dark;
+    final fondo = oscuro ? const Color(0xFF17242B) : const Color(0xFFF5F6F6);
+
+    if (_cargando) {
+      // Esqueleto discreto mientras baja los metadatos.
+      return Container(
+        height: 68,
+        decoration: BoxDecoration(
+            color: fondo, borderRadius: BorderRadius.circular(12)),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Row(
+          children: [
+            const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(_primerEnlace(widget.url) ?? widget.url,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      color: textoTenueDe(context), fontSize: 12.5)),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final p = _p;
+    if (p == null) return const SizedBox.shrink();
+
+    return InkWell(
+      onTap: () => widget.onTap(p.url),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        decoration: BoxDecoration(
+          color: fondo,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: trazo.withOpacity(oscuro ? 0.25 : 0.7)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (p.imagen.isNotEmpty)
+              CachedNetworkImage(
+                imageUrl: p.imagen,
+                width: double.infinity,
+                height: 172,
+                fit: BoxFit.cover,
+                placeholder: (c, u) =>
+                    Container(height: 172, color: Colors.black12),
+                errorWidget: (c, u, e) => const SizedBox.shrink(),
+              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (p.titulo.isNotEmpty)
+                    Text(p.titulo,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            color: cs.onSurface,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 14.5,
+                            height: 1.25)),
+                  if (p.descripcion.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(p.descripcion,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            color: textoTenueDe(context),
+                            fontSize: 12.8,
+                            height: 1.3)),
+                  ],
+                  if (p.dominio.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Icon(Icons.link, size: 15, color: textoTenueDe(context)),
+                        const SizedBox(width: 5),
+                        Flexible(
+                          child: Text(p.dominio,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  color: textoTenueDe(context), fontSize: 12.5)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

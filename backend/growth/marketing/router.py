@@ -20,6 +20,7 @@ from pydantic import BaseModel
 import config
 from db.store import stores
 
+from . import link_preview as link_preview_svc
 from . import redes as redes_svc
 from .landing import render_landing
 from .posts import generar_posts
@@ -191,6 +192,13 @@ def redes_desconectar(req: RedesAccionReq) -> dict:
 def redes_publicar(req: RedesPublicarReq) -> dict:
     """Publica un post aprobado en las redes conectadas del dueño (IG/FB)."""
     return redes_svc.publicar(req.academia_id, req.texto, req.imagen_url)
+
+
+@router.get("/marketing/link-preview", dependencies=_APP)
+def link_preview(url: str) -> dict:
+    """Previsualización Open Graph de un enlace (para los posts de canales):
+    devuelve título, descripción, imagen y dominio. Cacheado en memoria."""
+    return link_preview_svc.obtener(url)
 
 
 @router.post("/marketing/img", dependencies=_APP)
