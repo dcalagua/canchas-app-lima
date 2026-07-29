@@ -50,7 +50,19 @@ APPLICATION_ID = "pe.ebim.pichangol.qas" if _ES_QAS else "pe.ebim.pichangol"
 
 
 def android_manifest(text):
-    text = text.replace('android:label="canchas_lima"', f'android:label="{APP_LABEL}"')
+    # El SDK de Jitsi trae su propio android:label (@string/app_name) → el merger
+    # choca con el nuestro. Declaramos el namespace tools y forzamos que gane el
+    # label de Pichangol con tools:replace.
+    if "xmlns:tools" not in text:
+        text = re.sub(
+            r'(<manifest\s+xmlns:android="[^"]*")',
+            r'\1\n    xmlns:tools="http://schemas.android.com/tools"',
+            text,
+            count=1,
+        )
+    text = text.replace(
+        'android:label="canchas_lima"',
+        f'android:label="{APP_LABEL}" tools:replace="android:label"')
     if "android.permission.INTERNET" not in text:
         text = re.sub(
             r"(<manifest[^>]*>)",
@@ -387,8 +399,8 @@ def configurar_bundle_id_ios():
 
 
 def configurar_min_sdk():
-    """Sube minSdk a 24 (lo exige jitsi_meet_flutter_sdk; passkeys_android de
-    supabase_flutter pedía 23, 24 lo cubre)."""
+    """Sube minSdk a 26 (Android 8.0): lo exige jitsi-meet-sdk 11.6.0. Cubre de
+    sobra el 23 que pedía passkeys_android de supabase_flutter."""
     path = "android/app/build.gradle"
     if not os.path.exists(path):
         return
@@ -396,13 +408,13 @@ def configurar_min_sdk():
         text = f.read()
     nuevo = re.sub(
         r"minSdk(?:Version)?\s*=?\s*flutter\.minSdkVersion",
-        "minSdk = 24",
+        "minSdk = 26",
         text,
     )
     if nuevo != text:
         with open(path, "w", encoding="utf-8") as f:
             f.write(nuevo)
-        print("  minSdk forzado a 24")
+        print("  minSdk forzado a 26")
 
 
 def configurar_r8_release():
