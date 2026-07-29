@@ -45,35 +45,45 @@ class LlamadaWebRTC extends ChangeNotifier {
   String nombreOtro = '';
   DateTime? conectadoEn;
 
-  Map<String, dynamic> get _iceServers => {
-        'iceServers': [
-          {'urls': 'stun:stun.l.google.com:19302'},
-          {'urls': 'stun:stun1.l.google.com:19302'},
-          if (_turnUrl.isNotEmpty)
-            {'urls': _turnUrl, 'username': _turnUser, 'credential': _turnPass}
-          else ...[
-            // TURN público de respaldo (OpenRelay/Metered): permite conectar
-            // también en DATOS MÓVILES sin configurar nada (como el relevo que usa
-            // WhatsApp). Recomendado poner uno propio por confiabilidad/volumen.
-            {
-              'urls': 'turn:openrelay.metered.ca:80',
-              'username': 'openrelayproject',
-              'credential': 'openrelayproject',
-            },
-            {
-              'urls': 'turn:openrelay.metered.ca:443',
-              'username': 'openrelayproject',
-              'credential': 'openrelayproject',
-            },
-            {
-              'urls': 'turn:openrelay.metered.ca:443?transport=tcp',
-              'username': 'openrelayproject',
-              'credential': 'openrelayproject',
-            },
-          ],
-        ],
-        'sdpSemantics': 'unified-plan',
-      };
+  Map<String, dynamic> get _iceServers {
+    final servers = <Map<String, dynamic>>[
+      {'urls': 'stun:stun.l.google.com:19302'},
+      {'urls': 'stun:stun1.l.google.com:19302'},
+    ];
+    if (_turnUrl.isNotEmpty) {
+      // TURN totalmente custom (avanzado): una URL propia.
+      servers.add(
+          {'urls': _turnUrl, 'username': _turnUser, 'credential': _turnPass});
+    } else if (_turnUser.isNotEmpty && _turnPass.isNotEmpty) {
+      // TURN de Metered: el dominio es el mismo para todas las cuentas; solo
+      // cambian user/credential (secrets). Se incluyen todos los endpoints para
+      // máxima probabilidad de conexión (WiFi y datos móviles).
+      for (final u in const [
+        'turn:global.relay.metered.ca:80',
+        'turn:global.relay.metered.ca:80?transport=tcp',
+        'turn:global.relay.metered.ca:443',
+        'turns:global.relay.metered.ca:443?transport=tcp',
+      ]) {
+        servers.add(
+            {'urls': u, 'username': _turnUser, 'credential': _turnPass});
+      }
+    } else {
+      // Sin credenciales: TURN público de respaldo (OpenRelay) para que igual
+      // conecte en datos móviles, como el relevo que usa WhatsApp.
+      for (final u in const [
+        'turn:openrelay.metered.ca:80',
+        'turn:openrelay.metered.ca:443',
+        'turn:openrelay.metered.ca:443?transport=tcp',
+      ]) {
+        servers.add({
+          'urls': u,
+          'username': 'openrelayproject',
+          'credential': 'openrelayproject',
+        });
+      }
+    }
+    return {'iceServers': servers, 'sdpSemantics': 'unified-plan'};
+  }
 
   void _set(EstadoLlamada e) {
     estado = e;
