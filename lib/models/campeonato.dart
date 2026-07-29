@@ -6,16 +6,151 @@ import 'models.dart';
 /// Formato de un campeonato de academia.
 /// - [eliminacion]: llave/bracket (ideal tenis). El ganador avanza.
 /// - [liga]: todos contra todos + tabla de posiciones (ideal fútbol).
-enum FormatoTorneo { eliminacion, liga }
+/// - [tiempos]: por tiempos y series (natación). No hay partidos G/P: cada nadador
+///   registra su TIEMPO por prueba y se rankea del más rápido al más lento.
+enum FormatoTorneo { eliminacion, liga, tiempos }
 
 extension FormatoTorneoX on FormatoTorneo {
   String get etiqueta => switch (this) {
         FormatoTorneo.eliminacion => 'Eliminación (llave)',
         FormatoTorneo.liga => 'Liga (tabla)',
+        FormatoTorneo.tiempos => 'Por tiempos (natación)',
       };
   String get clave => name;
-  static FormatoTorneo desde(String? s) =>
-      s == 'liga' ? FormatoTorneo.liga : FormatoTorneo.eliminacion;
+  static FormatoTorneo desde(String? s) => switch (s) {
+        'liga' => FormatoTorneo.liga,
+        'tiempos' => FormatoTorneo.tiempos,
+        _ => FormatoTorneo.eliminacion,
+      };
+}
+
+/// La MARCA (tiempo) de un participante en una prueba de natación. [centesimas]
+/// es el tiempo total en centésimas de segundo (mm:ss.cc); 0 = sin registrar.
+/// [serie]/[carril] ubican al nadador en la serie (heat) y carril; [dsq] = DSQ.
+class MarcaNatacion {
+  final String participanteId;
+  final int centesimas;
+  final int serie;
+  final int carril;
+  final bool dsq;
+
+  const MarcaNatacion({
+    required this.participanteId,
+    this.centesimas = 0,
+    this.serie = 0,
+    this.carril = 0,
+    this.dsq = false,
+  });
+
+  bool get registrada => centesimas > 0 || dsq;
+
+  MarcaNatacion copyWith(
+          {int? centesimas, int? serie, int? carril, bool? dsq}) =>
+      MarcaNatacion(
+        participanteId: participanteId,
+        centesimas: centesimas ?? this.centesimas,
+        serie: serie ?? this.serie,
+        carril: carril ?? this.carril,
+        dsq: dsq ?? this.dsq,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'participanteId': participanteId,
+        'centesimas': centesimas,
+        if (serie != 0) 'serie': serie,
+        if (carril != 0) 'carril': carril,
+        if (dsq) 'dsq': true,
+      };
+
+  factory MarcaNatacion.fromJson(Map<String, dynamic> j) => MarcaNatacion(
+        participanteId: (j['participanteId'] ?? '') as String,
+        centesimas: (j['centesimas'] as num?)?.toInt() ?? 0,
+        serie: (j['serie'] as num?)?.toInt() ?? 0,
+        carril: (j['carril'] as num?)?.toInt() ?? 0,
+        dsq: (j['dsq'] ?? false) as bool,
+      );
+}
+
+/// Una PRUEBA (evento) de natación: distancia + estilo, p. ej. "50m Libre".
+/// Reúne las marcas de los participantes; se rankea por tiempo ascendente.
+class PruebaNatacion {
+  final String id;
+  final String nombre;
+  final List<MarcaNatacion> marcas;
+
+  const PruebaNatacion(
+      {required this.id, required this.nombre, this.marcas = const []});
+
+  PruebaNatacion copyWith({String? nombre, List<MarcaNatacion>? marcas}) =>
+      PruebaNatacion(
+          id: id, nombre: nombre ?? this.nombre, marcas: marcas ?? this.marcas);
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'nombre': nombre,
+        'marcas': marcas.map((m) => m.toJson()).toList(),
+      };
+
+  factory PruebaNatacion.fromJson(Map<String, dynamic> j) => PruebaNatacion(
+        id: j['id'] as String,
+        nombre: (j['nombre'] ?? '') as String,
+        marcas: (j['marcas'] as List?)
+                ?.map((e) =>
+                    MarcaNatacion.fromJson(Map<String, dynamic>.from(e as Map)))
+                .toList() ??
+            const [],
+      );
+}
+
+/// Utilidades de natación: formatear/parsear tiempos y rankear una prueba.
+class Natacion {
+  /// "mm:ss.cc" desde centésimas. Ej.: 3785 → "0:37.85".
+  static String fmt(int cc) {
+    if (cc <= 0) return '—';
+    final min = cc ~/ 6000;
+    final seg = (cc % 6000) ~/ 100;
+    final cen = cc % 100;
+    return '$min:${seg.toString().padLeft(2, '0')}.${cen.toString().padLeft(2, '0')}';
+  }
+
+  /// Parsea "mm:ss.cc", "ss.cc" o "ss" (coma o punto) a centésimas; null si no vale.
+  static int? parse(String s) {
+    var t = s.trim().replaceAll(',', '.');
+    if (t.isEmpty) return null;
+    int min = 0;
+    if (t.contains(':')) {
+      final partes = t.split(':');
+      if (partes.length != 2) return null;
+      min = int.tryParse(partes[0].trim()) ?? -1;
+      if (min < 0) return null;
+      t = partes[1].trim();
+    }
+    final segCen = t.split('.');
+    final seg = int.tryParse(segCen[0].trim()) ?? -1;
+    if (seg < 0 || seg > 59) return null;
+    var cen = 0;
+    if (segCen.length > 1) {
+      var c = segCen[1].trim();
+      if (c.length == 1) c = '${c}0';
+      if (c.length > 2) c = c.substring(0, 2);
+      cen = int.tryParse(c) ?? 0;
+    }
+    return (min * 60 + seg) * 100 + cen;
+  }
+
+  /// Ranking de una prueba: las marcas REGISTRADAS con tiempo, por tiempo
+  /// ascendente (más rápido primero); los DSQ al final; las sin registrar fuera.
+  static List<MarcaNatacion> ranking(PruebaNatacion p) {
+    final conTiempo =
+        p.marcas.where((m) => !m.dsq && m.centesimas > 0).toList()
+          ..sort((a, b) => a.centesimas.compareTo(b.centesimas));
+    final dsq = p.marcas.where((m) => m.dsq).toList();
+    return [...conTiempo, ...dsq];
+  }
+
+  /// Distancias y estilos comunes (para el selector de prueba).
+  static const distancias = [25, 50, 100, 200, 400];
+  static const estilos = ['Libre', 'Espalda', 'Pecho', 'Mariposa', 'Combinado'];
 }
 
 /// Un INTEGRANTE del plantel de un equipo (fútbol). [email] no vacío = jugador
@@ -234,6 +369,7 @@ class Campeonato {
   final bool inscripcionAbierta; // ¿los jugadores pueden inscribirse solos?
   final List<Participante> participantes;
   final List<PartidoTorneo> partidos; // fixture generado (vacío = aún no)
+  final List<PruebaNatacion> pruebas; // solo formato 'tiempos' (natación)
   final bool cerrado;
   /// Moneda del costo de inscripción, congelada al crear ('' = 'S/', Perú).
   final String moneda;
@@ -268,6 +404,7 @@ class Campeonato {
     this.inscripcionAbierta = true,
     this.participantes = const [],
     this.partidos = const [],
+    this.pruebas = const [],
     this.cerrado = false,
     this.moneda = '',
     this.inscripcionHasta,
@@ -294,6 +431,7 @@ class Campeonato {
   }
 
   bool get fixtureGenerado => partidos.isNotEmpty;
+  bool get esTiempos => formato == FormatoTorneo.tiempos;
 
   Campeonato copyWith({
     String? nombre,
@@ -306,6 +444,7 @@ class Campeonato {
     bool? inscripcionAbierta,
     List<Participante>? participantes,
     List<PartidoTorneo>? partidos,
+    List<PruebaNatacion>? pruebas,
     bool? cerrado,
     String? moneda,
     DateTime? inscripcionHasta,
@@ -330,6 +469,7 @@ class Campeonato {
         inscripcionAbierta: inscripcionAbierta ?? this.inscripcionAbierta,
         participantes: participantes ?? this.participantes,
         partidos: partidos ?? this.partidos,
+        pruebas: pruebas ?? this.pruebas,
         cerrado: cerrado ?? this.cerrado,
         moneda: moneda ?? this.moneda,
         inscripcionHasta: inscripcionHasta ?? this.inscripcionHasta,
@@ -364,6 +504,8 @@ class Campeonato {
         'inscripcionAbierta': inscripcionAbierta,
         'participantes': participantes.map((p) => p.toJson()).toList(),
         'partidos': partidos.map((p) => p.toJson()).toList(),
+        if (pruebas.isNotEmpty)
+          'pruebas': pruebas.map((p) => p.toJson()).toList(),
         'cerrado': cerrado,
         'moneda': moneda,
         if (inscripcionHasta != null)
@@ -398,6 +540,11 @@ class Campeonato {
             const [],
         partidos: (j['partidos'] as List?)
                 ?.map((e) => PartidoTorneo.fromJson(Map<String, dynamic>.from(e as Map)))
+                .toList() ??
+            const [],
+        pruebas: (j['pruebas'] as List?)
+                ?.map((e) =>
+                    PruebaNatacion.fromJson(Map<String, dynamic>.from(e as Map)))
                 .toList() ??
             const [],
         cerrado: (j['cerrado'] ?? false) as bool,

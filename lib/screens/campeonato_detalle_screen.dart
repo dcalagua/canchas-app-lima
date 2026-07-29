@@ -154,7 +154,9 @@ class CampeonatoDetalleScreen extends StatelessWidget {
               const SizedBox(height: 14),
               _Participantes(campeonato: c, esDueno: esDueno),
               const SizedBox(height: 18),
-              if (c.fixtureGenerado) ...[
+              // Natación: por tiempos/series (sin fixture de partidos G/P).
+              if (c.esTiempos) _Natacion(campeonato: c, esDueno: esDueno),
+              if (!c.esTiempos && c.fixtureGenerado) ...[
                 Text(
                     c.formato == FormatoTorneo.liga
                         ? 'Tabla y partidos'
@@ -184,7 +186,7 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                   ),
                 ],
               ],
-              if (esDueno && c.fixtureGenerado) ...[
+              if (!c.esTiempos && esDueno && c.fixtureGenerado) ...[
                 const SizedBox(height: 20),
                 SizedBox(
                   width: double.infinity,
@@ -833,7 +835,22 @@ class CampeonatoDetalleScreen extends StatelessWidget {
     if (c.fechas.isNotEmpty) sb.writeln('📅 ${c.fechas}');
     if (c.sede.isNotEmpty) sb.writeln('📍 ${c.sede}');
     sb.writeln('');
-    if (c.formato == FormatoTorneo.liga) {
+    if (c.esTiempos) {
+      if (c.pruebas.isEmpty) sb.writeln('(aún sin pruebas)');
+      for (final p in c.pruebas) {
+        sb.writeln('🏊 ${p.nombre}');
+        final rk = Natacion.ranking(p);
+        if (rk.isEmpty) sb.writeln('(sin tiempos)');
+        var pos = 1;
+        for (final m in rk) {
+          final n = c.participante(m.participanteId)?.nombre ?? '—';
+          final val = m.dsq ? 'DSQ' : Natacion.fmt(m.centesimas);
+          sb.writeln('${_medallaPos(pos)} $n — $val');
+          if (!m.dsq) pos++;
+        }
+        sb.writeln('');
+      }
+    } else if (c.formato == FormatoTorneo.liga) {
       sb.writeln('TABLA:');
       var pos = 1;
       for (final f in TorneoFixture.tabla(c)) {
@@ -952,12 +969,15 @@ class _EstadoCampeonato extends StatelessWidget {
   final Campeonato c;
   @override
   Widget build(BuildContext context) {
+    final enJuego = c.esTiempos ? c.pruebas.isNotEmpty : c.fixtureGenerado;
     final (String texto, Color color, String emoji) = c.cerrado
         ? ('Finalizado', teal, '🏁')
-        : c.fixtureGenerado
+        : enJuego
             ? ('En juego', morado, '🏆')
             : c.inscripcionVencida
-                ? ('Inscripciones cerradas · esperando fixture', naranja, '⏳')
+                ? (c.esTiempos
+                    ? 'Inscripciones cerradas · esperando pruebas'
+                    : 'Inscripciones cerradas · esperando fixture', naranja, '⏳')
                 : ('Inscripciones abiertas', lima, '📝');
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
@@ -1212,7 +1232,8 @@ class _Participantes extends StatelessWidget {
               ),
           ],
         ),
-        if (esDueno) ...[
+        // Natación no usa fixture (se administra por pruebas/tiempos abajo).
+        if (esDueno && !c.esTiempos) ...[
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
@@ -1537,6 +1558,437 @@ class _Marcador extends StatelessWidget {
       child: Text(valor?.toString() ?? '–',
           textAlign: TextAlign.center,
           style: TextStyle(fontWeight: FontWeight.w800, color: cs.onSurface)),
+    );
+  }
+}
+
+// ── NATACIÓN (formato por tiempos/series) ────────────────────────────────────
+
+void _guardarPruebas(Campeonato c, List<PruebaNatacion> nuevas) {
+  appState.guardarCampeonato(c.copyWith(pruebas: nuevas));
+}
+
+/// Agrega una prueba (evento): distancia + estilo → "50m Libre".
+Future<void> _agregarPrueba(BuildContext context, Campeonato c) async {
+  int dist = 50;
+  String estilo = 'Libre';
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setSt) => AlertDialog(
+        backgroundColor: Theme.of(ctx).colorScheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Nueva prueba'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Distancia',
+                style: TextStyle(
+                    color: textoTenueDe(ctx),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              children: [
+                for (final d in Natacion.distancias)
+                  ChoiceChip(
+                    label: Text('${d}m'),
+                    selected: dist == d,
+                    onSelected: (_) => setSt(() => dist = d),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text('Estilo',
+                style: TextStyle(
+                    color: textoTenueDe(ctx),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              children: [
+                for (final e in Natacion.estilos)
+                  ChoiceChip(
+                    label: Text(e),
+                    selected: estilo == e,
+                    onSelected: (_) => setSt(() => estilo = e),
+                  ),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: lima),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Agregar')),
+        ],
+      ),
+    ),
+  );
+  if (ok != true) return;
+  final prueba = PruebaNatacion(
+    id: 'pr_${DateTime.now().microsecondsSinceEpoch}',
+    nombre: '${dist}m $estilo',
+  );
+  _guardarPruebas(c, [...c.pruebas, prueba]);
+}
+
+/// Registra/edita la marca (tiempo) de un participante en una prueba.
+Future<void> _editarMarca(BuildContext context, Campeonato c,
+    PruebaNatacion prueba, String participanteId) async {
+  final nombre = c.participante(participanteId)?.nombre ?? '';
+  final actual = prueba.marcas.firstWhere(
+      (m) => m.participanteId == participanteId,
+      orElse: () => MarcaNatacion(participanteId: participanteId));
+  final tiempoCtrl = TextEditingController(
+      text: actual.centesimas > 0 ? Natacion.fmt(actual.centesimas) : '');
+  final serieCtrl =
+      TextEditingController(text: actual.serie > 0 ? '${actual.serie}' : '');
+  final carrilCtrl =
+      TextEditingController(text: actual.carril > 0 ? '${actual.carril}' : '');
+  var dsq = actual.dsq;
+  String? error;
+
+  final guardo = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setSt) => AlertDialog(
+        backgroundColor: Theme.of(ctx).colorScheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(nombre, maxLines: 1, overflow: TextOverflow.ellipsis),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(prueba.nombre,
+                style: TextStyle(
+                    color: textoTenueDe(ctx), fontWeight: FontWeight.w700)),
+            const SizedBox(height: 10),
+            TextField(
+              controller: tiempoCtrl,
+              enabled: !dsq,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: 'Tiempo (mm:ss.cc)',
+                hintText: 'ej. 0:37.85',
+                errorText: error,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: serieCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'Serie'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextField(
+                    controller: carrilCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'Carril'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: dsq,
+              activeColor: clayOscuro,
+              title: const Text('Descalificado (DSQ)'),
+              onChanged: (v) => setSt(() => dsq = v),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: lima),
+            onPressed: () {
+              if (dsq) {
+                Navigator.pop(ctx, true);
+                return;
+              }
+              final cc = Natacion.parse(tiempoCtrl.text);
+              if (tiempoCtrl.text.trim().isEmpty) {
+                Navigator.pop(ctx, true); // limpia la marca
+                return;
+              }
+              if (cc == null) {
+                setSt(() => error = 'Formato inválido (usa mm:ss.cc)');
+                return;
+              }
+              Navigator.pop(ctx, true);
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    ),
+  );
+  if (guardo != true) return;
+  final cc = dsq ? 0 : (Natacion.parse(tiempoCtrl.text) ?? 0);
+  final nueva = MarcaNatacion(
+    participanteId: participanteId,
+    centesimas: cc,
+    serie: int.tryParse(serieCtrl.text.trim()) ?? 0,
+    carril: int.tryParse(carrilCtrl.text.trim()) ?? 0,
+    dsq: dsq,
+  );
+  final marcas = [
+    ...prueba.marcas.where((m) => m.participanteId != participanteId),
+    if (nueva.registrada || nueva.serie > 0 || nueva.carril > 0) nueva,
+  ];
+  final pruebas = [
+    for (final p in c.pruebas)
+      p.id == prueba.id ? p.copyWith(marcas: marcas) : p,
+  ];
+  _guardarPruebas(c, pruebas);
+}
+
+Future<void> _borrarPrueba(
+    BuildContext context, Campeonato c, PruebaNatacion prueba) async {
+  final ok = await confirmarPichangol(context,
+      titulo: 'Eliminar prueba',
+      mensaje: '¿Eliminar "${prueba.nombre}" y sus tiempos?',
+      textoConfirmar: 'Eliminar',
+      destructivo: true,
+      icono: Icons.delete_outline);
+  if (!ok) return;
+  _guardarPruebas(c, c.pruebas.where((p) => p.id != prueba.id).toList());
+}
+
+String _medallaPos(int pos) => switch (pos) {
+      1 => '🥇',
+      2 => '🥈',
+      3 => '🥉',
+      _ => '$pos°',
+    };
+
+/// Sección de natación: pruebas con ranking por tiempo (medallas top 3).
+class _Natacion extends StatelessWidget {
+  const _Natacion({required this.campeonato, required this.esDueno});
+  final Campeonato campeonato;
+  final bool esDueno;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = campeonato;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text('Pruebas',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+            if (esDueno)
+              TextButton.icon(
+                onPressed: () => _agregarPrueba(context, c),
+                icon: const Icon(Icons.add),
+                label: const Text('Agregar prueba'),
+              ),
+          ],
+        ),
+        if (c.pruebas.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Text(
+              esDueno
+                  ? 'Agrega las pruebas (50m Libre, 100m Espalda…) y registra el '
+                      'tiempo de cada nadador. El ranking se ordena solo, del más '
+                      'rápido al más lento.'
+                  : 'El organizador aún no publicó las pruebas.',
+              style: TextStyle(color: textoTenueDe(context)),
+            ),
+          )
+        else
+          for (final p in c.pruebas)
+            _CardPrueba(campeonato: c, prueba: p, esDueno: esDueno),
+      ],
+    );
+  }
+}
+
+class _CardPrueba extends StatelessWidget {
+  const _CardPrueba(
+      {required this.campeonato, required this.prueba, required this.esDueno});
+  final Campeonato campeonato;
+  final PruebaNatacion prueba;
+  final bool esDueno;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = campeonato;
+    final cs = Theme.of(context).colorScheme;
+    final ranking = Natacion.ranking(prueba);
+    final rankIds = ranking.map((m) => m.participanteId).toSet();
+    final pendientes =
+        c.participantes.where((p) => !rankIds.contains(p.id)).toList();
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.fromLTRB(14, 10, 8, 12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF1F2C34)
+            : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: trazo.withOpacity(0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('🏊', style: TextStyle(fontSize: 16)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(prueba.nombre,
+                    style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                        color: cs.onSurface)),
+              ),
+              if (esDueno)
+                PopupMenuButton<String>(
+                  icon: Icon(Icons.more_vert, color: textoTenueDe(context)),
+                  onSelected: (v) {
+                    if (v == 'borrar') _borrarPrueba(context, c, prueba);
+                  },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(
+                        value: 'borrar',
+                        child: ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.delete_outline),
+                            title: Text('Eliminar prueba'))),
+                  ],
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          if (ranking.isEmpty && pendientes.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text('Sin nadadores inscritos.',
+                  style: TextStyle(color: textoTenueDe(context), fontSize: 13)),
+            ),
+          // Ranking (con tiempo / DSQ), del más rápido al más lento.
+          for (var i = 0; i < ranking.length; i++)
+            _filaMarca(context, c, ranking[i], i + 1),
+          // Pendientes (sin tiempo).
+          if (pendientes.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.only(top: 8, bottom: 2),
+              child: Text('Sin tiempo',
+                  style: TextStyle(
+                      color: textoTenueDe(context),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700)),
+            ),
+            for (final p in pendientes)
+              _filaPendiente(context, c, p.id, p.nombre),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _filaMarca(
+      BuildContext context, Campeonato c, MarcaNatacion m, int pos) {
+    final cs = Theme.of(context).colorScheme;
+    final nombre = c.participante(m.participanteId)?.nombre ?? '—';
+    final ubic = [
+      if (m.serie > 0) 'S${m.serie}',
+      if (m.carril > 0) 'C${m.carril}',
+    ].join(' · ');
+    final derecha = m.dsq ? 'DSQ' : Natacion.fmt(m.centesimas);
+    return InkWell(
+      onTap: esDueno
+          ? () => _editarMarca(context, c, prueba, m.participanteId)
+          : null,
+      borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 2),
+        child: Row(
+          children: [
+            SizedBox(
+                width: 30,
+                child: Text(m.dsq ? '·' : _medallaPos(pos),
+                    style: TextStyle(
+                        fontSize: pos <= 3 && !m.dsq ? 18 : 14,
+                        fontWeight: FontWeight.w800,
+                        color: cs.onSurface))),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(nombre,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontWeight: FontWeight.w600, color: cs.onSurface)),
+                  if (ubic.isNotEmpty)
+                    Text(ubic,
+                        style: TextStyle(
+                            color: textoTenueDe(context), fontSize: 11.5)),
+                ],
+              ),
+            ),
+            Text(derecha,
+                style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                    color: m.dsq ? clayOscuro : cs.onSurface)),
+            if (esDueno)
+              Padding(
+                padding: const EdgeInsets.only(left: 4),
+                child: Icon(Icons.edit, size: 15, color: textoTenueDe(context)),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _filaPendiente(
+      BuildContext context, Campeonato c, String pid, String nombre) {
+    return InkWell(
+      onTap: esDueno ? () => _editarMarca(context, c, prueba, pid) : null,
+      borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 2),
+        child: Row(
+          children: [
+            const SizedBox(width: 30),
+            Expanded(
+              child: Text(nombre,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: textoTenueDe(context))),
+            ),
+            if (esDueno)
+              Text('Registrar',
+                  style: TextStyle(
+                      color: lima, fontWeight: FontWeight.w700, fontSize: 13))
+            else
+              Text('—', style: TextStyle(color: textoTenueDe(context))),
+          ],
+        ),
+      ),
     );
   }
 }

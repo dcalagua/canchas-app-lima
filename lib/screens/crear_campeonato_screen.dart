@@ -106,12 +106,23 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
     'jul', 'ago', 'set', 'oct', 'nov', 'dic'
   ];
 
+  /// Formato por defecto según el deporte (natación = por tiempos).
+  static FormatoTorneo _formatoDe(Deporte d) => d == Deporte.natacion
+      ? FormatoTorneo.tiempos
+      : d == Deporte.futbol
+          ? FormatoTorneo.liga
+          : FormatoTorneo.eliminacion;
+
+  /// Formatos ofrecibles según el deporte: natación solo "por tiempos"; el resto,
+  /// eliminación o liga (nunca por tiempos).
+  List<FormatoTorneo> get _formatosDisponibles => _deporte == Deporte.natacion
+      ? const [FormatoTorneo.tiempos]
+      : const [FormatoTorneo.eliminacion, FormatoTorneo.liga];
+
   @override
   void initState() {
     super.initState();
-    _formato = _deporte == Deporte.futbol
-        ? FormatoTorneo.liga
-        : FormatoTorneo.eliminacion;
+    _formato = _formatoDe(_deporte);
     // Sede por defecto: la de la academia (si tiene ubicación).
     for (final a in appState.academias) {
       if (a.id == widget.academiaId) {
@@ -236,9 +247,7 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
                   selected: _deporte == d,
                   onSelected: (_) => setState(() {
                     _deporte = d;
-                    _formato = d == Deporte.futbol
-                        ? FormatoTorneo.liga
-                        : FormatoTorneo.eliminacion;
+                    _formato = _formatoDe(d);
                   }),
                 ),
             ],
@@ -248,16 +257,22 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
               style:
                   TextStyle(fontWeight: FontWeight.w700, color: cs.onSurface)),
           const SizedBox(height: 8),
-          for (final f in FormatoTorneo.values)
+          for (final f in _formatosDisponibles)
             RadioListTile<FormatoTorneo>(
               contentPadding: EdgeInsets.zero,
               value: f,
               groupValue: _formato,
               onChanged: (v) => setState(() => _formato = v!),
               title: Text(f.etiqueta),
-              subtitle: Text(f == FormatoTorneo.eliminacion
-                  ? 'Llave: el ganador avanza (ideal tenis/pádel).'
-                  : 'Todos contra todos + tabla (ideal fútbol).'),
+              subtitle: Text(switch (f) {
+                FormatoTorneo.eliminacion =>
+                  'Llave: el ganador avanza (ideal tenis/pádel).',
+                FormatoTorneo.liga =>
+                  'Todos contra todos + tabla (ideal fútbol).',
+                FormatoTorneo.tiempos =>
+                  'Cada nadador registra su TIEMPO por prueba; se rankea del más '
+                      'rápido al más lento (sin partidos G/P).',
+              }),
             ),
           const SizedBox(height: 8),
           // Categoría: combo de categorías estándar (las de edad auto-setean el
