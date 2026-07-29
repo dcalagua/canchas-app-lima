@@ -30,6 +30,10 @@ dependencies:
   # (regla Flutter 3.24.5). Exige minSdk 24 (ver tool/configure_platforms.py) y
   # iOS 15.1. Si el join nativo falla, la UI cae al enlace de Jitsi (meet.jit.si).
   jitsi_meet_flutter_sdk: ^11.6.0
+  # Fase 2 de llamadas: pantalla de LLAMADA ENTRANTE con tono (suena aunque la
+  # app esté cerrada) en Android. Plugin nativo → de-riskear en CI (Flutter
+  # 3.24.5). Se dispara desde el push de llamada (data) y al aceptar une a Jitsi.
+  flutter_callkit_incoming: ^3.1.3
   # Pasarela de pago de BOLIVIA (Libélula): el pago se hace en la página hospedada
   # de Libélula (QR · tarjeta · Tigo Money) DENTRO de un WebView. El compileSdk de
   # su plugin nativo lo cubre el fix global de subproyectos (tool/configure_platforms).
