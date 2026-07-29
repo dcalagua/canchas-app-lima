@@ -10,6 +10,7 @@ import '../data/agenda_repo.dart';
 import '../data/estados_repo.dart';
 import '../data/lecturas_repo.dart';
 import '../models/estado.dart';
+import '../models/canal.dart';
 import '../data/campeonatos_repo.dart';
 import '../data/canchas_repo.dart';
 import '../data/invitaciones_repo.dart';
@@ -280,6 +281,68 @@ class AppState extends ChangeNotifier {
           jsonEncode(_canalVisto
               .map((k, v) => MapEntry(k, v.toIso8601String()))));
     } catch (_) {}
+  }
+
+  // ── Canales: caché local de la lista (device-first, pinta al instante) ──────
+  static const _kCanalesCache = 'canales_cache_json';
+
+  /// Guarda la última lista de canales visibles + sus posts, para pintar
+  /// Novedades al instante en la próxima entrada (luego se refresca de Supabase).
+  Future<void> guardarCanalesCache(CanalesCache cache) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final data = {
+        'canales': [
+          for (final c in cache.canales)
+            {
+              'id': c.id,
+              'nombre': c.nombre,
+              'descripcion': c.descripcion,
+              'foto_url': c.fotoUrl,
+              'owner_email': c.ownerEmail,
+              'creado': c.creado.toIso8601String(),
+            }
+        ],
+        'posts': cache.posts.map((k, v) => MapEntry(k, [
+              for (final p in v)
+                {
+                  'id': p.id,
+                  'canal_id': p.canalId,
+                  'autor_email': p.autorEmail,
+                  'autor_nombre': p.autorNombre,
+                  'tipo': p.tipo,
+                  'texto': p.texto,
+                  'media_url': p.mediaUrl,
+                  'creado': p.creado.toIso8601String(),
+                }
+            ])),
+      };
+      await prefs.setString(_kCanalesCache, jsonEncode(data));
+    } catch (_) {}
+  }
+
+  /// Lee la lista cacheada de canales, o null si no hay / falla.
+  Future<CanalesCache?> leerCanalesCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_kCanalesCache);
+      if (raw == null || raw.isEmpty) return null;
+      final data = jsonDecode(raw) as Map<String, dynamic>;
+      final canales = [
+        for (final c in (data['canales'] as List? ?? const []))
+          Canal.fromRow(Map<String, dynamic>.from(c as Map))
+      ];
+      final posts = <String, List<CanalPost>>{};
+      ((data['posts'] as Map?) ?? const {}).forEach((k, v) {
+        posts[k.toString()] = [
+          for (final p in (v as List? ?? const []))
+            CanalPost.fromRow(Map<String, dynamic>.from(p as Map))
+        ];
+      });
+      return CanalesCache(canales, posts);
+    } catch (_) {
+      return null;
+    }
   }
 
   bool estadoVisto(String id) => _estadosVistos.contains(id);

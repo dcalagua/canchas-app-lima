@@ -33,7 +33,19 @@ class _NovedadesScreenState extends State<NovedadesScreen> {
   void initState() {
     super.initState();
     appState.cargarEstados(); // refresca al entrar (best-effort)
-    _cargarCanales();
+    _seedCanalesCache(); // pinta al instante lo último conocido (device-first)
+    _cargarCanales(); // y refresca desde Supabase en segundo plano
+  }
+
+  /// Device-first: pinta la lista de canales cacheada al instante (con sus
+  /// íconos ya en disco) para que no haya demora al abrir Novedades.
+  Future<void> _seedCanalesCache() async {
+    final c = await appState.leerCanalesCache();
+    if (c == null || !mounted || _canales.isNotEmpty) return;
+    setState(() {
+      _canales = c.canales;
+      _postsCanal = c.posts;
+    });
   }
 
   /// Canales visibles en Novedades: los que sigo + los míos, ordenados por su
@@ -58,6 +70,8 @@ class _NovedadesScreenState extends State<NovedadesScreen> {
       _canales = visibles;
       _postsCanal = posts;
     });
+    // Cachea lo recién traído para el próximo arranque (device-first).
+    appState.guardarCanalesCache(CanalesCache(visibles, posts));
   }
 
   int _noLeidos(Canal c) {

@@ -51,6 +51,14 @@ class Canal {
       );
 }
 
+/// Caché local (device-first) de la lista de canales visibles + sus posts, para
+/// pintar Novedades al instante sin esperar a Supabase.
+class CanalesCache {
+  final List<Canal> canales;
+  final Map<String, List<CanalPost>> posts;
+  const CanalesCache(this.canales, this.posts);
+}
+
 /// Una publicación dentro de un canal (texto + foto/video opcional).
 class CanalPost {
   final String id;
