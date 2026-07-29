@@ -71,11 +71,37 @@ class _NovedadesScreenState extends State<NovedadesScreen> {
         .length;
   }
 
-  String _previewPost(CanalPost p) => p.esFoto
-      ? '📷 Foto'
-      : p.esVideo
-          ? '🎥 Video'
-          : p.texto;
+  static final _reEnlace = RegExp(r'(https?://|www\.)', caseSensitive: false);
+
+  String _previewPost(CanalPost p) {
+    if (p.esFoto) return '📷 Foto';
+    if (p.esVideo) return '🎥 Video';
+    final t = p.texto.trim();
+    // Igual que WhatsApp: si el post trae un enlace, se antepone 🔗.
+    if (_reEnlace.hasMatch(t)) return '🔗 $t';
+    return t;
+  }
+
+  /// Hora al estilo WhatsApp para la lista de canales: hoy = hora (12:33 a. m.),
+  /// ayer = "Ayer", esta semana = día abreviado, más viejo = fecha d/m/aaaa.
+  String _horaCanal(DateTime t) {
+    final now = DateTime.now();
+    final dias = DateTime(now.year, now.month, now.day)
+        .difference(DateTime(t.year, t.month, t.day))
+        .inDays;
+    if (dias <= 0) {
+      final ampm = t.hour < 12 ? 'a. m.' : 'p. m.';
+      var h12 = t.hour % 12;
+      if (h12 == 0) h12 = 12;
+      return '$h12:${t.minute.toString().padLeft(2, '0')} $ampm';
+    }
+    if (dias == 1) return 'Ayer';
+    if (dias < 7) {
+      const d = ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'];
+      return d[t.weekday - 1];
+    }
+    return '${t.day}/${t.month}/${t.year}';
+  }
 
   Future<void> _abrirCanal(Canal c) async {
     await Navigator.of(context).push(
@@ -112,7 +138,7 @@ class _NovedadesScreenState extends State<NovedadesScreen> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          Text(ultima != null ? _hace(ultima.creado) : '',
+          Text(ultima != null ? _horaCanal(ultima.creado) : '',
               style: TextStyle(
                   fontSize: 11.5,
                   fontWeight: noLeidos > 0 ? FontWeight.w700 : FontWeight.w400,
