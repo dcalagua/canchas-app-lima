@@ -138,26 +138,34 @@ class _CanalDetalleScreenState extends State<CanalDetalleScreen> {
     final u = appState.usuario;
     if (u == null || _publicando) return;
     final picker = ImagePicker();
+    Uint8List bytes;
     if (video) {
       final vf = await picker.pickVideo(
           source: ImageSource.gallery,
           maxDuration: const Duration(seconds: 60));
       if (vf == null) return;
-      setState(() => _publicando = true);
-      final bytes = await vf.readAsBytes();
-      await _subirYPublicar(bytes, tipo: 'video', video: true);
+      bytes = await vf.readAsBytes();
     } else {
       final f = await picker.pickImage(
           source: ImageSource.gallery, maxWidth: 1600, imageQuality: 85);
       if (f == null) return;
-      setState(() => _publicando = true);
-      final bytes = await f.readAsBytes();
-      await _subirYPublicar(bytes, tipo: 'foto', video: false);
+      bytes = await f.readAsBytes();
     }
+    if (!mounted) return;
+    // Estilo WhatsApp: primero se ve la media y se le pone descripción; recién
+    // al tocar enviar se publica. Devuelve el caption (o null si canceló).
+    final caption = await Navigator.of(context).push<String>(MaterialPageRoute(
+        builder: (_) => _PreviewMediaCanal(bytes: bytes, video: video)));
+    if (caption == null || !mounted) return;
+    setState(() => _publicando = true);
+    await _subirYPublicar(bytes,
+        tipo: video ? 'video' : 'foto', video: video, texto: caption);
   }
 
   Future<void> _subirYPublicar(Uint8List bytes,
-      {required String tipo, required bool video}) async {
+      {required String tipo,
+      required bool video,
+      required String texto}) async {
     final u = appState.usuario!;
     final id = 'cp_${DateTime.now().microsecondsSinceEpoch}';
     final ext = video ? 'mp4' : 'jpg';
@@ -172,7 +180,7 @@ class _CanalDetalleScreenState extends State<CanalDetalleScreen> {
         autorEmail: u.email,
         autorNombre: u.nombre,
         tipo: tipo,
-        texto: _texto.text.trim(),
+        texto: texto.trim(),
         mediaUrl: url,
         creado: DateTime.now(),
       );
@@ -188,7 +196,6 @@ class _CanalDetalleScreenState extends State<CanalDetalleScreen> {
     }
     setState(() {
       _publicando = false;
-      _texto.clear();
       _posts = [post, ..._posts];
     });
   }
@@ -722,6 +729,107 @@ class _TextoConLinksState extends State<_TextoConLinks> {
     }
     if (last < t.length) spans.add(TextSpan(text: t.substring(last)));
     return Text.rich(TextSpan(style: widget.style, children: spans));
+  }
+}
+
+/// Previsualización de una foto/video antes de publicarlo en el canal (estilo
+/// WhatsApp): se ve la media, se le pone una descripción y recién al enviar se
+/// publica. Devuelve el caption (posiblemente vacío) al enviar, o null si vuelve.
+class _PreviewMediaCanal extends StatefulWidget {
+  const _PreviewMediaCanal({required this.bytes, required this.video});
+  final Uint8List bytes;
+  final bool video;
+
+  @override
+  State<_PreviewMediaCanal> createState() => _PreviewMediaCanalState();
+}
+
+class _PreviewMediaCanalState extends State<_PreviewMediaCanal> {
+  final _caption = TextEditingController();
+
+  @override
+  void dispose() {
+    _caption.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        title: Text(widget.video ? 'Video' : 'Foto',
+            style: const TextStyle(fontWeight: FontWeight.w700)),
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: Center(
+              child: widget.video
+                  ? Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        Icon(Icons.play_circle_fill,
+                            color: Colors.white70, size: 72),
+                        SizedBox(height: 12),
+                        Text('Video listo para publicar',
+                            style: TextStyle(color: Colors.white70)),
+                      ],
+                    )
+                  : InteractiveViewer(
+                      child: Image.memory(widget.bytes, fit: BoxFit.contain),
+                    ),
+            ),
+          ),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                          color: const Color(0xFF1F2C34),
+                          borderRadius: BorderRadius.circular(24)),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: TextField(
+                        controller: _caption,
+                        autofocus: true,
+                        minLines: 1,
+                        maxLines: 4,
+                        style: const TextStyle(color: Colors.white),
+                        cursorColor: lima,
+                        textCapitalization: TextCapitalization.sentences,
+                        decoration: const InputDecoration(
+                          hintText: 'Añade una descripción…',
+                          hintStyle: TextStyle(color: Colors.white54),
+                          border: InputBorder.none,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () =>
+                        Navigator.of(context).pop(_caption.text.trim()),
+                    child: const CircleAvatar(
+                      radius: 26,
+                      backgroundColor: lima,
+                      child: Icon(Icons.send, color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
