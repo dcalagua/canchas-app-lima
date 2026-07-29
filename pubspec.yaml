@@ -25,11 +25,12 @@ dependencies:
   google_fonts: ^6.2.1
   font_awesome_flutter: 10.8.0
   url_launcher: ^6.3.0
-  # Llamadas de voz/video DENTRO de la app (chat 1-a-1 y grupal). Plugin nativo
-  # PESADO (trae WebRTC) → se de-riskea en CI aislado antes de cablear la UI
-  # (regla Flutter 3.24.5). Exige minSdk 24 (ver tool/configure_platforms.py) y
-  # iOS 15.1. Si el join nativo falla, la UI cae al enlace de Jitsi (meet.jit.si).
-  jitsi_meet_flutter_sdk: ^11.6.0
+  # Llamadas 1-a-1 tipo WhatsApp con WebRTC PROPIO (UI de llamada de la marca,
+  # punta a punta). Reemplaza al Jitsi embebido (no pueden convivir: ambos traen
+  # las clases nativas org.webrtc.*). Plugin nativo pesado → de-riskear en CI
+  # (Flutter 3.24.5). Señalización sobre Supabase Realtime; la grupal sigue por
+  # enlace de Jitsi (meet.jit.si) porque grupo con WebRTC puro necesita un SFU.
+  flutter_webrtc: 1.4.1
   # Fase 2 de llamadas: pantalla de LLAMADA ENTRANTE con tono (suena aunque la
   # app esté cerrada) en Android. Plugin nativo → de-riskear en CI (Flutter
   # 3.24.5). Se dispara desde el push de llamada (data) y al aceptar une a Jitsi.

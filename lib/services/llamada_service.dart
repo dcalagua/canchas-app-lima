@@ -1,17 +1,13 @@
 import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
-import 'package:jitsi_meet_flutter_sdk/jitsi_meet_flutter_sdk.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../state/app_state.dart';
 
-/// Llamadas de voz/video DENTRO de Pichangol (Jitsi embebido). Mismo servidor
-/// público gratuito (meet.jit.si), pero la llamada abre en una pantalla dentro
-/// de la app en vez de mandar al navegador.
-///
-/// Fail-safe: si el `join` nativo lanza (equipo raro, plugin no disponible), la
-/// UI cae al enlace web de Jitsi.
+/// Llamadas de Pichangol. La 1-a-1 va camino a WebRTC propio (UI tipo WhatsApp);
+/// mientras se construye esa pantalla, `unir()` abre la sala por enlace. La
+/// grupal se queda por enlace de Jitsi (grupo con WebRTC puro necesita un SFU).
 class LlamadaService {
-  static final JitsiMeet _jitsi = JitsiMeet();
   static const String servidor = 'https://meet.jit.si';
 
   /// Nombre de sala estable por hilo de chat (ambos caen en la MISMA).
@@ -35,8 +31,9 @@ class LlamadaService {
     return m?.group(1);
   }
 
-  /// Une a una sala Jitsi dentro de la app. [audioSolo] arranca sin cámara (voz).
-  /// Devuelve true si abrió el SDK; false si falló (para caer al enlace web).
+  /// Abre la sala de la llamada. [audioSolo] = voz. TRANSITORIO: mientras se
+  /// construye la pantalla WebRTC propia, abre la sala por enlace (navegador/
+  /// Jitsi). Devuelve true si abrió; false si falló.
   static Future<bool> unir({
     required String sala,
     required bool audioSolo,
@@ -45,26 +42,8 @@ class LlamadaService {
     String asunto = 'Pichangol',
   }) async {
     try {
-      final opciones = JitsiMeetConferenceOptions(
-        serverURL: servidor,
-        room: sala,
-        configOverrides: {
-          'startWithVideoMuted': audioSolo,
-          'startAudioOnly': audioSolo,
-          'subject': asunto,
-        },
-        featureFlags: {
-          'invite.enabled': false,
-          'meeting-password.enabled': false,
-          'live-streaming.enabled': false,
-          'recording.enabled': false,
-        },
-        userInfo: JitsiMeetUserInfo(
-          displayName: nombre.isEmpty ? 'Pichangol' : nombre,
-          email: email,
-        ),
-      );
-      await _jitsi.join(opciones);
+      await launchUrl(Uri.parse(enlace(sala, audioSolo: audioSolo)),
+          mode: LaunchMode.externalApplication);
       return true;
     } catch (_) {
       return false;
