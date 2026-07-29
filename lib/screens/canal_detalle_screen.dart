@@ -542,15 +542,32 @@ class _CanalDetalleScreenState extends State<CanalDetalleScreen> {
           color: cs.surface,
           border: Border(top: BorderSide(color: trazo.withOpacity(0.4))),
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            IconButton(
-              tooltip: 'Foto',
-              icon: Icon(Icons.image_outlined, color: textoTenueDe(context)),
-              onPressed:
-                  _publicando ? null : () => _publicarMedia(video: false),
+            // Preview del enlace mientras escribes (estilo WhatsApp): aparece
+            // arriba del compositor y se publica junto con la descripción.
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: _texto,
+              builder: (_, val, __) {
+                final url = _primerEnlace(val.text);
+                if (url == null) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(6, 4, 6, 6),
+                  child: _LinkPreview(url: url, onTap: _abrirEnlace),
+                );
+              },
             ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                IconButton(
+                  tooltip: 'Foto',
+                  icon:
+                      Icon(Icons.image_outlined, color: textoTenueDe(context)),
+                  onPressed:
+                      _publicando ? null : () => _publicarMedia(video: false),
+                ),
             IconButton(
               tooltip: 'Video',
               icon: Icon(Icons.videocam_outlined, color: textoTenueDe(context)),
@@ -585,6 +602,8 @@ class _CanalDetalleScreenState extends State<CanalDetalleScreen> {
                         child: Icon(Icons.send, color: Colors.white, size: 20)),
                     onPressed: _publicarTexto,
                   ),
+              ],
+            ),
           ],
         ),
       ),
