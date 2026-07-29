@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -478,6 +479,31 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
                   ),
                 ),
               ),
+            // Botones dedicados de compartir (tipo WhatsApp): Facebook + Instagram
+            // abajo a la derecha, solo en MIS historias.
+            if (_esMio)
+              Positioned(
+                right: 14,
+                bottom: 26,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _BotonRed(
+                      icono: FontAwesomeIcons.facebookF,
+                      color: const Color(0xFF1877F2),
+                      tooltip: 'Compartir en Facebook',
+                      onTap: _compartir,
+                    ),
+                    const SizedBox(width: 12),
+                    _BotonRed(
+                      icono: FontAwesomeIcons.instagram,
+                      color: const Color(0xFFE1306C),
+                      tooltip: 'Compartir en Instagram',
+                      onTap: _compartir,
+                    ),
+                  ],
+                ),
+              ),
             // Barras de progreso + cabecera
             SafeArea(
               child: Column(
@@ -821,6 +847,39 @@ class _MiniAvatar extends StatelessWidget {
               style: const TextStyle(
                   color: teal, fontWeight: FontWeight.bold))
           : null,
+    );
+  }
+}
+
+/// Botón circular oscuro (tipo WhatsApp) con el ícono de una red, para compartir
+/// la historia. Abre la hoja del sistema con la foto/video (IG/FB de primeros).
+class _BotonRed extends StatelessWidget {
+  const _BotonRed(
+      {required this.icono,
+      required this.color,
+      required this.tooltip,
+      required this.onTap});
+  final IconData icono;
+  final Color color;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.black.withOpacity(0.55),
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(13),
+            child: FaIcon(icono, color: color, size: 22),
+          ),
+        ),
+      ),
     );
   }
 }
