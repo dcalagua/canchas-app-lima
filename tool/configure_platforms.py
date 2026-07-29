@@ -14,6 +14,7 @@ cargará hasta poner una key real.
 import base64
 import os
 import re
+import shutil
 import sys
 
 KEY = os.environ.get("MAPS_API_KEY", "").strip() or "YOUR_MAPS_API_KEY_HERE"
@@ -89,7 +90,11 @@ def android_manifest(text):
             '        <meta-data android:name="com.google.firebase.messaging.default_notification_icon" '
             'android:resource="@drawable/ic_stat_pichangol"/>\n'
             '        <meta-data android:name="com.google.firebase.messaging.default_notification_color" '
-            'android:resource="@color/pichangol_notif"/>\n    </application>'
+            'android:resource="@color/pichangol_notif"/>\n'
+            # Canal por defecto de FCM: el "pichan_msgs" que crea MainActivity con
+            # el sonido custom "Pichan" (Android 8+ toma el sonido del CANAL).
+            '        <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" '
+            'android:value="pichan_msgs"/>\n    </application>'
         )
         text = text.replace("</application>", notif, 1)
     if "com.google.android.geo.API_KEY" not in text:
@@ -516,6 +521,68 @@ def configurar_notificacion_android():
     print("  Notif icon: ic_stat_pichangol + color pichangol_notif configurados")
 
 
+def configurar_sonido_notificacion():
+    """Sonido de notificación custom "Pichan" (estilo Yape). Copia el mp3 a
+    res/raw/pichan.mp3 y reescribe MainActivity.kt para CREAR el canal de
+    notificación `pichan_msgs` con ese sonido (Android 8+ toma el sonido del
+    canal, no del payload). El manifest apunta a ese canal como el por defecto de
+    FCM, así el push en segundo plano suena "Pichan" sin cambios en el backend."""
+    raiz = "android/app/src/main"
+    if not os.path.isdir(raiz):
+        print("  Sonido notif: omitido (no hay android/app/src/main)")
+        return
+    # 1) Copiar el sonido a res/raw (nombre en minúsculas, sin extensión al usarlo).
+    origen = "assets/sonidos/pichan.mp3"
+    if not os.path.exists(origen):
+        print("  Sonido notif: omitido (falta assets/sonidos/pichan.mp3)")
+        return
+    raw = os.path.join(raiz, "res", "raw")
+    os.makedirs(raw, exist_ok=True)
+    shutil.copyfile(origen, os.path.join(raw, "pichan.mp3"))
+
+    # 2) Reescribir MainActivity.kt para crear el canal con el sonido.
+    kt_dir = os.path.join(raiz, "kotlin", "pe", "ebim", "canchas_lima")
+    kt = os.path.join(kt_dir, "MainActivity.kt")
+    if not os.path.isdir(kt_dir):
+        print("  Sonido notif: omitido (no está MainActivity.kt)")
+        return
+    contenido = (
+        "package pe.ebim.canchas_lima\n\n"
+        "import android.app.NotificationChannel\n"
+        "import android.app.NotificationManager\n"
+        "import android.content.Context\n"
+        "import android.media.AudioAttributes\n"
+        "import android.net.Uri\n"
+        "import android.os.Build\n"
+        "import android.os.Bundle\n"
+        "import io.flutter.embedding.android.FlutterActivity\n\n"
+        "class MainActivity : FlutterActivity() {\n"
+        "    override fun onCreate(savedInstanceState: Bundle?) {\n"
+        "        super.onCreate(savedInstanceState)\n"
+        "        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {\n"
+        "            val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager\n"
+        "            if (mgr.getNotificationChannel(\"pichan_msgs\") == null) {\n"
+        "                val sonido = Uri.parse(\"android.resource://\" + packageName + \"/raw/pichan\")\n"
+        "                val attrs = AudioAttributes.Builder()\n"
+        "                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)\n"
+        "                    .setUsage(AudioAttributes.USAGE_NOTIFICATION)\n"
+        "                    .build()\n"
+        "                val canal = NotificationChannel(\n"
+        "                    \"pichan_msgs\", \"Mensajes Pichangol\", NotificationManager.IMPORTANCE_HIGH)\n"
+        "                canal.description = \"Notificaciones de mensajes y retos\"\n"
+        "                canal.setSound(sonido, attrs)\n"
+        "                canal.enableVibration(true)\n"
+        "                mgr.createNotificationChannel(canal)\n"
+        "            }\n"
+        "        }\n"
+        "    }\n"
+        "}\n"
+    )
+    with open(kt, "w", encoding="utf-8") as f:
+        f.write(contenido)
+    print("  Sonido notif: pichan.mp3 en res/raw + canal pichan_msgs en MainActivity")
+
+
 def main():
     print(f"Configurando plataformas (MAPS_API_KEY {'definida' if KEY != 'YOUR_MAPS_API_KEY_HERE' else 'placeholder'})")
     configurar_min_sdk()
@@ -529,6 +596,7 @@ def main():
     configurar_r8_release()
     configurar_firebase_android()
     configurar_notificacion_android()
+    configurar_sonido_notificacion()
     configurar_google_signin_ios()
 
 

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -94,8 +95,15 @@ class PushService {
     final n = m.notification;
     final titulo = (n?.title ?? '').trim().isNotEmpty ? n!.title! : 'Nuevo mensaje';
     final cuerpo = (n?.body ?? '').trim();
+    // Sonido "Pichan" (estilo Yape) con la app abierta (el sistema no lo pinta).
+    try {
+      _sonidoPush.play(AssetSource('sonidos/pichan.mp3'));
+    } catch (_) {}
     _mostrarBanner(titulo, cuerpo, hilo);
   }
+
+  /// Reproductor del sonido "Pichan" para avisos con la app en foreground.
+  static final AudioPlayer _sonidoPush = AudioPlayer();
 
   /// Tarjeta flotante superior (estilo heads-up), tocable, auto-oculta a los 5 s.
   static void _mostrarBanner(String titulo, String cuerpo, String hilo) {

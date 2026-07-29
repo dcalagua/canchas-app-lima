@@ -98,6 +98,7 @@ flutter:
     - assets/icon/
     - assets/splash/
     - assets/geo/
+    - assets/sonidos/
 
 # Ícono de app (pelota Pichangol sobre verde de marca).
 flutter_launcher_icons:
