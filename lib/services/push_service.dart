@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'llamada_service.dart';
 import 'supabase_service.dart';
 
 /// Handler de mensajes en SEGUNDO PLANO / app cerrada. Debe ser una función de
@@ -15,7 +16,17 @@ import 'supabase_service.dart';
 /// No necesita lógica: el sistema ya muestra la notificación (`notification`
 /// del payload). El TAP se maneja en `onMessageOpenedApp` / `getInitialMessage`.
 @pragma('vm:entry-point')
-Future<void> pushBackgroundHandler(RemoteMessage message) async {}
+Future<void> pushBackgroundHandler(RemoteMessage message) async {
+  // Llamada entrante (app en segundo plano / cerrada): muestra la pantalla que
+  // suena (CallKit). El resto de mensajes ya los pinta el sistema.
+  if (message.data['tipo'] == 'llamada') {
+    await LlamadaService.mostrarEntrante(
+      room: (message.data['room'] ?? '').toString(),
+      caller: (message.data['caller'] ?? '').toString(),
+      video: (message.data['video'] ?? '') == 'true',
+    );
+  }
+}
 
 /// Notificaciones push del chat (Etapa B, FCM). TODO es **fail-safe**: si el APK
 /// no trae la configuración de Firebase (google-services.json) o falla algo, el
@@ -58,6 +69,7 @@ class PushService {
       await Firebase.initializeApp();
       FirebaseMessaging.onBackgroundMessage(pushBackgroundHandler);
       _configurarListeners();
+      LlamadaService.escucharEventos(); // botones de la llamada entrante
       _ok = true;
     } catch (_) {
       _ok = false; // sin google-services.json / sin Firebase: push off
@@ -88,6 +100,15 @@ class PushService {
   /// Aviso IN-APP cuando llega un mensaje con la app abierta. No se muestra si ya
   /// estás dentro de ese chat (ahí el mensaje llega solo por Realtime).
   static void _enForeground(RemoteMessage m) {
+    // Llamada entrante con la app abierta: también muestra la pantalla que suena.
+    if (m.data['tipo'] == 'llamada') {
+      LlamadaService.mostrarEntrante(
+        room: (m.data['room'] ?? '').toString(),
+        caller: (m.data['caller'] ?? '').toString(),
+        video: (m.data['video'] ?? '') == 'true',
+      );
+      return;
+    }
     final hilo = (m.data['hilo'] ?? '').toString();
     if (hilo.isEmpty || hilo == appState.hiloChatAbierto) return;
     // Chat silenciado (campanita): no molestamos con el aviso in-app.

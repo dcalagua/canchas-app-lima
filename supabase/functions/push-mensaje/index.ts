@@ -143,6 +143,18 @@ serve(async (req) => {
     const titulo = m.autor_nombre?.trim()
       ? m.autor_nombre
       : (m.tipo !== "cancha" && m.es_profe ? "Tu profe" : "Nuevo mensaje");
+
+    // ¿Es un mensaje de LLAMADA? (trae el enlace de la sala Pichangol en Jitsi).
+    // Si lo es, se manda un push DATA de alta prioridad (sin `notification`) para
+    // que el APK muestre la pantalla de llamada entrante que suena (CallKit), en
+    // vez de una notificación de chat normal.
+    const salaMatch = String(m.texto ?? "").match(
+      /meet\.jit\.si\/(Pichangol[A-Za-z0-9]+)/,
+    );
+    const esLlamada = !!salaMatch;
+    const room = salaMatch ? salaMatch[1] : "";
+    const video = esLlamada && !String(m.texto).includes("startAudioOnly");
+
     const url = `https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`;
     const resultados = await Promise.all(
       tokens.map((token) =>
@@ -153,16 +165,28 @@ serve(async (req) => {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            message: {
-              token,
-              notification: { title: titulo, body: m.texto },
-              data: {
-                hilo: String(m.hilo ?? ""),
-                academia_id: String(m.academia_id ?? ""),
-                tipo: "chat",
+            message: esLlamada
+              ? {
+                token,
+                data: {
+                  tipo: "llamada",
+                  room,
+                  caller: String(m.autor_nombre ?? ""),
+                  video: String(video),
+                  hilo: String(m.hilo ?? ""),
+                },
+                android: { priority: "high" },
+              }
+              : {
+                token,
+                notification: { title: titulo, body: m.texto },
+                data: {
+                  hilo: String(m.hilo ?? ""),
+                  academia_id: String(m.academia_id ?? ""),
+                  tipo: "chat",
+                },
+                android: { priority: "high" },
               },
-              android: { priority: "high" },
-            },
           }),
         }).then((r) => r.status).catch(() => 0)
       ),
