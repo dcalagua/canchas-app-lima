@@ -105,18 +105,38 @@ class LlamadaService {
 
   /// Escucha los botones de la pantalla de llamada entrante. Al **contestar**,
   /// une a la sala Jitsi; rechazar/colgar no hace nada. Se registra una vez.
+  ///
+  /// Se usa acceso dinámico al evento para no depender de los nombres exactos de
+  /// la API del plugin (cambian entre versiones): comparamos el evento por texto
+  /// y leemos el `extra` desde `body['extra']` o `extra`, lo que exista.
   static void escucharEventos() {
     if (_escuchando) return;
     _escuchando = true;
     try {
-      FlutterCallkitIncoming.onEvent.listen((CallEvent? evt) async {
+      FlutterCallkitIncoming.onEvent.listen((dynamic evt) async {
         if (evt == null) return;
-        final body = evt.body;
-        final extra = (body is Map ? body['extra'] : null);
-        final room = ((extra is Map ? extra['room'] : '') ?? '').toString();
-        final video = extra is Map &&
-            (extra['video'] == true || extra['video'] == 'true');
-        if (evt.event == Event.actionCallAccept && room.isNotEmpty) {
+        String tipo;
+        try {
+          tipo = evt.event.toString();
+        } catch (_) {
+          return;
+        }
+        if (!tipo.contains('actionCallAccept')) return;
+        Map? extra;
+        try {
+          final b = evt.body;
+          if (b is Map) extra = b['extra'] as Map?;
+        } catch (_) {}
+        if (extra == null) {
+          try {
+            final e = evt.extra;
+            if (e is Map) extra = e;
+          } catch (_) {}
+        }
+        final room = ((extra?['room']) ?? '').toString();
+        final video =
+            extra?['video'] == true || extra?['video'] == 'true';
+        if (room.isNotEmpty) {
           final u = appState.usuario;
           await unir(
               sala: room,
