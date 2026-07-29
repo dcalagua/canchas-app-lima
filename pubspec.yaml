@@ -25,6 +25,11 @@ dependencies:
   google_fonts: ^6.2.1
   font_awesome_flutter: 10.8.0
   url_launcher: ^6.3.0
+  # Llamadas de voz/video DENTRO de la app (chat 1-a-1 y grupal). Plugin nativo
+  # PESADO (trae WebRTC) → se de-riskea en CI aislado antes de cablear la UI
+  # (regla Flutter 3.24.5). Exige minSdk 24 (ver tool/configure_platforms.py) y
+  # iOS 15.1. Si el join nativo falla, la UI cae al enlace de Jitsi (meet.jit.si).
+  jitsi_meet_flutter_sdk: ^11.6.0
   # Pasarela de pago de BOLIVIA (Libélula): el pago se hace en la página hospedada
   # de Libélula (QR · tarjeta · Tigo Money) DENTRO de un WebView. El compileSdk de
   # su plugin nativo lo cubre el fix global de subproyectos (tool/configure_platforms).

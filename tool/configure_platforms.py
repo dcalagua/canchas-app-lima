@@ -387,7 +387,8 @@ def configurar_bundle_id_ios():
 
 
 def configurar_min_sdk():
-    """Sube minSdk a 23 (lo exige passkeys_android de supabase_flutter)."""
+    """Sube minSdk a 24 (lo exige jitsi_meet_flutter_sdk; passkeys_android de
+    supabase_flutter pedía 23, 24 lo cubre)."""
     path = "android/app/build.gradle"
     if not os.path.exists(path):
         return
@@ -395,13 +396,13 @@ def configurar_min_sdk():
         text = f.read()
     nuevo = re.sub(
         r"minSdk(?:Version)?\s*=?\s*flutter\.minSdkVersion",
-        "minSdk = 23",
+        "minSdk = 24",
         text,
     )
     if nuevo != text:
         with open(path, "w", encoding="utf-8") as f:
             f.write(nuevo)
-        print("  minSdk forzado a 23")
+        print("  minSdk forzado a 24")
 
 
 def configurar_r8_release():
