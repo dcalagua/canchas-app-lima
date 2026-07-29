@@ -15,6 +15,7 @@ import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/responsive.dart';
+import 'community_manager_screen.dart';
 import 'editar_canal_screen.dart';
 
 /// Feed de un CANAL (tipo WhatsApp Channels): cabecera con foto/nombre/seguidores,
@@ -208,6 +209,17 @@ class _CanalDetalleScreenState extends State<CanalDetalleScreen> {
     if (r != null && mounted) setState(() => _canal = r);
   }
 
+  /// Community manager con IA: la IA redacta novedades y, si el dueño las
+  /// publica, vuelven aquí para mostrarse al instante en el feed.
+  Future<void> _generarConIa() async {
+    final publicados = await Navigator.of(context).push<List<CanalPost>>(
+        MaterialPageRoute(
+            builder: (_) => CommunityManagerScreen(canal: _canal)));
+    if (publicados != null && publicados.isNotEmpty && mounted) {
+      setState(() => _posts = [...publicados, ..._posts]);
+    }
+  }
+
   void _reaccionar(CanalPost p, String emoji) {
     final actual = _reacciones[p.id]?[_yo];
     ReaccionesRepo.alternar(_hiloReacc, p.id, _yo, emoji, emojiActual: actual);
@@ -234,6 +246,12 @@ class _CanalDetalleScreenState extends State<CanalDetalleScreen> {
         actions: [
           if (_soyDueno)
             IconButton(
+              tooltip: 'Generar con IA',
+              icon: const Icon(Icons.auto_awesome),
+              onPressed: _generarConIa,
+            ),
+          if (_soyDueno)
+            IconButton(
               tooltip: 'Editar canal',
               icon: const Icon(Icons.edit_outlined),
               onPressed: _editarCanal,
@@ -257,13 +275,30 @@ class _CanalDetalleScreenState extends State<CanalDetalleScreen> {
                             Padding(
                               padding: const EdgeInsets.all(40),
                               child: Center(
-                                child: Text(
-                                    _soyDueno
-                                        ? 'Aún no publicas nada. Escribe abajo tu primera novedad.'
-                                        : 'Este canal todavía no tiene publicaciones.',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                        color: textoTenueDe(context))),
+                                child: Column(
+                                  children: [
+                                    Text(
+                                        _soyDueno
+                                            ? 'Aún no publicas nada. Escribe abajo tu primera novedad o deja que la IA la redacte.'
+                                            : 'Este canal todavía no tiene publicaciones.',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                            color: textoTenueDe(context))),
+                                    if (_soyDueno) ...[
+                                      const SizedBox(height: 16),
+                                      FilledButton.icon(
+                                        style: FilledButton.styleFrom(
+                                            backgroundColor: lima),
+                                        onPressed: _generarConIa,
+                                        icon: const Icon(Icons.auto_awesome,
+                                            size: 18),
+                                        label: const Text('Generar con IA',
+                                            style: TextStyle(
+                                                fontWeight: FontWeight.w800)),
+                                      ),
+                                    ],
+                                  ],
+                                ),
                               ),
                             )
                           else
