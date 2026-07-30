@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'llamada_webrtc.dart';
@@ -57,6 +60,42 @@ class LlamadaService {
   /// CONTESTAR cuando el usuario acepta la llamada entrante. (room, video, nombre)
   static void Function(String room, bool video, String nombre)? alContestar;
 
+  // La llamada entrante se guarda en DISCO (SharedPreferences) al sonar, para
+  // poder recuperarla al contestar aunque el push haya corrido en otro proceso
+  // (isolate de background) — así no dependemos del `extra` de CallKit.
+  static const _kPendiente = 'llamada_entrante_json';
+
+  static Future<void> _guardarPendiente(
+      String room, bool video, String caller) async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setString(_kPendiente,
+          jsonEncode({'room': room, 'video': video, 'caller': caller}));
+    } catch (_) {}
+  }
+
+  static Future<(String, bool, String)?> _leerPendiente() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.reload(); // ver lo que escribió el isolate de background
+      final raw = p.getString(_kPendiente);
+      if (raw == null) return null;
+      final m = jsonDecode(raw) as Map<String, dynamic>;
+      final room = (m['room'] ?? '').toString();
+      if (room.isEmpty) return null;
+      return (room, m['video'] == true, (m['caller'] ?? '').toString());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> _limpiarPendiente() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.remove(_kPendiente);
+    } catch (_) {}
+  }
+
   /// Muestra la pantalla de llamada entrante (suena aunque la app esté cerrada).
   /// La dispara el push de llamada (data). Al aceptar entra a la sala.
   static Future<void> mostrarEntrante({
@@ -65,6 +104,7 @@ class LlamadaService {
     required bool video,
   }) async {
     if (room.isEmpty) return;
+    await _guardarPendiente(room, video, caller); // para recuperar al contestar
     final params = CallKitParams(
       id: room,
       nameCaller: caller.isEmpty ? 'Pichangol' : caller,
@@ -117,11 +157,14 @@ class LlamadaService {
         // (avisa al otro por WebRTC si estaba conectada).
         if (tipo.contains('actionCallDecline') ||
             tipo.contains('actionCallEnded')) {
+          await _limpiarPendiente();
           await LlamadaWebRTC.instance.finalizar();
           return;
         }
         if (!tipo.contains('actionCallAccept')) return;
-        final datos = _extraDe(evt);
+        // Preferimos la pendiente guardada en disco (confiable entre procesos);
+        // si no, caemos al extra del evento.
+        final datos = await _leerPendiente() ?? _extraDe(evt);
         if (datos != null) {
           // Abre la pantalla de llamada WebRTC para CONTESTAR (lo hace main.dart).
           alContestar?.call(datos.$1, datos.$2, datos.$3);
@@ -151,22 +194,15 @@ class LlamadaService {
   }
 
   /// Al ARRANCAR la app (p. ej. cuando se contestó con la app cerrada y arrancó
-  /// de cero), revisa si hay una llamada activa aceptada y abre su pantalla.
+  /// de cero), si hay una llamada activa abre su pantalla usando la pendiente
+  /// guardada en disco.
   static Future<void> revisarLlamadaAlArrancar() async {
     try {
       final calls = await FlutterCallkitIncoming.activeCalls();
       if (calls is List && calls.isNotEmpty) {
-        final c = calls.first;
-        final datos = _extraDe(_Wrap(c));
+        final datos = await _leerPendiente();
         if (datos != null) alContestar?.call(datos.$1, datos.$2, datos.$3);
       }
     } catch (_) {}
   }
-}
-
-/// Envuelve un Map de `activeCalls()` para reusar `_extraDe` (que espera algo con
-/// `.body`).
-class _Wrap {
-  _Wrap(this.body);
-  final dynamic body;
 }

@@ -165,6 +165,10 @@ class LlamadaWebRTC extends ChangeNotifier {
     pc.onConnectionState = (RTCPeerConnectionState s) {
       if (s == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
         _set(EstadoLlamada.enLlamada);
+        // Ruta de audio al altavoz para que se oiga (sin pegarse el teléfono).
+        try {
+          Helper.setSpeakerphoneOn(altavoz);
+        } catch (_) {}
       } else if (s == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
           s == RTCPeerConnectionState.RTCPeerConnectionStateClosed ||
           s == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
