@@ -14,6 +14,7 @@ import 'package:record/record.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/llamada_service.dart';
+import '../services/llamada_webrtc.dart';
 import 'llamada_screen.dart';
 
 import '../data/db_local.dart';
@@ -645,6 +646,8 @@ class _ChatScreenState extends State<ChatScreen> {
     final u = appState.usuario;
     if (u == null) return;
     if (appState.bloqueado(_contraparteEmail)) return;
+    // Ya hay una llamada en curso: no arranques otra ni postees de nuevo.
+    if (LlamadaWebRTC.instance.activa) return;
     final sala = LlamadaService.salaChat(_hilo);
     // Aviso en el chat → el backend manda el push de llamada al otro.
     await MensajesRepo.enviar(Mensaje(

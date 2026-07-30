@@ -276,6 +276,12 @@ class LlamadaService {
 
   /// Muestra la pantalla de llamada entrante (suena aunque la app esté cerrada).
   /// La dispara el push de llamada (data). Al aceptar entra a la sala.
+  // Dedup de entrantes duplicadas (FCM puede reentregar el mismo push, o llegar
+  // por 2 vías): recordamos la última sala y cuándo se mostró.
+  static String _ultEntranteRoom = '';
+  static int _ultEntranteTs = 0;
+  static const int _dedupEntranteMs = 45000; // 45 s
+
   static Future<void> mostrarEntrante({
     required String room,
     required String caller,
@@ -283,6 +289,19 @@ class LlamadaService {
     String hilo = '',
   }) async {
     if (room.isEmpty) return;
+    // Ya hay una llamada en curso → no muestres otra entrante (evita duplicar).
+    if (LlamadaWebRTC.instance.activa) {
+      _log('mostrarEntrante IGNORADO (llamada en curso)');
+      return;
+    }
+    // Misma sala mostrada hace poco (ráfaga de pushes duplicados) → ignora.
+    final ahora = DateTime.now().millisecondsSinceEpoch;
+    if (room == _ultEntranteRoom && ahora - _ultEntranteTs < _dedupEntranteMs) {
+      _log('mostrarEntrante IGNORADO (entrante duplicada)');
+      return;
+    }
+    _ultEntranteRoom = room;
+    _ultEntranteTs = ahora;
     _log('mostrarEntrante room=$room');
     // hilo: para recuperar la foto del que llama al contestar.
     await _guardarPendiente(room, video, caller, hilo);
