@@ -36,11 +36,24 @@ void main() async {
   // Al CONTESTAR una llamada entrante (CallKit), abre la pantalla de llamada
   // WebRTC en modo "contestar".
   LlamadaService.alContestar = (room, video, nombre) {
-    final nav = PushService.navigatorKey.currentState;
-    if (nav == null || room.isEmpty) return;
-    nav.push(MaterialPageRoute(
-        builder: (_) => LlamadaScreen(
-            callId: room, video: video, iniciar: false, nombreOtro: nombre)));
+    if (room.isEmpty) return;
+    // El navegador puede no estar montado todavía (resume / arranque en frío):
+    // reintenta unos instantes hasta que exista, y recién ahí abre la pantalla.
+    void abrir([int intento = 0]) {
+      final nav = PushService.navigatorKey.currentState;
+      if (nav == null) {
+        if (intento < 25) {
+          Future.delayed(const Duration(milliseconds: 150),
+              () => abrir(intento + 1));
+        }
+        return;
+      }
+      nav.push(MaterialPageRoute(
+          builder: (_) => LlamadaScreen(
+              callId: room, video: video, iniciar: false, nombreOtro: nombre)));
+    }
+
+    abrir();
   };
   runApp(const PichangolApp());
   // Si la app arrancó porque se CONTESTÓ una llamada con la app cerrada, abre la

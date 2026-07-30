@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -81,6 +82,16 @@ class LlamadaService {
     if (est == EstadoLlamada.llamando ||
         est == EstadoLlamada.conectando ||
         est == EstadoLlamada.enLlamada) {
+      return;
+    }
+    // Solo abrimos con la app AL FRENTE: arrancar micrófono/cámara en segundo
+    // plano falla en Android (y la pantalla no se vería). Si estamos atrás,
+    // dejamos la pendiente intacta; se abrirá al volver al frente
+    // (didChangeAppLifecycleState.resumed → revisarLlamadaResumida).
+    final ciclo = WidgetsBinding.instance.lifecycleState;
+    if (ciclo == AppLifecycleState.paused ||
+        ciclo == AppLifecycleState.hidden ||
+        ciclo == AppLifecycleState.detached) {
       return;
     }
     _abriendo = true;
