@@ -650,8 +650,26 @@ class _ChatScreenState extends State<ChatScreen> {
     var otro = _contraparteEmail;
     if (otro.isEmpty && _refId.contains('@')) otro = _refId;
     if (appState.bloqueado(otro)) return;
-    // Ya hay una llamada en curso: no arranques otra ni postees de nuevo.
-    if (LlamadaWebRTC.instance.activa) return;
+    // Ya hay una llamada en curso: NO arranques otra; en su lugar REABRE su
+    // pantalla completa (como WhatsApp cuando tocas el chat de la llamada), en
+    // vez de dejar solo la barra de arriba.
+    if (LlamadaWebRTC.instance.activa) {
+      if (!LlamadaWebRTC.pantallaVisible) {
+        final svc = LlamadaWebRTC.instance;
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => LlamadaScreen(
+            callId: '',
+            video: svc.video,
+            iniciar: false,
+            reattach: true,
+            nombreOtro: svc.nombreOtro,
+            fotoUrl: svc.fotoOtro,
+            emailOtro: svc.emailOtro,
+          ),
+        ));
+      }
+      return;
+    }
 
     // Las llamadas 1:1 SIEMPRE van al hilo DIRECTO con la persona: así no se
     // fragmentan entre el chat de academia/cancha y el chat personal (todo se
