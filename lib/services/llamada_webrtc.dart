@@ -39,8 +39,12 @@ class LlamadaWebRTC extends ChangeNotifier {
   bool camOn = true;
   bool altavoz = true;
   bool _soyElQueLlama = false;
-  bool _remotoListo = false;
-  final List<RTCIceCandidate> _icePendientes = [];
+  bool _remotoListo = false; // ya fijamos la descripción remota
+  bool _suscrito = false; // el canal de señalización está SUBSCRIBED
+  bool _otroPresente = false; // el otro ya entró (podemos mandarle cosas)
+  bool _ofertaEnviada = false; // el que llama ya mandó su offer
+  final List<RTCIceCandidate> _icePendientes = []; // ICE ENTRANTE en espera
+  final List<Map<String, dynamic>> _iceSalientes = []; // ICE SALIENTE en cola
   RTCSessionDescription? _offerGuardada;
 
   String nombreOtro = '';
@@ -124,9 +128,10 @@ class LlamadaWebRTC extends ChangeNotifier {
     this.nombreOtro = nombreOtro;
     await _prepararMedia(video);
     await _crearPeer();
-    await _abrirCanal(callId);
     _set(EstadoLlamada.conectando);
-    _enviar('ready', {});
+    // El `ready` se manda cuando el canal esté SUBSCRIBED (dentro de _abrirCanal),
+    // con reintentos — no antes, o se perdería.
+    await _abrirCanal(callId);
   }
 
   Future<void> _prepararMedia(bool video) async {
@@ -150,11 +155,19 @@ class LlamadaWebRTC extends ChangeNotifier {
       await pc.addTrack(track, _localStream!);
     }
     pc.onIceCandidate = (RTCIceCandidate c) {
-      _enviar('ice', {
+      final msg = {
+        't': 'ice',
         'candidate': c.candidate,
         'sdpMid': c.sdpMid,
         'sdpMLineIndex': c.sdpMLineIndex,
-      });
+      };
+      // Solo se manda cuando el canal está listo Y el otro ya entró; si no, se
+      // encola y se vacía cuando ambos ocurran (evita perder candidatos).
+      if (_suscrito && _otroPresente) {
+        _crudo(msg);
+      } else {
+        _iceSalientes.add(msg);
+      }
     };
     pc.onTrack = (RTCTrackEvent e) {
       if (e.streams.isNotEmpty) {
@@ -186,12 +199,41 @@ class LlamadaWebRTC extends ChangeNotifier {
       event: 'signal',
       callback: (payload) => _alRecibir(payload),
     );
-    canal.subscribe();
+    // OJO: subscribe() es asíncrono. NO se puede mandar señalización hasta estar
+    // SUBSCRIBED, o los mensajes se pierden (era el bug de "ambos en Llamando").
+    canal.subscribe((status, [error]) {
+      if (status == RealtimeSubscribeStatus.subscribed) {
+        _suscrito = true;
+        // Vacía lo que se acumuló antes de estar suscrito.
+        _vaciarIceSalientes();
+        // Quien CONTESTA anuncia su presencia (con reintentos) para que el que
+        // llama le mande el offer, aunque el otro se haya suscrito un poco después.
+        if (!_soyElQueLlama) _anunciarReady();
+      }
+    });
   }
 
-  void _enviar(String tipo, Map<String, dynamic> data) {
-    _canal?.sendBroadcastMessage(
-        event: 'signal', payload: {'t': tipo, ...data});
+  /// Anuncia `ready` varias veces hasta que el otro responda con el offer (o ya
+  /// esté en llamada). Cubre la carrera de que el que llama se suscriba tarde.
+  Future<void> _anunciarReady() async {
+    for (var i = 0; i < 5; i++) {
+      if (_remotoListo || estado == EstadoLlamada.enLlamada) return;
+      _crudo({'t': 'ready'});
+      await Future.delayed(const Duration(milliseconds: 700));
+    }
+  }
+
+  /// Envía un mensaje de señalización YA (asume canal suscrito).
+  void _crudo(Map<String, dynamic> msg) {
+    _canal?.sendBroadcastMessage(event: 'signal', payload: msg);
+  }
+
+  void _vaciarIceSalientes() {
+    if (!_suscrito || !_otroPresente) return;
+    for (final m in _iceSalientes) {
+      _crudo(m);
+    }
+    _iceSalientes.clear();
   }
 
   Future<void> _alRecibir(Map<String, dynamic> p) async {
@@ -201,23 +243,33 @@ class LlamadaWebRTC extends ChangeNotifier {
     switch (t) {
       case 'ready': // el otro entró: quien llama manda el offer
         if (!_soyElQueLlama) return;
-        if (_offerGuardada != null) {
-          _enviar('offer',
-              {'sdp': _offerGuardada!.sdp, 'type': _offerGuardada!.type});
+        _otroPresente = true;
+        _vaciarIceSalientes();
+        if (_offerGuardada != null && !_ofertaEnviada) {
+          _ofertaEnviada = true;
+          _crudo({
+            't': 'offer',
+            'sdp': _offerGuardada!.sdp,
+            'type': _offerGuardada!.type,
+          });
         }
         break;
       case 'offer': // solo quien contesta: fija el remoto y responde
         if (_soyElQueLlama) return;
+        if (_remotoListo) return; // ya procesamos el offer (llegó duplicado)
+        _otroPresente = true;
         await pc.setRemoteDescription(
             RTCSessionDescription(p['sdp']?.toString(), p['type']?.toString()));
         _remotoListo = true;
         await _vaciarIce();
         final answer = await pc.createAnswer({});
         await pc.setLocalDescription(answer);
-        _enviar('answer', {'sdp': answer.sdp, 'type': answer.type});
+        _crudo({'t': 'answer', 'sdp': answer.sdp, 'type': answer.type});
+        _vaciarIceSalientes(); // ahora sí, manda los candidatos en cola
         break;
       case 'answer': // solo quien llama: fija el remoto
         if (!_soyElQueLlama) return;
+        if (_remotoListo) return; // answer duplicado
         await pc.setRemoteDescription(
             RTCSessionDescription(p['sdp']?.toString(), p['type']?.toString()));
         _remotoListo = true;
@@ -280,7 +332,7 @@ class LlamadaWebRTC extends ChangeNotifier {
   /// Cuelga: avisa al otro (si [avisar]) y limpia todo.
   Future<void> finalizar({bool avisar = true}) async {
     if (estado == EstadoLlamada.finalizada) return;
-    if (avisar) _enviar('bye', {});
+    if (avisar && _suscrito) _crudo({'t': 'bye'});
     _set(EstadoLlamada.finalizada);
     // Cierra la pantalla nativa de CallKit (la notificación "Llamada en curso").
     try {
@@ -304,8 +356,12 @@ class LlamadaWebRTC extends ChangeNotifier {
     local.srcObject = null;
     remoto.srcObject = null;
     _icePendientes.clear();
+    _iceSalientes.clear();
     _offerGuardada = null;
     _remotoListo = false;
+    _suscrito = false;
+    _otroPresente = false;
+    _ofertaEnviada = false;
     conectadoEn = null;
     notifyListeners();
   }
