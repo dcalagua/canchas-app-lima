@@ -313,6 +313,7 @@ class LlamadaService {
   static void escucharEventos() {
     if (_escuchando) return;
     _escuchando = true;
+    LlamadaWebRTC.registrar = _log; // señalización WebRTC → mismo registro
     try {
       FlutterCallkitIncoming.onEvent.listen((dynamic evt) async {
         if (evt == null) return;

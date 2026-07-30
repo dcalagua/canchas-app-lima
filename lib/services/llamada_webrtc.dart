@@ -22,6 +22,15 @@ class LlamadaWebRTC extends ChangeNotifier {
   LlamadaWebRTC._();
   static final LlamadaWebRTC instance = LlamadaWebRTC._();
 
+  /// Logger de diagnóstico (lo setea LlamadaService para escribir al mismo
+  /// registro que se ve en Ajustes → Zona de pruebas).
+  static void Function(String)? registrar;
+  void _diag(String m) {
+    try {
+      registrar?.call('WRTC $m');
+    } catch (_) {}
+  }
+
   static const _turnUrl = String.fromEnvironment('TURN_URL');
   static const _turnUser = String.fromEnvironment('TURN_USER');
   static const _turnPass = String.fromEnvironment('TURN_PASS');
@@ -106,6 +115,7 @@ class LlamadaWebRTC extends ChangeNotifier {
     _soyElQueLlama = true;
     this.video = video;
     this.nombreOtro = nombreOtro;
+    _diag('iniciar sala=$callId');
     await _prepararMedia(video);
     await _crearPeer();
     await _abrirCanal(callId);
@@ -126,6 +136,7 @@ class LlamadaWebRTC extends ChangeNotifier {
     _soyElQueLlama = false;
     this.video = video;
     this.nombreOtro = nombreOtro;
+    _diag('contestar sala=$callId');
     await _prepararMedia(video);
     await _crearPeer();
     _set(EstadoLlamada.conectando);
@@ -170,12 +181,14 @@ class LlamadaWebRTC extends ChangeNotifier {
       }
     };
     pc.onTrack = (RTCTrackEvent e) {
+      _diag('onTrack ${e.track.kind}');
       if (e.streams.isNotEmpty) {
         remoto.srcObject = e.streams[0];
         notifyListeners();
       }
     };
     pc.onConnectionState = (RTCPeerConnectionState s) {
+      _diag('conn=$s');
       if (s == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
         _set(EstadoLlamada.enLlamada);
         // Ruta de audio al altavoz para que se oiga (sin pegarse el teléfono).
@@ -202,6 +215,7 @@ class LlamadaWebRTC extends ChangeNotifier {
     // OJO: subscribe() es asíncrono. NO se puede mandar señalización hasta estar
     // SUBSCRIBED, o los mensajes se pierden (era el bug de "ambos en Llamando").
     canal.subscribe((status, [error]) {
+      _diag('subscribe status=$status');
       if (status == RealtimeSubscribeStatus.subscribed) {
         _suscrito = true;
         // Vacía lo que se acumuló antes de estar suscrito.
@@ -218,6 +232,7 @@ class LlamadaWebRTC extends ChangeNotifier {
   Future<void> _anunciarReady() async {
     for (var i = 0; i < 5; i++) {
       if (_remotoListo || estado == EstadoLlamada.enLlamada) return;
+      _diag('envio ready #$i');
       _crudo({'t': 'ready'});
       await Future.delayed(const Duration(milliseconds: 700));
     }
@@ -238,6 +253,7 @@ class LlamadaWebRTC extends ChangeNotifier {
 
   Future<void> _alRecibir(Map<String, dynamic> p) async {
     final t = (p['t'] ?? '').toString();
+    _diag('recibo $t');
     final pc = _pc;
     if (pc == null) return;
     switch (t) {
@@ -250,6 +266,7 @@ class LlamadaWebRTC extends ChangeNotifier {
         // siguiente ready lo reintenta. Idempotente en el otro lado.
         if (_offerGuardada != null && !_remotoListo) {
           _ofertaEnviada = true;
+          _diag('envio offer');
           _crudo({
             't': 'offer',
             'sdp': _offerGuardada!.sdp,
@@ -267,6 +284,7 @@ class LlamadaWebRTC extends ChangeNotifier {
         await _vaciarIce();
         final answer = await pc.createAnswer({});
         await pc.setLocalDescription(answer);
+        _diag('envio answer');
         _crudo({'t': 'answer', 'sdp': answer.sdp, 'type': answer.type});
         _vaciarIceSalientes(); // ahora sí, manda los candidatos en cola
         break;
