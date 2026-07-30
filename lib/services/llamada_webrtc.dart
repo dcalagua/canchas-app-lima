@@ -245,7 +245,10 @@ class LlamadaWebRTC extends ChangeNotifier {
         if (!_soyElQueLlama) return;
         _otroPresente = true;
         _vaciarIceSalientes();
-        if (_offerGuardada != null && !_ofertaEnviada) {
+        // Reenvía el offer con CADA `ready` mientras no llegue el answer (el que
+        // contesta reintenta `ready` varias veces): si un offer se perdió, el
+        // siguiente ready lo reintenta. Idempotente en el otro lado.
+        if (_offerGuardada != null && !_remotoListo) {
           _ofertaEnviada = true;
           _crudo({
             't': 'offer',

@@ -68,14 +68,11 @@ class LlamadaService {
   /// y seguro de llamar desde varios lados (evento CallKit, arranque de la app,
   /// y `resumed` del ciclo de vida) — solo abre una vez.
   ///
-  /// - Si ya hay una llamada en curso (motor WebRTC ocupado), no reabre nada.
-  /// - Si [exigirLlamadaActiva], solo abre cuando CallKit reporta una llamada
-  ///   activa (es decir, el usuario realmente contestó y no rechazó/perdió). Se
-  ///   usa en resume/arranque, donde no cazamos el evento de aceptar.
-  static Future<void> _intentarContestar({
-    bool exigirLlamadaActiva = true,
-    (String, bool, String)? respaldo,
-  }) async {
+  /// **Clave:** abre SOLO si la llamada pendiente está marcada como ACEPTADA
+  /// (el usuario tocó "Contestar"). NO se usa `activeCalls()` para decidir,
+  /// porque CallKit cuenta como "activa" también la llamada que apenas SUENA —
+  /// eso hacía que se auto-contestara al volver la app al frente.
+  static Future<void> _intentarContestar() async {
     if (alContestar == null || _abriendo) return;
     // ¿El motor ya está ocupado con esta llamada? Entonces la pantalla ya se
     // abrió (o se está abriendo): no dupliques.
@@ -97,16 +94,9 @@ class LlamadaService {
     }
     _abriendo = true;
     try {
-      if (exigirLlamadaActiva) {
-        // Solo abrimos si de verdad hay una llamada aceptada/en curso.
-        try {
-          final calls = await FlutterCallkitIncoming.activeCalls();
-          if (calls is! List || calls.isEmpty) return;
-        } catch (_) {
-          return;
-        }
-      }
-      final datos = await _leerPendiente() ?? respaldo;
+      // SOLO si el usuario tocó "Contestar" (no si apenas está sonando).
+      if (!await _pendienteAceptada()) return;
+      final datos = await _leerPendiente();
       if (datos == null) return;
       await _limpiarPendiente(); // ya la vamos a atender: no reabrir de nuevo
       alContestar?.call(datos.$1, datos.$2, datos.$3);
@@ -116,20 +106,18 @@ class LlamadaService {
   }
 
   /// Se llama desde el ciclo de vida de la app (`AppLifecycleState.resumed`):
-  /// cuando el usuario toca "Contestar" o la notificación de llamada en curso,
-  /// Android trae la app al frente → aquí abrimos la pantalla completa. Es la
-  /// vía más confiable (no depende de cazar el evento exacto de CallKit).
-  static Future<void> revisarLlamadaResumida() =>
-      _intentarContestar(exigirLlamadaActiva: true);
+  /// cuando el usuario toca "Contestar", Android trae la app al frente → aquí
+  /// abrimos la pantalla completa **si ya estaba marcada como aceptada**.
+  static Future<void> revisarLlamadaResumida() => _intentarContestar();
 
   // La llamada entrante se guarda en DISCO (SharedPreferences) al sonar, para
   // poder recuperarla al contestar aunque el push haya corrido en otro proceso
   // (isolate de background) — así no dependemos del `extra` de CallKit.
   static const _kPendiente = 'llamada_entrante_json';
 
-  // Ventana de frescura de la llamada pendiente. Como el abrir la pantalla ya
-  // está blindado por el estado del motor WebRTC y por `activeCalls()`, esta
-  // ventana solo evita revivir una pendiente muy vieja que quedó olvidada.
+  // Ventana de frescura de la llamada pendiente. Como abrir la pantalla ya está
+  // blindado por el estado del motor y por la marca "aceptada", esta ventana
+  // solo evita revivir una pendiente muy vieja que quedó olvidada.
   static const int _pendienteMaxSegundos = 300;
 
   static Future<void> _guardarPendiente(
@@ -173,6 +161,46 @@ class LlamadaService {
       final p = await SharedPreferences.getInstance();
       await p.remove(_kPendiente);
     } catch (_) {}
+  }
+
+  /// Marca la llamada pendiente como ACEPTADA (el usuario tocó "Contestar").
+  /// Si por lo que sea el disco no tenía la pendiente, la crea desde [respaldo]
+  /// (el `extra` del evento de CallKit).
+  static Future<void> _marcarAceptada({(String, bool, String)? respaldo}) async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.reload();
+      final raw = p.getString(_kPendiente);
+      Map<String, dynamic> m;
+      if (raw != null) {
+        m = jsonDecode(raw) as Map<String, dynamic>;
+      } else if (respaldo != null) {
+        m = {
+          'room': respaldo.$1,
+          'video': respaldo.$2,
+          'caller': respaldo.$3,
+          'ts': DateTime.now().millisecondsSinceEpoch,
+        };
+      } else {
+        return;
+      }
+      m['aceptada'] = true;
+      await p.setString(_kPendiente, jsonEncode(m));
+    } catch (_) {}
+  }
+
+  /// ¿La pendiente ya está marcada como aceptada por el usuario?
+  static Future<bool> _pendienteAceptada() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.reload();
+      final raw = p.getString(_kPendiente);
+      if (raw == null) return false;
+      final m = jsonDecode(raw) as Map<String, dynamic>;
+      return m['aceptada'] == true;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Muestra la pantalla de llamada entrante (suena aunque la app esté cerrada).
@@ -241,11 +269,10 @@ class LlamadaService {
           return;
         }
         if (!tipo.contains('actionCallAccept')) return;
-        // Aquí SÍ cazamos el evento de aceptar: no exigimos `activeCalls()`
-        // (puede tardar en reflejarse). Pasa por el punto único (protegido) con
-        // el `extra` del evento como respaldo si el disco no tuviera la pendiente.
-        await _intentarContestar(
-            exigirLlamadaActiva: false, respaldo: _extraDe(evt));
+        // El usuario tocó "Contestar": marca la pendiente como ACEPTADA (así el
+        // resume/arranque sí abrirá la pantalla) y ábrela si estamos al frente.
+        await _marcarAceptada(respaldo: _extraDe(evt));
+        await _intentarContestar();
       });
     } catch (_) {}
   }
@@ -273,8 +300,7 @@ class LlamadaService {
   /// Al ARRANCAR la app (p. ej. cuando se contestó con la app cerrada y arrancó
   /// de cero), si hay una llamada activa abre su pantalla usando la pendiente
   /// guardada en disco.
-  static Future<void> revisarLlamadaAlArrancar() =>
-      _intentarContestar(exigirLlamadaActiva: true);
+  static Future<void> revisarLlamadaAlArrancar() => _intentarContestar();
 
   // ── Permiso de pantalla completa (Android 14+) ─────────────────────────────
   static const _kPidioFullScreen = 'perm_full_screen_llamada';
