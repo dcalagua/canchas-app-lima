@@ -1,9 +1,7 @@
 import 'dart:async';
 
-import 'package:audioplayers/audioplayers.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -55,10 +53,6 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
   // En modo entrante: false hasta que el usuario toca "Contestar" (recién ahí
   // se arranca el WebRTC). Mientras, se muestra la pantalla de entrante.
   bool _entranteContestada = false;
-  // Tono de timbre de la pantalla de entrante in-app (en Xiaomi/HyperOS el tono
-  // de CallKit muere al segundo porque la app toma el frente: aquí lo suplimos).
-  AudioPlayer? _tono;
-  Timer? _tonoTimer;
 
   @override
   void initState() {
@@ -67,8 +61,8 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
     _svc.addListener(_onCambio);
     // reattach = solo volver a mostrar una llamada en curso: NO arranca nada.
     // modoEntrante = espera a que el usuario toque "Contestar" para arrancar.
+    // (El TIMBRE lo maneja LlamadaService desde que entró la llamada.)
     if (!widget.reattach && !widget.modoEntrante) _arrancar();
-    if (widget.modoEntrante && !widget.reattach) _iniciarTono();
     // Refresca la duración cada segundo.
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted && _svc.estado == EstadoLlamada.enLlamada) setState(() {});
@@ -144,42 +138,8 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
     }
   }
 
-  /// Timbre de la pantalla de entrante in-app: reproduce el jingle "Pichan" en
-  /// LOOP CONTINUO (sin cortes) + vibración leve en cadencia, hasta que el
-  /// usuario contesta/rechaza/sale. En Xiaomi/HyperOS el tono de CallKit muere al
-  /// segundo (la app toma el frente); este lo suple para que suene sin parar.
-  void _iniciarTono() {
-    () async {
-      try {
-        _tono = AudioPlayer();
-        await _tono!.setReleaseMode(ReleaseMode.loop);
-        await _tono!.play(AssetSource('sonidos/pichan.mp3'));
-      } catch (_) {}
-    }();
-    // Vibración en cadencia mientras suena.
-    try {
-      HapticFeedback.mediumImpact();
-      _tonoTimer = Timer.periodic(const Duration(milliseconds: 1500), (_) {
-        try {
-          HapticFeedback.mediumImpact();
-        } catch (_) {}
-      });
-    } catch (_) {}
-  }
-
-  void _detenerTono() {
-    _tonoTimer?.cancel();
-    _tonoTimer = null;
-    try {
-      _tono?.stop();
-      _tono?.dispose();
-    } catch (_) {}
-    _tono = null;
-  }
-
   /// El usuario tocó "Contestar" en la pantalla de entrante in-app.
   Future<void> _contestarEntrante() async {
-    _detenerTono();
     setState(() => _entranteContestada = true);
     await LlamadaService.aceptarEntranteEnApp(widget.callId);
     await _arrancar(); // iniciar=false → atiende (contestar)
@@ -187,7 +147,6 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
 
   /// El usuario tocó "Rechazar" en la pantalla de entrante in-app.
   Future<void> _rechazarEntrante() async {
-    _detenerTono();
     await LlamadaService.rechazarEntranteEnApp(widget.callId);
     _cerrar();
   }
@@ -221,7 +180,6 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
   @override
   void dispose() {
     LlamadaWebRTC.pantallaVisible = false;
-    _detenerTono();
     _tick?.cancel();
     _svc.removeListener(_onCambio);
     super.dispose();

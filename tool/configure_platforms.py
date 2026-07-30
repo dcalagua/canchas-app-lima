@@ -621,6 +621,12 @@ def configurar_sonido_notificacion():
     raw = os.path.join(raiz, "res", "raw")
     os.makedirs(raw, exist_ok=True)
     shutil.copyfile(origen, os.path.join(raw, "pichan.mp3"))
+    # Timbre SILENCIOSO para la llamada entrante de CallKit: el timbre real lo
+    # reproduce la app (LlamadaService), que suena continuo en Xiaomi/HyperOS
+    # (donde el de CallKit se corta) y evita doble tono en equipos normales.
+    silencio = "assets/sonidos/silencio.wav"
+    if os.path.exists(silencio):
+        shutil.copyfile(silencio, os.path.join(raw, "silencio.wav"))
 
     # 2) provider_paths_app.xml para el FileProvider (temp/cache del app).
     xmldir = os.path.join(raiz, "res", "xml")
