@@ -316,23 +316,33 @@ class LlamadaService {
     try {
       FlutterCallkitIncoming.onEvent.listen((dynamic evt) async {
         if (evt == null) return;
-        String tipo;
+        // Lee el tipo del evento de forma robusta entre versiones del plugin:
+        // las versiones nuevas exponen `eventName` (String, p. ej.
+        // "...ACTION_CALL_ACCEPT"); las viejas, `event` (enum Event).
+        String tipo = '';
         try {
-          tipo = evt.event.toString();
-        } catch (_) {
-          _log('evt: (sin tipo)');
-          return;
+          final en = evt.eventName;
+          if (en != null) tipo = en.toString();
+        } catch (_) {}
+        if (tipo.isEmpty) {
+          try {
+            tipo = evt.event.toString();
+          } catch (_) {}
         }
-        _log('evt: $tipo');
-        // Rechazar o colgar desde la pantalla nativa → termina la llamada
-        // (avisa al otro por WebRTC si estaba conectada).
-        if (tipo.contains('actionCallDecline') ||
-            tipo.contains('actionCallEnded')) {
+        _log('evt: ${tipo.isEmpty ? '(sin tipo)' : tipo}');
+        final t = tipo.toLowerCase();
+        // Rechazar/colgar desde la pantalla nativa → termina la llamada.
+        if (t.contains('decline') || t.contains('ended')) {
           await _limpiarPendiente();
           await LlamadaWebRTC.instance.finalizar();
           return;
         }
-        if (!tipo.contains('actionCallAccept')) return;
+        // Timeout / perdida: solo limpia la pendiente (no había llamada activa).
+        if (t.contains('timeout')) {
+          await _limpiarPendiente();
+          return;
+        }
+        if (!t.contains('accept')) return;
         // El usuario tocó "Contestar": marca la pendiente como ACEPTADA y abre la
         // pantalla (aunque la app se esté trayendo al frente en ese momento).
         await _marcarAceptada(respaldo: _extraDe(evt));
