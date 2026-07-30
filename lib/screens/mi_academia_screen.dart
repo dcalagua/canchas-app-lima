@@ -10,14 +10,10 @@ import '../theme.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/ancho_lectura.dart';
 import '../widgets/logo_academia.dart';
-import 'asistencia_screen.dart';
-import 'campeonatos_screen.dart';
-import 'chats_academia_screen.dart';
 import 'cobros_screen.dart';
 import 'crear_academia_screen.dart';
 import 'ranking_academia_screen.dart';
 import 'recargar_saldo_screen.dart';
-import 'reporte_academia_screen.dart';
 import 'servicios_screen.dart';
 import '../utils/moneda.dart';
 import '../config/pais.dart';
@@ -868,45 +864,12 @@ class _Header extends StatelessWidget {
                     style: (compacto ? t.titleLarge : t.headlineSmall)?.copyWith(
                         color: Colors.white, fontWeight: FontWeight.w800)),
               ),
-              // En TABLET estas acciones viven en el rail lateral (AcademiaShell),
-              // así la cabecera queda limpia. En móvil se muestran aquí.
+              // En móvil el menú principal (Cobros, Asistencia, Mensajes,
+              // Torneos, Reporte, Billetera) vive en la BARRA INFERIOR
+              // (AcademiaShell), igual que "Mis canchas". Aquí en la cabecera
+              // solo quedan las acciones de configuración: Publicidad y Editar.
+              // En tablet van en el rail lateral, así que la cabecera queda limpia.
               if (MediaQuery.of(context).size.width < 720) ...[
-              IconButton(
-                tooltip: 'Cobros',
-                icon: const Icon(Icons.payments_outlined, color: Colors.white),
-                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => CobrosScreen(academiaId: academia.id))),
-              ),
-              IconButton(
-                tooltip: 'Mensajes',
-                icon: const Icon(Icons.forum_outlined, color: Colors.white),
-                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) =>
-                        ChatsAcademiaScreen(academiaId: academia.id))),
-              ),
-              IconButton(
-                tooltip: 'Reporte de pagos',
-                icon: const Icon(Icons.insights_outlined, color: Colors.white),
-                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) =>
-                        ReporteAcademiaScreen(academiaId: academia.id))),
-              ),
-              IconButton(
-                tooltip: 'Campeonatos',
-                icon: const Icon(Icons.emoji_events_outlined,
-                    color: Colors.white),
-                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) =>
-                        CampeonatosScreen(academiaId: academia.id))),
-              ),
-              IconButton(
-                tooltip: 'Asistencia',
-                icon: const Icon(Icons.fact_check_outlined,
-                    color: Colors.white),
-                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) =>
-                        AsistenciaScreen(academiaId: academia.id))),
-              ),
               IconButton(
                 tooltip: 'Servicios (publicidad)',
                 icon: const Icon(Icons.campaign_outlined, color: Colors.white),

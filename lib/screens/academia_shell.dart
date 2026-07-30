@@ -14,12 +14,11 @@ import 'mi_academia_screen.dart';
 import 'reporte_academia_screen.dart';
 import 'servicios_screen.dart';
 
-/// Panel de la ACADEMIA (profe). En TABLET usa un menú LATERAL (rail) a la
-/// izquierda con TODAS las acciones (Academia, Mensajes, Campeonatos, Asistencia,
-/// Reporte, Publicidad, Editar). Al elegir cualquiera, el rail SIGUE visible y
-/// solo cambia el contenido de la derecha (IndexedStack) — nunca se tapa el
-/// menú. En MÓVIL no hay rail: se usa `MiAcademiaScreen` con sus accesos en la
-/// cabecera (ahí sí caben).
+/// Panel de la ACADEMIA (profe). MISMA estructura que "Mis canchas" (HomeShell):
+/// en MÓVIL barra de navegación INFERIOR con las secciones (Academia, Cobros,
+/// Asistencia, Mensajes, Torneos, Reporte, Billetera); en TABLET el mismo menú
+/// pero LATERAL (rail). Al elegir una sección solo cambia el cuerpo
+/// (IndexedStack), nunca se tapa el menú.
 class AcademiaShell extends StatefulWidget {
   const AcademiaShell({super.key});
 
@@ -38,9 +37,60 @@ class _AcademiaShellState extends State<AcademiaShell> {
       builder: (context, _) {
         final ac = appState.miAcademia;
         final tablet = MediaQuery.of(context).size.width >= _bp;
-        // Móvil, o aún sin academia (cargando / crear): la pantalla resuelve todo
-        // y muestra sus accesos en la cabecera.
-        if (!tablet || ac == null) return const MiAcademiaScreen();
+        // Aún sin academia (cargando / crear): la pantalla resuelve todo.
+        if (ac == null) return const MiAcademiaScreen();
+
+        // MÓVIL: barra de navegación INFERIOR (igual que Mis canchas). Íconos con
+        // color por sección + etiqueta; Mensajes usa el ícono de chat de marca.
+        if (!tablet) {
+          const azul = Color(0xFF2AA9E0);
+          final paginas = <Widget>[
+            const MiAcademiaScreen(), // panel (alumnos, plata, código)
+            CobrosScreen(academiaId: ac.id),
+            AsistenciaScreen(academiaId: ac.id),
+            ChatsAcademiaScreen(academiaId: ac.id),
+            CampeonatosScreen(academiaId: ac.id),
+            ReporteAcademiaScreen(academiaId: ac.id),
+            const CuentaScreen(), // billetera única (saldo + movimientos)
+          ];
+          final iconos = <IconData>[
+            Icons.sports_tennis,
+            Icons.payments_outlined,
+            Icons.fact_check_outlined,
+            Icons.forum_outlined,
+            Icons.emoji_events_outlined,
+            Icons.insights_outlined,
+            Icons.account_balance_wallet_outlined,
+          ];
+          final etiquetas = <String>[
+            'Academia',
+            'Cobros',
+            'Asistencia',
+            'Mensajes',
+            'Torneos',
+            'Reporte',
+            'Billetera',
+          ];
+          final colores = <Color>[teal, lima, azul, lima, amarillo, morado, amarillo];
+          const iMensajes = 3;
+          final idx = _index.clamp(0, paginas.length - 1);
+          return Scaffold(
+            body: IndexedStack(index: idx, children: paginas),
+            bottomNavigationBar: NavigationBar(
+              selectedIndex: idx,
+              onDestinationSelected: (i) => setState(() => _index = i),
+              destinations: [
+                for (var i = 0; i < iconos.length; i++)
+                  NavigationDestination(
+                    icon: i == iMensajes
+                        ? IconoChatPichan(activo: idx == iMensajes)
+                        : Icon(iconos[i], color: colores[i]),
+                    label: etiquetas[i],
+                  ),
+              ],
+            ),
+          );
+        }
 
         // Tablet + academia lista: menú lateral SIEMPRE visible; el cuerpo de la
         // derecha cambia según la opción elegida (IndexedStack conserva el estado
