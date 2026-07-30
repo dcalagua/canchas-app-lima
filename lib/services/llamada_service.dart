@@ -60,17 +60,78 @@ class LlamadaService {
   /// CONTESTAR cuando el usuario acepta la llamada entrante. (room, video, nombre)
   static void Function(String room, bool video, String nombre)? alContestar;
 
+  static bool _abriendo = false;
+
+  /// Punto ÚNICO para abrir la pantalla de llamada al contestar. Es idempotente
+  /// y seguro de llamar desde varios lados (evento CallKit, arranque de la app,
+  /// y `resumed` del ciclo de vida) — solo abre una vez.
+  ///
+  /// - Si ya hay una llamada en curso (motor WebRTC ocupado), no reabre nada.
+  /// - Si [exigirLlamadaActiva], solo abre cuando CallKit reporta una llamada
+  ///   activa (es decir, el usuario realmente contestó y no rechazó/perdió). Se
+  ///   usa en resume/arranque, donde no cazamos el evento de aceptar.
+  static Future<void> _intentarContestar({
+    bool exigirLlamadaActiva = true,
+    (String, bool, String)? respaldo,
+  }) async {
+    if (alContestar == null || _abriendo) return;
+    // ¿El motor ya está ocupado con esta llamada? Entonces la pantalla ya se
+    // abrió (o se está abriendo): no dupliques.
+    final est = LlamadaWebRTC.instance.estado;
+    if (est == EstadoLlamada.llamando ||
+        est == EstadoLlamada.conectando ||
+        est == EstadoLlamada.enLlamada) {
+      return;
+    }
+    _abriendo = true;
+    try {
+      if (exigirLlamadaActiva) {
+        // Solo abrimos si de verdad hay una llamada aceptada/en curso.
+        try {
+          final calls = await FlutterCallkitIncoming.activeCalls();
+          if (calls is! List || calls.isEmpty) return;
+        } catch (_) {
+          return;
+        }
+      }
+      final datos = await _leerPendiente() ?? respaldo;
+      if (datos == null) return;
+      await _limpiarPendiente(); // ya la vamos a atender: no reabrir de nuevo
+      alContestar?.call(datos.$1, datos.$2, datos.$3);
+    } finally {
+      _abriendo = false;
+    }
+  }
+
+  /// Se llama desde el ciclo de vida de la app (`AppLifecycleState.resumed`):
+  /// cuando el usuario toca "Contestar" o la notificación de llamada en curso,
+  /// Android trae la app al frente → aquí abrimos la pantalla completa. Es la
+  /// vía más confiable (no depende de cazar el evento exacto de CallKit).
+  static Future<void> revisarLlamadaResumida() =>
+      _intentarContestar(exigirLlamadaActiva: true);
+
   // La llamada entrante se guarda en DISCO (SharedPreferences) al sonar, para
   // poder recuperarla al contestar aunque el push haya corrido en otro proceso
   // (isolate de background) — así no dependemos del `extra` de CallKit.
   static const _kPendiente = 'llamada_entrante_json';
 
+  // Ventana de frescura de la llamada pendiente. Como el abrir la pantalla ya
+  // está blindado por el estado del motor WebRTC y por `activeCalls()`, esta
+  // ventana solo evita revivir una pendiente muy vieja que quedó olvidada.
+  static const int _pendienteMaxSegundos = 300;
+
   static Future<void> _guardarPendiente(
       String room, bool video, String caller) async {
     try {
       final p = await SharedPreferences.getInstance();
-      await p.setString(_kPendiente,
-          jsonEncode({'room': room, 'video': video, 'caller': caller}));
+      await p.setString(
+          _kPendiente,
+          jsonEncode({
+            'room': room,
+            'video': video,
+            'caller': caller,
+            'ts': DateTime.now().millisecondsSinceEpoch,
+          }));
     } catch (_) {}
   }
 
@@ -83,6 +144,12 @@ class LlamadaService {
       final m = jsonDecode(raw) as Map<String, dynamic>;
       final room = (m['room'] ?? '').toString();
       if (room.isEmpty) return null;
+      // Descarta una pendiente vieja (p. ej. llamada perdida hace rato).
+      final ts = (m['ts'] as num?)?.toInt();
+      if (ts != null) {
+        final edad = DateTime.now().millisecondsSinceEpoch - ts;
+        if (edad > _pendienteMaxSegundos * 1000) return null;
+      }
       return (room, m['video'] == true, (m['caller'] ?? '').toString());
     } catch (_) {
       return null;
@@ -162,13 +229,11 @@ class LlamadaService {
           return;
         }
         if (!tipo.contains('actionCallAccept')) return;
-        // Preferimos la pendiente guardada en disco (confiable entre procesos);
-        // si no, caemos al extra del evento.
-        final datos = await _leerPendiente() ?? _extraDe(evt);
-        if (datos != null) {
-          // Abre la pantalla de llamada WebRTC para CONTESTAR (lo hace main.dart).
-          alContestar?.call(datos.$1, datos.$2, datos.$3);
-        }
+        // Aquí SÍ cazamos el evento de aceptar: no exigimos `activeCalls()`
+        // (puede tardar en reflejarse). Pasa por el punto único (protegido) con
+        // el `extra` del evento como respaldo si el disco no tuviera la pendiente.
+        await _intentarContestar(
+            exigirLlamadaActiva: false, respaldo: _extraDe(evt));
       });
     } catch (_) {}
   }
@@ -196,13 +261,6 @@ class LlamadaService {
   /// Al ARRANCAR la app (p. ej. cuando se contestó con la app cerrada y arrancó
   /// de cero), si hay una llamada activa abre su pantalla usando la pendiente
   /// guardada en disco.
-  static Future<void> revisarLlamadaAlArrancar() async {
-    try {
-      final calls = await FlutterCallkitIncoming.activeCalls();
-      if (calls is List && calls.isNotEmpty) {
-        final datos = await _leerPendiente();
-        if (datos != null) alContestar?.call(datos.$1, datos.$2, datos.$3);
-      }
-    } catch (_) {}
-  }
+  static Future<void> revisarLlamadaAlArrancar() =>
+      _intentarContestar(exigirLlamadaActiva: true);
 }

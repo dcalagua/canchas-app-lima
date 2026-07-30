@@ -50,8 +50,36 @@ void main() async {
   });
 }
 
-class PichangolApp extends StatelessWidget {
+class PichangolApp extends StatefulWidget {
   const PichangolApp({super.key});
+
+  @override
+  State<PichangolApp> createState() => _PichangolAppState();
+}
+
+class _PichangolAppState extends State<PichangolApp>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Cuando el usuario toca "Contestar" (o la notificación de llamada en
+    // curso), Android trae la app al frente → aquí abrimos la pantalla completa
+    // de la llamada. Es la vía más confiable para el que RECIBE la llamada.
+    if (state == AppLifecycleState.resumed) {
+      LlamadaService.revisarLlamadaResumida();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

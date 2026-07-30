@@ -34,6 +34,7 @@ class LlamadaScreen extends StatefulWidget {
 class _LlamadaScreenState extends State<LlamadaScreen> {
   final _svc = LlamadaWebRTC.instance;
   Timer? _tick;
+  String? _error; // si falla arrancar (p. ej. sin permiso de mic/cámara)
 
   @override
   void initState() {
@@ -59,13 +60,32 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
             video: widget.video,
             nombreOtro: widget.nombreOtro);
       }
-    } catch (_) {
-      if (mounted) _cerrar();
+    } catch (e) {
+      // No cerramos de golpe (se veía como "la pantalla no abre"): mostramos el
+      // motivo (típicamente falta permiso de micrófono/cámara) y dejamos salir.
+      if (mounted) {
+        setState(() {
+          _error = widget.video
+              ? 'No se pudo acceder al micrófono o la cámara. Revisa los '
+                  'permisos de Pichangol y vuelve a intentar.'
+              : 'No se pudo acceder al micrófono. Revisa los permisos de '
+                  'Pichangol y vuelve a intentar.';
+        });
+      }
+      try {
+        await _svc.finalizar(avisar: false);
+      } catch (_) {}
     }
   }
 
   void _onCambio() {
     if (!mounted) return;
+    // Si estamos mostrando un error de arranque, no cierres solo: deja que el
+    // usuario lea el motivo y salga con el botón.
+    if (_error != null) {
+      setState(() {});
+      return;
+    }
     if (_svc.estado == EstadoLlamada.finalizada) {
       _cerrar();
     } else {
@@ -112,6 +132,7 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_error != null) return _pantallaError();
     final enLlamada = _svc.estado == EstadoLlamada.enLlamada;
     final hayVideoRemoto = _svc.video && _svc.remoto.srcObject != null;
     return PopScope(
@@ -234,6 +255,38 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
             ),
             if (!enLlamada) _velo(),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _pantallaError() {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0B141A),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.mic_off, color: Colors.white70, size: 56),
+              const SizedBox(height: 18),
+              Text(
+                _error ?? '',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white, fontSize: 16),
+              ),
+              const SizedBox(height: 28),
+              FilledButton(
+                onPressed: _cerrar,
+                style: FilledButton.styleFrom(
+                    backgroundColor: clayOscuro,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 32, vertical: 14)),
+                child: const Text('Salir'),
+              ),
+            ],
+          ),
         ),
       ),
     );
