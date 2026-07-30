@@ -332,4 +332,34 @@ class LlamadaService {
       }
     } catch (_) {}
   }
+
+  // ── Diagnóstico (Zona de pruebas) ──────────────────────────────────────────
+
+  /// ¿Este equipo permite mostrar la llamada a pantalla completa? (Android 14+).
+  static Future<bool> puedePantallaCompleta() async {
+    try {
+      return await FlutterCallkitIncoming.canUseFullScreenIntent();
+    } catch (_) {
+      return true; // Android < 14 / iOS: se asume permitido
+    }
+  }
+
+  /// Abre los ajustes del sistema para conceder el permiso de pantalla completa.
+  static Future<void> abrirAjustesPantallaCompleta() async {
+    try {
+      await FlutterCallkitIncoming.requestFullIntentPermission();
+    } catch (_) {}
+  }
+
+  /// Simula una llamada entrante LOCAL (sin push ni otro teléfono) para ver si
+  /// la pantalla completa aparece en ESTE equipo. [delaySeg] da tiempo a bloquear
+  /// la pantalla y probar el caso "teléfono en reposo".
+  static Future<void> simularEntrante({int delaySeg = 0}) async {
+    if (delaySeg > 0) await Future.delayed(Duration(seconds: delaySeg));
+    await mostrarEntrante(
+      room: 'PichangolPrueba',
+      caller: 'Prueba Pichangol',
+      video: false,
+    );
+  }
 }

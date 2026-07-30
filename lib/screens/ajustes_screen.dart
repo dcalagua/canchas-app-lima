@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../brand.dart';
 import '../services/whatsapp_link.dart';
+import '../services/llamada_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/dialogo_pichangol.dart';
@@ -39,6 +40,37 @@ class AjustesScreen extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('No pude abrir WhatsApp para compartir.')));
     }
+  }
+
+  /// Diagnóstico de la llamada entrante a pantalla completa (sin necesitar otro
+  /// teléfono ni el push): muestra si el permiso está activo, deja concederlo, y
+  /// simula una llamada entrante LOCAL para ver si aparece la pantalla completa.
+  Future<void> _diagnosticoLlamada(BuildContext context) async {
+    final puede = await LlamadaService.puedePantallaCompleta();
+    if (!context.mounted) return;
+    final ok = await confirmarPichangol(
+      context,
+      titulo: 'Probar llamada entrante',
+      mensaje: 'Pantalla completa permitida en este equipo: '
+          '${puede ? 'SÍ ✓' : 'NO ✗'}.\n\n'
+          '${puede ? 'Toca "Simular", BLOQUEA la pantalla y espera 6 s: debe '
+              'aparecer la llamada entrante a pantalla completa (con Contestar/'
+              'Rechazar).' : 'Primero toca "Activar permiso" y concédelo en los '
+              'ajustes que se abren; luego vuelve y repite.'}',
+      textoConfirmar: puede ? 'Simular en 6 s' : 'Activar permiso',
+      textoCancelar: 'Cerrar',
+      icono: Icons.phone_in_talk,
+    );
+    if (!ok) return;
+    if (!puede) {
+      await LlamadaService.abrirAjustesPantallaCompleta();
+      return;
+    }
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Bloquea la pantalla ahora — sonará en 6 segundos…')));
+    }
+    await LlamadaService.simularEntrante(delaySeg: 6);
   }
 
   Future<void> _empezarDeCero(BuildContext context) async {
@@ -278,6 +310,20 @@ class AjustesScreen extends StatelessWidget {
                   label: const Text('Depurar academias (borrar sueltas)',
                       style: TextStyle(fontWeight: FontWeight.w800)),
                   onPressed: () => _depurarAcademias(context),
+                ),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: teal,
+                    side: const BorderSide(color: teal),
+                    minimumSize: const Size.fromHeight(50),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                  ),
+                  icon: const Icon(Icons.phone_in_talk),
+                  label: const Text('Probar llamada entrante (pantalla completa)',
+                      style: TextStyle(fontWeight: FontWeight.w800)),
+                  onPressed: () => _diagnosticoLlamada(context),
                 ),
               ],
             ],

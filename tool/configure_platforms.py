@@ -105,6 +105,10 @@ def android_manifest(text):
             text,
             count=1,
         )
+    # CallKit recomienda que MainActivity sea singleTask, para que al aceptar la
+    # llamada (o abrir la pantalla completa) se reuse la misma tarea/actividad.
+    text = text.replace(
+        'android:launchMode="singleTop"', 'android:launchMode="singleTask"')
     # Compartir historia DIRECTO a IG/FB (intent "Add to Story"): Android 11+
     # exige declarar los paquetes que consultamos (package visibility).
     if "com.instagram.android" not in text:
