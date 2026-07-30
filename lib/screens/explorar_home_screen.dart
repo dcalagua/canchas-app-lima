@@ -11,7 +11,6 @@ import '../brand.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../config/pais.dart';
-import '../services/llamada_service.dart';
 import '../services/location_service.dart';
 import '../services/pagos_service.dart';
 import '../utils/geo.dart';
@@ -20,6 +19,7 @@ import 'academias_screen.dart';
 import 'buscar_direccion_screen.dart';
 import 'club_detalle_screen.dart';
 import 'login_google_sheet.dart';
+import 'permisos_onboarding_screen.dart';
 import 'home_shell.dart';
 import 'ranking_global_screen.dart';
 
@@ -139,10 +139,10 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     appState.addListener(_onStateChange);
     appState.cargarDestacados(); // refresca qué dueños van destacados (saldo>0)
     _autoUbicar(); // autodetecta la ubicación al abrir
-    // Android 14+: pide (una vez) el permiso para que las llamadas entrantes
-    // salgan a pantalla completa, como WhatsApp.
+    // Onboarding de permisos (una sola vez, tras instalar): notificaciones,
+    // micrófono, cámara y pantalla completa. Estilo WhatsApp.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) LlamadaService.pedirPermisoPantallaCompleta(context);
+      if (mounted) PermisosOnboardingScreen.mostrarSiHaceFalta(context);
     });
   }
 
