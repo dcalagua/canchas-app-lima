@@ -43,6 +43,7 @@ class LlamadaWebRTC extends ChangeNotifier {
   RTCPeerConnection? _pc;
   MediaStream? _localStream;
   RealtimeChannel? _canal;
+  Timer? _timeoutConexion; // corta si nunca engancha (rechazo perdido/no contesta)
 
   EstadoLlamada estado = EstadoLlamada.idle;
 
@@ -125,8 +126,24 @@ class LlamadaWebRTC extends ChangeNotifier {
 
   void _set(EstadoLlamada e) {
     estado = e;
-    if (e == EstadoLlamada.enLlamada) conectadoEn ??= DateTime.now();
+    if (e == EstadoLlamada.enLlamada) {
+      conectadoEn ??= DateTime.now();
+      _timeoutConexion?.cancel(); // ya enganchó: no cortar
+    }
     notifyListeners();
+  }
+
+  /// Red de seguridad: si nunca engancha (rechazo perdido, no contesta, señal
+  /// mala) corta a los 45 s con "no contestó", como el timeout de WhatsApp.
+  void _armarTimeoutConexion() {
+    _timeoutConexion?.cancel();
+    _timeoutConexion = Timer(const Duration(seconds: 45), () {
+      if (estado != EstadoLlamada.enLlamada &&
+          estado != EstadoLlamada.finalizada) {
+        _diag('timeout: nunca conectó → finalizar');
+        finalizar(avisar: true);
+      }
+    });
   }
 
   /// INICIA la llamada (quien llama). Prepara media y espera a que el otro entre
@@ -156,6 +173,7 @@ class LlamadaWebRTC extends ChangeNotifier {
     await _pc!.setLocalDescription(offer);
     _offerGuardada = offer;
     _set(EstadoLlamada.llamando);
+    _armarTimeoutConexion();
   }
 
   /// CONTESTA la llamada (quien recibe). Entra al canal y avisa `ready` para que
@@ -180,6 +198,7 @@ class LlamadaWebRTC extends ChangeNotifier {
     await _prepararMedia(video);
     await _crearPeer();
     _set(EstadoLlamada.conectando);
+    _armarTimeoutConexion();
     // El `ready` se manda cuando el canal esté SUBSCRIBED (dentro de _abrirCanal),
     // con reintentos — no antes, o se perdería.
     await _abrirCanal(callId);
@@ -410,29 +429,51 @@ class LlamadaWebRTC extends ChangeNotifier {
   /// y cierra el canal. Se usa cuando el usuario RECHAZA desde la entrante in-app
   /// (donde todavía no arrancamos WebRTC). No toca el estado del motor.
   static Future<void> rechazarRemoto(String callId) async {
+    void log(String m) {
+      try {
+        registrar?.call('WRTC $m');
+      } catch (_) {}
+    }
+
     try {
       final canal = SupabaseService.client.channel('llamada_$callId');
-      var enviado = false;
+      final listo = Completer<void>();
       canal.subscribe((status, [error]) {
-        if (status == RealtimeSubscribeStatus.subscribed && !enviado) {
-          enviado = true;
-          try {
-            canal.sendBroadcastMessage(
-                event: 'signal', payload: {'t': 'bye'});
-          } catch (_) {}
+        log('rechazo subscribe=$status');
+        if (status == RealtimeSubscribeStatus.subscribed &&
+            !listo.isCompleted) {
+          listo.complete();
         }
       });
-      // Da tiempo a suscribir + entregar el bye al que llama, luego cierra.
-      await Future.delayed(const Duration(seconds: 2));
+      // Espera a estar SUBSCRIBED (el socket puede estar frío tras el push).
+      try {
+        await listo.future.timeout(const Duration(seconds: 5));
+      } catch (_) {
+        log('rechazo: no suscribió a tiempo');
+      }
+      // Manda el bye varias veces (idempotente en el otro lado) para no perderlo.
+      for (var i = 0; i < 3; i++) {
+        try {
+          canal.sendBroadcastMessage(event: 'signal', payload: {'t': 'bye'});
+          log('rechazo envio bye #$i');
+        } catch (e) {
+          log('rechazo ERROR bye: $e');
+        }
+        await Future.delayed(const Duration(milliseconds: 400));
+      }
       try {
         await canal.unsubscribe();
       } catch (_) {}
-    } catch (_) {}
+    } catch (e) {
+      log('rechazo ERROR: $e');
+    }
   }
 
   /// Cuelga: avisa al otro (si [avisar]) y limpia todo.
   Future<void> finalizar({bool avisar = true}) async {
     if (estado == EstadoLlamada.finalizada) return;
+    _timeoutConexion?.cancel();
+    _timeoutConexion = null;
     if (avisar && _suscrito) _crudo({'t': 'bye'});
     // Registra la llamada en el historial (solo si el motor llegó a arrancar,
     // es decir hubo intento de llamada/contestar).

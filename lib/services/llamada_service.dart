@@ -520,6 +520,13 @@ class LlamadaService {
         final t = tipo.toLowerCase();
         // Rechazar/colgar desde la pantalla nativa → termina la llamada.
         if (t.contains('decline') || t.contains('ended')) {
+          // Si el motor NO está en llamada (rechazo mientras SOLO sonaba: aún no
+          // contestamos, el canal no está suscrito), `finalizar` no avisaría al
+          // que llama. Mandamos el `bye` por el canal para cortarle el "Llamando".
+          if (!LlamadaWebRTC.instance.activa) {
+            final room = (await _leerPendiente())?.$1 ?? '';
+            if (room.isNotEmpty) await LlamadaWebRTC.rechazarRemoto(room);
+          }
           await _limpiarPendiente();
           await LlamadaWebRTC.instance.finalizar();
           return;
