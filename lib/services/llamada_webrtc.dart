@@ -43,6 +43,17 @@ class LlamadaWebRTC extends ChangeNotifier {
   RealtimeChannel? _canal;
 
   EstadoLlamada estado = EstadoLlamada.idle;
+
+  /// ¿Hay una llamada en curso (para mostrar la barra "volver a la llamada")?
+  bool get activa =>
+      estado == EstadoLlamada.llamando ||
+      estado == EstadoLlamada.conectando ||
+      estado == EstadoLlamada.enLlamada;
+
+  /// La LlamadaScreen la pone en true mientras está montada; así la barra de
+  /// "volver a la llamada" solo aparece cuando NO estás viendo la pantalla grande.
+  static bool pantallaVisible = false;
+
   bool video = true;
   bool micOn = true;
   bool camOn = true;

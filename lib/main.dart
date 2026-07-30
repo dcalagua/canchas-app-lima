@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
@@ -7,6 +9,7 @@ import 'screens/llamada_screen.dart';
 import 'screens/mensajes_screen.dart';
 import 'screens/splash_screen.dart';
 import 'services/llamada_service.dart';
+import 'services/llamada_webrtc.dart';
 import 'services/push_service.dart';
 import 'services/supabase_service.dart';
 import 'state/app_state.dart';
@@ -91,6 +94,9 @@ class _PichangolAppState extends State<PichangolApp>
     // de la llamada. Es la vía más confiable para el que RECIBE la llamada.
     if (state == AppLifecycleState.resumed) {
       LlamadaService.revisarLlamadaResumida();
+      // Si hay una llamada EN CURSO y se perdió la pantalla grande (p. ej. al
+      // tocar la notificación de "llamada en curso"), la reabrimos.
+      abrirLlamadaEnCurso();
     }
   }
 
@@ -115,17 +121,137 @@ class _PichangolAppState extends State<PichangolApp>
         ],
         // Arranca en el splash de marca y luego entra al mapa (estilo Airbnb).
         home: const SplashScreen(),
-        // Banner "QAS" (esquina) solo en builds de pruebas, para no confundirlo
-        // con producción.
+        // Banner "QAS" (esquina) + barra "volver a la llamada" (estilo WhatsApp).
         builder: (context, child) {
-          if (kEntorno != 'qas' || child == null) return child ?? const SizedBox();
-          return Banner(
-            message: 'QAS',
-            location: BannerLocation.topEnd,
-            color: const Color(0xFFC75B39),
-            child: child,
+          Widget contenido = child ?? const SizedBox();
+          if (kEntorno == 'qas') {
+            contenido = Banner(
+              message: 'QAS',
+              location: BannerLocation.topEnd,
+              color: const Color(0xFFC75B39),
+              child: contenido,
+            );
+          }
+          return Stack(
+            textDirection: TextDirection.ltr,
+            children: [
+              contenido,
+              const _BarraLlamada(),
+            ],
           );
         },
+      ),
+    );
+  }
+}
+
+/// Reabre la pantalla completa de una llamada EN CURSO (no arranca nada). La
+/// usan la barra "volver a la llamada" y el resume del ciclo de vida.
+void abrirLlamadaEnCurso() {
+  final svc = LlamadaWebRTC.instance;
+  if (!svc.activa || LlamadaWebRTC.pantallaVisible) return;
+  final nav = PushService.navigatorKey.currentState;
+  nav?.push(MaterialPageRoute(
+    builder: (_) => LlamadaScreen(
+      callId: '',
+      video: svc.video,
+      iniciar: false,
+      reattach: true,
+      nombreOtro: svc.nombreOtro,
+    ),
+  ));
+}
+
+/// Barra superior "Toca para volver a la llamada" (como la barra verde de
+/// WhatsApp). Solo aparece si hay llamada en curso y NO estás viendo la
+/// pantalla grande.
+class _BarraLlamada extends StatefulWidget {
+  const _BarraLlamada();
+
+  @override
+  State<_BarraLlamada> createState() => _BarraLlamadaState();
+}
+
+class _BarraLlamadaState extends State<_BarraLlamada> {
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    LlamadaWebRTC.instance.addListener(_actualizar);
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  void _actualizar() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    LlamadaWebRTC.instance.removeListener(_actualizar);
+    super.dispose();
+  }
+
+  String _texto(LlamadaWebRTC s) {
+    switch (s.estado) {
+      case EstadoLlamada.llamando:
+        return 'Llamando…';
+      case EstadoLlamada.conectando:
+        return 'Conectando…';
+      case EstadoLlamada.enLlamada:
+        final ini = s.conectadoEn;
+        if (ini == null) return 'En llamada';
+        final d = DateTime.now().difference(ini);
+        final m = d.inMinutes.toString().padLeft(2, '0');
+        final sec = (d.inSeconds % 60).toString().padLeft(2, '0');
+        return '$m:$sec';
+      default:
+        return '';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = LlamadaWebRTC.instance;
+    if (!s.activa || LlamadaWebRTC.pantallaVisible) {
+      return const SizedBox.shrink();
+    }
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      child: Material(
+        color: Colors.transparent,
+        child: SafeArea(
+          bottom: false,
+          child: GestureDetector(
+            onTap: abrirLlamadaEnCurso,
+            child: Container(
+              width: double.infinity,
+              color: const Color(0xFF128C7E),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+              child: Row(
+                children: [
+                  const Icon(Icons.phone_in_talk, color: Colors.white, size: 18),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text('Toca para volver a la llamada',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13.5)),
+                  ),
+                  Text(_texto(s),
+                      style: const TextStyle(
+                          color: Colors.white, fontSize: 12.5)),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

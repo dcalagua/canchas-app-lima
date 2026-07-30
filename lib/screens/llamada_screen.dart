@@ -19,6 +19,7 @@ class LlamadaScreen extends StatefulWidget {
     required this.iniciar,
     this.nombreOtro = '',
     this.fotoUrl = '',
+    this.reattach = false,
   });
 
   final String callId;
@@ -26,6 +27,9 @@ class LlamadaScreen extends StatefulWidget {
   final bool iniciar; // true = yo llamo; false = yo contesto
   final String nombreOtro;
   final String fotoUrl;
+  // reattach = solo VOLVER a mostrar una llamada que ya está en curso (no
+  // arranca nada). Lo usa la barra "volver a la llamada" y el resume.
+  final bool reattach;
 
   @override
   State<LlamadaScreen> createState() => _LlamadaScreenState();
@@ -39,8 +43,10 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
   @override
   void initState() {
     super.initState();
+    LlamadaWebRTC.pantallaVisible = true;
     _svc.addListener(_onCambio);
-    _arrancar();
+    // reattach = solo volver a mostrar una llamada en curso: NO arranca nada.
+    if (!widget.reattach) _arrancar();
     // Refresca la duración cada segundo.
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted && _svc.estado == EstadoLlamada.enLlamada) setState(() {});
@@ -103,6 +109,7 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
 
   @override
   void dispose() {
+    LlamadaWebRTC.pantallaVisible = false;
     _tick?.cancel();
     _svc.removeListener(_onCambio);
     super.dispose();
@@ -135,8 +142,10 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
     if (_error != null) return _pantallaError();
     final enLlamada = _svc.estado == EstadoLlamada.enLlamada;
     final hayVideoRemoto = _svc.video && _svc.remoto.srcObject != null;
+    // canPop:true → "atrás" MINIMIZA la llamada (no la corta): se cierra la
+    // pantalla, la llamada sigue viva y aparece la barra "volver a la llamada".
     return PopScope(
-      canPop: false,
+      canPop: true,
       child: Scaffold(
         backgroundColor: const Color(0xFF0B141A),
         body: Stack(
