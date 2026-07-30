@@ -11,6 +11,7 @@ import '../brand.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../config/pais.dart';
+import '../services/llamada_service.dart';
 import '../services/location_service.dart';
 import '../services/pagos_service.dart';
 import '../utils/geo.dart';
@@ -138,6 +139,11 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     appState.addListener(_onStateChange);
     appState.cargarDestacados(); // refresca qué dueños van destacados (saldo>0)
     _autoUbicar(); // autodetecta la ubicación al abrir
+    // Android 14+: pide (una vez) el permiso para que las llamadas entrantes
+    // salgan a pantalla completa, como WhatsApp.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) LlamadaService.pedirPermisoPantallaCompleta(context);
+    });
   }
 
   void _onStateChange() {

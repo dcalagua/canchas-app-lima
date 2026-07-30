@@ -1,11 +1,12 @@
 import 'dart:convert';
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../widgets/dialogo_pichangol.dart';
 import 'llamada_webrtc.dart';
 
 /// Llamadas de Pichangol. La 1-a-1 va camino a WebRTC propio (UI tipo WhatsApp);
@@ -274,4 +275,35 @@ class LlamadaService {
   /// guardada en disco.
   static Future<void> revisarLlamadaAlArrancar() =>
       _intentarContestar(exigirLlamadaActiva: true);
+
+  // ── Permiso de pantalla completa (Android 14+) ─────────────────────────────
+  static const _kPidioFullScreen = 'perm_full_screen_llamada';
+
+  /// En **Android 14+** la llamada entrante NO se muestra a pantalla completa
+  /// (como WhatsApp) hasta que el usuario concede un permiso especial. Lo
+  /// pedimos UNA sola vez, con un diálogo Pichangol, al entrar a la app. En
+  /// Android < 14 / iOS `canUseFullScreenIntent` devuelve true y no molestamos.
+  static Future<void> pedirPermisoPantallaCompleta(BuildContext context) async {
+    try {
+      final puede = await FlutterCallkitIncoming.canUseFullScreenIntent();
+      if (puede) return;
+      final p = await SharedPreferences.getInstance();
+      if (p.getBool(_kPidioFullScreen) == true) return;
+      await p.setBool(_kPidioFullScreen, true);
+      if (!context.mounted) return;
+      final ok = await confirmarPichangol(
+        context,
+        titulo: 'Llamadas en pantalla completa',
+        mensaje: 'Para ver las llamadas de Pichangol a pantalla completa (como '
+            'WhatsApp), incluso con el teléfono bloqueado, activa '
+            '"Notificaciones a pantalla completa" para Pichangol.',
+        textoConfirmar: 'Activar',
+        textoCancelar: 'Ahora no',
+        icono: Icons.phone_in_talk,
+      );
+      if (ok) {
+        await FlutterCallkitIncoming.requestFullIntentPermission();
+      }
+    } catch (_) {}
+  }
 }
