@@ -6,6 +6,7 @@ import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../models/llamada_historial.dart';
 import '../widgets/dialogo_pichangol.dart';
 import 'llamada_webrtc.dart';
 
@@ -354,6 +355,7 @@ class LlamadaService {
     if (_escuchando) return;
     _escuchando = true;
     LlamadaWebRTC.registrar = _log; // señalización WebRTC → mismo registro
+    LlamadaWebRTC.alTerminar = registrarHistorial; // guarda cada llamada
     try {
       FlutterCallkitIncoming.onEvent.listen((dynamic evt) async {
         if (evt == null) return;
@@ -378,8 +380,19 @@ class LlamadaService {
           await LlamadaWebRTC.instance.finalizar();
           return;
         }
-        // Timeout / perdida: solo limpia la pendiente (no había llamada activa).
+        // Timeout: llamada entrante PERDIDA → al historial y limpia la pendiente.
         if (t.contains('timeout')) {
+          final datos = await _leerPendiente();
+          if (datos != null) {
+            await registrarHistorial({
+              'nombre': datos.$3,
+              'email': '',
+              'saliente': false,
+              'conectada': false,
+              'duracionSeg': 0,
+              'video': datos.$2,
+            });
+          }
           await _limpiarPendiente();
           return;
         }
@@ -477,5 +490,55 @@ class LlamadaService {
       caller: 'Prueba Pichangol',
       video: false,
     );
+  }
+
+  // ── Historial de llamadas (registro estilo WhatsApp) ───────────────────────
+  static const _kHistorial = 'llamadas_historial';
+
+  /// Guarda una llamada en el historial local (más reciente primero, tope 100).
+  static Future<void> registrarHistorial(Map<String, dynamic> data) async {
+    try {
+      final entrada = LlamadaHistorial(
+        nombre: (data['nombre'] ?? '').toString(),
+        foto: (data['foto'] ?? '').toString(),
+        email: (data['email'] ?? '').toString(),
+        saliente: data['saliente'] == true,
+        conectada: data['conectada'] == true,
+        duracionSeg: (data['duracionSeg'] as num?)?.toInt() ?? 0,
+        video: data['video'] == true,
+        cuando: DateTime.now(),
+      );
+      final p = await SharedPreferences.getInstance();
+      await p.reload();
+      final l = p.getStringList(_kHistorial) ?? <String>[];
+      l.insert(0, jsonEncode(entrada.toJson()));
+      while (l.length > 100) {
+        l.removeLast();
+      }
+      await p.setStringList(_kHistorial, l);
+    } catch (_) {}
+  }
+
+  /// Lee el historial de llamadas (más reciente primero).
+  static Future<List<LlamadaHistorial>> leerHistorial() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.reload();
+      final l = p.getStringList(_kHistorial) ?? const [];
+      return l
+          .map((s) =>
+              LlamadaHistorial.fromJson(jsonDecode(s) as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Borra todo el historial de llamadas.
+  static Future<void> limpiarHistorial() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.remove(_kHistorial);
+    } catch (_) {}
   }
 }

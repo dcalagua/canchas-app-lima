@@ -41,6 +41,7 @@ void main() async {
   LlamadaService.alContestar = (room, video, nombre, hilo) {
     if (room.isEmpty) return;
     final foto = _fotoDeHilo(hilo); // foto del que llama (para la pantalla)
+    final email = _emailDeHilo(hilo); // correo del que llama (para el historial)
     // El navegador puede no estar montado todavía (resume / arranque en frío):
     // reintenta unos instantes hasta que exista, y recién ahí abre la pantalla.
     void abrir([int intento = 0]) {
@@ -58,7 +59,8 @@ void main() async {
               video: video,
               iniciar: false,
               nombreOtro: nombre,
-              fotoUrl: foto)));
+              fotoUrl: foto,
+              emailOtro: email)));
     }
 
     abrir();
@@ -150,15 +152,20 @@ class _PichangolAppState extends State<PichangolApp>
   }
 }
 
-/// Deduce la foto del OTRO participante a partir del hilo directo
-/// (`directo_<a>|<b>`): el correo que no es el mío → su foto de perfil.
-String _fotoDeHilo(String hilo) {
+/// Deduce el correo del OTRO participante a partir del hilo directo
+/// (`directo_<a>|<b>`): el que no es el mío.
+String _emailDeHilo(String hilo) {
   if (!hilo.startsWith('directo_')) return '';
   final partes = hilo.substring('directo_'.length).split('|');
   if (partes.length != 2) return '';
   final yo = (appState.usuario?.email ?? '').trim().toLowerCase();
-  final otro = partes[0] == yo ? partes[1] : partes[0];
-  return appState.fotoDe(otro) ?? '';
+  return partes[0] == yo ? partes[1] : partes[0];
+}
+
+/// Foto del OTRO participante (a partir de su correo deducido del hilo).
+String _fotoDeHilo(String hilo) {
+  final otro = _emailDeHilo(hilo);
+  return otro.isEmpty ? '' : (appState.fotoDe(otro) ?? '');
 }
 
 /// Reabre la pantalla completa de una llamada EN CURSO (no arranca nada). La
@@ -175,6 +182,7 @@ void abrirLlamadaEnCurso() {
       reattach: true,
       nombreOtro: svc.nombreOtro,
       fotoUrl: svc.fotoOtro,
+      emailOtro: svc.emailOtro,
     ),
   ));
 }

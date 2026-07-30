@@ -69,7 +69,12 @@ class LlamadaWebRTC extends ChangeNotifier {
 
   String nombreOtro = '';
   String fotoOtro = ''; // foto del contacto (para la pantalla y la barra)
+  String emailOtro = ''; // correo del contacto (para el historial / rellamar)
   DateTime? conectadoEn;
+
+  /// Aviso al TERMINAR una llamada, con su resumen (para el historial). Lo setea
+  /// LlamadaService. data: nombre, foto, email, saliente, conectada, duracionSeg, video.
+  static void Function(Map<String, dynamic>)? alTerminar;
 
   Map<String, dynamic> get _iceServers {
     final servers = <Map<String, dynamic>>[
@@ -108,7 +113,12 @@ class LlamadaWebRTC extends ChangeNotifier {
         });
       }
     }
-    return {'iceServers': servers, 'sdpSemantics': 'unified-plan'};
+    return {
+      'iceServers': servers,
+      'sdpSemantics': 'unified-plan',
+      // Pre-recolecta algunos candidatos para enganchar un poco más rápido.
+      'iceCandidatePoolSize': 2,
+    };
   }
 
   void _set(EstadoLlamada e) {
@@ -124,6 +134,7 @@ class LlamadaWebRTC extends ChangeNotifier {
     required bool video,
     String nombreOtro = '',
     String fotoOtro = '',
+    String emailOtro = '',
   }) async {
     if (_pc != null) {
       _diag('iniciar IGNORADO (ya hay llamada activa)');
@@ -133,6 +144,7 @@ class LlamadaWebRTC extends ChangeNotifier {
     this.video = video;
     this.nombreOtro = nombreOtro;
     this.fotoOtro = fotoOtro;
+    this.emailOtro = emailOtro;
     _diag('iniciar sala=$callId');
     await _prepararMedia(video);
     await _crearPeer();
@@ -151,6 +163,7 @@ class LlamadaWebRTC extends ChangeNotifier {
     required bool video,
     String nombreOtro = '',
     String fotoOtro = '',
+    String emailOtro = '',
   }) async {
     if (_pc != null) {
       _diag('contestar IGNORADO (ya hay llamada activa)');
@@ -160,6 +173,7 @@ class LlamadaWebRTC extends ChangeNotifier {
     this.video = video;
     this.nombreOtro = nombreOtro;
     this.fotoOtro = fotoOtro;
+    this.emailOtro = emailOtro;
     _diag('contestar sala=$callId');
     await _prepararMedia(video);
     await _crearPeer();
@@ -393,6 +407,23 @@ class LlamadaWebRTC extends ChangeNotifier {
   Future<void> finalizar({bool avisar = true}) async {
     if (estado == EstadoLlamada.finalizada) return;
     if (avisar && _suscrito) _crudo({'t': 'bye'});
+    // Registra la llamada en el historial (solo si el motor llegó a arrancar,
+    // es decir hubo intento de llamada/contestar).
+    if (nombreOtro.isNotEmpty || emailOtro.isNotEmpty) {
+      try {
+        alTerminar?.call({
+          'nombre': nombreOtro,
+          'foto': fotoOtro,
+          'email': emailOtro,
+          'saliente': _soyElQueLlama,
+          'conectada': conectadoEn != null,
+          'duracionSeg': conectadoEn != null
+              ? DateTime.now().difference(conectadoEn!).inSeconds
+              : 0,
+          'video': video,
+        });
+      } catch (_) {}
+    }
     _set(EstadoLlamada.finalizada);
     // Cierra la pantalla nativa de CallKit (la notificación "Llamada en curso").
     try {
@@ -423,6 +454,9 @@ class LlamadaWebRTC extends ChangeNotifier {
     _otroPresente = false;
     _ofertaEnviada = false;
     conectadoEn = null;
+    nombreOtro = '';
+    fotoOtro = '';
+    emailOtro = '';
     notifyListeners();
   }
 }

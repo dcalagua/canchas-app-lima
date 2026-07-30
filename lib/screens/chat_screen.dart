@@ -674,6 +674,7 @@ class _ChatScreenState extends State<ChatScreen> {
         iniciar: true,
         nombreOtro: nombre,
         fotoUrl: appState.fotoDe(_contraparteEmail) ?? '',
+        emailOtro: _contraparteEmail,
       ),
     ));
   }

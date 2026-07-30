@@ -13,6 +13,7 @@ import '../widgets/dialogo_pichangol.dart';
 import 'buscar_usuario_screen.dart';
 import 'chat_screen.dart';
 import 'crear_grupo_screen.dart';
+import 'llamadas_screen.dart';
 import 'login_google_sheet.dart';
 import 'novedades_screen.dart';
 
@@ -749,6 +750,12 @@ class _MensajesScreenState extends State<MensajesScreen> {
                       child: Icon(Icons.donut_large, color: Colors.white))
                   : const Icon(Icons.donut_large_outlined, color: Colors.white),
               onPressed: _abrirNovedades,
+            ),
+            IconButton(
+              tooltip: 'Llamadas',
+              icon: const Icon(Icons.call_outlined, color: Colors.white),
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const LlamadasScreen())),
             ),
             IconButton(
               tooltip: 'Tomar foto',

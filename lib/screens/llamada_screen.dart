@@ -19,6 +19,7 @@ class LlamadaScreen extends StatefulWidget {
     required this.iniciar,
     this.nombreOtro = '',
     this.fotoUrl = '',
+    this.emailOtro = '',
     this.reattach = false,
   });
 
@@ -27,6 +28,7 @@ class LlamadaScreen extends StatefulWidget {
   final bool iniciar; // true = yo llamo; false = yo contesto
   final String nombreOtro;
   final String fotoUrl;
+  final String emailOtro;
   // reattach = solo VOLVER a mostrar una llamada que ya está en curso (no
   // arranca nada). Lo usa la barra "volver a la llamada" y el resume.
   final bool reattach;
@@ -60,13 +62,15 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
             callId: widget.callId,
             video: widget.video,
             nombreOtro: widget.nombreOtro,
-            fotoOtro: widget.fotoUrl);
+            fotoOtro: widget.fotoUrl,
+            emailOtro: widget.emailOtro);
       } else {
         await _svc.contestar(
             callId: widget.callId,
             video: widget.video,
             nombreOtro: widget.nombreOtro,
-            fotoOtro: widget.fotoUrl);
+            fotoOtro: widget.fotoUrl,
+            emailOtro: widget.emailOtro);
       }
     } catch (e) {
       // No cerramos de golpe (se veía como "la pantalla no abre"): mostramos el
