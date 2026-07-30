@@ -144,21 +144,26 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
     }
   }
 
-  /// Timbre de la pantalla de entrante in-app: repite el jingle "Pichan" en
-  /// cadencia de timbre (cada ~2.2 s) + vibración leve, hasta contestar/salir.
+  /// Timbre de la pantalla de entrante in-app: reproduce el jingle "Pichan" en
+  /// LOOP CONTINUO (sin cortes) + vibración leve en cadencia, hasta que el
+  /// usuario contesta/rechaza/sale. En Xiaomi/HyperOS el tono de CallKit muere al
+  /// segundo (la app toma el frente); este lo suple para que suene sin parar.
   void _iniciarTono() {
+    () async {
+      try {
+        _tono = AudioPlayer();
+        await _tono!.setReleaseMode(ReleaseMode.loop);
+        await _tono!.play(AssetSource('sonidos/pichan.mp3'));
+      } catch (_) {}
+    }();
+    // Vibración en cadencia mientras suena.
     try {
-      _tono = AudioPlayer();
-      void sonar() {
+      HapticFeedback.mediumImpact();
+      _tonoTimer = Timer.periodic(const Duration(milliseconds: 1500), (_) {
         try {
-          _tono?.play(AssetSource('sonidos/pichan.mp3'));
           HapticFeedback.mediumImpact();
         } catch (_) {}
-      }
-
-      sonar();
-      _tonoTimer = Timer.periodic(
-          const Duration(milliseconds: 2200), (_) => sonar());
+      });
     } catch (_) {}
   }
 

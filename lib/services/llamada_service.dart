@@ -262,6 +262,7 @@ class LlamadaService {
 
   /// El usuario tocó "Rechazar" en la pantalla de entrante DENTRO de la app.
   static Future<void> rechazarEntranteEnApp(String room) async {
+    final datos = await _leerPendiente(); // nombre/video para el historial
     await _limpiarPendiente();
     // Que el dedup y el resume no la revivan.
     _ultEntranteRoom = room;
@@ -269,6 +270,16 @@ class LlamadaService {
     try {
       await FlutterCallkitIncoming.endAllCalls();
     } catch (_) {}
+    // Avisa al que LLAMA para que se le corte el "Llamando" (como WhatsApp).
+    await LlamadaWebRTC.rechazarRemoto(room);
+    // Registra en el historial como entrante rechazada (no conectada).
+    await registrarHistorial({
+      'nombre': datos?.$3 ?? '',
+      'email': '',
+      'saliente': false,
+      'conectada': false,
+      'video': datos?.$2 ?? false,
+    });
   }
 
   // La llamada entrante se guarda en DISCO (SharedPreferences) al sonar, para

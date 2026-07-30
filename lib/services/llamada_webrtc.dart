@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
@@ -401,6 +403,31 @@ class LlamadaWebRTC extends ChangeNotifier {
       await Helper.setSpeakerphoneOn(altavoz);
     } catch (_) {}
     notifyListeners();
+  }
+
+  /// Rechaza una llamada ENTRANTE sin arrancar el motor: abre el canal de
+  /// señalización, avisa `bye` al que llama (para que se le corte el "Llamando")
+  /// y cierra el canal. Se usa cuando el usuario RECHAZA desde la entrante in-app
+  /// (donde todavía no arrancamos WebRTC). No toca el estado del motor.
+  static Future<void> rechazarRemoto(String callId) async {
+    try {
+      final canal = SupabaseService.client.channel('llamada_$callId');
+      var enviado = false;
+      canal.subscribe((status, [error]) {
+        if (status == RealtimeSubscribeStatus.subscribed && !enviado) {
+          enviado = true;
+          try {
+            canal.sendBroadcastMessage(
+                event: 'signal', payload: {'t': 'bye'});
+          } catch (_) {}
+        }
+      });
+      // Da tiempo a suscribir + entregar el bye al que llama, luego cierra.
+      await Future.delayed(const Duration(seconds: 2));
+      try {
+        await canal.unsubscribe();
+      } catch (_) {}
+    } catch (_) {}
   }
 
   /// Cuelga: avisa al otro (si [avisar]) y limpia todo.
