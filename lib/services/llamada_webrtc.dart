@@ -112,6 +112,10 @@ class LlamadaWebRTC extends ChangeNotifier {
     required bool video,
     String nombreOtro = '',
   }) async {
+    if (_pc != null) {
+      _diag('iniciar IGNORADO (ya hay llamada activa)');
+      return; // evita doble arranque (crea 2 conexiones/canales)
+    }
     _soyElQueLlama = true;
     this.video = video;
     this.nombreOtro = nombreOtro;
@@ -133,6 +137,10 @@ class LlamadaWebRTC extends ChangeNotifier {
     required bool video,
     String nombreOtro = '',
   }) async {
+    if (_pc != null) {
+      _diag('contestar IGNORADO (ya hay llamada activa)');
+      return; // evita doble arranque (crea 2 conexiones/canales)
+    }
     _soyElQueLlama = false;
     this.video = video;
     this.nombreOtro = nombreOtro;
@@ -267,10 +275,12 @@ class LlamadaWebRTC extends ChangeNotifier {
         if (_offerGuardada != null && !_remotoListo) {
           _ofertaEnviada = true;
           _diag('envio offer');
+          // OJO: la clave 'type' la usa Supabase en su sobre de broadcast y
+          // pisaba la nuestra → usamos 'sdpType' para el tipo del SDP.
           _crudo({
             't': 'offer',
             'sdp': _offerGuardada!.sdp,
-            'type': _offerGuardada!.type,
+            'sdpType': _offerGuardada!.type,
           });
         }
         break;
@@ -284,12 +294,12 @@ class LlamadaWebRTC extends ChangeNotifier {
         _otroPresente = true;
         try {
           await pc.setRemoteDescription(RTCSessionDescription(
-              p['sdp']?.toString(), p['type']?.toString()));
+              p['sdp']?.toString(), p['sdpType']?.toString()));
           await _vaciarIce();
           final answer = await pc.createAnswer({});
           await pc.setLocalDescription(answer);
           _diag('envio answer');
-          _crudo({'t': 'answer', 'sdp': answer.sdp, 'type': answer.type});
+          _crudo({'t': 'answer', 'sdp': answer.sdp, 'sdpType': answer.type});
           _vaciarIceSalientes(); // ahora sí, manda los candidatos en cola
         } catch (e) {
           _diag('ERROR offer: $e');
@@ -302,7 +312,7 @@ class LlamadaWebRTC extends ChangeNotifier {
         _remotoListo = true; // guarda síncrona (igual que el offer)
         try {
           await pc.setRemoteDescription(RTCSessionDescription(
-              p['sdp']?.toString(), p['type']?.toString()));
+              p['sdp']?.toString(), p['sdpType']?.toString()));
           await _vaciarIce();
         } catch (e) {
           _diag('ERROR answer: $e');
