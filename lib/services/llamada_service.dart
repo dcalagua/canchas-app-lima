@@ -64,6 +64,50 @@ class LlamadaService {
 
   static bool _abriendo = false;
 
+  // ── Registro de diagnóstico (se ve en Ajustes → Zona de pruebas) ───────────
+  static const _kRegistro = 'llamada_registro';
+  static String _hhmmss() {
+    final n = DateTime.now();
+    String d(int x) => x.toString().padLeft(2, '0');
+    return '${d(n.hour)}:${d(n.minute)}:${d(n.second)}';
+  }
+
+  static void _log(String m) {
+    final linea = '${_hhmmss()}  $m';
+    // Persistimos (SharedPreferences) para verlo aunque el evento haya corrido
+    // en el isolate de background.
+    () async {
+      try {
+        final p = await SharedPreferences.getInstance();
+        await p.reload();
+        final l = p.getStringList(_kRegistro) ?? <String>[];
+        l.add(linea);
+        while (l.length > 40) {
+          l.removeAt(0);
+        }
+        await p.setStringList(_kRegistro, l);
+      } catch (_) {}
+    }();
+  }
+
+  /// Lee el registro de diagnóstico de llamadas (para mostrarlo en Ajustes).
+  static Future<List<String>> leerRegistro() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.reload();
+      return p.getStringList(_kRegistro) ?? const [];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  static Future<void> limpiarRegistro() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.remove(_kRegistro);
+    } catch (_) {}
+  }
+
   /// Punto ÚNICO para abrir la pantalla de llamada al contestar. Es idempotente
   /// y seguro de llamar desde varios lados (evento CallKit, arranque de la app,
   /// y `resumed` del ciclo de vida) — solo abre una vez.
@@ -72,33 +116,46 @@ class LlamadaService {
   /// (el usuario tocó "Contestar"). NO se usa `activeCalls()` para decidir,
   /// porque CallKit cuenta como "activa" también la llamada que apenas SUENA —
   /// eso hacía que se auto-contestara al volver la app al frente.
-  static Future<void> _intentarContestar() async {
-    if (alContestar == null || _abriendo) return;
+  static Future<void> _intentarContestar({bool desdeAceptar = false}) async {
+    if (alContestar == null || _abriendo) {
+      _log('intentar: skip (alContestar=${alContestar != null} abriendo=$_abriendo)');
+      return;
+    }
     // ¿El motor ya está ocupado con esta llamada? Entonces la pantalla ya se
     // abrió (o se está abriendo): no dupliques.
     final est = LlamadaWebRTC.instance.estado;
     if (est == EstadoLlamada.llamando ||
         est == EstadoLlamada.conectando ||
         est == EstadoLlamada.enLlamada) {
+      _log('intentar: skip (motor ocupado: $est)');
       return;
     }
-    // Solo abrimos con la app AL FRENTE: arrancar micrófono/cámara en segundo
-    // plano falla en Android (y la pantalla no se vería). Si estamos atrás,
-    // dejamos la pendiente intacta; se abrirá al volver al frente
-    // (didChangeAppLifecycleState.resumed → revisarLlamadaResumida).
     final ciclo = WidgetsBinding.instance.lifecycleState;
-    if (ciclo == AppLifecycleState.paused ||
-        ciclo == AppLifecycleState.hidden ||
-        ciclo == AppLifecycleState.detached) {
+    // Si venimos del RESUME/arranque (no del botón "Contestar"), solo abrimos con
+    // la app al frente. Si venimos de ACEPTAR, abrimos igual (la app se está
+    // trayendo al frente); la pantalla maneja el error si el mic no está listo.
+    if (!desdeAceptar &&
+        (ciclo == AppLifecycleState.paused ||
+            ciclo == AppLifecycleState.hidden ||
+            ciclo == AppLifecycleState.detached)) {
+      _log('intentar: diferir (ciclo=$ciclo, no desdeAceptar)');
       return;
     }
     _abriendo = true;
     try {
       // SOLO si el usuario tocó "Contestar" (no si apenas está sonando).
-      if (!await _pendienteAceptada()) return;
+      final acc = await _pendienteAceptada();
+      if (!acc) {
+        _log('intentar: skip (no aceptada aún)');
+        return;
+      }
       final datos = await _leerPendiente();
-      if (datos == null) return;
+      if (datos == null) {
+        _log('intentar: skip (sin pendiente)');
+        return;
+      }
       await _limpiarPendiente(); // ya la vamos a atender: no reabrir de nuevo
+      _log('intentar: ABRIENDO pantalla (ciclo=$ciclo, desdeAceptar=$desdeAceptar)');
       alContestar?.call(datos.$1, datos.$2, datos.$3);
     } finally {
       _abriendo = false;
@@ -108,7 +165,10 @@ class LlamadaService {
   /// Se llama desde el ciclo de vida de la app (`AppLifecycleState.resumed`):
   /// cuando el usuario toca "Contestar", Android trae la app al frente → aquí
   /// abrimos la pantalla completa **si ya estaba marcada como aceptada**.
-  static Future<void> revisarLlamadaResumida() => _intentarContestar();
+  static Future<void> revisarLlamadaResumida() {
+    _log('resume');
+    return _intentarContestar();
+  }
 
   // La llamada entrante se guarda en DISCO (SharedPreferences) al sonar, para
   // poder recuperarla al contestar aunque el push haya corrido en otro proceso
@@ -186,6 +246,7 @@ class LlamadaService {
       }
       m['aceptada'] = true;
       await p.setString(_kPendiente, jsonEncode(m));
+      _log('marcada ACEPTADA');
     } catch (_) {}
   }
 
@@ -211,6 +272,7 @@ class LlamadaService {
     required bool video,
   }) async {
     if (room.isEmpty) return;
+    _log('mostrarEntrante room=$room');
     await _guardarPendiente(room, video, caller); // para recuperar al contestar
     final params = CallKitParams(
       id: room,
@@ -258,8 +320,10 @@ class LlamadaService {
         try {
           tipo = evt.event.toString();
         } catch (_) {
+          _log('evt: (sin tipo)');
           return;
         }
+        _log('evt: $tipo');
         // Rechazar o colgar desde la pantalla nativa → termina la llamada
         // (avisa al otro por WebRTC si estaba conectada).
         if (tipo.contains('actionCallDecline') ||
@@ -269,10 +333,10 @@ class LlamadaService {
           return;
         }
         if (!tipo.contains('actionCallAccept')) return;
-        // El usuario tocó "Contestar": marca la pendiente como ACEPTADA (así el
-        // resume/arranque sí abrirá la pantalla) y ábrela si estamos al frente.
+        // El usuario tocó "Contestar": marca la pendiente como ACEPTADA y abre la
+        // pantalla (aunque la app se esté trayendo al frente en ese momento).
         await _marcarAceptada(respaldo: _extraDe(evt));
-        await _intentarContestar();
+        await _intentarContestar(desdeAceptar: true);
       });
     } catch (_) {}
   }

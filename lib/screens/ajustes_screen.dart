@@ -73,6 +73,22 @@ class AjustesScreen extends StatelessWidget {
     await LlamadaService.simularEntrante(delaySeg: 6);
   }
 
+  /// Muestra el registro interno de eventos de llamada (para diagnóstico).
+  Future<void> _verRegistroLlamadas(BuildContext context) async {
+    final lineas = await LlamadaService.leerRegistro();
+    if (!context.mounted) return;
+    await avisarPichangol(
+      context,
+      titulo: 'Registro de llamadas',
+      mensaje: lineas.isEmpty
+          ? 'Aún no hay eventos. Haz una llamada (o "Simular"), acepta, y vuelve '
+              'a abrir esto.'
+          : lineas.reversed.take(25).join('\n'),
+      icono: Icons.receipt_long,
+    );
+    await LlamadaService.limpiarRegistro();
+  }
+
   Future<void> _empezarDeCero(BuildContext context) async {
     final ok = await confirmarPichangol(
       context,
@@ -324,6 +340,18 @@ class AjustesScreen extends StatelessWidget {
                   label: const Text('Probar llamada entrante (pantalla completa)',
                       style: TextStyle(fontWeight: FontWeight.w800)),
                   onPressed: () => _diagnosticoLlamada(context),
+                ),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(50),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                  ),
+                  icon: const Icon(Icons.receipt_long),
+                  label: const Text('Ver registro de llamadas',
+                      style: TextStyle(fontWeight: FontWeight.w800)),
+                  onPressed: () => _verRegistroLlamadas(context),
                 ),
               ],
             ],
