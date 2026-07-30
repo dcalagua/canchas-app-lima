@@ -64,6 +64,10 @@ class LlamadaService {
   static void Function(String room, bool video, String nombre, String hilo)?
       alContestar;
 
+  /// Lo setea PushService: al contestar en ESTE equipo, apaga el timbre en los
+  /// otros dispositivos de la cuenta (envía push de cancelación por el backend).
+  static Future<void> Function(String room)? alAtender;
+
   static bool _abriendo = false;
 
   // ── Registro de diagnóstico (se ve en Ajustes → Zona de pruebas) ───────────
@@ -336,6 +340,21 @@ class LlamadaService {
     } catch (_) {}
   }
 
+  /// Otro dispositivo de mi cuenta ya atendió/rechazó la llamada: apaga el
+  /// timbre (pantalla entrante de CallKit) en ESTE equipo, salvo que YO ya esté
+  /// en esa llamada.
+  static Future<void> cancelarEntrante(String room) async {
+    _log('cancelarEntrante room=$room (atendida en otro dispositivo)');
+    if (LlamadaWebRTC.instance.activa) return; // yo ya estoy en la llamada
+    try {
+      await FlutterCallkitIncoming.endAllCalls();
+    } catch (_) {}
+    await _limpiarPendiente();
+    // Que no reviva por el dedup ni el resume.
+    _ultEntranteRoom = room;
+    _ultEntranteTs = DateTime.now().millisecondsSinceEpoch;
+  }
+
   /// Notificación de "llamada en curso" para el que LLAMA (saliente): así, al
   /// minimizar TODA la app, la llamada sigue visible en la barra de notificación
   /// (y tocarla vuelve a la pantalla). Se limpia al colgar (finalizar →
@@ -418,7 +437,11 @@ class LlamadaService {
         if (!t.contains('accept')) return;
         // El usuario tocó "Contestar": marca la pendiente como ACEPTADA y abre la
         // pantalla (aunque la app se esté trayendo al frente en ese momento).
-        await _marcarAceptada(respaldo: _extraDe(evt));
+        final resp = _extraDe(evt);
+        await _marcarAceptada(respaldo: resp);
+        // Apaga el timbre en los OTROS dispositivos de mi cuenta.
+        final room = resp?.$1 ?? (await _leerPendiente())?.$1 ?? '';
+        if (room.isNotEmpty) alAtender?.call(room);
         await _intentarContestar(desdeAceptar: true);
       });
     } catch (_) {}

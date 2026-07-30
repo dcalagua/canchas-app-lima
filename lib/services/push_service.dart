@@ -17,6 +17,11 @@ import 'supabase_service.dart';
 /// del payload). El TAP se maneja en `onMessageOpenedApp` / `getInitialMessage`.
 @pragma('vm:entry-point')
 Future<void> pushBackgroundHandler(RemoteMessage message) async {
+  // Otro dispositivo de mi cuenta ya atendió/rechazó → apaga el timbre aquí.
+  if (message.data['tipo'] == 'cancelar_llamada') {
+    await LlamadaService.cancelarEntrante((message.data['room'] ?? '').toString());
+    return;
+  }
   // Llamada entrante (app en segundo plano / cerrada): muestra la pantalla que
   // suena (CallKit). El resto de mensajes ya los pinta el sistema.
   if (message.data['tipo'] == 'llamada') {
@@ -51,6 +56,7 @@ class PushService {
   static bool get disponible => _ok;
 
   static String? _token;
+  static String? get token => _token;
   static String _email = '';
   static StreamSubscription<String>? _tokenSub;
   static bool _listenersListos = false;
@@ -72,6 +78,8 @@ class PushService {
       FirebaseMessaging.onBackgroundMessage(pushBackgroundHandler);
       _configurarListeners();
       LlamadaService.escucharEventos(); // botones de la llamada entrante
+      // Al contestar en ESTE equipo, apaga el timbre en los otros de mi cuenta.
+      LlamadaService.alAtender = cancelarLlamadaEnOtros;
       _ok = true;
     } catch (_) {
       _ok = false; // sin google-services.json / sin Firebase: push off
@@ -102,6 +110,11 @@ class PushService {
   /// Aviso IN-APP cuando llega un mensaje con la app abierta. No se muestra si ya
   /// estás dentro de ese chat (ahí el mensaje llega solo por Realtime).
   static void _enForeground(RemoteMessage m) {
+    // Otro dispositivo de mi cuenta atendió/rechazó → apaga el timbre aquí.
+    if (m.data['tipo'] == 'cancelar_llamada') {
+      LlamadaService.cancelarEntrante((m.data['room'] ?? '').toString());
+      return;
+    }
     // Llamada entrante con la app abierta: también muestra la pantalla que suena.
     if (m.data['tipo'] == 'llamada') {
       final hilo = (m.data['hilo'] ?? '').toString();
@@ -231,6 +244,21 @@ class PushService {
     } catch (_) {
       // permiso denegado / sin red: no rompe nada
     }
+  }
+
+  /// Al contestar/rechazar una llamada en ESTE equipo, avisa al backend para que
+  /// apague el timbre en los OTROS dispositivos de la misma cuenta ("contestada
+  /// en otro dispositivo", estilo WhatsApp). Fail-safe: si la Edge Function no
+  /// está desplegada, no rompe nada.
+  static Future<void> cancelarLlamadaEnOtros(String room) async {
+    if (room.isEmpty || _email.isEmpty || !SupabaseService.disponible) return;
+    try {
+      await SupabaseService.client.functions.invoke('cancelar-llamada', body: {
+        'room': room,
+        'email': _email,
+        'excluir_token': _token ?? '',
+      });
+    } catch (_) {}
   }
 
   static Future<void> _guardarToken(String email, String token) async {
