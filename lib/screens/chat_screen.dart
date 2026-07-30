@@ -645,27 +645,39 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _iniciarLlamada({required bool video}) async {
     final u = appState.usuario;
     if (u == null) return;
-    if (appState.bloqueado(_contraparteEmail)) return;
+    // La OTRA persona: en directo es la contraparte; en cancha, el dueño va en
+    // refId (correo). Así podemos consolidar la llamada en el chat DIRECTO.
+    var otro = _contraparteEmail;
+    if (otro.isEmpty && _refId.contains('@')) otro = _refId;
+    if (appState.bloqueado(otro)) return;
     // Ya hay una llamada en curso: no arranques otra ni postees de nuevo.
     if (LlamadaWebRTC.instance.activa) return;
-    final sala = LlamadaService.salaChat(_hilo);
+
+    // Las llamadas 1:1 SIEMPRE van al hilo DIRECTO con la persona: así no se
+    // fragmentan entre el chat de academia/cancha y el chat personal (todo se
+    // consolida en un solo chat con ese usuario, como WhatsApp). Si no se puede
+    // saber el correo del otro (raro), cae al hilo actual.
+    final bool porDirecto = otro.isNotEmpty;
+    final String hiloLlamada =
+        porDirecto ? Mensaje.hiloDirecto(u.email, otro) : _hilo;
+    final sala = LlamadaService.salaChat(hiloLlamada);
     // Aviso en el chat → el backend manda el push de llamada al otro.
     await MensajesRepo.enviar(Mensaje(
       id: 'msg_${DateTime.now().microsecondsSinceEpoch}',
-      hilo: _hilo,
-      tipo: widget.tipo,
-      refId: _refId,
-      academiaId: widget.academiaId,
-      cuentaEmail: widget.cuentaEmail,
+      hilo: hiloLlamada,
+      tipo: porDirecto ? 'directo' : widget.tipo,
+      refId: porDirecto ? '' : _refId,
+      academiaId: porDirecto ? '' : widget.academiaId,
+      cuentaEmail: porDirecto ? otro : widget.cuentaEmail,
       autorEmail: u.email,
       autorNombre: u.nombre,
-      esProfe: widget.soyProfe,
+      esProfe: porDirecto ? false : widget.soyProfe,
       texto: video ? '📹 Videollamada' : '📞 Llamada de voz',
       creado: DateTime.now(),
     ));
     if (!mounted) return;
-    final nombre =
-        appState.nombreMostrableDe(_contraparteEmail) ?? _contraparteEmail;
+    final nombre = appState.nombreMostrableDe(otro) ??
+        (otro.isNotEmpty ? otro : widget.titulo);
     // Notificación de "llamada en curso" para el que llama (visible al
     // minimizar toda la app). En quien contesta la crea el entrante.
     LlamadaService.marcarLlamadaSaliente(
@@ -676,8 +688,8 @@ class _ChatScreenState extends State<ChatScreen> {
         video: video,
         iniciar: true,
         nombreOtro: nombre,
-        fotoUrl: appState.fotoDe(_contraparteEmail) ?? '',
-        emailOtro: _contraparteEmail,
+        fotoUrl: appState.fotoDe(otro) ?? '',
+        emailOtro: otro,
       ),
     ));
   }
