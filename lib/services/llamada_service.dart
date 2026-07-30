@@ -307,10 +307,17 @@ class LlamadaService {
   /// (aún sonando, sin aceptar) y NO hay ya una pantalla de llamada, la muestra
   /// DENTRO de la app (Contestar/Rechazar). Cubre los equipos donde el evento
   /// "Contestar" de CallKit no llega (Xiaomi/HyperOS).
+  // Momento del último accept NATIVO de CallKit (para no abrir además la
+  // entrante in-app en equipos donde ese evento sí llega → doble pantalla).
+  static int _aceptadoTs = 0;
+
   static Future<void> revisarEntranteAlFrente() async {
     if (alEntranteEnApp == null) return;
     // Ya hay una pantalla de llamada visible (entrante o en curso) → no dupliques.
     if (LlamadaWebRTC.pantallaVisible) return;
+    // Llegó un accept nativo hace poco: esa vía ya abre la pantalla de atender;
+    // NO mostramos también la entrante in-app.
+    if (DateTime.now().millisecondsSinceEpoch - _aceptadoTs < 6000) return;
     // El motor ya está en una llamada → nada que mostrar.
     final est = LlamadaWebRTC.instance.estado;
     if (est == EstadoLlamada.llamando ||
@@ -613,6 +620,13 @@ class LlamadaService {
         }
         _log('evt: ${tipo.isEmpty ? '(sin tipo)' : tipo}');
         final t = tipo.toLowerCase();
+        // Marca SÍNCRONA (antes de cualquier await): en equipos donde el accept
+        // nativo de CallKit SÍ llega, el `resume` que dispara traer la app al
+        // frente NO debe abrir además la entrante in-app (era la doble pantalla
+        // en la tablet). El fallback in-app se salta si hubo un accept hace poco.
+        if (t.contains('accept')) {
+          _aceptadoTs = DateTime.now().millisecondsSinceEpoch;
+        }
         // Cualquier acción sobre la entrante (contestar/rechazar/colgar/timeout)
         // detiene nuestro timbre.
         if (t.contains('accept') ||
