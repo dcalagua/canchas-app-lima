@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../services/llamada_webrtc.dart';
 import '../theme.dart';
@@ -41,6 +42,7 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
   final _svc = LlamadaWebRTC.instance;
   Timer? _tick;
   String? _error; // si falla arrancar (p. ej. sin permiso de mic/cámara)
+  bool _errorPermiso = false; // el error es por permisos → mostrar "Ajustes"
 
   @override
   void initState() {
@@ -55,7 +57,41 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
     });
   }
 
+  /// Pide permiso de micrófono (y cámara si es video) JUSTO antes de la llamada,
+  /// como WhatsApp. Devuelve true si están concedidos.
+  Future<bool> _asegurarPermisos() async {
+    try {
+      final mic = await Permission.microphone.request();
+      var cam = PermissionStatus.granted;
+      if (widget.video) cam = await Permission.camera.request();
+      final faltaMic = !mic.isGranted;
+      final faltaCam = widget.video && !cam.isGranted;
+      if (faltaMic || faltaCam) {
+        final permanente = mic.isPermanentlyDenied ||
+            (widget.video && cam.isPermanentlyDenied);
+        if (mounted) {
+          setState(() {
+            _errorPermiso = permanente;
+            _error = widget.video
+                ? 'Pichangol necesita permiso de micrófono y cámara para las '
+                    'videollamadas.'
+                : 'Pichangol necesita permiso de micrófono para las llamadas.';
+          });
+        }
+        try {
+          await _svc.finalizar(avisar: false);
+        } catch (_) {}
+        return false;
+      }
+      return true;
+    } catch (_) {
+      return true; // si algo falla, que getUserMedia lo intente
+    }
+  }
+
   Future<void> _arrancar() async {
+    // Permisos primero (estilo WhatsApp): sin ellos, no arrancamos media.
+    if (!await _asegurarPermisos()) return;
     try {
       if (widget.iniciar) {
         await _svc.iniciar(
@@ -292,12 +328,22 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
                 style: const TextStyle(color: Colors.white, fontSize: 16),
               ),
               const SizedBox(height: 28),
-              FilledButton(
+              if (_errorPermiso) ...[
+                FilledButton.icon(
+                  onPressed: () => openAppSettings(),
+                  icon: const Icon(Icons.settings),
+                  label: const Text('Abrir ajustes'),
+                  style: FilledButton.styleFrom(
+                      backgroundColor: lima,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 28, vertical: 14)),
+                ),
+                const SizedBox(height: 12),
+              ],
+              TextButton(
                 onPressed: _cerrar,
-                style: FilledButton.styleFrom(
-                    backgroundColor: clayOscuro,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 32, vertical: 14)),
+                style: TextButton.styleFrom(foregroundColor: Colors.white70),
                 child: const Text('Salir'),
               ),
             ],
