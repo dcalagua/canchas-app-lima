@@ -451,6 +451,11 @@ class LlamadaService {
       nameCaller: caller.isEmpty ? 'Pichangol' : caller,
       appName: 'Pichangol',
       type: video ? 1 : 0, // 0 = voz, 1 = video
+      // Sin notificación de "Llamada perdida / Volver a llamar": el registro de
+      // llamadas de la app ya lleva ese historial; el pop-up "Call back" molesta.
+      missedCallNotification: const NotificationParams(
+        showNotification: false,
+      ),
       extra: <String, dynamic>{
         'room': room,
         'video': video,

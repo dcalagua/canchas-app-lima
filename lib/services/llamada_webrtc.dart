@@ -493,6 +493,7 @@ class LlamadaWebRTC extends ChangeNotifier {
         _callId.isNotEmpty &&
         emailOtro.isNotEmpty) {
       // Fire-and-forget: no bloquea el colgado ni el cierre de la pantalla.
+      _diag('cancelar entrante remota → $emailOtro (room=$_callId)');
       try {
         alCancelarEntranteRemota?.call(_callId, emailOtro);
       } catch (_) {}
