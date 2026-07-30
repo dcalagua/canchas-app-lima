@@ -60,7 +60,8 @@ class LlamadaService {
 
   /// Lo setea main.dart (que conoce las pantallas): abre la LlamadaScreen para
   /// CONTESTAR cuando el usuario acepta la llamada entrante. (room, video, nombre)
-  static void Function(String room, bool video, String nombre)? alContestar;
+  static void Function(String room, bool video, String nombre, String hilo)?
+      alContestar;
 
   static bool _abriendo = false;
 
@@ -156,7 +157,7 @@ class LlamadaService {
       }
       await _limpiarPendiente(); // ya la vamos a atender: no reabrir de nuevo
       _log('intentar: ABRIENDO pantalla (ciclo=$ciclo, desdeAceptar=$desdeAceptar)');
-      alContestar?.call(datos.$1, datos.$2, datos.$3);
+      alContestar?.call(datos.$1, datos.$2, datos.$3, datos.$4);
     } finally {
       _abriendo = false;
     }
@@ -181,7 +182,7 @@ class LlamadaService {
   static const int _pendienteMaxSegundos = 300;
 
   static Future<void> _guardarPendiente(
-      String room, bool video, String caller) async {
+      String room, bool video, String caller, String hilo) async {
     try {
       final p = await SharedPreferences.getInstance();
       await p.setString(
@@ -190,12 +191,13 @@ class LlamadaService {
             'room': room,
             'video': video,
             'caller': caller,
+            'hilo': hilo,
             'ts': DateTime.now().millisecondsSinceEpoch,
           }));
     } catch (_) {}
   }
 
-  static Future<(String, bool, String)?> _leerPendiente() async {
+  static Future<(String, bool, String, String)?> _leerPendiente() async {
     try {
       final p = await SharedPreferences.getInstance();
       await p.reload(); // ver lo que escribió el isolate de background
@@ -210,7 +212,12 @@ class LlamadaService {
         final edad = DateTime.now().millisecondsSinceEpoch - ts;
         if (edad > _pendienteMaxSegundos * 1000) return null;
       }
-      return (room, m['video'] == true, (m['caller'] ?? '').toString());
+      return (
+        room,
+        m['video'] == true,
+        (m['caller'] ?? '').toString(),
+        (m['hilo'] ?? '').toString(),
+      );
     } catch (_) {
       return null;
     }
@@ -226,7 +233,8 @@ class LlamadaService {
   /// Marca la llamada pendiente como ACEPTADA (el usuario tocó "Contestar").
   /// Si por lo que sea el disco no tenía la pendiente, la crea desde [respaldo]
   /// (el `extra` del evento de CallKit).
-  static Future<void> _marcarAceptada({(String, bool, String)? respaldo}) async {
+  static Future<void> _marcarAceptada(
+      {(String, bool, String, String)? respaldo}) async {
     try {
       final p = await SharedPreferences.getInstance();
       await p.reload();
@@ -239,6 +247,7 @@ class LlamadaService {
           'room': respaldo.$1,
           'video': respaldo.$2,
           'caller': respaldo.$3,
+          'hilo': respaldo.$4,
           'ts': DateTime.now().millisecondsSinceEpoch,
         };
       } else {
@@ -270,10 +279,12 @@ class LlamadaService {
     required String room,
     required String caller,
     required bool video,
+    String hilo = '',
   }) async {
     if (room.isEmpty) return;
     _log('mostrarEntrante room=$room');
-    await _guardarPendiente(room, video, caller); // para recuperar al contestar
+    // hilo: para recuperar la foto del que llama al contestar.
+    await _guardarPendiente(room, video, caller, hilo);
     final params = CallKitParams(
       id: room,
       nameCaller: caller.isEmpty ? 'Pichangol' : caller,
@@ -283,6 +294,7 @@ class LlamadaService {
         'room': room,
         'video': video,
         'caller': caller,
+        'hilo': hilo,
       },
       android: const AndroidParams(
         isCustomNotification: true,
@@ -301,6 +313,34 @@ class LlamadaService {
     );
     try {
       await FlutterCallkitIncoming.showCallkitIncoming(params);
+    } catch (_) {}
+  }
+
+  /// Notificación de "llamada en curso" para el que LLAMA (saliente): así, al
+  /// minimizar TODA la app, la llamada sigue visible en la barra de notificación
+  /// (y tocarla vuelve a la pantalla). Se limpia al colgar (finalizar →
+  /// endAllCalls). En quien contesta, esa notificación ya la crea el entrante.
+  static Future<void> marcarLlamadaSaliente({
+    required String room,
+    required String caller,
+    required bool video,
+  }) async {
+    if (room.isEmpty) return;
+    try {
+      await FlutterCallkitIncoming.startCall(CallKitParams(
+        id: room,
+        nameCaller: caller.isEmpty ? 'Pichangol' : caller,
+        appName: 'Pichangol',
+        type: video ? 1 : 0,
+        extra: <String, dynamic>{'room': room, 'video': video, 'caller': caller},
+        android: const AndroidParams(
+          isCustomNotification: true,
+          isShowLogo: false,
+          backgroundColor: '#14463A',
+          actionColor: '#128C7E',
+          textColor: '#ffffff',
+        ),
+      ));
     } catch (_) {}
   }
 
@@ -352,8 +392,8 @@ class LlamadaService {
     } catch (_) {}
   }
 
-  /// Lee (room, video, nombre) del `extra` de un evento/llamada de CallKit.
-  static (String, bool, String)? _extraDe(dynamic evt) {
+  /// Lee (room, video, nombre, hilo) del `extra` de un evento/llamada de CallKit.
+  static (String, bool, String, String)? _extraDe(dynamic evt) {
     Map? extra;
     try {
       final b = evt.body;
@@ -369,7 +409,8 @@ class LlamadaService {
     if (room.isEmpty) return null;
     final video = extra?['video'] == true || extra?['video'] == 'true';
     final nombre = ((extra?['caller']) ?? '').toString();
-    return (room, video, nombre);
+    final hilo = ((extra?['hilo']) ?? '').toString();
+    return (room, video, nombre, hilo);
   }
 
   /// Al ARRANCAR la app (p. ej. cuando se contestó con la app cerrada y arrancó

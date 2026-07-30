@@ -25,6 +25,7 @@ Future<void> pushBackgroundHandler(RemoteMessage message) async {
       room: LlamadaService.salaChat(hilo),
       caller: (message.data['caller'] ?? '').toString(),
       video: (message.data['video'] ?? '') == 'true',
+      hilo: hilo,
     );
   }
 }
@@ -108,6 +109,7 @@ class PushService {
         room: LlamadaService.salaChat(hilo),
         caller: (m.data['caller'] ?? '').toString(),
         video: (m.data['video'] ?? '') == 'true',
+        hilo: hilo,
       );
       return;
     }

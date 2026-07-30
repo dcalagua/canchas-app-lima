@@ -59,12 +59,14 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
         await _svc.iniciar(
             callId: widget.callId,
             video: widget.video,
-            nombreOtro: widget.nombreOtro);
+            nombreOtro: widget.nombreOtro,
+            fotoOtro: widget.fotoUrl);
       } else {
         await _svc.contestar(
             callId: widget.callId,
             video: widget.video,
-            nombreOtro: widget.nombreOtro);
+            nombreOtro: widget.nombreOtro,
+            fotoOtro: widget.fotoUrl);
       }
     } catch (e) {
       // No cerramos de golpe (se veía como "la pantalla no abre"): mostramos el

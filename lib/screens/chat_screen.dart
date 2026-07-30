@@ -661,13 +661,18 @@ class _ChatScreenState extends State<ChatScreen> {
       creado: DateTime.now(),
     ));
     if (!mounted) return;
+    final nombre =
+        appState.nombreMostrableDe(_contraparteEmail) ?? _contraparteEmail;
+    // Notificación de "llamada en curso" para el que llama (visible al
+    // minimizar toda la app). En quien contesta la crea el entrante.
+    LlamadaService.marcarLlamadaSaliente(
+        room: sala, caller: nombre, video: video);
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => LlamadaScreen(
         callId: sala,
         video: video,
         iniciar: true,
-        nombreOtro:
-            appState.nombreMostrableDe(_contraparteEmail) ?? _contraparteEmail,
+        nombreOtro: nombre,
         fotoUrl: appState.fotoDe(_contraparteEmail) ?? '',
       ),
     ));

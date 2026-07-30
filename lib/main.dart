@@ -38,8 +38,9 @@ void main() async {
   };
   // Al CONTESTAR una llamada entrante (CallKit), abre la pantalla de llamada
   // WebRTC en modo "contestar".
-  LlamadaService.alContestar = (room, video, nombre) {
+  LlamadaService.alContestar = (room, video, nombre, hilo) {
     if (room.isEmpty) return;
+    final foto = _fotoDeHilo(hilo); // foto del que llama (para la pantalla)
     // El navegador puede no estar montado todavía (resume / arranque en frío):
     // reintenta unos instantes hasta que exista, y recién ahí abre la pantalla.
     void abrir([int intento = 0]) {
@@ -53,7 +54,11 @@ void main() async {
       }
       nav.push(MaterialPageRoute(
           builder: (_) => LlamadaScreen(
-              callId: room, video: video, iniciar: false, nombreOtro: nombre)));
+              callId: room,
+              video: video,
+              iniciar: false,
+              nombreOtro: nombre,
+              fotoUrl: foto)));
     }
 
     abrir();
@@ -145,6 +150,17 @@ class _PichangolAppState extends State<PichangolApp>
   }
 }
 
+/// Deduce la foto del OTRO participante a partir del hilo directo
+/// (`directo_<a>|<b>`): el correo que no es el mío → su foto de perfil.
+String _fotoDeHilo(String hilo) {
+  if (!hilo.startsWith('directo_')) return '';
+  final partes = hilo.substring('directo_'.length).split('|');
+  if (partes.length != 2) return '';
+  final yo = (appState.usuario?.email ?? '').trim().toLowerCase();
+  final otro = partes[0] == yo ? partes[1] : partes[0];
+  return appState.fotoDe(otro) ?? '';
+}
+
 /// Reabre la pantalla completa de una llamada EN CURSO (no arranca nada). La
 /// usan la barra "volver a la llamada" y el resume del ciclo de vida.
 void abrirLlamadaEnCurso() {
@@ -158,6 +174,7 @@ void abrirLlamadaEnCurso() {
       iniciar: false,
       reattach: true,
       nombreOtro: svc.nombreOtro,
+      fotoUrl: svc.fotoOtro,
     ),
   ));
 }

@@ -68,6 +68,7 @@ class LlamadaWebRTC extends ChangeNotifier {
   RTCSessionDescription? _offerGuardada;
 
   String nombreOtro = '';
+  String fotoOtro = ''; // foto del contacto (para la pantalla y la barra)
   DateTime? conectadoEn;
 
   Map<String, dynamic> get _iceServers {
@@ -122,6 +123,7 @@ class LlamadaWebRTC extends ChangeNotifier {
     required String callId,
     required bool video,
     String nombreOtro = '',
+    String fotoOtro = '',
   }) async {
     if (_pc != null) {
       _diag('iniciar IGNORADO (ya hay llamada activa)');
@@ -130,6 +132,7 @@ class LlamadaWebRTC extends ChangeNotifier {
     _soyElQueLlama = true;
     this.video = video;
     this.nombreOtro = nombreOtro;
+    this.fotoOtro = fotoOtro;
     _diag('iniciar sala=$callId');
     await _prepararMedia(video);
     await _crearPeer();
@@ -147,6 +150,7 @@ class LlamadaWebRTC extends ChangeNotifier {
     required String callId,
     required bool video,
     String nombreOtro = '',
+    String fotoOtro = '',
   }) async {
     if (_pc != null) {
       _diag('contestar IGNORADO (ya hay llamada activa)');
@@ -155,6 +159,7 @@ class LlamadaWebRTC extends ChangeNotifier {
     _soyElQueLlama = false;
     this.video = video;
     this.nombreOtro = nombreOtro;
+    this.fotoOtro = fotoOtro;
     _diag('contestar sala=$callId');
     await _prepararMedia(video);
     await _crearPeer();
