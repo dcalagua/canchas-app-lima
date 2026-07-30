@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
@@ -53,6 +54,9 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
   // En modo entrante: false hasta que el usuario toca "Contestar" (recién ahí
   // se arranca el WebRTC). Mientras, se muestra la pantalla de entrante.
   bool _entranteContestada = false;
+  // Tono de llamada (ringback) para QUIEN LLAMA mientras espera respuesta.
+  AudioPlayer? _ringback;
+  bool _ringbackOn = false;
 
   @override
   void initState() {
@@ -156,6 +160,7 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
     // En modo entrante, antes de contestar, no reacciones a cambios del motor
     // (no hay llamada arrancada todavía).
     if (widget.modoEntrante && !_entranteContestada) return;
+    _actualizarRingback();
     // Si estamos mostrando un error de arranque, no cierres solo: deja que el
     // usuario lea el motivo y salga con el botón.
     if (_error != null) {
@@ -166,6 +171,34 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
       _cerrar();
     } else {
       setState(() {});
+    }
+  }
+
+  /// Tono de llamada (ringback) para QUIEN LLAMA mientras el otro no contesta.
+  /// Suena solo en estado "llamando"; se detiene al conectar/colgar/errores.
+  void _actualizarRingback() {
+    final debeSonar = widget.iniciar &&
+        _error == null &&
+        _svc.estado == EstadoLlamada.llamando;
+    if (debeSonar && !_ringbackOn) {
+      _ringbackOn = true;
+      () async {
+        try {
+          _ringback ??= AudioPlayer();
+          await _ringback!.setReleaseMode(ReleaseMode.loop);
+          await _ringback!.play(AssetSource('sonidos/ringback.wav'));
+          if (!_ringbackOn) {
+            try {
+              await _ringback!.stop();
+            } catch (_) {}
+          }
+        } catch (_) {}
+      }();
+    } else if (!debeSonar && _ringbackOn) {
+      _ringbackOn = false;
+      try {
+        _ringback?.stop();
+      } catch (_) {}
     }
   }
 
@@ -180,6 +213,11 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
   @override
   void dispose() {
     LlamadaWebRTC.pantallaVisible = false;
+    _ringbackOn = false;
+    try {
+      _ringback?.stop();
+      _ringback?.dispose();
+    } catch (_) {}
     _tick?.cancel();
     _svc.removeListener(_onCambio);
     super.dispose();

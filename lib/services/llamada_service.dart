@@ -1,9 +1,6 @@
-import 'dart:async';
 import 'dart:convert';
 
-import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -79,63 +76,6 @@ class LlamadaService {
       alEntranteEnApp;
 
   static bool _abriendo = false;
-
-  // ── Timbre PROPIO de la app ────────────────────────────────────────────────
-  // En Xiaomi/HyperOS el tono de CallKit muere al ~1 s. Reproducimos NUESTRO
-  // timbre en loop desde que entra la llamada hasta que se contesta/rechaza/
-  // expira, para que suene continuo mientras el proceso esté vivo.
-  static AudioPlayer? _timbre;
-  static Timer? _timbreVib;
-  static Timer? _timbreTope; // corte de seguridad (por si no llega el timeout)
-  // Generación: cada _detenerTimbre la incrementa. Si un _iniciarTimbre estaba a
-  // medio arrancar (play es async), al terminar ve que cambió y NO deja sonando
-  // el tono (evita el "pichan" que se colaba DESPUÉS de rechazar).
-  static int _timbreGen = 0;
-
-  static Future<void> _iniciarTimbre() async {
-    final gen = ++_timbreGen;
-    try {
-      _timbre ??= AudioPlayer();
-      await _timbre!.setReleaseMode(ReleaseMode.loop);
-      await _timbre!.setVolume(1.0);
-      if (gen != _timbreGen) return; // se detuvo mientras preparábamos
-      await _timbre!.play(AssetSource('sonidos/pichan.mp3'));
-      if (gen != _timbreGen) {
-        // se detuvo justo mientras arrancaba → apágalo de nuevo.
-        try {
-          await _timbre!.stop();
-        } catch (_) {}
-        return;
-      }
-    } catch (_) {}
-    // Vibración en cadencia mientras suena.
-    _timbreVib?.cancel();
-    try {
-      HapticFeedback.mediumImpact();
-      _timbreVib = Timer.periodic(const Duration(milliseconds: 1500), (_) {
-        if (gen != _timbreGen) return;
-        try {
-          HapticFeedback.mediumImpact();
-        } catch (_) {}
-      });
-    } catch (_) {}
-    // Nunca sonar más de 45 s (por si el evento timeout de CallKit no llega).
-    _timbreTope?.cancel();
-    _timbreTope = Timer(const Duration(seconds: 45), () {
-      _detenerTimbre();
-    });
-  }
-
-  static Future<void> _detenerTimbre() async {
-    _timbreGen++; // invalida cualquier arranque en curso
-    _timbreVib?.cancel();
-    _timbreVib = null;
-    _timbreTope?.cancel();
-    _timbreTope = null;
-    try {
-      await _timbre?.stop();
-    } catch (_) {}
-  }
 
   /// ¿La sala de este hilo sonó como llamada entrante hace poco (o justo ahora)?
   /// Lo usa el push de chat para NO reproducir el sonido "Pichan" de aviso cuando
@@ -336,7 +276,6 @@ class LlamadaService {
   /// cuenta) y deja la notificación de "llamada en curso". La pantalla, en
   /// paralelo, arranca el WebRTC para atender.
   static Future<void> aceptarEntranteEnApp(String room) async {
-    await _detenerTimbre();
     final datos = await _leerPendiente();
     // Limpia la pendiente para que el `resume` no vuelva a abrir otra pantalla.
     await _limpiarPendiente();
@@ -353,7 +292,6 @@ class LlamadaService {
 
   /// El usuario tocó "Rechazar" en la pantalla de entrante DENTRO de la app.
   static Future<void> rechazarEntranteEnApp(String room) async {
-    await _detenerTimbre();
     final datos = await _leerPendiente(); // nombre/video para el historial
     await _limpiarPendiente();
     // Que el dedup y el resume no la revivan.
@@ -526,10 +464,9 @@ class LlamadaService {
         // con el teléfono bloqueado/en reposo), como WhatsApp.
         isShowFullLockedScreen: true,
         isShowCallID: true,
-        // Timbre en SILENCIO a propósito: el timbre real lo pone la app
-        // (LlamadaService._iniciarTimbre) para que suene continuo en Xiaomi/
-        // HyperOS (donde el de CallKit se corta) y no haya doble tono.
-        ringtonePath: 'silencio',
+        // Timbre ESTÁNDAR del sistema (lo maneja CallKit de forma nativa, con
+        // vibración). Es lo más confiable en la mayoría de equipos.
+        ringtonePath: 'system_ringtone_default',
         backgroundColor: '#14463A',
         actionColor: '#128C7E',
         textColor: '#ffffff',
@@ -540,8 +477,6 @@ class LlamadaService {
     try {
       await FlutterCallkitIncoming.showCallkitIncoming(params);
     } catch (_) {}
-    // Timbre propio en loop (el de CallKit muere al segundo en Xiaomi/HyperOS).
-    await _iniciarTimbre();
   }
 
   /// Otro dispositivo de mi cuenta ya atendió/rechazó la llamada: apaga el
@@ -549,7 +484,6 @@ class LlamadaService {
   /// en esa llamada.
   static Future<void> cancelarEntrante(String room) async {
     _log('cancelarEntrante room=$room (atendida en otro dispositivo)');
-    await _detenerTimbre();
     if (LlamadaWebRTC.instance.activa) return; // yo ya estoy en la llamada
     // Limpia la pendiente ANTES de endAllCalls: si esa llamada dispara un evento
     // `ended` colateral, el handler lo verá sin pendiente y no hará nada (no
@@ -626,14 +560,6 @@ class LlamadaService {
         // en la tablet). El fallback in-app se salta si hubo un accept hace poco.
         if (t.contains('accept')) {
           _aceptadoTs = DateTime.now().millisecondsSinceEpoch;
-        }
-        // Cualquier acción sobre la entrante (contestar/rechazar/colgar/timeout)
-        // detiene nuestro timbre.
-        if (t.contains('accept') ||
-            t.contains('decline') ||
-            t.contains('ended') ||
-            t.contains('timeout')) {
-          await _detenerTimbre();
         }
         // Rechazar/colgar desde la pantalla nativa → termina la llamada.
         if (t.contains('decline') || t.contains('ended')) {

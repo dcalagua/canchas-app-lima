@@ -654,6 +654,7 @@ class _ChatScreenState extends State<ChatScreen> {
     // pantalla completa (como WhatsApp cuando tocas el chat de la llamada), en
     // vez de dejar solo la barra de arriba.
     if (LlamadaWebRTC.instance.activa) {
+      // Si ya estás viendo la pantalla, no apiles otra.
       if (!LlamadaWebRTC.pantallaVisible) {
         final svc = LlamadaWebRTC.instance;
         Navigator.of(context).push(MaterialPageRoute(
@@ -670,6 +671,7 @@ class _ChatScreenState extends State<ChatScreen> {
       }
       return;
     }
+    // Abre la pantalla completa AL INSTANTE (antes del envío del aviso).
 
     // Las llamadas 1:1 SIEMPRE van al hilo DIRECTO con la persona: así no se
     // fragmentan entre el chat de academia/cancha y el chat personal (todo se
@@ -694,10 +696,6 @@ class _ChatScreenState extends State<ChatScreen> {
         emailOtro: otro,
       ),
     ));
-    // Notificación de "llamada en curso" para el que llama (visible al
-    // minimizar toda la app). En quien contesta la crea el entrante.
-    LlamadaService.marcarLlamadaSaliente(
-        room: sala, caller: nombre, video: video);
     // Aviso en el chat → el backend manda el push de llamada al otro.
     await MensajesRepo.enviar(Mensaje(
       id: 'msg_${DateTime.now().microsecondsSinceEpoch}',
