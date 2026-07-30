@@ -11,6 +11,7 @@ import 'cobros_screen.dart';
 import 'crear_academia_screen.dart';
 import 'cuenta_screen.dart';
 import 'mi_academia_screen.dart';
+import 'planes_screen.dart';
 import 'reporte_academia_screen.dart';
 import 'servicios_screen.dart';
 
@@ -46,6 +47,7 @@ class _AcademiaShellState extends State<AcademiaShell> {
           const azul = Color(0xFF2AA9E0);
           final paginas = <Widget>[
             const MiAcademiaScreen(), // panel (alumnos, plata, código)
+            PlanesScreen(academia: ac), // plan de trabajo + evaluación
             CobrosScreen(academiaId: ac.id),
             AsistenciaScreen(academiaId: ac.id),
             ChatsAcademiaScreen(academiaId: ac.id),
@@ -55,6 +57,7 @@ class _AcademiaShellState extends State<AcademiaShell> {
           ];
           final iconos = <IconData>[
             Icons.sports_tennis,
+            Icons.assignment_outlined,
             Icons.payments_outlined,
             Icons.fact_check_outlined,
             Icons.forum_outlined,
@@ -64,6 +67,7 @@ class _AcademiaShellState extends State<AcademiaShell> {
           ];
           final etiquetas = <String>[
             'Academia',
+            'Plan',
             'Cobros',
             'Asistencia',
             'Mensajes',
@@ -71,8 +75,17 @@ class _AcademiaShellState extends State<AcademiaShell> {
             'Reporte',
             'Billetera',
           ];
-          final colores = <Color>[teal, lima, azul, lima, amarillo, morado, amarillo];
-          const iMensajes = 3;
+          final colores = <Color>[
+            teal,
+            naranja,
+            lima,
+            azul,
+            lima,
+            amarillo,
+            morado,
+            amarillo,
+          ];
+          const iMensajes = 4;
           final idx = _index.clamp(0, paginas.length - 1);
           return Scaffold(
             body: IndexedStack(index: idx, children: paginas),
@@ -96,6 +109,7 @@ class _AcademiaShellState extends State<AcademiaShell> {
         const azul = Color(0xFF2AA9E0);
         final items = <(IconData, String, Color)>[
           (Icons.sports_tennis, 'Academia', teal),
+          (Icons.assignment_outlined, 'Plan', naranja),
           (Icons.payments_outlined, 'Cobros', lima),
           (Icons.forum_outlined, 'Mensajes', lima), // ignora: va ícono WhatsApp
           (Icons.emoji_events_outlined, 'Campeonatos', amarillo),
@@ -134,6 +148,7 @@ class _AcademiaShellState extends State<AcademiaShell> {
                     index: idx,
                     children: [
                       const MiAcademiaScreen(),
+                      PlanesScreen(academia: ac),
                       CobrosScreen(academiaId: ac.id),
                       ChatsAcademiaScreen(academiaId: ac.id),
                       CampeonatosScreen(academiaId: ac.id),

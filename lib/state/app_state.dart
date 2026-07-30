@@ -32,6 +32,8 @@ import '../models/club.dart';
 import '../models/invitacion.dart';
 import '../models/models.dart';
 import '../models/negocio.dart';
+import '../models/plan_trabajo.dart';
+import '../data/planes_semilla.dart';
 import '../models/resena.dart';
 import '../models/reserva_fija.dart';
 import '../models/temporada.dart';
@@ -774,6 +776,8 @@ class AppState extends ChangeNotifier {
   final List<Cuota> cuotas = [];
   final List<Asistencia> asistencias = [];
   final List<Invitacion> invitaciones = []; // invitaciones profe → alumno
+  final List<PlanTrabajo> planes = []; // planes de trabajo (por academia)
+  final List<EvaluacionAlumno> evaluaciones = []; // rúbrica por alumno/plan
 
   // Última vez que el usuario abrió cada hilo de chat (hilo → ISO). Sirve para
   // el contador de "no leídos" (Etapa A del chat).
@@ -1902,6 +1906,10 @@ class AppState extends ChangeNotifier {
     alumnos.removeWhere((al) => al.academiaId == id);
     cuotas.removeWhere((c) => c.academiaId == id);
     asistencias.removeWhere((a) => a.academiaId == id);
+    final planesBorrados =
+        planes.where((p) => p.academiaId == id).map((p) => p.id).toSet();
+    planes.removeWhere((p) => p.academiaId == id);
+    evaluaciones.removeWhere((e) => planesBorrados.contains(e.planId));
     notifyListeners();
     _persistirDatos();
     AcademiasRepo.eliminar(id); // borrado lógico durable en la nube
@@ -2401,6 +2409,7 @@ class AppState extends ChangeNotifier {
     alumnos.removeWhere((a) => a.id == alumnoId);
     cuotas.removeWhere((c) => c.alumnoId == alumnoId);
     asistencias.removeWhere((a) => a.alumnoId == alumnoId);
+    evaluaciones.removeWhere((e) => e.alumnoId == alumnoId);
     notifyListeners();
     _persistirDatos();
     MatriculasRepo.eliminar(alumnoId); // borrado lógico durable en la nube
@@ -3250,6 +3259,144 @@ class AppState extends ChangeNotifier {
     _asistenciaAvisada.add('$alumnoId|$dia');
     notifyListeners();
     _persistirDatos();
+  }
+
+  // ── Planes de trabajo del profe + evaluación de alumnos ────────────────────
+
+  /// Planes de trabajo GUARDADOS de una academia (los que el profe creó/editó).
+  List<PlanTrabajo> planesDe(String academiaId) =>
+      planes.where((p) => p.academiaId == academiaId).toList();
+
+  /// Plantilla Pichangol para el deporte de la academia (por ahora tenis). Es
+  /// una PLANTILLA (no persistida): se ofrece como base para "usar/duplicar".
+  PlanTrabajo? plantillaDe(Academia ac) {
+    if (ac.deporte == Deporte.tenis) return plantillaTenisPichangol(ac.id);
+    return null; // otros deportes: se replican después (mismo molde)
+  }
+
+  /// Clona un plan (plantilla o propio) como un plan NUEVO editable de la
+  /// academia y lo guarda. Devuelve el id del nuevo plan.
+  String clonarPlan(PlanTrabajo base, {String? nombre}) {
+    final nuevo = base.copyWith(
+      id: 'plan_${DateTime.now().microsecondsSinceEpoch}',
+      nombre: nombre ?? base.nombre,
+      esPlantilla: false,
+    );
+    planes.add(nuevo);
+    notifyListeners();
+    _persistirDatos();
+    return nuevo.id;
+  }
+
+  /// Crea un plan VACÍO (desde cero) para una academia. Devuelve su id.
+  String crearPlanVacio(String academiaId, String deporte,
+      {String nombre = 'Nuevo plan', String nivel = ''}) {
+    final nuevo = PlanTrabajo(
+      id: 'plan_${DateTime.now().microsecondsSinceEpoch}',
+      academiaId: academiaId,
+      deporte: deporte,
+      nombre: nombre,
+      nivel: nivel,
+    );
+    planes.add(nuevo);
+    notifyListeners();
+    _persistirDatos();
+    return nuevo.id;
+  }
+
+  PlanTrabajo? planPorId(String id) {
+    for (final p in planes) {
+      if (p.id == id) return p;
+    }
+    return null;
+  }
+
+  /// Guarda (upsert) un plan editado.
+  void guardarPlan(PlanTrabajo plan) {
+    final i = planes.indexWhere((p) => p.id == plan.id);
+    if (i >= 0) {
+      planes[i] = plan;
+    } else {
+      planes.add(plan);
+    }
+    notifyListeners();
+    _persistirDatos();
+  }
+
+  void eliminarPlan(String planId) {
+    planes.removeWhere((p) => p.id == planId);
+    evaluaciones.removeWhere((e) => e.planId == planId);
+    notifyListeners();
+    _persistirDatos();
+  }
+
+  /// Nivel evaluado de una habilidad de un alumno en un plan (null = sin evaluar).
+  NivelLogro? nivelDe(String alumnoId, String planId, String habilidad) {
+    for (final e in evaluaciones) {
+      if (e.alumnoId == alumnoId &&
+          e.planId == planId &&
+          e.habilidad == habilidad) {
+        return e.nivel;
+      }
+    }
+    return null;
+  }
+
+  /// Evalúa (upsert) una habilidad de un alumno en un plan.
+  void evaluar(
+      String alumnoId, String planId, String habilidad, NivelLogro nivel) {
+    final reg = EvaluacionAlumno(
+      alumnoId: alumnoId,
+      planId: planId,
+      habilidad: habilidad,
+      nivel: nivel,
+      cuando: DateTime.now(),
+    );
+    final i = evaluaciones.indexWhere((e) =>
+        e.alumnoId == alumnoId &&
+        e.planId == planId &&
+        e.habilidad == habilidad);
+    if (i >= 0) {
+      evaluaciones[i] = reg;
+    } else {
+      evaluaciones.add(reg);
+    }
+    notifyListeners();
+    _persistirDatos();
+  }
+
+  /// Resumen de progreso de un alumno en un plan: cuántas habilidades hay en cada
+  /// nivel y el % de avance (promedio de niveles / máximo). Sirve para el carnet.
+  ({int total, int logrado, int enProceso, int inicial, int sinEvaluar, double pct})
+      progresoAlumno(String alumnoId, PlanTrabajo plan) {
+    var logrado = 0, enProceso = 0, inicial = 0, sinEvaluar = 0, suma = 0;
+    for (final h in plan.habilidades) {
+      final n = nivelDe(alumnoId, plan.id, h);
+      if (n == null) {
+        sinEvaluar++;
+        continue;
+      }
+      suma += n.valor;
+      switch (n) {
+        case NivelLogro.logrado:
+          logrado++;
+        case NivelLogro.enProceso:
+          enProceso++;
+        case NivelLogro.inicial:
+          inicial++;
+      }
+    }
+    final total = plan.habilidades.length;
+    // % sobre el máximo posible (todas en "Logrado" = valor 2).
+    final pct = total == 0 ? 0.0 : (suma / (total * 2)) * 100;
+    return (
+      total: total,
+      logrado: logrado,
+      enProceso: enProceso,
+      inicial: inicial,
+      sinEvaluar: sinEvaluar,
+      pct: pct,
+    );
   }
 
   static String _mesNombre(DateTime d) {
@@ -4648,6 +4795,8 @@ class AppState extends ChangeNotifier {
   static const _kAlumnos = 'alumnos_json';
   static const _kCuotas = 'cuotas_json';
   static const _kAsistencias = 'asistencias_json';
+  static const _kPlanes = 'planes_trabajo_json';
+  static const _kEvaluaciones = 'evaluaciones_json';
   static const _kCampeonatos = 'campeonatos_json';
   static const _kInvitaciones = 'invitaciones_json';
   static const _kChatLecturas = 'chat_lecturas_json';
@@ -4863,6 +5012,8 @@ class AppState extends ChangeNotifier {
       _cargarLista(prefs, _kAlumnos, alumnos, Alumno.fromJson);
       _cargarLista(prefs, _kCuotas, cuotas, Cuota.fromJson);
       _cargarLista(prefs, _kAsistencias, asistencias, Asistencia.fromJson);
+      _cargarLista(prefs, _kPlanes, planes, PlanTrabajo.fromJson);
+      _cargarLista(prefs, _kEvaluaciones, evaluaciones, EvaluacionAlumno.fromJson);
       _cargarLista(prefs, _kCampeonatos, campeonatos, Campeonato.fromJson);
       _cargarLista(prefs, _kInvitaciones, invitaciones, Invitacion.fromJson);
 
@@ -5062,6 +5213,10 @@ class AppState extends ChangeNotifier {
           _kCuotas, jsonEncode(cuotas.map((c) => c.toJson()).toList()));
       await prefs.setString(_kAsistencias,
           jsonEncode(asistencias.map((a) => a.toJson()).toList()));
+      await prefs.setString(
+          _kPlanes, jsonEncode(planes.map((p) => p.toJson()).toList()));
+      await prefs.setString(_kEvaluaciones,
+          jsonEncode(evaluaciones.map((e) => e.toJson()).toList()));
       await prefs.setString(_kCampeonatos,
           jsonEncode(campeonatos.map((c) => c.toJson()).toList()));
       await prefs.setString(_kInvitaciones,
@@ -5201,6 +5356,8 @@ class AppState extends ChangeNotifier {
     alumnos.clear();
     cuotas.clear();
     asistencias.clear();
+    planes.clear();
+    evaluaciones.clear();
     invitaciones.clear();
     campeonatos.clear();
     movimientos.clear();
@@ -5267,6 +5424,8 @@ class AppState extends ChangeNotifier {
     alumnos.clear();
     cuotas.clear();
     asistencias.clear();
+    planes.clear();
+    evaluaciones.clear();
     movimientos.clear();
     campeonatos.clear();
     saldoClub = 0;
