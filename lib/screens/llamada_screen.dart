@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../services/llamada_service.dart';
 import '../services/llamada_webrtc.dart';
 import '../theme.dart';
 
@@ -22,6 +23,7 @@ class LlamadaScreen extends StatefulWidget {
     this.fotoUrl = '',
     this.emailOtro = '',
     this.reattach = false,
+    this.modoEntrante = false,
   });
 
   final String callId;
@@ -33,6 +35,11 @@ class LlamadaScreen extends StatefulWidget {
   // reattach = solo VOLVER a mostrar una llamada que ya está en curso (no
   // arranca nada). Lo usa la barra "volver a la llamada" y el resume.
   final bool reattach;
+  // modoEntrante = pantalla de llamada ENTRANTE dentro de la app (Contestar/
+  // Rechazar) ANTES de atender. Fallback para equipos (Xiaomi/HyperOS) donde el
+  // botón "Contestar" de la notificación de CallKit no llega. Al contestar,
+  // recién arranca el WebRTC (como si `iniciar=false`).
+  final bool modoEntrante;
 
   @override
   State<LlamadaScreen> createState() => _LlamadaScreenState();
@@ -43,6 +50,9 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
   Timer? _tick;
   String? _error; // si falla arrancar (p. ej. sin permiso de mic/cámara)
   bool _errorPermiso = false; // el error es por permisos → mostrar "Ajustes"
+  // En modo entrante: false hasta que el usuario toca "Contestar" (recién ahí
+  // se arranca el WebRTC). Mientras, se muestra la pantalla de entrante.
+  bool _entranteContestada = false;
 
   @override
   void initState() {
@@ -50,7 +60,8 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
     LlamadaWebRTC.pantallaVisible = true;
     _svc.addListener(_onCambio);
     // reattach = solo volver a mostrar una llamada en curso: NO arranca nada.
-    if (!widget.reattach) _arrancar();
+    // modoEntrante = espera a que el usuario toque "Contestar" para arrancar.
+    if (!widget.reattach && !widget.modoEntrante) _arrancar();
     // Refresca la duración cada segundo.
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted && _svc.estado == EstadoLlamada.enLlamada) setState(() {});
@@ -126,8 +137,24 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
     }
   }
 
+  /// El usuario tocó "Contestar" en la pantalla de entrante in-app.
+  Future<void> _contestarEntrante() async {
+    setState(() => _entranteContestada = true);
+    await LlamadaService.aceptarEntranteEnApp(widget.callId);
+    await _arrancar(); // iniciar=false → atiende (contestar)
+  }
+
+  /// El usuario tocó "Rechazar" en la pantalla de entrante in-app.
+  Future<void> _rechazarEntrante() async {
+    await LlamadaService.rechazarEntranteEnApp(widget.callId);
+    _cerrar();
+  }
+
   void _onCambio() {
     if (!mounted) return;
+    // En modo entrante, antes de contestar, no reacciones a cambios del motor
+    // (no hay llamada arrancada todavía).
+    if (widget.modoEntrante && !_entranteContestada) return;
     // Si estamos mostrando un error de arranque, no cierres solo: deja que el
     // usuario lea el motivo y salga con el botón.
     if (_error != null) {
@@ -182,6 +209,8 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
   @override
   Widget build(BuildContext context) {
     if (_error != null) return _pantallaError();
+    // Entrante dentro de la app: mostrar Contestar/Rechazar hasta que conteste.
+    if (widget.modoEntrante && !_entranteContestada) return _pantallaEntrante();
     final enLlamada = _svc.estado == EstadoLlamada.enLlamada;
     final hayVideoRemoto = _svc.video && _svc.remoto.srcObject != null;
     // canPop:true → "atrás" MINIMIZA la llamada (no la corta): se cierra la
@@ -307,6 +336,104 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
             if (!enLlamada) _velo(),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Pantalla de llamada ENTRANTE dentro de la app (Contestar/Rechazar).
+  Widget _pantallaEntrante() {
+    final nombre =
+        widget.nombreOtro.isEmpty ? 'Pichangol' : widget.nombreOtro;
+    return PopScope(
+      canPop: true,
+      child: Scaffold(
+        backgroundColor: const Color(0xFF0B141A),
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            _fondoAvatar(),
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Container(color: Colors.black.withOpacity(0.25)),
+              ),
+            ),
+            // Nombre + tipo de llamada arriba.
+            Positioned(
+              top: 96,
+              left: 24,
+              right: 24,
+              child: Column(
+                children: [
+                  Text(
+                    nombre,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 26,
+                        fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    widget.video
+                        ? 'Videollamada de Pichangol…'
+                        : 'Llamada de Pichangol…',
+                    style: const TextStyle(color: Colors.white70, fontSize: 15),
+                  ),
+                ],
+              ),
+            ),
+            // Botones Rechazar / Contestar abajo.
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 56,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _accionEntrante(
+                    icono: Icons.call_end,
+                    color: clayOscuro,
+                    etiqueta: 'Rechazar',
+                    onTap: _rechazarEntrante,
+                  ),
+                  _accionEntrante(
+                    icono: widget.video ? Icons.videocam : Icons.call,
+                    color: const Color(0xFF128C7E),
+                    etiqueta: 'Contestar',
+                    onTap: _contestarEntrante,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _accionEntrante({
+    required IconData icono,
+    required Color color,
+    required String etiqueta,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            child: Icon(icono, color: Colors.white, size: 32),
+          ),
+          const SizedBox(height: 10),
+          Text(etiqueta,
+              style: const TextStyle(color: Colors.white, fontSize: 14)),
+        ],
       ),
     );
   }

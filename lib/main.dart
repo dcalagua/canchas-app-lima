@@ -65,6 +65,24 @@ void main() async {
 
     abrir();
   };
+  // Fallback (Xiaomi/HyperOS): mostrar la llamada ENTRANTE DENTRO de la app
+  // (Contestar/Rechazar) cuando el evento "Contestar" de CallKit no llega.
+  LlamadaService.alEntranteEnApp = (room, video, nombre, hilo) {
+    if (room.isEmpty) return;
+    final foto = _fotoDeHilo(hilo);
+    final email = _emailDeHilo(hilo);
+    final nav = PushService.navigatorKey.currentState;
+    if (nav == null) return;
+    nav.push(MaterialPageRoute(
+        builder: (_) => LlamadaScreen(
+            callId: room,
+            video: video,
+            iniciar: false,
+            modoEntrante: true,
+            nombreOtro: nombre,
+            fotoUrl: foto,
+            emailOtro: email)));
+  };
   runApp(const PichangolApp());
   // Si la app arrancó porque se CONTESTÓ una llamada con la app cerrada, abre la
   // pantalla de llamada una vez montado el navegador.

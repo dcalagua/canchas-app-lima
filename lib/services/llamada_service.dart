@@ -68,6 +68,13 @@ class LlamadaService {
   /// otros dispositivos de la cuenta (envía push de cancelación por el backend).
   static Future<void> Function(String room)? alAtender;
 
+  /// Lo setea main.dart: muestra la pantalla de llamada ENTRANTE **dentro de la
+  /// app** (Contestar/Rechazar). Es el FALLBACK para equipos (p. ej. Xiaomi/
+  /// HyperOS) donde el botón "Contestar" de la notificación de CallKit NO emite
+  /// el evento al stream `onEvent` — sin esto, contestar no hace nada.
+  static void Function(String room, bool video, String nombre, String hilo)?
+      alEntranteEnApp;
+
   static bool _abriendo = false;
 
   // ── Registro de diagnóstico (se ve en Ajustes → Zona de pruebas) ───────────
@@ -171,9 +178,97 @@ class LlamadaService {
   /// Se llama desde el ciclo de vida de la app (`AppLifecycleState.resumed`):
   /// cuando el usuario toca "Contestar", Android trae la app al frente → aquí
   /// abrimos la pantalla completa **si ya estaba marcada como aceptada**.
-  static Future<void> revisarLlamadaResumida() {
+  static Future<void> revisarLlamadaResumida() async {
     _log('resume');
-    return _intentarContestar();
+    // Vía normal (equipos donde el evento "Contestar" de CallKit SÍ llega):
+    // si ya está marcada como aceptada, abre la pantalla para atender.
+    await _intentarContestar();
+    // Fallback (Xiaomi/HyperOS y equipos donde ese evento NO llega): si sigue
+    // sin aceptarse pero hay una entrante FRESCA sonando, muéstrala DENTRO de la
+    // app para poder contestar con un toque.
+    await revisarEntranteAlFrente();
+  }
+
+  // Frescura para mostrar la entrante DENTRO de la app: una llamada solo suena
+  // ~30-45 s, así que una pendiente más vieja que esto ya no está sonando.
+  static const int _entranteAppMaxSeg = 60;
+
+  /// Lee la pendiente SOLO si es una entrante fresca y aún NO aceptada (para el
+  /// fallback in-app). Devuelve (room, video, nombre, hilo).
+  static Future<(String, bool, String, String)?> _entranteFrescaParaApp() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.reload();
+      final raw = p.getString(_kPendiente);
+      if (raw == null) return null;
+      final m = jsonDecode(raw) as Map<String, dynamic>;
+      if (m['aceptada'] == true) return null; // la vía normal la atiende
+      final room = (m['room'] ?? '').toString();
+      if (room.isEmpty) return null;
+      final ts = (m['ts'] as num?)?.toInt();
+      if (ts == null) return null;
+      final edad = DateTime.now().millisecondsSinceEpoch - ts;
+      if (edad > _entranteAppMaxSeg * 1000) return null; // ya no suena
+      return (
+        room,
+        m['video'] == true,
+        (m['caller'] ?? '').toString(),
+        (m['hilo'] ?? '').toString(),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Fallback in-app: si la app vuelve al frente con una llamada entrante fresca
+  /// (aún sonando, sin aceptar) y NO hay ya una pantalla de llamada, la muestra
+  /// DENTRO de la app (Contestar/Rechazar). Cubre los equipos donde el evento
+  /// "Contestar" de CallKit no llega (Xiaomi/HyperOS).
+  static Future<void> revisarEntranteAlFrente() async {
+    if (alEntranteEnApp == null) return;
+    // Ya hay una pantalla de llamada visible (entrante o en curso) → no dupliques.
+    if (LlamadaWebRTC.pantallaVisible) return;
+    // El motor ya está en una llamada → nada que mostrar.
+    final est = LlamadaWebRTC.instance.estado;
+    if (est == EstadoLlamada.llamando ||
+        est == EstadoLlamada.conectando ||
+        est == EstadoLlamada.enLlamada) {
+      return;
+    }
+    final datos = await _entranteFrescaParaApp();
+    if (datos == null) return;
+    _log('entrante en app (fallback CallKit)');
+    alEntranteEnApp?.call(datos.$1, datos.$2, datos.$3, datos.$4);
+  }
+
+  /// El usuario tocó "Contestar" en la pantalla de entrante DENTRO de la app.
+  /// Marca la pendiente, apaga el timbre (en este equipo y en los otros de la
+  /// cuenta) y deja la notificación de "llamada en curso". La pantalla, en
+  /// paralelo, arranca el WebRTC para atender.
+  static Future<void> aceptarEntranteEnApp(String room) async {
+    final datos = await _leerPendiente();
+    // Limpia la pendiente para que el `resume` no vuelva a abrir otra pantalla.
+    await _limpiarPendiente();
+    if (room.isNotEmpty) alAtender?.call(room); // apaga timbre en otros equipos
+    try {
+      await FlutterCallkitIncoming.endAllCalls(); // corta el timbre de CallKit
+    } catch (_) {}
+    // Notificación de "llamada en curso" para poder volver si se minimiza la app.
+    if (datos != null) {
+      await marcarLlamadaSaliente(
+          room: datos.$1, caller: datos.$3, video: datos.$2);
+    }
+  }
+
+  /// El usuario tocó "Rechazar" en la pantalla de entrante DENTRO de la app.
+  static Future<void> rechazarEntranteEnApp(String room) async {
+    await _limpiarPendiente();
+    // Que el dedup y el resume no la revivan.
+    _ultEntranteRoom = room;
+    _ultEntranteTs = DateTime.now().millisecondsSinceEpoch;
+    try {
+      await FlutterCallkitIncoming.endAllCalls();
+    } catch (_) {}
   }
 
   // La llamada entrante se guarda en DISCO (SharedPreferences) al sonar, para
