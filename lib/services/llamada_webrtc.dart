@@ -43,7 +43,14 @@ class LlamadaWebRTC extends ChangeNotifier {
   RTCPeerConnection? _pc;
   MediaStream? _localStream;
   RealtimeChannel? _canal;
+  String _callId = ''; // sala de la llamada (para cancelar en el otro por push)
   Timer? _timeoutConexion; // corta si nunca engancha (rechazo perdido/no contesta)
+
+  /// Lo setea PushService: cuando el que LLAMA cuelga ANTES de conectar, apaga el
+  /// timbre del que RECIBE (que aún no está suscrito al canal) por push. (room,
+  /// correo del destino).
+  static Future<void> Function(String room, String emailDestino)?
+      alCancelarEntranteRemota;
 
   EstadoLlamada estado = EstadoLlamada.idle;
 
@@ -160,6 +167,7 @@ class LlamadaWebRTC extends ChangeNotifier {
       return; // evita doble arranque (crea 2 conexiones/canales)
     }
     _soyElQueLlama = true;
+    _callId = callId;
     this.video = video;
     this.nombreOtro = nombreOtro;
     this.fotoOtro = fotoOtro;
@@ -190,6 +198,7 @@ class LlamadaWebRTC extends ChangeNotifier {
       return; // evita doble arranque (crea 2 conexiones/canales)
     }
     _soyElQueLlama = false;
+    _callId = callId;
     this.video = video;
     this.nombreOtro = nombreOtro;
     this.fotoOtro = fotoOtro;
@@ -475,6 +484,19 @@ class LlamadaWebRTC extends ChangeNotifier {
     _timeoutConexion?.cancel();
     _timeoutConexion = null;
     if (avisar && _suscrito) _crudo({'t': 'bye'});
+    // Si YO llamo y cuelgo ANTES de conectar (no contestó / cancelé), el que
+    // recibe aún NO está suscrito al canal → el `bye` no le llega. Le mandamos
+    // un push de cancelación para apagarle el timbre (como WhatsApp).
+    if (avisar &&
+        _soyElQueLlama &&
+        conectadoEn == null &&
+        _callId.isNotEmpty &&
+        emailOtro.isNotEmpty) {
+      // Fire-and-forget: no bloquea el colgado ni el cierre de la pantalla.
+      try {
+        alCancelarEntranteRemota?.call(_callId, emailOtro);
+      } catch (_) {}
+    }
     // Registra la llamada en el historial (solo si el motor llegó a arrancar,
     // es decir hubo intento de llamada/contestar).
     if (nombreOtro.isNotEmpty || emailOtro.isNotEmpty) {
@@ -525,6 +547,7 @@ class LlamadaWebRTC extends ChangeNotifier {
     nombreOtro = '';
     fotoOtro = '';
     emailOtro = '';
+    _callId = '';
     notifyListeners();
   }
 }

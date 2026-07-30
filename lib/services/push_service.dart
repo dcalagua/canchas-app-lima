@@ -81,6 +81,8 @@ class PushService {
       LlamadaService.escucharEventos(); // botones de la llamada entrante
       // Al contestar en ESTE equipo, apaga el timbre en los otros de mi cuenta.
       LlamadaService.alAtender = cancelarLlamadaEnOtros;
+      // Si YO cuelgo antes de que contesten, apaga el timbre del que RECIBE.
+      LlamadaWebRTC.alCancelarEntranteRemota = cancelarLlamadaAlDestino;
       _ok = true;
     } catch (_) {
       _ok = false; // sin google-services.json / sin Firebase: push off
@@ -267,6 +269,22 @@ class PushService {
         'room': room,
         'email': _email,
         'excluir_token': _token ?? '',
+      });
+    } catch (_) {}
+  }
+
+  /// El que LLAMA colgó antes de que el otro conteste: manda un push de
+  /// cancelación al DESTINO ([emailDestino]) para apagarle el timbre (aún no está
+  /// suscrito al canal WebRTC, así que el `bye` no le llega). Misma Edge Function.
+  static Future<void> cancelarLlamadaAlDestino(
+      String room, String emailDestino) async {
+    final dest = emailDestino.trim().toLowerCase();
+    if (room.isEmpty || dest.isEmpty || !SupabaseService.disponible) return;
+    try {
+      await SupabaseService.client.functions.invoke('cancelar-llamada', body: {
+        'room': room,
+        'email': dest,
+        'excluir_token': '',
       });
     } catch (_) {}
   }
