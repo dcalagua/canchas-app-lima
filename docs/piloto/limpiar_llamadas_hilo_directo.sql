@@ -50,3 +50,23 @@ where m.tipo <> 'directo'
   and coalesce(trim(m.autor_email), '') <> ''
   and coalesce(trim(m.cuenta_email), '') <> ''
   and lower(trim(m.autor_email)) <> lower(trim(m.cuenta_email));
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 4) BORRAR chats de la academia DEMO "Jartur El Bosque" (seed_jartur_elbosque).
+--    Era data de prueba y causaba una segunda entrada del mismo usuario.
+--    (Ver primero, luego borrar.)
+
+-- Ver:
+select id, tipo, hilo, autor_email, cuenta_email, texto, creado
+from pichangol_mensajes
+where academia_id = 'seed_jartur_elbosque'
+   or hilo like 'seed_jartur_elbosque|%';
+
+-- Borrar:
+delete from pichangol_mensajes
+where academia_id = 'seed_jartur_elbosque'
+   or hilo like 'seed_jartur_elbosque|%';
+
+-- (Opcional) Si TODAS las academias 'seed_' son demo y quieres limpiar sus chats:
+-- delete from pichangol_mensajes
+-- where tipo = 'academia' and hilo like 'seed_%';
