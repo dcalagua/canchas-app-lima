@@ -661,6 +661,25 @@ class _ChatScreenState extends State<ChatScreen> {
     final String hiloLlamada =
         porDirecto ? Mensaje.hiloDirecto(u.email, otro) : _hilo;
     final sala = LlamadaService.salaChat(hiloLlamada);
+    final nombre = appState.nombreMostrableDe(otro) ??
+        (otro.isNotEmpty ? otro : widget.titulo);
+    // WhatsApp-style: abre la PANTALLA COMPLETA de la llamada AL INSTANTE (antes
+    // de mandar el aviso/push, que puede tardar por la red). Ahí adentro arranca
+    // el WebRTC y se ve "Llamando…".
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => LlamadaScreen(
+        callId: sala,
+        video: video,
+        iniciar: true,
+        nombreOtro: nombre,
+        fotoUrl: appState.fotoDe(otro) ?? '',
+        emailOtro: otro,
+      ),
+    ));
+    // Notificación de "llamada en curso" para el que llama (visible al
+    // minimizar toda la app). En quien contesta la crea el entrante.
+    LlamadaService.marcarLlamadaSaliente(
+        room: sala, caller: nombre, video: video);
     // Aviso en el chat → el backend manda el push de llamada al otro.
     await MensajesRepo.enviar(Mensaje(
       id: 'msg_${DateTime.now().microsecondsSinceEpoch}',
@@ -674,23 +693,6 @@ class _ChatScreenState extends State<ChatScreen> {
       esProfe: porDirecto ? false : widget.soyProfe,
       texto: video ? '📹 Videollamada' : '📞 Llamada de voz',
       creado: DateTime.now(),
-    ));
-    if (!mounted) return;
-    final nombre = appState.nombreMostrableDe(otro) ??
-        (otro.isNotEmpty ? otro : widget.titulo);
-    // Notificación de "llamada en curso" para el que llama (visible al
-    // minimizar toda la app). En quien contesta la crea el entrante.
-    LlamadaService.marcarLlamadaSaliente(
-        room: sala, caller: nombre, video: video);
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => LlamadaScreen(
-        callId: sala,
-        video: video,
-        iniciar: true,
-        nombreOtro: nombre,
-        fotoUrl: appState.fotoDe(otro) ?? '',
-        emailOtro: otro,
-      ),
     ));
   }
 
