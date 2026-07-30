@@ -79,7 +79,7 @@ class _LlamadasScreenState extends State<LlamadasScreen> {
                         height: 1,
                         indent: 80,
                         color: Colors.black.withOpacity(0.06)),
-                    itemBuilder: (_, i) => _fila(_items[i]),
+                    itemBuilder: (_, i) => _fila(_items[i], i),
                   ),
                 ),
     );
@@ -107,15 +107,17 @@ class _LlamadasScreenState extends State<LlamadasScreen> {
     );
   }
 
-  Widget _fila(LlamadaHistorial c) {
+  Widget _fila(LlamadaHistorial c, int index) {
     final nombre = c.nombre.isNotEmpty ? c.nombre : 'Pichangol';
     // Foto: la guardada, o la del perfil por correo (por si se cargó luego).
     final foto = c.foto.isNotEmpty
         ? c.foto
         : (c.email.isNotEmpty ? (appState.fotoDe(c.email) ?? '') : '');
-    final perdida = c.perdida;
-    final colorTexto = perdida ? clayOscuro : const Color(0xFF222222);
+    // Perdida o rechazada → se pinta en rojo (estado negativo).
+    final negativa = c.perdida || c.rechazada;
+    final colorTexto = negativa ? clayOscuro : const Color(0xFF222222);
     return ListTile(
+      onLongPress: () => _eliminarUna(c, index),
       contentPadding:
           const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       leading: CircleAvatar(
@@ -142,7 +144,7 @@ class _LlamadasScreenState extends State<LlamadasScreen> {
           Icon(
             c.saliente ? Icons.call_made : Icons.call_received,
             size: 15,
-            color: perdida ? clayOscuro : (c.saliente ? teal : bosque),
+            color: negativa ? clayOscuro : (c.saliente ? teal : bosque),
           ),
           const SizedBox(width: 5),
           Flexible(
@@ -151,7 +153,7 @@ class _LlamadasScreenState extends State<LlamadasScreen> {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                     fontSize: 12.8,
-                    color: perdida
+                    color: negativa
                         ? clayOscuro
                         : Colors.black.withOpacity(0.55))),
           ),
@@ -169,9 +171,26 @@ class _LlamadasScreenState extends State<LlamadasScreen> {
   String _subtitulo(LlamadaHistorial c) {
     final tipo = c.video ? 'Videollamada' : 'Llamada';
     final cuando = _cuando(c.cuando);
+    if (c.rechazada) return 'Rechazada · $cuando';
     if (c.perdida) return 'Perdida · $cuando';
     if (!c.conectada) return '$tipo sin respuesta · $cuando';
     return '$tipo · ${_dur(c.duracionSeg)} · $cuando';
+  }
+
+  /// Elimina UNA llamada del registro (mantener pulsado → confirmar).
+  Future<void> _eliminarUna(LlamadaHistorial c, int index) async {
+    final nombre = c.nombre.isNotEmpty ? c.nombre : 'esta llamada';
+    final ok = await confirmarPichangol(
+      context,
+      titulo: '¿Eliminar del registro?',
+      mensaje: 'Se quita la llamada con $nombre de este dispositivo.',
+      textoConfirmar: 'Eliminar',
+      destructivo: true,
+      icono: Icons.delete_outline,
+    );
+    if (!ok) return;
+    await LlamadaService.eliminarHistorialEn(index);
+    await _cargar();
   }
 
   String _dur(int seg) {

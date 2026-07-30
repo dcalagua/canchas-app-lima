@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'llamada_service.dart';
+import 'llamada_webrtc.dart';
 import 'supabase_service.dart';
 
 /// Handler de mensajes en SEGUNDO PLANO / app cerrada. Debe ser una función de
@@ -133,6 +134,15 @@ class PushService {
     final n = m.notification;
     final titulo = (n?.title ?? '').trim().isNotEmpty ? n!.title! : 'Nuevo mensaje';
     final cuerpo = (n?.body ?? '').trim();
+    // Si es el AVISO de una llamada (📹 Videollamada / 📞 Llamada de voz) o hay
+    // una llamada sonando/en curso de este hilo, NO reproducimos el "Pichan" de
+    // chat: la llamada ya tiene su propio timbre (evita el "pichan" tardío que se
+    // oía al rechazar).
+    final esAvisoLlamada = cuerpo.contains('Videollamada') ||
+        cuerpo.contains('Llamada de voz') ||
+        LlamadaService.esLlamadaReciente(hilo) ||
+        LlamadaWebRTC.instance.activa;
+    if (esAvisoLlamada) return;
     // Sonido "Pichan" (estilo Yape) con la app abierta (el sistema no lo pinta).
     try {
       _sonidoPush.play(AssetSource('sonidos/pichan.mp3'));

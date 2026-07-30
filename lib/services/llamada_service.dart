@@ -87,19 +87,33 @@ class LlamadaService {
   static AudioPlayer? _timbre;
   static Timer? _timbreVib;
   static Timer? _timbreTope; // corte de seguridad (por si no llega el timeout)
+  // Generación: cada _detenerTimbre la incrementa. Si un _iniciarTimbre estaba a
+  // medio arrancar (play es async), al terminar ve que cambió y NO deja sonando
+  // el tono (evita el "pichan" que se colaba DESPUÉS de rechazar).
+  static int _timbreGen = 0;
 
   static Future<void> _iniciarTimbre() async {
+    final gen = ++_timbreGen;
     try {
       _timbre ??= AudioPlayer();
       await _timbre!.setReleaseMode(ReleaseMode.loop);
       await _timbre!.setVolume(1.0);
+      if (gen != _timbreGen) return; // se detuvo mientras preparábamos
       await _timbre!.play(AssetSource('sonidos/pichan.mp3'));
+      if (gen != _timbreGen) {
+        // se detuvo justo mientras arrancaba → apágalo de nuevo.
+        try {
+          await _timbre!.stop();
+        } catch (_) {}
+        return;
+      }
     } catch (_) {}
     // Vibración en cadencia mientras suena.
     _timbreVib?.cancel();
     try {
       HapticFeedback.mediumImpact();
       _timbreVib = Timer.periodic(const Duration(milliseconds: 1500), (_) {
+        if (gen != _timbreGen) return;
         try {
           HapticFeedback.mediumImpact();
         } catch (_) {}
@@ -113,12 +127,36 @@ class LlamadaService {
   }
 
   static Future<void> _detenerTimbre() async {
+    _timbreGen++; // invalida cualquier arranque en curso
     _timbreVib?.cancel();
     _timbreVib = null;
     _timbreTope?.cancel();
     _timbreTope = null;
     try {
       await _timbre?.stop();
+    } catch (_) {}
+  }
+
+  /// ¿La sala de este hilo sonó como llamada entrante hace poco (o justo ahora)?
+  /// Lo usa el push de chat para NO reproducir el sonido "Pichan" de aviso cuando
+  /// en realidad es el aviso de una llamada (que ya tiene su propio timbre).
+  static bool esLlamadaReciente(String hilo) {
+    if (hilo.isEmpty) return false;
+    final room = salaChat(hilo);
+    final ahora = DateTime.now().millisecondsSinceEpoch;
+    return room == _ultEntranteRoom && ahora - _ultEntranteTs < 60000;
+  }
+
+  /// Borra UNA entrada del historial de llamadas por su posición (más reciente
+  /// primero, igual que `leerHistorial`).
+  static Future<void> eliminarHistorialEn(int index) async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.reload();
+      final l = p.getStringList(_kHistorial) ?? <String>[];
+      if (index < 0 || index >= l.length) return;
+      l.removeAt(index);
+      await p.setStringList(_kHistorial, l);
     } catch (_) {}
   }
 
@@ -319,13 +357,14 @@ class LlamadaService {
     } catch (_) {}
     // Avisa al que LLAMA para que se le corte el "Llamando" (como WhatsApp).
     await LlamadaWebRTC.rechazarRemoto(room);
-    // Registra en el historial como entrante rechazada (no conectada).
+    // Registra en el historial como entrante RECHAZADA.
     await registrarHistorial({
       'nombre': datos?.$3 ?? '',
       'email': '',
       'saliente': false,
       'conectada': false,
       'video': datos?.$2 ?? false,
+      'rechazada': true,
     });
   }
 
@@ -505,13 +544,16 @@ class LlamadaService {
     _log('cancelarEntrante room=$room (atendida en otro dispositivo)');
     await _detenerTimbre();
     if (LlamadaWebRTC.instance.activa) return; // yo ya estoy en la llamada
-    try {
-      await FlutterCallkitIncoming.endAllCalls();
-    } catch (_) {}
+    // Limpia la pendiente ANTES de endAllCalls: si esa llamada dispara un evento
+    // `ended` colateral, el handler lo verá sin pendiente y no hará nada (no
+    // manda un `bye` falso ni registra un rechazo que no fue).
     await _limpiarPendiente();
     // Que no reviva por el dedup ni el resume.
     _ultEntranteRoom = room;
     _ultEntranteTs = DateTime.now().millisecondsSinceEpoch;
+    try {
+      await FlutterCallkitIncoming.endAllCalls();
+    } catch (_) {}
   }
 
   /// Notificación de "llamada en curso" para el que LLAMA (saliente): así, al
@@ -583,10 +625,22 @@ class LlamadaService {
         if (t.contains('decline') || t.contains('ended')) {
           // Si el motor NO está en llamada (rechazo mientras SOLO sonaba: aún no
           // contestamos, el canal no está suscrito), `finalizar` no avisaría al
-          // que llama. Mandamos el `bye` por el canal para cortarle el "Llamando".
+          // que llama. Avisamos el `bye` por el canal para cortarle el "Llamando"
+          // y registramos la entrante como RECHAZADA.
           if (!LlamadaWebRTC.instance.activa) {
-            final room = (await _leerPendiente())?.$1 ?? '';
+            final datos = await _leerPendiente();
+            final room = datos?.$1 ?? '';
             if (room.isNotEmpty) await LlamadaWebRTC.rechazarRemoto(room);
+            if (datos != null) {
+              await registrarHistorial({
+                'nombre': datos.$3,
+                'email': '',
+                'saliente': false,
+                'conectada': false,
+                'video': datos.$2,
+                'rechazada': true,
+              });
+            }
           }
           await _limpiarPendiente();
           await LlamadaWebRTC.instance.finalizar();
@@ -722,6 +776,7 @@ class LlamadaService {
         conectada: data['conectada'] == true,
         duracionSeg: (data['duracionSeg'] as num?)?.toInt() ?? 0,
         video: data['video'] == true,
+        rechazada: data['rechazada'] == true,
         cuando: DateTime.now(),
       );
       final p = await SharedPreferences.getInstance();

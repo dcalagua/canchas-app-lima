@@ -9,6 +9,7 @@ class LlamadaHistorial {
     required this.duracionSeg,
     required this.video,
     required this.cuando,
+    this.rechazada = false,
   });
 
   final String nombre;
@@ -19,9 +20,10 @@ class LlamadaHistorial {
   final int duracionSeg;
   final bool video;
   final DateTime cuando;
+  final bool rechazada; // entrante que YO rechacé (colgué el timbre)
 
-  /// Perdida = entrante que no se contestó.
-  bool get perdida => !saliente && !conectada;
+  /// Perdida = entrante que no se contestó (ni se rechazó).
+  bool get perdida => !saliente && !conectada && !rechazada;
 
   Map<String, dynamic> toJson() => {
         'nombre': nombre,
@@ -31,6 +33,7 @@ class LlamadaHistorial {
         'conectada': conectada,
         'duracionSeg': duracionSeg,
         'video': video,
+        'rechazada': rechazada,
         'ts': cuando.millisecondsSinceEpoch,
       };
 
@@ -42,6 +45,7 @@ class LlamadaHistorial {
         conectada: m['conectada'] == true,
         duracionSeg: (m['duracionSeg'] as num?)?.toInt() ?? 0,
         video: m['video'] == true,
+        rechazada: m['rechazada'] == true,
         cuando: DateTime.fromMillisecondsSinceEpoch(
             (m['ts'] as num?)?.toInt() ?? 0),
       );
