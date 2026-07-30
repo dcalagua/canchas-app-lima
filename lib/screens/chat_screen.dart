@@ -1267,7 +1267,12 @@ class _ChatScreenState extends State<ChatScreen> {
                           final i = hayMas ? idx - 1 : idx;
                           final m = msgs[i];
                           final esGrupo = widget.tipo == 'grupo';
-                          final mio = esGrupo
+                          // En grupo y en chat DIRECTO (1:1 entre dos usuarios),
+                          // "mío" se decide por el CORREO del autor (como
+                          // WhatsApp): así los mensajes que me envían salen a la
+                          // izquierda. La lógica por rol (esProfe) solo aplica a
+                          // los chats de academia/cancha (profe/dueño ↔ alumno).
+                          final mio = (esGrupo || widget.tipo == 'directo')
                               ? m.autorEmail.toLowerCase() ==
                                   (appState.usuario?.email ?? '').toLowerCase()
                               : m.esProfe == widget.soyProfe;
