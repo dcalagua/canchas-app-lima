@@ -277,24 +277,37 @@ class LlamadaWebRTC extends ChangeNotifier {
       case 'offer': // solo quien contesta: fija el remoto y responde
         if (_soyElQueLlama) return;
         if (_remotoListo) return; // ya procesamos el offer (llegó duplicado)
-        _otroPresente = true;
-        await pc.setRemoteDescription(
-            RTCSessionDescription(p['sdp']?.toString(), p['type']?.toString()));
+        // Marca ANTES del primer await: A reenvía varios offers y llegan casi
+        // juntos; sin esta guarda síncrona se procesaban en paralelo y
+        // `setRemoteDescription` chocaba (glare) → nunca se creaba el answer.
         _remotoListo = true;
-        await _vaciarIce();
-        final answer = await pc.createAnswer({});
-        await pc.setLocalDescription(answer);
-        _diag('envio answer');
-        _crudo({'t': 'answer', 'sdp': answer.sdp, 'type': answer.type});
-        _vaciarIceSalientes(); // ahora sí, manda los candidatos en cola
+        _otroPresente = true;
+        try {
+          await pc.setRemoteDescription(RTCSessionDescription(
+              p['sdp']?.toString(), p['type']?.toString()));
+          await _vaciarIce();
+          final answer = await pc.createAnswer({});
+          await pc.setLocalDescription(answer);
+          _diag('envio answer');
+          _crudo({'t': 'answer', 'sdp': answer.sdp, 'type': answer.type});
+          _vaciarIceSalientes(); // ahora sí, manda los candidatos en cola
+        } catch (e) {
+          _diag('ERROR offer: $e');
+          _remotoListo = false; // deja reintentar con el próximo offer
+        }
         break;
       case 'answer': // solo quien llama: fija el remoto
         if (!_soyElQueLlama) return;
         if (_remotoListo) return; // answer duplicado
-        await pc.setRemoteDescription(
-            RTCSessionDescription(p['sdp']?.toString(), p['type']?.toString()));
-        _remotoListo = true;
-        await _vaciarIce();
+        _remotoListo = true; // guarda síncrona (igual que el offer)
+        try {
+          await pc.setRemoteDescription(RTCSessionDescription(
+              p['sdp']?.toString(), p['type']?.toString()));
+          await _vaciarIce();
+        } catch (e) {
+          _diag('ERROR answer: $e');
+          _remotoListo = false;
+        }
         break;
       case 'ice':
         final c = RTCIceCandidate(p['candidate']?.toString(),
