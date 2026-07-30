@@ -76,18 +76,15 @@ class _AcademiaShellState extends State<AcademiaShell> {
           final idx = _index.clamp(0, paginas.length - 1);
           return Scaffold(
             body: IndexedStack(index: idx, children: paginas),
-            bottomNavigationBar: NavigationBar(
-              selectedIndex: idx,
-              onDestinationSelected: (i) => setState(() => _index = i),
-              destinations: [
-                for (var i = 0; i < iconos.length; i++)
-                  NavigationDestination(
-                    icon: i == iMensajes
-                        ? IconoChatPichan(activo: idx == iMensajes)
-                        : Icon(iconos[i], color: colores[i]),
-                    label: etiquetas[i],
-                  ),
-              ],
+            // Barra inferior con SCROLL horizontal: caben las 7 secciones sin
+            // apretarse ni partir las etiquetas; se desliza para verlas todas.
+            bottomNavigationBar: _BarraAcademiaScroll(
+              iconos: iconos,
+              etiquetas: etiquetas,
+              colores: colores,
+              iMensajes: iMensajes,
+              activo: idx,
+              onTap: (i) => setState(() => _index = i),
             ),
           );
         }
@@ -155,6 +152,86 @@ class _AcademiaShellState extends State<AcademiaShell> {
           ),
         );
       },
+    );
+  }
+}
+
+/// Barra de navegación INFERIOR con SCROLL horizontal (para la academia en
+/// móvil): íconos con color por sección + etiqueta en UNA línea. Como las
+/// secciones son varias, la barra se desliza en vez de apretar/partir textos.
+class _BarraAcademiaScroll extends StatelessWidget {
+  const _BarraAcademiaScroll({
+    required this.iconos,
+    required this.etiquetas,
+    required this.colores,
+    required this.iMensajes,
+    required this.activo,
+    required this.onTap,
+  });
+
+  final List<IconData> iconos;
+  final List<String> etiquetas;
+  final List<Color> colores;
+  final int iMensajes;
+  final int activo;
+  final ValueChanged<int> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: cs.surface,
+      elevation: 8,
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 64,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: Row(
+              children: [
+                for (var i = 0; i < iconos.length; i++)
+                  _item(context, i),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _item(BuildContext context, int i) {
+    final sel = activo == i;
+    final color = colores[i];
+    final cs = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: () => onTap(i),
+      borderRadius: BorderRadius.circular(14),
+      child: SizedBox(
+        width: 76,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Ícono SIEMPRE con color (regla Airbnb "con vida"); Mensajes usa el
+            // ícono de chat de marca.
+            i == iMensajes
+                ? IconoChatPichan(activo: sel)
+                : Icon(iconos[i], color: color, size: 25),
+            const SizedBox(height: 3),
+            Text(
+              etiquetas[i],
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: sel ? FontWeight.w800 : FontWeight.w500,
+                color: sel ? cs.onSurface : cs.onSurface.withOpacity(0.55),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
