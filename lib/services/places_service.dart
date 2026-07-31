@@ -40,6 +40,20 @@ class PlacesService {
 
   static bool get disponible => _key.isNotEmpty;
 
+  /// URL de un MAPA ESTÁTICO (Google Static Maps) centrado en (lat,lng) con un
+  /// pin rojo — para la previsualización de ubicación en el chat, estilo
+  /// WhatsApp. Devuelve '' si no hay key (la tarjeta cae a un placeholder).
+  static String mapaEstaticoUrl(double lat, double lng,
+      {int zoom = 15, int w = 640, int h = 320}) {
+    // Static Maps es una llamada WEB → usa la key web (Places) si está, que no
+    // suele tener la restricción de Android de la key del mapa.
+    if (!disponible) return '';
+    final c = '$lat,$lng';
+    return 'https://maps.googleapis.com/maps/api/staticmap'
+        '?center=$c&zoom=$zoom&size=${w}x$h&scale=2'
+        '&markers=color:red%7C$c&key=$_key';
+  }
+
   /// AUTOCOMPLETADO de lugares por texto, filtrando por UBICACIÓN. Devuelve
   /// sugerencias reales de Google (nombre + dirección + coordenadas) para que el
   /// usuario elija su sede en vez de escribir texto sin geolocalizar. Sesga por

@@ -28,6 +28,7 @@ import '../data/ubicacion_vivo_repo.dart';
 import '../models/grupo.dart';
 import '../models/mensaje.dart';
 import '../services/giphy_service.dart';
+import '../services/places_service.dart';
 import '../services/ubicacion_vivo_service.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
@@ -1884,20 +1885,15 @@ class _Burbuja extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Container(
-                          height: 108,
-                          color: const Color(0xFFDCE7DA),
-                          child: const Center(
-                            child: Icon(Icons.location_on,
-                                color: clayOscuro, size: 42),
-                          ),
-                        ),
+                        _MapaMini(
+                            lat: mensaje.ubicacion?.lat ?? 0,
+                            lng: mensaje.ubicacion?.lng ?? 0),
                         Padding(
                           padding: const EdgeInsets.all(10),
                           child: Row(
                             children: [
-                              Icon(Icons.map_outlined,
-                                  size: 18, color: mio ? Colors.white : teal),
+                              const Icon(Icons.map_outlined,
+                                  size: 18, color: teal),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text('Ver ubicación en el mapa',
@@ -1905,8 +1901,8 @@ class _Burbuja extends StatelessWidget {
                                         fontWeight: FontWeight.w700,
                                         fontSize: 13,
                                         color: mio
-                                            ? Colors.white
-                                            : const Color(0xFF111111))),
+                                            ? wa.textoMio
+                                            : wa.textoOtro)),
                               ),
                             ],
                           ),
@@ -2739,6 +2735,36 @@ class _VisorFoto extends StatelessWidget {
   }
 }
 
+/// Mini-mapa (imagen estática de Google Maps) para la previsualización de
+/// ubicación en el chat, como WhatsApp. Si no hay key o falla la descarga, cae a
+/// un placeholder con el pin — pero nunca a una imagen rota.
+class _MapaMini extends StatelessWidget {
+  const _MapaMini({required this.lat, required this.lng, this.height = 108});
+  final double lat;
+  final double lng;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final placeholder = Container(
+      height: height,
+      color: const Color(0xFFDCE7DA),
+      child: const Center(
+          child: Icon(Icons.location_on, color: clayOscuro, size: 42)),
+    );
+    final url = PlacesService.mapaEstaticoUrl(lat, lng);
+    if (url.isEmpty) return placeholder;
+    return CachedNetworkImage(
+      imageUrl: url,
+      height: height,
+      width: double.infinity,
+      fit: BoxFit.cover,
+      placeholder: (_, __) => placeholder,
+      errorWidget: (_, __, ___) => placeholder,
+    );
+  }
+}
+
 /// Tarjeta de UBICACIÓN EN TIEMPO REAL (estilo WhatsApp). Relee la posición del
 /// autor en `pichangol_ubicacion_vivo` cada pocos segundos: mientras esté activa
 /// muestra "En vivo" + hace cuánto fue el último punto y abre el mapa con la
@@ -2824,15 +2850,18 @@ class _UbicacionVivoCardState extends State<_UbicacionVivoCard> {
 
   @override
   Widget build(BuildContext context) {
-    final mio = widget.mio;
     final activa = _activa;
-    final blanco = mio ? Colors.white : const Color(0xFF111111);
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    // Texto oscuro sobre burbuja verde clara (o claro en modo oscuro): antes iba
+    // blanco y no se leía en mis burbujas.
+    final txt = dark ? const Color(0xFFE9EDEF) : const Color(0xFF111B21);
+    final p = _pos;
     return Container(
       width: 230,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: mio
-            ? Colors.white.withOpacity(0.15)
+        color: dark
+            ? Colors.white.withOpacity(0.10)
             : Colors.black.withOpacity(0.04),
         borderRadius: BorderRadius.circular(12),
       ),
@@ -2841,14 +2870,20 @@ class _UbicacionVivoCardState extends State<_UbicacionVivoCard> {
         children: [
           GestureDetector(
             onTap: activa ? _abrirMapa : null,
-            child: Container(
-              height: 108,
-              color: activa ? const Color(0xFFDCE7DA) : const Color(0xFFE6E6E6),
-              child: Center(
-                child: Icon(activa ? Icons.my_location : Icons.location_off,
-                    color: activa ? teal : Colors.grey, size: 42),
-              ),
-            ),
+            child: (activa && p != null)
+                ? _MapaMini(lat: p.lat, lng: p.lng)
+                : Container(
+                    height: 108,
+                    color: activa
+                        ? const Color(0xFFDCE7DA)
+                        : const Color(0xFFE6E6E6),
+                    child: Center(
+                      child: Icon(
+                          activa ? Icons.my_location : Icons.location_off,
+                          color: activa ? teal : Colors.grey,
+                          size: 42),
+                    ),
+                  ),
           ),
           Padding(
             padding: const EdgeInsets.all(10),
@@ -2873,7 +2908,7 @@ class _UbicacionVivoCardState extends State<_UbicacionVivoCard> {
                         style: TextStyle(
                             fontWeight: FontWeight.w800,
                             fontSize: 13,
-                            color: blanco)),
+                            color: txt)),
                   ],
                 ),
                 const SizedBox(height: 2),
@@ -2886,9 +2921,7 @@ class _UbicacionVivoCardState extends State<_UbicacionVivoCard> {
                               ? 'Esperando ubicación…'
                               : 'Actualizado ${_haceCuanto(_pos!.actualizado)}')),
                   style: TextStyle(
-                      fontSize: 11.5,
-                      color: (mio ? Colors.white : Colors.black).withOpacity(
-                          mio ? 0.85 : 0.55)),
+                      fontSize: 11.5, color: txt.withOpacity(0.6)),
                 ),
                 if (activa) ...[
                   const SizedBox(height: 6),
@@ -2896,18 +2929,17 @@ class _UbicacionVivoCardState extends State<_UbicacionVivoCard> {
                     children: [
                       InkWell(
                         onTap: _pos == null ? null : _abrirMapa,
-                        child: Row(children: [
-                          Icon(Icons.map_outlined,
-                              size: 16, color: mio ? Colors.white : teal),
-                          const SizedBox(width: 4),
+                        child: const Row(children: [
+                          Icon(Icons.map_outlined, size: 16, color: teal),
+                          SizedBox(width: 4),
                           Text('Ver mapa',
                               style: TextStyle(
                                   fontWeight: FontWeight.w700,
                                   fontSize: 12,
-                                  color: mio ? Colors.white : teal)),
+                                  color: teal)),
                         ]),
                       ),
-                      if (mio) ...[
+                      if (widget.mio) ...[
                         const Spacer(),
                         InkWell(
                           onTap: _detener,
