@@ -15,12 +15,21 @@ from __future__ import annotations
 
 import io
 import os
+import random
 
 # Paleta de marca (EBIM/Pichangol).
 _BOSQUE = (20, 70, 58)      # #14463A
 _BOSQUE2 = (7, 34, 27)      # más oscuro para el degradado / scrim
 _LIMA = (174, 234, 148)     # #AEEA94
+_AMARILLO = (242, 201, 76)  # #F2C94C
+_TEAL = (0, 132, 137)       # #008489
 _WA = (37, 211, 102)        # verde WhatsApp
+
+# Acentos que rotan por variante (para que los posts no se vean todos iguales).
+_ACENTOS = [_LIMA, _AMARILLO, _TEAL]
+# Etiqueta/gancho de esquina que rota (cuando no hay logo).
+_TAGS = ["INSCRIPCIONES ABIERTAS", "CLASES ESTA SEMANA",
+         "ULTIMOS CUPOS", "AGENDA TU CLASE"]
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 _FUENTE_BOLD = os.path.join(_DIR, "assets", "DejaVuSans-Bold.ttf")
@@ -138,15 +147,58 @@ def _fondo(datos: dict, W: int, H: int):
     return img
 
 
-def generar_flyer(datos: dict, gancho: str) -> bytes | None:
-    """Devuelve el PNG (bytes) del flyer, o None si Pillow no está disponible."""
+def _textura(img):
+    """Patrón sutil de marca: líneas diagonales muy tenues → 'acabado' premium."""
+    from PIL import Image, ImageDraw
+
+    W, H = img.size
+    cap = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(cap)
+    for x in range(-H, W, 48):
+        d.line([(x, 0), (x + H, H)], fill=(255, 255, 255, 9), width=2)
+    return Image.alpha_composite(img.convert("RGBA"), cap).convert("RGB")
+
+
+def _logo_esquina(img, url: str):
+    """Pega el logo del negocio (círculo con aro blanco) arriba a la derecha."""
+    from PIL import Image, ImageDraw
+
+    logo = _bajar_imagen(url)
+    if logo is None:
+        return img
+    d = 148
+    logo = _cover(logo, d, d).convert("RGBA")
+    mask = Image.new("L", (d, d), 0)
+    ImageDraw.Draw(mask).ellipse([0, 0, d, d], fill=255)
+    W = img.size[0]
+    x, y = W - d - 70, 56
+    base = img.convert("RGBA")
+    ImageDraw.Draw(base).ellipse([x - 6, y - 6, x + d + 6, y + d + 6],
+                                 outline=(255, 255, 255), width=6)
+    base.paste(logo, (x, y), mask)
+    return base.convert("RGB")
+
+
+def generar_flyer(datos: dict, gancho: str, variante: int | None = None) -> bytes | None:
+    """Devuelve el PNG (bytes) del flyer, o None si Pillow no está disponible.
+    [variante] rota el acento y la etiqueta; None = aleatoria (variedad diaria)."""
     try:
         from PIL import ImageDraw
     except Exception:  # noqa: BLE001
         return None
 
+    v = random.randint(0, 2) if variante is None else int(variante) % 3
+    acento = _ACENTOS[v]
+
     W = H = 1080
     img = _fondo(datos, W, H)
+    img = _textura(img)
+
+    tiene_fotos = isinstance(datos.get("fotos"), list) and bool(datos.get("fotos"))
+    logo_url = str(datos.get("logo_url") or "")
+    if tiene_fotos and logo_url.startswith("http"):
+        img = _logo_esquina(img, logo_url)
+
     draw = ImageDraw.Draw(img)
 
     m = 80  # margen lateral
@@ -160,6 +212,18 @@ def generar_flyer(datos: dict, gancho: str) -> bytes | None:
 
     # Wordmark arriba-izquierda.
     draw.text((m, 62), "PICHANGOL", font=_font(44), fill=_LIMA)
+
+    # Etiqueta de esquina (rota por variante) — solo si no hay logo arriba.
+    mostro_logo = tiene_fotos and logo_url.startswith("http")
+    if not mostro_logo:
+        tag = _TAGS[v % len(_TAGS)]
+        f_tag = _font(30)
+        pad = 22
+        tw = _ancho(draw, tag, f_tag)
+        bx0 = W - 70 - (tw + 2 * pad)
+        draw.rounded_rectangle([bx0, 58, W - 70, 58 + 60], radius=30, fill=acento)
+        tcol = (255, 255, 255) if acento == _TEAL else _BOSQUE2
+        draw.text((bx0 + pad, 58 + 14), tag, font=f_tag, fill=tcol)
 
     # ---- Bloque de texto ANCLADO ABAJO (sobre la zona oscura) ----
     # Se mide de abajo hacia arriba para que siempre quede pegado al pie.
@@ -198,14 +262,14 @@ def generar_flyer(datos: dict, gancho: str) -> bytes | None:
         y -= tam + 8
         draw.text((m, y), ln, font=f_n, fill=(255, 255, 255))
 
-    # Eyebrow deporte · sede (lima) arriba del nombre.
+    # Eyebrow deporte · sede (color de acento) arriba del nombre.
     if sub:
         f_s = _font(38)
         y -= 52
-        draw.text((m, y), sub, font=f_s, fill=_LIMA)
+        draw.text((m, y), sub, font=f_s, fill=acento)
 
-    # Acento lima: barrita a la izquierda del bloque (toque premium).
-    draw.rounded_rectangle([m - 22, y + 6, m - 12, H - 210], radius=6, fill=_LIMA)
+    # Barrita de acento a la izquierda del bloque (toque premium).
+    draw.rounded_rectangle([m - 22, y + 6, m - 12, H - 210], radius=6, fill=acento)
 
     out = io.BytesIO()
     img.save(out, format="PNG", optimize=True)
