@@ -11,12 +11,13 @@ pre-genera y se deja disponible.
 
 from __future__ import annotations
 
+import random
 from datetime import datetime, timedelta, timezone
 
 import config
 from db.store import stores
 
-from .flyer import generar_flyer
+from .flyer import CONTEXTO_TIPO, generar_flyer
 from .posts import generar_posts
 
 
@@ -43,13 +44,19 @@ def config_cm(academia_id: str, *, activo: bool | None = None,
     return c
 
 
-def _generar_post(datos: dict, contexto: str) -> dict:
-    """Genera copy + hashtags (IA/plantilla) + flyer (imagen en memoria)."""
-    posts = generar_posts(datos or {}, contexto, 1)
+def _generar_post(datos: dict, contexto: str, tipo: str | None = None) -> dict:
+    """Genera copy + hashtags (IA/plantilla) + flyer (imagen en memoria). Elige un
+    TIPO de post (promo/horario/logros/testimonio/tip) y orienta copy y diseño con
+    él, para que texto e imagen concuerden y los posts no se repitan."""
+    if tipo not in CONTEXTO_TIPO:
+        tipo = random.choice(list(CONTEXTO_TIPO.keys()))
+    hint = CONTEXTO_TIPO.get(tipo, "")
+    ctx = f"{contexto}. {hint}".strip(". ") if contexto else hint
+    posts = generar_posts(datos or {}, ctx, 1)
     post = posts[0] if posts else {"texto": "", "hashtags": [],
                                     "hora_sugerida": ""}
     imagen_id = ""
-    png = generar_flyer(datos or {}, str(post.get("texto") or ""))
+    png = generar_flyer(datos or {}, str(post.get("texto") or ""), tipo=tipo)
     if png:
         imagen_id = stores.guardar_imagen(png, "image/png",
                                           tope=config.IMG_MAX_RETENIDAS)
@@ -58,6 +65,7 @@ def _generar_post(datos: dict, contexto: str) -> dict:
         "hashtags": post.get("hashtags", []),
         "hora_sugerida": post.get("hora_sugerida", ""),
         "imagen_id": imagen_id,
+        "tipo": tipo,
     }
 
 

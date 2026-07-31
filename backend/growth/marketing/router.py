@@ -121,14 +121,11 @@ def cm_post_del_dia(req: PostsReq, request: Request) -> dict:
     """Community manager AUTÓNOMO (Fase 0): genera UN post LISTO — copy +
     hashtags (IA o plantilla) + un FLYER de marca (imagen) — para publicar en 1
     toque. Es el mismo pipeline que luego auto-publica (Fase 1/2 con Meta)."""
-    posts = generar_posts(req.datos or {}, req.contexto, 1)
-    post = posts[0] if posts else {"texto": "", "hashtags": [],
-                                    "hora_sugerida": ""}
+    from . import cm as cm_svc
+    post = cm_svc._generar_post(req.datos or {}, req.contexto)
     imagen_url = ""
-    flyer = generar_flyer(req.datos or {}, str(post.get("texto") or ""))
-    if flyer:
-        img_id = stores.guardar_imagen(flyer, "image/png",
-                                       tope=config.IMG_MAX_RETENIDAS)
+    img_id = post.get("imagen_id") or ""
+    if img_id and img_id in stores.imagenes:
         imagen_url = f"{_base_publica(request)}/marketing/img/{img_id}.png"
     return {
         "ok": True,
@@ -163,7 +160,8 @@ def _cm_estado(academia_id: str, request: Request) -> dict:
             imagen_url = f"{_base_publica(request)}/marketing/img/{img_id}.png"
         elif c.get("datos"):
             png = generar_flyer(c.get("datos") or {},
-                                str(post.get("texto") or ""))
+                                str(post.get("texto") or ""),
+                                tipo=post.get("tipo"))
             if png:
                 img_id = stores.guardar_imagen(png, "image/png",
                                                tope=config.IMG_MAX_RETENIDAS)

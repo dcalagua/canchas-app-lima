@@ -25,11 +25,23 @@ _AMARILLO = (242, 201, 76)  # #F2C94C
 _TEAL = (0, 132, 137)       # #008489
 _WA = (37, 211, 102)        # verde WhatsApp
 
-# Acentos que rotan por variante (para que los posts no se vean todos iguales).
-_ACENTOS = [_LIMA, _AMARILLO, _TEAL]
-# Etiqueta/gancho de esquina que rota (cuando no hay logo).
-_TAGS = ["INSCRIPCIONES ABIERTAS", "CLASES ESTA SEMANA",
-         "ULTIMOS CUPOS", "AGENDA TU CLASE"]
+# TIPO de post → (etiqueta de esquina, color de acento). Rota para que cada post
+# tenga su propia "personalidad" (promo, horarios, logros, testimonio, tip).
+_TIPOS = {
+    "promo": ("PROMOCIÓN", _LIMA),
+    "horario": ("HORARIOS", _TEAL),
+    "resultado": ("LOGROS", _AMARILLO),
+    "testimonio": ("TESTIMONIO", _LIMA),
+    "tip": ("TIP DEL DÍA", _TEAL),
+}
+# Pista para el copy (Claude) según el tipo, para que texto y diseño concuerden.
+CONTEXTO_TIPO = {
+    "promo": "una promoción u oferta para inscribirse",
+    "horario": "los horarios y días disponibles esta semana",
+    "resultado": "un logro o buen resultado reciente de la academia",
+    "testimonio": "un testimonio breve de un alumno satisfecho",
+    "tip": "un consejo o tip deportivo útil y motivador",
+}
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 _FUENTE_BOLD = os.path.join(_DIR, "assets", "DejaVuSans-Bold.ttf")
@@ -179,16 +191,21 @@ def _logo_esquina(img, url: str):
     return base.convert("RGB")
 
 
-def generar_flyer(datos: dict, gancho: str, variante: int | None = None) -> bytes | None:
+def generar_flyer(datos: dict, gancho: str, variante: int | None = None,
+                  tipo: str | None = None) -> bytes | None:
     """Devuelve el PNG (bytes) del flyer, o None si Pillow no está disponible.
-    [variante] rota el acento y la etiqueta; None = aleatoria (variedad diaria)."""
+    [tipo] elige la plantilla (etiqueta + acento); [variante] rota el layout
+    (poster / banda). None = aleatorio (variedad diaria)."""
     try:
         from PIL import ImageDraw
     except Exception:  # noqa: BLE001
         return None
 
     v = random.randint(0, 2) if variante is None else int(variante) % 3
-    acento = _ACENTOS[v]
+    if tipo not in _TIPOS:
+        tipo = random.choice(list(_TIPOS.keys()))
+    tag_label, acento = _TIPOS[tipo]
+    plantilla = "banda" if v % 2 else "poster"
 
     W = H = 1080
     img = _fondo(datos, W, H)
@@ -200,6 +217,13 @@ def generar_flyer(datos: dict, gancho: str, variante: int | None = None) -> byte
         img = _logo_esquina(img, logo_url)
 
     draw = ImageDraw.Draw(img)
+
+    # Plantilla BANDA: bloque sólido abajo (flyer clásico, súper legible). En
+    # POSTER el texto va sobre el degradado de la foto.
+    if plantilla == "banda":
+        by = int(H * 0.58)
+        draw.rectangle([0, by, W, H], fill=_BOSQUE)
+        draw.rectangle([0, by, W, by + 9], fill=acento)  # borde de acento
 
     m = 80  # margen lateral
     nombre = _limpiar(str(datos.get("nombre") or "Academia")) or "Academia"
@@ -216,7 +240,7 @@ def generar_flyer(datos: dict, gancho: str, variante: int | None = None) -> byte
     # Etiqueta de esquina (rota por variante) — solo si no hay logo arriba.
     mostro_logo = tiene_fotos and logo_url.startswith("http")
     if not mostro_logo:
-        tag = _TAGS[v % len(_TAGS)]
+        tag = tag_label
         f_tag = _font(30)
         pad = 22
         tw = _ancho(draw, tag, f_tag)
