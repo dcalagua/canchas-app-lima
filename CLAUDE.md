@@ -226,6 +226,38 @@ cobra su comisión (5% mín S/2) y deja el **neto "por recibir"** del vendedor
   `liquidaciones()`/"por recibir". El catálogo NO vive en el backend growth (es
   Supabase).
 
+## Mensajería: arquitectura DEVICE-FIRST (cache, tal cual WhatsApp)
+
+**REGLA de arquitectura (transversal a TODA la mensajería):** chats, inbox,
+estados/historias, canales, avatares y media deben comportarse **exactamente
+como WhatsApp** — **pre-cargados y cacheados**, nunca "cargando" al reabrir. Toda
+pantalla/feature nueva de mensajería se diseña **device-first**: pinta al
+instante desde el teléfono y solo sincroniza/actualiza en segundo plano.
+
+Piezas ya implementadas (reusar, no reinventar):
+- **Inbox (`mensajes_screen.dart`):** caché local **SQLite** (`data/db_local.dart`,
+  `DbLocal.leerConvs/guardarConvs`) → pinta al instante; refresco en silencio
+  (`_cargar(silencioso:true)`), sin spinner de pantalla completa. **Anti-shrink:**
+  la bandeja NUNCA se encoge en un refresco (conserva de la caché los chats que
+  una pasada no reconstruyó porque su fuente aún no cargó); auto-refresca cuando
+  cargan academias/alumnos. El borrado explícito se respeta con `chatOculto`.
+- **Chat (`chat_screen.dart`):** mensajes device-first desde SQLite; solo baja lo
+  nuevo. Fotos/avatares con **`CachedNetworkImage`/`CachedNetworkImageProvider`**
+  (caché en disco vía `flutter_cache_manager`), nunca `NetworkImage` crudo.
+- **Estados/Novedades:** pre-cache de la media de las historias vigentes
+  (`AppState._precacharEstados`), avatares/íconos de Novedades pre-calentados
+  (`novedades_screen._precachar` + `CachedNetworkImageProvider`); video
+  device-first (archivo local → caché → red y baja a caché).
+- **Canales:** lista cacheada (`AppState.leerCanalesCache/guardarCanalesCache`) y
+  detalle device-first (`_seedDesdeCache`), video con la misma estrategia.
+- **Perfiles** (nombre/foto) persistidos en `SharedPreferences`
+  (`AppState._perfiles`) para no re-bajarlos cada vez.
+
+**Al agregar cualquier cosa nueva a mensajería:** primero pregúntate "¿esto cómo
+lo cachea WhatsApp?" y hazlo cache-first (disco + pre-warm) antes de mostrar
+spinners. Un spinner de pantalla completa al reabrir un chat/inbox/estado se
+considera un bug.
+
 ## Diseño (handoff)
 
 `docs/handoff_v2/` (referencia). Paleta oficial EBIM, **DM Sans**, premium
