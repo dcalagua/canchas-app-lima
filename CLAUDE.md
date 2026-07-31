@@ -306,6 +306,33 @@ sigue el lenguaje Airbnb sobre la paleta EBIM:
 
 ## Pendientes / backlog
 
+- **Community Manager AUTÓNOMO (servicio estrella, ingreso recurrente):** la
+  visión del director NO es "generar posts para que el dueño publique a mano"
+  (eso ya existe, `community_manager_screen.dart` + `backend/growth/marketing/`).
+  Es un **agente que mueve las redes de la academia/cancha SOLO, sin intervención
+  manual** (suscripción ~S/100/mes): genera foto/video/copy/hashtags y **publica
+  automático** en su Instagram/Facebook, en un calendario; el dueño solo entra a
+  sus redes y ve que ya se posteó. Debe ser **configurable** (auto vs
+  aprobar-antes; frecuencia; tono). Piezas por armar: (1) generación de media
+  (reusar fotos/logo del negocio + plantillas de marca; reels auto-armados;
+  IA sólo si el costo cierra), (2) **auto-publish Meta Graph API** (Página FB +
+  IG Business/Creator vinculado; permisos `pages_manage_posts` /
+  `instagram_content_publish` → app review Meta = el bloqueador real, ojo cuenta
+  ya tuvo problemas), (3) **scheduler** en Railway por academia suscrita, (4)
+  guardrails/marca. De-riskear: empezar por Página FB + "borrador listo, 1 toque"
+  como fallback para quien no conecte IG.
+- **Perfil/página de cada academia = HUB (NO clonar Facebook):** decisión de
+  producto — NO construir una red social horizontal desde cero (efectos de red
+  brutales, alto costo, bajo ROI). En su lugar, la **landing pública
+  (`/l/{id}`, SEO en pichangol.app)** evoluciona a la "página" del negocio
+  (galería, horario, reseñas, botón **Seguir**), y el engagement in-app se hace
+  con lo que YA existe (**canales** = difusión tipo WhatsApp Channels, **estados/
+  historias**, **rankings**, **retos**, **marketplace**). El CM autónomo empuja
+  el contenido HACIA AFUERA (IG/FB, donde ya está la audiencia). Tesis: **capa
+  social VERTICAL (deporte) sobre un core transaccional (reservas/pagos)**, no un
+  FB genérico. Comparable de mercado que valida el modelo: **Playtomic** (reservas
+  + comunidad + rankings + perfiles de jugador); otros: MindBody/ClassPass,
+  Spond/Heja (gestión de equipos). Pendiente: barrido de mercado ligero.
 - Conexión con redes sociales (Fase 1): stub, **habilitado solo tras verificar
   dueño** (`docs/conexiones-sociales.md`).
 - Política **RLS de DELETE** en `pichangol_canchas` (para que el borrado también
