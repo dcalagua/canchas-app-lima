@@ -1536,7 +1536,9 @@ class _ChatScreenState extends State<ChatScreen> {
                               reacciones: _reacciones[m.id] ?? const {},
                               onResponder: () => _responder(m),
                               onReenviar: () => _reenviar(m),
-                              onReaccion: (emoji) => _reaccionar(m, emoji));
+                              onReaccion: (emoji) => _reaccionar(m, emoji),
+                              onLlamar: (video) =>
+                                  _iniciarLlamada(video: video));
                         },
                       );
                     },
@@ -1597,7 +1599,8 @@ class _Burbuja extends StatelessWidget {
       this.reacciones = const {},
       this.onResponder,
       this.onReenviar,
-      this.onReaccion});
+      this.onReaccion,
+      this.onLlamar});
   final _Entrega entrega;
   final Mensaje mensaje;
   final bool mio;
@@ -1607,6 +1610,7 @@ class _Burbuja extends StatelessWidget {
   final VoidCallback? onResponder;
   final VoidCallback? onReenviar;
   final void Function(String emoji)? onReaccion;
+  final void Function(bool video)? onLlamar; // rellamar desde el aviso de llamada
 
   // Emojis rápidos de reacción (fila superior, tipo WhatsApp).
   static const _emojisRapidos = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
@@ -1795,7 +1799,47 @@ class _Burbuja extends StatelessWidget {
                   ],
                 ),
               ),
-            if (mensaje.esAudio)
+            if (mensaje.esLlamada)
+              GestureDetector(
+                onTap: () => onLlamar?.call(mensaje.esVideollamada),
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircleAvatar(
+                        radius: 18,
+                        backgroundColor: teal,
+                        child: Icon(
+                            mensaje.esVideollamada
+                                ? Icons.videocam
+                                : Icons.call,
+                            color: Colors.white,
+                            size: 19),
+                      ),
+                      const SizedBox(width: 10),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                              mensaje.esVideollamada
+                                  ? 'Videollamada'
+                                  : 'Llamada de voz',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                  color: mio ? wa.textoMio : wa.textoOtro)),
+                          Text('Toca para llamar',
+                              style: TextStyle(
+                                  fontSize: 12, color: teal)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else if (mensaje.esAudio)
               Padding(
                 padding: const EdgeInsets.only(bottom: 2),
                 child: _BurbujaAudio(url: mensaje.mediaUrl, mio: mio, wa: wa),
@@ -1917,6 +1961,7 @@ class _Burbuja extends StatelessWidget {
           crossAxisAlignment: WrapCrossAlignment.end,
           children: [
             if (mensaje.texto.isNotEmpty &&
+                !mensaje.esLlamada &&
                 !(mensaje.tieneFoto && mensaje.texto == '📷 Foto') &&
                 !(mensaje.esUbicacion && mensaje.texto == '📍 Ubicación') &&
                 !mensaje.esUbicacionVivo &&
@@ -2833,6 +2878,18 @@ class _UbicacionVivoCardState extends State<_UbicacionVivoCard> {
     return 'hace ${m ~/ 60} h';
   }
 
+  /// "Finaliza en X min" / "Finaliza a las HH:MM" (como WhatsApp). '' si no aplica.
+  String _finalizaTexto() {
+    final exp = _pos?.expira ?? widget.expiraMsg;
+    if (exp == null) return '';
+    final mins = exp.difference(DateTime.now()).inMinutes;
+    if (mins <= 0) return '';
+    if (mins < 60) return 'Finaliza en $mins min';
+    final hh = exp.hour.toString().padLeft(2, '0');
+    final mm = exp.minute.toString().padLeft(2, '0');
+    return 'Finaliza a las $hh:$mm';
+  }
+
   Future<void> _detener() async {
     await UbicacionVivoService.instance.detener();
     await _refrescar();
@@ -2856,6 +2913,7 @@ class _UbicacionVivoCardState extends State<_UbicacionVivoCard> {
     // blanco y no se leía en mis burbujas.
     final txt = dark ? const Color(0xFFE9EDEF) : const Color(0xFF111B21);
     final p = _pos;
+    final foto = appState.fotoDe(widget.emailAutor);
     return Container(
       width: 230,
       clipBehavior: Clip.antiAlias,
@@ -2871,7 +2929,29 @@ class _UbicacionVivoCardState extends State<_UbicacionVivoCard> {
           GestureDetector(
             onTap: activa ? _abrirMapa : null,
             child: (activa && p != null)
-                ? _MapaMini(lat: p.lat, lng: p.lng)
+                ? Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      _MapaMini(lat: p.lat, lng: p.lng),
+                      // Marcador con la foto del que comparte (como WhatsApp).
+                      Container(
+                        padding: const EdgeInsets.all(2),
+                        decoration: const BoxDecoration(
+                            color: Colors.white, shape: BoxShape.circle),
+                        child: CircleAvatar(
+                          radius: 16,
+                          backgroundColor: teal,
+                          backgroundImage: (foto != null && foto.isNotEmpty)
+                              ? NetworkImage(foto)
+                              : null,
+                          child: (foto == null || foto.isEmpty)
+                              ? const Icon(Icons.person,
+                                  color: Colors.white, size: 18)
+                              : null,
+                        ),
+                      ),
+                    ],
+                  )
                 : Container(
                     height: 108,
                     color: activa
@@ -2903,7 +2983,7 @@ class _UbicacionVivoCardState extends State<_UbicacionVivoCard> {
                     ],
                     Text(
                         activa
-                            ? 'Ubicación en vivo'
+                            ? 'Ubicación en tiempo real'
                             : 'Compartir finalizado',
                         style: TextStyle(
                             fontWeight: FontWeight.w800,
@@ -2917,9 +2997,11 @@ class _UbicacionVivoCardState extends State<_UbicacionVivoCard> {
                       ? 'Cargando…'
                       : (!activa
                           ? 'Ya no se comparte'
-                          : (_pos == null
-                              ? 'Esperando ubicación…'
-                              : 'Actualizado ${_haceCuanto(_pos!.actualizado)}')),
+                          : (_finalizaTexto().isNotEmpty
+                              ? _finalizaTexto()
+                              : (_pos == null
+                                  ? 'Esperando ubicación…'
+                                  : 'Actualizado ${_haceCuanto(_pos!.actualizado)}'))),
                   style: TextStyle(
                       fontSize: 11.5, color: txt.withOpacity(0.6)),
                 ),

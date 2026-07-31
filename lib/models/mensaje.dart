@@ -119,6 +119,12 @@ class Mensaje {
   bool get esCancha => tipo == 'cancha';
   bool get esGrupo => tipo == 'grupo';
 
+  // Avisos de llamada en el chat (estilo WhatsApp): el texto es el marcador. La
+  // tarjeta es TOCABLE para rellamar.
+  bool get esLlamadaVoz => texto == '📞 Llamada de voz';
+  bool get esVideollamada => texto == '📹 Videollamada';
+  bool get esLlamada => esLlamadaVoz || esVideollamada;
+
   /// refId efectivo: si no vino, cae a academiaId (mensajes de academia viejos).
   String get refEfectivo => refId.isNotEmpty ? refId : academiaId;
 
