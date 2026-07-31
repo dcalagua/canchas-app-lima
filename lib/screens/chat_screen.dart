@@ -484,8 +484,31 @@ class _ChatScreenState extends State<ChatScreen> {
   /// `cuentaEmail` (el alumno/jugador). En grupos no aplica.
   String get _contraparteEmail {
     if (widget.tipo == 'directo') return widget.cuentaEmail;
-    return (widget.soyProfe && widget.tipo != 'grupo') ? widget.cuentaEmail : '';
+    if (widget.soyProfe && widget.tipo != 'grupo') return widget.cuentaEmail;
+    // Alumno ↔ academia: la contraparte es el DUEÑO de la academia, para que el
+    // chat tenga TODAS las opciones de un contacto (llamar, apodo, bloquear,
+    // agregar a contactos), como en WhatsApp Business.
+    return _emailEntidad;
   }
+
+  /// Correo del DUEÑO de la ENTIDAD (academia) de este chat, cuando soy el
+  /// alumno. '' si no aplica. Sirve para habilitar las opciones de contacto sin
+  /// cambiar el nombre/foto que se muestra (que siguen siendo los de la academia).
+  String get _emailEntidad {
+    if (widget.soyProfe) return '';
+    if (widget.tipo == 'academia') {
+      final id = widget.academiaId.isNotEmpty ? widget.academiaId : widget.refId;
+      return appState.academiaPorId(id)?.dueno.toLowerCase() ?? '';
+    }
+    return '';
+  }
+
+  /// ¿Es un chat con una ENTIDAD (academia) donde el nombre/foto mostrados son
+  /// los de la academia, no los del dueño?
+  bool get _esChatEntidad =>
+      !widget.soyProfe &&
+      widget.tipo == 'academia' &&
+      _emailEntidad.isNotEmpty;
 
   /// ¿Muestro la insignia de "verificado" en la cabecera? Solo cuando soy el
   /// dueño y el jugador (la contraparte) está verificado.
@@ -1276,18 +1299,23 @@ class _ChatScreenState extends State<ChatScreen> {
     final esGrupo = widget.tipo == 'grupo';
     // Nombre y foto a mostrar: si la contraparte es una persona con perfil, se
     // usa su nombre + foto; si no, el título recibido (nombre de academia/grupo).
+    // En un chat de ENTIDAD (academia) el nombre/foto siguen siendo los de la
+    // academia (widget.titulo); solo si YO le puse un apodo, mando ese apodo.
     final nombrePerfil = _contraparteEmail.isEmpty
         ? null
-        : appState.nombreMostrableDe(_contraparteEmail);
+        : (_esChatEntidad
+            ? appState.apodoDe(_contraparteEmail)
+            : appState.nombreMostrableDe(_contraparteEmail));
     final fotoPerfil = esGrupo
         ? ((_grupo?.fotoUrl ?? '').isNotEmpty ? _grupo!.fotoUrl : null)
-        : (_contraparteEmail.isEmpty
+        : (_contraparteEmail.isEmpty || _esChatEntidad
             ? null
             : appState.fotoDe(_contraparteEmail));
-    // Recado (estado tipo WhatsApp) de la contraparte, si lo puso.
+    // Recado (estado tipo WhatsApp) de la contraparte, si lo puso. En academia no
+    // mostramos el recado del dueño (confunde bajo el nombre de la academia).
     final recado = esGrupo
         ? (_grupo != null ? '${_grupo!.miembros.length} integrantes' : null)
-        : (_contraparteEmail.isEmpty
+        : (_contraparteEmail.isEmpty || _esChatEntidad
             ? null
             : appState.recadoDe(_contraparteEmail));
     final tituloMostrar = esGrupo

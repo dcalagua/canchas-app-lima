@@ -874,6 +874,15 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
+  /// Academia por id (o null). La usa el chat de academia para saber su DUEÑO.
+  Academia? academiaPorId(String id) {
+    if (id.isEmpty) return null;
+    for (final a in academias) {
+      if (a.id == id) return a;
+    }
+    return null;
+  }
+
   /// Crea o actualiza una academia (upsert por id). Persiste local + nube
   /// (Supabase) para que sobreviva a reinstalar el APK.
   /// Crea o actualiza la academia (local + nube). Devuelve true si además quedó
