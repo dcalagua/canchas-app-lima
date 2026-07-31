@@ -57,8 +57,31 @@ jugador es 100% Pichangol, EBIM solo aparece discreto como respaldo).
   (= `https://pg-backend-production-c176.up.railway.app`), `VERIF_API_URL`
   (= `https://eexpense-production.up.railway.app`, módulo de existencia),
   `MAPS_API_KEY`, `PLACES_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`,
-  `APP_API_KEY` (secreto app↔backend; el APK lo manda en `X-App-Key`).
+  `APP_API_KEY` (secreto app↔backend; el APK lo manda en `X-App-Key`),
+  `LANDING_BASE_URL` (dominio de marca para el enlace público de la landing).
   **OJO:** `GROWTH_API_URL` ≠ `VERIF_API_URL` (servicios distintos).
+
+## Dominio oficial: `pichangol.app`
+
+El dominio de marca **YA ESTÁ REGISTRADO Y VIVO**. En Railway (`pg-backend`) el
+custom domain **`www.pichangol.app`** apunta al servicio (SSL activo, verde);
+también existe `pg.ebim.pe`. De aquí en adelante **el dominio público de las
+landings de canchas/academias es `https://www.pichangol.app`**, NO el host
+`*.up.railway.app` (ese sigue solo para la API del APK).
+
+- **Landing pública:** `https://www.pichangol.app/l/{academiaId}` (motor FastAPI
+  en `backend/growth/marketing/`, ruta `GET /l/{id}`).
+- **Cómo se arma la URL:** el APK usa el dart-define `LANDING_BASE_URL`
+  (`lib/services/pagos_service.dart`, `landingUrl`); si está vacío cae al host del
+  API. El backend emite `canonical`/`og:url` con la env `LANDING_BASE_URL`
+  (`config.py` → `marketing/router.py` → `marketing/landing.py`), fallback a
+  `PUBLIC_BASE_URL` o al host de la request.
+- **Para activarlo hay que setear el valor en dos lados** (por entorno):
+  secret `LANDING_BASE_URL` en GitHub Actions (para el APK) **y** variable
+  `LANDING_BASE_URL` en Railway `pg-backend` (para el HTML) =
+  `https://www.pichangol.app`.
+- El apex `pichangol.app` (sin `www`) queda libre para la home de marketing
+  (`landing/index.html`).
 
 ## Flujo de PROPIEDAD (clave del producto)
 
