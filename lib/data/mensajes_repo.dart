@@ -161,6 +161,26 @@ class MensajesRepo {
     }
   }
 
+  /// Sube un ARCHIVO/documento cualquiera al bucket `chat` conservando el
+  /// nombre/extensión (para detectarlo como documento y descargarlo bien).
+  static Future<String?> subirArchivo(
+      String hilo, Uint8List bytes, String nombre) async {
+    if (!SupabaseService.disponible) return null;
+    try {
+      final carpeta = hilo.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+      final seguro = nombre.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+      final path = '$carpeta/${DateTime.now().microsecondsSinceEpoch}_$seguro';
+      await SupabaseService.client.storage.from('chat').uploadBinary(
+            path,
+            bytes,
+            fileOptions: const FileOptions(upsert: true),
+          );
+      return SupabaseService.client.storage.from('chat').getPublicUrl(path);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Sube una nota de voz (.m4a) al bucket `chat` y devuelve su URL pública.
   static Future<String?> subirAudio(String hilo, Uint8List bytes) async {
     if (!SupabaseService.disponible) return null;

@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,7 +12,9 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:http/http.dart' as http;
 import 'package:record/record.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/llamada_service.dart';
@@ -267,6 +270,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (m.esGifSticker) return '🎞️ GIF';
     if (m.esUbicacionVivo) return '📍 Ubicación en tiempo real';
     if (m.esUbicacion) return '📍 Ubicación';
+    if (m.esDocumento) return '📄 ${m.nombreArchivo}';
     if (m.tieneFoto) return m.texto.isNotEmpty ? m.texto : '📷 Foto';
     return m.texto;
   }
@@ -929,6 +933,15 @@ class _ChatScreenState extends State<ChatScreen> {
                     },
                   ),
                   _AccionAdjunto(
+                    icon: Icons.insert_drive_file_rounded,
+                    color: const Color(0xFF5B7FE8), // azul
+                    label: 'Documento',
+                    onTap: () {
+                      Navigator.pop(context);
+                      _enviarDocumento();
+                    },
+                  ),
+                  _AccionAdjunto(
                     icon: Icons.location_on_rounded,
                     color: const Color(0xFF2ECC71), // verde
                     label: 'Ubicación',
@@ -997,6 +1010,51 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('No se pudo compartir tu ubicación.')));
+      }
+    } finally {
+      if (mounted) setState(() => _enviando = false);
+    }
+  }
+
+  /// Elige un ARCHIVO/documento, lo sube y lo envía como mensaje (tarjeta de
+  /// documento). Estilo WhatsApp: pdf, docx, xlsx, zip, etc.
+  Future<void> _enviarDocumento() async {
+    final u = appState.usuario;
+    if (u == null || _enviando) return;
+    try {
+      final res = await FilePicker.platform.pickFiles(withData: true);
+      if (res == null || res.files.isEmpty || !mounted) return;
+      final f = res.files.first;
+      final bytes = f.bytes;
+      if (bytes == null) return;
+      setState(() => _enviando = true);
+      final url = await MensajesRepo.subirArchivo(_hilo, bytes, f.name);
+      if (url == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('No se pudo subir el archivo. Revisa tu conexión.')));
+        }
+        return;
+      }
+      final msg = Mensaje(
+        id: 'msg_${DateTime.now().microsecondsSinceEpoch}',
+        hilo: _hilo,
+        tipo: widget.tipo,
+        refId: _refId,
+        academiaId: widget.academiaId,
+        cuentaEmail: widget.cuentaEmail,
+        autorEmail: u.email,
+        autorNombre: u.nombre,
+        esProfe: widget.soyProfe,
+        texto: '📄 ${f.name}',
+        mediaUrl: url,
+        creado: DateTime.now(),
+      );
+      await MensajesRepo.enviar(msg);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('No se pudo enviar el archivo.')));
       }
     } finally {
       if (mounted) setState(() => _enviando = false);
@@ -1894,6 +1952,11 @@ class _Burbuja extends StatelessWidget {
                   ),
                 ),
               )
+            else if (mensaje.esDocumento)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: _TarjetaDocumento(mensaje: mensaje, mio: mio, wa: wa),
+              )
             else if (mensaje.esUbicacionVivo)
               Padding(
                 padding: const EdgeInsets.only(bottom: 4),
@@ -1962,6 +2025,7 @@ class _Burbuja extends StatelessWidget {
           children: [
             if (mensaje.texto.isNotEmpty &&
                 !mensaje.esLlamada &&
+                !mensaje.esDocumento &&
                 !(mensaje.tieneFoto && mensaje.texto == '📷 Foto') &&
                 !(mensaje.esUbicacion && mensaje.texto == '📍 Ubicación') &&
                 !mensaje.esUbicacionVivo &&
@@ -2733,13 +2797,11 @@ class _VisorFoto extends StatelessWidget {
   final String url;
 
   Future<void> _descargar(BuildContext context) async {
-    final uri = Uri.tryParse(url);
-    if (uri == null) return;
-    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!ok && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No se pudo abrir la imagen.')));
-    }
+    // Como WhatsApp: baja la imagen y abre la hoja de compartir (guardar en
+    // galería / enviar), en vez de mostrar el link crudo de Supabase.
+    final nombre = url.split('?').first.split('/').last;
+    await _descargarYCompartir(
+        url, nombre.isEmpty ? 'imagen.jpg' : nombre);
   }
 
   @override
@@ -2806,6 +2868,101 @@ class _MapaMini extends StatelessWidget {
       fit: BoxFit.cover,
       placeholder: (_, __) => placeholder,
       errorWidget: (_, __, ___) => placeholder,
+    );
+  }
+}
+
+/// Descarga [url] y abre la HOJA DE COMPARTIR del sistema (guardar en galería,
+/// enviar por WhatsApp, abrir con otra app…) — como WhatsApp, en vez de mostrar
+/// el link crudo de Supabase. Si falla la descarga, cae a abrir el enlace.
+Future<void> _descargarYCompartir(String url, String nombre) async {
+  try {
+    final resp = await http.get(Uri.parse(url));
+    if (resp.statusCode != 200) throw Exception('descarga fallida');
+    final dir = await getTemporaryDirectory();
+    final seguro = nombre.trim().isEmpty
+        ? 'archivo'
+        : nombre.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+    final ruta = '${dir.path}/$seguro';
+    await File(ruta).writeAsBytes(resp.bodyBytes);
+    await Share.shareXFiles([XFile(ruta)]);
+  } catch (_) {
+    final uri = Uri.tryParse(url);
+    if (uri != null) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+}
+
+/// Tarjeta de DOCUMENTO en el chat (pdf/docx/xlsx/zip…), estilo WhatsApp: ícono
+/// según el tipo, nombre del archivo y descarga/compartir al tocar.
+class _TarjetaDocumento extends StatelessWidget {
+  const _TarjetaDocumento(
+      {required this.mensaje, required this.mio, required this.wa});
+  final Mensaje mensaje;
+  final bool mio;
+  final _WA wa;
+
+  IconData get _icono {
+    final n = mensaje.nombreArchivo.toLowerCase();
+    if (n.endsWith('.pdf')) return Icons.picture_as_pdf;
+    if (n.endsWith('.doc') || n.endsWith('.docx')) return Icons.description;
+    if (n.endsWith('.xls') || n.endsWith('.xlsx') || n.endsWith('.csv')) {
+      return Icons.table_chart;
+    }
+    if (n.endsWith('.ppt') || n.endsWith('.pptx')) return Icons.slideshow;
+    if (n.endsWith('.zip') || n.endsWith('.rar') || n.endsWith('.7z')) {
+      return Icons.folder_zip;
+    }
+    return Icons.insert_drive_file;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final txt = mio ? wa.textoMio : wa.textoOtro;
+    return GestureDetector(
+      onTap: () =>
+          _descargarYCompartir(mensaje.mediaUrl, mensaje.nombreArchivo),
+      child: Container(
+        width: 236,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: mio
+              ? Colors.white.withOpacity(0.12)
+              : Colors.black.withOpacity(0.04),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 20,
+              backgroundColor: teal,
+              child: Icon(_icono, color: Colors.white, size: 20),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(mensaje.nombreArchivo,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                          color: txt)),
+                  const SizedBox(height: 2),
+                  const Text('Toca para abrir / guardar',
+                      style: TextStyle(fontSize: 11.5, color: teal)),
+                ],
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Icon(Icons.download_rounded, size: 20, color: teal),
+          ],
+        ),
+      ),
     );
   }
 }

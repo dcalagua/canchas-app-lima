@@ -19,6 +19,10 @@ dependencies:
   shared_preferences: ^2.3.2
   image_picker: ^1.1.2
   image: ^4.2.0
+  # Enviar ARCHIVOS/documentos en el chat (pdf, docx, xlsx, zip…). Plugin nativo
+  # → de-riskear en CI (Flutter 3.24.5); el CI ya fuerza compileSdk 34 en
+  # subproyectos. Se usa con withData: true para subir los bytes a Storage.
+  file_picker: ^8.1.2
   supabase_flutter: ^2.5.0
   intl: ^0.19.0
   http: ^1.2.0

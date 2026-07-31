@@ -99,14 +99,41 @@ class Mensaje {
     }
   }
 
-  /// ¿El adjunto es una foto? SOLO si el `mediaUrl` es una URL http(s) real (las
-  /// fotos siempre son URLs de Supabase Storage) y no es una nota de voz. Exigir
-  /// http evita que un esquema propio como `geo:`/`geolive:` (ubicación) se
-  /// intente cargar como imagen y salga rota — incluso con mensajes viejos en
-  /// caché.
+  bool get _esUrlWeb =>
+      mediaUrl.startsWith('http://') || mediaUrl.startsWith('https://');
+
+  /// Extensión del archivo del `mediaUrl` (con el punto, en minúsculas), o ''.
+  String get _extension {
+    final u = mediaUrl.split('?').first.toLowerCase();
+    final punto = u.lastIndexOf('.');
+    final barra = u.lastIndexOf('/');
+    if (punto <= barra) return '';
+    return u.substring(punto);
+  }
+
+  static const _extsImagen = {
+    '.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif', '.bmp'
+  };
+
+  /// ¿El adjunto es una FOTO? Solo si el `mediaUrl` es una URL http(s) con
+  /// extensión de imagen. Así un `geo:`/`geolive:` (ubicación) o un documento no
+  /// se intentan cargar como imagen (no más cuadro roto).
   bool get tieneFoto =>
-      (mediaUrl.startsWith('http://') || mediaUrl.startsWith('https://')) &&
-      !esAudio;
+      _esUrlWeb && !esAudio && _extsImagen.contains(_extension);
+
+  /// ¿El adjunto es un DOCUMENTO/archivo (pdf, docx, xlsx, zip…)? Una URL http(s)
+  /// que no es imagen, audio ni GIF.
+  bool get esDocumento =>
+      _esUrlWeb && !esAudio && !esGifSticker && !tieneFoto;
+
+  /// Nombre a mostrar del documento (del texto "📄 nombre" o del final de la URL).
+  String get nombreArchivo {
+    final t = texto.trim();
+    if (t.startsWith('📄')) return t.replaceFirst('📄', '').trim();
+    final u = mediaUrl.split('?').first;
+    final barra = u.lastIndexOf('/');
+    return barra >= 0 ? u.substring(barra + 1) : 'archivo';
+  }
 
   /// ¿El adjunto es un GIF/sticker animado (Giphy)? Se muestra sin recorte y con
   /// fondo transparente, no como una foto cuadrada.
