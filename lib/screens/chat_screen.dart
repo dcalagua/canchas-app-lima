@@ -2903,23 +2903,52 @@ class _TarjetaDocumento extends StatelessWidget {
   final bool mio;
   final _WA wa;
 
-  IconData get _icono {
+  /// Ícono (FontAwesome, con "esquina doblada"), color de marca y tipo según la
+  /// extensión — como WhatsApp (PDF rojo, Word azul, Excel verde…).
+  ({IconData icono, Color color}) get _info {
     final n = mensaje.nombreArchivo.toLowerCase();
-    if (n.endsWith('.pdf')) return Icons.picture_as_pdf;
-    if (n.endsWith('.doc') || n.endsWith('.docx')) return Icons.description;
+    if (n.endsWith('.pdf')) {
+      return (icono: FontAwesomeIcons.filePdf, color: const Color(0xFFE5342A));
+    }
+    if (n.endsWith('.doc') || n.endsWith('.docx')) {
+      return (icono: FontAwesomeIcons.fileWord, color: const Color(0xFF2B579A));
+    }
     if (n.endsWith('.xls') || n.endsWith('.xlsx') || n.endsWith('.csv')) {
-      return Icons.table_chart;
+      return (
+        icono: FontAwesomeIcons.fileExcel,
+        color: const Color(0xFF217346)
+      );
     }
-    if (n.endsWith('.ppt') || n.endsWith('.pptx')) return Icons.slideshow;
+    if (n.endsWith('.ppt') || n.endsWith('.pptx')) {
+      return (
+        icono: FontAwesomeIcons.filePowerpoint,
+        color: const Color(0xFFD24726)
+      );
+    }
     if (n.endsWith('.zip') || n.endsWith('.rar') || n.endsWith('.7z')) {
-      return Icons.folder_zip;
+      return (
+        icono: FontAwesomeIcons.fileZipper,
+        color: const Color(0xFF8E7B4C)
+      );
     }
-    return Icons.insert_drive_file;
+    if (n.endsWith('.txt')) {
+      return (icono: FontAwesomeIcons.fileLines, color: Colors.blueGrey);
+    }
+    return (icono: FontAwesomeIcons.file, color: Colors.blueGrey);
+  }
+
+  /// Extensión en mayúsculas para el subtítulo (ej. "PDF", "DOCX").
+  String get _tipo {
+    final n = mensaje.nombreArchivo;
+    final dot = n.lastIndexOf('.');
+    if (dot < 0 || dot == n.length - 1) return 'ARCHIVO';
+    return n.substring(dot + 1).toUpperCase();
   }
 
   @override
   Widget build(BuildContext context) {
     final txt = mio ? wa.textoMio : wa.textoOtro;
+    final info = _info;
     return GestureDetector(
       onTap: () =>
           _descargarYCompartir(mensaje.mediaUrl, mensaje.nombreArchivo),
@@ -2934,10 +2963,16 @@ class _TarjetaDocumento extends StatelessWidget {
         ),
         child: Row(
           children: [
-            CircleAvatar(
-              radius: 20,
-              backgroundColor: teal,
-              child: Icon(_icono, color: Colors.white, size: 20),
+            Container(
+              width: 40,
+              height: 44,
+              decoration: BoxDecoration(
+                color: info.color.withOpacity(0.14),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Center(
+                child: FaIcon(info.icono, color: info.color, size: 22),
+              ),
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -2952,14 +2987,15 @@ class _TarjetaDocumento extends StatelessWidget {
                           fontWeight: FontWeight.w700,
                           fontSize: 13,
                           color: txt)),
-                  const SizedBox(height: 2),
-                  const Text('Toca para abrir / guardar',
-                      style: TextStyle(fontSize: 11.5, color: teal)),
+                  const SizedBox(height: 3),
+                  Text('$_tipo · toca para abrir',
+                      style: TextStyle(
+                          fontSize: 11.5, color: txt.withOpacity(0.55))),
                 ],
               ),
             ),
             const SizedBox(width: 6),
-            const Icon(Icons.download_rounded, size: 20, color: teal),
+            Icon(Icons.download_rounded, size: 20, color: txt.withOpacity(0.5)),
           ],
         ),
       ),
@@ -3084,27 +3120,37 @@ class _UbicacionVivoCardState extends State<_UbicacionVivoCard> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           GestureDetector(
-            onTap: activa ? _abrirMapa : null,
-            child: (activa && p != null)
+            onTap: p != null ? _abrirMapa : null,
+            child: (p != null)
                 ? Stack(
                     alignment: Alignment.center,
                     children: [
                       _MapaMini(lat: p.lat, lng: p.lng),
-                      // Marcador con la foto del que comparte (como WhatsApp).
-                      Container(
-                        padding: const EdgeInsets.all(2),
-                        decoration: const BoxDecoration(
-                            color: Colors.white, shape: BoxShape.circle),
-                        child: CircleAvatar(
-                          radius: 16,
-                          backgroundColor: teal,
-                          backgroundImage: (foto != null && foto.isNotEmpty)
-                              ? NetworkImage(foto)
-                              : null,
-                          child: (foto == null || foto.isEmpty)
-                              ? const Icon(Icons.person,
-                                  color: Colors.white, size: 18)
-                              : null,
+                      // Terminada: el mapa se mantiene pero ATENUADO (como
+                      // WhatsApp), no un cuadro gris plano.
+                      if (!activa)
+                        Positioned.fill(
+                          child: Container(
+                              color: Colors.black.withOpacity(0.38)),
+                        ),
+                      // Marcador con la foto del que comparte (gris si terminó).
+                      Opacity(
+                        opacity: activa ? 1 : 0.75,
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: const BoxDecoration(
+                              color: Colors.white, shape: BoxShape.circle),
+                          child: CircleAvatar(
+                            radius: 16,
+                            backgroundColor: activa ? teal : Colors.grey,
+                            backgroundImage: (foto != null && foto.isNotEmpty)
+                                ? NetworkImage(foto)
+                                : null,
+                            child: (foto == null || foto.isEmpty)
+                                ? const Icon(Icons.person,
+                                    color: Colors.white, size: 18)
+                                : null,
+                          ),
                         ),
                       ),
                     ],
@@ -3138,14 +3184,11 @@ class _UbicacionVivoCardState extends State<_UbicacionVivoCard> {
                       ),
                       const SizedBox(width: 6),
                     ],
-                    Text(
-                        activa
-                            ? 'Ubicación en tiempo real'
-                            : 'Compartir finalizado',
+                    const Text('Ubicación en tiempo real',
                         style: TextStyle(
                             fontWeight: FontWeight.w800,
                             fontSize: 13,
-                            color: txt)),
+                            color: Color(0xFF128C7E))),
                   ],
                 ),
                 const SizedBox(height: 2),
@@ -3153,7 +3196,7 @@ class _UbicacionVivoCardState extends State<_UbicacionVivoCard> {
                   _cargando
                       ? 'Cargando…'
                       : (!activa
-                          ? 'Ya no se comparte'
+                          ? 'Compartir finalizado'
                           : (_finalizaTexto().isNotEmpty
                               ? _finalizaTexto()
                               : (_pos == null
