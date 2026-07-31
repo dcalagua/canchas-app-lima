@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -13,6 +14,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
+import 'package:printing/printing.dart';
 import 'package:record/record.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -2894,19 +2896,37 @@ Future<void> _descargarYCompartir(String url, String nombre) async {
   }
 }
 
-/// Tarjeta de DOCUMENTO en el chat (pdf/docx/xlsx/zip…), estilo WhatsApp: ícono
-/// según el tipo, nombre del archivo y descarga/compartir al tocar.
-class _TarjetaDocumento extends StatelessWidget {
+/// Metadata cacheada de un documento (miniatura de la 1ª página, tamaño, páginas).
+class _DocMeta {
+  Uint8List? thumb;
+  int? size;
+  int? paginas;
+}
+
+/// Tarjeta de DOCUMENTO en el chat, estilo WhatsApp: preview de la 1ª página del
+/// PDF, ícono PDF rojo, "N páginas · TIPO · tamaño" y dos botones **Ver** /
+/// **Guardar como…**. La miniatura se rasteriza con `printing` (lazy + caché).
+class _TarjetaDocumento extends StatefulWidget {
   const _TarjetaDocumento(
       {required this.mensaje, required this.mio, required this.wa});
   final Mensaje mensaje;
   final bool mio;
   final _WA wa;
 
-  /// Ícono (FontAwesome, con "esquina doblada"), color de marca y tipo según la
-  /// extensión — como WhatsApp (PDF rojo, Word azul, Excel verde…).
+  @override
+  State<_TarjetaDocumento> createState() => _TarjetaDocumentoState();
+}
+
+class _TarjetaDocumentoState extends State<_TarjetaDocumento> {
+  // Caché por URL para no re-descargar/rasterizar al re-scrollear.
+  static final Map<String, _DocMeta> _cache = {};
+  _DocMeta? _meta;
+
+  String get _nombre => widget.mensaje.nombreArchivo;
+  bool get _esPdf => _nombre.toLowerCase().endsWith('.pdf');
+
   ({IconData icono, Color color}) get _info {
-    final n = mensaje.nombreArchivo.toLowerCase();
+    final n = _nombre.toLowerCase();
     if (n.endsWith('.pdf')) {
       return (icono: FontAwesomeIcons.filePdf, color: const Color(0xFFE5342A));
     }
@@ -2914,10 +2934,7 @@ class _TarjetaDocumento extends StatelessWidget {
       return (icono: FontAwesomeIcons.fileWord, color: const Color(0xFF2B579A));
     }
     if (n.endsWith('.xls') || n.endsWith('.xlsx') || n.endsWith('.csv')) {
-      return (
-        icono: FontAwesomeIcons.fileExcel,
-        color: const Color(0xFF217346)
-      );
+      return (icono: FontAwesomeIcons.fileExcel, color: const Color(0xFF217346));
     }
     if (n.endsWith('.ppt') || n.endsWith('.pptx')) {
       return (
@@ -2926,10 +2943,7 @@ class _TarjetaDocumento extends StatelessWidget {
       );
     }
     if (n.endsWith('.zip') || n.endsWith('.rar') || n.endsWith('.7z')) {
-      return (
-        icono: FontAwesomeIcons.fileZipper,
-        color: const Color(0xFF8E7B4C)
-      );
+      return (icono: FontAwesomeIcons.fileZipper, color: const Color(0xFF8E7B4C));
     }
     if (n.endsWith('.txt')) {
       return (icono: FontAwesomeIcons.fileLines, color: Colors.blueGrey);
@@ -2937,67 +2951,185 @@ class _TarjetaDocumento extends StatelessWidget {
     return (icono: FontAwesomeIcons.file, color: Colors.blueGrey);
   }
 
-  /// Extensión en mayúsculas para el subtítulo (ej. "PDF", "DOCX").
   String get _tipo {
-    final n = mensaje.nombreArchivo;
-    final dot = n.lastIndexOf('.');
-    if (dot < 0 || dot == n.length - 1) return 'ARCHIVO';
-    return n.substring(dot + 1).toUpperCase();
+    final dot = _nombre.lastIndexOf('.');
+    if (dot < 0 || dot == _nombre.length - 1) return 'ARCHIVO';
+    return _nombre.substring(dot + 1).toUpperCase();
   }
 
   @override
+  void initState() {
+    super.initState();
+    final cached = _cache[widget.mensaje.mediaUrl];
+    if (cached != null) {
+      _meta = cached;
+    } else {
+      _prepararMeta();
+    }
+  }
+
+  /// Descarga (una vez) el PDF para: tamaño, nº de páginas y miniatura de la 1ª
+  /// página. Best-effort: si falla, se queda solo con el ícono.
+  Future<void> _prepararMeta() async {
+    final url = widget.mensaje.mediaUrl;
+    final meta = _DocMeta();
+    _cache[url] = meta; // marca para no repetir
+    try {
+      // Tamaño por HEAD (barato).
+      final head = await http.head(Uri.parse(url));
+      meta.size = int.tryParse(head.headers['content-length'] ?? '');
+    } catch (_) {}
+    if (_esPdf && (meta.size == null || meta.size! < 12 * 1024 * 1024)) {
+      try {
+        final resp = await http.get(Uri.parse(url));
+        if (resp.statusCode == 200) {
+          meta.size ??= resp.bodyBytes.length;
+          meta.paginas = _contarPaginas(resp.bodyBytes);
+          await for (final page in Printing.raster(resp.bodyBytes,
+              pages: [0], dpi: 96)) {
+            meta.thumb = await page.toPng();
+            break;
+          }
+        }
+      } catch (_) {}
+    }
+    if (mounted) setState(() => _meta = meta);
+  }
+
+  /// Heurística barata de nº de páginas (cuenta objetos /Type /Page del PDF).
+  static int? _contarPaginas(Uint8List bytes) {
+    try {
+      final s = latin1.decode(bytes, allowInvalid: true);
+      final n = RegExp(r'/Type\s*/Page[^s]').allMatches(s).length;
+      return n > 0 ? n : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static String _fmtSize(int b) {
+    if (b < 1024) return '$b B';
+    if (b < 1024 * 1024) return '${(b / 1024).round()} kB';
+    return '${(b / 1024 / 1024).toStringAsFixed(1)} MB';
+  }
+
+  String get _metaLinea {
+    final m = _meta;
+    final partes = <String>[];
+    if (m?.paginas != null) {
+      partes.add('${m!.paginas} ${m.paginas == 1 ? 'página' : 'páginas'}');
+    }
+    partes.add(_tipo);
+    if (m?.size != null) partes.add(_fmtSize(m!.size!));
+    return partes.join(' · ');
+  }
+
+  void _ver() {
+    final uri = Uri.tryParse(widget.mensaje.mediaUrl);
+    if (uri != null) launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  void _guardar() => _descargarYCompartir(widget.mensaje.mediaUrl, _nombre);
+
+  @override
   Widget build(BuildContext context) {
-    final txt = mio ? wa.textoMio : wa.textoOtro;
+    final mio = widget.mio;
+    final txt = mio ? widget.wa.textoMio : widget.wa.textoOtro;
     final info = _info;
-    return GestureDetector(
-      onTap: () =>
-          _descargarYCompartir(mensaje.mediaUrl, mensaje.nombreArchivo),
-      child: Container(
-        width: 236,
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: mio
-              ? Colors.white.withOpacity(0.12)
-              : Colors.black.withOpacity(0.04),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 40,
-              height: 44,
-              decoration: BoxDecoration(
-                color: info.color.withOpacity(0.14),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Center(
-                child: FaIcon(info.icono, color: info.color, size: 22),
-              ),
+    final thumb = _meta?.thumb;
+    final divisor = txt.withOpacity(0.15);
+    return Container(
+      width: 250,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: mio
+            ? Colors.white.withOpacity(0.10)
+            : Colors.black.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Preview de la 1ª página (solo PDF con miniatura lista).
+          if (thumb != null)
+            GestureDetector(
+              onTap: _ver,
+              child: Image.memory(thumb,
+                  height: 150, width: double.infinity, fit: BoxFit.cover),
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(mensaje.nombreArchivo,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13,
-                          color: txt)),
-                  const SizedBox(height: 3),
-                  Text('$_tipo · toca para abrir',
-                      style: TextStyle(
-                          fontSize: 11.5, color: txt.withOpacity(0.55))),
-                ],
-              ),
+          // Fila: ícono + nombre + metadata.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
+            child: Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: info.color.withOpacity(0.14),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Center(
+                      child: FaIcon(info.icono, color: info.color, size: 22)),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(_nombre,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                              color: txt)),
+                      const SizedBox(height: 3),
+                      Text(_metaLinea,
+                          style: TextStyle(
+                              fontSize: 11.5, color: txt.withOpacity(0.55))),
+                    ],
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 6),
-            Icon(Icons.download_rounded, size: 20, color: txt.withOpacity(0.5)),
-          ],
-        ),
+          ),
+          Divider(height: 1, thickness: 1, color: divisor),
+          // Botones Ver | Guardar como…
+          SizedBox(
+            height: 42,
+            child: Row(
+              children: [
+                Expanded(
+                  child: InkWell(
+                    onTap: _ver,
+                    child: const Center(
+                      child: Text('Ver',
+                          style: TextStyle(
+                              color: teal,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13.5)),
+                    ),
+                  ),
+                ),
+                Container(width: 1, color: divisor),
+                Expanded(
+                  child: InkWell(
+                    onTap: _guardar,
+                    child: const Center(
+                      child: Text('Guardar como…',
+                          style: TextStyle(
+                              color: teal,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13.5)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
