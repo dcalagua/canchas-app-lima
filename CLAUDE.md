@@ -65,9 +65,11 @@ jugador es 100% Pichangol, EBIM solo aparece discreto como respaldo).
 
 El dominio de marca **YA ESTÁ REGISTRADO Y VIVO**. En Railway (`pg-backend`) el
 custom domain **`www.pichangol.app`** apunta al servicio (SSL activo, verde);
-también existe `pg.ebim.pe`. De aquí en adelante **el dominio público de las
-landings de canchas/academias es `https://www.pichangol.app`**, NO el host
-`*.up.railway.app` (ese sigue solo para la API del APK).
+también existe `pg.ebim.pe`. **`https://www.pichangol.app` es el dominio de
+marca/PRODUCCIÓN** de las landings. En el **piloto** (dev/QAS, provisional) las
+landings usan **`https://pg.ebim.pe`** y se RESERVA `pichangol.app` para PROD
+(ver «Estrategia de ambientes» más abajo). El host `*.up.railway.app` queda solo
+para la API del APK.
 
 - **Landing pública:** `https://www.pichangol.app/l/{academiaId}` (motor FastAPI
   en `backend/growth/marketing/`, ruta `GET /l/{id}`).
@@ -78,10 +80,30 @@ landings de canchas/academias es `https://www.pichangol.app`**, NO el host
   `PUBLIC_BASE_URL` o al host de la request.
 - **Para activarlo hay que setear el valor en dos lados** (por entorno):
   secret `LANDING_BASE_URL` en GitHub Actions (para el APK) **y** variable
-  `LANDING_BASE_URL` en Railway `pg-backend` (para el HTML) =
-  `https://www.pichangol.app`.
+  `LANDING_BASE_URL` en Railway `pg-backend` (para el HTML) = `https://pg.ebim.pe`
+  en el **piloto**, `https://www.pichangol.app` en **PROD**.
 - El apex `pichangol.app` (sin `www`) queda libre para la home de marketing
   (`landing/index.html`).
+
+## Estrategia de ambientes (piloto → prod)
+
+**Decisión vigente (jul-2026):** para el **piloto / primeras pruebas con
+academias amigas** se usa **UN SOLO ambiente** (el actual: Railway `pg-backend` +
+Supabase dev). **DEV y QAS colapsados**; NO se monta un QAS separado todavía
+(acelera salir a pruebas). Cuando el piloto esté sólido se monta el PROD real.
+
+- **Piloto (dev/QAS, ahora):** dominio de landings **`https://pg.ebim.pe`** — se
+  reserva la marca. Culqi en `sk_test`. Supabase dev.
+- **PROD real (fase posterior):** ambiente dedicado — Supabase prod **con
+  backups** + Culqi `sk_live` + AAB a Play Store (`pe.ebim.pichangol`). Al
+  montarlo se **mueve** el custom domain `www.pichangol.app` de `pg-backend` al
+  backend PROD, y el piloto queda con `pg.ebim.pe` / el host `*.up.railway.app`.
+  Ahí `LANDING_BASE_URL = https://www.pichangol.app`.
+- Por qué reservar `pichangol.app` para PROD: no exponer la marca ni el SEO a
+  páginas de prueba, y evitar que enlaces de piloto compartidos bajo el dominio
+  de marca se rompan en el corte a PROD (los datos del piloto son desechables).
+- Referencia técnica del salto a QAS/PROD dedicado: `docs/entornos-qas-prod.md`
+  y `docs/checklist-qas.md`.
 
 ## Flujo de PROPIEDAD (clave del producto)
 
