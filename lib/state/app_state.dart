@@ -657,16 +657,27 @@ class AppState extends ChangeNotifier {
   }
 
   /// Trae de Supabase los perfiles de estos correos y los cachea (best-effort).
-  Future<void> cargarPerfiles(List<String> emails) async {
+  /// Con [forzar] re-baja aunque ya estén en caché (para refrescar foto/nombre).
+  Future<void> cargarPerfiles(List<String> emails, {bool forzar = false}) async {
     final faltan = emails
         .map((e) => e.trim().toLowerCase())
-        .where((e) => e.isNotEmpty && !_perfiles.containsKey(e))
+        .where((e) => e.isNotEmpty && (forzar || !_perfiles.containsKey(e)))
         .toList();
     if (faltan.isEmpty) return;
     final res = await PerfilesRepo.obtenerVarios(faltan);
     if (res.isEmpty) return;
     _perfiles.addAll(res);
     notifyListeners();
+    _guardarPerfiles(); // persiste para el próximo arranque (device-first)
+  }
+
+  /// Guarda el caché de perfiles en disco (nombre+foto), para pintar al instante
+  /// al reabrir sin re-descargar.
+  Future<void> _guardarPerfiles() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kPerfiles, jsonEncode(_perfiles));
+    } catch (_) {}
   }
 
   /// Sincroniza MI perfil público al iniciar sesión: si ya tengo un perfil
@@ -4900,6 +4911,7 @@ class AppState extends ChangeNotifier {
   static const _kChatLecturas = 'chat_lecturas_json';
   static const _kChatsOcultos = 'chats_ocultos_json';
   static const _kApodos = 'apodos_json';
+  static const _kPerfiles = 'perfiles_cache_json';
   static const _kBloqueados = 'bloqueados_json';
   static const _kChatsFijados = 'chats_fijados_json';
   static const _kChatsArchivados = 'chats_archivados_json';
@@ -5147,6 +5159,19 @@ class AppState extends ChangeNotifier {
           _apodos
             ..clear()
             ..addAll(m.map((k, v) => MapEntry(k, v.toString())));
+        } catch (_) {}
+      }
+
+      // Caché PERSISTENTE de perfiles (nombre+foto): así el inbox y el chat
+      // muestran nombre/avatar al INSTANTE al reabrir, sin re-bajar de Supabase
+      // ni parpadear (device-first, como WhatsApp). Se refresca en segundo plano.
+      final perfilesRaw = prefs.getString(_kPerfiles);
+      if (perfilesRaw != null) {
+        try {
+          final m = jsonDecode(perfilesRaw) as Map<String, dynamic>;
+          m.forEach((k, v) {
+            if (v is Map) _perfiles[k] = Map<String, dynamic>.from(v);
+          });
         } catch (_) {}
       }
 
@@ -5424,6 +5449,7 @@ class AppState extends ChangeNotifier {
     _estadosOcultos.clear();
     _vistasPorEstado.clear();
     _perfiles.clear();
+    _guardarPerfiles(); // limpia también el caché en disco (no mostrar ajenos)
     _retosPendientes = 0;
   }
 

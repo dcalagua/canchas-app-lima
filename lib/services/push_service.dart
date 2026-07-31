@@ -71,6 +71,11 @@ class PushService {
   /// las pantallas). Así este servicio no importa la capa de UI.
   static void Function(String hilo)? alAbrirChat;
 
+  /// Contador que se incrementa cada vez que llega un push de CHAT en foreground.
+  /// La bandeja (inbox) lo escucha para refrescarse SOLA al instante, sin tener
+  /// que reabrir ni hacer pull-to-refresh (estilo WhatsApp).
+  static final ValueNotifier<int> nuevoMensaje = ValueNotifier<int>(0);
+
   /// Inicializa Firebase + messaging. Fail-safe: sin config → queda desactivado.
   static Future<void> init() async {
     if (_ok) return;
@@ -130,6 +135,9 @@ class PushService {
       return;
     }
     final hilo = (m.data['hilo'] ?? '').toString();
+    // Avisa a la bandeja para que se refresque sola (aunque el chat esté abierto
+    // o silenciado): así el mensaje "se siembra" al toque, sin reabrir.
+    if (hilo.isNotEmpty) nuevoMensaje.value++;
     if (hilo.isEmpty || hilo == appState.hiloChatAbierto) return;
     // Chat silenciado (campanita): no molestamos con el aviso in-app.
     if (appState.chatSilenciado(hilo)) return;

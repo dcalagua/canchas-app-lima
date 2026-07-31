@@ -3144,7 +3144,7 @@ class _UbicacionVivoCardState extends State<_UbicacionVivoCard> {
                             radius: 16,
                             backgroundColor: activa ? teal : Colors.grey,
                             backgroundImage: (foto != null && foto.isNotEmpty)
-                                ? NetworkImage(foto)
+                                ? CachedNetworkImageProvider(foto)
                                 : null,
                             child: (foto == null || foto.isEmpty)
                                 ? const Icon(Icons.person,

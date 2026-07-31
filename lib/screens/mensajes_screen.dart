@@ -6,6 +6,7 @@ import '../data/db_local.dart';
 import '../data/grupos_repo.dart';
 import '../data/mensajes_repo.dart';
 import '../models/mensaje.dart';
+import '../services/push_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
@@ -116,6 +117,13 @@ class _MensajesScreenState extends State<MensajesScreen> {
     _cargarCache(); // pinta el inbox al instante desde el teléfono (SQLite)
     _cargar();
     appState.addListener(_alCambiarSesion);
+    // Refresca la bandeja SOLA cuando llega un push de chat (sin reabrir).
+    PushService.nuevoMensaje.addListener(_onPush);
+  }
+
+  /// Llegó un mensaje nuevo por push: refresca el inbox en segundo plano.
+  void _onPush() {
+    if (mounted) _cargar(silencioso: true);
   }
 
   /// Si cambió el usuario logueado, limpia el inbox del anterior y recarga.
@@ -971,6 +979,7 @@ class _MensajesScreenState extends State<MensajesScreen> {
   @override
   void dispose() {
     appState.removeListener(_alCambiarSesion);
+    PushService.nuevoMensaje.removeListener(_onPush);
     _busqueda.dispose();
     super.dispose();
   }
