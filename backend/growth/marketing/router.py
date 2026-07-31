@@ -201,6 +201,49 @@ def cm_estado(academia_id: str, request: Request) -> dict:
     return _cm_estado(academia_id, request)
 
 
+@router.post("/marketing/cm/reel-del-dia", dependencies=_APP)
+def cm_reel_del_dia(req: PostsReq, request: Request) -> dict:
+    """Auto-arma un REEL vertical (video 9:16) con las FOTOS del negocio + marca,
+    listo para subir a Instagram/Facebook (el dueño le pone la música ahí). On-
+    demand (pesa): el flyer sigue siendo lo instantáneo. Fail-safe: si no se puede
+    generar (sin ffmpeg/Pillow), devuelve ok=False y el APK muestra un aviso."""
+    from .reel import generar_reel
+
+    datos = req.datos or {}
+    # Reusa el copy/tipo del post del día si ya existe (mismo mensaje que el flyer).
+    gancho = req.contexto or ""
+    tipo = None
+    c = stores.cm.get(req.academia_id)
+    if c and c.get("ultimo_post"):
+        up = c["ultimo_post"]
+        gancho = gancho or str(up.get("texto") or "")
+        tipo = up.get("tipo")
+        if not datos:
+            datos = c.get("datos") or {}
+    if not gancho:
+        posts = generar_posts(datos, "", 1)
+        gancho = str((posts[0].get("texto") if posts else "") or "")
+
+    mp4 = generar_reel(datos, gancho, tipo=tipo)
+    if not mp4:
+        return {"ok": False, "motivo": "no_disponible", "reel_url": ""}
+    vid_id = stores.guardar_video(mp4, "video/mp4")
+    reel_url = f"{_base_publica(request)}/marketing/vid/{vid_id}.mp4"
+    return {"ok": True, "reel_url": reel_url}
+
+
+@router.get("/marketing/vid/{nombre}")
+def ver_video(nombre: str) -> Response:
+    """PÚBLICO: sirve un reel (video) alojado en memoria (hosting transitorio)."""
+    vid_id = nombre.split(".")[0]
+    vid = stores.videos.get(vid_id)
+    if not vid:
+        raise HTTPException(status_code=404, detail="no_encontrado")
+    return Response(content=vid["bytes"],
+                    media_type=vid.get("content_type", "video/mp4"),
+                    headers={"Cache-Control": "public, max-age=86400"})
+
+
 # ------ Gestión de redes (Nivel 2): conexión OAuth + publicación ------------
 @router.get("/marketing/redes/diag")
 def redes_diag() -> dict:

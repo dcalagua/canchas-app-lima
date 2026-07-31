@@ -467,6 +467,10 @@ class Stores:
         # NO se persiste (Meta las descarga al instante al publicar); se descartan
         # las más viejas al pasar el tope (config.IMG_MAX_RETENIDAS).
         self.imagenes: "dict[str, dict]" = {}
+        # VIDEOS (reels) para publicar (hosting transitorio): id -> {bytes,
+        # content_type}. Igual que imágenes pero con tope MUCHO menor (pesan
+        # más): se conservan sólo los últimos pocos. NO se persiste.
+        self.videos: "dict[str, dict]" = {}
         # VISTAS de destacados (métrica de impacto del boost): por id (dueno_id
         # de canchas o id de academia) → {YYYY-MM-DD: nº impresiones ese día}.
         self.vistas: dict[str, dict[str, int]] = {}
@@ -763,6 +767,16 @@ class Stores:
         while len(self.imagenes) > max(1, tope):
             self.imagenes.pop(next(iter(self.imagenes)))
         return img_id
+
+    def guardar_video(self, datos: bytes, content_type: str = "video/mp4",
+                      tope: int = 6) -> str:
+        """Guarda un video (reel) en memoria y devuelve su id. Tope bajo: los
+        reels pesan, así que se conservan sólo los últimos pocos."""
+        vid_id = f"{self.next_id('vid')}"
+        self.videos[vid_id] = {"bytes": datos, "content_type": content_type}
+        while len(self.videos) > max(1, tope):
+            self.videos.pop(next(iter(self.videos)))
+        return vid_id
 
     # --- idempotencia ---
     def idem_get(self, scope: str, key: str | None) -> dict | None:

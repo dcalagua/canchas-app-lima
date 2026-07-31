@@ -158,6 +158,41 @@ class _PostDelDiaScreenState extends State<PostDelDiaScreen> {
         duration: Duration(milliseconds: 1200)));
   }
 
+  /// Auto-arma un REEL (video vertical) con las fotos del negocio + marca y lo
+  /// comparte en 1 toque (para subirlo a IG/FB, donde el dueño le pone la música).
+  Future<void> _crearReel() async {
+    final url = await conPreload<String>(
+      context,
+      () => CommunityService.reelDelDia(
+        academiaId: widget.academiaId,
+        datos: widget.datos,
+        contexto: _texto.text.trim(),
+      ),
+      texto: 'Armando tu reel…',
+    );
+    if (!mounted) return;
+    if (url.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No se pudo armar el reel. Reintenta más tarde.')));
+      return;
+    }
+    try {
+      final resp = await http.get(Uri.parse(url));
+      if (resp.statusCode != 200) throw Exception('descarga');
+      final dir = await getTemporaryDirectory();
+      final ruta = '${dir.path}/pichangol_reel_'
+          '${DateTime.now().millisecondsSinceEpoch}.mp4';
+      await File(ruta).writeAsBytes(resp.bodyBytes);
+      await Share.shareXFiles([XFile(ruta, mimeType: 'video/mp4')],
+          text: _texto.text.trim().isNotEmpty ? _texto.text.trim() : null);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('No se pudo compartir el reel. Inténtalo de nuevo.')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -287,6 +322,32 @@ class _PostDelDiaScreenState extends State<PostDelDiaScreen> {
                       color: textoTenue, size: 40)),
             ),
           ),
+        const SizedBox(height: 12),
+        // REEL (video): auto-armado con las fotos del negocio, para IG/FB.
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: bosque,
+              side: const BorderSide(color: trazo),
+              padding: const EdgeInsets.symmetric(vertical: 13),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14)),
+            ),
+            onPressed: _crearReel,
+            icon: const Icon(Icons.movie_creation_outlined, color: teal),
+            label: const Text('Crear reel (video)',
+                style: TextStyle(fontWeight: FontWeight.w800)),
+          ),
+        ),
+        const Padding(
+          padding: EdgeInsets.only(top: 6, left: 4),
+          child: Text(
+            'Arma un video vertical con tus fotos, listo para subir a Historias '
+            'o Reels. Tú le pones la música al publicar.',
+            style: TextStyle(color: textoTenue, fontSize: 12),
+          ),
+        ),
         const SizedBox(height: 16),
         const Text('Texto (edítalo si quieres)',
             style: TextStyle(fontWeight: FontWeight.w700)),

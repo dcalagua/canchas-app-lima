@@ -202,6 +202,40 @@ class CommunityService {
     }
   }
 
+  /// Auto-arma un REEL (video vertical 9:16) con las fotos del negocio + marca,
+  /// listo para subir a IG/FB. On-demand (pesa más que el flyer). Devuelve la URL
+  /// pública del MP4, o '' si no se pudo generar (el backend no tiene ffmpeg, etc.).
+  static Future<String> reelDelDia({
+    required String academiaId,
+    required Map<String, dynamic> datos,
+    String contexto = '',
+  }) async {
+    if (!disponible) return '';
+    try {
+      final uri = Uri.parse('$_baseUrl/marketing/cm/reel-del-dia');
+      final resp = await http
+          .post(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              if (_appKey.isNotEmpty) 'X-App-Key': _appKey,
+            },
+            body: jsonEncode({
+              'academia_id': academiaId,
+              'datos': datos,
+              'contexto': contexto,
+            }),
+          )
+          .timeout(const Duration(seconds: 90));
+      if (resp.statusCode != 200) return '';
+      final j = jsonDecode(resp.body) as Map<String, dynamic>;
+      if (j['ok'] != true) return '';
+      return (j['reel_url'] ?? '').toString().trim();
+    } catch (_) {
+      return '';
+    }
+  }
+
   /// Lee el estado del CM autónomo (activo/cadencia + el post PRE-GENERADO).
   static Future<CmEstado?> cmEstado(String academiaId) async {
     if (!disponible || academiaId.isEmpty) return null;

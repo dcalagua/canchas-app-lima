@@ -10,10 +10,13 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from datetime import datetime, timedelta, timezone  # noqa: E402
 
+import pytest  # noqa: E402
+
 from db.store import stores  # noqa: E402
 from main import app  # noqa: E402
 from marketing import cm as cm_svc  # noqa: E402
 from marketing.flyer import generar_flyer  # noqa: E402
+from marketing.reel import generar_reel  # noqa: E402
 
 client = TestClient(app)
 
@@ -76,6 +79,32 @@ def test_scheduler_regenera_cuando_vence_la_cadencia():
     n = cm_svc.procesar_cm_pendientes()
     assert n >= 1
     assert stores.cm["cm2"]["ultimo_generado"] != viejo
+
+
+def test_reel_genera_mp4():
+    mp4 = generar_reel(_DATOS, "Ven a jugar tenis este fin de semana.",
+                       tipo="promo")
+    if mp4 is None:
+        pytest.skip("ffmpeg empaquetado no disponible en este entorno")
+    # Firma MP4/ISO-BMFF: los bytes 4..8 son el box 'ftyp'.
+    assert mp4[4:8] == b"ftyp"
+    assert len(mp4) > 5000  # un video real, no vacío
+
+
+def test_reel_del_dia_endpoint():
+    r = client.post("/marketing/cm/reel-del-dia",
+                    json={"academia_id": "reel1", "datos": _DATOS,
+                          "contexto": "Clases de tenis, cupos abiertos."})
+    assert r.status_code == 200
+    j = r.json()
+    if not j.get("ok"):
+        pytest.skip("ffmpeg empaquetado no disponible en este entorno")
+    assert j["reel_url"].endswith(".mp4")
+    # El reel se sirve públicamente (para el APK / la subida a Meta).
+    path = "/" + j["reel_url"].split("/", 3)[3]
+    vid = client.get(path)
+    assert vid.status_code == 200
+    assert vid.headers["content-type"] == "video/mp4"
 
 
 def test_scheduler_no_genera_si_reciente_o_inactivo():
