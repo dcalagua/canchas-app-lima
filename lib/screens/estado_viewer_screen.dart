@@ -13,12 +13,17 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
+import '../data/mensajes_repo.dart';
 import '../models/estado.dart';
+import '../models/mensaje.dart';
 import '../services/historia_share.dart';
+import '../services/llamada_service.dart';
+import '../services/llamada_webrtc.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/dialogo_pichangol.dart';
 import 'chat_screen.dart';
+import 'llamada_screen.dart';
 
 /// Visor de ESTADOS / HISTORIAS a pantalla completa (tipo WhatsApp): barras de
 /// progreso arriba, auto-avance, tap izquierda/derecha para retroceder/avanzar,
@@ -130,6 +135,7 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
         await _eliminarActual();
         break;
       case 'mensaje':
+      case 'ver_contacto':
         _pausar();
         await Navigator.of(context).push(MaterialPageRoute(
             builder: (_) => ChatScreen(
@@ -142,7 +148,21 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
                 )));
         if (mounted) _reanudar();
         break;
-      case 'silenciar':
+      case 'llamada':
+        await _llamarViewer(video: false);
+        break;
+      case 'videollamada':
+        await _llamarViewer(video: true);
+        break;
+      case 'notificaciones':
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Te avisaremos cuando publique una novedad.'),
+            duration: Duration(milliseconds: 1400),
+          ));
+        }
+        break;
+      case 'ocultar':
         await appState.alternarOcultarEstados(widget.autorEmail);
         if (mounted) Navigator.of(context).maybePop();
         break;
@@ -156,6 +176,62 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
         if (mounted) _reanudar();
         break;
     }
+  }
+
+  /// Inicia una llamada 1-a-1 (voz o video) con el autor de la historia, con la
+  /// misma señalización WebRTC/CallKit del chat. Abre la pantalla de llamada al
+  /// instante y publica el aviso en el hilo directo (dispara el push al otro).
+  Future<void> _llamarViewer({required bool video}) async {
+    final u = appState.usuario;
+    final otro = widget.autorEmail;
+    if (u == null || otro.isEmpty || appState.bloqueado(otro)) return;
+    _pausar();
+    // Ya hay una llamada en curso: reabre su pantalla en vez de arrancar otra.
+    if (LlamadaWebRTC.instance.activa) {
+      if (!LlamadaWebRTC.pantallaVisible) {
+        final svc = LlamadaWebRTC.instance;
+        await Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => LlamadaScreen(
+            callId: '',
+            video: svc.video,
+            iniciar: false,
+            reattach: true,
+            nombreOtro: svc.nombreOtro,
+            fotoUrl: svc.fotoOtro,
+            emailOtro: svc.emailOtro,
+          ),
+        ));
+      }
+      if (mounted) _reanudar();
+      return;
+    }
+    final hilo = Mensaje.hiloDirecto(u.email, otro);
+    final sala = LlamadaService.salaChat(hilo);
+    final nombre = appState.nombreMostrableDe(otro) ?? otro;
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => LlamadaScreen(
+        callId: sala,
+        video: video,
+        iniciar: true,
+        nombreOtro: nombre,
+        fotoUrl: appState.fotoDe(otro) ?? '',
+        emailOtro: otro,
+      ),
+    ));
+    await MensajesRepo.enviar(Mensaje(
+      id: 'msg_${DateTime.now().microsecondsSinceEpoch}',
+      hilo: hilo,
+      tipo: 'directo',
+      refId: '',
+      academiaId: '',
+      cuentaEmail: otro,
+      autorEmail: u.email,
+      autorNombre: u.nombre,
+      esProfe: false,
+      texto: video ? '📹 Videollamada' : '📞 Llamada de voz',
+      creado: DateTime.now(),
+    ));
+    if (mounted) _reanudar();
   }
 
   /// Prepara el controlador del video device-first: (1) MI historia → archivo
@@ -682,62 +758,63 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
                                   color: Colors.white),
                           onPressed: _compartiendo ? null : _compartir,
                         ),
-                        // Menú ⋮ SIEMPRE presente (tal cual WhatsApp): en MI
-                        // estado da Ver quién lo vio / Eliminar; en el ajeno da
-                        // Mensaje / Silenciar / Reportar.
+                        // Menú ⋮ SIEMPRE presente, texto plano y oscuro (tal cual
+                        // WhatsApp): en MI estado da Ver quién lo vio / Compartir
+                        // / Eliminar; en el ajeno, la lista completa de WhatsApp.
                         PopupMenuButton<String>(
-                          icon: const Icon(Icons.more_vert,
-                              color: Colors.white),
+                          icon: const Icon(Icons.more_vert, color: Colors.white),
+                          color: const Color(0xFF233138), // menú oscuro WhatsApp
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
                           onOpened: _pausar,
                           onCanceled: _reanudar,
                           onSelected: _accionMenu,
-                          itemBuilder: (_) => _esMio
-                              ? const [
-                                  PopupMenuItem(
-                                      value: 'vistas',
-                                      child: ListTile(
-                                          contentPadding: EdgeInsets.zero,
-                                          leading: Icon(
-                                              Icons.remove_red_eye_outlined),
-                                          title: Text('Ver quién lo vio'))),
-                                  PopupMenuItem(
-                                      value: 'compartir',
-                                      child: ListTile(
-                                          contentPadding: EdgeInsets.zero,
-                                          leading: Icon(Icons.ios_share),
-                                          title: Text('Compartir'))),
-                                  PopupMenuItem(
-                                      value: 'eliminar',
-                                      child: ListTile(
-                                          contentPadding: EdgeInsets.zero,
-                                          leading: Icon(Icons.delete_outline),
-                                          title: Text('Eliminar'))),
-                                ]
-                              : [
-                                  const PopupMenuItem(
-                                      value: 'mensaje',
-                                      child: ListTile(
-                                          contentPadding: EdgeInsets.zero,
-                                          leading:
-                                              Icon(Icons.chat_bubble_outline),
-                                          title: Text('Mensaje'))),
-                                  PopupMenuItem(
-                                      value: 'silenciar',
-                                      child: ListTile(
-                                          contentPadding: EdgeInsets.zero,
-                                          leading: const Icon(
-                                              Icons.notifications_off_outlined),
-                                          title: Text(appState.estadosOcultosDe(
-                                                  widget.autorEmail)
-                                              ? 'Mostrar historias'
-                                              : 'Silenciar historias'))),
-                                  const PopupMenuItem(
-                                      value: 'reportar',
-                                      child: ListTile(
-                                          contentPadding: EdgeInsets.zero,
-                                          leading: Icon(Icons.flag_outlined),
-                                          title: Text('Reportar'))),
-                                ],
+                          itemBuilder: (_) {
+                            const estilo =
+                                TextStyle(color: Colors.white, fontSize: 16);
+                            if (_esMio) {
+                              return const [
+                                PopupMenuItem(
+                                    value: 'vistas',
+                                    child:
+                                        Text('Ver quién lo vio', style: estilo)),
+                                PopupMenuItem(
+                                    value: 'compartir',
+                                    child: Text('Compartir', style: estilo)),
+                                PopupMenuItem(
+                                    value: 'eliminar',
+                                    child: Text('Eliminar', style: estilo)),
+                              ];
+                            }
+                            final oculto =
+                                appState.estadosOcultosDe(widget.autorEmail);
+                            return [
+                              const PopupMenuItem(
+                                  value: 'mensaje',
+                                  child: Text('Mensaje', style: estilo)),
+                              const PopupMenuItem(
+                                  value: 'llamada',
+                                  child: Text('Llamada', style: estilo)),
+                              const PopupMenuItem(
+                                  value: 'videollamada',
+                                  child: Text('Videollamada', style: estilo)),
+                              const PopupMenuItem(
+                                  value: 'ver_contacto',
+                                  child: Text('Ver contacto', style: estilo)),
+                              const PopupMenuItem(
+                                  value: 'notificaciones',
+                                  child: Text('Recibir notificaciones',
+                                      style: estilo)),
+                              PopupMenuItem(
+                                  value: 'ocultar',
+                                  child: Text(
+                                      oculto ? 'Mostrar historias' : 'Ocultar',
+                                      style: estilo)),
+                              const PopupMenuItem(
+                                  value: 'reportar',
+                                  child: Text('Reportar', style: estilo)),
+                            ];
+                          },
                         ),
                         IconButton(
                           icon: const Icon(Icons.close, color: Colors.white),
@@ -799,63 +876,81 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
   /// Barra inferior tipo WhatsApp para responder la historia: reacciones rápidas
   /// + campo de texto + corazón. Envía un mensaje directo al autor.
   Widget _barraResponder() {
+    // Una sola fila (tal cual WhatsApp): pastilla oscura "Responder" que ocupa el
+    // ancho + 3 reacciones rápidas + corazón. Al escribir, aparece el botón de
+    // enviar dentro de la pastilla.
+    const pill = Color(0xFF233138); // gris azulado oscuro de WhatsApp
     return SafeArea(
       top: false,
-      child: Container(
-        color: Colors.black.withOpacity(0.85),
-        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+        child: Row(
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                for (final em in const ['😍', '😂', '😮', '👏', '🔥', '⚽'])
-                  InkWell(
-                    onTap: () => _enviarResp(em),
-                    borderRadius: BorderRadius.circular(20),
-                    child: Padding(
-                      padding: const EdgeInsets.all(4),
-                      child: Text(em, style: const TextStyle(fontSize: 26)),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.white54),
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    child: TextField(
-                      controller: _respuesta,
-                      focusNode: _focoResp,
-                      style: const TextStyle(color: Colors.white),
-                      cursorColor: Colors.white,
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: _enviarResp,
-                      decoration: const InputDecoration(
-                        filled: false,
-                        border: InputBorder.none,
-                        hintText: 'Responder…',
-                        hintStyle: TextStyle(color: Colors.white70),
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.only(left: 18, right: 6),
+                decoration: BoxDecoration(
+                  color: pill,
+                  borderRadius: BorderRadius.circular(26),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _respuesta,
+                        focusNode: _focoResp,
+                        style: const TextStyle(color: Colors.white),
+                        cursorColor: Colors.white,
+                        textInputAction: TextInputAction.send,
+                        onSubmitted: _enviarResp,
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          filled: false,
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          hintText: 'Responder…',
+                          hintStyle:
+                              TextStyle(color: Colors.white70, fontSize: 16),
+                        ),
                       ),
                     ),
-                  ),
+                    // Botón de enviar SOLO cuando hay texto (como WhatsApp).
+                    ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: _respuesta,
+                      builder: (_, val, __) => val.text.trim().isEmpty
+                          ? const SizedBox(width: 4)
+                          : IconButton(
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                              icon: const Icon(Icons.send, color: lima),
+                              onPressed: () => _enviarResp(_respuesta.text),
+                            ),
+                  ],
                 ),
-                IconButton(
-                  icon: const Icon(Icons.favorite, color: Colors.white),
-                  onPressed: () => _enviarResp('❤️'),
+              ),
+            ),
+            for (final em in const ['😍', '😂', '😮'])
+              InkWell(
+                onTap: () => _enviarResp(em),
+                customBorder: const CircleBorder(),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  child: Text(em, style: const TextStyle(fontSize: 26)),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.send, color: Colors.white),
-                  onPressed: () => _enviarResp(_respuesta.text),
+              ),
+            const SizedBox(width: 2),
+            InkWell(
+              onTap: () => _enviarResp('❤️'),
+              customBorder: const CircleBorder(),
+              child: Container(
+                padding: const EdgeInsets.all(9),
+                decoration: const BoxDecoration(
+                  color: pill,
+                  shape: BoxShape.circle,
                 ),
-              ],
+                child: const Icon(Icons.favorite, color: Colors.white, size: 22),
+              ),
             ),
           ],
         ),
