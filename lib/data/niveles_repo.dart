@@ -43,6 +43,27 @@ class NivelesRepo {
     }
   }
 
+  /// Niveles (todos sus deportes) de VARIOS jugadores a la vez, para pintar el
+  /// chip de nivel en una lista (jugadores disponibles). Un query en vez de N.
+  static Future<List<Nivel>> deVarios(List<String> emails) async {
+    final es = [
+      for (final e in emails)
+        if (e.trim().isNotEmpty) e.trim().toLowerCase()
+    ];
+    if (!disponible || es.isEmpty) return const [];
+    try {
+      final rows = await SupabaseService.client
+          .from(_tabla)
+          .select()
+          .inFilter('email', es);
+      return [
+        for (final r in (rows as List)) Nivel.fromRow(r as Map<String, dynamic>)
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
   /// Jugadores de un deporte dentro de una banda de nivel [min]–[max] (para el
   /// matchmaking "juega con parejos"). Ordenados por nivel.
   static Future<List<Nivel>> parejos(

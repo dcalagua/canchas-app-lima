@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../config/pais.dart';
+import '../data/niveles_repo.dart';
 import '../models/models.dart';
+import '../models/nivel.dart';
 import '../services/circuito_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
+import '../widgets/nivel_chip.dart';
 import '../widgets/responsive.dart';
 import '../widgets/reto_flow.dart';
 import '../widgets/selector_ubicacion.dart';
@@ -45,9 +48,26 @@ class _JugadoresDisponiblesScreenState
     extends State<JugadoresDisponiblesScreen> {
   Deporte? _filtro; // null = todos
   bool _cargando = true;
+  bool _soloParejos = false; // matchmaking: solo jugadores de mi nivel (±1.0)
   List<Map<String, dynamic>> _jugadores = const [];
+  // Nivel de cada jugador listado, indexado por "email|deporte".
+  final Map<String, Nivel> _niveles = {};
 
   String get _yo => (appState.usuario?.email ?? '').toLowerCase().trim();
+
+  /// Clave del mapa de niveles.
+  String _clave(String email, String deporte) =>
+      '${email.toLowerCase()}|$deporte';
+
+  /// ¿El jugador es de mi nivel en su deporte? Si falta el dato de alguno, no
+  /// filtra (devuelve true) para no vaciar la lista por datos incompletos.
+  bool _esParejo(Map<String, dynamic> j) {
+    final dep = (j['deporte'] ?? '').toString();
+    final mi = appState.miNivelDe(dep);
+    final suyo = _niveles[_clave((j['email'] ?? '').toString(), dep)];
+    if (mi == null || suyo == null) return true;
+    return mi.esParejo(suyo.nivel);
+  }
 
   @override
   void initState() {
@@ -70,6 +90,16 @@ class _JugadoresDisponiblesScreenState
         .where((e) => e.isNotEmpty)
         .toList();
     if (emails.isNotEmpty) appState.cargarPerfiles(emails);
+    // Trae el NIVEL de cada jugador (un query) para el chip + matchmaking.
+    if (emails.isNotEmpty) {
+      final niveles = await NivelesRepo.deVarios(emails);
+      if (!mounted) return;
+      setState(() {
+        _niveles
+          ..clear()
+          ..addEntries(niveles.map((n) => MapEntry(_clave(n.email, n.deporte), n)));
+      });
+    }
   }
 
   String _deporteEtiqueta(String name) {
@@ -119,6 +149,14 @@ class _JugadoresDisponiblesScreenState
         listenable: appState,
         builder: (context, _) {
           final enCircuito = appState.estoyEnCircuito;
+          // Jugadores a mostrar: todos menos yo, y si el toggle "solo de mi
+          // nivel" está activo, solo los parejos (±1.0).
+          final visibles = [
+            for (final j in _jugadores)
+              if ((j['email'] ?? '').toString() != _yo &&
+                  (!_soloParejos || _esParejo(j)))
+                j
+          ];
           return RefreshIndicator(
             color: lima,
             onRefresh: _cargar,
@@ -158,6 +196,16 @@ class _JugadoresDisponiblesScreenState
                           _cargar();
                         },
                       ),
+                    // Matchmaking: solo jugadores de mi nivel (si ya tengo nivel).
+                    if (appState.tengoNivel)
+                      FilterChip(
+                        avatar: Icon(Icons.equalizer,
+                            size: 18,
+                            color: _soloParejos ? bosque : textoTenue),
+                        label: const Text('De mi nivel'),
+                        selected: _soloParejos,
+                        onSelected: (v) => setState(() => _soloParejos = v),
+                      ),
                   ],
                 ),
                 const SizedBox(height: 14),
@@ -166,7 +214,7 @@ class _JugadoresDisponiblesScreenState
                     padding: EdgeInsets.symmetric(vertical: 40),
                     child: CargandoPichangol(),
                   )
-                else if (_jugadores.where((j) => (j['email'] ?? '') != _yo).isEmpty)
+                else if (visibles.isEmpty)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 30),
                     child: Column(
@@ -175,24 +223,29 @@ class _JugadoresDisponiblesScreenState
                             size: 54, color: textoTenue),
                         const SizedBox(height: 12),
                         Text(
-                            enCircuito
-                                ? 'Aún no hay otros jugadores disponibles. '
-                                    'Invita a tus amigos a unirse al circuito.'
-                                : 'Sé el primero en unirte al circuito y deja '
-                                    'que te reten.',
+                            _soloParejos
+                                ? 'No hay jugadores de tu nivel ahora. Quita el '
+                                    'filtro "De mi nivel" para ver a todos.'
+                                : enCircuito
+                                    ? 'Aún no hay otros jugadores disponibles. '
+                                        'Invita a tus amigos a unirse al circuito.'
+                                    : 'Sé el primero en unirte al circuito y deja '
+                                        'que te reten.',
                             textAlign: TextAlign.center,
                             style: const TextStyle(color: textoTenue)),
                       ],
                     ),
                   )
                 else
-                  for (final j in _jugadores)
-                    if ((j['email'] ?? '').toString() != _yo)
-                      _JugadorCard(
-                        j: j,
-                        deporteEtiqueta: _deporteEtiqueta,
-                        onRetar: () => _retar(j),
-                      ),
+                  for (final j in visibles)
+                    _JugadorCard(
+                      j: j,
+                      deporteEtiqueta: _deporteEtiqueta,
+                      nivel: _niveles[
+                          _clave((j['email'] ?? '').toString(),
+                              (j['deporte'] ?? '').toString())],
+                      onRetar: () => _retar(j),
+                    ),
               ],
             ),
           );
@@ -303,10 +356,14 @@ class _MiEstadoCard extends StatelessWidget {
 
 class _JugadorCard extends StatelessWidget {
   const _JugadorCard(
-      {required this.j, required this.onRetar, required this.deporteEtiqueta});
+      {required this.j,
+      required this.onRetar,
+      required this.deporteEtiqueta,
+      this.nivel});
   final Map<String, dynamic> j;
   final VoidCallback onRetar;
   final String Function(String) deporteEtiqueta;
+  final Nivel? nivel;
 
   @override
   Widget build(BuildContext context) {
@@ -373,6 +430,10 @@ class _JugadorCard extends StatelessWidget {
                                 fontWeight: FontWeight.w900,
                                 fontSize: 8.5)),
                       ),
+                    ],
+                    if (nivel != null) ...[
+                      const SizedBox(width: 6),
+                      NivelChip(nivel: nivel!, compacto: true),
                     ],
                   ],
                 ),
