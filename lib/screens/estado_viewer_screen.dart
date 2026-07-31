@@ -926,6 +926,7 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
                               icon: const Icon(Icons.send, color: lima),
                               onPressed: () => _enviarResp(_respuesta.text),
                             ),
+                    ),
                   ],
                 ),
               ),
