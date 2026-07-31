@@ -99,8 +99,14 @@ class Mensaje {
     }
   }
 
-  /// ¿El adjunto es una foto? (media que no es audio ni ubicación).
-  bool get tieneFoto => mediaUrl.isNotEmpty && !esAudio && !esUbicacion;
+  /// ¿El adjunto es una foto? SOLO si el `mediaUrl` es una URL http(s) real (las
+  /// fotos siempre son URLs de Supabase Storage) y no es una nota de voz. Exigir
+  /// http evita que un esquema propio como `geo:`/`geolive:` (ubicación) se
+  /// intente cargar como imagen y salga rota — incluso con mensajes viejos en
+  /// caché.
+  bool get tieneFoto =>
+      (mediaUrl.startsWith('http://') || mediaUrl.startsWith('https://')) &&
+      !esAudio;
 
   /// ¿El adjunto es un GIF/sticker animado (Giphy)? Se muestra sin recorte y con
   /// fondo transparente, no como una foto cuadrada.
