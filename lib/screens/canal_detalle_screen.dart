@@ -1,9 +1,13 @@
+import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
@@ -174,6 +178,16 @@ class _CanalDetalleScreenState extends State<CanalDetalleScreen> {
       final url = await CanalesRepo.subirMedia('${_canal.id}/$id.$ext', bytes,
           video: video);
       if (url == null) return null;
+      // Device-first: guarda el video en un archivo local para reproducir MI
+      // post al instante (sin re-bajar de la nube), como WhatsApp.
+      if (video) {
+        try {
+          final dir = await getTemporaryDirectory();
+          final f = File('${dir.path}/$id.mp4');
+          await f.writeAsBytes(bytes);
+          appState.recordarVideoLocal(url, f.path);
+        } catch (_) {}
+      }
       final p = CanalPost(
         id: id,
         canalId: _canal.id,
@@ -637,7 +651,37 @@ class _PostVideoState extends State<_PostVideo> {
   @override
   void initState() {
     super.initState();
-    final c = VideoPlayerController.networkUrl(Uri.parse(widget.url));
+    _preparar();
+  }
+
+  /// Device-first: MI post → archivo local; ajeno cacheado → archivo de caché;
+  /// no cacheado → streaming y baja a caché para la próxima (como WhatsApp).
+  Future<void> _preparar() async {
+    VideoPlayerController c;
+    final local = appState.videoLocalDe(widget.url);
+    if (local != null && File(local).existsSync()) {
+      c = VideoPlayerController.file(File(local));
+    } else {
+      File? cache;
+      try {
+        final info = await DefaultCacheManager().getFileFromCache(widget.url);
+        if (info != null && await info.file.exists()) cache = info.file;
+      } catch (_) {}
+      if (!mounted) return;
+      if (cache != null) {
+        c = VideoPlayerController.file(cache);
+      } else {
+        c = VideoPlayerController.networkUrl(Uri.parse(widget.url));
+        unawaited(DefaultCacheManager()
+            .downloadFile(widget.url)
+            .then((_) {})
+            .catchError((_) {}));
+      }
+    }
+    if (!mounted) {
+      c.dispose();
+      return;
+    }
     _c = c;
     c.initialize().then((_) {
       if (!mounted) return;
