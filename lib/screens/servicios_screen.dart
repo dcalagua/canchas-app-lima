@@ -285,6 +285,11 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
       _msg('No se pudo generar. Revisa tu conexión.');
       return;
     }
+    if (r['requiere_pro'] == true) {
+      _msg('El community manager con IA es Pichangol Pro. Actívalo para que '
+          'el agente arme y publique tus posts por ti.');
+      return;
+    }
     if (r['limite'] == true) {
       final lim = r['limite_mes'] ?? '';
       _msg('Alcanzaste el límite de generaciones de este mes ($lim). '

@@ -86,6 +86,7 @@ class _CommunityManagerScreenState extends State<CommunityManagerScreen> {
         },
         contexto: contexto,
         cantidad: _cantidad,
+        email: appState.usuario?.email ?? '',
       ),
       texto: 'Redactando con IA…',
     );

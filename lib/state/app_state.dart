@@ -2023,7 +2023,8 @@ class AppState extends ChangeNotifier {
   Future<Map<String, dynamic>?> generarPostsNegocio(
       Negocio n, String tema) async {
     return PagosService.generarPosts(
-        academiaId: n.id, datos: n.datosLanding, contexto: tema);
+        academiaId: n.id, datos: n.datosLanding, contexto: tema,
+        email: usuario?.email ?? '');
   }
 
   // === Fase 2: presencia UNIFICADA (mismo dueño con academia + canchas) =====

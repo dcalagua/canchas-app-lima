@@ -39,6 +39,20 @@ def _require_app_key(x_app_key: str | None = Header(default=None)) -> None:
 _APP = [Depends(_require_app_key)]
 
 
+def _require_pro(email: str) -> None:
+    """Candado del servicio con IA (community manager). Si CM_REQUIERE_PRO está
+    activo, sólo un correo con Pichangol Pro vigente puede generar. Fail-open si
+    el candado está apagado o no se identifica al usuario (APKs viejos): sólo se
+    bloquea a quien SÍ conocemos y no es Pro (402 → el APK ofrece activar Pro)."""
+    if not config.CM_REQUIERE_PRO:
+        return
+    email = (email or "").strip().lower()
+    if not email:
+        return
+    if not stores.pro_activo(email):
+        raise HTTPException(status_code=402, detail="requiere_pro")
+
+
 class LandingReq(BaseModel):
     academia_id: str
     datos: dict
@@ -49,6 +63,7 @@ class PostsReq(BaseModel):
     datos: dict = {}
     contexto: str = ""
     cantidad: int = 3
+    email: str = ""  # dueño que pide (para el candado Pichangol Pro)
 
 
 class RedesConectarReq(BaseModel):
@@ -100,6 +115,7 @@ def generar_posts_endpoint(req: PostsReq) -> dict:
     Aplica un TOPE mensual de generaciones por academia (config
     MARKETING_POSTS_LIMITE_MES) para proteger el costo de Anthropic ante clics
     repetidos."""
+    _require_pro(req.email)
     periodo = datetime.now(timezone.utc).strftime("%Y-%m")
     # Tope editable desde la torre de control (config), con respaldo al env.
     lim = stores.cfg_int("marketing_posts_limite_mes")
@@ -121,6 +137,7 @@ def cm_post_del_dia(req: PostsReq, request: Request) -> dict:
     """Community manager AUTÓNOMO (Fase 0): genera UN post LISTO — copy +
     hashtags (IA o plantilla) + un FLYER de marca (imagen) — para publicar en 1
     toque. Es el mismo pipeline que luego auto-publica (Fase 1/2 con Meta)."""
+    _require_pro(req.email)
     from . import cm as cm_svc
     post = cm_svc._generar_post(req.datos or {}, req.contexto)
     imagen_url = ""
@@ -144,6 +161,7 @@ class CmConfigReq(BaseModel):
     contexto: str = ""
     datos: dict = {}
     auto_publicar: bool | None = None
+    email: str = ""  # dueño que activa (para el candado Pichangol Pro)
 
 
 def _cm_estado(academia_id: str, request: Request) -> dict:
@@ -198,6 +216,8 @@ def cm_config(req: CmConfigReq, request: Request) -> dict:
     """Activa/configura el CM AUTÓNOMO de una academia (cada cuántos días, tono,
     datos del negocio). Al activar, genera un post de una vez para que lo vea ya.
     El scheduler del backend lo va renovando en la cadencia."""
+    if req.activo:
+        _require_pro(req.email)  # activar el CM (servicio de pago) exige Pro
     from . import cm as cm_svc
     c = cm_svc.config_cm(req.academia_id, activo=req.activo,
                          cada_dias=req.cada_dias, contexto=req.contexto,
@@ -219,6 +239,7 @@ def cm_reel_del_dia(req: PostsReq, request: Request) -> dict:
     listo para subir a Instagram/Facebook (el dueño le pone la música ahí). On-
     demand (pesa): el flyer sigue siendo lo instantáneo. Fail-safe: si no se puede
     generar (sin ffmpeg/Pillow), devuelve ok=False y el APK muestra un aviso."""
+    _require_pro(req.email)
     from .reel import generar_reel
 
     datos = req.datos or {}

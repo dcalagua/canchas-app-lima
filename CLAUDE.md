@@ -189,7 +189,12 @@ off → redeploy inmediato en cada push). URL pública:
   `APP_API_KEY` (clave app↔backend: si está seteada, los endpoints PÚBLICOS de
   `propiedad/router.py` exigen la cabecera `X-App-Key` — solo el APK oficial la
   trae; vacía = no se exige, para rollout gradual). Debe coincidir con el
-  dart-define `APP_API_KEY` del APK.
+  dart-define `APP_API_KEY` del APK. `CM_REQUIERE_PRO` (candado del community
+  manager con IA: si `1`, sólo un correo con **Pichangol Pro** vigente
+  —`stores.pro_activo(email)`— puede generar post/reel o activar el CM;
+  `marketing/router.py:_require_pro` responde **402 `requiere_pro`**. Fail-open:
+  apagado por defecto y no bloquea a APKs que no mandan `email` — sólo a quien SÍ
+  se identifica y no es Pro. El APK manda `email` y ante 402 ofrece activar Pro).
 - **Tests:** `cd backend/growth && python3 -m pytest -q` (deben pasar todos).
   Cumplimiento Ley 29733 (DNI = dato personal: solo validar dueño, no publicar).
 

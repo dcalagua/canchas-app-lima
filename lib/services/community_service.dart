@@ -128,6 +128,10 @@ class CommunityService {
 
   static bool get disponible => _baseUrl.isNotEmpty;
 
+  /// Se pone en true cuando el backend responde 402 (el servicio con IA exige
+  /// Pichangol Pro). La pantalla lo consulta para ofrecer activar Pro.
+  static bool requierePro = false;
+
   /// Genera [cantidad] borradores de post para un canal/academia.
   ///
   /// [academiaId] identifica al dueño para aplicar el tope mensual de
@@ -141,8 +145,10 @@ class CommunityService {
     required Map<String, dynamic> datos,
     String contexto = '',
     int cantidad = 3,
+    String email = '',
   }) async {
     if (!disponible) return null;
+    requierePro = false;
     try {
       final uri = Uri.parse('$_baseUrl/marketing/posts');
       final resp = await http
@@ -157,9 +163,11 @@ class CommunityService {
               'datos': datos,
               'contexto': contexto,
               'cantidad': cantidad,
+              if (email.isNotEmpty) 'email': email,
             }),
           )
           .timeout(const Duration(seconds: 30));
+      if (resp.statusCode == 402) requierePro = true;
       if (resp.statusCode != 200) return null;
       final j = jsonDecode(resp.body) as Map<String, dynamic>;
       if (j['ok'] == false && j['limite'] == true) {
@@ -191,8 +199,10 @@ class CommunityService {
     required String academiaId,
     required Map<String, dynamic> datos,
     String contexto = '',
+    String email = '',
   }) async {
     if (!disponible) return null;
+    requierePro = false;
     try {
       final uri = Uri.parse('$_baseUrl/marketing/cm/post-del-dia');
       final resp = await http
@@ -206,9 +216,11 @@ class CommunityService {
               'academia_id': academiaId,
               'datos': datos,
               'contexto': contexto,
+              if (email.isNotEmpty) 'email': email,
             }),
           )
           .timeout(const Duration(seconds: 40));
+      if (resp.statusCode == 402) requierePro = true;
       if (resp.statusCode != 200) return null;
       final j = jsonDecode(resp.body) as Map<String, dynamic>;
       if (j['ok'] != true) return null;
@@ -225,8 +237,10 @@ class CommunityService {
     required String academiaId,
     required Map<String, dynamic> datos,
     String contexto = '',
+    String email = '',
   }) async {
     if (!disponible) return '';
+    requierePro = false;
     try {
       final uri = Uri.parse('$_baseUrl/marketing/cm/reel-del-dia');
       final resp = await http
@@ -240,9 +254,11 @@ class CommunityService {
               'academia_id': academiaId,
               'datos': datos,
               'contexto': contexto,
+              if (email.isNotEmpty) 'email': email,
             }),
           )
           .timeout(const Duration(seconds: 90));
+      if (resp.statusCode == 402) requierePro = true;
       if (resp.statusCode != 200) return '';
       final j = jsonDecode(resp.body) as Map<String, dynamic>;
       if (j['ok'] != true) return '';
@@ -277,8 +293,10 @@ class CommunityService {
     int cadaDias = 3,
     String contexto = '',
     bool? autoPublicar,
+    String email = '',
   }) async {
     if (!disponible || academiaId.isEmpty) return null;
+    requierePro = false;
     try {
       final uri = Uri.parse('$_baseUrl/marketing/cm/config');
       final resp = await http
@@ -295,9 +313,11 @@ class CommunityService {
               'contexto': contexto,
               'datos': datos,
               if (autoPublicar != null) 'auto_publicar': autoPublicar,
+              if (email.isNotEmpty) 'email': email,
             }),
           )
           .timeout(const Duration(seconds: 45));
+      if (resp.statusCode == 402) requierePro = true;
       if (resp.statusCode != 200) return null;
       return CmEstado.fromJson(jsonDecode(resp.body) as Map<String, dynamic>);
     } catch (_) {

@@ -867,6 +867,7 @@ class PagosService {
     required Map<String, dynamic> datos,
     String contexto = '',
     int cantidad = 3,
+    String email = '',
   }) async {
     if (!disponible) return null;
     try {
@@ -878,9 +879,13 @@ class PagosService {
                 'academia_id': academiaId,
                 'datos': datos,
                 'contexto': contexto,
-                'cantidad': cantidad
+                'cantidad': cantidad,
+                if (email.isNotEmpty) 'email': email,
               }))
           .timeout(const Duration(seconds: 30));
+      if (r.statusCode == 402) {
+        return {'requiere_pro': true};
+      }
       if (r.statusCode != 200) return null;
       return Map<String, dynamic>.from(jsonDecode(r.body) as Map);
     } catch (_) {

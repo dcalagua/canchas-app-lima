@@ -148,6 +148,10 @@ LANDING_BASE_URL = os.getenv("LANDING_BASE_URL", "")
 # por imagen y cuántas se retienen en memoria (se descartan las más viejas).
 IMG_MAX_BYTES = int(os.getenv("IMG_MAX_BYTES", str(8 * 1024 * 1024)))  # 8 MB
 IMG_MAX_RETENIDAS = int(os.getenv("IMG_MAX_RETENIDAS", "80"))
+# Candado del community manager / generación con IA: si true, sólo usuarios con
+# Pichangol Pro vigente pueden generar (post del día, reel, activar el CM). Por
+# defecto APAGADO para no bloquear el piloto; se prende cuando cobremos el servicio.
+CM_REQUIERE_PRO = os.getenv("CM_REQUIERE_PRO", "0") == "1"
 # Si true, la validación en sitio del motorizado activa la cancha automáticamente
 # (y se avisa al admin). Si false, queda lista y el admin la activa a mano.
 VALIDADOR_ACTIVA_AUTOMATICO = os.getenv("VALIDADOR_ACTIVA_AUTOMATICO", "1") == "1"

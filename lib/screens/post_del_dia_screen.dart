@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../services/community_service.dart';
+import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/responsive.dart';
@@ -43,6 +44,7 @@ class _PostDelDiaScreenState extends State<PostDelDiaScreen> {
   bool _autoPublicar = false; // el agente publica solo en las redes conectadas
   bool _publicado = false; // el último post ya se publicó en las redes
   bool _guardandoPub = false;
+  bool _requierePro = false; // el servicio con IA exige Pichangol Pro
 
   @override
   void initState() {
@@ -81,8 +83,14 @@ class _PostDelDiaScreenState extends State<PostDelDiaScreen> {
       activo: v,
       datos: widget.datos,
       cadaDias: _cadaDias,
+      email: appState.usuario?.email ?? '',
     );
     if (!mounted) return;
+    if (e == null && CommunityService.requierePro) {
+      setState(() => _guardandoAuto = false);
+      _avisarPro();
+      return;
+    }
     setState(() {
       _guardandoAuto = false;
       if (e != null) {
@@ -115,6 +123,7 @@ class _PostDelDiaScreenState extends State<PostDelDiaScreen> {
       datos: widget.datos,
       cadaDias: _cadaDias,
       autoPublicar: v,
+      email: appState.usuario?.email ?? '',
     );
     if (!mounted) return;
     setState(() {
@@ -143,11 +152,13 @@ class _PostDelDiaScreenState extends State<PostDelDiaScreen> {
     final p = await CommunityService.postDelDia(
       academiaId: widget.academiaId,
       datos: widget.datos,
+      email: appState.usuario?.email ?? '',
     );
     if (!mounted) return;
     setState(() {
       _cargando = false;
       _post = p;
+      _requierePro = p == null && CommunityService.requierePro;
       if (p != null) _texto.text = p.textoCompleto;
     });
   }
@@ -183,6 +194,15 @@ class _PostDelDiaScreenState extends State<PostDelDiaScreen> {
     }
   }
 
+  void _avisarPro() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('El community manager con IA es Pichangol Pro. '
+          'Actívalo para que el agente trabaje por ti.'),
+      duration: Duration(seconds: 3),
+    ));
+  }
+
   void _copiar() {
     Clipboard.setData(ClipboardData(text: _texto.text.trim()));
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -202,11 +222,16 @@ class _PostDelDiaScreenState extends State<PostDelDiaScreen> {
               academiaId: widget.academiaId,
               datos: widget.datos,
               contexto: _texto.text.trim(),
+              email: appState.usuario?.email ?? '',
             ),
             texto: 'Armando tu reel…',
           );
     if (!mounted) return;
     if (url.isEmpty) {
+      if (CommunityService.requierePro) {
+        _avisarPro();
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('No se pudo armar el reel. Reintenta más tarde.')));
       return;
@@ -285,11 +310,16 @@ class _PostDelDiaScreenState extends State<PostDelDiaScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.cloud_off, color: textoTenue, size: 48),
+              Icon(_requierePro ? Icons.workspace_premium : Icons.cloud_off,
+                  color: _requierePro ? lima : textoTenue, size: 48),
               const SizedBox(height: 12),
-              const Text('No se pudo generar el post. Revisa tu conexión.',
+              Text(
+                  _requierePro
+                      ? 'El community manager con IA es Pichangol Pro. Actívalo '
+                          'y el agente arma y publica tus posts por ti.'
+                      : 'No se pudo generar el post. Revisa tu conexión.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: textoTenue)),
+                  style: const TextStyle(color: textoTenue)),
               const SizedBox(height: 16),
               FilledButton(
                 style: FilledButton.styleFrom(backgroundColor: lima),

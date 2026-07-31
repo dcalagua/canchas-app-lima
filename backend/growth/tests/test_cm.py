@@ -141,6 +141,36 @@ def test_config_expone_auto_publicar():
     assert j["auto_publicar"] is True
 
 
+def test_candado_pro_apagado_permite():
+    # Por defecto CM_REQUIERE_PRO está apagado → cualquiera genera (piloto).
+    r = client.post("/marketing/cm/post-del-dia",
+                    json={"academia_id": "pf1", "datos": _DATOS,
+                          "email": "nadie@x.com"})
+    assert r.status_code == 200 and r.json()["ok"] is True
+
+
+def test_candado_pro_bloquea_a_no_pro(monkeypatch):
+    import config as cfg
+    monkeypatch.setattr(cfg, "CM_REQUIERE_PRO", True)
+    r = client.post("/marketing/cm/post-del-dia",
+                    json={"academia_id": "pf2", "datos": _DATOS,
+                          "email": "gratis@x.com"})
+    assert r.status_code == 402
+    assert r.json()["detail"] == "requiere_pro"
+
+
+def test_candado_pro_deja_pasar_al_pro(monkeypatch):
+    import config as cfg
+    from datetime import datetime, timedelta, timezone
+    monkeypatch.setattr(cfg, "CM_REQUIERE_PRO", True)
+    manana = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+    stores.membresias_pro["duenopro@x.com"] = {"hasta": manana}
+    r = client.post("/marketing/cm/post-del-dia",
+                    json={"academia_id": "pf3", "datos": _DATOS,
+                          "email": "DuenoPro@x.com"})  # case-insensitive
+    assert r.status_code == 200 and r.json()["ok"] is True
+
+
 def test_scheduler_no_genera_si_reciente_o_inactivo():
     cm_svc.config_cm("cm3", activo=True, cada_dias=5, datos=_DATOS)
     cm_svc.generar_para("cm3")  # recién generado → no vence
