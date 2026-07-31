@@ -22,6 +22,11 @@ jugador es 100% Pichangol, EBIM solo aparece discreto como respaldo).
   contraseñas/tokens (DB, Factiliza) — recordar rotarlos; nunca guardarlos en el
   repo. No incluir el identificador de modelo en artefactos del repo.
 - **Builds solo por CI** (no hay Android SDK local). Ver "Build" abajo.
+- **Scripts SQL → SIEMPRE dar el LINK de GitHub** (no solo la ruta): cada vez que
+  creas o mencionas un `.sql` que el usuario debe correr, entrégale el enlace
+  clickable `https://github.com/dcalagua/canchas-app-lima/blob/<rama>/<ruta>`
+  (rama actual `claude/apk-google-maps-setup-fvpl9w`). El usuario corre los SQL a
+  mano en Supabase.
 - **Flutter 3.24.5**: NO existe `Color.withValues`/`.a`. Por eso
   `font_awesome_flutter` está **clavado en 10.8.0** (10.9.0 rompe el build).
 

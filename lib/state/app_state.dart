@@ -21,6 +21,8 @@ import '../data/invitaciones_repo.dart';
 import '../data/matriculas_repo.dart';
 import '../data/mensajes_repo.dart';
 import '../models/mensaje.dart';
+import '../models/nivel.dart';
+import '../data/niveles_repo.dart';
 import '../data/perfiles_repo.dart';
 import '../data/bloqueos_repo.dart';
 import '../data/descuentos_repo.dart';
@@ -194,6 +196,105 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     await _persistirContactos();
     await _guardarAgendaRemota();
+  }
+
+  // ── Nivel de jugador (estilo Playtomic 0-7, aquí 1.0–7.0) ──────────────────
+  // MIS niveles por deporte (cache device-first). Se siembran en el onboarding y
+  // se ajustan con resultados reales (retos/campeonatos) vía ELO suave. Fuente
+  // durable: Supabase `pichangol_niveles` (docs/piloto/supabase_niveles.sql).
+  final Map<String, Nivel> _misNiveles = {}; // deporte → Nivel
+  static const _kMisNiveles = 'mis_niveles_json';
+
+  /// Mi nivel en un deporte, o null si aún no me he autoevaluado.
+  Nivel? miNivelDe(String deporte) => _misNiveles[deporte];
+
+  /// ¿Ya tengo un nivel sembrado en algún deporte? (para saber si mostrar el
+  /// mini-cuestionario del onboarding).
+  bool get tengoNivel => _misNiveles.isNotEmpty;
+
+  Future<void> _guardarMisNivelesCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kMisNiveles,
+          jsonEncode([for (final n in _misNiveles.values) n.toRow()]));
+    } catch (_) {}
+  }
+
+  /// Carga MIS niveles device-first: pinta al instante desde la caché local y
+  /// luego refresca desde Supabase en segundo plano. Se llama al iniciar sesión.
+  Future<void> cargarMisNiveles() async {
+    final email = (usuario?.email ?? '').toLowerCase();
+    if (email.isEmpty) return;
+    // 1) Caché local (device-first).
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_kMisNiveles);
+      if (raw != null && raw.isNotEmpty) {
+        for (final r in (jsonDecode(raw) as List)) {
+          final n = Nivel.fromRow(Map<String, dynamic>.from(r as Map));
+          if (n.email.isEmpty || n.email.toLowerCase() == email) {
+            _misNiveles[n.deporte] = n;
+          }
+        }
+        notifyListeners();
+      }
+    } catch (_) {}
+    // 2) Remoto (Supabase) → actualiza y persiste.
+    final remotos = await NivelesRepo.deJugador(email);
+    if (remotos.isNotEmpty) {
+      for (final n in remotos) {
+        _misNiveles[n.deporte] = n;
+      }
+      notifyListeners();
+      await _guardarMisNivelesCache();
+    }
+  }
+
+  /// Siembra MI nivel inicial en un deporte desde el auto-cuestionario del
+  /// onboarding. Persiste local + Supabase.
+  Future<void> sembrarMiNivel(
+    String deporte, {
+    required int anios,
+    required int frecuenciaSemana,
+    required bool compite,
+  }) async {
+    final email = (usuario?.email ?? '').toLowerCase();
+    if (email.isEmpty || deporte.isEmpty) return;
+    final n = Nivel(
+      email: email,
+      deporte: deporte,
+      nivel: Nivel.seedDesde(
+          anios: anios, frecuenciaSemana: frecuenciaSemana, compite: compite),
+      actualizado: DateTime.now(),
+    );
+    _misNiveles[deporte] = n;
+    notifyListeners();
+    await _guardarMisNivelesCache();
+    await NivelesRepo.guardar(n);
+  }
+
+  /// Ajusta MI nivel tras un resultado real (reto/campeonato) con ELO suave, y
+  /// suma partido/victoria. Persiste local + Supabase.
+  Future<void> registrarResultadoNivel(
+    String deporte, {
+    required double rivalNivel,
+    required bool gane,
+  }) async {
+    final email = (usuario?.email ?? '').toLowerCase();
+    if (email.isEmpty || deporte.isEmpty) return;
+    final actual =
+        _misNiveles[deporte] ?? Nivel(email: email, deporte: deporte);
+    final nuevo = actual.copyWith(
+      nivel: Nivel.calcularElo(
+          miNivel: actual.nivel, rivalNivel: rivalNivel, gane: gane),
+      partidos: actual.partidos + 1,
+      victorias: actual.victorias + (gane ? 1 : 0),
+      actualizado: DateTime.now(),
+    );
+    _misNiveles[deporte] = nuevo;
+    notifyListeners();
+    await _guardarMisNivelesCache();
+    await NivelesRepo.guardar(nuevo);
   }
 
   // ── Bloqueados (tipo WhatsApp): correos que el usuario bloqueó ─────────────
@@ -5472,6 +5573,7 @@ class AppState extends ChangeNotifier {
     sincronizarSaldo(); // saldo real del backend (sobrevive reinstalar)
     sincronizarAgenda(); // apodos + contactos + bloqueados en todos mis dispositivos
     cargarEstados(); // historias vigentes (24 h) de mis conocidos
+    cargarMisNiveles(); // mi nivel de jugador por deporte (device-first)
     // Trae sus academias (por si las creó en otro dispositivo) y LUEGO las
     // matrículas, para que el profe vea a sus alumnos apenas entra.
     () async {
@@ -5502,6 +5604,7 @@ class AppState extends ChangeNotifier {
     _apodos.clear();
     _contactos.clear();
     _bloqueados.clear();
+    _misNiveles.clear();
     chatsOcultos.clear();
     chatsFijados.clear();
     chatsArchivados.clear();
