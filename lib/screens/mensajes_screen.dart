@@ -109,6 +109,9 @@ class _MensajesScreenState extends State<MensajesScreen> {
   // Correo cuyo inbox está cargado ahora mismo. Si cambia la sesión (logueo con
   // otra cuenta o cierro sesión), recargamos para NO mostrar chats ajenos.
   String _emailCargado = '';
+  // Cuántas academias/alumnos había en la última carga. Si cambia (terminaron de
+  // cargar tras entrar a Mensajes), refrescamos solos para pintar sus chats.
+  int _numFuentes = -1;
 
   @override
   void initState() {
@@ -130,20 +133,31 @@ class _MensajesScreenState extends State<MensajesScreen> {
     if (mounted) _cargar(silencioso: true);
   }
 
-  /// Si cambió el usuario logueado, limpia el inbox del anterior y recarga.
+  /// Reacciona a cambios de appState: (1) si cambió el usuario logueado, limpia el
+  /// inbox del anterior y recarga; (2) si cambió la cantidad de academias/alumnos
+  /// (terminaron de cargar tras entrar a Mensajes), refresca en silencio para
+  /// pintar esos chats sin que tengas que deslizar a refrescar.
   void _alCambiarSesion() {
     final e = (appState.usuario?.email ?? '').toLowerCase();
-    if (e == _emailCargado) return;
-    _emailCargado = e;
-    if (mounted) {
-      setState(() {
-        _convs = const [];
-        _sel = null;
-        _abiertos.clear();
-      });
+    if (e != _emailCargado) {
+      _emailCargado = e;
+      if (mounted) {
+        setState(() {
+          _convs = const [];
+          _sel = null;
+          _abiertos.clear();
+        });
+      }
+      _cargarCache(); // inbox del nuevo usuario al instante (si hay caché)
+      _cargar();
+      return;
     }
-    _cargarCache(); // inbox del nuevo usuario al instante (si hay caché)
-    _cargar();
+    // Mismo usuario: ¿cargaron nuevas academias/alumnos? → refresco silencioso.
+    final n = appState.academias.length + appState.alumnos.length;
+    if (n != _numFuentes) {
+      _numFuentes = n;
+      if (mounted) _cargar(silencioso: true);
+    }
   }
 
   /// Pinta el inbox AL INSTANTE desde la caché local (SQLite) mientras `_cargar`
@@ -178,6 +192,14 @@ class _MensajesScreenState extends State<MensajesScreen> {
         _convs = const [];
       });
       return;
+    }
+    // Si aún no cargaron las academias (entraste a Mensajes muy temprano), las
+    // pedimos: sin ellas no se derivan los chats de academia/cancha y la bandeja
+    // saldría corta. Best-effort (si falla, el anti-shrink de abajo cubre).
+    if (appState.academias.isEmpty) {
+      try {
+        await appState.cargarAcademiasRemotas();
+      } catch (_) {}
     }
     // Academias donde el usuario es dueño (profe) o alumno.
     final owned = <String>{};
@@ -375,10 +397,26 @@ class _MensajesScreenState extends State<MensajesScreen> {
       ));
     });
 
+    // Anti-shrink device-first (como WhatsApp): la bandeja NUNCA se encoge en un
+    // refresco. Si una fuente (academias/alumnos) aún no había cargado y esta
+    // pasada no reconstruyó un chat que YA conocíamos en la caché, lo conservamos
+    // con su último estado conocido. Así, al entrar a Mensajes no "desaparecen"
+    // chats hasta que llega el refresco; el borrado explícito se respeta abajo
+    // con chatOculto.
+    try {
+      final vistos = {for (final c in convs) c.hilo};
+      for (final r in await DbLocal.leerConvs(email)) {
+        final prev = _Conv.fromJson(r);
+        if (!vistos.contains(prev.hilo)) convs.add(prev);
+      }
+    } catch (_) {}
     // Quita los chats que el usuario eliminó de su bandeja. Reaparecen solos si
     // llega un mensaje más nuevo que el momento en que se ocultaron (WhatsApp).
     convs.removeWhere((c) => appState.chatOculto(c.hilo, c.cuando));
     convs.sort((a, b) => b.cuando.compareTo(a.cuando));
+    // Sincroniza el contador de fuentes: así el listener solo re-refresca cuando
+    // aparezcan NUEVAS academias/alumnos (no en bucle tras esta misma carga).
+    _numFuentes = appState.academias.length + appState.alumnos.length;
     if (!mounted) return;
     setState(() {
       _convs = convs;
