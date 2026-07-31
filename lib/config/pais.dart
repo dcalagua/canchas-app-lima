@@ -308,6 +308,27 @@ String monedaDeCoordenadas(double lat, double lng) =>
 /// Prefijo telefónico con "+": "+51" / "+591". Para prefixText de campos WhatsApp.
 String get codigoTelActual => '+${paisActual.codigoTel}';
 
+/// Formatea un celular GUARDADO (dígitos con código de país, sin '+') para
+/// MOSTRARLO en formato internacional, respetando el código de país:
+/// 51967923419 → +51 967923419 (Perú), 59171234567 → +591 71234567 (Bolivia),
+/// 593987654321 → +593 987654321 (Ecuador). Si ya trae '+' o no reconoce el
+/// código, cae a "+<dígitos>" (mejor que dejarlo sin '+').
+String telMostrar(String celular) {
+  final t = celular.trim();
+  if (t.isEmpty) return t;
+  final d = t.replaceAll(RegExp(r'[^0-9]'), '');
+  if (d.isEmpty) return t;
+  // Códigos de país soportados, del más largo al más corto para no cortar mal.
+  final codigos = paisesSoportados.values.map((p) => p.codigoTel).toSet().toList()
+    ..sort((a, b) => b.length.compareTo(a.length));
+  for (final cc in codigos) {
+    if (d.startsWith(cc) && d.length > cc.length) {
+      return '+$cc ${d.substring(cc.length)}';
+    }
+  }
+  return '+$d';
+}
+
 /// Emoji de la bandera del país actual: 🇵🇪 / 🇧🇴.
 String get banderaActual => paisActual.bandera;
 

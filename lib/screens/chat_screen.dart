@@ -23,6 +23,7 @@ import '../services/llamada_service.dart';
 import '../services/llamada_webrtc.dart';
 import 'llamada_screen.dart';
 
+import '../config/pais.dart';
 import '../data/db_local.dart';
 import '../data/grupos_repo.dart';
 import '../data/lecturas_repo.dart';
@@ -671,7 +672,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     'Celular',
                     Row(children: [
                       Expanded(
-                          child: Text(celular,
+                          child: Text(telMostrar(celular),
                               style: const TextStyle(fontSize: 14))),
                       IconButton(
                           tooltip: 'Llamar',
@@ -735,7 +736,9 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _llamar(String celular) async {
-    final numero = celular.replaceAll(RegExp(r'[^0-9+]'), '');
+    // Marca en formato internacional (con '+' y código de país) para que la
+    // llamada salga bien a Perú/Bolivia/Ecuador.
+    final numero = telMostrar(celular).replaceAll(RegExp(r'[^0-9+]'), '');
     if (numero.isEmpty) return;
     try {
       await launchUrl(Uri(scheme: 'tel', path: numero),

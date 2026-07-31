@@ -5,6 +5,7 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../config/pais.dart';
 import '../data/grupos_repo.dart';
 import '../data/mensajes_repo.dart';
 import '../models/grupo.dart';
@@ -417,7 +418,8 @@ class _GrupoInfoScreenState extends State<GrupoInfoScreen> {
                   tooltip: 'Llamar',
                   icon: const Icon(Icons.call, color: lima),
                   onPressed: () async {
-                    final numero = cel.replaceAll(RegExp(r'[^0-9+]'), '');
+                    final numero =
+                        telMostrar(cel).replaceAll(RegExp(r'[^0-9+]'), '');
                     if (numero.isEmpty) return;
                     try {
                       await launchUrl(Uri(scheme: 'tel', path: numero),
