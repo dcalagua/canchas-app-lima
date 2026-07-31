@@ -491,23 +491,27 @@ class _ChatScreenState extends State<ChatScreen> {
     return _emailEntidad;
   }
 
-  /// Correo del DUEÑO de la ENTIDAD (academia) de este chat, cuando soy el
-  /// alumno. '' si no aplica. Sirve para habilitar las opciones de contacto sin
-  /// cambiar el nombre/foto que se muestra (que siguen siendo los de la academia).
+  /// Correo del DUEÑO de la ENTIDAD (academia o cancha) de este chat, cuando soy
+  /// el alumno/jugador. '' si no aplica. Sirve para habilitar las opciones de
+  /// contacto sin cambiar el nombre/foto (que siguen siendo los de la entidad).
   String get _emailEntidad {
     if (widget.soyProfe) return '';
     if (widget.tipo == 'academia') {
       final id = widget.academiaId.isNotEmpty ? widget.academiaId : widget.refId;
       return appState.academiaPorId(id)?.dueno.toLowerCase() ?? '';
     }
+    if (widget.tipo == 'cancha') {
+      // El chat de cancha (lado jugador) lleva el correo del DUEÑO en refId.
+      return widget.refId.contains('@') ? widget.refId.toLowerCase() : '';
+    }
     return '';
   }
 
-  /// ¿Es un chat con una ENTIDAD (academia) donde el nombre/foto mostrados son
-  /// los de la academia, no los del dueño?
+  /// ¿Es un chat con una ENTIDAD (academia/cancha) donde el nombre/foto mostrados
+  /// son los de la entidad, no los del dueño?
   bool get _esChatEntidad =>
       !widget.soyProfe &&
-      widget.tipo == 'academia' &&
+      (widget.tipo == 'academia' || widget.tipo == 'cancha') &&
       _emailEntidad.isNotEmpty;
 
   /// ¿Muestro la insignia de "verificado" en la cabecera? Solo cuando soy el
