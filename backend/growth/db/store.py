@@ -453,6 +453,10 @@ class Stores:
         # USO de generación de posts con IA: academia_id -> {"YYYY-MM": conteo}.
         # Sirve para el tope mensual (control de costo Anthropic).
         self.marketing_uso: dict[str, dict] = {}
+        # COMMUNITY MANAGER autónomo (Fase 0): academia_id -> config + post del día
+        # {activo, cada_dias, contexto, datos, ultimo_post, ultimo_generado}. El
+        # scheduler pre-genera el post; la imagen (flyer) vive en memoria.
+        self.cm: dict[str, dict] = {}
         # CONEXIONES de redes (Gestión de redes / Nivel 2): academia_id -> dict con
         # el permiso OAuth de Meta del dueño (IG/FB) para publicar por él. El token
         # va CIFRADO en "token_enc" y NUNCA se expone en respuestas (se enmascara).
@@ -804,6 +808,7 @@ class Stores:
             "suscripciones": {k: dict(v) for k, v in self.suscripciones.items()},
             "landings": {k: dict(v) for k, v in self.landings.items()},
             "marketing_uso": {k: dict(v) for k, v in self.marketing_uso.items()},
+            "cm": {k: dict(v) for k, v in self.cm.items()},
             "conexiones_redes": {k: dict(v) for k, v in self.conexiones_redes.items()},
             "vistas": {k: dict(v) for k, v in self.vistas.items()},
             "customers": dict(self.customers),
@@ -857,6 +862,7 @@ class Stores:
         self.marketing_uso = {
             k: dict(v) for k, v in (data.get("marketing_uso") or {}).items()
         }
+        self.cm = {k: dict(v) for k, v in (data.get("cm") or {}).items()}
         self.conexiones_redes = {
             k: dict(v) for k, v in (data.get("conexiones_redes") or {}).items()
         }

@@ -120,6 +120,26 @@ async def _iniciar_cron_renovaciones() -> None:
     asyncio.create_task(_loop())
 
 
+@app.on_event("startup")
+async def _iniciar_cron_cm() -> None:
+    """Community manager AUTÓNOMO (Fase 0): cada 30 min pre-genera el "post del
+    día" de cada academia suscrita que toca por cadencia, para que el dueño lo
+    encuentre listo. Una sola réplica en Railway; fail-safe; persiste si generó."""
+    async def _loop() -> None:
+        await asyncio.sleep(90)  # deja arrancar el servicio
+        while True:
+            try:
+                from marketing.cm import procesar_cm_pendientes
+                n = procesar_cm_pendientes()
+                if n and pg.habilitado:
+                    pg.guardar(stores.to_state())
+            except Exception:  # noqa: BLE001
+                pass
+            await asyncio.sleep(30 * 60)  # cada 30 minutos
+
+    asyncio.create_task(_loop())
+
+
 @app.get("/health")
 def health() -> dict:
     return {"ok": True}

@@ -140,6 +140,69 @@ def cm_post_del_dia(req: PostsReq, request: Request) -> dict:
     }
 
 
+class CmConfigReq(BaseModel):
+    academia_id: str
+    activo: bool = True
+    cada_dias: int = 3
+    contexto: str = ""
+    datos: dict = {}
+
+
+def _cm_estado(academia_id: str, request: Request) -> dict:
+    """Config del CM + el post del día ya pre-generado (con la URL del flyer). Si
+    la imagen se perdió (reinicio del backend), la regenera con el texto guardado."""
+    c = stores.cm.get(academia_id)
+    if not c:
+        return {"activo": False, "cada_dias": 3, "contexto": "",
+                "ultimo_generado": "", "post": None}
+    post = c.get("ultimo_post")
+    imagen_url = ""
+    if post:
+        img_id = post.get("imagen_id") or ""
+        if img_id and img_id in stores.imagenes:
+            imagen_url = f"{_base_publica(request)}/marketing/img/{img_id}.png"
+        elif c.get("datos"):
+            png = generar_flyer(c.get("datos") or {},
+                                str(post.get("texto") or ""))
+            if png:
+                img_id = stores.guardar_imagen(png, "image/png",
+                                               tope=config.IMG_MAX_RETENIDAS)
+                post["imagen_id"] = img_id
+                imagen_url = f"{_base_publica(request)}/marketing/img/{img_id}.png"
+    return {
+        "activo": bool(c.get("activo", False)),
+        "cada_dias": int(c.get("cada_dias", 3)),
+        "contexto": c.get("contexto", ""),
+        "ultimo_generado": c.get("ultimo_generado", ""),
+        "post": None if not post else {
+            "texto": post.get("texto", ""),
+            "hashtags": post.get("hashtags", []),
+            "hora_sugerida": post.get("hora_sugerida", ""),
+            "imagen_url": imagen_url,
+        },
+    }
+
+
+@router.post("/marketing/cm/config", dependencies=_APP)
+def cm_config(req: CmConfigReq, request: Request) -> dict:
+    """Activa/configura el CM AUTÓNOMO de una academia (cada cuántos días, tono,
+    datos del negocio). Al activar, genera un post de una vez para que lo vea ya.
+    El scheduler del backend lo va renovando en la cadencia."""
+    from . import cm as cm_svc
+    c = cm_svc.config_cm(req.academia_id, activo=req.activo,
+                         cada_dias=req.cada_dias, contexto=req.contexto,
+                         datos=req.datos or None)
+    if c["activo"] and not c.get("ultimo_post"):
+        cm_svc.generar_para(req.academia_id)
+    return {"ok": True, **_cm_estado(req.academia_id, request)}
+
+
+@router.get("/marketing/cm/estado/{academia_id}", dependencies=_APP)
+def cm_estado(academia_id: str, request: Request) -> dict:
+    """El post del día PRE-GENERADO + la config del CM (para el APK)."""
+    return _cm_estado(academia_id, request)
+
+
 # ------ Gestión de redes (Nivel 2): conexión OAuth + publicación ------------
 @router.get("/marketing/redes/diag")
 def redes_diag() -> dict:

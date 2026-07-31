@@ -8,7 +8,11 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from fastapi.testclient import TestClient  # noqa: E402
 
+from datetime import datetime, timedelta, timezone  # noqa: E402
+
+from db.store import stores  # noqa: E402
 from main import app  # noqa: E402
+from marketing import cm as cm_svc  # noqa: E402
 from marketing.flyer import generar_flyer  # noqa: E402
 
 client = TestClient(app)
@@ -43,3 +47,43 @@ def test_post_del_dia_devuelve_texto_e_imagen():
     img = client.get(path)
     assert img.status_code == 200
     assert img.headers["content-type"] == "image/png"
+
+
+def test_cm_config_activa_y_pre_genera():
+    r = client.post("/marketing/cm/config",
+                    json={"academia_id": "cm1", "activo": True,
+                          "cada_dias": 3, "datos": _DATOS})
+    assert r.status_code == 200
+    j = r.json()
+    assert j["ok"] is True
+    assert j["activo"] is True
+    assert j["post"] is not None
+    assert j["post"]["texto"]
+    assert j["post"]["imagen_url"].endswith(".png")
+
+    # El estado devuelve el post ya pre-generado.
+    e = client.get("/marketing/cm/estado/cm1").json()
+    assert e["activo"] is True
+    assert e["post"] is not None
+
+
+def test_scheduler_regenera_cuando_vence_la_cadencia():
+    cm_svc.config_cm("cm2", activo=True, cada_dias=1, datos=_DATOS)
+    cm_svc.generar_para("cm2")
+    # Simula que el último post es de hace 2 días → toca regenerar.
+    viejo = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+    stores.cm["cm2"]["ultimo_generado"] = viejo
+    n = cm_svc.procesar_cm_pendientes()
+    assert n >= 1
+    assert stores.cm["cm2"]["ultimo_generado"] != viejo
+
+
+def test_scheduler_no_genera_si_reciente_o_inactivo():
+    cm_svc.config_cm("cm3", activo=True, cada_dias=5, datos=_DATOS)
+    cm_svc.generar_para("cm3")  # recién generado → no vence
+    cm_svc.config_cm("cm4", activo=False, datos=_DATOS)  # inactivo
+    # cm3 reciente y cm4 inactivo → ninguno de estos dos debe generar.
+    antes = stores.cm["cm3"]["ultimo_generado"]
+    cm_svc.procesar_cm_pendientes()
+    assert stores.cm["cm3"]["ultimo_generado"] == antes
+    assert stores.cm["cm4"]["ultimo_post"] is None
