@@ -1530,7 +1530,12 @@ class _ChatScreenState extends State<ChatScreen> {
         children: [
           if (_mostrarBannerContacto) _bannerAgregarContacto(wa),
           Expanded(
-            child: MensajesRepo.disponible
+            child: Stack(
+              children: [
+                // Fondo con patrón sutil (íconos deportivos propios, tenue),
+                // tipo WhatsApp, sobre el color base del tema.
+                Positioned.fill(child: _FondoChat(wa: wa)),
+                MensajesRepo.disponible
                 ? StreamBuilder<List<Mensaje>>(
                     stream: _stream,
                     builder: (context, snap) {
@@ -1604,6 +1609,8 @@ class _ChatScreenState extends State<ChatScreen> {
                     },
                   )
                 : const _SinBackend(),
+              ],
+            ),
           ),
           if (_contraparteEmail.isNotEmpty &&
               appState.bloqueado(_contraparteEmail))
@@ -3426,6 +3433,71 @@ class _AccionAdjunto extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Fondo del chat: color base del tema + un patrón MUY tenue de íconos deportivos
+/// (propios de Pichangol, no el doodle de WhatsApp), como el "wallpaper" de
+/// WhatsApp. Se adapta a claro/oscuro.
+class _FondoChat extends StatelessWidget {
+  const _FondoChat({required this.wa});
+  final _WA wa;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: wa.fondo,
+      child: CustomPaint(painter: _PatronPainter(wa.dark), size: Size.infinite),
+    );
+  }
+}
+
+class _PatronPainter extends CustomPainter {
+  _PatronPainter(this.dark);
+  final bool dark;
+
+  static const _iconos = [
+    Icons.sports_soccer,
+    Icons.sports_tennis,
+    Icons.sports_basketball,
+    Icons.sports_volleyball,
+    Icons.place,
+  ];
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final color = (dark ? Colors.white : Colors.black)
+        .withOpacity(dark ? 0.035 : 0.04);
+    const paso = 86.0;
+    var i = 0;
+    for (double y = 24; y < size.height + paso; y += paso) {
+      final fila = (y ~/ paso);
+      final offX = fila.isEven ? 0.0 : paso / 2;
+      for (double x = 24 + offX; x < size.width + paso; x += paso) {
+        final ic = _iconos[i % _iconos.length];
+        final tp = TextPainter(
+          text: TextSpan(
+            text: String.fromCharCode(ic.codePoint),
+            style: TextStyle(
+              fontFamily: ic.fontFamily,
+              package: ic.fontPackage,
+              fontSize: 30,
+              color: color,
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        canvas.save();
+        canvas.translate(x, y);
+        canvas.rotate(-0.14);
+        tp.paint(canvas, Offset.zero);
+        canvas.restore();
+        i++;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _PatronPainter old) => old.dark != dark;
 }
 
 /// Texto de un mensaje con los enlaces tocables (tipo WhatsApp). Sirve para el
