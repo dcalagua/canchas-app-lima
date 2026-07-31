@@ -120,6 +120,15 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
 
   Future<void> _accionMenu(String v) async {
     switch (v) {
+      case 'vistas':
+        _verVistas();
+        break;
+      case 'compartir':
+        await _compartir();
+        break;
+      case 'eliminar':
+        await _eliminarActual();
+        break;
       case 'mensaje':
         _pausar();
         await Navigator.of(context).push(MaterialPageRoute(
@@ -673,44 +682,63 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
                                   color: Colors.white),
                           onPressed: _compartiendo ? null : _compartir,
                         ),
-                        if (_esMio)
-                          IconButton(
-                            icon: const Icon(Icons.delete_outline,
-                                color: Colors.white),
-                            onPressed: _eliminarActual,
-                          ),
-                        if (!_esMio)
-                          PopupMenuButton<String>(
-                            icon: const Icon(Icons.more_vert,
-                                color: Colors.white),
-                            onOpened: _pausar,
-                            onCanceled: _reanudar,
-                            onSelected: _accionMenu,
-                            itemBuilder: (_) => [
-                              const PopupMenuItem(
-                                  value: 'mensaje',
-                                  child: ListTile(
-                                      contentPadding: EdgeInsets.zero,
-                                      leading: Icon(Icons.chat_bubble_outline),
-                                      title: Text('Mensaje'))),
-                              PopupMenuItem(
-                                  value: 'silenciar',
-                                  child: ListTile(
-                                      contentPadding: EdgeInsets.zero,
-                                      leading: const Icon(
-                                          Icons.notifications_off_outlined),
-                                      title: Text(appState.estadosOcultosDe(
-                                              widget.autorEmail)
-                                          ? 'Mostrar historias'
-                                          : 'Silenciar historias'))),
-                              const PopupMenuItem(
-                                  value: 'reportar',
-                                  child: ListTile(
-                                      contentPadding: EdgeInsets.zero,
-                                      leading: Icon(Icons.flag_outlined),
-                                      title: Text('Reportar'))),
-                            ],
-                          ),
+                        // Menú ⋮ SIEMPRE presente (tal cual WhatsApp): en MI
+                        // estado da Ver quién lo vio / Eliminar; en el ajeno da
+                        // Mensaje / Silenciar / Reportar.
+                        PopupMenuButton<String>(
+                          icon: const Icon(Icons.more_vert,
+                              color: Colors.white),
+                          onOpened: _pausar,
+                          onCanceled: _reanudar,
+                          onSelected: _accionMenu,
+                          itemBuilder: (_) => _esMio
+                              ? const [
+                                  PopupMenuItem(
+                                      value: 'vistas',
+                                      child: ListTile(
+                                          contentPadding: EdgeInsets.zero,
+                                          leading: Icon(
+                                              Icons.remove_red_eye_outlined),
+                                          title: Text('Ver quién lo vio'))),
+                                  PopupMenuItem(
+                                      value: 'compartir',
+                                      child: ListTile(
+                                          contentPadding: EdgeInsets.zero,
+                                          leading: Icon(Icons.ios_share),
+                                          title: Text('Compartir'))),
+                                  PopupMenuItem(
+                                      value: 'eliminar',
+                                      child: ListTile(
+                                          contentPadding: EdgeInsets.zero,
+                                          leading: Icon(Icons.delete_outline),
+                                          title: Text('Eliminar'))),
+                                ]
+                              : [
+                                  const PopupMenuItem(
+                                      value: 'mensaje',
+                                      child: ListTile(
+                                          contentPadding: EdgeInsets.zero,
+                                          leading:
+                                              Icon(Icons.chat_bubble_outline),
+                                          title: Text('Mensaje'))),
+                                  PopupMenuItem(
+                                      value: 'silenciar',
+                                      child: ListTile(
+                                          contentPadding: EdgeInsets.zero,
+                                          leading: const Icon(
+                                              Icons.notifications_off_outlined),
+                                          title: Text(appState.estadosOcultosDe(
+                                                  widget.autorEmail)
+                                              ? 'Mostrar historias'
+                                              : 'Silenciar historias'))),
+                                  const PopupMenuItem(
+                                      value: 'reportar',
+                                      child: ListTile(
+                                          contentPadding: EdgeInsets.zero,
+                                          leading: Icon(Icons.flag_outlined),
+                                          title: Text('Reportar'))),
+                                ],
+                        ),
                         IconButton(
                           icon: const Icon(Icons.close, color: Colors.white),
                           onPressed: () => Navigator.of(context).maybePop(),

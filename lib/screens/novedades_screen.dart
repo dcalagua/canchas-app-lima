@@ -28,6 +28,8 @@ class NovedadesScreen extends StatefulWidget {
 class _NovedadesScreenState extends State<NovedadesScreen> {
   List<Canal> _canales = const [];
   Map<String, List<CanalPost>> _postsCanal = {};
+  // URLs ya pre-cargadas en el image cache (para no repetir en cada rebuild).
+  final Set<String> _precachadas = {};
 
   @override
   void initState() {
@@ -72,6 +74,33 @@ class _NovedadesScreenState extends State<NovedadesScreen> {
     });
     // Cachea lo recién traído para el próximo arranque (device-first).
     appState.guardarCanalesCache(CanalesCache(visibles, posts));
+  }
+
+  /// Pre-calienta el image cache (memoria + decode) con TODOS los avatares e
+  /// íconos visibles: fotos de perfil de quienes tienen estado, la miniatura de
+  /// su última historia y el ícono de cada canal. Así, al abrir Novedades, los
+  /// círculos ya salen pintados (como WhatsApp) en vez de en blanco un par de
+  /// segundos. Idempotente: sólo pre-carga URLs nuevas.
+  void _precachar(BuildContext context) {
+    final urls = <String>{};
+    for (final e in appState.autoresConEstado()) {
+      final f = appState.fotoDe(e);
+      if (f != null && f.isNotEmpty) urls.add(f);
+      final ests = appState.estadosDe(e);
+      if (ests.isNotEmpty && ests.last.esFoto && ests.last.fotoUrl.isNotEmpty) {
+        urls.add(ests.last.fotoUrl);
+      }
+    }
+    final miFoto = appState.usuario?.fotoUrl;
+    if (miFoto != null && miFoto.isNotEmpty) urls.add(miFoto);
+    for (final c in _canales) {
+      if (c.fotoUrl.isNotEmpty) urls.add(c.fotoUrl);
+    }
+    for (final u in urls) {
+      if (!_precachadas.add(u)) continue; // ya pre-cargada
+      precacheImage(CachedNetworkImageProvider(u), context)
+          .catchError((_) => _precachadas.remove(u));
+    }
   }
 
   int _noLeidos(Canal c) {
@@ -318,6 +347,11 @@ class _NovedadesScreenState extends State<NovedadesScreen> {
           final autores = appState.autoresConEstado();
           final misEstados = appState.misEstados;
           final tengo = misEstados.isNotEmpty;
+          // Pre-calienta avatares e íconos en cuanto hay datos (tras el frame),
+          // para que salgan pintados de una (como WhatsApp), no en blanco.
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _precachar(context);
+          });
           return AnchoTablet(
             child: RefreshIndicator(
               onRefresh: () => appState.cargarEstados(),
@@ -493,7 +527,8 @@ class _AnilloAvatar extends StatelessWidget {
               child: Icon(Icons.videocam, color: Colors.white, size: 22),
             );
     } else if (e != null && e.esFoto && e.fotoUrl.isNotEmpty) {
-      circulo = CircleAvatar(radius: 24, backgroundImage: NetworkImage(e.fotoUrl));
+      circulo = CircleAvatar(
+          radius: 24, backgroundImage: CachedNetworkImageProvider(e.fotoUrl));
     } else if (e != null && !e.esFoto) {
       // Historia de texto: círculo del color de fondo con un fragmento del texto.
       circulo = CircleAvatar(
@@ -515,8 +550,9 @@ class _AnilloAvatar extends StatelessWidget {
       circulo = CircleAvatar(
         radius: 24,
         backgroundColor: limaSuave,
-        backgroundImage:
-            (fotoUrl != null && fotoUrl!.isNotEmpty) ? NetworkImage(fotoUrl!) : null,
+        backgroundImage: (fotoUrl != null && fotoUrl!.isNotEmpty)
+            ? CachedNetworkImageProvider(fotoUrl!)
+            : null,
         child: (fotoUrl == null || fotoUrl!.isEmpty)
             ? Text(ini,
                 style: const TextStyle(

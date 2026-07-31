@@ -53,6 +53,7 @@ class _CanalDetalleScreenState extends State<CanalDetalleScreen> {
   void initState() {
     super.initState();
     _canal = widget.canal;
+    _seedDesdeCache(); // device-first: pinta lo último conocido al instante
     _cargar();
     // Reacciones en vivo de todo el canal.
     ReaccionesRepo.stream(_hiloReacc).listen((rows) {
@@ -78,6 +79,20 @@ class _CanalDetalleScreenState extends State<CanalDetalleScreen> {
   void dispose() {
     _texto.dispose();
     super.dispose();
+  }
+
+  /// Device-first: pinta al instante los posts cacheados de este canal (los que
+  /// ya vio en Novedades) para que abrir el canal no muestre spinner. Luego
+  /// [_cargar] refresca desde Supabase en segundo plano.
+  Future<void> _seedDesdeCache() async {
+    final cache = await appState.leerCanalesCache();
+    final posts = cache?.posts[_canal.id];
+    if (posts != null && posts.isNotEmpty && mounted && _posts.isEmpty) {
+      setState(() {
+        _posts = posts;
+        _cargando = false;
+      });
+    }
   }
 
   Future<void> _cargar() async {
