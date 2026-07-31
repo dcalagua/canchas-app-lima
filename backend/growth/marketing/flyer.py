@@ -36,6 +36,72 @@ def _font(tam: int):
     return ImageFont.load_default()
 
 
+def _bajar_imagen(url: str):
+    """Baja una imagen (foto del negocio) y la abre con PIL. Fail-safe → None.
+    En Railway funciona; si no hay red (tests) cae al degradado de marca."""
+    import urllib.request
+
+    from PIL import Image
+
+    try:
+        req = urllib.request.Request(
+            url, headers={"User-Agent": "PichangolBot/1.0 (+https://www.pichangol.app)"})
+        with urllib.request.urlopen(req, timeout=6) as r:  # noqa: S310
+            datos = r.read(8 * 1024 * 1024)  # tope 8 MB
+        return Image.open(io.BytesIO(datos))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _cover(im, W: int, H: int):
+    """Redimensiona + recorta al centro para CUBRIR WxH (como object-fit: cover)."""
+    from PIL import Image
+
+    im = im.convert("RGB")
+    iw, ih = im.size
+    escala = max(W / iw, H / ih)
+    nw, nh = max(1, int(iw * escala)), max(1, int(ih * escala))
+    im = im.resize((nw, nh), Image.LANCZOS)
+    x, y = (nw - W) // 2, (nh - H) // 2
+    return im.crop((x, y, x + W, y + H))
+
+
+def _fondo(datos: dict, W: int, H: int):
+    """Fondo del flyer: la FOTO real del negocio (con scrim oscuro para leer el
+    texto) si la hay y se puede bajar; si no, el degradado de marca."""
+    from PIL import Image, ImageDraw
+
+    url = ""
+    fotos = datos.get("fotos")
+    if isinstance(fotos, list) and fotos:
+        url = str(fotos[0] or "")
+    if not url.startswith("http") and str(datos.get("logo_url") or "").startswith("http"):
+        url = str(datos["logo_url"])
+
+    foto = _bajar_imagen(url) if url.startswith("http") else None
+    if foto is not None:
+        base = _cover(foto, W, H).convert("RGBA")
+        # Scrim: gradiente bosque translúcido (más opaco abajo, donde va el texto).
+        scrim = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        sd = ImageDraw.Draw(scrim)
+        for y in range(H):
+            a = int(50 + 175 * (y / H))  # 50 arriba → 225 abajo
+            sd.line([(0, y), (W, y)],
+                    fill=(_BOSQUE2[0], _BOSQUE2[1], _BOSQUE2[2], a))
+        return Image.alpha_composite(base, scrim).convert("RGB")
+
+    # Sin foto: degradado de marca bosque → bosque oscuro.
+    img = Image.new("RGB", (W, H), _BOSQUE)
+    d = ImageDraw.Draw(img)
+    for y in range(H):
+        t = y / H
+        r = int(_BOSQUE[0] + (_BOSQUE2[0] - _BOSQUE[0]) * t)
+        g = int(_BOSQUE[1] + (_BOSQUE2[1] - _BOSQUE[1]) * t)
+        b = int(_BOSQUE[2] + (_BOSQUE2[2] - _BOSQUE[2]) * t)
+        d.line([(0, y), (W, y)], fill=(r, g, b))
+    return img
+
+
 def _ancho(draw, texto: str, font) -> int:
     x0, _, x1, _ = draw.textbbox((0, 0), texto, font=font)
     return x1 - x0
@@ -67,21 +133,13 @@ def _envolver(draw, texto: str, font, max_ancho: int, max_lineas: int) -> list[s
 def generar_flyer(datos: dict, gancho: str) -> bytes | None:
     """Devuelve el PNG (bytes) del flyer, o None si Pillow no está disponible."""
     try:
-        from PIL import Image, ImageDraw
+        from PIL import ImageDraw
     except Exception:  # noqa: BLE001
         return None
 
     W = H = 1080
-    img = Image.new("RGB", (W, H), _BOSQUE)
+    img = _fondo(datos, W, H)  # foto real del negocio (con scrim) o degradado
     draw = ImageDraw.Draw(img)
-
-    # Degradado vertical bosque → bosque oscuro.
-    for y in range(H):
-        t = y / H
-        r = int(_BOSQUE[0] + (_BOSQUE2[0] - _BOSQUE[0]) * t)
-        g = int(_BOSQUE[1] + (_BOSQUE2[1] - _BOSQUE[1]) * t)
-        b = int(_BOSQUE[2] + (_BOSQUE2[2] - _BOSQUE[2]) * t)
-        draw.line([(0, y), (W, y)], fill=(r, g, b))
 
     margen = 90
     nombre = str(datos.get("nombre") or "Academia").strip()

@@ -1889,6 +1889,8 @@ class _CmPostDelDiaTile extends StatelessWidget {
                 'deporte': academia.deporte.name,
                 'descripcion': academia.descripcion,
                 'whatsapp': academia.whatsapp,
+                'fotos': academia.fotos,
+                if (academia.logoUrl != null) 'logo_url': academia.logoUrl,
               },
             ),
           )),
