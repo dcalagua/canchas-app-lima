@@ -5121,6 +5121,7 @@ class AppState extends ChangeNotifier {
         // Sesión restaurada: re-registra el token push de este dispositivo.
         PushService.registrarParaUsuario(usuario?.email);
         _sincronizarMiPerfil(); // trae mi nombre-foto elegido (otro dispositivo)
+        cargarMisNiveles(); // mi nivel de jugador (device-first) al reabrir la app
       }
 
       final contactosRaw = prefs.getString(_kContactos);
