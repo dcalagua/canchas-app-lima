@@ -542,6 +542,7 @@ class AppState extends ChangeNotifier {
   Future<Estado?> publicarEstadoVideo(
     Uint8List bytes, {
     String pie = '',
+    String rutaLocal = '', // ruta del archivo local (para reproducirlo sin bajar)
     String musicaTitulo = '',
     String musicaArtista = '',
     String musicaPreview = '',
@@ -571,10 +572,33 @@ class AppState extends ChangeNotifier {
     );
     final ok = await EstadosRepo.publicar(e);
     if (!ok) return null;
+    // Device-first: recuerda el archivo LOCAL para reproducir MI historia al
+    // instante (sin re-bajar de la nube).
+    if (rutaLocal.isNotEmpty) recordarVideoLocal(url, rutaLocal);
     _estados.add(e);
     _estadosVistos.add(e.id);
     notifyListeners();
     return e;
+  }
+
+  // ── Videos de historia: mapa URL remota → archivo LOCAL (device-first) ─────
+  final Map<String, String> _videosLocales = {};
+
+  /// Archivo local del video de esta URL (para reproducirlo sin bajarlo), o null.
+  String? videoLocalDe(String url) => _videosLocales[url];
+
+  /// Recuerda (y persiste) el archivo local de un video de historia.
+  void recordarVideoLocal(String url, String ruta) {
+    if (url.isEmpty || ruta.isEmpty) return;
+    _videosLocales[url] = ruta;
+    _guardarVideosLocales();
+  }
+
+  Future<void> _guardarVideosLocales() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kVideosLocales, jsonEncode(_videosLocales));
+    } catch (_) {}
   }
 
   /// Envía un mensaje DIRECTO 1:1 a [paraEmail] (usado para "responder historia").
@@ -4912,6 +4936,7 @@ class AppState extends ChangeNotifier {
   static const _kChatsOcultos = 'chats_ocultos_json';
   static const _kApodos = 'apodos_json';
   static const _kPerfiles = 'perfiles_cache_json';
+  static const _kVideosLocales = 'videos_locales_json';
   static const _kBloqueados = 'bloqueados_json';
   static const _kChatsFijados = 'chats_fijados_json';
   static const _kChatsArchivados = 'chats_archivados_json';
@@ -5172,6 +5197,14 @@ class AppState extends ChangeNotifier {
           m.forEach((k, v) {
             if (v is Map) _perfiles[k] = Map<String, dynamic>.from(v);
           });
+        } catch (_) {}
+      }
+
+      final vidsRaw = prefs.getString(_kVideosLocales);
+      if (vidsRaw != null) {
+        try {
+          final m = jsonDecode(vidsRaw) as Map<String, dynamic>;
+          m.forEach((k, v) => _videosLocales[k] = v.toString());
         } catch (_) {}
       }
 

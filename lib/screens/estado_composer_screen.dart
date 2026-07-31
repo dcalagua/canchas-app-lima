@@ -364,6 +364,7 @@ class _EstadoVideoComposerScreenState extends State<EstadoVideoComposerScreen> {
     final e = await appState.publicarEstadoVideo(
       bytes,
       pie: _ctrl.text.trim(),
+      rutaLocal: widget.file.path, // reproducir MI historia desde el archivo local
       musicaTitulo: _musica?.titulo ?? '',
       musicaArtista: _musica?.artista ?? '',
       musicaPreview: _musica?.previewUrl ?? '',

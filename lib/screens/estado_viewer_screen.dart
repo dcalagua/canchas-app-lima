@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -146,6 +149,57 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
     }
   }
 
+  /// Prepara el controlador del video device-first: (1) MI historia → archivo
+  /// local; (2) ajena ya cacheada → archivo de caché; (3) no cacheada → streaming
+  /// y baja a caché para la próxima. Guarda contra cambios de historia (idx).
+  Future<void> _prepararVideo(Estado e, int idx) async {
+    VideoPlayerController vc;
+    final local = appState.videoLocalDe(e.fotoUrl);
+    if (local != null && File(local).existsSync()) {
+      vc = VideoPlayerController.file(File(local));
+    } else {
+      File? cache;
+      try {
+        final info = await DefaultCacheManager().getFileFromCache(e.fotoUrl);
+        if (info != null && await info.file.exists()) cache = info.file;
+      } catch (_) {}
+      if (!mounted || _i != idx) return; // cambió de historia mientras tanto
+      if (cache != null) {
+        vc = VideoPlayerController.file(cache);
+      } else {
+        vc = VideoPlayerController.networkUrl(Uri.parse(e.fotoUrl));
+        // Baja a caché en segundo plano para verla al instante la próxima vez.
+        unawaited(DefaultCacheManager()
+            .downloadFile(e.fotoUrl)
+            .then((_) {})
+            .catchError((_) {}));
+      }
+    }
+    if (!mounted || _i != idx) {
+      vc.dispose();
+      return;
+    }
+    _video?.dispose();
+    _video = vc;
+    vc.initialize().then((_) {
+      if (!mounted || _video != vc) return;
+      var dur = vc.value.duration;
+      if (dur > _maxVideo) dur = _maxVideo;
+      if (dur.inMilliseconds < 500) dur = const Duration(seconds: 5);
+      _ctrl.duration = dur;
+      vc
+        ..setLooping(false)
+        ..play();
+      _ctrl
+        ..reset()
+        ..forward();
+      setState(() {});
+    }).catchError((_) {
+      // Si el video no carga, no bloquear la historia: pasa al siguiente.
+      if (mounted && _video == vc) _ctrl.duration = _duracion;
+    });
+  }
+
   void _mostrar(int idx) {
     if (idx < 0 || idx >= _items.length) return;
     setState(() => _i = idx);
@@ -158,30 +212,13 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
 
     if (e.esVideo) {
       // VIDEO: la barra la maneja la duración real del clip (tope 30 s). No se
-      // reproduce la música (el video trae su propio audio). Mientras carga, la
-      // barra espera; al inicializar, arrancan barra + video juntos.
+      // reproduce la música (el video trae su propio audio). Device-first: MI
+      // historia se reproduce desde el archivo LOCAL; las ajenas, desde la caché
+      // en disco (o streaming la 1ª vez, bajando a caché para la próxima).
       _ctrl
         ..reset()
         ..stop();
-      final vc = VideoPlayerController.networkUrl(Uri.parse(e.fotoUrl));
-      _video = vc;
-      vc.initialize().then((_) {
-        if (!mounted || _video != vc) return;
-        var dur = vc.value.duration;
-        if (dur > _maxVideo) dur = _maxVideo;
-        if (dur.inMilliseconds < 500) dur = const Duration(seconds: 5);
-        _ctrl.duration = dur;
-        vc
-          ..setLooping(false)
-          ..play();
-        _ctrl
-          ..reset()
-          ..forward();
-        setState(() {});
-      }).catchError((_) {
-        // Si el video no carga, no bloquear la historia: pasa al siguiente.
-        if (mounted && _video == vc) _ctrl.duration = _duracion;
-      });
+      _prepararVideo(e, idx);
       return;
     }
 
@@ -487,15 +524,13 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
                     )
                   : e.esFoto
                       ? Center(
-                          child: Image.network(
-                            e.fotoUrl,
+                          child: CachedNetworkImage(
+                            imageUrl: e.fotoUrl,
                             fit: BoxFit.contain,
-                            loadingBuilder: (c, w, p) => p == null
-                                ? w
-                                : const Center(
-                                    child: CircularProgressIndicator(
-                                        color: Colors.white)),
-                            errorBuilder: (c, _, __) => const Center(
+                            placeholder: (c, u) => const Center(
+                                child: CircularProgressIndicator(
+                                    color: Colors.white)),
+                            errorWidget: (c, u, e) => const Center(
                                 child: Icon(Icons.broken_image_outlined,
                                     color: Colors.white54, size: 48)),
                           ),
