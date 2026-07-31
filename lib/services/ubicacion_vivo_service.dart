@@ -27,9 +27,9 @@ class UbicacionVivoService {
 
   /// ¿Estoy compartiendo AHORA en [hilo]?
   bool compartiendoEn(String hilo) =>
-      _timer != null && _hilo == hilo && !_venció;
+      _timer != null && _hilo == hilo && !_vencio;
 
-  bool get _venció =>
+  bool get _vencio =>
       _expira == null || !DateTime.now().isBefore(_expira!);
 
   DateTime? get expira => _expira;
@@ -51,7 +51,7 @@ class UbicacionVivoService {
   }
 
   Future<void> _tick() async {
-    if (_venció) {
+    if (_vencio) {
       await detener();
       return;
     }
