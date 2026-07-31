@@ -13,6 +13,12 @@ import 'package:http/http.dart' as http;
 /// La llave pública se obtiene de `/pagos/config` (no se hardcodea en el APK).
 class PagosService {
   static const _baseUrl = String.fromEnvironment('GROWTH_API_URL');
+  // Dominio PÚBLICO para el enlace COMPARTIBLE de la landing (p. ej.
+  // https://www.pichangol.app). Se separa del host del API: el APK sigue
+  // hablando con el backend por [_baseUrl], pero la URL que ve el usuario usa
+  // el dominio de marca. Si está vacío, cae a [_baseUrl] (nada se rompe hasta
+  // que el dominio + custom domain de Railway estén activos).
+  static const _landingBaseUrl = String.fromEnvironment('LANDING_BASE_URL');
   static const _appKey = String.fromEnvironment('APP_API_KEY');
   static const _culqiSecure = 'https://secure.culqi.com/v2';
 
@@ -821,9 +827,17 @@ class PagosService {
   }
 
   // --- Landing hospedada (fulfillment del servicio de marketing) ----------
-  /// URL pública de la landing de una academia (la sirve el backend).
+  /// Host público de la landing: el dominio de marca si está configurado, o el
+  /// host del backend como respaldo. Sin barra final.
+  static String get _landingHost {
+    final h = _landingBaseUrl.isNotEmpty ? _landingBaseUrl : _baseUrl;
+    return h.endsWith('/') ? h.substring(0, h.length - 1) : h;
+  }
+
+  /// URL pública de la landing de una academia (la sirve el backend). Usa el
+  /// dominio de marca (LANDING_BASE_URL) si está seteado, si no el host del API.
   static String? landingUrl(String academiaId) =>
-      disponible ? '$_baseUrl/l/$academiaId' : null;
+      disponible ? '$_landingHost/l/$academiaId' : null;
 
   /// Genera/actualiza la landing: manda los datos de la academia al backend, que
   /// la publica en [landingUrl]. Devuelve true si quedó publicada.

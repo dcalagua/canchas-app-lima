@@ -139,6 +139,11 @@ def meta_modo() -> str:
 # está vacío, se arma con la URL de la request. Ej.:
 # https://pg-backend-production-c176.up.railway.app
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "")
+# Dominio de MARCA para las landings públicas (canonical + og:url), p. ej.
+# https://www.pichangol.app. Debe coincidir con el custom domain de Railway y con
+# el dart-define LANDING_BASE_URL del APK. Si está vacío, cae a PUBLIC_BASE_URL y,
+# en última instancia, al host de la request. Ej.: https://www.pichangol.app
+LANDING_BASE_URL = os.getenv("LANDING_BASE_URL", "")
 # Hosting transitorio de imágenes para publicar (no se persiste): tope de tamaño
 # por imagen y cuántas se retienen en memoria (se descartan las más viejas).
 IMG_MAX_BYTES = int(os.getenv("IMG_MAX_BYTES", str(8 * 1024 * 1024)))  # 8 MB

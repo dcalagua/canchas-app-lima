@@ -33,7 +33,7 @@ def _wa_link(whatsapp: str, nombre: str) -> str:
     return f"https://wa.me/{tel}?text={quote(msg)}"
 
 
-def render_landing(d: dict) -> str:
+def render_landing(d: dict, canonical: str = "") -> str:
     nombre = _e(d.get("nombre")) or "Academia"
     deporte = _e(d.get("deporte"))
     sede = _e(d.get("sede"))
@@ -164,8 +164,10 @@ def render_landing(d: dict) -> str:
 <title>{nombre}{(' — ' + sede) if sede else ''}</title>
 <meta name="description" content="{desc or nombre}">
 <meta name="theme-color" content="#0F2E12">
+{f'<link rel="canonical" href="{_e(canonical)}">' if canonical else ''}
 <meta property="og:title" content="{nombre}">
 <meta property="og:description" content="{desc or nombre}">
+{f'<meta property="og:url" content="{_e(canonical)}">' if canonical else ''}
 {f'<meta property="og:image" content="{_e(fotos[0])}">' if fotos else ''}
 <meta property="og:type" content="website">
 <link rel="preconnect" href="https://fonts.googleapis.com">
