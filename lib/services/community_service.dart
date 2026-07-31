@@ -65,6 +65,25 @@ class PostDelDia {
   }
 }
 
+/// Estado del CM AUTÓNOMO de una academia: si está activo, cada cuántos días
+/// publica, y el post del día ya PRE-GENERADO por el scheduler (listo al abrir).
+class CmEstado {
+  final bool activo;
+  final int cadaDias;
+  final PostDelDia? post;
+
+  const CmEstado({this.activo = false, this.cadaDias = 3, this.post});
+
+  factory CmEstado.fromJson(Map<String, dynamic> j) {
+    final p = j['post'];
+    return CmEstado(
+      activo: j['activo'] == true,
+      cadaDias: (j['cada_dias'] as num?)?.toInt() ?? 3,
+      post: (p is Map<String, dynamic>) ? PostDelDia.fromJson(p) : null,
+    );
+  }
+}
+
 /// Resultado de una generación: los borradores + si se topó el límite mensual.
 class ResultadoCommunity {
   final List<BorradorPost> posts;
@@ -178,6 +197,57 @@ class CommunityService {
       final j = jsonDecode(resp.body) as Map<String, dynamic>;
       if (j['ok'] != true) return null;
       return PostDelDia.fromJson(j);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Lee el estado del CM autónomo (activo/cadencia + el post PRE-GENERADO).
+  static Future<CmEstado?> cmEstado(String academiaId) async {
+    if (!disponible || academiaId.isEmpty) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/marketing/cm/estado/$academiaId');
+      final resp = await http.get(
+        uri,
+        headers: {if (_appKey.isNotEmpty) 'X-App-Key': _appKey},
+      ).timeout(const Duration(seconds: 25));
+      if (resp.statusCode != 200) return null;
+      return CmEstado.fromJson(jsonDecode(resp.body) as Map<String, dynamic>);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Activa/configura el CM autónomo de una academia. Al activar, el backend
+  /// genera un post de una vez (lo trae en la respuesta) y luego lo renueva solo.
+  static Future<CmEstado?> cmConfig({
+    required String academiaId,
+    required bool activo,
+    required Map<String, dynamic> datos,
+    int cadaDias = 3,
+    String contexto = '',
+  }) async {
+    if (!disponible || academiaId.isEmpty) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/marketing/cm/config');
+      final resp = await http
+          .post(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              if (_appKey.isNotEmpty) 'X-App-Key': _appKey,
+            },
+            body: jsonEncode({
+              'academia_id': academiaId,
+              'activo': activo,
+              'cada_dias': cadaDias,
+              'contexto': contexto,
+              'datos': datos,
+            }),
+          )
+          .timeout(const Duration(seconds: 45));
+      if (resp.statusCode != 200) return null;
+      return CmEstado.fromJson(jsonDecode(resp.body) as Map<String, dynamic>);
     } catch (_) {
       return null;
     }

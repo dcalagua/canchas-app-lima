@@ -37,11 +37,67 @@ class _PostDelDiaScreenState extends State<PostDelDiaScreen> {
   PostDelDia? _post;
   bool _cargando = true;
   bool _compartiendo = false;
+  bool _activo = false; // CM automático activado para esta academia
+  int _cadaDias = 3;
+  bool _guardandoAuto = false;
 
   @override
   void initState() {
     super.initState();
-    _generar();
+    _cargar();
+  }
+
+  /// Carga device-friendly: primero el post PRE-GENERADO por el scheduler
+  /// (instantáneo); si no hay, genera uno on-demand.
+  Future<void> _cargar() async {
+    setState(() => _cargando = true);
+    final e = await CommunityService.cmEstado(widget.academiaId);
+    if (!mounted) return;
+    if (e != null) {
+      _activo = e.activo;
+      _cadaDias = e.cadaDias;
+      if (e.post != null) {
+        setState(() {
+          _cargando = false;
+          _post = e.post;
+          _texto.text = e.post!.textoCompleto;
+        });
+        return;
+      }
+    }
+    await _generar();
+  }
+
+  /// Activa/desactiva el CM automático (el backend lo renueva en su cadencia).
+  Future<void> _alternarAuto(bool v) async {
+    setState(() => _guardandoAuto = true);
+    final e = await CommunityService.cmConfig(
+      academiaId: widget.academiaId,
+      activo: v,
+      datos: widget.datos,
+      cadaDias: _cadaDias,
+    );
+    if (!mounted) return;
+    setState(() {
+      _guardandoAuto = false;
+      if (e != null) {
+        _activo = e.activo;
+        _cadaDias = e.cadaDias;
+        if (e.post != null) {
+          _post = e.post;
+          _texto.text = e.post!.textoCompleto;
+        }
+      }
+    });
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(e == null
+          ? 'No se pudo actualizar. Reintenta.'
+          : (_activo
+              ? 'Community manager automático activado.'
+              : 'Automático desactivado.')),
+      duration: const Duration(milliseconds: 1500),
+    ));
   }
 
   @override
@@ -188,6 +244,33 @@ class _PostDelDiaScreenState extends State<PostDelDiaScreen> {
             child: Text('Mejor hora para publicar: ${p.horaSugerida}',
                 style: const TextStyle(color: textoTenue, fontSize: 12.5)),
           ),
+        const SizedBox(height: 12),
+        // Interruptor del CM AUTÓNOMO: el agente arma los posts solo, en un
+        // calendario; el dueño solo revisa y publica.
+        Container(
+          decoration: BoxDecoration(
+            color: _activo
+                ? limaSuave
+                : Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: trazo),
+          ),
+          child: SwitchListTile(
+            activeColor: lima,
+            secondary: Icon(Icons.auto_awesome,
+                color: _activo ? lima : textoTenue),
+            title: const Text('Publicar automático',
+                style: TextStyle(fontWeight: FontWeight.w800)),
+            subtitle: Text(
+                _activo
+                    ? 'El agente arma tu post cada $_cadaDias días. Solo revisas '
+                        'y publicas.'
+                    : 'Deja que el agente arme tus posts solo, en un calendario.',
+                style: const TextStyle(fontSize: 12.5)),
+            value: _activo,
+            onChanged: _guardandoAuto ? null : _alternarAuto,
+          ),
+        ),
         const SizedBox(height: 14),
         if (p.imagenUrl.isNotEmpty)
           ClipRRect(
