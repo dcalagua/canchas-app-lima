@@ -21,6 +21,7 @@ import '../data/db_local.dart';
 import '../data/grupos_repo.dart';
 import '../data/lecturas_repo.dart';
 import '../data/mensajes_repo.dart';
+import '../data/presencia_repo.dart';
 import '../data/reacciones_repo.dart';
 import '../models/grupo.dart';
 import '../models/mensaje.dart';
@@ -306,6 +307,15 @@ class _ChatScreenState extends State<ChatScreen> {
   DateTime? _otroLeido;
   StreamSubscription? _lecturaSub;
 
+  // Presencia "en línea" (Realtime broadcast): el otro late mientras tiene ESTE
+  // chat abierto; lo vemos en línea si su último latido es de hace < 12 s.
+  Presencia? _presencia;
+  DateTime? _ultPingOtro;
+  Timer? _presenciaTimer;
+  bool get _otroEnLinea =>
+      _ultPingOtro != null &&
+      DateTime.now().difference(_ultPingOtro!).inSeconds < 12;
+
   /// Estado de entrega de un mensaje MÍO (para los checks).
   _Entrega _estadoEntrega(Mensaje m) {
     if (widget.tipo == 'grupo') return _Entrega.enviado;
@@ -369,6 +379,23 @@ class _ChatScreenState extends State<ChatScreen> {
             });
           }
         }
+      });
+    }
+    // Presencia "en línea": solo 1:1 con una persona (correo). Late cada 4 s
+    // mientras el chat esté abierto; se refresca el estado del otro (staleness).
+    if (widget.tipo != 'grupo' && _contraparteEmail.isNotEmpty) {
+      final miEmail = (appState.usuario?.email ?? '').toLowerCase();
+      final otro = _contraparteEmail.toLowerCase();
+      _presencia = PresenciaRepo.abrir(
+        hilo: _hilo,
+        miEmail: miEmail,
+        onPing: (e) {
+          if (e == otro && mounted) setState(() => _ultPingOtro = DateTime.now());
+        },
+      );
+      _presenciaTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+        _presencia?.ping(miEmail);
+        if (mounted) setState(() {}); // re-evalúa "en línea" (staleness)
       });
     }
     // Reacciones del hilo en vivo (todos los tipos de chat).
@@ -719,6 +746,8 @@ class _ChatScreenState extends State<ChatScreen> {
     if (appState.hiloChatAbierto == _hilo) appState.hiloChatAbierto = '';
     _lecturaSub?.cancel();
     _reaccionesSub?.cancel();
+    _presenciaTimer?.cancel();
+    _presencia?.cerrar();
     _timerGrab?.cancel();
     _texto.dispose();
     _scroll.dispose();
@@ -1057,7 +1086,16 @@ class _ChatScreenState extends State<ChatScreen> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontWeight: FontWeight.w700)),
-                    if (recado != null && recado.isNotEmpty)
+                    // "En línea" (presencia) tiene prioridad sobre el recado.
+                    if (!esGrupo && _otroEnLinea)
+                      const Text('en línea',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600))
+                    else if (recado != null && recado.isNotEmpty)
                       Text(recado,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,

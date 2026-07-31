@@ -155,10 +155,24 @@ class PushService {
   /// Reproductor del sonido "Pichan" para avisos con la app en foreground.
   static final AudioPlayer _sonidoPush = AudioPlayer();
 
-  /// Tarjeta flotante superior (estilo heads-up), tocable, auto-oculta a los 5 s.
+  /// Tarjeta flotante superior tipo WhatsApp (heads-up): tarjeta BLANCA con la
+  /// foto del remitente + nombre + preview. Tocable (abre el chat), auto-oculta.
   static void _mostrarBanner(String titulo, String cuerpo, String hilo) {
     final overlay = navigatorKey.currentState?.overlay;
     if (overlay == null) return;
+    // Foto del remitente (deducida del hilo directo).
+    String otroEmail = '';
+    if (hilo.startsWith('directo_')) {
+      final partes = hilo.substring('directo_'.length).split('|');
+      final yo = (appState.usuario?.email ?? '').trim().toLowerCase();
+      if (partes.length == 2) {
+        otroEmail = partes[0] == yo ? partes[1] : partes[0];
+      }
+    }
+    final foto = otroEmail.isNotEmpty ? (appState.fotoDe(otroEmail) ?? '') : '';
+    final inicial =
+        titulo.trim().isNotEmpty ? titulo.trim()[0].toUpperCase() : '?';
+
     late OverlayEntry entry;
     var cerrado = false;
     void cerrar() {
@@ -180,21 +194,28 @@ class PushService {
               alAbrirChat?.call(hilo);
             },
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
-                color: bosque,
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: const [
                   BoxShadow(
-                      color: Color(0x33000000), blurRadius: 12, offset: Offset(0, 4)),
+                      color: Color(0x22000000),
+                      blurRadius: 14,
+                      offset: Offset(0, 4)),
                 ],
               ),
               child: Row(
                 children: [
-                  const CircleAvatar(
-                    radius: 18,
-                    backgroundColor: Colors.white24,
-                    child: Icon(Icons.chat_bubble, color: Colors.white, size: 18),
+                  CircleAvatar(
+                    radius: 20,
+                    backgroundColor: limaSuave,
+                    backgroundImage: foto.isNotEmpty ? NetworkImage(foto) : null,
+                    child: foto.isEmpty
+                        ? Text(inicial,
+                            style: const TextStyle(
+                                color: bosque, fontWeight: FontWeight.w800))
+                        : null,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -205,7 +226,7 @@ class PushService {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
-                                color: Colors.white,
+                                color: Color(0xFF111111),
                                 fontWeight: FontWeight.w800,
                                 fontSize: 14.5)),
                         if (cuerpo.isNotEmpty)
@@ -213,14 +234,11 @@ class PushService {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                  color: Colors.white70, fontSize: 13)),
+                                  color: Colors.black54, fontSize: 13)),
                       ],
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.close, color: Colors.white70, size: 18),
-                    onPressed: cerrar,
-                  ),
+                  const Icon(Icons.chevron_right, color: Colors.black26),
                 ],
               ),
             ),
