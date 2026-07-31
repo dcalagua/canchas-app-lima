@@ -208,6 +208,9 @@ class AppState extends ChangeNotifier {
   /// Mi nivel en un deporte, o null si aún no me he autoevaluado.
   Nivel? miNivelDe(String deporte) => _misNiveles[deporte];
 
+  /// Todos MIS niveles (uno por deporte) para pintarlos en el perfil.
+  List<Nivel> get misNiveles => _misNiveles.values.toList();
+
   /// ¿Ya tengo un nivel sembrado en algún deporte? (para saber si mostrar el
   /// mini-cuestionario del onboarding).
   bool get tengoNivel => _misNiveles.isNotEmpty;

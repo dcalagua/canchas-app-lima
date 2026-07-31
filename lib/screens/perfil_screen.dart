@@ -4,7 +4,9 @@ import '../brand.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/google_logo.dart';
+import '../widgets/nivel_chip.dart';
 import '../widgets/responsive.dart';
+import 'nivel_onboarding_screen.dart';
 import 'academias_screen.dart';
 import 'marketplace_screen.dart';
 import 'ajustes_screen.dart';
@@ -121,6 +123,12 @@ class PerfilScreen extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 12),
+                    ],
+
+                    // --- Nivel de jugador (capa social estilo Playtomic) ---
+                    if (u != null) ...[
+                      const _NivelCard(),
+                      const SizedBox(height: 14),
                     ],
 
                     // --- Modo anfitrión: acción PRINCIPAL, va primero ---
@@ -283,6 +291,89 @@ class _ModoAnfitrion extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Tarjeta "Nivel de jugador" (capa social estilo Playtomic). Si aún no me
+/// autoevalué, muestra un CTA para hacerlo; si ya, muestra mis niveles por
+/// deporte como pastillas y deja reevaluar/agregar otro.
+class _NivelCard extends StatelessWidget {
+  const _NivelCard();
+
+  void _abrir(BuildContext context) {
+    Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => const NivelOnboardingScreen()));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tengo = appState.tengoNivel;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE4E4E4)),
+        boxShadow: const [
+          BoxShadow(
+              color: Color(0x0F000000), blurRadius: 8, offset: Offset(0, 2)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.military_tech, color: lima),
+              const SizedBox(width: 8),
+              const Text('Tu nivel de jugador',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            tengo
+                ? 'Sube o baja solo con tus resultados en retos y campeonatos.'
+                : 'Autoevalúate en 30 segundos y encuentra rivales de tu nivel.',
+            style: const TextStyle(color: textoTenue, fontSize: 13),
+          ),
+          const SizedBox(height: 12),
+          if (tengo) ...[
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final n in appState.misNiveles) NivelChip(nivel: n),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                onPressed: () => _abrir(context),
+                icon: const Icon(Icons.add, size: 18, color: teal),
+                label: const Text('Reevaluar / agregar deporte',
+                    style: TextStyle(color: teal, fontWeight: FontWeight.w700)),
+              ),
+            ),
+          ] else
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                    backgroundColor: lima,
+                    padding: const EdgeInsets.symmetric(vertical: 12)),
+                onPressed: () => _abrir(context),
+                icon: const Icon(Icons.sports_soccer),
+                label: const Text('Descubre tu nivel',
+                    style: TextStyle(fontWeight: FontWeight.w800)),
+              ),
+            ),
+        ],
       ),
     );
   }
