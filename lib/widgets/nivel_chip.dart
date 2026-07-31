@@ -4,24 +4,6 @@ import '../models/models.dart';
 import '../models/nivel.dart';
 import '../theme.dart';
 
-/// Ícono del deporte (para chips/avatares de la capa social).
-IconData iconoDeporte(Deporte d) {
-  switch (d) {
-    case Deporte.futbol:
-      return Icons.sports_soccer;
-    case Deporte.tenis:
-    case Deporte.padel:
-    case Deporte.pickleball:
-      return Icons.sports_tennis;
-    case Deporte.voley:
-      return Icons.sports_volleyball;
-    case Deporte.basquet:
-      return Icons.sports_basketball;
-    case Deporte.natacion:
-      return Icons.pool;
-  }
-}
-
 /// Pastilla estilo Airbnb con el NIVEL del jugador en un deporte (0-7, aquí
 /// 1.0–7.0), tipo Playtomic: ícono del deporte + "Fútbol · 4.3". Blanca, borde
 /// gris muy suave, relieve leve, esquinas muy redondeadas.
