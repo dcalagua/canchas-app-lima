@@ -778,6 +778,7 @@ class AppState extends ChangeNotifier {
   final List<Invitacion> invitaciones = []; // invitaciones profe → alumno
   final List<PlanTrabajo> planes = []; // planes de trabajo (por academia)
   final List<EvaluacionAlumno> evaluaciones = []; // rúbrica por alumno/plan
+  final List<NotaClase> notasClase = []; // bitácora diaria (evaluación por clase)
 
   // Última vez que el usuario abrió cada hilo de chat (hilo → ISO). Sirve para
   // el contador de "no leídos" (Etapa A del chat).
@@ -3267,12 +3268,11 @@ class AppState extends ChangeNotifier {
   List<PlanTrabajo> planesDe(String academiaId) =>
       planes.where((p) => p.academiaId == academiaId).toList();
 
-  /// Plantilla Pichangol para el deporte de la academia (por ahora tenis). Es
-  /// una PLANTILLA (no persistida): se ofrece como base para "usar/duplicar".
-  PlanTrabajo? plantillaDe(Academia ac) {
-    if (ac.deporte == Deporte.tenis) return plantillaTenisPichangol(ac.id);
-    return null; // otros deportes: se replican después (mismo molde)
-  }
+  /// Plantilla Pichangol para el deporte de la academia (tenis, pádel, fútbol,
+  /// natación, vóley, básquet). Es una PLANTILLA (no persistida): se ofrece como
+  /// base para "usar/duplicar".
+  PlanTrabajo? plantillaDe(Academia ac) =>
+      plantillaPara(ac.deporte.name, ac.id);
 
   /// Clona un plan (plantilla o propio) como un plan NUEVO editable de la
   /// academia y lo guarda. Devuelve el id del nuevo plan.
@@ -3397,6 +3397,61 @@ class AppState extends ChangeNotifier {
       sinEvaluar: sinEvaluar,
       pct: pct,
     );
+  }
+
+  // ── Bitácora de clase (evaluación DIARIA por alumno) ───────────────────────
+
+  /// Notas de clase de un alumno, más recientes primero.
+  List<NotaClase> notasDe(String alumnoId) {
+    final l = notasClase.where((n) => n.alumnoId == alumnoId).toList();
+    l.sort((a, b) => b.creado.compareTo(a.creado));
+    return l;
+  }
+
+  /// Cuántas clases del [planId] ya tienen bitácora para el alumno (progreso del
+  /// programa: "clases dictadas" al alumno).
+  int clasesConNota(String alumnoId, String planId) => notasClase
+      .where((n) =>
+          n.alumnoId == alumnoId && n.planId == planId && n.sesionNumero > 0)
+      .map((n) => n.sesionNumero)
+      .toSet()
+      .length;
+
+  /// Agrega una nota de clase (evaluación del día). Devuelve su id.
+  String agregarNotaClase({
+    required String academiaId,
+    required String alumnoId,
+    required String planId,
+    required int sesionNumero,
+    required DesempenoClase desempeno,
+    required String nota,
+    DateTime? fecha,
+  }) {
+    final f = fecha ?? DateTime.now();
+    final ymd = '${f.year.toString().padLeft(4, '0')}-'
+        '${f.month.toString().padLeft(2, '0')}-'
+        '${f.day.toString().padLeft(2, '0')}';
+    final reg = NotaClase(
+      id: 'nota_${DateTime.now().microsecondsSinceEpoch}',
+      academiaId: academiaId,
+      alumnoId: alumnoId,
+      planId: planId,
+      sesionNumero: sesionNumero,
+      fecha: ymd,
+      desempeno: desempeno,
+      nota: nota.trim(),
+      creado: DateTime.now(),
+    );
+    notasClase.add(reg);
+    notifyListeners();
+    _persistirDatos();
+    return reg.id;
+  }
+
+  void eliminarNotaClase(String id) {
+    notasClase.removeWhere((n) => n.id == id);
+    notifyListeners();
+    _persistirDatos();
   }
 
   static String _mesNombre(DateTime d) {
@@ -4797,6 +4852,7 @@ class AppState extends ChangeNotifier {
   static const _kAsistencias = 'asistencias_json';
   static const _kPlanes = 'planes_trabajo_json';
   static const _kEvaluaciones = 'evaluaciones_json';
+  static const _kNotasClase = 'notas_clase_json';
   static const _kCampeonatos = 'campeonatos_json';
   static const _kInvitaciones = 'invitaciones_json';
   static const _kChatLecturas = 'chat_lecturas_json';
@@ -5014,6 +5070,7 @@ class AppState extends ChangeNotifier {
       _cargarLista(prefs, _kAsistencias, asistencias, Asistencia.fromJson);
       _cargarLista(prefs, _kPlanes, planes, PlanTrabajo.fromJson);
       _cargarLista(prefs, _kEvaluaciones, evaluaciones, EvaluacionAlumno.fromJson);
+      _cargarLista(prefs, _kNotasClase, notasClase, NotaClase.fromJson);
       _cargarLista(prefs, _kCampeonatos, campeonatos, Campeonato.fromJson);
       _cargarLista(prefs, _kInvitaciones, invitaciones, Invitacion.fromJson);
 
@@ -5217,6 +5274,8 @@ class AppState extends ChangeNotifier {
           _kPlanes, jsonEncode(planes.map((p) => p.toJson()).toList()));
       await prefs.setString(_kEvaluaciones,
           jsonEncode(evaluaciones.map((e) => e.toJson()).toList()));
+      await prefs.setString(_kNotasClase,
+          jsonEncode(notasClase.map((n) => n.toJson()).toList()));
       await prefs.setString(_kCampeonatos,
           jsonEncode(campeonatos.map((c) => c.toJson()).toList()));
       await prefs.setString(_kInvitaciones,
@@ -5358,6 +5417,7 @@ class AppState extends ChangeNotifier {
     asistencias.clear();
     planes.clear();
     evaluaciones.clear();
+    notasClase.clear();
     invitaciones.clear();
     campeonatos.clear();
     movimientos.clear();
@@ -5426,6 +5486,7 @@ class AppState extends ChangeNotifier {
     asistencias.clear();
     planes.clear();
     evaluaciones.clear();
+    notasClase.clear();
     movimientos.clear();
     campeonatos.clear();
     saldoClub = 0;

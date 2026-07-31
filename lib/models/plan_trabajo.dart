@@ -180,3 +180,77 @@ class EvaluacionAlumno {
             (j['ts'] as num?)?.toInt() ?? 0),
       );
 }
+
+/// Desempeño de UNA clase (la evaluación rápida del día, tipo semáforo).
+enum DesempenoClase {
+  muyBien('Muy bien', 2),
+  bien('Bien', 1),
+  aReforzar('A reforzar', 0);
+
+  final String etiqueta;
+  final int valor;
+  const DesempenoClase(this.etiqueta, this.valor);
+
+  static DesempenoClase? porNombre(String? n) {
+    for (final v in DesempenoClase.values) {
+      if (v.name == n) return v;
+    }
+    return null;
+  }
+}
+
+/// BITÁCORA DE CLASE: la evaluación DIARIA que el profe hace del alumno en cada
+/// sesión (asistió + cómo le fue + observación). Es distinta de [EvaluacionAlumno]
+/// (rúbrica acumulada por habilidad): aquí hay UNA entrada por clase con fecha, y
+/// se guarda el historial (no se sobrescribe). Alimenta el diario del alumno y el
+/// avance del plan (qué clase se dio).
+class NotaClase {
+  final String id;
+  final String academiaId;
+  final String alumnoId;
+  final String planId; // plan de referencia ('' si es una nota suelta)
+  final int sesionNumero; // clase del plan (0 = sin clase específica)
+  final String fecha; // 'YYYY-MM-DD'
+  final DesempenoClase desempeno;
+  final String nota; // observación libre del profe
+  final DateTime creado;
+
+  const NotaClase({
+    required this.id,
+    required this.academiaId,
+    required this.alumnoId,
+    required this.planId,
+    required this.sesionNumero,
+    required this.fecha,
+    required this.desempeno,
+    required this.nota,
+    required this.creado,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'academiaId': academiaId,
+        'alumnoId': alumnoId,
+        'planId': planId,
+        'sesionNumero': sesionNumero,
+        'fecha': fecha,
+        'desempeno': desempeno.name,
+        'nota': nota,
+        'ts': creado.millisecondsSinceEpoch,
+      };
+
+  factory NotaClase.fromJson(Map<String, dynamic> j) => NotaClase(
+        id: (j['id'] ?? '') as String,
+        academiaId: (j['academiaId'] ?? '') as String,
+        alumnoId: (j['alumnoId'] ?? '') as String,
+        planId: (j['planId'] ?? '') as String,
+        sesionNumero: ((j['sesionNumero'] ?? 0) as num).toInt(),
+        fecha: (j['fecha'] ?? '') as String,
+        desempeno:
+            DesempenoClase.porNombre(j['desempeno'] as String?) ??
+                DesempenoClase.bien,
+        nota: (j['nota'] ?? '') as String,
+        creado: DateTime.fromMillisecondsSinceEpoch(
+            (j['ts'] as num?)?.toInt() ?? 0),
+      );
+}
