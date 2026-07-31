@@ -8,6 +8,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
@@ -27,7 +28,6 @@ import '../data/ubicacion_vivo_repo.dart';
 import '../models/grupo.dart';
 import '../models/mensaje.dart';
 import '../services/giphy_service.dart';
-import '../services/location_service.dart';
 import '../services/ubicacion_vivo_service.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
@@ -36,6 +36,7 @@ import '../widgets/cargando_pichangol.dart';
 import '../widgets/dialogo_pichangol.dart';
 import 'grupo_info_screen.dart';
 import 'selector_chat_screen.dart';
+import 'ubicacion_screen.dart';
 
 // ── Paleta estilo WhatsApp (theme-aware) ─────────────────────────────────────
 // Se calcula según el brillo del tema. Fondo del chat, burbujas y barra imitan
@@ -900,21 +901,10 @@ class _ChatScreenState extends State<ChatScreen> {
                   backgroundColor: clayOscuro,
                   child: Icon(Icons.location_on_outlined, color: Colors.white)),
               title: const Text('Ubicación'),
-              subtitle: const Text('Comparte tu ubicación actual'),
+              subtitle: const Text('Actual o en tiempo real'),
               onTap: () {
                 Navigator.pop(context);
-                _compartirUbicacion();
-              },
-            ),
-            ListTile(
-              leading: const CircleAvatar(
-                  backgroundColor: teal,
-                  child: Icon(Icons.my_location, color: Colors.white)),
-              title: const Text('Ubicación en tiempo real'),
-              subtitle: const Text('Se mueve contigo hasta que la detengas'),
-              onTap: () {
-                Navigator.pop(context);
-                _elegirDuracionVivo();
+                _abrirUbicacion();
               },
             ),
             const SizedBox(height: 8),
@@ -924,66 +914,27 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  /// Hoja de duración para la ubicación en tiempo real (estilo WhatsApp:
-  /// 15 min / 1 hora / 8 horas).
-  void _elegirDuracionVivo() {
-    const opciones = <(String, Duration)>[
-      ('15 minutos', Duration(minutes: 15)),
-      ('1 hora', Duration(hours: 1)),
-      ('8 horas', Duration(hours: 8)),
-    ];
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Theme.of(context).brightness == Brightness.dark
-          ? const Color(0xFF202C33)
-          : Colors.white,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 16, 20, 4),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text('Compartir ubicación en tiempo real',
-                    style:
-                        TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-              ),
-            ),
-            for (final (etiqueta, dur) in opciones)
-              ListTile(
-                leading: const Icon(Icons.access_time, color: teal),
-                title: Text('Durante $etiqueta'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _compartirUbicacionVivo(dur);
-                },
-              ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
+  /// Abre la pantalla de ubicación (mapa + elegir) estilo WhatsApp y, según lo
+  /// que elija, envía la ubicación actual o arranca la de tiempo real.
+  Future<void> _abrirUbicacion() async {
+    final res = await Navigator.of(context).push<ResultadoUbicacion>(
+      MaterialPageRoute(builder: (_) => const UbicacionScreen()),
     );
+    if (res == null || !mounted) return;
+    if (res.envivo == null) {
+      await _enviarUbicacionEstatica(res.pos);
+    } else {
+      await _compartirUbicacionVivo(res.envivo!, res.pos);
+    }
   }
 
   /// Arranca la ubicación EN VIVO: envía el mensaje-marcador y prende el servicio
   /// que sube mi posición cada pocos segundos hasta que venza [dur] o la detenga.
-  Future<void> _compartirUbicacionVivo(Duration dur) async {
+  Future<void> _compartirUbicacionVivo(Duration dur, LatLng pos) async {
     final u = appState.usuario;
     if (u == null || _enviando) return;
     setState(() => _enviando = true);
     try {
-      final pos = await LocationService.ubicacionPrecisa();
-      if (pos == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content:
-                  Text('Activa el permiso de ubicación para compartirla.')));
-        }
-        return;
-      }
       final expira = DateTime.now().add(dur);
       // Sube el primer fix y prende el servicio (sigue aunque salga del chat).
       await UbicacionVivoRepo.actualizar(
@@ -1020,22 +971,14 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  /// Comparte la ubicación ACTUAL como un mensaje (se codifica en mediaUrl como
-  /// geo:lat,lng; el receptor la ve como una tarjeta que abre Google Maps).
-  Future<void> _compartirUbicacion() async {
+  /// Envía el punto [pos] como un mensaje de ubicación estática (se codifica en
+  /// mediaUrl como geo:lat,lng; el receptor la ve como una tarjeta que abre
+  /// Google Maps).
+  Future<void> _enviarUbicacionEstatica(LatLng pos) async {
     final u = appState.usuario;
     if (u == null || _enviando) return;
     setState(() => _enviando = true);
     try {
-      final pos = await LocationService.ubicacionPrecisa();
-      if (pos == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content:
-                  Text('Activa el permiso de ubicación para compartirla.')));
-        }
-        return;
-      }
       final msg = Mensaje(
         id: 'msg_${DateTime.now().microsecondsSinceEpoch}',
         hilo: _hilo,
