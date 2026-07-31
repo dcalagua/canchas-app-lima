@@ -80,6 +80,12 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
       final mic = await Permission.microphone.request();
       var cam = PermissionStatus.granted;
       if (widget.video) cam = await Permission.camera.request();
+      // Bluetooth (Android 12+): best-effort, para enrutar la llamada al
+      // manos-libres del carro/audífonos. Si se niega, la llamada sigue (sale por
+      // auricular/altavoz); NO bloquea.
+      try {
+        await Permission.bluetoothConnect.request();
+      } catch (_) {}
       final faltaMic = !mic.isGranted;
       final faltaCam = widget.video && !cam.isGranted;
       if (faltaMic || faltaCam) {

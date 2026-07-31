@@ -259,10 +259,9 @@ class LlamadaWebRTC extends ChangeNotifier {
       _diag('conn=$s');
       if (s == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
         _set(EstadoLlamada.enLlamada);
-        // Ruta de audio al altavoz para que se oiga (sin pegarse el teléfono).
-        try {
-          Helper.setSpeakerphoneOn(altavoz);
-        } catch (_) {}
+        // Ruta de audio: si hay Bluetooth (carro/audífonos) la llamada sale por
+        // ahí (como WhatsApp); si no, según el altavoz.
+        _aplicarRutaAudio();
       } else if (s == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
           s == RTCPeerConnectionState.RTCPeerConnectionStateClosed ||
           s == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
@@ -428,8 +427,46 @@ class LlamadaWebRTC extends ChangeNotifier {
   Future<void> alternarAltavoz() async {
     altavoz = !altavoz;
     try {
-      await Helper.setSpeakerphoneOn(altavoz);
+      if (altavoz) {
+        // Altavoz ON = altavoz del teléfono (elección explícita del usuario).
+        await Helper.setSpeakerphoneOn(true);
+      } else {
+        // Altavoz OFF = auricular, PERO si hay Bluetooth conectado, va al BT.
+        await Helper.setSpeakerphoneOnButPreferBluetooth();
+      }
     } catch (_) {}
+    notifyListeners();
+  }
+
+  /// Aplica la ruta de audio al conectar la llamada. Si hay un dispositivo
+  /// Bluetooth conectado (manos-libres del carro, audífonos), el audio SIEMPRE
+  /// sale por ahí (como WhatsApp), aunque el altavoz estuviera activo; si no hay
+  /// Bluetooth, respeta [altavoz] (altavoz del teléfono vs auricular).
+  Future<void> _aplicarRutaAudio() async {
+    try {
+      final salidas = await Helper.audiooutputs;
+      final hayBluetooth = salidas.any((d) {
+        final s = '${d.label} ${d.deviceId}'.toLowerCase();
+        return s.contains('bluetooth') || s.contains('sco') || s.contains('a2dp');
+      });
+      if (hayBluetooth) {
+        // Manos-libres del carro / audífonos: la llamada sale por el Bluetooth.
+        altavoz = false;
+        await Helper.setSpeakerphoneOnButPreferBluetooth();
+      } else if (video) {
+        // Videollamada sin Bluetooth → altavoz del teléfono (como WhatsApp).
+        altavoz = true;
+        await Helper.setSpeakerphoneOn(true);
+      } else {
+        // Llamada de voz sin Bluetooth → auricular (pegado a la oreja).
+        altavoz = false;
+        await Helper.setSpeakerphoneOnButPreferBluetooth();
+      }
+    } catch (_) {
+      try {
+        await Helper.setSpeakerphoneOn(altavoz);
+      } catch (_) {}
+    }
     notifyListeners();
   }
 

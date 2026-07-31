@@ -95,6 +95,17 @@ def android_manifest(text):
             text,
             count=1,
         )
+    # Audio de llamada por Bluetooth (manos-libres del carro/audífonos): sin
+    # MODIFY_AUDIO_SETTINGS no se puede cambiar la ruta, y en Android 12+ enrutar
+    # al SCO del Bluetooth (y listar su nombre) exige BLUETOOTH_CONNECT.
+    if "android.permission.MODIFY_AUDIO_SETTINGS" not in text:
+        text = re.sub(
+            r"(<manifest[^>]*>)",
+            r'\1\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>'
+            r'\n    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>',
+            text,
+            count=1,
+        )
     # Llamada entrante a pantalla completa (CallKit): Android 14+ exige declarar
     # USE_FULL_SCREEN_INTENT para mostrar la pantalla de "te están llamando" con
     # el teléfono bloqueado.
