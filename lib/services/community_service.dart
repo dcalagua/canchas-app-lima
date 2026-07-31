@@ -32,6 +32,39 @@ class BorradorPost {
   }
 }
 
+/// El POST DEL DÍA del community manager AUTÓNOMO (Fase 0): un post listo para
+/// las redes EXTERNAS del negocio (IG/FB) = copy + hashtags + un FLYER de marca
+/// (imagen). El dueño lo publica en 1 toque. Backend `POST /marketing/cm/post-del-dia`.
+class PostDelDia {
+  final String texto;
+  final List<String> hashtags;
+  final String horaSugerida;
+  final String imagenUrl; // flyer de marca servido por el backend (público)
+
+  const PostDelDia({
+    required this.texto,
+    this.hashtags = const [],
+    this.horaSugerida = '',
+    this.imagenUrl = '',
+  });
+
+  factory PostDelDia.fromJson(Map<String, dynamic> j) => PostDelDia(
+        texto: (j['texto'] ?? '').toString().trim(),
+        hashtags: [
+          for (final h in (j['hashtags'] as List? ?? const []))
+            h.toString().trim()
+        ].where((h) => h.isNotEmpty).toList(),
+        horaSugerida: (j['hora_sugerida'] ?? '').toString().trim(),
+        imagenUrl: (j['imagen_url'] ?? '').toString().trim(),
+      );
+
+  /// Texto listo para publicar: cuerpo + hashtags en línea aparte.
+  String get textoCompleto {
+    final tags = hashtags.isEmpty ? '' : '\n\n${hashtags.join(' ')}';
+    return '$texto$tags'.trim();
+  }
+}
+
 /// Resultado de una generación: los borradores + si se topó el límite mensual.
 class ResultadoCommunity {
   final List<BorradorPost> posts;
@@ -112,6 +145,39 @@ class CommunityService {
         usados: (j['usados'] as num?)?.toInt() ?? 0,
         limiteMes: (j['limite_mes'] as num?)?.toInt() ?? 0,
       );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Genera EL POST DEL DÍA (copy + hashtags + flyer de marca) para publicar en
+  /// las redes externas del negocio. Devuelve null si el servicio no respondió.
+  static Future<PostDelDia?> postDelDia({
+    required String academiaId,
+    required Map<String, dynamic> datos,
+    String contexto = '',
+  }) async {
+    if (!disponible) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/marketing/cm/post-del-dia');
+      final resp = await http
+          .post(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              if (_appKey.isNotEmpty) 'X-App-Key': _appKey,
+            },
+            body: jsonEncode({
+              'academia_id': academiaId,
+              'datos': datos,
+              'contexto': contexto,
+            }),
+          )
+          .timeout(const Duration(seconds: 40));
+      if (resp.statusCode != 200) return null;
+      final j = jsonDecode(resp.body) as Map<String, dynamic>;
+      if (j['ok'] != true) return null;
+      return PostDelDia.fromJson(j);
     } catch (_) {
       return null;
     }

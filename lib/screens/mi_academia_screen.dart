@@ -12,6 +12,7 @@ import '../widgets/ancho_lectura.dart';
 import '../widgets/logo_academia.dart';
 import 'cobros_screen.dart';
 import 'crear_academia_screen.dart';
+import 'post_del_dia_screen.dart';
 import 'ranking_academia_screen.dart';
 import 'recargar_saldo_screen.dart';
 import 'servicios_screen.dart';
@@ -114,6 +115,7 @@ class MiAcademiaScreen extends StatelessWidget {
               ),
               _RosterAlumnos(academia: ac),
               _SeccionInvitaciones(academia: ac),
+              _CmPostDelDiaTile(academia: ac),
               // Secundario y PLEGABLE: compartir código, nivel/destacar y
               // ranking. Colapsado por defecto → no roba espacio a lo importante.
               Theme(
@@ -1848,4 +1850,50 @@ Map<String, List<Plan>> _agruparPorPrograma(List<Plan> planes) {
     lista.sort((a, b) => a.frecuenciaSemana.compareTo(b.frecuenciaSemana));
   }
   return m;
+}
+
+/// Acceso al Community Manager AUTÓNOMO (Fase 0): el "post del día" listo (copy +
+/// flyer de marca) para publicar en las redes del negocio en 1 toque.
+class _CmPostDelDiaTile extends StatelessWidget {
+  const _CmPostDelDiaTile({required this.academia});
+  final Academia academia;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 6, 14, 6),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: trazo),
+        ),
+        child: ListTile(
+          leading: const CircleAvatar(
+            backgroundColor: morado,
+            child: Icon(Icons.auto_awesome, color: Colors.white),
+          ),
+          title: const Text('Community Manager · Post del día',
+              style: TextStyle(fontWeight: FontWeight.w800)),
+          subtitle: const Text(
+              'Genera un post con flyer para tu Instagram/Facebook y publícalo '
+              'en 1 toque',
+              style: TextStyle(fontSize: 12.5)),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => PostDelDiaScreen(
+              academiaId: academia.id,
+              titulo: academia.nombre,
+              datos: {
+                'nombre': academia.nombre,
+                'deporte': academia.deporte.name,
+                'descripcion': academia.descripcion,
+                'whatsapp': academia.whatsapp,
+              },
+            ),
+          )),
+        ),
+      ),
+    );
+  }
 }
