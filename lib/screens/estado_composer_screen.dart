@@ -9,6 +9,7 @@ import '../data/estados_repo.dart';
 import '../services/musica_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 import '../widgets/chip_musica.dart';
 import '../widgets/dialogo_pichangol.dart';
 import 'selector_musica_screen.dart';
@@ -56,15 +57,21 @@ class _EstadoComposerScreenState extends State<EstadoComposerScreen> {
     final t = _ctrl.text.trim();
     if (t.isEmpty || _enviando) return;
     setState(() => _enviando = true);
-    final e = await appState.publicarEstadoTexto(
-      t,
-      _fondos[_bgIdx],
-      musicaTitulo: _musica?.titulo ?? '',
-      musicaArtista: _musica?.artista ?? '',
-      musicaPreview: _musica?.previewUrl ?? '',
-      musicaArt: _musica?.artUrl ?? '',
-      musicaInicioMs: _musica?.inicioMs ?? 0,
-      musicaTrackUrl: _musica?.trackUrl ?? '',
+    // REGLA de la app: acción que demora → preload de marca (la pelota), nunca
+    // un spinner/círculo pelado.
+    final e = await conPreload(
+      context,
+      () => appState.publicarEstadoTexto(
+        t,
+        _fondos[_bgIdx],
+        musicaTitulo: _musica?.titulo ?? '',
+        musicaArtista: _musica?.artista ?? '',
+        musicaPreview: _musica?.previewUrl ?? '',
+        musicaArt: _musica?.artUrl ?? '',
+        musicaInicioMs: _musica?.inicioMs ?? 0,
+        musicaTrackUrl: _musica?.trackUrl ?? '',
+      ),
+      texto: 'Publicando…',
     );
     if (!mounted) return;
     if (e == null) {
@@ -159,12 +166,7 @@ class _EstadoComposerScreenState extends State<EstadoComposerScreen> {
       floatingActionButton: FloatingActionButton(
         backgroundColor: Colors.white,
         onPressed: _enviando ? null : _publicar,
-        child: _enviando
-            ? const SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(strokeWidth: 2, color: lima))
-            : const Icon(Icons.send, color: lima),
+        child: const Icon(Icons.send, color: lima),
       ),
     );
   }
@@ -200,15 +202,20 @@ class _EstadoFotoComposerScreenState extends State<EstadoFotoComposerScreen> {
   Future<void> _publicar() async {
     if (_enviando) return;
     setState(() => _enviando = true);
-    final e = await appState.publicarEstadoFoto(
-      widget.bytes,
-      pie: _ctrl.text.trim(),
-      musicaTitulo: _musica?.titulo ?? '',
-      musicaArtista: _musica?.artista ?? '',
-      musicaPreview: _musica?.previewUrl ?? '',
-      musicaArt: _musica?.artUrl ?? '',
-      musicaInicioMs: _musica?.inicioMs ?? 0,
-      musicaTrackUrl: _musica?.trackUrl ?? '',
+    // REGLA de la app: acción que demora → preload de marca (la pelota).
+    final e = await conPreload(
+      context,
+      () => appState.publicarEstadoFoto(
+        widget.bytes,
+        pie: _ctrl.text.trim(),
+        musicaTitulo: _musica?.titulo ?? '',
+        musicaArtista: _musica?.artista ?? '',
+        musicaPreview: _musica?.previewUrl ?? '',
+        musicaArt: _musica?.artUrl ?? '',
+        musicaInicioMs: _musica?.inicioMs ?? 0,
+        musicaTrackUrl: _musica?.trackUrl ?? '',
+      ),
+      texto: 'Publicando…',
     );
     if (!mounted) return;
     if (e == null) {
@@ -295,13 +302,7 @@ class _EstadoFotoComposerScreenState extends State<EstadoFotoComposerScreen> {
                   FloatingActionButton(
                     backgroundColor: lima,
                     onPressed: _enviando ? null : _publicar,
-                    child: _enviando
-                        ? const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white))
-                        : const Icon(Icons.send, color: Colors.white),
+                    child: const Icon(Icons.send, color: Colors.white),
                   ),
                 ],
               ),
@@ -360,17 +361,25 @@ class _EstadoVideoComposerScreenState extends State<EstadoVideoComposerScreen> {
   Future<void> _publicar() async {
     if (_enviando) return;
     setState(() => _enviando = true);
-    final bytes = await widget.file.readAsBytes();
-    final e = await appState.publicarEstadoVideo(
-      bytes,
-      pie: _ctrl.text.trim(),
-      rutaLocal: widget.file.path, // reproducir MI historia desde el archivo local
-      musicaTitulo: _musica?.titulo ?? '',
-      musicaArtista: _musica?.artista ?? '',
-      musicaPreview: _musica?.previewUrl ?? '',
-      musicaArt: _musica?.artUrl ?? '',
-      musicaInicioMs: _musica?.inicioMs ?? 0,
-      musicaTrackUrl: _musica?.trackUrl ?? '',
+    // REGLA de la app: acción que demora → preload de marca (la pelota).
+    final e = await conPreload(
+      context,
+      () async {
+        final bytes = await widget.file.readAsBytes();
+        return appState.publicarEstadoVideo(
+          bytes,
+          pie: _ctrl.text.trim(),
+          rutaLocal:
+              widget.file.path, // reproducir MI historia desde el archivo local
+          musicaTitulo: _musica?.titulo ?? '',
+          musicaArtista: _musica?.artista ?? '',
+          musicaPreview: _musica?.previewUrl ?? '',
+          musicaArt: _musica?.artUrl ?? '',
+          musicaInicioMs: _musica?.inicioMs ?? 0,
+          musicaTrackUrl: _musica?.trackUrl ?? '',
+        );
+      },
+      texto: 'Publicando…',
     );
     if (!mounted) return;
     if (e == null) {
@@ -462,13 +471,7 @@ class _EstadoVideoComposerScreenState extends State<EstadoVideoComposerScreen> {
                   FloatingActionButton(
                     backgroundColor: lima,
                     onPressed: _enviando ? null : _publicar,
-                    child: _enviando
-                        ? const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white))
-                        : const Icon(Icons.send, color: Colors.white),
+                    child: const Icon(Icons.send, color: Colors.white),
                   ),
                 ],
               ),
