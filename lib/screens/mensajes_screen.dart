@@ -115,7 +115,11 @@ class _MensajesScreenState extends State<MensajesScreen> {
     super.initState();
     _emailCargado = (appState.usuario?.email ?? '').toLowerCase();
     _cargarCache(); // pinta el inbox al instante desde el teléfono (SQLite)
-    _cargar();
+    // Sincroniza con Supabase EN SILENCIO (sin spinner de pantalla completa): si
+    // ya hay caché, la lista queda visible y se actualiza sola; solo la primera
+    // vez (sin caché) se ve el spinner. Antes iba con spinner SIEMPRE → parecía
+    // "cargando" cada vez que entrabas a Mensajes (WhatsApp no hace eso).
+    _cargar(silencioso: true);
     appState.addListener(_alCambiarSesion);
     // Refresca la bandeja SOLA cuando llega un push de chat (sin reabrir).
     PushService.nuevoMensaje.addListener(_onPush);
