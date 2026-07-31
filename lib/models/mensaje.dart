@@ -62,8 +62,27 @@ class Mensaje {
         u.contains('.ogg');
   }
 
-  /// ¿El adjunto es una foto? (media que no es audio).
-  bool get tieneFoto => mediaUrl.isNotEmpty && !esAudio;
+  /// ¿Es un mensaje de UBICACIÓN? Se codifica en `mediaUrl` como
+  /// `geo:LAT,LNG` (sin tocar la BD; es una columna de texto). El `texto` lleva
+  /// "📍 Ubicación" para el preview del inbox.
+  bool get esUbicacion => mediaUrl.startsWith('geo:');
+
+  /// (lat, lng) del mensaje de ubicación, o null si no es ubicación / no parsea.
+  ({double lat, double lng})? get ubicacion {
+    if (!esUbicacion) return null;
+    try {
+      final p = mediaUrl.substring(4).split(',');
+      if (p.length < 2) return null;
+      final la = double.parse(p[0].trim());
+      final ln = double.parse(p[1].trim());
+      return (lat: la, lng: ln);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// ¿El adjunto es una foto? (media que no es audio ni ubicación).
+  bool get tieneFoto => mediaUrl.isNotEmpty && !esAudio && !esUbicacion;
 
   /// ¿El adjunto es un GIF/sticker animado (Giphy)? Se muestra sin recorte y con
   /// fondo transparente, no como una foto cuadrada.

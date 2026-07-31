@@ -26,6 +26,7 @@ import '../data/reacciones_repo.dart';
 import '../models/grupo.dart';
 import '../models/mensaje.dart';
 import '../services/giphy_service.dart';
+import '../services/location_service.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -260,6 +261,7 @@ class _ChatScreenState extends State<ChatScreen> {
   String _snippet(Mensaje m) {
     if (m.esAudio) return '🎤 Nota de voz';
     if (m.esGifSticker) return '🎞️ GIF';
+    if (m.esUbicacion) return '📍 Ubicación';
     if (m.tieneFoto) return m.texto.isNotEmpty ? m.texto : '📷 Foto';
     return m.texto;
   }
@@ -866,6 +868,89 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  /// Menú del clip: Foto o Ubicación (estilo WhatsApp).
+  void _menuAdjuntar() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF202C33)
+          : Colors.white,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            ListTile(
+              leading: const CircleAvatar(
+                  backgroundColor: teal,
+                  child: Icon(Icons.photo_outlined, color: Colors.white)),
+              title: const Text('Foto'),
+              onTap: () {
+                Navigator.pop(context);
+                _enviarFoto(ImageSource.gallery);
+              },
+            ),
+            ListTile(
+              leading: const CircleAvatar(
+                  backgroundColor: clayOscuro,
+                  child: Icon(Icons.location_on_outlined, color: Colors.white)),
+              title: const Text('Ubicación'),
+              subtitle: const Text('Comparte tu ubicación actual'),
+              onTap: () {
+                Navigator.pop(context);
+                _compartirUbicacion();
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Comparte la ubicación ACTUAL como un mensaje (se codifica en mediaUrl como
+  /// geo:lat,lng; el receptor la ve como una tarjeta que abre Google Maps).
+  Future<void> _compartirUbicacion() async {
+    final u = appState.usuario;
+    if (u == null || _enviando) return;
+    setState(() => _enviando = true);
+    try {
+      final pos = await LocationService.ubicacionPrecisa();
+      if (pos == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content:
+                  Text('Activa el permiso de ubicación para compartirla.')));
+        }
+        return;
+      }
+      final msg = Mensaje(
+        id: 'msg_${DateTime.now().microsecondsSinceEpoch}',
+        hilo: _hilo,
+        tipo: widget.tipo,
+        refId: _refId,
+        academiaId: widget.academiaId,
+        cuentaEmail: widget.cuentaEmail,
+        autorEmail: u.email,
+        autorNombre: u.nombre,
+        esProfe: widget.soyProfe,
+        texto: '📍 Ubicación',
+        mediaUrl: 'geo:${pos.latitude},${pos.longitude}',
+        creado: DateTime.now(),
+      );
+      await MensajesRepo.enviar(msg);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('No se pudo obtener tu ubicación.')));
+      }
+    } finally {
+      if (mounted) setState(() => _enviando = false);
+    }
+  }
+
   /// Sube y envía una imagen (bytes) como mensaje con foto en este hilo. Se usa
   /// tanto desde el chat (galería/cámara) como al abrir con una foto inicial
   /// (cámara del inbox).
@@ -1394,7 +1479,7 @@ class _ChatScreenState extends State<ChatScreen> {
               onEnviar: _enviar,
               emojisAbiertos: _emojis,
               onToggleEmojis: _toggleEmojis,
-              onGaleria: () => _enviarFoto(ImageSource.gallery),
+              onGaleria: _menuAdjuntar, // clip → menú (Foto / Ubicación)
               onCamara: () => _enviarFoto(ImageSource.camera),
               grabando: _grabando,
               cancelandoGrab: _cancelandoGrab,
@@ -1679,6 +1764,63 @@ class _Burbuja extends StatelessWidget {
                     ),
                   ),
                 ),
+              )
+            else if (mensaje.esUbicacion)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: GestureDetector(
+                  onTap: () {
+                    final loc = mensaje.ubicacion;
+                    if (loc == null) return;
+                    launchUrl(
+                      Uri.parse(
+                          'https://www.google.com/maps/search/?api=1&query=${loc.lat},${loc.lng}'),
+                      mode: LaunchMode.externalApplication,
+                    );
+                  },
+                  child: Container(
+                    width: 220,
+                    clipBehavior: Clip.antiAlias,
+                    decoration: BoxDecoration(
+                      color: mio
+                          ? Colors.white.withOpacity(0.15)
+                          : Colors.black.withOpacity(0.04),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Container(
+                          height: 108,
+                          color: const Color(0xFFDCE7DA),
+                          child: const Center(
+                            child: Icon(Icons.location_on,
+                                color: clayOscuro, size: 42),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.all(10),
+                          child: Row(
+                            children: [
+                              Icon(Icons.map_outlined,
+                                  size: 18, color: mio ? Colors.white : teal),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text('Ver ubicación en el mapa',
+                                    style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 13,
+                                        color: mio
+                                            ? Colors.white
+                                            : const Color(0xFF111111))),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
             Wrap(
           alignment: WrapAlignment.end,
@@ -1686,6 +1828,7 @@ class _Burbuja extends StatelessWidget {
           children: [
             if (mensaje.texto.isNotEmpty &&
                 !(mensaje.tieneFoto && mensaje.texto == '📷 Foto') &&
+                !(mensaje.esUbicacion && mensaje.texto == '📍 Ubicación') &&
                 !(mensaje.esAudio && mensaje.texto == '🎤 Nota de voz'))
               _TextoMensaje(
                   texto: mensaje.texto,
@@ -2136,7 +2279,7 @@ class _Barra extends StatelessWidget {
                             onPressed: enviando ? null : onGaleria,
                             icon: Icon(Icons.attach_file, color: wa.hora),
                             splashRadius: 20,
-                            tooltip: 'Adjuntar foto',
+                            tooltip: 'Adjuntar',
                           ),
                           IconButton(
                             onPressed: enviando ? null : onCamara,
