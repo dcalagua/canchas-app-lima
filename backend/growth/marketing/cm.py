@@ -19,6 +19,7 @@ from db.store import stores
 
 from .flyer import CONTEXTO_TIPO, generar_flyer
 from .posts import generar_posts
+from .reel import generar_reel
 
 
 def _ahora() -> datetime:
@@ -69,12 +70,38 @@ def _generar_post(datos: dict, contexto: str, tipo: str | None = None) -> dict:
     }
 
 
-def generar_para(academia_id: str) -> dict | None:
-    """Genera y guarda el post del día de una academia. Devuelve el post o None."""
+def _tiene_fotos(datos: dict) -> bool:
+    fotos = datos.get("fotos")
+    return isinstance(fotos, list) and any(
+        str(u or "").startswith("http") for u in fotos)
+
+
+def _generar_reel_id(datos: dict, gancho: str, tipo: str | None) -> str:
+    """Arma el REEL y lo guarda en memoria; devuelve su id (o '' si no se pudo).
+    Best-effort: pesa, así que sólo tiene sentido con fotos del negocio."""
+    if not _tiene_fotos(datos):
+        return ""
+    try:
+        mp4 = generar_reel(datos, gancho, tipo=tipo)
+    except Exception:  # noqa: BLE001
+        return ""
+    if not mp4:
+        return ""
+    return stores.guardar_video(mp4, "video/mp4")
+
+
+def generar_para(academia_id: str, *, con_reel: bool = False) -> dict | None:
+    """Genera y guarda el post del día de una academia. Devuelve el post o None.
+    [con_reel] arma TAMBIÉN el reel (sólo el scheduler lo pide, en segundo plano:
+    pesa y no debe bloquear la activación desde el APK)."""
     c = stores.cm.get(academia_id)
     if not c:
         return None
-    post = _generar_post(c.get("datos") or {}, c.get("contexto") or "")
+    datos = c.get("datos") or {}
+    post = _generar_post(datos, c.get("contexto") or "")
+    if con_reel:
+        post["reel_id"] = _generar_reel_id(
+            datos, str(post.get("texto") or ""), post.get("tipo"))
     c["ultimo_post"] = post
     c["ultimo_generado"] = _ahora().isoformat()
     return post
@@ -101,7 +128,7 @@ def procesar_cm_pendientes() -> int:
     for aid, c in list(stores.cm.items()):
         if _vencido(c, ahora):
             try:
-                generar_para(aid)
+                generar_para(aid, con_reel=True)
                 n += 1
             except Exception:  # noqa: BLE001
                 pass

@@ -40,12 +40,14 @@ class PostDelDia {
   final List<String> hashtags;
   final String horaSugerida;
   final String imagenUrl; // flyer de marca servido por el backend (público)
+  final String reelUrl; // reel (video) PRE-ARMADO por el scheduler (si hay)
 
   const PostDelDia({
     required this.texto,
     this.hashtags = const [],
     this.horaSugerida = '',
     this.imagenUrl = '',
+    this.reelUrl = '',
   });
 
   factory PostDelDia.fromJson(Map<String, dynamic> j) => PostDelDia(
@@ -56,6 +58,7 @@ class PostDelDia {
         ].where((h) => h.isNotEmpty).toList(),
         horaSugerida: (j['hora_sugerida'] ?? '').toString().trim(),
         imagenUrl: (j['imagen_url'] ?? '').toString().trim(),
+        reelUrl: (j['reel_url'] ?? '').toString().trim(),
       );
 
   /// Texto listo para publicar: cuerpo + hashtags en línea aparte.

@@ -154,6 +154,7 @@ def _cm_estado(academia_id: str, request: Request) -> dict:
                 "ultimo_generado": "", "post": None}
     post = c.get("ultimo_post")
     imagen_url = ""
+    reel_url = ""
     if post:
         img_id = post.get("imagen_id") or ""
         if img_id and img_id in stores.imagenes:
@@ -167,6 +168,11 @@ def _cm_estado(academia_id: str, request: Request) -> dict:
                                                tope=config.IMG_MAX_RETENIDAS)
                 post["imagen_id"] = img_id
                 imagen_url = f"{_base_publica(request)}/marketing/img/{img_id}.png"
+        # Reel PRE-ARMADO por el scheduler (si sigue en memoria). No lo regenera
+        # aquí: pesa, y para eso está el botón "Crear reel" on-demand.
+        vid_id = post.get("reel_id") or ""
+        if vid_id and vid_id in stores.videos:
+            reel_url = f"{_base_publica(request)}/marketing/vid/{vid_id}.mp4"
     return {
         "activo": bool(c.get("activo", False)),
         "cada_dias": int(c.get("cada_dias", 3)),
@@ -177,6 +183,7 @@ def _cm_estado(academia_id: str, request: Request) -> dict:
             "hashtags": post.get("hashtags", []),
             "hora_sugerida": post.get("hora_sugerida", ""),
             "imagen_url": imagen_url,
+            "reel_url": reel_url,
         },
     }
 

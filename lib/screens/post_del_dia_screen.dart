@@ -158,18 +158,21 @@ class _PostDelDiaScreenState extends State<PostDelDiaScreen> {
         duration: Duration(milliseconds: 1200)));
   }
 
-  /// Auto-arma un REEL (video vertical) con las fotos del negocio + marca y lo
-  /// comparte en 1 toque (para subirlo a IG/FB, donde el dueño le pone la música).
+  /// Comparte el REEL (video vertical). Si el scheduler ya lo dejó pre-armado,
+  /// usa esa URL (instantáneo); si no, lo arma on-demand con las fotos + marca.
   Future<void> _crearReel() async {
-    final url = await conPreload<String>(
-      context,
-      () => CommunityService.reelDelDia(
-        academiaId: widget.academiaId,
-        datos: widget.datos,
-        contexto: _texto.text.trim(),
-      ),
-      texto: 'Armando tu reel…',
-    );
+    final listo = _post?.reelUrl ?? '';
+    final url = listo.isNotEmpty
+        ? listo
+        : await conPreload<String>(
+            context,
+            () => CommunityService.reelDelDia(
+              academiaId: widget.academiaId,
+              datos: widget.datos,
+              contexto: _texto.text.trim(),
+            ),
+            texto: 'Armando tu reel…',
+          );
     if (!mounted) return;
     if (url.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -336,16 +339,22 @@ class _PostDelDiaScreenState extends State<PostDelDiaScreen> {
             ),
             onPressed: _crearReel,
             icon: const Icon(Icons.movie_creation_outlined, color: teal),
-            label: const Text('Crear reel (video)',
-                style: TextStyle(fontWeight: FontWeight.w800)),
+            label: Text(
+                (p.reelUrl.isNotEmpty)
+                    ? 'Compartir reel (video)'
+                    : 'Crear reel (video)',
+                style: const TextStyle(fontWeight: FontWeight.w800)),
           ),
         ),
-        const Padding(
-          padding: EdgeInsets.only(top: 6, left: 4),
+        Padding(
+          padding: const EdgeInsets.only(top: 6, left: 4),
           child: Text(
-            'Arma un video vertical con tus fotos, listo para subir a Historias '
-            'o Reels. Tú le pones la música al publicar.',
-            style: TextStyle(color: textoTenue, fontSize: 12),
+            (p.reelUrl.isNotEmpty)
+                ? 'Tu reel ya está listo (lo armó el agente). Tú le pones la '
+                    'música al subirlo a Historias o Reels.'
+                : 'Arma un video vertical con tus fotos, listo para subir a '
+                    'Historias o Reels. Tú le pones la música al publicar.',
+            style: const TextStyle(color: textoTenue, fontSize: 12),
           ),
         ),
         const SizedBox(height: 16),

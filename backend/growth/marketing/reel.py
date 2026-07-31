@@ -119,24 +119,41 @@ def _fondo_grande(datos: dict, foto):
     return img
 
 
-def _frame(base_grande, overlay, prog: float, zoom_in: bool):
-    """Un frame WxH: recorta una ventana del lienzo grande (Ken Burns) y pega el
-    overlay estático encima. prog 0→1 avanza el zoom."""
+# Movimientos Ken Burns disponibles (para que los reels NO se vean iguales).
+_MOVS = ("zoom_in", "zoom_out", "pan_left", "pan_right", "pan_up", "pan_down")
+
+
+def _frame(base_grande, overlay, prog: float, mov: str):
+    """Un frame WxH: recorta una ventana del lienzo grande con el movimiento [mov]
+    (zoom o paneo) y pega el overlay ESTÁTICO encima. prog 0→1 avanza el gesto."""
     from PIL import Image
 
     bw, bh = base_grande.size
-    # Escala de la ventana: zoom-in achica la ventana con el tiempo (acerca).
-    if zoom_in:
-        s = _ZOOM - (_ZOOM - 1.0) * prog
+    zf = 1.0 / _ZOOM  # ventana "acercada" (deja margen para panear)
+
+    if mov == "zoom_in":
+        f = 1.0 - (1.0 - zf) * prog        # ventana se achica → acerca
+    elif mov == "zoom_out":
+        f = zf + (1.0 - zf) * prog          # ventana crece → aleja
     else:
-        s = 1.0 + (_ZOOM - 1.0) * prog
-    ww, wh = int(_W * s), int(_H * s)
-    ww = min(ww, bw)
-    wh = min(wh, bh)
-    # Deriva vertical suave.
-    x = (bw - ww) // 2
-    y = int((bh - wh) * (0.5 + 0.12 * (prog - 0.5)))
-    y = max(0, min(bh - wh, y))
+        f = zf                               # paneo: zoom fijo, se mueve
+    ww, wh = min(int(bw * f), bw), min(int(bh * f), bh)
+    rx, ry = bw - ww, bh - wh
+
+    if mov == "pan_left":
+        x, y = int(rx * prog), ry // 2
+    elif mov == "pan_right":
+        x, y = int(rx * (1.0 - prog)), ry // 2
+    elif mov == "pan_up":
+        x, y = rx // 2, int(ry * (1.0 - prog))
+    elif mov == "pan_down":
+        x, y = rx // 2, int(ry * prog)
+    else:  # zoom: centrado con deriva vertical muy suave
+        x = rx // 2
+        y = int(ry * (0.5 + 0.12 * (prog - 0.5)))
+    x = max(0, min(rx, x))
+    y = max(0, min(ry, y))
+
     win = base_grande.crop((x, y, x + ww, y + wh))
     if win.size != (_W, _H):
         win = win.resize((_W, _H), Image.LANCZOS)
@@ -146,8 +163,17 @@ def _frame(base_grande, overlay, prog: float, zoom_in: bool):
 
 
 def _slides(datos: dict, gancho: str, tipo: str | None):
-    """Arma la lista de slides: (foto|None, overlay). Portada + fotos + cierre."""
+    """Arma la lista de slides: (foto|None, overlay, movimiento). Portada + fotos
+    + cierre, cada uno con un gesto Ken Burns distinto para dar variedad."""
+    import random
+
     tag_label, acento = _TIPOS.get(tipo or "", ("PICHANGOL", _LIMA))
+    # Barajado del orden de movimientos → cada reel se siente distinto.
+    orden = list(_MOVS)
+    random.shuffle(orden)
+
+    def _mov(i: int) -> str:
+        return orden[i % len(orden)]
 
     nombre = _limpiar(str(datos.get("nombre") or "Academia")) or "Academia"
     deporte = _limpiar(str(datos.get("deporte") or "")).capitalize()
@@ -165,28 +191,31 @@ def _slides(datos: dict, gancho: str, tipo: str | None):
     fotos_pil = [f for f in (_bajar_imagen(u) for u in urls) if f is not None]
 
     slides = []
-    # 1) Portada de marca: primera foto (o degradado) + nombre + eyebrow.
+    # 1) Portada de marca: primera foto (o degradado) + nombre + eyebrow. Siempre
+    # abre con un zoom-in (entrada clásica de reel).
     portada_foto = fotos_pil[0] if fotos_pil else None
     slides.append((portada_foto,
-                   _overlay_texto(tag_label, nombre, sub, acento)))
+                   _overlay_texto(tag_label, nombre, sub, acento), "zoom_in"))
 
-    # 2) Fotos con frases (rota entre gancho / deporte / invitación).
-    frases = [frase or "Ven a jugar", "Cupos disponibles",
+    # 2) Fotos con frases CORTAS y punchy (los reels no llevan párrafos). Del
+    # gancho se toma sólo el arranque para que no se corte a medias.
+    corto = " ".join(frase.split()[:4]) if frase else ""
+    frases = [corto or "Ven a jugar", "Cupos disponibles",
               sub or "Te esperamos", "Reserva fácil, juega hoy"]
     for i, f in enumerate(fotos_pil):
         slides.append((f, _overlay_texto("", frases[i % len(frases)], "",
-                                         acento)))
+                                         acento), _mov(i)))
 
     # Si no hubo fotos, agrega una tarjeta de marca extra para que dure.
     if not fotos_pil:
         slides.append((None, _overlay_texto("", frase or "Reserva tu cancha",
-                                            sub, acento)))
+                                            sub, acento), "pan_up"))
 
-    # 3) Cierre con CTA de WhatsApp.
+    # 3) Cierre con CTA de WhatsApp — cierra alejando (zoom-out) para "cerrar".
     cierre_foto = fotos_pil[-1] if fotos_pil else None
     slides.append((cierre_foto,
                    _overlay_texto("", "Reserva ahora", nombre, acento,
-                                  cta=True)))
+                                  cta=True), "zoom_out"))
     return slides
 
 
@@ -203,7 +232,8 @@ def generar_reel(datos: dict, gancho: str, tipo: str | None = None) -> bytes | N
     try:
         slides = _slides(datos or {}, gancho, tipo)
         # Pre-render de cada lienzo grande (una vez por slide).
-        lienzos = [(_fondo_grande(datos or {}, foto), ov) for foto, ov in slides]
+        lienzos = [(_fondo_grande(datos or {}, foto), ov, mov)
+                   for foto, ov, mov in slides]
     except Exception:  # noqa: BLE001
         return None
 
@@ -221,9 +251,8 @@ def generar_reel(datos: dict, gancho: str, tipo: str | None = None) -> bytes | N
                            "-movflags", "+faststart"])
 
         prev_last = None
-        for si, (base, ov) in enumerate(lienzos):
-            zoom_in = (si % 2 == 0)
-            primer = _frame(base, ov, 0.0, zoom_in)
+        for base, ov, mov in lienzos:
+            primer = _frame(base, ov, 0.0, mov)
             # Fade-in del arranque / crossfade con el slide anterior.
             if prev_last is None:
                 for t in range(1, _TRANS + 1):
@@ -233,10 +262,10 @@ def generar_reel(datos: dict, gancho: str, tipo: str | None = None) -> bytes | N
                 for t in range(1, _TRANS + 1):
                     w.append_data(np.asarray(
                         Image.blend(prev_last, primer, t / (_TRANS + 1))))
-            # Frames del slide (Ken Burns).
+            # Frames del slide (Ken Burns con el movimiento del slide).
             ultimo = primer
             for i in range(n_frames):
-                fr = _frame(base, ov, i / max(1, n_frames - 1), zoom_in)
+                fr = _frame(base, ov, i / max(1, n_frames - 1), mov)
                 w.append_data(np.asarray(fr))
                 ultimo = fr
             prev_last = ultimo
