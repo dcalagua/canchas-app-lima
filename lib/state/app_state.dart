@@ -9,6 +9,7 @@ import '../data/academias_repo.dart';
 import '../data/agenda_repo.dart';
 import '../data/estados_repo.dart';
 import '../data/lecturas_repo.dart';
+import '../data/presencia_repo.dart';
 import '../models/estado.dart';
 import '../models/canal.dart';
 import '../data/campeonatos_repo.dart';
@@ -2842,8 +2843,14 @@ class AppState extends ChangeNotifier {
     chatLecturas[hilo] = DateTime.now().toIso8601String();
     notifyListeners();
     _persistirDatos();
-    // Checks tipo WhatsApp: avisa al REMITENTE que YO leí este hilo (2 azules).
-    LecturasRepo.marcarLeido(hilo, _yo);
+    // Checks tipo WhatsApp. Si tengo activada la confirmación de lectura, aviso
+    // al remitente que YO leí (2 azules). Si la apagué (privacidad), solo marco
+    // ENTREGADO (2 grises) — nunca "leído".
+    if (confirmacionLectura) {
+      LecturasRepo.marcarLeido(hilo, _yo);
+    } else {
+      LecturasRepo.marcarEntregados([hilo], _yo);
+    }
   }
 
   /// Marca ENTREGADOS (no leídos) varios hilos para MÍ: se llama cuando bajo los
@@ -3481,6 +3488,39 @@ class AppState extends ChangeNotifier {
   void setTemaModo(ThemeMode modo) {
     if (modo == temaModo) return;
     temaModo = modo;
+    notifyListeners();
+    _persistirDatos();
+  }
+
+  // ── Privacidad (estilo WhatsApp, con reciprocidad) ─────────────────────────
+
+  /// Si es false: NO reporto mi "en línea / última vez" y —por reciprocidad—
+  /// tampoco veo la de los demás.
+  bool mostrarUltimaVez = true;
+
+  /// Si es false: NO envío confirmaciones de lectura (2 checks azules) y —por
+  /// reciprocidad— tampoco las veo. La ENTREGA (2 grises) se mantiene siempre.
+  bool confirmacionLectura = true;
+
+  void setMostrarUltimaVez(bool v) {
+    if (v == mostrarUltimaVez) return;
+    mostrarUltimaVez = v;
+    notifyListeners();
+    _persistirDatos();
+    if (!v) {
+      // Al apagarlo, borra mi última vez del servidor (nadie la ve ya).
+      final e = usuario?.email ?? '';
+      if (e.isNotEmpty) PresenciaRepo.ocultar(e);
+    } else {
+      // Al prenderlo, vuelvo a latir de una.
+      final e = usuario?.email ?? '';
+      if (e.isNotEmpty) PresenciaRepo.latir(e);
+    }
+  }
+
+  void setConfirmacionLectura(bool v) {
+    if (v == confirmacionLectura) return;
+    confirmacionLectura = v;
     notifyListeners();
     _persistirDatos();
   }
@@ -4845,6 +4885,8 @@ class AppState extends ChangeNotifier {
   static const _kFavoritos = 'favoritos_json';
   static const _kRadio = 'radio_busqueda_km';
   static const _kTema = 'tema_modo'; // 0=system, 1=light, 2=dark
+  static const _kMostrarUltimaVez = 'priv_mostrar_ultima_vez';
+  static const _kConfirmacionLectura = 'priv_confirmacion_lectura';
   static const _kAcademias = 'academias_json';
   static const _kAcademiasPendientes = 'academias_pendientes_nube_json';
   static const _kAlumnos = 'alumnos_json';
@@ -4999,6 +5041,10 @@ class AppState extends ChangeNotifier {
           _ => ThemeMode.light,
         };
       }
+
+      mostrarUltimaVez = prefs.getBool(_kMostrarUltimaVez) ?? mostrarUltimaVez;
+      confirmacionLectura =
+          prefs.getBool(_kConfirmacionLectura) ?? confirmacionLectura;
 
       final movsRaw = prefs.getString(_kMovs);
       if (movsRaw != null) {
@@ -5222,6 +5268,8 @@ class AppState extends ChangeNotifier {
       await prefs.setString(_kVerifEmail, _verifEmail);
       await prefs.setString(_kRecordCobro, jsonEncode(_recordatoriosCobro));
       await prefs.setBool(_kRecordAuto, recordatoriosAutoActivos);
+      await prefs.setBool(_kMostrarUltimaVez, mostrarUltimaVez);
+      await prefs.setBool(_kConfirmacionLectura, confirmacionLectura);
       await prefs.setString(
           _kAsistAvisada, jsonEncode(_asistenciaAvisada.toList()));
       await prefs.setString(_kDescuentosSlot, jsonEncode(_descuentosSlot));

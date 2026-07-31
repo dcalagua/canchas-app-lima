@@ -8,6 +8,7 @@ import '../theme.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/responsive.dart';
 import 'editar_perfil_screen.dart';
+import 'privacidad_screen.dart';
 import 'referidos_screen.dart';
 import 'verificar_identidad_screen.dart';
 
@@ -242,6 +243,14 @@ class AjustesScreen extends StatelessWidget {
                 subtitle: 'Comparte tu código; tú y tu amigo ganan un bono',
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(
                     builder: (_) => const ReferidosScreen())),
+              ),
+              _AccionTile(
+                icon: Icons.lock_outline,
+                color: bosque,
+                title: 'Privacidad',
+                subtitle: 'Última vez, en línea y confirmaciones de lectura',
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => const PrivacidadScreen())),
               ),
               _AccionTile(
                 icon: Icons.ios_share,

@@ -354,10 +354,14 @@ class _ChatScreenState extends State<ChatScreen> {
     return 'última vez el $d/$mo a las $hh:$mm';
   }
 
-  /// Estado de entrega de un mensaje MÍO (para los checks).
+  /// Estado de entrega de un mensaje MÍO (para los checks). Reciprocidad: si YO
+  /// apagué la confirmación de lectura, no veo los 2 azules del otro (se queda
+  /// en "entregado" como máximo).
   _Entrega _estadoEntrega(Mensaje m) {
     if (widget.tipo == 'grupo') return _Entrega.enviado;
-    if (_otroLeido != null && !_otroLeido!.isBefore(m.creado)) {
+    if (appState.confirmacionLectura &&
+        _otroLeido != null &&
+        !_otroLeido!.isBefore(m.creado)) {
       return _Entrega.leido;
     }
     if (_otroEntregado != null && !_otroEntregado!.isBefore(m.creado)) {
@@ -421,7 +425,11 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     // Presencia "en línea": solo 1:1 con una persona (correo). Late cada 4 s
     // mientras el chat esté abierto; se refresca el estado del otro (staleness).
-    if (widget.tipo != 'grupo' && _contraparteEmail.isNotEmpty) {
+    // Reciprocidad: si YO apagué "última vez", no abro presencia → no reporto la
+    // mía y tampoco veo la del otro (queda solo el recado en el subtítulo).
+    if (widget.tipo != 'grupo' &&
+        _contraparteEmail.isNotEmpty &&
+        appState.mostrarUltimaVez) {
       final miEmail = (appState.usuario?.email ?? '').toLowerCase();
       final otro = _contraparteEmail.toLowerCase();
       _presencia = PresenciaRepo.abrir(
@@ -872,7 +880,8 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  /// Menú del clip: Foto o Ubicación (estilo WhatsApp).
+  /// Menú del clip estilo WhatsApp: un popup con una grilla de íconos redondos
+  /// de colores (Galería, Cámara, Ubicación). Contacto se evaluará más adelante.
   void _menuAdjuntar() {
     showModalBottomSheet<void>(
       context: context,
@@ -880,35 +889,57 @@ class _ChatScreenState extends State<ChatScreen> {
           ? const Color(0xFF202C33)
           : Colors.white,
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 8),
-            ListTile(
-              leading: const CircleAvatar(
-                  backgroundColor: teal,
-                  child: Icon(Icons.photo_outlined, color: Colors.white)),
-              title: const Text('Foto'),
-              onTap: () {
-                Navigator.pop(context);
-                _enviarFoto(ImageSource.gallery);
-              },
-            ),
-            ListTile(
-              leading: const CircleAvatar(
-                  backgroundColor: clayOscuro,
-                  child: Icon(Icons.location_on_outlined, color: Colors.white)),
-              title: const Text('Ubicación'),
-              subtitle: const Text('Actual o en tiempo real'),
-              onTap: () {
-                Navigator.pop(context);
-                _abrirUbicacion();
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 18),
+                decoration: BoxDecoration(
+                    color: Colors.grey.withOpacity(0.35),
+                    borderRadius: BorderRadius.circular(999)),
+              ),
+              Wrap(
+                spacing: 26,
+                runSpacing: 18,
+                alignment: WrapAlignment.center,
+                children: [
+                  _AccionAdjunto(
+                    icon: Icons.photo_library_rounded,
+                    color: const Color(0xFF9B59B6), // morado
+                    label: 'Galería',
+                    onTap: () {
+                      Navigator.pop(context);
+                      _enviarFoto(ImageSource.gallery);
+                    },
+                  ),
+                  _AccionAdjunto(
+                    icon: Icons.photo_camera_rounded,
+                    color: const Color(0xFFE8556D), // rojo/rosado
+                    label: 'Cámara',
+                    onTap: () {
+                      Navigator.pop(context);
+                      _enviarFoto(ImageSource.camera);
+                    },
+                  ),
+                  _AccionAdjunto(
+                    icon: Icons.location_on_rounded,
+                    color: const Color(0xFF2ECC71), // verde
+                    label: 'Ubicación',
+                    onTap: () {
+                      Navigator.pop(context);
+                      _abrirUbicacion();
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -2894,6 +2925,49 @@ class _UbicacionVivoCardState extends State<_UbicacionVivoCard> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Un ícono redondo de color con su etiqueta, para la grilla del clip (estilo
+/// WhatsApp: Galería / Cámara / Ubicación).
+class _AccionAdjunto extends StatelessWidget {
+  const _AccionAdjunto({
+    required this.icon,
+    required this.color,
+    required this.label,
+    required this.onTap,
+  });
+  final IconData icon;
+  final Color color;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: SizedBox(
+        width: 68,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 58,
+              height: 58,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              child: Icon(icon, color: Colors.white, size: 26),
+            ),
+            const SizedBox(height: 7),
+            Text(label,
+                style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: textoTenueDe(context))),
+          ],
+        ),
       ),
     );
   }

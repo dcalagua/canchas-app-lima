@@ -42,6 +42,15 @@ class PresenciaRepo {
     } catch (_) {}
   }
 
+  /// Borra mi fila de presencia (al apagar "última vez": nadie la ve más).
+  static Future<void> ocultar(String email) async {
+    final e = email.trim().toLowerCase();
+    if (!SupabaseService.disponible || e.isEmpty) return;
+    try {
+      await SupabaseService.client.from(_tablaVisto).delete().eq('email', e);
+    } catch (_) {}
+  }
+
   /// Última vez que [email] estuvo activo (UTC→local), o null si no hay dato.
   static Future<DateTime?> ultimoVisto(String email) async {
     final e = email.trim().toLowerCase();

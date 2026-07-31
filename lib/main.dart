@@ -115,6 +115,9 @@ class _PichangolAppState extends State<PichangolApp>
   }
 
   void _latir() {
+    // Respeta la privacidad: si el usuario apagó "última vez / en línea", no
+    // reporto mi presencia (nadie me ve conectado).
+    if (!appState.mostrarUltimaVez) return;
     final e = appState.usuario?.email ?? '';
     if (e.isNotEmpty) PresenciaRepo.latir(e);
   }
