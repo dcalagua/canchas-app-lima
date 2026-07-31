@@ -57,6 +57,9 @@ class _MisRetosScreenState extends State<MisRetosScreen> {
     // Retos auto-confirmados por vencer el plazo → notificar siempre (al que
     // ganó y al que perdió), una sola vez.
     await _notificarAutoConfirmados([...recibidos, ...enviados]);
+    // Nivel verificado por resultados (Playtomic): aplica el ELO a mi nivel por
+    // cada reto ya JUGADO que aún no procesé (idempotente). Best-effort.
+    appState.aplicarEloDeRetos([...recibidos, ...enviados]);
   }
 
   /// Detecta retos que se auto-confirmaron (nadie confirmó a tiempo) desde la

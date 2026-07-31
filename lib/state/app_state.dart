@@ -300,6 +300,41 @@ class AppState extends ChangeNotifier {
     await NivelesRepo.guardar(nuevo);
   }
 
+  static const _kRetosElo = 'retos_elo_aplicados';
+
+  /// Aplica el ELO a MI nivel por CADA reto ya JUGADO que aún no procesé
+  /// (idempotente por id de reto → nunca se aplica dos veces). Cada jugador
+  /// actualiza SU propio nivel en su dispositivo, con el nivel actual del rival.
+  /// Sólo singles (el dobles necesita lógica de equipo). Se llama al abrir "Mis
+  /// retos": así el nivel sube/baja SOLO con resultados reales (Playtomic).
+  Future<void> aplicarEloDeRetos(List<Map<String, dynamic>> retos) async {
+    final yo = (usuario?.email ?? '').toLowerCase();
+    if (yo.isEmpty || retos.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    final hechos = (prefs.getStringList(_kRetosElo) ?? <String>[]).toSet();
+    var cambio = false;
+    for (final r in retos) {
+      if ((r['estado'] ?? '').toString() != 'jugado') continue;
+      if ((r['modalidad'] ?? 'singles').toString() == 'dobles') continue;
+      final ganador = (r['ganador_email'] ?? '').toString().toLowerCase();
+      if (ganador.isEmpty) continue;
+      final id = r['id']?.toString() ?? '';
+      if (id.isEmpty || hechos.contains(id)) continue;
+      final deporte = (r['deporte'] ?? '').toString();
+      if (deporte.isEmpty) continue;
+      final retador = (r['retador_email'] ?? '').toString().toLowerCase();
+      final retado = (r['retado_email'] ?? '').toString().toLowerCase();
+      final rival = yo == retador ? retado : (yo == retado ? retador : '');
+      if (rival.isEmpty) continue;
+      final nivRival = await NivelesRepo.de(rival, deporte);
+      await registrarResultadoNivel(deporte,
+          rivalNivel: nivRival?.nivel ?? 3.0, gane: ganador == yo);
+      hechos.add(id);
+      cambio = true;
+    }
+    if (cambio) await prefs.setStringList(_kRetosElo, hechos.toList());
+  }
+
   // ── Bloqueados (tipo WhatsApp): correos que el usuario bloqueó ─────────────
   final Set<String> _bloqueados = {};
 
