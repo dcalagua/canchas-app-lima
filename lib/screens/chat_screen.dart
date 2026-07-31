@@ -2470,7 +2470,16 @@ class _Barra extends StatelessWidget {
                                 hintText: 'Mensaje',
                                 hintStyle: TextStyle(color: wa.hora),
                                 isDense: true,
+                                // SIN borde en ningún estado: el tema global pone
+                                // un focusedBorder (bosque, casi negro) que se
+                                // colaba al enfocar. La "pastilla" es el Container.
+                                filled: false,
                                 border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                disabledBorder: InputBorder.none,
+                                errorBorder: InputBorder.none,
+                                focusedErrorBorder: InputBorder.none,
                                 contentPadding: const EdgeInsets.symmetric(
                                     vertical: 10),
                               ),
