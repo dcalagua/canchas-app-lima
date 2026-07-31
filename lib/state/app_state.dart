@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
+
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -433,6 +436,9 @@ class AppState extends ChangeNotifier {
     _estados
       ..clear()
       ..addAll(vigentes);
+    // Pre-cachea la media de los estados AJENOS (fotos/videos) para abrirlos al
+    // instante, sin "cargando", como WhatsApp. Fire-and-forget.
+    _precacharEstados(vigentes);
     // Poda el set de vistos a lo que sigue vigente (no crece indefinidamente).
     final ids = vigentes.map((e) => e.id).toSet();
     _estadosVistos.retainWhere(ids.contains);
@@ -449,6 +455,20 @@ class AppState extends ChangeNotifier {
     }
     notifyListeners();
     await _persistirEstadosVistos();
+  }
+
+  /// Descarga a la caché de disco la media de los estados ajenos (la propia ya
+  /// se reproduce local). Así el visor abre sin spinner (como WhatsApp).
+  void _precacharEstados(List<Estado> estados) {
+    final yo = (usuario?.email ?? '').toLowerCase();
+    for (final e in estados) {
+      if (!e.tieneMedia) continue;
+      if (e.autorEmail.toLowerCase() == yo) continue; // el mío ya es local
+      unawaited(DefaultCacheManager()
+          .downloadFile(e.fotoUrl)
+          .then((_) {})
+          .catchError((_) {}));
+    }
   }
 
   Future<void> _persistirEstadosVistos() async {
