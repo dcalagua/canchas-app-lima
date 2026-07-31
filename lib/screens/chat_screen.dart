@@ -307,14 +307,46 @@ class _ChatScreenState extends State<ChatScreen> {
   DateTime? _otroLeido;
   StreamSubscription? _lecturaSub;
 
-  // Presencia "en línea" (Realtime broadcast): el otro late mientras tiene ESTE
-  // chat abierto; lo vemos en línea si su último latido es de hace < 12 s.
+  // Presencia "en línea / última vez". Dos señales combinadas:
+  //  - broadcast (_ultPingOtro): el otro tiene ESTE chat abierto (instantáneo).
+  //  - tabla pichangol_presencia (_ultimoVistoOtro): su último latido global
+  //    (sirve para "en línea" aunque no esté en este chat, y para "última vez").
   Presencia? _presencia;
   DateTime? _ultPingOtro;
+  DateTime? _ultimoVistoOtro;
   Timer? _presenciaTimer;
-  bool get _otroEnLinea =>
-      _ultPingOtro != null &&
-      DateTime.now().difference(_ultPingOtro!).inSeconds < 12;
+  int _tickPresencia = 0;
+  bool get _otroEnLinea {
+    final ahora = DateTime.now();
+    if (_ultPingOtro != null && ahora.difference(_ultPingOtro!).inSeconds < 12) {
+      return true;
+    }
+    return _ultimoVistoOtro != null &&
+        ahora.difference(_ultimoVistoOtro!).inSeconds < 40;
+  }
+
+  Future<void> _refrescarUltimoVisto() async {
+    if (widget.tipo == 'grupo' || _contraparteEmail.isEmpty) return;
+    final v = await PresenciaRepo.ultimoVisto(_contraparteEmail);
+    if (v != null && mounted) setState(() => _ultimoVistoOtro = v);
+  }
+
+  /// Texto "última vez …" (solo si NO está en línea).
+  String? _ultimaVezTexto() {
+    final v = _ultimoVistoOtro;
+    if (v == null) return null;
+    final ahora = DateTime.now();
+    final hoy = DateTime(ahora.year, ahora.month, ahora.day);
+    final dia = DateTime(v.year, v.month, v.day);
+    final hh = v.hour.toString().padLeft(2, '0');
+    final mm = v.minute.toString().padLeft(2, '0');
+    final dif = hoy.difference(dia).inDays;
+    if (dif == 0) return 'última vez hoy a las $hh:$mm';
+    if (dif == 1) return 'última vez ayer a las $hh:$mm';
+    final d = v.day.toString().padLeft(2, '0');
+    final mo = v.month.toString().padLeft(2, '0');
+    return 'última vez el $d/$mo a las $hh:$mm';
+  }
 
   /// Estado de entrega de un mensaje MÍO (para los checks).
   _Entrega _estadoEntrega(Mensaje m) {
@@ -393,8 +425,11 @@ class _ChatScreenState extends State<ChatScreen> {
           if (e == otro && mounted) setState(() => _ultPingOtro = DateTime.now());
         },
       );
+      _refrescarUltimoVisto(); // "última vez" al abrir
       _presenciaTimer = Timer.periodic(const Duration(seconds: 4), (_) {
         _presencia?.ping(miEmail);
+        // Cada ~20 s relee la "última vez" de la tabla (para el subtítulo).
+        if (_tickPresencia++ % 5 == 0) _refrescarUltimoVisto();
         if (mounted) setState(() {}); // re-evalúa "en línea" (staleness)
       });
     }
@@ -995,7 +1030,9 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _alFinal() {
-    if (!_scroll.hasClients) return;
+    // NO cortar si aún no hay clients (primera apertura): igual programamos el
+    // salto para el próximo frame, cuando la lista ya esté montada. Así al abrir
+    // el chat siempre se ven los ÚLTIMOS mensajes (abajo).
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scroll.hasClients) {
         _scroll.jumpTo(_scroll.position.maxScrollExtent);
@@ -1086,7 +1123,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontWeight: FontWeight.w700)),
-                    // "En línea" (presencia) tiene prioridad sobre el recado.
+                    // "En línea" / "última vez …" (presencia) tiene prioridad.
                     if (!esGrupo && _otroEnLinea)
                       const Text('en línea',
                           maxLines: 1,
@@ -1095,6 +1132,12 @@ class _ChatScreenState extends State<ChatScreen> {
                               color: Colors.white,
                               fontSize: 11.5,
                               fontWeight: FontWeight.w600))
+                    else if (!esGrupo && _ultimaVezTexto() != null)
+                      Text(_ultimaVezTexto()!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              color: Colors.white70, fontSize: 11.5))
                     else if (recado != null && recado.isNotEmpty)
                       Text(recado,
                           maxLines: 1,

@@ -5,6 +5,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'brand.dart';
 import 'config/pais.dart';
+import 'data/presencia_repo.dart';
 import 'screens/llamada_screen.dart';
 import 'screens/mensajes_screen.dart';
 import 'screens/splash_screen.dart';
@@ -100,14 +101,27 @@ class PichangolApp extends StatefulWidget {
 
 class _PichangolAppState extends State<PichangolApp>
     with WidgetsBindingObserver {
+  Timer? _latidoPresencia;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Presencia "en línea / última vez": late cada 25 s mientras la app esté
+    // en primer plano (y al minimizar/volver). Persiste en pichangol_presencia.
+    _latir();
+    _latidoPresencia =
+        Timer.periodic(const Duration(seconds: 25), (_) => _latir());
+  }
+
+  void _latir() {
+    final e = appState.usuario?.email ?? '';
+    if (e.isNotEmpty) PresenciaRepo.latir(e);
   }
 
   @override
   void dispose() {
+    _latidoPresencia?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -122,6 +136,10 @@ class _PichangolAppState extends State<PichangolApp>
       // Si hay una llamada EN CURSO y se perdió la pantalla grande (p. ej. al
       // tocar la notificación de "llamada en curso"), la reabrimos.
       abrirLlamadaEnCurso();
+      _latir(); // volví: actualizo mi presencia
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      _latir(); // me voy: registro mi "última vez" ahora
     }
   }
 

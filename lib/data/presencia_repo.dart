@@ -26,6 +26,40 @@ class Presencia {
 }
 
 class PresenciaRepo {
+  static const _tablaVisto = 'pichangol_presencia';
+
+  /// Marca que YO estoy activo AHORA (upsert de mi fila en pichangol_presencia).
+  /// Se llama en un latido global mientras la app está en primer plano y al
+  /// minimizar. Fail-safe: si no hay tabla/backend, no hace nada.
+  static Future<void> latir(String miEmail) async {
+    final e = miEmail.trim().toLowerCase();
+    if (!SupabaseService.disponible || e.isEmpty) return;
+    try {
+      await SupabaseService.client.from(_tablaVisto).upsert({
+        'email': e,
+        'visto_en': DateTime.now().toUtc().toIso8601String(),
+      }, onConflict: 'email');
+    } catch (_) {}
+  }
+
+  /// Última vez que [email] estuvo activo (UTC→local), o null si no hay dato.
+  static Future<DateTime?> ultimoVisto(String email) async {
+    final e = email.trim().toLowerCase();
+    if (!SupabaseService.disponible || e.isEmpty) return null;
+    try {
+      final row = await SupabaseService.client
+          .from(_tablaVisto)
+          .select('visto_en')
+          .eq('email', e)
+          .maybeSingle();
+      final v = (row?['visto_en'] ?? '').toString();
+      if (v.isEmpty) return null;
+      return DateTime.tryParse(v)?.toLocal();
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Abre el canal de presencia de [hilo]. Llama [onPing] con el correo del OTRO
   /// cada vez que late. Devuelve un [Presencia] para latir/cerrar, o null si no
   /// hay backend.
