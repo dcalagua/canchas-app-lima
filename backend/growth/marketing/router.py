@@ -22,6 +22,7 @@ from db.store import stores
 
 from . import link_preview as link_preview_svc
 from . import redes as redes_svc
+from .flyer import generar_flyer
 from .landing import render_landing
 from .posts import generar_posts
 
@@ -113,6 +114,30 @@ def generar_posts_endpoint(req: PostsReq) -> dict:
         u[periodo] = usados + 1
     return {"ok": True, "posts": posts, "usados": usados + 1, "limite_mes": lim,
             "via": "ia" if config.ANTHROPIC_API_KEY else "plantilla"}
+
+
+@router.post("/marketing/cm/post-del-dia", dependencies=_APP)
+def cm_post_del_dia(req: PostsReq, request: Request) -> dict:
+    """Community manager AUTÓNOMO (Fase 0): genera UN post LISTO — copy +
+    hashtags (IA o plantilla) + un FLYER de marca (imagen) — para publicar en 1
+    toque. Es el mismo pipeline que luego auto-publica (Fase 1/2 con Meta)."""
+    posts = generar_posts(req.datos or {}, req.contexto, 1)
+    post = posts[0] if posts else {"texto": "", "hashtags": [],
+                                    "hora_sugerida": ""}
+    imagen_url = ""
+    flyer = generar_flyer(req.datos or {}, str(post.get("texto") or ""))
+    if flyer:
+        img_id = stores.guardar_imagen(flyer, "image/png",
+                                       tope=config.IMG_MAX_RETENIDAS)
+        imagen_url = f"{_base_publica(request)}/marketing/img/{img_id}.png"
+    return {
+        "ok": True,
+        "texto": post.get("texto", ""),
+        "hashtags": post.get("hashtags", []),
+        "hora_sugerida": post.get("hora_sugerida", ""),
+        "imagen_url": imagen_url,
+        "via": "ia" if config.ANTHROPIC_API_KEY else "plantilla",
+    }
 
 
 # ------ Gestión de redes (Nivel 2): conexión OAuth + publicación ------------
