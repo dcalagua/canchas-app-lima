@@ -998,8 +998,8 @@ class _MensajesScreenState extends State<MensajesScreen> {
       // En tablet (master-detail) el chat se embebe al lado; el FAB flotaría
       // encima del micro/enviar del chat. Como "Nuevo grupo" también está en el
       // menú ⋮, ocultamos el FAB en pantallas anchas y lo dejamos solo en móvil.
-      floatingActionButton:
-          appState.logueado && MediaQuery.of(context).size.width < 640
+      floatingActionButton: appState.logueado &&
+              MediaQuery.of(context).size.shortestSide < 600
           ? FloatingActionButton.extended(
               onPressed: () => Navigator.of(context)
                   .push(MaterialPageRoute(
@@ -1042,7 +1042,13 @@ class _MensajesScreenState extends State<MensajesScreen> {
               ]);
             }
             return LayoutBuilder(builder: (context, cons) {
-              final ancho = cons.maxWidth >= 640;
+              // Master-detail (chat al lado) SOLO en tablets de verdad (lado
+              // corto ≥ 600). Un celular en HORIZONTAL supera 640 de ancho pero
+              // NO es tablet → debe verse como lista a pantalla completa (igual
+              // que WhatsApp), no partido.
+              final esTablet =
+                  MediaQuery.of(context).size.shortestSide >= 600;
+              final ancho = esTablet && cons.maxWidth >= 640;
               // Separa activos / archivados y ordena los activos con los FIJADOS
               // primero (el resto por fecha desc). Se hace en cada build para que
               // fijar/archivar se reflejen al instante (sin recargar del backend).
