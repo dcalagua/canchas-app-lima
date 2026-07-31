@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../screens/hazte_pro_screen.dart';
@@ -74,6 +76,10 @@ Future<void> enviarRetoConGuardia(
   if (ok) {
     AvisosService.retoRecibido(
         retadoEmail: email, retadorNombre: u.nombre, deporte: deporte);
+    // Chat del partido: abre el hilo directo con el rival con un mensaje inicial
+    // para coordinar la cancha (y le llega el push). Best-effort.
+    unawaited(appState.enviarMensajeDirecto(email,
+        '⚔️ Te reté en Pichangol ($deporte). Coordinemos cancha y horario.'));
   }
   if (!context.mounted) return;
   ScaffoldMessenger.of(context).showSnackBar(SnackBar(

@@ -12,6 +12,7 @@ import '../theme.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/responsive.dart';
+import 'chat_screen.dart';
 
 /// MIS RETOS P2P: retos recibidos (aceptar/rechazar) y enviados; reportar el
 /// resultado de los aceptados (suma al ranking global).
@@ -607,6 +608,26 @@ class _RetoCard extends StatelessWidget {
   final VoidCallback? onConfirmar;
   final VoidCallback? onDisputar;
 
+  /// Chat del partido: abre el hilo directo con el rival para coordinar la
+  /// cancha (en dobles, con el rival representante).
+  void _abrirChat(BuildContext context) {
+    final rivalEmail =
+        (soyRetado ? r['retador_email'] : r['retado_email'])?.toString() ?? '';
+    if (rivalEmail.isEmpty) return;
+    final rivalNombre =
+        (soyRetado ? r['retador_nombre'] : r['retado_nombre'])?.toString() ??
+            'Rival';
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ChatScreen(
+        academiaId: '',
+        cuentaEmail: rivalEmail,
+        titulo: appState.nombreMostrableDe(rivalEmail) ?? rivalNombre,
+        soyProfe: false,
+        tipo: 'directo',
+      ),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -720,6 +741,23 @@ class _RetoCard extends StatelessWidget {
               ),
             ],
           ),
+          // Chat del partido (estilo Playtomic): coordinar con el rival mientras
+          // el reto está activo. En terminados (jugado/rechazado) no se ofrece.
+          if (estado != 'jugado' && estado != 'rechazado') ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: () => _abrirChat(context),
+                style: OutlinedButton.styleFrom(
+                    foregroundColor: teal,
+                    side: const BorderSide(color: trazo),
+                    visualDensity: VisualDensity.compact),
+                icon: const Icon(Icons.chat_bubble_outline, size: 17),
+                label: const Text('Escribir al rival'),
+              ),
+            ),
+          ],
           // Por confirmar: si yo reporté, espero; si no, confirmo o disputo.
           if (estado == 'por_confirmar') ...[
             const SizedBox(height: 10),
