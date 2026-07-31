@@ -107,6 +107,40 @@ def test_reel_del_dia_endpoint():
     assert vid.headers["content-type"] == "video/mp4"
 
 
+def test_publicar_reel_sandbox():
+    from marketing import redes as redes_svc
+    redes_svc.conectar("pubvid")  # conexión simulada (sandbox)
+    r = redes_svc.publicar("pubvid", "Mira nuestro reel",
+                           video_url="https://x/y.mp4")
+    assert r["ok"] is True
+    ig = r["resultados"]["instagram"]
+    assert ig["ok"] is True and ig["formato"] == "reel"
+
+
+def test_auto_publicar_en_scheduler(monkeypatch):
+    import config as cfg
+    from marketing import redes as redes_svc
+    monkeypatch.setattr(cfg, "PUBLIC_BASE_URL", "https://test.local")
+    datos = {**_DATOS, "fotos": ["https://x/foto1.jpg"]}
+    redes_svc.conectar("apub")  # sandbox conectado
+    cm_svc.config_cm("apub", activo=True, cada_dias=1, datos=datos,
+                     auto_publicar=True)
+    post = cm_svc.generar_para("apub", con_reel=True)
+    assert post is not None
+    cm_svc._auto_publicar("apub", stores.cm["apub"], post)
+    up = stores.cm["apub"].get("ultima_publicacion")
+    assert up is not None and up["ok"] is True
+
+
+def test_config_expone_auto_publicar():
+    r = client.post("/marketing/cm/config",
+                    json={"academia_id": "apx", "activo": True,
+                          "datos": _DATOS, "auto_publicar": True})
+    j = r.json()
+    assert j["ok"] is True
+    assert j["auto_publicar"] is True
+
+
 def test_scheduler_no_genera_si_reciente_o_inactivo():
     cm_svc.config_cm("cm3", activo=True, cada_dias=5, datos=_DATOS)
     cm_svc.generar_para("cm3")  # recién generado → no vence

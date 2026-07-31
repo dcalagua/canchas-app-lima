@@ -73,15 +73,28 @@ class PostDelDia {
 class CmEstado {
   final bool activo;
   final int cadaDias;
+  final bool autoPublicar; // el agente publica solo en las redes conectadas
+  final bool publicado; // el último post ya se publicó en las redes
+  final String publicadoEn;
   final PostDelDia? post;
 
-  const CmEstado({this.activo = false, this.cadaDias = 3, this.post});
+  const CmEstado({
+    this.activo = false,
+    this.cadaDias = 3,
+    this.autoPublicar = false,
+    this.publicado = false,
+    this.publicadoEn = '',
+    this.post,
+  });
 
   factory CmEstado.fromJson(Map<String, dynamic> j) {
     final p = j['post'];
     return CmEstado(
       activo: j['activo'] == true,
       cadaDias: (j['cada_dias'] as num?)?.toInt() ?? 3,
+      autoPublicar: j['auto_publicar'] == true,
+      publicado: j['publicado'] == true,
+      publicadoEn: (j['publicado_en'] ?? '').toString().trim(),
       post: (p is Map<String, dynamic>) ? PostDelDia.fromJson(p) : null,
     );
   }
@@ -263,6 +276,7 @@ class CommunityService {
     required Map<String, dynamic> datos,
     int cadaDias = 3,
     String contexto = '',
+    bool? autoPublicar,
   }) async {
     if (!disponible || academiaId.isEmpty) return null;
     try {
@@ -280,6 +294,7 @@ class CommunityService {
               'cada_dias': cadaDias,
               'contexto': contexto,
               'datos': datos,
+              if (autoPublicar != null) 'auto_publicar': autoPublicar,
             }),
           )
           .timeout(const Duration(seconds: 45));

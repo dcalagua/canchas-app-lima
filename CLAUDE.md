@@ -318,14 +318,24 @@ sigue el lenguaje Airbnb sobre la paleta EBIM:
   manual** (suscripción ~S/100/mes): genera foto/video/copy/hashtags y **publica
   automático** en su Instagram/Facebook, en un calendario; el dueño solo entra a
   sus redes y ve que ya se posteó. Debe ser **configurable** (auto vs
-  aprobar-antes; frecuencia; tono). Piezas por armar: (1) generación de media
-  (reusar fotos/logo del negocio + plantillas de marca; reels auto-armados;
-  IA sólo si el costo cierra), (2) **auto-publish Meta Graph API** (Página FB +
-  IG Business/Creator vinculado; permisos `pages_manage_posts` /
-  `instagram_content_publish` → app review Meta = el bloqueador real, ojo cuenta
-  ya tuvo problemas), (3) **scheduler** en Railway por academia suscrita, (4)
-  guardrails/marca. De-riskear: empezar por Página FB + "borrador listo, 1 toque"
-  como fallback para quien no conecte IG.
+  aprobar-antes; frecuencia; tono). **Estado (Fase 0 ya en código):**
+  (1) **generación de media** — flyer de marca (`marketing/flyer.py`, Pillow,
+  fuente empaquetada, plantillas por tipo) **y reels/video** (`marketing/reel.py`,
+  Pillow+`imageio-ffmpeg` **empaquetado**, Ken Burns con variedad de movimiento,
+  9:16, sin audio); (2) **scheduler** (`main.py` cron 30 min → `cm.procesar_cm_
+  pendientes` en hilo) pre-arma flyer+reel por academia suscrita; (3) **auto-
+  publish Meta** — `redes.publicar(texto, imagen_url, video_url)` sube foto **o
+  reel** (IG Reels: contenedor `media_type=REELS` + poll de estado + publish; FB
+  `/videos`), con **modo sandbox** que simula todo (test end-to-end sin Meta);
+  el CM lo dispara solo si `auto_publicar` + redes conectadas (`cm._auto_publicar`
+  usa `config.PUBLIC_BASE_URL` para la URL pública de la media). **APK:** en "Post
+  del día" hay toggles "Publicar automático" + "Publicar solo en mis redes" y botón
+  "Crear/Compartir reel". **Bloqueador real:** **App Review + Business Verification
+  de Meta** (permisos `pages_manage_posts` / `instagram_content_publish`; la ruta
+  `produccion` no corre hasta que Meta apruebe — ojo cuenta ya tuvo problemas).
+  Pendiente: (4) guardrails/marca, música licenciada en el reel, push "tu post está
+  listo" al dueño (vía FCM de Supabase, el backend growth no hace FCM), IA de imagen
+  para negocios sin buenas fotos, y el candado "usuario pro" (#28).
 - **Perfil/página de cada academia = HUB (NO clonar Facebook):** decisión de
   producto — NO construir una red social horizontal desde cero (efectos de red
   brutales, alto costo, bajo ROI). En su lugar, la **landing pública

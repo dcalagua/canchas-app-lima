@@ -130,7 +130,9 @@ async def _iniciar_cron_cm() -> None:
         while True:
             try:
                 from marketing.cm import procesar_cm_pendientes
-                n = procesar_cm_pendientes()
+                # En un hilo: generar flyer/reel y publicar son bloqueantes
+                # (CPU + red); no deben congelar el event loop.
+                n = await asyncio.to_thread(procesar_cm_pendientes)
                 if n and pg.habilitado:
                     pg.guardar(stores.to_state())
             except Exception:  # noqa: BLE001

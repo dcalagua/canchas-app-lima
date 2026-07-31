@@ -28,11 +28,12 @@ def _ahora() -> datetime:
 
 def config_cm(academia_id: str, *, activo: bool | None = None,
               cada_dias: int | None = None, contexto: str | None = None,
-              datos: dict | None = None) -> dict:
+              datos: dict | None = None, auto_publicar: bool | None = None) -> dict:
     """Crea o actualiza la config del CM de una academia. Devuelve la config."""
     c = stores.cm.setdefault(academia_id, {
         "activo": False, "cada_dias": 3, "contexto": "", "datos": {},
-        "ultimo_post": None, "ultimo_generado": "",
+        "ultimo_post": None, "ultimo_generado": "", "auto_publicar": False,
+        "ultima_publicacion": None,
     })
     if activo is not None:
         c["activo"] = bool(activo)
@@ -42,6 +43,8 @@ def config_cm(academia_id: str, *, activo: bool | None = None,
         c["contexto"] = str(contexto)
     if datos:
         c["datos"] = dict(datos)
+    if auto_publicar is not None:
+        c["auto_publicar"] = bool(auto_publicar)
     return c
 
 
@@ -107,6 +110,50 @@ def generar_para(academia_id: str, *, con_reel: bool = False) -> dict | None:
     return post
 
 
+def _media_urls(post: dict) -> tuple[str, str]:
+    """URLs públicas ABSOLUTAS (para que Meta baje la media) del flyer y el reel
+    pre-generados, si siguen en memoria. Necesita config.PUBLIC_BASE_URL."""
+    base = (config.PUBLIC_BASE_URL or "").rstrip("/")
+    if not base:
+        return "", ""
+    img_id = post.get("imagen_id") or ""
+    vid_id = post.get("reel_id") or ""
+    img = f"{base}/marketing/img/{img_id}.png" \
+        if img_id and img_id in stores.imagenes else ""
+    vid = f"{base}/marketing/vid/{vid_id}.mp4" \
+        if vid_id and vid_id in stores.videos else ""
+    return img, vid
+
+
+def _auto_publicar(academia_id: str, c: dict, post: dict) -> None:
+    """Publica SOLO el post recién generado en las redes conectadas del dueño (si
+    el auto-publish está activo). Preferir el REEL; si no, el flyer. Best-effort:
+    guarda el resultado en c['ultima_publicacion'] y nunca lanza."""
+    if not c.get("auto_publicar"):
+        return
+    # Importación diferida para no acoplar (y no romper si falta algo).
+    try:
+        from . import redes as redes_svc
+    except Exception:  # noqa: BLE001
+        return
+    conx = stores.conexiones_redes.get(academia_id)
+    if not conx or conx.get("estado") != "conectado":
+        return
+    img_url, reel_url = _media_urls(post)
+    texto = str(post.get("texto") or "")
+    try:
+        r = redes_svc.publicar(academia_id, texto,
+                               imagen_url=img_url or None,
+                               video_url=reel_url or None)
+    except Exception:  # noqa: BLE001
+        r = {"ok": False, "error": "excepcion"}
+    c["ultima_publicacion"] = {
+        "en": _ahora().isoformat(),
+        "ok": bool(r.get("ok")),
+        "con_reel": bool(reel_url),
+    }
+
+
 def _vencido(c: dict, ahora: datetime) -> bool:
     if not c.get("activo"):
         return False
@@ -128,7 +175,9 @@ def procesar_cm_pendientes() -> int:
     for aid, c in list(stores.cm.items()):
         if _vencido(c, ahora):
             try:
-                generar_para(aid, con_reel=True)
+                post = generar_para(aid, con_reel=True)
+                if post:
+                    _auto_publicar(aid, c, post)
                 n += 1
             except Exception:  # noqa: BLE001
                 pass

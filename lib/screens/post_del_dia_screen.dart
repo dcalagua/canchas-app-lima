@@ -40,6 +40,9 @@ class _PostDelDiaScreenState extends State<PostDelDiaScreen> {
   bool _activo = false; // CM automático activado para esta academia
   int _cadaDias = 3;
   bool _guardandoAuto = false;
+  bool _autoPublicar = false; // el agente publica solo en las redes conectadas
+  bool _publicado = false; // el último post ya se publicó en las redes
+  bool _guardandoPub = false;
 
   @override
   void initState() {
@@ -56,6 +59,8 @@ class _PostDelDiaScreenState extends State<PostDelDiaScreen> {
     if (e != null) {
       _activo = e.activo;
       _cadaDias = e.cadaDias;
+      _autoPublicar = e.autoPublicar;
+      _publicado = e.publicado;
       if (e.post != null) {
         setState(() {
           _cargando = false;
@@ -97,6 +102,33 @@ class _PostDelDiaScreenState extends State<PostDelDiaScreen> {
               ? 'Community manager automático activado.'
               : 'Automático desactivado.')),
       duration: const Duration(milliseconds: 1500),
+    ));
+  }
+
+  /// Activa/desactiva el AUTO-PUBLISH: el agente sube el post/reel SOLO a las
+  /// redes conectadas del dueño (IG/FB). Requiere haber conectado las redes.
+  Future<void> _alternarAutoPublicar(bool v) async {
+    setState(() => _guardandoPub = true);
+    final e = await CommunityService.cmConfig(
+      academiaId: widget.academiaId,
+      activo: _activo,
+      datos: widget.datos,
+      cadaDias: _cadaDias,
+      autoPublicar: v,
+    );
+    if (!mounted) return;
+    setState(() {
+      _guardandoPub = false;
+      if (e != null) _autoPublicar = e.autoPublicar;
+    });
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(e == null
+          ? 'No se pudo actualizar. Reintenta.'
+          : (_autoPublicar
+              ? 'Listo: publicaré solo en tus redes conectadas.'
+              : 'Auto-publicación desactivada.')),
+      duration: const Duration(milliseconds: 1800),
     ));
   }
 
@@ -309,6 +341,48 @@ class _PostDelDiaScreenState extends State<PostDelDiaScreen> {
             onChanged: _guardandoAuto ? null : _alternarAuto,
           ),
         ),
+        // Auto-publish: el agente lo sube SOLO a las redes conectadas (IG/FB).
+        // Solo tiene sentido con el automático encendido.
+        if (_activo) ...[
+          const SizedBox(height: 8),
+          Container(
+            decoration: BoxDecoration(
+              color: _autoPublicar
+                  ? limaSuave
+                  : Theme.of(context).colorScheme.surface,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: trazo),
+            ),
+            child: SwitchListTile(
+              activeColor: lima,
+              secondary: Icon(Icons.rocket_launch_outlined,
+                  color: _autoPublicar ? lima : textoTenue),
+              title: const Text('Publicar solo en mis redes',
+                  style: TextStyle(fontWeight: FontWeight.w800)),
+              subtitle: const Text(
+                  'El agente sube el post a tu Instagram/Facebook conectado, sin '
+                  'que hagas nada. (Necesitas conectar tus redes.)',
+                  style: TextStyle(fontSize: 12.5)),
+              value: _autoPublicar,
+              onChanged: _guardandoPub ? null : _alternarAutoPublicar,
+            ),
+          ),
+        ],
+        if (_publicado)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Row(
+              children: const [
+                Icon(Icons.check_circle, color: teal, size: 18),
+                SizedBox(width: 6),
+                Expanded(
+                  child: Text('Ya se publicó en tus redes.',
+                      style: TextStyle(
+                          color: teal, fontWeight: FontWeight.w700, fontSize: 13)),
+                ),
+              ],
+            ),
+          ),
         const SizedBox(height: 14),
         if (p.imagenUrl.isNotEmpty)
           ClipRRect(

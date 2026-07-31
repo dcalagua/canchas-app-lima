@@ -143,6 +143,7 @@ class CmConfigReq(BaseModel):
     cada_dias: int = 3
     contexto: str = ""
     datos: dict = {}
+    auto_publicar: bool | None = None
 
 
 def _cm_estado(academia_id: str, request: Request) -> dict:
@@ -173,11 +174,15 @@ def _cm_estado(academia_id: str, request: Request) -> dict:
         vid_id = post.get("reel_id") or ""
         if vid_id and vid_id in stores.videos:
             reel_url = f"{_base_publica(request)}/marketing/vid/{vid_id}.mp4"
+    ultima = c.get("ultima_publicacion") or None
     return {
         "activo": bool(c.get("activo", False)),
         "cada_dias": int(c.get("cada_dias", 3)),
         "contexto": c.get("contexto", ""),
         "ultimo_generado": c.get("ultimo_generado", ""),
+        "auto_publicar": bool(c.get("auto_publicar", False)),
+        "publicado": bool(ultima and ultima.get("ok")),
+        "publicado_en": (ultima or {}).get("en", ""),
         "post": None if not post else {
             "texto": post.get("texto", ""),
             "hashtags": post.get("hashtags", []),
@@ -196,7 +201,7 @@ def cm_config(req: CmConfigReq, request: Request) -> dict:
     from . import cm as cm_svc
     c = cm_svc.config_cm(req.academia_id, activo=req.activo,
                          cada_dias=req.cada_dias, contexto=req.contexto,
-                         datos=req.datos or None)
+                         datos=req.datos or None, auto_publicar=req.auto_publicar)
     if c["activo"] and not c.get("ultimo_post"):
         cm_svc.generar_para(req.academia_id)
     return {"ok": True, **_cm_estado(req.academia_id, request)}

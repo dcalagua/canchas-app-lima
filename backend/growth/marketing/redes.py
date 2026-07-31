@@ -280,26 +280,55 @@ def borrar_por_meta_user(meta_user_id: str) -> int:
     return len(ids)
 
 
+def _ig_publicar_reel(ig: str, token: str, video_url: str, caption: str) -> dict:
+    """Sube un REEL a Instagram: crea el contenedor (media_type=REELS), espera a
+    que Meta lo procese (los videos son asíncronos) y lo publica. Nunca lanza."""
+    import time
+
+    rc = _graph(f"{ig}/media",
+                {"media_type": "REELS", "video_url": video_url,
+                 "caption": caption, "access_token": token}, post=True)
+    creation_id = (rc.get("data") or {}).get("id") if rc["ok"] else None
+    if not creation_id:
+        return {"ok": False, "error": rc.get("error", "media_error")}
+    # Espera acotada a que el video quede FINISHED (procesamiento de Meta).
+    for _ in range(8):
+        rs = _graph(creation_id, {"fields": "status_code", "access_token": token})
+        estado = (rs.get("data") or {}).get("status_code") if rs["ok"] else None
+        if estado == "FINISHED":
+            break
+        if estado == "ERROR":
+            return {"ok": False, "error": "procesamiento_video"}
+        time.sleep(3)
+    rp = _graph(f"{ig}/media_publish",
+                {"creation_id": creation_id, "access_token": token}, post=True)
+    return ({"ok": True, "post_id": (rp["data"] or {}).get("id")}
+            if rp["ok"] else {"ok": False, "error": rp["error"]})
+
+
 # --- publicar ----------------------------------------------------------------
-def publicar(academia_id: str, texto: str, imagen_url: str | None = None) -> dict:
-    """Publica [texto] (+imagen opcional) en las redes conectadas del dueño.
-    Facebook admite solo texto; Instagram EXIGE imagen (si no hay, se omite IG).
-    En sandbox simula la publicación. Devuelve {ok, resultados:{facebook, instagram}}.
-    """
+def publicar(academia_id: str, texto: str, imagen_url: str | None = None,
+             video_url: str | None = None) -> dict:
+    """Publica [texto] en las redes conectadas del dueño. Con [video_url] sube un
+    REEL (IG) / video (FB); si no, usa [imagen_url]; si no, solo texto (FB).
+    Instagram EXIGE media (imagen o video). En sandbox simula la publicación.
+    Devuelve {ok, resultados:{facebook, instagram}}."""
     conx = stores.conexiones_redes.get(academia_id)
     if not conx or conx.get("estado") != "conectado":
         return {"ok": False, "error": "no_conectado"}
     texto = (texto or "").strip()
     if not texto:
         return {"ok": False, "error": "texto_vacio"}
+    tiene_media = bool(video_url or imagen_url)
 
     if conx.get("modo") == "sandbox" or modo() != "produccion":
         conx["publicaciones"] = int(conx.get("publicaciones", 0)) + 1
         return {"ok": True, "simulado": True, "resultados": {
             "facebook": {"ok": True, "post_id": "SANDBOX_FB_POST"},
-            "instagram": {"ok": bool(imagen_url),
-                          "post_id": "SANDBOX_IG_POST" if imagen_url else None,
-                          "nota": None if imagen_url else "IG requiere imagen"},
+            "instagram": {"ok": tiene_media,
+                          "post_id": "SANDBOX_IG_POST" if tiene_media else None,
+                          "formato": "reel" if video_url else "imagen",
+                          "nota": None if tiene_media else "IG requiere media"},
         }}
 
     token = descifrar(conx.get("token_enc", ""))
@@ -307,22 +336,28 @@ def publicar(academia_id: str, texto: str, imagen_url: str | None = None) -> dic
         return {"ok": False, "error": "token_no_disponible"}
     resultados: dict = {}
 
-    # Facebook: post en la Página (texto, +link/imagen si hay).
+    # Facebook: video / foto / texto en la Página.
     page_id = conx.get("page_id")
     if page_id:
-        params = {"message": texto, "access_token": token}
-        if imagen_url:
+        if video_url:
+            rf = _graph(f"{page_id}/videos",
+                        {"file_url": video_url, "description": texto,
+                         "access_token": token}, post=True)
+        elif imagen_url:
             rf = _graph(f"{page_id}/photos",
                         {"url": imagen_url, "caption": texto,
                          "access_token": token}, post=True)
         else:
-            rf = _graph(f"{page_id}/feed", params, post=True)
+            rf = _graph(f"{page_id}/feed",
+                        {"message": texto, "access_token": token}, post=True)
         resultados["facebook"] = ({"ok": True, "post_id": (rf["data"] or {}).get("id")}
                                   if rf["ok"] else {"ok": False, "error": rf["error"]})
 
-    # Instagram: requiere imagen (contenedor + publish).
+    # Instagram: reel (video) o imagen (contenedor + publish).
     ig = conx.get("ig_user_id")
-    if ig and imagen_url:
+    if ig and video_url:
+        resultados["instagram"] = _ig_publicar_reel(ig, token, video_url, texto)
+    elif ig and imagen_url:
         rc = _graph(f"{ig}/media",
                     {"image_url": imagen_url, "caption": texto,
                      "access_token": token}, post=True)
@@ -337,7 +372,7 @@ def publicar(academia_id: str, texto: str, imagen_url: str | None = None) -> dic
             resultados["instagram"] = {"ok": False,
                                        "error": rc.get("error", "media_error")}
     elif ig:
-        resultados["instagram"] = {"ok": False, "nota": "IG requiere imagen"}
+        resultados["instagram"] = {"ok": False, "nota": "IG requiere media"}
 
     conx["publicaciones"] = int(conx.get("publicaciones", 0)) + 1
     ok = any(v.get("ok") for v in resultados.values())
