@@ -23,10 +23,12 @@ import '../data/lecturas_repo.dart';
 import '../data/mensajes_repo.dart';
 import '../data/presencia_repo.dart';
 import '../data/reacciones_repo.dart';
+import '../data/ubicacion_vivo_repo.dart';
 import '../models/grupo.dart';
 import '../models/mensaje.dart';
 import '../services/giphy_service.dart';
 import '../services/location_service.dart';
+import '../services/ubicacion_vivo_service.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -261,6 +263,7 @@ class _ChatScreenState extends State<ChatScreen> {
   String _snippet(Mensaje m) {
     if (m.esAudio) return '🎤 Nota de voz';
     if (m.esGifSticker) return '🎞️ GIF';
+    if (m.esUbicacionVivo) return '📍 Ubicación en tiempo real';
     if (m.esUbicacion) return '📍 Ubicación';
     if (m.tieneFoto) return m.texto.isNotEmpty ? m.texto : '📷 Foto';
     return m.texto;
@@ -903,11 +906,118 @@ class _ChatScreenState extends State<ChatScreen> {
                 _compartirUbicacion();
               },
             ),
+            ListTile(
+              leading: const CircleAvatar(
+                  backgroundColor: teal,
+                  child: Icon(Icons.my_location, color: Colors.white)),
+              title: const Text('Ubicación en tiempo real'),
+              subtitle: const Text('Se mueve contigo hasta que la detengas'),
+              onTap: () {
+                Navigator.pop(context);
+                _elegirDuracionVivo();
+              },
+            ),
             const SizedBox(height: 8),
           ],
         ),
       ),
     );
+  }
+
+  /// Hoja de duración para la ubicación en tiempo real (estilo WhatsApp:
+  /// 15 min / 1 hora / 8 horas).
+  void _elegirDuracionVivo() {
+    const opciones = <(String, Duration)>[
+      ('15 minutos', Duration(minutes: 15)),
+      ('1 hora', Duration(hours: 1)),
+      ('8 horas', Duration(hours: 8)),
+    ];
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF202C33)
+          : Colors.white,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 16, 20, 4),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Compartir ubicación en tiempo real',
+                    style:
+                        TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+              ),
+            ),
+            for (final (etiqueta, dur) in opciones)
+              ListTile(
+                leading: const Icon(Icons.access_time, color: teal),
+                title: Text('Durante $etiqueta'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _compartirUbicacionVivo(dur);
+                },
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Arranca la ubicación EN VIVO: envía el mensaje-marcador y prende el servicio
+  /// que sube mi posición cada pocos segundos hasta que venza [dur] o la detenga.
+  Future<void> _compartirUbicacionVivo(Duration dur) async {
+    final u = appState.usuario;
+    if (u == null || _enviando) return;
+    setState(() => _enviando = true);
+    try {
+      final pos = await LocationService.ubicacionPrecisa();
+      if (pos == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content:
+                  Text('Activa el permiso de ubicación para compartirla.')));
+        }
+        return;
+      }
+      final expira = DateTime.now().add(dur);
+      // Sube el primer fix y prende el servicio (sigue aunque salga del chat).
+      await UbicacionVivoRepo.actualizar(
+        hilo: _hilo,
+        email: u.email,
+        lat: pos.latitude,
+        lng: pos.longitude,
+        expira: expira,
+      );
+      await UbicacionVivoService.instance
+          .iniciar(hilo: _hilo, email: u.email, expira: expira);
+      final msg = Mensaje(
+        id: 'msg_${DateTime.now().microsecondsSinceEpoch}',
+        hilo: _hilo,
+        tipo: widget.tipo,
+        refId: _refId,
+        academiaId: widget.academiaId,
+        cuentaEmail: widget.cuentaEmail,
+        autorEmail: u.email,
+        autorNombre: u.nombre,
+        esProfe: widget.soyProfe,
+        texto: '📍 Ubicación en tiempo real',
+        mediaUrl: 'geolive:${expira.millisecondsSinceEpoch}',
+        creado: DateTime.now(),
+      );
+      await MensajesRepo.enviar(msg);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('No se pudo compartir tu ubicación.')));
+      }
+    } finally {
+      if (mounted) setState(() => _enviando = false);
+    }
   }
 
   /// Comparte la ubicación ACTUAL como un mensaje (se codifica en mediaUrl como
@@ -1765,6 +1875,16 @@ class _Burbuja extends StatelessWidget {
                   ),
                 ),
               )
+            else if (mensaje.esUbicacionVivo)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: _UbicacionVivoCard(
+                  hilo: mensaje.hilo,
+                  emailAutor: mensaje.autorEmail,
+                  expiraMsg: mensaje.expiraVivo,
+                  mio: mio,
+                ),
+              )
             else if (mensaje.esUbicacion)
               Padding(
                 padding: const EdgeInsets.only(bottom: 4),
@@ -1829,6 +1949,7 @@ class _Burbuja extends StatelessWidget {
             if (mensaje.texto.isNotEmpty &&
                 !(mensaje.tieneFoto && mensaje.texto == '📷 Foto') &&
                 !(mensaje.esUbicacion && mensaje.texto == '📍 Ubicación') &&
+                !mensaje.esUbicacionVivo &&
                 !(mensaje.esAudio && mensaje.texto == '🎤 Nota de voz'))
               _TextoMensaje(
                   texto: mensaje.texto,
@@ -2639,6 +2760,197 @@ class _VisorFoto extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Tarjeta de UBICACIÓN EN TIEMPO REAL (estilo WhatsApp). Relee la posición del
+/// autor en `pichangol_ubicacion_vivo` cada pocos segundos: mientras esté activa
+/// muestra "En vivo" + hace cuánto fue el último punto y abre el mapa con la
+/// posición MÁS RECIENTE. Si es MÍA, ofrece "Detener". Al vencer/parar → "Compartir
+/// finalizado".
+class _UbicacionVivoCard extends StatefulWidget {
+  const _UbicacionVivoCard({
+    required this.hilo,
+    required this.emailAutor,
+    required this.expiraMsg,
+    required this.mio,
+  });
+
+  final String hilo;
+  final String emailAutor;
+  final DateTime? expiraMsg; // tope según el mensaje (la parada real la da la BD)
+  final bool mio;
+
+  @override
+  State<_UbicacionVivoCard> createState() => _UbicacionVivoCardState();
+}
+
+class _UbicacionVivoCardState extends State<_UbicacionVivoCard> {
+  Timer? _poll;
+  UbicacionVivo? _pos;
+  bool _cargando = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _refrescar();
+    // Refresco frecuente mientras la burbuja esté visible (mueve el pin).
+    _poll = Timer.periodic(const Duration(seconds: 5), (_) => _refrescar());
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refrescar() async {
+    final p = await UbicacionVivoRepo.ultima(
+        hilo: widget.hilo, email: widget.emailAutor);
+    if (!mounted) return;
+    setState(() {
+      _pos = p;
+      _cargando = false;
+    });
+  }
+
+  bool get _activa {
+    final p = _pos;
+    if (p != null) return p.activa; // la BD manda (incluye parada anticipada)
+    // Sin fila aún: cae al tope del mensaje.
+    final exp = widget.expiraMsg;
+    return exp != null && DateTime.now().isBefore(exp);
+  }
+
+  String _haceCuanto(DateTime t) {
+    final s = DateTime.now().difference(t).inSeconds;
+    if (s < 15) return 'ahora mismo';
+    if (s < 60) return 'hace ${s}s';
+    final m = s ~/ 60;
+    if (m < 60) return 'hace $m min';
+    return 'hace ${m ~/ 60} h';
+  }
+
+  Future<void> _detener() async {
+    await UbicacionVivoService.instance.detener();
+    await _refrescar();
+  }
+
+  void _abrirMapa() {
+    final p = _pos;
+    if (p == null) return;
+    launchUrl(
+      Uri.parse(
+          'https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}'),
+      mode: LaunchMode.externalApplication,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mio = widget.mio;
+    final activa = _activa;
+    final blanco = mio ? Colors.white : const Color(0xFF111111);
+    return Container(
+      width: 230,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: mio
+            ? Colors.white.withOpacity(0.15)
+            : Colors.black.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          GestureDetector(
+            onTap: activa ? _abrirMapa : null,
+            child: Container(
+              height: 108,
+              color: activa ? const Color(0xFFDCE7DA) : const Color(0xFFE6E6E6),
+              child: Center(
+                child: Icon(activa ? Icons.my_location : Icons.location_off,
+                    color: activa ? teal : Colors.grey, size: 42),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    if (activa) ...[
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(
+                            color: Color(0xFF2ECC71), shape: BoxShape.circle),
+                      ),
+                      const SizedBox(width: 6),
+                    ],
+                    Text(
+                        activa
+                            ? 'Ubicación en vivo'
+                            : 'Compartir finalizado',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 13,
+                            color: blanco)),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _cargando
+                      ? 'Cargando…'
+                      : (!activa
+                          ? 'Ya no se comparte'
+                          : (_pos == null
+                              ? 'Esperando ubicación…'
+                              : 'Actualizado ${_haceCuanto(_pos!.actualizado)}')),
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      color: (mio ? Colors.white : Colors.black).withOpacity(
+                          mio ? 0.85 : 0.55)),
+                ),
+                if (activa) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      InkWell(
+                        onTap: _pos == null ? null : _abrirMapa,
+                        child: Row(children: [
+                          Icon(Icons.map_outlined,
+                              size: 16, color: mio ? Colors.white : teal),
+                          const SizedBox(width: 4),
+                          Text('Ver mapa',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12,
+                                  color: mio ? Colors.white : teal)),
+                        ]),
+                      ),
+                      if (mio) ...[
+                        const Spacer(),
+                        InkWell(
+                          onTap: _detener,
+                          child: const Text('Detener',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 12,
+                                  color: clayOscuro)),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

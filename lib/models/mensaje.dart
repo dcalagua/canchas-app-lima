@@ -62,10 +62,28 @@ class Mensaje {
         u.contains('.ogg');
   }
 
-  /// ¿Es un mensaje de UBICACIÓN? Se codifica en `mediaUrl` como
+  /// ¿Es un mensaje de UBICACIÓN estática? Se codifica en `mediaUrl` como
   /// `geo:LAT,LNG` (sin tocar la BD; es una columna de texto). El `texto` lleva
   /// "📍 Ubicación" para el preview del inbox.
   bool get esUbicacion => mediaUrl.startsWith('geo:');
+
+  /// ¿Es un mensaje de UBICACIÓN EN TIEMPO REAL (estilo WhatsApp)? Se codifica en
+  /// `mediaUrl` como `geolive:<expiraEpochMs>` (sin tocar la BD). La posición real
+  /// vive en `pichangol_ubicacion_vivo` (hilo + autor) y se refresca sola; el
+  /// mensaje solo marca el inicio y hasta cuándo se comparte.
+  bool get esUbicacionVivo => mediaUrl.startsWith('geolive:');
+
+  /// Hasta cuándo (local) se comparte esta ubicación en vivo, o null si no aplica
+  /// / no parsea. La parada anticipada la maneja la tabla, no este valor.
+  DateTime? get expiraVivo {
+    if (!esUbicacionVivo) return null;
+    try {
+      final ms = int.parse(mediaUrl.substring('geolive:'.length).trim());
+      return DateTime.fromMillisecondsSinceEpoch(ms);
+    } catch (_) {
+      return null;
+    }
+  }
 
   /// (lat, lng) del mensaje de ubicación, o null si no es ubicación / no parsea.
   ({double lat, double lng})? get ubicacion {
