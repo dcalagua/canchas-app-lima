@@ -6085,6 +6085,11 @@ class AppState extends ChangeNotifier {
     academias.clear();
     _academiasPendientesNube.clear();
     _academiasEliminadas.clear();
+    _contaPend.clear();
+    _contaEnEspera.clear();
+    _reembolsosPend.clear();
+    _reservasPendientesSync.clear();
+    _reservasNoConfirmadas.clear();
     alumnos.clear();
     cuotas.clear();
     asistencias.clear();
@@ -6204,9 +6209,19 @@ class AppState extends ChangeNotifier {
     saldoClub = 0;
     _saldoOtrosPaises.clear();
     _ultimoSyncMatriculas = null;
+    // Colas pendientes (outbox): si no se vacían, `flushContabilidad` /
+    // `sincronizarReservasPendientes` re-registrarían movimientos y reservas en
+    // el backend después del reset → la billetera volvería a "llenarse".
+    _contaPend.clear();
+    _contaEnEspera.clear();
+    _reembolsosPend.clear();
+    _reservasPendientesSync.clear();
+    _reservasNoConfirmadas.clear();
     _limpiarVerificacionLocal(); // la verificación de identidad también se reinicia
     notifyListeners();
     await _persistirDatos();
+    await _persistirContabilidad();
+    await _persistirReservasSync();
   }
 
   Future<void> _persistirUsuario() async {
