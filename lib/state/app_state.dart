@@ -6286,6 +6286,11 @@ class AppState extends ChangeNotifier {
       estado: EstadoReserva.confirmada,
       traidaPorApp: true,
       precio: precio,
+      // Pago ONLINE (tarjeta/Yape por Culqi): el jugador YA pagó el total → la
+      // reserva nace PAGADA y el dueño NO tiene que marcarla. Efectivo (paga en
+      // la cancha) y seña (adelanta una parte, debe el resto) nacen sin pagar:
+      // ahí el dueño sí confirma cuando cobra el resto/efectivo.
+      pagado: cobro == 'online',
       // Seña anti no-show cobrada por adelantado (Culqi). 0 = sin seña / pago
       // total online / efectivo puro. No reembolsable: se queda con el dueño.
       sena: sena.clamp(0, precio),
