@@ -36,9 +36,11 @@ class ReportesScreen extends StatelessWidget {
         listenable: appState,
         builder: (context, _) {
           final canchas = appState.misCanchas;
-          final ids = canchas.map((c) => c.id).toSet();
-          final mias =
-              appState.reservas.where((r) => ids.contains(r.canchaId)).toList();
+          // Resuelve cada reserva a la cancha del dueño (tolerante a ids
+          // duplicados del local), igual que Reservas/Agenda/Reporte.
+          final mias = appState.reservas
+              .where((r) => appState.miCanchaDeReserva(r.canchaId) != null)
+              .toList();
 
           // --- Mes en curso (excluye no-shows) ---
           final delMes = mias
