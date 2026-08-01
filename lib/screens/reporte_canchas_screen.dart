@@ -178,12 +178,7 @@ class _ReporteCanchasScreenState extends State<ReporteCanchasScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              _ResumenComision(
-                bruto: facturado + porCobrar,
-                comision: comisionTotal,
-                neto: (facturado + porCobrar) - comisionTotal,
-                moneda: mon,
-              ),
+              _ResumenComision(moneda: mon),
               const SizedBox(height: 20),
               const Text('Ingresos cobrados (últimos 6 meses)',
                   style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
@@ -306,16 +301,39 @@ class _ReporteCanchasScreenState extends State<ReporteCanchasScreen> {
     required Map<String, double> porLocal,
   }) {
     final bruto = cobrado + porCobrar;
+    // Desglose de "Por recibir" por fuente (mismos movimientos que la billetera).
+    final liqs = appState.movimientos.where((m) =>
+        m.tipo == TipoMovimiento.liquidacion && !m.liquidado);
+    var recOnline = 0, recSaldo = 0, nOnline = 0, nSaldo = 0;
+    var comOnline = 0.0, comSaldo = 0.0;
+    for (final m in liqs) {
+      if (m.fuente == 'saldo') {
+        recSaldo += m.monto;
+        comSaldo += m.comisionSoles;
+        nSaldo++;
+      } else {
+        recOnline += m.monto;
+        comOnline += m.comisionSoles;
+        nOnline++;
+      }
+    }
     final b = StringBuffer()
       ..writeln('📊 Reporte de cobros · Pichangol')
       ..writeln('')
       ..writeln('Generado: $moneda ${bruto.toStringAsFixed(2)}')
       ..writeln('  • Cobrado: $moneda ${cobrado.toStringAsFixed(2)}')
       ..writeln('  • Por cobrar: $moneda ${porCobrar.toStringAsFixed(2)}')
-      ..writeln('Comisión Pichangol: $moneda ${comision.toStringAsFixed(2)}')
-      ..writeln(
-          'Neto para ti: $moneda ${(bruto - comision).toStringAsFixed(2)}')
       ..writeln('Reservas: $nReservas');
+    if (recOnline + recSaldo > 0) {
+      b
+        ..writeln('')
+        ..writeln('Por recibir de Pichangol: $moneda ${recOnline + recSaldo}')
+        ..writeln('  • Online ($nOnline): $moneda $recOnline '
+            '(comisión $moneda ${comOnline.round()} del pago)')
+        ..writeln('  • Con tu saldo ($nSaldo): $moneda $recSaldo al 100% '
+            '(comisión $moneda ${comSaldo.round()} de tu saldo)')
+        ..writeln('Cuadra con "Por recibir" de tu billetera.');
+    }
     if (porLocal.length > 1) {
       b.writeln('');
       b.writeln('Por local:');
@@ -409,39 +427,74 @@ String _paisDeMonedaRep(String m) => switch (m.trim()) {
 
 /// Resumen de COMISIÓN del período: lo generado, cuánto se lleva Pichangol y el
 /// NETO del dueño. Transparencia total (nada escondido).
+/// Desglose de "Cuánto vas a recibir de Pichangol", SEPARADO por fuente de la
+/// comisión, para que cuadre EXACTO con "Por recibir" de la billetera. Usa los
+/// MISMOS movimientos del backend que la billetera (no una estimación local):
+///  - Reservas online → la comisión salió del PAGO, recibes el NETO.
+///  - Reservas pagadas con tu SALDO → recibes el 100%, la comisión salió de tu
+///    billetera (aparece como un egreso "Comisión" en tu saldo).
 class _ResumenComision extends StatelessWidget {
-  const _ResumenComision(
-      {required this.bruto,
-      required this.comision,
-      required this.neto,
-      required this.moneda});
-  final double bruto;
-  final double comision;
-  final double neto;
+  const _ResumenComision({required this.moneda});
   final String moneda;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    Widget fila(String et, String val, {Color? color, bool bold = false}) =>
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 3),
+    // Fuente ÚNICA de verdad = los movimientos del backend (los mismos que suma
+    // la billetera en "Por recibir"), para que ambos números cuadren SIEMPRE.
+    final liqs = appState.movimientos.where((m) =>
+        m.tipo == TipoMovimiento.liquidacion && !m.liquidado);
+    var recOnline = 0, recSaldo = 0, nOnline = 0, nSaldo = 0;
+    var comOnline = 0.0, comSaldo = 0.0;
+    for (final m in liqs) {
+      if (m.fuente == 'saldo') {
+        recSaldo += m.monto; // recibes el 100% (bruto)
+        comSaldo += m.comisionSoles;
+        nSaldo++;
+      } else {
+        recOnline += m.monto; // recibes el neto
+        comOnline += m.comisionSoles;
+        nOnline++;
+      }
+    }
+    final totalRecibir = recOnline + recSaldo; // == "Por recibir" de la billetera
+    final comTotal = comOnline + comSaldo;
+    // Nada por recibir → no mostramos el card (evita "0" confusos).
+    if (totalRecibir <= 0) return const SizedBox.shrink();
+
+    Widget bloque(String titulo, String sub, int recibe) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 5),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(et,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(titulo,
+                        style: TextStyle(
+                            color: cs.onSurface,
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 2),
+                    Text(sub,
+                        style: TextStyle(
+                            color: textoTenueDe(context),
+                            fontSize: 11.5,
+                            height: 1.3)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text('$moneda $recibe',
                   style: TextStyle(
-                      color: color ?? textoTenueDe(context),
-                      fontSize: 13,
-                      fontWeight: bold ? FontWeight.w800 : FontWeight.w500)),
-              Text(val,
-                  style: TextStyle(
-                      color: color ?? cs.onSurface,
-                      fontSize: bold ? 16 : 13.5,
-                      fontWeight: bold ? FontWeight.w800 : FontWeight.w700)),
+                      color: cs.primary,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800)),
             ],
           ),
         );
+
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
@@ -450,36 +503,54 @@ class _ResumenComision extends StatelessWidget {
         border: Border.all(color: trazo),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text('Tu ganancia (después de comisión)',
-                style: TextStyle(
-                    color: cs.onSurface,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 13.5)),
+          Text('Cuánto vas a recibir de Pichangol',
+              style: TextStyle(
+                  color: cs.onSurface,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13.5)),
+          const SizedBox(height: 4),
+          if (nOnline > 0)
+            bloque(
+                'Reservas online ($nOnline)',
+                'La comisión ($moneda ${comOnline.round()}) se descontó del pago '
+                    '· recibes el neto',
+                recOnline),
+          if (nSaldo > 0)
+            bloque(
+                'Reservas pagadas con tu saldo ($nSaldo)',
+                'Recibes el 100% · la comisión ($moneda ${comSaldo.round()}) '
+                    'salió de tu billetera',
+                recSaldo),
+          const Divider(height: 16, color: trazo),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Total por recibir',
+                  style: TextStyle(
+                      color: cs.onSurface,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 14)),
+              Text('$moneda $totalRecibir',
+                  style: TextStyle(
+                      color: cs.primary,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 17)),
+            ],
           ),
-          const SizedBox(height: 6),
-          fila('Generado (cobrado + por cobrar)',
-              '$moneda ${bruto.toStringAsFixed(2)}'),
-          fila('Comisión Pichangol (5%, mín $moneda 2)',
-              '− $moneda ${comision.toStringAsFixed(2)}',
-              color: clayOscuro),
-          const Divider(height: 14, color: trazo),
-          fila('Neto para ti', '$moneda ${neto.toStringAsFixed(2)}',
-              color: Theme.of(context).colorScheme.primary, bold: true),
           const SizedBox(height: 8),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.info_outline, size: 15, color: textoTenueDe(context)),
+              Icon(Icons.check_circle_outline, size: 15, color: teal),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  'Esta es tu ganancia real después de comisión. En tu billetera, '
-                  '"Por recibir" puede salir un poco mayor: en las reservas que se '
-                  'pagan con tu saldo recibes el 100% (la comisión ya salió de tu '
-                  'saldo). Al final tu ganancia es la misma.',
+                  'Este total es EXACTO el "Por recibir" de tu billetera. '
+                  'Comisión total: $moneda ${comTotal.round()} '
+                  '($moneda ${comOnline.round()} del pago + '
+                  '$moneda ${comSaldo.round()} de tu saldo).',
                   style: TextStyle(
                       color: textoTenueDe(context),
                       fontSize: 11.5,
