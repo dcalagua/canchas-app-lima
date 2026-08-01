@@ -131,6 +131,58 @@ class _ReservasDuenoScreenState extends State<ReservasDuenoScreen> {
               .where((r) => !r.pagado)
               .fold<int>(0, (s, r) => s + r.totalConExtras.round());
 
+          // Agrupa por LOCAL (club) y PAÍS (moneda). Solo se muestran cabeceras
+          // si el dueño tiene MÁS de un local (o más de un país).
+          final grupos = <String, List<Reserva>>{};
+          final metaGrupo = <String, ({String club, String moneda})>{};
+          for (final r in reservas) {
+            final c = canchaDe[r.id]!;
+            final club = c.club.trim().isEmpty ? 'Mi local' : c.club.trim();
+            final clave = '${c.monedaSimbolo}|$club';
+            grupos.putIfAbsent(clave, () => []).add(r);
+            metaGrupo[clave] = (club: club, moneda: c.monedaSimbolo);
+          }
+          final variosPaises =
+              metaGrupo.values.map((m) => m.moneda).toSet().length > 1;
+          final agrupar = grupos.length > 1;
+
+          Widget cardsDe(List<Reserva> rs) {
+            if (MediaQuery.of(context).size.width >= 720) {
+              return LayoutBuilder(builder: (context, cons) {
+                final cols = cons.maxWidth >= 1100 ? 3 : 2;
+                final w = (cons.maxWidth - 12 * (cols - 1)) / cols;
+                return Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    for (final r in rs)
+                      SizedBox(
+                        width: w,
+                        child: _ReservaCard(
+                          reserva: r,
+                          cancha: canchaDe[r.id]!,
+                          fechaLabel: _fechaLabel(r.fecha),
+                        ),
+                      ),
+                  ],
+                );
+              });
+            }
+            return Column(
+              children: [
+                for (final r in rs)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _ReservaCard(
+                      reserva: r,
+                      cancha: canchaDe[r.id]!,
+                      fechaLabel: _fechaLabel(r.fecha),
+                    ),
+                  ),
+              ],
+            );
+          }
+
           return RefreshIndicator(
             onRefresh: () => appState.cargarReservasRemotas(),
             child: reservas.isEmpty
@@ -145,42 +197,91 @@ class _ReservasDuenoScreenState extends State<ReservasDuenoScreen> {
                               ? mias.values.first.monedaSimbolo
                               : 'S/'),
                       const SizedBox(height: 16),
-                      // Tablet/landscape: reservas en grilla de 2-3 columnas.
-                      if (MediaQuery.of(context).size.width >= 720)
-                        LayoutBuilder(builder: (context, cons) {
-                          final cols = cons.maxWidth >= 1100 ? 3 : 2;
-                          final w = (cons.maxWidth - 12 * (cols - 1)) / cols;
-                          return Wrap(
-                            spacing: 12,
-                            runSpacing: 12,
-                            children: [
-                              for (final r in reservas)
-                                SizedBox(
-                                  width: w,
-                                  child: _ReservaCard(
-                                    reserva: r,
-                                    cancha: canchaDe[r.id]!,
-                                    fechaLabel: _fechaLabel(r.fecha),
-                                  ),
-                                ),
-                            ],
-                          );
-                        })
+                      if (!agrupar)
+                        cardsDe(reservas)
                       else
-                        for (final r in reservas)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: _ReservaCard(
-                              reserva: r,
-                              cancha: canchaDe[r.id]!,
-                              fechaLabel: _fechaLabel(r.fecha),
-                            ),
+                        for (final e in grupos.entries) ...[
+                          _LocalHeader(
+                            club: metaGrupo[e.key]!.club,
+                            pais: variosPaises
+                                ? _paisDeMoneda(metaGrupo[e.key]!.moneda)
+                                : '',
+                            n: e.value.length,
+                            porCobrar: e.value
+                                .where((r) =>
+                                    !r.pagado &&
+                                    r.estado != EstadoReserva.noShow)
+                                .fold<int>(
+                                    0, (s, r) => s + r.totalConExtras.round()),
+                            moneda: metaGrupo[e.key]!.moneda,
                           ),
+                          const SizedBox(height: 10),
+                          cardsDe(e.value),
+                          const SizedBox(height: 20),
+                        ],
                     ],
                   ),
           );
         },
       )),
+    );
+  }
+}
+
+/// Nombre de país a partir del símbolo de moneda de la cancha (proxy de país).
+String _paisDeMoneda(String m) => switch (m.trim()) {
+      'S/' => 'Perú',
+      'Bs' => 'Bolivia',
+      r'$' => 'Ecuador',
+      _ => m,
+    };
+
+/// Cabecera de sección por LOCAL (y país si el dueño tiene canchas en más de
+/// uno): nombre del local + nº de reservas + subtotal por cobrar del local.
+class _LocalHeader extends StatelessWidget {
+  const _LocalHeader({
+    required this.club,
+    required this.pais,
+    required this.n,
+    required this.porCobrar,
+    required this.moneda,
+  });
+  final String club;
+  final String pais; // '' si el dueño está en un solo país
+  final int n;
+  final int porCobrar;
+  final String moneda;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 2),
+      child: Row(
+        children: [
+          const Icon(Icons.stadium_outlined, size: 18, color: pino),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(club,
+                    style: t.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
+                Text(
+                  [
+                    if (pais.isNotEmpty) pais,
+                    '$n ${n == 1 ? 'reserva' : 'reservas'}',
+                    if (porCobrar > 0) 'por cobrar $moneda $porCobrar',
+                  ].join(' · '),
+                  style: t.bodySmall?.copyWith(color: textoTenueDe(context)),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
