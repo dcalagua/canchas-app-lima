@@ -327,7 +327,8 @@ sigue el lenguaje Airbnb sobre la paleta EBIM:
   (1) **generación de media** — flyer de marca (`marketing/flyer.py`, Pillow,
   fuente empaquetada, plantillas por tipo) **y reels/video** (`marketing/reel.py`,
   Pillow+`imageio-ffmpeg` **empaquetado**, Ken Burns con variedad de movimiento,
-  9:16, sin audio); (2) **scheduler** (`main.py` cron 30 min → `cm.procesar_cm_
+  9:16, con **música ORIGINAL libre de regalías** —`marketing/musica.py`, síntesis
+  numpy pad+kick por mood según el tipo, muxeada como AAC); (2) **scheduler** (`main.py` cron 30 min → `cm.procesar_cm_
   pendientes` en hilo) pre-arma flyer+reel por academia suscrita; (3) **auto-
   publish Meta** — `redes.publicar(texto, imagen_url, video_url)` sube foto **o
   reel** (IG Reels: contenedor `media_type=REELS` + poll de estado + publish; FB

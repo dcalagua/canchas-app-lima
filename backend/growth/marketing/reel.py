@@ -18,6 +18,7 @@ from __future__ import annotations
 import os
 import tempfile
 
+from .musica import generar_pista
 from .flyer import (
     _AMARILLO,
     _BOSQUE,
@@ -39,6 +40,15 @@ _FPS = 30
 _DUR = 2.3                   # segundos por slide
 _TRANS = 9                   # frames de crossfade entre slides
 _ZOOM = 1.12                 # sobre-escala para el Ken Burns
+
+# El "mood" de la música según el tipo de post (para que audio y mensaje peguen).
+_MOOD_POR_TIPO = {
+    "promo": "energetico",
+    "resultado": "epico",
+    "horario": "chill",
+    "testimonio": "chill",
+    "tip": "chill",
+}
 
 
 def _overlay_texto(kicker: str, titulo: str, sub: str, acento, *,
@@ -219,9 +229,11 @@ def _slides(datos: dict, gancho: str, tipo: str | None):
     return slides
 
 
-def generar_reel(datos: dict, gancho: str, tipo: str | None = None) -> bytes | None:
+def generar_reel(datos: dict, gancho: str, tipo: str | None = None,
+                 con_musica: bool = True) -> bytes | None:
     """Devuelve el MP4 (bytes) del reel, o None si falta Pillow / el ffmpeg
-    empaquetado. Vertical 1080x1920, ~10-14 s, sin audio."""
+    empaquetado. Vertical 1080x1920, ~10-14 s. Con [con_musica] le pega una pista
+    ORIGINAL (libre de regalías) acorde al tipo de post."""
     try:
         import numpy as np
         import imageio.v2 as imageio
@@ -240,15 +252,34 @@ def generar_reel(datos: dict, gancho: str, tipo: str | None = None) -> bytes | N
     n_frames = max(1, int(_FPS * _DUR))
     negro = Image.new("RGB", (_W, _H), (0, 0, 0))
 
+    # Duración total del video (para generar una pista que calce exacto).
+    total_frames = len(lienzos) * (_TRANS + n_frames) + _TRANS
+    dur_seg = total_frames / _FPS
+
     ruta = os.path.join(tempfile.gettempdir(),
                         f"reel_{os.getpid()}_{id(datos)}.mp4")
+    ruta_wav = ""
+    if con_musica:
+        try:
+            mood = _MOOD_POR_TIPO.get(tipo or "", "chill")
+            wav = generar_pista(dur_seg, mood=mood)
+            if wav:
+                ruta_wav = os.path.join(
+                    tempfile.gettempdir(),
+                    f"reel_{os.getpid()}_{id(datos)}.wav")
+                with open(ruta_wav, "wb") as fh:
+                    fh.write(wav)
+        except Exception:  # noqa: BLE001
+            ruta_wav = ""
+
+    extra = {"audio_path": ruta_wav, "audio_codec": "aac"} if ruta_wav else {}
     w = None
     try:
         w = imageio.get_writer(
             ruta, fps=_FPS, codec="libx264", format="FFMPEG",
             pixelformat="yuv420p", macro_block_size=None, quality=None,
-            output_params=["-crf", "26", "-preset", "veryfast",
-                           "-movflags", "+faststart"])
+            output_params=["-crf", "26", "-preset", "veryfast", "-shortest",
+                           "-movflags", "+faststart"], **extra)
 
         prev_last = None
         for base, ov, mov in lienzos:
@@ -287,7 +318,9 @@ def generar_reel(datos: dict, gancho: str, tipo: str | None = None) -> bytes | N
                 w.close()
             except Exception:  # noqa: BLE001
                 pass
-        try:
-            os.remove(ruta)
-        except OSError:
-            pass
+        for p in (ruta, ruta_wav):
+            if p:
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass

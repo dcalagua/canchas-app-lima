@@ -91,6 +91,24 @@ def test_reel_genera_mp4():
     assert len(mp4) > 5000  # un video real, no vacío
 
 
+def test_musica_genera_wav():
+    from marketing.musica import MOODS, generar_pista
+    for mood in MOODS:
+        wav = generar_pista(4.0, mood=mood)
+        if wav is None:
+            pytest.skip("numpy no disponible")
+        assert wav[:4] == b"RIFF" and wav[8:12] == b"WAVE"
+        assert len(wav) > 10000
+
+
+def test_reel_lleva_audio():
+    mp4 = generar_reel(_DATOS, "Ven a jugar tenis.", tipo="promo")
+    if mp4 is None:
+        pytest.skip("ffmpeg empaquetado no disponible")
+    # Con la pista muxeada, el MP4 debe contener el box de audio 'mp4a'.
+    assert b"mp4a" in mp4
+
+
 def test_reel_del_dia_endpoint():
     r = client.post("/marketing/cm/reel-del-dia",
                     json={"academia_id": "reel1", "datos": _DATOS,
