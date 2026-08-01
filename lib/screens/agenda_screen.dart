@@ -84,6 +84,10 @@ class _AgendaScreenState extends State<AgendaScreen> {
           }
           final localSel = cancha.club;
           final delLocal = canchas.where((c) => c.club == localSel).toList();
+          // Si el dueño tiene canchas en más de un país, la pastilla del local
+          // muestra también el país (deducido de la moneda de la cancha).
+          final variosPaisesAg =
+              canchas.map((c) => c.monedaSimbolo).toSet().length > 1;
 
           final iso = _isoDe(_dia);
           final horas = cancha.horariosSlots();
@@ -167,7 +171,10 @@ class _AgendaScreenState extends State<AgendaScreen> {
                                     size: 15,
                                     color: sel ? lima : textoTenue),
                                 const SizedBox(width: 6),
-                                Text(nom,
+                                Text(
+                                    variosPaisesAg
+                                        ? '$nom · ${_paisDeMonedaAg(canchas.firstWhere((c) => c.club == nom).monedaSimbolo)}'
+                                        : nom,
                                     style: TextStyle(
                                         color: sel ? tinta : textoTenue,
                                         fontWeight: sel
@@ -280,6 +287,14 @@ class _AgendaScreenState extends State<AgendaScreen> {
     );
   }
 }
+
+/// Nombre de país desde el símbolo de moneda de la cancha (proxy de país).
+String _paisDeMonedaAg(String m) => switch (m.trim()) {
+      'S/' => 'Perú',
+      'Bs' => 'Bolivia',
+      r'$' => 'Ecuador',
+      _ => m,
+    };
 
 class _HeaderAgenda extends StatelessWidget {
   const _HeaderAgenda({required this.canchas, required this.iso});

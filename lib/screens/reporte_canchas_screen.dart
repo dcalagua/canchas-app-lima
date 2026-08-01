@@ -102,6 +102,29 @@ class _ReporteCanchasScreenState extends State<ReporteCanchasScreen> {
           final maxCancha =
               ranking.isEmpty ? 0.0 : ranking.first.value;
 
+          // Agrupa el ranking por LOCAL (club) — y por país (moneda) si el dueño
+          // tiene canchas en más de uno.
+          final clubDe = {
+            for (final c in misCanchas)
+              c.id: (c.club.trim().isEmpty ? 'Mi local' : c.club.trim())
+          };
+          final monedaDe = {for (final c in misCanchas) c.id: c.monedaSimbolo};
+          final porLocal = <String, List<MapEntry<String, double>>>{};
+          final monedaLocal = <String, String>{};
+          for (final e in ranking) {
+            final club = clubDe[e.key] ?? 'Mi local';
+            porLocal.putIfAbsent(club, () => []).add(e);
+            monedaLocal[club] = monedaDe[e.key] ?? mon;
+          }
+          final subtotalLocal = {
+            for (final k in porLocal.keys)
+              k: porLocal[k]!.fold<double>(0, (s, x) => s + x.value)
+          };
+          final localesOrden = porLocal.keys.toList()
+            ..sort((a, b) => subtotalLocal[b]!.compareTo(subtotalLocal[a]!));
+          final variosLocales = porLocal.length > 1;
+          final variosPaisesR = monedaLocal.values.toSet().length > 1;
+
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 30),
             children: [
@@ -159,13 +182,36 @@ class _ReporteCanchasScreenState extends State<ReporteCanchasScreen> {
                 const Text('Por cancha',
                     style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                 const SizedBox(height: 10),
-                for (final e in ranking)
-                  _BarraCancha(
-                    nombre: nombres[e.key] ?? 'Cancha',
-                    monto: e.value,
-                    max: maxCancha,
-                    moneda: mon,
-                  ),
+                // Un solo local → lista plana. Varios → agrupado por local, con
+                // su subtotal (y país si el dueño está en más de uno).
+                if (!variosLocales)
+                  for (final e in ranking)
+                    _BarraCancha(
+                      nombre: nombres[e.key] ?? 'Cancha',
+                      monto: e.value,
+                      max: maxCancha,
+                      moneda: mon,
+                    )
+                else
+                  for (final club in localesOrden) ...[
+                    _LocalHeaderRep(
+                      club: club,
+                      pais: variosPaisesR
+                          ? _paisDeMonedaRep(monedaLocal[club]!)
+                          : '',
+                      subtotal: subtotalLocal[club]!,
+                      moneda: monedaLocal[club]!,
+                    ),
+                    const SizedBox(height: 8),
+                    for (final e in porLocal[club]!)
+                      _BarraCancha(
+                        nombre: nombres[e.key] ?? 'Cancha',
+                        monto: e.value,
+                        max: maxCancha,
+                        moneda: monedaLocal[club]!,
+                      ),
+                    const SizedBox(height: 16),
+                  ],
                 const SizedBox(height: 20),
               ],
               Row(
@@ -269,6 +315,52 @@ class _Kpi extends StatelessWidget {
           Text(titulo,
               textAlign: TextAlign.center,
               style: const TextStyle(color: textoTenue, fontSize: 12)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Nombre de país desde el símbolo de moneda de la cancha (proxy de país).
+String _paisDeMonedaRep(String m) => switch (m.trim()) {
+      'S/' => 'Perú',
+      'Bs' => 'Bolivia',
+      r'$' => 'Ecuador',
+      _ => m,
+    };
+
+/// Cabecera de sección por LOCAL en el reporte: nombre del local (+ país si el
+/// dueño tiene canchas en más de uno) y el subtotal facturado del local.
+class _LocalHeaderRep extends StatelessWidget {
+  const _LocalHeaderRep({
+    required this.club,
+    required this.pais,
+    required this.subtotal,
+    required this.moneda,
+  });
+  final String club;
+  final String pais;
+  final double subtotal;
+  final String moneda;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 2),
+      child: Row(
+        children: [
+          const Icon(Icons.stadium_outlined, size: 17, color: bosque),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(pais.isEmpty ? club : '$club · $pais',
+                style: const TextStyle(
+                    fontWeight: FontWeight.w800, fontSize: 13.5),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis),
+          ),
+          Text('$moneda ${subtotal.toStringAsFixed(0)}',
+              style: const TextStyle(
+                  fontWeight: FontWeight.w800, color: bosque, fontSize: 13.5)),
         ],
       ),
     );
