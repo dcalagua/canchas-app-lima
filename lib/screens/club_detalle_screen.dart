@@ -383,9 +383,12 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     messenger.showSnackBar(
       SnackBar(
         backgroundColor: confirmada ? pino : const Color(0xFFB4471F),
-        duration: const Duration(seconds: 5),
+        duration: Duration(seconds: confirmada ? 5 : 9),
         content: Text(
-            confirmada
+            res == ResultadoReserva.error
+                ? '⚠️ No se pudo registrar en el servidor. Queda pendiente y se '
+                    'reintenta. Detalle: ${ReservasRepo.ultimoError}'
+                : confirmada
                 ? (esSena
                     ? '✅ Seña pagada · Reserva confirmada en ${_cancha.nombre} · $_dia $etiqueta · paga $mon ${(total - senaMonto).toStringAsFixed(2)} en la cancha'
                     : pagoOnline

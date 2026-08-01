@@ -20,6 +20,10 @@ enum ResultadoReserva { ok, ocupado, sinConexion, error }
 class ReservasRepo {
   static const _tabla = 'pichangol_reservas';
 
+  /// Último error del INSERT (para diagnóstico: distingue RLS vs columna faltante
+  /// vs auth). Se muestra en la app cuando una reserva no se pudo registrar.
+  static String ultimoError = '';
+
   static Future<List<Reserva>> fetchRemotas() async {
     if (!SupabaseService.disponible) return [];
     try {
@@ -36,33 +40,51 @@ class ReservasRepo {
   /// camino que da garantía real anti-doble-reserva entre dispositivos.
   static Future<ResultadoReserva> insertarSegura(Reserva r) async {
     if (!SupabaseService.disponible) return ResultadoReserva.sinConexion;
-    try {
-      await SupabaseService.client.from(_tabla).insert(_toRow(r));
-      return ResultadoReserva.ok;
-    } on PostgrestException catch (e) {
-      // 23505 = unique_violation → el slot ya estaba tomado.
-      if (e.code == '23505') return ResultadoReserva.ocupado;
-      // 42703 = columna inexistente (p. ej. `deporte` aún sin migrar en la BD):
-      // reintenta sin ella para NO perder la garantía anti-doble-reserva.
-      if (_columnaFaltante(e)) {
-        try {
-          await SupabaseService.client
-              .from(_tabla)
-              .insert(_toRow(r, conDeporte: false));
-          return ResultadoReserva.ok;
-        } on PostgrestException catch (e2) {
-          return e2.code == '23505'
-              ? ResultadoReserva.ocupado
-              : ResultadoReserva.error;
-        } catch (_) {
-          return ResultadoReserva.error;
-        }
+    ultimoError = '';
+    // Se intenta el INSERT con MENOS columnas cada vez, para que una columna que
+    // aún no exista en la BD (schema drift) NUNCA impida registrar la reserva.
+    // Orden: fila completa → sin extras/moneda/deporte → SOLO lo esencial.
+    final intentos = <Map<String, dynamic>>[
+      _toRow(r),
+      _toRow(r, conDeporte: false),
+      _toRowCore(r),
+    ];
+    ResultadoReserva peor = ResultadoReserva.error;
+    for (final fila in intentos) {
+      try {
+        await SupabaseService.client.from(_tabla).insert(fila);
+        ultimoError = '';
+        return ResultadoReserva.ok;
+      } on PostgrestException catch (e) {
+        // 23505 = unique_violation → el slot ya estaba tomado (no reintentar).
+        if (e.code == '23505') return ResultadoReserva.ocupado;
+        ultimoError = 'DB ${e.code ?? ''}: ${e.message}'.trim();
+        // 42703 = columna inexistente → probar el siguiente intento (menos
+        // columnas). Cualquier otro error (RLS 42501, etc.) también reintenta el
+        // core por si acaso, pero guarda el mensaje para diagnóstico.
+        peor = ResultadoReserva.error;
+        continue;
+      } catch (e) {
+        ultimoError = e.toString();
+        peor = ResultadoReserva.error;
+        continue;
       }
-      return ResultadoReserva.error;
-    } catch (_) {
-      return ResultadoReserva.error;
     }
+    return peor;
   }
+
+  /// Fila MÍNIMA garantizada (solo columnas que existen desde la 1ª versión de la
+  /// tabla). Último recurso para que la reserva SIEMPRE quede en la nube.
+  static Map<String, dynamic> _toRowCore(Reserva r) => {
+        'id': r.id,
+        'cancha_id': r.canchaId,
+        'jugador': r.jugador,
+        'fecha': r.fecha,
+        'dia': r.dia,
+        'hora_inicio': r.horaInicio,
+        'hora_fin': r.horaFin,
+        'usuario': r.usuario,
+      };
 
   /// Insert best-effort (sin reportar colisión). Se mantiene por compatibilidad;
   /// para reservar usar [insertarSegura].
@@ -78,12 +100,6 @@ class ReservasRepo {
       } catch (_) {}
     }
   }
-
-  /// ¿El error es por columna inexistente en la tabla? (42703 undefined_column).
-  static bool _columnaFaltante(PostgrestException e) =>
-      e.code == '42703' ||
-      (e.message.toLowerCase().contains('column') &&
-          e.message.toLowerCase().contains('deporte'));
 
   /// Elimina TODAS las reservas de una cancha (p. ej. cuando el admin rechaza/
   /// revoca la cancha y deja de ser reservable). Libera los slots. Fail-safe.

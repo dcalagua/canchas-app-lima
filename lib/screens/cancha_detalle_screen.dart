@@ -180,8 +180,11 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
     final confirmada = res == ResultadoReserva.ok;
     messenger.showSnackBar(SnackBar(
       backgroundColor: confirmada ? verdeCancha : const Color(0xFFB4471F),
-      duration: const Duration(seconds: 5),
-      content: Text(!confirmada
+      duration: Duration(seconds: confirmada ? 5 : 9),
+      content: Text(res == ResultadoReserva.error
+          ? '⚠️ No se pudo registrar en el servidor. Queda pendiente y se '
+              'reintenta. Detalle: ${ReservasRepo.ultimoError}'
+          : !confirmada
           ? '⚠️ Sin señal: guardamos tu reserva como PENDIENTE y la '
               'confirmaremos sola al recuperar conexión. Si para entonces otra '
               'persona tomó el horario, te avisaremos.'
