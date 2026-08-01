@@ -1261,6 +1261,12 @@ class AppState extends ChangeNotifier {
   /// la versión local con la remota (vieja) y se reintenta subirla. Se persiste
   /// para que la edición no se pierda ni tras reiniciar la app.
   final Set<String> _academiasPendientesNube = {};
+
+  /// Ids de academias BORRADAS (tombstones durables). Aunque la nube devuelva la
+  /// academia (p. ej. el borrado lógico en Supabase falló por RLS), NO reaparece
+  /// en este dispositivo. También bloquea el re-sembrado de la academia demo si
+  /// el usuario la borró. Espeja `canchasEliminadas`. Se persiste.
+  final Set<String> _academiasEliminadas = {};
   final List<Alumno> alumnos = [];
   final List<Cuota> cuotas = [];
   final List<Asistencia> asistencias = [];
@@ -2410,9 +2416,11 @@ class AppState extends ChangeNotifier {
         planes.where((p) => p.academiaId == id).map((p) => p.id).toSet();
     planes.removeWhere((p) => p.academiaId == id);
     evaluaciones.removeWhere((e) => planesBorrados.contains(e.planId));
+    _academiasEliminadas.add(id); // tombstone durable: no reaparece aunque la
+    _academiasPendientesNube.remove(id); // nube la devuelva (RLS) ni se re-siembre
     notifyListeners();
     _persistirDatos();
-    AcademiasRepo.eliminar(id); // borrado lógico durable en la nube
+    AcademiasRepo.eliminar(id); // borrado lógico durable en la nube (best-effort)
   }
 
   // ── Campeonatos ────────────────────────────────────────────────────────────
@@ -2797,6 +2805,7 @@ class AppState extends ChangeNotifier {
     const entorno = String.fromEnvironment('ENTORNO', defaultValue: 'dev');
     if (entorno != 'dev') return false;
     const seedId = 'seed_jartur_elbosque';
+    if (_academiasEliminadas.contains(seedId)) return false; // el usuario la borró
     if (!academias.any((a) => a.id == seedId)) {
       academias.add(SampleData.academiaJartur());
       return true;
@@ -2846,6 +2855,9 @@ class AppState extends ChangeNotifier {
     try {
       final remotas = await AcademiasRepo.fetchRemotas();
       for (final a in remotas) {
+        // Borrada (tombstone durable): no reaparece aunque la nube la devuelva
+        // (p. ej. el borrado lógico falló por RLS sin política de UPDATE).
+        if (_academiasEliminadas.contains(a.id)) continue;
         // Si hay una edición local sin confirmar en la nube, NO la pises con la
         // versión remota (más vieja): perderíamos lo que el profe acaba de
         // guardar. Se reintenta subir más abajo.
@@ -5444,6 +5456,7 @@ class AppState extends ChangeNotifier {
   static const _kMisReservas = 'mis_reservas_json';
   static const _kCanchas = 'canchas_extra_json';
   static const _kEliminadas = 'canchas_eliminadas_json';
+  static const _kAcademiasEliminadas = 'academias_eliminadas_json';
   static const _kLandingNegocios = 'landing_negocios_json';
   static const _kFavoritos = 'favoritos_json';
   static const _kRadio = 'radio_busqueda_km';
@@ -5640,6 +5653,13 @@ class AppState extends ChangeNotifier {
         canchasEliminadas
           ..clear()
           ..addAll((jsonDecode(elimRaw) as List).map((e) => e.toString()));
+      }
+
+      final acElimRaw = prefs.getString(_kAcademiasEliminadas);
+      if (acElimRaw != null) {
+        _academiasEliminadas
+          ..clear()
+          ..addAll((jsonDecode(acElimRaw) as List).map((e) => e.toString()));
       }
 
       final landNegRaw = prefs.getString(_kLandingNegocios);
@@ -5889,6 +5909,8 @@ class AppState extends ChangeNotifier {
       await prefs.setString(
           _kEliminadas, jsonEncode(canchasEliminadas.toList()));
       await prefs.setString(
+          _kAcademiasEliminadas, jsonEncode(_academiasEliminadas.toList()));
+      await prefs.setString(
           _kLandingNegocios, jsonEncode(_landingNegocios.toList()));
       await prefs.setString(_kFavoritos, jsonEncode(favoritos.toList()));
       await prefs.setDouble(_kRadio, radioBusquedaKm);
@@ -6061,6 +6083,7 @@ class AppState extends ChangeNotifier {
     canchasEliminadas.clear();
     academias.clear();
     _academiasPendientesNube.clear();
+    _academiasEliminadas.clear();
     alumnos.clear();
     cuotas.clear();
     asistencias.clear();
@@ -6141,6 +6164,9 @@ class AppState extends ChangeNotifier {
     if (email != null && email.isNotEmpty) {
       canchasExtra.removeWhere((c) => c.dueno.toLowerCase() == email);
     }
+    // Tombstone TODAS las academias locales para que no reaparezcan al re-cargar
+    // de la nube (si el borrado lógico falló por RLS) ni se re-siembre la demo.
+    _academiasEliminadas.addAll(academias.map((a) => a.id));
     // Memoria local: borra TODO lo transaccional Y las academias/alumnos; CONSERVA
     // solo la sesión (no cierra sesión, esa es la diferencia con "Empezar de cero").
     reservas.clear();
