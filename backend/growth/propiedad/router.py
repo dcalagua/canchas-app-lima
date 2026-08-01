@@ -162,6 +162,21 @@ def get_reclamo(cancha_id: str, solicitante: str = "") -> dict:
     return reclamos.estado(cancha_id, solicitante or None)
 
 
+class BorrarMisReclamosRequest(BaseModel):
+    solicitante: str
+
+
+@router.post("/reclamos/borrar-mios", dependencies=_APP)
+def post_borrar_mis_reclamos(req: BorrarMisReclamosRequest) -> dict:
+    """El DUEÑO borra SUS propios reclamos (los que él inició) desde la app, al
+    'dejar en virgen'. Así sus canchas reclamadas también desaparecen de la torre
+    de control y puede volver a reclamarlas de cero. Solo toca los del correo que
+    manda; NO borra reclamos de otros usuarios (por eso no necesita token admin).
+    El middleware persiste el snapshot tras el POST."""
+    n = stores.borrar_reclamos_de(req.solicitante)
+    return {"ok": True, "borrados": n}
+
+
 @router.get("/lugar-reclamado", dependencies=_APP)
 def get_lugar_reclamado(lat: float, lng: float, cancha_id: str = "",
                         solicitante: str = "") -> dict:

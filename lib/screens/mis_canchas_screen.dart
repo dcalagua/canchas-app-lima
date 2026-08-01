@@ -16,6 +16,7 @@ import 'recargar_saldo_screen.dart';
 import 'registrar_cancha_screen.dart';
 import '../utils/moneda.dart';
 import '../widgets/ancho_lectura.dart';
+import '../widgets/dialogo_pichangol.dart';
 
 /// Canchas del dueño agrupadas por LOCAL (un local = varias canchas, posibles
 /// de distintos deportes). Cada local permite agregar más canchas y editar las
@@ -716,9 +717,10 @@ class _AvisoPendiente extends StatelessWidget {
                         fontWeight: FontWeight.w800, color: clayOscuro)),
                 const SizedBox(height: 3),
                 Text(
-                  'Ya puedes editar precio, deporte, horario y fotos tocando la '
-                  'cancha. Cuando el equipo apruebe la propiedad se habilitan las '
-                  'reservas. Desliza hacia abajo para actualizar el estado.',
+                  'Mientras el equipo revisa la propiedad, la cancha no se puede '
+                  'editar ni administrar. Cuando la aprueben podrás poner precio, '
+                  'deporte, horario y fotos, y se habilitan las reservas. Desliza '
+                  'hacia abajo para actualizar el estado.',
                   style:
                       t.bodySmall?.copyWith(color: textoTenue, height: 1.35),
                 ),
@@ -813,15 +815,32 @@ class _FilaCancha extends StatelessWidget {
   const _FilaCancha({required this.cancha});
   final Cancha cancha;
 
+  /// Aviso cuando la cancha está en revisión: aún no se puede editar/administrar.
+  void _avisarEnRevision(BuildContext context) {
+    avisarPichangol(
+      context,
+      titulo: 'Cancha en revisión',
+      mensaje: 'Esta cancha está en revisión de propiedad. Podrás editar el '
+          'precio, el deporte, el horario y las fotos —y administrar sus '
+          'horarios— cuando el equipo apruebe la propiedad.\n\n'
+          'Desliza hacia abajo en "Mis canchas" para actualizar el estado.',
+      icono: Icons.hourglass_bottom,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
+    final enRevision = cancha.pendienteVerificacion;
     return InkWell(
       borderRadius: BorderRadius.circular(12),
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => EditarCanchaScreen(cancha: cancha)),
-      ),
+      onTap: () => enRevision
+          ? _avisarEnRevision(context)
+          : Navigator.of(context).push(
+              MaterialPageRoute(
+                  builder: (_) => EditarCanchaScreen(cancha: cancha)),
+            ),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 9),
         child: Row(
@@ -869,11 +888,17 @@ class _FilaCancha extends StatelessWidget {
               ),
             // Cerrar horas (mantenimiento / clientes de teléfono): abre el grid
             // de bloqueo directamente (antes era inalcanzable para el dueño).
+            // En revisión no se puede administrar todavía.
             IconButton(
-              tooltip: 'Bloquear horarios',
-              icon: Icon(Icons.event_busy_outlined, color: cs.primary),
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => BloquearHorariosScreen(cancha: cancha))),
+              tooltip: enRevision
+                  ? 'Disponible al aprobar la propiedad'
+                  : 'Bloquear horarios',
+              icon: Icon(Icons.event_busy_outlined,
+                  color: enRevision ? textoTenueDe(context) : cs.primary),
+              onPressed: () => enRevision
+                  ? _avisarEnRevision(context)
+                  : Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => BloquearHorariosScreen(cancha: cancha))),
             ),
             Icon(Icons.chevron_right, color: textoTenueDe(context)),
           ],

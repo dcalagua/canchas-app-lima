@@ -118,8 +118,9 @@ class AjustesScreen extends StatelessWidget {
       titulo: '¿Dejar en virgen?',
       mensaje: 'Borra alumnos, reservas, cobros, cuotas, saldo, movimientos, '
           'chats, reseñas y campeonatos — como si nunca hubiera pasado nada.\n\n'
-          'CONSERVA tus canchas reclamadas y tus academias creadas (y tu '
-          'sesión). No se puede deshacer.\n\n'
+          'También quita TUS canchas reclamadas (y borra su reclamo en la torre '
+          'de control), para que puedas reclamarlas de cero. CONSERVA tus '
+          'academias creadas y tu sesión. No se puede deshacer.\n\n'
           'Ojo: el saldo/pagos del servidor se limpian aparte desde la torre '
           'de control (botón "Dejar el servidor en virgen").',
       textoConfirmar: 'Sí, dejar en virgen',
@@ -130,8 +131,8 @@ class AjustesScreen extends StatelessWidget {
     await appState.resetVirgen();
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Listo: sin alumnos ni reservas. Tus canchas y '
-            'academias se conservan.')));
+        content: Text('Listo: sin alumnos, reservas ni canchas reclamadas. '
+            'Tus academias se conservan.')));
   }
 
   /// Depurar academias: lista TODAS (con su dueño) y deja borrar cualquiera,
@@ -306,7 +307,7 @@ class AjustesScreen extends StatelessWidget {
                         borderRadius: BorderRadius.circular(14)),
                   ),
                   icon: const Icon(Icons.auto_awesome),
-                  label: const Text('Dejar en virgen (conservar canchas y academias)',
+                  label: const Text('Dejar en virgen (conservar academias)',
                       style: TextStyle(fontWeight: FontWeight.w800)),
                   onPressed: () => _dejarEnVirgen(context),
                 ),

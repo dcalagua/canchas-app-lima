@@ -6047,6 +6047,8 @@ class AppState extends ChangeNotifier {
             in alumnos.where((x) => x.email.toLowerCase() == email)) {
           await MatriculasRepo.eliminar(al.id);
         }
+        // Torre de control: borra MIS reclamos de propiedad del servidor.
+        await PropiedadService.borrarMisReclamos(email);
       }
     }
     // 2) Memoria en blanco.
@@ -6123,8 +6125,18 @@ class AppState extends ChangeNotifier {
       for (final c in campeonatos.where((c) => misAcademiaIds.contains(c.academiaId))) {
         await CampeonatosRepo.eliminar(c.id);
       }
+      // Torre de control (backend): borra MIS reclamos de propiedad para que mis
+      // canchas reclamadas también desaparezcan del servidor y pueda reclamarlas
+      // de cero (best-effort; si no hay red, queda para reintentar a mano).
+      await PropiedadService.borrarMisReclamos(email);
     }
-    // Memoria local: borra lo transaccional, CONSERVA academias, canchas y sesión.
+    // Canchas reclamadas/registradas por MÍ en este dispositivo: se quitan para
+    // volver a un estado limpio (coincide con el borrado de reclamos del backend).
+    // Las canchas descubiertas (Google/Supabase) siguen en el mapa para reclamar.
+    if (email != null && email.isNotEmpty) {
+      canchasExtra.removeWhere((c) => c.dueno.toLowerCase() == email);
+    }
+    // Memoria local: borra lo transaccional; CONSERVA academias y sesión.
     reservas.clear();
     agenda.clear();
     misReservas.clear();
@@ -6139,6 +6151,7 @@ class AppState extends ChangeNotifier {
     saldoClub = 0;
     _saldoOtrosPaises.clear();
     _ultimoSyncMatriculas = null;
+    _limpiarVerificacionLocal(); // la verificación de identidad también se reinicia
     notifyListeners();
     await _persistirDatos();
   }

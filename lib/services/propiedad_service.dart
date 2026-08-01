@@ -114,6 +114,26 @@ class PropiedadService {
     }
   }
 
+  /// Borra en el servidor (torre de control) los reclamos que inició [email].
+  /// Lo usa "Dejar en virgen" para que las canchas reclamadas por el dueño
+  /// desaparezcan también del backend y pueda reclamarlas de cero. Devuelve
+  /// cuántos se borraron, o null si no se pudo (best-effort).
+  static Future<int?> borrarMisReclamos(String email) async {
+    if (!disponible || email.trim().isEmpty) return null;
+    try {
+      final resp = await http
+          .post(Uri.parse('$_baseUrl/propiedad/reclamos/borrar-mios'),
+              headers: _appHeaders(json: true),
+              body: jsonEncode({'solicitante': email.trim()}))
+          .timeout(const Duration(seconds: 15));
+      if (resp.statusCode != 200) return null;
+      final m = Map<String, dynamic>.from(jsonDecode(resp.body) as Map);
+      return (m['borrados'] as num?)?.toInt() ?? 0;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// ¿Este lugar (lat/lng, o [canchaId]) ya tiene un reclamo activo? Devuelve
   /// {reclamada, estado, por_mi} o null. Sirve para bloquear el botón "Reclamar"
   /// de una cancha descubierta si ya la reclamó otro usuario.

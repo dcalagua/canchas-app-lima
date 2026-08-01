@@ -659,6 +659,22 @@ class Stores:
         # Se conservan: reclamos (propiedad), config/incentivos/modo del operador.
         return conteo
 
+    def borrar_reclamos_de(self, solicitante: str) -> int:
+        """Borra los reclamos de propiedad de un SOLICITANTE (por su correo/id).
+        Lo usa el APK cuando el dueño 'deja en virgen' para que sus canchas
+        reclamadas desaparezcan también de la torre de control (y pueda volver a
+        reclamarlas de cero). Devuelve cuántos se borraron. Solo toca los del
+        propio solicitante (no los de otros usuarios)."""
+        clave = (solicitante or "").strip().lower()
+        if not clave:
+            return 0
+        antes = len(self.reclamos)
+        self.reclamos = [
+            r for r in self.reclamos
+            if (r.solicitante_id or "").strip().lower() != clave
+        ]
+        return antes - len(self.reclamos)
+
     def liquidaciones(self, dueno_id: str | None = None,
                       solo_pendientes: bool = False) -> "list[PagoRegistro]":
         """Liquidaciones (neto que Pichangol le debe al dueño): reservas online y

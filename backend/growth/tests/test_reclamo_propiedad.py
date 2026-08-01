@@ -128,6 +128,19 @@ def test_reclamo_se_persiste_en_snapshot():
     assert len(stores.reclamos) == 1
 
 
+def test_borrar_reclamos_de_solo_toca_los_del_solicitante():
+    reclamos.crear_reclamo("c1", "yo@x.com", "Mi cancha", lat=LAT, lng=LNG)
+    reclamos.crear_reclamo("c2", "otro@x.com", "Otra cancha",
+                           lat=LAT + 0.5, lng=LNG + 0.5)
+    # Borra solo los míos (case-insensitive); el del otro se conserva.
+    n = stores.borrar_reclamos_de("YO@x.com")
+    assert n == 1
+    ids = {r.cancha_id for r in stores.reclamos}
+    assert ids == {"c2"}
+    # Idempotente: borrar de nuevo no borra nada.
+    assert stores.borrar_reclamos_de("yo@x.com") == 0
+
+
 # --- Anti doble-reclamo: una cancha reclamada no la reclama otro ---
 def test_otro_usuario_no_puede_reclamar_la_misma_cancha():
     r1 = reclamos.crear_reclamo("c1", "due1@x.com", "La Pichanga",
