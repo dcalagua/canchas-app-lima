@@ -151,8 +151,19 @@ jobs:
 
       - name: Verificar firma del APK
         run: |
-          echo "SHA-1 del certificado con que se firmó el APK (arm64):"
-          keytool -printcert -jarfile build/app/outputs/flutter-apk/app-arm64-v8a-release.apk | grep -E "SHA1:|SHA-1:" || echo "(no se pudo leer; revisar firma)"
+          APK=build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          echo "=== Huellas del certificado con que se firmó el APK (arm64) ==="
+          # apksigner lee la firma v2/v3 (keytool -printcert -jarfile SOLO ve v1/JAR,
+          # que los release de Flutter no traen → por eso antes salía vacío).
+          APKSIGNER="$(ls "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)"
+          if [ -n "$APKSIGNER" ]; then
+            "$APKSIGNER" verify --print-certs "$APK" | grep -Ei "SHA-1|SHA-256|SHA1|SHA256" \
+              || echo "(apksigner no devolvió huellas; revisar firma)"
+          else
+            echo "(apksigner no encontrado; intento con keytool)"
+            keytool -printcert -jarfile "$APK" | grep -Ei "SHA1:|SHA-1:|SHA256:" \
+              || echo "(no se pudo leer; revisar firma)"
+          fi
 
       - name: Renombrar APK
         run: |
