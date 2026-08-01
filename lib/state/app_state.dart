@@ -6232,13 +6232,19 @@ class AppState extends ChangeNotifier {
     // offline → espera a confirmarse en el reintento del outbox.
     // El jugador que reserva (para que el dueño vea QUIÉN reservó en su billetera).
     final quien = reserva.jugador.trim();
+    // Local (sede/club) + cancha, para que el movimiento diga DÓNDE fue. Se omite
+    // el local si está vacío o si es igual al nombre de la cancha (no repetir).
+    final local = cancha.club.trim();
+    final lugar = (local.isEmpty || local == cancha.nombre.trim())
+        ? cancha.nombre
+        : '$local · ${cancha.nombre}';
     final accion = _accionContable(cancha, cobro,
         montoBase: precioHoraEfectivo(cancha, fecha, hora),
         sena: sena,
         reservaId: reserva.id,
         etiqueta: quien.isEmpty
-            ? '${cancha.nombre} · $diaLabel $hora'
-            : '${cancha.nombre} · $quien · $diaLabel $hora');
+            ? '$lugar · $diaLabel $hora'
+            : '$lugar · $quien · $diaLabel $hora');
     if (res == ResultadoReserva.ok) {
       if (accion != null) _encolarConta(accion);
       // Reserva CONFIRMADA en el servidor → avisa al dueño (push dedicado).

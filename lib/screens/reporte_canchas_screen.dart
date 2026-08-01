@@ -468,6 +468,26 @@ class _ResumenComision extends StatelessWidget {
           const Divider(height: 14, color: trazo),
           fila('Neto para ti', '$moneda ${neto.toStringAsFixed(2)}',
               color: Theme.of(context).colorScheme.primary, bold: true),
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.info_outline, size: 15, color: textoTenueDe(context)),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Esta es tu ganancia real después de comisión. En tu billetera, '
+                  '"Por recibir" puede salir un poco mayor: en las reservas que se '
+                  'pagan con tu saldo recibes el 100% (la comisión ya salió de tu '
+                  'saldo). Al final tu ganancia es la misma.',
+                  style: TextStyle(
+                      color: textoTenueDe(context),
+                      fontSize: 11.5,
+                      height: 1.35),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
