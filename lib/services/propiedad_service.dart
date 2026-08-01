@@ -167,6 +167,7 @@ class PropiedadService {
     required String canchaId,
     required String solicitanteId,
     required String nombreLocal,
+    String solicitanteNombre = '',
     String? telefonoContacto,
     String? dni,
     String? ruc,
@@ -183,6 +184,8 @@ class PropiedadService {
               body: jsonEncode({
                 'cancha_id': canchaId,
                 'solicitante_id': solicitanteId,
+                if (solicitanteNombre.trim().isNotEmpty)
+                  'solicitante_nombre': solicitanteNombre.trim(),
                 'nombre_local': nombreLocal,
                 if (telefonoContacto != null && telefonoContacto.isNotEmpty)
                   'telefono_contacto': telefonoContacto,

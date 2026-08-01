@@ -85,7 +85,8 @@ class AprobarManualRequest(BaseModel):
 # --- Reclamo de propiedad (concierge + validación en sitio) ---
 class ReclamoRequest(BaseModel):
     cancha_id: str
-    solicitante_id: str
+    solicitante_id: str            # correo del reclamante (login; obligatorio)
+    solicitante_nombre: str = ""   # nombre del reclamante (de su cuenta Google)
     nombre_local: str
     telefono_contacto: str | None = None
     dni: str | None = None

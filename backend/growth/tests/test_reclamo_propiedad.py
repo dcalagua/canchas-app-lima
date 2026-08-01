@@ -128,6 +128,23 @@ def test_reclamo_se_persiste_en_snapshot():
     assert len(stores.reclamos) == 1
 
 
+def test_reclamo_guarda_nombre_del_solicitante_y_sobrevive_snapshot():
+    r = reclamos.crear_reclamo(
+        "c1", "due@x.com", "La Pichanga", lat=LAT, lng=LNG,
+        solicitante_nombre="Dennis Calagua")
+    rec = next(x for x in stores.reclamos if x.id == r["reclamo_id"])
+    assert rec.solicitante_nombre == "Dennis Calagua"
+    assert rec.creado_en is not None  # fecha/hora del reclamo
+    # Roundtrip del snapshot: el nombre no se pierde.
+    stores.load_state(stores.to_state())
+    rec2 = next(x for x in stores.reclamos if x.id == r["reclamo_id"])
+    assert rec2.solicitante_nombre == "Dennis Calagua"
+    # El panel lo expone.
+    fila = next(x for x in reclamos.listar() if x["id"] == r["reclamo_id"])
+    assert fila["solicitante_nombre"] == "Dennis Calagua"
+    assert fila.get("creado_en")
+
+
 def test_borrar_reclamos_de_solo_toca_los_del_solicitante():
     reclamos.crear_reclamo("c1", "yo@x.com", "Mi cancha", lat=LAT, lng=LNG)
     reclamos.crear_reclamo("c2", "otro@x.com", "Otra cancha",

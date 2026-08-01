@@ -335,6 +335,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
       PropiedadService.crearReclamo(
         canchaId: actualizada.id,
         solicitanteId: dueno,
+        solicitanteNombre: appState.usuario?.nombre ?? '',
         nombreLocal: nombre,
         telefonoContacto: contacto,
         dni: dni,

@@ -1835,6 +1835,13 @@ class _PanelPendienteState extends State<_PanelPendiente> {
   }
 
   Future<void> _reenviar() async {
+    // Reclamar exige identificarse: la solicitud debe viajar SIEMPRE con la
+    // cuenta (correo + nombre) del que reclama, no anónima.
+    if (!await LoginGoogleSheet.mostrar(context,
+        motivo: 'reclamar esta cancha')) {
+      return;
+    }
+    if (!mounted) return;
     setState(() {
       _reenviando = true;
       _diag = null;
@@ -1856,6 +1863,7 @@ class _PanelPendienteState extends State<_PanelPendiente> {
     final res = await PropiedadService.crearReclamo(
       canchaId: c.id,
       solicitanteId: email,
+      solicitanteNombre: appState.usuario?.nombre ?? '',
       nombreLocal: c.nombre,
       ubicacion: c.ubicacion,
       solicitanteUbicacion: desdeAqui,

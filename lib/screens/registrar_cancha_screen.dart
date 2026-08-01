@@ -489,6 +489,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
         final r = await PropiedadService.crearReclamo(
           canchaId: creadas.first.id,
           solicitanteId: dueno,
+          solicitanteNombre: appState.usuario?.nombre ?? '',
           nombreLocal: nombre,
           telefonoContacto: contacto,
           dni: dni, // opcional (puede ir vacío)

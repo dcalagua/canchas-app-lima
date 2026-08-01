@@ -238,7 +238,7 @@ class ReclamoPropiedad:
     cuyo GPS debe coincidir con la cancha → recién ahí se activa."""
     id: int
     cancha_id: str
-    solicitante_id: str
+    solicitante_id: str          # correo del reclamante (login)
     nombre_local: str
     codigo: str
     estado: str  # pendiente_triage|aprobado_triage|pendiente_validacion|activada|rechazada
@@ -259,6 +259,7 @@ class ReclamoPropiedad:
     validado_en: datetime | None = None
     validador: str | None = None
     nota: str | None = None
+    solicitante_nombre: str = ""  # nombre del reclamante (de su cuenta Google)
 
 
 @dataclass
@@ -1068,7 +1069,7 @@ def _reclamo_from(d: dict) -> ReclamoPropiedad:
         solicitante_lng=d.get("solicitante_lng"),
         decidido_en=_dt(d.get("decidido_en")),
         validado_en=_dt(d.get("validado_en")), validador=d.get("validador"),
-        nota=d.get("nota"))
+        nota=d.get("nota"), solicitante_nombre=d.get("solicitante_nombre", ""))
 
 
 def _conv_from(d: dict) -> Convocatoria:

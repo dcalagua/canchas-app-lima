@@ -215,7 +215,8 @@ def crear_reclamo(cancha_id: str, solicitante_id: str, nombre_local: str,
                   relacion: str | None = None,
                   lat: float | None = None, lng: float | None = None,
                   solicitante_lat: float | None = None,
-                  solicitante_lng: float | None = None) -> dict:
+                  solicitante_lng: float | None = None,
+                  solicitante_nombre: str = "") -> dict:
     # Anti doble-reclamo. Si esta cancha (por id) o el MISMO lugar (ubicación
     # cercana) ya tiene un reclamo ACTIVO:
     #  - de OTRO usuario → se rechaza ("ya_reclamada").
@@ -265,6 +266,7 @@ def crear_reclamo(cancha_id: str, solicitante_id: str, nombre_local: str,
         codigo=codigo,
         estado="pendiente_triage",
         creado_en=ahora(),
+        solicitante_nombre=solicitante_nombre or "",
         telefono_contacto=telefono_contacto,
         dni=dni,
         nombre_titular=nombre_titular,
@@ -283,7 +285,8 @@ def crear_reclamo(cancha_id: str, solicitante_id: str, nombre_local: str,
         f"Relación: {relacion or 's/d'}\n"
         f"Titular (DNI {dni or 's/n'}): {nombre_titular or 's/d'}\n"
         + (f"RUC {ruc}: {razon_social or 's/d'}\n" if ruc else "")
-        + f"Cuenta: {solicitante_id}\n"
+        + f"Cuenta: {solicitante_id}"
+        + (f" ({solicitante_nombre})" if solicitante_nombre else "") + "\n"
         f"WhatsApp del dueño: {telefono_contacto or '⚠️ no dejó número'}\n"
         f"Código: {codigo}\n"
         f"Verifícalo y, para activarla, responde aquí: APROBAR {codigo}  "
