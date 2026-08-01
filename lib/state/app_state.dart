@@ -51,6 +51,7 @@ import '../services/pagos_service.dart';
 import '../services/retos_service.dart';
 import '../services/push_service.dart';
 import '../services/places_service.dart';
+import '../services/supabase_service.dart';
 import '../services/verificacion_service.dart';
 import '../services/growth_service.dart';
 import '../services/propiedad_service.dart';
