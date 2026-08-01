@@ -33,7 +33,11 @@ class _AgendaScreenState extends State<AgendaScreen> {
 
   Reserva? _reservaEn(String canchaId, String iso, String hora) {
     for (final r in appState.reservas) {
-      if (r.canchaId == canchaId && r.fecha == iso && r.horaInicio == hora) {
+      // Match tolerante a ids duplicados del mismo local (igual que el panel de
+      // Reservas): resuelve la reserva a la cancha del dueño antes de comparar.
+      if (r.fecha == iso &&
+          r.horaInicio == hora &&
+          appState.miCanchaDeReserva(r.canchaId)?.id == canchaId) {
         return r;
       }
     }
@@ -298,10 +302,13 @@ class _HeaderAgenda extends StatelessWidget {
     final nombre = (appState.usuario?.nombre ?? '').trim().split(' ').first;
     final saludoTxt = nombre.isEmpty ? '$saludo 👋' : '$saludo, $nombre 👋';
 
-    // KPIs REALES del día sobre las canchas del LOCAL seleccionado.
+    // KPIs REALES del día sobre las canchas del LOCAL seleccionado. Se resuelve
+    // cada reserva a la cancha del dueño (tolerante a ids duplicados del local).
     final ids = canchas.map((c) => c.id).toSet();
     final delDia = appState.reservas
-        .where((r) => ids.contains(r.canchaId) && r.fecha == iso)
+        .where((r) =>
+            r.fecha == iso &&
+            ids.contains(appState.miCanchaDeReserva(r.canchaId)?.id))
         .toList();
     final totalSlots =
         canchas.fold<int>(0, (s, c) => s + c.horariosSlots().length);
