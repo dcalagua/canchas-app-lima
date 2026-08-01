@@ -1293,9 +1293,11 @@ class AppState extends ChangeNotifier {
   final List<Campeonato> campeonatos = [];
   bool descubriendo = false; // true mientras se traen canchas cercanas (feedback UI)
 
-  /// Copia runtime de los clubes sembrados (SampleData.sembradas). Se enriquece
-  /// con fotos reales de Google en `enriquecerSembradas()` sin tocar el const.
-  final List<Cancha> _sembradas = List.of(SampleData.sembradas);
+  /// Clubes sembrados en el mapa. VACÍO (virgen, como PRD): el explorador enseña
+  /// solo canchas REALES (Google Places + Supabase + las que registra el dueño),
+  /// sin data demo. Antes traía `SampleData.sembradas` (Regatas, ESMON, CEANDE…),
+  /// que aparecían como reclamables aunque la app estuviera "en virgen".
+  final List<Cancha> _sembradas = [];
 
   /// Trae las FOTOS reales de Google para los clubes sembrados (que no pasan por
   /// el descubrimiento normal) y las inyecta. Best-effort: si Places no
@@ -4800,7 +4802,9 @@ class AppState extends ChangeNotifier {
 
   // Saldo prepago del club (modelo inDrive): con saldo aparece destacado y
   // cada reserva nueva descuenta una comisión. Sin saldo, deja de destacarse.
-  int saldoClub = 30;
+  // Virgen (como PRD): arranca en 0; el saldo real baja del backend al iniciar
+  // sesión (antes arrancaba en 30 de demo, que confundía en pruebas limpias).
+  int saldoClub = 0;
   // ¿Ya se le mostró al dueño el mensaje de bienvenida (onboarding "stack de
   // valor")? Se muestra una sola vez al entrar a "Mis canchas".
   bool bienvenidaDuenoVista = false;
@@ -5034,10 +5038,8 @@ class AppState extends ChangeNotifier {
     if (mis.isNotEmpty) return mis.first.monedaSimbolo;
     return paisActual.moneda;
   }
-  final List<MovimientoSaldo> movimientos = [
-    const MovimientoSaldo(
-        tipo: TipoMovimiento.recarga, monto: 30, concepto: 'Recarga inicial', cuando: 'Ayer'),
-  ];
+  // Virgen (como PRD): sin movimientos demo. El historial real baja del backend.
+  final List<MovimientoSaldo> movimientos = [];
   bool get destacadoActivo => saldoClub > 0;
 
   // ── Saldo por PAÍS (destacar multi-país) ──────────────────────────────────
