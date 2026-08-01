@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../models/models.dart';
@@ -28,22 +29,23 @@ class _ClientesScreenState extends State<ClientesScreen> {
   @override
   void initState() {
     super.initState();
-    // Insignia de verificado: consulta qué clientes están verificados.
-    final mias = appState.misCanchas.map((c) => c.id).toSet();
+    // Insignia de verificado + PERFIL (foto real del cliente). Resuelve cada
+    // reserva a la cancha del dueño (tolerante a ids duplicados del local).
     final emails = appState.reservas
-        .where((r) => mias.contains(r.canchaId))
+        .where((r) => appState.miCanchaDeReserva(r.canchaId) != null)
         .map((r) => r.usuario)
-        .where((e) => e.trim().isNotEmpty);
+        .where((e) => e.trim().isNotEmpty)
+        .toList();
     appState.sincronizarVerificados(emails);
+    appState.cargarPerfiles(emails);
   }
 
   /// Agrega las reservas de las canchas del dueño en una ficha por cliente.
   /// [aplicarBusqueda] false = universo completo (para los KPIs de arriba).
   List<_Cliente> _clientes({bool aplicarBusqueda = true}) {
-    final mias = {for (final c in appState.misCanchas) c.id};
     final map = <String, _Cliente>{};
     for (final r in appState.reservas) {
-      if (!mias.contains(r.canchaId)) continue;
+      if (appState.miCanchaDeReserva(r.canchaId) == null) continue;
       final email = r.usuario.trim().toLowerCase();
       final nombre = r.jugador.trim();
       // Clave estable: por correo si lo hay; si no, por nombre (walk-in).
@@ -349,11 +351,16 @@ class _ClienteCard extends StatelessWidget {
                 CircleAvatar(
                   radius: 22,
                   backgroundColor: _colorInicial(cliente.nombreVisible),
-                  child: Text(cliente.inicial,
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 18)),
+                  backgroundImage: _fotoCliente(cliente) != null
+                      ? CachedNetworkImageProvider(_fotoCliente(cliente)!)
+                      : null,
+                  child: _fotoCliente(cliente) == null
+                      ? Text(cliente.inicial,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 18))
+                      : null,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -502,11 +509,16 @@ class _ClienteCard extends StatelessWidget {
                   CircleAvatar(
                     radius: 24,
                     backgroundColor: _colorInicial(cliente.nombreVisible),
-                    child: Text(cliente.inicial,
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 20)),
+                    backgroundImage: _fotoCliente(cliente) != null
+                        ? CachedNetworkImageProvider(_fotoCliente(cliente)!)
+                        : null,
+                    child: _fotoCliente(cliente) == null
+                        ? Text(cliente.inicial,
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 20))
+                        : null,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -674,6 +686,12 @@ Color _colorInicial(String nombre) {
     h = (h * 31 + code) & 0x7fffffff;
   }
   return paleta[h % paleta.length];
+}
+
+/// Foto real del cliente (regla de la app: avatar con foto). null si no hay.
+String? _fotoCliente(_Cliente c) {
+  final f = (appState.fotoDe(c.email) ?? '').trim();
+  return f.isEmpty ? null : f;
 }
 
 /// "2026-07-15" → "15 jul".

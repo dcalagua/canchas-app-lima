@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../models/models.dart';
@@ -31,11 +32,15 @@ class _ReservasDuenoScreenState extends State<ReservasDuenoScreen> {
     // Al abrir: trae las reservas frescas de la nube (las que hicieron jugadores
     // en otros dispositivos) para no depender de un pull-to-refresh manual.
     appState.cargarReservasRemotas();
-    // Carga qué jugadores están verificados para mostrar la insignia.
+    // Carga qué jugadores están verificados (insignia) y sus PERFILES (foto real
+    // en la tarjeta, regla de la app). Precargar para que la foto ya esté lista.
     final emails = appState.reservas
         .where((r) => appState.miCanchaDeReserva(r.canchaId) != null)
-        .map((r) => r.usuario);
+        .map((r) => r.usuario)
+        .where((e) => e.isNotEmpty)
+        .toList();
     appState.sincronizarVerificados(emails);
+    appState.cargarPerfiles(emails);
     // Se REFRESCA solo cuando llega un push de "Nueva reserva" (estilo WhatsApp).
     PushService.nuevaReserva.addListener(_alLlegarReserva);
   }
@@ -228,6 +233,41 @@ class _ReservasDuenoScreenState extends State<ReservasDuenoScreen> {
   }
 }
 
+/// Avatar del jugador con su FOTO real (regla de la app: nunca ícono genérico
+/// donde va una persona). Cae a la inicial de color solo si no hay foto. Anillo
+/// del color del deporte.
+class _AvatarJugador extends StatelessWidget {
+  const _AvatarJugador(
+      {required this.email, required this.nombre, required this.colorRing});
+  final String email;
+  final String nombre;
+  final Color colorRing;
+
+  @override
+  Widget build(BuildContext context) {
+    final foto = (appState.fotoDe(email) ?? '').trim();
+    final inicial =
+        nombre.trim().isNotEmpty ? nombre.trim()[0].toUpperCase() : '?';
+    return Container(
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: colorRing.withOpacity(0.6), width: 2)),
+      child: CircleAvatar(
+        radius: 16,
+        backgroundColor: limaSuave,
+        backgroundImage:
+            foto.isNotEmpty ? CachedNetworkImageProvider(foto) : null,
+        child: foto.isEmpty
+            ? Text(inicial,
+                style: const TextStyle(
+                    color: bosque, fontWeight: FontWeight.w800, fontSize: 14))
+            : null,
+      ),
+    );
+  }
+}
+
 /// Nombre de país a partir del símbolo de moneda de la cancha (proxy de país).
 String _paisDeMoneda(String m) => switch (m.trim()) {
       'S/' => 'Perú',
@@ -370,14 +410,12 @@ class _ReservaCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Container(
-                width: 9,
-                height: 9,
-                decoration: BoxDecoration(
-                    color: colorDeporte(cancha.deporte),
-                    borderRadius: BorderRadius.circular(2)),
+              _AvatarJugador(
+                email: reserva.usuario,
+                nombre: reserva.jugador,
+                colorRing: colorDeporte(cancha.deporte),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               Expanded(
                 child: Row(
                   children: [
@@ -521,6 +559,7 @@ class _EstadoChip extends StatelessWidget {
     late final String texto;
     late final Color bg;
     late final Color fg;
+    IconData? icono;
     if (reserva.estado == EstadoReserva.noShow) {
       texto = 'NO-SHOW';
       bg = const Color(0xFFF0ECE2);
@@ -529,18 +568,34 @@ class _EstadoChip extends StatelessWidget {
       texto = 'PAGADO';
       bg = limaSuave;
       fg = pino;
+      icono = Icons.check_circle;
     } else {
+      // "Por cobrar" bien visible: ámbar más fuerte + ícono (antes casi no se
+      // notaba sobre el fondo blanco de la tarjeta).
       texto = 'POR COBRAR';
-      bg = const Color(0xFFFBEAD2);
-      fg = clayOscuro;
+      bg = const Color(0xFFF6C453);
+      fg = const Color(0xFF5A3E00);
+      icono = Icons.schedule;
     }
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration:
           BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
-      child: Text(texto,
-          style: TextStyle(
-              color: fg, fontSize: 10, fontWeight: FontWeight.w800, height: 1)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icono != null) ...[
+            Icon(icono, size: 12, color: fg),
+            const SizedBox(width: 4),
+          ],
+          Text(texto,
+              style: TextStyle(
+                  color: fg,
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w800,
+                  height: 1)),
+        ],
+      ),
     );
   }
 }

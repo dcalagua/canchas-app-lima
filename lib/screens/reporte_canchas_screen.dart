@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../models/models.dart';
 import '../state/app_state.dart';
@@ -83,6 +84,7 @@ class _ReporteCanchasScreenState extends State<ReporteCanchasScreen> {
 
           double facturado = 0, porCobrar = 0;
           var nReservas = 0;
+          double comisionTotal = 0; // comisión Pichangol estimada del período
           final porCancha = <String, double>{};
           for (final r in delRango) {
             if (r.estado == EstadoReserva.noShow) continue; // no-show ≠ venta
@@ -92,6 +94,12 @@ class _ReporteCanchasScreenState extends State<ReporteCanchasScreen> {
               facturado += t;
             } else {
               porCobrar += t;
+            }
+            // Comisión Pichangol: 5% del precio de la cancha, mínimo S/2 (igual
+            // que el backend). Se cobra en toda reserva que trae la app.
+            if (r.traidaPorApp) {
+              final c = r.precio * 0.05;
+              comisionTotal += c < 2 ? 2 : c;
             }
             final cid = canchaDe[r.id]?.id ?? r.canchaId;
             porCancha[cid] = (porCancha[cid] ?? 0) + t;
@@ -162,6 +170,13 @@ class _ReporteCanchasScreenState extends State<ReporteCanchasScreen> {
                             color: bosque, fontWeight: FontWeight.w800)),
                   ],
                 ),
+              ),
+              const SizedBox(height: 12),
+              _ResumenComision(
+                bruto: facturado + porCobrar,
+                comision: comisionTotal,
+                neto: (facturado + porCobrar) - comisionTotal,
+                moneda: mon,
               ),
               const SizedBox(height: 20),
               const Text('Ingresos cobrados (últimos 6 meses)',
@@ -240,11 +255,68 @@ class _ReporteCanchasScreenState extends State<ReporteCanchasScreen> {
                           'Cancha',
                       moneda: mon,
                       mesesCorto: _mesesCorto),
+              const SizedBox(height: 20),
+              // Descargar/compartir el reporte (hoja del sistema: WhatsApp, PDF,
+              // correo, Drive…). Comparte el resumen del período.
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: bosque,
+                    side: const BorderSide(color: trazo),
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                  ),
+                  onPressed: () => _compartirReporte(
+                    moneda: mon,
+                    cobrado: facturado,
+                    porCobrar: porCobrar,
+                    comision: comisionTotal,
+                    nReservas: nReservas,
+                    porLocal: {
+                      for (final club in localesOrden)
+                        club: subtotalLocal[club]!
+                    },
+                  ),
+                  icon: const Icon(Icons.ios_share, color: teal),
+                  label: const Text('Compartir / descargar reporte',
+                      style: TextStyle(fontWeight: FontWeight.w800)),
+                ),
+              ),
             ],
           );
         },
       ),
     );
+  }
+
+  void _compartirReporte({
+    required String moneda,
+    required double cobrado,
+    required double porCobrar,
+    required double comision,
+    required int nReservas,
+    required Map<String, double> porLocal,
+  }) {
+    final bruto = cobrado + porCobrar;
+    final b = StringBuffer()
+      ..writeln('📊 Reporte de cobros · Pichangol')
+      ..writeln('')
+      ..writeln('Generado: $moneda ${bruto.toStringAsFixed(2)}')
+      ..writeln('  • Cobrado: $moneda ${cobrado.toStringAsFixed(2)}')
+      ..writeln('  • Por cobrar: $moneda ${porCobrar.toStringAsFixed(2)}')
+      ..writeln('Comisión Pichangol: $moneda ${comision.toStringAsFixed(2)}')
+      ..writeln(
+          'Neto para ti: $moneda ${(bruto - comision).toStringAsFixed(2)}')
+      ..writeln('Reservas: $nReservas');
+    if (porLocal.length > 1) {
+      b.writeln('');
+      b.writeln('Por local:');
+      porLocal.forEach((club, monto) =>
+          b.writeln('  • $club: $moneda ${monto.toStringAsFixed(2)}'));
+    }
+    Share.share(b.toString());
   }
 
   Widget _filtro() {
@@ -328,6 +400,73 @@ String _paisDeMonedaRep(String m) => switch (m.trim()) {
       r'$' => 'Ecuador',
       _ => m,
     };
+
+/// Resumen de COMISIÓN del período: lo generado, cuánto se lleva Pichangol y el
+/// NETO del dueño. Transparencia total (nada escondido).
+class _ResumenComision extends StatelessWidget {
+  const _ResumenComision(
+      {required this.bruto,
+      required this.comision,
+      required this.neto,
+      required this.moneda});
+  final double bruto;
+  final double comision;
+  final double neto;
+  final String moneda;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    Widget fila(String et, String val, {Color? color, bool bold = false}) =>
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 3),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(et,
+                  style: TextStyle(
+                      color: color ?? textoTenueDe(context),
+                      fontSize: 13,
+                      fontWeight: bold ? FontWeight.w800 : FontWeight.w500)),
+              Text(val,
+                  style: TextStyle(
+                      color: color ?? cs.onSurface,
+                      fontSize: bold ? 16 : 13.5,
+                      fontWeight: bold ? FontWeight.w800 : FontWeight.w700)),
+            ],
+          ),
+        );
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: trazo),
+      ),
+      child: Column(
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text('Tu ganancia (después de comisión)',
+                style: TextStyle(
+                    color: cs.onSurface,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13.5)),
+          ),
+          const SizedBox(height: 6),
+          fila('Generado (cobrado + por cobrar)',
+              '$moneda ${bruto.toStringAsFixed(2)}'),
+          fila('Comisión Pichangol (5%, mín $moneda 2)',
+              '− $moneda ${comision.toStringAsFixed(2)}',
+              color: clayOscuro),
+          const Divider(height: 14, color: trazo),
+          fila('Neto para ti', '$moneda ${neto.toStringAsFixed(2)}',
+              color: Theme.of(context).colorScheme.primary, bold: true),
+        ],
+      ),
+    );
+  }
+}
 
 /// Cabecera de sección por LOCAL en el reporte: nombre del local (+ país si el
 /// dueño tiene canchas en más de uno) y el subtotal facturado del local.
