@@ -252,8 +252,12 @@ class _ReservaDestacada extends StatelessWidget {
                         fontWeight: FontWeight.w800)),
               ),
               const Spacer(),
-              Text(_estadoLabel(reserva.estado),
-                  style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
+              if (appState.reservaPendienteSync(reserva.id) ||
+                  appState.reservaNoConfirmada(reserva.id))
+                _EstadoChip(estado: reserva.estado, reservaId: reserva.id)
+              else
+                Text(_estadoLabel(reserva.estado),
+                    style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
               _MenuReserva(reserva: reserva),
             ],
           ),
@@ -375,7 +379,7 @@ class _ReservaCard extends StatelessWidget {
                   style: t.bodySmall?.copyWith(color: textoTenueDe(context)),
                 ),
                 const SizedBox(height: 6),
-                _EstadoChip(estado: reserva.estado),
+                _EstadoChip(estado: reserva.estado, reservaId: reserva.id),
               ],
             ),
           ),
@@ -543,7 +547,7 @@ void _mostrarPase(BuildContext context, Reserva reserva, Cancha? cancha) {
                       ],
                     ),
                   ),
-                  _EstadoChip(estado: reserva.estado),
+                  _EstadoChip(estado: reserva.estado, reservaId: reserva.id),
                 ],
               ),
               const SizedBox(height: 18),
@@ -609,13 +613,24 @@ class _PaseFila extends StatelessWidget {
   }
 }
 
-/// Chip de estado de la reserva (Confirmada/Jugada/No-show).
+/// Chip de estado de la reserva (Confirmada/Jugada/No-show). Con [reservaId] además
+/// refleja el estado de SINCRONIZACIÓN offline: "Pendiente de confirmar" (aún no
+/// llegó al servidor) o "No se confirmó" (el slot lo tomó otro / sincronizó tarde).
 class _EstadoChip extends StatelessWidget {
-  const _EstadoChip({required this.estado});
+  const _EstadoChip({required this.estado, this.reservaId = ''});
   final EstadoReserva estado;
+  final String reservaId;
 
   @override
   Widget build(BuildContext context) {
+    // Estado de sincronización tiene prioridad sobre el estado del booking.
+    if (reservaId.isNotEmpty && appState.reservaPendienteSync(reservaId)) {
+      return _pill('⏳  Pendiente de confirmar',
+          const Color(0xFFFBEAD2), const Color(0xFF8A5A00));
+    }
+    if (reservaId.isNotEmpty && appState.reservaNoConfirmada(reservaId)) {
+      return _pill('⚠️  No se confirmó', estadoBadBg, estadoBadFg);
+    }
     final (bg, fg) = switch (estado) {
       EstadoReserva.confirmada || EstadoReserva.nueva => (estadoOkBg, estadoOkFg),
       EstadoReserva.noShow => (estadoBadBg, estadoBadFg),
@@ -627,15 +642,17 @@ class _EstadoChip extends StatelessWidget {
       EstadoReserva.completada => '🏁',
       EstadoReserva.noShow => '🚫',
     };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-      decoration:
-          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
-      child: Text('$emoji  ${_estadoLabel(estado)}',
-          style:
-              TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.w700)),
-    );
+    return _pill('$emoji  ${_estadoLabel(estado)}', bg, fg);
   }
+
+  static Widget _pill(String texto, Color bg, Color fg) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+        decoration:
+            BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
+        child: Text(texto,
+            style:
+                TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.w700)),
+      );
 }
 
 String _estadoLabel(EstadoReserva e) => switch (e) {

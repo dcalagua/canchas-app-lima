@@ -942,6 +942,148 @@ class AppState extends ChangeNotifier {
   final List<Reserva> reservas = [];
   final List<BloqueHorario> agenda = [];
   final List<Reserva> misReservas = []; // reservas del jugador logueado
+
+  // ── Reservas OFFLINE: bandeja de salida (outbox) ──────────────────────────
+  // Ids de reservas guardadas LOCAL que aún NO llegaron a Supabase (se hicieron
+  // sin señal). Se reintenta subirlas al recuperar conexión. Persisten para
+  // sobrevivir cierres de la app. Mientras estén aquí, son "Pendiente de
+  // confirmar" (no cuentan como confirmadas para el jugador).
+  final Set<String> _reservasPendientesSync = {};
+  // Ids de reservas que NO se pudieron confirmar: el slot ya lo tomó otro, o la
+  // app sincronizó DESPUÉS de la hora de juego. Se muestran "No se confirmó".
+  final Set<String> _reservasNoConfirmadas = {};
+  static const _kResvPend = 'reservas_pendientes_sync';
+  static const _kResvNoConf = 'reservas_no_confirmadas';
+
+  /// ¿La reserva está guardada pero aún no confirmada en el servidor (offline)?
+  bool reservaPendienteSync(String id) => _reservasPendientesSync.contains(id);
+
+  /// ¿La reserva no se pudo confirmar (slot tomado o sincronizó tarde)?
+  bool reservaNoConfirmada(String id) => _reservasNoConfirmadas.contains(id);
+
+  Future<void> cargarReservasSync() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _reservasPendientesSync
+        ..clear()
+        ..addAll(prefs.getStringList(_kResvPend) ?? const []);
+      _reservasNoConfirmadas
+        ..clear()
+        ..addAll(prefs.getStringList(_kResvNoConf) ?? const []);
+    } catch (_) {}
+  }
+
+  Future<void> _persistirReservasSync() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_kResvPend, _reservasPendientesSync.toList());
+      await prefs.setStringList(_kResvNoConf, _reservasNoConfirmadas.toList());
+    } catch (_) {}
+  }
+
+  /// ¿La hora de inicio del slot ya pasó (respecto a ahora)? Si no se puede
+  /// parsear, se asume que NO pasó (para no expirar por error).
+  bool _slotYaPaso(Reserva r) {
+    try {
+      final f = r.fecha.split('-'); // yyyy-MM-dd
+      final h = r.horaInicio.split(':'); // HH:mm
+      if (f.length < 3 || h.length < 2) return false;
+      final dt = DateTime(int.parse(f[0]), int.parse(f[1]), int.parse(f[2]),
+          int.parse(h[0]), int.parse(h[1]));
+      return dt.isBefore(DateTime.now());
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Cancha? _canchaPorIdAny(String id) {
+    for (final c in [...canchasExtra, ...canchasRemotas]) {
+      if (c.id == id) return c;
+    }
+    return SampleData.canchaPorId(id);
+  }
+
+  /// Avisa al DUEÑO de la cancha que entró una reserva (push + chat, reusando la
+  /// mensajería directa: el jugador le manda un mensaje al dueño). Se llama solo
+  /// cuando la reserva quedó CONFIRMADA en el servidor (no offline). Una sola vez
+  /// por reserva/grupo. No avisa si el dueño es el propio jugador.
+  void _notificarDuenoReserva(Cancha cancha, List<Reserva> rs) {
+    final dueno = cancha.dueno.trim().toLowerCase();
+    final yo = (usuario?.email ?? '').trim().toLowerCase();
+    if (dueno.isEmpty || dueno == yo || rs.isEmpty) return;
+    final ordenadas = [...rs]..sort((a, b) => a.horaInicio.compareTo(b.horaInicio));
+    final r0 = ordenadas.first;
+    final rango = ordenadas.length > 1
+        ? '${ordenadas.first.horaInicio}–${ordenadas.last.horaFin}'
+        : '${r0.horaInicio}–${r0.horaFin}';
+    final quien = (usuario?.nombre ?? '').trim().isNotEmpty
+        ? usuario!.nombre
+        : (r0.jugador.isNotEmpty ? r0.jugador : 'Un jugador');
+    final total = ordenadas.fold<double>(0, (s, r) => s + r.totalConExtras);
+    final texto = '📅 Nueva reserva en ${cancha.nombre}\n'
+        '$quien · ${r0.dia} ${r0.fecha} · $rango\n'
+        '${cancha.monedaSimbolo} ${total.toStringAsFixed(2)} '
+        '${r0.pagado ? '(pagado)' : '(por cobrar)'}';
+    unawaited(enviarMensajeDirecto(dueno, texto));
+  }
+
+  /// Reintenta subir a Supabase las reservas que quedaron pendientes (offline).
+  /// Reglas al sincronizar: si el slot YA PASÓ o el horario lo tomó otro jugador,
+  /// NO se crea la reserva (queda "no confirmada" y se libera el slot local); si
+  /// entra bien, se confirma y se AVISA al dueño. Fail-safe.
+  Future<void> sincronizarReservasPendientes() async {
+    if (_reservasPendientesSync.isEmpty || !SupabaseService.disponible) return;
+    final ids = [..._reservasPendientesSync];
+    final gruposNotificados = <String>{};
+    var cambios = false;
+    for (final id in ids) {
+      final idx = reservas.indexWhere((x) => x.id == id);
+      if (idx < 0) {
+        _reservasPendientesSync.remove(id);
+        cambios = true;
+        continue;
+      }
+      final r = reservas[idx];
+      // Sincronizó DESPUÉS de la hora de juego → ya no vale.
+      if (_slotYaPaso(r)) {
+        _reservasPendientesSync.remove(id);
+        _reservasNoConfirmadas.add(id);
+        reservas.removeWhere((x) => x.id == id); // libera slot; el dueño no la ve
+        cambios = true;
+        continue;
+      }
+      final res = await ReservasRepo.insertarSegura(r);
+      if (res == ResultadoReserva.ok) {
+        _reservasPendientesSync.remove(id);
+        cambios = true;
+        final cancha = _canchaPorIdAny(r.canchaId);
+        if (cancha != null) {
+          final clave = r.grupoReservaId.isNotEmpty ? r.grupoReservaId : r.id;
+          if (gruposNotificados.add(clave)) {
+            final grupo = r.grupoReservaId.isNotEmpty
+                ? reservas
+                    .where((x) => x.grupoReservaId == r.grupoReservaId)
+                    .toList()
+                : [r];
+            _notificarDuenoReserva(cancha, grupo);
+          }
+        }
+      } else if (res == ResultadoReserva.ocupado) {
+        // Otro jugador ganó el slot mientras estabas offline.
+        _reservasPendientesSync.remove(id);
+        _reservasNoConfirmadas.add(id);
+        reservas.removeWhere((x) => x.id == id);
+        cambios = true;
+      }
+      // sinConexion / error → sigue pendiente para el próximo intento.
+    }
+    if (cambios) {
+      _recomputarMisReservas();
+      notifyListeners();
+      await _persistirReservasSync();
+      _persistirDatos();
+    }
+  }
   final List<Cancha> canchasExtra = []; // canchas registradas en este dispositivo
   final List<Cancha> canchasRemotas = []; // canchas traídas de Supabase
   final List<Cancha> canchasDescubiertas = []; // reales de Google Places (sin registrar)
@@ -3881,6 +4023,9 @@ class AppState extends ChangeNotifier {
   /// Trae las reservas compartidas desde Supabase (disponibilidad entre
   /// dispositivos) y recalcula "Mis reservas" según el correo del jugador.
   Future<void> cargarReservasRemotas() async {
+    // Hay conexión (vamos a leer de Supabase): primero intenta SUBIR las
+    // reservas que quedaron pendientes por haberse hecho sin señal.
+    await sincronizarReservasPendientes();
     final remotas = await ReservasRepo.fetchRemotas();
     if (remotas.isEmpty) return;
     for (final r in remotas) {
@@ -5155,6 +5300,7 @@ class AppState extends ChangeNotifier {
         PushService.registrarParaUsuario(usuario?.email);
         _sincronizarMiPerfil(); // trae mi nombre-foto elegido (otro dispositivo)
         cargarMisNiveles(); // mi nivel de jugador (device-first) al reabrir la app
+        cargarReservasSync(); // reservas offline pendientes de subir (outbox)
       }
 
       final contactosRaw = prefs.getString(_kContactos);
@@ -5646,6 +5792,7 @@ class AppState extends ChangeNotifier {
     sincronizarAgenda(); // apodos + contactos + bloqueados en todos mis dispositivos
     cargarEstados(); // historias vigentes (24 h) de mis conocidos
     cargarMisNiveles(); // mi nivel de jugador por deporte (device-first)
+    cargarReservasSync(); // reservas offline pendientes de subir (outbox)
     // Trae sus academias (por si las creó en otro dispositivo) y LUEGO las
     // matrículas, para que el profe vea a sus alumnos apenas entra.
     () async {
@@ -5677,6 +5824,8 @@ class AppState extends ChangeNotifier {
     _contactos.clear();
     _bloqueados.clear();
     _misNiveles.clear();
+    _reservasPendientesSync.clear();
+    _reservasNoConfirmadas.clear();
     chatsOcultos.clear();
     chatsFijados.clear();
     chatsArchivados.clear();
@@ -5832,7 +5981,8 @@ class AppState extends ChangeNotifier {
       List<ServicioExtra> extras = const [],
       String cobro = 'ninguno',
       int sena = 0,
-      String grupoReservaId = ''}) async {
+      String grupoReservaId = '',
+      bool notificarDueno = true}) async {
     // Chequeo local rápido (doble toque / feedback inmediato sin conexión).
     // La agenda es COMPARTIDA entre deportes: se ocupa por (cancha, fecha, hora),
     // sin importar el deporte (es la misma superficie física).
@@ -5912,6 +6062,15 @@ class AppState extends ChangeNotifier {
         );
       }
     }
+    if (res == ResultadoReserva.ok) {
+      // Reserva CONFIRMADA en el servidor → avisa al dueño (push + chat).
+      if (notificarDueno) _notificarDuenoReserva(cancha, [reserva]);
+    } else {
+      // Sin señal / error: quedó SOLO local. Va a la bandeja de salida para
+      // reintentar subirla al recuperar conexión (y recién ahí avisar al dueño).
+      _reservasPendientesSync.add(reserva.id);
+      unawaited(_persistirReservasSync());
+    }
     notifyListeners();
     _persistirDatos();
     return res == ResultadoReserva.ok ? ResultadoReserva.ok : res;
@@ -5956,9 +6115,25 @@ class AppState extends ChangeNotifier {
         cobro: cobro,
         sena: senaSlot,
         grupoReservaId: grupo,
+        // El aviso al dueño se manda UNA sola vez para todo el bloque (abajo),
+        // no una vez por hora.
+        notificarDueno: false,
       );
       if (res == ResultadoReserva.ocupado) return ResultadoReserva.ocupado;
       if (res != ResultadoReserva.ok) peor = res; // sinConexion / error
+    }
+    // Todo el bloque quedó confirmado en el servidor → un solo aviso al dueño con
+    // el rango completo. Si algo quedó offline, el aviso lo manda el reintento.
+    if (peor == ResultadoReserva.ok) {
+      final delGrupo = grupo.isNotEmpty
+          ? reservas.where((r) => r.grupoReservaId == grupo).toList()
+          : reservas
+              .where((r) =>
+                  r.canchaId == cancha.id &&
+                  r.fecha == fecha &&
+                  ordenadas.contains(r.horaInicio))
+              .toList();
+      if (delGrupo.isNotEmpty) _notificarDuenoReserva(cancha, delGrupo);
     }
     return peor;
   }

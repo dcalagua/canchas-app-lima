@@ -391,9 +391,9 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                     : pagoOnline
                         ? '✅ Pago OK · Reserva confirmada en ${_cancha.nombre} · $_dia $etiqueta'
                         : '✅ Reserva confirmada en ${_cancha.nombre} · $_dia $etiqueta · pagas en la cancha')
-                : '⚠️ Guardamos tu reserva, pero no pudimos confirmarla con el '
-                    'servidor. Otra persona podría tomar el mismo horario; '
-                    'reconéctate para asegurarla.',
+                : '⚠️ Sin señal: guardamos tu reserva como PENDIENTE y la '
+                    'confirmaremos sola al recuperar conexión. Si para entonces '
+                    'otra persona tomó el horario, te avisaremos.',
             style: const TextStyle(color: Colors.white)),
       ),
     );

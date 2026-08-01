@@ -175,11 +175,19 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
     }
 
     nav.pop(); // vuelve al mapa
+    // Solo es "confirmada" si llegó a Supabase (fuente de verdad anti-doble
+    // reserva). Con sinConexion/error queda PENDIENTE y se reintenta sola.
+    final confirmada = res == ResultadoReserva.ok;
     messenger.showSnackBar(SnackBar(
-      backgroundColor: verdeCancha,
-      content: Text(exigeSena
-          ? '✅ Seña pagada · Reserva confirmada en ${cancha.nombre} · $_dia $hora · paga ${cancha.monedaSimbolo} ${resto.toStringAsFixed(2)} en la cancha'
-          : '✅ Reserva confirmada en ${cancha.nombre} · $_dia $hora'),
+      backgroundColor: confirmada ? verdeCancha : const Color(0xFFB4471F),
+      duration: const Duration(seconds: 5),
+      content: Text(!confirmada
+          ? '⚠️ Sin señal: guardamos tu reserva como PENDIENTE y la '
+              'confirmaremos sola al recuperar conexión. Si para entonces otra '
+              'persona tomó el horario, te avisaremos.'
+          : exigeSena
+              ? '✅ Seña pagada · Reserva confirmada en ${cancha.nombre} · $_dia $hora · paga ${cancha.monedaSimbolo} ${resto.toStringAsFixed(2)} en la cancha'
+              : '✅ Reserva confirmada en ${cancha.nombre} · $_dia $hora'),
     ));
   }
 

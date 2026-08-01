@@ -140,6 +140,8 @@ class _PichangolAppState extends State<PichangolApp>
       // tocar la notificación de "llamada en curso"), la reabrimos.
       abrirLlamadaEnCurso();
       _latir(); // volví: actualizo mi presencia
+      // Reintenta subir reservas que se hicieron sin señal (outbox offline).
+      appState.sincronizarReservasPendientes();
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive) {
       _latir(); // me voy: registro mi "última vez" ahora
