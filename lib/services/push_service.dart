@@ -169,6 +169,9 @@ class PushService {
     // avisa al panel de Reservas para que se REFRESQUE solo (estilo WhatsApp).
     if (m.data['tipo'] == 'reserva') {
       final n = m.notification;
+      // Refresco GLOBAL: baja la reserva nueva pase lo que pase (aunque estés en
+      // otra pantalla), y avisa al panel de Reservas por si está abierto.
+      appState.cargarReservasRemotas();
       nuevaReserva.value++;
       try {
         _sonidoPush.play(AssetSource('sonidos/pichan.mp3'));

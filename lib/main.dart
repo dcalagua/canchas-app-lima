@@ -151,6 +151,9 @@ class _PichangolAppState extends State<PichangolApp>
       // registrar la contabilidad (comisión/liquidación) que quedó pendiente.
       appState.sincronizarReservasPendientes();
       appState.flushContabilidad();
+      // Baja reservas nuevas (p. ej. si llegó un push de reserva con la app en
+      // segundo plano): al volver, el panel del dueño ya está al día.
+      appState.cargarReservasRemotas();
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive) {
       _latir(); // me voy: registro mi "última vez" ahora
