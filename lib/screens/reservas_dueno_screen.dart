@@ -28,9 +28,8 @@ class _ReservasDuenoScreenState extends State<ReservasDuenoScreen> {
   void initState() {
     super.initState();
     // Carga qué jugadores están verificados para mostrar la insignia.
-    final mias = appState.misCanchas.map((c) => c.id).toSet();
     final emails = appState.reservas
-        .where((r) => mias.contains(r.canchaId))
+        .where((r) => appState.miCanchaDeReserva(r.canchaId) != null)
         .map((r) => r.usuario);
     appState.sincronizarVerificados(emails);
   }
@@ -85,17 +84,24 @@ class _ReservasDuenoScreenState extends State<ReservasDuenoScreen> {
       body: AnchoLectura(child: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
-          // Canchas del dueño → mapa id→nombre para etiquetar cada reserva.
+          // Resuelve cada reserva a la cancha del dueño a la que pertenece
+          // (tolerante a ids duplicados del mismo local). Solo quedan las suyas.
+          final canchaDe = <String, Cancha>{}; // reservaId → su cancha (dueño)
+          final reservas = <Reserva>[];
+          for (final r in appState.reservas) {
+            final c = appState.miCanchaDeReserva(r.canchaId);
+            if (c != null) {
+              canchaDe[r.id] = c;
+              reservas.add(r);
+            }
+          }
+          reservas.sort((a, b) {
+            final byFecha = b.fecha.compareTo(a.fecha); // más recientes arriba
+            return byFecha != 0
+                ? byFecha
+                : b.horaInicio.compareTo(a.horaInicio);
+          });
           final mias = {for (final c in appState.misCanchas) c.id: c};
-          final reservas = appState.reservas
-              .where((r) => mias.containsKey(r.canchaId))
-              .toList()
-            ..sort((a, b) {
-              final byFecha = b.fecha.compareTo(a.fecha); // más recientes arriba
-              return byFecha != 0
-                  ? byFecha
-                  : b.horaInicio.compareTo(a.horaInicio);
-            });
 
           // Libro de caja del piloto (excluye no-shows del "por cobrar").
           final activas =
@@ -136,7 +142,7 @@ class _ReservasDuenoScreenState extends State<ReservasDuenoScreen> {
                                   width: w,
                                   child: _ReservaCard(
                                     reserva: r,
-                                    cancha: mias[r.canchaId]!,
+                                    cancha: canchaDe[r.id]!,
                                     fechaLabel: _fechaLabel(r.fecha),
                                   ),
                                 ),
@@ -149,7 +155,7 @@ class _ReservasDuenoScreenState extends State<ReservasDuenoScreen> {
                             padding: const EdgeInsets.only(bottom: 12),
                             child: _ReservaCard(
                               reserva: r,
-                              cancha: mias[r.canchaId]!,
+                              cancha: canchaDe[r.id]!,
                               fechaLabel: _fechaLabel(r.fecha),
                             ),
                           ),

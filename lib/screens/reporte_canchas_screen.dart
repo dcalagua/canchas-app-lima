@@ -62,16 +62,21 @@ class _ReporteCanchasScreenState extends State<ReporteCanchasScreen> {
         listenable: appState,
         builder: (context, _) {
           final misCanchas = appState.misCanchas;
-          final misIds = misCanchas.map((c) => c.id).toSet();
           final nombres = {for (final c in misCanchas) c.id: c.nombre};
           final mon =
               misCanchas.isNotEmpty ? misCanchas.first.monedaSimbolo : 'S/';
           final rango = _rangoActual();
 
+          // Resuelve cada reserva a la cancha del dueño (tolerante a ids
+          // duplicados del mismo local) para no perder cobros en el reporte.
+          final canchaDe = <String, Cancha>{}; // reservaId → cancha del dueño
           final delRango = appState.reservas.where((r) {
-            if (!misIds.contains(r.canchaId)) return false;
+            final c = appState.miCanchaDeReserva(r.canchaId);
+            if (c == null) return false;
             final f = _fechaDe(r);
-            return f != null && _enRango(f, rango);
+            if (f == null || !_enRango(f, rango)) return false;
+            canchaDe[r.id] = c;
+            return true;
           }).toList()
             ..sort((a, b) => (_fechaDe(b) ?? DateTime(2000))
                 .compareTo(_fechaDe(a) ?? DateTime(2000)));
@@ -88,7 +93,8 @@ class _ReporteCanchasScreenState extends State<ReporteCanchasScreen> {
             } else {
               porCobrar += t;
             }
-            porCancha[r.canchaId] = (porCancha[r.canchaId] ?? 0) + t;
+            final cid = canchaDe[r.id]?.id ?? r.canchaId;
+            porCancha[cid] = (porCancha[cid] ?? 0) + t;
           }
           final ticket = nReservas > 0 ? (facturado + porCobrar) / nReservas : 0;
           final ranking = porCancha.entries.toList()
@@ -141,9 +147,9 @@ class _ReporteCanchasScreenState extends State<ReporteCanchasScreen> {
               _GraficoMeses(
                 pagadas: appState.reservas
                     .where((r) =>
-                        misIds.contains(r.canchaId) &&
                         r.pagado &&
-                        r.estado != EstadoReserva.noShow)
+                        r.estado != EstadoReserva.noShow &&
+                        appState.miCanchaDeReserva(r.canchaId) != null)
                     .toList(),
                 fechaDe: _fechaDe,
                 mesesCorto: _mesesCorto,
@@ -183,7 +189,9 @@ class _ReporteCanchasScreenState extends State<ReporteCanchasScreen> {
                 for (final r in delRango)
                   _FilaReserva(
                       reserva: r,
-                      cancha: nombres[r.canchaId] ?? 'Cancha',
+                      cancha: canchaDe[r.id]?.nombre ??
+                          nombres[r.canchaId] ??
+                          'Cancha',
                       moneda: mon,
                       mesesCorto: _mesesCorto),
             ],

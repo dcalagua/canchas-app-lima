@@ -3919,10 +3919,9 @@ class AppState extends ChangeNotifier {
   /// les puede avisar: con correo (tienen la app → chat/push) o con teléfono
   /// (WhatsApp). Deduplicados. Para difundir horas libres/promos.
   List<({String nombre, String email, String telefono})> clientesParaAvisar() {
-    final misIds = misCanchas.map((c) => c.id).toSet();
     final out = <String, ({String nombre, String email, String telefono})>{};
     for (final r in reservas) {
-      if (!misIds.contains(r.canchaId)) continue;
+      if (miCanchaDeReserva(r.canchaId) == null) continue;
       final email = r.usuario.trim().toLowerCase();
       final tel = r.telefono.trim();
       if (email.isEmpty && tel.isEmpty) continue; // sin forma de contactar
@@ -4281,6 +4280,39 @@ class AppState extends ChangeNotifier {
     // Colapsa duplicados del MISMO lugar (varios ids por re-registrar/re-reclamar
     // la misma cancha en pruebas): que no aparezca "Sabor Golazo" 3 veces.
     return _dedupPorLugar(map.values.toList());
+  }
+
+  /// Resuelve a qué cancha del DUEÑO pertenece una reserva, AUNQUE la reserva
+  /// apunte a un id duplicado del mismo local (pasa cuando la cancha se
+  /// re-registró/re-reclamó y quedó con varios ids: `misCanchas` deduplica por
+  /// lugar y se queda con UNO, pero la reserva puede traer otro de los ids). Sin
+  /// esto, una reserva real "no aparecía" en el panel del dueño. Null si la
+  /// reserva no es de ninguna cancha suya.
+  Cancha? miCanchaDeReserva(String canchaId) {
+    if (canchaId.isEmpty) return null;
+    final mias = misCanchas;
+    // 1) Match directo por id (caso normal).
+    for (final c in mias) {
+      if (c.id == canchaId) return c;
+    }
+    // 2) Match por LUGAR: ubica la cancha original de la reserva (en todo lo que
+    // conocemos) y busca la cancha del dueño del mismo local.
+    Cancha? orig;
+    for (final c in [...canchasExtra, ...canchasRemotas]) {
+      if (c.id == canchaId) {
+        orig = c;
+        break;
+      }
+    }
+    if (orig == null) return null;
+    final clave = _claveLugar(orig);
+    for (final c in mias) {
+      if (_claveLugar(c) == clave &&
+          _cercaDe(c.ubicacion, orig.ubicacion, 0.12)) {
+        return c;
+      }
+    }
+    return null;
   }
 
   /// Edita una cancha del dueño (local + nube). Funciona aunque la cancha venga
@@ -6009,12 +6041,11 @@ class AppState extends ChangeNotifier {
 
   /// Reservas del día [iso] de las canchas del dueño (excluye no-shows).
   List<Reserva> reservasDelDiaDueno(String iso) {
-    final ids = misCanchas.map((c) => c.id).toSet();
     return reservas
         .where((r) =>
-            ids.contains(r.canchaId) &&
             r.fecha == iso &&
-            r.estado != EstadoReserva.noShow)
+            r.estado != EstadoReserva.noShow &&
+            miCanchaDeReserva(r.canchaId) != null)
         .toList()
       ..sort((a, b) => a.horaInicio.compareTo(b.horaInicio));
   }
