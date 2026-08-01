@@ -956,6 +956,161 @@ class AppState extends ChangeNotifier {
   static const _kResvPend = 'reservas_pendientes_sync';
   static const _kResvNoConf = 'reservas_no_confirmadas';
 
+  // ── Contabilidad de reservas (comisión/liquidación) con REINTENTO ──────────
+  // Antes la comisión/liquidación era "best-effort": UNA llamada al confirmar la
+  // reserva; si fallaba la red, se PERDÍA (el dueño no veía el descuento). Ahora
+  // se encola y se reintenta (el backend es idempotente por reserva_id).
+  final List<Map<String, dynamic>> _contaPend = [];
+  // Acción contable EN ESPERA de una reserva que quedó offline: se registra
+  // recién cuando la reserva se CONFIRMA en el servidor (o se marca reembolso si
+  // expira / se ocupa). reservaId → acción.
+  final Map<String, Map<String, dynamic>> _contaEnEspera = {};
+  // Reembolsos pendientes: pagos ONLINE cobrados cuya reserva NO se pudo asegurar
+  // (slot ocupado / expiró). Registro auditable para no quedarnos con la plata;
+  // el reembolso real (Culqi) es una tarea aparte del backend.
+  final List<Map<String, dynamic>> _reembolsosPend = [];
+  static const _kContaPend = 'conta_pendiente_json';
+  static const _kContaEspera = 'conta_espera_json';
+  static const _kReembolsos = 'reembolsos_pendientes_json';
+
+  int get reembolsosPendientes => _reembolsosPend.length;
+
+  List<Map<String, dynamic>> _listaMapa(String? raw) {
+    if (raw == null || raw.isEmpty) return [];
+    try {
+      return (jsonDecode(raw) as List)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> cargarContabilidad() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _contaPend
+        ..clear()
+        ..addAll(_listaMapa(prefs.getString(_kContaPend)));
+      _reembolsosPend
+        ..clear()
+        ..addAll(_listaMapa(prefs.getString(_kReembolsos)));
+      _contaEnEspera.clear();
+      final esp = prefs.getString(_kContaEspera);
+      if (esp != null && esp.isNotEmpty) {
+        (jsonDecode(esp) as Map<String, dynamic>).forEach(
+            (k, v) => _contaEnEspera[k] = Map<String, dynamic>.from(v as Map));
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _persistirContabilidad() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kContaPend, jsonEncode(_contaPend));
+      await prefs.setString(_kReembolsos, jsonEncode(_reembolsosPend));
+      await prefs.setString(_kContaEspera, jsonEncode(_contaEnEspera));
+    } catch (_) {}
+  }
+
+  /// Construye la acción contable de una reserva según cómo se cobró. Null si la
+  /// cancha no tiene dueño (nadie a quien acreditar/cobrar).
+  Map<String, dynamic>? _accionContable(Cancha cancha, String cobro,
+      {required double montoBase,
+      required int sena,
+      required String reservaId,
+      required String etiqueta}) {
+    if (cancha.dueno.isEmpty) return null;
+    switch (cobro) {
+      case 'efectivo':
+        return {
+          'kind': 'comision', 'dueno': cancha.dueno, 'monto': montoBase,
+          'reserva_id': reservaId, 'concepto': 'Comisión · $etiqueta',
+          'online': false,
+        };
+      case 'online':
+        return {
+          'kind': 'liquidacion', 'dueno': cancha.dueno, 'monto': montoBase,
+          'reserva_id': reservaId, 'concepto': 'Reserva online · $etiqueta',
+          'online': true,
+        };
+      case 'sena':
+        return {
+          'kind': 'liquidacion', 'dueno': cancha.dueno,
+          'monto': sena.toDouble(), 'reserva_id': reservaId,
+          'concepto': 'Seña · $etiqueta', 'online': true,
+        };
+      default:
+        return null;
+    }
+  }
+
+  void _encolarConta(Map<String, dynamic> accion) {
+    final dup = _contaPend.any((x) =>
+        x['reserva_id'] == accion['reserva_id'] && x['kind'] == accion['kind']);
+    if (!dup) _contaPend.add(accion);
+    unawaited(_persistirContabilidad());
+    unawaited(flushContabilidad());
+  }
+
+  /// Reintenta registrar en el backend la contabilidad pendiente (comisión de
+  /// saldo / liquidación online). Idempotente por reserva_id → seguro repetir.
+  Future<void> flushContabilidad() async {
+    if (_contaPend.isEmpty || !PagosService.disponible) return;
+    var cambios = false;
+    for (final e in [..._contaPend]) {
+      final monto = (e['monto'] as num?)?.toDouble() ?? 0;
+      final rid = (e['reserva_id'] ?? '').toString();
+      bool quitar = monto <= 0; // nada que registrar
+      if (!quitar) {
+        Map<String, dynamic>? r;
+        if (e['kind'] == 'comision') {
+          r = await PagosService.comisionReserva(
+              duenoId: (e['dueno'] ?? '').toString(),
+              montoSoles: monto,
+              reservaId: rid,
+              concepto: (e['concepto'] ?? '').toString());
+        } else {
+          r = await PagosService.liquidacionOnline(
+              duenoId: (e['dueno'] ?? '').toString(),
+              montoSoles: monto,
+              reservaId: rid,
+              concepto: (e['concepto'] ?? '').toString());
+        }
+        quitar = r != null; // 200 (ok o duplicada) → listo
+      }
+      if (quitar) {
+        _contaPend.removeWhere(
+            (x) => x['reserva_id'] == rid && x['kind'] == e['kind']);
+        cambios = true;
+      }
+    }
+    if (cambios) await _persistirContabilidad();
+  }
+
+  void _registrarReembolso(String reservaId, double monto, String motivo) {
+    if (monto <= 0) return;
+    _reembolsosPend.add({
+      'reserva_id': reservaId,
+      'email': (usuario?.email ?? '').toLowerCase(),
+      'monto': monto,
+      'motivo': motivo,
+    });
+    unawaited(_persistirContabilidad());
+  }
+
+  /// Una reserva pendiente (offline) que NO llegó a confirmarse: si su pago fue
+  /// online, registra el reembolso; descarta su acción contable en espera.
+  void _reembolsoSiEnEspera(String reservaId, String motivo) {
+    final accion = _contaEnEspera.remove(reservaId);
+    if (accion == null) return;
+    if (accion['online'] == true) {
+      _registrarReembolso(
+          reservaId, (accion['monto'] as num?)?.toDouble() ?? 0, motivo);
+    }
+    unawaited(_persistirContabilidad());
+  }
+
   /// ¿La reserva está guardada pero aún no confirmada en el servidor (offline)?
   bool reservaPendienteSync(String id) => _reservasPendientesSync.contains(id);
 
@@ -1040,6 +1195,7 @@ class AppState extends ChangeNotifier {
         _reservasPendientesSync.remove(id);
         _reservasNoConfirmadas.add(id);
         reservas.removeWhere((x) => x.id == id); // libera slot; el dueño no la ve
+        _reembolsoSiEnEspera(id, 'Sincronizó después de la hora de juego');
         cambios = true;
         continue;
       }
@@ -1047,6 +1203,9 @@ class AppState extends ChangeNotifier {
       if (res == ResultadoReserva.ok) {
         _reservasPendientesSync.remove(id);
         cambios = true;
+        // Recién ahora registra la contabilidad (comisión/liquidación).
+        final accion = _contaEnEspera.remove(id);
+        if (accion != null) _encolarConta(accion);
         final cancha = _canchaPorIdAny(r.canchaId);
         if (cancha != null) {
           final clave = r.grupoReservaId.isNotEmpty ? r.grupoReservaId : r.id;
@@ -1064,6 +1223,7 @@ class AppState extends ChangeNotifier {
         _reservasPendientesSync.remove(id);
         _reservasNoConfirmadas.add(id);
         reservas.removeWhere((x) => x.id == id);
+        _reembolsoSiEnEspera(id, 'El horario lo tomó otro jugador');
         cambios = true;
       }
       // sinConexion / error → sigue pendiente para el próximo intento.
@@ -1072,6 +1232,7 @@ class AppState extends ChangeNotifier {
       _recomputarMisReservas();
       notifyListeners();
       await _persistirReservasSync();
+      await _persistirContabilidad();
       _persistirDatos();
     }
   }
@@ -4015,8 +4176,10 @@ class AppState extends ChangeNotifier {
   /// dispositivos) y recalcula "Mis reservas" según el correo del jugador.
   Future<void> cargarReservasRemotas() async {
     // Hay conexión (vamos a leer de Supabase): primero intenta SUBIR las
-    // reservas que quedaron pendientes por haberse hecho sin señal.
+    // reservas que quedaron pendientes por haberse hecho sin señal, y registrar
+    // la contabilidad (comisión/liquidación) que no se pudo enviar antes.
     await sincronizarReservasPendientes();
+    await flushContabilidad();
     final remotas = await ReservasRepo.fetchRemotas();
     if (remotas.isEmpty) return;
     for (final r in remotas) {
@@ -5292,6 +5455,7 @@ class AppState extends ChangeNotifier {
         _sincronizarMiPerfil(); // trae mi nombre-foto elegido (otro dispositivo)
         cargarMisNiveles(); // mi nivel de jugador (device-first) al reabrir la app
         cargarReservasSync(); // reservas offline pendientes de subir (outbox)
+        cargarContabilidad(); // comisión/liquidación pendiente de registrar
       }
 
       final contactosRaw = prefs.getString(_kContactos);
@@ -5784,6 +5948,7 @@ class AppState extends ChangeNotifier {
     cargarEstados(); // historias vigentes (24 h) de mis conocidos
     cargarMisNiveles(); // mi nivel de jugador por deporte (device-first)
     cargarReservasSync(); // reservas offline pendientes de subir (outbox)
+    cargarContabilidad(); // comisión/liquidación pendiente de registrar
     // Trae sus academias (por si las creó en otro dispositivo) y LUEGO las
     // matrículas, para que el profe vea a sus alumnos apenas entra.
     () async {
@@ -5817,6 +5982,9 @@ class AppState extends ChangeNotifier {
     _misNiveles.clear();
     _reservasPendientesSync.clear();
     _reservasNoConfirmadas.clear();
+    _contaPend.clear();
+    _contaEnEspera.clear();
+    _reembolsosPend.clear();
     chatsOcultos.clear();
     chatsFijados.clear();
     chatsArchivados.clear();
@@ -5979,7 +6147,10 @@ class AppState extends ChangeNotifier {
     // sin importar el deporte (es la misma superficie física).
     final yaLocal = reservas.any((r) =>
         r.canchaId == cancha.id && r.fecha == fecha && r.horaInicio == hora);
-    if (yaLocal) return ResultadoReserva.ocupado;
+    if (yaLocal) {
+      _reembolsoSiPagado(cobro, cancha, fecha, hora, sena);
+      return ResultadoReserva.ocupado;
+    }
 
     // Precio efectivo del slot (hora feliz de mañanas + descuento puntual).
     final precio = precioSlotEfectivo(cancha, fecha, hora);
@@ -6009,7 +6180,12 @@ class AppState extends ChangeNotifier {
     // Fuente de verdad anti-doble-reserva: Supabase con
     // UNIQUE(cancha_id, fecha, hora_inicio). Si otro ganó el slot → ocupado.
     final res = await ReservasRepo.insertarSegura(reserva);
-    if (res == ResultadoReserva.ocupado) return res;
+    if (res == ResultadoReserva.ocupado) {
+      // Se cobró por adelantado (online/seña) pero el slot ya lo tomó otro →
+      // registra el reembolso (no nos quedamos la plata).
+      _reembolsoSiPagado(cobro, cancha, fecha, hora, sena);
+      return res;
+    }
 
     // ok / sinConexion / error → se guarda local igual (fail-safe offline).
     reservas.insert(0, reserva); // visible para el dueño en su panel
@@ -6019,52 +6195,47 @@ class AppState extends ChangeNotifier {
           (b) => b.canchaId == cancha.id && b.hora == hora);
       if (i >= 0) agenda[i] = agenda[i].copyWith(reservaId: reserva.id);
     }
-    // Trazabilidad de la comisión de PCG (best-effort, idempotente por id):
-    //  - 'efectivo': el jugador paga la cancha; PCG cobra la comisión del SALDO
-    //    prepago del dueño.
-    //  - 'online': el jugador pagó por la app; se registra la LIQUIDACIÓN (neto
-    //    que PCG le debe al dueño). No toca el saldo.
-    if (res == ResultadoReserva.ok && cancha.dueno.isNotEmpty) {
-      final etiqueta = '${cancha.nombre} · $diaLabel $hora';
-      if (cobro == 'efectivo') {
-        PagosService.comisionReserva(
-          duenoId: cancha.dueno,
-          montoSoles: precioHoraEfectivo(cancha, fecha, hora),
-          reservaId: reserva.id,
-          concepto: 'Comisión · $etiqueta',
-        );
-      } else if (cobro == 'online') {
-        PagosService.liquidacionOnline(
-          duenoId: cancha.dueno,
-          montoSoles: precioHoraEfectivo(cancha, fecha, hora),
-          reservaId: reserva.id,
-          concepto: 'Reserva online · $etiqueta',
-        );
-      } else if (cobro == 'sena') {
-        // El jugador adelantó la SEÑA por la app (Culqi). PCG toma su comisión de
-        // la seña y deja el neto "por recibir" del dueño; el resto lo cobra el
-        // dueño en efectivo en la cancha. Si hay no-show, la seña ya está cobrada
-        // → el dueño se la queda (no reembolsable).
-        PagosService.liquidacionOnline(
-          duenoId: cancha.dueno,
-          montoSoles: sena.toDouble(),
-          reservaId: reserva.id,
-          concepto: 'Seña · $etiqueta',
-        );
-      }
-    }
+    // CONTABILIDAD (comisión de saldo / liquidación online), con REINTENTO:
+    //  - 'efectivo': PCG cobra su comisión del SALDO prepago del dueño.
+    //  - 'online'/'sena': el jugador pagó por la app; se registra la LIQUIDACIÓN
+    //    (neto que PCG le debe al dueño). No toca el saldo.
+    // Antes era una sola llamada best-effort (si fallaba la red, se PERDÍA). Ahora
+    // se encola: si la reserva confirmó → se registra ya (con reintento); si quedó
+    // offline → espera a confirmarse en el reintento del outbox.
+    final accion = _accionContable(cancha, cobro,
+        montoBase: precioHoraEfectivo(cancha, fecha, hora),
+        sena: sena,
+        reservaId: reserva.id,
+        etiqueta: '${cancha.nombre} · $diaLabel $hora');
     if (res == ResultadoReserva.ok) {
-      // Reserva CONFIRMADA en el servidor → avisa al dueño (push + chat).
+      if (accion != null) _encolarConta(accion);
+      // Reserva CONFIRMADA en el servidor → avisa al dueño (push dedicado).
       if (notificarDueno) _notificarDuenoReserva(cancha, [reserva]);
     } else {
       // Sin señal / error: quedó SOLO local. Va a la bandeja de salida para
-      // reintentar subirla al recuperar conexión (y recién ahí avisar al dueño).
+      // reintentar subirla al recuperar conexión (y recién ahí avisar al dueño y
+      // registrar la contabilidad).
       _reservasPendientesSync.add(reserva.id);
+      if (accion != null) _contaEnEspera[reserva.id] = accion;
       unawaited(_persistirReservasSync());
+      unawaited(_persistirContabilidad());
     }
     notifyListeners();
     _persistirDatos();
     return res == ResultadoReserva.ok ? ResultadoReserva.ok : res;
+  }
+
+  /// Si la reserva se pagó por adelantado (online/seña) pero el slot NO se pudo
+  /// asegurar (ocupado), registra el reembolso pendiente para no quedarnos con la
+  /// plata del jugador.
+  void _reembolsoSiPagado(
+      String cobro, Cancha cancha, String fecha, String hora, int sena) {
+    if (cobro != 'online' && cobro != 'sena') return;
+    final monto = cobro == 'sena'
+        ? sena.toDouble()
+        : precioHoraEfectivo(cancha, fecha, hora);
+    _registrarReembolso('ocupado_${cancha.id}_${fecha}_$hora', monto,
+        'Horario ya tomado (pagado por adelantado)');
   }
 
   /// RESERVA DE VARIAS HORAS SEGUIDAS (ej. 18:00–20:00 = 2 Reservas del mismo
