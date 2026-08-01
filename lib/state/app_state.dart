@@ -6122,10 +6122,28 @@ class AppState extends ChangeNotifier {
   Future<void> resetVirgen() async {
     final email = usuario?.email.toLowerCase();
     if (email != null && email.isNotEmpty) {
-      final misAcademiaIds = academias
-          .where((a) => a.dueno.toLowerCase() == email)
-          .map((a) => a.id)
-          .toSet();
+      // ACADEMIAS MÍAS: junta las que están en memoria + las que estén SOLO en la
+      // nube (aún no cargadas). Si no consultara la nube, una academia no cargada
+      // se escaparía del tombstone y reaparecería al re-sincronizar.
+      final misAcademiaIds = <String>{
+        for (final a in academias)
+          if (a.dueno.toLowerCase() == email) a.id,
+      };
+      try {
+        for (final a in await AcademiasRepo.fetchRemotas()) {
+          if (a.dueno.toLowerCase() == email) misAcademiaIds.add(a.id);
+        }
+      } catch (_) {}
+      // CANCHAS MÍAS: locales + solo-nube (mismo motivo).
+      final misCanchaIds = <String>{
+        for (final c in [...canchasExtra, ...canchasRemotas])
+          if (c.dueno.toLowerCase() == email) c.id,
+      };
+      try {
+        for (final c in await CanchasRepo.fetchRemotas()) {
+          if (c.dueno.toLowerCase() == email) misCanchaIds.add(c.id);
+        }
+      } catch (_) {}
       // Matrículas (alumnos + cuotas embebidas) de mis academias + las mías.
       for (final al in List<Alumno>.from(alumnos)) {
         if (misAcademiaIds.contains(al.academiaId) ||
@@ -6133,14 +6151,11 @@ class AppState extends ChangeNotifier {
           await MatriculasRepo.eliminar(al.id);
         }
       }
-      final misCanchaIds =
-          misCanchas.where((c) => c.registrada).map((c) => c.id).toList();
-      // Reservas de mis canchas (registradas/reclamadas).
+      // Reservas y reseñas de mis canchas.
       for (final id in misCanchaIds) {
         await ReservasRepo.eliminarDeCancha(id);
       }
-      // Reseñas de mis canchas.
-      await ResenasRepo.eliminarDeCanchas(misCanchaIds);
+      await ResenasRepo.eliminarDeCanchas(misCanchaIds.toList());
       // Chats: de mis academias + conversaciones de cancha donde participo.
       await MensajesRepo.eliminarDeAcademias(misAcademiaIds.toList());
       await MensajesRepo.eliminarCanchaDe(email);
@@ -6148,31 +6163,22 @@ class AppState extends ChangeNotifier {
       for (final c in campeonatos.where((c) => misAcademiaIds.contains(c.academiaId))) {
         await CampeonatosRepo.eliminar(c.id);
       }
-      // ACADEMIAS (en la nube): borra las MÍAS por completo. Las matrículas de sus
-      // alumnos ya se eliminaron arriba.
+      // ACADEMIAS: borra en la nube + TOMBSTONE durable (aunque el borrado en la
+      // nube falle por RLS, no reaparece en este dispositivo).
       for (final id in misAcademiaIds) {
         await AcademiasRepo.eliminar(id);
+        _academiasEliminadas.add(id);
+      }
+      // CANCHAS: tombstone durable + quita local + borra en la nube.
+      for (final id in misCanchaIds) {
+        eliminarCancha(id);
       }
       // Torre de control (backend): borra MIS reclamos de propiedad para que mis
-      // canchas reclamadas también desaparezcan del servidor y pueda reclamarlas
-      // de cero (best-effort; si no hay red, queda para reintentar a mano).
+      // canchas reclamadas también desaparezcan del servidor.
       await PropiedadService.borrarMisReclamos(email);
     }
-    // Canchas reclamadas/registradas por MÍ: se BORRAN de forma durable. Como al
-    // reclamar se escriben en Supabase, no basta con quitarlas de la lista local
-    // (volverían al re-sincronizar): se tombstonean (canchasEliminadas) y se
-    // borran también en la nube (best-effort). Así "Mis canchas" queda vacío.
-    if (email != null && email.isNotEmpty) {
-      final misIds = <String>{
-        for (final c in [...canchasExtra, ...canchasRemotas])
-          if (c.dueno.toLowerCase() == email) c.id,
-      };
-      for (final id in misIds) {
-        eliminarCancha(id); // tombstone durable + quita local + borra en la nube
-      }
-    }
-    // Tombstone TODAS las academias locales para que no reaparezcan al re-cargar
-    // de la nube (si el borrado lógico falló por RLS) ni se re-siembre la demo.
+    // Tombstone CUALQUIER academia local restante (p. ej. la demo de dev) para que
+    // no reaparezca al re-cargar de la nube ni se re-siembre.
     _academiasEliminadas.addAll(academias.map((a) => a.id));
     // Memoria local: borra TODO lo transaccional Y las academias/alumnos; CONSERVA
     // solo la sesión (no cierra sesión, esa es la diferencia con "Empezar de cero").
