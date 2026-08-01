@@ -6086,14 +6086,14 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// "DEJAR EN VIRGEN" (quirúrgico): deja el sistema como si NUNCA hubiera habido
-  /// una transacción —sin alumnos, sin reservas, sin cobros ni saldo— pero
-  /// CONSERVA las canchas reclamadas, las academias creadas y la sesión. Es lo
-  /// contrario de "Empezar de cero" (que borra todo y cierra sesión).
+  /// "DEJAR EN VIRGEN": borra TODO lo del usuario —academias, alumnos, matrículas,
+  /// reservas, cobros, saldo, campeonatos, chats, reseñas y sus canchas reclamadas
+  /// (incluido el reclamo en la torre de control)— pero MANTIENE la sesión abierta.
+  /// Es como "Empezar de cero" pero SIN cerrar sesión (ni borrar todas las prefs).
   ///
-  /// Nube (best-effort, solo lo del usuario logueado): borra las matrículas de
-  /// SUS academias y las suyas como alumno, y las reservas de SUS canchas. NO
-  /// borra academias ni canchas. El saldo/pagos/suscripciones del servidor se
+  /// Nube (best-effort, solo lo del usuario logueado): borra sus academias y las
+  /// matrículas (suyas y de sus academias), las reservas y reseñas de sus canchas,
+  /// y sus reclamos de propiedad. El saldo/pagos/suscripciones del servidor se
   /// limpian aparte desde la torre de control (botón "Dejar el servidor en
   /// virgen").
   Future<void> resetVirgen() async {
@@ -6125,6 +6125,11 @@ class AppState extends ChangeNotifier {
       for (final c in campeonatos.where((c) => misAcademiaIds.contains(c.academiaId))) {
         await CampeonatosRepo.eliminar(c.id);
       }
+      // ACADEMIAS (en la nube): borra las MÍAS por completo. Las matrículas de sus
+      // alumnos ya se eliminaron arriba.
+      for (final id in misAcademiaIds) {
+        await AcademiasRepo.eliminar(id);
+      }
       // Torre de control (backend): borra MIS reclamos de propiedad para que mis
       // canchas reclamadas también desaparezcan del servidor y pueda reclamarlas
       // de cero (best-effort; si no hay red, queda para reintentar a mano).
@@ -6136,18 +6141,23 @@ class AppState extends ChangeNotifier {
     if (email != null && email.isNotEmpty) {
       canchasExtra.removeWhere((c) => c.dueno.toLowerCase() == email);
     }
-    // Memoria local: borra lo transaccional; CONSERVA academias y sesión.
+    // Memoria local: borra TODO lo transaccional Y las academias/alumnos; CONSERVA
+    // solo la sesión (no cierra sesión, esa es la diferencia con "Empezar de cero").
     reservas.clear();
     agenda.clear();
     misReservas.clear();
+    academias.clear();
+    _academiasPendientesNube.clear();
     alumnos.clear();
     cuotas.clear();
     asistencias.clear();
     planes.clear();
     evaluaciones.clear();
     notasClase.clear();
+    invitaciones.clear();
     movimientos.clear();
     campeonatos.clear();
+    _landingNegocios.clear();
     saldoClub = 0;
     _saldoOtrosPaises.clear();
     _ultimoSyncMatriculas = null;
