@@ -45,6 +45,8 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
   final _precio = TextEditingController(text: '120.00');
   final _contacto = TextEditingController(); // WhatsApp del dueño (obligatorio)
   final _dni = TextEditingController(); // DNI del reclamante (OPCIONAL)
+  final _nota = TextEditingController(); // nota para el equipo (OPCIONAL)
+  Uint8List? _fotoEvidencia; // prueba de propiedad: fachada/cartel/recibo (OPC.)
 
   /// true cuando se está RECLAMANDO una cancha descubierta en Google (trae base).
   bool get _esReclamo => widget.base != null;
@@ -183,8 +185,21 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
     _precio.dispose();
     _contacto.dispose();
     _dni.dispose();
+    _nota.dispose();
     _map?.dispose();
     super.dispose();
+  }
+
+  /// Foto de EVIDENCIA (prueba de propiedad): fachada/cartel/recibo. Opcional; no
+  /// pasa por la detección de deporte (no es la foto de la cancha). Cámara o
+  /// galería para que el reclamante pueda tomarla en el momento.
+  Future<void> _elegirEvidencia(ImageSource fuente) async {
+    final XFile? file =
+        await ImagePicker().pickImage(source: fuente, maxWidth: 1280);
+    if (file == null) return;
+    final bytes = await file.readAsBytes();
+    if (!mounted) return;
+    setState(() => _fotoEvidencia = bytes);
   }
 
   Future<void> _elegirFoto() async {
@@ -486,11 +501,19 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
         // GPS del dispositivo AL reclamar: el admin puede exigir (torre de
         // control) que coincida con la cancha para aprobar (anti-fraude).
         final desdeAqui = await LocationService.ubicacionPrecisa();
+        // Prueba de propiedad (opcional): sube la foto de evidencia si la puso.
+        var evidenciaUrl = '';
+        if (_fotoEvidencia != null) {
+          evidenciaUrl =
+              await CanchasRepo.subirFoto('ev$ts', _fotoEvidencia!) ?? '';
+        }
         final r = await PropiedadService.crearReclamo(
           canchaId: creadas.first.id,
           solicitanteId: dueno,
           solicitanteNombre: appState.usuario?.nombre ?? '',
           nombreLocal: nombre,
+          fotoEvidenciaUrl: evidenciaUrl,
+          notaReclamante: _nota.text.trim(),
           telefonoContacto: contacto,
           dni: dni, // opcional (puede ir vacío)
           ubicacion: _ubicacion,
@@ -925,6 +948,33 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
               ),
             ),
 
+          const SizedBox(height: 16),
+          // PRUEBA DE PROPIEDAD (opcional): nota + foto (fachada/cartel/recibo).
+          // Acelera el triage del equipo (no es obligatorio para reclamar).
+          Text('Prueba de propiedad (opcional)',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleSmall
+                  ?.copyWith(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _nota,
+            maxLines: 2,
+            maxLength: 240,
+            decoration: const InputDecoration(
+              labelText: 'Nota para el equipo',
+              hintText: 'Ej.: soy el administrador, atendemos de 8am a 11pm.',
+              counterText: '',
+            ),
+          ),
+          const SizedBox(height: 10),
+          _EvidenciaFoto(
+            foto: _fotoEvidencia,
+            onCamara: () => _elegirEvidencia(ImageSource.camera),
+            onGaleria: () => _elegirEvidencia(ImageSource.gallery),
+            onQuitar: () => setState(() => _fotoEvidencia = null),
+          ),
+
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
@@ -993,6 +1043,65 @@ class _MapaUbicacion extends StatelessWidget {
                 },
         ),
       ),
+    );
+  }
+}
+
+/// Selector de FOTO DE EVIDENCIA (prueba de propiedad): preview + tomar/elegir +
+/// quitar. Estilo Airbnb (tarjeta blanca, borde suave). Opcional.
+class _EvidenciaFoto extends StatelessWidget {
+  final Uint8List? foto;
+  final VoidCallback onCamara;
+  final VoidCallback onGaleria;
+  final VoidCallback onQuitar;
+  const _EvidenciaFoto({
+    required this.foto,
+    required this.onCamara,
+    required this.onGaleria,
+    required this.onQuitar,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    if (foto != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: Image.memory(foto!, height: 150, fit: BoxFit.cover),
+          ),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: onQuitar,
+              icon: const Icon(Icons.close, size: 16),
+              label: const Text('Quitar foto'),
+            ),
+          ),
+        ],
+      );
+    }
+    return Row(
+      children: [
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: onCamara,
+            icon: const Icon(Icons.photo_camera_outlined),
+            label: const Text('Tomar foto'),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: onGaleria,
+            icon: Icon(Icons.image_outlined, color: cs.primary),
+            label: const Text('Galería'),
+          ),
+        ),
+      ],
     );
   }
 }

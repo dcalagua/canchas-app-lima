@@ -260,6 +260,9 @@ class ReclamoPropiedad:
     validador: str | None = None
     nota: str | None = None
     solicitante_nombre: str = ""  # nombre del reclamante (de su cuenta Google)
+    # Prueba de propiedad (opcional) que dejó el reclamante para el triage.
+    foto_evidencia_url: str = ""
+    nota_reclamante: str = ""
 
 
 @dataclass
@@ -1069,7 +1072,9 @@ def _reclamo_from(d: dict) -> ReclamoPropiedad:
         solicitante_lng=d.get("solicitante_lng"),
         decidido_en=_dt(d.get("decidido_en")),
         validado_en=_dt(d.get("validado_en")), validador=d.get("validador"),
-        nota=d.get("nota"), solicitante_nombre=d.get("solicitante_nombre", ""))
+        nota=d.get("nota"), solicitante_nombre=d.get("solicitante_nombre", ""),
+        foto_evidencia_url=d.get("foto_evidencia_url", ""),
+        nota_reclamante=d.get("nota_reclamante", ""))
 
 
 def _conv_from(d: dict) -> Convocatoria:

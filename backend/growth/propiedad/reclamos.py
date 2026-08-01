@@ -216,7 +216,9 @@ def crear_reclamo(cancha_id: str, solicitante_id: str, nombre_local: str,
                   lat: float | None = None, lng: float | None = None,
                   solicitante_lat: float | None = None,
                   solicitante_lng: float | None = None,
-                  solicitante_nombre: str = "") -> dict:
+                  solicitante_nombre: str = "",
+                  foto_evidencia_url: str = "",
+                  nota_reclamante: str = "") -> dict:
     # Anti doble-reclamo. Si esta cancha (por id) o el MISMO lugar (ubicación
     # cercana) ya tiene un reclamo ACTIVO:
     #  - de OTRO usuario → se rechaza ("ya_reclamada").
@@ -237,6 +239,8 @@ def crear_reclamo(cancha_id: str, solicitante_id: str, nombre_local: str,
             solicitante_lat if solicitante_lat is not None else activo.solicitante_lat)
         activo.solicitante_lng = (
             solicitante_lng if solicitante_lng is not None else activo.solicitante_lng)
+        activo.foto_evidencia_url = foto_evidencia_url or activo.foto_evidencia_url
+        activo.nota_reclamante = nota_reclamante or activo.nota_reclamante
         if activo.estado == "pendiente_triage":
             _notificar_admin(
                 f"🔁 Recordatorio de reclamo pendiente\n"
@@ -267,6 +271,8 @@ def crear_reclamo(cancha_id: str, solicitante_id: str, nombre_local: str,
         estado="pendiente_triage",
         creado_en=ahora(),
         solicitante_nombre=solicitante_nombre or "",
+        foto_evidencia_url=foto_evidencia_url or "",
+        nota_reclamante=nota_reclamante or "",
         telefono_contacto=telefono_contacto,
         dni=dni,
         nombre_titular=nombre_titular,
@@ -288,7 +294,9 @@ def crear_reclamo(cancha_id: str, solicitante_id: str, nombre_local: str,
         + f"Cuenta: {solicitante_id}"
         + (f" ({solicitante_nombre})" if solicitante_nombre else "") + "\n"
         f"WhatsApp del dueño: {telefono_contacto or '⚠️ no dejó número'}\n"
-        f"Código: {codigo}\n"
+        + (f"Nota: {nota_reclamante}\n" if nota_reclamante else "")
+        + (f"Foto de evidencia: {foto_evidencia_url}\n" if foto_evidencia_url else "")
+        + f"Código: {codigo}\n"
         f"Verifícalo y, para activarla, responde aquí: APROBAR {codigo}  "
         f"(o RECHAZAR {codigo}). También puedes usar el panel de Reclamos.")
     return {"ok": True, "reclamo_id": r.id, "codigo": codigo, "estado": r.estado}

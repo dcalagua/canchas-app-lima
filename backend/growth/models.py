@@ -88,6 +88,10 @@ class ReclamoRequest(BaseModel):
     solicitante_id: str            # correo del reclamante (login; obligatorio)
     solicitante_nombre: str = ""   # nombre del reclamante (de su cuenta Google)
     nombre_local: str
+    # Prueba de propiedad (opcional): foto (fachada/cartel/recibo) + nota libre
+    # que el reclamante deja para acelerar el triage del operador.
+    foto_evidencia_url: str = ""
+    nota_reclamante: str = ""
     telefono_contacto: str | None = None
     dni: str | None = None
     ruc: str | None = None

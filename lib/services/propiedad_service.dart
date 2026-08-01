@@ -168,6 +168,8 @@ class PropiedadService {
     required String solicitanteId,
     required String nombreLocal,
     String solicitanteNombre = '',
+    String fotoEvidenciaUrl = '',
+    String notaReclamante = '',
     String? telefonoContacto,
     String? dni,
     String? ruc,
@@ -186,6 +188,10 @@ class PropiedadService {
                 'solicitante_id': solicitanteId,
                 if (solicitanteNombre.trim().isNotEmpty)
                   'solicitante_nombre': solicitanteNombre.trim(),
+                if (fotoEvidenciaUrl.trim().isNotEmpty)
+                  'foto_evidencia_url': fotoEvidenciaUrl.trim(),
+                if (notaReclamante.trim().isNotEmpty)
+                  'nota_reclamante': notaReclamante.trim(),
                 'nombre_local': nombreLocal,
                 if (telefonoContacto != null && telefonoContacto.isNotEmpty)
                   'telefono_contacto': telefonoContacto,

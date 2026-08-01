@@ -155,7 +155,9 @@ def post_reclamo(req: ReclamoRequest) -> dict:
         req.cancha_id, req.solicitante_id, req.nombre_local,
         req.telefono_contacto, req.dni, req.ruc, req.relacion,
         req.lat, req.lng, req.solicitante_lat, req.solicitante_lng,
-        solicitante_nombre=req.solicitante_nombre)
+        solicitante_nombre=req.solicitante_nombre,
+        foto_evidencia_url=req.foto_evidencia_url,
+        nota_reclamante=req.nota_reclamante)
 
 
 @router.get("/reclamo/{cancha_id}", dependencies=_APP)
