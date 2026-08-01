@@ -8,7 +8,7 @@ import 'clientes_screen.dart';
 import 'cuenta_screen.dart';
 import 'mensajes_screen.dart';
 import 'mis_canchas_screen.dart';
-import 'reportes_screen.dart';
+import 'reportes_hub_screen.dart';
 import 'reservas_dueno_screen.dart';
 
 /// Panel del DUEÑO unificado: un solo lugar con TODO lo del dueño en pestañas,
@@ -35,7 +35,7 @@ class _HomeShellState extends State<HomeShell> {
     ReservasDuenoScreen(),  // reservas reales de tus canchas + caja
     ClientesScreen(),       // base de clientes (CRM ligero, derivado de reservas)
     MensajesScreen(),       // chat con clientes (inbox del dueño/profe)
-    ReportesScreen(),       // reportes / KPIs (reales)
+    ReportesHubScreen(),    // Reportes: pestañas Resumen + Cobros (unificado)
     CuentaScreen(),         // BILLETERA: saldo único + recargar + por recibir
   ];
 

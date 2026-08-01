@@ -10,7 +10,7 @@ import '../utils/moneda.dart';
 import '../widgets/ancho_lectura.dart';
 import 'chat_screen.dart';
 import 'recordar_reservas_screen.dart';
-import 'reporte_canchas_screen.dart';
+import 'reportes_hub_screen.dart';
 import 'reserva_manual_screen.dart';
 import 'reservas_fijas_screen.dart';
 
@@ -87,10 +87,10 @@ class _ReservasDuenoScreenState extends State<ReservasDuenoScreen> {
                 builder: (_) => const ReservasFijasScreen())),
           ),
           IconButton(
-            tooltip: 'Reporte de cobros',
+            tooltip: 'Reportes',
             icon: const Icon(Icons.bar_chart),
             onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => const ReporteCanchasScreen())),
+                builder: (_) => const ReportesHubScreen(inicial: 1))),
           ),
         ],
       ),

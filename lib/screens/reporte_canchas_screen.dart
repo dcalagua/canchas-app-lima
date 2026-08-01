@@ -9,7 +9,11 @@ import '../theme.dart';
 /// fechas, reservas, ticket promedio, ingresos por mes y desglose por cancha.
 /// Reusa `appState.reservas` (las de las canchas del dueño); no hay tabla nueva.
 class ReporteCanchasScreen extends StatefulWidget {
-  const ReporteCanchasScreen({super.key});
+  const ReporteCanchasScreen({super.key, this.embedded = false});
+
+  /// true cuando se muestra DENTRO del hub de Reportes (pestaña "Cobros"): oculta
+  /// su propia AppBar para no duplicar la barra del hub.
+  final bool embedded;
 
   @override
   State<ReporteCanchasScreen> createState() => _ReporteCanchasScreenState();
@@ -58,7 +62,9 @@ class _ReporteCanchasScreenState extends State<ReporteCanchasScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Reporte de cobros')),
+      appBar: widget.embedded
+          ? null
+          : AppBar(title: const Text('Reporte de cobros')),
       body: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
