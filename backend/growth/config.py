@@ -144,6 +144,13 @@ PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "")
 # el dart-define LANDING_BASE_URL del APK. Si está vacío, cae a PUBLIC_BASE_URL y,
 # en última instancia, al host de la request. Ej.: https://www.pichangol.app
 LANDING_BASE_URL = os.getenv("LANDING_BASE_URL", "")
+
+# Push "tu cancha fue aprobada": URL de la Edge Function de Supabase
+# (push-aprobacion) y su secreto compartido. Al aprobar un reclamo, el backend
+# growth le pega a esta función para que envíe el FCM al reclamante. Si la URL
+# está vacía, no se envía nada (fail-safe). El secreto viaja en X-Push-Secret.
+PUSH_APROBACION_URL = os.getenv("PUSH_APROBACION_URL", "")
+PUSH_APROBACION_SECRET = os.getenv("PUSH_APROBACION_SECRET", "")
 # Hosting transitorio de imágenes para publicar (no se persiste): tope de tamaño
 # por imagen y cuántas se retienen en memoria (se descartan las más viejas).
 IMG_MAX_BYTES = int(os.getenv("IMG_MAX_BYTES", str(8 * 1024 * 1024)))  # 8 MB

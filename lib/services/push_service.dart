@@ -75,6 +75,10 @@ class PushService {
   /// "Nueva reserva"). Lo define main.dart.
   static void Function()? alAbrirReservas;
 
+  /// Callback que abre "Mis canchas" (al tocar el push "tu cancha fue
+  /// aprobada"). Lo define main.dart.
+  static void Function()? alAbrirMisCanchas;
+
   /// Invoca la Edge Function `push-reserva` para avisar al DUEÑO de la cancha
   /// que entró una reserva (push dedicado, fuera del chat). Se pasa SOLO el id
   /// (o el del grupo si son varias horas); el servidor deriva destinatario y
@@ -142,6 +146,12 @@ class PushService {
       alAbrirReservas?.call();
       return;
     }
+    // Push "tu cancha fue aprobada" → refresca propiedades y abre Mis canchas.
+    if (data['tipo'] == 'reclamo_aprobado') {
+      appState.sincronizarPropiedades();
+      alAbrirMisCanchas?.call();
+      return;
+    }
     final hilo = (data['hilo'] ?? '').toString();
     if (hilo.isNotEmpty) alAbrirChat?.call(hilo);
   }
@@ -178,6 +188,18 @@ class PushService {
       } catch (_) {}
       _mostrarBanner((n?.title ?? 'Nueva reserva').trim(), (n?.body ?? '').trim(),
           onTap: () => alAbrirReservas?.call());
+      return;
+    }
+    // Push "tu cancha fue aprobada" con la app abierta: refresca propiedades (se
+    // cae el cartel "pendiente" y se habilitan reservas) + sonido + banner.
+    if (m.data['tipo'] == 'reclamo_aprobado') {
+      final n = m.notification;
+      appState.sincronizarPropiedades();
+      try {
+        _sonidoPush.play(AssetSource('sonidos/pichan.mp3'));
+      } catch (_) {}
+      _mostrarBanner((n?.title ?? '¡Cancha aprobada!').trim(),
+          (n?.body ?? '').trim(), onTap: () => alAbrirMisCanchas?.call());
       return;
     }
     final hilo = (m.data['hilo'] ?? '').toString();

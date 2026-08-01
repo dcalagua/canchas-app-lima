@@ -8,6 +8,7 @@ import 'config/pais.dart';
 import 'data/presencia_repo.dart';
 import 'screens/llamada_screen.dart';
 import 'screens/mensajes_screen.dart';
+import 'screens/home_shell.dart';
 import 'screens/reservas_dueno_screen.dart';
 import 'screens/splash_screen.dart';
 import 'services/llamada_service.dart';
@@ -43,6 +44,13 @@ void main() async {
     final nav = PushService.navigatorKey.currentState;
     if (nav == null) return;
     nav.push(MaterialPageRoute(builder: (_) => const ReservasDuenoScreen()));
+  };
+  // Al tocar el push "tu cancha fue aprobada", abre el panel del dueño en "Mis
+  // canchas" (la cancha ya sale verificada tras sincronizar propiedades).
+  PushService.alAbrirMisCanchas = () {
+    final nav = PushService.navigatorKey.currentState;
+    if (nav == null) return;
+    nav.push(MaterialPageRoute(builder: (_) => const HomeShell()));
   };
   // Al CONTESTAR una llamada entrante (CallKit), abre la pantalla de llamada
   // WebRTC en modo "contestar".

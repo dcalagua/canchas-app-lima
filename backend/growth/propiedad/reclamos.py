@@ -156,6 +156,32 @@ def _notificar_admin(texto: str) -> None:
         pass
 
 
+def _notificar_reclamante_aprobado(r: "ReclamoPropiedad") -> None:
+    """Push "¡Tu cancha fue aprobada!" al reclamante, vía la Edge Function de
+    Supabase (push-aprobacion). El backend growth NO hace FCM; delega en Supabase.
+    Fail-safe: nunca lanza (si no hay URL configurada o falla la red, se ignora)."""
+    url = config.PUSH_APROBACION_URL
+    email = (r.solicitante_id or "").strip()
+    if not url or not email:
+        return
+    try:
+        import json as _json
+        import urllib.request as _url
+        cuerpo = _json.dumps({
+            "email": email,
+            "cancha_nombre": r.nombre_local or "tu cancha",
+            "cancha_id": r.cancha_id or "",
+        }).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+        if config.PUSH_APROBACION_SECRET:
+            headers["X-Push-Secret"] = config.PUSH_APROBACION_SECRET
+        req = _url.Request(url, data=cuerpo, headers=headers, method="POST")
+        with _url.urlopen(req, timeout=10):
+            pass
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _distancia_m(lat1, lng1, lat2, lng2) -> float:
     """Haversine en metros."""
     r = 6371000.0
@@ -525,6 +551,7 @@ def validar_en_sitio(codigo: str, lat: float, lng: float,
             f"✅ Cancha validada en sitio y ACTIVADA\n"
             f"Local: {r.nombre_local}\nValidador: {validador or 's/n'}\n"
             f"Distancia GPS: {round(dist) if dist is not None else 's/d'} m")
+        _notificar_reclamante_aprobado(r)  # push "¡tu cancha fue aprobada!"
         return {"ok": True, "estado": "activada", "verificada": True,
                 "distancia_m": round(dist) if dist is not None else None}
 
@@ -598,6 +625,7 @@ def aprobar_directo(reclamo_id: int, revisor: str | None = None) -> dict:
     _notificar_admin(
         f"✅ Cancha ACTIVADA por aprobación directa (panel)\n"
         f"Local: {r.nombre_local}\nAdmin: {revisor or 's/n'}")
+    _notificar_reclamante_aprobado(r)  # push "¡tu cancha fue aprobada!"
     return {"ok": True, "estado": "activada", "verificada": True, "modo": modo}
 
 
@@ -617,6 +645,7 @@ def activar_admin(reclamo_id: int) -> dict:
     c.verificada = True
     c.verificada_en_persona = True
     c.metodo_verificacion = "en_sitio"
+    _notificar_reclamante_aprobado(r)  # push "¡tu cancha fue aprobada!"
     return {"ok": True, "estado": "activada", "verificada": True}
 
 
