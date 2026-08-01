@@ -5253,26 +5253,51 @@ class AppState extends ChangeNotifier {
         ..addAll(movs.map((m) {
           final tipoStr = (m['tipo'] as String?) ?? 'recarga';
           // Egresos de la billetera (Pro, servicios, torneo, comisión) → consumo.
+          // Ingresos "por recibir" (reserva online) → liquidación (los paga
+          // Pichangol aparte). 'liquidacion_full' = billetera-first: recibes el
+          // 100% porque la comisión ya salió de tu saldo (otro movimiento).
           final tipo = switch (tipoStr) {
             'comision_reserva' ||
             'suscripcion' ||
             'suscripcion_pro' ||
             'inscripcion_torneo' =>
               TipoMovimiento.consumo,
-            'liquidacion_online' => TipoMovimiento.liquidacion,
+            'liquidacion_online' || 'liquidacion_full' =>
+              TipoMovimiento.liquidacion,
             _ => TipoMovimiento.recarga, // recarga, inscripcion_torneo_ingreso
           };
+          final sim = monedaSaldoSimbolo;
+          final com = (m['comision_soles'] as num?)?.toDouble() ?? 0;
+          final bruto = (m['bruto_soles'] as num?)?.toDouble() ?? 0;
           var concepto = (m['concepto'] as String?) ?? '';
+          var fuente = '';
           if (tipoStr == 'liquidacion_online') {
-            final com = (m['comision_soles'] as num?)?.round();
-            final txt = 'comisión $monedaSaldoSimbolo$com';
-            concepto = concepto.isEmpty ? 'Reserva online · $txt' : '$concepto · $txt';
+            // La comisión salió del PAGO del jugador: recibes el neto.
+            fuente = 'transaccion';
+            final txt = 'comisión $sim${com.round()} del pago';
+            concepto =
+                concepto.isEmpty ? 'Reserva online · $txt' : '$concepto · $txt';
+          } else if (tipoStr == 'liquidacion_full') {
+            // Billetera-first: recibes el 100%; la comisión ya se descontó de tu
+            // saldo (aparece como otro movimiento "Comisión").
+            fuente = 'saldo';
+            concepto = concepto.isEmpty
+                ? 'Reserva online · recibes 100%'
+                : '$concepto · recibes 100%';
+          } else if (tipoStr == 'comision_reserva') {
+            // Egreso de la billetera: dejar claro de dónde salió.
+            fuente = 'saldo';
+            if (concepto.isEmpty) concepto = 'Comisión de reserva';
           } else if (concepto.isEmpty) {
             concepto = tipo == TipoMovimiento.consumo
                 ? 'Consumo de saldo'
                 : 'Recarga de saldo';
           }
           final montoExacto = (m['monto_soles'] as num?)?.toDouble() ?? 0;
+          // Para el recibo: comisión de este movimiento (en comision_reserva el
+          // monto ES la comisión).
+          final comisionRecibo =
+              tipoStr == 'comision_reserva' ? montoExacto.abs() : com;
           return MovimientoSaldo(
             // El signo lo pone el tipo en la UI; el monto (lista) va en positivo.
             tipo: tipo,
@@ -5283,6 +5308,9 @@ class AppState extends ChangeNotifier {
             montoSoles: montoExacto,
             comprobante: ((m['comprobante'] ?? 0) as num).toInt(),
             fechaIso: (m['creado_en'] as String?) ?? '',
+            brutoSoles: bruto,
+            comisionSoles: comisionRecibo,
+            fuente: fuente,
           );
         }));
       notifyListeners();
@@ -6202,11 +6230,15 @@ class AppState extends ChangeNotifier {
     // Antes era una sola llamada best-effort (si fallaba la red, se PERDÍA). Ahora
     // se encola: si la reserva confirmó → se registra ya (con reintento); si quedó
     // offline → espera a confirmarse en el reintento del outbox.
+    // El jugador que reserva (para que el dueño vea QUIÉN reservó en su billetera).
+    final quien = reserva.jugador.trim();
     final accion = _accionContable(cancha, cobro,
         montoBase: precioHoraEfectivo(cancha, fecha, hora),
         sena: sena,
         reservaId: reserva.id,
-        etiqueta: '${cancha.nombre} · $diaLabel $hora');
+        etiqueta: quien.isEmpty
+            ? '${cancha.nombre} · $diaLabel $hora'
+            : '${cancha.nombre} · $quien · $diaLabel $hora');
     if (res == ResultadoReserva.ok) {
       if (accion != null) _encolarConta(accion);
       // Reserva CONFIRMADA en el servidor → avisa al dueño (push dedicado).

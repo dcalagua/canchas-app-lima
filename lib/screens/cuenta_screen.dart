@@ -300,43 +300,192 @@ class _FilaMovimiento extends StatelessWidget {
                 ? Icons.check_circle_outline
                 : Icons.account_balance_wallet_outlined)
             : Icons.arrow_upward);
+    // Subtítulo con la FUENTE (para que se entienda de dónde salió/entró):
+    //  - comisión que sale del saldo → "de tu saldo"
+    //  - reserva online → "por recibir / recibido" (Pichangol te lo transfiere)
+    final esComisionSaldo = !esRecarga && !esLiquidacion && m.fuente == 'saldo';
+    final sub = esLiquidacion
+        ? '${m.cuando} · ${liqPagada ? 'recibido' : 'por recibir'}'
+        : (esComisionSaldo ? '${m.cuando} · de tu saldo' : m.cuando);
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: trazo),
       ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 20,
-            backgroundColor: color.withOpacity(0.12),
-            child: Icon(icono, color: color, size: 20),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => _mostrarRecibo(context, m),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
               children: [
-                Text(m.concepto,
-                    style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
-                Text(
-                    esLiquidacion
-                        ? '${m.cuando} · ${liqPagada ? 'recibido' : 'por recibir'}'
-                        : m.cuando,
-                    style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
+                CircleAvatar(
+                  radius: 20,
+                  backgroundColor: color.withOpacity(0.12),
+                  child: Icon(icono, color: color, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(m.concepto,
+                          style:
+                              t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+                      Text(sub,
+                          style: t.bodySmall
+                              ?.copyWith(color: textoTenueDe(context))),
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text('$signo ${appState.monedaSaldoSimbolo}${m.monto}',
+                        style: t.titleMedium?.copyWith(
+                            color: color, fontWeight: FontWeight.w700)),
+                    Icon(Icons.chevron_right,
+                        size: 16, color: textoTenueDe(context)),
+                  ],
+                ),
               ],
             ),
           ),
-          Text('$signo ${appState.monedaSaldoSimbolo}${m.monto}',
-              style: t.titleMedium
-                  ?.copyWith(color: color, fontWeight: FontWeight.w700)),
-        ],
+        ),
       ),
     );
   }
+}
+
+/// Recibo detallado de un movimiento (se abre al tocarlo): explica de dónde
+/// salió/entró la plata, con el desglose bruto/comisión/neto y el comprobante.
+void _mostrarRecibo(BuildContext context, MovimientoSaldo m) {
+  final sim = appState.monedaSaldoSimbolo;
+  final esRecarga = m.tipo == TipoMovimiento.recarga;
+  final esLiquidacion = m.tipo == TipoMovimiento.liquidacion;
+  final liqPagada = esLiquidacion && m.liquidado;
+
+  String dinero(double v) => '$sim${v.toStringAsFixed(2)}';
+  // Fecha larga desde el ISO (cae a la etiqueta "cuando" si no se puede).
+  String fechaLarga() {
+    final d = DateTime.tryParse(m.fechaIso);
+    if (d == null) return m.cuando;
+    final l = d.toLocal();
+    final dd = l.day.toString().padLeft(2, '0');
+    final mm = l.month.toString().padLeft(2, '0');
+    final hh = l.hour.toString().padLeft(2, '0');
+    final mi = l.minute.toString().padLeft(2, '0');
+    return '$dd/$mm/${l.year} · $hh:$mi';
+  }
+
+  // Explicación de la FUENTE (lo que el usuario pedía: "de dónde salió").
+  String explicacion() {
+    if (esRecarga) return 'Entró a tu saldo Pichangol.';
+    if (m.tipo == TipoMovimiento.consumo) {
+      return m.fuente == 'saldo'
+          ? 'Se descontó de tu saldo Pichangol.'
+          : 'Salió de tu billetera.';
+    }
+    // Liquidación (reserva online):
+    final transferido = liqPagada
+        ? 'Ya te lo transferimos.'
+        : 'Pichangol te lo transferirá (va en "Por recibir").';
+    if (m.fuente == 'saldo') {
+      return 'Recibes el 100% de la reserva. La comisión de Pichangol se '
+          'descontó de tu SALDO (aparece como un movimiento "Comisión" aparte). '
+          '$transferido';
+    }
+    return 'La comisión de Pichangol se descontó del PAGO del jugador; recibes '
+        'el neto. $transferido';
+  }
+
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: papel,
+    shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+    builder: (ctx) {
+      final t = Theme.of(ctx).textTheme;
+      Widget fila(String k, String v, {bool fuerte = false}) => Padding(
+            padding: const EdgeInsets.symmetric(vertical: 5),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(k, style: t.bodyMedium?.copyWith(color: textoTenueDe(ctx))),
+                Text(v,
+                    style: t.bodyMedium?.copyWith(
+                        fontWeight: fuerte ? FontWeight.w800 : FontWeight.w600)),
+              ],
+            ),
+          );
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(22, 14, 22, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 38,
+                  height: 5,
+                  decoration: BoxDecoration(
+                      color: const Color(0xFFD8D3C6),
+                      borderRadius: BorderRadius.circular(3)),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text('Detalle del movimiento', style: t.titleLarge),
+              const SizedBox(height: 2),
+              Text(m.concepto,
+                  style: t.bodyMedium?.copyWith(color: textoTenueDe(ctx))),
+              const SizedBox(height: 16),
+              fila('Fecha', fechaLarga()),
+              if (esLiquidacion) ...[
+                fila('Estado', liqPagada ? 'Recibido' : 'Por recibir'),
+                if (m.brutoSoles > 0) fila('Reserva (bruto)', dinero(m.brutoSoles)),
+                if (m.comisionSoles > 0)
+                  fila('Comisión Pichangol', '− ${dinero(m.comisionSoles)}'),
+                fila(m.fuente == 'saldo' ? 'Recibes (100%)' : 'Recibes (neto)',
+                    dinero(m.montoSoles.abs()),
+                    fuerte: true),
+              ] else ...[
+                if (m.comisionSoles > 0 && m.tipo == TipoMovimiento.consumo)
+                  fila('Comisión', dinero(m.comisionSoles)),
+                fila(esRecarga ? 'Monto' : 'Descontado',
+                    dinero(m.montoSoles.abs()),
+                    fuerte: true),
+              ],
+              if (m.comprobante > 0) fila('Comprobante', 'N.º ${m.comprobante}'),
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                    color: const Color(0xFFF1F4EE),
+                    borderRadius: BorderRadius.circular(14)),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.info_outline, size: 18, color: textoTenueDe(ctx)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(explicacion(),
+                          style: t.bodySmall
+                              ?.copyWith(color: textoTenueDe(ctx), height: 1.35)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
 }
 
 class _RecargaSheet extends StatelessWidget {

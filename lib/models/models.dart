@@ -630,6 +630,13 @@ class MovimientoSaldo {
   final int comprobante;
   /// Fecha ISO del movimiento (para el recibo). Vacío si no se conoce.
   final String fechaIso;
+  /// Monto BRUTO de la reserva (lo que pagó el jugador). Solo liquidaciones.
+  final double brutoSoles;
+  /// Comisión de Pichangol de esta reserva (para el recibo). Solo liquidaciones.
+  final double comisionSoles;
+  /// De dónde salió la comisión: 'saldo' (de tu billetera prepago),
+  /// 'transaccion' (del pago del jugador, recibes el neto) o '' (no aplica).
+  final String fuente;
 
   const MovimientoSaldo({
     required this.tipo,
@@ -640,6 +647,9 @@ class MovimientoSaldo {
     this.montoSoles = 0,
     this.comprobante = 0,
     this.fechaIso = '',
+    this.brutoSoles = 0,
+    this.comisionSoles = 0,
+    this.fuente = '',
   });
 
   bool get esIngreso =>
@@ -654,6 +664,9 @@ class MovimientoSaldo {
         'montoSoles': montoSoles,
         'comprobante': comprobante,
         'fechaIso': fechaIso,
+        'brutoSoles': brutoSoles,
+        'comisionSoles': comisionSoles,
+        'fuente': fuente,
       };
 
   factory MovimientoSaldo.fromJson(Map<String, dynamic> j) => MovimientoSaldo(
@@ -665,5 +678,8 @@ class MovimientoSaldo {
         montoSoles: ((j['montoSoles'] ?? 0) as num).toDouble(),
         comprobante: ((j['comprobante'] ?? 0) as num).toInt(),
         fechaIso: (j['fechaIso'] ?? '') as String,
+        brutoSoles: ((j['brutoSoles'] ?? 0) as num).toDouble(),
+        comisionSoles: ((j['comisionSoles'] ?? 0) as num).toDouble(),
+        fuente: (j['fuente'] ?? '') as String,
       );
 }
