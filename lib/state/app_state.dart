@@ -2800,16 +2800,13 @@ class AppState extends ChangeNotifier {
   /// tarifario cargado. Devuelve true si la agregó. Retro-compatible: si el
   /// profe la editó (mismo id), la versión guardada/remota gana luego.
   bool sembrarAcademias() {
-    // La academia DEMO (Jartur) es solo para demos: se siembra únicamente en
-    // dev. En QAS/prod NO aparece (evita el "duplicado" con academias reales).
-    const entorno = String.fromEnvironment('ENTORNO', defaultValue: 'dev');
-    if (entorno != 'dev') return false;
-    const seedId = 'seed_jartur_elbosque';
-    if (_academiasEliminadas.contains(seedId)) return false; // el usuario la borró
-    if (!academias.any((a) => a.id == seedId)) {
-      academias.add(SampleData.academiaJartur());
-      return true;
-    }
+    // DESACTIVADO: ya NO se auto-siembra la academia demo (Jartur · El Bosque).
+    // Antes se inyectaba sola en dev y REAPARECÍA en cada instalación limpia
+    // (al reinstalar el APK se borra SharedPreferences y con él el tombstone),
+    // impidiendo un estado realmente "virgen" para pruebas. Si se editó de un
+    // build viejo, `_curarSeedJartur` la sigue curando pero no la crea de cero.
+    // (La data demo sigue disponible en SampleData.academiaJartur() por si se
+    //  quiere reactivar con un botón explícito más adelante.)
     return _curarSeedJartur();
   }
 
