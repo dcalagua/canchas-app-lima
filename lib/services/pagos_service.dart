@@ -1167,4 +1167,21 @@ class PagosService {
       return null;
     }
   }
+
+  /// Deja la billetera del [duenoId] en virgen EN EL BACKEND (saldo 0 y sin
+  /// movimientos). Necesario porque el saldo/pagos viven en el servidor y
+  /// volverían al re-sincronizar. La usa "Dejar en virgen". Best-effort.
+  static Future<bool> resetMiBilletera(String duenoId) async {
+    if (!disponible || duenoId.trim().isEmpty) return false;
+    try {
+      final r = await http
+          .post(Uri.parse('$_baseUrl/pagos/reset-mi-billetera'),
+              headers: _appHeaders(json: true),
+              body: jsonEncode({'dueno_id': duenoId.trim()}))
+          .timeout(const Duration(seconds: 15));
+      return r.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
 }

@@ -6070,6 +6070,8 @@ class AppState extends ChangeNotifier {
         }
         // Torre de control: borra MIS reclamos de propiedad del servidor.
         await PropiedadService.borrarMisReclamos(email);
+        // Billetera del backend en virgen (saldo 0 + sin movimientos).
+        await PagosService.resetMiBilletera(email);
       }
     }
     // 2) Memoria en blanco.
@@ -6175,6 +6177,9 @@ class AppState extends ChangeNotifier {
       // Torre de control (backend): borra MIS reclamos de propiedad para que mis
       // canchas reclamadas también desaparezcan del servidor.
       await PropiedadService.borrarMisReclamos(email);
+      // BILLETERA en el backend: saldo 0 y sin movimientos. Sin esto, el saldo y
+      // los pagos "por recibir" volverían al re-sincronizar (viven en el server).
+      await PagosService.resetMiBilletera(email);
     }
     // Tombstone CUALQUIER academia local restante (p. ej. la demo de dev) para que
     // no reaparezca al re-cargar de la nube ni se re-siembre.

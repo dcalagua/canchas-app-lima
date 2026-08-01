@@ -659,6 +659,28 @@ class Stores:
         # Se conservan: reclamos (propiedad), config/incentivos/modo del operador.
         return conteo
 
+    def reset_billetera_de(self, dueno_id: str) -> dict:
+        """Deja la BILLETERA de UN usuario como en PRD: saldo 0 y sin movimientos.
+        Borra su saldo prepago y TODOS sus pagos (recargas, comisiones,
+        liquidaciones "por recibir", suscripciones, etc.). Lo usa el APK al 'dejar
+        en virgen' para que su billetera quede realmente vacía (el saldo/pagos
+        viven en el backend y volverían al re-sincronizar). Solo toca al usuario
+        que se manda; no afecta a otros. Devuelve cuánto borró."""
+        clave = (dueno_id or "").strip().lower()
+        if not clave:
+            return {"saldo": 0, "pagos": 0}
+
+        def _match(v: str | None) -> bool:
+            return (v or "").strip().lower() == clave
+
+        saldo_habia = 1 if clave in {k.strip().lower() for k in self.saldos} else 0
+        # Quita el saldo (cualquier variante de caja del mismo correo).
+        for k in [k for k in list(self.saldos) if _match(k)]:
+            self.saldos.pop(k, None)
+        antes = len(self.pagos)
+        self.pagos = [p for p in self.pagos if not _match(p.dueno_id)]
+        return {"saldo": saldo_habia, "pagos": antes - len(self.pagos)}
+
     def borrar_reclamos_de(self, solicitante: str) -> int:
         """Borra los reclamos de propiedad de un SOLICITANTE (por su correo/id).
         Lo usa el APK cuando el dueño 'deja en virgen' para que sus canchas

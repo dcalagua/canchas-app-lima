@@ -97,6 +97,26 @@ def test_recarga_acredita_saldo():
     assert stores.saldo_centimos("due@x.com") == 3000
 
 
+def test_reset_mi_billetera_deja_saldo_cero_y_sin_movimientos():
+    # Con saldo y movimientos de un dueño…
+    client.post("/pagos/recarga", json={
+        "token": "t", "dueno_id": "yo@x.com", "email": "yo@x.com",
+        "monto_soles": 50})
+    # …y saldo de OTRO usuario que NO se debe tocar.
+    client.post("/pagos/recarga", json={
+        "token": "t", "dueno_id": "otro@x.com", "email": "otro@x.com",
+        "monto_soles": 20})
+    assert stores.saldo_centimos("yo@x.com") == 5000
+    r = client.post("/pagos/reset-mi-billetera",
+                    json={"dueno_id": "YO@x.com"}).json()  # case-insensitive
+    assert r["ok"] is True
+    assert r["pagos"] >= 1
+    assert stores.saldo_centimos("yo@x.com") == 0
+    assert client.get("/pagos/movimientos/yo@x.com").json()["movimientos"] == []
+    # El otro usuario queda intacto.
+    assert stores.saldo_centimos("otro@x.com") == 2000
+
+
 def test_recarga_suma_sobre_saldo_existente():
     client.post("/pagos/recarga", json={
         "token": "t", "dueno_id": "d", "email": "d@x.com", "monto_soles": 20})

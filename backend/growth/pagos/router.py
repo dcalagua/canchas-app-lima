@@ -343,6 +343,21 @@ def get_saldo(dueno_id: str) -> dict:
     return {"dueno_id": dueno_id, "saldo_centimos": c, "saldo_soles": c / 100.0}
 
 
+class ResetBilleteraReq(BaseModel):
+    dueno_id: str
+
+
+@router.post("/reset-mi-billetera", dependencies=_APP)
+def post_reset_mi_billetera(req: ResetBilleteraReq) -> dict:
+    """El DUEÑO deja SU billetera en virgen (saldo 0 y sin movimientos) al 'dejar
+    en virgen' desde la app. Como el saldo/pagos viven en el backend, sin esto
+    volverían al re-sincronizar. Solo toca al usuario que se manda; no borra la
+    plata de otros (por eso no exige token admin). El middleware persiste el
+    snapshot tras el POST."""
+    r = stores.reset_billetera_de(req.dueno_id)
+    return {"ok": True, **r}
+
+
 class ConsolidarReq(BaseModel):
     desde_id: str              # llave secundaria (p. ej. id de una academia)
     hacia_id: str              # billetera del dueño (su correo)
