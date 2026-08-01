@@ -5255,10 +5255,14 @@ class AppState extends ChangeNotifier {
     }
     // Historial de movimientos del backend (recargas): sobrevive a reinstalar,
     // a diferencia del historial local del teléfono. Si el backend responde con
-    // recargas, reemplaza la lista local (que solo tenía la "Recarga inicial"
-    // de demo). Si no hay ninguna o el backend no responde, conserva lo local.
+    // recargas. IMPORTANTE (privacidad): refleja SIEMPRE lo que devuelve el
+    // backend para ESTE correo. Si responde LISTA VACÍA (el usuario no tiene
+    // movimientos), se LIMPIA — antes se conservaba lo local y un jugador podía
+    // ver los movimientos que quedaron de otra cuenta (p. ej. el dueño) en el
+    // mismo dispositivo. Solo si el backend NO responde (null) se conserva lo
+    // local (fallo transitorio).
     final movs = await PagosService.movimientos(email);
-    if (movs != null && movs.isNotEmpty) {
+    if (movs != null) {
       movimientos
         ..clear()
         ..addAll(movs.map((m) {
@@ -6045,6 +6049,13 @@ class AppState extends ChangeNotifier {
     _perfiles.clear();
     _guardarPerfiles(); // limpia también el caché en disco (no mostrar ajenos)
     _retosPendientes = 0;
+    // BILLETERA: el saldo y los movimientos son PRIVADOS de cada cuenta. Al
+    // cambiar de usuario en el mismo equipo hay que vaciarlos, o el nuevo usuario
+    // (p. ej. un jugador) vería los movimientos del anterior (p. ej. el dueño).
+    // El valor real de esta cuenta lo baja `sincronizarSaldo` del backend.
+    movimientos.clear();
+    saldoClub = 0;
+    _saldoOtrosPaises.clear();
   }
 
   /// "Empezar de cero" (solo pruebas dev/qas): deja el dispositivo VIRGEN.
