@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/models.dart';
+import '../services/push_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/dialogo_pichangol.dart';
@@ -27,11 +28,27 @@ class _ReservasDuenoScreenState extends State<ReservasDuenoScreen> {
   @override
   void initState() {
     super.initState();
+    // Al abrir: trae las reservas frescas de la nube (las que hicieron jugadores
+    // en otros dispositivos) para no depender de un pull-to-refresh manual.
+    appState.cargarReservasRemotas();
     // Carga qué jugadores están verificados para mostrar la insignia.
     final emails = appState.reservas
         .where((r) => appState.miCanchaDeReserva(r.canchaId) != null)
         .map((r) => r.usuario);
     appState.sincronizarVerificados(emails);
+    // Se REFRESCA solo cuando llega un push de "Nueva reserva" (estilo WhatsApp).
+    PushService.nuevaReserva.addListener(_alLlegarReserva);
+  }
+
+  @override
+  void dispose() {
+    PushService.nuevaReserva.removeListener(_alLlegarReserva);
+    super.dispose();
+  }
+
+  void _alLlegarReserva() {
+    if (!mounted) return;
+    appState.cargarReservasRemotas(); // baja la nueva reserva y repinta la lista
   }
 
   /// Etiqueta amigable de una fecha ISO ("Hoy"/"Mañana"/"2026-06-28").

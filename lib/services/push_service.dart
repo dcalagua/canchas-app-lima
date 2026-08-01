@@ -98,6 +98,10 @@ class PushService {
   /// que reabrir ni hacer pull-to-refresh (estilo WhatsApp).
   static final ValueNotifier<int> nuevoMensaje = ValueNotifier<int>(0);
 
+  /// Igual pero para RESERVAS: sube cuando llega un push de "Nueva reserva". El
+  /// panel de Reservas del dueño lo escucha y se refresca SOLO al instante.
+  static final ValueNotifier<int> nuevaReserva = ValueNotifier<int>(0);
+
   /// Inicializa Firebase + messaging. Fail-safe: sin config → queda desactivado.
   static Future<void> init() async {
     if (_ok) return;
@@ -161,9 +165,11 @@ class PushService {
       );
       return;
     }
-    // Push de RESERVA con la app abierta: sonido + banner que abre Reservas.
+    // Push de RESERVA con la app abierta: sonido + banner que abre Reservas, y
+    // avisa al panel de Reservas para que se REFRESQUE solo (estilo WhatsApp).
     if (m.data['tipo'] == 'reserva') {
       final n = m.notification;
+      nuevaReserva.value++;
       try {
         _sonidoPush.play(AssetSource('sonidos/pichan.mp3'));
       } catch (_) {}
