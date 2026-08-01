@@ -6158,11 +6158,18 @@ class AppState extends ChangeNotifier {
       // de cero (best-effort; si no hay red, queda para reintentar a mano).
       await PropiedadService.borrarMisReclamos(email);
     }
-    // Canchas reclamadas/registradas por MÍ en este dispositivo: se quitan para
-    // volver a un estado limpio (coincide con el borrado de reclamos del backend).
-    // Las canchas descubiertas (Google/Supabase) siguen en el mapa para reclamar.
+    // Canchas reclamadas/registradas por MÍ: se BORRAN de forma durable. Como al
+    // reclamar se escriben en Supabase, no basta con quitarlas de la lista local
+    // (volverían al re-sincronizar): se tombstonean (canchasEliminadas) y se
+    // borran también en la nube (best-effort). Así "Mis canchas" queda vacío.
     if (email != null && email.isNotEmpty) {
-      canchasExtra.removeWhere((c) => c.dueno.toLowerCase() == email);
+      final misIds = <String>{
+        for (final c in [...canchasExtra, ...canchasRemotas])
+          if (c.dueno.toLowerCase() == email) c.id,
+      };
+      for (final id in misIds) {
+        eliminarCancha(id); // tombstone durable + quita local + borra en la nube
+      }
     }
     // Tombstone TODAS las academias locales para que no reaparezcan al re-cargar
     // de la nube (si el borrado lógico falló por RLS) ni se re-siembre la demo.
