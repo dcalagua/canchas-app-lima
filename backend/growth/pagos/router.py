@@ -568,25 +568,56 @@ def post_comision_reserva(req: ComisionReservaReq) -> dict:
 
 @router.post("/liquidacion-online", dependencies=_APP)
 def post_liquidacion_online(req: LiquidacionOnlineReq) -> dict:
-    """Registra la LIQUIDACIÓN de una reserva pagada ONLINE (dueño sin saldo):
-    el jugador le pagó a Pichangol; se descuenta la comisión y el NETO se le debe
-    al dueño (se le transfiere aparte). NO toca el saldo prepago — es otra
-    contabilidad. Idempotente por `reserva_id`. Sirve para la trazabilidad del
-    dueño (ve cuánto le cobró Pichangol y cuánto le queda por recibir)."""
+    """Reserva pagada ONLINE, modelo **BILLETERA-FIRST**:
+
+    - Si el dueño tiene SALDO suficiente: la comisión sale de su **billetera
+      prepago** (movimiento `comision_reserva`, saldo −) y el dueño recibe el
+      **BRUTO completo** por recibir (`liquidacion_full`, neto = bruto). Así la
+      billetera es la fuente de la comisión y el dueño cobra el 100%.
+    - Si NO le alcanza el saldo: fallback → la comisión se toma de la
+      **transacción** (neto por recibir, `liquidacion_online`) y se avisa que
+      recargue (`requiere_recarga`).
+
+    Idempotente por `reserva_id`."""
     bruto = _soles_a_centimos(req.monto_soles)
     comision = comision_centimos(req.monto_soles)
     ya = stores.pago_por_charge(req.reserva_id)
-    if ya is not None and ya.tipo == "liquidacion_online":
-        return {"ok": True, "duplicada": True, "bruto_centimos": ya.monto_centimos,
-                "comision_centimos": comision_centimos(ya.monto_centimos / 100.0),
-                "neto_centimos": ya.monto_centimos
-                - comision_centimos(ya.monto_centimos / 100.0)}
+    if ya is not None and ya.tipo in ("liquidacion_online", "liquidacion_full"):
+        d = _liquidacion_dict(ya)
+        return {"ok": True, "duplicada": True,
+                "fuente": "saldo" if ya.tipo == "liquidacion_full"
+                else "transaccion",
+                "bruto_centimos": ya.monto_centimos,
+                "comision_centimos": round(d["comision_soles"] * 100),
+                "neto_centimos": round(d["neto_soles"] * 100)}
+
+    saldo = stores.saldo_centimos(req.dueno_id)
+    if saldo >= comision:
+        # BILLETERA-FIRST: comisión del saldo; el dueño recibe el bruto completo.
+        nuevo = stores.debitar(req.dueno_id, comision)
+        stores.registrar_pago(
+            tipo="comision_reserva", monto_centimos=comision, moneda="PEN",
+            estado="aprobado", dueno_id=req.dueno_id,
+            culqi_charge_id=f"{req.reserva_id}_com",
+            concepto=f"Comisión · {req.concepto or 'Reserva online'}")
+        stores.registrar_pago(
+            tipo="liquidacion_full", monto_centimos=bruto, moneda="PEN",
+            estado="aprobado", dueno_id=req.dueno_id,
+            culqi_charge_id=req.reserva_id,
+            concepto=req.concepto or "Reserva online")
+        return {"ok": True, "duplicada": False, "fuente": "saldo",
+                "bruto_centimos": bruto, "comision_centimos": comision,
+                "neto_centimos": bruto, "saldo_centimos": nuevo,
+                "saldo_soles": nuevo / 100.0}
+
+    # Sin saldo suficiente → comisión de la transacción (neto), como antes.
     stores.registrar_pago(
         tipo="liquidacion_online", monto_centimos=bruto, moneda="PEN",
         estado="aprobado", dueno_id=req.dueno_id,
         culqi_charge_id=req.reserva_id,
         concepto=req.concepto or "Reserva online")
-    return {"ok": True, "duplicada": False, "bruto_centimos": bruto,
+    return {"ok": True, "duplicada": False, "fuente": "transaccion",
+            "requiere_recarga": True, "bruto_centimos": bruto,
             "comision_centimos": comision, "neto_centimos": bruto - comision}
 
 
@@ -1163,7 +1194,9 @@ def get_matricula_resumen(academia_id: str, desde: str | None = None,
 def _liquidacion_dict(p) -> dict:
     """Serializa una liquidación con su desglose y estado de pago."""
     bruto = p.monto_centimos
-    comision = comision_centimos(bruto / 100.0)
+    # 'liquidacion_full' (billetera-first): la comisión ya salió del SALDO del
+    # dueño, así que el neto por recibir es el BRUTO completo (comisión 0 aquí).
+    comision = 0 if p.tipo == "liquidacion_full" else comision_centimos(bruto / 100.0)
     neto = bruto - comision
     return {
         "reserva_id": p.culqi_charge_id,
@@ -1277,7 +1310,7 @@ def get_movimientos(dueno_id: str) -> dict:
     # Pro, inscripción a torneo). Cada fila lleva su N.º de comprobante (p.id).
     _EGRESOS = ("comision_reserva", "suscripcion", "suscripcion_pro",
                 "inscripcion_torneo")
-    _INCLUIR = ("recarga", "liquidacion_online",
+    _INCLUIR = ("recarga", "liquidacion_online", "liquidacion_full",
                 "inscripcion_torneo_ingreso") + _EGRESOS
     propios = [
         p for p in stores.pagos
@@ -1291,6 +1324,8 @@ def get_movimientos(dueno_id: str) -> dict:
         "suscripcion_pro": "Pichangol Pro",
         "inscripcion_torneo": "Inscripción a torneo",
         "inscripcion_torneo_ingreso": "Inscripción a torneo (ingreso)",
+        "liquidacion_online": "Reserva online (neto)",
+        "liquidacion_full": "Reserva online (recibes 100%)",
     }
 
     def _fila(p) -> dict:
@@ -1305,15 +1340,20 @@ def get_movimientos(dueno_id: str) -> dict:
         # liquidacion_online / inscripcion_torneo_ingreso: entrada NETA (bruto −
         # comisión); para torneo la comisión ya está congelada en el pago.
         bruto = p.monto_centimos
-        comision = (p.comision_centimos if p.tipo == "inscripcion_torneo_ingreso"
-                    else comision_centimos(bruto / 100.0))
+        if p.tipo == "liquidacion_full":
+            comision = 0  # la comisión ya salió del saldo (billetera-first)
+        elif p.tipo == "inscripcion_torneo_ingreso":
+            comision = p.comision_centimos
+        else:
+            comision = comision_centimos(bruto / 100.0)
         neto = bruto - comision
         return {**base,
                 "monto_soles": neto / 100.0,
                 "bruto_soles": bruto / 100.0,
                 "comision_soles": comision / 100.0,
                 "neto_soles": neto / 100.0,
-                "liquidado": (p.liquidado if p.tipo == "liquidacion_online"
+                "liquidado": (p.liquidado if p.tipo in
+                              ("liquidacion_online", "liquidacion_full")
                               else True)}
 
     # stores.pagos está en orden de inserción (viejo→nuevo); lo invertimos para

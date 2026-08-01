@@ -665,7 +665,8 @@ class Stores:
         ventas del marketplace. Filtra por dueño y/o solo las pendientes."""
         out = []
         for p in self.pagos:
-            if p.tipo not in ("liquidacion_online", "venta_producto"):
+            if p.tipo not in ("liquidacion_online", "liquidacion_full",
+                              "venta_producto"):
                 continue
             if dueno_id is not None and p.dueno_id != dueno_id:
                 continue
@@ -679,7 +680,8 @@ class Stores:
         """Marca una liquidación como PAGADA (Pichangol transfirió el neto al
         dueño). Idempotente: si ya estaba pagada, la devuelve igual."""
         for p in self.pagos:
-            if (p.tipo in ("liquidacion_online", "venta_producto")
+            if (p.tipo in ("liquidacion_online", "liquidacion_full",
+                           "venta_producto")
                     and p.culqi_charge_id == reserva_id):
                 if not p.liquidado:
                     p.liquidado = True

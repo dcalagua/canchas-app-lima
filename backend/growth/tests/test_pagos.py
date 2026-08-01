@@ -647,3 +647,46 @@ def test_venta_marketplace_idempotente():
     pr = client.get("/pagos/por-recibir/v").json()
     # 50 - 2.50 = 47.50, una sola vez (no se duplica).
     assert pr["por_recibir_soles"] == 47.5
+
+
+# ── BILLETERA-FIRST: la comisión sale del SALDO y el dueño recibe el 100% ──────
+def test_liquidacion_billetera_first_con_saldo():
+    stores.acreditar("bf@x.com", 5000)  # S/50 de saldo prepago
+    r = client.post("/pagos/liquidacion-online", json={
+        "dueno_id": "bf@x.com", "monto_soles": 120, "reserva_id": "bf_1",
+        "concepto": "Reserva online · Fútbol 1"}).json()
+    assert r["ok"] is True and r["fuente"] == "saldo"
+    assert r["comision_centimos"] == 600          # 5% de 120
+    assert r["neto_centimos"] == 12000            # recibe el 100%
+    assert stores.saldo_centimos("bf@x.com") == 4400  # 5000 - 600 (comisión)
+    # Por recibir = bruto completo.
+    pr = client.get("/pagos/por-recibir/bf@x.com").json()
+    assert pr["por_recibir_soles"] == 120.0
+    # Movimientos: la comisión (egreso) y la reserva (recibe 100%).
+    movs = client.get("/pagos/movimientos/bf@x.com").json()["movimientos"]
+    com = next(m for m in movs if m["tipo"] == "comision_reserva")
+    assert com["monto_soles"] == -6.0
+    liq = next(m for m in movs if m["tipo"] == "liquidacion_full")
+    assert liq["neto_soles"] == 120.0 and liq["comision_soles"] == 0.0
+
+
+def test_liquidacion_billetera_first_fallback_sin_saldo():
+    r = client.post("/pagos/liquidacion-online", json={
+        "dueno_id": "sinsaldo@x.com", "monto_soles": 120,
+        "reserva_id": "bf_2"}).json()
+    assert r["fuente"] == "transaccion" and r["requiere_recarga"] is True
+    assert r["neto_centimos"] == 11400            # neto (comisión de la transacción)
+    assert stores.saldo_centimos("sinsaldo@x.com") == 0  # no toca saldo
+
+
+def test_liquidacion_billetera_first_idempotente():
+    stores.acreditar("bfi@x.com", 5000)
+    body = {"dueno_id": "bfi@x.com", "monto_soles": 120, "reserva_id": "bf_3"}
+    client.post("/pagos/liquidacion-online", json=body)
+    client.post("/pagos/liquidacion-online", json=body)
+    ncom = sum(1 for p in stores.pagos
+               if p.tipo == "comision_reserva" and p.culqi_charge_id == "bf_3_com")
+    nliq = sum(1 for p in stores.pagos
+               if p.tipo == "liquidacion_full" and p.culqi_charge_id == "bf_3")
+    assert ncom == 1 and nliq == 1
+    assert stores.saldo_centimos("bfi@x.com") == 4400  # debitó una sola vez
