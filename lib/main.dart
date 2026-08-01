@@ -8,6 +8,7 @@ import 'config/pais.dart';
 import 'data/presencia_repo.dart';
 import 'screens/llamada_screen.dart';
 import 'screens/mensajes_screen.dart';
+import 'screens/reservas_dueno_screen.dart';
 import 'screens/splash_screen.dart';
 import 'services/llamada_service.dart';
 import 'services/llamada_webrtc.dart';
@@ -36,6 +37,12 @@ void main() async {
     if (nav == null || hilo.isEmpty) return;
     nav.push(MaterialPageRoute(
         builder: (_) => MensajesScreen(abrirHilo: hilo)));
+  };
+  // Al tocar el push de "Nueva reserva", abre el panel de Reservas del dueño.
+  PushService.alAbrirReservas = () {
+    final nav = PushService.navigatorKey.currentState;
+    if (nav == null) return;
+    nav.push(MaterialPageRoute(builder: (_) => const ReservasDuenoScreen()));
   };
   // Al CONTESTAR una llamada entrante (CallKit), abre la pantalla de llamada
   // WebRTC en modo "contestar".

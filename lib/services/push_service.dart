@@ -71,6 +71,28 @@ class PushService {
   /// las pantallas). Así este servicio no importa la capa de UI.
   static void Function(String hilo)? alAbrirChat;
 
+  /// Callback que abre la pantalla de RESERVAS del dueño (al tocar el push de
+  /// "Nueva reserva"). Lo define main.dart.
+  static void Function()? alAbrirReservas;
+
+  /// Invoca la Edge Function `push-reserva` para avisar al DUEÑO de la cancha
+  /// que entró una reserva (push dedicado, fuera del chat). Se pasa SOLO el id
+  /// (o el del grupo si son varias horas); el servidor deriva destinatario y
+  /// texto. Best-effort: si la función no está desplegada, no rompe nada.
+  static Future<void> avisarReserva(
+      {String reservaId = '', String grupoId = ''}) async {
+    if (!SupabaseService.disponible) return;
+    if (reservaId.isEmpty && grupoId.isEmpty) return;
+    try {
+      await SupabaseService.client.functions.invoke('push-reserva', body: {
+        if (grupoId.isNotEmpty)
+          'grupo_id': grupoId
+        else
+          'reserva_id': reservaId,
+      });
+    } catch (_) {}
+  }
+
   /// Contador que se incrementa cada vez que llega un push de CHAT en foreground.
   /// La bandeja (inbox) lo escucha para refrescarse SOLA al instante, sin tener
   /// que reabrir ni hacer pull-to-refresh (estilo WhatsApp).
@@ -111,6 +133,11 @@ class PushService {
   }
 
   static void _abrir(Map<String, dynamic> data) {
+    // Push de reserva → abre la pantalla de Reservas del dueño.
+    if (data['tipo'] == 'reserva') {
+      alAbrirReservas?.call();
+      return;
+    }
     final hilo = (data['hilo'] ?? '').toString();
     if (hilo.isNotEmpty) alAbrirChat?.call(hilo);
   }
@@ -132,6 +159,16 @@ class PushService {
         video: (m.data['video'] ?? '') == 'true',
         hilo: hilo,
       );
+      return;
+    }
+    // Push de RESERVA con la app abierta: sonido + banner que abre Reservas.
+    if (m.data['tipo'] == 'reserva') {
+      final n = m.notification;
+      try {
+        _sonidoPush.play(AssetSource('sonidos/pichan.mp3'));
+      } catch (_) {}
+      _mostrarBanner((n?.title ?? 'Nueva reserva').trim(), (n?.body ?? '').trim(),
+          onTap: () => alAbrirReservas?.call());
       return;
     }
     final hilo = (m.data['hilo'] ?? '').toString();
@@ -157,7 +194,7 @@ class PushService {
     try {
       _sonidoPush.play(AssetSource('sonidos/pichan.mp3'));
     } catch (_) {}
-    _mostrarBanner(titulo, cuerpo, hilo);
+    _mostrarBanner(titulo, cuerpo, hilo: hilo);
   }
 
   /// Reproductor del sonido "Pichan" para avisos con la app en foreground.
@@ -165,7 +202,8 @@ class PushService {
 
   /// Tarjeta flotante superior tipo WhatsApp (heads-up): tarjeta BLANCA con la
   /// foto del remitente + nombre + preview. Tocable (abre el chat), auto-oculta.
-  static void _mostrarBanner(String titulo, String cuerpo, String hilo) {
+  static void _mostrarBanner(String titulo, String cuerpo,
+      {String hilo = '', VoidCallback? onTap}) {
     final overlay = navigatorKey.currentState?.overlay;
     if (overlay == null) return;
     // Foto del remitente (deducida del hilo directo).
@@ -199,7 +237,11 @@ class PushService {
           child: GestureDetector(
             onTap: () {
               cerrar();
-              alAbrirChat?.call(hilo);
+              if (onTap != null) {
+                onTap();
+              } else if (hilo.isNotEmpty) {
+                alAbrirChat?.call(hilo);
+              }
             },
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),

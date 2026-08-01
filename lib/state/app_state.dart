@@ -1004,28 +1004,18 @@ class AppState extends ChangeNotifier {
     return SampleData.canchaPorId(id);
   }
 
-  /// Avisa al DUEÑO de la cancha que entró una reserva (push + chat, reusando la
-  /// mensajería directa: el jugador le manda un mensaje al dueño). Se llama solo
-  /// cuando la reserva quedó CONFIRMADA en el servidor (no offline). Una sola vez
-  /// por reserva/grupo. No avisa si el dueño es el propio jugador.
+  /// Avisa al DUEÑO de la cancha que entró una reserva, con un PUSH DEDICADO
+  /// (fuera del chat) vía la Edge Function `push-reserva`. Se manda solo el id
+  /// (o el del grupo si son varias horas); el servidor deriva destinatario y
+  /// texto. Se llama cuando la reserva quedó CONFIRMADA en el servidor (no
+  /// offline). No avisa si el dueño es el propio jugador (el backend lo revalida).
   void _notificarDuenoReserva(Cancha cancha, List<Reserva> rs) {
     final dueno = cancha.dueno.trim().toLowerCase();
     final yo = (usuario?.email ?? '').trim().toLowerCase();
     if (dueno.isEmpty || dueno == yo || rs.isEmpty) return;
-    final ordenadas = [...rs]..sort((a, b) => a.horaInicio.compareTo(b.horaInicio));
-    final r0 = ordenadas.first;
-    final rango = ordenadas.length > 1
-        ? '${ordenadas.first.horaInicio}–${ordenadas.last.horaFin}'
-        : '${r0.horaInicio}–${r0.horaFin}';
-    final quien = (usuario?.nombre ?? '').trim().isNotEmpty
-        ? usuario!.nombre
-        : (r0.jugador.isNotEmpty ? r0.jugador : 'Un jugador');
-    final total = ordenadas.fold<double>(0, (s, r) => s + r.totalConExtras);
-    final texto = '📅 Nueva reserva en ${cancha.nombre}\n'
-        '$quien · ${r0.dia} ${r0.fecha} · $rango\n'
-        '${cancha.monedaSimbolo} ${total.toStringAsFixed(2)} '
-        '${r0.pagado ? '(pagado)' : '(por cobrar)'}';
-    unawaited(enviarMensajeDirecto(dueno, texto));
+    final r0 = rs.first;
+    unawaited(PushService.avisarReserva(
+        reservaId: r0.id, grupoId: r0.grupoReservaId));
   }
 
   /// Reintenta subir a Supabase las reservas que quedaron pendientes (offline).
