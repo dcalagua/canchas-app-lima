@@ -610,12 +610,19 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
             children: [
               for (final s in const [0, 20, 30, 50])
                 ChoiceChip(
-                  label: Text(s == 0 ? 'Sin seña' : 'Seña $s%'),
+                  label: Text(s == 0
+                      ? 'Sin seña'
+                      : (s == 30 ? 'Seña 30% ⭐' : 'Seña $s%')),
                   selected: _senaPct == s,
                   onSelected: (_) => setState(() => _senaPct = s),
                 ),
             ],
           ),
+          const SizedBox(height: 6),
+          Text(
+              '💡 Recomendado: 30% en canchas de horas pico (fútbol de noche, '
+              'fines de semana). Evita que reserven y no aparezcan.',
+              style: TextStyle(color: textoTenue, fontSize: 11.5, height: 1.3)),
           if (_senaPct > 0) ...[
             const SizedBox(height: 6),
             Builder(builder: (context) {
