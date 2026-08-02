@@ -4696,6 +4696,40 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     _persistirDatos();
     CanchasRepo.actualizar(c); // best-effort
+    _propagarEdicionADuplicados(c);
+  }
+
+  /// El MISMO lugar puede tener VARIAS filas con ids distintos (por
+  /// re-registrar/re-reclamar la cancha en pruebas). La dedup (`_dedupPorLugar`)
+  /// se queda con UNO, y en otro equipo puede ser un id DISTINTO al que se editó
+  /// → el cliente veía la duración/precio VIEJOS aunque el dueño ya guardó.
+  /// Solución: propagar los campos que afectan la RESERVA a esos duplicados
+  /// (local + nube), para que el cliente vea lo mismo sin importar cuál resuelva.
+  /// Si no hay duplicados, no hace nada.
+  void _propagarEdicionADuplicados(Cancha c) {
+    final clave = _claveLugar(c);
+    void aplicar(List<Cancha> lista) {
+      for (var k = 0; k < lista.length; k++) {
+        final x = lista[k];
+        if (x.id == c.id) continue;
+        if (_claveLugar(x) == clave &&
+            _cercaDe(x.ubicacion, c.ubicacion, 0.12)) {
+          final f = x.copyWith(
+            duracionSlotMin: c.duracionSlotMin,
+            precioHora: c.precioHora,
+            horaApertura: c.horaApertura,
+            horaCierre: c.horaCierre,
+            senaPct: c.senaPct,
+            descuentoValle: c.descuentoValle,
+          );
+          lista[k] = f;
+          CanchasRepo.actualizar(f); // propaga a la nube (best-effort)
+        }
+      }
+    }
+
+    aplicar(canchasExtra);
+    aplicar(canchasRemotas);
   }
 
   /// Renombra el LOCAL: cambia `club` en TODAS las canchas del dueño que tenían
