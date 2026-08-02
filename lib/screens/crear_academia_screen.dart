@@ -6,6 +6,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../config/features.dart';
 import '../data/canchas_repo.dart';
 import '../models/academia.dart';
 import '../models/club.dart';
