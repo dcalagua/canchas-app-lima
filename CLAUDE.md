@@ -426,6 +426,49 @@ sigue el lenguaje Airbnb sobre la paleta EBIM:
 filtro Online/Efectivo en Reservas + medio en reporte/estado de cuenta;
 auth por usuario en `/pagos/movimientos` (PROD).
 
+### Memoria sesión duración de turno + Servicios + Pro (ago-2026)
+
+**Ya HECHO (en el APK):**
+- **Bug "duración 1.5h": el cliente veía 1h.** Cadena de fixes:
+  (1) `AppState.canchaVigente(c)` → versión más fresca por id (canchasExtra >
+  canchasRemotas > descubiertas), con **fallback por sitio**: si lo mostrado es la
+  cancha DESCUBIERTA de Google (`registrada=false`, id=place_id), cae a la MISMA
+  cancha registrada cercana (Supabase) para usar su duración/precio reales.
+  `club_detalle`/`cancha_detalle` leen `canchaVigente` y la ficha **baja canchas
+  frescas de Supabase al abrir** (`_refrescarCanchasYFicha`).
+  (2) `CanchasRepo.actualizar` ahora hace **UPSERT** (antes UPDATE): persiste aunque
+  la fila no existiera. `_toRow` manda `duracion_slot_min` siempre.
+  (3) **Causa raíz real:** la misma cancha tenía **VARIAS filas en Supabase** (ids
+  distintos por re-registros de prueba); `_dedupPorLugar` conservaba en otro equipo
+  un id que seguía en 60. Fix: `_propagarEdicionADuplicados` propaga
+  duración/precio/horario/seña/valle a todos los duplicados del mismo lugar (local
+  + nube) al editar. SQL: `docs/piloto/supabase_duracion_slot.sql` (columna),
+  `docs/piloto/diag_canchas_duplicadas.sql` (ver duplicados),
+  `docs/piloto/dedupe_canchas.sql` (dejar 1 fila: reapunta reservas + borrado lógico).
+- **Verificación de guardado en la nube:** al editar (no reclamo) la app reescribe y
+  RELEE `duracion_slot_min` de Supabase; si no persistió (columna/RLS) avisa al dueño
+  en rojo en vez de "✅ actualizada" (`CanchasRepo.leerDuracion`).
+- **Diagnóstico TEMPORAL en la ficha** (`club_detalle`): línea roja
+  "🔧 dur Nmin · id … · reg … · fuente …" (`AppState.fuenteCancha`). **Quitar** una
+  vez cerrado el tema de duración.
+- **Servicios Pichangol OCULTO en el piloto** por feature flag
+  `lib/config/features.dart` → `kServiciosPichangolActivo = false`. Se ocultaron
+  TODOS los accesos (Mis canchas, academia shell/Mi academia, crear/editar academia,
+  "Post del día", "Generar con IA" en canales). Código y backend intactos → reactivar
+  = poner el flag en `true`.
+- **Versión visible en Ajustes:** pie con "Pichangol · versión X (build N)" +
+  `pichangol-N.apk`, toca para copiar (`package_info_plus`). El build = `run_number`
+  del CI = nombre del APK.
+
+**PENDIENTES nuevos (ver tasks) — pedido del director:**
+- **Push al JUGADOR cuando el dueño le crea una RESERVA MANUAL** (hoy la reserva
+  manual no notifica al usuario). Reusar arquitectura FCM/Edge Functions (device-first).
+- **Notificaciones de ACADEMIA:** matrícula de alumno, pagos/cuotas (vencida, pagada),
+  etc. → push al alumno/apoderado y/o al dueño.
+- **Candado PRO:** **Reserva manual** y **Bloqueo de horas** pasan a ser features de la
+  **suscripción Pichangol Pro** (gate `appState` tipo `esPro`/`pro_activo`, con CTA
+  "Hazte Pro" — ver `hazte_pro_screen.dart` y `stores.pro_activo` del backend).
+
 ## Tips operativos
 
 - La red del entorno de Claude **bloquea** llamadas salientes al backend de
