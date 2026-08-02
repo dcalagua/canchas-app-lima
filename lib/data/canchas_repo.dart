@@ -62,6 +62,26 @@ class CanchasRepo {
     }
   }
 
+  /// Lee de Supabase la `duracion_slot_min` GUARDADA de una cancha (para
+  /// verificar, tras editar, que el cambio SÍ persistió en la nube). Devuelve
+  /// el valor en minutos, o null si no se pudo leer (sin red / fila inexistente
+  /// / columna faltante). Fail-safe.
+  static Future<int?> leerDuracion(String id) async {
+    if (!SupabaseService.disponible) return null;
+    try {
+      final rows = await SupabaseService.client
+          .from(_tabla)
+          .select('duracion_slot_min')
+          .eq('id', id)
+          .limit(1);
+      if (rows is List && rows.isNotEmpty) {
+        final v = (rows.first as Map)['duracion_slot_min'];
+        if (v is num) return v.toInt();
+      }
+    } catch (_) {}
+    return null;
+  }
+
   /// Borra una cancha de forma DURABLE en la nube. Usa borrado lógico
   /// (`eliminada = true`) en vez de DELETE físico: el DELETE suele estar
   /// bloqueado por RLS y, sobre todo, así el borrado sobrevive a reinstalar la

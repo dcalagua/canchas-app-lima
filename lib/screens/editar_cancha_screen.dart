@@ -344,19 +344,35 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
       );
     }
 
+    // Verifica que la NUEVA duración del turno haya QUEDADO en la nube. Si no
+    // (columna faltante o permisos RLS), el cliente en OTRO equipo seguiría
+    // viendo la duración vieja aunque local se vea bien: se avisa al dueño.
+    String? avisoNube;
+    if (!eraReclamo) {
+      await CanchasRepo.actualizar(actualizada); // asegura la escritura (upsert)
+      final durNube = await CanchasRepo.leerDuracion(actualizada.id);
+      if (durNube != null && durNube != _duracion) {
+        avisoNube = '⚠️ "$nombre" se guardó en este equipo, pero la NUBE quedó '
+            'en $durNube min (no $_duracion min). Otros equipos verán la '
+            'duración vieja. Revisa la columna duracion_slot_min / permisos en '
+            'Supabase.';
+      }
+    }
+
     if (!mounted) return;
     setState(() => _guardando = false);
     Navigator.of(context).pop();
-    final aviso = eraReclamo
-        ? '✅ "$nombre" reclamada. En revisión: te contactaremos por WhatsApp para validarla antes de activarla.'
-        : fallidas > 0
-            ? '⚠️ "$nombre" actualizada, pero $fallidas foto(s) no se pudieron subir. Reintenta con mejor conexión.'
-            : '✅ "$nombre" actualizada.';
+    final aviso = avisoNube ??
+        (eraReclamo
+            ? '✅ "$nombre" reclamada. En revisión: te contactaremos por WhatsApp para validarla antes de activarla.'
+            : fallidas > 0
+                ? '⚠️ "$nombre" actualizada, pero $fallidas foto(s) no se pudieron subir. Reintenta con mejor conexión.'
+                : '✅ "$nombre" actualizada.');
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        backgroundColor: fallidas > 0 ? clayOscuro : pino,
+        backgroundColor: (fallidas > 0 || avisoNube != null) ? clayOscuro : pino,
         content: Text(aviso, style: const TextStyle(color: Colors.white)),
-        duration: const Duration(seconds: 5),
+        duration: Duration(seconds: avisoNube != null ? 9 : 5),
       ),
     );
   }
