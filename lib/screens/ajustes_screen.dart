@@ -377,10 +377,11 @@ class AjustesScreen extends StatelessWidget {
   }
 }
 
-/// Pie de "Ajustes": versión y número de build del APK (= `pichangol-<build>.apk`),
-/// para que el usuario pueda decir qué versión tiene instalada (útil en soporte y
-/// pruebas). Toca para COPIAR el dato. El build sale de `package_info_plus`
-/// (viene del `--build-number` del CI = número de la corrida).
+/// Pie de "Ajustes": versión y `build` (versionCode de Android) para que el
+/// usuario diga qué versión tiene instalada. Toca para COPIAR. OJO: el
+/// versionCode NO es el número del APK (`pichangol-N.apk`): Android le antepone
+/// un dígito por arquitectura (arm64 → 2xxx), así que no se construye el nombre
+/// del archivo con él. Para comparar dos equipos, basta que el build coincida.
 class _VersionApp extends StatelessWidget {
   const _VersionApp();
 
@@ -415,9 +416,9 @@ class _VersionApp extends StatelessWidget {
                           fontSize: 12.5,
                           fontWeight: FontWeight.w600)),
                   const SizedBox(height: 2),
-                  Text('Toca para copiar · APK: pichangol-$build.apk',
+                  const Text('Toca para copiar',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: tenue, fontSize: 11)),
+                      style: TextStyle(color: textoTenue, fontSize: 11)),
                 ],
               ),
             ),
