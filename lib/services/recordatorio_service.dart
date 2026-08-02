@@ -100,6 +100,10 @@ class RecordatorioService {
           ),
         ),
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        // Requerido por la API (interpretación de la hora en iOS antiguo). En
+        // Android no aplica; usamos la hora absoluta.
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
       );
     } catch (_) {
       // best-effort
