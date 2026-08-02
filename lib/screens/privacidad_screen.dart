@@ -121,7 +121,6 @@ class _SwitchCard extends StatelessWidget {
           ),
           Switch(
             value: valor,
-            activeColor: lima,
             onChanged: onChanged,
           ),
         ],

@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 import '../models/models.dart';
 import '../services/pagos_service.dart';
@@ -132,8 +135,25 @@ class CuentaScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 22),
-              Text('Movimientos',
-                  style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text('Movimientos',
+                        style: t.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700)),
+                  ),
+                  if (appState.movimientos.isNotEmpty)
+                    TextButton.icon(
+                      onPressed: () => _abrirEstadoCuenta(
+                          context, appState.monedaSaldoSimbolo),
+                      icon: const Icon(Icons.download_outlined,
+                          size: 18, color: bosque),
+                      label: const Text('Estado de cuenta',
+                          style: TextStyle(
+                              color: bosque, fontWeight: FontWeight.w700)),
+                    ),
+                ],
+              ),
               const SizedBox(height: 10),
               if (appState.movimientos.isEmpty)
                 Text('Aún no hay movimientos.',
@@ -569,6 +589,293 @@ class _BotonMonto extends StatelessWidget {
               style: const TextStyle(
                   color: pino, fontWeight: FontWeight.w800, fontSize: 20)),
         ),
+      ),
+    );
+  }
+}
+
+// ── Estado de cuenta (PDF por periodo, como el del banco) ────────────────────
+const _mesesCortoEC = [
+  'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+  'jul', 'ago', 'set', 'oct', 'nov', 'dic'
+];
+
+String _fechaCortaEC(DateTime d) =>
+    '${d.day.toString().padLeft(2, '0')} ${_mesesCortoEC[d.month - 1]} ${d.year}';
+
+/// Hoja para elegir el PERIODO del estado de cuenta (1/2/3 meses o rango) y
+/// generar el PDF descargable.
+void _abrirEstadoCuenta(BuildContext context, String mon) {
+  final ahora = DateTime.now();
+  void gen(DateTime desde, DateTime hasta, String etiqueta) {
+    Navigator.pop(context);
+    _descargarEstado(context, desde, hasta, mon, etiqueta);
+  }
+
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: Theme.of(context).colorScheme.surface,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    ),
+    builder: (_) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Estado de cuenta',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+            const SizedBox(height: 2),
+            Text('Descarga tus movimientos en PDF. Elige el periodo.',
+                style: TextStyle(color: textoTenueDe(context), fontSize: 12.5)),
+            const SizedBox(height: 14),
+            _OpcionPeriodo(
+                titulo: 'Último mes',
+                onTap: () => gen(
+                    DateTime(ahora.year, ahora.month - 1, ahora.day),
+                    ahora,
+                    'Último mes')),
+            _OpcionPeriodo(
+                titulo: 'Últimos 2 meses',
+                onTap: () => gen(
+                    DateTime(ahora.year, ahora.month - 2, ahora.day),
+                    ahora,
+                    'Últimos 2 meses')),
+            _OpcionPeriodo(
+                titulo: 'Últimos 3 meses',
+                onTap: () => gen(
+                    DateTime(ahora.year, ahora.month - 3, ahora.day),
+                    ahora,
+                    'Últimos 3 meses')),
+            _OpcionPeriodo(
+                titulo: 'Elegir rango de fechas…',
+                icono: Icons.date_range,
+                onTap: () async {
+                  final r = await showDateRangePicker(
+                    context: context,
+                    firstDate: DateTime(2024, 1, 1),
+                    lastDate: ahora,
+                    helpText: 'Rango del estado de cuenta',
+                    saveText: 'Listo',
+                  );
+                  if (r == null || !context.mounted) return;
+                  gen(
+                      r.start,
+                      DateTime(r.end.year, r.end.month, r.end.day, 23, 59, 59),
+                      '${_fechaCortaEC(r.start)} – ${_fechaCortaEC(r.end)}');
+                }),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+Future<void> _descargarEstado(BuildContext context, DateTime desde,
+    DateTime hasta, String mon, String etiqueta) async {
+  final movs = appState.movimientos.where((m) {
+    final d = DateTime.tryParse(m.fechaIso)?.toLocal();
+    if (d == null) return false;
+    return !d.isBefore(desde) && !d.isAfter(hasta);
+  }).toList()
+    ..sort((a, b) => (DateTime.tryParse(b.fechaIso) ?? DateTime(0))
+        .compareTo(DateTime.tryParse(a.fechaIso) ?? DateTime(0)));
+
+  if (movs.isEmpty) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('No hay movimientos en ese periodo.')));
+    return;
+  }
+
+  double ingresos = 0, egresos = 0;
+  for (final m in movs) {
+    if (m.montoSoles >= 0) {
+      ingresos += m.montoSoles;
+    } else {
+      egresos += -m.montoSoles;
+    }
+  }
+
+  final verde = PdfColor.fromInt(0xFF14463A);
+  final rojo = PdfColor.fromInt(0xFFC13515);
+  final gris = PdfColor.fromInt(0xFFF2F2F2);
+  final u = appState.usuario;
+  final doc = pw.Document();
+
+  pw.Widget resumen(String k, String v, {PdfColor? color}) => pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(k,
+              style:
+                  const pw.TextStyle(fontSize: 8.5, color: PdfColors.grey700)),
+          pw.SizedBox(height: 2),
+          pw.Text(v,
+              style: pw.TextStyle(
+                  fontSize: 12,
+                  fontWeight: pw.FontWeight.bold,
+                  color: color ?? verde)),
+        ],
+      );
+
+  doc.addPage(pw.MultiPage(
+    pageFormat: PdfPageFormat.a4,
+    margin: const pw.EdgeInsets.all(28),
+    footer: (ctx) => pw.Container(
+      alignment: pw.Alignment.centerRight,
+      margin: const pw.EdgeInsets.only(top: 8),
+      child: pw.Text('Página ${ctx.pageNumber} de ${ctx.pagesCount}',
+          style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+    ),
+    build: (ctx) => [
+      pw.Container(
+        padding: const pw.EdgeInsets.all(16),
+        decoration: pw.BoxDecoration(
+            color: verde, borderRadius: pw.BorderRadius.circular(12)),
+        child: pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+              pw.Text('Pichangol',
+                  style: pw.TextStyle(
+                      color: PdfColors.white,
+                      fontSize: 22,
+                      fontWeight: pw.FontWeight.bold)),
+              pw.Text('Estado de cuenta',
+                  style:
+                      const pw.TextStyle(color: PdfColors.white, fontSize: 11)),
+            ]),
+            pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+              if (u != null)
+                pw.Text(u.nombre,
+                    style: const pw.TextStyle(
+                        color: PdfColors.white, fontSize: 10)),
+              if (u != null && u.email.isNotEmpty)
+                pw.Text(u.email,
+                    style: const pw.TextStyle(
+                        color: PdfColors.white, fontSize: 9)),
+            ]),
+          ],
+        ),
+      ),
+      pw.SizedBox(height: 12),
+      pw.Text('Periodo: $etiqueta',
+          style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
+      pw.Text(
+          'Del ${_fechaCortaEC(desde)} al ${_fechaCortaEC(hasta)} · Generado el ${_fechaCortaEC(DateTime.now())}',
+          style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
+      pw.SizedBox(height: 12),
+      pw.Container(
+        padding: const pw.EdgeInsets.all(12),
+        decoration: pw.BoxDecoration(
+            color: gris, borderRadius: pw.BorderRadius.circular(10)),
+        child: pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            resumen('Ingresos', '$mon ${ingresos.toStringAsFixed(2)}'),
+            resumen('Egresos', '$mon ${egresos.toStringAsFixed(2)}', color: rojo),
+            resumen('Saldo actual', '$mon ${appState.saldoClub}.00'),
+            resumen('Movimientos', '${movs.length}'),
+          ],
+        ),
+      ),
+      pw.SizedBox(height: 14),
+      pw.Table(
+        border: pw.TableBorder(
+            bottom: pw.BorderSide(color: PdfColors.grey300, width: 0.5),
+            horizontalInside:
+                pw.BorderSide(color: PdfColors.grey200, width: 0.5)),
+        columnWidths: {
+          0: const pw.FixedColumnWidth(74),
+          1: const pw.FlexColumnWidth(),
+          2: const pw.FixedColumnWidth(62),
+          3: const pw.FixedColumnWidth(82),
+        },
+        children: [
+          pw.TableRow(
+            decoration: const pw.BoxDecoration(color: PdfColors.grey100),
+            children: [
+              _thEC('Fecha'),
+              _thEC('Concepto'),
+              _thEC('Tipo'),
+              _thEC('Monto', alignRight: true),
+            ],
+          ),
+          for (final m in movs)
+            pw.TableRow(children: [
+              _tdEC(_fechaCortaEC(
+                  DateTime.tryParse(m.fechaIso)?.toLocal() ?? DateTime.now())),
+              _tdEC(m.concepto),
+              _tdEC(m.montoSoles >= 0 ? 'Ingreso' : 'Egreso'),
+              _tdEC(
+                  '${m.montoSoles >= 0 ? '+' : '-'} $mon ${m.montoSoles.abs().toStringAsFixed(2)}',
+                  alignRight: true,
+                  color: m.montoSoles >= 0 ? verde : rojo),
+            ]),
+        ],
+      ),
+      pw.SizedBox(height: 16),
+      pw.Text(
+          'Documento generado por la app Pichangol. No es un comprobante tributario.',
+          style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+    ],
+  ));
+
+  final bytes = await doc.save();
+  final nombre =
+      'estado_pichangol_${desde.year}${desde.month.toString().padLeft(2, '0')}${desde.day.toString().padLeft(2, '0')}_'
+      '${hasta.year}${hasta.month.toString().padLeft(2, '0')}${hasta.day.toString().padLeft(2, '0')}.pdf';
+  await Printing.sharePdf(bytes: bytes, filename: nombre);
+}
+
+pw.Widget _thEC(String s, {bool alignRight = false}) => pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+      child: pw.Text(s,
+          textAlign: alignRight ? pw.TextAlign.right : pw.TextAlign.left,
+          style: pw.TextStyle(
+              fontSize: 9,
+              fontWeight: pw.FontWeight.bold,
+              color: PdfColors.grey800)),
+    );
+
+pw.Widget _tdEC(String s, {bool alignRight = false, PdfColor? color}) =>
+    pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 5, horizontal: 4),
+      child: pw.Text(s,
+          textAlign: alignRight ? pw.TextAlign.right : pw.TextAlign.left,
+          style: pw.TextStyle(fontSize: 9, color: color ?? PdfColors.grey900)),
+    );
+
+/// Fila de opción de periodo en la hoja de "Estado de cuenta".
+class _OpcionPeriodo extends StatelessWidget {
+  const _OpcionPeriodo({required this.titulo, required this.onTap, this.icono});
+  final String titulo;
+  final VoidCallback onTap;
+  final IconData? icono;
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: trazo),
+      ),
+      child: ListTile(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        leading: CircleAvatar(
+          radius: 18,
+          backgroundColor: bosque.withOpacity(0.10),
+          child: Icon(icono ?? Icons.picture_as_pdf_outlined,
+              size: 18, color: bosque),
+        ),
+        title:
+            Text(titulo, style: const TextStyle(fontWeight: FontWeight.w700)),
+        trailing: const Icon(Icons.chevron_right, color: textoTenue),
+        onTap: onTap,
       ),
     );
   }

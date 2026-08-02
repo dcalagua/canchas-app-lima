@@ -308,7 +308,6 @@ class _ReservaManualScreenState extends State<ReservaManualScreen> {
                   value: _pagado,
                   onChanged: (v) => setState(() => _pagado = v),
                   contentPadding: EdgeInsets.zero,
-                  activeColor: lima,
                   title: const Text('Ya pagó'),
                   subtitle: Text(
                     _pagado

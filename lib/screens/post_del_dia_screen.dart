@@ -356,7 +356,6 @@ class _PostDelDiaScreenState extends State<PostDelDiaScreen> {
             border: Border.all(color: trazo),
           ),
           child: SwitchListTile(
-            activeColor: lima,
             secondary: Icon(Icons.auto_awesome,
                 color: _activo ? lima : textoTenue),
             title: const Text('Publicar automático',
@@ -384,7 +383,6 @@ class _PostDelDiaScreenState extends State<PostDelDiaScreen> {
               border: Border.all(color: trazo),
             ),
             child: SwitchListTile(
-              activeColor: lima,
               secondary: Icon(Icons.rocket_launch_outlined,
                   color: _autoPublicar ? lima : textoTenue),
               title: const Text('Publicar solo en mis redes',

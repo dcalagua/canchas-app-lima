@@ -112,7 +112,6 @@ class _NivelOnboardingScreenState extends State<NivelOnboardingScreen> {
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          activeColor: lima,
           title: const Text('¿Compites en torneos o ligas?',
               style: TextStyle(fontWeight: FontWeight.w700)),
           value: _compite,

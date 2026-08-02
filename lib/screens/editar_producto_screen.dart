@@ -258,7 +258,6 @@ class _EditarProductoScreenState extends State<EditarProductoScreen> {
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             value: _activo,
-            activeColor: lima,
             title: const Text('Publicado'),
             subtitle: Text(_activo
                 ? 'Visible en el marketplace'

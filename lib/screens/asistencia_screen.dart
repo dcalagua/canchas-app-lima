@@ -473,7 +473,6 @@ class _FilaAsistencia extends StatelessWidget {
         ),
         trailing: Switch(
           value: presente,
-          activeColor: verde,
           onChanged: onToggle,
         ),
         onTap: () => onToggle(!presente),

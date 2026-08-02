@@ -1705,7 +1705,6 @@ Future<void> _editarMarca(BuildContext context, Campeonato c,
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               value: dsq,
-              activeColor: clayOscuro,
               title: const Text('Descalificado (DSQ)'),
               onChanged: (v) => setSt(() => dsq = v),
             ),

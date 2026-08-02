@@ -323,7 +323,6 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             value: _relampago,
-            activeColor: lima,
             onChanged: (v) => setState(() => _relampago = v),
             title: const Text('Relámpago (todo en un día)'),
             subtitle: const Text(
@@ -357,7 +356,6 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             value: _exigeDni,
-            activeColor: lima,
             onChanged: (v) => setState(() => _exigeDni = v),
             title: Text('Exigir $docIdActual para inscribirse'),
             subtitle: const Text(

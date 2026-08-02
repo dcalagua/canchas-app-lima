@@ -292,7 +292,6 @@ class _FilaFija extends StatelessWidget {
           children: [
             Switch(
               value: fija.activo,
-              activeColor: lima,
               onChanged: (v) => appState.pausarReservaFija(fija.id, v),
             ),
             IconButton(

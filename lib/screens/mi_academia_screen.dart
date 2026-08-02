@@ -198,7 +198,6 @@ class MiAcademiaScreen extends StatelessWidget {
                   const SizedBox(height: 6),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
-                    activeColor: lima,
                     value: esSocio,
                     onChanged: (v) => setSt(() => esSocio = v),
                     title: const Text('Socio del club'),
