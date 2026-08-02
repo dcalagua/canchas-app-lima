@@ -83,12 +83,28 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
       _sincronizarFicha();
       _evaluarReclamoRechazado();
     }
+    // Baja de Supabase la versión FRESCA de las canchas y re-aplica la vigente:
+    // así, en OTRO equipo (el jugador), la duración/precio/horario que el dueño
+    // editó se ven al abrir la ficha, sin depender de un pull-to-refresh manual
+    // ni de reiniciar la app.
+    _refrescarCanchasYFicha();
     // Refresca las reservas de la nube para que la grilla no muestre libre un
     // horario que otro dispositivo ya tomó (integridad la garantiza el UNIQUE,
     // esto es solo para que se vea al día).
     appState.cargarReservasRemotas();
     // Horarios bloqueados por el dueño (no reservables).
     appState.cargarBloqueos();
+  }
+
+  /// Baja las canchas de Supabase y, si la cancha mostrada cambió (p. ej. la
+  /// duración del turno la editó el dueño desde otro equipo), refresca `_cancha`.
+  Future<void> _refrescarCanchasYFicha() async {
+    await appState.cargarCanchasRemotas();
+    if (!mounted) return;
+    final vig = appState.canchaVigente(_cancha);
+    if (vig.id == _cancha.id && !identical(vig, _cancha)) {
+      setState(() => _cancha = vig);
+    }
   }
 
   /// Si el (último) reclamo de esta cancha fue RECHAZADO y NO es mío, la cancha
