@@ -4487,8 +4487,39 @@ class AppState extends ChangeNotifier {
       canchasRemotas
         ..clear()
         ..addAll(remotas.where((c) => !canchasEliminadas.contains(c.id)));
+      _sincronizarConfigLocalDesdeNube();
       _repararClubLegado();
+      _persistirDatos();
       notifyListeners();
+    }
+  }
+
+  /// La NUBE es la fuente de verdad de la CONFIG de una cancha ya registrada.
+  /// Si la misma cancha vive también en `canchasExtra` (editada en ESTE equipo),
+  /// trae de la versión remota los campos de config (duración/precio/horario/
+  /// seña/valle/nombre/servicios). Sin esto, dos equipos del MISMO dueño
+  /// mostraban valores distintos: `canchaVigente` prioriza `canchasExtra`, así
+  /// que el equipo que editó ANTES seguía viendo su valor viejo aunque otro
+  /// equipo ya guardó el nuevo en la nube. Preserva id/dueño/verificada locales.
+  /// (El flujo de edición espera la escritura a la nube antes de cerrar, así que
+  /// esto no revierte una edición recién hecha en este mismo equipo.)
+  void _sincronizarConfigLocalDesdeNube() {
+    for (final r in canchasRemotas) {
+      final i = canchasExtra.indexWhere((x) => x.id == r.id);
+      if (i < 0) continue;
+      final loc = canchasExtra[i];
+      canchasExtra[i] = loc.copyWith(
+        nombre: r.nombre,
+        club: r.club,
+        precioHora: r.precioHora,
+        horaApertura: r.horaApertura,
+        horaCierre: r.horaCierre,
+        duracionSlotMin: r.duracionSlotMin,
+        senaPct: r.senaPct,
+        descuentoValle: r.descuentoValle,
+        amenidades: r.amenidades,
+        superficie: r.superficie,
+      );
     }
   }
 
