@@ -70,6 +70,10 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
   @override
   void initState() {
     super.initState();
+    // Refresca el snapshot con la versión MÁS FRESCA (por si el dueño acaba de
+    // editar duración de slot / precio / horario): el jugador debe ver el
+    // cambio al instante, no el snapshot con el que se abrió la ficha.
+    _cancha = appState.canchaVigente(_cancha);
     // Al abrir la ficha, sincroniza el estado REAL de la cancha con el backend:
     // - pendiente → puede pasar a verificada (quita el cartel "pendiente").
     // - verificada → puede DEGRADARSE si el admin la rechazó/revocó (quita los
@@ -103,6 +107,12 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
 
   /// Sincroniza la cancha mostrada (sea mía o no) y refleja el cambio en vivo.
   Future<void> _sincronizarFicha() async {
+    // Primero, la versión local más fresca (duración/precio/horario editados).
+    final vig = appState.canchaVigente(_cancha);
+    if (mounted && vig.id == _cancha.id && !identical(vig, _cancha)) {
+      setState(() => _cancha = vig);
+    }
+    // Luego, el estado real del backend (verificada/rechazada).
     final act = await appState.sincronizarCanchaMostrada(_cancha);
     if (!mounted || act == null) return;
     setState(() => _cancha = act);

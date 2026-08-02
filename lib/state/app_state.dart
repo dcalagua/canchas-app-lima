@@ -1160,6 +1160,24 @@ class AppState extends ChangeNotifier {
     return SampleData.canchaPorId(id);
   }
 
+  /// Versión MÁS FRESCA de una cancha por id (para que la ficha del jugador
+  /// refleje al instante lo que el dueño acaba de editar: duración de slot,
+  /// precio, horario, nombre, etc.). Prioridad: canchasExtra (registradas en
+  /// este equipo) → canchasRemotas (Supabase) → descubiertas (Google) → el
+  /// snapshot recibido. Nunca devuelve null: cae a `c` si no la encuentra.
+  Cancha canchaVigente(Cancha c) {
+    for (final x in canchasExtra) {
+      if (x.id == c.id) return x;
+    }
+    for (final x in canchasRemotas) {
+      if (x.id == c.id) return x;
+    }
+    for (final x in canchasDescubiertas) {
+      if (x.id == c.id) return x;
+    }
+    return c;
+  }
+
   /// Avisa al DUEÑO de la cancha que entró una reserva, con un PUSH DEDICADO
   /// (fuera del chat) vía la Edge Function `push-reserva`. Se manda solo el id
   /// (o el del grupo si son varias horas); el servidor deriva destinatario y
