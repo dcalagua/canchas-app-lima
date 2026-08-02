@@ -31,6 +31,9 @@ void main() async {
   // Notificaciones push del chat (Etapa B). Fail-safe: sin config de Firebase
   // queda desactivado y la app sigue igual.
   await PushService.init();
+  // Recordatorios LOCALES (cobra en efectivo). Fail-safe: si el plugin no
+  // inicializa, no rompe la app.
+  await RecordatorioService.init();
   // Al tocar una notificación (o el aviso in-app), abre la bandeja en el chat
   // correspondiente. Se usa el navegador global de PushService.
   PushService.alAbrirChat = (hilo) {

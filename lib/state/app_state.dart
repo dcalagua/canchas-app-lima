@@ -55,6 +55,7 @@ import '../services/supabase_service.dart';
 import '../services/verificacion_service.dart';
 import '../services/growth_service.dart';
 import '../services/propiedad_service.dart';
+import '../services/recordatorio_service.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../config/pais.dart';
 import '../utils/moneda.dart';
@@ -4192,12 +4193,49 @@ class AppState extends ChangeNotifier {
     await sincronizarReservasPendientes();
     await flushContabilidad();
     final remotas = await ReservasRepo.fetchRemotas();
-    if (remotas.isEmpty) return;
     for (final r in remotas) {
       if (!reservas.any((x) => x.id == r.id)) reservas.insert(0, r);
     }
-    _recomputarMisReservas();
-    notifyListeners();
+    if (remotas.isNotEmpty) {
+      _recomputarMisReservas();
+      notifyListeners();
+    }
+    // Programa (en ESTE dispositivo, el del dueño) los recordatorios de cobro en
+    // efectivo de sus canchas. Aquí es donde el dueño "se entera" de la reserva.
+    _programarRecordatoriosEfectivo();
+  }
+
+  /// Fecha+hora real de una reserva (para agendar avisos). Null si no se puede.
+  DateTime? _fechaHoraReserva(Reserva r) {
+    if (r.fecha.isEmpty) return null;
+    final d = DateTime.tryParse(r.fecha);
+    if (d == null) return null;
+    final partes = r.horaInicio.split(':');
+    final h = int.tryParse(partes.isNotEmpty ? partes[0] : '') ?? 0;
+    final m = int.tryParse(partes.length > 1 ? partes[1] : '') ?? 0;
+    return DateTime(d.year, d.month, d.day, h, m);
+  }
+
+  /// Agenda recordatorios LOCALES de "cobra en efectivo" para las reservas EN
+  /// EFECTIVO de MIS canchas, aún no pagadas y en el futuro. Idempotente (mismo
+  /// id de notificación por reserva → no duplica). Best-effort.
+  void _programarRecordatoriosEfectivo() {
+    for (final r in reservas) {
+      if (r.medioPago != 'efectivo' || r.pagado) continue;
+      if (r.estado == EstadoReserva.noShow) continue;
+      final cancha = miCanchaDeReserva(r.canchaId);
+      if (cancha == null) continue; // no es mi cancha → no me toca cobrar
+      final cuando = _fechaHoraReserva(r);
+      if (cuando == null || !cuando.isAfter(DateTime.now())) continue;
+      final sim = r.monedaSimbolo;
+      RecordatorioService.programarCobroEfectivo(
+        reservaId: r.id,
+        titulo: 'Cobra en efectivo 💵',
+        cuerpo: '${cancha.nombre} · ${r.jugador} · $sim${r.precio} · '
+            '${r.horaInicio}',
+        cuando: cuando,
+      );
+    }
   }
 
   // ── Horarios BLOQUEADOS por el dueño ──────────────────────────────────────
@@ -6506,6 +6544,8 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     _persistirDatos();
     ReservasRepo.actualizar(upd); // best-effort
+    // Ya cobró → no hace falta el recordatorio de "cobra en efectivo".
+    if (pagado) RecordatorioService.cancelar(r.id);
   }
 
   // ── CAJA DEL DÍA (dueño) ──────────────────────────────────────────────────

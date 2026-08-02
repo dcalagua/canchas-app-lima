@@ -503,6 +503,44 @@ def excluir_duplicados_media3():
     print("  media3: exclusiones de streaming agregadas (dedup Jitsi)")
 
 
+def configurar_desugaring():
+    """flutter_local_notifications (recordatorio de cobro en efectivo) usa APIs de
+    java.time → EXIGE 'core library desugaring' en el módulo app, o el build de
+    release falla. Como el CI regenera android/ con `flutter create`, lo
+    inyectamos aquí: (1) el flag dentro de compileOptions y (2) la dependencia
+    desugar_jdk_libs. Idempotente."""
+    path = "android/app/build.gradle"
+    if not os.path.exists(path):
+        return
+    with open(path, "r", encoding="utf-8") as f:
+        g = f.read()
+    cambios = False
+    if "coreLibraryDesugaringEnabled" not in g:
+        nuevo, n = re.subn(
+            r"(compileOptions\s*\{)",
+            r"\1\n        coreLibraryDesugaringEnabled true",
+            g,
+            count=1,
+        )
+        if n:
+            g = nuevo
+            cambios = True
+    if "desugar_jdk_libs" not in g:
+        g += (
+            "\n// pichangol_desugaring: requerido por flutter_local_notifications\n"
+            "dependencies {\n"
+            "    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'\n"
+            "}\n"
+        )
+        cambios = True
+    if cambios:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(g)
+        print("  desugaring: activado (flutter_local_notifications)")
+    else:
+        print("  desugaring: ya presente")
+
+
 def configurar_firebase_android():
     """Habilita FCM (notificaciones push del chat) en Android SOLO si hay config.
 
@@ -761,6 +799,7 @@ def main():
     configurar_firma_android()
     configurar_r8_release()
     excluir_duplicados_media3()
+    configurar_desugaring()
     configurar_firebase_android()
     configurar_notificacion_android()
     configurar_sonido_notificacion()
