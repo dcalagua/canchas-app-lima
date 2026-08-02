@@ -468,6 +468,31 @@ auth por usuario en `/pagos/movimientos` (PROD).
 - **Candado PRO:** **Reserva manual** y **Bloqueo de horas** pasan a ser features de la
   **suscripción Pichangol Pro** (gate `appState` tipo `esPro`/`pro_activo`, con CTA
   "Hazte Pro" — ver `hazte_pro_screen.dart` y `stores.pro_activo` del backend).
+- **Historial del JUGADOR + PUNTOS acumulables (incentivo cruzado):** el jugador
+  tiene su historial de reservas (online + efectivo, con estado pagado/por pagar).
+  El efectivo se valida cuando el DUEÑO lo marca pagado (`AppState.marcarPago`). Se
+  conecta con **puntos acumulables** (beneficios Pichangol/PCG): los puntos del
+  efectivo recién se acreditan cuando el dueño marca pagado → el jugador **exige**
+  al dueño que marque el efectivo (sube la confirmación de cobros). Pendiente:
+  pantalla de historial del jugador + motor de puntos (regla, caducidad, canje) +
+  gatillo (online auto, efectivo al marcar). Ojo: la reserva MANUAL (cliente propio
+  del dueño) hoy queda fuera de comisión/billetera; evaluar si acumula puntos.
+
+### Nota billetera/reservas (recordatorio de diseño)
+- **Billetera (`cuenta_screen`)** = plata que pasa por la APP: pagos ONLINE del
+  dueño ("por recibir"/liquidación), comisiones, recargas, Pro. Re-sincroniza al
+  abrir (`flushContabilidad` + `sincronizarSaldo`) para reflejar un pago online
+  recién hecho.
+- **Reserva MANUAL del dueño** (`agregarReservaManual`, `traidaPorApp:false`) =
+  cliente propio, **fuera de comisión**: NO genera movimiento en la billetera (a
+  propósito); aparece en **reporte/caja del día**. Solo las reservas pagadas por
+  la app (online) generan "por recibir".
+- **Sync config de canchas entre equipos del mismo dueño:** la nube manda.
+  `cargarCanchasRemotas` → `_sincronizarConfigLocalDesdeNube` actualiza
+  `canchasExtra` (duración/precio/horario) desde Supabase. "Mis canchas" la llama
+  al abrir y en pull-to-refresh.
+- **`build` del footer de Ajustes = versionCode de Android** (arm64 → 2xxx), NO el
+  número del APK (`pichangol-N.apk`). Para comparar equipos basta que coincida.
 
 ## Tips operativos
 
