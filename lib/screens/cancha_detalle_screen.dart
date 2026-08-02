@@ -28,7 +28,9 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
   String _dia = 'Hoy';
   String? _hora;
 
-  Cancha get cancha => widget.cancha;
+  // Versión VIGENTE (no el snapshot con el que se abrió la pantalla): así la
+  // duración/precio/horario recién editados por el dueño se ven al instante.
+  Cancha get cancha => appState.canchaVigente(widget.cancha);
   Color get _color => colorDeporte(cancha.deporte);
 
   /// Horas reservables reales de ESTA cancha (apertura→cierre, paso = duración).

@@ -538,7 +538,9 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                           final sel = cc.id == _cancha.id;
                           return GestureDetector(
                             onTap: () => setState(() {
-                              _cancha = cc;
+                              // Versión vigente (el club es un snapshot de la
+                              // navegación; podría traer duración/precio viejos).
+                              _cancha = appState.canchaVigente(cc);
                               _slots.clear();
                               _deporteSel = null; // se ajusta a la nueva cancha
                             }),
