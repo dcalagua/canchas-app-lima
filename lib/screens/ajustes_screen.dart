@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../brand.dart';
 import '../services/whatsapp_link.dart';
@@ -365,10 +367,63 @@ class AjustesScreen extends StatelessWidget {
                   onPressed: () => _verRegistroLlamadas(context),
                 ),
               ],
+              const SizedBox(height: 28),
+              const _VersionApp(),
             ],
           );
         },
       ),
+    );
+  }
+}
+
+/// Pie de "Ajustes": versión y número de build del APK (= `pichangol-<build>.apk`),
+/// para que el usuario pueda decir qué versión tiene instalada (útil en soporte y
+/// pruebas). Toca para COPIAR el dato. El build sale de `package_info_plus`
+/// (viene del `--build-number` del CI = número de la corrida).
+class _VersionApp extends StatelessWidget {
+  const _VersionApp();
+
+  @override
+  Widget build(BuildContext context) {
+    final tenue = Theme.of(context).colorScheme.onSurface.withOpacity(0.55);
+    return FutureBuilder<PackageInfo>(
+      future: PackageInfo.fromPlatform(),
+      builder: (context, snap) {
+        final info = snap.data;
+        final version = info?.version ?? '—';
+        final build = info?.buildNumber ?? '—';
+        final texto = '$kBrandName · versión $version (build $build)';
+        return Center(
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () async {
+              await Clipboard.setData(ClipboardData(text: texto));
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content: Text('Versión copiada'),
+                  duration: Duration(seconds: 2)));
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+              child: Column(
+                children: [
+                  Text(texto,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          color: tenue,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 2),
+                  Text('Toca para copiar · APK: pichangol-$build.apk',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: tenue, fontSize: 11)),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
