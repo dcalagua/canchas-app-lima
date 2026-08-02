@@ -279,8 +279,8 @@ class _AcademiasScreenState extends State<AcademiasScreen> {
   }
 }
 
-/// Barra de búsqueda estilo Airbnb: pastilla blanca con lupa, sombra suave y
-/// botón para limpiar. Busca academias por nombre o sede.
+/// Barra de búsqueda SÓLIDA estilo WhatsApp: pastilla rellena gris, plana (sin
+/// borde ni sombra), con lupa y botón para limpiar. Busca por nombre o sede.
 class _BarraBusqueda extends StatelessWidget {
   const _BarraBusqueda({
     required this.controller,
@@ -293,39 +293,32 @@ class _BarraBusqueda extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: trazo),
-        boxShadow: const [
-          BoxShadow(color: Color(0x14000000), blurRadius: 10, offset: Offset(0, 3)),
-        ],
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      child: Row(
-        children: [
-          const Icon(Icons.search, color: bosque),
-          const SizedBox(width: 8),
-          Expanded(
-            child: TextField(
-              controller: controller,
-              textInputAction: TextInputAction.search,
-              onChanged: onChanged,
-              decoration: const InputDecoration(
-                isDense: true,
-                border: InputBorder.none,
-                hintText: 'Busca una academia por nombre',
+    // Buscador SÓLIDO estilo WhatsApp: pastilla rellena, plana, sin borde ni
+    // sombra (mismo look que el buscador de Mensajes).
+    final oscuro = Theme.of(context).brightness == Brightness.dark;
+    final fill = oscuro ? Colors.white10 : const Color(0xFFEFEFEF);
+    return TextField(
+      controller: controller,
+      textInputAction: TextInputAction.search,
+      onChanged: onChanged,
+      decoration: InputDecoration(
+        hintText: 'Busca una academia por nombre',
+        prefixIcon: const Icon(Icons.search, size: 20, color: textoTenue),
+        suffixIcon: controller.text.isEmpty
+            ? null
+            : IconButton(
+                tooltip: 'Limpiar',
+                icon: const Icon(Icons.close, size: 18, color: textoTenue),
+                onPressed: onLimpiar,
               ),
-            ),
-          ),
-          if (controller.text.isNotEmpty)
-            IconButton(
-              tooltip: 'Limpiar',
-              icon: const Icon(Icons.close, size: 20, color: textoTenue),
-              onPressed: onLimpiar,
-            ),
-        ],
+        isDense: true,
+        filled: true,
+        fillColor: fill,
+        contentPadding:
+            const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
+        border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(999),
+            borderSide: BorderSide.none),
       ),
     );
   }
