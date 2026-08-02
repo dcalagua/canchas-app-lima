@@ -1175,7 +1175,31 @@ class AppState extends ChangeNotifier {
     for (final x in canchasDescubiertas) {
       if (x.id == c.id) return x;
     }
+    // Fallback por SITIO: si lo que se muestra es la versión DESCUBIERTA de
+    // Google (sin registrar, id = place_id) y existe la MISMA cancha REGISTRADA
+    // con otro id (Supabase), usa la registrada: trae la duración/precio/horario
+    // REALES que editó el dueño (la de Google trae los valores por defecto).
+    if (!c.registrada) {
+      Cancha? reg;
+      for (final x in [...canchasExtra, ...canchasRemotas]) {
+        if (!x.registrada) continue;
+        if (x.deporte == c.deporte && _cercaDe(x.ubicacion, c.ubicacion, 0.10)) {
+          if (reg == null || _puntajeCancha(x) > _puntajeCancha(reg)) reg = x;
+        }
+      }
+      if (reg != null) return reg;
+    }
     return c;
+  }
+
+  /// De qué FUENTE sale una cancha por id (diagnóstico). Ayuda a entender por qué
+  /// una ficha muestra datos viejos: 'extra' (registrada en este equipo),
+  /// 'remota' (Supabase), 'google' (descubierta) o 'snapshot' (no está en listas).
+  String fuenteCancha(String id) {
+    if (canchasExtra.any((x) => x.id == id)) return 'extra';
+    if (canchasRemotas.any((x) => x.id == id)) return 'remota';
+    if (canchasDescubiertas.any((x) => x.id == id)) return 'google';
+    return 'snapshot';
   }
 
   /// Avisa al DUEÑO de la cancha que entró una reserva, con un PUSH DEDICADO
