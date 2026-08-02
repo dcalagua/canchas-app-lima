@@ -440,7 +440,16 @@ class _ReservaCard extends StatelessWidget {
                   visualDensity: VisualDensity.compact,
                   onPressed: () => _chatearConJugador(context),
                 ),
-              _EstadoChip(reserva: reserva),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  _EstadoChip(reserva: reserva),
+                  if (reserva.medioPago.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    _MedioPagoChip(medio: reserva.medioPago),
+                  ],
+                ],
+              ),
             ],
           ),
           const SizedBox(height: 4),
@@ -591,6 +600,70 @@ class _EstadoChip extends StatelessWidget {
           Text(texto,
               style: TextStyle(
                   color: fg,
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w800,
+                  height: 1)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Chip del MEDIO de pago (trazabilidad de por dónde vino la plata): Yape,
+/// Tarjeta (online, ya cobrado), Efectivo (paga en cancha) o Manual.
+class _MedioPagoChip extends StatelessWidget {
+  const _MedioPagoChip({required this.medio});
+  final String medio;
+
+  @override
+  Widget build(BuildContext context) {
+    late final String texto;
+    late final IconData icono;
+    late final Color color;
+    switch (medio) {
+      case 'yape':
+        texto = 'Yape';
+        icono = Icons.qr_code_2;
+        color = const Color(0xFF6B2FB3); // morado Yape
+        break;
+      case 'tarjeta':
+        texto = 'Tarjeta';
+        icono = Icons.credit_card;
+        color = const Color(0xFF2AA9E0);
+        break;
+      case 'sena':
+        texto = 'Seña + efectivo';
+        icono = Icons.savings_outlined;
+        color = const Color(0xFFB26A00);
+        break;
+      case 'efectivo':
+        texto = 'Efectivo';
+        icono = Icons.payments_outlined;
+        color = pino;
+        break;
+      case 'manual':
+        texto = 'Manual';
+        icono = Icons.person_outline;
+        color = const Color(0xFF8A8175);
+        break;
+      default:
+        texto = 'Online';
+        icono = Icons.language;
+        color = const Color(0xFF2AA9E0);
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+          color: color.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(999)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icono, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(texto,
+              style: TextStyle(
+                  color: color,
                   fontSize: 10.5,
                   fontWeight: FontWeight.w800,
                   height: 1)),

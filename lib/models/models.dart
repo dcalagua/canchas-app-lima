@@ -476,6 +476,10 @@ class Reserva {
   final int precio;
   final int sena; // monto de seña/garantía con tarjeta (anti no-show)
   final bool pagado; // el dueño confirmó el pago (efectivo en cancha)
+  /// Medio de pago: 'tarjeta' | 'yape' (online, ya cobrado por Culqi) |
+  /// 'efectivo' (paga en la cancha, el dueño cobra) | 'sena' (adelantó una parte
+  /// online y paga el resto en efectivo) | '' (desconocido/legado). Trazabilidad.
+  final String medioPago;
   final String usuario; // correo del jugador (para "mis reservas" entre dispositivos)
   final String deporte; // deporte elegido para este slot (Deporte.name); '' = el principal de la cancha
   final String moneda; // símbolo de moneda de la cancha al reservar ('' = 'S/')
@@ -514,9 +518,11 @@ class Reserva {
     this.extras = const [],
     this.telefono = '',
     this.grupoReservaId = '',
+    this.medioPago = '',
   });
 
-  Reserva copyWith({EstadoReserva? estado, bool? pagado}) => Reserva(
+  Reserva copyWith({EstadoReserva? estado, bool? pagado, String? medioPago}) =>
+      Reserva(
         id: id,
         canchaId: canchaId,
         jugador: jugador,
@@ -536,6 +542,7 @@ class Reserva {
         extras: extras,
         telefono: telefono,
         grupoReservaId: grupoReservaId,
+        medioPago: medioPago ?? this.medioPago,
       );
 
   Map<String, dynamic> toJson() => {
@@ -558,6 +565,7 @@ class Reserva {
         'extras': extras.map((s) => s.toJson()).toList(),
         'telefono': telefono,
         'grupoReservaId': grupoReservaId,
+        'medioPago': medioPago,
       };
 
   factory Reserva.fromJson(Map<String, dynamic> j) => Reserva(
@@ -580,6 +588,7 @@ class Reserva {
         extras: ServicioExtra.listaDe(j['extras']),
         telefono: (j['telefono'] ?? '') as String,
         grupoReservaId: (j['grupoReservaId'] ?? '') as String,
+        medioPago: (j['medioPago'] ?? '') as String,
       );
 }
 

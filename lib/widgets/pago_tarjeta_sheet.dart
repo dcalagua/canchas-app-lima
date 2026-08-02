@@ -22,6 +22,10 @@ import '../utils/moneda.dart';
 /// Si Culqi no está configurado (o no hay backend), cae a la pasarela SIMULADA
 /// para no romper la demo.
 class PagoTarjeta {
+  /// Último medio con el que se cobró OK ('yape' | 'tarjeta'). Lo lee el flujo de
+  /// reserva para guardar la trazabilidad del pago. Se resetea en cada cobro.
+  static String ultimoMetodo = '';
+
   static Future<bool> cobrar(
     BuildContext context, {
     required int monto,
@@ -31,6 +35,7 @@ class PagoTarjeta {
     ValueChanged<String>? onToken, // recibe el token (tkn_/crd_) usado si el pago fue OK
     ValueChanged<String>? onOperacion, // recibe el N.º de operación (charge_id)
   }) async {
+    ultimoMetodo = ''; // se setea a 'yape'/'tarjeta' si el cobro por Culqi sale OK
     // BOLIVIA: la pasarela es Libélula (no Culqi). Se detecta por el país actual
     // (GPS/selección). El pago se hace en la página hospedada de Libélula dentro
     // de un WebView (QR · tarjeta · Tigo Money).
@@ -203,6 +208,7 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
       final ok = await PagoProcesando.mostrar(context,
           titulo: 'Cobrando $_mon ${widget.monto}', exitoTitulo: '¡Pago aprobado!',
           accion: accionYape);
+      if (ok == true) PagoTarjeta.ultimoMetodo = 'yape';
       if (ok == true && mounted) Navigator.of(context).pop(true);
       return;
     }
@@ -255,6 +261,7 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
       exitoTitulo: '¡Pago aprobado!',
       accion: accion,
     );
+    if (ok == true) PagoTarjeta.ultimoMetodo = 'tarjeta';
     if (ok == true && mounted) Navigator.of(context).pop(true);
   }
 

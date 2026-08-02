@@ -6259,6 +6259,7 @@ class AppState extends ChangeNotifier {
       {Deporte? deporte,
       List<ServicioExtra> extras = const [],
       String cobro = 'ninguno',
+      String medioPago = '',
       int sena = 0,
       String grupoReservaId = '',
       bool notificarDueno = true}) async {
@@ -6294,6 +6295,8 @@ class AppState extends ChangeNotifier {
       // Seña anti no-show cobrada por adelantado (Culqi). 0 = sin seña / pago
       // total online / efectivo puro. No reembolsable: se queda con el dueño.
       sena: sena.clamp(0, precio),
+      medioPago: medioPago, // trazabilidad: yape/tarjeta/efectivo/sena
+
       usuario: usuario?.email ?? '',
       // Deporte elegido para este slot (loza multiuso). Default: el principal.
       deporte: (deporte ?? cancha.deporte).name,
@@ -6478,6 +6481,7 @@ class AppState extends ChangeNotifier {
       deporte: (deporte ?? cancha.deporte).name,
       moneda: cancha.monedaSimbolo,
       telefono: telefono.trim(),
+      medioPago: 'manual', // reserva del dueño (cliente propio, fuera de la app)
     );
 
     // Misma fuente de verdad anti-doble-reserva que la reserva del jugador.

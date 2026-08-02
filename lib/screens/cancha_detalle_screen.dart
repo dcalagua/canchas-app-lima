@@ -156,12 +156,22 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
       );
       if (!pagado || !mounted) return;
     }
+    // Trazabilidad del medio de pago: efectivo, seña (adelanto), o el medio real
+    // con que se cobró online (yape/tarjeta lo expone PagoTarjeta.ultimoMetodo).
+    final medioPago = exigeSena
+        ? 'sena'
+        : (efectivo
+            ? 'efectivo'
+            : (PagoTarjeta.ultimoMetodo.isNotEmpty
+                ? PagoTarjeta.ultimoMetodo
+                : 'online'));
     final res = await appState.agregarReservaJugador(
         cancha, _fechaIso, _dia, hora,
         // seña → adelanto (resto en la cancha); con saldo → efectivo (comisión
         // del saldo); sin saldo → online (ya se cobró al jugador; liquidación al
         // dueño).
         cobro: exigeSena ? 'sena' : (efectivo ? 'efectivo' : 'online'),
+        medioPago: medioPago,
         sena: exigeSena ? senaMonto : 0);
     if (!mounted) return;
 

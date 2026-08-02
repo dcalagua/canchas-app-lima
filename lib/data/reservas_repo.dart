@@ -168,6 +168,9 @@ class ReservasRepo {
         // guard para no romper si aún no se corrió el ALTER en Supabase).
         if (conDeporte && r.grupoReservaId.isNotEmpty)
           'grupo_reserva_id': r.grupoReservaId,
+        // Medio de pago (trazabilidad): yape/tarjeta/efectivo/sena/manual.
+        // Mismo guard: no rompe si aún no se corrió el ALTER en Supabase.
+        if (conDeporte && r.medioPago.isNotEmpty) 'medio_pago': r.medioPago,
       };
 
   static Reserva _fromRow(Map<String, dynamic> r) => Reserva(
@@ -190,6 +193,7 @@ class ReservasRepo {
         extras: ServicioExtra.listaDe(r['extras']),
         telefono: (r['telefono'] ?? '') as String,
         grupoReservaId: (r['grupo_reserva_id'] ?? '') as String,
+        medioPago: (r['medio_pago'] ?? '') as String,
       );
 
   static EstadoReserva _estado(String? s) {
