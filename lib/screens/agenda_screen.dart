@@ -455,7 +455,10 @@ class _MiniKpi extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: (compacto ? t.titleMedium : t.titleLarge)?.copyWith(
-                  color: accent ? lima : Colors.white,
+                  // "Por cobrar" (accent) en DORADO: resalta y se lee sobre el
+                  // fondo teal (antes era `lima` verde, casi invisible). Mismo
+                  // color que "Por cobrar" en la tarjeta de caja.
+                  color: accent ? amarillo : Colors.white,
                   fontWeight: FontWeight.w700)),
           Text(label,
               maxLines: 1,
