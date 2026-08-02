@@ -43,20 +43,21 @@ class CanchasRepo {
     }
   }
 
-  /// Actualiza una cancha existente (edición del dueño). Fail-safe.
+  /// Guarda la edición del dueño. Usa UPSERT (no UPDATE): si la fila ya existe
+  /// la actualiza; si NO existe (p. ej. una cancha DESCUBIERTA por Google que
+  /// nunca se insertó en Supabase, solo vivía local), la INSERTA. Antes hacía
+  /// `update().eq(id)`, que en ese caso no tocaba ninguna fila y la edición
+  /// (duración, precio, horario…) nunca llegaba a la nube: otro equipo seguía
+  /// viendo el valor por defecto. Fail-safe.
   static Future<void> actualizar(Cancha c) async {
     if (!SupabaseService.disponible) return;
     try {
-      await SupabaseService.client
-          .from(_tabla)
-          .update(_toRow(c))
-          .eq('id', c.id);
+      await SupabaseService.client.from(_tabla).upsert(_toRow(c));
     } catch (_) {
       try {
         await SupabaseService.client
             .from(_tabla)
-            .update(_toRow(c, conAmenidades: false))
-            .eq('id', c.id);
+            .upsert(_toRow(c, conAmenidades: false));
       } catch (_) {}
     }
   }
