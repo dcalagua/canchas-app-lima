@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
+import '../config/features.dart';
 import '../data/canales_repo.dart';
 import '../data/reacciones_repo.dart';
 import '../models/canal.dart';
@@ -284,7 +285,7 @@ class _CanalDetalleScreenState extends State<CanalDetalleScreen> {
         title: Text(_canal.nombre,
             style: const TextStyle(fontWeight: FontWeight.w800)),
         actions: [
-          if (_soyDueno)
+          if (_soyDueno && kServiciosPichangolActivo)
             IconButton(
               tooltip: 'Generar con IA',
               icon: const Icon(Icons.auto_awesome),
@@ -324,7 +325,8 @@ class _CanalDetalleScreenState extends State<CanalDetalleScreen> {
                                         textAlign: TextAlign.center,
                                         style: TextStyle(
                                             color: textoTenueDe(context))),
-                                    if (_soyDueno) ...[
+                                    if (_soyDueno &&
+                                        kServiciosPichangolActivo) ...[
                                       const SizedBox(height: 16),
                                       FilledButton.icon(
                                         style: FilledButton.styleFrom(

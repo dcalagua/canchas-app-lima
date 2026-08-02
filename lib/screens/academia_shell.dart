@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../config/features.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/icono_chat_pichan.dart';
@@ -115,7 +116,8 @@ class _AcademiaShellState extends State<AcademiaShell> {
           (Icons.emoji_events_outlined, 'Campeonatos', amarillo),
           (Icons.fact_check_outlined, 'Asistencia', azul),
           (Icons.insights_outlined, 'Reporte', morado),
-          (Icons.campaign_outlined, 'Publicidad', naranja),
+          if (kServiciosPichangolActivo)
+            (Icons.campaign_outlined, 'Publicidad', naranja),
           (Icons.edit_outlined, 'Editar', teal),
           (Icons.account_balance_wallet_outlined, 'Billetera', amarillo),
         ];
@@ -154,9 +156,10 @@ class _AcademiaShellState extends State<AcademiaShell> {
                       CampeonatosScreen(academiaId: ac.id),
                       AsistenciaScreen(academiaId: ac.id),
                       ReporteAcademiaScreen(academiaId: ac.id),
-                      ServiciosScreen(
-                          negocio: appState.negocioServiciosDeAcademia(ac),
-                          mostrarBilleteraEnAppBar: false),
+                      if (kServiciosPichangolActivo)
+                        ServiciosScreen(
+                            negocio: appState.negocioServiciosDeAcademia(ac),
+                            mostrarBilleteraEnAppBar: false),
                       CrearAcademiaScreen(academia: ac),
                       const CuentaScreen(), // billetera única (saldo + movimientos)
                     ],

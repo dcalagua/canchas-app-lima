@@ -1218,11 +1218,12 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                 ),
               ),
             ],
-          const SizedBox(height: 14),
+          if (kServiciosPichangolActivo) const SizedBox(height: 14),
           // Atajo al servicio de MANEJO de redes (OAuth para publicar). El enlace
           // OAuth vive en Servicios Pichangol (donde se contrata); aquí solo se
           // descubre. Publicar por el usuario ≠ declarar el @usuario de arriba.
-          Container(
+          if (kServiciosPichangolActivo)
+            Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
                 color: limaSuave, borderRadius: BorderRadius.circular(14)),
@@ -1397,7 +1398,8 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                   style: TextStyle(color: textoTenue, fontSize: 11.5)),
             ],
           ),
-          const SizedBox(height: 10),
+          if (kServiciosPichangolActivo) const SizedBox(height: 10),
+          if (kServiciosPichangolActivo)
           _seccionPlegable(
             titulo: 'Publicidad / Landing (opcional)',
             subtitulo:

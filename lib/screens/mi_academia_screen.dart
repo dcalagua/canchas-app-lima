@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../config/features.dart';
 import '../models/academia.dart';
 import '../models/invitacion.dart';
 import '../services/pagos_service.dart';
@@ -115,7 +116,7 @@ class MiAcademiaScreen extends StatelessWidget {
               ),
               _RosterAlumnos(academia: ac),
               _SeccionInvitaciones(academia: ac),
-              _CmPostDelDiaTile(academia: ac),
+              if (kServiciosPichangolActivo) _CmPostDelDiaTile(academia: ac),
               // Secundario y PLEGABLE: compartir código, nivel/destacar y
               // ranking. Colapsado por defecto → no roba espacio a lo importante.
               Theme(
@@ -872,13 +873,15 @@ class _Header extends StatelessWidget {
               // solo quedan las acciones de configuración: Publicidad y Editar.
               // En tablet van en el rail lateral, así que la cabecera queda limpia.
               if (MediaQuery.of(context).size.width < 720) ...[
-              IconButton(
-                tooltip: 'Servicios (publicidad)',
-                icon: const Icon(Icons.campaign_outlined, color: Colors.white),
-                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => ServiciosScreen(
-                        negocio: appState.negocioServiciosDeAcademia(academia)))),
-              ),
+              if (kServiciosPichangolActivo)
+                IconButton(
+                  tooltip: 'Servicios (publicidad)',
+                  icon: const Icon(Icons.campaign_outlined, color: Colors.white),
+                  onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => ServiciosScreen(
+                          negocio:
+                              appState.negocioServiciosDeAcademia(academia)))),
+                ),
               IconButton(
                 tooltip: 'Editar',
                 icon: const Icon(Icons.edit, color: Colors.white),

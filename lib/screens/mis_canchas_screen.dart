@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../config/features.dart';
 import '../config/pais.dart';
 import '../models/club.dart';
 import '../models/models.dart';
@@ -790,17 +791,19 @@ class _LocalCard extends StatelessWidget {
                     style: TextStyle(
                         color: cs.primary, fontWeight: FontWeight.w700)),
               ),
-              TextButton.icon(
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                      builder: (_) => ServiciosScreen(
-                          negocio: appState.negocioServiciosDeClub(local))),
+              if (kServiciosPichangolActivo)
+                TextButton.icon(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                        builder: (_) => ServiciosScreen(
+                            negocio: appState.negocioServiciosDeClub(local))),
+                  ),
+                  icon:
+                      Icon(Icons.campaign_outlined, color: cs.primary, size: 20),
+                  label: Text('Servicios Pichangol',
+                      style: TextStyle(
+                          color: cs.primary, fontWeight: FontWeight.w700)),
                 ),
-                icon: Icon(Icons.campaign_outlined, color: cs.primary, size: 20),
-                label: Text('Servicios Pichangol',
-                    style: TextStyle(
-                        color: cs.primary, fontWeight: FontWeight.w700)),
-              ),
             ],
           ),
         ],
