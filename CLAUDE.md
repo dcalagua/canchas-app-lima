@@ -389,6 +389,43 @@ sigue el lenguaje Airbnb sobre la paleta EBIM:
      **refresco periódico** de la zona (frescura + ToS). Prioridad: que la lista
      NO se bloquee por GPS ni por fotos.
 
+### Memoria sesión pagos/reservas (ago-2026)
+
+**Ya HECHO (en el APK):**
+- **Reserva online = pagada automático** (`pagado=true` si `cobro=='online'`): el
+  dueño NO marca como pagado lo que el jugador pagó por Culqi. Efectivo/seña sí
+  los marca (hay efectivo por cobrar).
+- **Trazabilidad `medioPago`** en `Reserva` (yape/tarjeta/efectivo/sena/manual):
+  se captura al reservar (online lee `PagoTarjeta.ultimoMetodo`), viaja a Supabase
+  (col `medio_pago`) y se muestra como chip en Reservas del dueño.
+- **Reporte "Cuánto vas a recibir"**: `_ResumenComision` (reporte_canchas) ahora
+  se calcula de `appState.movimientos` (los mismos que la billetera), desglosado
+  por fuente (comisión del pago vs de tu saldo) → **cuadra EXACTO con "Por
+  recibir"** de la billetera. Antes estimaba 5% local y no cuadraba.
+- **Recordatorio LOCAL "cobra en efectivo"** (`recordatorio_service.dart`,
+  `flutter_local_notifications` + `timezone`, modo INEXACTO): se programa en el
+  teléfono del DUEÑO al sincronizar, 30 min antes, para reservas efectivo/futuras/
+  no pagadas de sus canchas; se cancela al marcar pagado. **Requiere desugaring**
+  (inyectado en `tool/configure_platforms.py::configurar_desugaring`).
+- **Fix privacidad billetera**: `sincronizarSaldo` refleja SIEMPRE el backend
+  (lista vacía → limpia); `_limpiarDatosDeSesion` vacía movimientos/saldo. Un
+  jugador ya NO ve los movimientos del dueño.
+- **Push "tu cancha fue aprobada"** (`supabase/functions/push-aprobacion`, el
+  growth la dispara al aprobar) — código listo, falta DEPLOY (tarea laptop).
+- **"Dejar en virgen"** ya vacía de verdad: local + nube + tombstones (canchas y
+  academias) + reclamos + billetera del backend (`/pagos/reset-mi-billetera`) +
+  colas de contabilidad. Sin data demo (no se auto-siembra academia/canchas, saldo 0).
+
+**DECISIONES de producto:**
+- **Seña**: la decide el DUEÑO por cancha (`senaPct`), NO el jugador (elegirla
+  mataría la protección anti no-show + baja conversión). Default recomendado 30% ⭐.
+  Seña por franja pico/valle = **post-piloto** (falta data de no-shows).
+
+**PENDIENTES (ver tasks):** SQL `medio_pago` en Supabase; deploy Edge Function
+`push-aprobacion` + envs Railway; SQL limpieza (academia demo + RLS academias);
+filtro Online/Efectivo en Reservas + medio en reporte/estado de cuenta;
+auth por usuario en `/pagos/movimientos` (PROD).
+
 ## Tips operativos
 
 - La red del entorno de Claude **bloquea** llamadas salientes al backend de
