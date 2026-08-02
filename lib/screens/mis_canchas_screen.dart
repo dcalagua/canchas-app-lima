@@ -36,6 +36,10 @@ class _MisCanchasScreenState extends State<MisCanchasScreen> {
     // Al abrir, pregunta al backend si el admin ya aprobó alguna cancha pendiente
     // (quita el cartel "pendiente" y habilita reservas si así fue).
     appState.sincronizarPropiedades();
+    // Y RE-BAJA las canchas de Supabase para traer la config más fresca
+    // (duración/precio/horario) que se editó en OTRO equipo del mismo dueño.
+    // Sin esto, la copia local de la tablet se quedaba con el valor viejo.
+    appState.cargarCanchasRemotas();
     // Mensaje de bienvenida al dueño (una sola vez) con el "stack de valor".
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) BienvenidaDuenoSheet.mostrarSiCorresponde(context);
@@ -78,7 +82,10 @@ class _MisCanchasScreenState extends State<MisCanchasScreen> {
                   nLocales: locales.length, nCanchas: canchas.length),
               Expanded(
                 child: RefreshIndicator(
-                  onRefresh: () => appState.sincronizarPropiedades(),
+                  onRefresh: () async {
+                    await appState.cargarCanchasRemotas();
+                    await appState.sincronizarPropiedades();
+                  },
                   child: canchas.isEmpty
                       ? ListView(
                           children: const [SizedBox(height: 60), _Vacio()])

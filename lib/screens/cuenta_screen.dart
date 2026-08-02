@@ -15,10 +15,25 @@ import '../utils/moneda.dart';
 import '../widgets/ancho_lectura.dart';
 
 /// Cuenta del club: saldo prepago (modelo inDrive), recargas y movimientos.
-class CuentaScreen extends StatelessWidget {
+class CuentaScreen extends StatefulWidget {
   const CuentaScreen({super.key});
 
+  @override
+  State<CuentaScreen> createState() => _CuentaScreenState();
+}
+
+class _CuentaScreenState extends State<CuentaScreen> {
   static const _saldoBajo = 15;
+
+  @override
+  void initState() {
+    super.initState();
+    // Empuja la contabilidad pendiente (comisiones/liquidaciones que quedaron en
+    // cola) y RE-SINCRONIZA saldo/movimientos con el backend, para que un pago
+    // ONLINE recién hecho ("por recibir") aparezca al abrir la billetera sin
+    // reiniciar la app. Antes (StatelessWidget) no re-sincronizaba nunca.
+    appState.flushContabilidad().then((_) => appState.sincronizarSaldo());
+  }
 
   @override
   Widget build(BuildContext context) {
