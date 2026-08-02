@@ -10,6 +10,7 @@ import 'screens/llamada_screen.dart';
 import 'screens/mensajes_screen.dart';
 import 'screens/home_shell.dart';
 import 'screens/reservas_dueno_screen.dart';
+import 'services/recordatorio_service.dart';
 import 'screens/splash_screen.dart';
 import 'services/llamada_service.dart';
 import 'services/llamada_webrtc.dart';
