@@ -287,9 +287,13 @@ class Cancha {
   /// pasadas.
   List<String> horariosSlots({int? desdeMinutos}) {
     final ini = horaEnMinutos(horaApertura);
-    final fin = horaEnMinutos(horaCierre);
+    var fin = horaEnMinutos(horaCierre);
     final paso = duracionSlotMin <= 0 ? 60 : duracionSlotMin;
-    if (ini == null || fin == null || fin <= ini) return const [];
+    if (ini == null || fin == null) return const [];
+    // Cierre que CRUZA MEDIANOCHE: si el cierre es <= apertura, cae al día
+    // siguiente. Cubre los 3 casos: "hasta medianoche" (07:00→00:00), cancha
+    // nocturna (18:00→02:00) y 24 horas (00:00→00:00). Se le suma un día.
+    if (fin <= ini) fin += 24 * 60;
     final slots = <String>[];
     for (var m = ini; m + paso <= fin; m += paso) {
       if (desdeMinutos != null && m < desdeMinutos) continue; // ya pasó
@@ -446,7 +450,9 @@ int? horaEnMinutos(String hhmm) {
 
 /// Convierte minutos desde medianoche a "HH:MM".
 String minutosEnHora(int min) {
-  final h = (min ~/ 60).toString().padLeft(2, '0');
+  // % 24 para envolver el cruce de medianoche: 1440 → '00:00', 1500 → '01:00'
+  // (en vez de '24:00'/'25:00'). Así los turnos de madrugada se ven bien.
+  final h = ((min ~/ 60) % 24).toString().padLeft(2, '0');
   final m = (min % 60).toString().padLeft(2, '0');
   return '$h:$m';
 }
