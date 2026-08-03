@@ -4,8 +4,10 @@ import '../models/campeonato.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/ancho_lectura.dart';
+import '../widgets/dialogo_pichangol.dart';
 import 'campeonato_detalle_screen.dart';
 import 'crear_campeonato_screen.dart';
+import 'hazte_pro_screen.dart';
 import 'login_google_sheet.dart';
 
 /// "Mis campeonatos": TODOS los campeonatos que el usuario organiza, con o sin
@@ -33,6 +35,22 @@ class _MisCampeonatosScreenState extends State<MisCampeonatosScreen> {
       return;
     }
     if (!mounted) return;
+    // Candado Pichangol Pro: organizar campeonatos es feature de la suscripción.
+    if (!appState.proActivo) {
+      final ir = await confirmarPichangol(
+        context,
+        titulo: 'Organizar es Pichangol Pro',
+        mensaje: 'Crear y administrar tus propios campeonatos (fixture, '
+            'inscripciones, resultados) es parte de Pichangol Pro. Hazte Pro '
+            'para organizar los tuyos.',
+        textoConfirmar: 'Hazte Pro',
+        icono: Icons.workspace_premium,
+      );
+      if (ir != true || !mounted) return;
+      await Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const HazteProScreen()));
+      if (!mounted || !appState.proActivo) return; // sigue sin Pro → no crea
+    }
     final c = await Navigator.of(context).push<Campeonato>(MaterialPageRoute(
         builder: (_) => const CrearCampeonatoScreen(academiaId: '')));
     if (c == null || !mounted) return;
