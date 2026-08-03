@@ -15,6 +15,14 @@ jugador es 100% Pichangol, EBIM solo aparece discreto como respaldo).
 
 ## Reglas de trabajo
 
+- **ESTO ES DESARROLLO REAL PARA PRODUCCIÓN. NO es demo ni piloto.** (Regla del
+  director, repetida.) No tomar atajos justificados con "para el piloto está bien"
+  ni "es solo demo": construir cada feature **de forma correcta y completa, lista
+  para prod** (casos borde, datos reales, robustez). Si una solución tiene una
+  versión "simple" y una "correcta", implementar la **correcta**; si de verdad hay
+  que diferir algo, avisarlo explícito con su costo, no asumir que "por ser piloto
+  da igual". Las referencias históricas a "piloto/QAS" en este doc son de
+  ambientes/infra, NO permiso para bajar la calidad del código.
 - **Idioma:** todas las respuestas al usuario en **español**.
 - **Rama de desarrollo:** `claude/apk-google-maps-setup-fvpl9w`. Commitear y
   pushear ahí (`git push -u origin <rama>`). No crear PRs salvo que se pida.
