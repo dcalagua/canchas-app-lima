@@ -85,10 +85,13 @@ class _PagoSheetState extends State<PagoSheet> {
 
   Future<void> _pagar() async {
     setState(() => _procesando = true);
+    // Pasarela SIMULADA (demo, sin cobro real): su API usa montoSoles:int, así
+    // que redondeamos solo aquí. El cobro real (Culqi/Libélula) sí respeta los
+    // decimales (ese va por otra ruta, no por esta hoja demo).
     final result = widget.esRecarga
-        ? await pasarela.recargarSaldo(montoSoles: widget.monto.toDouble(), metodo: _metodo)
+        ? await pasarela.recargarSaldo(montoSoles: widget.monto.round(), metodo: _metodo)
         : await pasarela.cobrar(
-            montoSoles: widget.monto.toDouble(),
+            montoSoles: widget.monto.round(),
             metodo: _metodo,
             concepto: widget.concepto);
     if (!mounted) return;
