@@ -2501,6 +2501,18 @@ class AppState extends ChangeNotifier {
   List<Campeonato> campeonatosDe(String academiaId) =>
       campeonatos.where((c) => c.academiaId == academiaId).toList();
 
+  /// Campeonatos que ORGANIZA el usuario logueado (los creó él), tengan o no
+  /// academia. Es la fuente de "Mis campeonatos": sin esto, un campeonato creado
+  /// desde Anfitrión (academiaId vacío) no aparecía en ninguna lista.
+  List<Campeonato> get misCampeonatosOrganizados {
+    final email = (usuario?.email ?? '').trim().toLowerCase();
+    if (email.isEmpty) return const <Campeonato>[];
+    return campeonatos
+        .where((c) => c.dueno.trim().toLowerCase() == email)
+        .toList()
+      ..sort((a, b) => b.id.compareTo(a.id)); // recientes primero (id con ts)
+  }
+
   Campeonato? campeonatoPorId(String id) {
     for (final c in campeonatos) {
       if (c.id == id) return c;

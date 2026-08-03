@@ -5,11 +5,10 @@ import '../services/growth_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/ancho_lectura.dart';
-import 'campeonato_detalle_screen.dart';
-import 'crear_campeonato_screen.dart';
 import 'home_shell.dart';
 import 'login_google_sheet.dart';
 import 'academia_shell.dart';
+import 'mis_campeonatos_screen.dart';
 import 'mis_productos_screen.dart';
 import 'verificador_screen.dart';
 
@@ -76,20 +75,6 @@ class AnfitrionScreen extends StatelessWidget {
     await _restaurarOrientacion();
   }
 
-  /// Organizar un campeonato SIN academia (cualquier usuario): crea el torneo
-  /// como organizador independiente y salta a su ficha para invitar/inscribir.
-  Future<void> _organizarCampeonato(BuildContext context) async {
-    if (!await LoginGoogleSheet.mostrar(context,
-        motivo: 'organizar un campeonato')) {
-      return;
-    }
-    if (!context.mounted) return;
-    final c = await Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => const CrearCampeonatoScreen(academiaId: '')));
-    if (c == null || !context.mounted) return;
-    Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => CampeonatoDetalleScreen(campeonatoId: c.id)));
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -160,9 +145,10 @@ class AnfitrionScreen extends StatelessWidget {
                 _Tile(
                   icon: Icons.emoji_events,
                   color: amarillo,
-                  title: 'Organizar campeonato',
-                  subtitle: 'Torneo de fútbol, tenis y más: invita, sortea y juega',
-                  onTap: () => _organizarCampeonato(context),
+                  title: 'Mis campeonatos',
+                  subtitle: 'Organiza torneos (fútbol, tenis…), invita y sortea',
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const MisCampeonatosScreen())),
                 ),
                 _Tile(
                   icon: Icons.storefront,
