@@ -8,6 +8,7 @@ import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'agregar_cancha_screen.dart';
+import 'bonos_dueno_screen.dart';
 import 'caja_dia_screen.dart';
 import 'servicios_screen.dart';
 import 'bienvenida_dueno_sheet.dart';
@@ -806,6 +807,19 @@ class _LocalCard extends StatelessWidget {
                 ),
                 icon: Icon(Icons.add, color: cs.primary, size: 20),
                 label: Text('Agregar cancha',
+                    style: TextStyle(
+                        color: cs.primary, fontWeight: FontWeight.w700)),
+              ),
+              TextButton.icon(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                      builder: (_) => BonosDuenoScreen(
+                          club: local.nombre,
+                          moneda: local.principal.monedaSimbolo)),
+                ),
+                icon: Icon(Icons.confirmation_number_outlined,
+                    color: cs.primary, size: 20),
+                label: Text('Bonos de horas',
                     style: TextStyle(
                         color: cs.primary, fontWeight: FontWeight.w700)),
               ),
