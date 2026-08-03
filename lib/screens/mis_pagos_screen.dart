@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 import '../models/models.dart';
 import '../state/app_state.dart';
@@ -85,6 +88,136 @@ class _MisPagosScreenState extends State<MisPagosScreen> {
     return pagos;
   }
 
+  Future<void> _descargarPdf(BuildContext context) async {
+    final pagos = _armar();
+    if (pagos.isEmpty) return;
+    final u = appState.usuario;
+    final verde = PdfColor.fromInt(0xFF14463A);
+    final gris = PdfColor.fromInt(0xFFF2F2F2);
+    // Total realmente pagado (excluye lo cubierto con bono y lo pendiente).
+    final mon = pagos.first.moneda;
+    double pagado = 0, pendiente = 0;
+    for (final p in pagos) {
+      if (p.cubiertoConBono) continue;
+      if (p.pendiente) {
+        pendiente += p.monto;
+      } else {
+        pagado += p.monto;
+      }
+    }
+    final doc = pw.Document();
+    String f(DateTime d) =>
+        '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+    doc.addPage(pw.MultiPage(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.all(28),
+      footer: (ctx) => pw.Container(
+        alignment: pw.Alignment.centerRight,
+        margin: const pw.EdgeInsets.only(top: 8),
+        child: pw.Text('Página ${ctx.pageNumber} de ${ctx.pagesCount}',
+            style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+      ),
+      build: (ctx) => [
+        pw.Container(
+          padding: const pw.EdgeInsets.all(16),
+          decoration: pw.BoxDecoration(
+              color: verde, borderRadius: pw.BorderRadius.circular(12)),
+          child: pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+                pw.Text('Pichangol',
+                    style: pw.TextStyle(
+                        color: PdfColors.white,
+                        fontSize: 22,
+                        fontWeight: pw.FontWeight.bold)),
+                pw.Text('Mis pagos · estado de cuenta',
+                    style:
+                        const pw.TextStyle(color: PdfColors.white, fontSize: 11)),
+              ]),
+              pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+                if (u != null)
+                  pw.Text(u.nombre,
+                      style: const pw.TextStyle(
+                          color: PdfColors.white, fontSize: 10)),
+                if (u != null && u.email.isNotEmpty)
+                  pw.Text(u.email,
+                      style: const pw.TextStyle(
+                          color: PdfColors.white, fontSize: 9)),
+              ]),
+            ],
+          ),
+        ),
+        pw.SizedBox(height: 12),
+        pw.Text('Generado el ${f(DateTime.now().toLocal())}',
+            style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
+        pw.SizedBox(height: 10),
+        pw.Container(
+          padding: const pw.EdgeInsets.all(12),
+          decoration: pw.BoxDecoration(
+              color: gris, borderRadius: pw.BorderRadius.circular(10)),
+          child: pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              _resP('Total pagado', '$mon ${pagado.toStringAsFixed(2)}', verde),
+              _resP('Por pagar (efectivo)',
+                  '$mon ${pendiente.toStringAsFixed(2)}',
+                  PdfColor.fromInt(0xFFC13515)),
+              _resP('Movimientos', '${pagos.length}', verde),
+            ],
+          ),
+        ),
+        pw.SizedBox(height: 14),
+        pw.Table(
+          border: pw.TableBorder(
+              bottom: pw.BorderSide(color: PdfColors.grey300, width: 0.5),
+              horizontalInside:
+                  pw.BorderSide(color: PdfColors.grey200, width: 0.5)),
+          columnWidths: {
+            0: const pw.FixedColumnWidth(64),
+            1: const pw.FlexColumnWidth(),
+            2: const pw.FixedColumnWidth(64),
+            3: const pw.FixedColumnWidth(70),
+          },
+          children: [
+            pw.TableRow(
+              decoration: const pw.BoxDecoration(color: PdfColors.grey100),
+              children: [
+                _thP('Fecha'),
+                _thP('Concepto'),
+                _thP('Estado'),
+                _thP('Monto', alignRight: true),
+              ],
+            ),
+            for (final p in pagos)
+              pw.TableRow(children: [
+                _tdP(f(p.fecha)),
+                _tdP('${p.titulo}\n${p.sub}'),
+                _tdP(p.cubiertoConBono
+                    ? 'Con bono'
+                    : p.pendiente
+                        ? 'Por pagar'
+                        : 'Pagado'),
+                _tdP(
+                    p.cubiertoConBono
+                        ? '—'
+                        : '${p.moneda} ${p.monto.toStringAsFixed(2)}',
+                    alignRight: true),
+              ]),
+          ],
+        ),
+        pw.SizedBox(height: 16),
+        pw.Text(
+            'Documento generado por la app Pichangol. No es un comprobante '
+            'tributario.',
+            style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+      ],
+    ));
+    final bytes = await doc.save();
+    await Printing.sharePdf(bytes: bytes, filename: 'mis_pagos_pichangol.pdf');
+  }
+
   String _diaLabel(DateTime d) {
     final now = DateTime.now();
     final dd = DateTime(d.year, d.month, d.day);
@@ -103,7 +236,17 @@ class _MisPagosScreenState extends State<MisPagosScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Mis pagos')),
+      appBar: AppBar(
+        title: const Text('Mis pagos'),
+        actions: [
+          if (appState.misBonos.isNotEmpty || appState.misReservas.isNotEmpty)
+            IconButton(
+              tooltip: 'Descargar PDF',
+              icon: const Icon(Icons.download_outlined),
+              onPressed: () => _descargarPdf(context),
+            ),
+        ],
+      ),
       body: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
@@ -250,3 +393,33 @@ class _Vacio extends StatelessWidget {
     );
   }
 }
+
+// ── Helpers del PDF de "Mis pagos" ──────────────────────────────────────────
+pw.Widget _resP(String k, String v, PdfColor color) => pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text(k,
+            style: const pw.TextStyle(fontSize: 8.5, color: PdfColors.grey700)),
+        pw.SizedBox(height: 2),
+        pw.Text(v,
+            style: pw.TextStyle(
+                fontSize: 12, fontWeight: pw.FontWeight.bold, color: color)),
+      ],
+    );
+
+pw.Widget _thP(String s, {bool alignRight = false}) => pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+      child: pw.Text(s,
+          textAlign: alignRight ? pw.TextAlign.right : pw.TextAlign.left,
+          style: pw.TextStyle(
+              fontSize: 9,
+              fontWeight: pw.FontWeight.bold,
+              color: PdfColors.grey800)),
+    );
+
+pw.Widget _tdP(String s, {bool alignRight = false}) => pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 5, horizontal: 4),
+      child: pw.Text(s,
+          textAlign: alignRight ? pw.TextAlign.right : pw.TextAlign.left,
+          style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey900)),
+    );

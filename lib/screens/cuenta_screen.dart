@@ -895,7 +895,7 @@ Future<void> _descargarEstado(BuildContext context, DateTime desde,
             pw.TableRow(children: [
               _tdEC(_fechaCortaEC(
                   DateTime.tryParse(m.fechaIso)?.toLocal() ?? DateTime.now())),
-              _tdEC(m.concepto),
+              _celdaConceptoEC(m, mon),
               _tdEC(m.montoSoles >= 0 ? 'Ingreso' : 'Egreso'),
               _tdEC(
                   '${m.montoSoles >= 0 ? '+' : '-'} $mon ${m.montoSoles.abs().toStringAsFixed(2)}',
@@ -935,6 +935,26 @@ pw.Widget _tdEC(String s, {bool alignRight = false, PdfColor? color}) =>
           textAlign: alignRight ? pw.TextAlign.right : pw.TextAlign.left,
           style: pw.TextStyle(fontSize: 9, color: color ?? PdfColors.grey900)),
     );
+
+/// Celda "Concepto" del PDF: para un pago de cliente (liquidación) añade el
+/// mini-recibo cobrado/comisión/recibes, igual que en la app.
+pw.Widget _celdaConceptoEC(MovimientoSaldo m, String mon) {
+  final esLiq = m.tipo == TipoMovimiento.liquidacion && m.brutoSoles > 0;
+  if (!esLiq) return _tdEC(m.concepto);
+  return pw.Padding(
+    padding: const pw.EdgeInsets.symmetric(vertical: 5, horizontal: 4),
+    child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+      pw.Text(m.concepto,
+          style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey900)),
+      pw.SizedBox(height: 1),
+      pw.Text(
+          'Cobrado $mon${m.brutoSoles.toStringAsFixed(2)} · '
+          'comisión $mon${m.comisionSoles.toStringAsFixed(2)} · '
+          'recibes $mon${m.montoSoles.toStringAsFixed(2)}',
+          style: const pw.TextStyle(fontSize: 7.5, color: PdfColors.grey600)),
+    ]),
+  );
+}
 
 /// Fila de opción de periodo en la hoja de "Estado de cuenta".
 class _OpcionPeriodo extends StatelessWidget {
