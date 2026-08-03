@@ -71,7 +71,11 @@ class _AgendaScreenState extends State<AgendaScreen> {
           if (_cancha == null || !canchas.any((c) => c.id == _cancha!.id)) {
             _cancha = canchas.first;
           }
-          final cancha = _cancha!;
+          // Versión FRESCA por id: si el dueño acaba de cambiar la duración/
+          // precio, `misCanchas` ya la trae actualizada; el snapshot guardado en
+          // `_cancha` puede estar viejo. Así la agenda usa la duración nueva.
+          final cancha = canchas.firstWhere((c) => c.id == _cancha!.id,
+              orElse: () => canchas.first);
 
           // Locales del dueño (distintos), en orden de aparición. La agenda se
           // trabaja SIEMPRE dentro de UN local: header, KPIs y el selector de
@@ -90,7 +94,19 @@ class _AgendaScreenState extends State<AgendaScreen> {
               canchas.map((c) => c.monedaSimbolo).toSet().length > 1;
 
           final iso = _isoDe(_dia);
-          final horas = cancha.horariosSlots();
+          final horasGrilla = cancha.horariosSlots();
+          // Reservas del día de ESTA cancha (tolerante a ids duplicados).
+          final reservasDia = appState.reservas.where((r) =>
+              r.fecha == iso &&
+              appState.miCanchaDeReserva(r.canchaId)?.id == cancha.id);
+          // Horas de reservas que NO calzan con la grilla actual (p. ej. se
+          // reservó con duración 1 h y luego el dueño cambió a 1.5 h): se
+          // muestran IGUAL para que la reserva NO desaparezca de la agenda.
+          final extras = <String>{
+            for (final r in reservasDia)
+              if (!horasGrilla.contains(r.horaInicio)) r.horaInicio
+          }.toList();
+          final horas = [...horasGrilla, ...extras]..sort();
           final tablet = MediaQuery.of(context).size.width >= 720;
 
           // Vista de la agenda del día (compartida por móvil y tablet).
@@ -112,6 +128,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
                       hora: hora,
                       valle: hora.compareTo('12:00') < 0,
                       reserva: _reservaEn(cancha.id, iso, hora),
+                      fueraDeGrilla: extras.contains(hora),
                     );
                   },
                 );
@@ -558,10 +575,18 @@ class _CanchaTile extends StatelessWidget {
 
 class _AgendaRow extends StatelessWidget {
   const _AgendaRow(
-      {required this.hora, required this.valle, required this.reserva});
+      {required this.hora,
+      required this.valle,
+      required this.reserva,
+      this.fueraDeGrilla = false});
   final String hora;
   final bool valle;
   final Reserva? reserva;
+
+  /// La reserva de esta fila NO calza con la grilla actual de la cancha (se hizo
+  /// con otra duración y luego el dueño cambió la duración). Se muestra igual,
+  /// con un rótulo, para que no desaparezca.
+  final bool fueraDeGrilla;
 
   @override
   Widget build(BuildContext context) {
@@ -621,6 +646,15 @@ class _AgendaRow extends StatelessWidget {
                         '${r.pagado ? 'Pagado' : 'Por cobrar'} ${r.monedaSimbolo}${r.precio}',
                         style: t.bodySmall?.copyWith(color: textoTenueDe(context)),
                       ),
+                      if (fueraDeGrilla)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                              'Reserva con otra duración (fuera de la grilla actual)',
+                              style: t.labelSmall?.copyWith(
+                                  color: const Color(0xFFB26A00),
+                                  fontWeight: FontWeight.w700)),
+                        ),
                     ],
                   ),
           ),
