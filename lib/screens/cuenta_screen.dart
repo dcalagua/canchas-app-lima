@@ -173,8 +173,34 @@ class _CuentaScreenState extends State<CuentaScreen> {
               if (appState.movimientos.isEmpty)
                 Text('Aún no hay movimientos.',
                     style: t.bodyMedium?.copyWith(color: textoTenueDe(context)))
-              else
-                ...appState.movimientos.map((m) => _FilaMovimiento(m)),
+              else ...[
+                // 💰 Pagos de tus CLIENTES (Pichangol te los transfiere): reservas
+                // online, bonos y ventas del marketplace.
+                _SeccionMov(
+                  titulo: 'Por recibir',
+                  subtitulo:
+                      'Pagos de tus clientes: reservas online, bonos y ventas. '
+                      'Pichangol te transfiere el neto.',
+                  icono: Icons.south_west,
+                  color: teal,
+                  movs: appState.movimientos
+                      .where((m) => m.tipo == TipoMovimiento.liquidacion)
+                      .toList(),
+                ),
+                // 👛 Tu MONEDERO: recargas (+) y gastos (−).
+                _SeccionMov(
+                  titulo: 'Mi saldo',
+                  subtitulo:
+                      'Tu monedero: recargas y gastos (comisiones, servicios, Pro).',
+                  icono: Icons.account_balance_wallet_outlined,
+                  color: lima,
+                  movs: appState.movimientos
+                      .where((m) =>
+                          m.tipo == TipoMovimiento.recarga ||
+                          m.tipo == TipoMovimiento.consumo)
+                      .toList(),
+                ),
+              ],
             ],
           );
         },
@@ -892,6 +918,83 @@ class _OpcionPeriodo extends StatelessWidget {
         trailing: const Icon(Icons.chevron_right, color: textoTenue),
         onTap: onTap,
       ),
+    );
+  }
+}
+
+/// Etiqueta de día para agrupar movimientos: "Hoy" / "Ayer" / "12 ago".
+String _diaLabelMov(String iso, String cuando) {
+  final d = DateTime.tryParse(iso);
+  if (d == null) return cuando.isEmpty ? 'Anteriores' : cuando;
+  final now = DateTime.now();
+  final dd = DateTime(d.year, d.month, d.day);
+  final hoy = DateTime(now.year, now.month, now.day);
+  final diff = hoy.difference(dd).inDays;
+  if (diff == 0) return 'Hoy';
+  if (diff == 1) return 'Ayer';
+  const meses = [
+    'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+    'jul', 'ago', 'set', 'oct', 'nov', 'dic'
+  ];
+  final anio = d.year != now.year ? ' ${d.year}' : '';
+  return '${d.day} ${meses[d.month - 1]}$anio';
+}
+
+/// Sección de movimientos de la billetera (una por "mundo": Por recibir / Mi
+/// saldo), agrupada por día. Se oculta si no tiene movimientos.
+class _SeccionMov extends StatelessWidget {
+  const _SeccionMov({
+    required this.titulo,
+    required this.subtitulo,
+    required this.icono,
+    required this.color,
+    required this.movs,
+  });
+  final String titulo;
+  final String subtitulo;
+  final IconData icono;
+  final Color color;
+  final List<MovimientoSaldo> movs;
+
+  @override
+  Widget build(BuildContext context) {
+    if (movs.isEmpty) return const SizedBox.shrink();
+    final t = Theme.of(context).textTheme;
+    // `movs` ya viene del más reciente al más antiguo. Insertamos un encabezado
+    // de día cuando cambia la fecha.
+    final filas = <Widget>[];
+    String? dia;
+    for (final m in movs) {
+      final d = _diaLabelMov(m.fechaIso, m.cuando);
+      if (d != dia) {
+        dia = d;
+        filas.add(Padding(
+          padding: const EdgeInsets.only(top: 12, bottom: 2),
+          child: Text(d,
+              style: t.bodySmall?.copyWith(
+                  color: textoTenueDe(context), fontWeight: FontWeight.w700)),
+        ));
+      }
+      filas.add(_FilaMovimiento(m));
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 18),
+        Row(
+          children: [
+            Icon(icono, size: 18, color: color),
+            const SizedBox(width: 6),
+            Text(titulo,
+                style: t.titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w800, color: color)),
+          ],
+        ),
+        const SizedBox(height: 2),
+        Text(subtitulo,
+            style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
+        ...filas,
+      ],
     );
   }
 }
