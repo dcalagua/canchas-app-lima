@@ -4,6 +4,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../theme.dart';
+import 'compartir_pichangol.dart';
 
 /// Compartir / abrir la ubicación de un lugar (cancha o academia). Usa un enlace
 /// de Google Maps; no requiere dependencias extra (solo url_launcher).
@@ -77,6 +78,24 @@ class UbicacionShare {
                 ),
               ),
               const SizedBox(height: 6),
+              // Interno primero: compartir dentro de Pichangol (chat de PCG).
+              ListTile(
+                leading: const CircleAvatar(
+                    radius: 14,
+                    backgroundColor: Color(0xFF25D366),
+                    child: Text('P',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 13))),
+                title: const Text('Compartir en Pichangol'),
+                subtitle: const Text('Envíalo a un chat de la app'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  CompartirPichangol.compartir(context,
+                      texto: '$titulo\n${enlace(punto)}');
+                },
+              ),
               ListTile(
                 leading: Icon(Icons.directions, color: acento),
                 title: const Text('Cómo llegar'),

@@ -6,6 +6,7 @@ import '../data/referidos_repo.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../utils/compartir_pichangol.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/responsive.dart';
 import 'login_google_sheet.dart';
@@ -54,14 +55,15 @@ class _ReferidosScreenState extends State<ReferidosScreen> {
     }
   }
 
-  void _compartir() {
+  String _mensajeReferido() {
     final cod = appState.codigoReferido;
-    final msg = '¡Juega conmigo en Pichangol! 🎾⚽\n\n'
+    return '¡Juega conmigo en Pichangol! 🎾⚽\n\n'
         'Reserva canchas de fútbol, tenis y más cerca de ti.\n'
         'Usa mi código *$cod* al registrarte y ambos ganamos un bono. 🎁\n\n'
         'Descárgala: $_kReleaseUrl';
-    WhatsAppLink.compartir(msg);
   }
+
+  void _compartir() => WhatsAppLink.compartir(_mensajeReferido());
 
   Future<void> _canjear() async {
     final c = _codigoAmigo.text.trim();
@@ -186,6 +188,16 @@ class _ReferidosScreenState extends State<ReferidosScreen> {
                         label: const Text('Invitar por WhatsApp',
                             style: TextStyle(fontWeight: FontWeight.w800)),
                       ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton.icon(
+                      onPressed: () => CompartirPichangol.compartir(context,
+                          texto: _mensajeReferido()),
+                      icon: const Icon(Icons.send, color: Colors.white),
+                      label: const Text('Compartir en Pichangol',
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800)),
                     ),
                   ],
                 ),

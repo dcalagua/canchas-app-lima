@@ -82,6 +82,7 @@ class ChatScreen extends StatefulWidget {
     this.refId = '',
     this.embebido = false,
     this.fotoInicial,
+    this.borradorInicial,
   });
 
   final String academiaId;
@@ -97,6 +98,10 @@ class ChatScreen extends StatefulWidget {
   /// Si se pasa (p. ej. desde la cámara del inbox), al abrir el chat se envía
   /// esta foto automáticamente.
   final Uint8List? fotoInicial;
+
+  /// Texto pre-cargado en el campo de mensaje (p. ej. al "Compartir en
+  /// Pichangol" una ficha/link): el usuario lo revisa y toca enviar.
+  final String? borradorInicial;
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -381,6 +386,12 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    // Borrador pre-cargado (al "Compartir en Pichangol"): el usuario lo revisa
+    // y envía. No se envía solo.
+    if (widget.borradorInicial != null &&
+        widget.borradorInicial!.trim().isNotEmpty) {
+      _texto.text = widget.borradorInicial!;
+    }
     // Al abrir el teclado, cierra el panel de emojis (no ambos a la vez).
     _focus.addListener(() {
       if (_focus.hasFocus && _emojis) setState(() => _emojis = false);
