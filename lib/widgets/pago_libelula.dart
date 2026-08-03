@@ -21,7 +21,7 @@ class PagoLibelula {
 
   static Future<bool> cobrar(
     BuildContext context, {
-    required int monto,
+    required num monto, // unidad mayor (Bs), admite 2 decimales
     required String concepto,
     required String email,
     String moneda = 'Bs',
@@ -42,7 +42,7 @@ class PagoLibelula {
 
   static Future<bool> _flujo(
     BuildContext context, {
-    required int monto,
+    required num monto, // unidad mayor (Bs), admite 2 decimales
     required String concepto,
     required String email,
     required String moneda,

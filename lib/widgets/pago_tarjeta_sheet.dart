@@ -28,7 +28,7 @@ class PagoTarjeta {
 
   static Future<bool> cobrar(
     BuildContext context, {
-    required int monto,
+    required num monto, // monto EN UNIDAD MAYOR (S//Bs/$), admite 2 decimales
     required String concepto,
     required String email,
     String moneda = '',
@@ -114,7 +114,7 @@ class _PagoTarjetaSheet extends StatefulWidget {
     this.onToken,
     this.onOperacion,
   });
-  final int monto;
+  final num monto;
   final String concepto;
   final String email;
   final String userId;
@@ -177,7 +177,9 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
 
   Future<void> _pagar() async {
     setState(() => _error = null);
-    final centimos = widget.monto * 100;
+    // Céntimos EXACTOS (redondeo solo en el último paso, para Culqi/Yape que
+    // trabajan en enteros). Admite montos con 2 decimales (S/ 25.50, $ 9.99).
+    final centimos = (widget.monto * 100).round();
 
     // --- YAPE ---
     if (_metodo == _Metodo.yape) {
@@ -202,11 +204,11 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
           widget.onOperacion?.call(res['chargeId'].toString());
         }
         return res['ok'] == true
-            ? {'ok': true, 'detalle': 'Pago de $_mon ${widget.monto} aprobado.'}
+            ? {'ok': true, 'detalle': 'Pago de $_mon ${montoTxt(widget.monto)} aprobado.'}
             : {'ok': false, 'error': res['error']?.toString() ?? 'No se pudo cobrar.'};
       }
       final ok = await PagoProcesando.mostrar(context,
-          titulo: 'Cobrando $_mon ${widget.monto}', exitoTitulo: '¡Pago aprobado!',
+          titulo: 'Cobrando $_mon ${montoTxt(widget.monto)}', exitoTitulo: '¡Pago aprobado!',
           accion: accionYape);
       if (ok == true) PagoTarjeta.ultimoMetodo = 'yape';
       if (ok == true && mounted) Navigator.of(context).pop(true);
@@ -251,13 +253,13 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
         }
       }
       return res['ok'] == true
-          ? {'ok': true, 'detalle': 'Pago de $_mon ${widget.monto} aprobado.'}
+          ? {'ok': true, 'detalle': 'Pago de $_mon ${montoTxt(widget.monto)} aprobado.'}
           : {'ok': false, 'error': res['error']?.toString() ?? 'No se pudo cobrar.'};
     }
 
     final ok = await PagoProcesando.mostrar(
       context,
-      titulo: 'Cobrando $_mon ${widget.monto}',
+      titulo: 'Cobrando $_mon ${montoTxt(widget.monto)}',
       exitoTitulo: '¡Pago aprobado!',
       accion: accion,
     );
@@ -286,7 +288,7 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                Text('Pagar $_mon ${widget.monto}',
+                Text('Pagar $_mon ${montoTxt(widget.monto)}',
                     style: TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 20,
@@ -452,7 +454,7 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 15)),
                     onPressed: _pagar,
-                    child: Text('Pagar $_mon ${widget.monto}'),
+                    child: Text('Pagar $_mon ${montoTxt(widget.monto)}'),
                   ),
                 ),
                 const SizedBox(height: 8),

@@ -200,12 +200,10 @@ class _FormBonoState extends State<_FormBono> {
 
   Future<void> _guardar() async {
     final horas = int.tryParse(_horas.text.trim()) ?? 0;
-    // El cobro (Culqi/Libélula) se hace en montos ENTEROS de la moneda local
-    // (S/, Bs, $). Redondeamos aquí para que precio = cobro = venta registrada
-    // sea idéntico en Perú, Bolivia y Ecuador (sin descuadres por centavos).
+    // Precio con hasta 2 decimales (S/, Bs, $). El cobro (Culqi/Libélula) y la
+    // venta registrada usan este mismo valor exacto, sin redondear.
     final precio =
-        (double.tryParse(_precio.text.trim().replaceAll(',', '.')) ?? 0)
-            .roundToDouble();
+        double.tryParse(_precio.text.trim().replaceAll(',', '.')) ?? 0;
     if (horas <= 0 || precio <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('Pon una cantidad de horas y un precio válidos.')));
@@ -271,8 +269,7 @@ class _FormBonoState extends State<_FormBono> {
                   controller: _precio,
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
-                  decoration:
-                      _dec(context, 'Precio entero (${widget.moneda})'),
+                  decoration: _dec(context, 'Precio (${widget.moneda})'),
                 ),
               ),
             ],

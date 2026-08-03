@@ -176,7 +176,7 @@ class MisClasesScreen extends StatelessWidget {
     String? operacionId;
     final pagado = await PagoTarjeta.cobrar(
       context,
-      monto: total.round(),
+      monto: total,
       concepto: cuotas.length == 1
           ? cuotas.first.concepto
           : '${cuotas.length} cuotas · ${ac.nombre}',

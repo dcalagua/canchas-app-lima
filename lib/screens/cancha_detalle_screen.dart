@@ -153,7 +153,7 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
     } else if (!efectivo) {
       final pagado = await PagoTarjeta.cobrar(
         context,
-        monto: total.round(),
+        monto: total,
         concepto: 'Reserva · ${cancha.nombre} · $_dia $hora',
         email: appState.usuario?.email ?? '',
         moneda: cancha.monedaSimbolo,

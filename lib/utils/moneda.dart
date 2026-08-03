@@ -19,3 +19,14 @@ void setMonedaPorPais(String? iso) {
 /// Formatea un monto con el símbolo actual: "S/ 30.00" / "Bs 30.00" / "$ 30.00".
 String precio(num monto, {int dec = 2}) =>
     '$monedaSimbolo ${monto.toStringAsFixed(dec)}';
+
+/// Formatea SOLO el número de un monto de dinero: 2 decimales, pero sin el
+/// ".00" sobrante en montos enteros. "90" → "90", "25.5" → "25.50",
+/// "9.99" → "9.99". Úsalo con el símbolo por país al lado
+/// (`'$simbolo ${montoTxt(m)}'`). Correcto para S/, Bs y $ (los 3 usan 2
+/// decimales). NO antepone símbolo (la moneda la pone quien llama, según la
+/// entidad/país, no el GPS del dispositivo).
+String montoTxt(num monto) {
+  final s = monto.toStringAsFixed(2);
+  return s.endsWith('.00') ? s.substring(0, s.length - 3) : s;
+}

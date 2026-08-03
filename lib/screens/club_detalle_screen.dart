@@ -590,7 +590,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
       // Pago con tarjeta/Yape (Culqi/Libélula). Si cancela o falla, no reserva.
       final pagado = await PagoTarjeta.cobrar(
         context,
-        monto: total.round(),
+        monto: total,
         concepto: 'Reserva · ${_cancha.nombre} · $_dia $etiqueta',
         email: appState.usuario?.email ?? '',
         moneda: mon,
@@ -2592,7 +2592,7 @@ class _FilaDatos extends StatelessWidget {
         dato(Icons.schedule, '${cancha.horaApertura}–${cancha.horaCierre}'),
         dato(Icons.timer_outlined, _dur),
         dato(Icons.payments_outlined,
-            '${cancha.monedaSimbolo}${cancha.precioHora.toStringAsFixed(0)} /h'),
+            '${cancha.monedaSimbolo}${montoTxt(cancha.precioHora)} /h'),
       ],
     );
   }
@@ -2644,9 +2644,9 @@ class _SeccionBonosState extends State<_SeccionBonos> {
     var operacion = '';
     final pagado = await PagoTarjeta.cobrar(
       context,
-      // El sheet recibe el monto EN SOLES (él lo pasa a céntimos para Culqi y lo
-      // muestra tal cual). NO multiplicar por 100 aquí.
-      monto: o.precio.round(),
+      // El sheet recibe el monto EN LA MONEDA LOCAL (S//Bs/$), lo pasa a
+      // céntimos y lo muestra tal cual. NO multiplicar por 100 aquí.
+      monto: o.precio,
       concepto: 'Bono ${o.horas}h · $_club',
       email: u.email,
       moneda: widget.cancha.monedaSimbolo,
@@ -2766,7 +2766,7 @@ class _SeccionBonosState extends State<_SeccionBonos> {
                           Text(o.nombre.isEmpty ? '${o.horas} horas' : o.nombre,
                               style: t.bodyLarge
                                   ?.copyWith(fontWeight: FontWeight.w700)),
-                          Text('$mon ${o.precioHora.toStringAsFixed(2)}/hora',
+                          Text('$mon ${montoTxt(o.precioHora)}/hora',
                               style: t.bodySmall
                                   ?.copyWith(color: textoTenueDe(context))),
                         ],
@@ -2775,7 +2775,7 @@ class _SeccionBonosState extends State<_SeccionBonos> {
                     FilledButton(
                       style: FilledButton.styleFrom(backgroundColor: lima),
                       onPressed: _comprando ? null : () => _comprar(o),
-                      child: Text('$mon ${o.precio.toStringAsFixed(0)}',
+                      child: Text('$mon ${montoTxt(o.precio)}',
                           style: const TextStyle(fontWeight: FontWeight.w800)),
                     ),
                   ],

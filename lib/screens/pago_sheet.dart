@@ -13,7 +13,7 @@ import '../widgets/marcas_pago.dart';
 /// tarjeta por ahora; sus métodos locales (QR, Tigo Money…) se agregan por país
 /// en la fase de pasarela real. Los logos son de marca, no íconos genéricos.
 class PagoSheet extends StatefulWidget {
-  final int monto;
+  final num monto; // unidad mayor, admite 2 decimales
   final String concepto;
   final bool esRecarga;
   final String moneda;
@@ -27,7 +27,7 @@ class PagoSheet extends StatefulWidget {
 
   static Future<PagoResult?> mostrar(
     BuildContext context, {
-    required int monto,
+    required num monto,
     required String concepto,
     bool esRecarga = false,
     String moneda = '',
@@ -86,9 +86,9 @@ class _PagoSheetState extends State<PagoSheet> {
   Future<void> _pagar() async {
     setState(() => _procesando = true);
     final result = widget.esRecarga
-        ? await pasarela.recargarSaldo(montoSoles: widget.monto, metodo: _metodo)
+        ? await pasarela.recargarSaldo(montoSoles: widget.monto.toDouble(), metodo: _metodo)
         : await pasarela.cobrar(
-            montoSoles: widget.monto,
+            montoSoles: widget.monto.toDouble(),
             metodo: _metodo,
             concepto: widget.concepto);
     if (!mounted) return;
@@ -121,7 +121,7 @@ class _PagoSheetState extends State<PagoSheet> {
           Text(widget.concepto,
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
           const SizedBox(height: 2),
-          Text('$_mon ${widget.monto}',
+          Text('$_mon ${montoTxt(widget.monto)}',
               style: TextStyle(
                   fontSize: 32, fontWeight: FontWeight.bold, color: cs.primary)),
           const SizedBox(height: 18),
@@ -219,7 +219,7 @@ class _PagoSheetState extends State<PagoSheet> {
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: Colors.white),
                     )
-                  : Text('Pagar $_mon ${widget.monto}'),
+                  : Text('Pagar $_mon ${montoTxt(widget.monto)}'),
             ),
           ),
           const SizedBox(height: 10),
