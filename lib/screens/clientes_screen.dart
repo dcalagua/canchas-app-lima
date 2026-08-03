@@ -7,6 +7,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/ancho_lectura.dart';
 import 'chat_screen.dart';
+import 'reserva_manual_screen.dart';
 
 /// BASE DE CLIENTES del dueño (CRM ligero) — refuerzo del panel de gestión al
 /// nivel SaaS de la competencia. No inventa datos ni pide SQL nuevo: agrega las
@@ -22,8 +23,25 @@ class ClientesScreen extends StatefulWidget {
 
 enum _Orden { frecuentes, gasto, recientes }
 
+/// Segmentos de cliente (estilo CRM Playtomic/MindBody): clave técnica + rótulo.
+/// 'todos' es el neutro. Un cliente puede pertenecer a varios; el filtro pide
+/// pertenencia y el badge de la tarjeta muestra el más accionable.
+const _segmentos = <(String, String)>[
+  ('todos', 'Todos'),
+  ('vip', 'VIP'),
+  ('recurrente', 'Recurrentes'),
+  ('nuevo', 'Nuevos'),
+  ('riesgo', 'En riesgo'),
+  ('moroso', 'Deudores'),
+];
+
+/// Días sin volver a partir de los cuales un cliente recurrente pasa a "en
+/// riesgo" (churn). Umbral conservador para un negocio de canchas.
+const int _diasRiesgo = 30;
+
 class _ClientesScreenState extends State<ClientesScreen> {
   _Orden _orden = _Orden.frecuentes;
+  String _seg = 'todos';
   String _busqueda = '';
 
   @override
@@ -51,7 +69,7 @@ class _ClientesScreenState extends State<ClientesScreen> {
       // Clave estable: por correo si lo hay; si no, por nombre (walk-in).
       final key = email.isNotEmpty ? email : 'n:${nombre.toLowerCase()}';
       if (email.isEmpty && nombre.isEmpty) continue;
-      final cl = map.putIfAbsent(key, () => _Cliente(email: email));
+      final cl = map.putIfAbsent(key, () => _Cliente(email: email)..clave = key);
       if (cl.nombre.isEmpty && nombre.isNotEmpty) cl.nombre = nombre;
       if (cl.telefono.isEmpty && r.telefono.isNotEmpty) {
         cl.telefono = r.telefono;
@@ -106,13 +124,27 @@ class _ClientesScreenState extends State<ClientesScreen> {
       body: AnchoLectura(child: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
-          final todos = _clientes();
-          // KPIs sobre el universo COMPLETO (sin filtro de búsqueda).
+          // KPIs y segmentos sobre el universo COMPLETO (sin filtro de búsqueda).
           final total = _clientes(aplicarBusqueda: false);
           final recurrentes = total.where((c) => c.reservas >= 2).length;
           final mesActual = _mesActualIso();
           final nuevos =
               total.where((c) => c.primera.startsWith(mesActual)).length;
+          final maxGasto =
+              total.fold<double>(0, (m, c) => c.gastado > m ? c.gastado : m);
+          int cuentaSeg(String seg) => seg == 'todos'
+              ? total.length
+              : total
+                  .where((c) => c.segmentos(maxGasto, mesActual).contains(seg))
+                  .length;
+
+          // Lista visible: búsqueda + filtro de segmento.
+          var todos = _clientes();
+          if (_seg != 'todos') {
+            todos = todos
+                .where((c) => c.segmentos(maxGasto, mesActual).contains(_seg))
+                .toList();
+          }
 
           return Column(
             children: [
@@ -120,6 +152,24 @@ class _ClientesScreenState extends State<ClientesScreen> {
                 total: total.length,
                 recurrentes: recurrentes,
                 nuevos: nuevos,
+              ),
+              // Segmentos (chips con conteo): filtra a quién atender —VIP,
+              // recurrentes, nuevos, EN RIESGO (churn) y deudores.
+              SizedBox(
+                height: 40,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  children: [
+                    for (final (clave, _) in _segmentos)
+                      _SegChip(
+                        seg: clave,
+                        n: cuentaSeg(clave),
+                        activo: _seg == clave,
+                        onTap: () => setState(() => _seg = clave),
+                      ),
+                  ],
+                ),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
@@ -171,7 +221,10 @@ class _ClientesScreenState extends State<ClientesScreen> {
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
                         itemCount: todos.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 10),
-                        itemBuilder: (_, i) => _ClienteCard(cliente: todos[i]),
+                        itemBuilder: (_, i) => _ClienteCard(
+                          cliente: todos[i],
+                          badge: todos[i].badge(maxGasto, mesActual),
+                        ),
                       ),
               ),
             ],
@@ -192,6 +245,7 @@ class _ClientesScreenState extends State<ClientesScreen> {
 class _Cliente {
   _Cliente({required this.email});
   final String email;
+  String clave = ''; // clave de agregación (correo o 'n:nombre'); para notas
   String nombre = '';
   String telefono = '';
   String nivel = '';
@@ -212,6 +266,58 @@ class _Cliente {
   String get inicial {
     final n = nombreVisible.trim();
     return n.isEmpty ? '?' : n[0].toUpperCase();
+  }
+
+  /// Días desde la última visita (grande si nunca vino), para detectar churn.
+  int get diasDesdeUltima {
+    if (ultima.isEmpty) return 1 << 30;
+    final d = DateTime.tryParse(ultima);
+    if (d == null) return 1 << 30;
+    final hoy = DateTime.now();
+    return DateTime(hoy.year, hoy.month, hoy.day)
+        .difference(DateTime(d.year, d.month, d.day))
+        .inDays;
+  }
+
+  /// Segmentos a los que pertenece. [maxGasto] da el umbral VIP relativo (top
+  /// gasto del universo) y [mesActual] ('YYYY-MM') define a los nuevos.
+  Set<String> segmentos(double maxGasto, String mesActual) {
+    final s = <String>{};
+    if (reservas >= 2) s.add('recurrente');
+    if (primera.startsWith(mesActual)) s.add('nuevo');
+    if (reservas >= 3 && maxGasto > 0 && gastado >= 0.6 * maxGasto) {
+      s.add('vip');
+    }
+    if (porCobrar > 0) s.add('moroso');
+    if (reservas >= 2 && diasDesdeUltima >= _diasRiesgo) s.add('riesgo');
+    return s;
+  }
+
+  /// Segmento MÁS accionable para el badge de la tarjeta (deudor/riesgo primero).
+  String? badge(double maxGasto, String mesActual) {
+    final s = segmentos(maxGasto, mesActual);
+    for (final k in ['moroso', 'riesgo', 'vip', 'nuevo']) {
+      if (s.contains(k)) return k;
+    }
+    return null;
+  }
+}
+
+/// Color y rótulo de cada segmento (para chips y badges).
+({Color color, String label}) _segEstilo(String seg) {
+  switch (seg) {
+    case 'vip':
+      return (color: amarillo, label: 'VIP');
+    case 'recurrente':
+      return (color: teal, label: 'Recurrente');
+    case 'nuevo':
+      return (color: lima, label: 'Nuevo');
+    case 'riesgo':
+      return (color: naranja, label: 'En riesgo');
+    case 'moroso':
+      return (color: clayOscuro, label: 'Debe');
+    default:
+      return (color: bosque, label: 'Todos');
   }
 }
 
@@ -281,6 +387,69 @@ class _Kpi extends StatelessWidget {
   }
 }
 
+/// Chip de SEGMENTO (con conteo). Estilo Airbnb: transparente con borde; al
+/// activarse se tiñe con el color del segmento.
+class _SegChip extends StatelessWidget {
+  const _SegChip(
+      {required this.seg,
+      required this.n,
+      required this.activo,
+      required this.onTap});
+  final String seg;
+  final int n;
+  final bool activo;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final e = _segEstilo(seg);
+    final color = seg == 'todos' ? Theme.of(context).colorScheme.primary : e.color;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: activo ? color.withOpacity(0.16) : Colors.transparent,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+                color:
+                    activo ? color : textoTenueDe(context).withOpacity(0.4)),
+          ),
+          child: Text('${e.label} · $n',
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: activo ? FontWeight.w700 : FontWeight.w500,
+                  color: activo ? color : textoTenueDe(context))),
+        ),
+      ),
+    );
+  }
+}
+
+/// Badge de esquina del segmento más accionable de un cliente (VIP, En riesgo…).
+class _BadgeSeg extends StatelessWidget {
+  const _BadgeSeg({required this.seg});
+  final String seg;
+
+  @override
+  Widget build(BuildContext context) {
+    final e = _segEstilo(seg);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: e.color.withOpacity(0.14),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(e.label,
+          style: TextStyle(
+              color: e.color, fontSize: 11, fontWeight: FontWeight.w800)),
+    );
+  }
+}
+
 class _OrdenChip extends StatelessWidget {
   const _OrdenChip(
       {required this.texto, required this.activo, required this.onTap});
@@ -320,8 +489,11 @@ class _OrdenChip extends StatelessWidget {
 }
 
 class _ClienteCard extends StatelessWidget {
-  const _ClienteCard({required this.cliente});
+  const _ClienteCard({required this.cliente, this.badge});
   final _Cliente cliente;
+
+  /// Segmento más accionable (badge de esquina), o null.
+  final String? badge;
 
   @override
   Widget build(BuildContext context) {
@@ -329,6 +501,7 @@ class _ClienteCard extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final verificado =
         cliente.email.isNotEmpty && appState.estaVerificado(cliente.email);
+    final tieneNota = appState.notaCliente(cliente.clave).isNotEmpty;
     return InkWell(
       onTap: () => _abrirDetalle(context),
       borderRadius: BorderRadius.circular(16),
@@ -380,6 +553,15 @@ class _ClienteCard extends StatelessWidget {
                             const SizedBox(width: 5),
                             Icon(Icons.verified,
                                 size: 16, color: cs.primary),
+                          ],
+                          if (tieneNota) ...[
+                            const SizedBox(width: 5),
+                            Icon(Icons.sticky_note_2_outlined,
+                                size: 15, color: textoTenueDe(context)),
+                          ],
+                          if (badge != null) ...[
+                            const SizedBox(width: 6),
+                            _BadgeSeg(seg: badge!),
                           ],
                         ],
                       ),
@@ -466,10 +648,47 @@ class _ClienteCard extends StatelessWidget {
     ));
   }
 
-  /// Ficha ampliada: historial de reservas de este cliente en tus canchas.
+  /// Ficha ampliada del cliente (analítica + notas del dueño + acciones).
   void _abrirDetalle(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (_) => _DetalleClienteSheet(cliente: cliente),
+    );
+  }
+}
+
+/// Ficha ampliada de un cliente: perfil de consumo (ticket promedio, cancha y
+/// horario preferidos, medio de pago habitual, % no-show), notas privadas del
+/// dueño (device-first), historial y acciones (reservar, cobrar, chat).
+class _DetalleClienteSheet extends StatefulWidget {
+  const _DetalleClienteSheet({required this.cliente});
+  final _Cliente cliente;
+
+  @override
+  State<_DetalleClienteSheet> createState() => _DetalleClienteSheetState();
+}
+
+class _DetalleClienteSheetState extends State<_DetalleClienteSheet> {
+  late final TextEditingController _nota =
+      TextEditingController(text: appState.notaCliente(widget.cliente.clave));
+  bool _notaSucia = false;
+
+  @override
+  void dispose() {
+    _nota.dispose();
+    super.dispose();
+  }
+
+  _Cliente get cliente => widget.cliente;
+
+  /// Reservas de este cliente en las canchas del dueño (más recientes primero).
+  List<Reserva> get _suyas {
     final mias = {for (final c in appState.misCanchas) c.id: c};
-    final suyas = appState.reservas.where((r) {
+    return appState.reservas.where((r) {
       if (!mias.containsKey(r.canchaId)) return false;
       final email = r.usuario.trim().toLowerCase();
       if (cliente.email.isNotEmpty) return email == cliente.email;
@@ -477,128 +696,373 @@ class _ClienteCard extends StatelessWidget {
           cliente.nombreVisible.toLowerCase();
     }).toList()
       ..sort((a, b) => b.fecha.compareTo(a.fecha));
+  }
 
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
-      builder: (ctx) {
-        final t = Theme.of(ctx).textTheme;
-        return DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: 0.6,
-          maxChildSize: 0.9,
-          builder: (_, scroll) => ListView(
-            controller: scroll,
-            padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
+  /// La moda (valor más repetido) de una lista, o vacío.
+  String _moda(Iterable<String> vals) {
+    final c = <String, int>{};
+    for (final v in vals) {
+      if (v.trim().isEmpty) continue;
+      c[v] = (c[v] ?? 0) + 1;
+    }
+    if (c.isEmpty) return '';
+    return c.entries.reduce((a, b) => b.value > a.value ? b : a).key;
+  }
+
+  static const _mediosLabel = {
+    'yape': 'Yape',
+    'tarjeta': 'Tarjeta',
+    'efectivo': 'Efectivo',
+    'sena': 'Seña + saldo',
+    'manual': 'Manual',
+    'online': 'Online',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final suyas = _suyas;
+    final mias = {for (final c in appState.misCanchas) c.id: c};
+
+    // Perfil de consumo (con lo que ya hay, sin SQL nuevo).
+    final pagadas = suyas.where((r) => r.pagado).toList();
+    final ticket = pagadas.isEmpty
+        ? 0.0
+        : pagadas.fold<double>(0, (s, r) => s + r.totalConExtras) /
+            pagadas.length;
+    final canchaPref = _moda(suyas
+        .map((r) => mias[r.canchaId]?.nombre ?? '')
+        .where((s) => s.isNotEmpty));
+    final horaPref = _moda(suyas.map((r) => r.horaInicio));
+    final medioPref = _moda(suyas.map((r) => r.medioPago));
+    final pctNoShow =
+        cliente.reservas == 0 ? 0 : (cliente.noShows * 100 / cliente.reservas);
+
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.7,
+      maxChildSize: 0.95,
+      builder: (_, scroll) => ListView(
+        controller: scroll,
+        padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
+        children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: const Color(0xFFDDDDDD),
+                  borderRadius: BorderRadius.circular(999)),
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Cabecera: avatar + nombre + acción rápida de contacto.
+          Row(
             children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                      color: const Color(0xFFDDDDDD),
-                      borderRadius: BorderRadius.circular(999)),
+              CircleAvatar(
+                radius: 24,
+                backgroundColor: _colorInicial(cliente.nombreVisible),
+                backgroundImage: _fotoCliente(cliente) != null
+                    ? CachedNetworkImageProvider(_fotoCliente(cliente)!)
+                    : null,
+                child: _fotoCliente(cliente) == null
+                    ? Text(cliente.inicial,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 20))
+                    : null,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(cliente.nombreVisible,
+                        style: t.titleLarge
+                            ?.copyWith(fontWeight: FontWeight.w800)),
+                    Text(_contacto(cliente),
+                        style: t.bodySmall
+                            ?.copyWith(color: textoTenueDe(context))),
+                  ],
                 ),
               ),
-              const SizedBox(height: 16),
-              Row(
+              if (cliente.email.isNotEmpty)
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(backgroundColor: teal),
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    _chatear(context);
+                  },
+                  icon: const Icon(Icons.chat_bubble_outline, size: 18),
+                  label: const Text('Chat'),
+                )
+              else if (cliente.telefono.isNotEmpty)
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(backgroundColor: lima),
+                  onPressed: () => WhatsAppLink.abrir(cliente.telefono,
+                      'Hola ${cliente.nombreVisible} 👋'),
+                  icon: const Icon(Icons.chat, size: 18),
+                  label: const Text('WhatsApp'),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          // Perfil de consumo: mosaico de datos que el dueño no calculaba a mano.
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _Dato(
+                  icono: Icons.confirmation_number_outlined,
+                  titulo: 'Ticket prom.',
+                  valor: '${cliente.moneda}${ticket.toStringAsFixed(2)}'),
+              if (canchaPref.isNotEmpty)
+                _Dato(
+                    icono: Icons.stadium_outlined,
+                    titulo: 'Cancha fav.',
+                    valor: canchaPref),
+              if (horaPref.isNotEmpty)
+                _Dato(
+                    icono: Icons.schedule,
+                    titulo: 'Horario fav.',
+                    valor: horaPref),
+              if (medioPref.isNotEmpty)
+                _Dato(
+                    icono: Icons.account_balance_wallet_outlined,
+                    titulo: 'Paga con',
+                    valor: _mediosLabel[medioPref] ?? medioPref),
+              _Dato(
+                  icono: Icons.event_available,
+                  titulo: 'Reservas',
+                  valor: '${cliente.reservas}'),
+              if (cliente.noShows > 0)
+                _Dato(
+                    icono: Icons.person_off,
+                    titulo: 'No-show',
+                    valor: '${pctNoShow.round()}%',
+                    color: clayOscuro),
+              if (cliente.diasDesdeUltima >= _diasRiesgo &&
+                  cliente.reservas >= 2)
+                _Dato(
+                    icono: Icons.warning_amber_rounded,
+                    titulo: 'Sin volver',
+                    valor: '${cliente.diasDesdeUltima} días',
+                    color: naranja),
+            ],
+          ),
+          if (cliente.porCobrar > 0) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: clayOscuro.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
                 children: [
-                  CircleAvatar(
-                    radius: 24,
-                    backgroundColor: _colorInicial(cliente.nombreVisible),
-                    backgroundImage: _fotoCliente(cliente) != null
-                        ? CachedNetworkImageProvider(_fotoCliente(cliente)!)
-                        : null,
-                    child: _fotoCliente(cliente) == null
-                        ? Text(cliente.inicial,
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 20))
-                        : null,
-                  ),
-                  const SizedBox(width: 12),
+                  const Icon(Icons.schedule, size: 18, color: clayOscuro),
+                  const SizedBox(width: 8),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(cliente.nombreVisible,
-                            style: t.titleLarge
-                                ?.copyWith(fontWeight: FontWeight.w800)),
-                        Text(_contacto(cliente),
-                            style: t.bodySmall
-                                ?.copyWith(color: textoTenueDe(ctx))),
-                      ],
-                    ),
+                    child: Text(
+                        'Te debe ${cliente.moneda}'
+                        '${cliente.porCobrar.toStringAsFixed(2)} (efectivo por cobrar)',
+                        style: t.bodyMedium?.copyWith(
+                            color: clayOscuro, fontWeight: FontWeight.w700)),
                   ),
-                  if (cliente.email.isNotEmpty)
-                    FilledButton.icon(
-                      style: FilledButton.styleFrom(backgroundColor: teal),
-                      onPressed: () {
-                        Navigator.of(ctx).pop();
-                        _chatear(context);
-                      },
-                      icon: const Icon(Icons.chat_bubble_outline, size: 18),
-                      label: const Text('Chat'),
-                    )
-                  else if (cliente.telefono.isNotEmpty)
-                    FilledButton.icon(
-                      style: FilledButton.styleFrom(backgroundColor: lima),
-                      onPressed: () => WhatsAppLink.abrir(cliente.telefono,
-                          'Hola ${cliente.nombreVisible} 👋'),
-                      icon: const Icon(Icons.chat, size: 18),
-                      label: const Text('WhatsApp'),
+                  if (cliente.telefono.isNotEmpty || cliente.email.isNotEmpty)
+                    TextButton(
+                      onPressed: _recordarCobro,
+                      child: const Text('Recordar'),
                     ),
                 ],
               ),
-              const SizedBox(height: 18),
-              Text('Historial de reservas',
-                  style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-              const SizedBox(height: 8),
-              for (final r in suyas)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Row(
-                    children: [
-                      Icon(
-                        r.estado == EstadoReserva.noShow
-                            ? Icons.person_off
-                            : (r.pagado
-                                ? Icons.check_circle
-                                : Icons.schedule),
-                        size: 18,
-                        color: r.estado == EstadoReserva.noShow
-                            ? clayOscuro
-                            : (r.pagado ? lima : amarillo),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          '${_fechaCorta(r.fecha)} · ${r.horaInicio}'
-                          '${mias[r.canchaId] != null ? ' · ${mias[r.canchaId]!.nombre}' : ''}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: t.bodyMedium,
-                        ),
-                      ),
-                      Text(
-                        '${r.monedaSimbolo}${r.totalConExtras.toStringAsFixed(2)}',
-                        style: t.bodyMedium
-                            ?.copyWith(fontWeight: FontWeight.w700),
-                      ),
-                    ],
-                  ),
+            ),
+          ],
+          const SizedBox(height: 16),
+          // Acciones: reservar para este cliente (pre-llena su ficha).
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _reservarParaCliente,
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Reservar'),
                 ),
-              if (suyas.isEmpty)
-                Text('Sin reservas registradas.',
-                    style: t.bodyMedium?.copyWith(color: textoTenueDe(ctx))),
+              ),
             ],
           ),
-        );
-      },
+          const SizedBox(height: 18),
+          // Notas privadas del dueño (el "cuaderno del club").
+          Text('Notas privadas',
+              style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 2),
+          Text('Solo tú las ves. Ej: "prefiere Cancha 2, juega martes, paga efectivo".',
+              style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _nota,
+            minLines: 2,
+            maxLines: 5,
+            onChanged: (_) {
+              if (!_notaSucia) setState(() => _notaSucia = true);
+            },
+            decoration: InputDecoration(
+              hintText: 'Escribe una nota…',
+              filled: true,
+              fillColor: Theme.of(context).colorScheme.surface,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: Color(0xFFE4E4E4)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: Color(0xFFE4E4E4)),
+              ),
+            ),
+          ),
+          if (_notaSucia)
+            Align(
+              alignment: Alignment.centerRight,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: FilledButton.icon(
+                  onPressed: () async {
+                    await appState.guardarNotaCliente(
+                        cliente.clave, _nota.text);
+                    if (mounted) setState(() => _notaSucia = false);
+                  },
+                  icon: const Icon(Icons.check, size: 18),
+                  label: const Text('Guardar nota'),
+                ),
+              ),
+            ),
+          const SizedBox(height: 18),
+          Text('Historial de reservas',
+              style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          for (final r in suyas)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  Icon(
+                    r.estado == EstadoReserva.noShow
+                        ? Icons.person_off
+                        : (r.pagado ? Icons.check_circle : Icons.schedule),
+                    size: 18,
+                    color: r.estado == EstadoReserva.noShow
+                        ? clayOscuro
+                        : (r.pagado ? lima : amarillo),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      '${_fechaCorta(r.fecha)} · ${r.horaInicio}'
+                      '${mias[r.canchaId] != null ? ' · ${mias[r.canchaId]!.nombre}' : ''}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: t.bodyMedium,
+                    ),
+                  ),
+                  Text(
+                    '${r.monedaSimbolo}${r.totalConExtras.toStringAsFixed(2)}',
+                    style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ],
+              ),
+            ),
+          if (suyas.isEmpty)
+            Text('Sin reservas registradas.',
+                style: t.bodyMedium?.copyWith(color: textoTenueDe(context))),
+        ],
+      ),
+    );
+  }
+
+  void _chatear(BuildContext context) {
+    final owner = appState.usuario?.email ?? '';
+    if (owner.isEmpty || cliente.email.isEmpty) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ChatScreen(
+        academiaId: '',
+        cuentaEmail: cliente.email,
+        titulo: cliente.nombreVisible,
+        soyProfe: true,
+        tipo: 'cancha',
+        refId: owner,
+      ),
+    ));
+  }
+
+  /// Abre "Reserva manual" con este cliente ya prellenado.
+  void _reservarParaCliente() {
+    Navigator.of(context).pop();
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ReservaManualScreen(
+        clienteEmailInicial: cliente.email,
+        clienteNombreInicial: cliente.nombreVisible,
+        clienteFotoInicial: _fotoCliente(cliente) ?? '',
+        clienteTelefonoInicial: cliente.telefono,
+      ),
+    ));
+  }
+
+  /// Recordatorio de cobro por WhatsApp (si hay teléfono) o chat.
+  void _recordarCobro() {
+    final saldo = '${cliente.moneda}${cliente.porCobrar.toStringAsFixed(2)}';
+    final msg =
+        'Hola ${cliente.nombreVisible} 👋 Te recordamos tu saldo pendiente '
+        'de $saldo por tu reserva. ¡Gracias!';
+    if (cliente.telefono.isNotEmpty) {
+      WhatsAppLink.abrir(cliente.telefono, msg);
+    } else if (cliente.email.isNotEmpty) {
+      Navigator.of(context).pop();
+      _chatear(context);
+    }
+  }
+}
+
+/// Celda de dato del perfil de consumo (ticket, cancha fav., etc.).
+class _Dato extends StatelessWidget {
+  const _Dato(
+      {required this.icono,
+      required this.titulo,
+      required this.valor,
+      this.color});
+  final IconData icono;
+  final String titulo;
+  final String valor;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = color ?? Theme.of(context).colorScheme.primary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFEEEAE0)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icono, size: 16, color: c),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(titulo,
+                  style: TextStyle(
+                      fontSize: 11, color: textoTenueDe(context))),
+              Text(valor,
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w800)),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

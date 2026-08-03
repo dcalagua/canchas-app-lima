@@ -82,6 +82,31 @@ class AppState extends ChangeNotifier {
   // Mandan sobre el nombre de su perfil al mostrarlo. Se persisten.
   final Map<String, String> _apodos = {};
 
+  // Notas privadas del DUEÑO por cliente (clave = correo, o 'n:nombre' para el
+  // walk-in sin cuenta), tipo "cuaderno del club": prefiere efectivo, juega los
+  // martes, cancha 2, etc. Device-first (SharedPreferences); solo las ve el dueño.
+  final Map<String, String> _notasCliente = {};
+
+  /// Nota privada que el dueño le puso a un cliente (vacío si no hay).
+  String notaCliente(String clave) => _notasCliente[clave.trim()] ?? '';
+
+  /// Guarda (o borra, si queda vacía) la nota privada de un cliente y persiste.
+  Future<void> guardarNotaCliente(String clave, String nota) async {
+    final k = clave.trim();
+    if (k.isEmpty) return;
+    final t = nota.trim();
+    if (t.isEmpty) {
+      _notasCliente.remove(k);
+    } else {
+      _notasCliente[k] = t;
+    }
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kNotasCliente, jsonEncode(_notasCliente));
+    } catch (_) {}
+  }
+
   /// Apodo local que le puse a un correo, o null si no le puse.
   String? apodoDe(String? email) {
     final a = _apodos[(email ?? '').trim().toLowerCase()];
@@ -5625,6 +5650,7 @@ class AppState extends ChangeNotifier {
   static const _kChatsOcultos = 'chats_ocultos_json';
   static const _kApodos = 'apodos_json';
   static const _kPerfiles = 'perfiles_cache_json';
+  static const _kNotasCliente = 'notas_cliente_json'; // clave cliente→nota dueño
   static const _kVideosLocales = 'videos_locales_json';
   static const _kBloqueados = 'bloqueados_json';
   static const _kChatsFijados = 'chats_fijados_json';
@@ -5896,6 +5922,15 @@ class AppState extends ChangeNotifier {
           m.forEach((k, v) {
             if (v is Map) _perfiles[k] = Map<String, dynamic>.from(v);
           });
+        } catch (_) {}
+      }
+
+      // Notas privadas del dueño por cliente (cuaderno del club, device-first).
+      final notasRaw = prefs.getString(_kNotasCliente);
+      if (notasRaw != null) {
+        try {
+          final m = jsonDecode(notasRaw) as Map<String, dynamic>;
+          m.forEach((k, v) => _notasCliente[k] = v.toString());
         } catch (_) {}
       }
 

@@ -14,10 +14,24 @@ import '../widgets/cargando_pichangol.dart';
 /// (cliente propio, fuera de comisión) y OCUPA el slot igual que una reserva de
 /// la app, para que nadie pueda reservar encima (anti doble-reserva).
 class ReservaManualScreen extends StatefulWidget {
-  const ReservaManualScreen({super.key, this.canchaInicial});
+  const ReservaManualScreen({
+    super.key,
+    this.canchaInicial,
+    this.clienteEmailInicial = '',
+    this.clienteNombreInicial = '',
+    this.clienteFotoInicial = '',
+    this.clienteTelefonoInicial = '',
+  });
 
   /// Cancha preseleccionada (si se abre desde una cancha concreta).
   final Cancha? canchaInicial;
+
+  /// Cliente preseleccionado (si se abre desde su ficha en Clientes). Todos
+  /// opcionales: si vienen, la pantalla arranca con el cliente ya elegido.
+  final String clienteEmailInicial;
+  final String clienteNombreInicial;
+  final String clienteFotoInicial;
+  final String clienteTelefonoInicial;
 
   @override
   State<ReservaManualScreen> createState() => _ReservaManualScreenState();
@@ -60,6 +74,13 @@ class _ReservaManualScreenState extends State<ReservaManualScreen> {
     final mias = appState.misCanchas;
     _canchaId =
         widget.canchaInicial?.id ?? (mias.isNotEmpty ? mias.first.id : null);
+    // Cliente prellenado desde su ficha en Clientes (si se abrió desde ahí).
+    _clienteEmail = widget.clienteEmailInicial.trim();
+    _clienteNombre = widget.clienteNombreInicial.trim();
+    _clienteFoto = widget.clienteFotoInicial.trim();
+    if (widget.clienteTelefonoInicial.trim().isNotEmpty) {
+      _telefono.text = widget.clienteTelefonoInicial.trim();
+    }
     _sugerirPrecio();
   }
 
