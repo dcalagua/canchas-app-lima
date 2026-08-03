@@ -367,10 +367,27 @@ class _HeaderAgenda extends StatelessWidget {
       borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
     );
 
-    final saludoW = Text(saludoTxt,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: t.bodySmall?.copyWith(color: Colors.white70));
+    final saludoW = Row(
+      children: [
+        // Atrás: sale del panel del dueño y vuelve a donde estabas (solo si hay
+        // pantalla previa a la que volver).
+        if (Navigator.of(context).canPop())
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => Navigator.of(context).maybePop(),
+            child: const Padding(
+              padding: EdgeInsets.only(right: 8),
+              child: Icon(Icons.arrow_back, color: Colors.white, size: 20),
+            ),
+          ),
+        Flexible(
+          child: Text(saludoTxt,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: t.bodySmall?.copyWith(color: Colors.white70)),
+        ),
+      ],
+    );
     final localW = Text(local,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,

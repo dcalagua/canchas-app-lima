@@ -685,6 +685,17 @@ class _HeaderMisCanchas extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Atrás: sale del panel del dueño y vuelve a donde estabas. Solo si
+          // hay una pantalla previa (si es la raíz, no se muestra).
+          if (Navigator.of(context).canPop())
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => Navigator.of(context).maybePop(),
+              child: const Padding(
+                padding: EdgeInsets.only(bottom: 6),
+                child: Icon(Icons.arrow_back, color: Colors.white, size: 22),
+              ),
+            ),
           Text('Mis canchas',
               style: (compacto ? t.titleLarge : t.headlineSmall)
                   ?.copyWith(color: Colors.white, fontWeight: FontWeight.w700)),

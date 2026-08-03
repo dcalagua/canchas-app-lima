@@ -850,6 +850,16 @@ class _Header extends StatelessWidget {
         children: [
           Row(
             children: [
+              // Atrás: sale del panel de academia y vuelve a donde estabas.
+              if (Navigator.of(context).canPop())
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => Navigator.of(context).maybePop(),
+                  child: const Padding(
+                    padding: EdgeInsets.only(right: 8),
+                    child: Icon(Icons.arrow_back, color: Colors.white, size: 22),
+                  ),
+                ),
               Container(
                 margin: const EdgeInsets.only(right: 10),
                 padding: const EdgeInsets.all(3),
