@@ -5688,7 +5688,7 @@ class AppState extends ChangeNotifier {
             'suscripcion_pro' ||
             'inscripcion_torneo' =>
               TipoMovimiento.consumo,
-            'liquidacion_online' || 'liquidacion_full' =>
+            'liquidacion_online' || 'liquidacion_full' || 'venta_producto' =>
               TipoMovimiento.liquidacion,
             _ => TipoMovimiento.recarga, // recarga, inscripcion_torneo_ingreso
           };
@@ -5710,6 +5710,13 @@ class AppState extends ChangeNotifier {
             concepto = concepto.isEmpty
                 ? 'Reserva online · recibes 100%'
                 : '$concepto · recibes 100%';
+          } else if (tipoStr == 'venta_producto') {
+            // Venta del marketplace o bono de horas: Pichangol cobró al comprador
+            // y te debe el neto (por recibir). El concepto ya dice qué fue
+            // ("Bono 2h · Club" / "Venta: producto").
+            fuente = 'transaccion';
+            final txt = 'comisión $sim${com.round()} del pago';
+            concepto = concepto.isEmpty ? 'Venta · $txt' : '$concepto · $txt';
           } else if (tipoStr == 'comision_reserva') {
             // Egreso de la billetera: dejar claro de dónde salió.
             fuente = 'saldo';

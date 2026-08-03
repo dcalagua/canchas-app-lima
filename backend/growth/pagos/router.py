@@ -1325,7 +1325,11 @@ def get_movimientos(dueno_id: str) -> dict:
     # Pro, inscripción a torneo). Cada fila lleva su N.º de comprobante (p.id).
     _EGRESOS = ("comision_reserva", "suscripcion", "suscripcion_pro",
                 "inscripcion_torneo")
+    # `venta_producto` = venta del marketplace Y canje/compra de BONO de horas:
+    # Pichangol cobró al comprador y le debe el NETO al dueño (misma
+    # contabilidad que una reserva online). DEBE aparecer en el historial.
     _INCLUIR = ("recarga", "liquidacion_online", "liquidacion_full",
+                "venta_producto",
                 "inscripcion_torneo_ingreso") + _EGRESOS
     propios = [
         p for p in stores.pagos
@@ -1341,6 +1345,7 @@ def get_movimientos(dueno_id: str) -> dict:
         "inscripcion_torneo_ingreso": "Inscripción a torneo (ingreso)",
         "liquidacion_online": "Reserva online (neto)",
         "liquidacion_full": "Reserva online (recibes 100%)",
+        "venta_producto": "Venta / bono (neto)",
     }
 
     def _fila(p) -> dict:
@@ -1368,7 +1373,8 @@ def get_movimientos(dueno_id: str) -> dict:
                 "comision_soles": comision / 100.0,
                 "neto_soles": neto / 100.0,
                 "liquidado": (p.liquidado if p.tipo in
-                              ("liquidacion_online", "liquidacion_full")
+                              ("liquidacion_online", "liquidacion_full",
+                               "venta_producto")
                               else True)}
 
     # stores.pagos está en orden de inserción (viejo→nuevo); lo invertimos para
