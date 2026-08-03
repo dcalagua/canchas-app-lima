@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import '../widgets/barra_nav_scroll.dart';
 import '../widgets/icono_chat_pichan.dart';
 import '../widgets/menu_lateral_scroll.dart';
 import 'agenda_screen.dart';
@@ -108,17 +109,16 @@ class _HomeShellState extends State<HomeShell> {
     }
     return Scaffold(
       body: body,
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
-        destinations: [
-          for (var i = 0; i < _iconos.length; i++)
-            NavigationDestination(
-                icon: i == _iMensajes
-                    ? IconoChatPichan(activo: _index == _iMensajes)
-                    : Icon(_iconos[i], color: _colores[i]),
-                label: _etiquetas[i]),
-        ],
+      // Barra inferior con SCROLL horizontal: 7 secciones no caben en una
+      // `NavigationBar` fija (partía las etiquetas, "Cancha\ns"); ahora se
+      // desliza y cada etiqueta va en una sola línea.
+      bottomNavigationBar: BarraNavScroll(
+        iconos: _iconos,
+        etiquetas: _etiquetas,
+        colores: _colores,
+        iMensajes: _iMensajes,
+        activo: _index,
+        onTap: (i) => setState(() => _index = i),
       ),
     );
   }
