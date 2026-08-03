@@ -310,6 +310,37 @@ class Cancha {
     return minutosEnHora(m + paso);
   }
 
+  /// ¿El slot [hora] cae en la MADRUGADA del día SIGUIENTE? Pasa cuando el
+  /// horario CRUZA medianoche (cierre <= apertura) y la hora del slot es menor
+  /// que la apertura (ej. cancha 18:00→02:00: los slots 00:00 y 01:00 son de la
+  /// madrugada del día siguiente). Sirve para ligar la reserva a su FECHA
+  /// CALENDARIO real (no a la "jornada" elegida).
+  bool slotEsMadrugada(String hora) {
+    final ap = horaEnMinutos(horaApertura);
+    final sl = horaEnMinutos(hora);
+    if (ap == null || sl == null) return false;
+    return sl < ap;
+  }
+
+  /// Fecha ISO ('YYYY-MM-DD') REAL de un slot dado el día base [baseIso]: la
+  /// misma, o la del día SIGUIENTE si el slot cruzó medianoche ([slotEsMadrugada]).
+  String fechaRealSlot(String baseIso, String hora) {
+    if (!slotEsMadrugada(hora)) return baseIso;
+    final b = DateTime.tryParse(baseIso);
+    if (b == null) return baseIso;
+    final d = b.add(const Duration(days: 1));
+    return '${d.year.toString().padLeft(4, '0')}-'
+        '${d.month.toString().padLeft(2, '0')}-'
+        '${d.day.toString().padLeft(2, '0')}';
+  }
+
+  /// ¿La reserva (`rFecha`,`rHora`) pertenece a la SESIÓN de la jornada [baseIso]?
+  /// La sesión de un día abarca desde la apertura hasta el cierre, incluida la
+  /// MADRUGADA del día siguiente (turnos con hora < apertura viven en baseIso+1).
+  /// Se usa en la agenda, que muestra la jornada completa aunque cruce medianoche.
+  bool reservaEnSesion(String baseIso, String rFecha, String rHora) =>
+      rFecha == fechaRealSlot(baseIso, rHora);
+
   Cancha copyWith({
     String? nombre,
     String? club,

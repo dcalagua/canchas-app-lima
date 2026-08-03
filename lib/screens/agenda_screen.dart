@@ -95,10 +95,12 @@ class _AgendaScreenState extends State<AgendaScreen> {
 
           final iso = _isoDe(_dia);
           final horasGrilla = cancha.horariosSlots();
-          // Reservas del día de ESTA cancha (tolerante a ids duplicados).
+          // Reservas de la SESIÓN de este día (tolerante a ids duplicados). La
+          // sesión incluye la MADRUGADA del día siguiente si el horario cruza
+          // medianoche (esas reservas viven con fecha = iso+1).
           final reservasDia = appState.reservas.where((r) =>
-              r.fecha == iso &&
-              appState.miCanchaDeReserva(r.canchaId)?.id == cancha.id);
+              appState.miCanchaDeReserva(r.canchaId)?.id == cancha.id &&
+              cancha.reservaEnSesion(iso, r.fecha, r.horaInicio));
           // Horas de reservas que NO calzan con la grilla actual (p. ej. se
           // reservó con duración 1 h y luego el dueño cambió a 1.5 h): se
           // muestran IGUAL para que la reserva NO desaparezca de la agenda.
@@ -127,7 +129,8 @@ class _AgendaScreenState extends State<AgendaScreen> {
                     return _AgendaRow(
                       hora: hora,
                       valle: hora.compareTo('12:00') < 0,
-                      reserva: _reservaEn(cancha.id, iso, hora),
+                      reserva: _reservaEn(
+                          cancha.id, cancha.fechaRealSlot(iso, hora), hora),
                       fueraDeGrilla: extras.contains(hora),
                     );
                   },
@@ -337,11 +340,12 @@ class _HeaderAgenda extends StatelessWidget {
     // KPIs REALES del día sobre las canchas del LOCAL seleccionado. Se resuelve
     // cada reserva a la cancha del dueño (tolerante a ids duplicados del local).
     final ids = canchas.map((c) => c.id).toSet();
-    final delDia = appState.reservas
-        .where((r) =>
-            r.fecha == iso &&
-            ids.contains(appState.miCanchaDeReserva(r.canchaId)?.id))
-        .toList();
+    final delDia = appState.reservas.where((r) {
+      final c = appState.miCanchaDeReserva(r.canchaId);
+      if (c == null || !ids.contains(c.id)) return false;
+      // Sesión del día (incluye la madrugada del día siguiente si cruza medianoche).
+      return c.reservaEnSesion(iso, r.fecha, r.horaInicio);
+    }).toList();
     final totalSlots =
         canchas.fold<int>(0, (s, c) => s + c.horariosSlots().length);
     final ocupacion =

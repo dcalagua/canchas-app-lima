@@ -6536,10 +6536,12 @@ class AppState extends ChangeNotifier {
     if (horas.isEmpty) return ResultadoReserva.error;
     final ordenadas = [...horas]..sort();
     // Pre-chequeo: TODAS deben estar libres (atómico local). Si una está tomada,
-    // no reservo nada (evita medias reservas).
+    // no reservo nada (evita medias reservas). Cada slot se compara con su FECHA
+    // REAL (los de madrugada caen en el día siguiente).
     for (final h in ordenadas) {
+      final fh = cancha.fechaRealSlot(fecha, h);
       final ocupada = reservas.any((r) =>
-          r.canchaId == cancha.id && r.fecha == fecha && r.horaInicio == h);
+          r.canchaId == cancha.id && r.fecha == fh && r.horaInicio == h);
       if (ocupada) return ResultadoReserva.ocupado;
     }
     // Grupo solo si son 2+ horas (una sola hora se guarda como reserva suelta).
@@ -6549,11 +6551,12 @@ class AppState extends ChangeNotifier {
     var peor = ResultadoReserva.ok;
     for (var i = 0; i < ordenadas.length; i++) {
       final h = ordenadas[i];
+      final fh = cancha.fechaRealSlot(fecha, h); // fecha real del slot
       final senaSlot = conSena && cancha.senaPct > 0
-          ? (precioSlotEfectivo(cancha, fecha, h) * cancha.senaPct / 100).round()
+          ? (precioSlotEfectivo(cancha, fh, h) * cancha.senaPct / 100).round()
           : 0;
       final res = await agregarReservaJugador(
-        cancha, fecha, diaLabel, h,
+        cancha, fh, diaLabel, h,
         deporte: deporte,
         // Los servicios extra (árbitro/pelotero…) se cobran una sola vez.
         extras: i == 0 ? extras : const [],
@@ -6575,8 +6578,8 @@ class AppState extends ChangeNotifier {
           : reservas
               .where((r) =>
                   r.canchaId == cancha.id &&
-                  r.fecha == fecha &&
-                  ordenadas.contains(r.horaInicio))
+                  ordenadas.contains(r.horaInicio) &&
+                  r.fecha == cancha.fechaRealSlot(fecha, r.horaInicio))
               .toList();
       if (delGrupo.isNotEmpty) _notificarDuenoReserva(cancha, delGrupo);
     }
@@ -6600,18 +6603,20 @@ class AppState extends ChangeNotifier {
     int? precioOverride,
     Deporte? deporte,
   }) async {
+    // Fecha REAL del slot (los de madrugada caen en el día siguiente).
+    final fechaReal = cancha.fechaRealSlot(fecha, hora);
     final yaLocal = reservas.any((r) =>
-        r.canchaId == cancha.id && r.fecha == fecha && r.horaInicio == hora);
+        r.canchaId == cancha.id && r.fecha == fechaReal && r.horaInicio == hora);
     if (yaLocal) return ResultadoReserva.ocupado;
 
-    final precio = precioOverride ?? precioSlotEfectivo(cancha, fecha, hora);
+    final precio = precioOverride ?? precioSlotEfectivo(cancha, fechaReal, hora);
     final nombre = nombreCliente.trim();
     final reserva = Reserva(
       id: 'man_${DateTime.now().millisecondsSinceEpoch}_${_contadorJugador++}',
       canchaId: cancha.id,
       jugador: nombre.isEmpty ? 'Cliente' : nombre,
       nivel: '',
-      fecha: fecha,
+      fecha: fechaReal,
       dia: diaLabel,
       horaInicio: hora,
       horaFin: cancha.horaFinDe(hora),

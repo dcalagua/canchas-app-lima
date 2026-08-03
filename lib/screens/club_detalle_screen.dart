@@ -219,11 +219,17 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         MaterialPageRoute(builder: (_) => const ReservasDuenoScreen()));
   }
 
+  // Fecha REAL del slot: los de madrugada (horario que cruza medianoche) caen en
+  // el día siguiente. Ocupación, bloqueo y precio se comparan contra esta fecha.
+  String _fechaSlot(String hora) => _cancha.fechaRealSlot(_fechaIso, hora);
+
   bool _reservado(String hora) => appState.reservas.any((r) =>
-      r.canchaId == _cancha.id && r.fecha == _fechaIso && r.horaInicio == hora);
+      r.canchaId == _cancha.id &&
+      r.fecha == _fechaSlot(hora) &&
+      r.horaInicio == hora);
 
   bool _bloqueado(String hora) =>
-      appState.estaBloqueado(_cancha.id, _fechaIso, hora);
+      appState.estaBloqueado(_cancha.id, _fechaSlot(hora), hora);
 
   // Un slot NO se puede reservar si está reservado o bloqueado por el dueño.
   bool _ocupada(String hora) => _reservado(hora) || _bloqueado(hora);
@@ -233,7 +239,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
   /// Descuento efectivo del slot para mostrar: el puntual del dueño si lo tiene,
   /// si no la hora feliz de las mañanas (valle).
   int _descEfectivo(String hora) {
-    final slot = appState.descuentoSlotPct(_cancha.id, _fechaIso, hora);
+    final slot = appState.descuentoSlotPct(_cancha.id, _fechaSlot(hora), hora);
     if (slot > 0) return slot;
     return _esValle(hora) ? _cancha.descuentoValle : 0;
   }
@@ -297,14 +303,14 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
   /// Total base (sin extras) del bloque: suma del precio efectivo de cada hora
   /// (respeta valle/descuento por hora, así 2 h no es un simple ×2).
   double get _totalBloque => _slots.fold(
-      0.0, (a, h) => a + appState.precioSlotEfectivo(_cancha, _fechaIso, h));
+      0.0, (a, h) => a + appState.precioSlotEfectivo(_cancha, _fechaSlot(h), h));
 
   /// El dueño bloquea/desbloquea un horario (los reservados no se tocan).
   Future<void> _alternarBloqueo(String hora) async {
     if (_reservado(hora)) return; // no bloquear un slot ya reservado
     // El set se actualiza de forma síncrona dentro de alternarBloqueo; el
     // setState refleja el cambio al instante y la red va por detrás.
-    final f = appState.alternarBloqueo(_cancha.id, _fechaIso, hora);
+    final f = appState.alternarBloqueo(_cancha.id, _fechaSlot(hora), hora);
     if (mounted) setState(() {});
     await f;
   }

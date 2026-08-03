@@ -55,8 +55,10 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
   }
 
   bool _ocupada(String hora) {
+    // Fecha REAL del slot (madrugada = día siguiente si el horario cruza medianoche).
+    final f = cancha.fechaRealSlot(_fechaIso, hora);
     return appState.reservas.any((r) =>
-        r.canchaId == cancha.id && r.fecha == _fechaIso && r.horaInicio == hora);
+        r.canchaId == cancha.id && r.fecha == f && r.horaInicio == hora);
   }
 
   Future<void> _reservar() async {
@@ -168,7 +170,7 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
                 ? PagoTarjeta.ultimoMetodo
                 : 'online'));
     final res = await appState.agregarReservaJugador(
-        cancha, _fechaIso, _dia, hora,
+        cancha, cancha.fechaRealSlot(_fechaIso, hora), _dia, hora,
         // seña → adelanto (resto en la cancha); con saldo → efectivo (comisión
         // del saldo); sin saldo → online (ya se cobró al jugador; liquidación al
         // dueño).
