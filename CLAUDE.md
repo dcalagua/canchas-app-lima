@@ -486,6 +486,24 @@ auth por usuario en `/pagos/movimientos` (PROD).
   gatillo (online auto, efectivo al marcar). Ojo: la reserva MANUAL (cliente propio
   del dueño) hoy queda fuera de comisión/billetera; evaluar si acumula puntos.
 
+### Horarios de cancha (apertura/cierre) y cruce de medianoche
+- `Cancha.horariosSlots()` genera los INICIOS reservables de apertura a cierre en
+  pasos de `duracionSlotMin`; un slot solo entra si cabe COMPLETO antes del cierre
+  (cierre 23:00 + 1h → último turno 22:00–23:00).
+- **Cierre que CRUZA MEDIANOCHE:** si `cierre <= apertura`, el cierre cae al día
+  siguiente (`fin += 24h`). Cubre "hasta medianoche" (07:00→00:00, último turno
+  23:00–00:00), cancha nocturna (18:00→02:00) y **24 h** (00:00→00:00).
+  `minutosEnHora` envuelve con `% 24` (1440 → `00:00`).
+- **Fecha calendario REAL (producción):** los turnos de madrugada (hora < apertura)
+  se ligan a su fecha real = día base + 1. Helpers en `Cancha`: `slotEsMadrugada`,
+  `fechaRealSlot(baseIso, hora)`, `reservaEnSesion(baseIso, rFecha, rHora)`. Toda
+  ocupación/bloqueo/precio/guardado de reserva usa la fecha real por slot
+  (`agregarReservasJugadorMulti`, `agregarReservaManual`, `club_detalle._fechaSlot`,
+  `cancha_detalle`). La **agenda** muestra la SESIÓN del día (incluye la madrugada
+  del día siguiente vía `reservaEnSesion`); KPIs y match por slot usan la fecha real.
+- Pendiente menor: en `reserva_manual_screen` marcar visualmente ocupado un slot de
+  madrugada ya tomado (el anti-doble-reserva ya lo impide en el guardado).
+
 ### Nota billetera/reservas (recordatorio de diseño)
 - **Billetera (`cuenta_screen`)** = plata que pasa por la APP: pagos ONLINE del
   dueño ("por recibir"/liquidación), comisiones, recargas, Pro. Re-sincroniza al
