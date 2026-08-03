@@ -21,14 +21,32 @@ class AgendaScreen extends StatefulWidget {
 
 class _AgendaScreenState extends State<AgendaScreen> {
   Cancha? _cancha;
-  String _dia = 'Hoy';
+  // Día que se está viendo (cualquiera: historial atrás, planificación adelante).
+  DateTime _dia = _hoy();
 
-  static String _isoDe(String dia) {
-    final base = DateTime.now();
-    final d = dia == 'Mañana' ? base.add(const Duration(days: 1)) : base;
-    return '${d.year.toString().padLeft(4, '0')}-'
-        '${d.month.toString().padLeft(2, '0')}-'
-        '${d.day.toString().padLeft(2, '0')}';
+  static DateTime _hoy() {
+    final n = DateTime.now();
+    return DateTime(n.year, n.month, n.day);
+  }
+
+  static String _iso(DateTime d) => '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
+
+  static const _diasSem = ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'];
+  static const _mesesAbr = [
+    'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+    'jul', 'ago', 'set', 'oct', 'nov', 'dic'
+  ];
+
+  /// "Hoy" / "Mañana" / "Ayer" / "vie 8 ago".
+  static String _labelDia(DateTime d) {
+    final diff =
+        DateTime(d.year, d.month, d.day).difference(_hoy()).inDays;
+    if (diff == 0) return 'Hoy';
+    if (diff == 1) return 'Mañana';
+    if (diff == -1) return 'Ayer';
+    return '${_diasSem[d.weekday - 1]} ${d.day} ${_mesesAbr[d.month - 1]}';
   }
 
   Reserva? _reservaEn(String canchaId, String iso, String hora) {
@@ -93,7 +111,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
           final variosPaisesAg =
               canchas.map((c) => c.monedaSimbolo).toSet().length > 1;
 
-          final iso = _isoDe(_dia);
+          final iso = _iso(_dia);
           final horasGrilla = cancha.horariosSlots();
           // Reservas de la SESIÓN de este día (tolerante a ids duplicados). La
           // sesión incluye la MADRUGADA del día siguiente si el horario cruza
@@ -139,22 +157,71 @@ class _AgendaScreenState extends State<AgendaScreen> {
           return Column(
             children: [
               _HeaderAgenda(canchas: delLocal, iso: iso),
-              // Día: Hoy / Mañana
+              // Día: navegador (‹ · fecha/calendario · ›). Permite CUALQUIER día
+              // (historial hacia atrás, planificación hacia adelante), no solo
+              // Hoy/Mañana. La fecha es tocable y abre el calendario.
               Padding(
-                padding: const EdgeInsets.fromLTRB(18, 14, 18, 4),
+                padding: const EdgeInsets.fromLTRB(18, 12, 18, 2),
                 child: Row(
                   children: [
-                    for (final d in const ['Hoy', 'Mañana']) ...[
-                      _Pildora(
-                        texto: d,
-                        activo: _dia == d,
-                        onTap: () => setState(() => _dia = d),
+                    _NavDia(
+                      icono: Icons.chevron_left,
+                      onTap: () => setState(
+                          () => _dia = _dia.subtract(const Duration(days: 1))),
+                    ),
+                    Expanded(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () async {
+                          final d = await showDatePicker(
+                            context: context,
+                            initialDate: _dia,
+                            firstDate: DateTime(2024, 1, 1),
+                            lastDate:
+                                DateTime.now().add(const Duration(days: 365)),
+                            helpText: 'Elige el día',
+                          );
+                          if (d != null && mounted) {
+                            setState(
+                                () => _dia = DateTime(d.year, d.month, d.day));
+                          }
+                        },
+                        child: Column(
+                          children: [
+                            Text(_labelDia(_dia),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.w800)),
+                            Text(
+                                '${_dia.day.toString().padLeft(2, '0')}/'
+                                '${_dia.month.toString().padLeft(2, '0')}/'
+                                '${_dia.year} · toca para elegir',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(color: textoTenueDe(context))),
+                          ],
+                        ),
                       ),
-                      const SizedBox(width: 10),
-                    ],
+                    ),
+                    _NavDia(
+                      icono: Icons.chevron_right,
+                      onTap: () => setState(
+                          () => _dia = _dia.add(const Duration(days: 1))),
+                    ),
                   ],
                 ),
               ),
+              if (_iso(_dia) != _iso(_hoy()))
+                Align(
+                  alignment: Alignment.center,
+                  child: TextButton.icon(
+                    onPressed: () => setState(() => _dia = _hoy()),
+                    icon: const Icon(Icons.today, size: 16),
+                    label: const Text('Volver a hoy'),
+                  ),
+                ),
               // Selector de LOCAL (si el dueño administra más de uno). Deja
               // claro a qué local pertenece la agenda que estás viendo.
               if (locales.length > 1)
@@ -510,29 +577,26 @@ class _MiniKpi extends StatelessWidget {
   }
 }
 
-class _Pildora extends StatelessWidget {
-  const _Pildora(
-      {required this.texto, required this.activo, required this.onTap});
-  final String texto;
-  final bool activo;
+/// Flecha ‹ / › del navegador de día: botón redondo estilo Airbnb (blanco,
+/// borde gris suave, relieve leve), nunca negro.
+class _NavDia extends StatelessWidget {
+  const _NavDia({required this.icono, required this.onTap});
+  final IconData icono;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
-        decoration: BoxDecoration(
-          // Toggle activo = verde WhatsApp (marca), nunca negro. Congruente.
-          color: activo ? lima : Colors.white,
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: activo ? lima : trazo),
+    return Material(
+      color: Colors.white,
+      shape: CircleBorder(side: BorderSide(color: trazo)),
+      elevation: 0,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Icon(icono, size: 22, color: bosque),
         ),
-        child: Text(texto,
-            style: TextStyle(
-                color: activo ? Colors.white : textoTenue,
-                fontWeight: FontWeight.w700)),
       ),
     );
   }
