@@ -1,12 +1,13 @@
-import 'unirse_campeonato_sheet.dart';
 import 'package:flutter/material.dart';
 
 import '../models/campeonato.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../utils/pro_gate.dart';
 import '../widgets/responsive.dart';
 import 'campeonato_detalle_screen.dart';
 import 'crear_campeonato_screen.dart';
+import 'unirse_campeonato_sheet.dart';
 
 /// Lista de campeonatos de una academia. El profe (dueño) puede crear; cualquiera
 /// puede abrir un campeonato para ver llaves/tabla.
@@ -42,9 +43,18 @@ class CampeonatosScreen extends StatelessWidget {
         listenable: appState,
         builder: (context, _) => _esDueno()
             ? FloatingActionButton.extended(
-                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) =>
-                        CrearCampeonatoScreen(academiaId: academiaId))),
+                onPressed: () async {
+                  // Candado Pichangol Pro: organizar un campeonato exige Pro,
+                  // también para el dueño de la academia (modelo universal).
+                  final ok = await exigirPro(context,
+                      motivo: 'Crear campeonatos (fixture, inscripciones, '
+                          'resultados) es parte de Pichangol Pro. Hazte Pro '
+                          'para organizar el tuyo.');
+                  if (!ok || !context.mounted) return;
+                  Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) =>
+                          CrearCampeonatoScreen(academiaId: academiaId)));
+                },
                 icon: const Icon(Icons.add),
                 label: const Text('Nuevo'),
               )
