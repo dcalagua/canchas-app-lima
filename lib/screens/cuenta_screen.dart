@@ -345,9 +345,12 @@ class _FilaMovimiento extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final sim = appState.monedaSaldoSimbolo;
     final esRecarga = m.tipo == TipoMovimiento.recarga;
     final esLiquidacion = m.tipo == TipoMovimiento.liquidacion;
     final liqPagada = esLiquidacion && m.liquidado;
+    // Los pagos de clientes (liquidación) muestran un mini-recibo con desglose.
+    final conRecibo = esLiquidacion && m.brutoSoles > 0;
     // Recarga en verde; comisión que sale del saldo en rojo; liquidación online
     // en teal si está PENDIENTE (por recibir) y en verde si ya te la pagaron.
     final color = esRecarga
@@ -400,18 +403,35 @@ class _FilaMovimiento extends StatelessWidget {
                       Text(sub,
                           style: t.bodySmall
                               ?.copyWith(color: textoTenueDe(context))),
-                      // Desglose VISIBLE (como estado de cuenta de banco): lo que
-                      // pagó el cliente, la comisión y lo que recibes. Sin tener
-                      // que abrir el detalle.
+                      // Mini-recibo VISIBLE (como extracto de banco): cobrado al
+                      // cliente, comisión y lo que recibes. Así nadie se pregunta
+                      // "¿por qué S/190 y no S/200?" sin abrir el detalle.
                       if (esLiquidacion && m.brutoSoles > 0)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 2),
-                          child: Text(
-                              'Pagó ${appState.monedaSaldoSimbolo}${montoTxt(m.brutoSoles)} · '
-                              '−${appState.monedaSaldoSimbolo}${montoTxt(m.comisionSoles)} comisión',
-                              style: t.bodySmall?.copyWith(
-                                  color: textoTenueDe(context),
-                                  fontWeight: FontWeight.w600)),
+                        Container(
+                          margin: const EdgeInsets.only(top: 8),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: const Color(0x0A000000),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Column(
+                            children: [
+                              _lineaRecibo(context, 'Cobrado al cliente',
+                                  '$sim${montoTxt(m.brutoSoles)}'),
+                              const SizedBox(height: 3),
+                              _lineaRecibo(context, 'Comisión Pichangol',
+                                  '−$sim${montoTxt(m.comisionSoles)}',
+                                  color: clayOscuro),
+                              const Divider(height: 12),
+                              _lineaRecibo(
+                                  context,
+                                  liqPagada ? 'Recibiste' : 'Recibes',
+                                  '$sim${montoTxt(m.montoSoles)}',
+                                  color: liqPagada ? lima : teal,
+                                  fuerte: true),
+                            ],
+                          ),
                         ),
                     ],
                   ),
@@ -419,9 +439,22 @@ class _FilaMovimiento extends StatelessWidget {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text('$signo ${appState.monedaSaldoSimbolo}${m.monto}',
+                    // En un pago de cliente, el número GRANDE es lo COBRADO
+                    // (la transacción, ej. S/200) — como en el banco. El neto
+                    // (S/190) y la comisión van en el mini-recibo de la izquierda.
+                    Text(
+                        conRecibo
+                            ? '$sim${montoTxt(m.brutoSoles)}'
+                            : '$signo $sim${m.monto}',
                         style: t.titleMedium?.copyWith(
-                            color: color, fontWeight: FontWeight.w700)),
+                            color: conRecibo
+                                ? Theme.of(context).colorScheme.onSurface
+                                : color,
+                            fontWeight: FontWeight.w800)),
+                    if (conRecibo)
+                      Text('cobrado',
+                          style: t.bodySmall
+                              ?.copyWith(color: textoTenueDe(context))),
                     Icon(Icons.chevron_right,
                         size: 16, color: textoTenueDe(context)),
                   ],
@@ -1010,4 +1043,24 @@ class _SeccionMov extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Una línea del mini-recibo dentro de un movimiento (etiqueta a la izquierda,
+/// monto a la derecha). `fuerte` resalta el total (lo que recibe el dueño).
+Widget _lineaRecibo(BuildContext context, String etiqueta, String valor,
+    {Color? color, bool fuerte = false}) {
+  final t = Theme.of(context).textTheme;
+  final estilo = (fuerte ? t.bodyMedium : t.bodySmall)?.copyWith(
+      color: color ?? textoTenueDe(context),
+      fontWeight: fuerte ? FontWeight.w800 : FontWeight.w600);
+  return Row(
+    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    children: [
+      Text(etiqueta,
+          style: t.bodySmall?.copyWith(
+              color: color ?? textoTenueDe(context),
+              fontWeight: fuerte ? FontWeight.w800 : FontWeight.w500)),
+      Text(valor, style: estilo),
+    ],
+  );
 }

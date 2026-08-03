@@ -5698,11 +5698,10 @@ class AppState extends ChangeNotifier {
           var concepto = (m['concepto'] as String?) ?? '';
           var fuente = '';
           if (tipoStr == 'liquidacion_online') {
-            // La comisión salió del PAGO del jugador: recibes el neto.
+            // La comisión salió del PAGO del jugador: recibes el neto. El desglose
+            // (cobrado/comisión/recibes) lo muestra la tarjeta, no el concepto.
             fuente = 'transaccion';
-            final txt = 'comisión $sim${com.round()} del pago';
-            concepto =
-                concepto.isEmpty ? 'Reserva online · $txt' : '$concepto · $txt';
+            if (concepto.isEmpty) concepto = 'Reserva online';
           } else if (tipoStr == 'liquidacion_full') {
             // Billetera-first: recibes el 100%; la comisión ya se descontó de tu
             // saldo (aparece como otro movimiento "Comisión").
@@ -5713,10 +5712,9 @@ class AppState extends ChangeNotifier {
           } else if (tipoStr == 'venta_producto') {
             // Venta del marketplace o bono de horas: Pichangol cobró al comprador
             // y te debe el neto (por recibir). El concepto ya dice qué fue
-            // ("Bono 2h · Club" / "Venta: producto").
+            // ("Bono 2h · Club" / "Venta: producto"); el desglose va en la tarjeta.
             fuente = 'transaccion';
-            final txt = 'comisión $sim${com.round()} del pago';
-            concepto = concepto.isEmpty ? 'Venta · $txt' : '$concepto · $txt';
+            if (concepto.isEmpty) concepto = 'Venta';
           } else if (tipoStr == 'comision_reserva') {
             // Egreso de la billetera: dejar claro de dónde salió.
             fuente = 'saldo';
