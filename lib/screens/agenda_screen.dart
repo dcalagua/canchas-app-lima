@@ -29,6 +29,32 @@ class _AgendaScreenState extends State<AgendaScreen> {
   Cancha? _cancha;
   // Día que se está viendo (cualquiera: historial atrás, planificación adelante).
   DateTime _dia = _hoy();
+  // Solo aplica a HOY: si es true, muestra también las horas ya pasadas y libres
+  // (colapsadas por defecto para aterrizar en la hora actual). Se resetea al
+  // cambiar de día.
+  bool _verHorasPasadas = false;
+
+  /// Cambia el día visible y colapsa de nuevo las horas pasadas.
+  void _irADia(DateTime d) => setState(() {
+        _dia = DateTime(d.year, d.month, d.day);
+        _verHorasPasadas = false;
+      });
+
+  /// DateTime de inicio de un slot (fecha real 'YYYY-MM-DD' + hora 'HH:mm').
+  static DateTime? _inicioSlot(String fecha, String hora) {
+    final fp = fecha.split('-');
+    final hp = hora.split(':');
+    if (fp.length < 3 || hp.length < 2) return null;
+    final y = int.tryParse(fp[0]),
+        mo = int.tryParse(fp[1]),
+        d = int.tryParse(fp[2]),
+        h = int.tryParse(hp[0]),
+        mi = int.tryParse(hp[1]);
+    if (y == null || mo == null || d == null || h == null || mi == null) {
+      return null;
+    }
+    return DateTime(y, mo, d, h, mi);
+  }
 
   static DateTime _hoy() {
     final n = DateTime.now();
@@ -140,6 +166,35 @@ class _AgendaScreenState extends State<AgendaScreen> {
           final horas = [...horasGrilla, ...extras]..sort();
           final tablet = MediaQuery.of(context).size.width >= 720;
 
+          // Cuando ves HOY, no arranques en la hora de apertura (00:00 en canchas
+          // 24 h): eso obliga a bajar decenas de franjas ya pasadas. Colapsa las
+          // horas que YA TERMINARON y están LIBRES (las que importan del pasado —
+          // reservadas— se mantienen siempre visibles). Un botón arriba las
+          // despliega. En otros días se muestran todas (no hay "ahora").
+          final esHoy = _iso(_dia) == _iso(_hoy());
+          final ahora = DateTime.now();
+          final pasadasLibres = <String>[];
+          final visibles = <String>[];
+          for (final h in horas) {
+            final fReal = cancha.fechaRealSlot(iso, h);
+            final ini = _inicioSlot(fReal, h);
+            final termino = esHoy &&
+                ini != null &&
+                !ini
+                    .add(Duration(minutes: cancha.duracionSlotMin))
+                    .isAfter(ahora);
+            final libre = _reservaEn(cancha.id, fReal, h) == null;
+            if (termino && libre) {
+              pasadasLibres.add(h);
+            } else {
+              visibles.add(h);
+            }
+          }
+          final mostrar = (_verHorasPasadas || !esHoy) ? horas : visibles;
+          // ¿Va el botón "ver horas anteriores" de cabecera? (solo hoy y si hay
+          // franjas pasadas y libres que se colapsaron).
+          final conCabecera = esHoy && pasadasLibres.isNotEmpty;
+
           // Vista de la agenda del día (compartida por móvil y tablet).
           final slotsView = horas.isEmpty
               ? Center(
@@ -151,10 +206,18 @@ class _AgendaScreenState extends State<AgendaScreen> {
                 )
               : ListView.separated(
                   padding: const EdgeInsets.fromLTRB(18, 8, 18, 90),
-                  itemCount: horas.length,
+                  itemCount: mostrar.length + (conCabecera ? 1 : 0),
                   separatorBuilder: (_, __) => const SizedBox(height: 9),
                   itemBuilder: (_, i) {
-                    final hora = horas[i];
+                    if (conCabecera && i == 0) {
+                      return _VerAnteriores(
+                        n: pasadasLibres.length,
+                        expandido: _verHorasPasadas,
+                        onTap: () => setState(
+                            () => _verHorasPasadas = !_verHorasPasadas),
+                      );
+                    }
+                    final hora = mostrar[conCabecera ? i - 1 : i];
                     return _AgendaRow(
                       hora: hora,
                       valle: hora.compareTo('12:00') < 0,
@@ -177,8 +240,8 @@ class _AgendaScreenState extends State<AgendaScreen> {
                   children: [
                     _NavDia(
                       icono: Icons.chevron_left,
-                      onTap: () => setState(
-                          () => _dia = _dia.subtract(const Duration(days: 1))),
+                      onTap: () =>
+                          _irADia(_dia.subtract(const Duration(days: 1))),
                     ),
                     Expanded(
                       child: GestureDetector(
@@ -192,10 +255,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
                                 DateTime.now().add(const Duration(days: 365)),
                             helpText: 'Elige el día',
                           );
-                          if (d != null && mounted) {
-                            setState(
-                                () => _dia = DateTime(d.year, d.month, d.day));
-                          }
+                          if (d != null && mounted) _irADia(d);
                         },
                         child: Column(
                           children: [
@@ -218,8 +278,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
                     ),
                     _NavDia(
                       icono: Icons.chevron_right,
-                      onTap: () => setState(
-                          () => _dia = _dia.add(const Duration(days: 1))),
+                      onTap: () => _irADia(_dia.add(const Duration(days: 1))),
                     ),
                   ],
                 ),
@@ -228,7 +287,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
                 Align(
                   alignment: Alignment.center,
                   child: TextButton.icon(
-                    onPressed: () => setState(() => _dia = _hoy()),
+                    onPressed: () => _irADia(_hoy()),
                     icon: const Icon(Icons.today, size: 16),
                     label: const Text('Volver a hoy'),
                   ),
@@ -585,6 +644,32 @@ class _MiniKpi extends StatelessWidget {
       ),
     );
     return ancho == null ? Expanded(child: card) : SizedBox(width: ancho, child: card);
+  }
+}
+
+/// Cabecera colapsable "ver / ocultar horas anteriores" del día de HOY: agrupa
+/// las franjas ya pasadas y libres para que la agenda aterrice en la hora
+/// actual sin perderlas (se despliegan al tocar).
+class _VerAnteriores extends StatelessWidget {
+  const _VerAnteriores(
+      {required this.n, required this.expandido, required this.onTap});
+  final int n;
+  final bool expandido;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: TextButton.icon(
+        onPressed: onTap,
+        icon: Icon(expandido ? Icons.expand_less : Icons.history, size: 18),
+        label: Text(expandido
+            ? 'Ocultar horas anteriores'
+            : 'Ver $n ${n == 1 ? 'hora' : 'horas'} anteriores'),
+        style: TextButton.styleFrom(foregroundColor: textoTenueDe(context)),
+      ),
+    );
   }
 }
 
