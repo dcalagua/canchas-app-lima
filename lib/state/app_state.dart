@@ -6973,12 +6973,15 @@ class AppState extends ChangeNotifier {
   Future<void> cancelarReserva(Reserva r) async {
     // Reserva de varias horas seguidas: cancelar el bloque cancela TODAS sus
     // horas (mismo grupo). Una hora suelta solo se cancela a sí misma.
-    final ids = r.grupoReservaId.isNotEmpty
-        ? reservas
-            .where((x) => x.grupoReservaId == r.grupoReservaId)
-            .map((x) => x.id)
-            .toSet()
-        : {r.id};
+    final grupo = r.grupoReservaId.isNotEmpty
+        ? reservas.where((x) => x.grupoReservaId == r.grupoReservaId).toList()
+        : [r];
+    final ids = grupo.map((x) => x.id).toSet();
+    // Captura los slots que se liberan (para avisar a la lista de espera).
+    final liberados = [
+      for (final x in grupo)
+        (canchaId: x.canchaId, fecha: x.fecha, hora: x.horaInicio)
+    ];
     misReservas.removeWhere((x) => ids.contains(x.id));
     reservas.removeWhere((x) => ids.contains(x.id));
     for (final id in ids) {
@@ -6991,6 +6994,44 @@ class AppState extends ChangeNotifier {
     _persistirDatos();
     for (final id in ids) {
       await ReservasRepo.eliminar(id); // libera cada slot en la nube
+    }
+    // Push AUTOMÁTICO a quienes esperaban esa hora (waitlist): reusa el canal
+    // genérico de avisos (pichangol_avisos → push-aviso), sin deploy nuevo.
+    _avisarEsperaLiberada(liberados);
+  }
+
+  /// Notifica a la lista de espera de cada slot recién liberado. Consulta la
+  /// cola FRESCA de Supabase (la caché puede no estar cargada si se cancela
+  /// desde "Mis reservas") y encola un push por jugador. Best-effort.
+  Future<void> _avisarEsperaLiberada(
+      List<({String canchaId, String fecha, String hora})> slots) async {
+    if (slots.isEmpty) return;
+    final yo = usuario?.email.trim().toLowerCase() ?? '';
+    final canchaIds = slots.map((s) => s.canchaId).toSet().toList();
+    final cola = await EsperaRepo.deCanchas(canchaIds);
+    if (cola.isEmpty) return;
+    for (final s in slots) {
+      final esperan = cola.where((e) =>
+          e.canchaId == s.canchaId &&
+          e.fecha == s.fecha &&
+          e.hora == s.hora &&
+          e.usuario.trim().toLowerCase() != yo);
+      for (final e in esperan) {
+        AvisosService.enviar(
+          email: e.usuario,
+          titulo: '¡Se liberó tu hora! ⏰',
+          cuerpo:
+              'Las ${s.hora} que esperabas quedaron libres. Entra y resérvalas '
+              'antes de que las tomen.',
+          tipo: 'espera',
+          data: {
+            'accion': 'espera_libre',
+            'cancha_id': s.canchaId,
+            'fecha': s.fecha,
+            'hora': s.hora,
+          },
+        );
+      }
     }
   }
 
