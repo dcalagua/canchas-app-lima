@@ -299,13 +299,17 @@ class _FilaReserva extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontWeight: FontWeight.w700)),
-                Text('$mon $total',
+                // Bono: no es plata fresca de hoy (ya se cobró al vender el
+                // bono). Se muestra como cubierto, no como cobrado.
+                Text(r.esBono ? 'Cubierto con bono · $mon 0' : '$mon $total',
                     style: TextStyle(
-                        color: r.pagado ? lima : textoTenueDe(context),
+                        color: r.esBono
+                            ? teal
+                            : (r.pagado ? lima : textoTenueDe(context)),
                         fontWeight: FontWeight.w700,
                         fontSize: 12.5)),
                 // Seña pagada por adelantado: el dueño solo cobra el resto.
-                if (!r.pagado && sena > 0)
+                if (!r.esBono && !r.pagado && sena > 0)
                   Text('Seña $mon $sena pagada · cobra $mon $resto',
                       style: const TextStyle(
                           color: pino,
@@ -314,8 +318,11 @@ class _FilaReserva extends StatelessWidget {
               ],
             ),
           ),
-          // Marcar pagado / cobrado (el resto en efectivo).
-          r.pagado
+          // Marcar pagado / cobrado (el resto en efectivo). El bono no se
+          // "des-paga": muestra una etiqueta fija en vez del botón.
+          r.esBono
+              ? const _EtiquetaBono()
+              : r.pagado
               ? TextButton.icon(
                   onPressed: () => appState.marcarPago(r, pagado: false),
                   icon: const Icon(Icons.check_circle, size: 18, color: lima),
@@ -332,6 +339,31 @@ class _FilaReserva extends StatelessWidget {
                   onPressed: () => appState.marcarPago(r, pagado: true),
                   child: Text(sena > 0 ? 'Cobrar $mon $resto' : 'Cobrar'),
                 ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Etiqueta fija para una reserva cubierta con bono (no se marca pagado/impago).
+class _EtiquetaBono extends StatelessWidget {
+  const _EtiquetaBono();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: teal.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.confirmation_number, size: 15, color: teal),
+          SizedBox(width: 5),
+          Text('Bono',
+              style: TextStyle(color: teal, fontWeight: FontWeight.w800)),
         ],
       ),
     );

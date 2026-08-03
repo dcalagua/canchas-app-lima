@@ -187,8 +187,10 @@ class _ReservasDuenoScreenState extends State<ReservasDuenoScreen> {
           // Caja: resumen de plata sobre TODO lo activo (no depende del filtro).
           final activas =
               reservas.where((r) => r.estado != EstadoReserva.noShow);
+          // Las reservas pagadas con BONO no suman aquí: su dinero ya entró al
+          // COMPRAR el bono (se ve en la billetera "por recibir"), no al canjear.
           final cobrado = activas
-              .where((r) => r.pagado)
+              .where((r) => r.pagado && !r.esBono)
               .fold<int>(0, (s, r) => s + r.totalConExtras.round());
           final porCobrar = activas
               .where((r) => !r.pagado)
@@ -710,6 +712,11 @@ class _MedioPagoChip extends StatelessWidget {
         texto = 'Manual';
         icono = Icons.person_outline;
         color = const Color(0xFF8A8175);
+        break;
+      case 'bono':
+        texto = 'Pagado con bono';
+        icono = Icons.confirmation_number;
+        color = teal;
         break;
       default:
         texto = 'Online';

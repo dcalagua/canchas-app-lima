@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/bono.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../utils/moneda.dart';
 import '../widgets/ancho_lectura.dart';
 import '../widgets/dialogo_pichangol.dart';
 
@@ -22,6 +23,7 @@ class BonosDuenoScreen extends StatefulWidget {
 
 class _BonosDuenoScreenState extends State<BonosDuenoScreen> {
   List<BonoOferta> _bonos = [];
+  List<BonoComprado> _vendidos = [];
   bool _cargando = true;
 
   @override
@@ -32,12 +34,20 @@ class _BonosDuenoScreenState extends State<BonosDuenoScreen> {
 
   Future<void> _cargar() async {
     final todos = await appState.cargarBonosDueno();
+    final vendidos = await appState.cargarBonosVendidos();
     if (!mounted) return;
     setState(() {
       _bonos = todos.where((b) => b.club == widget.club).toList();
+      _vendidos = vendidos.where((c) => c.club == widget.club).toList();
       _cargando = false;
     });
   }
+
+  /// Total cobrado por bonos de este local (lo que YA entró como "por recibir").
+  double get _totalVendido =>
+      _vendidos.fold(0.0, (s, c) => s + c.precio);
+  int get _horasVendidas => _vendidos.fold(0, (s, c) => s + c.horasTotal);
+  int get _horasUsadas => _vendidos.fold(0, (s, c) => s + c.horasUsadas);
 
   Future<void> _editar([BonoOferta? existente]) async {
     final creado = await showModalBottomSheet<bool>(
@@ -102,6 +112,47 @@ class _BonosDuenoScreenState extends State<BonosDuenoScreen> {
                           onEliminar: () => _eliminar(b),
                         ),
                       ),
+                  if (_vendidos.isNotEmpty) ...[
+                    const SizedBox(height: 26),
+                    Text('Bonos vendidos',
+                        style:
+                            t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 4),
+                    Text(
+                        'Esta plata ya entró a tu billetera ("por recibir") al '
+                        'venderse. Cuando el jugador reserva con su bono, NO '
+                        'vuelve a pagarte: descuenta de estas horas.',
+                        style: t.bodySmall
+                            ?.copyWith(color: textoTenueDe(context))),
+                    const SizedBox(height: 12),
+                    // Resumen: total vendido + horas usadas/total.
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: teal.withOpacity(0.10),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: _ResumenVenta('Vendido',
+                                '${widget.moneda} ${montoTxt(_totalVendido)}'),
+                          ),
+                          Container(width: 1, height: 34, color: trazo),
+                          Expanded(
+                            child: _ResumenVenta('Horas usadas',
+                                '$_horasUsadas / $_horasVendidas'),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    for (final c in _vendidos)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: _VentaBonoCard(compra: c, moneda: widget.moneda),
+                      ),
+                  ],
                 ],
               ),
       ),
@@ -323,6 +374,80 @@ class _Vacio extends StatelessWidget {
               'adelantado.',
               textAlign: TextAlign.center,
               style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
+        ],
+      ),
+    );
+  }
+}
+
+class _ResumenVenta extends StatelessWidget {
+  const _ResumenVenta(this.etiqueta, this.valor);
+  final String etiqueta;
+  final String valor;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Column(
+      children: [
+        Text(valor,
+            style: t.titleMedium
+                ?.copyWith(fontWeight: FontWeight.w900, color: teal)),
+        Text(etiqueta,
+            style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
+      ],
+    );
+  }
+}
+
+/// Un bono vendido (vista del dueño): quién lo compró, horas y saldo.
+class _VentaBonoCard extends StatelessWidget {
+  const _VentaBonoCard({required this.compra, required this.moneda});
+  final BonoComprado compra;
+  final String moneda;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final quien = compra.compradorNombre.isNotEmpty
+        ? compra.compradorNombre
+        : compra.comprador;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: trazo),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(quien,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.bodyLarge?.copyWith(fontWeight: FontWeight.w700)),
+                Text(
+                    '$moneda ${montoTxt(compra.precio)} · '
+                    'le quedan ${compra.saldo} de ${compra.horasTotal} h',
+                    style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+                color: compra.saldo > 0
+                    ? teal.withOpacity(0.12)
+                    : const Color(0x14000000),
+                borderRadius: BorderRadius.circular(20)),
+            child: Text('${compra.saldo} h',
+                style: TextStyle(
+                    color: compra.saldo > 0 ? teal : textoTenueDe(context),
+                    fontWeight: FontWeight.w800)),
+          ),
         ],
       ),
     );

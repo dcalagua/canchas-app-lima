@@ -535,6 +535,15 @@ class Reserva {
   /// Total que paga el jugador: precio de la cancha + servicios extra.
   double get totalConExtras => precio + extrasTotal;
 
+  /// La reserva se pagó CANJEANDO un bono de horas prepagadas: el dinero ya
+  /// entró (una sola vez) al COMPRAR el bono, no aquí. Por eso NO cuenta como
+  /// ingreso fresco en la caja/reportes del día del canje (evita doble conteo).
+  bool get esBono => medioPago == 'bono';
+
+  /// Dinero FRESCO que entra por esta reserva el día que ocurre: 0 si se cubrió
+  /// con bono (ya cobrado en el paquete), si no el total con extras.
+  double get ingresoFresco => esBono ? 0 : totalConExtras;
+
   const Reserva({
     required this.id,
     required this.canchaId,

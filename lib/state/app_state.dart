@@ -4606,6 +4606,14 @@ class AppState extends ChangeNotifier {
     return BonosRepo.ofertasDeDueno(email);
   }
 
+  /// Bonos VENDIDOS en los locales del dueño (quién compró, horas, saldo), para
+  /// que vea la plata que entró y el consumo.
+  Future<List<BonoComprado>> cargarBonosVendidos() async {
+    final email = usuario?.email ?? '';
+    if (email.isEmpty) return const <BonoComprado>[];
+    return BonosRepo.comprasDeDueno(email);
+  }
+
   Future<bool> guardarBonoOferta(BonoOferta b) async {
     final ok = await BonosRepo.guardarOferta(b);
     if (ok) {
@@ -4630,6 +4638,19 @@ class AppState extends ChangeNotifier {
     }
     _misBonos = await BonosRepo.comprasDe(email);
     notifyListeners();
+  }
+
+  /// Créditos de bono del jugador logueado (todos los locales), para "Mis bonos".
+  List<BonoComprado> get misBonos => List.unmodifiable(_misBonos);
+
+  /// Símbolo de moneda de un local (por su nombre): toma el de cualquier cancha
+  /// de ese club; si no hay, cae al símbolo del país actual. Para mostrar bonos
+  /// del jugador con la moneda correcta del local.
+  String monedaDeClub(String club) {
+    for (final c in [...canchasExtra, ...canchasRemotas, ...canchasDescubiertas]) {
+      if (c.club == club) return c.monedaSimbolo;
+    }
+    return monedaSimbolo;
   }
 
   /// Saldo de horas de bono del jugador en un local (suma de créditos con saldo).
@@ -6945,6 +6966,9 @@ class AppState extends ChangeNotifier {
     final list = reservasDelDiaDueno(iso);
     var cobrado = 0, porCobrar = 0;
     for (final r in list) {
+      // Reserva canjeada con BONO: cuenta para ocupación (sigue en `list`) pero
+      // NO suma dinero hoy (ya se cobró al comprar el bono → evita doble conteo).
+      if (r.esBono) continue;
       final t = r.totalConExtras.round();
       if (r.pagado) {
         cobrado += t;

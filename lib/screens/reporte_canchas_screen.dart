@@ -95,6 +95,10 @@ class _ReporteCanchasScreenState extends State<ReporteCanchasScreen> {
           for (final r in delRango) {
             if (r.estado == EstadoReserva.noShow) continue; // no-show ≠ venta
             nReservas++;
+            // Reserva canjeada con BONO: su dinero (y comisión) ya se contó al
+            // VENDER el bono. Aquí no suma facturado/comisión (evita doble
+            // conteo); solo cuenta como reserva/ocupación.
+            if (r.esBono) continue;
             final t = r.totalConExtras;
             if (r.pagado) {
               facturado += t;

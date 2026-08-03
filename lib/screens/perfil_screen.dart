@@ -8,6 +8,7 @@ import '../widgets/nivel_chip.dart';
 import '../widgets/responsive.dart';
 import 'nivel_onboarding_screen.dart';
 import 'academias_screen.dart';
+import 'mis_bonos_screen.dart';
 import 'marketplace_screen.dart';
 import 'ajustes_screen.dart';
 import 'anfitrion_screen.dart';
@@ -157,6 +158,17 @@ class PerfilScreen extends StatelessWidget {
                       onTap: () => Navigator.of(context).push(MaterialPageRoute(
                           builder: (_) => const MarketplaceScreen())),
                     ),
+                    if (u != null)
+                      _Tile(
+                        icon: Icons.confirmation_number,
+                        color: teal,
+                        title: 'Mis bonos',
+                        subtitle:
+                            'Tus packs de horas prepagadas y cuántas te quedan',
+                        onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                                builder: (_) => const MisBonosScreen())),
+                      ),
                     // CIRCUITO (capa de TENIS): un solo contenedor. Adentro vive
                     // todo lo del circuito de ese deporte (ranking, retos, Pro).
                     // NO se listan sueltos aquí porque cuando entre fútbol cada
