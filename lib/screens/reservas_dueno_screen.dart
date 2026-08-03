@@ -52,7 +52,7 @@ List<Widget> accionesReservas(BuildContext context) => [
         tooltip: 'Reportes',
         icon: const Icon(Icons.bar_chart),
         onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => const ReportesHubScreen(inicial: 1))),
+            builder: (_) => const ReportesHubScreen(inicial: 2))),
       ),
     ];
 
