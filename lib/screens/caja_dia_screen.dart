@@ -19,6 +19,13 @@ class CajaDiaScreen extends StatefulWidget {
 class _CajaDiaScreenState extends State<CajaDiaScreen> {
   DateTime _fecha = DateTime.now();
 
+  @override
+  void initState() {
+    super.initState();
+    // Cierre automático de respaldo de días pasados sin cerrar (idempotente).
+    appState.autocerrarCajasPendientes();
+  }
+
   String get _iso => appState.isoDe(_fecha);
   bool get _esHoy => appState.isoDe(DateTime.now()) == _iso;
 
@@ -153,24 +160,48 @@ class _CajaDiaScreenState extends State<CajaDiaScreen> {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: limaSuave,
+                          color: cierre.automatico
+                              ? const Color(0xFFFBEAD2)
+                              : limaSuave,
                           borderRadius: BorderRadius.circular(14),
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.lock_clock, color: bosque, size: 20),
+                            Icon(
+                                cierre.automatico
+                                    ? Icons.auto_mode
+                                    : Icons.lock_clock,
+                                color: cierre.automatico ? clayOscuro : bosque,
+                                size: 20),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                  'Caja cerrada a las '
-                                  '${cierre.cerradaEn.hour.toString().padLeft(2, '0')}:'
-                                  '${cierre.cerradaEn.minute.toString().padLeft(2, '0')} · '
-                                  'cobraste $_mon ${cierre.cobrado}.',
-                                  style: const TextStyle(
-                                      color: bosque,
+                                  cierre.automatico
+                                      ? 'Cierre automático (sin confirmar) · '
+                                          'cobrado $_mon ${cierre.cobrado}. '
+                                          'Revísalo y confírmalo.'
+                                      : 'Caja cerrada a las '
+                                          '${cierre.cerradaEn.hour.toString().padLeft(2, '0')}:'
+                                          '${cierre.cerradaEn.minute.toString().padLeft(2, '0')} · '
+                                          'cobraste $_mon ${cierre.cobrado}.',
+                                  style: TextStyle(
+                                      color: cierre.automatico
+                                          ? clayOscuro
+                                          : bosque,
                                       fontWeight: FontWeight.w700,
                                       fontSize: 12.5)),
                             ),
+                            if (cierre.automatico)
+                              TextButton(
+                                onPressed: () => appState.reabrirCaja(_iso),
+                                style: TextButton.styleFrom(
+                                    foregroundColor: clayOscuro,
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8)),
+                                child: const Text('Reabrir',
+                                    style:
+                                        TextStyle(fontWeight: FontWeight.w800)),
+                              ),
                           ],
                         ),
                       ),
@@ -201,15 +232,27 @@ class _CajaDiaScreenState extends State<CajaDiaScreen> {
                     height: 50,
                     child: FilledButton.icon(
                       style: FilledButton.styleFrom(
-                          backgroundColor: cierre == null ? lima : bosque,
+                          backgroundColor:
+                              (cierre == null || cierre.automatico)
+                                  ? lima
+                                  : bosque,
                           foregroundColor: Colors.white,
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(14))),
                       onPressed: _cerrarCaja,
                       icon: Icon(cierre == null
                           ? Icons.point_of_sale
-                          : Icons.refresh),
-                      label: Text(cierre == null ? 'Cerrar caja' : 'Recerrar caja',
+                          : (cierre.automatico
+                              ? Icons.verified_outlined
+                              : Icons.refresh)),
+                      // Sin cierre → cerrar. Auto-cierre → confirmarlo (pasa a
+                      // arqueo del dueño). Cierre manual → recerrar.
+                      label: Text(
+                          cierre == null
+                              ? 'Cerrar caja'
+                              : (cierre.automatico
+                                  ? 'Confirmar cierre'
+                                  : 'Recerrar caja'),
                           style: const TextStyle(
                               fontWeight: FontWeight.w800, fontSize: 15)),
                     ),

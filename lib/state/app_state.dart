@@ -7007,7 +7007,9 @@ class AppState extends ChangeNotifier {
   }
 
   /// Cierra (o recierra) la caja del día: guarda la foto de cobrado/por cobrar.
-  void cerrarCaja(String iso) {
+  /// [automatico] = lo cerró el sistema (respaldo, sin confirmar); el default
+  /// (false) es el arqueo CONFIRMADO por el dueño (o al confirmar un auto-cierre).
+  void cerrarCaja(String iso, {bool automatico = false}) {
     final c = cajaDia(iso);
     cierresCaja.removeWhere((x) => x.fecha == iso);
     cierresCaja.insert(
@@ -7018,9 +7020,66 @@ class AppState extends ChangeNotifier {
           porCobrar: c.porCobrar,
           reservas: c.reservas,
           cerradaEn: DateTime.now(),
+          automatico: automatico,
         ));
     notifyListeners();
     _persistirDatos();
+  }
+
+  /// Reabre la caja de un día (borra su cierre) para que el dueño la revise y la
+  /// vuelva a cerrar/confirmar.
+  void reabrirCaja(String iso) {
+    cierresCaja.removeWhere((x) => x.fecha == iso);
+    notifyListeners();
+    _persistirDatos();
+  }
+
+  /// CIERRE AUTOMÁTICO DE RESPALDO: si el dueño no cerró un día con actividad, el
+  /// sistema le genera una foto marcada como "automática (sin confirmar)" para no
+  /// dejar el historial vacío. Ventana prudente: solo cierra días ANTERIORES a la
+  /// fecha de corte (hoy, o AYER si aún no son las 3 a.m.), para dar margen a
+  /// canchas nocturnas y a marcar el efectivo tardío. Nunca toca el día en curso
+  /// ni un día ya cerrado por el dueño. Se llama al abrir "Mis canchas"/caja y al
+  /// sincronizar. Idempotente.
+  void autocerrarCajasPendientes() {
+    if (misCanchas.isEmpty) return;
+    final ahora = DateTime.now();
+    // Corte: hasta ayer normalmente; si aún no son las 3 a.m., ayer sigue "vivo"
+    // y el corte baja a anteayer.
+    var corte = DateTime(ahora.year, ahora.month, ahora.day);
+    if (ahora.hour < 3) corte = corte.subtract(const Duration(days: 1));
+    // Días CON actividad del dueño (fechas distintas de sus reservas activas).
+    final misIds = misCanchas.map((c) => c.id).toSet();
+    final dias = <String>{};
+    for (final r in reservas) {
+      if (r.estado == EstadoReserva.noShow) continue;
+      if (!misIds.contains(r.canchaId)) continue;
+      dias.add(r.fecha);
+    }
+    var cambio = false;
+    for (final iso in dias) {
+      final d = DateTime.tryParse(iso);
+      if (d == null) continue;
+      final dd = DateTime(d.year, d.month, d.day);
+      if (!dd.isBefore(corte)) continue; // día en curso / dentro del margen
+      if (cierreDe(iso) != null) continue; // ya cerrado (manual o auto)
+      final c = cajaDia(iso);
+      cierresCaja.insert(
+          0,
+          CierreCaja(
+            fecha: iso,
+            cobrado: c.cobrado,
+            porCobrar: c.porCobrar,
+            reservas: c.reservas,
+            cerradaEn: ahora,
+            automatico: true,
+          ));
+      cambio = true;
+    }
+    if (cambio) {
+      notifyListeners();
+      _persistirDatos();
+    }
   }
 
   // ── ANTI NO-SHOW: recordatorio de reserva al jugador ──────────────────────

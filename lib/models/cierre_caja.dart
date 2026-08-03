@@ -8,12 +8,18 @@ class CierreCaja {
   final int reservas;
   final DateTime cerradaEn;
 
+  /// true = lo cerró el SISTEMA (respaldo, sin confirmación del dueño); false =
+  /// arqueo CONFIRMADO por el dueño. Un cierre automático se puede confirmar o
+  /// reabrir. No se finge un arqueo verificado que nadie hizo.
+  final bool automatico;
+
   const CierreCaja({
     required this.fecha,
     required this.cobrado,
     required this.porCobrar,
     required this.reservas,
     required this.cerradaEn,
+    this.automatico = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -22,6 +28,7 @@ class CierreCaja {
         'porCobrar': porCobrar,
         'reservas': reservas,
         'cerradaEn': cerradaEn.toIso8601String(),
+        'automatico': automatico,
       };
 
   factory CierreCaja.fromJson(Map<String, dynamic> j) => CierreCaja(
@@ -31,5 +38,6 @@ class CierreCaja {
         reservas: ((j['reservas'] ?? 0) as num).toInt(),
         cerradaEn:
             DateTime.tryParse((j['cerradaEn'] ?? '') as String) ?? DateTime.now(),
+        automatico: (j['automatico'] ?? false) == true,
       );
 }

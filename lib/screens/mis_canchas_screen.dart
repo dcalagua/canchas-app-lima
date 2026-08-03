@@ -5,6 +5,7 @@ import '../config/pais.dart';
 import '../models/club.dart';
 import '../models/models.dart';
 import '../services/pagos_service.dart';
+import '../services/recordatorio_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'agregar_cancha_screen.dart';
@@ -41,6 +42,12 @@ class _MisCanchasScreenState extends State<MisCanchasScreen> {
     // (duración/precio/horario) que se editó en OTRO equipo del mismo dueño.
     // Sin esto, la copia local de la tablet se quedaba con el valor viejo.
     appState.cargarCanchasRemotas();
+    // Cierre de caja: auto-cierra días pasados sin cerrar (respaldo, etiquetado)
+    // y programa el recordatorio diario ~23:00 para que el dueño la cierre.
+    appState.autocerrarCajasPendientes();
+    if (appState.misCanchas.isNotEmpty) {
+      RecordatorioService.programarRecordatorioCierreDiario();
+    }
     // Mensaje de bienvenida al dueño (una sola vez) con el "stack de valor".
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) BienvenidaDuenoSheet.mostrarSiCorresponde(context);

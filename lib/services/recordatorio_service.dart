@@ -118,4 +118,53 @@ class RecordatorioService {
       await _plugin.cancel(_notifId(reservaId));
     } catch (_) {}
   }
+
+  // Id fijo del recordatorio DIARIO de "cierra tu caja" (una sola serie).
+  static const int _idCierreDiario = 918273;
+
+  /// Programa el recordatorio DIARIO al DUEÑO para cerrar su caja (~23:00 hora
+  /// local, cerca del cierre del local). Se repite todos los días a la misma
+  /// hora (matchDateTimeComponents). Idempotente: re-llamar re-agenda la misma
+  /// serie. El auto-cierre de respaldo actúa si aun así no la cierra.
+  static Future<void> programarRecordatorioCierreDiario() async {
+    await init();
+    if (!_listo) return;
+    try {
+      final now = tz.TZDateTime.now(tz.local);
+      var cuando =
+          tz.TZDateTime(tz.local, now.year, now.month, now.day, 23, 0);
+      if (!cuando.isAfter(now)) cuando = cuando.add(const Duration(days: 1));
+      await _plugin.zonedSchedule(
+        _idCierreDiario,
+        'Cierra tu caja de hoy',
+        'Revisa lo cobrado del día y cierra tu caja en Pichangol.',
+        cuando,
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            _canalId,
+            'Cobros en efectivo',
+            channelDescription:
+                'Te recuerda cobrar en efectivo cuando se acerca la hora.',
+            importance: Importance.high,
+            priority: Priority.high,
+            icon: '@mipmap/ic_launcher',
+          ),
+        ),
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: DateTimeComponents.time, // diario a esa hora
+      );
+    } catch (_) {
+      // best-effort
+    }
+  }
+
+  /// Cancela el recordatorio diario de cierre (p. ej. si deja de ser dueño).
+  static Future<void> cancelarRecordatorioCierre() async {
+    if (!_listo) return;
+    try {
+      await _plugin.cancel(_idCierreDiario);
+    } catch (_) {}
+  }
 }
