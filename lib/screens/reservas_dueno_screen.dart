@@ -26,6 +26,10 @@ class ReservasDuenoScreen extends StatefulWidget {
 }
 
 class _ReservasDuenoScreenState extends State<ReservasDuenoScreen> {
+  // Filtro por tiempo: 'proximas' (default) muestra hoy/futuras; 'pasadas' es el
+  // historial. Evita que se acumulen decenas de reservas viejas en una sola lista.
+  String _filtro = 'proximas';
+
   @override
   void initState() {
     super.initState();
@@ -56,16 +60,25 @@ class _ReservasDuenoScreenState extends State<ReservasDuenoScreen> {
     appState.cargarReservasRemotas(); // baja la nueva reserva y repinta la lista
   }
 
-  /// Etiqueta amigable de una fecha ISO ("Hoy"/"Mañana"/"2026-06-28").
+  static const _diasSem = ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'];
+  static const _mesesAbr = [
+    'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+    'jul', 'ago', 'set', 'oct', 'nov', 'dic'
+  ];
+
+  /// Etiqueta amigable de una fecha ISO: "Hoy" / "Mañana" / "Ayer" / "vie 8 ago".
   static String _fechaLabel(String iso) {
     if (iso.isEmpty) return 'Sin fecha';
     final hoy = DateTime.now();
-    String f(DateTime d) => '${d.year.toString().padLeft(4, '0')}-'
-        '${d.month.toString().padLeft(2, '0')}-'
-        '${d.day.toString().padLeft(2, '0')}';
+    final d = DateTime.tryParse(iso);
+    if (d == null) return iso;
+    String f(DateTime x) => '${x.year.toString().padLeft(4, '0')}-'
+        '${x.month.toString().padLeft(2, '0')}-'
+        '${x.day.toString().padLeft(2, '0')}';
     if (iso == f(hoy)) return 'Hoy';
     if (iso == f(hoy.add(const Duration(days: 1)))) return 'Mañana';
-    return iso;
+    if (iso == f(hoy.subtract(const Duration(days: 1)))) return 'Ayer';
+    return '${_diasSem[d.weekday - 1]} ${d.day} ${_mesesAbr[d.month - 1]}';
   }
 
   @override
@@ -117,18 +130,45 @@ class _ReservasDuenoScreenState extends State<ReservasDuenoScreen> {
               reservas.add(r);
             }
           }
-          reservas.sort((a, b) {
-            final byFecha = b.fecha.compareTo(a.fecha); // más recientes arriba
-            return byFecha != 0
-                ? byFecha
-                : b.horaInicio.compareTo(a.horaInicio);
-          });
           final mias = {for (final c in appState.misCanchas) c.id: c};
 
-          // Libro de caja del piloto (excluye no-shows del "por cobrar").
+          // Pasada = la reserva ya TERMINÓ (fin < ahora). Considera el cruce de
+          // medianoche (si horaFin <= horaInicio, termina al día siguiente).
+          final ahora = DateTime.now();
+          bool esPasada(Reserva r) {
+            final fp = r.fecha.split('-');
+            final hi = r.horaInicio.split(':');
+            final hf = r.horaFin.split(':');
+            if (fp.length < 3 || hi.length < 2 || hf.length < 2) return false;
+            try {
+              var fin = DateTime(int.parse(fp[0]), int.parse(fp[1]),
+                  int.parse(fp[2]), int.parse(hf[0]), int.parse(hf[1]));
+              final iniMin = int.parse(hi[0]) * 60 + int.parse(hi[1]);
+              final finMin = int.parse(hf[0]) * 60 + int.parse(hf[1]);
+              if (finMin <= iniMin) fin = fin.add(const Duration(days: 1));
+              return fin.isBefore(ahora);
+            } catch (_) {
+              return false;
+            }
+          }
+
+          final nPasadas = reservas.where(esPasada).length;
+          final nProximas = reservas.length - nPasadas;
+          final verPasadas = _filtro == 'pasadas';
+          final mostradas =
+              reservas.where((r) => esPasada(r) == verPasadas).toList()
+                ..sort((a, b) {
+                  final byFecha = a.fecha.compareTo(b.fecha);
+                  final c = byFecha != 0
+                      ? byFecha
+                      : a.horaInicio.compareTo(b.horaInicio);
+                  // Próximas: la más cercana primero; Pasadas: la más reciente.
+                  return verPasadas ? -c : c;
+                });
+
+          // Caja: resumen de plata sobre TODO lo activo (no depende del filtro).
           final activas =
               reservas.where((r) => r.estado != EstadoReserva.noShow);
-          // Los totales incluyen los servicios extra (árbitro/pelotero…).
           final cobrado = activas
               .where((r) => r.pagado)
               .fold<int>(0, (s, r) => s + r.totalConExtras.round());
@@ -136,20 +176,11 @@ class _ReservasDuenoScreenState extends State<ReservasDuenoScreen> {
               .where((r) => !r.pagado)
               .fold<int>(0, (s, r) => s + r.totalConExtras.round());
 
-          // Agrupa por LOCAL (club) y PAÍS (moneda). Solo se muestran cabeceras
-          // si el dueño tiene MÁS de un local (o más de un país).
-          final grupos = <String, List<Reserva>>{};
-          final metaGrupo = <String, ({String club, String moneda})>{};
-          for (final r in reservas) {
-            final c = canchaDe[r.id]!;
-            final club = c.club.trim().isEmpty ? 'Mi local' : c.club.trim();
-            final clave = '${c.monedaSimbolo}|$club';
-            grupos.putIfAbsent(clave, () => []).add(r);
-            metaGrupo[clave] = (club: club, moneda: c.monedaSimbolo);
+          // Agrupa lo MOSTRADO por DÍA (respeta el orden ya definido arriba).
+          final porDia = <String, List<Reserva>>{};
+          for (final r in mostradas) {
+            porDia.putIfAbsent(r.fecha, () => []).add(r);
           }
-          final variosPaises =
-              metaGrupo.values.map((m) => m.moneda).toSet().length > 1;
-          final agrupar = grupos.length > 1;
 
           Widget cardsDe(List<Reserva> rs) {
             if (MediaQuery.of(context).size.width >= 720) {
@@ -201,34 +232,108 @@ class _ReservasDuenoScreenState extends State<ReservasDuenoScreen> {
                           moneda: mias.values.isNotEmpty
                               ? mias.values.first.monedaSimbolo
                               : 'S/'),
-                      const SizedBox(height: 16),
-                      if (!agrupar)
-                        cardsDe(reservas)
+                      const SizedBox(height: 14),
+                      // Filtro por tiempo: Próximas (default) / Pasadas (historial).
+                      _FiltroTiempo(
+                        filtro: _filtro,
+                        nProximas: nProximas,
+                        nPasadas: nPasadas,
+                        onCambio: (v) => setState(() => _filtro = v),
+                      ),
+                      const SizedBox(height: 14),
+                      if (mostradas.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 40),
+                          child: Text(
+                              verPasadas
+                                  ? 'No hay reservas pasadas.'
+                                  : 'No tienes reservas próximas. Las nuevas '
+                                      'aparecen aquí.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: textoTenueDe(context))),
+                        )
                       else
-                        for (final e in grupos.entries) ...[
-                          _LocalHeader(
-                            club: metaGrupo[e.key]!.club,
-                            pais: variosPaises
-                                ? _paisDeMoneda(metaGrupo[e.key]!.moneda)
-                                : '',
-                            n: e.value.length,
-                            porCobrar: e.value
-                                .where((r) =>
-                                    !r.pagado &&
-                                    r.estado != EstadoReserva.noShow)
-                                .fold<int>(
-                                    0, (s, r) => s + r.totalConExtras.round()),
-                            moneda: metaGrupo[e.key]!.moneda,
-                          ),
+                        // Agrupado por DÍA con su encabezado ("Hoy", "vie 8 ago").
+                        for (final e in porDia.entries) ...[
+                          _DiaHeader(
+                              label: _fechaLabel(e.key), n: e.value.length),
                           const SizedBox(height: 10),
                           cardsDe(e.value),
-                          const SizedBox(height: 20),
+                          const SizedBox(height: 18),
                         ],
                     ],
                   ),
           );
         },
       )),
+    );
+  }
+}
+
+/// Filtro por tiempo (Próximas / Pasadas) — pastillas estilo Airbnb, con conteo.
+class _FiltroTiempo extends StatelessWidget {
+  const _FiltroTiempo({
+    required this.filtro,
+    required this.nProximas,
+    required this.nPasadas,
+    required this.onCambio,
+  });
+  final String filtro;
+  final int nProximas;
+  final int nPasadas;
+  final ValueChanged<String> onCambio;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    Widget pill(String valor, String texto, int n) {
+      final sel = filtro == valor;
+      return Expanded(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => onCambio(valor),
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 3),
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: sel ? lima : cs.surface,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: sel ? lima : trazo),
+            ),
+            child: Text('$texto ($n)',
+                style: TextStyle(
+                    color: sel ? Colors.white : cs.onSurface,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13.5)),
+          ),
+        ),
+      );
+    }
+
+    return Row(children: [
+      pill('proximas', 'Próximas', nProximas),
+      pill('pasadas', 'Pasadas', nPasadas),
+    ]);
+  }
+}
+
+/// Encabezado de día en la lista de reservas ("Hoy · 3 reservas").
+class _DiaHeader extends StatelessWidget {
+  const _DiaHeader({required this.label, required this.n});
+  final String label;
+  final int n;
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Row(
+      children: [
+        Text(label,
+            style: t.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+        const SizedBox(width: 8),
+        Text('$n ${n == 1 ? 'reserva' : 'reservas'}',
+            style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
+      ],
     );
   }
 }
@@ -263,64 +368,6 @@ class _AvatarJugador extends StatelessWidget {
                 style: const TextStyle(
                     color: bosque, fontWeight: FontWeight.w800, fontSize: 14))
             : null,
-      ),
-    );
-  }
-}
-
-/// Nombre de país a partir del símbolo de moneda de la cancha (proxy de país).
-String _paisDeMoneda(String m) => switch (m.trim()) {
-      'S/' => 'Perú',
-      'Bs' => 'Bolivia',
-      r'$' => 'Ecuador',
-      _ => m,
-    };
-
-/// Cabecera de sección por LOCAL (y país si el dueño tiene canchas en más de
-/// uno): nombre del local + nº de reservas + subtotal por cobrar del local.
-class _LocalHeader extends StatelessWidget {
-  const _LocalHeader({
-    required this.club,
-    required this.pais,
-    required this.n,
-    required this.porCobrar,
-    required this.moneda,
-  });
-  final String club;
-  final String pais; // '' si el dueño está en un solo país
-  final int n;
-  final int porCobrar;
-  final String moneda;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
-    return Padding(
-      padding: const EdgeInsets.only(top: 4, bottom: 2),
-      child: Row(
-        children: [
-          const Icon(Icons.stadium_outlined, size: 18, color: pino),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(club,
-                    style: t.titleSmall?.copyWith(fontWeight: FontWeight.w800),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis),
-                Text(
-                  [
-                    if (pais.isNotEmpty) pais,
-                    '$n ${n == 1 ? 'reserva' : 'reservas'}',
-                    if (porCobrar > 0) 'por cobrar $moneda $porCobrar',
-                  ].join(' · '),
-                  style: t.bodySmall?.copyWith(color: textoTenueDe(context)),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
