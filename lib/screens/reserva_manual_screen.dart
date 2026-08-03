@@ -119,9 +119,12 @@ class _ReservaManualScreenState extends State<ReservaManualScreen> {
   bool _ocupada(String hora) {
     final c = _cancha;
     if (c == null) return true;
+    // Fecha REAL del slot: los de madrugada (horario que cruza medianoche) están
+    // tomados/guardados en el día siguiente. Así se marca ocupado correctamente.
+    final f = c.fechaRealSlot(_isoFecha, hora);
     final reservado = appState.reservas.any((r) =>
-        r.canchaId == c.id && r.fecha == _isoFecha && r.horaInicio == hora);
-    return reservado || appState.estaBloqueado(c.id, _isoFecha, hora);
+        r.canchaId == c.id && r.fecha == f && r.horaInicio == hora);
+    return reservado || appState.estaBloqueado(c.id, f, hora);
   }
 
   Future<void> _elegirFecha() async {

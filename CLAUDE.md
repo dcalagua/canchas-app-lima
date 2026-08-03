@@ -501,8 +501,8 @@ auth por usuario en `/pagos/movimientos` (PROD).
   (`agregarReservasJugadorMulti`, `agregarReservaManual`, `club_detalle._fechaSlot`,
   `cancha_detalle`). La **agenda** muestra la SESIÓN del día (incluye la madrugada
   del día siguiente vía `reservaEnSesion`); KPIs y match por slot usan la fecha real.
-- Pendiente menor: en `reserva_manual_screen` marcar visualmente ocupado un slot de
-  madrugada ya tomado (el anti-doble-reserva ya lo impide en el guardado).
+- `reserva_manual_screen._ocupada` también usa la fecha real por slot (marca
+  ocupado un slot de madrugada ya tomado).
 
 ### Nota billetera/reservas (recordatorio de diseño)
 - **Billetera (`cuenta_screen`)** = plata que pasa por la APP: pagos ONLINE del
