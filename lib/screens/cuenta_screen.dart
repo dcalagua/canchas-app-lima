@@ -400,6 +400,19 @@ class _FilaMovimiento extends StatelessWidget {
                       Text(sub,
                           style: t.bodySmall
                               ?.copyWith(color: textoTenueDe(context))),
+                      // Desglose VISIBLE (como estado de cuenta de banco): lo que
+                      // pagó el cliente, la comisión y lo que recibes. Sin tener
+                      // que abrir el detalle.
+                      if (esLiquidacion && m.brutoSoles > 0)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                              'Pagó ${appState.monedaSaldoSimbolo}${montoTxt(m.brutoSoles)} · '
+                              '−${appState.monedaSaldoSimbolo}${montoTxt(m.comisionSoles)} comisión',
+                              style: t.bodySmall?.copyWith(
+                                  color: textoTenueDe(context),
+                                  fontWeight: FontWeight.w600)),
+                        ),
                     ],
                   ),
                 ),

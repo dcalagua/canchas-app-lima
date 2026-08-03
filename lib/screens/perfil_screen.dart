@@ -9,6 +9,7 @@ import '../widgets/responsive.dart';
 import 'nivel_onboarding_screen.dart';
 import 'academias_screen.dart';
 import 'mis_bonos_screen.dart';
+import 'mis_pagos_screen.dart';
 import 'marketplace_screen.dart';
 import 'ajustes_screen.dart';
 import 'anfitrion_screen.dart';
@@ -168,6 +169,17 @@ class PerfilScreen extends StatelessWidget {
                         onTap: () => Navigator.of(context).push(
                             MaterialPageRoute(
                                 builder: (_) => const MisBonosScreen())),
+                      ),
+                    if (u != null)
+                      _Tile(
+                        icon: Icons.receipt_long,
+                        color: bosque,
+                        title: 'Mis pagos',
+                        subtitle:
+                            'Estado de cuenta: bonos y reservas que pagaste',
+                        onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                                builder: (_) => const MisPagosScreen())),
                       ),
                     // CIRCUITO (capa de TENIS): un solo contenedor. Adentro vive
                     // todo lo del circuito de ese deporte (ranking, retos, Pro).
