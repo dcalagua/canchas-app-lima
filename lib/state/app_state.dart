@@ -27,6 +27,7 @@ import '../data/perfiles_repo.dart';
 import '../data/bloqueos_repo.dart';
 import '../data/descuentos_repo.dart';
 import '../data/referidos_repo.dart';
+import '../data/bonos_repo.dart';
 import '../data/espera_repo.dart';
 import '../data/resenas_repo.dart';
 import '../data/reservas_repo.dart';
@@ -41,6 +42,7 @@ import '../models/models.dart';
 import '../models/negocio.dart';
 import '../models/plan_trabajo.dart';
 import '../data/planes_semilla.dart';
+import '../models/bono.dart';
 import '../models/espera.dart';
 import '../models/resena.dart';
 import '../models/reserva_fija.dart';
@@ -4582,6 +4584,136 @@ class AppState extends ChangeNotifier {
     return EsperaRepo.salir(id);
   }
 
+  // ── BONOS de horas prepagadas (packs por local) ───────────────────────────
+  final Map<String, List<BonoOferta>> _bonosClub = {}; // club → ofertas activas
+  List<BonoComprado> _misBonos = []; // créditos del jugador logueado
+
+  /// Ofertas de bonos activas de un local (caché).
+  List<BonoOferta> bonosDeClub(String club) =>
+      _bonosClub[club] ?? const <BonoOferta>[];
+
+  /// Carga las ofertas de bonos de un local.
+  Future<void> cargarBonosClub(String club) async {
+    if (club.isEmpty) return;
+    _bonosClub[club] = await BonosRepo.ofertasDeClub(club);
+    notifyListeners();
+  }
+
+  /// Ofertas del dueño (todas), para administrarlas.
+  Future<List<BonoOferta>> cargarBonosDueno() async {
+    final email = usuario?.email ?? '';
+    if (email.isEmpty) return const <BonoOferta>[];
+    return BonosRepo.ofertasDeDueno(email);
+  }
+
+  Future<bool> guardarBonoOferta(BonoOferta b) async {
+    final ok = await BonosRepo.guardarOferta(b);
+    if (ok) {
+      _bonosClub[b.club] = await BonosRepo.ofertasDeClub(b.club);
+      notifyListeners();
+    }
+    return ok;
+  }
+
+  Future<void> eliminarBonoOferta(BonoOferta b) async {
+    await BonosRepo.eliminarOferta(b.id);
+    _bonosClub[b.club] = await BonosRepo.ofertasDeClub(b.club);
+    notifyListeners();
+  }
+
+  /// Carga los créditos de bono del jugador logueado.
+  Future<void> cargarMisBonos() async {
+    final email = usuario?.email ?? '';
+    if (email.isEmpty) {
+      _misBonos = [];
+      return;
+    }
+    _misBonos = await BonosRepo.comprasDe(email);
+    notifyListeners();
+  }
+
+  /// Saldo de horas de bono del jugador en un local (suma de créditos con saldo).
+  int miSaldoBono(String club) {
+    var s = 0;
+    for (final c in _misBonos) {
+      if (c.club == club) s += c.saldo;
+    }
+    return s;
+  }
+
+  /// El jugador compra un bono (ya pagó con Culqi; [ventaId] = idempotencia).
+  /// Crea el crédito local + Supabase. Optimista. El registro contable (por
+  /// recibir del dueño + comisión) lo hace la pantalla vía PagosService.venta.
+  Future<bool> comprarBono(BonoOferta o, String ventaId) async {
+    final u = usuario;
+    if (u == null || u.email.isEmpty) return false;
+    final c = BonoComprado(
+      id: ventaId.isNotEmpty
+          ? 'bono_$ventaId'
+          : 'bono_${o.id}_${u.email.hashCode.toUnsigned(20).toRadixString(16)}'
+              '_${DateTime.now().millisecondsSinceEpoch}',
+      bonoId: o.id,
+      dueno: o.dueno,
+      club: o.club,
+      comprador: u.email.trim().toLowerCase(),
+      compradorNombre: u.nombre,
+      horasTotal: o.horas,
+      horasUsadas: 0,
+      precio: o.precio,
+      ventaId: ventaId,
+      creado: DateTime.now(),
+    );
+    _misBonos = [c, ..._misBonos];
+    notifyListeners();
+    return BonosRepo.registrarCompra(c);
+  }
+
+  /// Canjea [horas] del saldo de bono del jugador en un local (FIFO: gasta
+  /// primero los créditos más antiguos). Devuelve true si alcanzó y se
+  /// descontó; optimista + sincroniza cada crédito tocado.
+  Future<bool> usarBonoHoras(String club, int horas) async {
+    if (horas <= 0) return true;
+    if (miSaldoBono(club) < horas) return false;
+    var restan = horas;
+    // Ordena por antigüedad (FIFO): gasta primero lo comprado antes.
+    final orden = [..._misBonos]
+      ..sort((a, b) => a.creado.compareTo(b.creado));
+    final actualizados = <String, int>{}; // id → nuevas horas_usadas
+    for (final c in orden) {
+      if (restan <= 0) break;
+      if (c.club != club || c.saldo <= 0) continue;
+      final gastar = restan < c.saldo ? restan : c.saldo;
+      actualizados[c.id] = c.horasUsadas + gastar;
+      restan -= gastar;
+    }
+    if (restan > 0) return false; // no debería pasar (ya validamos el saldo)
+    // Aplica local (inmutable → reconstruye) y sincroniza.
+    _misBonos = [
+      for (final c in _misBonos)
+        if (actualizados.containsKey(c.id))
+          BonoComprado(
+            id: c.id,
+            bonoId: c.bonoId,
+            dueno: c.dueno,
+            club: c.club,
+            comprador: c.comprador,
+            compradorNombre: c.compradorNombre,
+            horasTotal: c.horasTotal,
+            horasUsadas: actualizados[c.id]!,
+            precio: c.precio,
+            ventaId: c.ventaId,
+            creado: c.creado,
+          )
+        else
+          c
+    ];
+    notifyListeners();
+    for (final e in actualizados.entries) {
+      await BonosRepo.actualizarUsadas(e.key, e.value);
+    }
+    return true;
+  }
+
   /// Mis reservas = reservas cuyo correo coincide con el jugador logueado.
   void _recomputarMisReservas() {
     final email = usuario?.email;
@@ -6442,6 +6574,7 @@ class AppState extends ChangeNotifier {
       }
       await ResenasRepo.eliminarDeCanchas(misCanchaIds.toList());
       await EsperaRepo.eliminarDeCanchas(misCanchaIds.toList());
+      await BonosRepo.eliminarDeDueno(email);
       // Chats: de mis academias + conversaciones de cancha donde participo.
       await MensajesRepo.eliminarDeAcademias(misAcademiaIds.toList());
       await MensajesRepo.eliminarCanchaDe(email);
@@ -6560,11 +6693,15 @@ class AppState extends ChangeNotifier {
       // reserva nace PAGADA y el dueño NO tiene que marcarla. Efectivo (paga en
       // la cancha) y seña (adelanta una parte, debe el resto) nacen sin pagar:
       // ahí el dueño sí confirma cuando cobra el resto/efectivo.
-      pagado: cobro == 'online',
+      // Online = pagado por Culqi. BONO = el jugador YA lo pagó al comprar el
+      // pack (por eso NO genera contabilidad extra: `_accionContable` devuelve
+      // null para 'bono'); nace pagada y el dueño no la marca.
+      pagado: cobro == 'online' || cobro == 'bono',
       // Seña anti no-show cobrada por adelantado (Culqi). 0 = sin seña / pago
       // total online / efectivo puro. No reembolsable: se queda con el dueño.
       sena: sena.clamp(0, precio),
-      medioPago: medioPago, // trazabilidad: yape/tarjeta/efectivo/sena
+      // trazabilidad: yape/tarjeta/efectivo/sena/bono
+      medioPago: cobro == 'bono' ? 'bono' : medioPago,
 
       usuario: usuario?.email ?? '',
       // Deporte elegido para este slot (loza multiuso). Default: el principal.

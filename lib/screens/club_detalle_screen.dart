@@ -4,16 +4,21 @@ import '../data/reservas_repo.dart';
 import '../models/club.dart';
 import '../models/models.dart';
 import '../models/resena.dart';
+import '../services/avisos_service.dart';
 import '../services/location_service.dart';
+import '../services/pagos_service.dart';
 import '../services/propiedad_service.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/ancho_lectura.dart';
 import '../widgets/chat_burbuja.dart';
+import '../models/bono.dart';
+import '../widgets/cargando_pichangol.dart';
 import '../widgets/court_lines.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/marca.dart';
+import 'bonos_dueno_screen.dart';
 import 'chat_screen.dart';
 import 'editar_cancha_screen.dart';
 import '../utils/moneda.dart';
@@ -99,6 +104,9 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     // Lista de espera del local (para marcar los slots con cola y ofrecer
     // anotarse en una hora tomada).
     appState.cargarEspera(widget.club.canchas.map((c) => c.id).toList());
+    // Bonos del local (ofertas) + saldo de bono del jugador (para el canje).
+    appState.cargarBonosClub(_cancha.club);
+    appState.cargarMisBonos();
   }
 
   /// ¿El slot [h] ya pasó? (para "Hoy", una hora anterior a ahora).
@@ -408,6 +416,12 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         MaterialPageRoute(builder: (_) => const ReservasDuenoScreen()));
   }
 
+  void _verBonos() {
+    Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => BonosDuenoScreen(
+            club: _cancha.club, moneda: _cancha.monedaSimbolo)));
+  }
+
   // Fecha REAL del slot: los de madrugada (horario que cruza medianoche) caen en
   // el día siguiente. Ocupación, bloqueo y precio se comparan contra esta fecha.
   String _fechaSlot(String hora) => _cancha.fechaRealSlot(_fechaIso, hora);
@@ -530,6 +544,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         nombreCliente: appState.usuario?.nombre ?? '',
         total: total,
         permiteEfectivo: appState.esDestacada(_cancha),
+        saldoBono: appState.miSaldoBono(_cancha.club),
       ),
     );
   }
@@ -549,8 +564,17 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     // Resumen estilo Airbnb ANTES de pagar. Devuelve método + servicios extra.
     final r = await _mostrarResumen(slots, base);
     if (r == null || !mounted) return;
-    final metodo = r.metodo; // 'online' | 'sena' | 'cancha'
+    final metodo = r.metodo; // 'online' | 'sena' | 'cancha' | 'bono'
     final extras = r.extras;
+    // BONO: canje de horas prepagadas. Valida el saldo antes de reservar (no
+    // cobra nada; el pago fue al comprar el pack).
+    if (metodo == 'bono') {
+      if (appState.miSaldoBono(_cancha.club) < slots.length) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('No te alcanza el saldo de bono para esas horas.')));
+        return;
+      }
+    }
     // El jugador paga las horas + los servicios extra que eligió (una sola vez).
     final total = base + extras.fold(0.0, (a, s) => a + s.precio);
     // Seña anti no-show: % del TOTAL de las horas (sin extras).
@@ -614,6 +638,10 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
           appState.salirDeEspera(_cancha.id, _fechaSlot(h), h);
         }
       }
+      // Canje de bono: descuenta las horas usadas (recién al confirmar el slot).
+      if (metodo == 'bono') {
+        appState.usarBonoHoras(_cancha.club, slots.length);
+      }
     }
     messenger.showSnackBar(
       SnackBar(
@@ -624,7 +652,9 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                 ? '⚠️ No se pudo registrar en el servidor. Queda pendiente y se '
                     'reintenta. Detalle: ${ReservasRepo.ultimoError}'
                 : confirmada
-                ? (esSena
+                ? (metodo == 'bono'
+                    ? '✅ Reserva confirmada con tu bono en ${_cancha.nombre} · $_dia $etiqueta · te quedan ${appState.miSaldoBono(_cancha.club)} h'
+                    : esSena
                     ? '✅ Seña pagada · Reserva confirmada en ${_cancha.nombre} · $_dia $etiqueta · paga $mon ${(total - senaMonto).toStringAsFixed(2)} en la cancha'
                     : pagoOnline
                         ? '✅ Pago OK · Reserva confirmada en ${_cancha.nombre} · $_dia $etiqueta'
@@ -870,7 +900,8 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                     _PanelDueno(
                         cancha: _cancha,
                         onEditar: _editar,
-                        onVerReservas: _verReservas),
+                        onVerReservas: _verReservas,
+                        onBonos: _verBonos),
                     const SizedBox(height: 22),
                     Text('Bloquear horarios',
                         style: t.titleMedium
@@ -1043,6 +1074,10 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                   ],
                   // Reseñas del local: reputación real (visible para dueño y
                   // jugadores en canchas ya registradas).
+                  if (!descubierta && !pendiente && !_soyDueno) ...[
+                    const SizedBox(height: 26),
+                    _SeccionBonos(cancha: _cancha),
+                  ],
                   if (!descubierta && !pendiente) ...[
                     const SizedBox(height: 26),
                     _SeccionResenas(
@@ -1081,10 +1116,12 @@ class _PanelDueno extends StatelessWidget {
   const _PanelDueno(
       {required this.cancha,
       required this.onEditar,
-      required this.onVerReservas});
+      required this.onVerReservas,
+      required this.onBonos});
   final Cancha cancha;
   final VoidCallback onEditar;
   final VoidCallback onVerReservas;
+  final VoidCallback onBonos;
 
   @override
   Widget build(BuildContext context) {
@@ -1178,6 +1215,23 @@ class _PanelDueno extends StatelessWidget {
               ),
               icon: const Icon(Icons.receipt_long, size: 19),
               label: const Text('Ver reservas y cobros',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: onBonos,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: teal,
+                side: const BorderSide(color: teal, width: 1.5),
+                padding: const EdgeInsets.symmetric(vertical: 15),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+              ),
+              icon: const Icon(Icons.confirmation_number_outlined, size: 19),
+              label: const Text('Bonos de horas (packs)',
                   style: TextStyle(fontWeight: FontWeight.w700)),
             ),
           ),
@@ -1408,6 +1462,7 @@ class _ResumenReserva extends StatefulWidget {
     required this.nombreCliente,
     required this.total,
     required this.permiteEfectivo,
+    this.saldoBono = 0,
   });
 
   final Cancha cancha;
@@ -1419,6 +1474,7 @@ class _ResumenReserva extends StatefulWidget {
   final String nombreCliente;
   final num total; // precio base del bloque (suma de las horas, sin extras)
   final bool permiteEfectivo; // efectivo solo si el dueño tiene saldo
+  final int saldoBono; // horas de bono prepagado del jugador en este local
 
   @override
   State<_ResumenReserva> createState() => _ResumenReservaState();
@@ -1604,6 +1660,26 @@ class _ResumenReservaState extends State<_ResumenReserva> {
               ],
             ),
             const SizedBox(height: 16),
+            // Bono prepagado: si el jugador tiene horas para este local, la
+            // opción MÁS conveniente (no paga de nuevo). Descuenta sus horas.
+            if (widget.saldoBono >= widget.nSlots) ...[
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                      backgroundColor: teal,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 15)),
+                  onPressed: () => _cerrar('bono'),
+                  icon: const Icon(Icons.confirmation_number, size: 18),
+                  label: Text(
+                      'Usar mi bono (${widget.nSlots} h · te quedan ${widget.saldoBono})',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w800, fontSize: 14)),
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
             // Botón principal: con seña, pagar la seña; sin seña, pagar todo.
             SizedBox(
               width: double.infinity,
@@ -2537,6 +2613,176 @@ class _Badge extends StatelessWidget {
       child: Text(texto,
           style: TextStyle(
               color: fg, fontSize: 11, fontWeight: FontWeight.w700, height: 1)),
+    );
+  }
+}
+
+/// BONOS de horas prepagadas del local (vista del jugador): muestra su saldo si
+/// tiene, y los packs disponibles para comprar (paga con Culqi → horas que
+/// descuenta al reservar en este local).
+class _SeccionBonos extends StatefulWidget {
+  const _SeccionBonos({required this.cancha});
+  final Cancha cancha;
+
+  @override
+  State<_SeccionBonos> createState() => _SeccionBonosState();
+}
+
+class _SeccionBonosState extends State<_SeccionBonos> {
+  bool _comprando = false;
+
+  String get _club => widget.cancha.club;
+
+  Future<void> _comprar(BonoOferta o) async {
+    if (!await LoginGoogleSheet.mostrar(context, motivo: 'comprar tu bono')) {
+      return;
+    }
+    if (!mounted) return;
+    final u = appState.usuario;
+    if (u == null) return;
+    setState(() => _comprando = true);
+    var operacion = '';
+    final pagado = await PagoTarjeta.cobrar(
+      context,
+      monto: (o.precio * 100).round(),
+      concepto: 'Bono ${o.horas}h · $_club',
+      email: u.email,
+      moneda: widget.cancha.monedaSimbolo,
+      onOperacion: (op) => operacion = op,
+    );
+    if (!mounted) {
+      _comprando = false;
+      return;
+    }
+    if (!pagado) {
+      setState(() => _comprando = false);
+      return;
+    }
+    final ventaId = operacion.isNotEmpty
+        ? operacion
+        : '${o.id}_${u.email}_${DateTime.now().millisecondsSinceEpoch}';
+    await conPreload(context, () async {
+      // 1) Crédito del jugador. 2) Contabilidad de venta (por recibir del dueño
+      //    − comisión), idempotente por ventaId. 3) Push al dueño.
+      await appState.comprarBono(o, ventaId);
+      await PagosService.venta(
+        vendedorId: o.dueno,
+        montoSoles: o.precio,
+        ventaId: ventaId,
+        concepto: 'Bono ${o.horas}h · $_club',
+        compradorEmail: u.email.toLowerCase(),
+        compradorNombre: u.nombre,
+      );
+      AvisosService.enviar(
+        email: o.dueno,
+        titulo: '¡Vendiste un bono! 🎟️',
+        cuerpo: '${u.nombre} compró tu pack de ${o.horas} horas en $_club.',
+        tipo: 'bono',
+      );
+    }, texto: 'Confirmando tu bono…');
+    if (!mounted) return;
+    setState(() => _comprando = false);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        backgroundColor: lima,
+        content: Text('¡Bono activado! Tienes ${appState.miSaldoBono(_club)} '
+            'horas en $_club.')));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: appState,
+      builder: (context, _) {
+        final t = Theme.of(context).textTheme;
+        final ofertas = appState.bonosDeClub(_club);
+        final saldo = appState.miSaldoBono(_club);
+        if (ofertas.isEmpty && saldo == 0) return const SizedBox.shrink();
+        final mon = widget.cancha.monedaSimbolo;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.confirmation_number_outlined, color: teal),
+                const SizedBox(width: 8),
+                Text('Bonos de horas',
+                    style:
+                        t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+              ],
+            ),
+            const SizedBox(height: 2),
+            Text(
+                'Paga por adelantado y ahorra: cada bono te da horas para '
+                'reservar aquí.',
+                style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
+            if (saldo > 0) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: teal.withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.check_circle, color: teal, size: 20),
+                    const SizedBox(width: 8),
+                    Text('Tienes $saldo ${saldo == 1 ? 'hora' : 'horas'} de bono',
+                        style: t.bodyMedium?.copyWith(
+                            color: teal, fontWeight: FontWeight.w800)),
+                  ],
+                ),
+              ),
+            ],
+            for (final o in ofertas) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: trazo),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                          color: lima.withOpacity(0.14),
+                          borderRadius: BorderRadius.circular(12)),
+                      child: Text('${o.horas}h',
+                          style: const TextStyle(
+                              color: lima,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 15)),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(o.nombre.isEmpty ? '${o.horas} horas' : o.nombre,
+                              style: t.bodyLarge
+                                  ?.copyWith(fontWeight: FontWeight.w700)),
+                          Text('$mon ${o.precioHora.toStringAsFixed(2)}/hora',
+                              style: t.bodySmall
+                                  ?.copyWith(color: textoTenueDe(context))),
+                        ],
+                      ),
+                    ),
+                    FilledButton(
+                      style: FilledButton.styleFrom(backgroundColor: lima),
+                      onPressed: _comprando ? null : () => _comprar(o),
+                      child: Text('$mon ${o.precio.toStringAsFixed(0)}',
+                          style: const TextStyle(fontWeight: FontWeight.w800)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        );
+      },
     );
   }
 }
