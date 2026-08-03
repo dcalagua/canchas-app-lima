@@ -1,3 +1,4 @@
+import 'unirse_campeonato_sheet.dart';
 import 'package:flutter/material.dart';
 
 import '../models/models.dart';
@@ -22,7 +23,16 @@ class CircuitoScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Liga de tenis Pichangol')),
+      appBar: AppBar(
+        title: const Text('Liga de tenis Pichangol'),
+        actions: [
+          IconButton(
+            tooltip: 'Unirme a un campeonato (enlace o código)',
+            icon: const Icon(Icons.link),
+            onPressed: () => UnirseCampeonato.mostrar(context),
+          ),
+        ],
+      ),
       body: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {

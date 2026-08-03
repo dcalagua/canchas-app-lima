@@ -26,6 +26,27 @@ class CampeonatosRepo {
     }
   }
 
+  /// Trae UN campeonato por su id (para abrirlo desde un enlace/código
+  /// compartido, aunque no sea de una academia del usuario). null si no existe,
+  /// fue eliminado, o no hay backend.
+  static Future<Campeonato?> porId(String id) async {
+    if (!SupabaseService.disponible || id.trim().isEmpty) return null;
+    try {
+      final rows = await SupabaseService.client
+          .from(_tabla)
+          .select()
+          .eq('id', id.trim())
+          .neq('eliminado', true)
+          .limit(1);
+      final lista = rows as List;
+      if (lista.isEmpty) return null;
+      return Campeonato.fromJson(
+          Map<String, dynamic>.from((lista.first as Map)['data'] as Map));
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Inserta o actualiza (upsert por id). Fail-safe.
   static Future<void> guardar(Campeonato c) async {
     if (!SupabaseService.disponible) return;

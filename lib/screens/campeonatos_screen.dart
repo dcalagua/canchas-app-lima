@@ -1,3 +1,4 @@
+import 'unirse_campeonato_sheet.dart';
 import 'package:flutter/material.dart';
 
 import '../models/campeonato.dart';
@@ -27,7 +28,16 @@ class CampeonatosScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Campeonatos')),
+      appBar: AppBar(
+        title: const Text('Campeonatos'),
+        actions: [
+          IconButton(
+            tooltip: 'Unirme con enlace o código',
+            icon: const Icon(Icons.link),
+            onPressed: () => UnirseCampeonato.mostrar(context),
+          ),
+        ],
+      ),
       floatingActionButton: ListenableBuilder(
         listenable: appState,
         builder: (context, _) => _esDueno()

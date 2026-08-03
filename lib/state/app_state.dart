@@ -2508,6 +2508,36 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
+  /// Extrae el ID de campeonato de lo que pegó el usuario: un enlace
+  /// (`…/campeonato-web?id=ABC`) o el id/código pelado. Devuelve '' si no se
+  /// reconoce nada usable.
+  static String idCampeonatoDe(String entrada) {
+    final t = entrada.trim();
+    if (t.isEmpty) return '';
+    // ¿Es un enlace con ?id=… ?
+    final uri = Uri.tryParse(t);
+    final qid = uri?.queryParameters['id'];
+    if (qid != null && qid.trim().isNotEmpty) return qid.trim();
+    // Si no es URL (o no trae id), tomamos el texto tal cual como id/código.
+    if (!t.contains('://') && !t.contains(' ')) return t;
+    return '';
+  }
+
+  /// Trae un campeonato por id desde Supabase y lo agrega a la caché local para
+  /// poder abrir su ficha (aunque no sea de una academia del usuario). Devuelve
+  /// el campeonato, o null si no existe / sin backend.
+  Future<Campeonato?> traerCampeonato(String id) async {
+    final existente = campeonatoPorId(id);
+    if (existente != null) return existente;
+    final c = await CampeonatosRepo.porId(id);
+    if (c == null) return null;
+    if (campeonatoPorId(c.id) == null) {
+      campeonatos.add(c);
+      notifyListeners();
+    }
+    return c;
+  }
+
   /// Crea un campeonato para una academia y lo comparte (nube). Devuelve el id.
   Campeonato crearCampeonato({
     required String academiaId,
