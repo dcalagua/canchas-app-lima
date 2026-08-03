@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/club.dart';
 import '../models/models.dart';
+import '../models/resena.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/moneda.dart';
@@ -18,10 +19,15 @@ class ClubCard extends StatelessWidget {
       this.distanciaKm,
       this.nivelDestacado = 0,
       this.esMejorPrecio = false,
-      this.ahorroPct});
+      this.ahorroPct,
+      this.resumenResenas});
 
   final Club club;
   final VoidCallback? onTap;
+
+  /// Reputación REAL del local (⭐ promedio + cantidad). Si es null o no tiene
+  /// reseñas, no se muestra nada (nunca un rating inventado — regla de prod).
+  final ResumenResenas? resumenResenas;
 
   /// Distancia (km) del usuario al local. Si viene, se muestra junto a la
   /// dirección ("a 2.3 km"). Null = no se muestra (sin ubicación).
@@ -124,11 +130,31 @@ class ClubCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(club.nombre,
-                      style:
-                          t.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(club.nombre,
+                            style: t.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis),
+                      ),
+                      // Reputación REAL (⭐ promedio + cantidad). Nunca fake:
+                      // si no hay reseñas, no se muestra nada.
+                      if (resumenResenas?.hay == true) ...[
+                        const SizedBox(width: 8),
+                        const Icon(Icons.star, size: 15, color: amarillo),
+                        const SizedBox(width: 2),
+                        Text(resumenResenas!.promedio.toStringAsFixed(1),
+                            style: t.bodyMedium
+                                ?.copyWith(fontWeight: FontWeight.w800)),
+                        const SizedBox(width: 2),
+                        Text('(${resumenResenas!.cantidad})',
+                            style: t.bodySmall
+                                ?.copyWith(color: textoTenueDe(context))),
+                      ],
+                    ],
+                  ),
                   const SizedBox(height: 2),
                   Row(
                     children: [

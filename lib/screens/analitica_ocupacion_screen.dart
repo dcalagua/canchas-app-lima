@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/models.dart';
+import '../models/resena.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/ancho_lectura.dart';
@@ -40,6 +41,8 @@ class _AnaliticaOcupacionScreenState extends State<AnaliticaOcupacionScreen> {
     // Trae reservas frescas de la nube para que la analítica no dependa de un
     // refresco manual (device-first: pinta con lo que hay y actualiza detrás).
     appState.cargarReservasRemotas();
+    // Reputación real del dueño (⭐) sobre sus propias canchas.
+    appState.cargarResenas(appState.misCanchas.map((c) => c.id).toList());
   }
 
   static String _iso(DateTime d) => '${d.year.toString().padLeft(4, '0')}-'
@@ -184,6 +187,11 @@ class _AnaliticaOcupacionScreenState extends State<AnaliticaOcupacionScreen> {
           final ingMes = ingresoDe(claveMes);
           final ingMesPasado = ingresoDe(claveMesPasado);
 
+          // Reputación real del dueño (⭐ promedio + últimas reseñas).
+          final misIds = canchas.map((c) => c.id).toList();
+          final reputacion = appState.resumenResenas(misIds);
+          final ultimasResenas = appState.resenasDe(misIds).take(3).toList();
+
           final sinDatos = activas.isEmpty;
 
           final contenido = ListView(
@@ -261,7 +269,20 @@ class _AnaliticaOcupacionScreenState extends State<AnaliticaOcupacionScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
+
+                // Reputación real del dueño (⭐ de sus clientes).
+                _Tarjeta(
+                  titulo: 'Tu reputación',
+                  subtitulo: reputacion.hay
+                      ? 'Lo que califican tus clientes tras jugar.'
+                      : 'Aún sin reseñas. Aparecen cuando tus clientes califican.',
+                  child: _Reputacion(
+                    resumen: reputacion,
+                    ultimas: ultimasResenas,
+                  ),
+                ),
+                const SizedBox(height: 14),
 
                 // Mapa de calor hora × día.
                 _Tarjeta(
@@ -659,6 +680,95 @@ class _MesVsMes extends StatelessWidget {
                     ?.copyWith(color: color, fontWeight: FontWeight.w800)),
           ],
         ),
+      ],
+    );
+  }
+}
+
+/// Reputación del dueño: ⭐ promedio grande + estrellas + últimas reseñas.
+class _Reputacion extends StatelessWidget {
+  const _Reputacion({required this.resumen, required this.ultimas});
+  final ResumenResenas resumen;
+  final List<Resena> ultimas;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    if (!resumen.hay) {
+      return Row(
+        children: [
+          const Icon(Icons.reviews_outlined, color: teal),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+                'Pide a tus clientes que califiquen su experiencia: la '
+                'reputación pública trae más reservas.',
+                style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
+          ),
+        ],
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Text(resumen.promedio.toStringAsFixed(1),
+                style: t.displaySmall?.copyWith(
+                    fontWeight: FontWeight.w800, color: amarillo)),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    for (var i = 1; i <= 5; i++)
+                      Icon(
+                        i <= resumen.promedio.round()
+                            ? Icons.star
+                            : Icons.star_border,
+                        size: 18,
+                        color: amarillo,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                    '${resumen.cantidad} '
+                    '${resumen.cantidad == 1 ? 'reseña' : 'reseñas'}',
+                    style:
+                        t.bodySmall?.copyWith(color: textoTenueDe(context))),
+              ],
+            ),
+          ],
+        ),
+        for (final r in ultimas) ...[
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.star, size: 15, color: amarillo),
+              const SizedBox(width: 4),
+              Text('${r.estrellas}',
+                  style: const TextStyle(fontWeight: FontWeight.w800)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(r.autorNombre.isEmpty ? 'Cliente' : r.autorNombre,
+                        style: const TextStyle(fontWeight: FontWeight.w700)),
+                    if (r.comentario.isNotEmpty)
+                      Text(r.comentario,
+                          style: t.bodySmall
+                              ?.copyWith(color: textoTenueDe(context))),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
       ],
     );
   }

@@ -4441,6 +4441,24 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Carga en LOTE solo las reseñas de canchas aún NO cacheadas (para pintar el
+  /// rating real en las tarjetas de Explorar sin re-consultar en cada rebuild).
+  /// Pre-marca las pedidas como cargadas (vacío) para evitar consultas duplicadas.
+  Future<void> cargarResenasFaltantes(List<String> canchaIds) async {
+    final faltan = canchaIds
+        .where((id) => id.isNotEmpty && !_resenas.containsKey(id))
+        .toList();
+    if (faltan.isEmpty) return;
+    for (final id in faltan) {
+      _resenas.putIfAbsent(id, () => const <Resena>[]);
+    }
+    final rows = await ResenasRepo.deCanchas(faltan);
+    for (final id in faltan) {
+      _resenas[id] = rows.where((r) => r.canchaId == id).toList();
+    }
+    notifyListeners();
+  }
+
   /// Reseñas cacheadas de un conjunto de canchas, más nuevas primero.
   List<Resena> resenasDe(List<String> canchaIds) {
     final out = <Resena>[];

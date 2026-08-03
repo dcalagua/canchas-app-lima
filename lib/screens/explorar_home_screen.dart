@@ -80,7 +80,10 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
   double _scoreDestacado(Club cl) {
     var s = _nivelClub(cl) * 1000.0;
     if (cl.verificada) s += 60;
-    s += cl.rating * 12;
+    // Reputación REAL (⭐ promedio): si no tiene reseñas usa una base neutra
+    // (4.5) para no castigar a los nuevos ni premiar un rating inventado.
+    final rep = appState.resumenResenas(cl.canchas.map((c) => c.id).toList());
+    s += (rep.hay ? rep.promedio : 4.5) * 12;
     final tieneFotos =
         cl.canchas.any((c) => c.fotos.isNotEmpty || c.fotoUrl != null);
     if (tieneFotos) s += 25;
@@ -138,6 +141,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     _numCanchas = appState.todasLasCanchas().length;
     appState.addListener(_onStateChange);
     appState.cargarDestacados(); // refresca qué dueños van destacados (saldo>0)
+    _cargarResenasVisibles(); // rating real en las tarjetas (⭐ reputación)
     _autoUbicar(); // autodetecta la ubicación al abrir
     // Onboarding de permisos (una sola vez, tras instalar): notificaciones,
     // micrófono, cámara y pantalla completa. Estilo WhatsApp.
@@ -150,8 +154,23 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     final n = appState.todasLasCanchas().length;
     if (n != _numCanchas) {
       _numCanchas = n;
+      _cargarResenasVisibles(); // trae reseñas de las canchas nuevas
       if (mounted) setState(() {}); // refresca la lista al registrar una cancha
     }
+  }
+
+  /// Trae en lote la reputación real de las canchas REGISTRADAS (las que pueden
+  /// tener reseñas) para pintar el ⭐ en las tarjetas. Guardado contra rebuilds
+  /// (solo consulta las no cacheadas) y repinta al terminar.
+  void _cargarResenasVisibles() {
+    final ids = appState
+        .todasLasCanchas()
+        .where((c) => c.registrada)
+        .map((c) => c.id)
+        .toList();
+    appState.cargarResenasFaltantes(ids).then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   /// Re-identifica la ubicación a pedido (botón): limpia el nombre de zona para
@@ -465,6 +484,8 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                           nivelDestacado: _nivelClub(cl),
                           esMejorPrecio: comp[cl.id]?.mejor ?? false,
                           ahorroPct: comp[cl.id]?.ahorro,
+                          resumenResenas: appState.resumenResenas(
+                              cl.canchas.map((c) => c.id).toList()),
                           onTap: () => _abrirClub(cl),
                           distanciaKm: _centroBusqueda == null
                               ? null
