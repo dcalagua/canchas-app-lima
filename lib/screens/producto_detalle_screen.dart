@@ -66,12 +66,13 @@ class _ProductoDetalleScreenState extends State<ProductoDetalleScreen> {
       return;
     }
     setState(() => _comprando = true);
-    // 1) Cobro al comprador (Culqi: Yape/tarjeta). El monto va en céntimos.
-    final centimos = (p.precio * 100).round();
+    // 1) Cobro al comprador (Culqi: Yape/tarjeta). El sheet recibe el monto EN
+    // SOLES (él lo pasa a céntimos para Culqi y lo muestra tal cual). NO
+    // multiplicar por 100 aquí (si no, se cobraría 100× de más).
     var operacion = '';
     final pagado = await PagoTarjeta.cobrar(
       context,
-      monto: centimos,
+      monto: p.precio.round(),
       concepto: 'Compra: ${p.nombre}',
       email: u.email,
       moneda: p.moneda,

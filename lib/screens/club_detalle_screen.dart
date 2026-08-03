@@ -2644,7 +2644,9 @@ class _SeccionBonosState extends State<_SeccionBonos> {
     var operacion = '';
     final pagado = await PagoTarjeta.cobrar(
       context,
-      monto: (o.precio * 100).round(),
+      // El sheet recibe el monto EN SOLES (él lo pasa a céntimos para Culqi y lo
+      // muestra tal cual). NO multiplicar por 100 aquí.
+      monto: o.precio.round(),
       concepto: 'Bono ${o.horas}h · $_club',
       email: u.email,
       moneda: widget.cancha.monedaSimbolo,
