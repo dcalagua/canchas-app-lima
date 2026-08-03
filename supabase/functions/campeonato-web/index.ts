@@ -114,8 +114,13 @@ function paginaHtml(c: any): string {
     ? (c.formato === "liga" ? renderLiga(c) : renderLlave(c))
     : `<p class="vacio">El fixture aún no está publicado. Vuelve pronto.</p>`;
   const nPart = (c.participantes ?? []).length;
+  // Moneda del campeonato (congelada por país: S/ · Bs · $). No hardcodear S/.
+  const mon = (c.moneda && String(c.moneda).trim()) || "S/";
+  const comoInscribe = c.deporte === "futbol"
+    ? "Ábrela y crea tu equipo (o únete con el código del capitán)."
+    : "Ábrela y toca “Inscribirme”.";
   const inscripcion = c.inscripcionAbierta && !c.partidos?.length
-    ? `<div class="cta"><b>Inscripciones abiertas</b>${c.costoInscripcion > 0 ? ` · S/ ${Number(c.costoInscripcion).toFixed(2)}` : " · gratis"}<br><span>Descarga Pichangol para inscribirte.</span></div>`
+    ? `<div class="cta"><b>Inscripciones abiertas</b>${c.costoInscripcion > 0 ? ` · ${esc(mon)} ${Number(c.costoInscripcion).toFixed(2)}` : " · gratis"}<br><span>${comoInscribe}</span><br><a class="mapbtn" style="margin-top:10px" href="https://github.com/dcalagua/canchas-app-lima/releases/tag/v0.1.0">Descargar / abrir Pichangol</a></div>`
     : "";
 
   return `<!doctype html><html lang="es"><head>
