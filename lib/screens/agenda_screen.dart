@@ -8,12 +8,18 @@ import '../utils/moneda.dart';
 import '../widgets/ancho_lectura.dart';
 import 'llenar_cancha_screen.dart';
 
-/// Agenda REAL del dueño: las franjas del día de SUS canchas con las reservas
-/// reales. Se trabaja dentro de UN local: selector de local (si tiene varios) +
-/// selector de cancha de ese local + Hoy/Mañana + mini-KPIs del local, todo
+/// Agenda REAL del dueño (vista CALENDARIO del hub de Reservas): las franjas del
+/// día de SUS canchas con las reservas reales. Se trabaja dentro de UN local:
+/// selector de local (si tiene varios) + selector de cancha de ese local +
+/// navegador de día (‹ · fecha/calendario · ›) + mini-KPIs del local, todo
 /// sobre datos reales (no demo).
 class AgendaScreen extends StatefulWidget {
-  const AgendaScreen({super.key});
+  const AgendaScreen({super.key, this.embedded = false});
+
+  /// Cuando va dentro del hub (conmutador Lista/Calendario) su Scaffold es
+  /// transparente para que el fondo del hub mande. Fuera del hub pinta su
+  /// propio fondo cálido.
+  final bool embedded;
 
   @override
   State<AgendaScreen> createState() => _AgendaScreenState();
@@ -65,12 +71,17 @@ class _AgendaScreenState extends State<AgendaScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Theme.of(context).brightness == Brightness.dark
-          ? Theme.of(context).scaffoldBackgroundColor
-          : papelCalido,
+      backgroundColor: widget.embedded
+          ? Colors.transparent
+          : (Theme.of(context).brightness == Brightness.dark
+              ? Theme.of(context).scaffoldBackgroundColor
+              : papelCalido),
       floatingActionButton: appState.misCanchas.isEmpty
           ? null
           : FloatingActionButton.extended(
+              // Tag único: convive con el FAB de la vista Lista en el hub
+              // (IndexedStack) sin chocar heroTags al abrir una ruta.
+              heroTag: 'fab-agenda',
               backgroundColor: lima,
               foregroundColor: Colors.white,
               icon: const Icon(Icons.campaign),

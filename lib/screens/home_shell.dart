@@ -4,13 +4,12 @@ import '../theme.dart';
 import '../widgets/barra_nav_scroll.dart';
 import '../widgets/icono_chat_pichan.dart';
 import '../widgets/menu_lateral_scroll.dart';
-import 'agenda_screen.dart';
 import 'clientes_screen.dart';
 import 'cuenta_screen.dart';
 import 'mensajes_screen.dart';
 import 'mis_canchas_screen.dart';
 import 'reportes_hub_screen.dart';
-import 'reservas_dueno_screen.dart';
+import 'reservas_hub_screen.dart';
 
 /// Panel del DUEÑO unificado: un solo lugar con TODO lo del dueño en pestañas,
 /// con el mismo estilo premium. "Mis canchas" (reales) es la pestaña principal.
@@ -32,8 +31,7 @@ class _HomeShellState extends State<HomeShell> {
   // Cuenta/Saldo (modelo inDrive): recarga real con Culqi (Yape/tarjeta).
   static const _paginas = <Widget>[
     MisCanchasScreen(),     // tus canchas reales (editar precio/horarios/servicios)
-    AgendaScreen(),         // agenda de hoy (real)
-    ReservasDuenoScreen(),  // reservas reales de tus canchas + caja
+    ReservasHubScreen(),    // Reservas: conmutador Lista (cobros) + Calendario (agenda)
     ClientesScreen(),       // base de clientes (CRM ligero, derivado de reservas)
     MensajesScreen(),       // chat con clientes (inbox del dueño/profe)
     ReportesHubScreen(),    // Reportes: pestañas Resumen + Cobros (unificado)
@@ -43,7 +41,6 @@ class _HomeShellState extends State<HomeShell> {
   // Íconos/etiquetas de las secciones (compartidos por barra inferior y rail).
   static const _iconos = <IconData>[
     Icons.sports_soccer,
-    Icons.calendar_month,
     Icons.event_note,
     Icons.groups,
     Icons.chat_bubble,
@@ -52,7 +49,6 @@ class _HomeShellState extends State<HomeShell> {
   ];
   static const _etiquetas = <String>[
     'Canchas',
-    'Agenda',
     'Reservas',
     'Clientes',
     'Mensajes',
@@ -62,15 +58,14 @@ class _HomeShellState extends State<HomeShell> {
   // Color "con vida" (Airbnb) por sección; el ícono va coloreado en el menú.
   static const _colores = <Color>[
     lima,               // Canchas
-    Color(0xFF2AA9E0),  // Agenda (azul)
-    naranja,            // Reservas
+    naranja,            // Reservas (Lista + Calendario)
     morado,             // Clientes
     lima,               // Mensajes (se ignora: va el ícono de WhatsApp)
     teal,               // Reportes
     amarillo,           // Billetera
   ];
   // Índice de la pestaña Mensajes → usa el ícono de chat con "P" (marca Pichan).
-  static const _iMensajes = 4;
+  static const _iMensajes = 3;
 
   @override
   Widget build(BuildContext context) {

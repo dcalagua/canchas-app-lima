@@ -14,16 +14,47 @@ import 'reportes_hub_screen.dart';
 import 'reserva_manual_screen.dart';
 import 'reservas_fijas_screen.dart';
 
-/// Panel de RESERVAS del dueño (piloto): lista las reservas reales de sus
-/// canchas, con botones para registrar el pago en efectivo o marcar no-show,
-/// y un mini libro de caja (cobrado / por cobrar). Es la contraparte del flujo
-/// "pago en cancha": el jugador reserva y el dueño confirma el cobro aquí.
+/// Panel de RESERVAS del dueño (vista LISTA del hub de Reservas): lista las
+/// reservas reales de sus canchas, con botones para registrar el pago en
+/// efectivo o marcar no-show, y un mini libro de caja (cobrado / por cobrar).
+/// Es la contraparte del flujo "pago en cancha": el jugador reserva y el dueño
+/// confirma el cobro aquí. También se abre standalone (push desde la
+/// notificación de nueva reserva o desde la ficha del club).
 class ReservasDuenoScreen extends StatefulWidget {
-  const ReservasDuenoScreen({super.key});
+  const ReservasDuenoScreen({super.key, this.embedded = false});
+
+  /// Cuando va dentro del hub (conmutador Lista/Calendario) se OCULTA su propia
+  /// AppBar: el hub aporta el título y las acciones. Sigue funcionando standalone
+  /// (push desde notificación de reserva o desde la ficha) con embedded=false.
+  final bool embedded;
 
   @override
   State<ReservasDuenoScreen> createState() => _ReservasDuenoScreenState();
 }
+
+/// Acciones de la barra de Reservas (recordatorios, clientes fijos, reportes).
+/// Compartidas por la pantalla standalone y por el hub Lista/Calendario, para
+/// no duplicar el menú.
+List<Widget> accionesReservas(BuildContext context) => [
+      IconButton(
+        tooltip: 'Recordar reservas (anti no-show)',
+        icon: const Icon(Icons.notifications_active_outlined),
+        onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => const RecordarReservasScreen())),
+      ),
+      IconButton(
+        tooltip: 'Clientes fijos (pensionados)',
+        icon: const Icon(Icons.event_repeat),
+        onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => const ReservasFijasScreen())),
+      ),
+      IconButton(
+        tooltip: 'Reportes',
+        icon: const Icon(Icons.bar_chart),
+        onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => const ReportesHubScreen(inicial: 1))),
+      ),
+    ];
 
 class _ReservasDuenoScreenState extends State<ReservasDuenoScreen> {
   // Filtro por tiempo: 'proximas' (default) muestra hoy/futuras; 'pasadas' es el
@@ -84,31 +115,18 @@ class _ReservasDuenoScreenState extends State<ReservasDuenoScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Reservas'),
-        actions: [
-          IconButton(
-            tooltip: 'Recordar reservas (anti no-show)',
-            icon: const Icon(Icons.notifications_active_outlined),
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => const RecordarReservasScreen())),
-          ),
-          IconButton(
-            tooltip: 'Clientes fijos (pensionados)',
-            icon: const Icon(Icons.event_repeat),
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => const ReservasFijasScreen())),
-          ),
-          IconButton(
-            tooltip: 'Reportes',
-            icon: const Icon(Icons.bar_chart),
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => const ReportesHubScreen(inicial: 1))),
-          ),
-        ],
-      ),
+      backgroundColor: Colors.transparent,
+      appBar: widget.embedded
+          ? null
+          : AppBar(
+              title: const Text('Reservas'),
+              actions: accionesReservas(context),
+            ),
       // Anota la reserva de un cliente que llamó/vino (digitaliza el cuaderno).
       floatingActionButton: FloatingActionButton.extended(
+        // Tag único: convive con el FAB de la vista Calendario en el hub
+        // (IndexedStack) sin chocar heroTags al abrir una ruta.
+        heroTag: 'fab-reservas',
         backgroundColor: lima,
         foregroundColor: Colors.white,
         icon: const Icon(Icons.add),
