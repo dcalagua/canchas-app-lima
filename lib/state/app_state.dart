@@ -27,6 +27,7 @@ import '../data/perfiles_repo.dart';
 import '../data/bloqueos_repo.dart';
 import '../data/descuentos_repo.dart';
 import '../data/referidos_repo.dart';
+import '../data/espera_repo.dart';
 import '../data/resenas_repo.dart';
 import '../data/reservas_repo.dart';
 import '../data/sample_data.dart';
@@ -40,6 +41,7 @@ import '../models/models.dart';
 import '../models/negocio.dart';
 import '../models/plan_trabajo.dart';
 import '../data/planes_semilla.dart';
+import '../models/espera.dart';
 import '../models/resena.dart';
 import '../models/reserva_fija.dart';
 import '../models/temporada.dart';
@@ -4512,6 +4514,74 @@ class AppState extends ChangeNotifier {
     return ResenasRepo.enviar(r);
   }
 
+  // ── LISTA DE ESPERA de horarios (waitlist) ────────────────────────────────
+  // Cache por cancha_id (se llena al abrir una ficha o el panel del dueño).
+  final Map<String, List<EnEspera>> _espera = {};
+
+  /// Carga la lista de espera de un conjunto de canchas (una consulta).
+  Future<void> cargarEspera(List<String> canchaIds) async {
+    if (canchaIds.isEmpty) return;
+    final rows = await EsperaRepo.deCanchas(canchaIds);
+    for (final id in canchaIds) {
+      _espera[id] = rows.where((e) => e.canchaId == id).toList();
+    }
+    notifyListeners();
+  }
+
+  /// Quiénes esperan un slot concreto (orden de llegada = orden de cola).
+  List<EnEspera> esperaSlot(String canchaId, String fecha, String hora) {
+    final l = _espera[canchaId];
+    if (l == null) return const <EnEspera>[];
+    return l.where((e) => e.fecha == fecha && e.hora == hora).toList();
+  }
+
+  /// Total en espera de un slot.
+  int nEnEspera(String canchaId, String fecha, String hora) =>
+      esperaSlot(canchaId, fecha, hora).length;
+
+  /// ¿El jugador logueado ya está en la lista de espera de este slot?
+  bool estoyEnEspera(String canchaId, String fecha, String hora) {
+    final email = usuario?.email.trim().toLowerCase();
+    if (email == null || email.isEmpty) return false;
+    return esperaSlot(canchaId, fecha, hora)
+        .any((e) => e.usuario.trim().toLowerCase() == email);
+  }
+
+  /// El jugador se anota a la lista de espera de un slot tomado. Optimista.
+  Future<bool> unirmeAEspera(String canchaId, String fecha, String hora) async {
+    final u = usuario;
+    if (u == null || u.email.isEmpty) return false;
+    final email = u.email.trim().toLowerCase();
+    final e = EnEspera(
+      id: EnEspera.claveId(email, canchaId, fecha, hora),
+      canchaId: canchaId,
+      fecha: fecha,
+      hora: hora,
+      usuario: email,
+      nombre: u.nombre,
+      telefono: miCelular,
+      creado: DateTime.now(),
+    );
+    final lista = [..._espera[canchaId] ?? const <EnEspera>[]]
+      ..removeWhere((x) =>
+          x.fecha == fecha && x.hora == hora && x.usuario == email)
+      ..add(e);
+    _espera[canchaId] = lista;
+    notifyListeners();
+    return EsperaRepo.unirse(e);
+  }
+
+  /// El jugador se baja de la lista de espera de un slot. Optimista.
+  Future<bool> salirDeEspera(String canchaId, String fecha, String hora) async {
+    final email = usuario?.email.trim().toLowerCase();
+    if (email == null || email.isEmpty) return false;
+    final id = EnEspera.claveId(email, canchaId, fecha, hora);
+    _espera[canchaId] = [..._espera[canchaId] ?? const <EnEspera>[]]
+      ..removeWhere((x) => x.id == id);
+    notifyListeners();
+    return EsperaRepo.salir(id);
+  }
+
   /// Mis reservas = reservas cuyo correo coincide con el jugador logueado.
   void _recomputarMisReservas() {
     final email = usuario?.email;
@@ -6371,6 +6441,7 @@ class AppState extends ChangeNotifier {
         await ReservasRepo.eliminarDeCancha(id);
       }
       await ResenasRepo.eliminarDeCanchas(misCanchaIds.toList());
+      await EsperaRepo.eliminarDeCanchas(misCanchaIds.toList());
       // Chats: de mis academias + conversaciones de cancha donde participo.
       await MensajesRepo.eliminarDeAcademias(misAcademiaIds.toList());
       await MensajesRepo.eliminarCanchaDe(email);

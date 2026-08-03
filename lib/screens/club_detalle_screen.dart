@@ -6,11 +6,13 @@ import '../models/models.dart';
 import '../models/resena.dart';
 import '../services/location_service.dart';
 import '../services/propiedad_service.dart';
+import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/ancho_lectura.dart';
 import '../widgets/chat_burbuja.dart';
 import '../widgets/court_lines.dart';
+import '../widgets/dialogo_pichangol.dart';
 import '../widgets/marca.dart';
 import 'chat_screen.dart';
 import 'editar_cancha_screen.dart';
@@ -94,6 +96,193 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     appState.cargarReservasRemotas();
     // Horarios bloqueados por el dueño (no reservables).
     appState.cargarBloqueos();
+    // Lista de espera del local (para marcar los slots con cola y ofrecer
+    // anotarse en una hora tomada).
+    appState.cargarEspera(widget.club.canchas.map((c) => c.id).toList());
+  }
+
+  /// ¿El slot [h] ya pasó? (para "Hoy", una hora anterior a ahora).
+  bool _esPasado(String h) {
+    final fp = _fechaSlot(h).split('-');
+    final hp = h.split(':');
+    if (fp.length < 3 || hp.length < 2) return false;
+    final y = int.tryParse(fp[0]),
+        mo = int.tryParse(fp[1]),
+        d = int.tryParse(fp[2]),
+        hh = int.tryParse(hp[0]),
+        mi = int.tryParse(hp[1]);
+    if (y == null || mo == null || d == null || hh == null || mi == null) {
+      return false;
+    }
+    return DateTime(y, mo, d, hh, mi).isBefore(DateTime.now());
+  }
+
+  /// El jugador tocó una hora TOMADA: ofrecer lista de espera (anotarse / salir).
+  Future<void> _ofrecerEspera(String h) async {
+    if (_soyDueno) return;
+    if (!appState.logueado) {
+      await avisarPichangol(context,
+          titulo: 'Inicia sesión',
+          mensaje: 'Entra con tu cuenta para anotarte en la lista de espera '
+              'de una hora tomada.');
+      return;
+    }
+    final fecha = _fechaSlot(h);
+    if (appState.estoyEnEspera(_cancha.id, fecha, h)) {
+      final salir = await confirmarPichangol(context,
+          titulo: 'Ya estás en la lista de espera',
+          mensaje: 'Te avisaremos si las $h se liberan. ¿Quieres salir de la '
+              'lista de espera?',
+          textoConfirmar: 'Salir',
+          destructivo: true,
+          icono: Icons.hourglass_bottom);
+      if (salir == true) {
+        await appState.salirDeEspera(_cancha.id, fecha, h);
+        if (mounted) {
+          setState(() {});
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Saliste de la lista de espera.')));
+        }
+      }
+      return;
+    }
+    final ok = await confirmarPichangol(context,
+        titulo: 'Esa hora está tomada',
+        mensaje: 'Las $h ya están reservadas. ¿Te anotamos en la lista de '
+            'espera? Si se libera, el dueño te contacta.',
+        textoConfirmar: 'Avísame',
+        icono: Icons.notifications_active_outlined);
+    if (ok == true) {
+      await appState.unirmeAEspera(_cancha.id, fecha, h);
+      if (mounted) {
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            backgroundColor: lima,
+            content: Text('Te anotamos para las $h. Te avisaremos si se '
+                'libera.')));
+      }
+    }
+  }
+
+  /// Horas del día visible que el jugador ESPERABA y ahora están LIBRES
+  /// (device-first: al reabrir la ficha ve que se liberó sin depender de push).
+  List<String> _horasLiberadas() {
+    if (!appState.logueado || _soyDueno) return const [];
+    final out = <String>[];
+    for (final h in _horas) {
+      if (_ocupada(h) || _esPasado(h)) continue;
+      if (appState.estoyEnEspera(_cancha.id, _fechaSlot(h), h)) out.add(h);
+    }
+    return out;
+  }
+
+  /// El DUEÑO tocó una hora reservada: ve la lista de espera y contacta a quien
+  /// espera (para ofrecerle la hora si se libera). Si no hay cola, ofrece
+  /// bloquear/gestionar como antes.
+  void _verEsperaDueno(String h) {
+    final fecha = _fechaSlot(h);
+    final cola = appState.esperaSlot(_cancha.id, fecha, h);
+    if (cola.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Las $h están reservadas. Nadie en lista de espera '
+              'todavía.')));
+      return;
+    }
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) {
+        final t = Theme.of(ctx).textTheme;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.hourglass_top, color: lima),
+                    const SizedBox(width: 8),
+                    Text('Lista de espera · $h',
+                        style: t.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800)),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text('Si esta hora se libera, contáctalos por orden de llegada.',
+                    style: t.bodySmall?.copyWith(color: textoTenueDe(ctx))),
+                const SizedBox(height: 12),
+                for (var i = 0; i < cola.length; i++)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 16,
+                          backgroundColor: lima.withOpacity(0.15),
+                          child: Text('${i + 1}',
+                              style: const TextStyle(
+                                  color: lima, fontWeight: FontWeight.w800)),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                              cola[i].nombre.isEmpty
+                                  ? cola[i].usuario
+                                  : cola[i].nombre,
+                              style: t.bodyMedium
+                                  ?.copyWith(fontWeight: FontWeight.w700)),
+                        ),
+                        if (cola[i].telefono.isNotEmpty)
+                          IconButton(
+                            tooltip: 'WhatsApp',
+                            icon: const Icon(Icons.chat, color: lima),
+                            onPressed: () => WhatsAppLink.abrir(
+                                cola[i].telefono,
+                                'Hola ${cola[i].nombre} 👋 Se liberó la hora de '
+                                'las $h en ${widget.club.nombre}. ¿La tomas?'),
+                          )
+                        else
+                          IconButton(
+                            tooltip: 'Chatear',
+                            icon: Icon(Icons.chat_bubble_outline,
+                                color: Theme.of(ctx).colorScheme.primary),
+                            onPressed: () {
+                              Navigator.of(ctx).pop();
+                              _chatearConEspera(cola[i].usuario,
+                                  cola[i].nombre.isEmpty
+                                      ? cola[i].usuario
+                                      : cola[i].nombre);
+                            },
+                          ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Chat del dueño con un jugador en lista de espera.
+  void _chatearConEspera(String email, String nombre) {
+    final owner = appState.usuario?.email ?? '';
+    if (owner.isEmpty || email.isEmpty) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ChatScreen(
+        academiaId: '',
+        cuentaEmail: email,
+        titulo: nombre,
+        soyProfe: true,
+        tipo: 'cancha',
+        refId: owner,
+      ),
+    ));
   }
 
   /// Baja las canchas de Supabase y, si la cancha mostrada cambió (p. ej. la
@@ -250,6 +439,12 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
   /// están libres, rellena el bloque (18:00 → 20:00 = 2 h); si hay una hora
   /// ocupada en medio, empieza un bloque nuevo en la hora tocada.
   void _tapSlot(String h) {
+    // Slot TOMADO (reservado, no bloqueado por el dueño) y a futuro → ofrecer
+    // lista de espera (waitlist): si se libera, el dueño te contacta.
+    if (_reservado(h) && !_esPasado(h)) {
+      _ofrecerEspera(h);
+      return;
+    }
     if (_ocupada(h)) return;
     final todas = _horas;
     setState(() {
@@ -412,6 +607,14 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     // Solo es "confirmada" si llegó a Supabase (fuente de verdad anti-doble
     // reserva). Con sinConexion/error se guarda local pero NO está garantizada.
     final confirmada = res == ResultadoReserva.ok;
+    if (confirmada) {
+      // Ya reservaste: sal de la lista de espera de esas horas (si estabas).
+      for (final h in _slotsOrd) {
+        if (appState.estoyEnEspera(_cancha.id, _fechaSlot(h), h)) {
+          appState.salirDeEspera(_cancha.id, _fechaSlot(h), h);
+        }
+      }
+    }
     messenger.showSnackBar(
       SnackBar(
         backgroundColor: confirmada ? pino : const Color(0xFFB4471F),
@@ -713,7 +916,11 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                               valle: _esValle(h),
                               descuento: _descEfectivo(h),
                               seleccionada: false,
-                              onTap: () => _alternarBloqueo(h),
+                              nEspera: appState.nEnEspera(
+                                  _cancha.id, _fechaSlot(h), h),
+                              onTap: () => _reservado(h)
+                                  ? _verEsperaDueno(h)
+                                  : _alternarBloqueo(h),
                             ),
                         ],
                       ),
@@ -764,6 +971,33 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                         style: t.bodySmall?.copyWith(
                             color: Colors.red, fontWeight: FontWeight.w600)),
                     const SizedBox(height: 12),
+                    // Banner device-first: una hora que esperabas se liberó.
+                    if (_horasLiberadas().isNotEmpty) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: limaSuave,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: lima),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.celebration, color: lima),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                  '¡Se liberó ${_horasLiberadas().join(', ')} que '
+                                  'esperabas! Tócala abajo para reservar.',
+                                  style: t.bodySmall?.copyWith(
+                                      color: bosque,
+                                      fontWeight: FontWeight.w700,
+                                      height: 1.3)),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                     if (_horas.isEmpty)
                       Text(
                         _dia == 'Hoy'
@@ -783,6 +1017,9 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                               valle: _esValle(h),
                               descuento: _descEfectivo(h),
                               seleccionada: _slots.contains(h),
+                              enEspera: _reservado(h) &&
+                                  appState.estoyEnEspera(
+                                      _cancha.id, _fechaSlot(h), h),
                               onTap: () => _tapSlot(h),
                             ),
                         ],
@@ -1534,6 +1771,8 @@ class _SlotChip extends StatelessWidget {
     required this.onTap,
     this.bloqueada = false,
     this.descuento = 0,
+    this.enEspera = false,
+    this.nEspera = 0,
   });
   final String hora;
   final bool ocupada;
@@ -1542,6 +1781,8 @@ class _SlotChip extends StatelessWidget {
   final VoidCallback onTap;
   final bool bloqueada; // slot cerrado por el dueño (tappable para reabrir)
   final int descuento; // "hora feliz": % de descuento si valle (0 = ninguno)
+  final bool enEspera; // el jugador está en la lista de espera de este slot
+  final int nEspera; // cuántos esperan (vista del dueño); 0 = no mostrar
 
   @override
   Widget build(BuildContext context) {
@@ -1570,16 +1811,40 @@ class _SlotChip extends StatelessWidget {
       );
     }
     if (ocupada) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF0ECE2),
-          borderRadius: BorderRadius.circular(14),
+      // Tomado: tappable → lista de espera (jugador) o ver quién espera (dueño).
+      return GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          decoration: BoxDecoration(
+            color: enEspera ? limaSuave : const Color(0xFFF0ECE2),
+            borderRadius: BorderRadius.circular(14),
+            border: enEspera ? Border.all(color: lima) : null,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(hora,
+                  style: TextStyle(
+                      color: enEspera ? lima : const Color(0xFFB5AFA3),
+                      fontWeight: enEspera ? FontWeight.w700 : FontWeight.w400,
+                      decoration:
+                          enEspera ? null : TextDecoration.lineThrough)),
+              if (enEspera) ...[
+                const SizedBox(width: 5),
+                const Icon(Icons.hourglass_top, size: 13, color: lima),
+              ] else if (nEspera > 0) ...[
+                const SizedBox(width: 5),
+                Icon(Icons.hourglass_top, size: 12, color: textoTenueDe(context)),
+                Text('$nEspera',
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: textoTenueDe(context))),
+              ],
+            ],
+          ),
         ),
-        child: Text(hora,
-            style: const TextStyle(
-                color: Color(0xFFB5AFA3),
-                decoration: TextDecoration.lineThrough)),
       );
     }
     // Slot seleccionado = verde WhatsApp (marca), nunca negro. Es la selección
