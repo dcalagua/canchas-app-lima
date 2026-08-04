@@ -289,6 +289,25 @@ def reset_virgen_admin(
     return {"ok": True, "borrado": conteo}
 
 
+@router.post("/admin/api/reset-total")
+def reset_total_admin(
+        x_admin_token: str | None = Header(default=None)) -> dict:
+    """VIRGEN TOTAL: borra ABSOLUTAMENTE TODO el estado del servidor, INCLUIDOS los
+    reclamos de propiedad (las canchas dejan de estar reclamadas/verificadas) y la
+    config del operador. Deja el backend como recién instalado. Combínalo con el
+    SQL dejar_virgen_total.sql (Supabase) y con limpiar los datos de la app en cada
+    dispositivo. El snapshot vacío se persiste por el middleware tras este POST."""
+    _check(x_admin_token)
+    antes = {
+        "reclamos": len(stores.reclamos),
+        "canchas": len(stores.canchas),
+        "pagos": len(stores.pagos),
+        "saldos": len(stores.saldos),
+    }
+    stores.reset()
+    return {"ok": True, "virgen_total": True, "borrado": antes}
+
+
 # ─────────────────────── DISPUTAS DEL MARKETPLACE ─────────────────────────────
 
 class ResolverDisputaRequest(BaseModel):
@@ -1059,8 +1078,33 @@ function renderMantenimiento(){
       <div class="actions" style="flex-wrap:wrap;gap:8px">
         <button class="btn-rc" style="font-weight:800" onclick="resetVirgen()">🧼 Dejar el servidor en virgen</button>
       </div>
+      <div class="row" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+        <b>🧨 VIRGEN TOTAL (servidor)</b><br/>
+        Borra <b>ABSOLUTAMENTE TODO</b> del servidor, <b>incluidos los reclamos de
+        propiedad</b> (las canchas dejan de estar reclamadas/verificadas) y la
+        config. Úsalo junto con el SQL <code>dejar_virgen_total.sql</code> en
+        Supabase y con limpiar los datos de la app en cada teléfono.
+      </div>
+      <div class="actions" style="flex-wrap:wrap;gap:8px">
+        <button class="btn-rc" style="font-weight:800;background:#9A1722;color:#fff;border-color:#9A1722" onclick="resetTotal()">🧨 Borrar TODO (virgen total)</button>
+      </div>
       <div id="mant_res" class="row" style="margin-top:10px;color:var(--muted)"></div>
     </div>`;
+}
+async function resetTotal(){
+  if(!confirm('⚠️ VIRGEN TOTAL\\n\\nBorra ABSOLUTAMENTE TODO del servidor, INCLUIDOS los reclamos de propiedad (las canchas dejan de estar reclamadas) y la config. Esto NO se puede deshacer.')) return;
+  if(!confirm('Última confirmación: se borrará TODO el estado del servidor. ¿Continuar?')) return;
+  try{
+    const r = await fetch('/admin/api/reset-total',{method:'POST',headers:headers()});
+    if(r.status===401){ salir(); return; }
+    const j = await r.json();
+    const b = j.borrado||{};
+    document.getElementById('mant_res').textContent =
+      `Servidor VIRGEN TOTAL. Borrado: ${b.reclamos||0} reclamos, ${b.canchas||0} canchas, `+
+      `${b.pagos||0} pagos, ${b.saldos||0} saldos. Ahora corre el SQL en Supabase y limpia la app.`;
+    toast('Servidor en virgen TOTAL');
+    cargar();
+  }catch(e){ document.getElementById('mant_res').textContent='No se pudo.'; }
 }
 async function resetVirgen(){
   if(!confirm('¿DEJAR EL SERVIDOR EN VIRGEN?\\n\\nBorra pagos, saldos, suscripciones, tarjetas guardadas y vistas. CONSERVA las canchas reclamadas y la config. Esto NO se puede deshacer.')) return;
