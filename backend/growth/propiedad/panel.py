@@ -37,6 +37,10 @@ class DecidirRequest(BaseModel):
     revisor: str | None = None
 
 
+class LiberarRequest(BaseModel):
+    revisor: str | None = None
+
+
 class ModoRequest(BaseModel):
     modo: str
 
@@ -102,6 +106,15 @@ def decidir(reclamo_id: int, req: DecidirRequest,
     if req.aprobado:
         return reclamos.aprobar_directo(reclamo_id, req.revisor)
     return reclamos.triage(reclamo_id, False, req.revisor)
+
+
+@router.post("/admin/api/reclamo/{reclamo_id}/liberar")
+def liberar_lugar_panel(reclamo_id: int, req: LiberarRequest,
+                        x_admin_token: str | None = Header(default=None)) -> dict:
+    """LIBERA el lugar: rechaza este reclamo y todos los del mismo lugar, y revoca
+    la cancha. La ficha vuelve a ser reclamable (resuelve lugares atascados)."""
+    _check(x_admin_token)
+    return reclamos.liberar_lugar(reclamo_id, req.revisor or "panel")
 
 
 @router.get("/admin/api/modo")
@@ -801,6 +814,10 @@ _HTML = r"""<!DOCTYPE html>
   .btn-ap{background:var(--bosque);color:var(--lima);border-color:var(--bosque)}
   .btn-rc{background:#fff;color:var(--rojo);border-color:#F3C9CE}
   .btn-ap:disabled,.btn-rc:disabled{opacity:.5;cursor:default}
+  .btn-lib{width:100%;border-radius:14px;padding:9px;font-family:inherit;
+    font-weight:700;font-size:13px;cursor:pointer;background:#fff;color:#8a5a00;
+    border:1px solid #E9D8A6}
+  .btn-lib:disabled{opacity:.5;cursor:default}
   .actions .seg{background:#fff;color:var(--text)}
   .actions .seg.on{background:var(--bosque);color:var(--lima);border-color:var(--bosque)}
   .modosel{font-family:inherit;font-size:12px;padding:5px 8px;border:1px solid var(--border);
@@ -1854,6 +1871,14 @@ function render(){
         <button class="btn-rc" onclick="decidir(${r.id},false,this)">Rechazar</button>
         <button class="btn-ap" onclick="decidir(${r.id},true,this)" ${apDis}>Aprobar y activar</button>
       </div>` : '';
+    // "Liberar lugar": aparece cuando el reclamo AÚN ocupa el lugar (cualquier
+    // estado bloqueante, incl. activada). Rechaza este y sus hermanos del mismo
+    // lugar y revoca la cancha → la ficha vuelve a ser reclamable.
+    const blk = ['pendiente_triage','aprobado_triage','pendiente_validacion',
+      'validada_pendiente_admin','activada'].includes(r.estado);
+    const lib = blk ? `<div class="row" style="margin-top:8px">
+        <button class="btn-lib" onclick="liberar(${r.id},this)">🔓 Liberar lugar (volver a reclamable)</button>
+      </div>` : '';
     const ov = overrides[r.cancha_id];
     const sel = `<div class="row" style="margin-top:10px">Modo de esta cancha:
       <select class="modosel" onchange="setModoCancha('${esc(r.cancha_id)}', this.value)">
@@ -1874,6 +1899,7 @@ function render(){
       <div style="margin-top:8px"><span class="chip est-${esc(r.estado)}">${esc(r.estado)}</span></div>
       ${sel}
       ${acc}
+      ${lib}
     </div>`;
   }).join('');
 }
@@ -1898,6 +1924,25 @@ async function decidir(id, aprobado, btn){
       msg='🔒 No se aprobó: no hay ubicación del reclamante para validar.';
     else msg='No se pudo: '+(j.error||'error');
     toast(msg);
+    card.querySelectorAll('button').forEach(b=>b.disabled=false);
+  }
+}
+
+async function liberar(id, btn){
+  if(!confirm('¿Liberar este lugar? Se rechazará este reclamo y todos los del mismo lugar, y la cancha volverá a ser reclamable por cualquiera.')) return;
+  const card = btn.closest('.card');
+  card.querySelectorAll('button').forEach(b=>b.disabled=true);
+  const r = await fetch('/admin/api/reclamo/'+id+'/liberar',{
+    method:'POST', headers:headers(),
+    body: JSON.stringify({revisor:'panel'})
+  });
+  if(r.status===401){ salir(); return; }
+  const j = await r.json();
+  if(j.ok){
+    toast('🔓 Lugar liberado ('+(j.liberados||1)+' reclamo(s) cerrado(s))');
+    cargar();
+  } else {
+    toast('No se pudo liberar: '+(j.error||'error'));
     card.querySelectorAll('button').forEach(b=>b.disabled=false);
   }
 }

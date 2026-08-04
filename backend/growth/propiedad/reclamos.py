@@ -378,6 +378,39 @@ def _cerrar_duplicados(r: ReclamoPropiedad) -> None:
             otro.nota = f"Duplicado: la cancha ya fue activada por el reclamo #{r.id}."
 
 
+def _rechazar_hermanos_lugar(r: ReclamoPropiedad, nota: str) -> int:
+    """Al RECHAZAR/LIBERAR un lugar, rechaza también los OTROS reclamos NO
+    terminales del MISMO lugar (mismo cancha_id o ≤ _MISMO_LUGAR_M metros). Así un
+    rechazo deja el lugar REALMENTE libre para reclamar de nuevo, sin stragglers
+    que quedaron pendientes por reintentos o por carreras al reiniciar el backend.
+    Devuelve cuántos reclamos hermanos cerró."""
+    n = 0
+    for otro in _reclamos_del_lugar(r.cancha_id):
+        if otro.id != r.id and otro.estado not in _ESTADOS_TERMINALES:
+            otro.estado = "rechazada"
+            otro.decidido_en = ahora()
+            otro.nota = nota
+            n += 1
+    return n
+
+
+def liberar_lugar(reclamo_id: int, revisor: str | None = None) -> dict:
+    """Admin: LIBERA un lugar. Rechaza el reclamo dado y TODOS los reclamos NO
+    terminales del mismo lugar, y revoca la cancha si estaba sostenida por él. Deja
+    la ficha reclamable de nuevo de un toque (para resolver lugares que quedaron
+    'atascados' en revisión)."""
+    r = _por_id(reclamo_id)
+    if r is None:
+        return {"ok": False, "error": "reclamo_no_existe"}
+    nota = f"Lugar liberado por {revisor or 'admin'}."
+    r.estado = "rechazada"
+    r.decidido_en = ahora()
+    r.nota = nota
+    hermanos = _rechazar_hermanos_lugar(r, nota)
+    _revocar_cancha_al_rechazar(r)
+    return {"ok": True, "estado": "rechazada", "liberados": hermanos + 1}
+
+
 def _por_id(reclamo_id: int) -> ReclamoPropiedad | None:
     return next((r for r in stores.reclamos if r.id == reclamo_id), None)
 
@@ -410,6 +443,7 @@ def rechazar_por_codigo(codigo: str, revisor: str | None = None) -> dict:
     r.estado = "rechazada"
     r.decidido_en = ahora()
     r.nota = f"Rechazado por WhatsApp ({revisor or 'admin'}).".strip()
+    _rechazar_hermanos_lugar(r, r.nota)
     _revocar_cancha_al_rechazar(r)
     return {"ok": True, "estado": "rechazada", "nombre_local": r.nombre_local}
 
@@ -499,6 +533,9 @@ def triage(reclamo_id: int, aprobado: bool, revisor: str | None = None,
     r.decidido_en = ahora()
     r.nota = f"Triage por {revisor or 'admin'}. {nota or ''}".strip()
     if not aprobado:
+        # Un rechazo libera el lugar: cierra también los hermanos NO terminales del
+        # mismo lugar (evita que quede uno pendiente "secuestrando" la ficha).
+        _rechazar_hermanos_lugar(r, r.nota)
         _revocar_cancha_al_rechazar(r)
     return {"ok": True, "estado": r.estado}
 

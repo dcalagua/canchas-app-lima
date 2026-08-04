@@ -222,6 +222,14 @@ def post_activar(reclamo_id: int) -> dict:
     return reclamos.activar_admin(reclamo_id)
 
 
+@router.post("/reclamo/{reclamo_id}/liberar", dependencies=_ADMIN)
+def post_liberar_lugar(reclamo_id: int, req: TriageRequest) -> dict:
+    """LIBERA el lugar: rechaza este reclamo y todos los NO terminales del mismo
+    lugar, y revoca la cancha. Deja la ficha reclamable de nuevo (resuelve lugares
+    atascados en 'revisión')."""
+    return reclamos.liberar_lugar(reclamo_id, req.revisor)
+
+
 @router.get("/reclamos", dependencies=_ADMIN)
 def get_reclamos(estado: str | None = None) -> list[dict]:
     """ADMIN: lista completa (incluye datos personales del reclamante). Protegido

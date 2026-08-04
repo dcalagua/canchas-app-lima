@@ -119,6 +119,41 @@ def test_aprobar_uno_cierra_duplicados_preexistentes():
     assert "Duplicado" in (dup_actualizado.nota or "")
 
 
+def test_rechazar_libera_el_lugar_y_cierra_hermanos_pendientes():
+    """Rechazar un reclamo deja el lugar RECLAMABLE de nuevo, y también cierra los
+    reclamos hermanos NO terminales del mismo lugar (evita que uno pendiente siga
+    'secuestrando' la ficha tras un rechazo)."""
+    r1 = _crear()
+    # Straggler pendiente de la MISMA cancha (p. ej. quedó por una carrera al
+    # reiniciar el backend).
+    hermano = ReclamoPropiedad(
+        id=stores.next_id("reclamo"), cancha_id="c1", solicitante_id="otro@x.com",
+        nombre_local="La Pichanga", codigo="888888", estado="pendiente_triage",
+        creado_en=ahora())
+    stores.reclamos.append(hermano)
+
+    reclamos.triage(r1["reclamo_id"], aprobado=False, revisor="dennis")
+
+    # El lugar quedó libre para reclamar (ningún reclamo bloqueante).
+    assert reclamos.lugar_reclamado(None, None, "c1") == {"reclamada": False}
+    herm = next(r for r in stores.reclamos if r.id == hermano.id)
+    assert herm.estado == "rechazada"
+
+
+def test_liberar_lugar_revoca_cancha_activada_y_la_vuelve_reclamable():
+    """'Liberar lugar' sobre una cancha ya ACTIVADA la revoca (deja de estar
+    verificada) y el lugar vuelve a ser reclamable."""
+    r = _crear()
+    reclamos.aprobar_directo(r["reclamo_id"], revisor="dennis")
+    assert stores.cancha("c1").verificada is True
+
+    res = reclamos.liberar_lugar(r["reclamo_id"], revisor="dennis")
+
+    assert res["ok"] and res["estado"] == "rechazada"
+    assert stores.cancha("c1").verificada is False
+    assert reclamos.lugar_reclamado(None, None, "c1") == {"reclamada": False}
+
+
 def test_reclamo_se_persiste_en_snapshot():
     _crear()
     estado = stores.to_state()
