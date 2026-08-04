@@ -123,7 +123,7 @@ function paginaHtml(c: any): string {
     ? `<div class="cta"><b>Inscripciones abiertas</b>${c.costoInscripcion > 0 ? ` · ${esc(mon)} ${Number(c.costoInscripcion).toFixed(2)}` : " · gratis"}<br><span>${comoInscribe}</span><br><a class="mapbtn" style="margin-top:10px" href="https://github.com/dcalagua/canchas-app-lima/releases/tag/v0.1.0">Descargar / abrir Pichangol</a></div>`
     : "";
 
-  return `<!doctype html><html lang="es"><head>
+  return `<!-- campeonato-web v2 --><!doctype html><html lang="es"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(c.nombre)} · Pichangol</title>
 <style>
@@ -195,7 +195,10 @@ function htmlSimple(titulo: string, msg: string): string {
 serve(async (req) => {
   const url = new URL(req.url);
   const id = url.searchParams.get("id") ?? "";
-  const headers = { "Content-Type": "text/html; charset=utf-8" };
+  const headers = {
+    "Content-Type": "text/html; charset=utf-8",
+    "Cache-Control": "no-store",
+  };
 
   if (!id) {
     return new Response(htmlSimple("Campeonato", "Falta el identificador."), {
