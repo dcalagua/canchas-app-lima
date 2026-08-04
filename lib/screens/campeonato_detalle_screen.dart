@@ -151,7 +151,9 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                   _Liga(campeonato: c, esDueno: esDueno)
                 else
                   _Llave(campeonato: c, esDueno: esDueno),
-                if (c.academiaId.isEmpty) ...[
+                // "Ver ranking" solo para deportes CON circuito (tenis/pádel/
+                // pickleball). Fútbol/natación no tienen ranking → no se ofrece.
+                if (c.academiaId.isEmpty && c.esDeporteCircuito) ...[
                   const SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
@@ -169,7 +171,11 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                   ),
                 ],
               ],
-              if (!c.esTiempos && esDueno && c.fixtureGenerado) ...[
+              // "Sumar al ranking" también solo para deportes con circuito.
+              if (!c.esTiempos &&
+                  esDueno &&
+                  c.fixtureGenerado &&
+                  c.esDeporteCircuito) ...[
                 const SizedBox(height: 20),
                 SizedBox(
                   width: double.infinity,
@@ -2028,46 +2034,59 @@ class _InvitarCard extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-              'Comparte el código o el enlace. Para unirse en la app: '
-              '“Unirme a un campeonato” 🔗 y pegar el código.',
+              c.codigo.isNotEmpty
+                  ? 'Comparte el código o el enlace. Para unirse en la app: '
+                      '“Unirme a un campeonato” 🔗 y pegar el código.'
+                  : 'Comparte el enlace para que se inscriban (o mándalo por '
+                      'Pichangol/WhatsApp).',
               style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
           const SizedBox(height: 12),
-          // Código grande, tap para copiar.
-          InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: () => copiar(codigo, 'Código copiado'),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              decoration: BoxDecoration(
-                color: teal.withOpacity(0.10),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: teal.withOpacity(0.35)),
-              ),
-              child: Row(
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('CÓDIGO',
-                          style: t.bodySmall?.copyWith(
-                              color: textoTenueDe(context),
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 1)),
-                      Text(codigo,
-                          style: t.titleLarge?.copyWith(
-                              color: teal,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 2)),
-                    ],
-                  ),
-                  const Spacer(),
-                  const Icon(Icons.copy, color: teal, size: 20),
-                ],
+          // Código grande (solo si hay código corto real; los campeonatos viejos
+          // usan el enlace). FittedBox evita que se desborde de la caja.
+          if (c.codigo.isNotEmpty) ...[
+            InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => copiar(codigo, 'Código copiado'),
+              child: Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: teal.withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: teal.withOpacity(0.35)),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('CÓDIGO',
+                              style: t.bodySmall?.copyWith(
+                                  color: textoTenueDe(context),
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 1)),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(codigo,
+                                style: t.titleLarge?.copyWith(
+                                    color: teal,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 2)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.copy, color: teal, size: 20),
+                  ],
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 12),
+            const SizedBox(height: 12),
+          ],
           Wrap(
             spacing: 8,
             runSpacing: 8,

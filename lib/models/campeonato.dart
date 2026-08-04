@@ -441,6 +441,10 @@ class Campeonato {
   /// campeonatos creados antes de que existiera el código).
   String get codigoInvitacion => codigo.isNotEmpty ? codigo : id;
 
+  /// ¿Este deporte tiene circuito/ranking? Solo los de raqueta (tenis, pádel,
+  /// pickleball) hoy. Fútbol/natación NO → no se ofrece "ver/sumar al ranking".
+  bool get esDeporteCircuito => deportesCircuito.contains(deporte);
+
   Campeonato copyWith({
     String? nombre,
     FormatoTorneo? formato,
