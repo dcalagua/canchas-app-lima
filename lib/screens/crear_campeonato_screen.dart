@@ -1,5 +1,8 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../models/campeonato.dart';
 import '../models/models.dart';
@@ -65,6 +68,10 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
   // Categoría elegida del combo (label del catálogo) o el sentinel 'otra'
   // (texto libre). null = aún no elige (sin categoría).
   String? _catSel;
+  // Logo del campeonato (opcional). Se sube a Storage recién al guardar (cuando
+  // ya existe el id), para no crear filas huérfanas.
+  Uint8List? _logoBytes;
+  bool _guardando = false;
 
   /// Moneda del país de la SEDE del torneo (no la del dispositivo): el costo de
   /// inscripción se muestra y congela en ella. Sin sede ubicada, cae al país
@@ -190,12 +197,22 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
     }
   }
 
-  void _guardar() {
+  Future<void> _elegirLogo() async {
+    final XFile? f = await ImagePicker().pickImage(
+        source: ImageSource.gallery, maxWidth: 600, imageQuality: 85);
+    if (f == null) return;
+    final bytes = await f.readAsBytes();
+    if (!mounted) return;
+    setState(() => _logoBytes = bytes);
+  }
+
+  Future<void> _guardar() async {
     if (_nombre.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('Ponle un nombre al campeonato.')));
       return;
     }
+    setState(() => _guardando = true);
     final c = appState.crearCampeonato(
       academiaId: widget.academiaId,
       nombre: _nombre.text.trim(),
@@ -214,6 +231,12 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
       edadMin: int.tryParse(_edadMin.text.trim()),
       edadMax: int.tryParse(_edadMax.text.trim()),
     );
+    // Sube el logo (si eligió uno) ahora que el campeonato ya tiene id.
+    if (_logoBytes != null) {
+      await appState.ponerLogoCampeonato(c.id, _logoBytes!);
+    }
+    if (!mounted) return;
+    setState(() => _guardando = false);
     Navigator.of(context).pop(c);
   }
 
@@ -226,6 +249,14 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
         padding: EdgeInsets.fromLTRB(
             ladoTablet(context), 18, ladoTablet(context), 18),
         children: [
+          // Logo del campeonato (opcional): avatar grande tocable con badge de
+          // cámara. Se sube al guardar.
+          Center(child: _SelectorLogo(
+            bytes: _logoBytes,
+            deporte: _deporte,
+            onTap: _elegirLogo,
+          )),
+          const SizedBox(height: 18),
           TextField(
             controller: _nombre,
             textCapitalization: TextCapitalization.words,
@@ -394,13 +425,74 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
-              onPressed: _guardar,
-              icon: const Icon(Icons.emoji_events),
-              label: const Text('Crear campeonato'),
+              onPressed: _guardando ? null : _guardar,
+              icon: _guardando
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.emoji_events),
+              label: Text(_guardando ? 'Creando…' : 'Crear campeonato'),
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Avatar grande y tocable para elegir el LOGO del campeonato en el formulario
+/// de creación. Muestra la imagen elegida (aún local, sin subir) o el ícono del
+/// deporte, con un badge de cámara y una etiqueta "Agregar logo".
+class _SelectorLogo extends StatelessWidget {
+  const _SelectorLogo(
+      {required this.bytes, required this.deporte, required this.onTap});
+  final Uint8List? bytes;
+  final Deporte deporte;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Column(
+      children: [
+        GestureDetector(
+          onTap: onTap,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              CircleAvatar(
+                radius: 44,
+                backgroundColor: colorDeporte(deporte),
+                backgroundImage:
+                    bytes != null ? MemoryImage(bytes!) : null,
+                child: bytes == null
+                    ? Icon(iconoDeporte(deporte),
+                        color: Colors.white, size: 40)
+                    : null,
+              ),
+              Positioned(
+                right: -2,
+                bottom: -2,
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: lima,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: cs.surface, width: 2),
+                  ),
+                  child: const Icon(Icons.photo_camera,
+                      size: 16, color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(bytes == null ? 'Agregar logo (opcional)' : 'Cambiar logo',
+            style: const TextStyle(color: textoTenue, fontSize: 13)),
+      ],
     );
   }
 }
