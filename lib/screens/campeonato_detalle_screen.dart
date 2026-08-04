@@ -14,6 +14,7 @@ import '../utils/compartir_pichangol.dart';
 import '../utils/ubicacion_share.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/responsive.dart';
+import 'crear_campeonato_screen.dart';
 import 'login_google_sheet.dart';
 import 'ranking_global_screen.dart';
 import 'recargar_saldo_screen.dart';
@@ -202,6 +203,20 @@ class CampeonatoDetalleScreen extends StatelessWidget {
               ],
               if (esDueno) ...[
                 const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _editar(context, c),
+                    icon: const Icon(Icons.edit_outlined),
+                    label: const Text('Editar campeonato'),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                    'Cambia nombre, categoría, fechas, costo, logo o exige '
+                    'documento para inscribirse.',
+                    style: TextStyle(color: textoTenue, fontSize: 12)),
+                const SizedBox(height: 14),
                 OutlinedButton.icon(
                   onPressed: () => _confirmarEliminar(context, c),
                   icon: const Icon(Icons.delete_outline,
@@ -227,6 +242,17 @@ class CampeonatoDetalleScreen extends StatelessWidget {
           : '$n partido${n == 1 ? '' : 's'} sumado${n == 1 ? '' : 's'} al '
               'ranking del circuito.'),
     ));
+  }
+
+  Future<void> _editar(BuildContext context, Campeonato c) async {
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => CrearCampeonatoScreen(
+          academiaId: c.academiaId, editar: c),
+    ));
+    // Al volver, AppState ya notificó el cambio; la ficha se reconstruye sola
+    // (ListenableBuilder). Refresca desde la nube por si otro equipo también
+    // editó.
+    appState.cargarCampeonatosRemotos();
   }
 
   Future<void> _confirmarEliminar(BuildContext context, Campeonato c) async {

@@ -45,6 +45,15 @@ class CircuitoScreen extends StatelessWidget {
               _HeroLiga(perfil: appState.miPerfilCircuito),
               const SizedBox(height: 16),
 
+              // Unirse a un campeonato con el enlace/código que te compartieron
+              // (destacado: es la vía para inscribirte a un torneo ajeno).
+              _CircuitoTile(
+                icon: Icons.qr_code_2,
+                color: bosque,
+                title: 'Unirme a un campeonato',
+                subtitle: 'Pega el enlace o código que te compartieron',
+                onTap: () => UnirseCampeonato.mostrar(context),
+              ),
               _CircuitoTile(
                 icon: Icons.emoji_events,
                 color: amarillo,

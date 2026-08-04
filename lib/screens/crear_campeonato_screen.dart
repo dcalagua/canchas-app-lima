@@ -39,12 +39,15 @@ const List<CatCampeonato> catalogoCategorias = [
   CatCampeonato('Abierta / Libre'),
 ];
 
-/// Formulario para que el profe cree un campeonato de su academia.
+/// Formulario para CREAR o EDITAR un campeonato. Si [editar] no es null, precarga
+/// sus datos y al guardar reemplaza el existente (conserva id, código, dueño,
+/// participantes y fixture); si es null, crea uno nuevo.
 class CrearCampeonatoScreen extends StatefulWidget {
   const CrearCampeonatoScreen(
-      {super.key, required this.academiaId, this.deporteSugerido});
+      {super.key, required this.academiaId, this.deporteSugerido, this.editar});
   final String academiaId;
   final Deporte? deporteSugerido;
+  final Campeonato? editar;
 
   @override
   State<CrearCampeonatoScreen> createState() => _CrearCampeonatoScreenState();
@@ -72,6 +75,12 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
   // ya existe el id), para no crear filas huérfanas.
   Uint8List? _logoBytes;
   bool _guardando = false;
+  // Modo edición: logo ya guardado en la nube y fechas actuales (texto), para
+  // conservarlos si el usuario no elige nuevos.
+  String? _logoUrlActual;
+  String _fechasIniciales = '';
+
+  bool get _editando => widget.editar != null;
 
   /// Moneda del país de la SEDE del torneo (no la del dispositivo): el costo de
   /// inscripción se muestra y congela en ella. Sin sede ubicada, cae al país
@@ -129,6 +138,36 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
   @override
   void initState() {
     super.initState();
+    final e = widget.editar;
+    if (e != null) {
+      // Precarga todos los campos del campeonato a editar.
+      _nombre.text = e.nombre;
+      _deporte = e.deporte;
+      _formato = e.formato;
+      _categoria.text = e.categoria;
+      _costo.text = e.costoInscripcion > 0
+          ? e.costoInscripcion.toStringAsFixed(2)
+          : '';
+      _sedeNombre = e.sede;
+      _sedeUbicacion = e.sedeUbicacion;
+      _cierreInscripcion = e.inscripcionHasta;
+      _relampago = e.relampago;
+      _exigeDni = e.exigeDni;
+      _edadMin.text = e.edadMin?.toString() ?? '';
+      _edadMax.text = e.edadMax?.toString() ?? '';
+      _logoUrlActual = e.logoUrl;
+      _fechasIniciales = e.fechas;
+      // Categoría: si coincide con una del catálogo, selecciona ese ítem; si no,
+      // "otra" (texto libre); vacía = sin selección.
+      if (e.categoria.isEmpty) {
+        _catSel = null;
+      } else if (catalogoCategorias.any((c) => c.label == e.categoria)) {
+        _catSel = e.categoria;
+      } else {
+        _catSel = 'otra';
+      }
+      return;
+    }
     _formato = _formatoDe(_deporte);
     // Sede por defecto: la de la academia (si tiene ubicación).
     for (final a in appState.academias) {
@@ -213,25 +252,70 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
       return;
     }
     setState(() => _guardando = true);
-    final c = appState.crearCampeonato(
-      academiaId: widget.academiaId,
-      nombre: _nombre.text.trim(),
-      deporte: _deporte,
-      formato: _formato,
-      categoria: _categoria.text.trim(),
-      sede: _sedeNombre,
-      sedeUbicacion: _sedeUbicacion,
-      fechas: _rango == null ? '' : _fmtRango(_rango!),
-      costoInscripcion:
-          double.tryParse(_costo.text.trim().replaceAll(',', '.')) ?? 0,
-      inscripcionHasta: _cierreInscripcion,
-      inicio: _rango?.start,
-      relampago: _relampago,
-      exigeDni: _exigeDni,
-      edadMin: int.tryParse(_edadMin.text.trim()),
-      edadMax: int.tryParse(_edadMax.text.trim()),
-    );
-    // Sube el logo (si eligió uno) ahora que el campeonato ya tiene id.
+    // Fechas: si el usuario eligió un nuevo rango, se usa; si no, conserva las
+    // que ya tenía (modo edición) o vacío (creación).
+    final fechas = _rango != null ? _fmtRango(_rango!) : _fechasIniciales;
+    final costo = double.tryParse(_costo.text.trim().replaceAll(',', '.')) ?? 0;
+    // El rango de edad solo tiene sentido si se exige documento (así se valida
+    // la edad real). Sin DNI, se limpia para no dejar un tope "fantasma".
+    final edadMin = _exigeDni ? int.tryParse(_edadMin.text.trim()) : null;
+    final edadMax = _exigeDni ? int.tryParse(_edadMax.text.trim()) : null;
+
+    final Campeonato c;
+    if (_editando) {
+      final e = widget.editar!;
+      // EDITAR: se reconstruye conservando id, código, dueño, participantes,
+      // fixture y pruebas; solo cambian los campos editables. Se construye
+      // directo (no copyWith) para poder BORRAR el rango de edad (null). La
+      // moneda se recongela por la sede (por si cambió de país).
+      c = Campeonato(
+        id: e.id,
+        academiaId: e.academiaId,
+        dueno: e.dueno,
+        codigo: e.codigo,
+        nombre: _nombre.text.trim(),
+        deporte: e.deporte,
+        formato: _formato,
+        categoria: _categoria.text.trim(),
+        sede: _sedeNombre,
+        sedeUbicacion: _sedeUbicacion,
+        fechas: fechas,
+        costoInscripcion: costo,
+        inscripcionAbierta: e.inscripcionAbierta,
+        participantes: e.participantes,
+        partidos: e.partidos,
+        pruebas: e.pruebas,
+        cerrado: e.cerrado,
+        moneda: _monedaSede,
+        inscripcionHasta: _cierreInscripcion,
+        inicio: _rango?.start ?? e.inicio,
+        relampago: _relampago,
+        exigeDni: _exigeDni,
+        edadMin: edadMin,
+        edadMax: edadMax,
+        logoUrl: e.logoUrl,
+      );
+      appState.guardarCampeonato(c);
+    } else {
+      c = appState.crearCampeonato(
+        academiaId: widget.academiaId,
+        nombre: _nombre.text.trim(),
+        deporte: _deporte,
+        formato: _formato,
+        categoria: _categoria.text.trim(),
+        sede: _sedeNombre,
+        sedeUbicacion: _sedeUbicacion,
+        fechas: fechas,
+        costoInscripcion: costo,
+        inscripcionHasta: _cierreInscripcion,
+        inicio: _rango?.start,
+        relampago: _relampago,
+        exigeDni: _exigeDni,
+        edadMin: edadMin,
+        edadMax: edadMax,
+      );
+    }
+    // Sube el logo (si eligió uno nuevo) ahora que el campeonato ya tiene id.
     if (_logoBytes != null) {
       await appState.ponerLogoCampeonato(c.id, _logoBytes!);
     }
@@ -244,7 +328,8 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('Nuevo campeonato')),
+      appBar: AppBar(
+          title: Text(_editando ? 'Editar campeonato' : 'Nuevo campeonato')),
       body: ListView(
         padding: EdgeInsets.fromLTRB(
             ladoTablet(context), 18, ladoTablet(context), 18),
@@ -253,6 +338,7 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
           // cámara. Se sube al guardar.
           Center(child: _SelectorLogo(
             bytes: _logoBytes,
+            logoUrl: _logoUrlActual,
             deporte: _deporte,
             onTap: _elegirLogo,
           )),
@@ -276,13 +362,24 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
                 ChoiceChip(
                   label: Text('${emojiDeporte(d)}  ${d.etiqueta}'),
                   selected: _deporte == d,
-                  onSelected: (_) => setState(() {
-                    _deporte = d;
-                    _formato = _formatoDe(d);
-                  }),
+                  // Al editar, el deporte NO se cambia (participantes y fixture
+                  // dependen de él): se muestra fijo.
+                  onSelected: _editando
+                      ? null
+                      : (_) => setState(() {
+                            _deporte = d;
+                            _formato = _formatoDe(d);
+                          }),
                 ),
             ],
           ),
+          if (_editando)
+            const Padding(
+              padding: EdgeInsets.only(top: 6),
+              child: Text('El deporte no se puede cambiar en un campeonato ya '
+                  'creado.',
+                  style: TextStyle(color: textoTenue, fontSize: 12)),
+            ),
           const SizedBox(height: 16),
           Text('Formato',
               style:
@@ -293,7 +390,11 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
               contentPadding: EdgeInsets.zero,
               value: f,
               groupValue: _formato,
-              onChanged: (v) => setState(() => _formato = v!),
+              // Si ya se generó el fixture, cambiar el formato lo rompería: se
+              // bloquea hasta rehacer/reiniciar el torneo.
+              onChanged: (_editando && widget.editar!.fixtureGenerado)
+                  ? null
+                  : (v) => setState(() => _formato = v!),
               title: Text(f.etiqueta),
               subtitle: Text(switch (f) {
                 FormatoTorneo.eliminacion =>
@@ -304,6 +405,13 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
                   'Cada nadador registra su TIEMPO por prueba; se rankea del más '
                       'rápido al más lento (sin partidos G/P).',
               }),
+            ),
+          if (_editando && widget.editar!.fixtureGenerado)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 4),
+              child: Text('El formato no se cambia porque el fixture ya está '
+                  'generado.',
+                  style: TextStyle(color: textoTenue, fontSize: 12)),
             ),
           const SizedBox(height: 8),
           // Categoría: combo de categorías estándar (las de edad auto-setean el
@@ -335,8 +443,13 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
           _CampoTap(
             icon: Icons.event,
             label: _relampago ? 'Fecha (relámpago, un día)' : 'Fechas de juego',
-            valor: _rango == null ? 'Elegir en el calendario' : _fmtRango(_rango!),
-            vacio: _rango == null,
+            // Al editar sin tocar el calendario, muestra las fechas actuales.
+            valor: _rango != null
+                ? _fmtRango(_rango!)
+                : (_fechasIniciales.isNotEmpty
+                    ? _fechasIniciales
+                    : 'Elegir en el calendario'),
+            vacio: _rango == null && _fechasIniciales.isEmpty,
             onTap: _elegirFechas,
           ),
           const SizedBox(height: 12),
@@ -432,8 +545,10 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
                       height: 18,
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: Colors.white))
-                  : const Icon(Icons.emoji_events),
-              label: Text(_guardando ? 'Creando…' : 'Crear campeonato'),
+                  : Icon(_editando ? Icons.save : Icons.emoji_events),
+              label: Text(_guardando
+                  ? 'Guardando…'
+                  : (_editando ? 'Guardar cambios' : 'Crear campeonato')),
             ),
           ),
         ],
@@ -447,14 +562,24 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
 /// deporte, con un badge de cámara y una etiqueta "Agregar logo".
 class _SelectorLogo extends StatelessWidget {
   const _SelectorLogo(
-      {required this.bytes, required this.deporte, required this.onTap});
+      {required this.bytes,
+      required this.deporte,
+      required this.onTap,
+      this.logoUrl});
   final Uint8List? bytes;
+  final String? logoUrl;
   final Deporte deporte;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final tieneUrl = logoUrl != null && logoUrl!.isNotEmpty;
+    // Prioridad: la imagen recién elegida (bytes) > el logo ya guardado (url) >
+    // el ícono del deporte.
+    final ImageProvider? img = bytes != null
+        ? MemoryImage(bytes!)
+        : (tieneUrl ? NetworkImage(logoUrl!) as ImageProvider : null);
     return Column(
       children: [
         GestureDetector(
@@ -465,9 +590,8 @@ class _SelectorLogo extends StatelessWidget {
               CircleAvatar(
                 radius: 44,
                 backgroundColor: colorDeporte(deporte),
-                backgroundImage:
-                    bytes != null ? MemoryImage(bytes!) : null,
-                child: bytes == null
+                backgroundImage: img,
+                child: img == null
                     ? Icon(iconoDeporte(deporte),
                         color: Colors.white, size: 40)
                     : null,
@@ -490,7 +614,9 @@ class _SelectorLogo extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        Text(bytes == null ? 'Agregar logo (opcional)' : 'Cambiar logo',
+        Text((bytes == null && !tieneUrl)
+            ? 'Agregar logo (opcional)'
+            : 'Cambiar logo',
             style: const TextStyle(color: textoTenue, fontSize: 13)),
       ],
     );
