@@ -40,10 +40,11 @@ begin
   end loop;
 end $$;
 
--- 2) Borrar los archivos de Storage (fotos de canchas, productos, canales,
---    estados/historias y chat). Deja los buckets, borra su contenido.
-delete from storage.objects
-where bucket_id in ('canchas', 'productos', 'canales', 'estados', 'chat');
+-- 2) Storage (fotos): Supabase NO permite borrar `storage.objects` por SQL
+--    (error 42501). Las fotos quedan HUÉRFANAS e INVISIBLES (ya borramos las
+--    filas que las referenciaban), así que no molestan. Si quieres borrarlas de
+--    verdad, hazlo desde el dashboard: Storage → cada bucket (canchas, productos,
+--    canales, estados, chat) → seleccionar archivos → Delete.
 
 -- 3) Verificación rápida (todo debe dar 0):
 select 'canchas' as tabla, count(*) from public.pichangol_canchas
