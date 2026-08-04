@@ -1004,6 +1004,36 @@ class _EstadoCampeonato extends StatelessWidget {
   }
 }
 
+/// Pastilla de estado del equipo (Completo / Faltan N) en el diálogo del plantel.
+class _ChipEstadoEquipo extends StatelessWidget {
+  const _ChipEstadoEquipo(
+      {required this.texto, required this.color, required this.icono});
+  final String texto;
+  final Color color;
+  final IconData icono;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.14),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icono, size: 14, color: color),
+          const SizedBox(width: 4),
+          Text(texto,
+              style: TextStyle(
+                  fontSize: 11.5, fontWeight: FontWeight.w800, color: color)),
+        ],
+      ),
+    );
+  }
+}
+
 class _Participantes extends StatelessWidget {
   const _Participantes({required this.campeonato, required this.esDueno});
   final Campeonato campeonato;
@@ -1048,8 +1078,24 @@ class _Participantes extends StatelessWidget {
                 ),
                 const Divider(),
               ],
-              Text('Plantel (${eq.roster.length})',
-                  style: const TextStyle(fontWeight: FontWeight.w800)),
+              Row(
+                children: [
+                  Text('Plantel (${eq.roster.length})',
+                      style: const TextStyle(fontWeight: FontWeight.w800)),
+                  if (c.usaCupoEquipos) ...[
+                    const SizedBox(width: 8),
+                    if (c.equipoCompleto(eq))
+                      const _ChipEstadoEquipo(
+                          texto: 'Completo', color: lima, icono: Icons.check_circle)
+                    else
+                      _ChipEstadoEquipo(
+                          texto:
+                              'Faltan ${c.minJugadoresEquipo - eq.roster.length}',
+                          color: naranja,
+                          icono: Icons.hourglass_bottom),
+                  ],
+                ],
+              ),
               const SizedBox(height: 6),
               if (eq.roster.isEmpty)
                 const Text('Aún sin jugadores.',
@@ -1219,7 +1265,9 @@ class _Participantes extends StatelessWidget {
             for (final p in c.participantes)
               InputChip(
                 avatar: p.esEquipo
-                    ? const Icon(Icons.groups, size: 18, color: bosque)
+                    ? Icon(Icons.groups,
+                        size: 18,
+                        color: c.equipoCompleto(p) ? lima : bosque)
                     : p.esApp
                         ? (p.fotoUrl != null && p.fotoUrl!.isNotEmpty
                             ? CircleAvatar(
@@ -1232,7 +1280,11 @@ class _Participantes extends StatelessWidget {
                                 color: cs.primary))
                         : null,
                 label: Text(p.esEquipo
-                    ? '${p.nombre} · ${p.roster.length} jug.'
+                    ? (c.usaCupoEquipos
+                        // Con cupo: "N/min" + ✅ si está completo.
+                        ? '${p.nombre} · ${p.roster.length}/${c.minJugadoresEquipo}'
+                            '${c.equipoCompleto(p) ? '  ✅' : ''}'
+                        : '${p.nombre} · ${p.roster.length} jug.')
                     : p.esMenor
                         ? '${p.nombre} · apod. ${p.apoderadoNombre}'
                         : p.nombre),

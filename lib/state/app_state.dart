@@ -2592,6 +2592,7 @@ class AppState extends ChangeNotifier {
     bool exigeDni = false,
     int? edadMin,
     int? edadMax,
+    int minJugadoresEquipo = 0,
   }) {
     final c = Campeonato(
       id: 'camp_${DateTime.now().microsecondsSinceEpoch}',
@@ -2612,6 +2613,7 @@ class AppState extends ChangeNotifier {
       exigeDni: exigeDni,
       edadMin: edadMin,
       edadMax: edadMax,
+      minJugadoresEquipo: minJugadoresEquipo,
       // Congela la moneda por el país de la SEDE (no el del dispositivo): un
       // torneo en Lima queda en S/ aunque el profe lo cree desde Bolivia.
       moneda: sedeUbicacion != null

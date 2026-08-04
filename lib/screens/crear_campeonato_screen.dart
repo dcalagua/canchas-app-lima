@@ -68,6 +68,8 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
   bool _exigeDni = false;
   final _edadMin = TextEditingController();
   final _edadMax = TextEditingController();
+  // Fútbol: mínimo de jugadores por equipo para marcarlo "completo".
+  final _minJug = TextEditingController();
   // Categoría elegida del combo (label del catálogo) o el sentinel 'otra'
   // (texto libre). null = aún no elige (sin categoría).
   String? _catSel;
@@ -155,6 +157,8 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
       _exigeDni = e.exigeDni;
       _edadMin.text = e.edadMin?.toString() ?? '';
       _edadMax.text = e.edadMax?.toString() ?? '';
+      _minJug.text =
+          e.minJugadoresEquipo > 0 ? e.minJugadoresEquipo.toString() : '';
       _logoUrlActual = e.logoUrl;
       _fechasIniciales = e.fechas;
       // Categoría: si coincide con una del catálogo, selecciona ese ítem; si no,
@@ -260,6 +264,10 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
     // la edad real). Sin DNI, se limpia para no dejar un tope "fantasma".
     final edadMin = _exigeDni ? int.tryParse(_edadMin.text.trim()) : null;
     final edadMax = _exigeDni ? int.tryParse(_edadMax.text.trim()) : null;
+    // Cupo mínimo por equipo: solo aplica a fútbol (por equipos).
+    final minJug = _deporte == Deporte.futbol
+        ? (int.tryParse(_minJug.text.trim()) ?? 0)
+        : 0;
 
     final Campeonato c;
     if (_editando) {
@@ -294,6 +302,7 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
         edadMin: edadMin,
         edadMax: edadMax,
         logoUrl: e.logoUrl,
+        minJugadoresEquipo: minJug,
       );
       appState.guardarCampeonato(c);
     } else {
@@ -313,6 +322,7 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
         exigeDni: _exigeDni,
         edadMin: edadMin,
         edadMax: edadMax,
+        minJugadoresEquipo: minJug,
       );
     }
     // Sube el logo (si eligió uno nuevo) ahora que el campeonato ya tiene id.
@@ -414,6 +424,23 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
                   style: TextStyle(color: textoTenue, fontSize: 12)),
             ),
           const SizedBox(height: 8),
+          // Fútbol (por equipos): mínimo de jugadores para marcar el equipo como
+          // "completo". Cada capitán arma su plantel; al llegar a este mínimo, al
+          // organizador le aparece "✅ Completo".
+          if (_deporte == Deporte.futbol) ...[
+            TextField(
+              controller: _minJug,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Mínimo de jugadores por equipo (opcional)',
+                hintText: 'ej. 7',
+                helperText: 'Cada equipo aparece "Completo" al llegar a este '
+                    'número. Vacío = solo se muestra el conteo.',
+                helperMaxLines: 3,
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
           // Categoría: combo de categorías estándar (las de edad auto-setean el
           // rango y exigen documento al inscribirse) + "Otra" texto libre.
           DropdownButtonFormField<String>(

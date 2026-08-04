@@ -394,6 +394,10 @@ class Campeonato {
   /// Logo del campeonato (URL pública en Supabase Storage). null = sin logo →
   /// se muestra el ícono del deporte.
   final String? logoUrl;
+  /// Fútbol (por equipos): MÍNIMO de jugadores para que un equipo cuente como
+  /// "completo". 0 = sin cupo definido (solo se muestra el conteo, sin marcar
+  /// completo/incompleto). No hay tope máximo (pueden sumar suplentes).
+  final int minJugadoresEquipo;
 
   const Campeonato({
     required this.id,
@@ -421,6 +425,7 @@ class Campeonato {
     this.edadMin,
     this.edadMax,
     this.logoUrl,
+    this.minJugadoresEquipo = 0,
   });
 
   /// ¿Las inscripciones ya cerraron por fecha? (para auto-sorteo / bloqueo).
@@ -449,6 +454,15 @@ class Campeonato {
   /// pickleball) hoy. Fútbol/natación NO → no se ofrece "ver/sumar al ranking".
   bool get esDeporteCircuito => deportesCircuito.contains(deporte);
 
+  /// ¿Se muestra el estado "completo/incompleto" por equipo? Solo fútbol y si el
+  /// organizador definió un mínimo de jugadores por equipo.
+  bool get usaCupoEquipos => deporte == Deporte.futbol && minJugadoresEquipo > 0;
+
+  /// ¿El equipo [p] llegó al mínimo de jugadores (está "completo")? Si no hay
+  /// cupo definido, siempre false (no aplica).
+  bool equipoCompleto(Participante p) =>
+      usaCupoEquipos && p.roster.length >= minJugadoresEquipo;
+
   Campeonato copyWith({
     String? nombre,
     FormatoTorneo? formato,
@@ -470,6 +484,7 @@ class Campeonato {
     int? edadMin,
     int? edadMax,
     String? logoUrl,
+    int? minJugadoresEquipo,
   }) =>
       Campeonato(
         id: id,
@@ -497,6 +512,7 @@ class Campeonato {
         edadMin: edadMin ?? this.edadMin,
         edadMax: edadMax ?? this.edadMax,
         logoUrl: logoUrl ?? this.logoUrl,
+        minJugadoresEquipo: minJugadoresEquipo ?? this.minJugadoresEquipo,
       );
 
   Participante? participante(String? pid) {
@@ -536,6 +552,7 @@ class Campeonato {
         if (edadMin != null) 'edadMin': edadMin,
         if (edadMax != null) 'edadMax': edadMax,
         if (logoUrl != null && logoUrl!.isNotEmpty) 'logoUrl': logoUrl,
+        if (minJugadoresEquipo > 0) 'minJugadoresEquipo': minJugadoresEquipo,
       };
 
   factory Campeonato.fromJson(Map<String, dynamic> j) => Campeonato(
@@ -582,6 +599,7 @@ class Campeonato {
         edadMin: (j['edadMin'] as num?)?.toInt(),
         edadMax: (j['edadMax'] as num?)?.toInt(),
         logoUrl: j['logoUrl'] as String?,
+        minJugadoresEquipo: (j['minJugadoresEquipo'] as num?)?.toInt() ?? 0,
       );
 }
 
