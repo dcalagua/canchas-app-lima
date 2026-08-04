@@ -2550,6 +2550,31 @@ class AppState extends ChangeNotifier {
     return c;
   }
 
+  /// Busca un campeonato desde lo que pegó el usuario en "Unirme a un
+  /// campeonato": un ENLACE (?id=…), el ID largo (`camp_…`) o el CÓDIGO corto.
+  /// Lo agrega a la caché local para abrir su ficha. null si no se encuentra.
+  Future<Campeonato?> buscarCampeonato(String entrada) async {
+    final t = entrada.trim();
+    if (t.isEmpty) return null;
+    // 1) ¿Enlace con ?id=… ? → por id.
+    final qid = Uri.tryParse(t)?.queryParameters['id'];
+    if (qid != null && qid.trim().isNotEmpty) return traerCampeonato(qid.trim());
+    // 2) ¿Es el id largo? → por id.
+    if (t.startsWith('camp_')) return traerCampeonato(t);
+    // 3) Si no, es un CÓDIGO corto. Primero en caché local, luego en la nube.
+    final cod = t.toUpperCase();
+    for (final c in campeonatos) {
+      if (c.codigoInvitacion.toUpperCase() == cod) return c;
+    }
+    final c = await CampeonatosRepo.porCodigo(cod);
+    if (c == null) return null;
+    if (campeonatoPorId(c.id) == null) {
+      campeonatos.add(c);
+      notifyListeners();
+    }
+    return c;
+  }
+
   /// Crea un campeonato para una academia y lo comparte (nube). Devuelve el id.
   Campeonato crearCampeonato({
     required String academiaId,
@@ -2572,6 +2597,7 @@ class AppState extends ChangeNotifier {
       id: 'camp_${DateTime.now().microsecondsSinceEpoch}',
       academiaId: academiaId,
       dueno: usuario?.email ?? '',
+      codigo: _nuevoCodigoEquipo(), // código corto para invitar/unirse
       nombre: nombre,
       deporte: deporte,
       formato: formato,

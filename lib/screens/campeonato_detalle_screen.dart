@@ -9,6 +9,7 @@ import '../services/propiedad_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/dialogo_pichangol.dart';
+import '../utils/compartir_pichangol.dart';
 import '../utils/ubicacion_share.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/responsive.dart';
@@ -68,26 +69,8 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                   ),
                 ),
               ],
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _compartir(context, c),
-                      icon: const Icon(Icons.share, size: 18),
-                      label: const Text('Compartir'),
-                    ),
-                  ),
-                  if (SupabaseService.paginaCampeonato(c.id) != null) ...[
-                    const SizedBox(width: 8),
-                    OutlinedButton.icon(
-                      onPressed: () => _copiarEnlace(context, c),
-                      icon: const Icon(Icons.link, size: 18),
-                      label: const Text('Enlace'),
-                    ),
-                  ],
-                ],
-              ),
+              const SizedBox(height: 12),
+              _InvitarCard(campeonato: c),
               // Cronograma / verificación (chips informativos).
               if (c.inscripcionHasta != null ||
                   c.relampago ||
@@ -1987,6 +1970,129 @@ class _CardPrueba extends StatelessWidget {
               Text('—', style: TextStyle(color: textoTenueDe(context))),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Bloque "Invitar a inscribirse": el código corto (para dictar/pegar en
+/// "Unirme a un campeonato"), el enlace, y botones para compartir dentro de
+/// Pichangol o por WhatsApp. Es la forma clara de invitar a que se unan.
+class _InvitarCard extends StatelessWidget {
+  const _InvitarCard({required this.campeonato});
+  final Campeonato campeonato;
+
+  String _mensaje() {
+    final c = campeonato;
+    final enlace = SupabaseService.paginaCampeonato(c.id);
+    final sb = StringBuffer()
+      ..writeln('🏆 ${c.nombre}')
+      ..writeln('${c.deporte.etiqueta} · inscríbete en Pichangol.')
+      ..writeln('')
+      ..writeln('Código para unirte: ${c.codigoInvitacion}')
+      ..writeln('En la app: Anfitrión → Mis campeonatos → 🔗 Unirme (o '
+          'Campeonatos → 🔗) y pega el código.');
+    if (enlace != null) sb.writeln('\n👉 $enlace');
+    return sb.toString();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final c = campeonato;
+    final codigo = c.codigoInvitacion;
+    final enlace = SupabaseService.paginaCampeonato(c.id);
+    void copiar(String txt, String aviso) {
+      Clipboard.setData(ClipboardData(text: txt));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(aviso)));
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: trazo),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.person_add_alt_1, color: teal),
+              const SizedBox(width: 8),
+              Text('Invitar a inscribirse',
+                  style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+              'Comparte el código o el enlace. Para unirse en la app: '
+              '“Unirme a un campeonato” 🔗 y pegar el código.',
+              style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
+          const SizedBox(height: 12),
+          // Código grande, tap para copiar.
+          InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => copiar(codigo, 'Código copiado'),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: teal.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: teal.withOpacity(0.35)),
+              ),
+              child: Row(
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('CÓDIGO',
+                          style: t.bodySmall?.copyWith(
+                              color: textoTenueDe(context),
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1)),
+                      Text(codigo,
+                          style: t.titleLarge?.copyWith(
+                              color: teal,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 2)),
+                    ],
+                  ),
+                  const Spacer(),
+                  const Icon(Icons.copy, color: teal, size: 20),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.icon(
+                style: FilledButton.styleFrom(backgroundColor: lima),
+                onPressed: () =>
+                    CompartirPichangol.compartir(context, texto: _mensaje()),
+                icon: const Icon(Icons.send, size: 18),
+                label: const Text('Compartir en Pichangol'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => WhatsAppLink.compartir(_mensaje()),
+                icon: const Icon(Icons.chat, size: 18),
+                label: const Text('WhatsApp'),
+              ),
+              if (enlace != null)
+                OutlinedButton.icon(
+                  onPressed: () => copiar(enlace, 'Enlace copiado'),
+                  icon: const Icon(Icons.link, size: 18),
+                  label: const Text('Copiar enlace'),
+                ),
+            ],
+          ),
+        ],
       ),
     );
   }

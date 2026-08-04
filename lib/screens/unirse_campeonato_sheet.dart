@@ -48,13 +48,12 @@ class _UnirseSheetState extends State<_UnirseSheet> {
 
   Future<void> _buscar() async {
     setState(() => _error = null);
-    final id = AppState.idCampeonatoDe(_ctrl.text);
-    if (id.isEmpty) {
+    if (_ctrl.text.trim().isEmpty) {
       setState(() => _error = 'Pega el enlace o el código del campeonato.');
       return;
     }
     setState(() => _buscando = true);
-    final c = await appState.traerCampeonato(id);
+    final c = await appState.buscarCampeonato(_ctrl.text);
     if (!mounted) return;
     setState(() => _buscando = false);
     if (c == null) {

@@ -47,6 +47,27 @@ class CampeonatosRepo {
     }
   }
 
+  /// Trae UN campeonato por su CÓDIGO corto (para "Unirme a un campeonato").
+  /// Busca en el jsonb `data->>codigo` (mayúsculas). null si no existe.
+  static Future<Campeonato?> porCodigo(String codigo) async {
+    final cod = codigo.trim().toUpperCase();
+    if (!SupabaseService.disponible || cod.isEmpty) return null;
+    try {
+      final rows = await SupabaseService.client
+          .from(_tabla)
+          .select()
+          .eq('data->>codigo', cod)
+          .neq('eliminado', true)
+          .limit(1);
+      final lista = rows as List;
+      if (lista.isEmpty) return null;
+      return Campeonato.fromJson(
+          Map<String, dynamic>.from((lista.first as Map)['data'] as Map));
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Inserta o actualiza (upsert por id). Fail-safe.
   static Future<void> guardar(Campeonato c) async {
     if (!SupabaseService.disponible) return;

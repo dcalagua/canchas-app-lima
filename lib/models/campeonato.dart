@@ -358,6 +358,9 @@ class Campeonato {
   final String id;
   final String academiaId;
   final String dueno; // correo del profe organizador
+  /// Código CORTO para invitar (6 chars). Se dicta/comparte para unirse desde
+  /// "Unirme a un campeonato". Vacío en campeonatos viejos → se cae al id.
+  final String codigo;
   final String nombre;
   final Deporte deporte;
   final FormatoTorneo formato;
@@ -393,6 +396,7 @@ class Campeonato {
     required this.id,
     required this.academiaId,
     required this.dueno,
+    this.codigo = '',
     required this.nombre,
     required this.deporte,
     this.formato = FormatoTorneo.eliminacion,
@@ -433,6 +437,10 @@ class Campeonato {
   bool get fixtureGenerado => partidos.isNotEmpty;
   bool get esTiempos => formato == FormatoTorneo.tiempos;
 
+  /// Código para invitar a inscribirse: el corto si existe, si no el id (para
+  /// campeonatos creados antes de que existiera el código).
+  String get codigoInvitacion => codigo.isNotEmpty ? codigo : id;
+
   Campeonato copyWith({
     String? nombre,
     FormatoTorneo? formato,
@@ -458,6 +466,7 @@ class Campeonato {
         id: id,
         academiaId: academiaId,
         dueno: dueno,
+        codigo: codigo,
         nombre: nombre ?? this.nombre,
         deporte: deporte,
         formato: formato ?? this.formato,
@@ -492,6 +501,7 @@ class Campeonato {
         'id': id,
         'academiaId': academiaId,
         'dueno': dueno,
+        if (codigo.isNotEmpty) 'codigo': codigo,
         'nombre': nombre,
         'deporte': deporte.name,
         'formato': formato.clave,
@@ -521,6 +531,7 @@ class Campeonato {
         id: j['id'] as String,
         academiaId: (j['academiaId'] ?? '') as String,
         dueno: (j['dueno'] ?? '') as String,
+        codigo: (j['codigo'] ?? '') as String,
         nombre: (j['nombre'] ?? '') as String,
         deporte: Deporte.values.firstWhere(
             (d) => d.name == j['deporte'], orElse: () => Deporte.tenis),
