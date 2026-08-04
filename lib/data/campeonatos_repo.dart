@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import '../models/campeonato.dart';
 import '../services/supabase_service.dart';
 
@@ -63,6 +65,23 @@ class CampeonatosRepo {
       if (lista.isEmpty) return null;
       return Campeonato.fromJson(
           Map<String, dynamic>.from((lista.first as Map)['data'] as Map));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Sube el LOGO del campeonato a Storage y devuelve su URL pública (con
+  /// cache-buster). Reusa el bucket público `canchas` con carpeta `campeonatos/`
+  /// (no requiere crear un bucket nuevo). null si falla / sin backend.
+  static Future<String?> subirLogo(String campId, List<int> bytes) async {
+    if (!SupabaseService.disponible || campId.isEmpty) return null;
+    try {
+      final ruta = 'campeonatos/$campId.jpg';
+      final storage = SupabaseService.client.storage.from('canchas');
+      await storage.uploadBinary(ruta, Uint8List.fromList(bytes),
+          fileOptions: const FileOptions(upsert: true, contentType: 'image/jpeg'));
+      final base = storage.getPublicUrl(ruta);
+      return '$base?v=${DateTime.now().millisecondsSinceEpoch}';
     } catch (_) {
       return null;
     }

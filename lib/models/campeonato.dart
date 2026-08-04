@@ -391,6 +391,9 @@ class Campeonato {
   /// sin tope. Ej.: Sub-30 → edadMax=30; Máster 35+ → edadMin=35.
   final int? edadMin;
   final int? edadMax;
+  /// Logo del campeonato (URL pública en Supabase Storage). null = sin logo →
+  /// se muestra el ícono del deporte.
+  final String? logoUrl;
 
   const Campeonato({
     required this.id,
@@ -417,6 +420,7 @@ class Campeonato {
     this.exigeDni = false,
     this.edadMin,
     this.edadMax,
+    this.logoUrl,
   });
 
   /// ¿Las inscripciones ya cerraron por fecha? (para auto-sorteo / bloqueo).
@@ -465,6 +469,7 @@ class Campeonato {
     bool? exigeDni,
     int? edadMin,
     int? edadMax,
+    String? logoUrl,
   }) =>
       Campeonato(
         id: id,
@@ -491,6 +496,7 @@ class Campeonato {
         exigeDni: exigeDni ?? this.exigeDni,
         edadMin: edadMin ?? this.edadMin,
         edadMax: edadMax ?? this.edadMax,
+        logoUrl: logoUrl ?? this.logoUrl,
       );
 
   Participante? participante(String? pid) {
@@ -529,6 +535,7 @@ class Campeonato {
         'exigeDni': exigeDni,
         if (edadMin != null) 'edadMin': edadMin,
         if (edadMax != null) 'edadMax': edadMax,
+        if (logoUrl != null && logoUrl!.isNotEmpty) 'logoUrl': logoUrl,
       };
 
   factory Campeonato.fromJson(Map<String, dynamic> j) => Campeonato(
@@ -574,6 +581,7 @@ class Campeonato {
         exigeDni: (j['exigeDni'] ?? false) as bool,
         edadMin: (j['edadMin'] as num?)?.toInt(),
         edadMax: (j['edadMax'] as num?)?.toInt(),
+        logoUrl: j['logoUrl'] as String?,
       );
 }
 

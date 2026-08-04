@@ -2639,6 +2639,18 @@ class AppState extends ChangeNotifier {
     CampeonatosRepo.guardar(c);
   }
 
+  /// Sube un LOGO al campeonato [campId] (bytes de una imagen) y lo guarda.
+  /// Devuelve true si subió y quedó guardado. Solo el organizador debería
+  /// llamarlo (la UI ya lo restringe al dueño).
+  Future<bool> ponerLogoCampeonato(String campId, List<int> bytes) async {
+    final c = campeonatoPorId(campId);
+    if (c == null) return false;
+    final url = await CampeonatosRepo.subirLogo(campId, bytes);
+    if (url == null) return false;
+    guardarCampeonato(c.copyWith(logoUrl: url));
+    return true;
+  }
+
   void eliminarCampeonato(String id) {
     campeonatos.removeWhere((c) => c.id == id);
     notifyListeners();

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../models/campeonato.dart';
 import '../services/supabase_service.dart';
@@ -893,11 +894,7 @@ class _Cabecera extends StatelessWidget {
         children: [
           Row(
             children: [
-              CircleAvatar(
-                backgroundColor: colorDeporte(c.deporte),
-                child:
-                    Icon(iconoDeporte(c.deporte), color: Colors.white),
-              ),
+              _LogoCampeonato(campeonato: c),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(c.nombre,
@@ -2110,6 +2107,71 @@ class _InvitarCard extends StatelessWidget {
                   label: const Text('Copiar enlace'),
                 ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Logo del campeonato en la cabecera. Muestra la imagen si tiene; si no, el
+/// ícono del deporte. El ORGANIZADOR (dueño) puede tocarlo para poner/cambiar
+/// el logo (galería → sube a Storage). Insignia de cámara solo para el dueño.
+class _LogoCampeonato extends StatelessWidget {
+  const _LogoCampeonato({required this.campeonato});
+  final Campeonato campeonato;
+
+  Future<void> _cambiar(BuildContext context) async {
+    final XFile? f = await ImagePicker().pickImage(
+        source: ImageSource.gallery, maxWidth: 600, imageQuality: 85);
+    if (f == null || !context.mounted) return;
+    final bytes = await f.readAsBytes();
+    if (!context.mounted) return;
+    final ok = await conPreload(
+        context, () => appState.ponerLogoCampeonato(campeonato.id, bytes),
+        texto: 'Subiendo logo…');
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        backgroundColor: ok ? lima : const Color(0xFFB4471F),
+        content: Text(ok ? 'Logo actualizado' : 'No se pudo subir el logo.')));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = campeonato;
+    final u = appState.usuario;
+    final esDueno = u != null && c.dueno.toLowerCase() == u.email.toLowerCase();
+    final logo = c.logoUrl;
+    final avatar = CircleAvatar(
+      radius: 24,
+      backgroundColor: colorDeporte(c.deporte),
+      backgroundImage:
+          (logo != null && logo.isNotEmpty) ? NetworkImage(logo) : null,
+      child: (logo == null || logo.isEmpty)
+          ? Icon(iconoDeporte(c.deporte), color: Colors.white)
+          : null,
+    );
+    if (!esDueno) return avatar;
+    return GestureDetector(
+      onTap: () => _cambiar(context),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          avatar,
+          Positioned(
+            right: -2,
+            bottom: -2,
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: lima,
+                shape: BoxShape.circle,
+                border: Border.all(
+                    color: Theme.of(context).colorScheme.surface, width: 2),
+              ),
+              child: const Icon(Icons.photo_camera,
+                  size: 12, color: Colors.white),
+            ),
           ),
         ],
       ),
