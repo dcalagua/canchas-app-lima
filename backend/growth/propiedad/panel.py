@@ -807,6 +807,41 @@ _HTML = r"""<!DOCTYPE html>
     color:rgba(255,255,255,.42);padding:15px 12px 6px;user-select:none}
   .nav-group:first-child{padding-top:4px}
   .side.collapsed .nav-group{display:none}
+  /* ===== Navegación por TABS clásicos (barra superior) ===== */
+  .topbar{position:sticky;top:0;z-index:6;display:flex;align-items:center;gap:12px;
+    background:linear-gradient(120deg,var(--green),var(--green-deep));color:#fff;
+    padding:12px 24px;box-shadow:0 2px 14px rgba(18,140,126,.20)}
+  .topbar .pin{width:34px;height:34px;border-radius:10px;overflow:hidden;flex-shrink:0;
+    box-shadow:0 1px 4px rgba(0,0,0,.15)}
+  .topbar .pin svg{width:100%;height:100%;display:block}
+  .topbar .wm{font-size:19px;color:#fff}
+  .topbar .side-sub{font-size:11px;font-weight:700;color:rgba(255,255,255,.75);margin-top:1px}
+  .topbar .side-sub .ebim{color:#fff}
+  .topbar .sp{flex:1}
+  .topbar .tb-btn{background:rgba(255,255,255,.14);color:#fff;border:0;border-radius:11px;
+    padding:9px 14px;font-family:inherit;font-weight:700;font-size:13px;cursor:pointer;
+    display:inline-flex;align-items:center;gap:7px}
+  .topbar .tb-btn:hover{background:rgba(255,255,255,.26)}
+  .topnav{position:sticky;top:58px;z-index:5;display:flex;gap:2px;overflow-x:auto;
+    background:#fff;border-bottom:1px solid var(--border);padding:0 14px;
+    -webkit-overflow-scrolling:touch;scrollbar-width:thin}
+  .topnav-tab{white-space:nowrap;border:0;background:transparent;color:var(--muted);
+    font-family:inherit;font-weight:700;font-size:14px;cursor:pointer;
+    padding:14px 15px;border-bottom:3px solid transparent;display:inline-flex;
+    align-items:center;gap:8px;transition:.12s}
+  .topnav-tab .ico{font-size:15px}
+  .topnav-tab:hover{color:var(--text);background:#f6f9f8}
+  .topnav-tab.on{color:var(--green-deep);border-bottom-color:var(--green)}
+  .topnav-tab .badge{background:var(--rojo);color:#fff;border-radius:999px;
+    font-size:10.5px;font-weight:800;min-width:17px;height:17px;padding:0 5px;
+    display:inline-flex;align-items:center;justify-content:center;line-height:1}
+  .content{max-width:1200px;margin:0 auto;padding:26px 28px 60px}
+  @media(max-width:640px){
+    .topbar{padding:10px 14px} .topnav{padding:0 8px}
+    .topnav-tab{padding:12px 11px;font-size:13.5px}
+    .content{padding:18px 14px 50px}
+    .topbar .tb-btn .lbl{display:none}
+  }
   @media(max-width:820px){
     .shell{flex-direction:column}
     .side{width:auto;height:auto;position:static;flex-direction:row;flex-wrap:wrap;
@@ -924,45 +959,28 @@ _HTML = r"""<!DOCTYPE html>
   </div>
 </div>
 
-<div class="shell" id="app" style="display:none">
-  <aside class="side" id="side">
-    <button class="side-toggle" onclick="toggleSide()" title="Colapsar / expandir menú">‹</button>
-    <div class="side-brand">
-      <div class="pin"><svg viewBox="0 0 48 48"><rect x="1.5" y="1.5" width="45" height="45" rx="12" fill="#fff"/><path d="M24 11.5c-4.3 0-7.8 3.5-7.8 7.8 0 5.9 7.8 14.2 7.8 14.2s7.8-8.3 7.8-14.2c0-4.3-3.5-7.8-7.8-7.8zm0 10.7a2.9 2.9 0 110-5.8 2.9 2.9 0 010 5.8z" fill="#128C7E"/></svg></div>
-      <div class="sb-txt">
-        <span class="wm">Pichang<svg class="ball" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polygon points="12,8.2 14.9,10.3 13.8,13.8 10.2,13.8 9.1,10.3"/><path d="M12 8.2V4.3M14.9 10.3l3.6-1.7M13.8 13.8l2.5 3.2M10.2 13.8l-2.5 3.2M9.1 10.3L5.5 8.6"/></svg>l</span>
-        <div class="side-sub"><span class="ebim">EBIM</span> · admin</div>
-      </div>
+<div id="app" style="display:none">
+  <header class="topbar">
+    <div class="pin"><svg viewBox="0 0 48 48"><rect x="1.5" y="1.5" width="45" height="45" rx="12" fill="#fff"/><path d="M24 11.5c-4.3 0-7.8 3.5-7.8 7.8 0 5.9 7.8 14.2 7.8 14.2s7.8-8.3 7.8-14.2c0-4.3-3.5-7.8-7.8-7.8zm0 10.7a2.9 2.9 0 110-5.8 2.9 2.9 0 010 5.8z" fill="#128C7E"/></svg></div>
+    <div>
+      <span class="wm">Pichang<svg class="ball" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polygon points="12,8.2 14.9,10.3 13.8,13.8 10.2,13.8 9.1,10.3"/><path d="M12 8.2V4.3M14.9 10.3l3.6-1.7M13.8 13.8l2.5 3.2M10.2 13.8l-2.5 3.2M9.1 10.3L5.5 8.6"/></svg>l</span>
+      <div class="side-sub"><span class="ebim">EBIM</span> · admin</div>
     </div>
-    <nav class="nav">
-      <div class="nav-group">Propiedad</div>
-      <button class="nav-i on" data-sec="reclamos" onclick="mostrarSeccion('reclamos')" title="Reclamos">
-        <span class="ico">📋</span> <span class="sb-txt">Reclamos</span></button>
-      <button class="nav-i" data-sec="operacion" onclick="mostrarSeccion('operacion')" title="Operación">
-        <span class="ico">✅</span> <span class="sb-txt">Operación</span></button>
-      <div class="nav-group">Finanzas</div>
-      <button class="nav-i" data-sec="cobros" onclick="mostrarSeccion('cobros')" title="Cobros">
-        <span class="ico">💳</span> <span class="sb-txt">Cobros</span></button>
-      <button class="nav-i" data-sec="liquidaciones" onclick="mostrarSeccion('liquidaciones')" title="Liquidaciones">
-        <span class="ico">💸</span> <span class="sb-txt">Liquidaciones</span></button>
-      <button class="nav-i" data-sec="disputas" onclick="mostrarSeccion('disputas')" title="Disputas">
-        <span class="ico">⚖️</span> <span class="sb-txt">Disputas</span></button>
-      <div class="nav-group">Confianza</div>
-      <button class="nav-i" data-sec="identidad" onclick="mostrarSeccion('identidad')" title="Identidad">
-        <span class="ico">🪪</span> <span class="sb-txt">Identidad</span></button>
-      <div class="nav-group">Sistema</div>
-      <button class="nav-i" data-sec="comunicacion" onclick="mostrarSeccion('comunicacion')" title="Comunicación">
-        <span class="ico">💬</span> <span class="sb-txt">Comunicación</span></button>
-      <button class="nav-i" data-sec="pruebas" onclick="mostrarSeccion('pruebas')" title="Pruebas">
-        <span class="ico">🧪</span> <span class="sb-txt">Pruebas</span></button>
-    </nav>
-    <div class="side-foot">
-      <button class="side-btn" onclick="cargar();cargarLiquidaciones()" title="Actualizar"><span class="ico">↻</span><span class="lbl">Actualizar</span></button>
-      <button class="side-btn" onclick="salir()" title="Salir"><span class="ico">⎋</span><span class="lbl">Salir</span></button>
-      <div class="side-cred">una solución de <span class="ebim">EBIM</span></div>
-    </div>
-  </aside>
-  <main class="main">
+    <div class="sp"></div>
+    <button class="tb-btn" onclick="cargar();cargarLiquidaciones()" title="Actualizar">↻ <span class="lbl">Actualizar</span></button>
+    <button class="tb-btn" onclick="salir()" title="Salir">⎋ <span class="lbl">Salir</span></button>
+  </header>
+  <nav class="topnav" id="topnav">
+    <button class="topnav-tab on" data-sec="reclamos" onclick="mostrarSeccion('reclamos')"><span class="ico">📋</span> Reclamos</button>
+    <button class="topnav-tab" data-sec="operacion" onclick="mostrarSeccion('operacion')"><span class="ico">✅</span> Operación</button>
+    <button class="topnav-tab" data-sec="cobros" onclick="mostrarSeccion('cobros')"><span class="ico">💳</span> Cobros</button>
+    <button class="topnav-tab" data-sec="liquidaciones" onclick="mostrarSeccion('liquidaciones')"><span class="ico">💸</span> Liquidaciones</button>
+    <button class="topnav-tab" data-sec="disputas" onclick="mostrarSeccion('disputas')"><span class="ico">⚖️</span> Disputas</button>
+    <button class="topnav-tab" data-sec="identidad" onclick="mostrarSeccion('identidad')"><span class="ico">🪪</span> Identidad</button>
+    <button class="topnav-tab" data-sec="comunicacion" onclick="mostrarSeccion('comunicacion')"><span class="ico">💬</span> Comunicación</button>
+    <button class="topnav-tab" data-sec="pruebas" onclick="mostrarSeccion('pruebas')"><span class="ico">🧪</span> Pruebas</button>
+  </nav>
+  <main class="main content">
     <section id="page-reclamos" class="page">
       <div class="page-head">
         <div class="page-eyebrow">Propiedad</div>
@@ -1100,8 +1118,7 @@ function restaurarSide(){
 }
 function mostrarApp(){
   document.getElementById('gate').style.display='none';
-  document.getElementById('app').style.display='flex';
-  restaurarSide();
+  document.getElementById('app').style.display='block';
   renderTabs();
   cargarModo();
   cargarCanal();
@@ -1625,9 +1642,12 @@ function mostrarSeccion(sec){
   document.querySelectorAll('.page').forEach(p=>{ p.style.display='none'; });
   const el = document.getElementById('page-'+sec);
   if(el) el.style.display='block';
-  document.querySelectorAll('.nav-i').forEach(b=>{
-    b.classList.toggle('on', b.dataset.sec===sec);
+  document.querySelectorAll('.topnav-tab').forEach(b=>{
+    const on = b.dataset.sec===sec;
+    b.classList.toggle('on', on);
+    if(on) b.scrollIntoView({block:'nearest',inline:'center',behavior:'smooth'});
   });
+  window.scrollTo({top:0,behavior:'smooth'});
   if(sec==='disputas') cargarDisputas();
   if(sec==='identidad') cargarDni();
 }
