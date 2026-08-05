@@ -689,7 +689,7 @@ _HTML = r"""<!DOCTYPE html>
 <title>Pichangol · Panel de canchas</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800;900&family=Lora:ital,wght@0,500;0,600;0,700;1,500&display=swap" rel="stylesheet">
 <style>
   /* Paleta del APP (verde WhatsApp) — co-marca Pichangol + EBIM, solo web admin.
      El primario ('bosque'/'lima') se remapea al verde de la app para congruencia:
@@ -699,9 +699,15 @@ _HTML = r"""<!DOCTYPE html>
     --green:#128C7E; --green-deep:#0d6f63; --sage:#5AA97F; --verde:#128C7E;
     --bosque:#128C7E; --lima:#ffffff; --teal:#008489; --amarillo:#F2C94C;
     --limaSuave:#e3f2ef; --rojo:#D11F2E;
+    /* Tipografías (referencia handoff eSupplier): titulares en serif elegante,
+       cuerpo/UI en DM Sans, códigos/ids en monoespaciado. */
+    --serif:'Lora',Georgia,'Times New Roman',serif;
+    --mono:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;
+    --ink:#14201c;
   }
   *{box-sizing:border-box}
-  body{margin:0;font-family:'DM Sans',system-ui,sans-serif;background:var(--bg);color:var(--text)}
+  body{margin:0;font-family:'DM Sans',system-ui,sans-serif;background:var(--bg);
+    color:var(--text);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
   /* Wordmark "Pichang[o]l" — la "o" es una PELOTA (igual que el app). */
   .wm{font-weight:800;letter-spacing:-.02em;display:inline-flex;align-items:center}
   .wm .ball{width:.86em;height:.86em;display:inline-block;vertical-align:-.1em;margin:0 .02em}
@@ -730,9 +736,9 @@ _HTML = r"""<!DOCTYPE html>
     color:var(--muted);font-size:12px;font-weight:600}
   footer .ebim{font-size:12px}
   /* Dashboard: config en fila (grid), listas a ancho completo. */
-  .sec{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;
+  .sec{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.11em;
     color:var(--green-deep);margin:30px 0 14px;padding-bottom:9px;
-    border-bottom:2px solid var(--limaSuave)}
+    border-bottom:1px solid var(--limaSuave)}
   .sec:first-of-type{margin-top:6px}
   .cfg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
     gap:16px;align-items:stretch}
@@ -784,7 +790,11 @@ _HTML = r"""<!DOCTYPE html>
   .side.collapsed .nav-i .ico{font-size:19px;width:auto}
   .side.collapsed .side-btn{justify-content:center;gap:0}
   .main{flex:1;min-width:0;padding:26px 30px 44px;max-width:1360px}
-  .page-h{font-size:22px;font-weight:900;letter-spacing:-.01em;margin:0 0 18px}
+  .page-h{font-family:var(--serif);font-size:29px;font-weight:700;letter-spacing:-.01em;
+    color:var(--ink);margin:0 0 18px;line-height:1.15}
+  /* Encabezados de tabla estilo handoff: versalitas gris, espaciado de letra. */
+  .main th{text-transform:uppercase;letter-spacing:.06em;font-size:10.5px;
+    color:var(--muted);font-weight:800}
   @media(max-width:820px){
     .shell{flex-direction:column}
     .side{width:auto;height:auto;position:static;flex-direction:row;flex-wrap:wrap;
@@ -812,13 +822,15 @@ _HTML = r"""<!DOCTYPE html>
     padding:18px;margin:0;box-shadow:0 1px 2px rgba(18,140,126,.04),
     0 10px 26px -18px rgba(18,140,126,.28)}
   .card .top{display:flex;align-items:flex-start;gap:10px}
-  .card h3{margin:0;font-size:16px;font-weight:800;flex:1}
-  .cod{background:#EAF6C2;color:var(--bosque);font-weight:900;font-size:12px;
-    border-radius:999px;padding:5px 10px;white-space:nowrap}
+  .card h3{margin:0;font-family:var(--serif);font-size:18px;font-weight:700;
+    letter-spacing:-.01em;color:var(--ink);flex:1;line-height:1.25}
+  .cod{font-family:var(--mono);background:#eef3f0;color:var(--green-deep);font-weight:600;
+    font-size:11.5px;letter-spacing:.01em;border:1px solid #dfe8e3;
+    border-radius:8px;padding:4px 9px;white-space:nowrap}
   .row{font-size:13px;color:var(--muted);margin-top:5px}
   .row b{color:var(--text);font-weight:700}
-  .chip{display:inline-block;border-radius:999px;padding:3px 10px;font-size:11px;
-    font-weight:800;margin-top:8px}
+  .chip{display:inline-block;border-radius:999px;padding:4px 11px;font-size:11px;
+    font-weight:700;letter-spacing:.02em;margin-top:8px}
   .est-pendiente_triage{background:#FBEAD2;color:#9A5B12}
   .est-aprobado_triage{background:#DDEBFF;color:#1E4FA3}
   .est-pendiente_validacion{background:#FFF3C4;color:#8A6D00}
@@ -874,7 +886,8 @@ _HTML = r"""<!DOCTYPE html>
   .gate .box{background:#fff;border:1px solid var(--border);border-radius:18px;
     padding:28px 24px;max-width:380px;width:100%;text-align:center}
   .gate .pin{width:58px;height:58px;border-radius:16px;overflow:hidden;margin:0 auto 14px}
-  .gate h2{margin:0 0 4px;font-weight:900}
+  .gate h2{margin:0 0 4px;font-family:var(--serif);font-weight:700;font-size:24px;
+    letter-spacing:-.01em;color:var(--ink)}
   .gate p{margin:0 0 18px;color:var(--muted);font-size:14px}
   .gate input{width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:10px;
     font-family:inherit;font-size:15px;margin-bottom:12px}
