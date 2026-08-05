@@ -19,6 +19,7 @@ from pydantic import BaseModel
 
 import config
 from convocatorias import service as convocatorias_service
+from db import pg
 from db.store import stores
 from propiedad import reclamos
 
@@ -305,6 +306,9 @@ def reset_total_admin(
         "saldos": len(stores.saldos),
     }
     stores.reset()
+    # Vacía TAMBIÉN las tablas normalizadas (growth_reclamos, etc.): si no, un
+    # reinicio recarga los reclamos desde growth_reclamos y "reaparecen".
+    pg.limpiar_todo()
     return {"ok": True, "virgen_total": True, "borrado": antes}
 
 

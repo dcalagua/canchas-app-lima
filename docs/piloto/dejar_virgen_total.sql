@@ -28,8 +28,11 @@ declare
     'pichangol_presencia', 'pichangol_productos', 'pichangol_push_tokens',
     'pichangol_reacciones', 'pichangol_referidos', 'pichangol_resenas',
     'pichangol_reservas', 'pichangol_ubicacion_vivo', 'pichangol_verificaciones',
-    -- snapshot del backend growth (reclamos de propiedad, pagos, saldos, etc.)
-    'growth_state'
+    -- Backend growth: snapshot + TABLAS NORMALIZADAS. OJO: hay que vaciar TODAS.
+    -- Si dejas 'growth_reclamos', al reiniciar el backend los reclamos REAPARECEN
+    -- (se recargan desde ahí, no del snapshot).
+    'growth_state', 'growth_reclamos', 'growth_pagos', 'growth_vistas',
+    'growth_saldos'
   ];
 begin
   foreach t in array tablas loop

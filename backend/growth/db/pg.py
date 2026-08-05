@@ -229,6 +229,23 @@ def guardar_normalizado(stores) -> None:
         print("growth.pg guardar_normalizado error:", e)
 
 
+def limpiar_todo() -> None:
+    """VIRGEN TOTAL a nivel BD: vacía el snapshot Y todas las tablas normalizadas
+    (saldos, pagos, vistas, reclamos). IMPRESCINDIBLE: como `guardar_normalizado`
+    solo hace upsert (nunca borra filas), sin esto un reinicio RECARGA los reclamos
+    desde `growth_reclamos` aunque el snapshot esté vacío. Fail-safe."""
+    if not habilitado:
+        return
+    try:
+        with _conn() as conn, conn.cursor() as cur:
+            for t in ("growth_reclamos", "growth_pagos", "growth_vistas",
+                      "growth_saldos", "growth_state"):
+                cur.execute(f"truncate table {t}")
+            conn.commit()
+    except Exception as e:  # noqa: BLE001
+        print("growth.pg limpiar_todo error:", e)
+
+
 def _fila_a_dict(cols: list[str], fila) -> dict:
     """Empareja una fila de la BD con sus columnas y normaliza fechas a ISO."""
     return {c: _iso(v) for c, v in zip(cols, fila)}
