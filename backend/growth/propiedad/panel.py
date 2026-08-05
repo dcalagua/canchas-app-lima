@@ -792,14 +792,27 @@ _HTML = r"""<!DOCTYPE html>
   .main{flex:1;min-width:0;padding:26px 30px 44px;max-width:1360px}
   .page-h{font-family:var(--serif);font-size:29px;font-weight:700;letter-spacing:-.01em;
     color:var(--ink);margin:0 0 18px;line-height:1.15}
+  /* Encabezado de página: eyebrow (tema) + título serif + subtítulo de contexto. */
+  .page-head{margin:0 0 22px;padding-bottom:16px;border-bottom:1px solid var(--border)}
+  .page-head .page-eyebrow{font-size:11px;font-weight:800;text-transform:uppercase;
+    letter-spacing:.12em;color:var(--green-deep);margin:0 0 7px}
+  .page-head .page-h{margin:0 0 7px}
+  .page-head .page-sub{margin:0;font-size:14px;color:var(--muted);line-height:1.55;
+    max-width:74ch}
   /* Encabezados de tabla estilo handoff: versalitas gris, espaciado de letra. */
   .main th{text-transform:uppercase;letter-spacing:.06em;font-size:10.5px;
     color:var(--muted);font-weight:800}
+  /* Menú lateral agrupado por temas (rótulo de grupo). */
+  .nav-group{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.13em;
+    color:rgba(255,255,255,.42);padding:15px 12px 6px;user-select:none}
+  .nav-group:first-child{padding-top:4px}
+  .side.collapsed .nav-group{display:none}
   @media(max-width:820px){
     .shell{flex-direction:column}
     .side{width:auto;height:auto;position:static;flex-direction:row;flex-wrap:wrap;
       align-items:center;padding:12px 14px;gap:8px}
     .nav{flex-direction:row;margin-top:0;flex:1 1 100%;overflow:auto;gap:6px;order:3}
+    .nav-group{display:none}
     .nav-i{padding:9px 12px;font-size:13.5px;white-space:nowrap}
     .side-foot{flex-direction:row;order:2;margin-left:auto}
     .side-cred{display:none}
@@ -922,22 +935,26 @@ _HTML = r"""<!DOCTYPE html>
       </div>
     </div>
     <nav class="nav">
+      <div class="nav-group">Propiedad</div>
       <button class="nav-i on" data-sec="reclamos" onclick="mostrarSeccion('reclamos')" title="Reclamos">
-        <span class="ico">📋</span> Reclamos</button>
-      <button class="nav-i" data-sec="liquidaciones" onclick="mostrarSeccion('liquidaciones')" title="Liquidaciones">
-        <span class="ico">💸</span> Liquidaciones</button>
-      <button class="nav-i" data-sec="cobros" onclick="mostrarSeccion('cobros')" title="Cobros">
-        <span class="ico">💳</span> Cobros</button>
-      <button class="nav-i" data-sec="disputas" onclick="mostrarSeccion('disputas')" title="Disputas">
-        <span class="ico">⚖️</span> Disputas</button>
-      <button class="nav-i" data-sec="identidad" onclick="mostrarSeccion('identidad')" title="Identidad">
-        <span class="ico">🪪</span> Identidad</button>
+        <span class="ico">📋</span> <span class="sb-txt">Reclamos</span></button>
       <button class="nav-i" data-sec="operacion" onclick="mostrarSeccion('operacion')" title="Operación">
-        <span class="ico">✅</span> Operación</button>
+        <span class="ico">✅</span> <span class="sb-txt">Operación</span></button>
+      <div class="nav-group">Finanzas</div>
+      <button class="nav-i" data-sec="cobros" onclick="mostrarSeccion('cobros')" title="Cobros">
+        <span class="ico">💳</span> <span class="sb-txt">Cobros</span></button>
+      <button class="nav-i" data-sec="liquidaciones" onclick="mostrarSeccion('liquidaciones')" title="Liquidaciones">
+        <span class="ico">💸</span> <span class="sb-txt">Liquidaciones</span></button>
+      <button class="nav-i" data-sec="disputas" onclick="mostrarSeccion('disputas')" title="Disputas">
+        <span class="ico">⚖️</span> <span class="sb-txt">Disputas</span></button>
+      <div class="nav-group">Confianza</div>
+      <button class="nav-i" data-sec="identidad" onclick="mostrarSeccion('identidad')" title="Identidad">
+        <span class="ico">🪪</span> <span class="sb-txt">Identidad</span></button>
+      <div class="nav-group">Sistema</div>
       <button class="nav-i" data-sec="comunicacion" onclick="mostrarSeccion('comunicacion')" title="Comunicación">
-        <span class="ico">💬</span> Comunicación</button>
+        <span class="ico">💬</span> <span class="sb-txt">Comunicación</span></button>
       <button class="nav-i" data-sec="pruebas" onclick="mostrarSeccion('pruebas')" title="Pruebas">
-        <span class="ico">🧪</span> Pruebas</button>
+        <span class="ico">🧪</span> <span class="sb-txt">Pruebas</span></button>
     </nav>
     <div class="side-foot">
       <button class="side-btn" onclick="cargar();cargarLiquidaciones()" title="Actualizar"><span class="ico">↻</span><span class="lbl">Actualizar</span></button>
@@ -947,16 +964,31 @@ _HTML = r"""<!DOCTYPE html>
   </aside>
   <main class="main">
     <section id="page-reclamos" class="page">
-      <h1 class="page-h">Reclamos de propiedad</h1>
+      <div class="page-head">
+        <div class="page-eyebrow">Propiedad</div>
+        <h1 class="page-h">Reclamos de propiedad</h1>
+        <p class="page-sub">Aprueba, rechaza o libera los reclamos de canchas. Cada
+          tarjeta muestra desde dónde se envió la solicitud y su estado.</p>
+      </div>
       <div class="tabs" id="tabs"></div>
       <div id="lista"></div>
     </section>
     <section id="page-liquidaciones" class="page" style="display:none">
-      <h1 class="page-h">Liquidaciones a dueños</h1>
+      <div class="page-head">
+        <div class="page-eyebrow">Finanzas</div>
+        <h1 class="page-h">Liquidaciones a dueños</h1>
+        <p class="page-sub">Reservas online pagadas por el jugador: transfiere el
+          neto al dueño (Yape/banco) y márcalo como pagado.</p>
+      </div>
       <div id="liquidaciones"></div>
     </section>
     <section id="page-cobros" class="page" style="display:none">
-      <h1 class="page-h">💳 Cobros, comisiones y márgenes</h1>
+      <div class="page-head">
+        <div class="page-eyebrow">Finanzas</div>
+        <h1 class="page-h">Cobros, comisiones y márgenes</h1>
+        <p class="page-sub">Comisión de la plataforma, márgenes por banco, marketing,
+          circuito, ranking y suscripción Pro.</p>
+      </div>
       <div class="cfg-grid">
         <div id="comision"></div>
         <div id="margenes"></div>
@@ -967,15 +999,30 @@ _HTML = r"""<!DOCTYPE html>
       </div>
     </section>
     <section id="page-disputas" class="page" style="display:none">
-      <h1 class="page-h">⚖️ Disputas del marketplace</h1>
+      <div class="page-head">
+        <div class="page-eyebrow">Finanzas</div>
+        <h1 class="page-h">Disputas del marketplace</h1>
+        <p class="page-sub">Resuelve reclamos de compras: dar la razón al vendedor
+          (liberar) o reembolsar al comprador.</p>
+      </div>
       <div id="disputas"></div>
     </section>
     <section id="page-identidad" class="page" style="display:none">
-      <h1 class="page-h">🪪 Verificaciones de identidad (DNI)</h1>
+      <div class="page-head">
+        <div class="page-eyebrow">Confianza</div>
+        <h1 class="page-h">Verificaciones de identidad</h1>
+        <p class="page-sub">1 documento = 1 cuenta. Revoca una verificación de DNI
+          si hubo un error o fraude.</p>
+      </div>
       <div id="dniPanel"></div>
     </section>
     <section id="page-operacion" class="page" style="display:none">
-      <h1 class="page-h">✅ Aprobación y operación</h1>
+      <div class="page-head">
+        <div class="page-eyebrow">Propiedad</div>
+        <h1 class="page-h">Aprobación y operación</h1>
+        <p class="page-sub">Modo de aprobación de canchas (marcha blanca / nuevo
+          flujo), exigir ubicación al reclamar y modo de pichangas.</p>
+      </div>
       <div class="cfg-grid">
         <div id="modo"></div>
         <div id="ubic"></div>
@@ -983,14 +1030,24 @@ _HTML = r"""<!DOCTYPE html>
       </div>
     </section>
     <section id="page-comunicacion" class="page" style="display:none">
-      <h1 class="page-h">💬 Comunicación con la app</h1>
+      <div class="page-head">
+        <div class="page-eyebrow">Sistema</div>
+        <h1 class="page-h">Comunicación con la app</h1>
+        <p class="page-sub">Canal de avisos que ve el APK y números de contacto del
+          operador para WhatsApp.</p>
+      </div>
       <div class="cfg-grid">
         <div id="canal"></div>
         <div id="contacto"></div>
       </div>
     </section>
     <section id="page-pruebas" class="page" style="display:none">
-      <h1 class="page-h">🧪 Pruebas y mantenimiento</h1>
+      <div class="page-head">
+        <div class="page-eyebrow">Sistema</div>
+        <h1 class="page-h">Pruebas y mantenimiento</h1>
+        <p class="page-sub">Reiniciar libros de prueba y dejar el servidor en virgen.
+          Acciones sensibles — úsalas con cuidado.</p>
+      </div>
       <div class="cfg-grid">
         <div id="mantenimiento"></div>
       </div>
