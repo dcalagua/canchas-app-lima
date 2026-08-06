@@ -63,6 +63,20 @@ def android_manifest(text):
     text = text.replace(
         'android:label="canchas_lima"',
         f'android:label="{APP_LABEL}" tools:replace="android:label"')
+    # Desactiva ANDROID AUTO BACKUP. Sin esto, al REINSTALAR el APK Android
+    # restaura los datos del app (SharedPreferences/SQLite) desde el respaldo en
+    # Google Drive → las canchas/academias/reservas "reaparecen" aunque hayas
+    # dejado el app en virgen. Con allowBackup=false, cada instalación limpia
+    # arranca sin datos viejos. `tools:replace` fuerza que gane sobre el de las
+    # librerías (evita conflicto del manifest merger).
+    if "android:allowBackup" not in text:
+        text = text.replace(
+            "<application",
+            '<application android:allowBackup="false" '
+            'android:fullBackupContent="false"', 1)
+        text = text.replace(
+            'tools:replace="android:label"',
+            'tools:replace="android:label,android:allowBackup,android:fullBackupContent"')
     if "android.permission.INTERNET" not in text:
         text = re.sub(
             r"(<manifest[^>]*>)",
