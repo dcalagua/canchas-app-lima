@@ -317,6 +317,12 @@ class PlacesService {
           if (c != null) porId[c.id] = c;
         }
       }
+      // Si la función respondió VACÍO, no lo tomamos como verdad absoluta:
+      // devolvemos null para que el caller haga el fallback DIRECTO a Google.
+      // (Una función sin su secret PLACES_API_KEY, o con la key rechazada por
+      // Google del lado servidor, responde 200 con places:[] — y antes eso
+      // dejaba el Explorar en blanco aunque la key del APK funcionara.)
+      if (porId.isEmpty) return null;
       return porId.values.toList();
     } catch (_) {
       return null; // función no desplegada o error → fallback directo
