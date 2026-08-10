@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/club.dart';
 import '../models/models.dart';
 import '../models/resena.dart';
+import '../services/places_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/moneda.dart';
@@ -76,7 +77,14 @@ class ClubCard extends StatelessWidget {
               child: Stack(
                 children: [
                   Positioned.fill(
-                    child: _CoverCarrusel(fotos: fotos, portada: portada),
+                    child: _CoverCarrusel(
+                      fotos: fotos,
+                      portada: portada,
+                      // Descubierta sin fotos propias → baja 1 foto de Google
+                      // en vivo (perezoso + caché de sesión compartida con la
+                      // ficha, así abrirla después no vuelve a pedir nada).
+                      canchaIdGoogle: desc ? club.principal.id : null,
+                    ),
                   ),
                   Positioned(
                     top: 14,
@@ -327,9 +335,15 @@ String _distanciaTxt(double km) {
 /// Carrusel de portada deslizable con puntos (estilo Airbnb). Si no hay fotos,
 /// muestra el gradiente del deporte con líneas de cancha.
 class _CoverCarrusel extends StatefulWidget {
-  const _CoverCarrusel({required this.fotos, required this.portada});
+  const _CoverCarrusel(
+      {required this.fotos, required this.portada, this.canchaIdGoogle});
   final List<String> fotos;
   final Deporte portada;
+
+  /// Id `gp_…` de la cancha DESCUBIERTA en Google. Si viene y no hay fotos
+  /// propias, la tarjeta baja UNA foto de Google en forma perezosa (misma
+  /// caché de sesión que la ficha: un solo request por lugar por sesión).
+  final String? canchaIdGoogle;
 
   @override
   State<_CoverCarrusel> createState() => _CoverCarruselState();
@@ -338,6 +352,27 @@ class _CoverCarrusel extends StatefulWidget {
 class _CoverCarruselState extends State<_CoverCarrusel> {
   final _ctrl = PageController();
   int _pagina = 0;
+
+  /// Foto de Google bajada en vivo (solo la primera: portada de la tarjeta).
+  List<String> _fotosVivo = const [];
+
+  List<String> get _fotos =>
+      widget.fotos.isNotEmpty ? widget.fotos : _fotosVivo;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargarFotoVivo();
+  }
+
+  Future<void> _cargarFotoVivo() async {
+    final id = widget.canchaIdGoogle;
+    if (id == null || widget.fotos.isNotEmpty) return;
+    final urls = await PlacesService.fotosFicha(id);
+    if (mounted && urls.isNotEmpty) {
+      setState(() => _fotosVivo = [urls.first]);
+    }
+  }
 
   @override
   void dispose() {
@@ -351,23 +386,24 @@ class _CoverCarruselState extends State<_CoverCarrusel> {
       decoration: BoxDecoration(gradient: gradienteDeporte(widget.portada)),
       child: const CourtLines(),
     );
-    if (widget.fotos.isEmpty) return fondo;
+    final fotos = _fotos;
+    if (fotos.isEmpty) return fondo;
     return Stack(
       fit: StackFit.expand,
       children: [
         PageView.builder(
           controller: _ctrl,
-          itemCount: widget.fotos.length,
+          itemCount: fotos.length,
           onPageChanged: (i) => setState(() => _pagina = i),
           itemBuilder: (_, i) => Image.network(
-            widget.fotos[i],
+            fotos[i],
             fit: BoxFit.cover,
             errorBuilder: (_, __, ___) => fondo,
             loadingBuilder: (ctx, child, prog) =>
                 prog == null ? child : fondo,
           ),
         ),
-        if (widget.fotos.length > 1)
+        if (fotos.length > 1)
           Positioned(
             bottom: 10,
             left: 0,
@@ -375,7 +411,7 @@ class _CoverCarruselState extends State<_CoverCarrusel> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                for (var i = 0; i < widget.fotos.length; i++)
+                for (var i = 0; i < fotos.length; i++)
                   AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
                     margin: const EdgeInsets.symmetric(horizontal: 3),
