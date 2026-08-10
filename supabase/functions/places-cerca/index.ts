@@ -104,36 +104,56 @@ serve(async (req) => {
         region = b.region.trim().toUpperCase();
       }
     }
-    // Las 4 consultas de texto salen en PARALELO (antes, secuenciales).
+    // Las consultas de texto salen en PARALELO. Además de los lugares, capturamos
+    // el STATUS y el primer error crudo de Google (diag): antes un rechazo
+    // (billing, key inválida, API no habilitada) se tragaba en silencio y la
+    // función respondía places:[] sin pista alguna de la causa.
+    const diag: { statuses: Record<string, number>; primerError: string } = {
+      statuses: {},
+      primerError: "",
+    };
     const respuestas = await Promise.all(
-      CONSULTAS.map((q) =>
-        fetch("https://places.googleapis.com/v1/places:searchText", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Goog-Api-Key": KEY,
-            "X-Goog-FieldMask":
-              "places.id,places.displayName,places.location,places.formattedAddress,places.types,places.photos",
-          },
-          body: JSON.stringify({
-            textQuery: q,
-            languageCode: "es",
-            regionCode: region,
-            maxResultCount: 20,
-            // Rankear por DISTANCIA: devuelve las canchas MÁS CERCANAS primero
-            // (no las más "populares"), para que salga la cancha del barrio.
-            rankPreference: "DISTANCE",
-            locationBias: {
-              circle: {
-                center: { latitude: lat, longitude: lng },
-                radius: radius ?? 4000,
+      CONSULTAS.map(async (q) => {
+        try {
+          const r = await fetch(
+            "https://places.googleapis.com/v1/places:searchText",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Goog-Api-Key": KEY,
+                "X-Goog-FieldMask":
+                  "places.id,places.displayName,places.location,places.formattedAddress,places.types,places.photos",
               },
+              body: JSON.stringify({
+                textQuery: q,
+                languageCode: "es",
+                regionCode: region,
+                maxResultCount: 20,
+                // Rankear por DISTANCIA: devuelve las canchas MÁS CERCANAS
+                // primero (no las más "populares").
+                rankPreference: "DISTANCE",
+                locationBias: {
+                  circle: {
+                    center: { latitude: lat, longitude: lng },
+                    radius: radius ?? 4000,
+                  },
+                },
+              }),
             },
-          }),
-        })
-          .then((r) => (r.ok ? r.json() : { places: [] }))
-          .catch(() => ({ places: [] }))
-      ),
+          );
+          diag.statuses[String(r.status)] =
+            (diag.statuses[String(r.status)] ?? 0) + 1;
+          if (r.ok) return await r.json();
+          if (!diag.primerError) {
+            diag.primerError = (await r.text()).slice(0, 500);
+          }
+          return { places: [] };
+        } catch (e) {
+          if (!diag.primerError) diag.primerError = `fetch: ${e}`;
+          return { places: [] };
+        }
+      }),
     );
 
     const porId = new Map<string, unknown>();
@@ -145,7 +165,8 @@ serve(async (req) => {
 
     // Modo rápido (default): devuelve las canchas SIN resolver fotos. La app las
     // muestra al instante y vuelve a pedir con fotos=true para enriquecerlas.
-    if (!conFotos) return json({ places: lista });
+    // `diag` viaja siempre: la app lo ignora y el Test del dashboard lo muestra.
+    if (!conFotos) return json({ places: lista, diag });
 
     // Modo con fotos: resuelve las fotos reales de los primeros lugares.
     const conFoto = await Promise.all(
@@ -157,7 +178,7 @@ serve(async (req) => {
     );
     const resto = lista.slice(MAX_LUGARES_CON_FOTO);
 
-    return json({ places: [...conFoto, ...resto] });
+    return json({ places: [...conFoto, ...resto], diag });
   } catch (e) {
     return json({ places: [], error: String(e) }, 500);
   }
