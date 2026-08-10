@@ -185,7 +185,7 @@ class PlacesService {
               'X-Goog-Api-Key': _key,
               'X-Goog-FieldMask':
                   'places.id,places.displayName,places.location,'
-                      'places.formattedAddress,places.types,places.photos',
+                      'places.formattedAddress,places.types',
             },
             body: jsonEncode({
               'textQuery': q,
@@ -358,25 +358,16 @@ class PlacesService {
     );
   }
 
-  /// Fotos reales del lugar. Si vienen de la Edge Function ya son URLs públicas
-  /// (`fotos`). Si es el modo directo, construimos la URL de la Place Photo
-  /// (New) con la key del cliente (solo en fallback).
+  /// Fotos del lugar en el DESCUBRIMIENTO: solo las que la Edge Function ya
+  /// resolvió como URLs públicas (`fotos`). NO construimos URLs de Place Photo
+  /// desde la metadata `photos` (cada foto pintada gasta cuota, sus URLs
+  /// caducan y la cosecha no puede guardarlas por licencia) — así la lista es
+  /// SIEMPRE consistente: placeholder por deporte hasta que el dueño reclame
+  /// y suba sus propias fotos.
   static List<String> _fotosDe(Map<String, dynamic> p) {
     final yaResueltas = p['fotos'];
     if (yaResueltas is List && yaResueltas.isNotEmpty) {
       return yaResueltas.map((e) => e.toString()).toList();
-    }
-    final photos = p['photos'];
-    if (photos is List && _key.isNotEmpty) {
-      final urls = <String>[];
-      for (final ph in photos.take(3)) {
-        final name = (ph is Map) ? ph['name']?.toString() : null;
-        if (name != null) {
-          urls.add(
-              'https://places.googleapis.com/v1/$name/media?maxWidthPx=800&key=$_key');
-        }
-      }
-      return urls;
     }
     return const [];
   }
