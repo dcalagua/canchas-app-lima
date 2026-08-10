@@ -16,6 +16,7 @@ import '../data/presencia_repo.dart';
 import '../models/estado.dart';
 import '../models/canal.dart';
 import '../data/campeonatos_repo.dart';
+import '../data/canchas_cache_repo.dart';
 import '../data/canchas_repo.dart';
 import '../data/invitaciones_repo.dart';
 import '../data/matriculas_repo.dart';
@@ -4288,29 +4289,42 @@ class AppState extends ChangeNotifier {
     return (dLat * dLat + dLng * dLng) <= maxKm * maxKm;
   }
 
-  /// Descubre canchas REALES cerca de [centro] con Google Places y las suma al
-  /// mapa como "sin registrar". Fail-safe: si Places no responde, no cambia nada.
+  /// Descubre canchas REALES cerca de [centro]. Estrategia de COSTO CERO:
+  ///  1. Lee primero la COSECHA en Supabase (`pichangol_canchas_cache`):
+  ///     instantáneo, gratis y offline-friendly.
+  ///  2. Solo si la zona NO está cosechada (pocos resultados) consulta Google
+  ///     Places, y lo que trae lo COSECHA para que el siguiente usuario ya no
+  ///     gaste cuota. La primera visita a una zona paga; el resto, S/0.
+  ///  Sin fase de fotos de Google (caducan + licencia + cuota): la lista usa
+  ///  placeholder por deporte; la foto real llega cuando el dueño reclama.
   Future<void> descubrirCanchasCerca(LatLng centro) async {
     descubriendo = true;
     notifyListeners(); // muestra el indicador "Buscando canchas cerca de ti…"
-    // Fase 1: canchas SIN fotos → respuesta rápida, las tarjetas salen al toque.
+    // 1) Cosecha primero (Supabase): pinta al toque sin gastar cuota.
+    var cosechadas = 0;
+    try {
+      final cache = await CanchasCacheRepo.cerca(centro, radioBusquedaKm);
+      cosechadas = cache.length;
+      _agregarDescubiertas(cache);
+      if (cosechadas > 0) notifyListeners();
+    } catch (_) {}
+    // 2) Zona ya cosechada (≥8 lugares) → NO gastar Google. Zona nueva/rala →
+    //    descubrir en Google y cosechar el resultado para todos.
+    if (cosechadas >= 8) {
+      descubriendo = false;
+      notifyListeners();
+      return;
+    }
     try {
       final rapidas = await PlacesService.canchasCerca(centro,
           conFotos: false, radioMetros: radioBusquedaKm * 1000);
       _agregarDescubiertas(rapidas);
+      CanchasCacheRepo.guardar(rapidas); // cosecha (best-effort, sin await UI)
     } catch (_) {
-      // fail-safe: si Places no responde, no cambia nada
+      // fail-safe: si Places no responde, quedan las cosechadas/registradas
     } finally {
       descubriendo = false;
       notifyListeners();
-    }
-    // Fase 2: vuelve a pedir CON fotos y las pinta encima (segundo plano).
-    try {
-      final conFotos = await PlacesService.canchasCerca(centro,
-          conFotos: true, radioMetros: radioBusquedaKm * 1000);
-      _fusionarFotos(conFotos);
-    } catch (_) {
-      // sin fotos, las canchas igual quedan visibles (placeholder de deporte)
     }
   }
 
@@ -4318,23 +4332,6 @@ class AppState extends ChangeNotifier {
     final existentes = canchasDescubiertas.map((c) => c.id).toSet();
     final nuevas = reales.where((c) => !existentes.contains(c.id)).toList();
     if (nuevas.isNotEmpty) canchasDescubiertas.addAll(nuevas);
-  }
-
-  /// Mezcla las fotos resueltas (fase 2) sobre las canchas ya mostradas (fase 1).
-  void _fusionarFotos(List<Cancha> conFotos) {
-    var cambio = false;
-    for (final c in conFotos) {
-      final i = canchasDescubiertas.indexWhere((x) => x.id == c.id);
-      if (i < 0) {
-        canchasDescubiertas.add(c); // cancha nueva que apareció en fase 2
-        cambio = true;
-      } else if (c.fotos.isNotEmpty) {
-        canchasDescubiertas[i] = canchasDescubiertas[i]
-            .copyWith(fotos: c.fotos, fotoUrl: c.fotos.first);
-        cambio = true;
-      }
-    }
-    if (cambio) notifyListeners();
   }
 
   /// Trae las reservas compartidas desde Supabase (disponibilidad entre

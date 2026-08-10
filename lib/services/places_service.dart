@@ -122,26 +122,21 @@ class PlacesService {
   /// Incluye jerga peruana (pichanga, fulbito, grass/loza, fútbol 5/6/7) para
   /// no perder canchas informales, y términos de CLUBES deportivos (country
   /// club, polideportivo, racquet) para que también entren al radar.
+  // 10 consultas (antes 19): las quitadas se solapaban casi al 100% con estas
+  // ("cancha sintética"/"fútbol 7"/"pichanga" ⊂ "canchas de fútbol"+"grass
+  // sintético"; "polideportivo"/"racquet"/"regatas"/"campestre" ⊂ "complejo/club
+  // deportivo"+"country club"). Cada consulta = 1 request de cuota Places.
   static const _consultas = [
     'canchas de fútbol',
-    'cancha sintética de fútbol',
-    'pichanga',
     'grass sintético',
-    'fútbol 7',
     'complejo deportivo',
-    'club de tenis',
     'cancha de tenis',
+    'club de tenis',
     'cancha de pádel',
-    'club de pádel',
-    'cancha de pickleball',
     'cancha de vóley',
     'cancha de básquet',
     'club deportivo',
-    'polideportivo',
     'country club',
-    'racquet club',
-    'club de regatas',
-    'club campestre',
   ];
 
   /// Busca canchas cerca de [centro] dentro de [radioMetros].

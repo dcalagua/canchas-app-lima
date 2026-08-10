@@ -12,27 +12,19 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const KEY = Deno.env.get("PLACES_API_KEY") ?? "";
 
+// 10 consultas (antes 19): las quitadas se solapaban casi al 100% con estas.
+// Cada consulta = 1 request de cuota SearchText de Places.
 const CONSULTAS = [
   "canchas de fútbol",
-  "cancha sintética de fútbol",
-  "pichanga",
   "grass sintético",
-  "fútbol 7",
   "complejo deportivo",
-  "club de tenis",
   "cancha de tenis",
+  "club de tenis",
   "cancha de pádel",
-  "club de pádel",
-  "cancha de pickleball",
   "cancha de vóley",
   "cancha de básquet",
-  // Clubes formales (traen country clubs / sedes de clubes al radar).
   "club deportivo",
-  "polideportivo",
   "country club",
-  "racquet club",
-  "club de regatas",
-  "club campestre",
 ];
 
 // Cuántos lugares y fotos resolvemos (control de latencia/cuota).
