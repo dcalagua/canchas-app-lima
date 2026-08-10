@@ -7,6 +7,7 @@ import '../models/resena.dart';
 import '../services/avisos_service.dart';
 import '../services/location_service.dart';
 import '../services/pagos_service.dart';
+import '../services/places_service.dart';
 import '../services/propiedad_service.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
@@ -2472,9 +2473,30 @@ class _HeroGaleriaState extends State<_HeroGaleria> {
   final _ctrl = PageController();
   int _pagina = 0;
 
+  /// Fotos de Google bajadas EN VIVO al abrir la ficha (solo canchas
+  /// descubiertas sin fotos propias; máx 3, con caché de sesión). La lista de
+  /// Explorar sigue siempre con placeholder — esto es solo para la ficha.
+  List<String> _fotosVivo = const [];
+
   List<String> get _fotos => widget.cancha.fotos.isNotEmpty
       ? widget.cancha.fotos
-      : (widget.cancha.fotoUrl != null ? [widget.cancha.fotoUrl!] : []);
+      : (widget.cancha.fotoUrl != null
+          ? [widget.cancha.fotoUrl!]
+          : _fotosVivo);
+
+  @override
+  void initState() {
+    super.initState();
+    _cargarFotosVivo();
+  }
+
+  Future<void> _cargarFotosVivo() async {
+    final c = widget.cancha;
+    // Solo descubiertas/cosechadas: las reclamadas lucen las fotos del dueño.
+    if (c.registrada || c.fotos.isNotEmpty || c.fotoUrl != null) return;
+    final urls = await PlacesService.fotosFicha(c.id);
+    if (mounted && urls.isNotEmpty) setState(() => _fotosVivo = urls);
+  }
 
   @override
   void dispose() {

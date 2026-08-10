@@ -358,6 +358,43 @@ class PlacesService {
     );
   }
 
+  /// Caché de sesión de fotos por ficha: UNA consulta a Google por lugar por
+  /// sesión (aunque el usuario entre y salga de la ficha mil veces). Guarda
+  /// también el resultado vacío para no reintentar.
+  static final Map<String, List<String>> _cacheFotosFicha = {};
+
+  /// FOTOS EN VIVO de una cancha DESCUBIERTA/cosechada, SOLO al abrir su ficha
+  /// (Place Details New por place_id — no viaja por la Edge Function). Candados
+  /// de costo: máximo 3 fotos, caché de sesión y fail-safe []. La LISTA de
+  /// Explorar nunca las usa (ahí siempre placeholder).
+  static Future<List<String>> fotosFicha(String canchaId) async {
+    if (!disponible || !canchaId.startsWith('gp_')) return const [];
+    final cacheadas = _cacheFotosFicha[canchaId];
+    if (cacheadas != null) return cacheadas;
+    try {
+      final placeId = canchaId.substring(3); // quita el prefijo gp_
+      final uri = Uri.https('places.googleapis.com', '/v1/places/$placeId');
+      final resp = await http.get(uri, headers: {
+        'X-Goog-Api-Key': _key,
+        'X-Goog-FieldMask': 'photos',
+      }).timeout(const Duration(seconds: 6));
+      if (resp.statusCode != 200) return const [];
+      final body = jsonDecode(resp.body) as Map<String, dynamic>;
+      final urls = <String>[];
+      for (final ph in ((body['photos'] as List?) ?? []).take(3)) {
+        final name = (ph is Map) ? ph['name']?.toString() : null;
+        if (name != null) {
+          urls.add(
+              'https://places.googleapis.com/v1/$name/media?maxWidthPx=1000&key=$_key');
+        }
+      }
+      _cacheFotosFicha[canchaId] = urls;
+      return urls;
+    } catch (_) {
+      return const []; // fail-safe: la ficha se queda con el placeholder
+    }
+  }
+
   /// Fotos del lugar en el DESCUBRIMIENTO: solo las que la Edge Function ya
   /// resolvió como URLs públicas (`fotos`). NO construimos URLs de Place Photo
   /// desde la metadata `photos` (cada foto pintada gasta cuota, sus URLs
