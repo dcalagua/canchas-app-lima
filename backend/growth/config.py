@@ -79,6 +79,11 @@ PICHANGOL_ADMIN_WHATSAPP = os.getenv("PICHANGOL_ADMIN_WHATSAPP", "")
 # queda deshabilitado (503). No viaja en la URL: la página lo guarda en el
 # navegador y lo envía en la cabecera X-Admin-Token.
 ADMIN_PANEL_TOKEN = os.getenv("ADMIN_PANEL_TOKEN", "")
+# Usuarios del panel (login usuario+contraseña de la torre de control), formato
+# "correo:clave" separados por coma. El login emite una sesión firmada con
+# ADMIN_PANEL_TOKEN que expira sola. Sin esta env, el panel sigue aceptando el
+# token clásico ("Entrar con token").
+ADMIN_PANEL_USUARIOS = os.getenv("ADMIN_PANEL_USUARIOS", "")
 # Clave compartida APP↔BACKEND para que SOLO el APK oficial pueda llamar a los
 # endpoints públicos del dueño (crear reclamo, estado, OTP, identidad…). El APK la
 # envía en la cabecera X-App-Key (viene de un --dart-define en el build). Si está

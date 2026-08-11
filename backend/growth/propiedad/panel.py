@@ -4,16 +4,20 @@ El admin de Pichangol entra desde el navegador, ve los reclamos de canchas y los
 aprueba/rechaza. La aprobación es DIRECTA: al aprobar, la cancha queda activa
 (sin validación en sitio todavía).
 
-Seguridad: protegido por ADMIN_PANEL_TOKEN. El token NO viaja en la URL; la
-página lo guarda en el navegador (localStorage) y lo manda en la cabecera
-X-Admin-Token. Si el token no está configurado, el panel responde 503.
+Seguridad: login por USUARIO + CONTRASEÑA (env `ADMIN_PANEL_USUARIOS`) que
+emite una sesión firmada con expiración (ver `propiedad/admin_auth.py`); el
+token clásico `ADMIN_PANEL_TOKEN` sigue aceptado como respaldo. Nada viaja en
+la URL: la página guarda la sesión en el navegador (localStorage) y la manda
+en la cabecera X-Admin-Token. Sin `ADMIN_PANEL_TOKEN`, el panel responde 503.
 """
 
 from __future__ import annotations
 
+import time
+
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
@@ -21,7 +25,7 @@ import config
 from convocatorias import service as convocatorias_service
 from db import pg
 from db.store import stores
-from propiedad import reclamos
+from propiedad import admin_auth, reclamos
 
 router = APIRouter(tags=["panel"])
 
@@ -29,8 +33,47 @@ router = APIRouter(tags=["panel"])
 def _check(token: str | None) -> None:
     if not config.ADMIN_PANEL_TOKEN:
         raise HTTPException(status_code=503, detail="panel_no_configurado")
-    if token != config.ADMIN_PANEL_TOKEN:
+    if not admin_auth.token_admin_valido(token):
         raise HTTPException(status_code=401, detail="token_invalido")
+
+
+# ── Login usuario+contraseña ──────────────────────────────────────────────────
+# Anti fuerza bruta simple por IP: tras MAX_INTENTOS fallos seguidos, bloquea
+# BLOQUEO_S segundos. En memoria (una instancia en Railway; se reinicia con el
+# proceso, suficiente para frenar un ataque en línea).
+_intentos: dict[str, tuple[int, float]] = {}  # ip -> (fallos, bloqueado_hasta)
+MAX_INTENTOS = 5
+BLOQUEO_S = 60.0
+
+
+class LoginRequest(BaseModel):
+    usuario: str
+    clave: str
+
+
+@router.post("/admin/api/login")
+def login(body: LoginRequest, request: Request) -> dict:
+    """Valida usuario+contraseña y devuelve una sesión firmada (12 h) que la
+    página manda en X-Admin-Token. 503 si el panel/usuarios no están
+    configurados; 429 si la IP está bloqueada por intentos fallidos."""
+    if not config.ADMIN_PANEL_TOKEN:
+        raise HTTPException(status_code=503, detail="panel_no_configurado")
+    if not admin_auth.usuarios_configurados():
+        raise HTTPException(status_code=503, detail="usuarios_no_configurados")
+    ip = request.client.host if request.client else "?"
+    fallos, bloqueado_hasta = _intentos.get(ip, (0, 0.0))
+    ahora = time.time()
+    if ahora < bloqueado_hasta:
+        raise HTTPException(status_code=429, detail="demasiados_intentos")
+    if admin_auth.credenciales_validas(body.usuario, body.clave):
+        _intentos.pop(ip, None)
+        usuario = body.usuario.strip().lower()
+        return {"ok": True, "token": admin_auth.crear_sesion(usuario),
+                "usuario": usuario}
+    fallos += 1
+    _intentos[ip] = (
+        fallos, ahora + BLOQUEO_S if fallos >= MAX_INTENTOS else 0.0)
+    raise HTTPException(status_code=401, detail="credenciales_invalidas")
 
 
 class DecidirRequest(BaseModel):
@@ -932,33 +975,93 @@ _HTML = r"""<!DOCTYPE html>
   .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);
     background:var(--bosque);color:#fff;padding:12px 18px;border-radius:12px;
     font-weight:700;font-size:14px;z-index:20;box-shadow:0 6px 20px rgba(0,0,0,.2)}
-  /* login */
-  .gate{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;
+  /* login (split estilo eChange: lado de marca verde + formulario blanco) */
+  .gate{position:fixed;inset:0;background:#E9EDE8;display:flex;align-items:center;
     justify-content:center;padding:24px;z-index:30}
-  .gate .box{background:#fff;border:1px solid var(--border);border-radius:18px;
-    padding:28px 24px;max-width:380px;width:100%;text-align:center}
-  .gate .pin{width:58px;height:58px;border-radius:16px;overflow:hidden;margin:0 auto 14px}
-  .gate h2{margin:0 0 4px;font-family:var(--serif);font-weight:700;font-size:24px;
+  .gate .split{display:flex;width:100%;max-width:1000px;min-height:580px;background:#fff;
+    border-radius:24px;overflow:hidden;box-shadow:0 28px 80px rgba(0,0,0,.20)}
+  .gate .lado{flex:1.08;background:linear-gradient(155deg,#14463A 0%,#0E332B 70%,#0A2822 100%);
+    color:#fff;padding:46px 42px;display:none;flex-direction:column}
+  .gate .lado .marca{display:flex;align-items:center;gap:10px;margin-bottom:42px}
+  .gate .lado .pin{width:34px;height:34px;border-radius:10px;overflow:hidden}
+  .gate .lado h1{margin:0 0 6px;font-family:var(--serif);font-weight:700;font-size:34px;
+    letter-spacing:-.01em}
+  .gate .lado .eyebrow{font-size:12px;font-weight:800;letter-spacing:.14em;color:#AEEA94;
+    text-transform:uppercase;margin-bottom:18px}
+  .gate .lado .pitch{color:#D7E5DC;font-size:14.5px;line-height:1.55;margin:0 0 30px;max-width:400px}
+  .gate .feat{display:flex;gap:14px;margin-bottom:22px;align-items:flex-start}
+  .gate .feat .fi{flex:0 0 auto;width:38px;height:38px;border-radius:50%;background:rgba(174,234,148,.16);
+    display:flex;align-items:center;justify-content:center;font-size:17px}
+  .gate .feat b{display:block;font-size:14.5px;margin-bottom:3px}
+  .gate .feat span{color:#BFD3C7;font-size:13px;line-height:1.5}
+  .gate .lado .foot{margin-top:auto;color:#9DB8AA;font-size:12px}
+  .gate .form{flex:1;padding:46px 42px;display:flex;flex-direction:column;justify-content:center;
+    max-width:520px;margin:0 auto;width:100%}
+  .gate .form h2{margin:0 0 4px;font-family:var(--serif);font-weight:700;font-size:26px;
     letter-spacing:-.01em;color:var(--ink)}
-  .gate p{margin:0 0 18px;color:var(--muted);font-size:14px}
-  .gate input{width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:10px;
-    font-family:inherit;font-size:15px;margin-bottom:12px}
-  .gate button{width:100%;background:var(--bosque);color:var(--lima);border:0;
-    border-radius:12px;padding:13px;font-family:inherit;font-weight:800;font-size:15px;cursor:pointer}
+  .gate .form .sub{margin:0 0 24px;color:var(--muted);font-size:14px}
+  .gate .campo{position:relative;margin-bottom:14px}
+  .gate .campo label{position:absolute;top:-7px;left:12px;background:#fff;padding:0 5px;
+    font-size:11.5px;font-weight:700;color:var(--muted)}
+  .gate .campo input{width:100%;padding:14px 44px 14px 40px;border:1px solid var(--border);
+    border-radius:12px;font-family:inherit;font-size:15px;background:#F6F9F5}
+  .gate .campo input:focus{outline:2px solid #128C7E33;border-color:#128C7E}
+  .gate .campo .ic{position:absolute;left:12px;top:50%;transform:translateY(-50%);
+    color:var(--muted);font-size:16px}
+  .gate .campo .ojo{position:absolute;right:10px;top:50%;transform:translateY(-50%);
+    background:none;border:0;cursor:pointer;color:var(--muted);font-size:17px;padding:4px;width:auto}
+  .gate .form>button.cta{width:100%;background:var(--bosque);color:#fff;border:0;
+    border-radius:12px;padding:14px;font-family:inherit;font-weight:800;font-size:15px;
+    cursor:pointer;margin-top:6px}
+  .gate .form>button.cta:hover{filter:brightness(1.08)}
   .gate .err{color:var(--rojo);font-size:13px;font-weight:700;min-height:18px;margin-bottom:8px}
+  .gate .alt{margin-top:18px;text-align:center;font-size:12.5px;color:var(--muted)}
+  .gate .alt a{color:#128C7E;font-weight:700;cursor:pointer;text-decoration:none}
+  .gate .form .foot{margin-top:26px;text-align:center;color:var(--muted);font-size:12px;font-weight:600}
+  @media(min-width:820px){ .gate .lado{display:flex} .gate .form{margin:0} }
 </style>
 </head>
 <body>
 <div class="gate" id="gate">
-  <div class="box">
-    <div class="pin"><svg viewBox="0 0 48 48"><rect x="1.5" y="1.5" width="45" height="45" rx="12" fill="#128C7E"/><path d="M24 11.5c-4.3 0-7.8 3.5-7.8 7.8 0 5.9 7.8 14.2 7.8 14.2s7.8-8.3 7.8-14.2c0-4.3-3.5-7.8-7.8-7.8zm0 10.7a2.9 2.9 0 110-5.8 2.9 2.9 0 010 5.8z" fill="#fff"/></svg></div>
-    <h2><span class="wm" style="font-size:24px">Pichang<svg class="ball" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polygon points="12,8.2 14.9,10.3 13.8,13.8 10.2,13.8 9.1,10.3"/><path d="M12 8.2V4.3M14.9 10.3l3.6-1.7M13.8 13.8l2.5 3.2M10.2 13.8l-2.5 3.2M9.1 10.3L5.5 8.6"/></svg>l</span></h2>
-    <p>Panel de administración de canchas</p>
-    <div class="err" id="gateErr"></div>
-    <input id="tok" type="password" placeholder="Token de administrador" autocomplete="off">
-    <button onclick="entrar()">Entrar</button>
-    <div style="margin-top:16px;color:var(--muted);font-size:12px;font-weight:600">
-      Una solución de <span class="ebim">EBIM</span>
+  <div class="split">
+    <div class="lado">
+      <div class="marca">
+        <div class="pin"><svg viewBox="0 0 48 48"><rect x="1.5" y="1.5" width="45" height="45" rx="12" fill="#AEEA94"/><path d="M24 11.5c-4.3 0-7.8 3.5-7.8 7.8 0 5.9 7.8 14.2 7.8 14.2s7.8-8.3 7.8-14.2c0-4.3-3.5-7.8-7.8-7.8zm0 10.7a2.9 2.9 0 110-5.8 2.9 2.9 0 010 5.8z" fill="#14463A"/></svg></div>
+        <span class="wm" style="font-size:20px;color:#fff">Pichang<svg class="ball" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polygon points="12,8.2 14.9,10.3 13.8,13.8 10.2,13.8 9.1,10.3"/><path d="M12 8.2V4.3M14.9 10.3l3.6-1.7M13.8 13.8l2.5 3.2M10.2 13.8l-2.5 3.2M9.1 10.3L5.5 8.6"/></svg>l</span>
+      </div>
+      <h1>Torre de control</h1>
+      <div class="eyebrow">Operación del marketplace</div>
+      <p class="pitch">Desde aquí el equipo opera Pichangol: reclamos de
+        propiedad, cobros y liquidaciones, disputas y comunicación con dueños
+        y jugadores.</p>
+      <div class="feat"><div class="fi">📋</div><div><b>Reclamos con evidencia</b>
+        <span>Cada solicitud llega con fecha, identidad validada y el mapa de
+        dónde se envió, para aprobar con confianza.</span></div></div>
+      <div class="feat"><div class="fi">💸</div><div><b>La plata, clara</b>
+        <span>Cobros online, comisiones y "por recibir" de cada dueño, cuadrados
+        con la billetera de la app.</span></div></div>
+      <div class="feat"><div class="fi">🛡️</div><div><b>Sesión protegida</b>
+        <span>Acceso por usuario y contraseña con sesión que expira sola.</span></div></div>
+      <div class="foot">Conexión cifrada · Pichangol · una solución de <span class="ebim" style="color:#AEEA94">EBIM</span></div>
+    </div>
+    <div class="form">
+      <h2>Entrar</h2>
+      <p class="sub">Con tu cuenta de operador de la torre de control.</p>
+      <div class="err" id="gateErr"></div>
+      <div class="campo" id="campoUsr">
+        <label>Correo</label>
+        <span class="ic">✉️</span>
+        <input id="usr" type="email" placeholder="tucorreo@ebim.pe" autocomplete="username">
+      </div>
+      <div class="campo">
+        <label id="lblPwd">Contraseña</label>
+        <span class="ic">🔒</span>
+        <input id="pwd" type="password" placeholder="••••••••" autocomplete="current-password">
+        <button type="button" class="ojo" onclick="verPwd()" title="Mostrar/ocultar">👁</button>
+      </div>
+      <button class="cta" onclick="entrar()">Iniciar sesión</button>
+      <div class="alt" id="altModo">¿Sin usuario? <a onclick="modoToken(true)">Entrar con token de administrador</a></div>
+      <div class="foot">Pichang<span style="letter-spacing:0">o</span>l · una solución de <span class="ebim">EBIM</span></div>
     </div>
   </div>
 </div>
@@ -1094,19 +1197,54 @@ let ubicMaxM = 150;
 function tok(){ return localStorage.getItem('pichangol_admin_tok') || ''; }
 function headers(){ return {'Content-Type':'application/json','X-Admin-Token':tok()}; }
 
+let conToken = false; // modo respaldo: entrar con el token clásico
+
+function modoToken(on){
+  conToken = on;
+  document.getElementById('campoUsr').style.display = on ? 'none' : '';
+  document.getElementById('lblPwd').textContent = on ? 'Token de administrador' : 'Contraseña';
+  document.getElementById('pwd').placeholder = on ? 'Token' : '••••••••';
+  document.getElementById('altModo').innerHTML = on
+    ? '<a onclick="modoToken(false)">← Volver al ingreso con usuario y contraseña</a>'
+    : '¿Sin usuario? <a onclick="modoToken(true)">Entrar con token de administrador</a>';
+  document.getElementById('gateErr').textContent='';
+}
+
+function verPwd(){
+  const p = document.getElementById('pwd');
+  p.type = p.type === 'password' ? 'text' : 'password';
+}
+
 async function entrar(){
-  const t = document.getElementById('tok').value.trim();
   const err = document.getElementById('gateErr');
   err.textContent='';
-  if(!t){ err.textContent='Ingresa el token.'; return; }
-  const r = await fetch('/admin/api/sesion',{headers:{'X-Admin-Token':t}});
+  const clave = document.getElementById('pwd').value.trim();
+  if(conToken){
+    if(!clave){ err.textContent='Ingresa el token.'; return; }
+    const r = await fetch('/admin/api/sesion',{headers:{'X-Admin-Token':clave}});
+    if(r.ok){ localStorage.setItem('pichangol_admin_tok',clave); mostrarApp(); }
+    else if(r.status===503) err.textContent='El panel no está configurado en el servidor (ADMIN_PANEL_TOKEN).';
+    else err.textContent='Token inválido.';
+    return;
+  }
+  const usuario = document.getElementById('usr').value.trim();
+  if(!usuario || !clave){ err.textContent='Ingresa tu correo y contraseña.'; return; }
+  const r = await fetch('/admin/api/login',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({usuario, clave})});
   if(r.ok){
-    localStorage.setItem('pichangol_admin_tok',t);
+    const j = await r.json();
+    localStorage.setItem('pichangol_admin_tok', j.token);
     mostrarApp();
+  } else if(r.status===429){
+    err.textContent='Demasiados intentos. Espera un minuto y vuelve a probar.';
   } else if(r.status===503){
-    err.textContent='El panel no está configurado en el servidor (ADMIN_PANEL_TOKEN).';
+    const j = await r.json().catch(()=>({}));
+    err.textContent = (j.detail==='usuarios_no_configurados')
+      ? 'Aún no hay usuarios configurados (ADMIN_PANEL_USUARIOS). Usa "Entrar con token".'
+      : 'El panel no está configurado en el servidor (ADMIN_PANEL_TOKEN).';
   } else {
-    err.textContent='Token inválido.';
+    err.textContent='Correo o contraseña incorrectos.';
   }
 }
 function salir(){ localStorage.removeItem('pichangol_admin_tok'); location.reload(); }
@@ -2089,7 +2227,8 @@ async function liberar(id, btn){
 if(tok()){
   fetch('/admin/api/sesion',{headers:headers()}).then(r=>{ if(r.ok) mostrarApp(); });
 }
-document.getElementById('tok').addEventListener('keydown',e=>{ if(e.key==='Enter') entrar(); });
+document.getElementById('pwd').addEventListener('keydown',e=>{ if(e.key==='Enter') entrar(); });
+document.getElementById('usr').addEventListener('keydown',e=>{ if(e.key==='Enter') entrar(); });
 </script>
 </body>
 </html>"""

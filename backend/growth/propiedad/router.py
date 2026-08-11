@@ -22,7 +22,8 @@ from models import (
     TriageRequest,
     ValidarReclamoRequest,
 )
-from propiedad import identidad, reclamos, service, twilio_adapter, whatsapp_adapter
+from propiedad import (admin_auth, identidad, reclamos, service,
+                       twilio_adapter, whatsapp_adapter)
 
 router = APIRouter(prefix="/propiedad", tags=["propiedad"])
 
@@ -34,7 +35,7 @@ def _require_admin(x_admin_token: str | None = Header(default=None)) -> None:
     La app del dueño NO usa estos endpoints; usa /reclamo, /estado, /otp, etc."""
     if not config.ADMIN_PANEL_TOKEN:
         raise HTTPException(status_code=503, detail="admin_no_configurado")
-    if x_admin_token != config.ADMIN_PANEL_TOKEN:
+    if not admin_auth.token_admin_valido(x_admin_token):
         raise HTTPException(status_code=401, detail="token_invalido")
 
 

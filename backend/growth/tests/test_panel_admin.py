@@ -88,7 +88,8 @@ def test_decidir_rechazar_por_http(client):
 def test_pagina_panel_se_sirve(client):
     r = client.get("/admin")
     assert r.status_code == 200
-    assert "Pichangol" in r.text and "Panel de administración" in r.text
+    assert "Pichangol" in r.text and "Torre de control" in r.text
+    assert "Iniciar sesión" in r.text  # login usuario+contraseña
     # Fase 2: el panel incluye la sección de liquidaciones a dueños.
     assert "cargarLiquidaciones" in r.text
     assert "Liquidaciones por pagar a dueños" in r.text
