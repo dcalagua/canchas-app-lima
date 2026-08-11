@@ -736,7 +736,7 @@ _HTML = r"""<!DOCTYPE html>
 <title>Pichangol · Panel de canchas</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800;900&family=Lora:ital,wght@0,500;0,600;0,700;1,500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
   /* Paleta del APP (verde WhatsApp) — co-marca Pichangol + EBIM, solo web admin.
      El primario ('bosque'/'lima') se remapea al verde de la app para congruencia:
@@ -748,7 +748,10 @@ _HTML = r"""<!DOCTYPE html>
     --limaSuave:#e3f2ef; --rojo:#D11F2E;
     /* Tipografías (referencia handoff eSupplier): titulares en serif elegante,
        cuerpo/UI en DM Sans, códigos/ids en monoespaciado. */
-    --serif:'Lora',Georgia,'Times New Roman',serif;
+    /* Tipografía de marca (LookFeel EBIM 2026): DM Sans para TODO — Regular en
+       cuerpo, Semibold/Bold para títulos y énfasis. Sin serifas (se retiró
+       Lora). La var conserva el nombre para no tocar cada uso. */
+    --serif:'DM Sans',system-ui,sans-serif;
     --mono:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;
     --ink:#14201c;
   }
