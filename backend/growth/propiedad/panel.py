@@ -798,48 +798,23 @@ _HTML = r"""<!DOCTYPE html>
   #liquidaciones:empty{display:none}
   #lista{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));
     gap:16px;margin-top:12px}
-  /* --- Layout con BARRA LATERAL izquierda (dashboard) --- */
-  .shell{display:flex;min-height:100vh}
-  .side{width:238px;flex-shrink:0;position:sticky;top:0;height:100vh;
-    background:linear-gradient(180deg,var(--green),var(--green-deep));color:#fff;
-    display:flex;flex-direction:column;padding:18px 14px;
-    box-shadow:2px 0 16px rgba(18,140,126,.18)}
-  .side-brand{display:flex;align-items:center;gap:11px;padding:6px 8px 4px}
-  .side-brand .pin{width:36px;height:36px;border-radius:11px;overflow:hidden;flex-shrink:0}
-  .side-brand .wm{font-size:19px;color:#fff}
-  .side-sub{font-size:11px;font-weight:700;color:rgba(255,255,255,.75);margin-top:1px}
-  .side-sub .ebim{color:#fff;font-size:11px}
-  .nav{display:flex;flex-direction:column;gap:4px;margin-top:22px;flex:1}
-  .nav-i{display:flex;align-items:center;gap:11px;background:transparent;border:0;
-    color:rgba(255,255,255,.86);text-align:left;padding:12px;border-radius:12px;
-    font-family:inherit;font-weight:700;font-size:14.5px;cursor:pointer;transition:.12s}
-  .nav-i .ico{font-size:16px;width:20px;text-align:center}
-  .nav-i:hover{background:rgba(255,255,255,.10);color:#fff}
-  .nav-i.on{background:rgba(255,255,255,.18);color:#fff}
-  .side-foot{display:flex;flex-direction:column;gap:8px}
-  .side-btn{background:rgba(255,255,255,.14);color:#fff;border:0;border-radius:11px;
-    padding:10px;font-family:inherit;font-weight:700;font-size:13px;cursor:pointer;
-    display:flex;align-items:center;justify-content:center;gap:8px}
-  .side-btn:hover{background:rgba(255,255,255,.24)}
-  .side-cred{text-align:center;font-size:11px;color:rgba(255,255,255,.7);
-    font-weight:600;padding-top:6px}
-  .side-cred .ebim{color:#fff;font-size:11px}
-  /* Botón para colapsar/expandir la barra lateral */
-  .side-toggle{align-self:flex-end;background:rgba(255,255,255,.14);color:#fff;border:0;
-    border-radius:10px;width:30px;height:30px;font-size:17px;line-height:1;cursor:pointer;
-    flex-shrink:0;margin-bottom:4px;transition:.12s}
-  .side-toggle:hover{background:rgba(255,255,255,.26)}
-  .side{transition:width .16s ease}
-  .side.collapsed{width:70px;padding:18px 10px;align-items:center}
-  .side.collapsed .sb-txt,
-  .side.collapsed .side-cred,
-  .side.collapsed .side-btn .lbl{display:none}
-  .side.collapsed .side-toggle{align-self:center}
-  .side.collapsed .side-brand{justify-content:center;padding:6px 0 4px}
-  .side.collapsed .nav-i{justify-content:center;gap:0;padding:12px 0;font-size:0}
-  .side.collapsed .nav-i .ico{font-size:19px;width:auto}
-  .side.collapsed .side-btn{justify-content:center;gap:0}
-  .main{flex:1;min-width:0;padding:26px 30px 44px;max-width:1360px}
+  /* --- Layout SaaS (estilo signNow): sidebar CLARO fijo + topbar limpia --- */
+  .shell{display:flex;min-height:100vh;background:#fff}
+  .side{width:254px;flex-shrink:0;position:sticky;top:0;height:100vh;overflow-y:auto;
+    background:#FBFCFB;border-right:1px solid var(--border);
+    display:flex;flex-direction:column;padding:16px 12px}
+  .side-brand{display:flex;align-items:center;gap:10px;padding:4px 10px 14px;
+    border-bottom:1px solid var(--border);margin-bottom:10px}
+  .side-brand .pin{width:34px;height:34px;border-radius:10px;overflow:hidden;flex-shrink:0}
+  .side-brand .wm{font-size:18px;color:var(--ink)}
+  .side-sub{font-size:10.5px;font-weight:700;color:var(--muted);margin-top:1px}
+  .side-sub .ebim{color:var(--green-deep);font-size:10.5px}
+  .nav{display:flex;flex-direction:column;gap:2px;flex:1}
+  .side-cred{text-align:center;font-size:11px;color:var(--muted);font-weight:600;
+    padding:12px 0 4px;border-top:1px solid var(--border)}
+  .side-cred .ebim{color:var(--green-deep);font-size:11px}
+  .colmain{flex:1;min-width:0;display:flex;flex-direction:column}
+  .main{flex:1;min-width:0}
   .page-h{font-family:var(--serif);font-size:29px;font-weight:700;letter-spacing:-.01em;
     color:var(--ink);margin:0 0 18px;line-height:1.15}
   /* Encabezado de página: eyebrow (tema) + título serif + subtítulo de contexto. */
@@ -857,52 +832,46 @@ _HTML = r"""<!DOCTYPE html>
     color:rgba(255,255,255,.42);padding:15px 12px 6px;user-select:none}
   .nav-group:first-child{padding-top:4px}
   .side.collapsed .nav-group{display:none}
-  /* ===== Navegación por TABS clásicos (barra superior) ===== */
-  .topbar{position:sticky;top:0;z-index:6;display:flex;align-items:center;gap:12px;
-    background:linear-gradient(120deg,var(--green),var(--green-deep));color:#fff;
-    padding:12px 24px;box-shadow:0 2px 14px rgba(18,140,126,.20)}
-  .topbar .pin{width:34px;height:34px;border-radius:10px;overflow:hidden;flex-shrink:0;
-    box-shadow:0 1px 4px rgba(0,0,0,.15)}
-  .topbar .pin svg{width:100%;height:100%;display:block}
-  .topbar .wm{font-size:19px;color:#fff}
-  .topbar .side-sub{font-size:11px;font-weight:700;color:rgba(255,255,255,.75);margin-top:1px}
-  .topbar .side-sub .ebim{color:#fff}
-  .topbar .sp{flex:1}
-  .topbar .tb-btn{background:rgba(255,255,255,.14);color:#fff;border:0;border-radius:11px;
-    padding:9px 14px;font-family:inherit;font-weight:700;font-size:13px;cursor:pointer;
-    display:inline-flex;align-items:center;gap:7px}
-  .topbar .tb-btn:hover{background:rgba(255,255,255,.26)}
-  .topnav{position:sticky;top:58px;z-index:5;display:flex;gap:2px;overflow-x:auto;
-    background:#fff;border-bottom:1px solid var(--border);padding:0 14px;
-    -webkit-overflow-scrolling:touch;scrollbar-width:thin}
-  .topnav-tab{white-space:nowrap;border:0;background:transparent;color:var(--muted);
-    font-family:inherit;font-weight:700;font-size:14px;cursor:pointer;
-    padding:14px 15px;border-bottom:3px solid transparent;display:inline-flex;
-    align-items:center;gap:8px;transition:.12s}
-  .topnav-tab .ico{font-size:15px}
-  .topnav-tab:hover{color:var(--text);background:#f6f9f8}
-  .topnav-tab.on{color:var(--green-deep);border-bottom-color:var(--green)}
+  /* ===== Ítems del menú lateral (estilo signNow: pill gris al activo) =====
+     Conservan la clase histórica .topnav-tab para no tocar el JS. */
+  .topnav-tab{display:flex;align-items:center;gap:11px;background:transparent;border:0;
+    color:#51565D;text-align:left;padding:10px 12px;border-radius:9px;width:100%;
+    font-family:inherit;font-weight:600;font-size:14px;cursor:pointer;transition:.12s}
+  .topnav-tab .ico{font-size:16px;width:20px;text-align:center}
+  .topnav-tab:hover{background:#F1F4F2;color:var(--ink)}
+  .topnav-tab.on{background:#E8F1EA;color:var(--green-deep);font-weight:800}
   .topnav-tab .badge{background:var(--rojo);color:#fff;border-radius:999px;
     font-size:10.5px;font-weight:800;min-width:17px;height:17px;padding:0 5px;
-    display:inline-flex;align-items:center;justify-content:center;line-height:1}
-  .content{max-width:1200px;margin:0 auto;padding:26px 28px 60px}
+    display:inline-flex;align-items:center;justify-content:center;line-height:1;
+    margin-left:auto}
+  /* ===== Barra superior limpia: título de la página + acciones + avatar ===== */
+  .topbar{position:sticky;top:0;z-index:6;display:flex;align-items:center;gap:10px;
+    background:#fff;color:var(--ink);padding:11px 26px;
+    border-bottom:1px solid var(--border)}
+  .topbar .tb-title{font-weight:800;font-size:16.5px;letter-spacing:-.01em}
+  .topbar .sp{flex:1}
+  .topbar .tb-btn{background:#fff;color:var(--text);border:1px solid var(--border);
+    border-radius:10px;padding:8px 14px;font-family:inherit;font-weight:700;
+    font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+  .topbar .tb-btn:hover{background:#F4F6F5}
+  .topbar .avatar{width:34px;height:34px;border-radius:50%;background:var(--green-deep);
+    color:#fff;font-weight:800;font-size:14px;display:flex;align-items:center;
+    justify-content:center;user-select:none;flex-shrink:0}
+  .content{max-width:1200px;margin:0;padding:24px 28px 60px}
   @media(max-width:640px){
-    .topbar{padding:10px 14px} .topnav{padding:0 8px}
-    .topnav-tab{padding:12px 11px;font-size:13.5px}
+    .topbar{padding:10px 14px}
     .content{padding:18px 14px 50px}
     .topbar .tb-btn .lbl{display:none}
   }
   @media(max-width:820px){
     .shell{flex-direction:column}
-    .side{width:auto;height:auto;position:static;flex-direction:row;flex-wrap:wrap;
-      align-items:center;padding:12px 14px;gap:8px}
-    .nav{flex-direction:row;margin-top:0;flex:1 1 100%;overflow:auto;gap:6px;order:3}
-    .nav-group{display:none}
-    .nav-i{padding:9px 12px;font-size:13.5px;white-space:nowrap}
-    .side-foot{flex-direction:row;order:2;margin-left:auto}
+    .side{width:auto;height:auto;position:static;padding:10px 10px 4px;overflow:visible}
+    .side-brand{border-bottom:0;margin-bottom:2px;padding-bottom:4px}
+    .nav{flex-direction:row;overflow-x:auto;gap:4px;padding-bottom:6px;
+      -webkit-overflow-scrolling:touch;scrollbar-width:thin}
+    .topnav-tab{white-space:nowrap;width:auto;padding:9px 12px;font-size:13.5px}
+    .topnav-tab .badge{margin-left:2px}
     .side-cred{display:none}
-    .main{padding:18px 16px 40px}
-    /* En móvil la barra es horizontal: el colapsable no aplica. */
     .side-toggle{display:none}
     .side.collapsed{width:auto;padding:12px 14px;align-items:center}
     .side.collapsed .sb-txt,.side.collapsed .side-btn .lbl{display:inline}
@@ -1070,26 +1039,35 @@ _HTML = r"""<!DOCTYPE html>
 </div>
 
 <div id="app" style="display:none">
-  <header class="topbar">
-    <div class="pin"><svg viewBox="0 0 48 48"><rect x="1.5" y="1.5" width="45" height="45" rx="12" fill="#fff"/><path d="M24 11.5c-4.3 0-7.8 3.5-7.8 7.8 0 5.9 7.8 14.2 7.8 14.2s7.8-8.3 7.8-14.2c0-4.3-3.5-7.8-7.8-7.8zm0 10.7a2.9 2.9 0 110-5.8 2.9 2.9 0 010 5.8z" fill="#128C7E"/></svg></div>
-    <div>
-      <span class="wm">Pichang<svg class="ball" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polygon points="12,8.2 14.9,10.3 13.8,13.8 10.2,13.8 9.1,10.3"/><path d="M12 8.2V4.3M14.9 10.3l3.6-1.7M13.8 13.8l2.5 3.2M10.2 13.8l-2.5 3.2M9.1 10.3L5.5 8.6"/></svg>l</span>
-      <div class="side-sub"><span class="ebim">EBIM</span> · admin</div>
+ <div class="shell">
+  <aside class="side" id="side">
+    <div class="side-brand">
+      <div class="pin"><svg viewBox="0 0 48 48"><rect x="1.5" y="1.5" width="45" height="45" rx="12" fill="#128C7E"/><path d="M24 11.5c-4.3 0-7.8 3.5-7.8 7.8 0 5.9 7.8 14.2 7.8 14.2s7.8-8.3 7.8-14.2c0-4.3-3.5-7.8-7.8-7.8zm0 10.7a2.9 2.9 0 110-5.8 2.9 2.9 0 010 5.8z" fill="#fff"/></svg></div>
+      <div>
+        <span class="wm">Pichang<svg class="ball" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polygon points="12,8.2 14.9,10.3 13.8,13.8 10.2,13.8 9.1,10.3"/><path d="M12 8.2V4.3M14.9 10.3l3.6-1.7M13.8 13.8l2.5 3.2M10.2 13.8l-2.5 3.2M9.1 10.3L5.5 8.6"/></svg>l</span>
+        <div class="side-sub">Torre de control · <span class="ebim">EBIM</span></div>
+      </div>
     </div>
+    <nav class="nav" id="topnav">
+      <button class="topnav-tab on" data-sec="reclamos" onclick="mostrarSeccion('reclamos')"><span class="ico">📋</span> Reclamos</button>
+      <button class="topnav-tab" data-sec="operacion" onclick="mostrarSeccion('operacion')"><span class="ico">✅</span> Operación</button>
+      <button class="topnav-tab" data-sec="cobros" onclick="mostrarSeccion('cobros')"><span class="ico">💳</span> Cobros</button>
+      <button class="topnav-tab" data-sec="liquidaciones" onclick="mostrarSeccion('liquidaciones')"><span class="ico">💸</span> Liquidaciones</button>
+      <button class="topnav-tab" data-sec="disputas" onclick="mostrarSeccion('disputas')"><span class="ico">⚖️</span> Disputas</button>
+      <button class="topnav-tab" data-sec="identidad" onclick="mostrarSeccion('identidad')"><span class="ico">🪪</span> Identidad</button>
+      <button class="topnav-tab" data-sec="comunicacion" onclick="mostrarSeccion('comunicacion')"><span class="ico">💬</span> Comunicación</button>
+      <button class="topnav-tab" data-sec="pruebas" onclick="mostrarSeccion('pruebas')"><span class="ico">🧪</span> Pruebas</button>
+    </nav>
+    <div class="side-cred">Una solución de <span class="ebim">EBIM</span></div>
+  </aside>
+  <div class="colmain">
+  <header class="topbar">
+    <div class="tb-title" id="tbTitle">Reclamos</div>
     <div class="sp"></div>
     <button class="tb-btn" onclick="cargar();cargarLiquidaciones()" title="Actualizar">↻ <span class="lbl">Actualizar</span></button>
-    <button class="tb-btn" onclick="salir()" title="Salir">⎋ <span class="lbl">Salir</span></button>
+    <button class="tb-btn" onclick="salir()" title="Cerrar sesión">⎋ <span class="lbl">Salir</span></button>
+    <div class="avatar" id="avatarOp" title="Operador">P</div>
   </header>
-  <nav class="topnav" id="topnav">
-    <button class="topnav-tab on" data-sec="reclamos" onclick="mostrarSeccion('reclamos')"><span class="ico">📋</span> Reclamos</button>
-    <button class="topnav-tab" data-sec="operacion" onclick="mostrarSeccion('operacion')"><span class="ico">✅</span> Operación</button>
-    <button class="topnav-tab" data-sec="cobros" onclick="mostrarSeccion('cobros')"><span class="ico">💳</span> Cobros</button>
-    <button class="topnav-tab" data-sec="liquidaciones" onclick="mostrarSeccion('liquidaciones')"><span class="ico">💸</span> Liquidaciones</button>
-    <button class="topnav-tab" data-sec="disputas" onclick="mostrarSeccion('disputas')"><span class="ico">⚖️</span> Disputas</button>
-    <button class="topnav-tab" data-sec="identidad" onclick="mostrarSeccion('identidad')"><span class="ico">🪪</span> Identidad</button>
-    <button class="topnav-tab" data-sec="comunicacion" onclick="mostrarSeccion('comunicacion')"><span class="ico">💬</span> Comunicación</button>
-    <button class="topnav-tab" data-sec="pruebas" onclick="mostrarSeccion('pruebas')"><span class="ico">🧪</span> Pruebas</button>
-  </nav>
   <main class="main content">
     <section id="page-reclamos" class="page">
       <div class="page-head">
@@ -1181,6 +1159,8 @@ _HTML = r"""<!DOCTYPE html>
       </div>
     </section>
   </main>
+  </div>
+ </div>
 </div>
 
 <script>
@@ -1238,6 +1218,7 @@ async function entrar(){
   if(r.ok){
     const j = await r.json();
     localStorage.setItem('pichangol_admin_tok', j.token);
+    localStorage.setItem('pichangol_admin_usr', j.usuario || usuario);
     mostrarApp();
   } else if(r.status===429){
     err.textContent='Demasiados intentos. Espera un minuto y vuelve a probar.';
@@ -1250,7 +1231,11 @@ async function entrar(){
     err.textContent='Correo o contraseña incorrectos.';
   }
 }
-function salir(){ localStorage.removeItem('pichangol_admin_tok'); location.reload(); }
+function salir(){
+  localStorage.removeItem('pichangol_admin_tok');
+  localStorage.removeItem('pichangol_admin_usr');
+  location.reload();
+}
 // Colapsa / expande la barra lateral y recuerda la preferencia.
 function toggleSide(){
   const s = document.getElementById('side');
@@ -1264,6 +1249,10 @@ function restaurarSide(){
 function mostrarApp(){
   document.getElementById('gate').style.display='none';
   document.getElementById('app').style.display='block';
+  // Avatar del operador: inicial del correo con el que se logueó.
+  const usr = localStorage.getItem('pichangol_admin_usr') || '';
+  const av = document.getElementById('avatarOp');
+  if(av){ av.textContent = (usr[0]||'P').toUpperCase(); av.title = usr || 'Operador'; }
   renderTabs();
   cargarModo();
   cargarCanal();
@@ -1783,10 +1772,16 @@ async function guardarContacto(){
   else toast('No se pudo guardar');
 }
 // Navegación de la barra lateral: muestra una sección y marca su ítem activo.
+const TITULOS_SEC = {reclamos:'Reclamos', operacion:'Operación', cobros:'Cobros',
+  liquidaciones:'Liquidaciones', disputas:'Disputas', identidad:'Identidad',
+  comunicacion:'Comunicación', pruebas:'Pruebas'};
+
 function mostrarSeccion(sec){
   document.querySelectorAll('.page').forEach(p=>{ p.style.display='none'; });
   const el = document.getElementById('page-'+sec);
   if(el) el.style.display='block';
+  const tt = document.getElementById('tbTitle');
+  if(tt) tt.textContent = TITULOS_SEC[sec] || '';
   document.querySelectorAll('.topnav-tab').forEach(b=>{
     const on = b.dataset.sec===sec;
     b.classList.toggle('on', on);
