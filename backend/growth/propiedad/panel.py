@@ -820,8 +820,13 @@ _HTML = r"""<!DOCTYPE html>
   }
   #liquidaciones{margin-top:16px}
   #liquidaciones:empty{display:none}
-  #lista{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));
-    gap:16px;margin-top:12px}
+  /* Chips de estado compactos de la lista de reclamos (maestro–detalle). */
+  .chip-est{margin-left:auto;flex-shrink:0;border-radius:999px;padding:3px 9px;
+    font-size:10.5px;font-weight:800;white-space:nowrap}
+  .chip-est.e-pend{background:#FFF3D6;color:#8A6100}
+  .chip-est.e-act{background:#DDF3E1;color:#166534}
+  .chip-est.e-rech{background:#FBE2E2;color:#9A1722}
+  .chip-est.e-otro{background:#EEF0EE;color:#51565D}
   /* --- Layout SaaS (estilo signNow): sidebar CLARO fijo + topbar limpia --- */
   .shell{display:flex;min-height:100vh;background:#fff}
   .side{width:254px;flex-shrink:0;position:sticky;top:0;height:100vh;overflow-y:auto;
@@ -1101,7 +1106,11 @@ _HTML = r"""<!DOCTYPE html>
           tarjeta muestra desde dónde se envió la solicitud y su estado.</p>
       </div>
       <div class="tabs" id="tabs"></div>
-      <div id="lista"></div>
+      <!-- Maestro–detalle: solicitudes a la izquierda, expediente a la derecha. -->
+      <div class="md">
+        <aside class="md-list" id="lista"></aside>
+        <div class="md-detail" id="reclamoDetalle"></div>
+      </div>
     </section>
     <section id="page-liquidaciones" class="page" style="display:none">
       <div class="page-head">
@@ -1123,27 +1132,27 @@ _HTML = r"""<!DOCTYPE html>
            detalle del rubro seleccionado a la derecha. -->
       <div class="md">
         <aside class="md-list">
-          <button class="md-item on" data-pane="comision" onclick="mostrarCobro('comision')">
+          <button class="md-item on" data-pane="comision" onclick=\"mostrarPane(this,'comision')\">
             <span class="md-ico">💼</span>
             <span class="md-txt"><b>Comisión</b><small>De la plataforma, por cobro</small></span>
           </button>
-          <button class="md-item" data-pane="margenes" onclick="mostrarCobro('margenes')">
+          <button class="md-item" data-pane="margenes" onclick=\"mostrarPane(this,'margenes')\">
             <span class="md-ico">🏦</span>
             <span class="md-txt"><b>Márgenes</b><small>Por banco / pasarela</small></span>
           </button>
-          <button class="md-item" data-pane="marketing" onclick="mostrarCobro('marketing')">
+          <button class="md-item" data-pane="marketing" onclick=\"mostrarPane(this,'marketing')\">
             <span class="md-ico">📣</span>
             <span class="md-txt"><b>Marketing</b><small>Servicios y precios</small></span>
           </button>
-          <button class="md-item" data-pane="circuitoPanel" onclick="mostrarCobro('circuitoPanel')">
+          <button class="md-item" data-pane="circuitoPanel" onclick=\"mostrarPane(this,'circuitoPanel')\">
             <span class="md-ico">🎾</span>
             <span class="md-txt"><b>Circuito</b><small>Retos y torneos</small></span>
           </button>
-          <button class="md-item" data-pane="rankingPanel" onclick="mostrarCobro('rankingPanel')">
+          <button class="md-item" data-pane="rankingPanel" onclick=\"mostrarPane(this,'rankingPanel')\">
             <span class="md-ico">🏆</span>
             <span class="md-txt"><b>Ranking</b><small>Incentivos a jugadores</small></span>
           </button>
-          <button class="md-item" data-pane="proPanel" onclick="mostrarCobro('proPanel')">
+          <button class="md-item" data-pane="proPanel" onclick=\"mostrarPane(this,'proPanel')\">
             <span class="md-ico">⭐</span>
             <span class="md-txt"><b>Pichangol Pro</b><small>Suscripción mensual</small></span>
           </button>
@@ -1183,10 +1192,26 @@ _HTML = r"""<!DOCTYPE html>
         <p class="page-sub">Modo de aprobación de canchas (marcha blanca / nuevo
           flujo), exigir ubicación al reclamar y modo de pichangas.</p>
       </div>
-      <div class="cfg-grid">
-        <div id="modo"></div>
-        <div id="ubic"></div>
-        <div id="pichangaModo"></div>
+      <div class="md">
+        <aside class="md-list">
+          <button class="md-item on" onclick="mostrarPane(this,'modo')">
+            <span class="md-ico">🛡️</span>
+            <span class="md-txt"><b>Modo de aprobación</b><small>Marcha blanca / nuevo flujo</small></span>
+          </button>
+          <button class="md-item" onclick="mostrarPane(this,'ubic')">
+            <span class="md-ico">📍</span>
+            <span class="md-txt"><b>Ubicación al reclamar</b><small>Anti-fraude por GPS</small></span>
+          </button>
+          <button class="md-item" onclick="mostrarPane(this,'pichangaModo')">
+            <span class="md-ico">⚽</span>
+            <span class="md-txt"><b>Pichangas</b><small>Partidos abiertos</small></span>
+          </button>
+        </aside>
+        <div class="md-detail">
+          <div class="md-pane" id="modo"></div>
+          <div class="md-pane" id="ubic" style="display:none"></div>
+          <div class="md-pane" id="pichangaModo" style="display:none"></div>
+        </div>
       </div>
     </section>
     <section id="page-comunicacion" class="page" style="display:none">
@@ -1196,9 +1221,21 @@ _HTML = r"""<!DOCTYPE html>
         <p class="page-sub">Canal de avisos que ve el APK y números de contacto del
           operador para WhatsApp.</p>
       </div>
-      <div class="cfg-grid">
-        <div id="canal"></div>
-        <div id="contacto"></div>
+      <div class="md">
+        <aside class="md-list">
+          <button class="md-item on" onclick="mostrarPane(this,'canal')">
+            <span class="md-ico">📢</span>
+            <span class="md-txt"><b>Canal de avisos</b><small>Mensajes que ve el APK</small></span>
+          </button>
+          <button class="md-item" onclick="mostrarPane(this,'contacto')">
+            <span class="md-ico">💬</span>
+            <span class="md-txt"><b>Contacto WhatsApp</b><small>Números del operador</small></span>
+          </button>
+        </aside>
+        <div class="md-detail">
+          <div class="md-pane" id="canal"></div>
+          <div class="md-pane" id="contacto" style="display:none"></div>
+        </div>
       </div>
     </section>
     <section id="page-pruebas" class="page" style="display:none">
@@ -1826,14 +1863,14 @@ async function guardarContacto(){
   else toast('No se pudo guardar');
 }
 // Navegación de la barra lateral: muestra una sección y marca su ítem activo.
-// Maestro–detalle de Cobros: muestra el rubro elegido y marca el ítem activo.
-function mostrarCobro(pane){
-  document.querySelectorAll('#page-cobros .md-pane').forEach(p=>{
+// Maestro–detalle genérico (Cobros, Operación, Comunicación…): muestra el
+// rubro elegido dentro del MISMO bloque .md y marca el ítem activo.
+function mostrarPane(btn, pane){
+  const md = btn.closest('.md');
+  md.querySelectorAll('.md-pane').forEach(p=>{
     p.style.display = (p.id===pane) ? 'block' : 'none';
   });
-  document.querySelectorAll('#page-cobros .md-item').forEach(b=>{
-    b.classList.toggle('on', b.dataset.pane===pane);
-  });
+  md.querySelectorAll('.md-item').forEach(b=>{ b.classList.toggle('on', b===btn); });
 }
 
 const TITULOS_SEC = {reclamos:'Reclamos', operacion:'Operación', cobros:'Cobros',
@@ -2187,11 +2224,40 @@ function mapaUbic(r){
   </div>`;
 }
 
+let reclamoSel = null; // id del reclamo abierto en el panel de detalle
+
+function chipEstadoMini(e){
+  const m = {pendiente_triage:['Por aprobar','e-pend'],
+    activada:['Activada','e-act'], rechazada:['Rechazada','e-rech']};
+  const par = m[e] || [String(e||'').replaceAll('_',' '), 'e-otro'];
+  return `<span class="chip-est ${par[1]}">${par[0]}</span>`;
+}
+
 function render(){
   const items = filtro==='' ? cache : cache.filter(r=>r.estado===filtro);
   const cont = document.getElementById('lista');
-  if(!items.length){ cont.innerHTML='<div class="empty">No hay reclamos en este estado.</div>'; return; }
-  cont.innerHTML = items.map(r=>{
+  const det = document.getElementById('reclamoDetalle');
+  if(!items.length){
+    cont.innerHTML='';
+    det.innerHTML='<div class="empty">No hay reclamos en este estado.</div>';
+    reclamoSel=null; return;
+  }
+  // Mantén la selección si sigue visible en este filtro; si no, la primera.
+  if(!items.some(r=>r.id===reclamoSel)) reclamoSel = items[0].id;
+  cont.innerHTML = items.map(r=>`
+    <button class="md-item ${r.id===reclamoSel?'on':''}" onclick="verReclamo(${r.id})">
+      <span class="md-ico">🏟️</span>
+      <span class="md-txt"><b>${esc(r.nombre_local||'Local')}</b>
+        <small>${esc(r.nombre_titular||r.solicitante_id||'—')}</small></span>
+      ${chipEstadoMini(r.estado)}
+    </button>`).join('');
+  const s = items.find(r=>r.id===reclamoSel);
+  det.innerHTML = s ? cardReclamo(s) : '';
+}
+function verReclamo(id){ reclamoSel = id; render(); }
+
+// Expediente completo del reclamo (tarjeta del panel derecho).
+function cardReclamo(r){
     const pend = r.estado==='pendiente_triage';
     const titular = r.nombre_titular ? `<div class="row">👤 <b>${esc(r.nombre_titular)}</b> · DNI ${esc(r.dni||'—')}</div>`
       : (r.dni ? `<div class="row">DNI ${esc(r.dni)} <i>(sin datos)</i></div>` : '');
@@ -2239,7 +2305,6 @@ function render(){
       ${acc}
       ${lib}
     </div>`;
-  }).join('');
 }
 
 async function decidir(id, aprobado, btn){
