@@ -794,6 +794,30 @@ _HTML = r"""<!DOCTYPE html>
     gap:16px;align-items:stretch}
   .cfg-grid > div{display:flex}
   .cfg-grid .card{flex:1;display:flex;flex-direction:column;margin:0}
+  /* --- Maestro–detalle (estilo signNow): lista de rubros + detalle --- */
+  .md{display:flex;gap:18px;align-items:flex-start}
+  .md-list{width:272px;flex-shrink:0;display:flex;flex-direction:column;gap:8px;
+    position:sticky;top:76px}
+  .md-item{display:flex;align-items:center;gap:11px;background:#fff;
+    border:1px solid var(--border);border-radius:12px;padding:11px 12px;width:100%;
+    text-align:left;cursor:pointer;font-family:inherit;transition:.12s}
+  .md-item:hover{background:#F7FAF8}
+  .md-item.on{border-color:var(--green);background:#F2F8F3;
+    box-shadow:inset 3px 0 0 var(--green)}
+  .md-ico{width:36px;height:36px;border-radius:9px;background:#EEF4EF;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;font-size:17px}
+  .md-txt{min-width:0}
+  .md-txt b{display:block;font-size:13.5px;color:var(--ink)}
+  .md-txt small{color:var(--muted);font-size:11.5px;font-weight:600}
+  .md-detail{flex:1;min-width:0}
+  .md-detail .card{margin:0}
+  @media(max-width:900px){
+    .md{flex-direction:column}
+    .md-list{width:100%;position:static;flex-direction:row;overflow-x:auto;
+      padding-bottom:4px;-webkit-overflow-scrolling:touch}
+    .md-item{width:auto;white-space:nowrap;flex-shrink:0}
+    .md-txt small{display:none}
+  }
   #liquidaciones{margin-top:16px}
   #liquidaciones:empty{display:none}
   #lista{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));
@@ -1095,13 +1119,43 @@ _HTML = r"""<!DOCTYPE html>
         <p class="page-sub">Comisión de la plataforma, márgenes por banco, marketing,
           circuito, ranking y suscripción Pro.</p>
       </div>
-      <div class="cfg-grid">
-        <div id="comision"></div>
-        <div id="margenes"></div>
-        <div id="marketing"></div>
-        <div id="circuitoPanel"></div>
-        <div id="rankingPanel"></div>
-        <div id="proPanel"></div>
+      <!-- Maestro–detalle (estilo signNow): lista de rubros a la izquierda,
+           detalle del rubro seleccionado a la derecha. -->
+      <div class="md">
+        <aside class="md-list">
+          <button class="md-item on" data-pane="comision" onclick="mostrarCobro('comision')">
+            <span class="md-ico">💼</span>
+            <span class="md-txt"><b>Comisión</b><small>De la plataforma, por cobro</small></span>
+          </button>
+          <button class="md-item" data-pane="margenes" onclick="mostrarCobro('margenes')">
+            <span class="md-ico">🏦</span>
+            <span class="md-txt"><b>Márgenes</b><small>Por banco / pasarela</small></span>
+          </button>
+          <button class="md-item" data-pane="marketing" onclick="mostrarCobro('marketing')">
+            <span class="md-ico">📣</span>
+            <span class="md-txt"><b>Marketing</b><small>Servicios y precios</small></span>
+          </button>
+          <button class="md-item" data-pane="circuitoPanel" onclick="mostrarCobro('circuitoPanel')">
+            <span class="md-ico">🎾</span>
+            <span class="md-txt"><b>Circuito</b><small>Retos y torneos</small></span>
+          </button>
+          <button class="md-item" data-pane="rankingPanel" onclick="mostrarCobro('rankingPanel')">
+            <span class="md-ico">🏆</span>
+            <span class="md-txt"><b>Ranking</b><small>Incentivos a jugadores</small></span>
+          </button>
+          <button class="md-item" data-pane="proPanel" onclick="mostrarCobro('proPanel')">
+            <span class="md-ico">⭐</span>
+            <span class="md-txt"><b>Pichangol Pro</b><small>Suscripción mensual</small></span>
+          </button>
+        </aside>
+        <div class="md-detail">
+          <div class="md-pane" id="comision"></div>
+          <div class="md-pane" id="margenes" style="display:none"></div>
+          <div class="md-pane" id="marketing" style="display:none"></div>
+          <div class="md-pane" id="circuitoPanel" style="display:none"></div>
+          <div class="md-pane" id="rankingPanel" style="display:none"></div>
+          <div class="md-pane" id="proPanel" style="display:none"></div>
+        </div>
       </div>
     </section>
     <section id="page-disputas" class="page" style="display:none">
@@ -1772,6 +1826,16 @@ async function guardarContacto(){
   else toast('No se pudo guardar');
 }
 // Navegación de la barra lateral: muestra una sección y marca su ítem activo.
+// Maestro–detalle de Cobros: muestra el rubro elegido y marca el ítem activo.
+function mostrarCobro(pane){
+  document.querySelectorAll('#page-cobros .md-pane').forEach(p=>{
+    p.style.display = (p.id===pane) ? 'block' : 'none';
+  });
+  document.querySelectorAll('#page-cobros .md-item').forEach(b=>{
+    b.classList.toggle('on', b.dataset.pane===pane);
+  });
+}
+
 const TITULOS_SEC = {reclamos:'Reclamos', operacion:'Operación', cobros:'Cobros',
   liquidaciones:'Liquidaciones', disputas:'Disputas', identidad:'Identidad',
   comunicacion:'Comunicación', pruebas:'Pruebas'};
