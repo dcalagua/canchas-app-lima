@@ -98,27 +98,43 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
           .where((cl) => cl.canchas.any((c) => c.ofrece(_filtro!)))
           .toList();
 
+  /// PELOTA del deporte para los pines (la pelota, NO la raqueta): ⚽ 🏀 🏐 y
+  /// la bola amarilla para deportes de raqueta.
+  String _pelota(Deporte d) => switch (d) {
+        Deporte.futbol => '⚽',
+        Deporte.tenis => '🥎',
+        Deporte.padel => '🥎',
+        Deporte.pickleball => '🥎',
+        Deporte.voley => '🏐',
+        Deporte.basquet => '🏀',
+        Deporte.natacion => '🏊',
+      };
+
+  /// ¿El local tiene precio conocido? (pastilla de PRECIO tipo Airbnb).
+  bool _tienePrecio(Club cl) => (cl.precioDesde ?? 0) > 0;
+
   /// Etiqueta de la pastilla: PRECIO "desde" si se conoce (como Airbnb); si el
-  /// lugar aún no tiene precio (descubierto en Google, sin reclamar), el emoji
-  /// del deporte — con filtro activo, el emoji del deporte BUSCADO (una loza
-  /// multiuso muestra 🎾 cuando buscas tenis).
+  /// lugar aún no tiene precio (descubierto en Google, sin reclamar), la
+  /// PELOTA del deporte — con filtro activo, la del deporte BUSCADO.
   String _etiqueta(Club cl) {
     final p = cl.precioDesde;
     if (p != null && p > 0) {
       final txt = p == p.roundToDouble() ? p.round().toString() : precio(p);
       return '${cl.monedaSimbolo} $txt';
     }
-    return emojiDeporte(_filtro ?? cl.principal.deporte);
+    return _pelota(_filtro ?? cl.principal.deporte);
   }
 
   /// (Re)dibuja los pines de todos los locales. Se llama al abrir, al cambiar
-  /// el chip de deporte (cambia el emoji de los sin-precio) y tras "Buscar en
+  /// el chip de deporte (cambia la pelota de los sin-precio) y tras "Buscar en
   /// esta zona". MarcadorPrecio cachea por etiqueta → re-preparar es barato.
   Future<void> _prepararPines() async {
     for (final cl in _clubs) {
       final et = _etiqueta(cl);
-      _pinN[cl.id] = await MarcadorPrecio.pastilla(et);
-      _pinS[cl.id] = await MarcadorPrecio.pastilla(et, seleccionado: true);
+      final esEmoji = !_tienePrecio(cl);
+      _pinN[cl.id] = await MarcadorPrecio.pastilla(et, esEmoji: esEmoji);
+      _pinS[cl.id] = await MarcadorPrecio.pastilla(et,
+          seleccionado: true, esEmoji: esEmoji);
     }
     if (mounted) setState(() {});
   }
@@ -484,12 +500,14 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
                           width: 44,
                           height: 44,
                           decoration: BoxDecoration(
-                            gradient: gradienteDeporte(sel.principal.deporte),
+                            // Claro (nada de bloque oscuro): tinte suave.
+                            color: const Color(0xFFF1F4EE),
                             borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFE4E4E4)),
                           ),
                           child: Center(
                             child: Text(
-                              emojiDeporte(_filtro ?? sel.principal.deporte),
+                              _pelota(_filtro ?? sel.principal.deporte),
                               style: const TextStyle(fontSize: 20),
                             ),
                           ),

@@ -17,42 +17,50 @@ class MarcadorPrecio {
   /// Escala de dibujo (nitidez en pantallas densas).
   static const double _k = 3.0;
 
+  /// [esEmoji]: pastilla cuyo contenido es un emoji (deporte). Seleccionada NO
+  /// se invierte a charcoal (el emoji sobre negro se ve sucio): queda blanca,
+  /// más grande y con un anillo charcoal — resalta igual que en Airbnb los
+  /// pines sin precio.
   static Future<BitmapDescriptor> pastilla(String texto,
-      {bool seleccionado = false}) async {
-    final clave = '${seleccionado ? 's' : 'n'}:$texto';
+      {bool seleccionado = false, bool esEmoji = false}) async {
+    final clave = '${seleccionado ? 's' : 'n'}${esEmoji ? 'e' : ''}:$texto';
     final hit = _cache[clave];
     if (hit != null) return hit;
     final desc = texto.isEmpty
         ? await _dibujarPunto(seleccionado)
-        : await _dibujarPastilla(texto, seleccionado);
+        : await _dibujarPastilla(texto, seleccionado, esEmoji);
     _cache[clave] = desc;
     return desc;
   }
 
   static Future<BitmapDescriptor> _dibujarPastilla(
-      String texto, bool sel) async {
+      String texto, bool sel, bool esEmoji) async {
+    // Emoji seleccionado: crece un poco (resalta sin invertirse).
+    final crecer = esEmoji && sel ? 1.18 : 1.0;
     final tp = TextPainter(
       text: TextSpan(
         text: texto,
         style: TextStyle(
-          color: sel ? Colors.white : const Color(0xFF222222),
-          fontSize: 12.5 * _k,
+          color: sel && !esEmoji ? Colors.white : const Color(0xFF222222),
+          fontSize: 12.5 * _k * crecer,
           fontWeight: FontWeight.w800,
           letterSpacing: -0.2,
         ),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
-    final padH = 10.0 * _k, padV = 6.5 * _k, margen = 6.0 * _k;
+    final padH = 10.0 * _k * crecer,
+        padV = 6.5 * _k * crecer,
+        margen = 6.0 * _k;
     final w = tp.width + padH * 2, h = tp.height + padV * 2;
-    return _pintar(w, h, margen, sel, (canvas, rrect) {
+    return _pintar(w, h, margen, sel, esEmoji, (canvas, rrect) {
       tp.paint(canvas, Offset(margen + padH, margen + padV));
     });
   }
 
   static Future<BitmapDescriptor> _dibujarPunto(bool sel) async {
     final w = 22.0 * _k, h = 14.0 * _k, margen = 5.0 * _k;
-    return _pintar(w, h, margen, sel, (_, __) {});
+    return _pintar(w, h, margen, sel, false, (_, __) {});
   }
 
   /// Dibuja la pastilla (sombra + fondo + borde) y encima [contenido].
@@ -61,6 +69,7 @@ class MarcadorPrecio {
     double h,
     double margen,
     bool sel,
+    bool esEmoji,
     void Function(Canvas, RRect) contenido,
   ) async {
     final rec = ui.PictureRecorder();
@@ -76,17 +85,22 @@ class MarcadorPrecio {
         ..color = const Color(0x33000000)
         ..maskFilter = ui.MaskFilter.blur(ui.BlurStyle.normal, 2.2 * _k),
     );
+    // Fondo: SOLO la pastilla de precio se invierte a charcoal al seleccionar.
+    final invertida = sel && !esEmoji;
     canvas.drawRRect(
         rrect,
         Paint()
-          ..color = sel ? const Color(0xFF222222) : Colors.white
+          ..color = invertida ? const Color(0xFF222222) : Colors.white
           ..isAntiAlias = true);
+    // Borde: anillo charcoal para el emoji seleccionado; gris sutil si no.
+    final anillo = sel && esEmoji;
     canvas.drawRRect(
         rrect,
         Paint()
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.0 * _k
-          ..color = const Color(0x14000000));
+          ..strokeWidth = (anillo ? 2.2 : 1.0) * _k
+          ..color =
+              anillo ? const Color(0xFF222222) : const Color(0x14000000));
     contenido(canvas, rrect);
     final img = await rec
         .endRecording()
