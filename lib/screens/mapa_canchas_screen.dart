@@ -9,6 +9,7 @@ import '../utils/geo.dart';
 import '../utils/marcador_precio.dart';
 import '../utils/moneda.dart';
 import '../widgets/club_card.dart';
+import 'academias_screen.dart';
 import 'buscar_direccion_screen.dart';
 import 'club_detalle_screen.dart';
 
@@ -75,9 +76,13 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
   bool _soloClubes = false; // chip "Clubes": solo locales formales
 
   // Filtros por ATRIBUTOS del local (como los chips de Airbnb: Wifi,
-  // Lavadora…): amenidades multi-selección + tipo de piso.
+  // Lavadora…): amenidades multi-selección + tipo de piso. La fila de
+  // atributos REEMPLAZA a la de deportes cuando se hace una búsqueda (igual
+  // que Airbnb muestra atributos en la pantalla de resultados); el chip
+  // "Deportes" regresa a la fila original.
   final Set<String> _amenSel = {};
   String? _superficieSel;
+  bool _mostrarAtributos = false;
 
   /// Amenidades que se ofrecen como chips (clave del catálogo + etiqueta +
   /// emoji). Solo atributos que el dueño marca en su cancha — data real.
@@ -116,7 +121,7 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
     _centroActual = widget.centro;
     _tituloZona = widget.titulo;
     _sheetCtrl.addListener(() {
-      final llena = _sheetCtrl.isAttached && _sheetCtrl.size > 0.96;
+      final llena = _sheetCtrl.isAttached && _sheetCtrl.size > 0.95;
       if (llena != _sheetLlena && mounted) {
         setState(() => _sheetLlena = llena);
       }
@@ -218,6 +223,7 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
       _buscando = true;
       _centroActual = c;
       _sel = null;
+      _mostrarAtributos = true; // resultados → chips de atributos (Airbnb)
       if (etiqueta != null) _tituloZona = etiqueta;
     });
     try {
@@ -238,8 +244,8 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
   /// de los atributos: buscador + chips quedan visibles).
   double get _fraccionMedia {
     final alto = MediaQuery.of(context).size.height;
-    // status bar + buscador + 2 filas de chips (deportes y atributos).
-    final headerPx = MediaQuery.of(context).padding.top + 168;
+    // status bar + buscador + 1 fila de chips (deportes O atributos).
+    final headerPx = MediaQuery.of(context).padding.top + 124;
     return (1 - headerPx / alto).clamp(0.45, 0.85).toDouble();
   }
 
@@ -460,58 +466,74 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
                       ],
                     ),
                     const SizedBox(height: 10),
+                    // UNA fila de chips, como Airbnb: DEPORTES normalmente;
+                    // tras una búsqueda, ATRIBUTOS del local (el primer chip
+                    // regresa a deportes).
                     SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: Row(
-                        children: [
-                          _chip('🏟️', 'Todos',
-                              activo: !_soloClubes && _filtro == null,
-                              onTap: () => _cambiarFiltro(null)),
-                          _chip(emojiDeporte(Deporte.futbol), 'Fútbol',
-                              activo: _filtro == Deporte.futbol,
-                              onTap: () => _cambiarFiltro(Deporte.futbol)),
-                          _chip(emojiDeporte(Deporte.tenis), 'Tenis',
-                              activo: _filtro == Deporte.tenis,
-                              onTap: () => _cambiarFiltro(Deporte.tenis)),
-                          _chip(emojiDeporte(Deporte.basquet), 'Básquet',
-                              activo: _filtro == Deporte.basquet,
-                              onTap: () => _cambiarFiltro(Deporte.basquet)),
-                          _chip(emojiDeporte(Deporte.voley), 'Vóley',
-                              activo: _filtro == Deporte.voley,
-                              onTap: () => _cambiarFiltro(Deporte.voley)),
-                          _chip(emojiDeporte(Deporte.natacion), 'Natación',
-                              activo: _filtro == Deporte.natacion,
-                              onTap: () => _cambiarFiltro(Deporte.natacion)),
-                          _chip('🏛️', 'Clubes',
-                              activo: _soloClubes, onTap: _activarClubes),
-                        ],
-                      ),
-                    ),
-                    // Fila 2: ATRIBUTOS del local (como los chips "Wifi /
-                    // Lavadora" de Airbnb) — amenidades y tipo de piso reales.
-                    const SizedBox(height: 8),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          for (final (clave, etiqueta, emoji) in _amenChips)
-                            _chip(emoji, etiqueta,
-                                activo: _amenSel.contains(clave),
-                                onTap: () => setState(() {
-                                      _amenSel.contains(clave)
-                                          ? _amenSel.remove(clave)
-                                          : _amenSel.add(clave);
-                                      _sel = null;
-                                    })),
-                          for (final s in _superficiesZona)
-                            _chip('', s,
-                                activo: _superficieSel == s,
-                                onTap: () => setState(() {
-                                      _superficieSel =
-                                          _superficieSel == s ? null : s;
-                                      _sel = null;
-                                    })),
-                        ],
+                        children: !_mostrarAtributos
+                            ? [
+                                _chip('🏟️', 'Todos',
+                                    activo: !_soloClubes && _filtro == null,
+                                    onTap: () => _cambiarFiltro(null)),
+                                _chip(emojiDeporte(Deporte.futbol), 'Fútbol',
+                                    activo: _filtro == Deporte.futbol,
+                                    onTap: () =>
+                                        _cambiarFiltro(Deporte.futbol)),
+                                _chip(emojiDeporte(Deporte.tenis), 'Tenis',
+                                    activo: _filtro == Deporte.tenis,
+                                    onTap: () =>
+                                        _cambiarFiltro(Deporte.tenis)),
+                                _chip(emojiDeporte(Deporte.basquet), 'Básquet',
+                                    activo: _filtro == Deporte.basquet,
+                                    onTap: () =>
+                                        _cambiarFiltro(Deporte.basquet)),
+                                _chip(emojiDeporte(Deporte.voley), 'Vóley',
+                                    activo: _filtro == Deporte.voley,
+                                    onTap: () =>
+                                        _cambiarFiltro(Deporte.voley)),
+                                _chip(emojiDeporte(Deporte.natacion),
+                                    'Natación',
+                                    activo: _filtro == Deporte.natacion,
+                                    onTap: () =>
+                                        _cambiarFiltro(Deporte.natacion)),
+                                _chip('🏛️', 'Clubes',
+                                    activo: _soloClubes,
+                                    onTap: _activarClubes),
+                                _chip('🎓', 'Academias',
+                                    activo: false,
+                                    onTap: () => Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                            builder: (_) =>
+                                                const AcademiasScreen()))),
+                              ]
+                            : [
+                                _chip('🏟️', 'Deportes',
+                                    activo: false,
+                                    onTap: () => setState(
+                                        () => _mostrarAtributos = false)),
+                                for (final (clave, etiqueta, emoji)
+                                    in _amenChips)
+                                  _chip(emoji, etiqueta,
+                                      activo: _amenSel.contains(clave),
+                                      onTap: () => setState(() {
+                                            _amenSel.contains(clave)
+                                                ? _amenSel.remove(clave)
+                                                : _amenSel.add(clave);
+                                            _sel = null;
+                                          })),
+                                for (final s in _superficiesZona)
+                                  _chip('', s,
+                                      activo: _superficieSel == s,
+                                      onTap: () => setState(() {
+                                            _superficieSel =
+                                                _superficieSel == s
+                                                    ? null
+                                                    : s;
+                                            _sel = null;
+                                          })),
+                              ],
                       ),
                     ),
                     // Botón "Buscar en esta zona" (como Airbnb): aparece al
@@ -570,9 +592,11 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
             controller: _sheetCtrl,
             initialChildSize: 0.11,
             minChildSize: 0.11,
-            maxChildSize: 1.0,
+            // 0.99 (no 1.0): llegar EXACTO al tope con imanes tiene un bug
+            // conocido de Flutter que deja la lámina trabada al querer bajar.
+            maxChildSize: 0.99,
             snap: true,
-            snapSizes: [0.11, medio, 1.0],
+            snapSizes: [0.11, medio, 0.99],
             builder: (context, scrollCtrl) => Container(
               decoration: BoxDecoration(
                 color: cs.surface,
@@ -587,6 +611,9 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
               clipBehavior: Clip.antiAlias,
               child: ListView(
                 controller: scrollCtrl,
+                // Clamping: el rebote elástico se come el gesto de COLAPSAR la
+                // lámina en algunos equipos (queda "trabada" arriba).
+                physics: const ClampingScrollPhysics(),
                 padding: EdgeInsets.fromLTRB(
                     16,
                     // A pantalla completa respeta el status bar.
@@ -594,23 +621,37 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
                     16,
                     40),
                 children: [
-                  // Asa + contador (siempre visibles en el borde inferior).
-                  Center(
-                    child: Container(
-                      margin: const EdgeInsets.only(top: 10, bottom: 8),
-                      width: 38,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFD9D9D9),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                    ),
-                  ),
-                  Center(
-                    child: Text(
-                      '$n ${n == 1 ? 'lugar' : 'lugares'}',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w800, fontSize: 15.5),
+                  // Asa + contador: también son un ESCAPE al toque — si la
+                  // lámina está arriba, tocarlos la baja (además del arrastre).
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {
+                      final abajo = _sheetCtrl.size <= 0.12;
+                      _sheetCtrl.animateTo(abajo ? _fraccionMedia : 0.11,
+                          duration: const Duration(milliseconds: 260),
+                          curve: Curves.easeOut);
+                    },
+                    child: Column(
+                      children: [
+                        Center(
+                          child: Container(
+                            margin: const EdgeInsets.only(top: 10, bottom: 8),
+                            width: 38,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFD9D9D9),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                          ),
+                        ),
+                        Center(
+                          child: Text(
+                            '$n ${n == 1 ? 'lugar' : 'lugares'}',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w800, fontSize: 15.5),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 14),
