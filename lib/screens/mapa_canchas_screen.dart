@@ -8,6 +8,7 @@ import '../theme.dart';
 import '../utils/geo.dart';
 import '../utils/marcador_precio.dart';
 import '../utils/moneda.dart';
+import '../widgets/club_card.dart';
 import 'club_detalle_screen.dart';
 
 /// Mapa de canchas estilo Airbnb:
@@ -403,12 +404,71 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
               ),
             ),
           ),
+          // Lámina arrastrable inferior (como el "Más de 1000 alojamientos"
+          // de Airbnb): abajo asoma el contador; al jalarla, la lista completa
+          // con sus tarjetas y fotos — sin salir del mapa.
+          DraggableScrollableSheet(
+            initialChildSize: 0.11,
+            minChildSize: 0.11,
+            maxChildSize: 0.94,
+            snap: true,
+            snapSizes: const [0.11, 0.55, 0.94],
+            builder: (context, scrollCtrl) => Container(
+              decoration: BoxDecoration(
+                color: cs.surface,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(24)),
+                boxShadow: const [
+                  BoxShadow(color: Color(0x22000000), blurRadius: 16),
+                ],
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: ListView(
+                controller: scrollCtrl,
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
+                children: [
+                  // Asa + contador (siempre visibles en el borde inferior).
+                  Center(
+                    child: Container(
+                      margin: const EdgeInsets.only(top: 10, bottom: 8),
+                      width: 38,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFD9D9D9),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ),
+                  Center(
+                    child: Text(
+                      '$n ${n == 1 ? 'lugar' : 'lugares'}',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w800, fontSize: 15.5),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  for (final cl in _visibles)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: ClubCard(
+                        club: cl,
+                        onTap: () => _abrirFicha(cl),
+                        distanciaKm:
+                            distanciaKm(widget.centro, cl.ubicacion),
+                        resumenResenas: appState.resumenResenas(
+                            cl.canchas.map((c) => c.id).toList()),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
           // Mini-tarjeta del local seleccionado (estilo Airbnb).
           if (sel != null)
             Positioned(
               left: 16,
               right: 16,
-              bottom: 24 + MediaQuery.of(context).padding.bottom,
+              bottom: 100 + MediaQuery.of(context).padding.bottom,
               child: Material(
                 elevation: 8,
                 borderRadius: BorderRadius.circular(18),
