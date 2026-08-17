@@ -107,6 +107,10 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
   // los atributos (buscador+chips visibles) → pantalla completa (los tapa).
   final _sheetCtrl = DraggableScrollableController();
   bool _sheetLlena = false; // ¿la lámina cubre toda la pantalla?
+  // ¿La lámina está en el nivel MEDIO o más? Ahí se FUSIONA con la zona de
+  // atributos (fondo blanco continuo, sin redondeo ni sombra — como Airbnb,
+  // que se ve una sola superficie).
+  bool _sheetAlta = false;
 
   // Pines dibujados por local: normal y seleccionado (cache global por
   // etiqueta en MarcadorPrecio; aquí referenciados por id del club).
@@ -121,9 +125,15 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
     _centroActual = widget.centro;
     _tituloZona = widget.titulo;
     _sheetCtrl.addListener(() {
-      final llena = _sheetCtrl.isAttached && _sheetCtrl.size > 0.95;
-      if (llena != _sheetLlena && mounted) {
-        setState(() => _sheetLlena = llena);
+      if (!_sheetCtrl.isAttached || !mounted) return;
+      final s = _sheetCtrl.size;
+      final llena = s > 0.95;
+      final alta = s > _fraccionMedia - 0.04; // en el nivel medio o más
+      if (llena != _sheetLlena || alta != _sheetAlta) {
+        setState(() {
+          _sheetLlena = llena;
+          _sheetAlta = alta;
+        });
       }
     });
     _prepararPines();
@@ -244,8 +254,10 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
   /// de los atributos: buscador + chips quedan visibles).
   double get _fraccionMedia {
     final alto = MediaQuery.of(context).size.height;
-    // status bar + buscador + 1 fila de chips (deportes O atributos).
-    final headerPx = MediaQuery.of(context).padding.top + 124;
+    // status bar + buscador + 1 fila de chips (deportes O atributos). Un pelín
+    // MENOS que la altura real: la lámina se mete debajo del header y el borde
+    // queda escondido → fusión perfecta sin rayita (como Airbnb).
+    final headerPx = MediaQuery.of(context).padding.top + 112;
     return (1 - headerPx / alto).clamp(0.45, 0.85).toDouble();
   }
 
@@ -390,11 +402,18 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
             ),
           ),
           // ── Capa superior estilo Airbnb: buscador + chips sobre el mapa ──
+          // Con la lámina en el nivel medio, el header toma fondo BLANCO y se
+          // fusiona con la lista en una sola superficie (sin línea divisoria).
           Positioned(
             top: 0,
             left: 0,
             right: 0,
-            child: SafeArea(
+            child: Container(
+              color: _sheetAlta
+                  ? cs.surface
+                  : Colors.transparent,
+              padding: const EdgeInsets.only(bottom: 12),
+              child: SafeArea(
               bottom: false,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -581,6 +600,7 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
                 ),
               ),
             ),
+            ),
           ),
           // Lámina arrastrable inferior (como el "Más de 1000 alojamientos"
           // de Airbnb) con 3 NIVELES: asomada → hasta DEBAJO de los atributos
@@ -600,13 +620,17 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
             builder: (context, scrollCtrl) => Container(
               decoration: BoxDecoration(
                 color: cs.surface,
-                // A pantalla completa pierde el redondeo (ya es "la lista").
-                borderRadius: _sheetLlena
+                // Desde el nivel MEDIO pierde redondeo Y sombra: se fusiona
+                // con la franja blanca de atributos en una sola superficie
+                // (Airbnb no muestra ninguna línea de separación).
+                borderRadius: _sheetAlta
                     ? BorderRadius.zero
                     : const BorderRadius.vertical(top: Radius.circular(24)),
-                boxShadow: const [
-                  BoxShadow(color: Color(0x22000000), blurRadius: 16),
-                ],
+                boxShadow: _sheetAlta
+                    ? null
+                    : const [
+                        BoxShadow(color: Color(0x22000000), blurRadius: 16),
+                      ],
               ),
               clipBehavior: Clip.antiAlias,
               child: ListView(
