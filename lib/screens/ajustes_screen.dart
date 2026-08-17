@@ -9,6 +9,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/responsive.dart';
+import 'diagnostico_push_screen.dart';
 import 'editar_perfil_screen.dart';
 import 'privacidad_screen.dart';
 import 'referidos_screen.dart';
@@ -365,6 +366,22 @@ class AjustesScreen extends StatelessWidget {
                   label: const Text('Ver registro de llamadas',
                       style: TextStyle(fontWeight: FontWeight.w800)),
                   onPressed: () => _verRegistroLlamadas(context),
+                ),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: morado,
+                    side: const BorderSide(color: morado),
+                    minimumSize: const Size.fromHeight(50),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                  ),
+                  icon: const Icon(Icons.notifications_active_outlined),
+                  label: const Text('Diagnóstico de notificaciones push',
+                      style: TextStyle(fontWeight: FontWeight.w800)),
+                  onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                          builder: (_) => const DiagnosticoPushScreen())),
                 ),
               ],
               const SizedBox(height: 28),
