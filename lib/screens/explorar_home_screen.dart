@@ -58,8 +58,9 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
 
   /// Clubes derivados de las canchas filtradas (un local = varias canchas).
   /// En la pestaña "Clubes" solo quedan los clubes formales (country clubs…).
-  List<Club> _clubs() {
-    final clubs = Club.agrupar(_filtradas());
+  List<Club> _clubs({bool todosLosDeportes = false}) {
+    final clubs =
+        Club.agrupar(_filtradas(todosLosDeportes: todosLosDeportes));
     if (_soloClubes) return clubs.where((c) => c.esClubFormal).toList();
     return clubs;
   }
@@ -105,7 +106,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     return (h % 40).toDouble();
   }
 
-  List<Cancha> _filtradas() {
+  List<Cancha> _filtradas({bool todosLosDeportes = false}) {
     // Pádel retirado del piloto: nunca aparece en la lista. Con multideporte,
     // basta que la cancha ofrezca ALGO distinto de pádel para mostrarla.
     final base = appState
@@ -114,7 +115,8 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
         .toList();
     // En "Clubes" no se filtra por deporte (un club puede tener varios). Una
     // loza multiuso aparece en el filtro de CADA deporte que ofrece (`ofrece`).
-    var lista = (_filtro == null || _soloClubes)
+    // `todosLosDeportes` (mapa): ignora el chip activo — el mapa filtra solo.
+    var lista = (todosLosDeportes || _filtro == null || _soloClubes)
         ? base
         : base.where((c) => c.ofrece(_filtro!)).toList();
 
@@ -664,7 +666,11 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => MapaCanchasScreen(
-                              clubs: clubs, centro: centro),
+                            clubs: _clubs(todosLosDeportes: true),
+                            centro: centro,
+                            titulo: _labelBusqueda,
+                            filtroInicial: _soloClubes ? null : _filtro,
+                          ),
                         ),
                       ),
                       child: const Padding(
