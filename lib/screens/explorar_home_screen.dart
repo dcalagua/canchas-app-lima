@@ -438,12 +438,8 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                   final nCanchas =
                       clubs.fold<int>(0, (a, c) => a + c.canchas.length);
                   final hijos = <Widget>[
-                    // Acceso a ACADEMIAS (buscar clases por deporte cerca) desde
-                    // la home: a un toque, no solo desde Perfil.
-                    _AccesoAcademias(
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => const AcademiasScreen())),
-                    ),
+                    // El acceso a ACADEMIAS ahora es un CHIP en la fila de
+                    // filtros (pedido del director) — ya no tarjeta aquí.
                     // La liga es una capa de TENIS: el banner de descubrimiento
                     // sale al filtrar raqueta y SOLO si aún no eres del circuito
                     // (si ya lo eres, lo tienes en tu Perfil).
@@ -625,6 +621,9 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                     soloClubes: _soloClubes,
                     onSeleccion: _cambiarFiltro,
                     onClubes: _activarClubes,
+                    onAcademias: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                            builder: (_) => const AcademiasScreen())),
                   ),
                   // Feedback mientras la app trae canchas reales cerca (Places).
                   ListenableBuilder(
@@ -881,59 +880,6 @@ class _SinUbicacion extends StatelessWidget {
 
 /// Acceso a ACADEMIAS desde la home (buscar clases por deporte cerca de ti).
 /// Tarjeta blanca estilo Airbnb con ícono de escuela.
-class _AccesoAcademias extends StatelessWidget {
-  const _AccesoAcademias({required this.onTap});
-  final VoidCallback onTap;
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Material(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(14),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(14),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: trazo),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            child: Row(
-              children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                      color: limaSuave,
-                      borderRadius: BorderRadius.circular(11)),
-                  child: const Icon(Icons.school, color: bosque, size: 21),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Academias',
-                          style: TextStyle(
-                              fontWeight: FontWeight.w800, fontSize: 15)),
-                      Text('Clases por deporte, cerca de ti',
-                          style:
-                              TextStyle(color: textoTenue, fontSize: 12.5)),
-                    ],
-                  ),
-                ),
-                const Icon(Icons.chevron_right, color: textoTenue),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// Banner SLIM del Circuito Pichangol en Explorar: puente discreto al ranking y
 /// los retos desde la home (descubrimiento). Estilo Airbnb (tinte lima suave).
 class _CircuitoBannerExplorar extends StatelessWidget {
@@ -1021,11 +967,13 @@ class _FiltrosDeporte extends StatelessWidget {
   final bool soloClubes;
   final ValueChanged<Deporte?> onSeleccion;
   final VoidCallback onClubes;
+  final VoidCallback onAcademias; // acceso a Academias como un chip más
   const _FiltrosDeporte({
     required this.seleccion,
     required this.soloClubes,
     required this.onSeleccion,
     required this.onClubes,
+    required this.onAcademias,
   });
 
   @override
@@ -1107,6 +1055,8 @@ class _FiltrosDeporte extends StatelessWidget {
                   activo: !soloClubes && seleccion == Deporte.natacion,
                   onTap: () => onSeleccion(Deporte.natacion)),
               chip('🏛️', 'Clubes', activo: soloClubes, onTap: onClubes),
+              // Acceso (no filtro): abre la pantalla de Academias.
+              chip('🎓', 'Academias', activo: false, onTap: onAcademias),
             ],
           ),
         ),
