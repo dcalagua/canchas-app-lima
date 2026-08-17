@@ -607,16 +607,19 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
           // (buscador + chips siguen visibles) → pantalla COMPLETA (recién ahí
           // los atributos desaparecen, tapados por la lámina).
           Builder(builder: (context) {
-            final medio = _fraccionMedia;
             return DraggableScrollableSheet(
             controller: _sheetCtrl,
             initialChildSize: 0.11,
             minChildSize: 0.11,
-            // 0.99 (no 1.0): llegar EXACTO al tope con imanes tiene un bug
-            // conocido de Flutter que deja la lámina trabada al querer bajar.
+            // 0.99 (no 1.0): llegar EXACTO al tope tiene un bug conocido de
+            // Flutter que deja la lámina trabada al querer bajar.
             maxChildSize: 0.99,
-            snap: true,
-            snapSizes: [0.11, medio, 0.99],
+            // SIN imanes (snap): con snap, al soltar entre el nivel medio y el
+            // mapa Flutter rebotaba al imán más cercano y "no bajaba" salvo
+            // arrastres de media pantalla. Arrastre LIBRE = la lámina queda
+            // donde la dejas y puedes seguir bajando hasta el mapa (así se
+            // siente Airbnb). Los niveles siguen como destinos automáticos:
+            // buscar → medio, asa → sube/baja, botón "Mapa" → abajo.
             builder: (context, scrollCtrl) => Container(
               decoration: BoxDecoration(
                 color: cs.surface,
