@@ -9,6 +9,7 @@ import '../utils/geo.dart';
 import '../utils/marcador_precio.dart';
 import '../utils/moneda.dart';
 import '../widgets/club_card.dart';
+import 'buscar_direccion_screen.dart';
 import 'club_detalle_screen.dart';
 
 /// Mapa de canchas estilo Airbnb:
@@ -76,6 +77,13 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
   late LatLng _centroActual; // centro de la última búsqueda
   LatLng? _cam; // a dónde movió el usuario la cámara
   bool _buscando = false; // "Buscar en esta zona" en curso
+  GoogleMapController? _mapCtrl;
+  String? _tituloZona; // etiqueta de la zona (cambia al buscar otra)
+
+  // Lámina inferior con 3 niveles (como Airbnb): asomada → hasta debajo de
+  // los atributos (buscador+chips visibles) → pantalla completa (los tapa).
+  final _sheetCtrl = DraggableScrollableController();
+  bool _sheetLlena = false; // ¿la lámina cubre toda la pantalla?
 
   // Pines dibujados por local: normal y seleccionado (cache global por
   // etiqueta en MarcadorPrecio; aquí referenciados por id del club).
@@ -88,7 +96,20 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
     _filtro = widget.filtroInicial;
     _clubs = widget.clubs;
     _centroActual = widget.centro;
+    _tituloZona = widget.titulo;
+    _sheetCtrl.addListener(() {
+      final llena = _sheetCtrl.isAttached && _sheetCtrl.size > 0.96;
+      if (llena != _sheetLlena && mounted) {
+        setState(() => _sheetLlena = llena);
+      }
+    });
     _prepararPines();
+  }
+
+  @override
+  void dispose() {
+    _sheetCtrl.dispose();
+    super.dispose();
   }
 
   /// Locales visibles según el chip de deporte activo.
@@ -149,17 +170,16 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
     return Club.agrupar(base);
   }
 
-  /// "Buscar en esta zona" (como Airbnb): descubre canchas alrededor de donde
-  /// el usuario movió el mapa. Cosecha-first → zonas ya cosechadas salen al
-  /// instante y GRATIS; una zona nueva consulta Google una sola vez y queda
-  /// cosechada para todos.
-  Future<void> _buscarAqui() async {
-    final c = _cam;
-    if (c == null || _buscando) return;
+  /// Busca canchas alrededor de [c]. Cosecha-first → zonas ya cosechadas
+  /// salen al instante y GRATIS; una zona nueva consulta Google una sola vez
+  /// y queda cosechada para todos.
+  Future<void> _buscarEn(LatLng c, {String? etiqueta}) async {
+    if (_buscando) return;
     setState(() {
       _buscando = true;
       _centroActual = c;
       _sel = null;
+      if (etiqueta != null) _tituloZona = etiqueta;
     });
     try {
       await appState.descubrirCanchasCerca(c);
@@ -167,6 +187,23 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
     _clubs = _clubsCerca(c);
     await _prepararPines();
     if (mounted) setState(() => _buscando = false);
+  }
+
+  /// Botón "Buscar en esta zona": busca donde el usuario movió la cámara.
+  Future<void> _buscarAqui() async {
+    final c = _cam;
+    if (c != null) await _buscarEn(c);
+  }
+
+  /// Buscador del mapa (como Airbnb): abre la búsqueda de zona/dirección y al
+  /// elegir, mueve la cámara y busca canchas ahí (cosecha-first).
+  Future<void> _abrirBusqueda() async {
+    final res = await Navigator.of(context).push<ResultadoBusqueda>(
+      MaterialPageRoute(builder: (_) => const BuscarDireccionScreen()),
+    );
+    if (res == null || !mounted) return;
+    _mapCtrl?.animateCamera(CameraUpdate.newLatLngZoom(res.centro, 12));
+    await _buscarEn(res.centro, etiqueta: res.etiqueta);
   }
 
   /// Cambia el chip de deporte y re-dibuja pines (los sin-precio cambian su
@@ -264,8 +301,11 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
               markers: _marcadores(),
               myLocationEnabled: true,
               myLocationButtonEnabled: false, // la capa de arriba manda
-              // ignore: deprecated_member_use
-              onMapCreated: (c) => c.setMapStyle(_estiloAirbnb),
+              onMapCreated: (c) {
+                _mapCtrl = c;
+                // ignore: deprecated_member_use
+                c.setMapStyle(_estiloAirbnb);
+              },
               onCameraMove: (pos) {
                 // Sin setState: solo recordamos a dónde fue la cámara.
                 _cam = pos.target;
@@ -310,8 +350,9 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
                             color: cs.surface,
                             child: InkWell(
                               borderRadius: BorderRadius.circular(30),
-                              // El buscador vive en la lista: volver la abre.
-                              onTap: () => Navigator.of(context).pop(),
+                              // Como Airbnb: abre la búsqueda de zona y al
+                              // elegir, el mapa vuela ahí y busca canchas.
+                              onTap: _abrirBusqueda,
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 16, vertical: 9),
@@ -326,7 +367,7 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
                                             CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            widget.titulo ?? 'Cerca de ti',
+                                            _tituloZona ?? 'Cerca de ti',
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                             style: const TextStyle(
@@ -421,19 +462,28 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
             ),
           ),
           // Lámina arrastrable inferior (como el "Más de 1000 alojamientos"
-          // de Airbnb): abajo asoma el contador; al jalarla, la lista completa
-          // con sus tarjetas y fotos — sin salir del mapa.
-          DraggableScrollableSheet(
+          // de Airbnb) con 3 NIVELES: asomada → hasta DEBAJO de los atributos
+          // (buscador + chips siguen visibles) → pantalla COMPLETA (recién ahí
+          // los atributos desaparecen, tapados por la lámina).
+          Builder(builder: (context) {
+            final alto = MediaQuery.of(context).size.height;
+            // Altura de la capa de atributos (status bar + buscador + chips).
+            final headerPx = MediaQuery.of(context).padding.top + 118;
+            final medio = (1 - headerPx / alto).clamp(0.45, 0.85).toDouble();
+            return DraggableScrollableSheet(
+            controller: _sheetCtrl,
             initialChildSize: 0.11,
             minChildSize: 0.11,
-            maxChildSize: 0.94,
+            maxChildSize: 1.0,
             snap: true,
-            snapSizes: const [0.11, 0.55, 0.94],
+            snapSizes: [0.11, medio, 1.0],
             builder: (context, scrollCtrl) => Container(
               decoration: BoxDecoration(
                 color: cs.surface,
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(24)),
+                // A pantalla completa pierde el redondeo (ya es "la lista").
+                borderRadius: _sheetLlena
+                    ? BorderRadius.zero
+                    : const BorderRadius.vertical(top: Radius.circular(24)),
                 boxShadow: const [
                   BoxShadow(color: Color(0x22000000), blurRadius: 16),
                 ],
@@ -441,7 +491,12 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
               clipBehavior: Clip.antiAlias,
               child: ListView(
                 controller: scrollCtrl,
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
+                padding: EdgeInsets.fromLTRB(
+                    16,
+                    // A pantalla completa respeta el status bar.
+                    _sheetLlena ? MediaQuery.of(context).padding.top : 0,
+                    16,
+                    40),
                 children: [
                   // Asa + contador (siempre visibles en el borde inferior).
                   Center(
@@ -478,7 +533,46 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
                 ],
               ),
             ),
-          ),
+          );
+          }),
+          // Botón "Mapa" flotante cuando la lista está a pantalla completa
+          // (como Airbnb): un toque y la lámina baja para volver al mapa.
+          if (_sheetLlena)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 28 + MediaQuery.of(context).padding.bottom,
+              child: Center(
+                child: Material(
+                  elevation: 6,
+                  color: tinta,
+                  borderRadius: BorderRadius.circular(999),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(999),
+                    onTap: () => _sheetCtrl.animateTo(0.11,
+                        duration: const Duration(milliseconds: 280),
+                        curve: Curves.easeOut),
+                    child: const Padding(
+                      padding:
+                          EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('Mapa',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 14.5)),
+                          SizedBox(width: 7),
+                          Icon(Icons.map_outlined,
+                              color: Colors.white, size: 18),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           // Mini-tarjeta del local seleccionado (estilo Airbnb).
           if (sel != null)
             Positioned(
