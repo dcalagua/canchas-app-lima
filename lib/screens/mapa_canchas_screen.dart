@@ -3,7 +3,9 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../models/club.dart';
 import '../models/models.dart';
+import '../state/app_state.dart';
 import '../theme.dart';
+import '../utils/geo.dart';
 import '../utils/marcador_precio.dart';
 import '../utils/moneda.dart';
 import 'club_detalle_screen.dart';
@@ -69,6 +71,11 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
   Club? _sel; // local tocado (mini-tarjeta inferior + pin invertido)
   Deporte? _filtro; // chip de deporte activo (null = todos)
 
+  late List<Club> _clubs; // locales pintados (crece con "Buscar en esta zona")
+  late LatLng _centroActual; // centro de la última búsqueda
+  LatLng? _cam; // a dónde movió el usuario la cámara
+  bool _buscando = false; // "Buscar en esta zona" en curso
+
   // Pines dibujados por local: normal y seleccionado (cache global por
   // etiqueta en MarcadorPrecio; aquí referenciados por id del club).
   final Map<String, BitmapDescriptor> _pinN = {};
@@ -78,34 +85,88 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
   void initState() {
     super.initState();
     _filtro = widget.filtroInicial;
+    _clubs = widget.clubs;
+    _centroActual = widget.centro;
     _prepararPines();
   }
 
   /// Locales visibles según el chip de deporte activo.
   List<Club> get _visibles => _filtro == null
-      ? widget.clubs
-      : widget.clubs
+      ? _clubs
+      : _clubs
           .where((cl) => cl.canchas.any((c) => c.ofrece(_filtro!)))
           .toList();
 
-  /// Etiqueta de la pastilla: precio "desde" si es reservable; si no, el emoji
-  /// del deporte (así una zona sin precios igual se ve viva, no puntos vacíos).
+  /// Etiqueta de la pastilla: PRECIO "desde" si se conoce (como Airbnb); si el
+  /// lugar aún no tiene precio (descubierto en Google, sin reclamar), el emoji
+  /// del deporte — con filtro activo, el emoji del deporte BUSCADO (una loza
+  /// multiuso muestra 🎾 cuando buscas tenis).
   String _etiqueta(Club cl) {
     final p = cl.precioDesde;
-    if (cl.verificada && p != null && p > 0) {
+    if (p != null && p > 0) {
       final txt = p == p.roundToDouble() ? p.round().toString() : precio(p);
       return '${cl.monedaSimbolo} $txt';
     }
-    return emojiDeporte(cl.principal.deporte);
+    return emojiDeporte(_filtro ?? cl.principal.deporte);
   }
 
+  /// (Re)dibuja los pines de todos los locales. Se llama al abrir, al cambiar
+  /// el chip de deporte (cambia el emoji de los sin-precio) y tras "Buscar en
+  /// esta zona". MarcadorPrecio cachea por etiqueta → re-preparar es barato.
   Future<void> _prepararPines() async {
-    for (final cl in widget.clubs) {
+    for (final cl in _clubs) {
       final et = _etiqueta(cl);
       _pinN[cl.id] = await MarcadorPrecio.pastilla(et);
       _pinS[cl.id] = await MarcadorPrecio.pastilla(et, seleccionado: true);
     }
     if (mounted) setState(() {});
+  }
+
+  /// Locales cerca de [c] con lo que la app ya conoce (cosecha + registradas).
+  List<Club> _clubsCerca(LatLng c) {
+    final base = appState
+        .todasLasCanchas()
+        .where((x) => x.deportesJugables.any((d) => d != Deporte.padel))
+        .where((x) => distanciaKm(c, x.ubicacion) <= appState.radioBusquedaKm)
+        .toList();
+    return Club.agrupar(base);
+  }
+
+  /// "Buscar en esta zona" (como Airbnb): descubre canchas alrededor de donde
+  /// el usuario movió el mapa. Cosecha-first → zonas ya cosechadas salen al
+  /// instante y GRATIS; una zona nueva consulta Google una sola vez y queda
+  /// cosechada para todos.
+  Future<void> _buscarAqui() async {
+    final c = _cam;
+    if (c == null || _buscando) return;
+    setState(() {
+      _buscando = true;
+      _centroActual = c;
+      _sel = null;
+    });
+    try {
+      await appState.descubrirCanchasCerca(c);
+    } catch (_) {}
+    _clubs = _clubsCerca(c);
+    await _prepararPines();
+    if (mounted) setState(() => _buscando = false);
+  }
+
+  /// Cambia el chip de deporte y re-dibuja pines (los sin-precio cambian su
+  /// emoji al deporte buscado; el caché hace que sea instantáneo).
+  void _cambiarFiltro(Deporte? d) {
+    setState(() {
+      _filtro = d;
+      _sel = null;
+    });
+    _prepararPines();
+  }
+
+  /// ¿La cámara se alejó lo suficiente del último centro buscado como para
+  /// ofrecer "Buscar en esta zona"?
+  bool get _ofrecerBusqueda {
+    final c = _cam;
+    return c != null && !_buscando && distanciaKm(c, _centroActual) > 1.5;
   }
 
   Set<Marker> _marcadores() => {
@@ -180,13 +241,20 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
         children: [
           Positioned.fill(
             child: GoogleMap(
+              // Zoom abierto (se ve el barrio completo, como Airbnb).
               initialCameraPosition:
-                  CameraPosition(target: widget.centro, zoom: 13.5),
+                  CameraPosition(target: widget.centro, zoom: 12),
               markers: _marcadores(),
               myLocationEnabled: true,
               myLocationButtonEnabled: false, // la capa de arriba manda
               // ignore: deprecated_member_use
               onMapCreated: (c) => c.setMapStyle(_estiloAirbnb),
+              onCameraMove: (pos) {
+                // Sin setState: solo recordamos a dónde fue la cámara.
+                _cam = pos.target;
+              },
+              // Al soltar la cámara decidimos si ofrecer "Buscar en esta zona".
+              onCameraIdle: () => setState(() {}),
               // Tocar el mapa (fuera de un pin) cierra la mini-tarjeta.
               onTap: (_) => setState(() => _sel = null),
             ),
@@ -273,26 +341,63 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
                         children: [
                           _chip('🏟️', 'Todos',
                               activo: _filtro == null,
-                              onTap: () => setState(() => _filtro = null)),
+                              onTap: () => _cambiarFiltro(null)),
                           _chip(emojiDeporte(Deporte.futbol), 'Fútbol',
                               activo: _filtro == Deporte.futbol,
-                              onTap: () =>
-                                  setState(() => _filtro = Deporte.futbol)),
+                              onTap: () => _cambiarFiltro(Deporte.futbol)),
                           _chip(emojiDeporte(Deporte.tenis), 'Tenis',
                               activo: _filtro == Deporte.tenis,
-                              onTap: () =>
-                                  setState(() => _filtro = Deporte.tenis)),
+                              onTap: () => _cambiarFiltro(Deporte.tenis)),
                           _chip(emojiDeporte(Deporte.basquet), 'Básquet',
                               activo: _filtro == Deporte.basquet,
-                              onTap: () =>
-                                  setState(() => _filtro = Deporte.basquet)),
+                              onTap: () => _cambiarFiltro(Deporte.basquet)),
                           _chip(emojiDeporte(Deporte.voley), 'Vóley',
                               activo: _filtro == Deporte.voley,
-                              onTap: () =>
-                                  setState(() => _filtro = Deporte.voley)),
+                              onTap: () => _cambiarFiltro(Deporte.voley)),
                         ],
                       ),
                     ),
+                    // Botón "Buscar en esta zona" (como Airbnb): aparece al
+                    // mover el mapa lejos de la última búsqueda.
+                    if (_ofrecerBusqueda || _buscando) ...[
+                      const SizedBox(height: 10),
+                      Material(
+                        elevation: 4,
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(999),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(999),
+                          onTap: _buscarAqui,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 10),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (_buscando)
+                                  const SizedBox(
+                                    width: 15,
+                                    height: 15,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  )
+                                else
+                                  const Icon(Icons.refresh, size: 17),
+                                const SizedBox(width: 7),
+                                Text(
+                                  _buscando
+                                      ? 'Buscando canchas…'
+                                      : 'Buscar canchas en esta zona',
+                                  style: const TextStyle(
+                                      fontSize: 13.5,
+                                      fontWeight: FontWeight.w800),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -322,8 +427,12 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
                             gradient: gradienteDeporte(sel.principal.deporte),
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: const Icon(Icons.sports_soccer,
-                              color: Colors.white, size: 22),
+                          child: Center(
+                            child: Text(
+                              emojiDeporte(_filtro ?? sel.principal.deporte),
+                              style: const TextStyle(fontSize: 20),
+                            ),
+                          ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
