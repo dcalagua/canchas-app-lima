@@ -73,6 +73,23 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
   Club? _sel; // local tocado (mini-tarjeta inferior + pin invertido)
   Deporte? _filtro; // chip de deporte activo (null = todos)
 
+  // Filtros por ATRIBUTOS del local (como los chips de Airbnb: Wifi,
+  // Lavadora…): amenidades multi-selección + tipo de piso.
+  final Set<String> _amenSel = {};
+  String? _superficieSel;
+
+  /// Amenidades que se ofrecen como chips (clave del catálogo + etiqueta +
+  /// emoji). Solo atributos que el dueño marca en su cancha — data real.
+  static const List<(String, String, String)> _amenChips = [
+    ('techado', 'Techado', '🏠'),
+    ('luces', 'Luces', '💡'),
+    ('parking', 'Parking', '🅿️'),
+    ('duchas', 'Duchas', '🚿'),
+    ('vestuario', 'Vestuario', '👕'),
+    ('wifi', 'Wi-Fi', '📶'),
+    ('cafeteria', 'Cafetería', '☕'),
+  ];
+
   late List<Club> _clubs; // locales pintados (crece con "Buscar en esta zona")
   late LatLng _centroActual; // centro de la última búsqueda
   LatLng? _cam; // a dónde movió el usuario la cámara
@@ -112,12 +129,30 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
     super.dispose();
   }
 
-  /// Locales visibles según el chip de deporte activo.
-  List<Club> get _visibles => _filtro == null
-      ? _clubs
-      : _clubs
-          .where((cl) => cl.canchas.any((c) => c.ofrece(_filtro!)))
-          .toList();
+  /// Locales visibles según deporte + atributos (amenidades y piso).
+  List<Club> get _visibles => _clubs
+      .where((cl) =>
+          _filtro == null || cl.canchas.any((c) => c.ofrece(_filtro!)))
+      .where((cl) => _amenSel.every(
+          (a) => cl.canchas.any((c) => c.amenidades.contains(a))))
+      .where((cl) =>
+          _superficieSel == null ||
+          cl.canchas.any((c) => c.superficie == _superficieSel))
+      .toList();
+
+  /// Tipos de piso presentes en los locales cargados (chips dinámicos: solo
+  /// se ofrecen pisos que existen de verdad en la zona).
+  List<String> get _superficiesZona {
+    final vistas = <String>{};
+    final out = <String>[];
+    for (final cl in _clubs) {
+      for (final c in cl.canchas) {
+        final s = c.superficie.trim();
+        if (s.isNotEmpty && vistas.add(s)) out.add(s);
+      }
+    }
+    return out.take(6).toList();
+  }
 
   /// PELOTA del deporte para los pines (la pelota, NO la raqueta): ⚽ 🏀 🏐 y
   /// la bola amarilla para deportes de raqueta.
@@ -199,7 +234,8 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
   /// de los atributos: buscador + chips quedan visibles).
   double get _fraccionMedia {
     final alto = MediaQuery.of(context).size.height;
-    final headerPx = MediaQuery.of(context).padding.top + 118;
+    // status bar + buscador + 2 filas de chips (deportes y atributos).
+    final headerPx = MediaQuery.of(context).padding.top + 168;
     return (1 - headerPx / alto).clamp(0.45, 0.85).toDouble();
   }
 
@@ -285,8 +321,10 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(emoji, style: const TextStyle(fontSize: 15)),
-              const SizedBox(width: 7),
+              if (emoji.isNotEmpty) ...[
+                Text(emoji, style: const TextStyle(fontSize: 15)),
+                const SizedBox(width: 7),
+              ],
               Text(texto,
                   style: TextStyle(
                       fontSize: 13.5,
@@ -429,6 +467,33 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
                           _chip(emojiDeporte(Deporte.natacion), 'Natación',
                               activo: _filtro == Deporte.natacion,
                               onTap: () => _cambiarFiltro(Deporte.natacion)),
+                        ],
+                      ),
+                    ),
+                    // Fila 2: ATRIBUTOS del local (como los chips "Wifi /
+                    // Lavadora" de Airbnb) — amenidades y tipo de piso reales.
+                    const SizedBox(height: 8),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          for (final (clave, etiqueta, emoji) in _amenChips)
+                            _chip(emoji, etiqueta,
+                                activo: _amenSel.contains(clave),
+                                onTap: () => setState(() {
+                                      _amenSel.contains(clave)
+                                          ? _amenSel.remove(clave)
+                                          : _amenSel.add(clave);
+                                      _sel = null;
+                                    })),
+                          for (final s in _superficiesZona)
+                            _chip('', s,
+                                activo: _superficieSel == s,
+                                onTap: () => setState(() {
+                                      _superficieSel =
+                                          _superficieSel == s ? null : s;
+                                      _sel = null;
+                                    })),
                         ],
                       ),
                     ),
