@@ -312,7 +312,8 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
       _horaBusqueda = res.hora;
       _busquedaHecha = true;
     });
-    appState.descubrirCanchasCerca(res.centro); // canchas reales cerca de la zona
+    // Búsqueda explícita del usuario → fuerza Google y re-cosecha (frescura).
+    appState.descubrirCanchasCerca(res.centro, forzarGoogle: true);
   }
 
   /// Subtítulo del buscador tras una búsqueda guiada: "⚽ Fútbol · Hoy · 19:00".

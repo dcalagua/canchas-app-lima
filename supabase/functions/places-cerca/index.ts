@@ -16,6 +16,7 @@ const KEY = Deno.env.get("PLACES_API_KEY") ?? "";
 // Cada consulta = 1 request de cuota SearchText de Places.
 const CONSULTAS = [
   "canchas de fútbol",
+  "pichanga", // jerga PE: locales llamados "La Pichanga" solo salen con esto
   "grass sintético",
   "complejo deportivo",
   "cancha de tenis",

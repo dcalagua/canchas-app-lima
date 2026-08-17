@@ -128,6 +128,7 @@ class PlacesService {
   // deportivo"+"country club"). Cada consulta = 1 request de cuota Places.
   static const _consultas = [
     'canchas de fútbol',
+    'pichanga', // jerga PE: locales llamados "La Pichanga" solo salen con esto
     'grass sintético',
     'complejo deportivo',
     'cancha de tenis',

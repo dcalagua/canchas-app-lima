@@ -243,7 +243,9 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
       if (etiqueta != null) _tituloZona = etiqueta;
     });
     try {
-      await appState.descubrirCanchasCerca(c);
+      // Búsqueda EXPLÍCITA → fuerza Google y re-cosecha (frescura: locales
+      // que Google agregó después de la primera cosecha sí aparecen).
+      await appState.descubrirCanchasCerca(c, forzarGoogle: true);
     } catch (_) {}
     _clubs = _clubsCerca(c);
     await _prepararPines();

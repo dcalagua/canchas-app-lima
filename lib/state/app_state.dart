@@ -4297,7 +4297,14 @@ class AppState extends ChangeNotifier {
   ///     gaste cuota. La primera visita a una zona paga; el resto, S/0.
   ///  Sin fase de fotos de Google (caducan + licencia + cuota): la lista usa
   ///  placeholder por deporte; la foto real llega cuando el dueño reclama.
-  Future<void> descubrirCanchasCerca(LatLng centro) async {
+  ///
+  ///  [forzarGoogle]: re-consulta Google AUNQUE la zona ya esté cosechada y
+  ///  re-cosecha lo nuevo. Se usa en las búsquedas EXPLÍCITAS del usuario
+  ///  (búsqueda guiada, "Buscar canchas en esta zona"): así los locales que
+  ///  Google agregó después de la primera cosecha sí aparecen (frescura),
+  ///  pagando solo cuando alguien lo pide de verdad.
+  Future<void> descubrirCanchasCerca(LatLng centro,
+      {bool forzarGoogle = false}) async {
     descubriendo = true;
     notifyListeners(); // muestra el indicador "Buscando canchas cerca de ti…"
     // 1) Cosecha primero (Supabase): pinta al toque sin gastar cuota.
@@ -4308,9 +4315,9 @@ class AppState extends ChangeNotifier {
       _agregarDescubiertas(cache);
       if (cosechadas > 0) notifyListeners();
     } catch (_) {}
-    // 2) Zona ya cosechada (≥8 lugares) → NO gastar Google. Zona nueva/rala →
-    //    descubrir en Google y cosechar el resultado para todos.
-    if (cosechadas >= 8) {
+    // 2) Zona ya cosechada (≥8 lugares) → NO gastar Google (salvo búsqueda
+    //    explícita). Zona nueva/rala → descubrir en Google y cosechar.
+    if (!forzarGoogle && cosechadas >= 8) {
       descubriendo = false;
       notifyListeners();
       return;
