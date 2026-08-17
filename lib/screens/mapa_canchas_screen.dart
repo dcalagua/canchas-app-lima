@@ -195,8 +195,18 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
     if (c != null) await _buscarEn(c);
   }
 
+  /// Fracción de pantalla de la lámina en su nivel MEDIO (top justo debajo
+  /// de los atributos: buscador + chips quedan visibles).
+  double get _fraccionMedia {
+    final alto = MediaQuery.of(context).size.height;
+    final headerPx = MediaQuery.of(context).padding.top + 118;
+    return (1 - headerPx / alto).clamp(0.45, 0.85).toDouble();
+  }
+
   /// Buscador del mapa (como Airbnb): abre la búsqueda de zona/dirección y al
-  /// elegir, mueve la cámara y busca canchas ahí (cosecha-first).
+  /// elegir, mueve la cámara, busca canchas ahí (cosecha-first) y sube la
+  /// lámina al nivel medio — mapa con pastillas arriba + resultados abajo,
+  /// igual que la pantalla de resultados de Airbnb.
   Future<void> _abrirBusqueda() async {
     final res = await Navigator.of(context).push<ResultadoBusqueda>(
       MaterialPageRoute(builder: (_) => const BuscarDireccionScreen()),
@@ -204,6 +214,10 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
     if (res == null || !mounted) return;
     _mapCtrl?.animateCamera(CameraUpdate.newLatLngZoom(res.centro, 12));
     await _buscarEn(res.centro, etiqueta: res.etiqueta);
+    if (mounted && _sheetCtrl.isAttached) {
+      _sheetCtrl.animateTo(_fraccionMedia,
+          duration: const Duration(milliseconds: 320), curve: Curves.easeOut);
+    }
   }
 
   /// Cambia el chip de deporte y re-dibuja pines (los sin-precio cambian su
@@ -412,6 +426,9 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
                           _chip(emojiDeporte(Deporte.voley), 'Vóley',
                               activo: _filtro == Deporte.voley,
                               onTap: () => _cambiarFiltro(Deporte.voley)),
+                          _chip(emojiDeporte(Deporte.natacion), 'Natación',
+                              activo: _filtro == Deporte.natacion,
+                              onTap: () => _cambiarFiltro(Deporte.natacion)),
                         ],
                       ),
                     ),
@@ -466,10 +483,7 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
           // (buscador + chips siguen visibles) → pantalla COMPLETA (recién ahí
           // los atributos desaparecen, tapados por la lámina).
           Builder(builder: (context) {
-            final alto = MediaQuery.of(context).size.height;
-            // Altura de la capa de atributos (status bar + buscador + chips).
-            final headerPx = MediaQuery.of(context).padding.top + 118;
-            final medio = (1 - headerPx / alto).clamp(0.45, 0.85).toDouble();
+            final medio = _fraccionMedia;
             return DraggableScrollableSheet(
             controller: _sheetCtrl,
             initialChildSize: 0.11,
