@@ -19,6 +19,7 @@ import 'academias_screen.dart';
 import 'buscar_direccion_screen.dart';
 import 'club_detalle_screen.dart';
 import 'login_google_sheet.dart';
+import 'mapa_canchas_screen.dart';
 import 'permisos_onboarding_screen.dart';
 import 'home_shell.dart';
 import 'ranking_global_screen.dart';
@@ -635,6 +636,58 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                   ),
                 ],
               ),
+            ),
+          ),
+
+          // Botón "Mapa" (estilo Airbnb): píldora oscura centrada abajo que
+          // abre el mapa con los pines de la lista. El Maps SDK nativo es
+          // GRATIS (no consume cuota de Google).
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 32,
+            child: ListenableBuilder(
+              listenable: appState,
+              builder: (context, _) {
+                final clubs = _clubs();
+                final centro = _centroBusqueda;
+                if (clubs.isEmpty || centro == null) {
+                  return const SizedBox.shrink();
+                }
+                return Center(
+                  child: Material(
+                    elevation: 6,
+                    color: tinta,
+                    borderRadius: BorderRadius.circular(999),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(999),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => MapaCanchasScreen(
+                              clubs: clubs, centro: centro),
+                        ),
+                      ),
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(
+                            horizontal: 18, vertical: 12),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('Mapa',
+                                style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 14.5)),
+                            SizedBox(width: 7),
+                            Icon(Icons.map_outlined,
+                                color: Colors.white, size: 18),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
           ),
 
