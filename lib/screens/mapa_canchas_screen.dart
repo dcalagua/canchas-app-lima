@@ -10,7 +10,7 @@ import '../utils/marcador_precio.dart';
 import '../utils/moneda.dart';
 import '../widgets/club_card.dart';
 import 'academias_screen.dart';
-import 'buscar_direccion_screen.dart';
+import 'busqueda_guiada_screen.dart';
 import 'club_detalle_screen.dart';
 
 /// Mapa de canchas estilo Airbnb:
@@ -29,6 +29,7 @@ class MapaCanchasScreen extends StatefulWidget {
     required this.centro,
     this.titulo,
     this.filtroInicial,
+    this.atributosInicial = false,
   });
 
   /// Locales cerca de la zona (SIN filtrar por deporte: los chips del mapa
@@ -43,6 +44,10 @@ class MapaCanchasScreen extends StatefulWidget {
 
   /// Deporte que venía filtrado en la lista (se respeta al abrir).
   final Deporte? filtroInicial;
+
+  /// true = ya hubo una búsqueda guiada: el mapa abre mostrando los chips de
+  /// ATRIBUTOS (el deporte ya se eligió en la búsqueda), como Airbnb.
+  final bool atributosInicial;
 
   @override
   State<MapaCanchasScreen> createState() => _MapaCanchasScreenState();
@@ -124,6 +129,7 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
     _clubs = widget.clubs;
     _centroActual = widget.centro;
     _tituloZona = widget.titulo;
+    _mostrarAtributos = widget.atributosInicial;
     _sheetCtrl.addListener(() {
       if (!_sheetCtrl.isAttached || !mounted) return;
       final s = _sheetCtrl.size;
@@ -261,15 +267,24 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
     return (1 - headerPx / alto).clamp(0.45, 0.85).toDouble();
   }
 
-  /// Buscador del mapa (como Airbnb): abre la búsqueda de zona/dirección y al
-  /// elegir, mueve la cámara, busca canchas ahí (cosecha-first) y sube la
-  /// lámina al nivel medio — mapa con pastillas arriba + resultados abajo,
-  /// igual que la pantalla de resultados de Airbnb.
+  /// Buscador del mapa: abre la BÚSQUEDA GUIADA (zona + deporte + fecha/hora)
+  /// y al confirmar, mueve la cámara, busca canchas ahí (cosecha-first) y
+  /// sube la lámina al nivel medio — mapa con pastillas arriba + resultados
+  /// abajo, igual que la pantalla de resultados de Airbnb.
   Future<void> _abrirBusqueda() async {
-    final res = await Navigator.of(context).push<ResultadoBusqueda>(
-      MaterialPageRoute(builder: (_) => const BuscarDireccionScreen()),
+    final res = await Navigator.of(context).push<ResultadoBusquedaGuiada>(
+      MaterialPageRoute(
+          builder: (_) => BusquedaGuiadaScreen(
+                centroInicial: _centroActual,
+                etiquetaInicial: _tituloZona,
+                deporteInicial: _filtro,
+              )),
     );
     if (res == null || !mounted) return;
+    setState(() {
+      _filtro = res.deporte;
+      _soloClubes = false;
+    });
     _mapCtrl?.animateCamera(CameraUpdate.newLatLngZoom(res.centro, 12));
     await _buscarEn(res.centro, etiqueta: res.etiqueta);
     if (mounted && _sheetCtrl.isAttached) {

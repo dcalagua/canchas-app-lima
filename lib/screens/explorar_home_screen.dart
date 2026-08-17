@@ -16,7 +16,7 @@ import '../services/pagos_service.dart';
 import '../utils/geo.dart';
 import '../utils/moneda.dart';
 import 'academias_screen.dart';
-import 'buscar_direccion_screen.dart';
+import 'busqueda_guiada_screen.dart';
 import 'club_detalle_screen.dart';
 import 'login_google_sheet.dart';
 import 'mapa_canchas_screen.dart';
@@ -283,9 +283,19 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     setState(() => _soloClubes = true);
   }
 
+  // BÚSQUEDA GUIADA (estilo Airbnb): zona + deporte obligatorio + fecha/hora.
+  DateTime? _fechaBusqueda;
+  String? _horaBusqueda;
+  bool _busquedaHecha = false; // tras buscar, el mapa abre con ATRIBUTOS
+
   Future<void> _abrirBuscar() async {
-    final res = await Navigator.of(context).push<ResultadoBusqueda>(
-      MaterialPageRoute(builder: (_) => const BuscarDireccionScreen()),
+    final res = await Navigator.of(context).push<ResultadoBusquedaGuiada>(
+      MaterialPageRoute(
+          builder: (_) => BusquedaGuiadaScreen(
+                centroInicial: _centroBusqueda,
+                etiquetaInicial: _labelBusqueda,
+                deporteInicial: _filtro,
+              )),
     );
     if (!mounted) return;
     if (res == null) {
@@ -296,14 +306,39 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     setState(() {
       _centroBusqueda = res.centro;
       _labelBusqueda = res.etiqueta;
+      _filtro = res.deporte; // el deporte elegido filtra la lista
+      _soloClubes = false;
+      _fechaBusqueda = res.fecha;
+      _horaBusqueda = res.hora;
+      _busquedaHecha = true;
     });
     appState.descubrirCanchasCerca(res.centro); // canchas reales cerca de la zona
+  }
+
+  /// Subtítulo del buscador tras una búsqueda guiada: "⚽ Fútbol · Hoy · 19:00".
+  String? get _subtituloBusqueda {
+    final f = _fechaBusqueda;
+    if (!_busquedaHecha || f == null || _filtro == null) return null;
+    final hoy = DateTime.now();
+    bool mismo(DateTime a, DateTime b) =>
+        a.year == b.year && a.month == b.month && a.day == b.day;
+    const dias = ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'];
+    final fecha = mismo(f, hoy)
+        ? 'Hoy'
+        : mismo(f, hoy.add(const Duration(days: 1)))
+            ? 'Mañana'
+            : '${dias[f.weekday - 1]} ${f.day}';
+    final hora = _horaBusqueda == null ? '' : ' · $_horaBusqueda';
+    return '${emojiDeporte(_filtro!)} ${_filtro!.etiqueta} · $fecha$hora';
   }
 
   void _limpiarBusqueda() {
     setState(() {
       _centroBusqueda = null;
       _labelBusqueda = null;
+      _fechaBusqueda = null;
+      _horaBusqueda = null;
+      _busquedaHecha = false;
     });
   }
 
@@ -613,6 +648,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                   _BarraBusqueda(
                     onBuscar: _abrirBuscar,
                     label: _labelBusqueda,
+                    subtitulo: _subtituloBusqueda,
                     onClear: _limpiarBusqueda,
                   ),
                   const SizedBox(height: 10),
@@ -669,6 +705,9 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                             centro: centro,
                             titulo: _labelBusqueda,
                             filtroInicial: _soloClubes ? null : _filtro,
+                            // Tras una búsqueda guiada, el mapa abre con los
+                            // chips de ATRIBUTOS (el deporte ya se eligió).
+                            atributosInicial: _busquedaHecha,
                           ),
                         ),
                       ),
@@ -732,10 +771,12 @@ class _BarraBusqueda extends StatelessWidget {
   final VoidCallback onBuscar;
   final VoidCallback onClear;
   final String? label;
+  final String? subtitulo; // "⚽ Fútbol · Hoy · 19:00" (búsqueda guiada)
   const _BarraBusqueda({
     required this.onBuscar,
     required this.onClear,
     this.label,
+    this.subtitulo,
   });
 
   @override
@@ -774,9 +815,12 @@ class _BarraBusqueda extends StatelessWidget {
                                 fontWeight: FontWeight.w700, fontSize: 15),
                           ),
                           Text(
-                            buscando
-                                ? 'Canchas cerca de tu zona'
-                                : 'Fútbol · Tenis · Clubes cerca de ti',
+                            subtitulo ??
+                                (buscando
+                                    ? 'Canchas cerca de tu zona'
+                                    : 'Fútbol · Tenis · Clubes cerca de ti'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
                                 color: textoTenue, fontSize: 12),
                           ),
