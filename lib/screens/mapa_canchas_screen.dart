@@ -256,6 +256,16 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
     if (c != null) await _buscarEn(c);
   }
 
+  /// Fracción MÍNIMA de la lámina (asomada): la altura JUSTA para el asa y el
+  /// contador "N lugares" — ni un píxel de las tarjetas (se veía el borde de
+  /// la primera foto).
+  double get _fraccionMin {
+    final mq = MediaQuery.of(context);
+    return ((56 + mq.padding.bottom) / mq.size.height)
+        .clamp(0.05, 0.11)
+        .toDouble();
+  }
+
   /// Fracción de pantalla de la lámina en su nivel MEDIO (top justo debajo
   /// de los atributos: buscador + chips quedan visibles).
   double get _fraccionMedia {
@@ -624,8 +634,8 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
           Builder(builder: (context) {
             return DraggableScrollableSheet(
             controller: _sheetCtrl,
-            initialChildSize: 0.11,
-            minChildSize: 0.11,
+            initialChildSize: _fraccionMin,
+            minChildSize: _fraccionMin,
             // 0.99 (no 1.0): llegar EXACTO al tope tiene un bug conocido de
             // Flutter que deja la lámina trabada al querer bajar.
             maxChildSize: 0.99,
@@ -668,8 +678,9 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
                   GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: () {
-                      final abajo = _sheetCtrl.size <= 0.12;
-                      _sheetCtrl.animateTo(abajo ? _fraccionMedia : 0.11,
+                      final abajo = _sheetCtrl.size <= _fraccionMin + 0.02;
+                      _sheetCtrl.animateTo(
+                          abajo ? _fraccionMedia : _fraccionMin,
                           duration: const Duration(milliseconds: 260),
                           curve: Curves.easeOut);
                     },
@@ -728,7 +739,7 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
                   borderRadius: BorderRadius.circular(999),
                   child: InkWell(
                     borderRadius: BorderRadius.circular(999),
-                    onTap: () => _sheetCtrl.animateTo(0.11,
+                    onTap: () => _sheetCtrl.animateTo(_fraccionMin,
                         duration: const Duration(milliseconds: 280),
                         curve: Curves.easeOut),
                     child: const Padding(
