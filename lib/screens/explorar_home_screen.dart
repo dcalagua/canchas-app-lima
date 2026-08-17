@@ -1106,9 +1106,7 @@ class _FiltrosDeporte extends StatelessWidget {
               chip(emojiDeporte(Deporte.natacion), 'Natación',
                   activo: !soloClubes && seleccion == Deporte.natacion,
                   onTap: () => onSeleccion(Deporte.natacion)),
-              // "Clubes" OCULTO por ahora (pedido del director): el filtro de
-              // locales formales se reactiva descomentando esta línea.
-              // chip('🏛️', 'Clubes', activo: soloClubes, onTap: onClubes),
+              chip('🏛️', 'Clubes', activo: soloClubes, onTap: onClubes),
             ],
           ),
         ),

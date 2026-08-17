@@ -72,6 +72,7 @@ const String _estiloAirbnb = '''
 class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
   Club? _sel; // local tocado (mini-tarjeta inferior + pin invertido)
   Deporte? _filtro; // chip de deporte activo (null = todos)
+  bool _soloClubes = false; // chip "Clubes": solo locales formales
 
   // Filtros por ATRIBUTOS del local (como los chips de Airbnb: Wifi,
   // Lavadora…): amenidades multi-selección + tipo de piso.
@@ -129,10 +130,13 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
     super.dispose();
   }
 
-  /// Locales visibles según deporte + atributos (amenidades y piso).
+  /// Locales visibles según deporte/clubes + atributos (amenidades y piso).
   List<Club> get _visibles => _clubs
+      .where((cl) => !_soloClubes || cl.esClubFormal)
       .where((cl) =>
-          _filtro == null || cl.canchas.any((c) => c.ofrece(_filtro!)))
+          _soloClubes ||
+          _filtro == null ||
+          cl.canchas.any((c) => c.ofrece(_filtro!)))
       .where((cl) => _amenSel.every(
           (a) => cl.canchas.any((c) => c.amenidades.contains(a))))
       .where((cl) =>
@@ -257,10 +261,21 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
   }
 
   /// Cambia el chip de deporte y re-dibuja pines (los sin-precio cambian su
-  /// emoji al deporte buscado; el caché hace que sea instantáneo).
+  /// emoji al deporte buscado; el caché hace que sea instantáneo). Elegir un
+  /// deporte apaga "Clubes" (y viceversa), igual que en Explorar.
   void _cambiarFiltro(Deporte? d) {
     setState(() {
       _filtro = d;
+      _soloClubes = false;
+      _sel = null;
+    });
+    _prepararPines();
+  }
+
+  void _activarClubes() {
+    setState(() {
+      _soloClubes = true;
+      _filtro = null;
       _sel = null;
     });
     _prepararPines();
@@ -450,7 +465,7 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
                       child: Row(
                         children: [
                           _chip('🏟️', 'Todos',
-                              activo: _filtro == null,
+                              activo: !_soloClubes && _filtro == null,
                               onTap: () => _cambiarFiltro(null)),
                           _chip(emojiDeporte(Deporte.futbol), 'Fútbol',
                               activo: _filtro == Deporte.futbol,
@@ -467,6 +482,8 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
                           _chip(emojiDeporte(Deporte.natacion), 'Natación',
                               activo: _filtro == Deporte.natacion,
                               onTap: () => _cambiarFiltro(Deporte.natacion)),
+                          _chip('🏛️', 'Clubes',
+                              activo: _soloClubes, onTap: _activarClubes),
                         ],
                       ),
                     ),
