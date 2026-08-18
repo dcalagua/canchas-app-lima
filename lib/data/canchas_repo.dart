@@ -82,6 +82,32 @@ class CanchasRepo {
     return null;
   }
 
+  /// Lee de la nube la config guardada de una cancha (duración, seña, piso)
+  /// para VERIFICAR tras editar que el cambio SÍ persistió. Lee la fila entera
+  /// (select *): si una columna aún no existe en la BD, simplemente no viene en
+  /// el mapa (null) — así se detecta "columna faltante" sin romper la lectura.
+  /// Devuelve null si no se pudo leer (sin red / fila inexistente). Fail-safe.
+  static Future<({int? duracion, int? senaPct, String? superficie})?>
+      leerConfigNube(String id) async {
+    if (!SupabaseService.disponible) return null;
+    try {
+      final rows = await SupabaseService.client
+          .from(_tabla)
+          .select()
+          .eq('id', id)
+          .limit(1);
+      if (rows is List && rows.isNotEmpty) {
+        final m = rows.first as Map;
+        return (
+          duracion: (m['duracion_slot_min'] as num?)?.toInt(),
+          senaPct: (m['sena_pct'] as num?)?.toInt(),
+          superficie: m['superficie'] as String?,
+        );
+      }
+    } catch (_) {}
+    return null;
+  }
+
   /// Borra una cancha de forma DURABLE en la nube. Usa borrado lógico
   /// (`eliminada = true`) en vez de DELETE físico: el DELETE suele estar
   /// bloqueado por RLS y, sobre todo, así el borrado sobrevive a reinstalar la

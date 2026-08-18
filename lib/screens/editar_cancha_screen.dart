@@ -344,18 +344,34 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
       );
     }
 
-    // Verifica que la NUEVA duración del turno haya QUEDADO en la nube. Si no
-    // (columna faltante o permisos RLS), el cliente en OTRO equipo seguiría
-    // viendo la duración vieja aunque local se vea bien: se avisa al dueño.
+    // Verifica que la config editada haya QUEDADO en la nube: duración, SEÑA y
+    // tipo de piso. Si algo no persistió (columna faltante o permisos RLS), el
+    // jugador / otro equipo verían datos viejos aunque local se vea bien — y el
+    // fail-safe del upsert degrada TODO el paquete de columnas nuevas cuando
+    // una sola falta. Se avisa al dueño en rojo en vez del "✅ actualizada".
     String? avisoNube;
     if (!eraReclamo) {
       await CanchasRepo.actualizar(actualizada); // asegura la escritura (upsert)
-      final durNube = await CanchasRepo.leerDuracion(actualizada.id);
-      if (durNube != null && durNube != _duracion) {
-        avisoNube = '⚠️ "$nombre" se guardó en este equipo, pero la NUBE quedó '
-            'en $durNube min (no $_duracion min). Otros equipos verán la '
-            'duración vieja. Revisa la columna duracion_slot_min / permisos en '
-            'Supabase.';
+      final nube = await CanchasRepo.leerConfigNube(actualizada.id);
+      if (nube != null) {
+        final problemas = <String>[];
+        if (nube.duracion != null && nube.duracion != _duracion) {
+          problemas.add('duración (nube: ${nube.duracion} min, no $_duracion)');
+        }
+        if (_senaPct > 0 && nube.senaPct != _senaPct) {
+          problemas.add(nube.senaPct == null
+              ? 'seña (falta la columna sena_pct en Supabase)'
+              : 'seña (nube: ${nube.senaPct}%, no $_senaPct%)');
+        }
+        if (_superficie.isNotEmpty && (nube.superficie ?? '') != _superficie) {
+          problemas.add('tipo de piso');
+        }
+        if (problemas.isNotEmpty) {
+          avisoNube = '⚠️ "$nombre" se guardó en este equipo, pero en la NUBE '
+              'NO quedó: ${problemas.join(' · ')}. Los jugadores y tus otros '
+              'equipos verán datos viejos. Corre el SQL pendiente '
+              '(docs/piloto/supabase_sena_y_medio_pago.sql) o revisa RLS.';
+        }
       }
     }
 
