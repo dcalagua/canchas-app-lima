@@ -3,12 +3,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../brand.dart';
 import '../state/app_state.dart';
-import '../theme.dart';
 import '../widgets/marca.dart';
 import 'app_shell.dart';
 import 'onboarding_screen.dart';
 
 const _indigo = Color(0xFFFFFFFF); // fondo del splash (blanco, look Airbnb)
+
+// Paleta del LOGO nuevo (muestreada de docs/marca/logo_original.jpg) — SOLO
+// para el splash/preload; la paleta interna del app no cambia (opción A).
+const _verdeLogo = Color(0xFF0B8E40); // verde del pin
+const _navyLogo = Color(0xFF0A1F3C); // azul marino del wordmark/pelota
 
 /// Splash de marca ENERGÉTICO (identidad Cancha nocturna): fondo índigo + una
 /// pelota LIMA que va cambiando de deporte (fútbol, tenis, básquet, vóley…) con
@@ -113,22 +117,24 @@ class _SplashScreenState extends State<SplashScreen>
               kBrandTagline,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                color: textoTenue,
+                color: _navyLogo,
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
               ),
             ),
             const SizedBox(height: 34),
-            // Cargando…
+            // Cargando… (preload en los colores del logo: spinner verde del
+            // pin, texto en el navy del wordmark).
             const SizedBox(
               width: 26,
               height: 26,
-              child: CircularProgressIndicator(strokeWidth: 3, color: lima),
+              child: CircularProgressIndicator(
+                  strokeWidth: 3, color: _verdeLogo),
             ),
             const SizedBox(height: 12),
             Text('Cargando…',
                 style: TextStyle(
-                    color: textoTenue.withOpacity(0.9),
+                    color: _navyLogo.withOpacity(0.6),
                     fontWeight: FontWeight.w700,
                     fontSize: 13)),
           ],
