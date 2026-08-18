@@ -3259,6 +3259,8 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     _persistirDatos();
     MatriculasRepo.guardar(alumno);
+    // Push al DUEÑO: alumno nuevo (se unió con el código de la academia).
+    _avisarMatricula(alumno, academia.id, 'con código');
     return (
       ok: true,
       mensaje: esMenor
@@ -3893,6 +3895,8 @@ class AppState extends ChangeNotifier {
     cuotas.addAll(nuevasCuotas);
     // Sube el alumno con sus cuotas embebidas (cross-device + sobrevive reinstalar).
     MatriculasRepo.guardar(alumno, cuotas: nuevasCuotas);
+    // Push al DUEÑO de la academia: "nuevo alumno matriculado".
+    _avisarMatricula(alumno, academiaId, plan.nombre);
     notifyListeners();
     _persistirDatos();
     return alumno;
@@ -3928,7 +3932,10 @@ class AppState extends ChangeNotifier {
     _persistirDatos();
     // Propaga el pago al otro lado (alumno ↔ profe) re-subiendo las cuotas del
     // alumno a la nube. El pago es "pegajoso" (una vez pagada, no se revierte).
-    if (pagada) _subirCuotasAlumno(alumnoId);
+    if (pagada) {
+      _subirCuotasAlumno(alumnoId);
+      _avisarCuotaPagada(cuotas[i]); // push al otro lado (dueño ↔ alumno)
+    }
   }
 
   /// Re-sube a la nube (embebidas en la matrícula) las cuotas actuales de un
@@ -7128,28 +7135,87 @@ class AppState extends ChangeNotifier {
     return res == ResultadoReserva.ok ? ResultadoReserva.ok : res;
   }
 
-  /// Notifica al CLIENTE (usuario registrado del app) que el dueño le creó una
-  /// reserva manual, vía la Edge Function `push-aviso` (invocación directa,
-  /// misma que usa el diagnóstico — no depende de webhooks). Fail-safe: si no
-  /// hay email, no hay red o la función no está, la reserva queda igual.
-  void _avisarReservaManual(Reserva r, Cancha cancha) {
-    final email = r.usuario;
-    if (email.isEmpty || !SupabaseService.disponible) return;
-    // El dueño anotándose a sí mismo no necesita push.
-    if (email == (usuario?.email ?? '').trim().toLowerCase()) return;
+  // ── Push de AVISOS (Edge Function `push-aviso`, invocación directa) ───────
+  /// Push genérico a un usuario registrado. Fail-safe (sin red / sin función,
+  /// no rompe nada) y nunca se auto-notifica.
+  void _pushAviso(
+      {required String email,
+      required String titulo,
+      required String cuerpo,
+      String tipo = 'aviso',
+      Map<String, String> data = const {}}) {
+    final dest = email.trim().toLowerCase();
+    if (dest.isEmpty || !SupabaseService.disponible) return;
+    if (dest == (usuario?.email ?? '').trim().toLowerCase()) return;
     () async {
       try {
-        final lugar = cancha.club.isNotEmpty ? cancha.club : cancha.nombre;
         await SupabaseService.client.functions.invoke('push-aviso', body: {
-          'email': email,
-          'titulo': 'Reserva confirmada 🎾',
-          'cuerpo': '$lugar te reservó ${cancha.nombre} · ${r.dia} '
-              '${r.horaInicio}–${r.horaFin}. ¡Te esperamos!',
-          'tipo': 'reserva_manual',
-          'data': {'reserva_id': r.id, 'cancha_id': r.canchaId},
+          'email': dest,
+          'titulo': titulo,
+          'cuerpo': cuerpo,
+          'tipo': tipo,
+          if (data.isNotEmpty) 'data': data,
         });
       } catch (_) {}
     }();
+  }
+
+  /// Notifica al CLIENTE (usuario registrado del app) que el dueño le creó una
+  /// reserva manual.
+  void _avisarReservaManual(Reserva r, Cancha cancha) {
+    final lugar = cancha.club.isNotEmpty ? cancha.club : cancha.nombre;
+    _pushAviso(
+      email: r.usuario,
+      titulo: 'Reserva confirmada 🎾',
+      cuerpo: '$lugar te reservó ${cancha.nombre} · ${r.dia} '
+          '${r.horaInicio}–${r.horaFin}. ¡Te esperamos!',
+      tipo: 'reserva_manual',
+      data: {'reserva_id': r.id, 'cancha_id': r.canchaId},
+    );
+  }
+
+  /// Matrícula nueva → push al DUEÑO de la academia (pedido del director:
+  /// notificaciones de academia).
+  void _avisarMatricula(Alumno alumno, String academiaId, String plan) {
+    final ac = academias.where((a) => a.id == academiaId).toList();
+    if (ac.isEmpty) return;
+    _pushAviso(
+      email: ac.first.dueno,
+      titulo: 'Nuevo alumno 🎓',
+      cuerpo: '${alumno.nombre} se matriculó en ${ac.first.nombre}'
+          '${plan.trim().isEmpty ? '' : ' · $plan'}.',
+      tipo: 'academia',
+    );
+  }
+
+  /// Cuota marcada como PAGADA → push al otro lado: si la marca el PROFE
+  /// (cobro en efectivo), avisa al titular de la cuenta del alumno; si paga el
+  /// alumno por la app, avisa al dueño de la academia.
+  void _avisarCuotaPagada(Cuota c) {
+    final ac = academias.where((a) => a.id == c.academiaId).toList();
+    final al = alumnos.where((x) => x.id == c.alumnoId).toList();
+    if (ac.isEmpty || al.isEmpty) return;
+    final yo = (usuario?.email ?? '').trim().toLowerCase();
+    final soyProfe =
+        yo.isNotEmpty && ac.first.dueno.trim().toLowerCase() == yo;
+    final monto = c.monto.toStringAsFixed(2);
+    if (soyProfe) {
+      _pushAviso(
+        email: al.first.email,
+        titulo: 'Pago registrado ✓',
+        cuerpo:
+            '${ac.first.nombre} registró tu pago: ${c.concepto} · S/ $monto.',
+        tipo: 'academia',
+      );
+    } else {
+      _pushAviso(
+        email: ac.first.dueno,
+        titulo: 'Cuota pagada 💰',
+        cuerpo:
+            '${al.first.nombre} pagó ${c.concepto} · S/ $monto (${ac.first.nombre}).',
+        tipo: 'academia',
+      );
+    }
   }
 
   /// El dueño confirma (o revierte) que el jugador pagó en efectivo en la cancha.
