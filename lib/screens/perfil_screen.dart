@@ -35,181 +35,214 @@ class PerfilScreen extends StatelessWidget {
         MaterialPageRoute(builder: (_) => const AnfitrionScreen()));
   }
 
+  /// Título "Perfil" grande + botón editar (estilo Airbnb).
+  Widget _tituloFila(BuildContext context, dynamic u) {
+    final cs = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Text('Perfil',
+            style: TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.5,
+                color: cs.onSurface)),
+        const Spacer(),
+        if (u != null)
+          Material(
+            color: const Color(0xFFF0F1EF),
+            shape: const CircleBorder(),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const EditarPerfilScreen())),
+              child: const Padding(
+                padding: EdgeInsets.all(11),
+                child: Icon(Icons.edit_outlined, size: 20, color: tinta),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// Columna IZQUIERDA (tablet) / bloque superior (móvil): identidad, login,
+  /// tarjetas cuadradas, banner anfitrión y nivel de jugador.
+  List<Widget> _colIzquierda(BuildContext context, dynamic u) => [
+        _TarjetaIdentidad(u: u),
+        const SizedBox(height: 14),
+        if (u == null) ...[
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () => LoginGoogleSheet.mostrar(context,
+                  motivo: 'acceder a tu cuenta'),
+              icon: Container(
+                padding: const EdgeInsets.all(3),
+                decoration: const BoxDecoration(
+                    color: Colors.white, shape: BoxShape.circle),
+                child: const GoogleLogo(size: 18),
+              ),
+              label: const Text('Iniciar sesión con Google'),
+            ),
+          ),
+          const SizedBox(height: 14),
+        ],
+        if (u != null) ...[
+          Row(
+            children: [
+              Expanded(
+                child: _TarjetaCuadrada(
+                  emoji: '📅',
+                  titulo: 'Mis reservas',
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const MisReservasScreen())),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: _TarjetaCuadrada(
+                  emoji: '🛍️',
+                  titulo: 'Marketplace',
+                  badge: 'NOVEDAD',
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const MarketplaceScreen())),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+        ],
+        _BannerAnfitrion(onTap: () => _irAnfitrion(context)),
+        const SizedBox(height: 14),
+        if (u != null) ...[
+          const _NivelCard(),
+          const SizedBox(height: 8),
+        ],
+      ];
+
+  /// Columna DERECHA (tablet) / bloque inferior (móvil): lista de opciones
+  /// estilo Airbnb (íconos de línea + chevron).
+  List<Widget> _colDerecha(BuildContext context, dynamic u) => [
+        const SizedBox(height: 6),
+        _ItemAirbnb(
+          icono: Icons.school_outlined,
+          titulo: 'Academias',
+          onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AcademiasScreen())),
+        ),
+        if (u == null)
+          _ItemAirbnb(
+            icono: Icons.storefront_outlined,
+            titulo: 'Marketplace Pichangol',
+            onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const MarketplaceScreen())),
+          ),
+        if (u != null) ...[
+          _ItemAirbnb(
+            icono: Icons.confirmation_number_outlined,
+            titulo: 'Mis bonos',
+            onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const MisBonosScreen())),
+          ),
+          _ItemAirbnb(
+            icono: Icons.receipt_long_outlined,
+            titulo: 'Mis pagos',
+            onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const MisPagosScreen())),
+          ),
+          if (appState.usaCircuito)
+            _ItemAirbnb(
+              icono: Icons.emoji_events_outlined,
+              titulo: 'Liga de tenis Pichangol',
+              badge: appState.retosPendientes,
+              onTap: () => Navigator.of(context)
+                  .push(MaterialPageRoute(
+                      builder: (_) => const CircuitoScreen()))
+                  .then((_) => appState.cargarRetosPendientes()),
+            ),
+          _ItemAirbnb(
+            icono: Icons.account_balance_wallet_outlined,
+            titulo: 'Mi billetera',
+            onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const CuentaScreen())),
+          ),
+        ],
+        const Divider(height: 26, color: Color(0xFFEBEBEB)),
+        _ItemAirbnb(
+          icono: Icons.settings_outlined,
+          titulo: 'Configuración de la cuenta',
+          onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AjustesScreen())),
+        ),
+        if (u != null)
+          _ItemAirbnb(
+            icono: Icons.logout,
+            titulo: 'Cierra la sesión',
+            onTap: () => appState.cerrarSesionUsuario(),
+          ),
+      ];
+
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      // Regla app: en pantallas anchas el contenido va CENTRADO con ancho máx.
-      body: AnchoTablet(
-        maxWidth: 520,
-        child: ListenableBuilder(
-          listenable: appState,
-          builder: (context, _) {
-            final u = appState.usuario;
-            return ListView(
-              padding: EdgeInsets.fromLTRB(
-                  20, 12 + MediaQuery.of(context).padding.top, 20, 110),
-              children: [
-                // ── Título grande + editar (estilo Airbnb: campana/acción) ──
-                Row(
-                  children: [
-                    Text('Perfil',
-                        style: TextStyle(
-                            fontSize: 32,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.5,
-                            color: cs.onSurface)),
-                    const Spacer(),
-                    if (u != null)
-                      Material(
-                        color: const Color(0xFFF0F1EF),
-                        shape: const CircleBorder(),
-                        child: InkWell(
-                          customBorder: const CircleBorder(),
-                          onTap: () => Navigator.of(context).push(
-                              MaterialPageRoute(
-                                  builder: (_) => const EditarPerfilScreen())),
-                          child: const Padding(
-                            padding: EdgeInsets.all(11),
-                            child: Icon(Icons.edit_outlined,
-                                size: 20, color: tinta),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-
-                // ── Tarjeta de identidad con estadísticas (estilo Airbnb) ──
-                _TarjetaIdentidad(u: u),
-                const SizedBox(height: 14),
-
-                if (u == null) ...[
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: () => LoginGoogleSheet.mostrar(context,
-                          motivo: 'acceder a tu cuenta'),
-                      icon: Container(
-                        padding: const EdgeInsets.all(3),
-                        decoration: const BoxDecoration(
-                            color: Colors.white, shape: BoxShape.circle),
-                        child: const GoogleLogo(size: 18),
-                      ),
-                      label: const Text('Iniciar sesión con Google'),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                ],
-
-                // ── Fila de 2 tarjetas cuadradas (como Viajes/Conexiones) ──
-                if (u != null) ...[
+      body: ListenableBuilder(
+        listenable: appState,
+        builder: (context, _) {
+          final u = appState.usuario;
+          // TABLET/horizontal (>=900 px): DOS columnas — identidad y tarjetas
+          // a la izquierda, lista de opciones a la derecha (como Airbnb en
+          // pantallas anchas: se aprovecha el espacio sin estirar una columna).
+          final esAncha = MediaQuery.sizeOf(context).width >= 900;
+          final pie = Center(
+            child: Text(kBrandEslogan,
+                style:
+                    TextStyle(fontSize: 12, color: textoTenueDe(context))),
+          );
+          if (esAncha) {
+            return AnchoTablet(
+              maxWidth: 1100,
+              child: ListView(
+                padding: EdgeInsets.fromLTRB(
+                    28, 12 + MediaQuery.of(context).padding.top, 28, 110),
+                children: [
+                  _tituloFila(context, u),
+                  const SizedBox(height: 16),
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(
-                        child: _TarjetaCuadrada(
-                          emoji: '📅',
-                          titulo: 'Mis reservas',
-                          onTap: () => Navigator.of(context).push(
-                              MaterialPageRoute(
-                                  builder: (_) => const MisReservasScreen())),
-                        ),
-                      ),
-                      const SizedBox(width: 14),
+                          child: Column(children: _colIzquierda(context, u))),
+                      const SizedBox(width: 28),
                       Expanded(
-                        child: _TarjetaCuadrada(
-                          emoji: '🛍️',
-                          titulo: 'Marketplace',
-                          badge: 'NOVEDAD',
-                          onTap: () => Navigator.of(context).push(
-                              MaterialPageRoute(
-                                  builder: (_) => const MarketplaceScreen())),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: _colDerecha(context, u),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 22),
+                  pie,
                 ],
-
-                // ── Banner anfitrión (como "Conviértete en anfitrión") ──
-                _BannerAnfitrion(onTap: () => _irAnfitrion(context)),
-                const SizedBox(height: 14),
-
-                // ── Nivel de jugador (capa social estilo Playtomic) ──
-                if (u != null) ...[
-                  const _NivelCard(),
-                  const SizedBox(height: 8),
-                ],
-
-                // ── Lista plana estilo Airbnb: íconos de LÍNEA + chevron ──
-                const SizedBox(height: 6),
-                _ItemAirbnb(
-                  icono: Icons.school_outlined,
-                  titulo: 'Academias',
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => const AcademiasScreen())),
-                ),
-                if (u == null)
-                  _ItemAirbnb(
-                    icono: Icons.storefront_outlined,
-                    titulo: 'Marketplace Pichangol',
-                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) => const MarketplaceScreen())),
-                  ),
-                if (u != null) ...[
-                  _ItemAirbnb(
-                    icono: Icons.confirmation_number_outlined,
-                    titulo: 'Mis bonos',
-                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) => const MisBonosScreen())),
-                  ),
-                  _ItemAirbnb(
-                    icono: Icons.receipt_long_outlined,
-                    titulo: 'Mis pagos',
-                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) => const MisPagosScreen())),
-                  ),
-                  if (appState.usaCircuito)
-                    _ItemAirbnb(
-                      icono: Icons.emoji_events_outlined,
-                      titulo: 'Liga de tenis Pichangol',
-                      badge: appState.retosPendientes,
-                      onTap: () => Navigator.of(context)
-                          .push(MaterialPageRoute(
-                              builder: (_) => const CircuitoScreen()))
-                          .then((_) => appState.cargarRetosPendientes()),
-                    ),
-                  _ItemAirbnb(
-                    icono: Icons.account_balance_wallet_outlined,
-                    titulo: 'Mi billetera',
-                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) => const CuentaScreen())),
-                  ),
-                ],
-                const Divider(height: 26, color: Color(0xFFEBEBEB)),
-                _ItemAirbnb(
-                  icono: Icons.settings_outlined,
-                  titulo: 'Configuración de la cuenta',
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => const AjustesScreen())),
-                ),
-                if (u != null)
-                  _ItemAirbnb(
-                    icono: Icons.logout,
-                    titulo: 'Cierra la sesión',
-                    onTap: () => appState.cerrarSesionUsuario(),
-                  ),
-
-                const SizedBox(height: 22),
-                Center(
-                  child: Text(kBrandEslogan,
-                      style: TextStyle(
-                          fontSize: 12, color: textoTenueDe(context))),
-                ),
-              ],
+              ),
             );
-          },
-        ),
+          }
+          return AnchoTablet(
+            maxWidth: 520,
+            child: ListView(
+              padding: EdgeInsets.fromLTRB(
+                  20, 12 + MediaQuery.of(context).padding.top, 20, 110),
+              children: [
+                _tituloFila(context, u),
+                const SizedBox(height: 16),
+                ..._colIzquierda(context, u),
+                ..._colDerecha(context, u),
+                const SizedBox(height: 22),
+                pie,
+              ],
+            ),
+          );
+        },
       ),
       // ── Botón flotante charcoal (como "Cambiar a modo anfitrión") ──
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
