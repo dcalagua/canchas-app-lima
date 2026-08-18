@@ -34,9 +34,33 @@ class _ReservasHubScreenState extends State<ReservasHubScreen> {
   @override
   Widget build(BuildContext context) {
     final oscuro = Theme.of(context).brightness == Brightness.dark;
+    final fondo =
+        oscuro ? Theme.of(context).scaffoldBackgroundColor : papelCalido;
+    // TABLET (≥900 dp): las DOS vistas a la vez, lado a lado — Calendario
+    // (disponibilidad día × hora) a la izquierda y Lista (cobros) a la
+    // derecha, como la recepción de un local con tablet. Sin conmutador:
+    // no hay que alternar nada. Cada mitad conserva su propio FAB
+    // ("Llenar cancha" / "Reserva manual"; heroTags ya distintos).
+    if (MediaQuery.sizeOf(context).width >= 900) {
+      return Scaffold(
+        backgroundColor: fondo,
+        appBar: AppBar(
+          title: const Text('Reservas'),
+          actions: accionesReservas(context),
+        ),
+        body: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Expanded(flex: 11, child: AgendaScreen(embedded: true)),
+            Container(width: 1, color: trazo),
+            const Expanded(
+                flex: 9, child: ReservasDuenoScreen(embedded: true)),
+          ],
+        ),
+      );
+    }
     return Scaffold(
-      backgroundColor:
-          oscuro ? Theme.of(context).scaffoldBackgroundColor : papelCalido,
+      backgroundColor: fondo,
       appBar: AppBar(
         title: const Text('Reservas'),
         // Herramientas del dominio de reservas (valen para ambas vistas):

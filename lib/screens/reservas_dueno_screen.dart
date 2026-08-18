@@ -202,18 +202,22 @@ class _ReservasDuenoScreenState extends State<ReservasDuenoScreen> {
             porDia.putIfAbsent(r.fecha, () => []).add(r);
           }
 
+          // Columnas según el ANCHO DISPONIBLE (no el de la pantalla): en el
+          // hub de tablet esta lista vive en un panel angosto junto al
+          // calendario y ahí debe caer a 1 columna aunque la pantalla sea ancha.
           Widget cardsDe(List<Reserva> rs) {
-            if (MediaQuery.of(context).size.width >= 720) {
-              return LayoutBuilder(builder: (context, cons) {
-                final cols = cons.maxWidth >= 1100 ? 3 : 2;
-                final w = (cons.maxWidth - 12 * (cols - 1)) / cols;
-                return Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
+            return LayoutBuilder(builder: (context, cons) {
+              final cols = cons.maxWidth >= 1100
+                  ? 3
+                  : cons.maxWidth >= 680
+                      ? 2
+                      : 1;
+              if (cols == 1) {
+                return Column(
                   children: [
                     for (final r in rs)
-                      SizedBox(
-                        width: w,
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
                         child: _ReservaCard(
                           reserva: r,
                           cancha: canchaDe[r.id]!,
@@ -222,21 +226,24 @@ class _ReservasDuenoScreenState extends State<ReservasDuenoScreen> {
                       ),
                   ],
                 );
-              });
-            }
-            return Column(
-              children: [
-                for (final r in rs)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _ReservaCard(
-                      reserva: r,
-                      cancha: canchaDe[r.id]!,
-                      fechaLabel: _fechaLabel(r.fecha),
+              }
+              final w = (cons.maxWidth - 12 * (cols - 1)) / cols;
+              return Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  for (final r in rs)
+                    SizedBox(
+                      width: w,
+                      child: _ReservaCard(
+                        reserva: r,
+                        cancha: canchaDe[r.id]!,
+                        fechaLabel: _fechaLabel(r.fecha),
+                      ),
                     ),
-                  ),
-              ],
-            );
+                ],
+              );
+            });
           }
 
           return RefreshIndicator(
