@@ -367,10 +367,14 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
           problemas.add('tipo de piso');
         }
         if (problemas.isNotEmpty) {
+          // El motivo LITERAL del rechazo (columna faltante vs RLS) para no
+          // diagnosticar a ciegas.
+          final err = CanchasRepo.ultimoErrorGuardado;
           avisoNube = '⚠️ "$nombre" se guardó en este equipo, pero en la NUBE '
               'NO quedó: ${problemas.join(' · ')}. Los jugadores y tus otros '
-              'equipos verán datos viejos. Corre el SQL pendiente '
-              '(docs/piloto/supabase_sena_y_medio_pago.sql) o revisa RLS.';
+              'equipos verán datos viejos. Corre el SQL '
+              'docs/piloto/supabase_canchas_columnas_completas.sql.'
+              '${err != null ? '\n🔧 Detalle: $err' : ''}';
         }
       }
     }

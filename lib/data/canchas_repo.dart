@@ -49,16 +49,25 @@ class CanchasRepo {
   /// `update().eq(id)`, que en ese caso no tocaba ninguna fila y la edición
   /// (duración, precio, horario…) nunca llegaba a la nube: otro equipo seguía
   /// viendo el valor por defecto. Fail-safe.
+  /// Motivo del último fallo al subir el paquete COMPLETO de columnas (aunque
+  /// el reintento parcial haya pasado): lo muestra la verificación de guardado
+  /// para diagnosticar sin adivinar (columna faltante vs RLS). null = todo OK.
+  static String? ultimoErrorGuardado;
+
   static Future<void> actualizar(Cancha c) async {
     if (!SupabaseService.disponible) return;
+    ultimoErrorGuardado = null;
     try {
       await SupabaseService.client.from(_tabla).upsert(_toRow(c));
-    } catch (_) {
+    } catch (e) {
+      ultimoErrorGuardado = e.toString();
       try {
         await SupabaseService.client
             .from(_tabla)
             .upsert(_toRow(c, conAmenidades: false));
-      } catch (_) {}
+      } catch (e2) {
+        ultimoErrorGuardado = e2.toString();
+      }
     }
   }
 
