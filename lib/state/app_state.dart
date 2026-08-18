@@ -975,6 +975,36 @@ class AppState extends ChangeNotifier {
   final List<BloqueHorario> agenda = [];
   final List<Reserva> misReservas = []; // reservas del jugador logueado
 
+  // ── PUNTOS Pichangol del jugador (beneficios cruzados) ────────────────────
+  // DERIVADOS siempre de las reservas (sin contador aparte → sin bugs de doble
+  // acreditación y consistentes entre equipos): 1 punto por cada S/1 pagado
+  // POR LA APP en los últimos 12 meses. Online acredita al instante; el
+  // EFECTIVO recién cuando el DUEÑO lo marca pagado → el jugador tiene motivo
+  // para exigir esa confirmación (sube el registro de cobros). La reserva
+  // MANUAL (cliente propio del dueño, fuera de comisión) no acumula.
+
+  /// Puntos ACREDITADOS del jugador (reservas por la app ya pagadas, últimos
+  /// 12 meses).
+  int get misPuntos => _puntosDe(pagadas: true);
+
+  /// Puntos "por confirmar": reservas por la app aún NO marcadas como pagadas
+  /// (típicamente efectivo que el dueño no registró). La palanca del jugador.
+  int get misPuntosPendientes => _puntosDe(pagadas: false);
+
+  int _puntosDe({required bool pagadas}) {
+    final desde = DateTime.now().subtract(const Duration(days: 365));
+    var total = 0;
+    for (final r in misReservas) {
+      if (!r.traidaPorApp) continue; // manual: fuera del programa
+      if (r.estado == EstadoReserva.noShow) continue;
+      if (r.pagado != pagadas) continue;
+      final f = DateTime.tryParse(r.fecha);
+      if (f == null || f.isBefore(desde)) continue;
+      total += r.totalConExtras.round();
+    }
+    return total;
+  }
+
   // ── Reservas OFFLINE: bandeja de salida (outbox) ──────────────────────────
   // Ids de reservas guardadas LOCAL que aún NO llegaron a Supabase (se hicieron
   // sin señal). Se reintenta subirlas al recuperar conexión. Persisten para

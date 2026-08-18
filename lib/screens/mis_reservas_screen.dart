@@ -120,6 +120,16 @@ class _MisReservasScreenState extends State<MisReservasScreen> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // Puntos Pichangol: acumulado + "por confirmar" (la palanca para
+              // que el jugador exija al dueño marcar su pago en efectivo).
+              Padding(
+                padding: EdgeInsets.fromLTRB(ladoTablet(context, 18, 760), 4,
+                    ladoTablet(context, 18, 760), 10),
+                child: _PuntosCard(
+                  puntos: appState.misPuntos,
+                  pendientes: appState.misPuntosPendientes,
+                ),
+              ),
               Padding(
                 // Regla app: contenido centrado (ancho máx) en pantallas anchas.
                 padding: EdgeInsets.fromLTRB(
@@ -153,6 +163,92 @@ class _MisReservasScreenState extends State<MisReservasScreen> {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+/// Tarjeta de PUNTOS Pichangol del jugador (estilo Airbnb: blanca, sombra
+/// sutil): acumulado grande + línea ámbar de "por confirmar" cuando hay pagos
+/// en efectivo que el local aún no marcó (el jugador los reclama).
+class _PuntosCard extends StatelessWidget {
+  const _PuntosCard({required this.puntos, required this.pendientes});
+  final int puntos;
+  final int pendientes;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: trazo),
+        boxShadow: const [
+          BoxShadow(
+              color: Color(0x0F000000), blurRadius: 10, offset: Offset(0, 4)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: limaSuave,
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: const Icon(Icons.stars, color: bosque, size: 24),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('$puntos puntos Pichangol',
+                        style: t.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800)),
+                    Text('Ganas 1 punto por cada S/ 1 que pagas por la app.',
+                        style: t.bodySmall
+                            ?.copyWith(color: textoTenueDe(context))),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (pendientes > 0) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFBEAD2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.hourglass_top,
+                      size: 16, color: Color(0xFF8A5A00)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '+$pendientes por confirmar: pídele al local que marque '
+                      'tu pago en efectivo para acreditarlos.',
+                      style: t.bodySmall?.copyWith(
+                          color: const Color(0xFF8A5A00),
+                          fontWeight: FontWeight.w700,
+                          height: 1.25),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -559,8 +655,21 @@ void _mostrarPase(BuildContext context, Reserva reserva, Cancha? cancha) {
               _PaseFila(Icons.schedule, 'Hora',
                   '${reserva.horaInicio}–${reserva.horaFin}'),
               _PaseFila(Icons.sports_soccer, 'Deporte', dep.etiqueta),
-              _PaseFila(Icons.payments_outlined, 'Precio',
-                  '${reserva.monedaSimbolo}${reserva.precio} · pagas en la cancha'),
+              _PaseFila(
+                  Icons.payments_outlined,
+                  'Precio',
+                  '${reserva.monedaSimbolo}${reserva.precio} · '
+                  '${reserva.pagado ? 'pagado ✓' : reserva.sena > 0 ? 'seña pagada, resto en la cancha' : 'pagas en la cancha'}'),
+              // Puntos de ESTA reserva: acreditados si ya está pagada; si es
+              // efectivo sin marcar, el jugador sabe cuántos están en juego.
+              if (reserva.traidaPorApp &&
+                  reserva.estado != EstadoReserva.noShow)
+                _PaseFila(
+                    Icons.stars,
+                    'Puntos',
+                    reserva.pagado
+                        ? '+${reserva.totalConExtras.round()} ⭐'
+                        : '+${reserva.totalConExtras.round()} al confirmarse tu pago'),
               _PaseFila(Icons.confirmation_number_outlined, 'Código', codigo),
               const SizedBox(height: 18),
               if (cancha != null)
