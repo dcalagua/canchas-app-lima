@@ -397,37 +397,364 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
     );
   }
 
+  /// El mapa en sí (mismo comportamiento en teléfono y tablet).
+  Widget _mapa() => GoogleMap(
+        // Zoom abierto (se ve el barrio completo, como Airbnb).
+        initialCameraPosition: CameraPosition(target: widget.centro, zoom: 12),
+        markers: _marcadores(),
+        myLocationEnabled: true,
+        myLocationButtonEnabled: false, // la capa de arriba manda
+        onMapCreated: (c) {
+          _mapCtrl = c;
+          // ignore: deprecated_member_use
+          c.setMapStyle(_estiloAirbnb);
+        },
+        onCameraMove: (pos) {
+          // Sin setState: solo recordamos a dónde fue la cámara.
+          _cam = pos.target;
+        },
+        // Al soltar la cámara decidimos si ofrecer "Buscar en esta zona".
+        onCameraIdle: () => setState(() {}),
+        // Tocar el mapa (fuera de un pin) cierra la mini-tarjeta.
+        onTap: (_) => setState(() => _sel = null),
+      );
+
+  /// Barra superior: volver + buscador de zona (abre la búsqueda guiada).
+  Widget _barraSuperior(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final n = _visibles.length;
+    return Row(
+      children: [
+        Material(
+          elevation: 4,
+          shape: const CircleBorder(),
+          color: cs.surface,
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: () => Navigator.of(context).pop(),
+            child: const Padding(
+              padding: EdgeInsets.all(11),
+              child: Icon(Icons.arrow_back, size: 21),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Material(
+            elevation: 4,
+            borderRadius: BorderRadius.circular(30),
+            color: cs.surface,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(30),
+              // Como Airbnb: abre la búsqueda de zona y al
+              // elegir, el mapa vuela ahí y busca canchas.
+              onTap: _abrirBusqueda,
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                child: Row(
+                  children: [
+                    Icon(Icons.search, size: 20, color: cs.primary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _tituloZona ?? 'Cerca de ti',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w800, fontSize: 14.5),
+                          ),
+                          Text(
+                            '$n ${n == 1 ? 'lugar' : 'lugares'} en el mapa',
+                            style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w600,
+                                color: textoTenueDe(context)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// UNA fila de chips, como Airbnb: DEPORTES normalmente; tras una búsqueda,
+  /// ATRIBUTOS del local (el primer chip regresa a deportes).
+  Widget _filaChips(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: !_mostrarAtributos
+            ? [
+                _chip('🏟️', 'Todos',
+                    activo: !_soloClubes && _filtro == null,
+                    onTap: () => _cambiarFiltro(null)),
+                _chip(emojiDeporte(Deporte.futbol), 'Fútbol',
+                    activo: _filtro == Deporte.futbol,
+                    onTap: () => _cambiarFiltro(Deporte.futbol)),
+                _chip(emojiDeporte(Deporte.tenis), 'Tenis',
+                    activo: _filtro == Deporte.tenis,
+                    onTap: () => _cambiarFiltro(Deporte.tenis)),
+                _chip(emojiDeporte(Deporte.basquet), 'Básquet',
+                    activo: _filtro == Deporte.basquet,
+                    onTap: () => _cambiarFiltro(Deporte.basquet)),
+                _chip(emojiDeporte(Deporte.voley), 'Vóley',
+                    activo: _filtro == Deporte.voley,
+                    onTap: () => _cambiarFiltro(Deporte.voley)),
+                _chip(emojiDeporte(Deporte.natacion), 'Natación',
+                    activo: _filtro == Deporte.natacion,
+                    onTap: () => _cambiarFiltro(Deporte.natacion)),
+                _chip('🏛️', 'Clubes',
+                    activo: _soloClubes, onTap: _activarClubes),
+                _chip('🎓', 'Academias',
+                    activo: false,
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => const AcademiasScreen()))),
+              ]
+            : [
+                _chip('🏟️', 'Deportes',
+                    activo: false,
+                    onTap: () => setState(() => _mostrarAtributos = false)),
+                for (final (clave, etiqueta, emoji) in _amenChips)
+                  _chip(emoji, etiqueta,
+                      activo: _amenSel.contains(clave),
+                      onTap: () => setState(() {
+                            _amenSel.contains(clave)
+                                ? _amenSel.remove(clave)
+                                : _amenSel.add(clave);
+                            _sel = null;
+                          })),
+                for (final s in _superficiesZona)
+                  _chip('', s,
+                      activo: _superficieSel == s,
+                      onTap: () => setState(() {
+                            _superficieSel = _superficieSel == s ? null : s;
+                            _sel = null;
+                          })),
+              ],
+      ),
+    );
+  }
+
+  /// Botón "Buscar canchas en esta zona" (aparece al mover el mapa lejos).
+  Widget _botonBuscarZona() {
+    return Material(
+      elevation: 4,
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: _buscarAqui,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_buscando)
+                const SizedBox(
+                  width: 15,
+                  height: 15,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else
+                const Icon(Icons.refresh, size: 17),
+              const SizedBox(width: 7),
+              Text(
+                _buscando ? 'Buscando canchas…' : 'Buscar canchas en esta zona',
+                style: const TextStyle(
+                    fontSize: 13.5, fontWeight: FontWeight.w800),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Mini-tarjeta del local seleccionado (estilo Airbnb).
+  Widget _miniTarjeta(BuildContext context, Club sel) {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      elevation: 8,
+      borderRadius: BorderRadius.circular(18),
+      color: cs.surface,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () => _abrirFicha(sel),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  // Claro (nada de bloque oscuro): tinte suave.
+                  color: const Color(0xFFF1F4EE),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE4E4E4)),
+                ),
+                child: Center(
+                  child: Text(
+                    _pelota(_filtro ?? sel.principal.deporte),
+                    style: const TextStyle(fontSize: 20),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(sel.nombre,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 15)),
+                    const SizedBox(height: 2),
+                    Text(
+                      sel.verificada
+                          ? (sel.precioDesde != null
+                              ? 'Desde ${sel.monedaSimbolo} '
+                                  '${precio(sel.precioDesde!)} /h · toca para reservar'
+                              : 'Reservable · toca para ver')
+                          : 'En Google · toca para ver y reclamar',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: textoTenueDe(context)),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(Icons.chevron_right),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Tarjetas de los locales visibles (lámina en teléfono, panel en tablet).
+  List<Widget> _cardsLista() => [
+        for (final cl in _visibles)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: ClubCard(
+              club: cl,
+              onTap: () => _abrirFicha(cl),
+              distanciaKm: distanciaKm(widget.centro, cl.ubicacion),
+              resumenResenas:
+                  appState.resumenResenas(cl.canchas.map((c) => c.id).toList()),
+            ),
+          ),
+      ];
+
+  /// TABLET / pantalla ancha (≥900 dp): lista y mapa LADO A LADO, como Airbnb
+  /// en escritorio — sin lámina arrastrable, todo visible a la vez. El header
+  /// (buscador + chips) va fijo arriba a lo ancho; abajo, panel de resultados
+  /// a la izquierda y mapa fijo a la derecha.
+  Widget _layoutAncho(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final sel = _sel;
+    final n = _visibles.length;
+    final anchoPanel =
+        (MediaQuery.sizeOf(context).width * 0.42).clamp(360.0, 520.0);
+    return Scaffold(
+      body: Column(
+        children: [
+          // Header blanco fijo (como la barra de resultados de Airbnb web).
+          Container(
+            color: cs.surface,
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: Column(
+                  children: [
+                    _barraSuperior(context),
+                    const SizedBox(height: 10),
+                    _filaChips(context),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const Divider(height: 1, thickness: 1, color: Color(0xFFEDEDED)),
+          Expanded(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Panel de resultados (izquierda).
+                SizedBox(
+                  width: anchoPanel,
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 40),
+                    children: [
+                      Text(
+                        '$n ${n == 1 ? 'lugar' : 'lugares'}',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 15.5),
+                      ),
+                      const SizedBox(height: 14),
+                      ..._cardsLista(),
+                    ],
+                  ),
+                ),
+                Container(width: 1, color: const Color(0xFFEDEDED)),
+                // Mapa fijo (derecha) con sus capas flotantes.
+                Expanded(
+                  child: Stack(
+                    children: [
+                      Positioned.fill(child: _mapa()),
+                      if (_ofrecerBusqueda || _buscando)
+                        Positioned(
+                          top: 14,
+                          left: 0,
+                          right: 0,
+                          child: Center(child: _botonBuscarZona()),
+                        ),
+                      if (sel != null)
+                        Positioned(
+                          left: 16,
+                          right: 16,
+                          bottom: 24 + MediaQuery.of(context).padding.bottom,
+                          child: _miniTarjeta(context, sel),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    // En tablet/horizontal el mapa NO usa lámina: lista + mapa lado a lado.
+    if (MediaQuery.sizeOf(context).width >= 900) return _layoutAncho(context);
     final cs = Theme.of(context).colorScheme;
     final sel = _sel;
     final n = _visibles.length;
     return Scaffold(
       body: Stack(
         children: [
-          Positioned.fill(
-            child: GoogleMap(
-              // Zoom abierto (se ve el barrio completo, como Airbnb).
-              initialCameraPosition:
-                  CameraPosition(target: widget.centro, zoom: 12),
-              markers: _marcadores(),
-              myLocationEnabled: true,
-              myLocationButtonEnabled: false, // la capa de arriba manda
-              onMapCreated: (c) {
-                _mapCtrl = c;
-                // ignore: deprecated_member_use
-                c.setMapStyle(_estiloAirbnb);
-              },
-              onCameraMove: (pos) {
-                // Sin setState: solo recordamos a dónde fue la cámara.
-                _cam = pos.target;
-              },
-              // Al soltar la cámara decidimos si ofrecer "Buscar en esta zona".
-              onCameraIdle: () => setState(() {}),
-              // Tocar el mapa (fuera de un pin) cierra la mini-tarjeta.
-              onTap: (_) => setState(() => _sel = null),
-            ),
-          ),
+          Positioned.fill(child: _mapa()),
           // ── Capa superior estilo Airbnb: buscador + chips sobre el mapa ──
           // Con la lámina en el nivel medio, el header toma fondo BLANCO y se
           // fusiona con la lista en una sola superficie (sin línea divisoria).
@@ -446,182 +773,14 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                 child: Column(
                   children: [
-                    Row(
-                      children: [
-                        Material(
-                          elevation: 4,
-                          shape: const CircleBorder(),
-                          color: cs.surface,
-                          child: InkWell(
-                            customBorder: const CircleBorder(),
-                            onTap: () => Navigator.of(context).pop(),
-                            child: const Padding(
-                              padding: EdgeInsets.all(11),
-                              child: Icon(Icons.arrow_back, size: 21),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Material(
-                            elevation: 4,
-                            borderRadius: BorderRadius.circular(30),
-                            color: cs.surface,
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(30),
-                              // Como Airbnb: abre la búsqueda de zona y al
-                              // elegir, el mapa vuela ahí y busca canchas.
-                              onTap: _abrirBusqueda,
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 16, vertical: 9),
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.search,
-                                        size: 20, color: cs.primary),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            _tituloZona ?? 'Cerca de ti',
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
-                                                fontWeight: FontWeight.w800,
-                                                fontSize: 14.5),
-                                          ),
-                                          Text(
-                                            '$n ${n == 1 ? 'lugar' : 'lugares'} en el mapa',
-                                            style: TextStyle(
-                                                fontSize: 11.5,
-                                                fontWeight: FontWeight.w600,
-                                                color: textoTenueDe(context)),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                    _barraSuperior(context),
                     const SizedBox(height: 10),
-                    // UNA fila de chips, como Airbnb: DEPORTES normalmente;
-                    // tras una búsqueda, ATRIBUTOS del local (el primer chip
-                    // regresa a deportes).
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: !_mostrarAtributos
-                            ? [
-                                _chip('🏟️', 'Todos',
-                                    activo: !_soloClubes && _filtro == null,
-                                    onTap: () => _cambiarFiltro(null)),
-                                _chip(emojiDeporte(Deporte.futbol), 'Fútbol',
-                                    activo: _filtro == Deporte.futbol,
-                                    onTap: () =>
-                                        _cambiarFiltro(Deporte.futbol)),
-                                _chip(emojiDeporte(Deporte.tenis), 'Tenis',
-                                    activo: _filtro == Deporte.tenis,
-                                    onTap: () =>
-                                        _cambiarFiltro(Deporte.tenis)),
-                                _chip(emojiDeporte(Deporte.basquet), 'Básquet',
-                                    activo: _filtro == Deporte.basquet,
-                                    onTap: () =>
-                                        _cambiarFiltro(Deporte.basquet)),
-                                _chip(emojiDeporte(Deporte.voley), 'Vóley',
-                                    activo: _filtro == Deporte.voley,
-                                    onTap: () =>
-                                        _cambiarFiltro(Deporte.voley)),
-                                _chip(emojiDeporte(Deporte.natacion),
-                                    'Natación',
-                                    activo: _filtro == Deporte.natacion,
-                                    onTap: () =>
-                                        _cambiarFiltro(Deporte.natacion)),
-                                _chip('🏛️', 'Clubes',
-                                    activo: _soloClubes,
-                                    onTap: _activarClubes),
-                                _chip('🎓', 'Academias',
-                                    activo: false,
-                                    onTap: () => Navigator.of(context).push(
-                                        MaterialPageRoute(
-                                            builder: (_) =>
-                                                const AcademiasScreen()))),
-                              ]
-                            : [
-                                _chip('🏟️', 'Deportes',
-                                    activo: false,
-                                    onTap: () => setState(
-                                        () => _mostrarAtributos = false)),
-                                for (final (clave, etiqueta, emoji)
-                                    in _amenChips)
-                                  _chip(emoji, etiqueta,
-                                      activo: _amenSel.contains(clave),
-                                      onTap: () => setState(() {
-                                            _amenSel.contains(clave)
-                                                ? _amenSel.remove(clave)
-                                                : _amenSel.add(clave);
-                                            _sel = null;
-                                          })),
-                                for (final s in _superficiesZona)
-                                  _chip('', s,
-                                      activo: _superficieSel == s,
-                                      onTap: () => setState(() {
-                                            _superficieSel =
-                                                _superficieSel == s
-                                                    ? null
-                                                    : s;
-                                            _sel = null;
-                                          })),
-                              ],
-                      ),
-                    ),
+                    _filaChips(context),
                     // Botón "Buscar en esta zona" (como Airbnb): aparece al
                     // mover el mapa lejos de la última búsqueda.
                     if (_ofrecerBusqueda || _buscando) ...[
                       const SizedBox(height: 10),
-                      Material(
-                        elevation: 4,
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(999),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(999),
-                          onTap: _buscarAqui,
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 10),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (_buscando)
-                                  const SizedBox(
-                                    width: 15,
-                                    height: 15,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2),
-                                  )
-                                else
-                                  const Icon(Icons.refresh, size: 17),
-                                const SizedBox(width: 7),
-                                Text(
-                                  _buscando
-                                      ? 'Buscando canchas…'
-                                      : 'Buscar canchas en esta zona',
-                                  style: const TextStyle(
-                                      fontSize: 13.5,
-                                      fontWeight: FontWeight.w800),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
+                      _botonBuscarZona(),
                     ],
                   ],
                 ),
@@ -710,18 +869,7 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
                     ),
                   ),
                   const SizedBox(height: 14),
-                  for (final cl in _visibles)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 16),
-                      child: ClubCard(
-                        club: cl,
-                        onTap: () => _abrirFicha(cl),
-                        distanciaKm:
-                            distanciaKm(widget.centro, cl.ubicacion),
-                        resumenResenas: appState.resumenResenas(
-                            cl.canchas.map((c) => c.id).toList()),
-                      ),
-                    ),
+                  ..._cardsLista(),
                 ],
               ),
             ),
@@ -771,69 +919,7 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
               left: 16,
               right: 16,
               bottom: 100 + MediaQuery.of(context).padding.bottom,
-              child: Material(
-                elevation: 8,
-                borderRadius: BorderRadius.circular(18),
-                color: cs.surface,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(18),
-                  onTap: () => _abrirFicha(sel),
-                  child: Padding(
-                    padding: const EdgeInsets.all(14),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            // Claro (nada de bloque oscuro): tinte suave.
-                            color: const Color(0xFFF1F4EE),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: const Color(0xFFE4E4E4)),
-                          ),
-                          child: Center(
-                            child: Text(
-                              _pelota(_filtro ?? sel.principal.deporte),
-                              style: const TextStyle(fontSize: 20),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(sel.nombre,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 15)),
-                              const SizedBox(height: 2),
-                              Text(
-                                sel.verificada
-                                    ? (sel.precioDesde != null
-                                        ? 'Desde ${sel.monedaSimbolo} '
-                                            '${precio(sel.precioDesde!)} /h · toca para reservar'
-                                        : 'Reservable · toca para ver')
-                                    : 'En Google · toca para ver y reclamar',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.w600,
-                                    color: textoTenueDe(context)),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        const Icon(Icons.chevron_right),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
+              child: _miniTarjeta(context, sel),
             ),
         ],
       ),
