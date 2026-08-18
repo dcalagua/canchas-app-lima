@@ -668,114 +668,23 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
+
+  // ── Bloques de la ficha (compartidos por el layout de teléfono y el de
+  // tablet a 2 columnas). Devuelven los widgets TAL CUAL iban en la columna
+  // original; solo cambia cómo se componen en build(). ──
+
+  /// Foto de la cancha (card redondeada con carrusel + contador).
+  Widget _wHero({required double alto}) => ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: SizedBox(height: alto, child: _HeroGaleria(cancha: _cancha)),
+      );
+
+  /// "Elige la cancha": chips por cancha del local (si hay más de una).
+  List<Widget> _wSelectorCancha(bool descubierta, bool pendiente) {
     final t = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
     final c = widget.club;
-    // Una cancha con reclamo AJENO rechazado se trata como DESCUBIERTA (libre
-    // para reclamar), no como pendiente.
-    final descubierta = !_cancha.registrada || _reclamablePorRechazo;
-    final pendiente = _cancha.registrada &&
-        !_cancha.verificada &&
-        !_reclamablePorRechazo;
-    return Scaffold(
-      // Globo de chat con el dueño (solo si hay dueño y no soy yo): siempre a la
-      // mano, sin scroll. Es nuestra "burbuja" (chat interno Pichangol).
-      floatingActionButton: (_cancha.dueno.isNotEmpty && !_soyDueno)
-          ? ChatBurbuja(logoUrl: _cancha.fotoUrl, onTap: _chatearConDueno)
-          : null,
-      body: RefreshIndicator(
-        onRefresh: _pullRefresh,
-        child: CustomScrollView(
-        slivers: [
-          // Cabecera FIJA en degradado sage (no se mueve al hacer scroll),
-          // igual al estilo del panel "Mis canchas". La foto va en una card
-          // dentro del contenido.
-          SliverAppBar(
-            pinned: true,
-            toolbarHeight: 86,
-            automaticallyImplyLeading: false,
-            backgroundColor: sage,
-            foregroundColor: Colors.white,
-            elevation: 0,
-            flexibleSpace: const DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [lima, teal], // verde WhatsApp
-                ),
-                borderRadius: BorderRadius.vertical(bottom: Radius.circular(22)),
-              ),
-            ),
-            leadingWidth: 52,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.white),
-              onPressed: () => Navigator.of(context).maybePop(),
-            ),
-            titleSpacing: 0,
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(c.nombre,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: t.titleLarge?.copyWith(
-                        color: Colors.white, fontWeight: FontWeight.w700)),
-                Text(
-                  c.direccion ??
-                      [
-                        if (c.barrio.isNotEmpty) c.barrio,
-                        '${c.canchas.length} ${c.canchas.length == 1 ? 'cancha' : 'canchas'}',
-                        c.deportes.map((d) => d.etiqueta).join(' · '),
-                      ].join(' · '),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: t.bodySmall?.copyWith(color: Colors.white70),
-                ),
-              ],
-            ),
-            actions: [
-              IconButton(
-                  tooltip: 'Compartir ubicación',
-                  icon: const Icon(Icons.ios_share, color: Colors.white),
-                  onPressed: () => UbicacionShare.menu(context,
-                      punto: _cancha.ubicacion,
-                      titulo: c.nombre)),
-              IconButton(
-                  tooltip: 'Guardar en favoritos',
-                  icon: Icon(
-                      appState.esFavorito(widget.club.id)
-                          ? Icons.favorite
-                          : Icons.favorite_border,
-                      color: appState.esFavorito(widget.club.id)
-                          ? const Color(0xFFE0245E)
-                          : Colors.white),
-                  onPressed: () => setState(
-                      () => appState.alternarFavorito(widget.club.id))),
-              const SizedBox(width: 6),
-            ],
-          ),
-          SliverToBoxAdapter(
-            child: AnchoLectura(
-              child: Padding(
-              // El "labio" redondeado que monta sobre la foto lo dibuja el hero
-              // (ver _HeroGaleria); aquí el contenido sigue seamless sobre papel.
-              padding: const EdgeInsets.fromLTRB(22, 14, 22, 110),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Foto de la cancha (card redondeada con carrusel + contador).
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: SizedBox(
-                      height: 200,
-                      child: _HeroGaleria(cancha: _cancha),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
+    return [
                   // Elige la cancha/deporte: la foto y la info de arriba cambian
                   // según la cancha elegida (cada una tiene sus fotos y precio).
                   if (!descubierta && !pendiente && c.canchas.length > 1) ...[
@@ -833,6 +742,14 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                     ),
                     const SizedBox(height: 16),
                   ],
+    ];
+  }
+
+  /// Cancha multideporte: elegir qué se va a jugar.
+  List<Widget> _wDeporte(bool descubierta, bool pendiente) {
+    final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    return [
                   // Cancha multideporte (loza multiuso): elegir qué se va a jugar.
                   // No afecta la disponibilidad (agenda compartida), solo registra
                   // el deporte de la reserva.
@@ -862,8 +779,14 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                     ),
                     const SizedBox(height: 16),
                   ],
-                  Row(
-                    children: [
+    ];
+  }
+
+  /// Fila de badges (fundador / en Google / pendiente / digitalizada / sello).
+  Widget _wBadges(bool descubierta, bool pendiente) {
+    final c = widget.club;
+    return Row(
+      children: [
                       if (c.clubFundador)
                         const _Badge('CLUB FUNDADOR', bg: pino, fg: lima),
                       if (c.clubFundador) const SizedBox(width: 6),
@@ -883,10 +806,14 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                         const SizedBox(width: 6),
                         const SelloVerificada(),
                       ],
-                    ],
-                  ),
-                  const SizedBox(height: 16),
+      ],
+    );
+  }
 
+  /// Panel según el modo: descubierta / pendiente / dueño / reserva pública.
+  List<Widget> _wPanel(bool descubierta, bool pendiente) {
+    final t = Theme.of(context).textTheme;
+    return [
                   if (descubierta)
                     _PanelDescubierta(
                         cancha: _cancha, onReclamada: _refrescarDescubierta)
@@ -1073,6 +1000,11 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                       ),
                     ],
                   ],
+    ];
+  }
+
+  /// Bonos + reseñas del local.
+  List<Widget> _wExtras(bool descubierta, bool pendiente) => [
                   // Reseñas del local: reputación real (visible para dueño y
                   // jugadores en canchas ya registradas).
                   if (!descubierta && !pendiente && !_soyDueno) ...[
@@ -1087,9 +1019,155 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                       puedeResenar: appState.logueado && !_soyDueno,
                     ),
                   ],
-                ],
+      ];
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final c = widget.club;
+    // Una cancha con reclamo AJENO rechazado se trata como DESCUBIERTA (libre
+    // para reclamar), no como pendiente.
+    final descubierta = !_cancha.registrada || _reclamablePorRechazo;
+    final pendiente = _cancha.registrada &&
+        !_cancha.verificada &&
+        !_reclamablePorRechazo;
+    return Scaffold(
+      // Globo de chat con el dueño (solo si hay dueño y no soy yo): siempre a la
+      // mano, sin scroll. Es nuestra "burbuja" (chat interno Pichangol).
+      floatingActionButton: (_cancha.dueno.isNotEmpty && !_soyDueno)
+          ? ChatBurbuja(logoUrl: _cancha.fotoUrl, onTap: _chatearConDueno)
+          : null,
+      body: RefreshIndicator(
+        onRefresh: _pullRefresh,
+        child: CustomScrollView(
+        slivers: [
+          // Cabecera FIJA en degradado sage (no se mueve al hacer scroll),
+          // igual al estilo del panel "Mis canchas". La foto va en una card
+          // dentro del contenido.
+          SliverAppBar(
+            pinned: true,
+            toolbarHeight: 86,
+            automaticallyImplyLeading: false,
+            backgroundColor: sage,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            flexibleSpace: const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [lima, teal], // verde WhatsApp
+                ),
+                borderRadius: BorderRadius.vertical(bottom: Radius.circular(22)),
               ),
-            )),
+            ),
+            leadingWidth: 52,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back, color: Colors.white),
+              onPressed: () => Navigator.of(context).maybePop(),
+            ),
+            titleSpacing: 0,
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(c.nombre,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.titleLarge?.copyWith(
+                        color: Colors.white, fontWeight: FontWeight.w700)),
+                Text(
+                  c.direccion ??
+                      [
+                        if (c.barrio.isNotEmpty) c.barrio,
+                        '${c.canchas.length} ${c.canchas.length == 1 ? 'cancha' : 'canchas'}',
+                        c.deportes.map((d) => d.etiqueta).join(' · '),
+                      ].join(' · '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: t.bodySmall?.copyWith(color: Colors.white70),
+                ),
+              ],
+            ),
+            actions: [
+              IconButton(
+                  tooltip: 'Compartir ubicación',
+                  icon: const Icon(Icons.ios_share, color: Colors.white),
+                  onPressed: () => UbicacionShare.menu(context,
+                      punto: _cancha.ubicacion,
+                      titulo: c.nombre)),
+              IconButton(
+                  tooltip: 'Guardar en favoritos',
+                  icon: Icon(
+                      appState.esFavorito(widget.club.id)
+                          ? Icons.favorite
+                          : Icons.favorite_border,
+                      color: appState.esFavorito(widget.club.id)
+                          ? const Color(0xFFE0245E)
+                          : Colors.white),
+                  onPressed: () => setState(
+                      () => appState.alternarFavorito(widget.club.id))),
+              const SizedBox(width: 6),
+            ],
+          ),
+          SliverToBoxAdapter(
+            child: AnchoLectura(
+              // En tablet las 2 columnas necesitan más aire que la lectura.
+              max: 1150,
+              child: Padding(
+                // El "labio" redondeado que monta sobre la foto lo dibuja el
+                // hero (ver _HeroGaleria); aquí el contenido sigue seamless
+                // sobre papel.
+                padding: const EdgeInsets.fromLTRB(22, 14, 22, 110),
+                // TABLET (≥900 dp): ficha a 2 COLUMNAS estilo Airbnb — foto,
+                // badges, bonos y reseñas a la IZQUIERDA; selección de cancha,
+                // día y horarios (o el panel del modo) a la DERECHA. En
+                // teléfono, la columna única de siempre (mismos bloques).
+                child: MediaQuery.sizeOf(context).width >= 900
+                    ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            flex: 11,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _wHero(alto: 340),
+                                const SizedBox(height: 16),
+                                _wBadges(descubierta, pendiente),
+                                ..._wExtras(descubierta, pendiente),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 28),
+                          Expanded(
+                            flex: 9,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                ..._wSelectorCancha(descubierta, pendiente),
+                                ..._wDeporte(descubierta, pendiente),
+                                ..._wPanel(descubierta, pendiente),
+                              ],
+                            ),
+                          ),
+                        ],
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _wHero(alto: 200),
+                          const SizedBox(height: 16),
+                          ..._wSelectorCancha(descubierta, pendiente),
+                          ..._wDeporte(descubierta, pendiente),
+                          _wBadges(descubierta, pendiente),
+                          const SizedBox(height: 16),
+                          ..._wPanel(descubierta, pendiente),
+                          ..._wExtras(descubierta, pendiente),
+                        ],
+                      ),
+              ),
+            ),
           ),
         ],
         ),
