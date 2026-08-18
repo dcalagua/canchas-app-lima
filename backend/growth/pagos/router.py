@@ -70,6 +70,27 @@ def comision_centimos(monto_soles: float) -> int:
     return int(round(con_min * 100))
 
 
+def comision_saldo_centimos(monto_soles: float) -> int:
+    """Comisión cuando se cobra del SALDO prepago del dueño (billetera-first).
+    Configurable desde la torre de control (cfg `comision_saldo_pct` y
+    `comision_saldo_min_soles`) — puede ser MENOR que la estándar, como
+    incentivo por mantener saldo. Sin configurar → usa la comisión estándar.
+
+    OJO: `stores.cfg()` devuelve "0" para claves ausentes, así que aquí se lee
+    `stores.config` directo — ausente ≠ 0% (0% sí es configurable a propósito)."""
+    try:
+        pct = float(stores.config.get("comision_saldo_pct"))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return comision_centimos(monto_soles)
+    if pct < 0:
+        return comision_centimos(monto_soles)
+    try:
+        min_s = max(0.0, float(stores.config.get("comision_saldo_min_soles", 0)))
+    except (TypeError, ValueError):
+        min_s = 0.0
+    return int(round(max(float(monto_soles) * pct / 100.0, min_s) * 100))
+
+
 class RecargaReq(BaseModel):
     token: str                 # source_id de Culqi (tkn_...) generado en el APK
     dueno_id: str              # a quién se le acredita el saldo (correo del dueño)
@@ -565,7 +586,8 @@ def post_comision_reserva(req: ComisionReservaReq) -> dict:
     del saldo prepago del dueño). Es la contraparte de que el efectivo solo se
     ofrece al jugador si el dueño tiene saldo. Idempotente por `reserva_id`: no
     cobra dos veces la misma reserva."""
-    comision = comision_centimos(req.monto_soles)
+    # Sale del saldo → aplica la tarifa configurable de billetera (torre).
+    comision = comision_saldo_centimos(req.monto_soles)
     # Idempotencia: si esta reserva ya generó comisión, no la cobres de nuevo.
     ya = stores.pago_por_charge(req.reserva_id)
     if ya is not None and ya.tipo == "comision_reserva":
@@ -598,6 +620,9 @@ def post_liquidacion_online(req: LiquidacionOnlineReq) -> dict:
     Idempotente por `reserva_id`."""
     bruto = _soles_a_centimos(req.monto_soles)
     comision = comision_centimos(req.monto_soles)
+    # Tarifa de BILLETERA (configurable en la torre, puede ser menor): es la que
+    # aplica cuando la comisión sale del saldo.
+    com_saldo = comision_saldo_centimos(req.monto_soles)
     ya = stores.pago_por_charge(req.reserva_id)
     if ya is not None and ya.tipo in ("liquidacion_online", "liquidacion_full"):
         d = _liquidacion_dict(ya)
@@ -609,11 +634,11 @@ def post_liquidacion_online(req: LiquidacionOnlineReq) -> dict:
                 "neto_centimos": round(d["neto_soles"] * 100)}
 
     saldo = stores.saldo_centimos(req.dueno_id)
-    if saldo >= comision:
+    if saldo >= com_saldo:
         # BILLETERA-FIRST: comisión del saldo; el dueño recibe el bruto completo.
-        nuevo = stores.debitar(req.dueno_id, comision)
+        nuevo = stores.debitar(req.dueno_id, com_saldo)
         stores.registrar_pago(
-            tipo="comision_reserva", monto_centimos=comision, moneda="PEN",
+            tipo="comision_reserva", monto_centimos=com_saldo, moneda="PEN",
             estado="aprobado", dueno_id=req.dueno_id,
             culqi_charge_id=f"{req.reserva_id}_com",
             concepto=f"Comisión · {req.concepto or 'Reserva online'}")
@@ -623,7 +648,7 @@ def post_liquidacion_online(req: LiquidacionOnlineReq) -> dict:
             culqi_charge_id=req.reserva_id,
             concepto=req.concepto or "Reserva online")
         return {"ok": True, "duplicada": False, "fuente": "saldo",
-                "bruto_centimos": bruto, "comision_centimos": comision,
+                "bruto_centimos": bruto, "comision_centimos": com_saldo,
                 "neto_centimos": bruto, "saldo_centimos": nuevo,
                 "saldo_soles": nuevo / 100.0}
 

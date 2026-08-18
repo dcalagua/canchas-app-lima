@@ -110,6 +110,14 @@ class BancoRequest(BaseModel):
     pct: float
 
 
+class ComisionSaldoRequest(BaseModel):
+    # Tarifa de la comisión de reserva cuando se cobra del SALDO (billetera).
+    # pct=None (o reset) → volver a la estándar (COMISION_PORC/COMISION_MIN).
+    pct: float | None = None
+    min_soles: float | None = None
+    reset: bool = False
+
+
 class MarketingConfigRequest(BaseModel):
     landing_soles: float | None = None
     redes_soles: float | None = None
@@ -685,7 +693,23 @@ def get_margenes_admin(x_admin_token: str | None = Header(default=None)) -> dict
     banco_pct = _banco_pct()
     costo_banco = int(round(bruto_procesado * banco_pct / 100.0))
     margen = ingresos - costo_banco
+
+    # Tarifa de comisión cuando sale del SALDO (billetera): configurable; vacía
+    # = usa la estándar. `stores.config` directo (cfg() devuelve "0" si falta,
+    # y ausente ≠ 0%): None = sin configurar.
+    def _cfg_float(clave: str) -> float | None:
+        try:
+            return float(stores.config.get(clave))  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return None
+
+    saldo_pct = _cfg_float("comision_saldo_pct")
+    saldo_min = _cfg_float("comision_saldo_min_soles")
     return {
+        "comision_std_pct": config.COMISION_PORC,
+        "comision_std_min_soles": config.COMISION_MIN_SOLES,
+        "comision_saldo_pct": saldo_pct,
+        "comision_saldo_min_soles": saldo_min,
         "cobros_matricula": len(mat),
         "cobros_reserva": len(res),
         "cobros_servicios": len(srv),
@@ -706,6 +730,23 @@ def set_banco_admin(req: BancoRequest,
     """Fija la tasa de la pasarela/banco (Culqi) y devuelve el desglose recalculado."""
     _check(x_admin_token)
     stores.config["comision_banco_pct"] = str(max(0.0, float(req.pct)))
+    return get_margenes_admin(x_admin_token)
+
+
+@router.post("/admin/api/margenes/comision-saldo")
+def set_comision_saldo_admin(
+        req: ComisionSaldoRequest,
+        x_admin_token: str | None = Header(default=None)) -> dict:
+    """Configura la comisión de reserva cuando se cobra del SALDO (billetera):
+    % y mínimo en soles. Con `reset` (o pct vacío) vuelve a la estándar."""
+    _check(x_admin_token)
+    if req.reset or req.pct is None:
+        stores.config.pop("comision_saldo_pct", None)
+        stores.config.pop("comision_saldo_min_soles", None)
+    else:
+        stores.config["comision_saldo_pct"] = str(max(0.0, float(req.pct)))
+        stores.config["comision_saldo_min_soles"] = str(
+            max(0.0, float(req.min_soles or 0.0)))
     return get_margenes_admin(x_admin_token)
 
 
@@ -965,6 +1006,7 @@ _HTML = r"""<!DOCTYPE html>
   .actions button{flex:1;border-radius:16px;padding:11px;font-family:inherit;
     font-weight:800;font-size:14px;cursor:pointer;border:1px solid var(--border)}
   .btn-ap{background:var(--bosque);color:var(--lima);border-color:var(--bosque)}
+  .btn-sec{background:#fff;color:var(--bosque);border-color:var(--border)}
   .btn-rc{background:#fff;color:var(--rojo);border-color:#F3C9CE}
   .btn-ap:disabled,.btn-rc:disabled{opacity:.5;cursor:default}
   .btn-lib{width:100%;border-radius:14px;padding:9px;font-family:inherit;
@@ -1654,7 +1696,48 @@ function renderMargenes(m){
       <hr style="border:none;border-top:1px solid var(--border);margin:8px 0">
       ${fila('Margen neto Pichangol', s(m.margen_pcg_soles), 'font-weight:800;color:#14463A')}
       <div class="actions"><button class="btn-ap" onclick="guardarBanco()">Guardar tasa banco</button></div>
+    </div>
+    <div class="card"><div class="top"><h3>Comisión cobrada del saldo (billetera)</h3></div>
+      <div class="row">Cuando el dueño tiene saldo, la comisión de la reserva se
+        descuenta de su billetera y él recibe el pago completo. Aquí defines la
+        tarifa de ESE camino — puede ser menor que la estándar
+        (${Number(m.comision_std_pct)}% mín S/ ${Number(m.comision_std_min_soles).toFixed(2)})
+        como premio por mantener saldo. Vacío = usa la estándar.</div>
+      <div style="display:flex;align-items:center;gap:8px;margin:10px 0;flex-wrap:wrap">
+        <span style="font-weight:600;font-size:13px">Comisión</span>
+        <input id="saldo_pct" value="${m.comision_saldo_pct ?? ''}" placeholder="${m.comision_std_pct}"
+          inputmode="decimal" style="width:74px;padding:9px 10px;border:1px solid var(--border);
+          border-radius:10px;font-family:inherit;font-size:14px;text-align:right">
+        <span style="color:var(--muted);font-size:13px">%</span>
+        <span style="font-weight:600;font-size:13px;margin-left:10px">mínimo S/</span>
+        <input id="saldo_min" value="${m.comision_saldo_min_soles ?? ''}" placeholder="${m.comision_std_min_soles}"
+          inputmode="decimal" style="width:74px;padding:9px 10px;border:1px solid var(--border);
+          border-radius:10px;font-family:inherit;font-size:14px;text-align:right">
+      </div>
+      <div class="row" style="color:var(--muted)">Vigente:
+        <b>${m.comision_saldo_pct==null
+          ? 'estándar ('+Number(m.comision_std_pct)+'% mín S/ '+Number(m.comision_std_min_soles).toFixed(2)+')'
+          : Number(m.comision_saldo_pct)+'% mín S/ '+Number(m.comision_saldo_min_soles||0).toFixed(2)}</b>
+        · aplica a comisiones que salen del saldo (reserva online con saldo y
+        reserva en efectivo). Sin saldo, sigue la estándar sobre la transacción.</div>
+      <div class="actions">
+        <button class="btn-ap" onclick="guardarComisionSaldo(false)">Guardar</button>
+        <button class="btn-sec" onclick="guardarComisionSaldo(true)">Usar estándar</button>
+      </div>
     </div>`;
+}
+async function guardarComisionSaldo(reset){
+  const pctRaw = (document.getElementById('saldo_pct').value||'').replace(',','.').trim();
+  const minRaw = (document.getElementById('saldo_min').value||'').replace(',','.').trim();
+  const body = reset || pctRaw===''
+    ? {reset:true}
+    : {pct: parseFloat(pctRaw)||0, min_soles: parseFloat(minRaw)||0};
+  const r = await fetch('/admin/api/margenes/comision-saldo',{method:'POST',
+    headers:headers(), body:JSON.stringify(body)});
+  if(r.status===401){ salir(); return; }
+  if(r.ok){ renderMargenes(await r.json());
+    toast(reset||pctRaw==='' ? 'Comisión de saldo: estándar' : 'Comisión de saldo actualizada'); }
+  else toast('No se pudo guardar');
 }
 async function guardarBanco(){
   const pct = parseFloat((document.getElementById('banco_pct').value||'0').replace(',','.'))||0;

@@ -92,7 +92,7 @@ def test_pagina_panel_se_sirve(client):
     assert "Iniciar sesión" in r.text  # login usuario+contraseña
     # Fase 2: el panel incluye la sección de liquidaciones a dueños.
     assert "cargarLiquidaciones" in r.text
-    assert "Liquidaciones por pagar a dueños" in r.text
+    assert "Liquidaciones a dueños" in r.text
     assert "/pagos/liquidaciones/pendientes" in r.text
 
 
