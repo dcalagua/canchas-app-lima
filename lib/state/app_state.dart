@@ -7017,9 +7017,36 @@ class AppState extends ChangeNotifier {
           agenda.indexWhere((b) => b.canchaId == cancha.id && b.hora == hora);
       if (i >= 0) agenda[i] = agenda[i].copyWith(reservaId: reserva.id);
     }
+    // Push al JUGADOR: "te reservaron" (pedido del director — antes la reserva
+    // manual no le avisaba nada a su cuenta). Fire-and-forget, fail-safe.
+    _avisarReservaManual(reserva, cancha);
     notifyListeners();
     _persistirDatos();
     return res == ResultadoReserva.ok ? ResultadoReserva.ok : res;
+  }
+
+  /// Notifica al CLIENTE (usuario registrado del app) que el dueño le creó una
+  /// reserva manual, vía la Edge Function `push-aviso` (invocación directa,
+  /// misma que usa el diagnóstico — no depende de webhooks). Fail-safe: si no
+  /// hay email, no hay red o la función no está, la reserva queda igual.
+  void _avisarReservaManual(Reserva r, Cancha cancha) {
+    final email = r.usuario;
+    if (email.isEmpty || !SupabaseService.disponible) return;
+    // El dueño anotándose a sí mismo no necesita push.
+    if (email == (usuario?.email ?? '').trim().toLowerCase()) return;
+    () async {
+      try {
+        final lugar = cancha.club.isNotEmpty ? cancha.club : cancha.nombre;
+        await SupabaseService.client.functions.invoke('push-aviso', body: {
+          'email': email,
+          'titulo': 'Reserva confirmada 🎾',
+          'cuerpo': '$lugar te reservó ${cancha.nombre} · ${r.dia} '
+              '${r.horaInicio}–${r.horaFin}. ¡Te esperamos!',
+          'tipo': 'reserva_manual',
+          'data': {'reserva_id': r.id, 'cancha_id': r.canchaId},
+        });
+      } catch (_) {}
+    }();
   }
 
   /// El dueño confirma (o revierte) que el jugador pagó en efectivo en la cancha.

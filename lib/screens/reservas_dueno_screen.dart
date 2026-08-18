@@ -61,6 +61,28 @@ class _ReservasDuenoScreenState extends State<ReservasDuenoScreen> {
   // historial. Evita que se acumulen decenas de reservas viejas en una sola lista.
   String _filtro = 'proximas';
 
+  // Filtro por ORIGEN del cobro: todos | online (pagó por la app) | efectivo
+  // (cobra en la cancha, incluye seña) | manual (cliente propio del dueño).
+  String _medio = 'todos';
+
+  /// Grupo de cobro de una reserva (para el filtro Online/Efectivo/Manual).
+  static String _grupoMedio(Reserva r) {
+    switch (r.medioPago) {
+      case 'yape':
+      case 'tarjeta':
+      case 'bono':
+        return 'online';
+      case 'sena':
+      case 'efectivo':
+        return 'efectivo';
+      case 'manual':
+        return 'manual';
+    }
+    // Reservas viejas sin medio guardado: se deduce por su naturaleza.
+    if (!r.traidaPorApp) return 'manual';
+    return r.pagado ? 'online' : 'efectivo';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -196,9 +218,14 @@ class _ReservasDuenoScreenState extends State<ReservasDuenoScreen> {
               .where((r) => !r.pagado)
               .fold<int>(0, (s, r) => s + r.totalConExtras.round());
 
+          // Filtro por ORIGEN del cobro (Online / Efectivo / Manual).
+          final mostradasMedio = _medio == 'todos'
+              ? mostradas
+              : mostradas.where((r) => _grupoMedio(r) == _medio).toList();
+
           // Agrupa lo MOSTRADO por DÍA (respeta el orden ya definido arriba).
           final porDia = <String, List<Reserva>>{};
-          for (final r in mostradas) {
+          for (final r in mostradasMedio) {
             porDia.putIfAbsent(r.fecha, () => []).add(r);
           }
 
@@ -267,15 +294,28 @@ class _ReservasDuenoScreenState extends State<ReservasDuenoScreen> {
                         nPasadas: nPasadas,
                         onCambio: (v) => setState(() => _filtro = v),
                       ),
+                      const SizedBox(height: 10),
+                      // Filtro por origen del cobro (chips estilo Airbnb).
+                      _FiltroMedio(
+                        medio: _medio,
+                        contar: (m) => m == 'todos'
+                            ? mostradas.length
+                            : mostradas
+                                .where((r) => _grupoMedio(r) == m)
+                                .length,
+                        onCambio: (v) => setState(() => _medio = v),
+                      ),
                       const SizedBox(height: 14),
-                      if (mostradas.isEmpty)
+                      if (mostradasMedio.isEmpty)
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 40),
                           child: Text(
-                              verPasadas
-                                  ? 'No hay reservas pasadas.'
-                                  : 'No tienes reservas próximas. Las nuevas '
-                                      'aparecen aquí.',
+                              _medio != 'todos' && mostradas.isNotEmpty
+                                  ? 'No hay reservas con ese tipo de cobro.'
+                                  : verPasadas
+                                      ? 'No hay reservas pasadas.'
+                                      : 'No tienes reservas próximas. Las '
+                                          'nuevas aparecen aquí.',
                               textAlign: TextAlign.center,
                               style: TextStyle(color: textoTenueDe(context))),
                         )
@@ -342,6 +382,66 @@ class _FiltroTiempo extends StatelessWidget {
       pill('proximas', 'Próximas', nProximas),
       pill('pasadas', 'Pasadas', nPasadas),
     ]);
+  }
+}
+
+/// Filtro por ORIGEN del cobro (Todos / Online / Efectivo / Manual) — pastillas
+/// estilo Airbnb en fila desplazable, con conteo por grupo.
+class _FiltroMedio extends StatelessWidget {
+  const _FiltroMedio({
+    required this.medio,
+    required this.contar,
+    required this.onCambio,
+  });
+  final String medio;
+  final int Function(String) contar;
+  final ValueChanged<String> onCambio;
+
+  static const _opciones = [
+    ('todos', 'Todas', ''),
+    ('online', 'Online', '🌐'),
+    ('efectivo', 'Efectivo', '💵'),
+    ('manual', 'Manual', '✍️'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (final (valor, texto, emoji) in _opciones)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: GestureDetector(
+                onTap: () => onCambio(valor),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: medio == valor ? const Color(0xFFEBEBEB) : cs.surface,
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                        color: medio == valor
+                            ? const Color(0xFFD6D6D6)
+                            : trazo),
+                  ),
+                  child: Text(
+                    '${emoji.isEmpty ? '' : '$emoji '}$texto (${contar(valor)})',
+                    style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight:
+                            medio == valor ? FontWeight.w800 : FontWeight.w600,
+                        color: cs.onSurface),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 }
 
