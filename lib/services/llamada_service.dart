@@ -1,8 +1,11 @@
 import 'dart:convert';
 
+import 'package:android_intent_plus/android_intent.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -283,6 +286,7 @@ class LlamadaService {
     try {
       await FlutterCallkitIncoming.endAllCalls(); // corta el timbre de CallKit
     } catch (_) {}
+    await _cerrarPantallaEntranteNativa(); // y cierra la pantalla nativa
     // Notificación de "llamada en curso" para poder volver si se minimiza la app.
     if (datos != null) {
       await marcarLlamadaSaliente(
@@ -300,6 +304,7 @@ class LlamadaService {
     try {
       await FlutterCallkitIncoming.endAllCalls();
     } catch (_) {}
+    await _cerrarPantallaEntranteNativa(); // y cierra la pantalla nativa
     // Avisa al que LLAMA para que se le corte el "Llamando" (como WhatsApp).
     await LlamadaWebRTC.rechazarRemoto(room);
     // Registra en el historial como entrante RECHAZADA.
@@ -510,9 +515,29 @@ class LlamadaService {
     try {
       await FlutterCallkitIncoming.endAllCalls();
     } catch (_) {}
+    await _cerrarPantallaEntranteNativa();
     // Y si la entrante estaba mostrada DENTRO de la app, que se cierre sola.
     entranteCancelada.value = '';
     entranteCancelada.value = room;
+  }
+
+  /// Cierra la ACTIVIDAD nativa de llamada entrante (la pantalla completa).
+  /// Workaround de un bug de flutter_callkit_incoming 3.1.3: su broadcast
+  /// interno de cierre viaja con COMPONENTE explícito (la Activity) y el
+  /// receiver dinámico de la Activity solo escucha intents implícitos por
+  /// acción → nunca le llega y la pantalla queda pegada hasta el timeout.
+  /// Aquí mandamos el broadcast IMPLÍCITO correcto y la Activity se cierra.
+  static Future<void> _cerrarPantallaEntranteNativa() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    try {
+      final pkg = (await PackageInfo.fromPlatform()).packageName;
+      await AndroidIntent(
+        action:
+            '$pkg.com.hiennv.flutter_callkit_incoming.ACTION_ENDED_CALL_INCOMING',
+        package: pkg,
+        arguments: const {'ACCEPTED': false},
+      ).sendBroadcast();
+    } catch (_) {}
   }
 
   /// Notificación de "llamada en curso" para el que LLAMA (saliente): así, al
