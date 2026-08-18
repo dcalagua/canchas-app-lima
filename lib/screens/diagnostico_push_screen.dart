@@ -2,6 +2,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../services/llamada_service.dart';
 import '../services/push_service.dart';
 import '../services/supabase_service.dart';
 import '../state/app_state.dart';
@@ -41,6 +42,7 @@ class _DiagnosticoPushScreenState extends State<DiagnosticoPushScreen> {
     _Paso('Token del dispositivo (FCM)'),
     _Paso('Token guardado en la nube'),
     _Paso('Envío real por la Edge Function'),
+    _Paso('Llamadas a pantalla completa'),
   ];
 
   bool _corriendo = false;
@@ -210,8 +212,32 @@ class _DiagnosticoPushScreenState extends State<DiagnosticoPushScreen> {
     final pEnvio = _pasos[6];
     _marcar(pEnvio, _Estado.corriendo);
     await _probarEnvio(pEnvio, email);
+
+    // 8) Pantalla completa de llamadas (Android 14+) ------------------------
+    // Sin este permiso, una llamada con el teléfono en reposo SUENA pero la
+    // pantalla NO se enciende con Contestar/Rechazar (queda solo la
+    // notificación). Es un permiso del sistema, por equipo.
+    final pFull = _pasos[7];
+    _marcar(pFull, _Estado.corriendo);
+    if (await LlamadaService.puedePantallaCompleta()) {
+      _marcar(pFull, _Estado.ok,
+          detalle: 'Este equipo puede mostrar la llamada entrante a pantalla '
+              'completa (aunque esté bloqueado).');
+    } else {
+      _marcar(pFull, _Estado.fallo,
+          detalle: 'Este equipo NO permite la pantalla completa de llamadas: '
+              'al recibir una llamada en reposo suena, pero la pantalla no se '
+              'enciende para contestar.',
+          arreglo: 'Toca "Activar pantalla completa" abajo (o en Ajustes → '
+              'Aplicaciones → Pichangol → Notificaciones → activa '
+              '"Notificaciones en pantalla completa") y repite.');
+    }
     _terminar();
   }
+
+  /// ¿Falló el paso de pantalla completa? (muestra el botón de arreglo).
+  bool get _faltaPantallaCompleta =>
+      _pasos.length > 7 && _pasos[7].estado == _Estado.fallo;
 
   /// Invoca push-aviso a MI propio correo y lee su respuesta, que dice
   /// exactamente qué falta del lado del servidor.
@@ -445,6 +471,29 @@ class _DiagnosticoPushScreenState extends State<DiagnosticoPushScreen> {
                   style: TextStyle(fontWeight: FontWeight.w800)),
               onPressed: _corriendo ? null : _pruebaVisual,
             ),
+            // Solo si el paso 8 falló: abre el ajuste del sistema para conceder
+            // la pantalla completa de llamadas (Android 14+), y re-diagnostica.
+            if (_faltaPantallaCompleta) ...[
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: clayOscuro,
+                  side: const BorderSide(color: clayOscuro),
+                  minimumSize: const Size.fromHeight(50),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                ),
+                icon: const Icon(Icons.phone_in_talk),
+                label: const Text('Activar pantalla completa de llamadas',
+                    style: TextStyle(fontWeight: FontWeight.w800)),
+                onPressed: _corriendo
+                    ? null
+                    : () async {
+                        await LlamadaService.abrirAjustesPantallaCompleta();
+                        if (mounted) _correr();
+                      },
+              ),
+            ],
             if (_resultadoPruebaVisual.isNotEmpty) ...[
               const SizedBox(height: 10),
               Container(
