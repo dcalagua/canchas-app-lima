@@ -24,6 +24,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 import config
+from propiedad import admin_auth
 from db.store import stores
 
 from . import culqi
@@ -49,7 +50,8 @@ def _require_admin(x_admin_token: str | None = Header(default=None)) -> None:
     ver las pendientes. Sin token configurado → fail-closed (503)."""
     if not config.ADMIN_PANEL_TOKEN:
         raise HTTPException(status_code=503, detail="admin_no_configurado")
-    if x_admin_token != config.ADMIN_PANEL_TOKEN:
+    # Acepta el token clásico O una sesión firmada del login usuario+contraseña.
+    if not admin_auth.token_admin_valido(x_admin_token):
         raise HTTPException(status_code=401, detail="token_invalido")
 
 
