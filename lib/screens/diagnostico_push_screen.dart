@@ -257,13 +257,38 @@ class _DiagnosticoPushScreenState extends State<DiagnosticoPushScreen> {
                 'Con la app en segundo plano lo verías en la barra del '
                 'sistema.');
       } else if (enviados == 0 && total > 0) {
+        // La función (versión nueva) manda el MOTIVO exacto de FCM por token
+        // y el project_id de la cuenta de servicio → arreglo dirigido.
+        final fcm = (data['fcm'] as List?)?.map((e) => '$e').join('  |  ') ?? '';
+        final proyecto = (data['proyecto'] ?? '').toString();
+        String arreglo;
+        if (fcm.contains('SENDER_ID_MISMATCH')) {
+          arreglo = 'El token fue emitido por OTRO proyecto Firebase (APK '
+              'viejo o google-services.json de otro proyecto). Borra las '
+              'filas de pichangol_push_tokens, instala el APK MÁS NUEVO, '
+              'abre la app y repite.';
+        } else if (fcm.contains('SERVICE_DISABLED') ||
+            fcm.contains('PERMISSION_DENIED') ||
+            fcm.contains('403 ')) {
+          arreglo = 'La API de FCM está apagada o la cuenta de servicio no '
+              'tiene permiso. En console.cloud.google.com (proyecto '
+              '${proyecto.isEmpty ? "de Firebase" : proyecto}) habilita '
+              '"Firebase Cloud Messaging API" y repite en 2 min.';
+        } else if (fcm.contains('UNREGISTERED') || fcm.contains('NOT_FOUND')) {
+          arreglo = 'Token vencido/desinstalado: borra las filas de '
+              'pichangol_push_tokens, abre la app de nuevo y repite.';
+        } else {
+          arreglo = 'Casi siempre: el google-services.json del APK y la '
+              'cuenta de servicio (FCM_SERVICE_ACCOUNT) son de proyectos '
+              'Firebase DISTINTOS. Deben salir del mismo proyecto. '
+              'También pasa si el token es de un APK viejo: reinstala y '
+              'repite.';
+        }
         _marcar(p, _Estado.fallo,
-            detalle: 'FCM RECHAZÓ los $total token(s).',
-            arreglo: 'Casi siempre: el google-services.json del APK y la '
-                'cuenta de servicio (FCM_SERVICE_ACCOUNT) son de proyectos '
-                'Firebase DISTINTOS. Deben salir del mismo proyecto. '
-                'También pasa si el token es de un APK viejo: reinstala y '
-                'repite.');
+            detalle: 'FCM RECHAZÓ los $total token(s).'
+                '${proyecto.isNotEmpty ? ' Proyecto SA: $proyecto.' : ''}'
+                '${fcm.isNotEmpty ? '\nMotivo: $fcm' : ''}',
+            arreglo: arreglo);
       } else {
         _marcar(p, _Estado.advertencia,
             detalle: 'Respuesta inesperada de la función: $data');

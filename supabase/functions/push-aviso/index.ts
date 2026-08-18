@@ -119,28 +119,50 @@ serve(async (req) => {
     }
 
     const url = `https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`;
+    // Captura el MOTIVO real de cada rechazo (SENDER_ID_MISMATCH, UNREGISTERED,
+    // SERVICE_DISABLED…): se devuelve en la respuesta (el diagnóstico del APK lo
+    // muestra) y se loguea (Supabase → Edge Functions → push-aviso → Logs).
+    const errores: string[] = [];
     const resultados = await Promise.all(
-      tokens.map((token) =>
-        fetch(url, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${access}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            message: {
-              token,
-              notification: { title: titulo, body: cuerpo },
-              data,
-              android: { priority: "high" },
+      tokens.map(async (token) => {
+        try {
+          const r = await fetch(url, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${access}`,
+              "Content-Type": "application/json",
             },
-          }),
-        }).then((r) => r.status).catch(() => 0)
-      ),
+            body: JSON.stringify({
+              message: {
+                token,
+                notification: { title: titulo, body: cuerpo },
+                data,
+                android: { priority: "high" },
+              },
+            }),
+          });
+          if (r.status !== 200) {
+            const txt = await r.text();
+            let motivo = txt.slice(0, 300);
+            try {
+              const j = JSON.parse(txt);
+              motivo = j?.error?.status ?? j?.error?.message ?? motivo;
+            } catch (_) { /* respuesta no-JSON: se deja el texto crudo */ }
+            errores.push(`${r.status} ${motivo} · token …${token.slice(-8)}`);
+            console.log("FCM rechazo:", r.status, motivo);
+          }
+          return r.status;
+        } catch (e) {
+          errores.push(`fetch: ${String(e)}`);
+          return 0;
+        }
+      }),
     );
     return ok({
       enviados: resultados.filter((s) => s === 200).length,
       total: tokens.length,
+      proyecto: sa.project_id,
+      ...(errores.length ? { fcm: errores } : {}),
     });
   } catch (e) {
     // 200 siempre: evita reintentos en bucle del webhook.
