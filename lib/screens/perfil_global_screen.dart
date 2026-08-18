@@ -3,6 +3,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
+import '../data/perfiles_repo.dart';
 import '../models/academia.dart';
 import '../models/models.dart';
 import '../services/pagos_service.dart';
@@ -27,13 +28,39 @@ class PerfilGlobalScreen extends StatefulWidget {
   State<PerfilGlobalScreen> createState() => _PerfilGlobalScreenState();
 }
 
+/// Prompts de la bio (misma lista/orden que "Editar perfil"): clave estable →
+/// ícono + etiqueta. Solo se pintan los que el jugador llenó.
+const List<(String, IconData, String)> _kPromptsPerfil = [
+  ('cancha_favorita', Icons.stadium_outlined, 'Mi cancha favorita'),
+  ('dedico', Icons.work_outline, 'Me dedico a'),
+  ('juego_desde', Icons.history_outlined, 'Juego desde'),
+  ('logro', Icons.emoji_events_outlined, 'Mi mayor logro deportivo'),
+  ('tiempo', Icons.schedule_outlined, 'Dedico demasiado tiempo a'),
+  ('dato', Icons.lightbulb_outline, 'Dato curioso sobre mí'),
+  ('cancion', Icons.music_note_outlined, 'Mi canción para entrar en calor'),
+  ('amo', Icons.favorite_border, 'Amo'),
+  ('idiomas', Icons.translate_outlined, 'Idiomas que hablo'),
+];
+
 class _PerfilGlobalScreenState extends State<PerfilGlobalScreen> {
   bool _esPro = false;
+
+  /// BIO pública del jugador (la que llenó en "Editar perfil").
+  Map<String, String> _bio = {};
 
   @override
   void initState() {
     super.initState();
     _verificarPro();
+    _cargarBio();
+  }
+
+  Future<void> _cargarBio() async {
+    final email =
+        widget.idKey.startsWith('e:') ? widget.idKey.substring(2) : '';
+    if (email.isEmpty) return;
+    final b = await PerfilesRepo.leerBio(email);
+    if (mounted && b.isNotEmpty) setState(() => _bio = b);
   }
 
   Future<void> _verificarPro() async {
@@ -211,6 +238,31 @@ class _PerfilGlobalScreenState extends State<PerfilGlobalScreen> {
                     ),
                   ),
                 const SizedBox(height: 14),
+                // ── Acerca del jugador (BIO estilo Airbnb, si la llenó) ──
+                if (_bio.isNotEmpty) ...[
+                  Text('Acerca de ${perfil.nombre.split(' ').first}',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w800, fontSize: 15)),
+                  const SizedBox(height: 4),
+                  for (final (clave, icono, etiqueta) in _kPromptsPerfil)
+                    if ((_bio[clave] ?? '').isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 7),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(icono, size: 19, color: textoTenueDe(context)),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text('$etiqueta: ${_bio[clave]}',
+                                  style: const TextStyle(
+                                      fontSize: 13.5, height: 1.35)),
+                            ),
+                          ],
+                        ),
+                      ),
+                  const SizedBox(height: 14),
+                ],
                 const Text('Últimos partidos',
                     style:
                         TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
