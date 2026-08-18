@@ -45,9 +45,9 @@ class PichangolWordmark extends StatelessWidget {
   }
 }
 
-/// Logo cuadrado (login / app icon): cuadrado VERDE WhatsApp con un PIN de
-/// ubicación blanco al centro — igual que el ícono de la app. (El wordmark, en
-/// cambio, usa la pelota como 'o'.)
+/// Logo cuadrado (login / cabeceras): el PIN oficial de la marca (logo nuevo,
+/// assets/brand/logo_pin.png) en tarjeta blanca redondeada con borde suave.
+/// Fallback: si el asset faltara, vuelve al pin clásico dibujado.
 class LogoCuadrado extends StatelessWidget {
   final double size;
   const LogoCuadrado({super.key, this.size = 60});
@@ -57,12 +57,22 @@ class LogoCuadrado extends StatelessWidget {
     return Container(
       width: size,
       height: size,
-      alignment: Alignment.center,
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: lima,
-        borderRadius: BorderRadius.circular(size * 0.30),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(size * 0.24),
+        border: Border.all(color: const Color(0xFFE4E4E4)),
       ),
-      child: Icon(Icons.location_on, size: size * 0.56, color: Colors.white),
+      child: Image.asset(
+        'assets/brand/logo_pin.png',
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Container(
+          alignment: Alignment.center,
+          color: lima,
+          child:
+              Icon(Icons.location_on, size: size * 0.56, color: Colors.white),
+        ),
+      ),
     );
   }
 }

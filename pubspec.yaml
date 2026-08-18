@@ -133,6 +133,7 @@ flutter:
     - assets/splash/
     - assets/geo/
     - assets/sonidos/
+    - assets/brand/
 
 # Ícono de app (pelota Pichangol sobre verde de marca).
 flutter_launcher_icons:
@@ -140,7 +141,9 @@ flutter_launcher_icons:
   ios: true
   remove_alpha_ios: true
   image_path: "assets/icon/app_icon.png"
-  adaptive_icon_background: "#128C7E"
+  # Logo nuevo (pin verde degradado + órbita sobre blanco): el fondo adaptativo
+  # pasa a BLANCO para que el ícono se vea como la tarjeta del logo.
+  adaptive_icon_background: "#FFFFFF"
   adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
 
 # Splash nativo (arranque en frío) — fondo BLANCO premium + logo verde con pelota
