@@ -164,15 +164,22 @@ class PushService {
       LlamadaService.cancelarEntrante((m.data['room'] ?? '').toString());
       return;
     }
-    // Llamada entrante con la app abierta: también muestra la pantalla que suena.
+    // Llamada entrante con la app ABIERTA: además de la notificación de CallKit
+    // (que pone el timbre), abre la pantalla ENTRANTE a PANTALLA COMPLETA
+    // dentro de la app (Contestar/Rechazar), como WhatsApp cuando estás con la
+    // app al frente. `revisarEntranteAlFrente` ya trae todos los candados
+    // (no duplica si CallKit atendió, si hay llamada en curso, etc.).
     if (m.data['tipo'] == 'llamada') {
       final hilo = (m.data['hilo'] ?? '').toString();
-      LlamadaService.mostrarEntrante(
-        room: LlamadaService.salaChat(hilo),
-        caller: (m.data['caller'] ?? '').toString(),
-        video: (m.data['video'] ?? '') == 'true',
-        hilo: hilo,
-      );
+      () async {
+        await LlamadaService.mostrarEntrante(
+          room: LlamadaService.salaChat(hilo),
+          caller: (m.data['caller'] ?? '').toString(),
+          video: (m.data['video'] ?? '') == 'true',
+          hilo: hilo,
+        );
+        await LlamadaService.revisarEntranteAlFrente();
+      }();
       return;
     }
     // Push de RESERVA con la app abierta: sonido + banner que abre Reservas, y
