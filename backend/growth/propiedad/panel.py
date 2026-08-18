@@ -818,6 +818,32 @@ _HTML = r"""<!DOCTYPE html>
     .md-item{width:auto;white-space:nowrap;flex-shrink:0}
     .md-txt small{display:none}
   }
+  /* Dashboard (Resumen): tarjetas KPI clicables */
+  .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}
+  .kpi{background:#fff;border:1px solid var(--border);border-radius:16px;padding:18px;
+    cursor:pointer;transition:.12s;box-shadow:0 3px 10px rgba(0,0,0,.05);text-align:left;
+    font-family:inherit}
+  .kpi:hover{transform:translateY(-2px);box-shadow:0 8px 18px rgba(0,0,0,.09)}
+  .kpi .ki{width:40px;height:40px;border-radius:11px;display:flex;align-items:center;
+    justify-content:center;font-size:19px;margin-bottom:12px}
+  .kpi .kv{font-size:30px;font-weight:800;color:var(--ink);line-height:1;
+    letter-spacing:-.02em}
+  .kpi .kl{margin-top:6px;font-size:13px;font-weight:700;color:var(--muted)}
+  /* Liquidaciones: encabezado con total grande + filas limpias */
+  .liq-head{display:flex;align-items:flex-end;justify-content:space-between;margin:2px 0 14px}
+  .liq-total{font-size:34px;font-weight:800;color:var(--ink);letter-spacing:-.02em}
+  .liq-sub{color:var(--muted);font-size:13px;font-weight:600;margin-top:2px}
+  .liq-row{display:flex;justify-content:space-between;align-items:center;gap:14px;
+    padding:14px 0;border-bottom:1px solid var(--border)}
+  .liq-row:last-child{border-bottom:0}
+  .liq-dueno{font-weight:800;font-size:15px}
+  .liq-det{color:var(--muted);font-size:13px;margin-top:2px;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap}
+  .liq-der{text-align:right;white-space:nowrap;display:flex;align-items:center;gap:14px}
+  .liq-monto{font-weight:800;font-size:18px}
+  .liq-btn{background:var(--verde);color:#fff;border:0;border-radius:999px;
+    padding:9px 16px;font-family:inherit;font-weight:700;font-size:13px;cursor:pointer}
+  .liq-btn:hover{filter:brightness(1.06)}
   #liquidaciones{margin-top:16px}
   #liquidaciones:empty{display:none}
   /* Chips de estado compactos de la lista de reclamos (maestro–detalle). */
@@ -1078,7 +1104,8 @@ _HTML = r"""<!DOCTYPE html>
       </div>
     </div>
     <nav class="nav" id="topnav">
-      <button class="topnav-tab on" data-sec="reclamos" onclick="mostrarSeccion('reclamos')"><span class="ico">📋</span> Reclamos</button>
+      <button class="topnav-tab on" data-sec="resumen" onclick="mostrarSeccion('resumen')"><span class="ico">📊</span> Resumen</button>
+      <button class="topnav-tab" data-sec="reclamos" onclick="mostrarSeccion('reclamos')"><span class="ico">📋</span> Reclamos</button>
       <button class="topnav-tab" data-sec="operacion" onclick="mostrarSeccion('operacion')"><span class="ico">✅</span> Operación</button>
       <button class="topnav-tab" data-sec="cobros" onclick="mostrarSeccion('cobros')"><span class="ico">💳</span> Cobros</button>
       <button class="topnav-tab" data-sec="liquidaciones" onclick="mostrarSeccion('liquidaciones')"><span class="ico">💸</span> Liquidaciones</button>
@@ -1091,14 +1118,23 @@ _HTML = r"""<!DOCTYPE html>
   </aside>
   <div class="colmain">
   <header class="topbar">
-    <div class="tb-title" id="tbTitle">Reclamos</div>
+    <div class="tb-title" id="tbTitle">Resumen</div>
     <div class="sp"></div>
     <button class="tb-btn" onclick="cargar();cargarLiquidaciones()" title="Actualizar">↻ <span class="lbl">Actualizar</span></button>
     <button class="tb-btn" onclick="salir()" title="Cerrar sesión">⎋ <span class="lbl">Salir</span></button>
     <div class="avatar" id="avatarOp" title="Operador">P</div>
   </header>
   <main class="main content">
-    <section id="page-reclamos" class="page">
+    <section id="page-resumen" class="page">
+      <div class="page-head">
+        <div class="page-eyebrow">Hoy</div>
+        <h1 class="page-h">Resumen de la operación</h1>
+        <p class="page-sub">El pulso del marketplace de un vistazo. Toca una
+          tarjeta para ir directo a esa sección.</p>
+      </div>
+      <div class="kpi-grid" id="kpis"></div>
+    </section>
+    <section id="page-reclamos" class="page" style="display:none">
       <div class="page-head">
         <div class="page-eyebrow">Propiedad</div>
         <h1 class="page-h">Reclamos de propiedad</h1>
@@ -1345,6 +1381,8 @@ function mostrarApp(){
   const av = document.getElementById('avatarOp');
   if(av){ av.textContent = (usr[0]||'P').toUpperCase(); av.title = usr || 'Operador'; }
   renderTabs();
+  renderResumen();
+  cargarDisputas();
   cargarModo();
   cargarCanal();
   cargarPichangaModo();
@@ -1873,7 +1911,37 @@ function mostrarPane(btn, pane){
   md.querySelectorAll('.md-item').forEach(b=>{ b.classList.toggle('on', b===btn); });
 }
 
-const TITULOS_SEC = {reclamos:'Reclamos', operacion:'Operación', cobros:'Cobros',
+// ── Dashboard (Resumen): KPIs que se llenan conforme cargan las secciones ──
+const kpi = {reclamosPend:null, activas:null, liqTotal:null, liqN:null, disputas:null};
+
+function renderResumen(){
+  const box = document.getElementById('kpis');
+  if(!box) return;
+  const v = x => (x===null || x===undefined) ? '…' : x;
+  box.innerHTML = `
+    <button class="kpi" onclick="mostrarSeccion('reclamos')">
+      <div class="ki" style="background:#FFF3D6">📋</div>
+      <div class="kv">${v(kpi.reclamosPend)}</div>
+      <div class="kl">Reclamos por aprobar</div>
+    </button>
+    <button class="kpi" onclick="mostrarSeccion('reclamos')">
+      <div class="ki" style="background:#DDF3E1">✅</div>
+      <div class="kv">${v(kpi.activas)}</div>
+      <div class="kl">Canchas activadas</div>
+    </button>
+    <button class="kpi" onclick="mostrarSeccion('liquidaciones')">
+      <div class="ki" style="background:#E3F2EF">💸</div>
+      <div class="kv">${kpi.liqTotal===null?'…':'S/ '+kpi.liqTotal}</div>
+      <div class="kl">${kpi.liqN===null?'Por liquidar a dueños':(kpi.liqN===1?'1 pago pendiente':kpi.liqN+' pagos pendientes')}</div>
+    </button>
+    <button class="kpi" onclick="mostrarSeccion('disputas')">
+      <div class="ki" style="background:#FBE2E2">⚖️</div>
+      <div class="kv">${v(kpi.disputas)}</div>
+      <div class="kl">Disputas abiertas</div>
+    </button>`;
+}
+
+const TITULOS_SEC = {resumen:'Resumen', reclamos:'Reclamos', operacion:'Operación', cobros:'Cobros',
   liquidaciones:'Liquidaciones', disputas:'Disputas', identidad:'Identidad',
   comunicacion:'Comunicación', pruebas:'Pruebas'};
 
@@ -1942,6 +2010,7 @@ async function cargarDisputas(){
     if(!r.ok){ box.innerHTML='<div class="card">No se pudo cargar.</div>'; return; }
     const j = await r.json();
     const d = j.disputas||[];
+    kpi.disputas = d.length; renderResumen();
     const filas = d.length ? d.map(v=>`
       <div style="padding:14px 0;border-top:1px solid var(--border)">
         <div style="display:flex;justify-content:space-between;gap:10px">
@@ -1995,24 +2064,34 @@ async function cargarLiquidaciones(){
     if(!r.ok){ box.innerHTML=''; return; }
     const j = await r.json();
     const pend = j.pendientes||[];
-    const filas = pend.length ? pend.map(p=>`
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 0;border-top:1px solid var(--border)">
+    kpi.liqTotal = j.total_neto_soles||0; kpi.liqN = pend.length; renderResumen();
+    if(!pend.length){
+      box.innerHTML = `<div class="card" style="text-align:center;padding:44px 20px">
+        <div style="font-size:36px">🎉</div>
+        <div style="font-weight:800;font-size:17px;margin-top:8px">Todo liquidado</div>
+        <div style="color:var(--muted);font-size:13.5px;margin-top:4px">No tienes pagos pendientes a dueños.</div>
+      </div>`;
+      return;
+    }
+    const filas = pend.map(p=>`
+      <div class="liq-row">
+        <div style="min-width:0">
+          <div class="liq-dueno">${esc(p.dueno_id)||'—'}</div>
+          <div class="liq-det">${esc(p.concepto)} · ${fmtFecha(p.creado_en)}</div>
+        </div>
+        <div class="liq-der">
+          <div class="liq-monto" title="Bruto S/${p.bruto_soles} − comisión S/${p.comision_soles}">S/ ${p.neto_soles}</div>
+          <button class="liq-btn" onclick="pagarLiquidacion('${esc(p.reserva_id)}')">Marcar pagado</button>
+        </div>
+      </div>`).join('');
+    box.innerHTML = `
+      <div class="liq-head">
         <div>
-          <b>${esc(p.dueno_id)||'—'}</b>
-          <div style="color:var(--muted);font-size:13px">${esc(p.concepto)} · ${fmtFecha(p.creado_en)}</div>
-          <div style="color:var(--muted);font-size:12px">Bruto S/${p.bruto_soles} · comisión S/${p.comision_soles}</div>
+          <div class="liq-total">S/ ${j.total_neto_soles||0}</div>
+          <div class="liq-sub">${pend.length===1?'1 pago pendiente':pend.length+' pagos pendientes'} · transfiere el neto (Yape/banco) y márcalo</div>
         </div>
-        <div style="text-align:right;white-space:nowrap">
-          <div style="font-weight:800;font-size:17px">S/${p.neto_soles}</div>
-          <button onclick="pagarLiquidacion('${esc(p.reserva_id)}')" style="margin-top:6px;background:var(--bosque);color:var(--lima);border:0;border-radius:12px;padding:9px 12px;font-family:inherit;font-weight:700;cursor:pointer">Marcar pagado</button>
-        </div>
-      </div>`).join('')
-      : '<div style="color:var(--muted);padding:8px 0">No hay liquidaciones pendientes. 🎉</div>';
-    box.innerHTML = `<div class="card"><div class="top">
-      <h3 style="flex:1">Liquidaciones por pagar a dueños</h3>
-      <span style="font-weight:800;color:var(--bosque)">Total S/${j.total_neto_soles||0}</span></div>
-      <p style="color:var(--muted);font-size:13px;margin:6px 0 4px">Reservas online: el jugador pagó a Pichangol. Transfiere el NETO al dueño (Yape/banco) y marca pagado.</p>
-      ${filas}</div>`;
+      </div>
+      <div class="card" style="padding:4px 18px">${filas}</div>`;
   }catch(e){ box.innerHTML=''; }
 }
 async function pagarLiquidacion(rid){
@@ -2186,6 +2265,9 @@ async function cargar(){
   if(r.status===401){ salir(); return; }
   cache = await r.json();
   cache.reverse(); // más recientes primero
+  kpi.reclamosPend = cache.filter(x=>x.estado==='pendiente_triage').length;
+  kpi.activas = cache.filter(x=>x.estado==='activada').length;
+  renderResumen();
   renderTabs(); render();
 }
 
