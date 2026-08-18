@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -24,26 +22,14 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
-  // Deportes que van rotando en la pelota central (íconos Material).
-  static const _deportes = <IconData>[
-    Icons.sports_soccer,
-    Icons.sports_tennis,
-    Icons.sports_basketball,
-    Icons.sports_volleyball,
-    Icons.sports_baseball,
-  ];
-  int _i = 0;
-  Timer? _ciclo;
+  // Flotado suave del logo (respiración, no rebote brusco).
   late final AnimationController _rebote = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 560))
+      vsync: this, duration: const Duration(milliseconds: 1400))
     ..repeat(reverse: true);
 
   @override
   void initState() {
     super.initState();
-    _ciclo = Timer.periodic(const Duration(milliseconds: 520), (_) {
-      if (mounted) setState(() => _i = (_i + 1) % _deportes.length);
-    });
     _arrancar();
   }
 
@@ -93,7 +79,6 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   void dispose() {
-    _ciclo?.cancel();
     _rebote.dispose();
     super.dispose();
   }
@@ -106,45 +91,23 @@ class _SplashScreenState extends State<SplashScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Pelota que rebota y cambia de deporte.
+            // LOGO OFICIAL (pin + wordmark) con flotado suave. Fallback al
+            // wordmark clásico si el asset faltara.
             AnimatedBuilder(
               animation: _rebote,
               builder: (context, child) {
-                final dy = -12 * Curves.easeInOut.transform(_rebote.value);
+                final dy = -7 * Curves.easeInOut.transform(_rebote.value);
                 return Transform.translate(offset: Offset(0, dy), child: child);
               },
-              child: Container(
-                width: 118,
-                height: 118,
-                decoration: const BoxDecoration(
-                  color: lima,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                        color: Color(0x55000000),
-                        blurRadius: 20,
-                        offset: Offset(0, 10)),
-                  ],
-                ),
-                child: Center(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 280),
-                    transitionBuilder: (child, anim) => ScaleTransition(
-                      scale: anim,
-                      child: FadeTransition(opacity: anim, child: child),
-                    ),
-                    child: Icon(
-                      _deportes[_i],
-                      key: ValueKey(_i),
-                      color: _indigo,
-                      size: 58,
-                    ),
-                  ),
+              child: Image.asset(
+                'assets/brand/logo_pichangol.png',
+                width: 250,
+                errorBuilder: (_, __, ___) => const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: PichangolWordmark(fontSize: 40),
                 ),
               ),
             ),
-            const SizedBox(height: 24),
-            const PichangolWordmark(fontSize: 40),
             const SizedBox(height: 6),
             Text(
               kBrandTagline,
