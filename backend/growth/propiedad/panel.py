@@ -1132,27 +1132,27 @@ _HTML = r"""<!DOCTYPE html>
            detalle del rubro seleccionado a la derecha. -->
       <div class="md">
         <aside class="md-list">
-          <button class="md-item on" data-pane="comision" onclick=\"mostrarPane(this,'comision')\">
+          <button class="md-item on" data-pane="comision" onclick="mostrarPane(this,'comision')">
             <span class="md-ico">💼</span>
             <span class="md-txt"><b>Comisión</b><small>De la plataforma, por cobro</small></span>
           </button>
-          <button class="md-item" data-pane="margenes" onclick=\"mostrarPane(this,'margenes')\">
+          <button class="md-item" data-pane="margenes" onclick="mostrarPane(this,'margenes')">
             <span class="md-ico">🏦</span>
             <span class="md-txt"><b>Márgenes</b><small>Por banco / pasarela</small></span>
           </button>
-          <button class="md-item" data-pane="marketing" onclick=\"mostrarPane(this,'marketing')\">
+          <button class="md-item" data-pane="marketing" onclick="mostrarPane(this,'marketing')">
             <span class="md-ico">📣</span>
             <span class="md-txt"><b>Marketing</b><small>Servicios y precios</small></span>
           </button>
-          <button class="md-item" data-pane="circuitoPanel" onclick=\"mostrarPane(this,'circuitoPanel')\">
+          <button class="md-item" data-pane="circuitoPanel" onclick="mostrarPane(this,'circuitoPanel')">
             <span class="md-ico">🎾</span>
             <span class="md-txt"><b>Circuito</b><small>Retos y torneos</small></span>
           </button>
-          <button class="md-item" data-pane="rankingPanel" onclick=\"mostrarPane(this,'rankingPanel')\">
+          <button class="md-item" data-pane="rankingPanel" onclick="mostrarPane(this,'rankingPanel')">
             <span class="md-ico">🏆</span>
             <span class="md-txt"><b>Ranking</b><small>Incentivos a jugadores</small></span>
           </button>
-          <button class="md-item" data-pane="proPanel" onclick=\"mostrarPane(this,'proPanel')\">
+          <button class="md-item" data-pane="proPanel" onclick="mostrarPane(this,'proPanel')">
             <span class="md-ico">⭐</span>
             <span class="md-txt"><b>Pichangol Pro</b><small>Suscripción mensual</small></span>
           </button>
