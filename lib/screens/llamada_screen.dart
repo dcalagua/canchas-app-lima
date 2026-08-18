@@ -63,6 +63,9 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
     super.initState();
     LlamadaWebRTC.pantallaVisible = true;
     _svc.addListener(_onCambio);
+    // Si el que llamaba CUELGA mientras esta pantalla muestra la entrante
+    // in-app (aún sin contestar), se cierra sola (no dejar la entrante colgada).
+    LlamadaService.entranteCancelada.addListener(_onEntranteCancelada);
     // reattach = solo volver a mostrar una llamada en curso: NO arranca nada.
     // modoEntrante = espera a que el usuario toque "Contestar" para arrancar.
     // (El TIMBRE lo maneja LlamadaService desde que entró la llamada.)
@@ -161,6 +164,13 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
     _cerrar();
   }
 
+  void _onEntranteCancelada() {
+    if (!mounted) return;
+    if (!widget.modoEntrante || _entranteContestada) return;
+    if (LlamadaService.entranteCancelada.value != widget.callId) return;
+    _cerrar();
+  }
+
   void _onCambio() {
     if (!mounted) return;
     // En modo entrante, antes de contestar, no reacciones a cambios del motor
@@ -219,6 +229,7 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
   @override
   void dispose() {
     LlamadaWebRTC.pantallaVisible = false;
+    LlamadaService.entranteCancelada.removeListener(_onEntranteCancelada);
     _ringbackOn = false;
     try {
       _ringback?.stop();

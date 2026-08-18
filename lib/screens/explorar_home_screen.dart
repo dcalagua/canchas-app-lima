@@ -11,6 +11,7 @@ import '../brand.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../config/pais.dart';
+import '../services/llamada_service.dart';
 import '../services/location_service.dart';
 import '../services/pagos_service.dart';
 import '../utils/geo.dart';
@@ -147,9 +148,14 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
     _cargarResenasVisibles(); // rating real en las tarjetas (⭐ reputación)
     _autoUbicar(); // autodetecta la ubicación al abrir
     // Onboarding de permisos (una sola vez, tras instalar): notificaciones,
-    // micrófono, cámara y pantalla completa. Estilo WhatsApp.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) PermisosOnboardingScreen.mostrarSiHaceFalta(context);
+    // micrófono, cámara y pantalla completa. Estilo WhatsApp. Después, el
+    // permiso de PANTALLA COMPLETA de llamadas se re-pide en cada arranque
+    // hasta estar concedido (obligatorio: sin él, la llamada en reposo suena
+    // pero la pantalla queda negra).
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await PermisosOnboardingScreen.mostrarSiHaceFalta(context);
+      if (mounted) await LlamadaService.pedirPermisoPantallaCompleta(context);
     });
   }
 

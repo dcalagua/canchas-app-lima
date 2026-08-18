@@ -487,6 +487,10 @@ class LlamadaService {
   /// Otro dispositivo de mi cuenta ya atendió/rechazó la llamada: apaga el
   /// timbre (pantalla entrante de CallKit) en ESTE equipo, salvo que YO ya esté
   /// en esa llamada.
+  /// Aviso para la pantalla entrante IN-APP: si está abierta para esta sala y
+  /// aún no fue contestada, debe cerrarse sola (el que llamaba colgó).
+  static final ValueNotifier<String> entranteCancelada = ValueNotifier('');
+
   static Future<void> cancelarEntrante(String room) async {
     _log('cancelarEntrante room=$room (atendida en otro dispositivo)');
     if (LlamadaWebRTC.instance.activa) return; // yo ya estoy en la llamada
@@ -497,9 +501,18 @@ class LlamadaService {
     // Que no reviva por el dedup ni el resume.
     _ultEntranteRoom = room;
     _ultEntranteTs = DateTime.now().millisecondsSinceEpoch;
+    // Cierra también la PANTALLA (no solo el timbre): primero la llamada por su
+    // id (algunos equipos dejan la actividad de entrante viva con endAllCalls
+    // a secas) y luego el barrido general.
+    try {
+      await FlutterCallkitIncoming.endCall(room);
+    } catch (_) {}
     try {
       await FlutterCallkitIncoming.endAllCalls();
     } catch (_) {}
+    // Y si la entrante estaba mostrada DENTRO de la app, que se cierre sola.
+    entranteCancelada.value = '';
+    entranteCancelada.value = room;
   }
 
   /// Notificación de "llamada en curso" para el que LLAMA (saliente): así, al
@@ -647,19 +660,17 @@ class LlamadaService {
   static Future<void> revisarLlamadaAlArrancar() => _intentarContestar();
 
   // ── Permiso de pantalla completa (Android 14+) ─────────────────────────────
-  static const _kPidioFullScreen = 'perm_full_screen_llamada';
 
   /// En **Android 14+** la llamada entrante NO se muestra a pantalla completa
-  /// (como WhatsApp) hasta que el usuario concede un permiso especial. Lo
-  /// pedimos UNA sola vez, con un diálogo Pichangol, al entrar a la app. En
+  /// (como WhatsApp) hasta que el usuario concede un permiso especial. Es
+  /// OBLIGATORIO para que la llamada encienda la pantalla en reposo (regla del
+  /// director): se pide en CADA arranque de la app hasta que esté concedido
+  /// (sin permiso, la llamada suena pero la pantalla queda negra). En
   /// Android < 14 / iOS `canUseFullScreenIntent` devuelve true y no molestamos.
   static Future<void> pedirPermisoPantallaCompleta(BuildContext context) async {
     try {
       final puede = await FlutterCallkitIncoming.canUseFullScreenIntent();
       if (puede) return;
-      final p = await SharedPreferences.getInstance();
-      if (p.getBool(_kPidioFullScreen) == true) return;
-      await p.setBool(_kPidioFullScreen, true);
       if (!context.mounted) return;
       final ok = await confirmarPichangol(
         context,
