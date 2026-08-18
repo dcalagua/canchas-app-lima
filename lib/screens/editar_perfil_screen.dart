@@ -3,21 +3,42 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../config/pais.dart';
+import '../data/perfiles_repo.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
+import '../widgets/nivel_chip.dart';
 import '../widgets/responsive.dart';
+import 'nivel_onboarding_screen.dart';
 
-/// EDITAR MI PERFIL: el nombre (y foto) con que la persona se muestra en el chat,
-/// el ranking, los retos, etc. Muchos usuarios tienen cualquier cosa en su Gmail;
-/// aquí ponen el nombre real que quieren que vean los demás.
-/// Fase 1: editar el NOMBRE. La foto se muestra (la de Google); cambiarla por una
-/// propia queda para una fase siguiente.
+/// EDITAR MI PERFIL — rediseño al UI/UX de Airbnb ("Edita el perfil"):
+///  - Título centrado + X para cerrar.
+///  - Avatar GRANDE con pastilla "📷 Editar" superpuesta.
+///  - "Mi perfil" + texto de confianza.
+///  - Lista de PROMPTS con ícono de línea y divisores, versión deportiva:
+///    "Mi cancha favorita", "Mi mayor logro deportivo", etc. (se guardan como
+///    BIO jsonb en `pichangol_perfiles` — docs/piloto/supabase_perfil_bio.sql).
+///  - Sección "Mis deportes" (niveles) con botón para editarlos.
+///  - Botón charcoal "Listo" fijo abajo.
 class EditarPerfilScreen extends StatefulWidget {
   const EditarPerfilScreen({super.key});
   @override
   State<EditarPerfilScreen> createState() => _EditarPerfilScreenState();
 }
+
+/// Prompts de la bio (clave estable → ícono + etiqueta). Versión PCG de los
+/// "A donde siempre quise ir / Me dedico a" de Airbnb.
+const List<(String, IconData, String)> _kPromptsBio = [
+  ('cancha_favorita', Icons.stadium_outlined, 'Mi cancha favorita'),
+  ('dedico', Icons.work_outline, 'Me dedico a'),
+  ('juego_desde', Icons.history_outlined, 'Juego desde'),
+  ('logro', Icons.emoji_events_outlined, 'Mi mayor logro deportivo'),
+  ('tiempo', Icons.schedule_outlined, 'Dedico demasiado tiempo a'),
+  ('dato', Icons.lightbulb_outline, 'Dato curioso sobre mí'),
+  ('cancion', Icons.music_note_outlined, 'Mi canción para entrar en calor'),
+  ('amo', Icons.favorite_border, 'Amo'),
+  ('idiomas', Icons.translate_outlined, 'Idiomas que hablo'),
+];
 
 class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
   late final TextEditingController _nombre =
@@ -27,6 +48,20 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
       TextEditingController(text: _celularLocal(appState.miCelular));
   bool _guardando = false;
   bool _subiendoFoto = false;
+
+  /// BIO estilo Airbnb (clave → texto). Device-first: se pinta lo que llegue.
+  final Map<String, String> _bio = {};
+
+  @override
+  void initState() {
+    super.initState();
+    final email = appState.usuario?.email;
+    if (email != null) {
+      PerfilesRepo.leerBio(email).then((b) {
+        if (mounted && b.isNotEmpty) setState(() => _bio.addAll(b));
+      });
+    }
+  }
 
   /// Quita el código de país del celular guardado, para editarlo local.
   String _celularLocal(String full) {
@@ -95,11 +130,77 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
     );
   }
 
+  /// Edita un prompt de la bio en un bottom sheet (estilo Airbnb).
+  Future<void> _editarPrompt(String clave, String etiqueta) async {
+    final ctrl = TextEditingController(text: _bio[clave] ?? '');
+    final res = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.fromLTRB(
+            20, 18, 20, 18 + MediaQuery.of(ctx).viewInsets.bottom),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(etiqueta,
+                style: const TextStyle(
+                    fontWeight: FontWeight.w800, fontSize: 18)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: ctrl,
+              autofocus: true,
+              maxLength: 80,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: InputDecoration(
+                hintText: 'Escribe aquí…',
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+              onSubmitted: (v) => Navigator.of(ctx).pop(v),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                if ((_bio[clave] ?? '').isNotEmpty)
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(''),
+                    child: const Text('Quitar',
+                        style: TextStyle(color: textoTenue)),
+                  ),
+                const Spacer(),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                      backgroundColor: tinta,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(999))),
+                  onPressed: () => Navigator.of(ctx).pop(ctrl.text),
+                  child: const Text('Guardar'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+    if (res == null || !mounted) return;
+    setState(() {
+      final v = res.trim();
+      if (v.isEmpty) {
+        _bio.remove(clave);
+      } else {
+        _bio[clave] = v;
+      }
+    });
+  }
+
   Future<void> _guardar() async {
     final n = _nombre.text.trim();
     if (n.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Escribe tu nombre.')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Escribe tu nombre.')));
       return;
     }
     if (_guardando) return;
@@ -112,6 +213,12 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
       ok = await conPreload(
           context, () => appState.actualizarMiNombre(n, celular: cel),
           texto: 'Guardando…');
+      // La BIO viaja aparte (upsert sobre el mismo perfil). Best-effort: si la
+      // columna aún no existe en Supabase, el perfil base igual queda guardado.
+      final email = appState.usuario?.email;
+      if (ok && email != null) {
+        await PerfilesRepo.guardar(email: email, nombre: n, bio: _bio);
+      }
     } finally {
       if (mounted) setState(() => _guardando = false);
     }
@@ -127,12 +234,57 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
     }
   }
 
+  /// Campo de texto minimalista (nombre / celular) con etiqueta arriba.
+  Widget _campo(String etiqueta, TextEditingController ctrl,
+      {String? prefijo, TextInputType? tipo, List<TextInputFormatter>? fmt}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(etiqueta,
+            style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: textoTenueDe(context))),
+        const SizedBox(height: 6),
+        TextField(
+          controller: ctrl,
+          keyboardType: tipo,
+          inputFormatters: fmt,
+          decoration: InputDecoration(
+            prefixText: prefijo,
+            isDense: true,
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+            border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xFFE4E4E4))),
+            enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xFFE4E4E4))),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final u = appState.usuario;
     final foto = u?.fotoUrl;
     return Scaffold(
-      appBar: AppBar(title: const Text('Mi perfil')),
+      // Barra estilo modal de Airbnb: título centrado + X.
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        centerTitle: true,
+        title: const Text('Edita el perfil',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ],
+      ),
       body: u == null
           ? const Center(
               child: Padding(
@@ -142,117 +294,194 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
                     style: TextStyle(color: textoTenue)),
               ),
             )
-          : ListView(
-              // Regla app: contenido centrado (ancho máx) en pantallas anchas.
-              padding: EdgeInsets.fromLTRB(
-                  ladoTablet(context, 20, 600), 20, ladoTablet(context, 20, 600), 30),
-              children: [
-                Center(
-                  child: Stack(
-                    children: [
-                      CircleAvatar(
-                        radius: 44,
-                        backgroundColor: teal,
-                        backgroundImage: (foto != null && foto.isNotEmpty)
-                            ? NetworkImage(foto)
-                            : null,
-                        child: _subiendoFoto
-                            ? const CircularProgressIndicator(color: bosque)
-                            : (foto == null || foto.isEmpty)
-                                ? const Icon(Icons.person,
-                                    size: 40, color: Colors.white)
-                                : null,
-                      ),
-                      Positioned(
-                        right: 0,
-                        bottom: 0,
-                        child: Material(
-                          color: bosque,
-                          shape: const CircleBorder(),
-                          child: InkWell(
-                            customBorder: const CircleBorder(),
-                            onTap: _subiendoFoto ? null : _menuFoto,
-                            child: const Padding(
-                              padding: EdgeInsets.all(7),
-                              child: Icon(Icons.photo_camera,
-                                  color: Colors.white, size: 18),
+          : AnchoTablet(
+              maxWidth: 560,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 110),
+                children: [
+                  // ── Avatar GRANDE con pastilla "Editar" superpuesta ──
+                  Center(
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      alignment: Alignment.center,
+                      children: [
+                        CircleAvatar(
+                          radius: 76,
+                          backgroundColor: limaSuave,
+                          backgroundImage: (foto != null && foto.isNotEmpty)
+                              ? NetworkImage(foto)
+                              : null,
+                          child: _subiendoFoto
+                              ? const CircularProgressIndicator(color: bosque)
+                              : (foto == null || foto.isEmpty)
+                                  ? const Icon(Icons.person,
+                                      size: 64, color: bosque)
+                                  : null,
+                        ),
+                        Positioned(
+                          bottom: -14,
+                          child: Material(
+                            elevation: 3,
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(999),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(999),
+                              onTap: _subiendoFoto ? null : _menuFoto,
+                              child: const Padding(
+                                padding: EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 9),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.photo_camera,
+                                        size: 17, color: tinta),
+                                    SizedBox(width: 7),
+                                    Text('Editar',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 14.5,
+                                            color: tinta)),
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
                         ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 34),
+                  // ── "Mi perfil" + texto de confianza (como Airbnb) ──
+                  const Text('Mi perfil',
+                      style: TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.4)),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Los jugadores y dueños pueden ver tu perfil en el chat, '
+                    'los retos y el ranking. Completarlo genera confianza en '
+                    'la comunidad.',
+                    style: TextStyle(
+                        fontSize: 14.5,
+                        height: 1.45,
+                        color: textoTenueDe(context)),
+                  ),
+                  const SizedBox(height: 18),
+                  _campo('Tu nombre', _nombre),
+                  const SizedBox(height: 14),
+                  _campo('Celular (opcional)', _celular,
+                      prefijo: '+${paisActual.codigoTel} ',
+                      tipo: TextInputType.phone,
+                      fmt: [FilteringTextInputFormatter.digitsOnly]),
+                  const SizedBox(height: 10),
+                  // ── Prompts estilo Airbnb (versión deportiva) ──
+                  for (final (clave, icono, etiqueta) in _kPromptsBio) ...[
+                    InkWell(
+                      onTap: () => _editarPrompt(clave, etiqueta),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        child: Row(
+                          children: [
+                            Icon(icono, size: 25, color: tinta),
+                            const SizedBox(width: 15),
+                            Expanded(
+                              child: (_bio[clave] ?? '').isEmpty
+                                  ? Text(etiqueta,
+                                      style: TextStyle(
+                                          fontSize: 15.5,
+                                          fontWeight: FontWeight.w600,
+                                          color: textoTenueDe(context)))
+                                  : Text('$etiqueta: ${_bio[clave]}',
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                          fontSize: 15.5,
+                                          fontWeight: FontWeight.w600,
+                                          color: tinta)),
+                            ),
+                            const Icon(Icons.chevron_right,
+                                color: Color(0xFF9A9A9A)),
+                          ],
+                        ),
                       ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Center(
-                  child: Text(u.email,
-                      style: const TextStyle(color: textoTenue, fontSize: 13)),
-                ),
-                const SizedBox(height: 24),
-                const Text('Tu nombre',
-                    style: TextStyle(fontWeight: FontWeight.w800)),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _nombre,
-                  textCapitalization: TextCapitalization.words,
-                  decoration: const InputDecoration(
-                      hintText: 'Ej.: Dennis Calagua',
-                      prefixIcon: Icon(Icons.badge_outlined)),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                    'Este es el nombre que verán los demás en el chat, el ranking '
-                    'y los retos (aunque tu Gmail muestre otra cosa).',
-                    style: TextStyle(color: textoTenue, fontSize: 12.5)),
-                const SizedBox(height: 20),
-                const Text('Celular / WhatsApp (opcional)',
-                    style: TextStyle(fontWeight: FontWeight.w800)),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _celular,
-                  keyboardType: TextInputType.phone,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                    LengthLimitingTextInputFormatter(paisActual.telLongitud),
+                    ),
+                    const Divider(height: 1, color: Color(0xFFEBEBEB)),
                   ],
-                  decoration: InputDecoration(
-                    prefixText: '${banderaActual} $codigoTelActual  ',
-                    hintText: 'Tu número',
-                    prefixIcon: const Icon(Icons.chat, color: Color(0xFF25D366)),
+                  const SizedBox(height: 26),
+                  // ── "Mis deportes" (equivalente a "Mis intereses") ──
+                  const Text('Mis deportes',
+                      style: TextStyle(
+                          fontSize: 21,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.3)),
+                  const SizedBox(height: 12),
+                  if (appState.misNiveles.isEmpty)
+                    Text(
+                      'Aún no marcas tu nivel en ningún deporte.',
+                      style: TextStyle(
+                          fontSize: 14, color: textoTenueDe(context)),
+                    )
+                  else
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final n in appState.misNiveles)
+                          NivelChip(nivel: n),
+                      ],
+                    ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: Material(
+                      color: const Color(0xFFF0F1EF),
+                      borderRadius: BorderRadius.circular(12),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () => Navigator.of(context)
+                            .push(MaterialPageRoute(
+                                builder: (_) =>
+                                    const NivelOnboardingScreen()))
+                            .then((_) => setState(() {})),
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 14),
+                          child: Center(
+                            child: Text('Edita tus deportes',
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 15,
+                                    color: tinta)),
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                    'Si lo pones, los demás verán un botón "WhatsApp" para '
-                    'escribirte por ahí. Es opcional; puedes dejarlo vacío.',
-                    style: TextStyle(color: textoTenue, fontSize: 12.5)),
-                const SizedBox(height: 24),
-                SizedBox(
+                ],
+              ),
+            ),
+      // ── Botón charcoal "Listo" fijo abajo (como Airbnb) ──
+      bottomNavigationBar: u == null
+          ? null
+          : SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 14),
+                child: SizedBox(
                   width: double.infinity,
                   child: FilledButton(
                     style: FilledButton.styleFrom(
-                        backgroundColor: lima,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 15)),
+                      backgroundColor: tinta,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                    ),
                     onPressed: _guardando ? null : _guardar,
-                    child: const Text('Guardar'),
+                    child: const Text('Listo',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 16.5)),
                   ),
                 ),
-                const SizedBox(height: 14),
-                const Row(
-                  children: [
-                    Icon(Icons.info_outline, size: 18, color: textoTenue),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                          'Toca la cámara para cambiar tu foto (galería o cámara). '
-                          'El nombre se guarda con el botón de arriba.',
-                          style: TextStyle(
-                              color: textoTenue, fontSize: 12, height: 1.3)),
-                    ),
-                  ],
-                ),
-              ],
+              ),
             ),
     );
   }

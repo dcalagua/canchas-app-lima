@@ -20,6 +20,7 @@ class PerfilesRepo {
     String? fotoUrl,
     String? celular,
     String? recado,
+    Map<String, String>? bio,
   }) async {
     final e = email.trim().toLowerCase();
     if (!disponible || e.isEmpty) return false;
@@ -33,11 +34,37 @@ class PerfilesRepo {
         // recado/estado (tipo WhatsApp): se envía si no es null. Requiere la
         // columna `recado` en la tabla (ver docs/piloto/supabase_recado.sql).
         if (recado != null) 'recado': recado.trim(),
+        // BIO estilo Airbnb (jsonb): requiere docs/piloto/supabase_perfil_bio.sql.
+        if (bio != null) 'bio': bio,
         'actualizado': DateTime.now().toUtc().toIso8601String(),
       }, onConflict: 'email');
       return true;
     } catch (_) {
       return false;
+    }
+  }
+
+  /// Lee la BIO (campos estilo Airbnb) del perfil. {} si no hay o falla.
+  static Future<Map<String, String>> leerBio(String email) async {
+    final e = email.trim().toLowerCase();
+    if (!disponible || e.isEmpty) return {};
+    try {
+      final r = await SupabaseService.client
+          .from(_tabla)
+          .select('bio')
+          .eq('email', e)
+          .maybeSingle();
+      final b = r?['bio'];
+      if (b is Map) {
+        return {
+          for (final en in b.entries)
+            if (en.value != null && en.value.toString().trim().isNotEmpty)
+              en.key.toString(): en.value.toString()
+        };
+      }
+      return {};
+    } catch (_) {
+      return {};
     }
   }
 
