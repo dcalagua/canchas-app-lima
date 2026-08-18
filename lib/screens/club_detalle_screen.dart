@@ -2366,9 +2366,15 @@ class _PanelPendienteState extends State<_PanelPendiente> {
         _rechazada = true;
         widget.onRechazado?.call(true);
         msg = '';
-      } else if (verif) {
+      } else if (verif && est['es_mio'] == true) {
+        // SEGURIDAD: solo se anuncia la aprobación si el reclamo aprobado es
+        // DEL que pregunta — la aprobación de un tercero sobre el mismo lugar
+        // no activa la copia de otro reclamante.
         msg = '✅ ¡Aprobada! Habilitando tus reservas…';
         await widget.onActualizar?.call();
+      } else if (verif || estado == 'reclamada_por_otro') {
+        msg = '⚠️ Este local ya tiene un dueño aprobado con otra cuenta. Si el '
+            'local es tuyo, escríbenos para revisarlo.';
       } else {
         msg = '⏳ Tu solicitud sigue en revisión. Te avisamos cuando se apruebe.';
       }

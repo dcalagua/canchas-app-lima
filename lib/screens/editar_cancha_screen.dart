@@ -332,7 +332,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
     // se activa hasta validarlo (revisión + visita en sitio).
     if (eraReclamo) {
       appState.verificarCancha(actualizada, ruc: _ruc.text.trim());
-      PropiedadService.crearReclamo(
+      final rec = await PropiedadService.crearReclamo(
         canchaId: actualizada.id,
         solicitanteId: dueno,
         solicitanteNombre: appState.usuario?.nombre ?? '',
@@ -342,6 +342,26 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
         ruc: _ruc.text.trim(),
         ubicacion: _ubicacion,
       );
+      // SEGURIDAD/UX: si el lugar YA tiene un reclamo activo de OTRA persona,
+      // el backend no crea nada ("ya_reclamada") — se deshace la copia local
+      // (si no, quedaba una cancha "mía, pendiente" fantasma que nunca se
+      // aprobaría) y se le explica al usuario en el acto.
+      if (rec != null && rec['ok'] == false && rec['error'] == 'ya_reclamada') {
+        appState.eliminarCancha(actualizada.id);
+        if (!mounted) return;
+        setState(() => _guardando = false);
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          backgroundColor: clayOscuro,
+          duration: Duration(seconds: 9),
+          content: Text(
+              '⚠️ Este local ya fue reclamado por otra cuenta y está en manos '
+              'de Pichangol. Si el local es tuyo, escríbenos por WhatsApp para '
+              'revisarlo.',
+              style: TextStyle(color: Colors.white)),
+        ));
+        return;
+      }
     }
 
     // Verifica que la config editada haya QUEDADO en la nube: duración, SEÑA y

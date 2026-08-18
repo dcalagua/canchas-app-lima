@@ -4976,6 +4976,14 @@ class AppState extends ChangeNotifier {
             c.copyWith(registrada: false, verificada: false, dueno: '');
         _cancelarReservasDeCancha(c.id);
       } else if (verificada && !c.verificada) {
+        // SEGURIDAD (anti-apropiación): si esta cancha dice ser MÍA
+        // (dueno = mi correo), solo se activa cuando el backend confirma que el
+        // reclamo APROBADO es el mío (es_mio). Sin este candado, reclamar un
+        // lugar que ya tenía un reclamo aprobado de OTRA persona activaba la
+        // copia del nuevo reclamante al instante, sin pasar por la torre (el
+        // estado se resuelve por LUGAR y devolvía la aprobación ajena).
+        final esMia = email.isNotEmpty && c.dueno == email;
+        if (esMia && est['es_mio'] != true) continue;
         // Al activarse queda atada a su dueño. Solo me asigno como dueño si el
         // backend confirma que YO soy el reclamante (est['es_mio']); así una
         // cancha de "legado" no la apropia quien sincroniza primero.

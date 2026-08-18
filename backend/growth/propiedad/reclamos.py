@@ -481,20 +481,40 @@ def estado(cancha_id: str, solicitante: str | None = None) -> dict:
         return {"existe": False}
     # Elegimos el reclamo REPRESENTATIVO del lugar (los ids crecen monótonos, así
     # que id mayor = más reciente):
-    #  1. el reclamo VIGENTE (activo/bloqueante) más reciente — un reclamo vivo
+    #  1. SEGURIDAD: si quien pregunta se identifica ([solicitante]) y tiene
+    #     reclamo propio en el lugar, SIEMPRE ve el SUYO más reciente — nunca el
+    #     de un tercero. Sin esto, reclamar un lugar que YA tenía un reclamo
+    #     APROBADO ajeno devolvía "activada" y la app del nuevo reclamante
+    #     activaba su copia al instante (apropiación sin pasar por la torre).
+    #  2. el reclamo VIGENTE (activo/bloqueante) más reciente — un reclamo vivo
     #     nunca debe quedar oculto tras un rechazo viejo del mismo lugar;
-    #  2. si ninguno está vigente y quien pregunta tiene reclamo, el suyo más
-    #     reciente (para que vea SU estado, no el de un tercero);
     #  3. en última instancia, el más reciente.
+    mios = ([x for x in pool if x.solicitante_id == solicitante]
+            if solicitante else [])
     activos = [r for r in pool if r.estado in _ESTADOS_BLOQUEANTES]
-    if activos:
+    if mios:
+        r = max(mios, key=lambda x: x.id)
+    elif activos:
         r = max(activos, key=lambda x: x.id)
-    elif solicitante and any(x.solicitante_id == solicitante for x in pool):
-        r = max((x for x in pool if x.solicitante_id == solicitante),
-                key=lambda x: x.id)
     else:
         r = max(pool, key=lambda x: x.id)
     c = stores.canchas.get(r.cancha_id)
+    es_mio = bool(solicitante) and r.solicitante_id == solicitante
+    # SEGURIDAD (protege también a APKs viejos, que activaban con solo ver
+    # "activada"): si quien pregunta SE IDENTIFICA y la aprobación vigente es de
+    # OTRA persona, NO se le expone como "activada"/verificada — se le responde
+    # "reclamada_por_otro". Las consultas SIN solicitante (vista pública de la
+    # ficha) siguen viendo el estado representativo real del lugar.
+    if solicitante and not es_mio and r.estado == "activada":
+        return {
+            "existe": True,
+            "reclamo_id": r.id,
+            "estado": "reclamada_por_otro",
+            "panel_desbloqueado": False,
+            "verificada": False,
+            "verificada_en_persona": False,
+            "es_mio": False,
+        }
     # 'verificada' para la APP = HABILITAR RESERVAS = PROPIEDAD aprobada, es decir
     # el reclamo llegó a "activada". NO se deriva de la bandera CanchaEstado.
     # verificada cruda, porque el subsistema de VERIFICACIÓN DE EXISTENCIA (IA)
@@ -513,7 +533,7 @@ def estado(cancha_id: str, solicitante: str | None = None) -> dict:
         "verificada_en_persona": bool(c and c.verificada_en_persona),
         # ¿el reclamo es del que pregunta? (para que la app asigne dueño sin que
         # un tercero se apropie de una cancha de "legado" al sincronizar).
-        "es_mio": bool(solicitante) and r.solicitante_id == solicitante,
+        "es_mio": es_mio,
     }
 
 
