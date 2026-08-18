@@ -17,6 +17,7 @@ import '../widgets/chat_burbuja.dart';
 import '../models/bono.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/court_lines.dart';
+import '../widgets/candado_pro.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/marca.dart';
 import 'bonos_dueno_screen.dart';
@@ -517,6 +518,10 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
 
   /// El dueño bloquea/desbloquea un horario (los reservados no se tocan).
   Future<void> _alternarBloqueo(String hora) async {
+    // Función PRO (regla del director): bloquear/reabrir horas exige la
+    // suscripción; sin ella, CTA "Hazte Pro".
+    if (!await exigirPro(context, funcion: 'El bloqueo de horas')) return;
+    if (!mounted) return;
     if (_reservado(hora)) return; // no bloquear un slot ya reservado
     // El set se actualiza de forma síncrona dentro de alternarBloqueo; el
     // setState refleja el cambio al instante y la red va por detrás.

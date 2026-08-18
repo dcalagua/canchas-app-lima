@@ -6,6 +6,7 @@ import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/ancho_lectura.dart';
+import '../widgets/candado_pro.dart';
 import 'chat_screen.dart';
 import 'reserva_manual_screen.dart';
 
@@ -995,9 +996,11 @@ class _DetalleClienteSheetState extends State<_DetalleClienteSheet> {
     ));
   }
 
-  /// Abre "Reserva manual" con este cliente ya prellenado.
-  void _reservarParaCliente() {
+  /// Abre "Reserva manual" con este cliente ya prellenado. Función PRO.
+  Future<void> _reservarParaCliente() async {
     Navigator.of(context).pop();
+    if (!await exigirPro(context, funcion: 'La reserva manual')) return;
+    if (!mounted) return;
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => ReservaManualScreen(
         clienteEmailInicial: cliente.email,

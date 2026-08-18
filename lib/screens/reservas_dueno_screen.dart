@@ -5,6 +5,7 @@ import '../models/models.dart';
 import '../services/push_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/candado_pro.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../utils/moneda.dart';
 import '../widgets/ancho_lectura.dart';
@@ -153,8 +154,13 @@ class _ReservasDuenoScreenState extends State<ReservasDuenoScreen> {
         foregroundColor: Colors.white,
         icon: const Icon(Icons.add),
         label: const Text('Reserva manual'),
-        onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => const ReservaManualScreen())),
+        // Función PRO (regla del director): sin suscripción muestra el CTA.
+        onPressed: () async {
+          if (!await exigirPro(context, funcion: 'La reserva manual')) return;
+          if (!context.mounted) return;
+          Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => const ReservaManualScreen()));
+        },
       ),
       body: AnchoLectura(child: ListenableBuilder(
         listenable: appState,
