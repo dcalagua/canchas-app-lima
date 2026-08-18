@@ -31,14 +31,13 @@ class PerfilGlobalScreen extends StatefulWidget {
 /// Prompts de la bio (misma lista/orden que "Editar perfil"): clave estable →
 /// ícono + etiqueta. Solo se pintan los que el jugador llenó.
 const List<(String, IconData, String)> _kPromptsPerfil = [
-  ('cancha_favorita', Icons.stadium_outlined, 'Mi cancha favorita'),
   ('dedico', Icons.work_outline, 'Me dedico a'),
-  ('juego_desde', Icons.history_outlined, 'Juego desde'),
+  ('juego_desde', Icons.history_outlined, 'Juego desde hace'),
   ('logro', Icons.emoji_events_outlined, 'Mi mayor logro deportivo'),
+  ('estilo', Icons.sports_soccer_outlined, 'Mi estilo de juego'),
   ('tiempo', Icons.schedule_outlined, 'Dedico demasiado tiempo a'),
-  ('dato', Icons.lightbulb_outline, 'Dato curioso sobre mí'),
-  ('cancion', Icons.music_note_outlined, 'Mi canción para entrar en calor'),
-  ('amo', Icons.favorite_border, 'Amo'),
+  ('musica', Icons.music_note_outlined, 'Mi música para entrar en calor'),
+  ('horario', Icons.wb_twilight_outlined, 'Mi horario de juego'),
   ('idiomas', Icons.translate_outlined, 'Idiomas que hablo'),
 ];
 

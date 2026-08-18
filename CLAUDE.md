@@ -296,6 +296,13 @@ sigue el lenguaje Airbnb sobre la paleta EBIM:
 - **Pagos/estados:** caja centrada animada (procesando → check), logos de marca
   reales (Yape morado, Visa/Mastercard). Ver `widgets/marcas_pago.dart`,
   `widgets/pago_procesando.dart`.
+- **NADA de campos de texto libre para el usuario (REGLA de todo el app).**
+  Toda entrada de datos del usuario se hace por SELECCIÓN (chips, listas,
+  pickers, toggles) con opciones curadas — nunca un TextField libre para datos
+  descriptivos. Motivo: data limpia y filtrable, cero moderación de contenido,
+  menos fricción de tipeo. Texto libre SOLO donde es inevitable por naturaleza:
+  nombre propio, celular, búsquedas, mensajes de chat y montos. Si un feature
+  "necesita" un campo libre, proponer primero la versión con opciones.
 - **Popups: UN SOLO formato (REGLA de todo el app).** Todo diálogo de
   confirmación/aviso usa `widgets/dialogo_pichangol.dart`: `confirmarPichangol(
   context, titulo:, mensaje:, textoConfirmar:, destructivo:, icono:)` (devuelve

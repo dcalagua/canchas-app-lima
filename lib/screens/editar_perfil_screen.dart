@@ -26,18 +26,55 @@ class EditarPerfilScreen extends StatefulWidget {
   State<EditarPerfilScreen> createState() => _EditarPerfilScreenState();
 }
 
-/// Prompts de la bio (clave estable → ícono + etiqueta). Versión PCG de los
-/// "A donde siempre quise ir / Me dedico a" de Airbnb.
-const List<(String, IconData, String)> _kPromptsBio = [
-  ('cancha_favorita', Icons.stadium_outlined, 'Mi cancha favorita'),
-  ('dedico', Icons.work_outline, 'Me dedico a'),
-  ('juego_desde', Icons.history_outlined, 'Juego desde'),
-  ('logro', Icons.emoji_events_outlined, 'Mi mayor logro deportivo'),
-  ('tiempo', Icons.schedule_outlined, 'Dedico demasiado tiempo a'),
-  ('dato', Icons.lightbulb_outline, 'Dato curioso sobre mí'),
-  ('cancion', Icons.music_note_outlined, 'Mi canción para entrar en calor'),
-  ('amo', Icons.favorite_border, 'Amo'),
-  ('idiomas', Icons.translate_outlined, 'Idiomas que hablo'),
+/// Prompts de la bio, versión PCG de los de Airbnb. REGLA del app: nada de
+/// texto libre — cada prompt se responde ELIGIENDO entre opciones curadas
+/// (multi = permite varias, se guardan separadas por " · ").
+class _PromptBio {
+  const _PromptBio(this.clave, this.icono, this.etiqueta, this.opciones,
+      {this.multi = false});
+  final String clave;
+  final IconData icono;
+  final String etiqueta;
+  final List<String> opciones;
+  final bool multi;
+}
+
+const List<_PromptBio> _kPromptsBio = [
+  _PromptBio('dedico', Icons.work_outline, 'Me dedico a', [
+    'Estudiante', 'Ingeniería', 'Salud', 'Docencia', 'Comercio',
+    'Emprendimiento', 'Administración', 'Tecnología', 'Derecho',
+    'Construcción', 'Transporte', 'Deporte', 'Hogar', 'Jubilado/a',
+  ]),
+  _PromptBio('juego_desde', Icons.history_outlined, 'Juego desde hace', [
+    'Menos de 1 año', '1–3 años', '3–5 años', '5–10 años',
+    'Más de 10 años', 'Toda la vida',
+  ]),
+  _PromptBio('logro', Icons.emoji_events_outlined, 'Mi mayor logro deportivo', [
+    'Campeón de barrio', 'Campeón distrital', 'Campeón de academia',
+    'Campeón interescolar', 'Jugué federado', 'Medalla escolar',
+    'Aún lo estoy buscando', 'Jugar por diversión',
+  ]),
+  _PromptBio('estilo', Icons.sports_soccer_outlined, 'Mi estilo de juego', [
+    'Ofensivo', 'Defensivo', 'Estratega', 'Velocidad pura',
+    'Garra y corazón', 'Fair play primero', 'El del gol agónico',
+    'Zurdo/a de oro',
+  ]),
+  _PromptBio('tiempo', Icons.schedule_outlined, 'Dedico demasiado tiempo a', [
+    'Entrenar', 'Ver deporte', 'La familia', 'El trabajo',
+    'Videojuegos', 'Series', 'Música', 'Salir con amigos',
+  ]),
+  _PromptBio('musica', Icons.music_note_outlined,
+      'Mi música para entrar en calor', [
+    'Salsa', 'Reggaetón', 'Rock', 'Cumbia', 'Electrónica',
+    'Huayno', 'Pop', 'Trap', 'Criolla',
+  ]),
+  _PromptBio('horario', Icons.wb_twilight_outlined, 'Mi horario de juego', [
+    'Mañanero', 'Al mediodía', 'Por la tarde', 'Nocturno',
+    'Fines de semana', 'Cuando se pueda',
+  ]),
+  _PromptBio('idiomas', Icons.translate_outlined, 'Idiomas que hablo', [
+    'Español', 'Inglés', 'Portugués', 'Quechua', 'Aimara', 'Otro',
+  ], multi: true),
 ];
 
 class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
@@ -130,68 +167,106 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
     );
   }
 
-  /// Edita un prompt de la bio en un bottom sheet (estilo Airbnb).
-  Future<void> _editarPrompt(String clave, String etiqueta) async {
-    final ctrl = TextEditingController(text: _bio[clave] ?? '');
-    final res = await showModalBottomSheet<String>(
+  /// Responde un prompt ELIGIENDO entre opciones curadas (regla del app:
+  /// nada de texto libre). Single-select cierra al tocar; multi lleva "Listo".
+  Future<void> _editarPrompt(_PromptBio p) async {
+    final actuales = (_bio[p.clave] ?? '')
+        .split(' · ')
+        .where((x) => x.trim().isNotEmpty)
+        .toSet();
+    final res = await showModalBottomSheet<Set<String>>(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(
-            20, 18, 20, 18 + MediaQuery.of(ctx).viewInsets.bottom),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(etiqueta,
-                style: const TextStyle(
-                    fontWeight: FontWeight.w800, fontSize: 18)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: ctrl,
-              autofocus: true,
-              maxLength: 80,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: InputDecoration(
-                hintText: 'Escribe aquí…',
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
-              onSubmitted: (v) => Navigator.of(ctx).pop(v),
-            ),
-            const SizedBox(height: 10),
-            Row(
+      builder: (ctx) {
+        final sel = {...actuales};
+        return StatefulBuilder(
+          builder: (ctx, setS) => Padding(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 26),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if ((_bio[clave] ?? '').isNotEmpty)
-                  TextButton(
-                    onPressed: () => Navigator.of(ctx).pop(''),
-                    child: const Text('Quitar',
-                        style: TextStyle(color: textoTenue)),
-                  ),
-                const Spacer(),
-                FilledButton(
-                  style: FilledButton.styleFrom(
-                      backgroundColor: tinta,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(999))),
-                  onPressed: () => Navigator.of(ctx).pop(ctrl.text),
-                  child: const Text('Guardar'),
+                Text(p.etiqueta,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800, fontSize: 18)),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final o in p.opciones)
+                      GestureDetector(
+                        onTap: () {
+                          if (p.multi) {
+                            setS(() => sel.contains(o)
+                                ? sel.remove(o)
+                                : sel.add(o));
+                          } else {
+                            Navigator.of(ctx).pop({o});
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 15, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: sel.contains(o)
+                                ? const Color(0xFFEBEBEB)
+                                : Colors.white,
+                            borderRadius: BorderRadius.circular(30),
+                            border: Border.all(
+                                color: sel.contains(o)
+                                    ? const Color(0xFFB9B9B9)
+                                    : const Color(0xFFE4E4E4)),
+                          ),
+                          child: Text(o,
+                              style: TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: sel.contains(o)
+                                      ? FontWeight.w800
+                                      : FontWeight.w600,
+                                  color: tinta)),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    if (actuales.isNotEmpty)
+                      TextButton(
+                        onPressed: () =>
+                            Navigator.of(ctx).pop(<String>{}),
+                        child: const Text('Quitar',
+                            style: TextStyle(color: textoTenue)),
+                      ),
+                    const Spacer(),
+                    if (p.multi)
+                      FilledButton(
+                        style: FilledButton.styleFrom(
+                            backgroundColor: tinta,
+                            shape: RoundedRectangleBorder(
+                                borderRadius:
+                                    BorderRadius.circular(999))),
+                        onPressed: () => Navigator.of(ctx).pop(sel),
+                        child: const Text('Listo'),
+                      ),
+                  ],
                 ),
               ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
     if (res == null || !mounted) return;
     setState(() {
-      final v = res.trim();
-      if (v.isEmpty) {
-        _bio.remove(clave);
+      if (res.isEmpty) {
+        _bio.remove(p.clave);
       } else {
-        _bio[clave] = v;
+        // Conserva el orden del catálogo (data consistente entre perfiles).
+        _bio[p.clave] = p.opciones.where(res.contains).join(' · ');
       }
     });
   }
@@ -376,23 +451,23 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
                       fmt: [FilteringTextInputFormatter.digitsOnly]),
                   const SizedBox(height: 10),
                   // ── Prompts estilo Airbnb (versión deportiva) ──
-                  for (final (clave, icono, etiqueta) in _kPromptsBio) ...[
+                  for (final pr in _kPromptsBio) ...[
                     InkWell(
-                      onTap: () => _editarPrompt(clave, etiqueta),
+                      onTap: () => _editarPrompt(pr),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         child: Row(
                           children: [
-                            Icon(icono, size: 25, color: tinta),
+                            Icon(pr.icono, size: 25, color: tinta),
                             const SizedBox(width: 15),
                             Expanded(
-                              child: (_bio[clave] ?? '').isEmpty
-                                  ? Text(etiqueta,
+                              child: (_bio[pr.clave] ?? '').isEmpty
+                                  ? Text(pr.etiqueta,
                                       style: TextStyle(
                                           fontSize: 15.5,
                                           fontWeight: FontWeight.w600,
                                           color: textoTenueDe(context)))
-                                  : Text('$etiqueta: ${_bio[clave]}',
+                                  : Text('${pr.etiqueta}: ${_bio[pr.clave]}',
                                       maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(
