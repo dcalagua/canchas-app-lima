@@ -4966,12 +4966,20 @@ class AppState extends ChangeNotifier {
       final rechazada = est['estado'] == 'rechazada';
 
       Cancha? actualizada;
+      final ajena = est['estado'] == 'reclamada_por_otro';
       if (rechazada && est['es_mio'] == true) {
         // MI reclamo fue RECHAZADO y no hay uno vigente del mismo lugar (el
         // backend prioriza un reclamo activo por encima de un rechazo viejo): la
         // cancha deja de ser mía y VUELVE A SER DESCUBIERTA (como si nadie la
         // hubiera reclamado). Sale de "Mis canchas" pero sigue en el mapa,
         // reclamable de nuevo. Se cancelan sus reservas.
+        actualizada =
+            c.copyWith(registrada: false, verificada: false, dueno: '');
+        _cancelarReservasDeCancha(c.id);
+      } else if (ajena && email.isNotEmpty && c.dueno == email) {
+        // SEGURIDAD: el lugar tiene un dueño APROBADO con otra cuenta — mi
+        // copia reclamada se deshace y vuelve a descubierta (auto-limpia las
+        // filas "envenenadas" de cuando existió el hueco de apropiación).
         actualizada =
             c.copyWith(registrada: false, verificada: false, dueno: '');
         _cancelarReservasDeCancha(c.id);
@@ -5022,12 +5030,29 @@ class AppState extends ChangeNotifier {
   Future<Cancha?> sincronizarCanchaMostrada(Cancha c) async {
     if (!PropiedadService.disponible || !c.registrada) return null;
     if (canchasEliminadas.contains(c.id)) return null;
-    final est = await PropiedadService.estado(c.id);
+    // SEGURIDAD (anti-apropiación): si la cancha mostrada dice ser MÍA, la
+    // consulta va IDENTIFICADA — el backend responde "reclamada_por_otro" (y
+    // nunca "activada") cuando la aprobación vigente del lugar es de OTRA
+    // persona. Sin esto, abrir la ficha de una copia reclamada promovía
+    // verificada=true al instante con la aprobación ajena (y la escribía a
+    // Supabase), saltándose la torre.
+    final email = usuario?.email ?? '';
+    final esMia = email.isNotEmpty && c.dueno == email;
+    final est =
+        await PropiedadService.estado(c.id, solicitante: esMia ? email : null);
     if (est == null || est['existe'] != true) return null;
     final verificada = est['verificada'] == true || est['estado'] == 'activada';
     final rechazada = est['estado'] == 'rechazada';
+    final ajena = est['estado'] == 'reclamada_por_otro';
     Cancha? actualizada;
-    if (verificada && !c.verificada) {
+    if (esMia && ajena) {
+      // El lugar pertenece a OTRO dueño aprobado: mi copia reclamada se
+      // deshace y vuelve a DESCUBIERTA (auto-limpia también las filas
+      // "envenenadas" creadas mientras existió el hueco de apropiación).
+      actualizada = c.copyWith(registrada: false, verificada: false, dueno: '');
+      _cancelarReservasDeCancha(c.id);
+    } else if (verificada && !c.verificada) {
+      if (esMia && est['es_mio'] != true) return null; // aprobación ajena: no
       actualizada = c.copyWith(verificada: true);
     } else if ((rechazada || !verificada) && c.verificada) {
       actualizada = c.copyWith(verificada: false);
