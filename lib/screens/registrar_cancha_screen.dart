@@ -17,6 +17,7 @@ import '../services/sport_detector.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
+import '../widgets/dialogo_pichangol.dart';
 import '../widgets/responsive.dart';
 import '../widgets/selector_horario.dart';
 import 'login_google_sheet.dart';
@@ -571,18 +572,83 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-          title: Text(_esReclamo ? 'Reclamar cancha' : 'Registrar cancha')),
-      body: ListView(
-        padding: EdgeInsets.fromLTRB(
-            ladoTablet(context, 16), 16, ladoTablet(context, 16), 16),
-        children: [
-          // La subida manual de fotos solo tiene sentido al CREAR una cancha
-          // nueva. Al reclamar, las fotos ya vienen de Google y luego el dueño
-          // conecta sus redes (tras verificar), así que aquí se oculta.
-          if (!_esReclamo) ...[
+  // ── WIZARD estilo Airbnb (pedido del director): pasos a pantalla
+  // completa con título grande, barra de progreso segmentada y Atrás /
+  // Siguiente. La lógica de guardado (_publicar) es la misma de siempre.
+  int _paso = 0;
+
+  List<({String titulo, String sub, List<Widget> hijos})> _pasosDe(
+      BuildContext context) {
+    if (_esReclamo) {
+      return [
+        (
+          titulo: 'Ubica tu cancha',
+          sub: 'Confirma el nombre del local y el punto exacto en el mapa. '
+              'Las fotos ya las trajimos de Google.',
+          hijos: [..._hijosNombre(context), ..._hijosMapa(context)],
+        ),
+        (
+          titulo: 'Cuéntanos de ti',
+          sub: 'El equipo usa estos datos solo para validar que el local es '
+              'tuyo. Nada se publica.',
+          hijos: _hijosContacto(context),
+        ),
+        (
+          titulo: 'Revisa y envía',
+          sub: 'Tu solicitud viaja a la torre de control de Pichangol; te '
+              'avisamos con una notificación cuando quede aprobada.',
+          hijos: _hijosResumen(context),
+        ),
+      ];
+    }
+    return [
+      (
+        titulo: 'Describe tu local',
+        sub: 'Una buena foto y el nombre con el que te conocen tus clientes.',
+        hijos: [..._hijosFoto(context), ..._hijosNombre(context)],
+      ),
+      (
+        titulo: 'Ubícalo en el mapa',
+        sub: 'Los jugadores te encuentran por este punto: afínalo bien.',
+        hijos: _hijosMapa(context),
+      ),
+      (
+        titulo: 'Deportes, precio y horario',
+        sub: 'Qué se juega en tu local y cuánto cuesta la hora.',
+        hijos: _hijosDeportes(context),
+      ),
+      (
+        titulo: 'Cuéntanos de ti',
+        sub: 'El equipo valida contigo por WhatsApp antes de activar tu local.',
+        hijos: _hijosContacto(context),
+      ),
+    ];
+  }
+
+  /// Validación LIGERA por paso (la final la hace _publicar como siempre).
+  bool _validarPaso(int i) {
+    final esNombre = i == 0;
+    final esUbicacion = _esReclamo ? i == 0 : i == 1;
+    final esContacto = (_esReclamo && i == 1) || (!_esReclamo && i == 3);
+    String? falta;
+    if (esNombre && _nombre.text.trim().isEmpty) {
+      falta = 'Ponle nombre al local para continuar.';
+    }
+    if (falta == null && esUbicacion && _direccion.text.trim().isEmpty) {
+      falta = 'Escribe la dirección del local.';
+    }
+    if (falta == null && esContacto && _contacto.text.trim().isEmpty) {
+      falta = 'Déjanos tu WhatsApp: es como el equipo valida contigo.';
+    }
+    if (falta != null) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(falta)));
+      return false;
+    }
+    return true;
+  }
+
+  List<Widget> _hijosFoto(BuildContext context) => [
             _ZonaFoto(foto: _foto, onTap: _elegirFoto),
             const SizedBox(height: 12),
             if (_analizando)
@@ -598,27 +664,10 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
               )
             else if (_deteccion != null)
               _ResultadoIA(deteccion: _deteccion!),
-          ] else
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                  color: limaSuave, borderRadius: BorderRadius.circular(10)),
-              child: Text(
-                'Las fotos ya las trajimos de Google. Cuando verifiques que eres '
-                'el dueño, podrás conectar tus redes e importar más.',
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: tinta),
-              ),
-            ),
           const SizedBox(height: 20),
+      ];
 
-          // ORDEN estilo Airbnb: primero LO TUYO (nombre, dirección, mapa,
-          // deportes/precio) y al FINAL cómo te contactamos (WhatsApp + DNI
-          // opcional). Menos fricción: nada de trámite antes de describir tu
-          // cancha. La validación de propiedad la hace el operador (torre web).
-
+  List<Widget> _hijosNombre(BuildContext context) => [
           // Nombre del LOCAL (el negocio: agrupa todas sus canchas).
           TextField(
             controller: _nombre,
@@ -639,7 +688,9 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
             ),
           ),
           const SizedBox(height: 14),
+      ];
 
+  List<Widget> _hijosMapa(BuildContext context) => [
           // Dirección + botón geocodificar (auto-ubica en el mapa).
           TextField(
             controller: _direccion,
@@ -686,10 +737,9 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
             style: const TextStyle(color: Colors.grey, fontSize: 12),
           ),
           const SizedBox(height: 18),
+      ];
 
-          // Deportes y precio: SOLO al crear una cancha nueva. Al reclamar, esto
-          // (más fotos y redes) se configura DESPUÉS de aprobada la cancha.
-          if (!_esReclamo) ...[
+  List<Widget> _hijosDeportes(BuildContext context) => [
             const Text('¿Qué deportes hay en este local?',
                 style: TextStyle(fontWeight: FontWeight.w700)),
             const SizedBox(height: 4),
@@ -860,31 +910,9 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
               onCierre: (v) => setState(() => _cierre = v),
               onDuracion: (v) => setState(() => _duracion = v),
             ),
-          ] else
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                  color: limaSuave,
-                  borderRadius: BorderRadius.circular(10)),
-              child: Text(
-                'Los deportes, el precio y la conexión con tus redes los '
-                'configuras cuando aprobemos tu cancha.',
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: tinta),
-              ),
-            ),
-          // ── Cómo te contactamos (al final, poca fricción) ─────────────────
-          const Divider(height: 34),
-          const Text('¿Cómo te contactamos?',
-              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-          const SizedBox(height: 2),
-          const Text(
-              'El equipo usa tu WhatsApp para validar que la cancha es tuya.',
-              style: TextStyle(color: Colors.grey, fontSize: 12)),
-          const SizedBox(height: 12),
-          // WhatsApp de contacto del dueño (OBLIGATORIO).
+      ];
+
+  List<Widget> _hijosContacto(BuildContext context) => [
           TextField(
             controller: _contacto,
             keyboardType: TextInputType.phone,
@@ -974,24 +1002,248 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
             onGaleria: () => _elegirEvidencia(ImageSource.gallery),
             onQuitar: () => setState(() => _fotoEvidencia = null),
           ),
+      ];
 
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              style: FilledButton.styleFrom(
-                backgroundColor: lima,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 15),
+  /// Paso final del RECLAMO: resumen de la solicitud + qué sigue.
+  List<Widget> _hijosResumen(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    Widget fila(IconData icono, String etiqueta, String valor) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 7),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icono, size: 18, color: lima),
+              const SizedBox(width: 10),
+              SizedBox(
+                width: 86,
+                child: Text(etiqueta,
+                    style: t.bodySmall
+                        ?.copyWith(color: textoTenueDe(context))),
               ),
-              onPressed: _enviando ? null : _publicar,
-              icon: Icon(_esReclamo ? Icons.verified_user : Icons.send),
-              label: Text(_esReclamo
-                  ? 'Reclamar cancha'
-                  : 'Enviar para validación'),
-            ),
+              Expanded(
+                child: Text(valor,
+                    style:
+                        t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+              ),
+            ],
           ),
-        ],
+        );
+    final dni = _dni.text.trim();
+    final nota = _nota.text.trim();
+    return [
+      Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: trazo),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            fila(Icons.storefront, 'Local', _nombre.text.trim()),
+            if (_nombreCancha.text.trim().isNotEmpty)
+              fila(Icons.sports_soccer, 'Cancha', _nombreCancha.text.trim()),
+            fila(Icons.place_outlined, 'Dirección', _direccion.text.trim()),
+            fila(Icons.chat, 'WhatsApp', _contacto.text.trim()),
+            if (dni.isNotEmpty)
+              fila(Icons.badge_outlined, docIdActual,
+                  _dniNombre != null ? '$dni · verificado ✓' : dni),
+            if (_fotoEvidencia != null)
+              fila(Icons.photo_camera_outlined, 'Evidencia',
+                  'Foto adjunta ✓'),
+            if (nota.isNotEmpty) fila(Icons.notes, 'Nota', nota),
+          ],
+        ),
+      ),
+      const SizedBox(height: 18),
+      Text('¿Qué sigue?',
+          style: t.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+      const SizedBox(height: 10),
+      for (final (n, txt) in const [
+        (1, 'El equipo de Pichangol revisa tu solicitud y te contacta por '
+            'WhatsApp si necesita confirmar algo.'),
+        (2, 'Cuando quede aprobada, te llega una notificación al celular.'),
+        (3, 'Recién ahí configuras deportes, precios y horarios — y empiezas '
+            'a recibir reservas.'),
+      ])
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 24,
+                height: 24,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                    color: limaSuave, shape: BoxShape.circle),
+                child: Text('$n',
+                    style: const TextStyle(
+                        color: bosque,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12)),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(txt,
+                    style: t.bodySmall?.copyWith(
+                        color: textoTenueDe(context), height: 1.35)),
+              ),
+            ],
+          ),
+        ),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pasos = _pasosDe(context);
+    final i = _paso.clamp(0, pasos.length - 1);
+    final p = pasos[i];
+    final ultimo = i >= pasos.length - 1;
+    final t = Theme.of(context).textTheme;
+    return Scaffold(
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Barra superior estilo Airbnb: pill "Salir" a la izquierda.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: Row(
+                children: [
+                  OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor:
+                          Theme.of(context).colorScheme.onSurface,
+                      side: const BorderSide(color: trazo),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(999)),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                    ),
+                    onPressed: () async {
+                      final ok = await confirmarPichangol(
+                        context,
+                        titulo: _esReclamo
+                            ? '¿Salir del reclamo?'
+                            : '¿Salir del registro?',
+                        mensaje: 'Se perderá lo que llenaste hasta ahora.',
+                        textoConfirmar: 'Salir',
+                        icono: Icons.logout,
+                      );
+                      if (ok && context.mounted) {
+                        Navigator.of(context).maybePop();
+                      }
+                    },
+                    child: const Text('Salir',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.fromLTRB(ladoTablet(context, 20), 16,
+                    ladoTablet(context, 20), 24),
+                children: [
+                  Text('Paso ${i + 1} de ${pasos.length}',
+                      style: t.bodySmall?.copyWith(
+                          color: textoTenueDe(context),
+                          fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 6),
+                  Text(p.titulo,
+                      style: t.headlineMedium?.copyWith(
+                          fontWeight: FontWeight.w800, height: 1.05)),
+                  const SizedBox(height: 8),
+                  Text(p.sub,
+                      style: t.bodyMedium?.copyWith(
+                          color: textoTenueDe(context), height: 1.35)),
+                  const SizedBox(height: 22),
+                  ...p.hijos,
+                ],
+              ),
+            ),
+            // Progreso segmentado + Atrás / Siguiente (estilo Airbnb).
+            Container(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                border: const Border(top: BorderSide(color: trazo)),
+              ),
+              padding: EdgeInsets.fromLTRB(ladoTablet(context, 20), 0,
+                  ladoTablet(context, 20), 12),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      for (var s = 0; s < pasos.length; s++)
+                        Expanded(
+                          child: Container(
+                            height: 4,
+                            margin: EdgeInsets.only(
+                                right: s == pasos.length - 1 ? 0 : 6),
+                            decoration: BoxDecoration(
+                              color: s <= i
+                                  ? lima
+                                  : const Color(0xFFE4E4E4),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      if (i > 0)
+                        TextButton(
+                          onPressed: _enviando
+                              ? null
+                              : () => setState(() => _paso = i - 1),
+                          child: Text('Atrás',
+                              style: TextStyle(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurface,
+                                  fontWeight: FontWeight.w800,
+                                  decoration: TextDecoration.underline)),
+                        ),
+                      const Spacer(),
+                      FilledButton(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: ultimo ? lima : tinta,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 26, vertical: 13),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: _enviando
+                            ? null
+                            : () {
+                                if (ultimo) {
+                                  _publicar();
+                                  return;
+                                }
+                                if (!_validarPaso(i)) return;
+                                setState(() => _paso = i + 1);
+                              },
+                        child: Text(
+                            ultimo
+                                ? (_esReclamo
+                                    ? 'Enviar solicitud'
+                                    : 'Enviar para validación')
+                                : 'Siguiente',
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w800)),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
