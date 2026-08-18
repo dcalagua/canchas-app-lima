@@ -919,16 +919,6 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                     const SizedBox(height: 4),
                     Text('Las mañanas (valle) suelen estar más libres.',
                         style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
-                    // DIAGNÓSTICO TEMPORAL (piloto): muestra la duración que usa la
-                    // ficha, el id corto, si es registrada y de qué fuente sale.
-                    // Sirve para depurar por qué el cliente veía la duración vieja.
-                    Text(
-                        '🔧 dur ${_cancha.duracionSlotMin}min · '
-                        'id ${_cancha.id.length > 8 ? _cancha.id.substring(0, 8) : _cancha.id} · '
-                        'reg ${_cancha.registrada ? 'sí' : 'no'} · '
-                        'fuente ${appState.fuenteCancha(_cancha.id)}',
-                        style: t.bodySmall?.copyWith(
-                            color: Colors.red, fontWeight: FontWeight.w600)),
                     const SizedBox(height: 12),
                     // Banner device-first: una hora que esperabas se liberó.
                     if (_horasLiberadas().isNotEmpty) ...[
