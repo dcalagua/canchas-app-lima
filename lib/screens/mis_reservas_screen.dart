@@ -23,6 +23,13 @@ class MisReservasScreen extends StatefulWidget {
 class _MisReservasScreenState extends State<MisReservasScreen> {
   int _tab = 0; // 0 = Próximas, 1 = Historial
 
+  @override
+  void initState() {
+    super.initState();
+    // Puntos DISPONIBLES reales (ganados − canjeados) al abrir la pantalla.
+    appState.cargarPuntosCanjeados();
+  }
+
   Cancha? _cancha(String id) {
     for (final c in appState.todasLasCanchas()) {
       if (c.id == id) return c;
@@ -126,7 +133,7 @@ class _MisReservasScreenState extends State<MisReservasScreen> {
                 padding: EdgeInsets.fromLTRB(ladoTablet(context, 18, 760), 4,
                     ladoTablet(context, 18, 760), 10),
                 child: _PuntosCard(
-                  puntos: appState.misPuntos,
+                  puntos: appState.misPuntosDisponibles,
                   pendientes: appState.misPuntosPendientes,
                 ),
               ),
@@ -213,7 +220,9 @@ class _PuntosCard extends StatelessWidget {
                     Text('$puntos puntos Pichangol',
                         style: t.titleMedium
                             ?.copyWith(fontWeight: FontWeight.w800)),
-                    Text('Ganas 1 punto por cada S/ 1 que pagas por la app.',
+                    Text(
+                        'Ganas 1 punto por S/ 1 pagado por la app · cada 100 '
+                        'puntos = S/ 3 de descuento al reservar online.',
                         style: t.bodySmall
                             ?.copyWith(color: textoTenueDe(context))),
                   ],

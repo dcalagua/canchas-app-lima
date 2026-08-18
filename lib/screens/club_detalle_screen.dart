@@ -583,6 +583,15 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     }
     // El jugador paga las horas + los servicios extra que eligió (una sola vez).
     final total = base + extras.fold(0.0, (a, s) => a + s.precio);
+    // CANJE DE PUNTOS (solo pago ONLINE, en soles): 100 pts = S/3 de descuento.
+    // El dueño recibe su bruto completo (la liquidación va con el precio real);
+    // el descuento lo absorbe Pichangol de su comisión.
+    final canjea = metodo == 'online' &&
+        r.usarPuntos &&
+        appState.misPuntosDisponibles >= 100 &&
+        _cancha.monedaSimbolo == 'S/' &&
+        total > 3.0;
+    final descuentoPuntos = canjea ? 3.0 : 0.0;
     // Seña anti no-show: % del TOTAL de las horas (sin extras).
     final esSena = metodo == 'sena';
     final senaMonto =
@@ -596,8 +605,9 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
       // Pago con tarjeta/Yape (Culqi/Libélula). Si cancela o falla, no reserva.
       final pagado = await PagoTarjeta.cobrar(
         context,
-        monto: total,
-        concepto: 'Reserva · ${_cancha.nombre} · $_dia $etiqueta',
+        monto: total - descuentoPuntos,
+        concepto: 'Reserva · ${_cancha.nombre} · $_dia $etiqueta'
+            '${canjea ? ' (−S/3 puntos)' : ''}',
         email: appState.usuario?.email ?? '',
         moneda: mon,
       );
@@ -647,6 +657,14 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
       // Canje de bono: descuenta las horas usadas (recién al confirmar el slot).
       if (metodo == 'bono') {
         appState.usarBonoHoras(_cancha.club, slots.length);
+      }
+      // Canje de PUNTOS: se registra recién con la reserva confirmada y el
+      // pago hecho (100 pts consumidos, S/3 aplicados).
+      if (canjea) {
+        appState.canjearPuntos(
+            puntos: 100,
+            soles: 3.0,
+            referencia: '${_cancha.id}_${_fechaIso}_${slots.first}');
       }
     }
     messenger.showSnackBar(
@@ -1509,7 +1527,11 @@ class _ReservarBar extends StatelessWidget {
 }
 
 /// Resultado del resumen: método de pago elegido + servicios extra marcados.
-typedef ResumenResultado = ({String metodo, List<ServicioExtra> extras});
+typedef ResumenResultado = ({
+  String metodo,
+  List<ServicioExtra> extras,
+  bool usarPuntos,
+});
 
 /// Ícono para un servicio extra según su clave.
 IconData iconoServicio(String clave) => switch (clave) {
@@ -1584,8 +1606,16 @@ class _ResumenReservaState extends State<_ResumenReserva> {
   /// Lo que el jugador paga en la cancha si adelanta la seña (total − seña).
   double get _restoEnCancha => _totalFinal - _senaMonto;
 
-  void _cerrar(String metodo) =>
-      Navigator.of(context).pop((metodo: metodo, extras: _elegidos));
+  // CANJE DE PUNTOS (economía aprobada): 100 pts = S/3 de descuento pagando
+  // ONLINE, un canje por reserva. Solo se ofrece en soles y si alcanza.
+  bool _usarPuntos = false;
+  bool get _puedeCanjear =>
+      appState.misPuntosDisponibles >= 100 &&
+      cancha.monedaSimbolo == 'S/' &&
+      _totalFinal > 3.0;
+
+  void _cerrar(String metodo) => Navigator.of(context)
+      .pop((metodo: metodo, extras: _elegidos, usarPuntos: _usarPuntos));
 
   @override
   Widget build(BuildContext context) {
@@ -1655,11 +1685,45 @@ class _ResumenReservaState extends State<_ResumenReserva> {
                       style:
                           t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
                 ),
-                Text('$mon ${_totalFinal.toStringAsFixed(2)}',
+                Text(
+                    '$mon ${(_usarPuntos ? _totalFinal - 3.0 : _totalFinal).toStringAsFixed(2)}',
                     style: t.headlineSmall?.copyWith(
                         fontWeight: FontWeight.w800, color: cs.primary)),
               ],
             ),
+            // Canje de PUNTOS Pichangol: 100 pts = S/3, solo pagando online.
+            if (_puedeCanjear) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                decoration: BoxDecoration(
+                  color: limaSuave,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.stars, size: 18, color: bosque),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Usar 100 puntos: −S/ 3.00 (tienes '
+                        '${appState.misPuntosDisponibles}). Válido pagando '
+                        'online.',
+                        style: t.bodySmall?.copyWith(
+                            color: bosque,
+                            fontWeight: FontWeight.w700,
+                            height: 1.25),
+                      ),
+                    ),
+                    Switch(
+                      value: _usarPuntos,
+                      activeColor: pino,
+                      onChanged: (v) => setState(() => _usarPuntos = v),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             // Con SEÑA: desglose claro de cuánto adelanta hoy y cuánto en la
             // cancha, con el aviso de que la seña no se devuelve.
             if (_exigeSena) ...[

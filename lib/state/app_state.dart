@@ -25,6 +25,7 @@ import '../models/mensaje.dart';
 import '../models/nivel.dart';
 import '../data/niveles_repo.dart';
 import '../data/perfiles_repo.dart';
+import '../data/puntos_repo.dart';
 import '../data/bloqueos_repo.dart';
 import '../data/descuentos_repo.dart';
 import '../data/referidos_repo.dart';
@@ -1003,6 +1004,45 @@ class AppState extends ChangeNotifier {
       total += r.totalConExtras.round();
     }
     return total;
+  }
+
+  // CANJE (economía aprobada: 100 pts = S/3 de descuento en la próxima reserva
+  // ONLINE; 1 canje por reserva; el dueño recibe su bruto completo y el
+  // descuento lo absorbe PCG de su comisión). Lo canjeado vive en Supabase
+  // (pichangol_puntos_canjes); disponibles = ganados − canjeados.
+  int _puntosCanjeados = 0;
+
+  /// Puntos listos para canjear (ganados menos ya canjeados).
+  int get misPuntosDisponibles {
+    final d = misPuntos - _puntosCanjeados;
+    return d > 0 ? d : 0;
+  }
+
+  /// Trae de la nube cuántos puntos ya canjeó el usuario. Fail-safe.
+  Future<void> cargarPuntosCanjeados() async {
+    final e = usuario?.email ?? '';
+    if (e.isEmpty) {
+      _puntosCanjeados = 0;
+      return;
+    }
+    final n = await PuntosRepo.totalCanjeado(e);
+    if (n != null && n != _puntosCanjeados) {
+      _puntosCanjeados = n;
+      notifyListeners();
+    }
+  }
+
+  /// Registra un canje (descuenta local al instante + nube best-effort).
+  Future<void> canjearPuntos(
+      {required int puntos,
+      required double soles,
+      required String referencia}) async {
+    final e = usuario?.email ?? '';
+    if (e.isEmpty) return;
+    _puntosCanjeados += puntos;
+    notifyListeners();
+    await PuntosRepo.registrarCanje(
+        email: e, puntos: puntos, soles: soles, referencia: referencia);
   }
 
   // ── Reservas OFFLINE: bandeja de salida (outbox) ──────────────────────────
