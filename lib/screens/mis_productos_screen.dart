@@ -7,6 +7,7 @@ import '../theme.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/responsive.dart';
+import '../widgets/vacio_airbnb.dart';
 import 'editar_producto_screen.dart';
 import 'login_google_sheet.dart';
 import 'mis_ordenes_screen.dart';
@@ -163,37 +164,13 @@ class _MisProductosScreenState extends State<MisProductosScreen> {
         ),
       );
 
-  Widget _vacio() => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(30),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const CircleAvatar(
-                  radius: 34,
-                  backgroundColor: limaSuave,
-                  child: Icon(Icons.storefront, color: lima, size: 34)),
-              const SizedBox(height: 14),
-              const Text('Tu tienda está vacía',
-                  style:
-                      TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
-              const SizedBox(height: 6),
-              const Text(
-                  'Publica tu primer producto y aparecerá en el Marketplace '
-                  'Pichangol para todos los jugadores.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: textoTenue)),
-              const SizedBox(height: 18),
-              FilledButton.icon(
-                style: FilledButton.styleFrom(
-                    backgroundColor: lima, foregroundColor: Colors.white),
-                onPressed: _nuevo,
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Publicar producto'),
-              ),
-            ],
-          ),
-        ),
+  Widget _vacio() => VacioAirbnb(
+        icono: Icons.storefront,
+        titulo: 'Tu tienda\nestá vacía',
+        mensaje: 'Publica tu primer producto y aparecerá en el Marketplace '
+            'Pichangol para todos los jugadores.',
+        textoBoton: 'Publicar producto',
+        onBoton: _nuevo,
       );
 }
 

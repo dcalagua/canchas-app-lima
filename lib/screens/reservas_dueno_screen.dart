@@ -9,6 +9,7 @@ import '../widgets/candado_pro.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../utils/moneda.dart';
 import '../widgets/ancho_lectura.dart';
+import '../widgets/vacio_airbnb.dart';
 import 'chat_screen.dart';
 import 'recordar_reservas_screen.dart';
 import 'reportes_hub_screen.dart';
@@ -863,27 +864,11 @@ class _Vacio extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.event_available, size: 64, color: verdeClaro),
-            const SizedBox(height: 16),
-            Text('Aún no hay reservas',
-                style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 6),
-            Text(
-              'Cuando un jugador reserve una de tus canchas la verás aquí y '
-              'podrás registrar el pago en efectivo.',
-              textAlign: TextAlign.center,
-              style: t.bodyMedium?.copyWith(color: textoTenueDe(context)),
-            ),
-          ],
-        ),
-      ),
+    return const VacioAirbnb(
+      icono: Icons.event_available,
+      titulo: 'No tienes\nninguna reserva',
+      mensaje: 'Cuando un jugador reserve una de tus canchas la verás aquí y '
+          'podrás registrar el pago en efectivo.',
     );
   }
 }

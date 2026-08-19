@@ -7,6 +7,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/ancho_lectura.dart';
 import '../widgets/candado_pro.dart';
+import '../widgets/vacio_airbnb.dart';
 import 'chat_screen.dart';
 import 'reserva_manual_screen.dart';
 
@@ -1105,33 +1106,16 @@ class _Vacio extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(hayBusqueda ? Icons.search_off : Icons.groups_outlined,
-                size: 56, color: textoTenueDe(context)),
-            const SizedBox(height: 14),
-            Text(
-              hayBusqueda
-                  ? 'No hay clientes que coincidan.'
-                  : 'Aún no tienes clientes.',
-              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              hayBusqueda
-                  ? 'Prueba con otro nombre o correo.'
-                  : 'Cuando te reserven una cancha, tus clientes aparecerán '
-                      'aquí con su historial y cuánto han gastado.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: textoTenueDe(context)),
-            ),
-          ],
-        ),
-      ),
+    return VacioAirbnb(
+      icono: hayBusqueda ? Icons.search_off : Icons.groups_outlined,
+      colorIcono: const Color(0xFF7B61FF),
+      titulo: hayBusqueda
+          ? 'No hay clientes\nque coincidan'
+          : 'Aún no tienes\nclientes',
+      mensaje: hayBusqueda
+          ? 'Prueba con otro nombre o correo.'
+          : 'Cuando te reserven una cancha, tus clientes aparecerán aquí '
+              'con su historial y cuánto han gastado.',
     );
   }
 }

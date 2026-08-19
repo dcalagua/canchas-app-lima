@@ -20,6 +20,7 @@ import 'registrar_cancha_screen.dart';
 import '../utils/moneda.dart';
 import '../widgets/ancho_lectura.dart';
 import '../widgets/dialogo_pichangol.dart';
+import '../widgets/vacio_airbnb.dart';
 
 /// Canchas del dueño agrupadas por LOCAL (un local = varias canchas, posibles
 /// de distintos deportes). Cada local permite agregar más canchas y editar las
@@ -955,37 +956,14 @@ class _Vacio extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.add_location_alt, size: 64, color: verdeClaro),
-            const SizedBox(height: 16),
-            Text('Aún no registras canchas',
-                style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 6),
-            Text(
-              'Registra tu local para que aparezca en Pichangol; luego puedes '
-              'agregarle todas las canchas que tengas.',
-              textAlign: TextAlign.center,
-              style: t.bodyMedium?.copyWith(color: textoTenueDe(context)),
-            ),
-            const SizedBox(height: 18),
-            FilledButton.icon(
-              style: FilledButton.styleFrom(
-                  backgroundColor: lima, foregroundColor: Colors.white),
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                    builder: (_) => const RegistrarCanchaScreen()),
-              ),
-              icon: const Icon(Icons.add_location_alt),
-              label: const Text('Registrar mi local'),
-            ),
-          ],
-        ),
+    return VacioAirbnb(
+      icono: Icons.add_location_alt,
+      titulo: 'Aún no registras\nninguna cancha',
+      mensaje: 'Registra tu local para que aparezca en Pichangol; luego '
+          'puedes agregarle todas las canchas que tengas.',
+      textoBoton: 'Registrar mi local',
+      onBoton: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const RegistrarCanchaScreen()),
       ),
     );
   }

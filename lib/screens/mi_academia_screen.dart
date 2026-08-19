@@ -11,6 +11,7 @@ import '../theme.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/ancho_lectura.dart';
 import '../widgets/logo_academia.dart';
+import '../widgets/vacio_airbnb.dart';
 import 'cobros_screen.dart';
 import 'crear_academia_screen.dart';
 import 'post_del_dia_screen.dart';
@@ -694,33 +695,15 @@ class _SinAcademia extends StatelessWidget {
   const _SinAcademia();
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.school_outlined,
-                size: 64, color: Theme.of(context).colorScheme.primary),
-            const SizedBox(height: 14),
-            const Text('Aún no tienes una academia',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
-            const SizedBox(height: 6),
-            const Text(
-                'Créala y empieza a gestionar tus alumnos y cobros sin perseguir a nadie.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: textoTenue)),
-            const SizedBox(height: 18),
-            FilledButton.icon(
-              style: FilledButton.styleFrom(backgroundColor: lima, foregroundColor: Colors.white),
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => const CrearAcademiaScreen())),
-              icon: const Icon(Icons.add),
-              label: const Text('Crear mi academia'),
-            ),
-          ],
-        ),
-      ),
+    return VacioAirbnb(
+      icono: Icons.school_outlined,
+      colorIcono: bosque,
+      titulo: 'Aún no tienes\nuna academia',
+      mensaje: 'Créala y empieza a gestionar tus alumnos y cobros sin '
+          'perseguir a nadie.',
+      textoBoton: 'Crear mi academia',
+      onBoton: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const CrearAcademiaScreen())),
     );
   }
 }
