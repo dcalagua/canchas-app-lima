@@ -1,11 +1,9 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../brand.dart';
 import '../state/app_state.dart';
-import '../widgets/marca.dart';
+import '../widgets/logo_vivo.dart';
 import 'app_shell.dart';
 import 'onboarding_screen.dart';
 
@@ -15,9 +13,9 @@ const _indigo = Color(0xFFFFFFFF); // fondo del splash (blanco, look Airbnb)
 // para el splash/preload; la paleta interna del app no cambia (opción A).
 const _navyLogo = Color(0xFF0A1F3C); // azul marino del wordmark/pelota
 
-/// Splash de marca ENERGÉTICO (identidad Cancha nocturna): fondo índigo + una
-/// pelota LIMA que va cambiando de deporte (fútbol, tenis, básquet, vóley…) con
-/// rebote, la marca Pichangol y un "Cargando…". Gancho visual de ~1.8s.
+/// Splash de marca: el LOGO "en vivo" (pin quieto, la pelota de adentro
+/// cambiando de deporte como un gif) + eslogan + "Cargando…". Gancho visual
+/// de ~1.8s la primera vez; corto en arranques siguientes.
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -25,36 +23,10 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen>
-    with SingleTickerProviderStateMixin {
-  // PRELOAD = el LOGO "en vivo" (decisión del director): el pin del logo queda
-  // quieto y la PELOTA DE ADENTRO va cambiando de deporte (fútbol → tenis →
-  // básquet → vóley…), como un gif. La pelota animada se pinta ENCIMA de la
-  // pelota impresa del asset, en su posición exacta (medida del PNG).
-  static const _deportes = <IconData>[
-    Icons.sports_soccer,
-    Icons.sports_tennis,
-    Icons.sports_basketball,
-    Icons.sports_volleyball,
-    Icons.sports_baseball,
-  ];
-  // Posición de la pelota dentro de assets/brand/logo_pichangol.png (640×640):
-  // centro en (49.9%, 33.0%) y radio ≈10.5% del ancho. Medido del asset real.
-  static const double _pelotaFx = 0.4994;
-  static const double _pelotaFy = 0.3300;
-  static const double _pelotaFd = 0.225; // diámetro (fracción del ancho), cubre la impresa
-  int _i = 0;
-  Timer? _ciclo;
-  late final AnimationController _rebote = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 560))
-    ..repeat(reverse: true);
-
+class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    _ciclo = Timer.periodic(const Duration(milliseconds: 520), (_) {
-      if (mounted) setState(() => _i = (_i + 1) % _deportes.length);
-    });
     _arrancar();
   }
 
@@ -104,13 +76,6 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   @override
-  void dispose() {
-    _ciclo?.cancel();
-    _rebote.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _indigo,
@@ -118,74 +83,9 @@ class _SplashScreenState extends State<SplashScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // LOGO "EN VIVO" (el gif del director): el asset del logo quieto y,
-            // ENCIMA de su pelota impresa, la pelota animada que cambia de
-            // deporte con un pulso suave. Fallback al wordmark clásico si el
-            // asset faltara.
-            Builder(builder: (context) {
-              const double lado = 250; // el PNG es cuadrado (640×640)
-              const double d = lado * _pelotaFd;
-              return SizedBox(
-                width: lado,
-                height: lado,
-                child: Stack(
-                  children: [
-                    Positioned.fill(
-                      child: Image.asset(
-                        'assets/brand/logo_pichangol.png',
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => const Center(
-                          child: PichangolWordmark(fontSize: 40),
-                        ),
-                      ),
-                    ),
-                    // Pelota animada, centrada EXACTO sobre la del logo.
-                    Positioned(
-                      left: lado * _pelotaFx - d / 2,
-                      top: lado * _pelotaFy - d / 2,
-                      width: d,
-                      height: d,
-                      child: AnimatedBuilder(
-                        animation: _rebote,
-                        builder: (context, child) {
-                          // Pulso suave (late 1.00→1.07): la pelota "respira".
-                          final s = 1 +
-                              0.07 * Curves.easeInOut.transform(_rebote.value);
-                          return Transform.scale(scale: s, child: child);
-                        },
-                        child: Container(
-                          decoration: const BoxDecoration(
-                            color: _navyLogo, // mismo navy de la pelota impresa
-                            shape: BoxShape.circle,
-                          ),
-                          child: Center(
-                            child: AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 280),
-                              transitionBuilder: (child, anim) =>
-                                  RotationTransition(
-                                turns: Tween(begin: 0.85, end: 1.0)
-                                    .animate(anim),
-                                child: ScaleTransition(
-                                  scale: anim,
-                                  child: FadeTransition(
-                                      opacity: anim, child: child),
-                                ),
-                              ),
-                              child: Icon(
-                                _deportes[_i],
-                                key: ValueKey(_i),
-                                color: Colors.white,
-                                size: d * 0.72,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }),
+            // LOGO "EN VIVO" (widget compartido con el loader de marca): el
+            // pin quieto y la pelota de adentro cambiando de deporte.
+            const LogoPichangolVivo(ancho: 250),
             const SizedBox(height: 6),
             Text(
               kBrandTagline,
