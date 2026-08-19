@@ -35,9 +35,22 @@ class SupabaseService {
       _url.isEmpty ? null : '$_url/functions/v1/$nombre';
 
   /// Enlace público (web) de un campeonato, para compartir a quien no tiene la
-  /// app. Null si Supabase no está configurado.
+  /// app. Lo sirve el BACKEND growth (`GET /c/{id}`, dominio de marca si
+  /// LANDING_BASE_URL está seteado) — la Edge Function `campeonato-web` quedó
+  /// deprecada (su deploy manual servía el HTML como texto plano). Fallback:
+  /// la función vieja solo si no hay backend configurado.
   static String? paginaCampeonato(String id) {
-    final base = funcionUrl('campeonato-web');
-    return base == null ? null : '$base?id=$id';
+    const landing = String.fromEnvironment('LANDING_BASE_URL');
+    const growth = String.fromEnvironment('GROWTH_API_URL');
+    final base = landing.isNotEmpty
+        ? landing
+        : growth.isNotEmpty
+            ? growth
+            : null;
+    if (base != null) {
+      return '${base.endsWith('/') ? base.substring(0, base.length - 1) : base}/c/$id';
+    }
+    final fn = funcionUrl('campeonato-web');
+    return fn == null ? null : '$fn?id=$id';
   }
 }

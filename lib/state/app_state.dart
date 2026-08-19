@@ -2625,10 +2625,16 @@ class AppState extends ChangeNotifier {
   static String idCampeonatoDe(String entrada) {
     final t = entrada.trim();
     if (t.isEmpty) return '';
-    // ¿Es un enlace con ?id=… ?
     final uri = Uri.tryParse(t);
+    // ¿Enlace viejo con ?id=… ?
     final qid = uri?.queryParameters['id'];
     if (qid != null && qid.trim().isNotEmpty) return qid.trim();
+    // ¿Enlace nuevo del backend: …/c/{id}?
+    final segs = uri?.pathSegments ?? const [];
+    final ic = segs.indexOf('c');
+    if (ic >= 0 && ic + 1 < segs.length && segs[ic + 1].trim().isNotEmpty) {
+      return segs[ic + 1].trim();
+    }
     // Si no es URL (o no trae id), tomamos el texto tal cual como id/código.
     if (!t.contains('://') && !t.contains(' ')) return t;
     return '';
@@ -2655,9 +2661,11 @@ class AppState extends ChangeNotifier {
   Future<Campeonato?> buscarCampeonato(String entrada) async {
     final t = entrada.trim();
     if (t.isEmpty) return null;
-    // 1) ¿Enlace con ?id=… ? → por id.
-    final qid = Uri.tryParse(t)?.queryParameters['id'];
-    if (qid != null && qid.trim().isNotEmpty) return traerCampeonato(qid.trim());
+    // 1) ¿Enlace (viejo ?id=… o nuevo /c/{id})? → por id.
+    if (t.contains('://')) {
+      final idUrl = idCampeonatoDe(t);
+      if (idUrl.isNotEmpty) return traerCampeonato(idUrl);
+    }
     // 2) ¿Es el id largo? → por id.
     if (t.startsWith('camp_')) return traerCampeonato(t);
     // 3) Si no, es un CÓDIGO corto. Primero en caché local, luego en la nube.

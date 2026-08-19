@@ -20,6 +20,7 @@ from pydantic import BaseModel
 import config
 from db.store import stores
 
+from . import campeonato_web
 from . import link_preview as link_preview_svc
 from . import redes as redes_svc
 from .flyer import generar_flyer
@@ -403,6 +404,30 @@ def _base_landing(request: Request) -> str:
     if config.PUBLIC_BASE_URL:
         return config.PUBLIC_BASE_URL.rstrip("/")
     return str(request.base_url).rstrip("/")
+
+
+@router.get("/c/{campeonato_id}", response_class=HTMLResponse)
+def ver_campeonato(campeonato_id: str) -> HTMLResponse:
+    """Página PÚBLICA de un campeonato (enlace para compartir). Reemplaza a la
+    Edge Function `campeonato-web` (su deploy manual servía el HTML como texto
+    plano); aquí FastAPI garantiza text/html; charset=utf-8 y el redeploy es
+    automático. Fail-safe: sin config/red → página de aviso."""
+    try:
+        data = campeonato_web.obtener_campeonato(campeonato_id)
+    except RuntimeError:
+        return HTMLResponse(campeonato_web.html_simple(
+            "Página no disponible",
+            "El servidor aún no está configurado para mostrar campeonatos. "
+            "Ábrelo desde la app Pichangol."), status_code=503)
+    except Exception:
+        return HTMLResponse(campeonato_web.html_simple(
+            "Error", "No se pudo cargar el campeonato. Intenta más tarde."),
+            status_code=502)
+    if data is None:
+        return HTMLResponse(campeonato_web.html_simple(
+            "No encontrado", "Este campeonato no existe o fue eliminado."),
+            status_code=404)
+    return HTMLResponse(campeonato_web.html_campeonato(data))
 
 
 @router.get("/l/{academia_id}", response_class=HTMLResponse)
