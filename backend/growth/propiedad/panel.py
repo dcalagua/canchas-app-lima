@@ -887,6 +887,20 @@ _HTML = r"""<!DOCTYPE html>
   .liq-btn:hover{filter:brightness(1.06)}
   #liquidaciones{margin-top:16px}
   #liquidaciones:empty{display:none}
+  /* Liquidaciones agrupadas por LOCAL: encabezado del grupo + chips */
+  .liq-resumen{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .liq-grupo-top{display:flex;justify-content:space-between;align-items:flex-start;
+    gap:14px;flex-wrap:wrap;border-bottom:1px solid var(--border);padding-bottom:10px}
+  .liq-grupo-local{font-weight:800;font-size:17px;letter-spacing:-.01em}
+  .liq-grupo-dueno{color:var(--muted);font-size:13px;font-weight:600;margin-top:2px}
+  .liq-grupo-tot{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+  .liq-mini{background:#F3F4F6;color:var(--ink);border-radius:999px;padding:5px 11px;
+    font-size:12px;font-weight:800;white-space:nowrap}
+  .liq-mini-pcg{background:#FFF3D6;color:#8A6100}
+  .liq-mini-neto{background:#DDF3E1;color:#166534}
+  .liq-canchas{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .liq-cancha{background:#F3F4F6;color:var(--muted);border-radius:999px;
+    padding:4px 10px;font-size:11.5px;font-weight:700}
   /* Chips de estado compactos de la lista de reclamos (maestro–detalle). */
   .chip-est{margin-left:auto;flex-shrink:0;border-radius:999px;padding:3px 9px;
     font-size:10.5px;font-weight:800;white-space:nowrap}
@@ -2156,25 +2170,82 @@ async function cargarLiquidaciones(){
       </div>`;
       return;
     }
-    const filas = pend.map(p=>`
-      <div class="liq-row">
-        <div style="min-width:0">
-          <div class="liq-dueno">${esc(p.dueno_id)||'—'}</div>
-          <div class="liq-det">${esc(p.concepto)} · ${fmtFecha(p.creado_en)}</div>
+    // Desarma el concepto "Local · Cancha · Jugador · Día hora" para agrupar
+    // por LOCAL y sub-agrupar por CANCHA (pedido del director: cuánto se lleva
+    // cada local, cada cancha y cuánto le toca a Pichangol).
+    const partes = c => (c||'').split(' · ');
+    const localDe = p => partes(p.concepto)[0] || (p.dueno_id||'—');
+    const canchaDe = p => { const s = partes(p.concepto);
+      return s.length >= 4 ? s[1] : s[0] || '—'; };
+    const restoDe = p => { const s = partes(p.concepto);
+      return s.slice(s.length >= 4 ? 2 : 1).join(' · '); };
+    const S = n => 'S/ ' + (Math.round(n*100)/100).toFixed(2);
+
+    // Totales GLOBALES (lo que realmente le toca a Pichangol = la comisión).
+    let gBruto=0, gCom=0, gNeto=0;
+    const grupos = new Map(); // "local||dueño" → {local, dueno, items}
+    for(const p of pend){
+      gBruto += p.bruto_soles||0; gCom += p.comision_soles||0; gNeto += p.neto_soles||0;
+      const k = localDe(p) + '||' + (p.dueno_id||'');
+      if(!grupos.has(k)) grupos.set(k, {local: localDe(p), dueno: p.dueno_id||'—', items: []});
+      grupos.get(k).items.push(p);
+    }
+
+    const bloques = [...grupos.values()].map(g=>{
+      const bruto = g.items.reduce((a,p)=>a+(p.bruto_soles||0),0);
+      const com   = g.items.reduce((a,p)=>a+(p.comision_soles||0),0);
+      const neto  = g.items.reduce((a,p)=>a+(p.neto_soles||0),0);
+      // Subtotales por CANCHA dentro del local.
+      const porCancha = new Map();
+      for(const p of g.items){
+        const c = canchaDe(p);
+        if(!porCancha.has(c)) porCancha.set(c, {n:0, bruto:0, neto:0});
+        const x = porCancha.get(c); x.n++; x.bruto += p.bruto_soles||0; x.neto += p.neto_soles||0;
+      }
+      const chipsCancha = [...porCancha.entries()].map(([c,x])=>
+        `<span class="liq-cancha">${esc(c)} · ${x.n} ${x.n===1?'reserva':'reservas'} · neto ${S(x.neto)}</span>`).join('');
+      const filas = g.items.map(p=>`
+        <div class="liq-row">
+          <div style="min-width:0">
+            <div class="liq-dueno">${esc(canchaDe(p))}</div>
+            <div class="liq-det">${esc(restoDe(p))} · ${fmtFecha(p.creado_en)}</div>
+          </div>
+          <div class="liq-der">
+            <div class="liq-monto" title="Bruto ${S(p.bruto_soles||0)} − comisión Pichangol ${S(p.comision_soles||0)}">${S(p.neto_soles||0)}</div>
+            <button class="liq-btn" onclick="pagarLiquidacion('${esc(p.reserva_id)}')">Marcar pagado</button>
+          </div>
+        </div>`).join('');
+      return `
+      <div class="card" style="padding:16px 18px;margin-bottom:14px">
+        <div class="liq-grupo-top">
+          <div style="min-width:0">
+            <div class="liq-grupo-local">${esc(g.local)}</div>
+            <div class="liq-grupo-dueno">${esc(g.dueno)} · ${g.items.length} ${g.items.length===1?'pago pendiente':'pagos pendientes'}</div>
+          </div>
+          <div class="liq-grupo-tot">
+            <span class="liq-mini">Bruto ${S(bruto)}</span>
+            <span class="liq-mini liq-mini-pcg">Pichangol ${S(com)}</span>
+            <span class="liq-mini liq-mini-neto">Al dueño ${S(neto)}</span>
+          </div>
         </div>
-        <div class="liq-der">
-          <div class="liq-monto" title="Bruto S/${p.bruto_soles} − comisión S/${p.comision_soles}">S/ ${p.neto_soles}</div>
-          <button class="liq-btn" onclick="pagarLiquidacion('${esc(p.reserva_id)}')">Marcar pagado</button>
-        </div>
-      </div>`).join('');
+        ${porCancha.size > 1 ? `<div class="liq-canchas">${chipsCancha}</div>` : ''}
+        <div style="margin-top:4px">${filas}</div>
+      </div>`;
+    }).join('');
+
     box.innerHTML = `
       <div class="liq-head">
         <div>
-          <div class="liq-total">S/ ${j.total_neto_soles||0}</div>
+          <div class="liq-total">${S(gNeto)}</div>
           <div class="liq-sub">${pend.length===1?'1 pago pendiente':pend.length+' pagos pendientes'} · transfiere el neto (Yape/banco) y márcalo</div>
+          <div class="liq-resumen">
+            <span class="liq-mini">Bruto cobrado ${S(gBruto)}</span>
+            <span class="liq-mini liq-mini-pcg">Comisión Pichangol ${S(gCom)}</span>
+            <span class="liq-mini liq-mini-neto">Neto a dueños ${S(gNeto)}</span>
+          </div>
         </div>
       </div>
-      <div class="card" style="padding:4px 18px">${filas}</div>`;
+      ${bloques}`;
   }catch(e){ box.innerHTML=''; }
 }
 async function pagarLiquidacion(rid){
