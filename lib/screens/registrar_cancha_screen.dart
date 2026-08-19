@@ -1045,7 +1045,10 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
             if (_nombreCancha.text.trim().isNotEmpty)
               fila(Icons.sports_soccer, 'Cancha', _nombreCancha.text.trim()),
             fila(Icons.place_outlined, 'Dirección', _direccion.text.trim()),
-            fila(Icons.chat, 'WhatsApp', _contacto.text.trim()),
+            // Con la bandera y el prefijo del país detectado (🇵🇪 +51 / 🇪🇨
+            // +593 / 🇧🇴 +591), igual que el campo donde lo escribió.
+            fila(Icons.chat, 'WhatsApp',
+                '$banderaActual $codigoTelActual ${_contacto.text.trim()}'),
             if (dni.isNotEmpty)
               fila(Icons.badge_outlined, docIdActual,
                   _dniNombre != null ? '$dni · verificado ✓' : dni),
