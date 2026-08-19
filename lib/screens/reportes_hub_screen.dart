@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 import 'analitica_ocupacion_screen.dart';
+import 'cancelaciones_screen.dart';
 import 'reporte_canchas_screen.dart';
 import 'reportes_screen.dart';
 
-/// Hub de REPORTES del dueño con tres pestañas (unifica lo que antes eran
-/// entradas separadas):
+/// Hub de REPORTES del dueño (unifica lo que antes eran entradas separadas):
 ///  - **Resumen:** el dashboard rápido (ingresos del mes, 7 días, ocupación hoy).
 ///  - **Ocupación:** inteligencia de negocio — mapa de calor hora × día, hora y
 ///    día pico, ocupación promedio, no-show, ingreso por cancha, mes vs mes.
@@ -16,14 +16,14 @@ import 'reportes_screen.dart';
 class ReportesHubScreen extends StatelessWidget {
   const ReportesHubScreen({super.key, this.inicial = 0});
 
-  /// Pestaña inicial: 0 = Resumen, 1 = Ocupación, 2 = Cobros.
+  /// Pestaña inicial: 0 = Resumen, 1 = Ocupación, 2 = Cobros, 3 = Cancelaciones.
   final int inicial;
 
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 3,
-      initialIndex: inicial.clamp(0, 2),
+      length: 4,
+      initialIndex: inicial.clamp(0, 3),
       child: Scaffold(
         backgroundColor: Theme.of(context).brightness == Brightness.dark
             ? Theme.of(context).scaffoldBackgroundColor
@@ -42,6 +42,7 @@ class ReportesHubScreen extends StatelessWidget {
               Tab(text: 'Resumen'),
               Tab(text: 'Ocupación'),
               Tab(text: 'Cobros'),
+              Tab(text: 'Cancelaciones'),
             ],
           ),
         ),
@@ -51,6 +52,7 @@ class ReportesHubScreen extends StatelessWidget {
             ReportesScreen(),
             AnaliticaOcupacionScreen(),
             ReporteCanchasScreen(embedded: true),
+            CancelacionesScreen(),
           ],
         ),
       ),

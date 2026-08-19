@@ -24,10 +24,16 @@ class ReservasRepo {
   /// vs auth). Se muestra en la app cuando una reserva no se pudo registrar.
   static String ultimoError = '';
 
+  /// ¿El último fetchRemotas respondió BIEN? (una lista vacía por ERROR no
+  /// debe usarse para borrar reservas locales en la reconciliación).
+  static bool ultimoFetchOk = false;
+
   static Future<List<Reserva>> fetchRemotas() async {
+    ultimoFetchOk = false;
     if (!SupabaseService.disponible) return [];
     try {
       final rows = await SupabaseService.client.from(_tabla).select();
+      ultimoFetchOk = true;
       return (rows as List)
           .map((r) => _fromRow(r as Map<String, dynamic>))
           .toList();

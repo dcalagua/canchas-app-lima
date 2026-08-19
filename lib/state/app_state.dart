@@ -32,6 +32,7 @@ import '../data/referidos_repo.dart';
 import '../data/bonos_repo.dart';
 import '../data/espera_repo.dart';
 import '../data/resenas_repo.dart';
+import '../data/cancelaciones_repo.dart';
 import '../data/reservas_repo.dart';
 import '../data/sample_data.dart';
 import '../data/verificacion_repo.dart';
@@ -4454,12 +4455,45 @@ class AppState extends ChangeNotifier {
     await sincronizarReservasPendientes();
     await flushContabilidad();
     final remotas = await ReservasRepo.fetchRemotas();
+    var cambios = false;
     for (final r in remotas) {
-      if (!reservas.any((x) => x.id == r.id)) reservas.insert(0, r);
+      if (!reservas.any((x) => x.id == r.id)) {
+        reservas.insert(0, r);
+        cambios = true;
+      }
     }
-    if (remotas.isNotEmpty) {
+    // RECONCILIACIÓN (fix "las horas canceladas no se liberan"): si una reserva
+    // local ya NO existe en la nube (el jugador la canceló desde otro equipo),
+    // se quita también aquí — el slot vuelve a verse libre en TODOS los
+    // dispositivos, no solo en el del que canceló. Solo cuando el fetch
+    // respondió BIEN (una lista vacía por error NO borra nada) y nunca toca lo
+    // pendiente de subir (reservas hechas sin señal).
+    if (ReservasRepo.ultimoFetchOk) {
+      final idsRemotos = remotas.map((r) => r.id).toSet();
+      final huerfanas = reservas
+          .where((x) =>
+              !idsRemotos.contains(x.id) &&
+              !_reservasPendientesSync.contains(x.id))
+          .map((x) => x.id)
+          .toSet();
+      if (huerfanas.isNotEmpty) {
+        reservas.removeWhere((x) => huerfanas.contains(x.id));
+        for (final id in huerfanas) {
+          final i = agenda.indexWhere((b) => b.reservaId == id);
+          if (i >= 0) {
+            agenda[i] =
+                agenda[i].copyWith(limpiarReserva: true, disponible: true);
+          }
+          // El recordatorio "cobra en efectivo" de esa reserva ya no aplica.
+          RecordatorioService.cancelar(id);
+        }
+        cambios = true;
+      }
+    }
+    if (cambios) {
       _recomputarMisReservas();
       notifyListeners();
+      _persistirDatos();
     }
     // Programa (en ESTE dispositivo, el del dueño) los recordatorios de cobro en
     // efectivo de sus canchas. Aquí es donde el dueño "se entera" de la reserva.
@@ -7357,6 +7391,12 @@ class AppState extends ChangeNotifier {
     // Misma fuente de verdad anti-doble-reserva que la reserva del jugador.
     final res = await ReservasRepo.insertarSegura(reserva);
     if (res == ResultadoReserva.ocupado) return res;
+    if (res != ResultadoReserva.ok) {
+      // Sin señal / error: quedó SOLO local → a la bandeja de salida, para
+      // subirla al recuperar conexión (y que la reconciliación no la barra).
+      _reservasPendientesSync.add(reserva.id);
+      unawaited(_persistirReservasSync());
+    }
 
     reservas.insert(0, reserva); // visible en el panel del dueño
     if (diaLabel == 'Hoy') {
@@ -7791,6 +7831,10 @@ class AppState extends ChangeNotifier {
     // Push al DUEÑO: se enteró al instante de que el horario quedó libre otra
     // vez (antes solo lo veía al refrescar su agenda).
     _avisarDuenoCancelacion(grupo);
+    // Registro HISTÓRICO para el reporte de cancelados del dueño (la fila
+    // original se borró para liberar el slot; la copia vive en su tabla).
+    unawaited(CancelacionesRepo.registrar(grupo, _canchaPorIdAny(r.canchaId),
+        usuario?.email ?? ''));
   }
 
   /// Avisa al DUEÑO de la cancha que el jugador canceló su reserva y el

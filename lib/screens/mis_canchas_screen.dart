@@ -19,6 +19,7 @@ import 'recargar_saldo_screen.dart';
 import 'registrar_cancha_screen.dart';
 import '../utils/moneda.dart';
 import '../widgets/ancho_lectura.dart';
+import '../widgets/candado_pro.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/vacio_airbnb.dart';
 
@@ -938,10 +939,21 @@ class _FilaCancha extends StatelessWidget {
                   : 'Bloquear horarios',
               icon: Icon(Icons.event_busy_outlined,
                   color: enRevision ? textoTenueDe(context) : cs.primary),
-              onPressed: () => enRevision
-                  ? _avisarEnRevision(context)
-                  : Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => BloquearHorariosScreen(cancha: cancha))),
+              onPressed: () async {
+                if (enRevision) {
+                  _avisarEnRevision(context);
+                  return;
+                }
+                // Candado Pichangol Pro (regla del director: el bloqueo de
+                // horarios es una función Pro, igual que en la ficha).
+                if (!await exigirPro(context,
+                    funcion: 'El bloqueo de horas')) {
+                  return;
+                }
+                if (!context.mounted) return;
+                Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => BloquearHorariosScreen(cancha: cancha)));
+              },
             ),
             Icon(Icons.chevron_right, color: textoTenueDe(context)),
           ],
