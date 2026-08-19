@@ -112,6 +112,16 @@ class _PartidosScreenState extends State<PartidosScreen> {
     if (ok) _cargar();
   }
 
+  Future<void> _ampliarCupo(PartidoAbierto p) async {
+    final nuevo = (p.cupos + 1).clamp(2, 40);
+    final ok = await PartidosRepo.cambiarCupos(p.id, nuevo);
+    if (!mounted) return;
+    _snack(ok
+        ? 'Cupo ampliado a $nuevo jugadores.'
+        : 'No se pudo ampliar el cupo.');
+    if (ok) _cargar();
+  }
+
   Future<void> _eliminar(PartidoAbierto p) async {
     final ok = await PartidosRepo.eliminar(p.id);
     if (!mounted) return;
@@ -236,6 +246,8 @@ class _PartidosScreenState extends State<PartidosScreen> {
                               onBajarse: () => _bajarse(_partidos[i]),
                               onCoordinar: () => _coordinar(_partidos[i]),
                               onEliminar: () => _eliminar(_partidos[i]),
+                              onAmpliarCupo: () =>
+                                  _ampliarCupo(_partidos[i]),
                             ),
                           ),
               ),
@@ -505,12 +517,14 @@ class _PartidoCard extends StatelessWidget {
     required this.onBajarse,
     required this.onCoordinar,
     required this.onEliminar,
+    required this.onAmpliarCupo,
   });
   final PartidoAbierto partido;
   final VoidCallback onApuntarse;
   final VoidCallback onBajarse;
   final VoidCallback onCoordinar;
   final VoidCallback onEliminar;
+  final VoidCallback onAmpliarCupo;
 
   @override
   Widget build(BuildContext context) {
@@ -593,14 +607,22 @@ class _PartidoCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                if (esCreador)
+                if (esCreador) ...[
+                  // El creador puede AMPLIAR el cupo (deja entrar a uno más;
+                  // también sincera un partido que quedó sobre-cupo).
+                  OutlinedButton(
+                    onPressed: onAmpliarCupo,
+                    style: OutlinedButton.styleFrom(foregroundColor: bosque),
+                    child: const Text('+1 cupo'),
+                  ),
+                  const SizedBox(width: 8),
                   OutlinedButton(
                     onPressed: onEliminar,
                     style: OutlinedButton.styleFrom(
                         foregroundColor: const Color(0xFFC0392B)),
                     child: const Text('Eliminar'),
-                  )
-                else
+                  ),
+                ] else
                   OutlinedButton(
                     onPressed: onBajarse,
                     child: const Text('Salir'),

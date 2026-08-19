@@ -149,6 +149,21 @@ class PartidosRepo {
     }
   }
 
+  /// El CREADOR cambia el cupo del partido (p. ej. lo amplía para dejar
+  /// entrar a uno más, o para sincerar un partido que quedó sobre-cupo por el
+  /// bug viejo). Devuelve true si se guardó.
+  static Future<bool> cambiarCupos(String partidoId, int cupos) async {
+    if (!disponible || partidoId.isEmpty) return false;
+    try {
+      await SupabaseService.client
+          .from(_tPartidos)
+          .update({'cupos': cupos.clamp(2, 40)}).eq('id', partidoId);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Un jugador se baja del partido (sale del roster/grupo).
   static Future<bool> bajarse(String partidoId, String email) async {
     if (!disponible || partidoId.isEmpty || email.trim().isEmpty) return false;
