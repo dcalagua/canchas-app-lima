@@ -660,7 +660,17 @@ void _mostrarPase(BuildContext context, Reserva reserva, Cancha? cancha) {
                 ],
               ),
               const SizedBox(height: 18),
-              _PaseFila(Icons.event_outlined, 'Día', reserva.dia),
+              // Local + FECHA REAL + hora (pedido del director): la fecha sale
+              // del ISO de la reserva ("mié 19 ago"), no de la etiqueta "Hoy"
+              // que envejece mal.
+              _PaseFila(
+                  Icons.storefront_outlined,
+                  'Local',
+                  (cancha != null && cancha.club.trim().isNotEmpty)
+                      ? cancha.club
+                      : (cancha?.nombre ?? '—')),
+              _PaseFila(Icons.event_outlined, 'Fecha',
+                  AppState.fechaBonita(reserva.fecha)),
               _PaseFila(Icons.schedule, 'Hora',
                   '${reserva.horaInicio}–${reserva.horaFin}'),
               _PaseFila(Icons.sports_soccer, 'Deporte', dep.etiqueta),

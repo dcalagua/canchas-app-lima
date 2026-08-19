@@ -1324,6 +1324,7 @@ class AppState extends ChangeNotifier {
     if (_reservasPendientesSync.isEmpty || !SupabaseService.disponible) return;
     final ids = [..._reservasPendientesSync];
     final gruposNotificados = <String>{};
+    final gruposAvisados = <String>{}; // aviso al JUGADOR: uno por bloque
     var cambios = false;
     for (final id in ids) {
       final idx = reservas.indexWhere((x) => x.id == id);
@@ -1333,12 +1334,29 @@ class AppState extends ChangeNotifier {
         continue;
       }
       final r = reservas[idx];
+      final canchaAviso = _canchaPorIdAny(r.canchaId);
+      final claveAviso = r.grupoReservaId.isNotEmpty ? r.grupoReservaId : r.id;
+      // Aviso LOCAL al jugador con el desenlace de su reserva offline (una vez
+      // por bloque): confirmada, o rechazada con el MOTIVO.
+      void avisar(String titulo, String cuerpo) {
+        if (!gruposAvisados.add(claveAviso)) return;
+        _avisarJugadorReserva(clave: claveAviso, titulo: titulo, cuerpo: cuerpo);
+      }
+
+      String lugarAviso(String horas) => canchaAviso != null
+          ? _lugarFechaHora(canchaAviso, r.fecha, horas)
+          : 'Tu reserva del ${fechaBonita(r.fecha)} · $horas';
       // Sincronizó DESPUÉS de la hora de juego → ya no vale.
       if (_slotYaPaso(r)) {
         _reservasPendientesSync.remove(id);
         _reservasNoConfirmadas.add(id);
         reservas.removeWhere((x) => x.id == id); // libera slot; el dueño no la ve
         _reembolsoSiEnEspera(id, 'Sincronizó después de la hora de juego');
+        avisar(
+            'Reserva no confirmada ❌',
+            '${lugarAviso('${r.horaInicio}–${r.horaFin}')}: la señal volvió '
+                'después de la hora de juego, así que no se confirmó. Si '
+                'pagaste, registramos tu reembolso.');
         cambios = true;
         continue;
       }
@@ -1361,12 +1379,21 @@ class AppState extends ChangeNotifier {
             _notificarDuenoReserva(cancha, grupo);
           }
         }
+        avisar(
+            'Reserva confirmada ✅',
+            '${lugarAviso('${r.horaInicio}–${r.horaFin}')}: volvió la señal y '
+                'tu reserva quedó confirmada. ¡Te esperamos!');
       } else if (res == ResultadoReserva.ocupado) {
         // Otro jugador ganó el slot mientras estabas offline.
         _reservasPendientesSync.remove(id);
         _reservasNoConfirmadas.add(id);
         reservas.removeWhere((x) => x.id == id);
         _reembolsoSiEnEspera(id, 'El horario lo tomó otro jugador');
+        avisar(
+            'Reserva no confirmada ❌',
+            '${lugarAviso('${r.horaInicio}–${r.horaFin}')}: otro jugador tomó '
+                'el horario mientras no había señal. Si pagaste, registramos '
+                'tu reembolso.');
         cambios = true;
       }
       // sinConexion / error → sigue pendiente para el próximo intento.
@@ -6886,21 +6913,44 @@ class AppState extends ChangeNotifier {
       String medioPago = '',
       int sena = 0,
       String grupoReservaId = '',
-      bool notificarDueno = true}) async {
+      bool notificarDueno = true,
+      // El multi-hora avisa UNA vez por el bloque completo (abajo), no por hora.
+      bool avisarJugador = true,
+      // Slot YA ASEGURADO en Supabase ANTES de cobrar (flujo online/seña):
+      // se reusa su id y NO se re-inserta; solo se estampan pago y detalles.
+      Reserva? asegurada}) async {
+    final pagoAdelantado = cobro == 'online' || cobro == 'sena';
+    final notaReembolso = pagoAdelantado
+        ? ' Tu pago quedó registrado para reembolso.'
+        : '';
     // Chequeo local rápido (doble toque / feedback inmediato sin conexión).
     // La agenda es COMPARTIDA entre deportes: se ocupa por (cancha, fecha, hora),
-    // sin importar el deporte (es la misma superficie física).
+    // sin importar el deporte (es la misma superficie física). Con [asegurada]
+    // se ignora la PROPIA fila (un refresco remoto pudo traerla mientras pagaba).
     final yaLocal = reservas.any((r) =>
-        r.canchaId == cancha.id && r.fecha == fecha && r.horaInicio == hora);
+        r.canchaId == cancha.id &&
+        r.fecha == fecha &&
+        r.horaInicio == hora &&
+        r.id != asegurada?.id);
     if (yaLocal) {
       _reembolsoSiPagado(cobro, cancha, fecha, hora, sena);
+      if (avisarJugador) {
+        _avisarJugadorReserva(
+          clave: '${cancha.id}_${fecha}_$hora',
+          titulo: 'Reserva no realizada ❌',
+          cuerpo:
+              '${_lugarFechaHora(cancha, fecha, hora)}: ese horario ya está '
+              'tomado. Elige otro, por favor.$notaReembolso',
+        );
+      }
       return ResultadoReserva.ocupado;
     }
 
     // Precio efectivo del slot (hora feliz de mañanas + descuento puntual).
     final precio = precioSlotEfectivo(cancha, fecha, hora);
     final reserva = Reserva(
-      id: 'jug_${DateTime.now().millisecondsSinceEpoch}_${_contadorJugador++}',
+      id: asegurada?.id ??
+          'jug_${DateTime.now().millisecondsSinceEpoch}_${_contadorJugador++}',
       canchaId: cancha.id,
       jugador: usuario?.nombre ?? 'Jugador',
       nivel: 'Intermedio 3.5',
@@ -6935,15 +6985,32 @@ class AppState extends ChangeNotifier {
 
     // Fuente de verdad anti-doble-reserva: Supabase con
     // UNIQUE(cancha_id, fecha, hora_inicio). Si otro ganó el slot → ocupado.
-    final res = await ReservasRepo.insertarSegura(reserva);
+    // Con [asegurada] el slot YA es nuestro (se insertó ANTES de cobrar): no se
+    // re-inserta, solo se estampan pago/medio/seña/extras sobre la misma fila.
+    final res = asegurada != null
+        ? ResultadoReserva.ok
+        : await ReservasRepo.insertarSegura(reserva);
+    if (asegurada != null) unawaited(ReservasRepo.actualizar(reserva));
     if (res == ResultadoReserva.ocupado) {
       // Se cobró por adelantado (online/seña) pero el slot ya lo tomó otro →
       // registra el reembolso (no nos quedamos la plata).
       _reembolsoSiPagado(cobro, cancha, fecha, hora, sena);
+      if (avisarJugador) {
+        _avisarJugadorReserva(
+          clave: '${cancha.id}_${fecha}_$hora',
+          titulo: 'Reserva no realizada ❌',
+          cuerpo: '${_lugarFechaHora(cancha, fecha, hora)}: otro jugador '
+              'acaba de ganar ese horario.$notaReembolso',
+        );
+      }
       return res;
     }
 
     // ok / sinConexion / error → se guarda local igual (fail-safe offline).
+    // Anti-duplicado: si un refresco remoto ya trajo la fila asegurada, se
+    // reemplaza por la versión final (con pago) en vez de duplicarla.
+    reservas.removeWhere((x) => x.id == reserva.id);
+    misReservas.removeWhere((x) => x.id == reserva.id);
     reservas.insert(0, reserva); // visible para el dueño en su panel
     misReservas.insert(0, reserva); // visible para el jugador en "Mis reservas"
     if (diaLabel == 'Hoy') {
@@ -6977,6 +7044,15 @@ class AppState extends ChangeNotifier {
       if (accion != null) _encolarConta(accion);
       // Reserva CONFIRMADA en el servidor → avisa al dueño (push dedicado).
       if (notificarDueno) _notificarDuenoReserva(cancha, [reserva]);
+      if (avisarJugador) {
+        _avisarJugadorReserva(
+          clave: reserva.id,
+          titulo: 'Reserva confirmada ✅',
+          cuerpo:
+              '${_lugarFechaHora(cancha, fecha, '$hora–${reserva.horaFin}')}. '
+              '¡Te esperamos!',
+        );
+      }
     } else {
       // Sin señal / error: quedó SOLO local. Va a la bandeja de salida para
       // reintentar subirla al recuperar conexión (y recién ahí avisar al dueño y
@@ -6985,6 +7061,16 @@ class AppState extends ChangeNotifier {
       if (accion != null) _contaEnEspera[reserva.id] = accion;
       unawaited(_persistirReservasSync());
       unawaited(_persistirContabilidad());
+      if (avisarJugador) {
+        _avisarJugadorReserva(
+          clave: reserva.id,
+          titulo: 'Reserva pendiente ⏳',
+          cuerpo:
+              '${_lugarFechaHora(cancha, fecha, '$hora–${reserva.horaFin}')}: '
+              'sin conexión, la guardamos y se confirmará sola al recuperar '
+              'señal. Te avisaremos.',
+        );
+      }
     }
     notifyListeners();
     _persistirDatos();
@@ -7015,22 +7101,56 @@ class AppState extends ChangeNotifier {
       {Deporte? deporte,
       List<ServicioExtra> extras = const [],
       String cobro = 'ninguno',
-      bool conSena = false}) async {
+      String medioPago = '',
+      bool conSena = false,
+      // Bloque YA ASEGURADO en Supabase antes de cobrar (flujo online/seña):
+      // se confirman esas mismas filas (id/grupo) en vez de insertar nuevas.
+      List<Reserva>? aseguradas}) async {
     if (horas.isEmpty) return ResultadoReserva.error;
     final ordenadas = [...horas]..sort();
+    // Datos del BLOQUE para los avisos al jugador (un solo aviso por bloque).
+    final fechaBloque = cancha.fechaRealSlot(fecha, ordenadas.first);
+    final rango = '${ordenadas.first}–${cancha.horaFinDe(ordenadas.last)}';
+    final claveBloque = '${cancha.id}_${fechaBloque}_${ordenadas.first}';
+    final notaReembolso = (cobro == 'online' || (conSena && cancha.senaPct > 0))
+        ? ' Tu pago quedó registrado para reembolso.'
+        : '';
     // Pre-chequeo: TODAS deben estar libres (atómico local). Si una está tomada,
     // no reservo nada (evita medias reservas). Cada slot se compara con su FECHA
-    // REAL (los de madrugada caen en el día siguiente).
-    for (final h in ordenadas) {
+    // REAL (los de madrugada caen en el día siguiente). Con bloque ASEGURADO se
+    // ignoran las PROPIAS filas (un refresco remoto pudo traerlas mientras se
+    // pagaba: los slots ya son nuestros).
+    for (final h in aseguradas == null ? ordenadas : const <String>[]) {
       final fh = cancha.fechaRealSlot(fecha, h);
       final ocupada = reservas.any((r) =>
           r.canchaId == cancha.id && r.fecha == fh && r.horaInicio == h);
-      if (ocupada) return ResultadoReserva.ocupado;
+      if (ocupada) {
+        // Si ya se cobró por adelantado (online/seña), registra el reembolso de
+        // CADA hora del bloque (no nos quedamos la plata del jugador).
+        for (final h2 in ordenadas) {
+          final fh2 = cancha.fechaRealSlot(fecha, h2);
+          final senaSlot = conSena && cancha.senaPct > 0
+              ? (precioSlotEfectivo(cancha, fh2, h2) * cancha.senaPct / 100)
+                  .round()
+              : 0;
+          _reembolsoSiPagado(cobro, cancha, fh2, h2, senaSlot);
+        }
+        _avisarJugadorReserva(
+          clave: claveBloque,
+          titulo: 'Reserva no realizada ❌',
+          cuerpo: '${_lugarFechaHora(cancha, fechaBloque, rango)}: el horario '
+              'ya está tomado. Elige otras horas, por favor.$notaReembolso',
+        );
+        return ResultadoReserva.ocupado;
+      }
     }
     // Grupo solo si son 2+ horas (una sola hora se guarda como reserva suelta).
-    final grupo = ordenadas.length > 1
-        ? 'grp_${DateTime.now().millisecondsSinceEpoch}'
-        : '';
+    // Con bloque asegurado se REUSA el grupo de las filas ya insertadas.
+    final grupo = aseguradas != null && aseguradas.isNotEmpty
+        ? aseguradas.first.grupoReservaId
+        : ordenadas.length > 1
+            ? 'grp_${DateTime.now().millisecondsSinceEpoch}'
+            : '';
     var peor = ResultadoReserva.ok;
     for (var i = 0; i < ordenadas.length; i++) {
       final h = ordenadas[i];
@@ -7044,13 +7164,27 @@ class AppState extends ChangeNotifier {
         // Los servicios extra (árbitro/pelotero…) se cobran una sola vez.
         extras: i == 0 ? extras : const [],
         cobro: cobro,
+        medioPago: medioPago,
         sena: senaSlot,
         grupoReservaId: grupo,
         // El aviso al dueño se manda UNA sola vez para todo el bloque (abajo),
         // no una vez por hora.
         notificarDueno: false,
+        // El aviso al JUGADOR también va una sola vez por el bloque (abajo).
+        avisarJugador: false,
+        asegurada: (aseguradas ?? const [])
+            .cast<Reserva?>()
+            .firstWhere((r) => r!.horaInicio == h, orElse: () => null),
       );
-      if (res == ResultadoReserva.ocupado) return ResultadoReserva.ocupado;
+      if (res == ResultadoReserva.ocupado) {
+        _avisarJugadorReserva(
+          clave: claveBloque,
+          titulo: 'Reserva no realizada ❌',
+          cuerpo: '${_lugarFechaHora(cancha, fechaBloque, rango)}: otro '
+              'jugador acaba de ganar ese horario.$notaReembolso',
+        );
+        return ResultadoReserva.ocupado;
+      }
       if (res != ResultadoReserva.ok) peor = res; // sinConexion / error
     }
     // Todo el bloque quedó confirmado en el servidor → un solo aviso al dueño con
@@ -7065,8 +7199,107 @@ class AppState extends ChangeNotifier {
                   r.fecha == cancha.fechaRealSlot(fecha, r.horaInicio))
               .toList();
       if (delGrupo.isNotEmpty) _notificarDuenoReserva(cancha, delGrupo);
+      _avisarJugadorReserva(
+        clave: claveBloque,
+        titulo: 'Reserva confirmada ✅',
+        cuerpo:
+            '${_lugarFechaHora(cancha, fechaBloque, rango)}. ¡Te esperamos!',
+      );
+    } else {
+      _avisarJugadorReserva(
+        clave: claveBloque,
+        titulo: 'Reserva pendiente ⏳',
+        cuerpo: '${_lugarFechaHora(cancha, fechaBloque, rango)}: sin conexión, '
+            'la guardamos y se confirmará sola al recuperar señal. Te '
+            'avisaremos.',
+      );
     }
     return peor;
+  }
+
+  /// FASE 1 del pago online/seña — ASEGURA el bloque ANTES de cobrar (pedido
+  /// del director tras la prueba con 3 usuarios a la vez: al que pierde la
+  /// carrera se le decía "pago aprobado" y recién después "ocupado"). El
+  /// UNIQUE(cancha_id, fecha, hora_inicio) de Supabase decide al GANADOR aquí,
+  /// ANTES de pedir la tarjeta: los demás ven "ocupado" sin haber pagado.
+  /// Inserta las filas SIN pago (pagado=false, sin contabilidad ni avisos);
+  /// luego: pago OK → confirmar con `agregarReservasJugadorMulti(aseguradas:)`;
+  /// pago falla/cancela → `liberarBloqueAsegurado` (borra las filas y el
+  /// horario queda libre). Devuelve las reservas aseguradas, u `ocupado` /
+  /// `sinConexion` / `error` sin haber tocado la plata del jugador.
+  Future<(ResultadoReserva, List<Reserva>)> asegurarBloqueJugador(
+      Cancha cancha, String fecha, String diaLabel, List<String> horas,
+      {Deporte? deporte}) async {
+    if (horas.isEmpty) return (ResultadoReserva.error, const <Reserva>[]);
+    final ordenadas = [...horas]..sort();
+    // Chequeo local rápido (lo ya visible en este equipo).
+    for (final h in ordenadas) {
+      final fh = cancha.fechaRealSlot(fecha, h);
+      final ocupada = reservas.any((r) =>
+          r.canchaId == cancha.id && r.fecha == fh && r.horaInicio == h);
+      if (ocupada) return (ResultadoReserva.ocupado, const <Reserva>[]);
+    }
+    final grupo = ordenadas.length > 1
+        ? 'grp_${DateTime.now().millisecondsSinceEpoch}'
+        : '';
+    final tomadas = <Reserva>[];
+    for (final h in ordenadas) {
+      final fh = cancha.fechaRealSlot(fecha, h);
+      final r = Reserva(
+        id: 'jug_${DateTime.now().millisecondsSinceEpoch}_${_contadorJugador++}',
+        canchaId: cancha.id,
+        jugador: usuario?.nombre ?? 'Jugador',
+        nivel: 'Intermedio 3.5',
+        fecha: fh,
+        dia: diaLabel,
+        horaInicio: h,
+        horaFin: cancha.horaFinDe(h),
+        estado: EstadoReserva.confirmada,
+        traidaPorApp: true,
+        precio: precioSlotEfectivo(cancha, fh, h),
+        sena: 0, // la seña real se estampa al confirmar (tras cobrar)
+        pagado: false, // el pago se estampa al confirmar (tras cobrar)
+        usuario: usuario?.email ?? '',
+        deporte: (deporte ?? cancha.deporte).name,
+        moneda: cancha.monedaSimbolo,
+        grupoReservaId: grupo,
+      );
+      final res = await ReservasRepo.insertarSegura(r);
+      if (res != ResultadoReserva.ok) {
+        // No se pudo asegurar TODO el bloque → libera lo que sí se tomó y
+        // devuelve el motivo SIN cobrar nada.
+        await liberarBloqueAsegurado(tomadas);
+        return (res, const <Reserva>[]);
+      }
+      tomadas.add(r);
+    }
+    return (ResultadoReserva.ok, tomadas);
+  }
+
+  /// Libera un bloque asegurado cuyo pago NO se concretó (cancelado/rechazado):
+  /// borra las filas de Supabase para que el horario quede libre al instante.
+  Future<void> liberarBloqueAsegurado(List<Reserva> tomadas) async {
+    for (final r in tomadas) {
+      try {
+        await ReservasRepo.eliminar(r.id);
+      } catch (_) {} // best-effort: sin red, la fila igual no está pagada
+    }
+  }
+
+  /// Aviso local al jugador: el PAGO no pasó (rechazado por la pasarela) y por
+  /// eso la reserva no se realizó. Incluye el motivo y confirma que el horario
+  /// quedó liberado.
+  void avisarPagoRechazado(
+      {required Cancha cancha,
+      required String fecha,
+      required String horas,
+      required String motivo}) {
+    _avisarJugadorReserva(
+      clave: 'pago_${cancha.id}_${fecha}_$horas',
+      titulo: 'Pago no procesado ❌',
+      cuerpo: '${_lugarFechaHora(cancha, fecha, horas)}: no se pudo cobrar — '
+          '$motivo La reserva no se realizó y el horario quedó libre.',
+    );
   }
 
   /// RESERVA MANUAL del dueño: registra la reserva de un cliente que llamó por
@@ -7158,6 +7391,37 @@ class AppState extends ChangeNotifier {
         });
       } catch (_) {}
     }();
+  }
+
+  // ── Aviso LOCAL al JUGADOR con el resultado de SU reserva ─────────────────
+  /// Pedido del director: al jugador SIEMPRE le llega una notificación con el
+  /// resultado de su reserva — confirmada ✅ o rechazada ❌ con el MOTIVO (y
+  /// pendiente ⏳ si quedó offline). Es notificación LOCAL (no FCM): llega
+  /// incluso sin señal, que es justo cuando más importa.
+  void _avisarJugadorReserva(
+      {required String clave, required String titulo, required String cuerpo}) {
+    unawaited(RecordatorioService.mostrarAhora(
+        clave: clave, titulo: titulo, cuerpo: cuerpo));
+  }
+
+  /// "mié 19 ago" para los avisos (fecha REAL de la reserva, no "Hoy").
+  static String fechaBonita(String iso) {
+    final d = DateTime.tryParse(iso);
+    if (d == null) return iso;
+    const dias = ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'];
+    const meses = [
+      'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+      'jul', 'ago', 'set', 'oct', 'nov', 'dic'
+    ];
+    return '${dias[d.weekday - 1]} ${d.day} ${meses[d.month - 1]}';
+  }
+
+  /// "Local · mié 19 ago · 18:00–19:00" — el mismo formato en todos los avisos.
+  static String _lugarFechaHora(Cancha c, String fecha, String horas) {
+    final local = c.club.trim().isNotEmpty ? c.club.trim() : c.nombre;
+    final lugar =
+        (local == c.nombre.trim()) ? c.nombre : '$local · ${c.nombre}';
+    return '$lugar · ${fechaBonita(fecha)} · $horas';
   }
 
   /// Notifica al CLIENTE (usuario registrado del app) que el dueño le creó una

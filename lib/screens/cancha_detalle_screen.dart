@@ -138,9 +138,39 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
 
     final messenger = ScaffoldMessenger.of(context);
     final nav = Navigator.of(context);
+    // ── FASE 1 (si hay cobro por adelantado): ASEGURA el horario ANTES de
+    // cobrar (el UNIQUE de Supabase decide la carrera). Si otro jugador va por
+    // la misma hora, el que pierde ve "ocupado" SIN haber puesto su tarjeta.
+    // Si el pago luego falla o se cancela, el horario se LIBERA al instante.
+    Reserva? asegurada;
+    if (exigeSena || !efectivo) {
+      final (resHold, tomadas) = await appState.asegurarBloqueJugador(
+          cancha, _fechaIso, _dia, [hora]);
+      if (!mounted) return;
+      if (resHold == ResultadoReserva.ocupado) {
+        setState(() => _hora = null);
+        messenger.showSnackBar(const SnackBar(
+          backgroundColor: Colors.redAccent,
+          content: Text(
+              '⛔ Esa hora ya está ocupada: otro jugador la acaba de reservar. '
+              'Elige otro horario, por favor. No se te cobró nada.'),
+        ));
+        return;
+      }
+      if (resHold != ResultadoReserva.ok) {
+        messenger.showSnackBar(const SnackBar(
+          backgroundColor: Color(0xFFB4471F),
+          content: Text(
+              '⚠️ Sin conexión: para pagar online necesitas señal. Puedes '
+              'elegir pagar en la cancha mientras tanto.'),
+        ));
+        return;
+      }
+      asegurada = tomadas.first;
+    }
     // Con seña → cobra la seña; sin saldo del dueño → el jugador paga TODO online
     // ANTES de reservar (ahí queda la comisión de PCG). Si cancela o falla el
-    // pago, no se reserva.
+    // pago, se libera el horario asegurado y no se reserva.
     if (exigeSena) {
       final pagado = await PagoTarjeta.cobrar(
         context,
@@ -149,7 +179,17 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
         email: appState.usuario?.email ?? '',
         moneda: cancha.monedaSimbolo,
       );
-      if (!pagado || !mounted) return;
+      if (!pagado) {
+        await appState.liberarBloqueAsegurado([asegurada!]);
+        if (PagoTarjeta.ultimoError.isNotEmpty) {
+          appState.avisarPagoRechazado(
+              cancha: cancha,
+              fecha: cancha.fechaRealSlot(_fechaIso, hora),
+              horas: hora,
+              motivo: PagoTarjeta.ultimoError);
+        }
+        return;
+      }
     } else if (!efectivo) {
       final pagado = await PagoTarjeta.cobrar(
         context,
@@ -158,7 +198,17 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
         email: appState.usuario?.email ?? '',
         moneda: cancha.monedaSimbolo,
       );
-      if (!pagado || !mounted) return;
+      if (!pagado) {
+        await appState.liberarBloqueAsegurado([asegurada!]);
+        if (PagoTarjeta.ultimoError.isNotEmpty) {
+          appState.avisarPagoRechazado(
+              cancha: cancha,
+              fecha: cancha.fechaRealSlot(_fechaIso, hora),
+              horas: hora,
+              motivo: PagoTarjeta.ultimoError);
+        }
+        return;
+      }
     }
     // Trazabilidad del medio de pago: efectivo, seña (adelanto), o el medio real
     // con que se cobró online (yape/tarjeta lo expone PagoTarjeta.ultimoMetodo).
@@ -176,7 +226,8 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
         // dueño).
         cobro: exigeSena ? 'sena' : (efectivo ? 'efectivo' : 'online'),
         medioPago: medioPago,
-        sena: exigeSena ? senaMonto : 0);
+        sena: exigeSena ? senaMonto : 0,
+        asegurada: asegurada);
     if (!mounted) return;
 
     if (res == ResultadoReserva.ocupado) {

@@ -601,8 +601,45 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     final etiqueta = slots.length > 1
         ? '${slots.first}–${_cancha.horaFinDe(slots.last)}'
         : slots.first;
+    final pagoOnline = metodo == 'online';
+    final messenger = ScaffoldMessenger.of(context);
+    final nav = Navigator.of(context);
+    // ── FASE 1 (solo si hay COBRO por adelantado): ASEGURA el horario ANTES de
+    // cobrar. El UNIQUE de Supabase decide al ganador AQUÍ: si 3 jugadores van
+    // por la misma hora a la vez, 2 ven "ocupado" SIN haber puesto su tarjeta
+    // (antes se les cobraba y recién después se enteraban). Si el pago luego
+    // falla o se cancela, el bloque se LIBERA al instante.
+    List<Reserva>? aseguradas;
+    if (pagoOnline || esSena) {
+      final (resHold, tomadas) = await appState.asegurarBloqueJugador(
+          _cancha, _fechaIso, _dia, slots,
+          deporte: _deporteEfectivo);
+      if (!mounted) return;
+      if (resHold == ResultadoReserva.ocupado) {
+        setState(() => _slots.clear()); // libera selección; la grilla refresca
+        messenger.showSnackBar(const SnackBar(
+          backgroundColor: Colors.redAccent,
+          content: Text(
+              '⛔ Esa hora ya está ocupada: otro jugador la acaba de reservar. '
+              'Elige otro horario, por favor. No se te cobró nada.'),
+        ));
+        return;
+      }
+      if (resHold != ResultadoReserva.ok) {
+        // Sin señal no se puede garantizar el slot NI cobrar online.
+        messenger.showSnackBar(const SnackBar(
+          backgroundColor: Color(0xFFB4471F),
+          content: Text(
+              '⚠️ Sin conexión: para pagar online necesitas señal. Puedes '
+              'elegir "Pagar en la cancha" mientras tanto.'),
+        ));
+        return;
+      }
+      aseguradas = tomadas;
+    }
     if (metodo == 'online') {
-      // Pago con tarjeta/Yape (Culqi/Libélula). Si cancela o falla, no reserva.
+      // Pago con tarjeta/Yape (Culqi/Libélula). Si cancela o falla, se libera
+      // el horario asegurado y no se reserva.
       final pagado = await PagoTarjeta.cobrar(
         context,
         monto: total - descuentoPuntos,
@@ -611,7 +648,17 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         email: appState.usuario?.email ?? '',
         moneda: mon,
       );
-      if (!pagado || !mounted) return;
+      if (!pagado) {
+        await appState.liberarBloqueAsegurado(aseguradas!);
+        if (PagoTarjeta.ultimoError.isNotEmpty) {
+          appState.avisarPagoRechazado(
+              cancha: _cancha,
+              fecha: _cancha.fechaRealSlot(_fechaIso, slots.first),
+              horas: etiqueta,
+              motivo: PagoTarjeta.ultimoError);
+        }
+        return;
+      }
     } else if (esSena) {
       // El jugador ADELANTA la seña (del total). El resto lo paga en la cancha.
       final pagado = await PagoTarjeta.cobrar(
@@ -621,18 +668,35 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         email: appState.usuario?.email ?? '',
         moneda: mon,
       );
-      if (!pagado || !mounted) return;
+      if (!pagado) {
+        await appState.liberarBloqueAsegurado(aseguradas!);
+        if (PagoTarjeta.ultimoError.isNotEmpty) {
+          appState.avisarPagoRechazado(
+              cancha: _cancha,
+              fecha: _cancha.fechaRealSlot(_fechaIso, slots.first),
+              horas: etiqueta,
+              motivo: PagoTarjeta.ultimoError);
+        }
+        return;
+      }
     }
     // 'cancha' → sin pasarela: se reserva y el dueño cobra en efectivo.
-    final pagoOnline = metodo == 'online';
-    final messenger = ScaffoldMessenger.of(context);
-    final nav = Navigator.of(context);
-    // Crea una Reserva por hora (mismo grupo). Verifica que TODAS estén libres.
+    // Crea una Reserva por hora (mismo grupo). Con bloque asegurado, CONFIRMA
+    // esas mismas filas (estampa pago/medio/seña); sin asegurar (efectivo/bono)
+    // verifica que TODAS estén libres como siempre.
     final res = await appState.agregarReservasJugadorMulti(
         _cancha, _fechaIso, _dia, slots,
         deporte: _deporteEfectivo, extras: extras,
         cobro: metodo == 'cancha' ? 'efectivo' : metodo,
-        conSena: esSena);
+        medioPago: esSena
+            ? 'sena'
+            : pagoOnline
+                ? (PagoTarjeta.ultimoMetodo.isNotEmpty
+                    ? PagoTarjeta.ultimoMetodo
+                    : 'online')
+                : (metodo == 'bono' ? 'bono' : 'efectivo'),
+        conSena: esSena,
+        aseguradas: aseguradas);
     if (!mounted) return;
     if (res == ResultadoReserva.ocupado) {
       setState(() => _slots.clear()); // libera selección; la grilla se refresca

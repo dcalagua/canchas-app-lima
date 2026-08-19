@@ -69,6 +69,54 @@ class RecordatorioService {
   /// re-programar la misma reserva NO duplique el aviso).
   static int _notifId(String reservaId) => reservaId.hashCode & 0x7fffffff;
 
+  static const String _canalEstadoId = 'estado_reservas';
+
+  /// Notificación INMEDIATA en el propio teléfono (canal "Estado de tus
+  /// reservas"). Se usa para avisarle al JUGADOR el resultado de su reserva
+  /// (confirmada / rechazada con motivo / pendiente): al ser LOCAL llega
+  /// incluso sin señal — justo cuando más importa (reserva offline). [clave]
+  /// da un id estable: re-avisar por la misma reserva reemplaza, no duplica.
+  static Future<void> mostrarAhora({
+    required String clave,
+    required String titulo,
+    required String cuerpo,
+  }) async {
+    await init();
+    if (!_listo) return;
+    try {
+      await _plugin
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(const AndroidNotificationChannel(
+            _canalEstadoId,
+            'Estado de tus reservas',
+            description:
+                'Confirmación o rechazo de tus reservas (con el motivo).',
+            importance: Importance.high,
+          ));
+      await _plugin.show(
+        _notifId('estado_$clave'),
+        titulo,
+        cuerpo,
+        NotificationDetails(
+          android: AndroidNotificationDetails(
+            _canalEstadoId,
+            'Estado de tus reservas',
+            channelDescription:
+                'Confirmación o rechazo de tus reservas (con el motivo).',
+            importance: Importance.high,
+            priority: Priority.high,
+            icon: '@mipmap/ic_launcher',
+            // Texto expandible: el motivo completo se lee sin recortes.
+            styleInformation: BigTextStyleInformation(cuerpo),
+          ),
+        ),
+      );
+    } catch (_) {
+      // best-effort
+    }
+  }
+
   /// Programa (o re-programa) el recordatorio de cobro en efectivo para el
   /// instante [cuando] − [minutosAntes]. Si ya pasó ese instante, no agenda.
   static Future<void> programarCobroEfectivo({

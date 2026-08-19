@@ -634,7 +634,10 @@ class _ReservaCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 4),
+          // Local · cancha · fecha · hora (pedido del director: en el detalle
+          // debe verse también el LOCAL, no solo la cancha).
           Text(
+            '${cancha.club.trim().isNotEmpty && cancha.club.trim() != cancha.nombre.trim() ? '${cancha.club} · ' : ''}'
             '${cancha.nombre} · $fechaLabel · ${reserva.horaInicio}–${reserva.horaFin}',
             style: t.bodySmall?.copyWith(color: textoTenueDe(context)),
           ),

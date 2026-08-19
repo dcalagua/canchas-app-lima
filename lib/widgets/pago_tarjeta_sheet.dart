@@ -26,6 +26,11 @@ class PagoTarjeta {
   /// reserva para guardar la trazabilidad del pago. Se resetea en cada cobro.
   static String ultimoMetodo = '';
 
+  /// Motivo del último RECHAZO de la pasarela ('' si no hubo rechazo: pago OK
+  /// o el usuario canceló sin intentar). Lo lee el flujo de reserva para
+  /// notificar "pago no procesado" con el motivo real.
+  static String ultimoError = '';
+
   static Future<bool> cobrar(
     BuildContext context, {
     required num monto, // monto EN UNIDAD MAYOR (S//Bs/$), admite 2 decimales
@@ -36,6 +41,7 @@ class PagoTarjeta {
     ValueChanged<String>? onOperacion, // recibe el N.º de operación (charge_id)
   }) async {
     ultimoMetodo = ''; // se setea a 'yape'/'tarjeta' si el cobro por Culqi sale OK
+    ultimoError = ''; // se setea con el motivo si la pasarela RECHAZA el cobro
     // BOLIVIA: la pasarela es Libélula (no Culqi). Se detecta por el país actual
     // (GPS/selección). El pago se hace en la página hospedada de Libélula dentro
     // de un WebView (QR · tarjeta · Tigo Money).
@@ -195,13 +201,19 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
         final t = await PagosService.tokenizarYape(
             publicKey: widget.pk, celular: cel, otp: otp, montoCentimos: centimos);
         if (t['ok'] != true) {
-          return {'ok': false, 'error': t['error']?.toString() ?? 'No se pudo validar el Yape.'};
+          PagoTarjeta.ultimoError =
+              t['error']?.toString() ?? 'No se pudo validar el Yape.';
+          return {'ok': false, 'error': PagoTarjeta.ultimoError};
         }
         final res = await PagosService.cobrar(
             token: t['token'].toString(), email: widget.email,
             montoSoles: widget.monto.toDouble(), concepto: widget.concepto);
         if (res['ok'] == true && res['chargeId'] != null) {
           widget.onOperacion?.call(res['chargeId'].toString());
+        }
+        if (res['ok'] != true) {
+          PagoTarjeta.ultimoError =
+              res['error']?.toString() ?? 'No se pudo cobrar.';
         }
         return res['ok'] == true
             ? {'ok': true, 'detalle': 'Pago de $_mon ${montoTxt(widget.monto)} aprobado.'}
@@ -239,7 +251,9 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
             publicKey: widget.pk, numero: numero, cvv: _cvv.text.trim(),
             mesExp: mes, anioExp: anio, email: widget.email);
         if (t['ok'] != true) {
-          return {'ok': false, 'error': t['error']?.toString() ?? 'Tarjeta rechazada.'};
+          PagoTarjeta.ultimoError =
+              t['error']?.toString() ?? 'Tarjeta rechazada.';
+          return {'ok': false, 'error': PagoTarjeta.ultimoError};
         }
         tk = t['token'].toString();
       }
@@ -251,6 +265,10 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
         if (res['chargeId'] != null) {
           widget.onOperacion?.call(res['chargeId'].toString());
         }
+      }
+      if (res['ok'] != true) {
+        PagoTarjeta.ultimoError =
+            res['error']?.toString() ?? 'No se pudo cobrar.';
       }
       return res['ok'] == true
           ? {'ok': true, 'detalle': 'Pago de $_mon ${montoTxt(widget.monto)} aprobado.'}
