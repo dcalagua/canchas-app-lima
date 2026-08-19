@@ -11,6 +11,7 @@ import '../models/partido.dart';
 import '../services/convocatorias_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/banner_pro.dart';
 import '../widgets/cargando_pichangol.dart';
 import 'chat_screen.dart';
 import 'convocatorias_screen.dart';
@@ -211,6 +212,11 @@ class _PartidosScreenState extends State<PartidosScreen> {
               ),
             ),
             const _CircuitoPreview(),
+            // Hazte Pro visible en Partidos (solo si NO es Pro): el circuito y
+            // los retos son donde la insignia PRO más luce.
+            const BannerPro(
+                margen: EdgeInsets.fromLTRB(16, 6, 16, 0),
+                mensaje: 'Luce la insignia PRO en el ranking y los retos.'),
             Expanded(
               child: RefreshIndicator(
                 onRefresh: _cargar,

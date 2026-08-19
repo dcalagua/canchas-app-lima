@@ -19,6 +19,7 @@ import 'recargar_saldo_screen.dart';
 import 'registrar_cancha_screen.dart';
 import '../utils/moneda.dart';
 import '../widgets/ancho_lectura.dart';
+import '../widgets/banner_pro.dart';
 import '../widgets/candado_pro.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/vacio_airbnb.dart';
@@ -102,6 +103,12 @@ class _MisCanchasScreenState extends State<MisCanchasScreen> {
                       : ListView(
                           padding: const EdgeInsets.fromLTRB(18, 16, 18, 90),
                           children: [
+                            // Hazte Pro visible en el panel (solo si NO es Pro).
+                            const BannerPro(
+                                margen: EdgeInsets.only(bottom: 14),
+                                mensaje:
+                                    'Reserva manual, bloqueo de horas y '
+                                    'campeonatos para tu negocio.'),
                             // ARRIBA lo del día: la caja de hoy y, enseguida, tus
                             // canchas (lo de trabajo). El resumen del mes y el
                             // "destacar" bajan a una sección plegable para no

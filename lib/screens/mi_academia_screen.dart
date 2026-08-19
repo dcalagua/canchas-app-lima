@@ -10,6 +10,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/ancho_lectura.dart';
+import '../widgets/banner_pro.dart';
 import '../widgets/logo_academia.dart';
 import '../widgets/vacio_airbnb.dart';
 import 'cobros_screen.dart';
@@ -63,6 +64,11 @@ class MiAcademiaScreen extends StatelessWidget {
               padding: EdgeInsets.zero,
               children: [
               _Header(academia: ac),
+              // Hazte Pro visible para el profe (solo si NO es Pro).
+              const BannerPro(
+                  margen: EdgeInsets.fromLTRB(18, 14, 18, 0),
+                  mensaje: 'Campeonatos, reserva manual y más herramientas '
+                      'para tu academia.'),
               // ARRIBA lo del día a día del profe: la PLATA (por cobrar/vencido)
               // y sus ALUMNOS. El código/nivel/ranking bajan a una sección
               // plegable para no robar visibilidad (antes tapaban lo importante).

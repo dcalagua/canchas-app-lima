@@ -12,6 +12,7 @@ import 'mis_bonos_screen.dart';
 import 'mis_pagos_screen.dart';
 import 'mis_reservas_screen.dart';
 import 'marketplace_screen.dart';
+import '../widgets/banner_pro.dart';
 import 'ajustes_screen.dart';
 import 'anfitrion_screen.dart';
 import 'login_google_sheet.dart';
@@ -206,6 +207,12 @@ class PerfilScreen extends StatelessWidget {
                     28, 12 + MediaQuery.of(context).padding.top, 28, 110),
                 children: [
                   _tituloFila(context, u),
+                  // Hazte Pro bien visible (solo si NO es Pro).
+                  const BannerPro(
+                      margen: EdgeInsets.only(top: 14),
+                      mensaje:
+                          'Insignia PRO en el ranking, retos y beneficios '
+                          'exclusivos en todo Pichangol.'),
                   const SizedBox(height: 16),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -234,6 +241,11 @@ class PerfilScreen extends StatelessWidget {
                   20, 12 + MediaQuery.of(context).padding.top, 20, 110),
               children: [
                 _tituloFila(context, u),
+                // Hazte Pro bien visible (solo si NO es Pro).
+                const BannerPro(
+                    margen: EdgeInsets.only(top: 14),
+                    mensaje: 'Insignia PRO en el ranking, retos y beneficios '
+                        'exclusivos en todo Pichangol.'),
                 const SizedBox(height: 16),
                 ..._colIzquierda(context, u),
                 ..._colDerecha(context, u),
