@@ -4973,6 +4973,8 @@ class AppState extends ChangeNotifier {
         duracionSlotMin: r.duracionSlotMin,
         senaPct: r.senaPct,
         descuentoValle: r.descuentoValle,
+        valleDesde: r.valleDesde,
+        valleHasta: r.valleHasta,
         amenidades: r.amenidades,
         superficie: r.superficie,
       );
@@ -5265,6 +5267,8 @@ class AppState extends ChangeNotifier {
             horaCierre: c.horaCierre,
             senaPct: c.senaPct,
             descuentoValle: c.descuentoValle,
+            valleDesde: c.valleDesde,
+            valleHasta: c.valleHasta,
           );
           lista[k] = f;
           CanchasRepo.actualizar(f); // propaga a la nube (best-effort)
@@ -7381,15 +7385,30 @@ class AppState extends ChangeNotifier {
     if (dest.isEmpty || !SupabaseService.disponible) return;
     if (dest == (usuario?.email ?? '').trim().toLowerCase()) return;
     () async {
+      // Canal 1: invocación DIRECTA de la Edge Function (entrega inmediata).
+      var entregado = false;
       try {
-        await SupabaseService.client.functions.invoke('push-aviso', body: {
+        final res =
+            await SupabaseService.client.functions.invoke('push-aviso', body: {
           'email': dest,
           'titulo': titulo,
           'cuerpo': cuerpo,
           'tipo': tipo,
           if (data.isNotEmpty) 'data': data,
         });
+        // La función responde {enviados, total} o {skip}. Cualquiera de las
+        // dos cuenta como "el canal funcionó" (skip = destinatario sin token:
+        // reintentar por tabla tampoco entregaría).
+        final d = res.data;
+        entregado = d is Map && (d.containsKey('enviados') || d.containsKey('skip'));
       } catch (_) {}
+      if (!entregado) {
+        // Canal 2 (respaldo): fila en `pichangol_avisos` → Database Webhook →
+        // la misma Edge Function. Es el canal probado de retos/lista de espera;
+        // cubre el caso en que la invocación directa falle (p. ej. JWT/red).
+        await AvisosService.enviar(
+            email: dest, titulo: titulo, cuerpo: cuerpo, tipo: tipo, data: data);
+      }
     }();
   }
 
@@ -7427,12 +7446,12 @@ class AppState extends ChangeNotifier {
   /// Notifica al CLIENTE (usuario registrado del app) que el dueño le creó una
   /// reserva manual.
   void _avisarReservaManual(Reserva r, Cancha cancha) {
-    final lugar = cancha.club.isNotEmpty ? cancha.club : cancha.nombre;
     _pushAviso(
       email: r.usuario,
       titulo: 'Reserva confirmada 🎾',
-      cuerpo: '$lugar te reservó ${cancha.nombre} · ${r.dia} '
-          '${r.horaInicio}–${r.horaFin}. ¡Te esperamos!',
+      cuerpo:
+          '${_lugarFechaHora(cancha, r.fecha, '${r.horaInicio}–${r.horaFin}')}. '
+          'El local te registró esta reserva. ¡Te esperamos!',
       tipo: 'reserva_manual',
       data: {'reserva_id': r.id, 'cancha_id': r.canchaId},
     );

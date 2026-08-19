@@ -216,6 +216,8 @@ class CanchasRepo {
           'servicios_extra':
               c.serviciosExtra.map((s) => s.toJson()).toList(),
         if (conAmenidades) 'descuento_valle': c.descuentoValle,
+        if (conAmenidades) 'valle_desde': c.valleDesde,
+        if (conAmenidades) 'valle_hasta': c.valleHasta,
         if (conAmenidades) 'sena_pct': c.senaPct,
         if (conAmenidades) 'barrio': c.barrio,
       };
@@ -257,6 +259,8 @@ class CanchasRepo {
         moneda: (r['moneda'] ?? '') as String,
         serviciosExtra: ServicioExtra.listaDe(r['servicios_extra']),
         descuentoValle: ((r['descuento_valle'] ?? 0) as num).toInt(),
+        valleDesde: (r['valle_desde'] ?? '') as String,
+        valleHasta: (r['valle_hasta'] ?? '') as String,
         senaPct: ((r['sena_pct'] ?? 0) as num).toInt(),
       );
 

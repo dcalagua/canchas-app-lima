@@ -42,8 +42,23 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
       TextEditingController(text: widget.cancha.direccion ?? '');
   late final TextEditingController _precio =
       TextEditingController(text: widget.cancha.precioHora.toStringAsFixed(2));
-  // "Hora feliz": descuento (%) en horas valle (mañanas). 0 = sin descuento.
+  // "Hora feliz": descuento (%) en horas valle. 0 = sin descuento. La VENTANA
+  // (desde/hasta) la configura el dueño; default histórico = hasta mediodía.
   late int _descuentoValle = widget.cancha.descuentoValle;
+  late String _valleDesde = _horaEnPunto(
+      widget.cancha.valleDesde.trim().isNotEmpty
+          ? widget.cancha.valleDesde
+          : widget.cancha.horaApertura);
+  late String _valleHasta = _horaEnPunto(
+      widget.cancha.valleHasta.trim().isNotEmpty
+          ? widget.cancha.valleHasta
+          : '12:00');
+
+  /// Ajusta "HH:MM" a la hora en punto (el selector ofrece horas exactas).
+  static String _horaEnPunto(String h) {
+    final n = int.tryParse(h.trim().split(':').first) ?? 0;
+    return '${n.clamp(0, 23).toString().padLeft(2, '0')}:00';
+  }
   // Seña anti no-show: % del precio que se cobra por adelantado. 0 = sin seña.
   late int _senaPct = widget.cancha.senaPct;
   final TextEditingController _ruc =
@@ -314,6 +329,8 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
           ServicioExtra(clave: e.key, precio: e.value),
       ],
       descuentoValle: _descuentoValle,
+      valleDesde: _valleDesde,
+      valleHasta: _valleHasta,
       senaPct: _senaPct,
     );
     appState.actualizarCancha(actualizada);
@@ -622,8 +639,9 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
               style: TextStyle(fontWeight: FontWeight.w700)),
           const SizedBox(height: 2),
           Text(
-              'Aplica un descuento a las mañanas (antes de mediodía), que suelen '
-              'estar vacías. Llenas más horas y el jugador paga menos. 🔥',
+              'Aplica un descuento a tus horas vacías para llenarlas. Tú eliges '
+              'el horario en que rige. Llenas más horas y el jugador paga '
+              'menos. 🔥',
               style: TextStyle(color: textoTenue, fontSize: 12)),
           const SizedBox(height: 10),
           Wrap(
@@ -638,14 +656,63 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
             ],
           ),
           if (_descuentoValle > 0) ...[
+            const SizedBox(height: 12),
+            const Text('¿En qué horario rige?',
+                style:
+                    TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    value: _valleDesde,
+                    isDense: true,
+                    decoration: const InputDecoration(
+                        labelText: 'Desde', isDense: true),
+                    items: [
+                      for (var h = 0; h < 24; h++)
+                        DropdownMenuItem(
+                            value: '${h.toString().padLeft(2, '0')}:00',
+                            child:
+                                Text('${h.toString().padLeft(2, '0')}:00')),
+                    ],
+                    onChanged: (v) =>
+                        setState(() => _valleDesde = v ?? _valleDesde),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    value: _valleHasta,
+                    isDense: true,
+                    decoration: const InputDecoration(
+                        labelText: 'Hasta', isDense: true),
+                    items: [
+                      for (var h = 0; h < 24; h++)
+                        DropdownMenuItem(
+                            value: '${h.toString().padLeft(2, '0')}:00',
+                            child:
+                                Text('${h.toString().padLeft(2, '0')}:00')),
+                    ],
+                    onChanged: (v) =>
+                        setState(() => _valleHasta = v ?? _valleHasta),
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 6),
             Builder(builder: (context) {
               final base = double.tryParse(
                       _precio.text.trim().replaceAll(',', '.')) ??
                   widget.cancha.precioHora;
               final conDesc = base * (100 - _descuentoValle) / 100;
+              // "Hasta" menor o igual que "Desde" = la ventana cruza medianoche
+              // (cancha nocturna): se avisa para que no parezca un error.
+              final cruza = _valleHasta.compareTo(_valleDesde) <= 0;
               return Text(
-                  'En la mañana: ${widget.cancha.monedaSimbolo} ${conDesc.toStringAsFixed(2)} '
+                  'De $_valleDesde a $_valleHasta'
+                  '${cruza ? ' (del día siguiente)' : ''}: '
+                  '${widget.cancha.monedaSimbolo} ${conDesc.toStringAsFixed(2)} '
                   '(en vez de ${widget.cancha.monedaSimbolo} ${base.toStringAsFixed(2)}).',
                   style: const TextStyle(
                       color: lima, fontWeight: FontWeight.w700, fontSize: 12.5));

@@ -220,7 +220,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
                     final hora = mostrar[conCabecera ? i - 1 : i];
                     return _AgendaRow(
                       hora: hora,
-                      valle: hora.compareTo('12:00') < 0,
+                      valle: cancha.esValle(hora),
                       reserva: _reservaEn(
                           cancha.id, cancha.fechaRealSlot(iso, hora), hora),
                       fueraDeGrilla: extras.contains(hora),

@@ -439,10 +439,11 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
   // Un slot NO se puede reservar si está reservado o bloqueado por el dueño.
   bool _ocupada(String hora) => _reservado(hora) || _bloqueado(hora);
 
-  bool _esValle(String hora) => hora.compareTo('12:00') < 0;
+  // Ventana de hora feliz de ESTA cancha (configurable por el dueño).
+  bool _esValle(String hora) => _cancha.esValle(hora);
 
   /// Descuento efectivo del slot para mostrar: el puntual del dueño si lo tiene,
-  /// si no la hora feliz de las mañanas (valle).
+  /// si no la hora feliz de la ventana valle de la cancha.
   int _descEfectivo(String hora) {
     final slot = appState.descuentoSlotPct(_cancha.id, _fechaSlot(hora), hora);
     if (slot > 0) return slot;

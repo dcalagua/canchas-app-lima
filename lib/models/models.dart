@@ -178,13 +178,34 @@ class Cancha {
   int senaDe(int precioSlot) =>
       senaPct <= 0 ? 0 : (precioSlot * senaPct.clamp(0, 100) / 100).round();
 
-  /// ¿Una hora ("07:00") cae en el valle (mañana)? Regla simple: antes de mediodía.
-  static bool horaEsValle(String hora) => hora.compareTo('12:00') < 0;
+  /// Ventana de la HORA FELIZ, configurable por el dueño ("HH:MM"). Vacías =
+  /// default histórico: desde medianoche hasta las 12:00 (las mañanas). Si el
+  /// fin es <= al inicio, la ventana CRUZA medianoche (cancha nocturna, p. ej.
+  /// 22:00 → 02:00).
+  final String valleDesde;
+  final String valleHasta;
+
+  /// Ventana efectiva (aplica los defaults si el dueño no configuró nada).
+  String get valleDesdeEfectivo =>
+      valleDesde.trim().isNotEmpty ? valleDesde.trim() : '00:00';
+  String get valleHastaEfectivo =>
+      valleHasta.trim().isNotEmpty ? valleHasta.trim() : '12:00';
+
+  /// ¿Una hora ("07:00") cae dentro de la ventana de hora feliz de ESTA cancha?
+  /// (El inicio es inclusivo y el fin exclusivo: 08:00→12:00 cubre 08:00–11:59.)
+  bool esValle(String hora) {
+    final d = valleDesdeEfectivo, h = valleHastaEfectivo;
+    if (d == h) return false; // ventana vacía
+    if (d.compareTo(h) < 0) {
+      return hora.compareTo(d) >= 0 && hora.compareTo(h) < 0;
+    }
+    return hora.compareTo(d) >= 0 || hora.compareTo(h) < 0; // cruza medianoche
+  }
 
   /// Precio efectivo por hora en un horario dado (aplica el descuento de hora
   /// feliz si corresponde). Fuente única para mostrar y para cobrar.
   double precioEn(String hora) =>
-      (descuentoValle > 0 && horaEsValle(hora))
+      (descuentoValle > 0 && esValle(hora))
           ? precioHora * (100 - descuentoValle.clamp(0, 90)) / 100
           : precioHora;
 
@@ -215,6 +236,8 @@ class Cancha {
     this.moneda = '',
     this.serviciosExtra = const [],
     this.descuentoValle = 0,
+    this.valleDesde = '',
+    this.valleHasta = '',
     this.senaPct = 0,
   });
 
@@ -365,6 +388,8 @@ class Cancha {
     String? moneda,
     List<ServicioExtra>? serviciosExtra,
     int? descuentoValle,
+    String? valleDesde,
+    String? valleHasta,
     int? senaPct,
   }) {
     return Cancha(
@@ -394,6 +419,8 @@ class Cancha {
       moneda: moneda ?? this.moneda,
       serviciosExtra: serviciosExtra ?? this.serviciosExtra,
       descuentoValle: descuentoValle ?? this.descuentoValle,
+      valleDesde: valleDesde ?? this.valleDesde,
+      valleHasta: valleHasta ?? this.valleHasta,
       senaPct: senaPct ?? this.senaPct,
     );
   }
@@ -426,6 +453,8 @@ class Cancha {
         'moneda': moneda,
         'serviciosExtra': serviciosExtra.map((s) => s.toJson()).toList(),
         'descuentoValle': descuentoValle,
+        'valleDesde': valleDesde,
+        'valleHasta': valleHasta,
         'senaPct': senaPct,
       };
 
@@ -465,6 +494,8 @@ class Cancha {
         moneda: (j['moneda'] ?? '') as String,
         serviciosExtra: ServicioExtra.listaDe(j['serviciosExtra']),
         descuentoValle: (j['descuentoValle'] ?? 0) as int,
+        valleDesde: (j['valleDesde'] ?? '') as String,
+        valleHasta: (j['valleHasta'] ?? '') as String,
         senaPct: ((j['senaPct'] ?? 0) as num).toInt(),
       );
 }
