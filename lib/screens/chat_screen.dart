@@ -2088,7 +2088,10 @@ class _Burbuja extends StatelessWidget {
               _TextoMensaje(
                   texto: mensaje.texto,
                   color: mio ? wa.textoMio : wa.textoOtro,
-                  linkColor: mio ? Colors.white : teal),
+                  // Link legible en AMBAS burbujas (como WhatsApp): antes en la
+                  // burbuja propia (verde claro) salía BLANCO y no se veía. En
+                  // tema oscuro va claro (burbuja oscura), en claro esmeralda.
+                  linkColor: wa.dark ? const Color(0xFF8EE7C8) : teal),
             const SizedBox(width: 8),
             Padding(
               padding: const EdgeInsets.only(top: 3),
