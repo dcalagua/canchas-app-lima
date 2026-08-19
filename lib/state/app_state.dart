@@ -7788,6 +7788,31 @@ class AppState extends ChangeNotifier {
     // Push AUTOMÁTICO a quienes esperaban esa hora (waitlist): reusa el canal
     // genérico de avisos (pichangol_avisos → push-aviso), sin deploy nuevo.
     _avisarEsperaLiberada(liberados);
+    // Push al DUEÑO: se enteró al instante de que el horario quedó libre otra
+    // vez (antes solo lo veía al refrescar su agenda).
+    _avisarDuenoCancelacion(grupo);
+  }
+
+  /// Avisa al DUEÑO de la cancha que el jugador canceló su reserva y el
+  /// horario volvió a quedar disponible. Un solo aviso por bloque multi-hora.
+  void _avisarDuenoCancelacion(List<Reserva> grupo) {
+    if (grupo.isEmpty) return;
+    final orden = [...grupo]..sort((a, b) => a.horaInicio.compareTo(b.horaInicio));
+    final r = orden.first;
+    final cancha = _canchaPorIdAny(r.canchaId);
+    if (cancha == null || cancha.dueno.trim().isEmpty) return;
+    final horas = orden.length > 1
+        ? '${orden.first.horaInicio}–${orden.last.horaFin}'
+        : '${r.horaInicio}–${r.horaFin}';
+    _pushAviso(
+      email: cancha.dueno,
+      titulo: 'Reserva cancelada ❌',
+      cuerpo: '${r.jugador.trim().isEmpty ? 'Un jugador' : r.jugador} canceló '
+          '${_lugarFechaHora(cancha, r.fecha, horas)}. El horario quedó '
+          'disponible otra vez.',
+      tipo: 'reserva_cancelada',
+      data: {'cancha_id': r.canchaId, 'fecha': r.fecha, 'hora': r.horaInicio},
+    );
   }
 
   /// Notifica a la lista de espera de cada slot recién liberado. Consulta la
