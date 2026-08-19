@@ -18,8 +18,8 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/cargando_pichangol.dart';
-import '../widgets/responsive.dart';
 import '../widgets/selector_ubicacion.dart';
+import '../widgets/wizard_pichangol.dart';
 import '../config/pais.dart';
 import 'servicios_screen.dart';
 
@@ -803,17 +803,22 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       _errSede = eS;
       _errWhatsapp = eW;
     });
+    // Salta al PASO del wizard donde está el campo con error, para que el
+    // dueño lo vea (nombre = paso 1; sede/WhatsApp = paso 2).
     if (eN != null) {
+      setState(() => _paso = 0);
       _nombreFocus.requestFocus();
       _avisarRojo(eN);
       return false;
     }
     if (eS != null) {
+      setState(() => _paso = 1);
       _sedeFocus?.requestFocus();
       _avisarRojo(eS);
       return false;
     }
     if (eW != null) {
+      setState(() => _paso = 1);
       _whatsappFocus.requestFocus();
       _avisarRojo(eW);
       return false;
@@ -937,17 +942,80 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
     }
   }
 
+  // WIZARD estilo Airbnb (regla de UI de los flujos de creación).
+  int _paso = 0;
+
+  bool _validarPaso(int i) {
+    if (i == 0 && _nombre.text.trim().isEmpty) {
+      const m = 'Ponle un nombre a tu academia.';
+      setState(() => _errNombre = m);
+      _nombreFocus.requestFocus();
+      _avisarRojo(m);
+      return false;
+    }
+    if (i == 1) {
+      if (_sede.text.trim().isEmpty) {
+        const m = 'Indica dónde entrenas (sede actual).';
+        setState(() => _errSede = m);
+        _sedeFocus?.requestFocus();
+        _avisarRojo(m);
+        return false;
+      }
+      final tel = _whatsapp.text.replaceAll(RegExp(r'[^0-9]'), '');
+      final minTel = _paisAcademia.telLongitud;
+      if (tel.length < minTel) {
+        final m = 'Pon un WhatsApp válido ($minTel dígitos).';
+        setState(() => _errWhatsapp = m);
+        _whatsappFocus.requestFocus();
+        _avisarRojo(m);
+        return false;
+      }
+    }
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-          title: Text(widget.academia == null
-              ? 'Crear academia'
-              : 'Editar academia')),
-      body: ListView(
-        padding: EdgeInsets.fromLTRB(
-            ladoTablet(context), 18, ladoTablet(context), 18),
-        children: [
+    final editando = widget.academia != null;
+    return WizardPichangol(
+      paso: _paso,
+      onPaso: (v) => setState(() => _paso = v),
+      onEnviar: _guardar,
+      enviando: _guardando,
+      textoEnviar: editando ? 'Guardar cambios' : 'Crear academia',
+      tituloSalir: editando ? '¿Salir sin guardar?' : '¿Salir sin crear?',
+      validarPaso: _validarPaso,
+      pasos: [
+        PasoWizard(
+          titulo: editando ? 'Edita tu academia' : 'Presenta tu academia',
+          sub: 'El logo, el deporte y el nombre son la cara de tu academia '
+              'en Pichangol.',
+          hijos: _hijosPresentacion(context),
+        ),
+        PasoWizard(
+          titulo: 'Sede y contacto',
+          sub: 'Dónde entrenas, tu zona para el ranking y el WhatsApp donde '
+              'te escriben los interesados.',
+          hijos: _hijosSede(context),
+        ),
+        PasoWizard(
+          titulo: 'Fotos y redes',
+          sub: 'Muestra tu academia: fotos para el feed dentro de Pichangol '
+              'y tus redes sociales.',
+          hijos: _hijosFotosRedes(context),
+        ),
+        PasoWizard(
+          titulo: 'Planes, sedes y extras',
+          sub: 'Tu tarifario, tus sedes con horarios y opciones avanzadas '
+              '(convenio con club, descuentos).',
+          hijos: _hijosTarifario(context),
+        ),
+      ],
+    );
+  }
+
+  List<Widget> _hijosPresentacion(BuildContext context) => [
+
           // Logo (opcional): avatar circular con lo que ya tenga o lo recién elegido.
           Center(child: _LogoPicker(
             bytes: _logoNueva,
@@ -987,7 +1055,10 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                 hintText: 'Ej.: Academia de Tenis Baseline',
                 errorText: _errNombre),
           ),
-          const SizedBox(height: 16),
+  ];
+
+  List<Widget> _hijosSede(BuildContext context) => [
+
           Autocomplete<LugarSugerido>(
             initialValue: TextEditingValue(text: _sede.text),
             displayStringForOption: (o) => o.nombre,
@@ -1088,7 +1159,10 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                 labelText: 'Descripción (opcional)',
                 hintText: 'Niveles, horarios, para quién es…'),
           ),
-          const SizedBox(height: 22),
+  ];
+
+  List<Widget> _hijosFotosRedes(BuildContext context) => [
+
           const Text('Fotos (feed de tu academia)',
               style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
           const SizedBox(height: 4),
@@ -1295,7 +1369,10 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 22),
+  ];
+
+  List<Widget> _hijosTarifario(BuildContext context) => [
+
           const Text('Planes y tarifario',
               style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
           const SizedBox(height: 6),
@@ -1490,22 +1567,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
               ],
             ],
           ),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              style: FilledButton.styleFrom(
-                  backgroundColor: lima,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 15)),
-              onPressed: _guardando ? null : _guardar,
-              child: const Text('Guardar academia'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  ];
 
   String _descPlan(Plan p) {
     final mon = _paisAcademia.moneda; // moneda del país de la sede

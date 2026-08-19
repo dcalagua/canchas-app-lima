@@ -17,7 +17,7 @@ import '../services/sport_detector.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
-import '../widgets/dialogo_pichangol.dart';
+import '../widgets/wizard_pichangol.dart';
 import '../widgets/responsive.dart';
 import '../widgets/selector_horario.dart';
 import 'login_google_sheet.dart';
@@ -577,23 +577,23 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
   // Siguiente. La lógica de guardado (_publicar) es la misma de siempre.
   int _paso = 0;
 
-  List<({String titulo, String sub, List<Widget> hijos})> _pasosDe(
+  List<PasoWizard> _pasosDe(
       BuildContext context) {
     if (_esReclamo) {
       return [
-        (
+        PasoWizard(
           titulo: 'Ubica tu cancha',
           sub: 'Confirma el nombre del local y el punto exacto en el mapa. '
               'Las fotos ya las trajimos de Google.',
           hijos: [..._hijosNombre(context), ..._hijosMapa(context)],
         ),
-        (
+        PasoWizard(
           titulo: 'Cuéntanos de ti',
           sub: 'El equipo usa estos datos solo para validar que el local es '
               'tuyo. Nada se publica.',
           hijos: _hijosContacto(context),
         ),
-        (
+        PasoWizard(
           titulo: 'Revisa y envía',
           sub: 'Tu solicitud viaja a la torre de control de Pichangol; te '
               'avisamos con una notificación cuando quede aprobada.',
@@ -602,22 +602,22 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
       ];
     }
     return [
-      (
+      PasoWizard(
         titulo: 'Describe tu local',
         sub: 'Una buena foto y el nombre con el que te conocen tus clientes.',
         hijos: [..._hijosFoto(context), ..._hijosNombre(context)],
       ),
-      (
+      PasoWizard(
         titulo: 'Ubícalo en el mapa',
         sub: 'Los jugadores te encuentran por este punto: afínalo bien.',
         hijos: _hijosMapa(context),
       ),
-      (
+      PasoWizard(
         titulo: 'Deportes, precio y horario',
         sub: 'Qué se juega en tu local y cuánto cuesta la hora.',
         hijos: _hijosDeportes(context),
       ),
-      (
+      PasoWizard(
         titulo: 'Cuéntanos de ti',
         sub: 'El equipo valida contigo por WhatsApp antes de activar tu local.',
         hijos: _hijosContacto(context),
@@ -1101,153 +1101,15 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final pasos = _pasosDe(context);
-    final i = _paso.clamp(0, pasos.length - 1);
-    final p = pasos[i];
-    final ultimo = i >= pasos.length - 1;
-    final t = Theme.of(context).textTheme;
-    return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Barra superior estilo Airbnb: pill "Salir" a la izquierda.
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-              child: Row(
-                children: [
-                  OutlinedButton(
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor:
-                          Theme.of(context).colorScheme.onSurface,
-                      side: const BorderSide(color: trazo),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(999)),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
-                    ),
-                    onPressed: () async {
-                      final ok = await confirmarPichangol(
-                        context,
-                        titulo: _esReclamo
-                            ? '¿Salir del reclamo?'
-                            : '¿Salir del registro?',
-                        mensaje: 'Se perderá lo que llenaste hasta ahora.',
-                        textoConfirmar: 'Salir',
-                        icono: Icons.logout,
-                      );
-                      if (ok && context.mounted) {
-                        Navigator.of(context).maybePop();
-                      }
-                    },
-                    child: const Text('Salir',
-                        style: TextStyle(fontWeight: FontWeight.w700)),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: ListView(
-                padding: EdgeInsets.fromLTRB(ladoTablet(context, 20), 16,
-                    ladoTablet(context, 20), 24),
-                children: [
-                  Text('Paso ${i + 1} de ${pasos.length}',
-                      style: t.bodySmall?.copyWith(
-                          color: textoTenueDe(context),
-                          fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 6),
-                  Text(p.titulo,
-                      style: t.headlineMedium?.copyWith(
-                          fontWeight: FontWeight.w800, height: 1.05)),
-                  const SizedBox(height: 8),
-                  Text(p.sub,
-                      style: t.bodyMedium?.copyWith(
-                          color: textoTenueDe(context), height: 1.35)),
-                  const SizedBox(height: 22),
-                  ...p.hijos,
-                ],
-              ),
-            ),
-            // Progreso segmentado + Atrás / Siguiente (estilo Airbnb).
-            Container(
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface,
-                border: const Border(top: BorderSide(color: trazo)),
-              ),
-              padding: EdgeInsets.fromLTRB(ladoTablet(context, 20), 0,
-                  ladoTablet(context, 20), 12),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      for (var s = 0; s < pasos.length; s++)
-                        Expanded(
-                          child: Container(
-                            height: 4,
-                            margin: EdgeInsets.only(
-                                right: s == pasos.length - 1 ? 0 : 6),
-                            decoration: BoxDecoration(
-                              color: s <= i
-                                  ? lima
-                                  : const Color(0xFFE4E4E4),
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      if (i > 0)
-                        TextButton(
-                          onPressed: _enviando
-                              ? null
-                              : () => setState(() => _paso = i - 1),
-                          child: Text('Atrás',
-                              style: TextStyle(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurface,
-                                  fontWeight: FontWeight.w800,
-                                  decoration: TextDecoration.underline)),
-                        ),
-                      const Spacer(),
-                      FilledButton(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: ultimo ? lima : tinta,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 26, vertical: 13),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12)),
-                        ),
-                        onPressed: _enviando
-                            ? null
-                            : () {
-                                if (ultimo) {
-                                  _publicar();
-                                  return;
-                                }
-                                if (!_validarPaso(i)) return;
-                                setState(() => _paso = i + 1);
-                              },
-                        child: Text(
-                            ultimo
-                                ? (_esReclamo
-                                    ? 'Enviar solicitud'
-                                    : 'Enviar para validación')
-                                : 'Siguiente',
-                            style:
-                                const TextStyle(fontWeight: FontWeight.w800)),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+    return WizardPichangol(
+      paso: _paso,
+      pasos: _pasosDe(context),
+      onPaso: (v) => setState(() => _paso = v),
+      onEnviar: _publicar,
+      enviando: _enviando,
+      textoEnviar: _esReclamo ? 'Enviar solicitud' : 'Enviar para validación',
+      tituloSalir: _esReclamo ? '¿Salir del reclamo?' : '¿Salir del registro?',
+      validarPaso: _validarPaso,
     );
   }
 }

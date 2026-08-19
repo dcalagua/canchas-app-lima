@@ -9,6 +9,7 @@ import '../models/models.dart';
 import '../config/pais.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/wizard_pichangol.dart';
 import '../widgets/responsive.dart';
 
 /// Una categoría estándar de campeonato. Las de edad auto-setean edadMin/edadMax
@@ -335,15 +336,54 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
   }
 
   @override
+  // WIZARD estilo Airbnb (regla de UI de los flujos de creación).
+  int _paso = 0;
+
+  bool _validarPaso(int i) {
+    if (i == 0 && _nombre.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Ponle nombre al campeonato para continuar.')));
+      return false;
+    }
+    return true;
+  }
+
+  @override
   Widget build(BuildContext context) {
+    return WizardPichangol(
+      paso: _paso,
+      onPaso: (v) => setState(() => _paso = v),
+      onEnviar: _guardar,
+      enviando: _guardando,
+      textoEnviar: _editando ? 'Guardar cambios' : 'Crear campeonato',
+      tituloSalir:
+          _editando ? '¿Salir sin guardar?' : '¿Salir sin crear el campeonato?',
+      validarPaso: _validarPaso,
+      pasos: [
+        PasoWizard(
+          titulo: _editando ? 'Edita tu campeonato' : 'Presenta tu campeonato',
+          sub: 'El logo y el nombre son la cara del torneo: así lo verán los '
+              'jugadores al inscribirse.',
+          hijos: _hijosPresentacion(context),
+        ),
+        PasoWizard(
+          titulo: 'Formato y categoría',
+          sub: 'Cómo se compite (llave, liga o tiempos) y para quién es.',
+          hijos: _hijosFormato(context),
+        ),
+        PasoWizard(
+          titulo: 'Fechas, sede y reglas',
+          sub: 'Cuándo y dónde se juega, cuánto cuesta inscribirse y si '
+              'exiges identidad verificada.',
+          hijos: _hijosLogistica(context),
+        ),
+      ],
+    );
+  }
+
+  List<Widget> _hijosPresentacion(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Scaffold(
-      appBar: AppBar(
-          title: Text(_editando ? 'Editar campeonato' : 'Nuevo campeonato')),
-      body: ListView(
-        padding: EdgeInsets.fromLTRB(
-            ladoTablet(context), 18, ladoTablet(context), 18),
-        children: [
+    return [
           // Logo del campeonato (opcional): avatar grande tocable con badge de
           // cámara. Se sube al guardar.
           Center(child: _SelectorLogo(
@@ -390,7 +430,12 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
                   'creado.',
                   style: TextStyle(color: textoTenue, fontSize: 12)),
             ),
-          const SizedBox(height: 16),
+    ];
+  }
+
+  List<Widget> _hijosFormato(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return [
           Text('Formato',
               style:
                   TextStyle(fontWeight: FontWeight.w700, color: cs.onSurface)),
@@ -465,7 +510,12 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
                   hintText: 'Ej. Damas B, Nivel intermedio, Mixto…'),
             ),
           ],
-          const SizedBox(height: 14),
+    ];
+  }
+
+  List<Widget> _hijosLogistica(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return [
           // Fechas (calendario).
           _CampoTap(
             icon: Icons.event,
@@ -561,26 +611,7 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
               ],
             ),
           ],
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: _guardando ? null : _guardar,
-              icon: _guardando
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
-                  : Icon(_editando ? Icons.save : Icons.emoji_events),
-              label: Text(_guardando
-                  ? 'Guardando…'
-                  : (_editando ? 'Guardar cambios' : 'Crear campeonato')),
-            ),
-          ),
-        ],
-      ),
-    );
+    ];
   }
 }
 

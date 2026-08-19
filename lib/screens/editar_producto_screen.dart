@@ -10,7 +10,7 @@ import '../models/producto.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
-import '../widgets/responsive.dart';
+import '../widgets/wizard_pichangol.dart';
 
 /// Publicar o editar un producto del Marketplace Pichangol. El vendedor pone
 /// foto, nombre, precio, categoría y (opcional) stock. Al guardar, sube la foto
@@ -146,16 +146,50 @@ class _EditarProductoScreenState extends State<EditarProductoScreen> {
   void _err(String m) => ScaffoldMessenger.of(context)
       .showSnackBar(SnackBar(content: Text(m)));
 
+  // WIZARD estilo Airbnb (regla de UI de los flujos de creación).
+  int _paso = 0;
+
+  bool _validarPaso(int i) {
+    if (i != 0) return true;
+    if (_fotoNueva == null && _fotoUrl.isEmpty) {
+      _err('Agrega una foto del producto.');
+      return false;
+    }
+    if (_nombre.text.trim().isEmpty) {
+      _err('Ponle un nombre al producto.');
+      return false;
+    }
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-          title: Text(_esNuevo ? 'Publicar producto' : 'Editar producto')),
-      body: ListView(
-        // Regla app: contenido centrado (ancho máx) en pantallas anchas.
-        padding: EdgeInsets.symmetric(
-            horizontal: ladoTablet(context, 18, 600), vertical: 18),
-        children: [
+    return WizardPichangol(
+      paso: _paso,
+      onPaso: (v) => setState(() => _paso = v),
+      onEnviar: _guardar,
+      enviando: _guardando,
+      textoEnviar: _esNuevo ? 'Publicar' : 'Guardar cambios',
+      tituloSalir: _esNuevo ? '¿Salir sin publicar?' : '¿Salir sin guardar?',
+      validarPaso: _validarPaso,
+      pasos: [
+        PasoWizard(
+          titulo: _esNuevo ? 'Muestra tu producto' : 'Edita tu producto',
+          sub: 'Una buena foto vende sola: bien iluminada y con el producto '
+              'como protagonista.',
+          hijos: _hijosProducto(context),
+        ),
+        PasoWizard(
+          titulo: 'Precio y publicación',
+          sub: 'Define el precio, el stock si es limitado, y si ya quieres que '
+              'aparezca en el marketplace.',
+          hijos: _hijosPrecio(context),
+        ),
+      ],
+    );
+  }
+
+  List<Widget> _hijosProducto(BuildContext context) => [
           // Foto.
           GestureDetector(
             onTap: _elegirFoto,
@@ -209,6 +243,27 @@ class _EditarProductoScreenState extends State<EditarProductoScreen> {
                 labelText: 'Nombre', hintText: 'Ej. Raqueta Wilson Pro'),
           ),
           const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            value: _categoria,
+            decoration: const InputDecoration(labelText: 'Categoría'),
+            items: [
+              for (final e in Producto.categorias.entries)
+                DropdownMenuItem(value: e.key, child: Text(e.value)),
+            ],
+            onChanged: (v) => setState(() => _categoria = v ?? 'otros'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _desc,
+            maxLines: 3,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(
+                labelText: 'Descripción (opcional)',
+                hintText: 'Estado, marca, detalles…'),
+          ),
+      ];
+
+  List<Widget> _hijosPrecio(BuildContext context) => [
           Row(
             children: [
               Expanded(
@@ -235,25 +290,6 @@ class _EditarProductoScreenState extends State<EditarProductoScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            value: _categoria,
-            decoration: const InputDecoration(labelText: 'Categoría'),
-            items: [
-              for (final e in Producto.categorias.entries)
-                DropdownMenuItem(value: e.key, child: Text(e.value)),
-            ],
-            onChanged: (v) => setState(() => _categoria = v ?? 'otros'),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _desc,
-            maxLines: 3,
-            textCapitalization: TextCapitalization.sentences,
-            decoration: const InputDecoration(
-                labelText: 'Descripción (opcional)',
-                hintText: 'Estado, marca, detalles…'),
-          ),
           const SizedBox(height: 8),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
@@ -264,23 +300,5 @@ class _EditarProductoScreenState extends State<EditarProductoScreen> {
                 : 'Pausado (no aparece en el feed)'),
             onChanged: (v) => setState(() => _activo = v),
           ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              style: FilledButton.styleFrom(
-                  backgroundColor: lima,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 15)),
-              onPressed: _guardando ? null : _guardar,
-              icon: const Icon(Icons.check),
-              label: Text(_esNuevo ? 'Publicar' : 'Guardar cambios',
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w800, fontSize: 15)),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+      ];
 }

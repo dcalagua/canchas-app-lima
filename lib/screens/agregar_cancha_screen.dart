@@ -4,6 +4,7 @@ import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/selector_horario.dart';
+import '../widgets/wizard_pichangol.dart';
 import '../utils/moneda.dart';
 
 /// Agrega una cancha individual a un LOCAL ya existente del dueño. Hereda del
@@ -112,28 +113,46 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
   void _avisar(String m) =>
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
 
+  // WIZARD estilo Airbnb (regla de UI de los flujos de creación).
+  int _paso = 0;
+
+  bool _validarPaso(int i) {
+    if (i == 0 && _superficie.trim().isEmpty) {
+      _avisar('Marca el tipo de piso de la cancha (obligatorio).');
+      return false;
+    }
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Agregar cancha')),
-      body: ListView(
-        padding: const EdgeInsets.all(18),
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-                color: limaSuave, borderRadius: BorderRadius.circular(10)),
-            child: Text(
-              'Se agregará al local "${widget.local.club}" (misma dirección y '
+    return WizardPichangol(
+      paso: _paso,
+      onPaso: (v) => setState(() => _paso = v),
+      onEnviar: _guardar,
+      enviando: _guardando,
+      textoEnviar: 'Agregar cancha',
+      tituloSalir: '¿Salir sin agregar?',
+      validarPaso: _validarPaso,
+      pasos: [
+        PasoWizard(
+          titulo: '¿Qué cancha agregas?',
+          sub: 'Se suma al local "${widget.local.club}" (misma dirección y '
               'ubicación). Puedes tener varias canchas del mismo deporte.',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: tinta),
-            ),
-          ),
-          const SizedBox(height: 16),
+          hijos: _hijosCancha(context),
+        ),
+        PasoWizard(
+          titulo: 'Precio y horario',
+          sub: 'Cuánto cuesta la hora y en qué horario atiende esta cancha.',
+          hijos: _hijosPrecio(context),
+        ),
+      ],
+    );
+  }
+
+  List<Widget> _hijosCancha(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return [
           TextField(
             controller: _nombre,
             decoration: const InputDecoration(
@@ -197,7 +216,10 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
                 ),
             ],
           ),
-          const SizedBox(height: 16),
+    ];
+  }
+
+  List<Widget> _hijosPrecio(BuildContext context) => [
           TextField(
             controller: _precio,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -216,21 +238,5 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
             onCierre: (v) => setState(() => _cierre = v),
             onDuracion: (v) => setState(() => _duracion = v),
           ),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              style: FilledButton.styleFrom(
-                  backgroundColor: lima,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 15)),
-              onPressed: _guardando ? null : _guardar,
-              icon: const Icon(Icons.add),
-              label: const Text('Agregar cancha'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+      ];
 }
