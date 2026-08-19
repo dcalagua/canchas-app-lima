@@ -46,6 +46,13 @@ def test_directorio_filtra_por_deporte_y_zona():
     assert [j["email"] for j in solo_surco] == ["luis@x.com"]
 
 
+def test_unirse_exige_categoria():
+    # Regla del director: la categoría (5P, 5A, 4ta…) es OBLIGATORIA.
+    r = _unirse(categoria="")
+    assert r["ok"] is False and r["error"] == "categoria_requerida"
+    assert client.get("/circuito/jugadores").json()["jugadores"] == []
+
+
 def test_unirse_actualiza_no_duplica():
     _unirse(categoria="Intermedio")
     _unirse(categoria="Avanzado")

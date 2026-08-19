@@ -337,9 +337,11 @@ def test_circuito_salud_directorio_y_lideres(client):
     h = {"X-Admin-Token": TOKEN}
     # 2 jugadores en el directorio (uno tenis, uno fútbol).
     client.post("/circuito/unirse", json={
-        "email": "ana@x.com", "nombre": "Ana", "deporte": "tenis"})
+        "email": "ana@x.com", "nombre": "Ana", "deporte": "tenis",
+        "categoria": "5A"})
     client.post("/circuito/unirse", json={
-        "email": "luis@x.com", "nombre": "Luis", "deporte": "futbol"})
+        "email": "luis@x.com", "nombre": "Luis", "deporte": "futbol",
+        "categoria": "5P"})
     # Un reto jugado que gana Ana → aparece de líder.
     rid = client.post("/retos/crear", json={
         "retador_email": "ana@x.com", "retador_nombre": "Ana",

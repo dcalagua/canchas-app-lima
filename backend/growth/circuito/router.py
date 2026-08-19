@@ -47,6 +47,10 @@ def unirse(req: UnirseReq) -> dict:
     email = req.email.strip().lower()
     if not email:
         return {"ok": False, "error": "correo_requerido"}
+    # Categoría OBLIGATORIA (regla del director): la liga ordena y reta por
+    # nivel (5P, 5A, 5B, 4ta…). Sin categoría no se entra al directorio.
+    if not req.categoria.strip():
+        return {"ok": False, "error": "categoria_requerida"}
     stores.jugadores_circuito[email] = {
         "nombre": req.nombre.strip(),
         "deporte": req.deporte.strip(),

@@ -494,6 +494,20 @@ class _UnirseSheetState extends State<_UnirseSheet> {
 
   Future<void> _guardar() async {
     if (_guardando) return;
+    // Categoría OBLIGATORIA (regla del director): sin categoría no hay liga —
+    // los retos y el ranking se ordenan por nivel (5P, 5A, 5B, 4ta…).
+    if (_categoria.trim().isEmpty) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(
+          backgroundColor: Color(0xFFD64545),
+          behavior: SnackBarBehavior.floating,
+          content: Text('Elige tu categoría (5P, 5A, 5B, 4ta…) para unirte.',
+              style: TextStyle(
+                  color: Colors.white, fontWeight: FontWeight.w700)),
+        ));
+      return;
+    }
     setState(() => _guardando = true);
     bool ok;
     try {
@@ -568,21 +582,23 @@ class _UnirseSheetState extends State<_UnirseSheet> {
             onSeleccion: (v) => _zona = v,
           ),
           const SizedBox(height: 16),
-          Text('Nivel / categoría (opcional)', style: t.labelLarge),
+          Text('Categoría *', style: t.labelLarge),
+          const SizedBox(height: 2),
+          Text('Obligatoria: la liga te ordena y te reta por tu nivel.',
+              style: TextStyle(color: textoTenueDe(context), fontSize: 12)),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
-              ChoiceChip(
-                label: const Text('Sin categoría'),
-                selected: _categoria.isEmpty,
-                onSelected: (_) => setState(() => _categoria = ''),
-              ),
               for (final c in _categorias)
                 ChoiceChip(
                   label: Text(c),
                   selected: _categoria == c,
+                  selectedColor: lima,
+                  labelStyle: TextStyle(
+                      color: _categoria == c ? Colors.white : cs.onSurface,
+                      fontWeight: FontWeight.w600),
                   onSelected: (_) => setState(() => _categoria = c),
                 ),
             ],
