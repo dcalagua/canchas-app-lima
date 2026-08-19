@@ -85,20 +85,67 @@ class PartidosRepo {
     }
   }
 
-  /// Un jugador se apunta al partido (entra al roster/grupo). Devuelve true si
-  /// quedó apuntado.
-  static Future<bool> apuntarse(
-      String partidoId, String email, String nombre) async {
-    if (!disponible || partidoId.isEmpty || email.trim().isEmpty) return false;
+  /// Un jugador se apunta al partido (entra al roster/grupo), respetando el
+  /// CUPO contra el servidor (no contra la lista local, que puede estar
+  /// desactualizada — así ya no pasa "3 de 2 jugadores"). Devuelve:
+  /// 'ok' = apuntado · 'lleno' = ya no hay cupo · 'error' = no se pudo.
+  static Future<String> apuntarse(
+      String partidoId, String email, String nombre, int cupos) async {
+    if (!disponible || partidoId.isEmpty || email.trim().isEmpty) {
+      return 'error';
+    }
+    final em = email.trim().toLowerCase();
     try {
-      await SupabaseService.client.from(_tMiembros).upsert({
+      final c = SupabaseService.client;
+      // 1) Chequeo FRESCO del cupo (la UI puede tener el conteo viejo).
+      final antes = await c
+          .from(_tMiembros)
+          .select('email')
+          .eq('grupo_id', partidoId);
+      final emails =
+          (antes as List).map((r) => (r as Map)['email'].toString()).toList();
+      if (emails.contains(em)) return 'ok'; // ya estaba apuntado
+      if (cupos > 0 && emails.length >= cupos) return 'lleno';
+
+      await c.from(_tMiembros).upsert({
         'grupo_id': partidoId,
-        'email': email.trim().toLowerCase(),
+        'email': em,
         'nombre': nombre,
       });
-      return true;
+
+      // 2) Post-chequeo anti-CARRERA: si dos se apuntaron al último cupo a la
+      // vez, el sobrante se BAJA solo (orden de llegada por `creado`; si la BD
+      // no tiene esa columna, por orden de lectura). Determinista: solo se
+      // borra a sí mismo quien quedó fuera del cupo.
+      if (cupos > 0) {
+        List despues;
+        try {
+          despues = await c
+              .from(_tMiembros)
+              .select('email')
+              .eq('grupo_id', partidoId)
+              .order('creado', ascending: true) as List;
+        } catch (_) {
+          despues = await c
+              .from(_tMiembros)
+              .select('email')
+              .eq('grupo_id', partidoId) as List;
+        }
+        final orden =
+            despues.map((r) => (r as Map)['email'].toString()).toList();
+        final miPos = orden.indexOf(em);
+        if (orden.length > cupos && miPos >= cupos) {
+          await c
+              .from(_tMiembros)
+              .delete()
+              .eq('grupo_id', partidoId)
+              .eq('email', em);
+          return 'lleno';
+        }
+      }
+      return 'ok';
     } catch (_) {
-      return false;
+      return 'error';
     }
   }
 

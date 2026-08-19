@@ -91,10 +91,15 @@ class _PartidosScreenState extends State<PartidosScreen> {
     }
     if (!mounted) return;
     final u = appState.usuario!;
-    final ok = await PartidosRepo.apuntarse(p.id, u.email, u.nombre);
+    final res = await PartidosRepo.apuntarse(p.id, u.email, u.nombre, p.cupos);
     if (!mounted) return;
-    _snack(ok ? '¡Te apuntaste! Coordinen por el chat del partido.' : 'No se pudo apuntar.');
-    if (ok) _cargar();
+    _snack(switch (res) {
+      'ok' => '¡Te apuntaste! Coordinen por el chat del partido.',
+      'lleno' => '⛔ El partido ya se llenó (otro jugador tomó el último '
+          'cupo). Pídele al creador que amplíe los cupos o busca otro.',
+      _ => 'No se pudo apuntar. Revisa tu conexión.',
+    });
+    _cargar(); // refresca el conteo real aunque no haya entrado
   }
 
   Future<void> _bajarse(PartidoAbierto p) async {
