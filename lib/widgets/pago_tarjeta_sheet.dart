@@ -346,7 +346,7 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
                       decoration: BoxDecoration(
                           color: const Color(0xFFFFF4E5),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFFF2C94C))),
+                          border: Border.all(color: const Color(0xFFD9B45A))),
                       child: const Text(
                           'En modo prueba, Yape no valida (limitación de Culqi). '
                           'Para probar usa Tarjeta.',

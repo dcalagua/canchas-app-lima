@@ -4,7 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'models/models.dart';
 
 // ─────────────────────────────────────────────────────────────────────────
-// PICHANGOL · Tema final — paleta oficial EBIM (grupoebim.com) + DM Sans
+// PICHANGOL · Tema — PALETA DEL LOGO NUEVO + Montserrat SemiBold
 //
 // Reemplazo directo de lib/theme.dart. Mantiene la MISMA API pública
 // (verdeCancha, coral, colorDeporte, iconoDeporte, buildTheme) para no
@@ -24,25 +24,29 @@ import 'models/models.dart';
 // Requiere en pubspec.yaml → dependencies: google_fonts: ^6.2.1
 // ─────────────────────────────────────────────────────────────────────────
 
-// ── Identidad: estructura AIRBNB (negro Hof + blancos/grises) pero el color de
-// ACENTO es el VERDE de WhatsApp (#128C7E), no el coral. Se mantienen los
-// NOMBRES de los tokens; solo cambia el valor de `lima`, así todo el acento de
-// la app pasa a verde sin tocar cada pantalla.
-const Color lima = Color(0xFF128C7E);   // Verde WhatsApp — CTA / acento principal
-const Color sage = Color(0xFF484848);   // charcoal (degradado de headers)
-const Color teal = Color(0xFF008489);   // Babu — acento secundario (teal)
-const Color amarillo = Color(0xFFFFB400); // dorado (calificaciones/energía)
+// ── Identidad: PALETA DEL LOGO NUEVO (decisión del director) sobre la
+// estructura Airbnb. Se mantienen los NOMBRES de los tokens; solo cambian los
+// valores, así toda la app se re-pinta sin tocar cada pantalla:
+//   Blanco          #FFFFFF → superficies
+//   Azul noche      #0F1B2D → texto / superficies oscuras (reemplaza al negro)
+//   Verde esmeralda #0E8F67 → CTA / acento principal
+//   Dorado suave    #D9B45A → calificaciones / energía / PRO
+//   Gris claro      #E9EEF4 → fondos suaves / bordes
+const Color lima = Color(0xFF0E8F67);   // Verde esmeralda — CTA / acento principal
+const Color sage = Color(0xFF33465E);   // azul noche medio (degradado de headers)
+const Color teal = Color(0xFF0B7A58);   // esmeralda profundo — acento secundario
+const Color amarillo = Color(0xFFD9B45A); // dorado suave (calificaciones/energía)
 const Color naranja = Color(0xFFE07A3E);  // naranja balón (acento de íconos)
 const Color morado = Color(0xFF7B61FF);   // violeta (acento de íconos)
-const Color verde = Color(0xFF484848);  // charcoal medio
-const Color verdeProfundo = Color(0xFF333333); // charcoal profundo
-const Color bosque = Color(0xFF222222); // Hof — texto / superficies oscuras
-const Color tinta = Color(0xFF222222);  // texto (Hof near-black)
-const Color papel = Color(0xFFF7F7F7);  // fondo app (gris muy claro Airbnb)
-const Color papelCalido = Color(0xFFF7F7F7); // fondo panel
-const Color trazo = Color(0xFFDDDDDD);  // bordes / divisores (Airbnb)
-const Color textoTenue = Color(0xFF717171); // muted (Foggy)
-const Color limaSuave = Color(0xFFE3F2EF); // tinte verde WhatsApp suave
+const Color verde = Color(0xFF33465E);  // azul noche medio
+const Color verdeProfundo = Color(0xFF1B2A40); // azul noche profundo
+const Color bosque = Color(0xFF0F1B2D); // Azul noche — texto / superficies oscuras
+const Color tinta = Color(0xFF0F1B2D);  // texto (azul noche)
+const Color papel = Color(0xFFF4F7FA);  // fondo app (blanco azulado)
+const Color papelCalido = Color(0xFFF4F7FA); // fondo panel
+const Color trazo = Color(0xFFDDE5EF);  // bordes / divisores (gris claro)
+const Color textoTenue = Color(0xFF627080); // muted (gris azulado)
+const Color limaSuave = Color(0xFFE7F4EF); // tinte esmeralda suave
 
 /// Gris de texto secundario ADAPTADO al tema: en claro es el Foggy #717171
 /// (bien sobre blanco); en oscuro un gris más claro/frío estilo WhatsApp para
@@ -224,7 +228,7 @@ IconData iconoSuperficie(String superficie) {
 LinearGradient gradienteDeporte(Deporte d) => const LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
-      colors: [Color(0xFF5A5A5A), sage, Color(0xFF2B2B2B)],
+      colors: [Color(0xFF3D5470), sage, Color(0xFF16233A)],
     );
 
 ThemeData buildTheme() {
@@ -241,14 +245,15 @@ ThemeData buildTheme() {
     brightness: Brightness.light,
   );
 
-  // Tipografía oficial EBIM: DM Sans (display + UI).
+  // Tipografía de la marca nueva: Montserrat (títulos SemiBold w600/w700).
   final base = ThemeData(useMaterial3: true, colorScheme: scheme);
-  final dm = GoogleFonts.dmSansTextTheme(base.textTheme);
+  final dm = GoogleFonts.montserratTextTheme(base.textTheme);
   final textTheme = dm.copyWith(
     displayLarge: dm.displayLarge?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -0.5),
     displayMedium: dm.displayMedium?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -0.5),
-    headlineSmall: dm.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
-    titleLarge: dm.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+    headlineSmall: dm.headlineSmall?.copyWith(fontWeight: FontWeight.w600),
+    titleLarge: dm.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+    titleMedium: dm.titleMedium?.copyWith(fontWeight: FontWeight.w600),
   ).apply(bodyColor: tinta, displayColor: tinta);
 
   return ThemeData(
@@ -300,7 +305,7 @@ ThemeData buildTheme() {
       hintStyle: const TextStyle(color: textoTenue),
     ),
     chipTheme: ChipThemeData(
-      backgroundColor: const Color(0xFFF7F7F7),
+      backgroundColor: const Color(0xFFE9EEF4),
       labelStyle: const TextStyle(
           fontWeight: FontWeight.w700, fontSize: 12, color: bosque),
       // Chip SELECCIONADO: verde sólido con texto/check blancos (legible en
@@ -393,12 +398,12 @@ ThemeData buildTheme() {
 
 // Tokens del tema oscuro (privados; el resto de la app sigue usando los tokens
 // claros salvo donde ya se lee del ColorScheme).
-const Color _oscFondo = Color(0xFF1A1A1A);      // page (negro Airbnb)
-const Color _oscSuperficie = Color(0xFF242424); // tarjetas / appbar
-const Color _oscSuperficie2 = Color(0xFF2E2E2E); // inputs / chips
-const Color _oscTrazo = Color(0xFF3A3A3A);      // bordes / divisores
-const Color _oscTexto = Color(0xFFF2F2F2);       // texto principal
-const Color _oscTenue = Color(0xFFA0A0A0);       // texto muted
+const Color _oscFondo = Color(0xFF0A1420);      // page (azul noche profundo)
+const Color _oscSuperficie = Color(0xFF13202F); // tarjetas / appbar
+const Color _oscSuperficie2 = Color(0xFF1B2A3C); // inputs / chips
+const Color _oscTrazo = Color(0xFF2A3A4E);      // bordes / divisores
+const Color _oscTexto = Color(0xFFF2F5F9);       // texto principal
+const Color _oscTenue = Color(0xFF9FB0C2);       // texto muted
 
 ThemeData buildThemeOscuro() {
   final scheme = ColorScheme.fromSeed(
@@ -415,12 +420,13 @@ ThemeData buildThemeOscuro() {
   );
 
   final base = ThemeData(useMaterial3: true, colorScheme: scheme);
-  final dm = GoogleFonts.dmSansTextTheme(base.textTheme);
+  final dm = GoogleFonts.montserratTextTheme(base.textTheme);
   final textTheme = dm.copyWith(
     displayLarge: dm.displayLarge?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -0.5),
     displayMedium: dm.displayMedium?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -0.5),
-    headlineSmall: dm.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
-    titleLarge: dm.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+    headlineSmall: dm.headlineSmall?.copyWith(fontWeight: FontWeight.w600),
+    titleLarge: dm.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+    titleMedium: dm.titleMedium?.copyWith(fontWeight: FontWeight.w600),
   ).apply(bodyColor: _oscTexto, displayColor: _oscTexto);
 
   return ThemeData(

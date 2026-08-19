@@ -49,7 +49,8 @@ class BannerPro extends StatelessWidget {
                   gradient: const LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [bosque, Color(0xFF1E5C4C)],
+                    // Azul noche → esmeralda profundo (paleta del logo nuevo).
+                    colors: [bosque, Color(0xFF0B7A58)],
                   ),
                   borderRadius: BorderRadius.circular(18),
                   boxShadow: const [
@@ -136,7 +137,7 @@ class BannerPro extends StatelessWidget {
             child: Row(
               children: [
                 const Icon(Icons.workspace_premium,
-                    color: Color(0xFFF2C94C), size: 20),
+                    color: Color(0xFFD9B45A), size: 20),
                 const SizedBox(width: 8),
                 const Expanded(
                   child: Text('Eres Pichangol PRO',

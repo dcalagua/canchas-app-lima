@@ -38,7 +38,7 @@ class ChatBurbuja extends StatelessWidget {
               width: 6,
               height: 6,
               decoration: const BoxDecoration(
-                  color: Color(0xFFF2C94C), shape: BoxShape.circle),
+                  color: Color(0xFFD9B45A), shape: BoxShape.circle),
             ),
           ),
         ],

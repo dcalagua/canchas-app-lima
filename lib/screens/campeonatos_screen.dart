@@ -68,7 +68,7 @@ class CampeonatosScreen extends StatelessWidget {
           if (lista.isEmpty) {
             return VacioAirbnb(
               icono: Icons.emoji_events_outlined,
-              colorIcono: const Color(0xFFF2C94C),
+              colorIcono: const Color(0xFFD9B45A),
               titulo: 'Aún no hay\ncampeonatos',
               mensaje: _esDueno()
                   ? 'Crea uno: arma la llave o la liga, carga resultados y '

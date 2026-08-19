@@ -242,7 +242,7 @@ class _PosCobrandoPainter extends CustomPainter {
       RRect.fromRectAndRadius(
           Rect.fromLTWH(cardRect.left + 6, cardRect.top + 7, 8, 6),
           const Radius.circular(2)),
-      Paint()..color = const Color(0xFFF2C94C),
+      Paint()..color = const Color(0xFFD9B45A),
     );
     canvas.drawRRect(
       RRect.fromRectAndRadius(

@@ -456,7 +456,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
             decoration: BoxDecoration(
                 color: const Color(0xFFFFF4E5),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFF2C94C))),
+                border: Border.all(color: const Color(0xFFD9B45A))),
             child: const Row(
               children: [
                 CircleAvatar(radius: 16, backgroundColor: amarillo, child: Icon(Icons.info_outline, size: 17, color: Colors.white)),

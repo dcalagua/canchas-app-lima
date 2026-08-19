@@ -388,7 +388,7 @@ class _TarjetaIdentidad extends StatelessWidget {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(Icons.workspace_premium,
-                                  size: 13, color: Color(0xFFF2C94C)),
+                                  size: 13, color: Color(0xFFD9B45A)),
                               SizedBox(width: 3),
                               Text('PRO',
                                   style: TextStyle(
