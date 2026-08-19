@@ -13,7 +13,8 @@ import '../theme.dart';
 /// Se reconstruye solo al cambiar el estado (activar Pro convierte el banner
 /// en insignia al instante).
 class BannerPro extends StatelessWidget {
-  const BannerPro({super.key, this.mensaje = '', this.margen});
+  const BannerPro(
+      {super.key, this.mensaje = '', this.margen, this.insigniaSiPro = true});
 
   /// Beneficio a resaltar según la pantalla (vacío = mensaje general).
   final String mensaje;
@@ -21,12 +22,18 @@ class BannerPro extends StatelessWidget {
   /// Margen externo (default: horizontal 16, vertical 8).
   final EdgeInsetsGeometry? margen;
 
+  /// false = si YA es Pro no pinta nada (la pantalla muestra la insignia en
+  /// otro lado, p. ej. sobre la foto de perfil).
+  final bool insigniaSiPro;
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: appState,
       builder: (context, _) {
-        if (appState.proActivo) return _insignia(context);
+        if (appState.proActivo) {
+          return insigniaSiPro ? _insignia(context) : const SizedBox.shrink();
+        }
         return Padding(
           padding: margen ??
               const EdgeInsets.symmetric(horizontal: 16, vertical: 8),

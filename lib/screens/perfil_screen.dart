@@ -244,6 +244,8 @@ class PerfilScreen extends StatelessWidget {
                 // Hazte Pro bien visible (solo si NO es Pro).
                 const BannerPro(
                     margen: EdgeInsets.only(top: 14),
+                    // Si YA es Pro, la insignia va SOBRE la foto (no aquí).
+                    insigniaSiPro: false,
                     mensaje: 'Insignia PRO en el ranking, retos y beneficios '
                         'exclusivos en todo Pichangol.'),
                 const SizedBox(height: 16),
@@ -360,6 +362,42 @@ class _TarjetaIdentidad extends StatelessWidget {
                           backgroundColor: bosque,
                           child: Icon(Icons.verified_user,
                               size: 15, color: Colors.white),
+                        ),
+                      ),
+                    // Insignia PRO SOBRE la foto (pedido del director): chip
+                    // charcoal con corona dorada, esquina superior de la foto.
+                    if (u != null && appState.proActivo)
+                      Positioned(
+                        top: -6,
+                        right: -12,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: tinta,
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(color: Colors.white, width: 2),
+                            boxShadow: const [
+                              BoxShadow(
+                                  color: Color(0x33000000),
+                                  blurRadius: 6,
+                                  offset: Offset(0, 2)),
+                            ],
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.workspace_premium,
+                                  size: 13, color: Color(0xFFF2C94C)),
+                              SizedBox(width: 3),
+                              Text('PRO',
+                                  style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 10.5,
+                                      letterSpacing: 0.4)),
+                            ],
+                          ),
                         ),
                       ),
                   ],
