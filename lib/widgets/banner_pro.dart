@@ -4,11 +4,14 @@ import '../screens/hazte_pro_screen.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 
-/// Banner "Hazte Pro" — visible en los puntos de mayor tráfico SOLO si el
-/// usuario NO es Pro (pedido del director: que la membresía se vea en toda la
-/// app). Tarjeta premium (gradiente bosque, mismo look que HazteProScreen),
-/// mensaje por contexto y chevron → pantalla de suscripción. Si ya es Pro,
-/// no ocupa ni un píxel (se reconstruye solo al cambiar el estado).
+/// Banner "Hazte Pro" — visible en los puntos de mayor tráfico (pedido del
+/// director: que la membresía se vea en toda la app):
+///  - NO Pro → tarjeta premium (gradiente bosque, mismo look que
+///    HazteProScreen), mensaje por contexto y chevron → suscripción.
+///  - YA Pro → INSIGNIA compacta "Eres Pichangol PRO ⭐" (membresía activa),
+///    tap → la misma pantalla (ver estado/beneficios).
+/// Se reconstruye solo al cambiar el estado (activar Pro convierte el banner
+/// en insignia al instante).
 class BannerPro extends StatelessWidget {
   const BannerPro({super.key, this.mensaje = '', this.margen});
 
@@ -23,7 +26,7 @@ class BannerPro extends StatelessWidget {
     return ListenableBuilder(
       listenable: appState,
       builder: (context, _) {
-        if (appState.proActivo) return const SizedBox.shrink();
+        if (appState.proActivo) return _insignia(context);
         return Padding(
           padding: margen ??
               const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -95,6 +98,65 @@ class BannerPro extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+
+  /// Insignia compacta para el usuario que YA es Pro: pill charcoal con la
+  /// corona dorada y "Eres Pichangol PRO". Menos alta que el banner de venta
+  /// (ya no hay nada que vender, solo lucir el estado).
+  Widget _insignia(BuildContext context) {
+    return Padding(
+      padding:
+          margen ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const HazteProScreen())),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: tinta,
+              borderRadius: BorderRadius.circular(999),
+              boxShadow: const [
+                BoxShadow(
+                    color: Color(0x1A000000),
+                    blurRadius: 10,
+                    offset: Offset(0, 4)),
+              ],
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.workspace_premium,
+                    color: Color(0xFFF2C94C), size: 20),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text('Eres Pichangol PRO',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13.5)),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: lima,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: const Text('ACTIVO',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 10.5,
+                          letterSpacing: 0.4)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
