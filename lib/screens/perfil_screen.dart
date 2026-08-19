@@ -295,18 +295,32 @@ class _TarjetaIdentidad extends StatelessWidget {
   final dynamic u;
 
   Widget _stat(BuildContext context, String valor, String etiqueta,
-      {bool divisor = true}) {
-    return Column(
+      {bool divisor = true, VoidCallback? onTap}) {
+    // LINK DIRECTO (pedido del director): tocar la estadística lleva a su
+    // pantalla (reservas / nivel / retos), con chevron para que se note.
+    final col = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(valor,
             style: const TextStyle(
                 fontSize: 22, fontWeight: FontWeight.w800, color: tinta)),
-        Text(etiqueta,
-            style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-                color: textoTenueDe(context))),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(etiqueta,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: textoTenueDe(context))),
+            ),
+            if (onTap != null)
+              Icon(Icons.chevron_right,
+                  size: 15, color: textoTenueDe(context)),
+          ],
+        ),
         if (divisor)
           Container(
             margin: const EdgeInsets.symmetric(vertical: 10),
@@ -316,6 +330,9 @@ class _TarjetaIdentidad extends StatelessWidget {
           ),
       ],
     );
+    if (onTap == null) return col;
+    return InkWell(
+        onTap: onTap, borderRadius: BorderRadius.circular(8), child: col);
   }
 
   @override
@@ -429,12 +446,18 @@ class _TarjetaIdentidad extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _stat(context, '$reservas',
-                  reservas == 1 ? 'Reserva' : 'Reservas'),
+                  reservas == 1 ? 'Reserva' : 'Reservas',
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const MisReservasScreen()))),
               _stat(context, '$deportes',
-                  deportes == 1 ? 'Deporte con nivel' : 'Deportes con nivel'),
+                  deportes == 1 ? 'Deporte con nivel' : 'Deportes con nivel',
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const NivelOnboardingScreen()))),
               _stat(context, '$retos',
                   retos == 1 ? 'Reto pendiente' : 'Retos pendientes',
-                  divisor: false),
+                  divisor: false,
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const CircuitoScreen()))),
             ],
           ),
         ],
