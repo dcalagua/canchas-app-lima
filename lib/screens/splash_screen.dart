@@ -13,9 +13,6 @@ const _indigo = Color(0xFFFFFFFF); // fondo del splash (blanco, look Airbnb)
 
 // Paleta del LOGO nuevo (muestreada de docs/marca/logo_original.jpg) — SOLO
 // para el splash/preload; la paleta interna del app no cambia (opción A).
-const _verdeLogo = Color(0xFF0B8E40); // verde del pin
-const _verdeClaroLogo = Color(0xFF70B32F); // verde claro del degradado
-const _naranjaLogo = Color(0xFFF58000); // naranja del swoosh
 const _navyLogo = Color(0xFF0A1F3C); // azul marino del wordmark/pelota
 
 /// Splash de marca ENERGÉTICO (identidad Cancha nocturna): fondo índigo + una
@@ -30,9 +27,10 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
-  // PRELOAD "pelotas": la pelota que rebota cambiando de deporte es el loader
-  // (decisión del director), pintada con la PALETA DEL LOGO para congruencia
-  // con el logotipo y el splash nativo.
+  // PRELOAD = el LOGO "en vivo" (decisión del director): el pin del logo queda
+  // quieto y la PELOTA DE ADENTRO va cambiando de deporte (fútbol → tenis →
+  // básquet → vóley…), como un gif. La pelota animada se pinta ENCIMA de la
+  // pelota impresa del asset, en su posición exacta (medida del PNG).
   static const _deportes = <IconData>[
     Icons.sports_soccer,
     Icons.sports_tennis,
@@ -40,14 +38,11 @@ class _SplashScreenState extends State<SplashScreen>
     Icons.sports_volleyball,
     Icons.sports_baseball,
   ];
-  // Color de la burbuja por deporte: rota entre los colores del logo.
-  static const _coloresPelota = <Color>[
-    _verdeLogo,
-    _naranjaLogo,
-    _navyLogo,
-    _verdeClaroLogo,
-    _verdeLogo,
-  ];
+  // Posición de la pelota dentro de assets/brand/logo_pichangol.png (640×640):
+  // centro en (49.9%, 33.0%) y radio ≈10.5% del ancho. Medido del asset real.
+  static const double _pelotaFx = 0.4994;
+  static const double _pelotaFy = 0.3300;
+  static const double _pelotaFd = 0.225; // diámetro (fracción del ancho), cubre la impresa
   int _i = 0;
   Timer? _ciclo;
   late final AnimationController _rebote = AnimationController(
@@ -123,16 +118,74 @@ class _SplashScreenState extends State<SplashScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // LOGO OFICIAL (pin + wordmark), estático y protagonista. Fallback
-            // al wordmark clásico si el asset faltara.
-            Image.asset(
-              'assets/brand/logo_pichangol.png',
-              width: 250,
-              errorBuilder: (_, __, ___) => const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
-                child: PichangolWordmark(fontSize: 40),
-              ),
-            ),
+            // LOGO "EN VIVO" (el gif del director): el asset del logo quieto y,
+            // ENCIMA de su pelota impresa, la pelota animada que cambia de
+            // deporte con un pulso suave. Fallback al wordmark clásico si el
+            // asset faltara.
+            Builder(builder: (context) {
+              const double lado = 250; // el PNG es cuadrado (640×640)
+              const double d = lado * _pelotaFd;
+              return SizedBox(
+                width: lado,
+                height: lado,
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: Image.asset(
+                        'assets/brand/logo_pichangol.png',
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => const Center(
+                          child: PichangolWordmark(fontSize: 40),
+                        ),
+                      ),
+                    ),
+                    // Pelota animada, centrada EXACTO sobre la del logo.
+                    Positioned(
+                      left: lado * _pelotaFx - d / 2,
+                      top: lado * _pelotaFy - d / 2,
+                      width: d,
+                      height: d,
+                      child: AnimatedBuilder(
+                        animation: _rebote,
+                        builder: (context, child) {
+                          // Pulso suave (late 1.00→1.07): la pelota "respira".
+                          final s = 1 +
+                              0.07 * Curves.easeInOut.transform(_rebote.value);
+                          return Transform.scale(scale: s, child: child);
+                        },
+                        child: Container(
+                          decoration: const BoxDecoration(
+                            color: _navyLogo, // mismo navy de la pelota impresa
+                            shape: BoxShape.circle,
+                          ),
+                          child: Center(
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 280),
+                              transitionBuilder: (child, anim) =>
+                                  RotationTransition(
+                                turns: Tween(begin: 0.85, end: 1.0)
+                                    .animate(anim),
+                                child: ScaleTransition(
+                                  scale: anim,
+                                  child: FadeTransition(
+                                      opacity: anim, child: child),
+                                ),
+                              ),
+                              child: Icon(
+                                _deportes[_i],
+                                key: ValueKey(_i),
+                                color: Colors.white,
+                                size: d * 0.72,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
             const SizedBox(height: 6),
             Text(
               kBrandTagline,
@@ -143,48 +196,7 @@ class _SplashScreenState extends State<SplashScreen>
                 fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(height: 30),
-            // PRELOAD "pelotas" (el loader de marca): la pelota rebota y va
-            // cambiando de deporte, con la burbuja rotando por los COLORES DEL
-            // LOGO (verde pin → naranja swoosh → navy → verde claro).
-            AnimatedBuilder(
-              animation: _rebote,
-              builder: (context, child) {
-                final dy = -10 * Curves.easeInOut.transform(_rebote.value);
-                return Transform.translate(offset: Offset(0, dy), child: child);
-              },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                  color: _coloresPelota[_i],
-                  shape: BoxShape.circle,
-                  boxShadow: const [
-                    BoxShadow(
-                        color: Color(0x33000000),
-                        blurRadius: 14,
-                        offset: Offset(0, 7)),
-                  ],
-                ),
-                child: Center(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 260),
-                    transitionBuilder: (child, anim) => ScaleTransition(
-                      scale: anim,
-                      child: FadeTransition(opacity: anim, child: child),
-                    ),
-                    child: Icon(
-                      _deportes[_i],
-                      key: ValueKey(_i),
-                      color: Colors.white,
-                      size: 34,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 18),
             Text('Cargando…',
                 style: TextStyle(
                     color: _navyLogo.withOpacity(0.6),
