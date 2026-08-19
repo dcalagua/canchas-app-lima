@@ -17,6 +17,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
 
+import urllib.error
+
 import config
 from db.store import stores
 
@@ -414,15 +416,28 @@ def ver_campeonato(campeonato_id: str) -> HTMLResponse:
     automático. Fail-safe: sin config/red → página de aviso."""
     try:
         data = campeonato_web.obtener_campeonato(campeonato_id)
-    except RuntimeError:
+    except RuntimeError as e:
+        detalle = ("La variable SUPABASE_URL no parece una URL (revísala en "
+                   "Railway)." if "invalida" in str(e) else
+                   "El servidor aún no está configurado para mostrar "
+                   "campeonatos. Ábrelo desde la app Pichangol.")
         return HTMLResponse(campeonato_web.html_simple(
-            "Página no disponible",
-            "El servidor aún no está configurado para mostrar campeonatos. "
-            "Ábrelo desde la app Pichangol."), status_code=503)
+            "Página no disponible", detalle), status_code=503)
+    except urllib.error.HTTPError as e:
+        # La base respondió con error: el código dice QUÉ revisar.
+        detalle = {
+            401: "La base rechazó la clave (revisa SUPABASE_ANON_KEY en "
+                 "Railway: debe ser la 'anon public' completa, sin espacios).",
+            404: "La base no reconoce la ruta (revisa SUPABASE_URL en "
+                 "Railway: debe ser https://<proyecto>.supabase.co, sin "
+                 "nada después).",
+        }.get(e.code, f"La base respondió HTTP {e.code}. Intenta más tarde.")
+        return HTMLResponse(campeonato_web.html_simple(
+            f"Error {e.code}", detalle), status_code=502)
     except Exception:
         return HTMLResponse(campeonato_web.html_simple(
-            "Error", "No se pudo cargar el campeonato. Intenta más tarde."),
-            status_code=502)
+            "Error", "No se pudo conectar con la base. Revisa SUPABASE_URL "
+            "en Railway o intenta más tarde."), status_code=502)
     if data is None:
         return HTMLResponse(campeonato_web.html_simple(
             "No encontrado", "Este campeonato no existe o fue eliminado."),

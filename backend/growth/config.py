@@ -153,8 +153,8 @@ LANDING_BASE_URL = os.getenv("LANDING_BASE_URL", "")
 # Supabase (solo lectura pública): para servir la página del campeonato
 # (`GET /c/{id}`) leyendo `pichangol_campeonatos` por REST. La anon key es
 # pública (la misma que lleva el APK). Vacías = la página avisa "no disponible".
-SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "").strip()
 
 # Push "tu cancha fue aprobada": URL de la Edge Function de Supabase
 # (push-aprobacion) y su secreto compartido. Al aprobar un reclamo, el backend

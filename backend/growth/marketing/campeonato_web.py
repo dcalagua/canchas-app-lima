@@ -18,6 +18,8 @@ import json
 import urllib.parse
 import urllib.request
 
+import urllib.error
+
 import config
 
 # Paleta del logo nuevo (la misma del APK).
@@ -36,6 +38,8 @@ def obtener_campeonato(campeonato_id: str) -> dict | None:
     ruta)."""
     if not config.SUPABASE_URL or not config.SUPABASE_ANON_KEY:
         raise RuntimeError("supabase_sin_configurar")
+    if not config.SUPABASE_URL.startswith("http"):
+        raise RuntimeError("supabase_url_invalida")
     q = urllib.parse.quote(campeonato_id, safe="")
     url = (f"{config.SUPABASE_URL}/rest/v1/pichangol_campeonatos"
            f"?id=eq.{q}&select=data,eliminado")
