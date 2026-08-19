@@ -9,6 +9,7 @@ import '../services/pagos_service.dart';
 import '../services/propiedad_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/buscador_usuario_sheet.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../utils/compartir_pichangol.dart';
 import '../utils/ubicacion_share.dart';
@@ -1170,43 +1171,108 @@ class _Participantes extends StatelessWidget {
     final nombre = TextEditingController();
     final wa = TextEditingController();
     final esFutbol = campeonato.deporte.name == 'futbol';
+    // Perfil elegido del BUSCADOR de usuarios registrados (pedido del
+    // director: poder buscar a la gente que ya está en el app). Null = se
+    // escribe a mano (gente sin app).
+    Map<String, dynamic>? sel;
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => DialogoPichangol(
-        titulo: esFutbol ? 'Nuevo equipo' : 'Nuevo participante',
-        icono: Icons.group_add,
-        contenido: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nombre,
-              textCapitalization: TextCapitalization.words,
-              decoration: InputDecoration(
-                  labelText: esFutbol
-                      ? 'Nombre del equipo'
-                      : 'Nombre (jugador o pareja "A / B")'),
-            ),
-            TextField(
-              controller: wa,
-              keyboardType: TextInputType.phone,
-              decoration: InputDecoration(
-                  labelText: 'WhatsApp (opcional)', prefixText: '$codigoTelActual '),
-            ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setD) => DialogoPichangol(
+          titulo: esFutbol ? 'Nuevo equipo' : 'Nuevo participante',
+          icono: Icons.group_add,
+          contenido: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Primero BUSCAR en Pichangol (queda vinculado a su cuenta:
+              // foto real + avisos); escribir a mano es el plan B.
+              if (!esFutbol)
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    icon: sel == null
+                        ? const Icon(Icons.person_search, size: 18)
+                        : CircleAvatar(
+                            radius: 10,
+                            backgroundColor: teal,
+                            backgroundImage: (sel!['foto_url'] ?? '')
+                                    .toString()
+                                    .isNotEmpty
+                                ? NetworkImage(sel!['foto_url'].toString())
+                                : null,
+                            child: (sel!['foto_url'] ?? '')
+                                    .toString()
+                                    .isEmpty
+                                ? const Icon(Icons.check,
+                                    size: 12, color: Colors.white)
+                                : null,
+                          ),
+                    label: Text(
+                        sel == null
+                            ? 'Buscar en Pichangol'
+                            : 'Vinculado · ${(sel!['nombre'] ?? sel!['email'] ?? '').toString()}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
+                    onPressed: () async {
+                      final s = await BuscadorUsuarioSheet.mostrar(ctx,
+                          hint: 'Nombre o correo del jugador…',
+                          mensajeVacio:
+                              'Escribe el nombre o correo del jugador. Debe '
+                              'haber entrado al app al menos una vez.');
+                      if (s == null) return;
+                      setD(() {
+                        sel = s;
+                        nombre.text = (s['nombre'] ?? s['email'] ?? '')
+                            .toString()
+                            .trim();
+                        final cel = (s['celular'] ?? '').toString().trim();
+                        if (cel.isNotEmpty) wa.text = cel;
+                      });
+                    },
+                  ),
+                ),
+              if (!esFutbol) const SizedBox(height: 4),
+              TextField(
+                controller: nombre,
+                textCapitalization: TextCapitalization.words,
+                onChanged: (_) {
+                  // Editar el nombre a mano rompe el vínculo con la cuenta.
+                  if (sel != null &&
+                      nombre.text.trim() !=
+                          (sel!['nombre'] ?? '').toString().trim()) {
+                    setD(() => sel = null);
+                  }
+                },
+                decoration: InputDecoration(
+                    labelText: esFutbol
+                        ? 'Nombre del equipo'
+                        : 'Nombre (jugador o pareja "A / B")'),
+              ),
+              TextField(
+                controller: wa,
+                keyboardType: TextInputType.phone,
+                decoration: InputDecoration(
+                    labelText: 'WhatsApp (opcional)',
+                    prefixText: '$codigoTelActual '),
+              ),
+            ],
+          ),
+          acciones: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancelar')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Agregar')),
           ],
         ),
-        acciones: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancelar')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Agregar')),
-        ],
       ),
     );
     if (ok == true) {
       appState.agregarParticipante(campeonato.id, nombre.text,
-          contacto: wa.text);
+          contacto: wa.text,
+          email: (sel?['email'] ?? '').toString(),
+          fotoUrl: (sel?['foto_url'] ?? '').toString());
     }
   }
 

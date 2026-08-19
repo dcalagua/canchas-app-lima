@@ -2769,13 +2769,18 @@ class AppState extends ChangeNotifier {
 
   /// Agrega un participante (jugador/pareja/equipo). Si ya hay fixture, no lo
   /// regenera (hay que rehacerlo manualmente para no romper resultados).
-  void agregarParticipante(String campId, String nombre, {String contacto = ''}) {
+  void agregarParticipante(String campId, String nombre,
+      {String contacto = '', String email = '', String? fotoUrl}) {
     final c = campeonatoPorId(campId);
     if (c == null || nombre.trim().isEmpty) return;
     final p = Participante(
         id: 'part_${DateTime.now().microsecondsSinceEpoch}',
         nombre: nombre.trim(),
-        contacto: contacto.trim());
+        contacto: contacto.trim(),
+        // Cuenta-app vinculada (si el organizador lo eligió del buscador):
+        // habilita foto real y avisos al jugador.
+        email: email.trim().toLowerCase(),
+        fotoUrl: (fotoUrl ?? '').trim().isEmpty ? null : fotoUrl!.trim());
     guardarCampeonato(c.copyWith(participantes: [...c.participantes, p]));
   }
 
