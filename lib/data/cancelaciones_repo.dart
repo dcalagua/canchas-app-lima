@@ -17,31 +17,39 @@ class CancelacionesRepo {
       List<Reserva> grupo, Cancha? cancha, String canceladoPor) async {
     if (grupo.isEmpty || !SupabaseService.disponible) return;
     final ahora = DateTime.now().toUtc().toIso8601String();
-    final filas = [
-      for (final r in grupo)
-        {
-          'reserva_id': r.id,
-          'cancha_id': r.canchaId,
-          'cancha_nombre': cancha?.nombre ?? '',
-          'local': cancha?.club ?? '',
-          'dueno': (cancha?.dueno ?? '').toLowerCase(),
-          'jugador': r.jugador,
-          'usuario': r.usuario.toLowerCase(),
-          'fecha': r.fecha,
-          'hora_inicio': r.horaInicio,
-          'hora_fin': r.horaFin,
-          'precio': r.precio,
-          'moneda': r.monedaSimbolo,
-          'pagado': r.pagado,
-          'medio_pago': r.medioPago,
-          'cancelado_por': canceladoPor.toLowerCase(),
-          'cancelada_en': ahora,
-        }
-    ];
+    List<Map<String, dynamic>> filas({required bool conSena}) => [
+          for (final r in grupo)
+            {
+              'reserva_id': r.id,
+              'cancha_id': r.canchaId,
+              'cancha_nombre': cancha?.nombre ?? '',
+              'local': cancha?.club ?? '',
+              'dueno': (cancha?.dueno ?? '').toLowerCase(),
+              'jugador': r.jugador,
+              'usuario': r.usuario.toLowerCase(),
+              'fecha': r.fecha,
+              'hora_inicio': r.horaInicio,
+              'hora_fin': r.horaFin,
+              'precio': r.precio,
+              'moneda': r.monedaSimbolo,
+              'pagado': r.pagado,
+              // Seña adelantada (no reembolsable): con la cancelación queda a
+              // favor del dueño y el RESTO ya no se debe.
+              if (conSena) 'sena': r.sena,
+              'medio_pago': r.medioPago,
+              'cancelado_por': canceladoPor.toLowerCase(),
+              'cancelada_en': ahora,
+            }
+        ];
     try {
-      await SupabaseService.client.from(_tabla).insert(filas);
+      await SupabaseService.client.from(_tabla).insert(filas(conSena: true));
     } catch (_) {
-      // best-effort: el reporte es histórico, no bloquea la cancelación
+      // Reintento sin la columna `sena` (schema drift: BD sin actualizar).
+      try {
+        await SupabaseService.client.from(_tabla).insert(filas(conSena: false));
+      } catch (_) {
+        // best-effort: el reporte es histórico, no bloquea la cancelación
+      }
     }
   }
 

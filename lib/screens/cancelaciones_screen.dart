@@ -95,6 +95,22 @@ class _Card extends StatelessWidget {
     final pagado = c['pagado'] == true;
     final mon = (c['moneda'] ?? 'S/').toString();
     final precio = ((c['precio'] ?? 0) as num);
+    final sena = ((c['sena'] ?? 0) as num);
+    // Al cancelar, el jugador YA NO debe nada (regla del director): si adelantó
+    // seña, esa queda a favor del dueño y el resto simplemente no se cobra.
+    final String estadoPago;
+    final bool aFavor;
+    if (pagado) {
+      estadoPago = 'Estaba PAGADA (revisar reembolso)';
+      aFavor = true;
+    } else if (sena > 0) {
+      estadoPago =
+          'Seña $mon ${sena.toStringAsFixed(0)} a tu favor · resto ya no se debe';
+      aFavor = true;
+    } else {
+      estadoPago = 'Sin pago de por medio · nadie debe nada';
+      aFavor = false;
+    }
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -133,21 +149,22 @@ class _Card extends StatelessWidget {
               Text('$mon ${precio.toStringAsFixed(0)}',
                   style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w800)),
               const SizedBox(width: 8),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: pagado ? limaSuave : const Color(0xFFF3F3F3),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  pagado
-                      ? 'Estaba PAGADA (revisar reembolso)'
-                      : 'Sin pago (efectivo pendiente)',
-                  style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: pagado ? bosque : textoTenueDe(context)),
+              Flexible(
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: aFavor ? limaSuave : const Color(0xFFF3F3F3),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    estadoPago,
+                    maxLines: 2,
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: aFavor ? bosque : textoTenueDe(context)),
+                  ),
                 ),
               ),
             ],

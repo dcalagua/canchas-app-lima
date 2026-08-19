@@ -20,10 +20,15 @@ create table if not exists public.pichangol_reservas_canceladas (
   precio        numeric not null default 0,
   moneda        text not null default 'S/',
   pagado        boolean not null default false,
+  sena          numeric not null default 0,  -- seña adelantada (queda a favor del dueño)
   medio_pago    text not null default '',
   cancelado_por text not null default '',   -- quién canceló
   cancelada_en  timestamptz not null default now()
 );
+
+-- Si ya habías creado la tabla sin `sena`, esto la agrega (idempotente).
+alter table public.pichangol_reservas_canceladas
+  add column if not exists sena numeric not null default 0;
 
 create index if not exists idx_canceladas_dueno
   on public.pichangol_reservas_canceladas (dueno, cancelada_en desc);

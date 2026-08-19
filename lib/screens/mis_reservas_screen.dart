@@ -582,7 +582,9 @@ Future<void> _confirmarCancelar(BuildContext context, Reserva r) async {
     mensaje: historial
         ? 'Se eliminará esta reserva de tu historial. No se puede deshacer.'
         : 'Se liberará el horario ${r.dia} ${r.horaInicio}–${r.horaFin} y '
-            'dejará de aparecer en tus reservas.',
+                'dejará de aparecer en tus reservas.'
+            '${r.sena > 0 && !r.pagado ? '\n\nLa seña de ${r.monedaSimbolo} ${r.sena} que adelantaste NO se devuelve (queda para el local); el resto ya no lo pagas.' : ''}'
+            '${r.pagado ? '\n\nEsta reserva ya está pagada: la cancelación no genera reembolso automático.' : ''}',
     textoConfirmar: historial ? 'Sí, quitar' : 'Sí, cancelar',
     textoCancelar: 'No',
     destructivo: historial,

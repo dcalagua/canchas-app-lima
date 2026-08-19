@@ -7848,12 +7848,24 @@ class AppState extends ChangeNotifier {
     final horas = orden.length > 1
         ? '${orden.first.horaInicio}–${orden.last.horaFin}'
         : '${r.horaInicio}–${r.horaFin}';
+    // Estado de la plata tras cancelar (regla del director): el jugador ya no
+    // debe NADA. Si adelantó seña, queda a favor del dueño; si pagó todo, hay
+    // que coordinar el reembolso.
+    final senaTotal = orden.fold<int>(0, (a, x) => a + x.sena);
+    final mon = r.monedaSimbolo;
+    final nota = orden.any((x) => x.pagado)
+        ? ' OJO: estaba pagada por la app (revisa el reembolso en Reportes → '
+            'Cancelaciones).'
+        : senaTotal > 0
+            ? ' La seña de $mon $senaTotal queda a tu favor; el resto ya no '
+                'se debe.'
+            : '';
     _pushAviso(
       email: cancha.dueno,
       titulo: 'Reserva cancelada ❌',
       cuerpo: '${r.jugador.trim().isEmpty ? 'Un jugador' : r.jugador} canceló '
           '${_lugarFechaHora(cancha, r.fecha, horas)}. El horario quedó '
-          'disponible otra vez.',
+          'disponible otra vez.$nota',
       tipo: 'reserva_cancelada',
       data: {'cancha_id': r.canchaId, 'fecha': r.fecha, 'hora': r.horaInicio},
     );
