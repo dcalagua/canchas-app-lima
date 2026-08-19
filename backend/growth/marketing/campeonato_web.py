@@ -38,10 +38,14 @@ def obtener_campeonato(campeonato_id: str) -> dict | None:
     ruta)."""
     if not config.SUPABASE_URL or not config.SUPABASE_ANON_KEY:
         raise RuntimeError("supabase_sin_configurar")
-    if not config.SUPABASE_URL.startswith("http"):
+    base = config.SUPABASE_URL.strip().strip('"').strip("'").rstrip("/")
+    # Tolerante: si pegaron el host pelado (sin https://), se lo ponemos.
+    if not base.startswith("http"):
+        base = f"https://{base}"
+    if "." not in base.split("//", 1)[-1]:
         raise RuntimeError("supabase_url_invalida")
     q = urllib.parse.quote(campeonato_id, safe="")
-    url = (f"{config.SUPABASE_URL}/rest/v1/pichangol_campeonatos"
+    url = (f"{base}/rest/v1/pichangol_campeonatos"
            f"?id=eq.{q}&select=data,eliminado")
     req = urllib.request.Request(url, headers={
         "apikey": config.SUPABASE_ANON_KEY,
