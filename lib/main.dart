@@ -10,6 +10,7 @@ import 'screens/llamada_screen.dart';
 import 'screens/mensajes_screen.dart';
 import 'screens/home_shell.dart';
 import 'screens/reservas_dueno_screen.dart';
+import 'services/enlaces_service.dart';
 import 'services/recordatorio_service.dart';
 import 'screens/splash_screen.dart';
 import 'services/llamada_service.dart';
@@ -35,6 +36,9 @@ void main() async {
   // Recordatorios LOCALES (cobra en efectivo). Fail-safe: si el plugin no
   // inicializa, no rompe la app.
   await RecordatorioService.init();
+  // DEEP LINKS: el enlace compartido de un campeonato (https://…/c/{id} o
+  // pichangol://) abre la app directo en la ficha para inscribirse. Fail-safe.
+  await EnlacesService.init();
   // Al tocar una notificación (o el aviso in-app), abre la bandeja en el chat
   // correspondiente. Se usa el navegador global de PushService.
   PushService.alAbrirChat = (hilo) {

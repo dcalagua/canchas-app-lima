@@ -144,7 +144,18 @@ def _render_liga(c: dict) -> str:
     return ''.join(out)
 
 
-def html_campeonato(c: dict) -> str:
+def _intent_unirse(campeonato_id: str) -> str:
+    """URL intent:// de Android: abre la APP en la ficha del campeonato si está
+    instalada; si no, cae a la descarga (browser_fallback_url). Es el botón
+    'Unirme en la app' — un solo tap para el que ya usa Pichangol, y el que no,
+    queda obligado a descargarla."""
+    fallback = urllib.parse.quote(_RELEASE, safe="")
+    return (f"intent://c/{urllib.parse.quote(campeonato_id, safe='')}"
+            f"#Intent;scheme=pichangol;package=pe.ebim.pichangol;"
+            f"S.browser_fallback_url={fallback};end")
+
+
+def html_campeonato(c: dict, campeonato_id: str = "") -> str:
     """La página completa del campeonato (hero + fixture + participantes)."""
     deporte = _esc(c.get("deporte", ""))
     formato = "Liga (tabla)" if c.get("formato") == "liga" else "Eliminación (llave)"
@@ -167,11 +178,23 @@ def html_campeonato(c: dict) -> str:
         costo = c.get("costoInscripcion") or 0
         costo_txt = (f" · {_esc(mon)} {float(costo):.2f}" if costo and costo > 0
                      else " · gratis")
+        intent = _intent_unirse(campeonato_id)
         inscripcion = (
             f'<div class="cta"><b>Inscripciones abiertas</b>{costo_txt}<br>'
             f'<span>{como}</span><br>'
-            f'<a class="mapbtn" style="margin-top:10px" href="{_RELEASE}">'
-            f'Descargar / abrir Pichangol</a></div>')
+            f'<a class="mapbtn" style="margin-top:10px" href="{intent}">'
+            f'🎾 Unirme en la app</a><br>'
+            f'<span style="font-size:12px">Si no tienes Pichangol, el botón '
+            f'te lleva a descargarla.</span></div>')
+    if not inscripcion:
+        intent = _intent_unirse(campeonato_id)
+        inscripcion = (
+            f'<div class="cta"><b>Sigue el torneo en Pichangol</b><br>'
+            f'<span>Resultados, llave y avisos en tu teléfono.</span><br>'
+            f'<a class="mapbtn" style="margin-top:10px" href="{intent}">'
+            f'🎾 Abrir en la app</a><br>'
+            f'<span style="font-size:12px">Si no tienes Pichangol, el botón '
+            f'te lleva a descargarla.</span></div>')
     cat = (f'<span class="cat">{_esc(c["categoria"])}</span><br>'
            if c.get("categoria") else "")
     fechas = f'📅 {_esc(c["fechas"])}<br>' if c.get("fechas") else ""

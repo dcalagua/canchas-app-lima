@@ -156,6 +156,12 @@ LANDING_BASE_URL = os.getenv("LANDING_BASE_URL", "")
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "").strip()
 
+# Huella SHA-256 del certificado de firma del APK (para verificar los Android
+# App Links en /.well-known/assetlinks.json). Sacarla con:
+#   keytool -list -v -keystore <keystore> | grep SHA256
+# Vacía = la ruta responde 404 y el botón intent:// de la página cubre igual.
+ANDROID_CERT_SHA256 = os.getenv("ANDROID_CERT_SHA256", "").strip()
+
 # Push "tu cancha fue aprobada": URL de la Edge Function de Supabase
 # (push-aprobacion) y su secreto compartido. Al aprobar un reclamo, el backend
 # growth le pega a esta función para que envíe el FCM al reclamante. Si la URL

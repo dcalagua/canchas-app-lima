@@ -408,6 +408,27 @@ def _base_landing(request: Request) -> str:
     return str(request.base_url).rstrip("/")
 
 
+@router.get("/.well-known/assetlinks.json")
+def assetlinks() -> list[dict]:
+    """Verificación de ANDROID APP LINKS: con esto, tocar https://…/c/{id}
+    abre la app DIRECTO (sin pasar por el navegador) en los teléfonos con
+    Pichangol instalada. Requiere la env ANDROID_CERT_SHA256 (huella SHA-256
+    del certificado de firma del APK; admite varias separadas por coma).
+    Sin la env → 404 (el botón intent:// de la página cubre igual)."""
+    huellas = [h.strip().upper() for h in
+               config.ANDROID_CERT_SHA256.split(",") if h.strip()]
+    if not huellas:
+        raise HTTPException(status_code=404, detail="sin_huella")
+    return [{
+        "relation": ["delegate_permission/common.handle_all_urls"],
+        "target": {
+            "namespace": "android_app",
+            "package_name": "pe.ebim.pichangol",
+            "sha256_cert_fingerprints": huellas,
+        },
+    }]
+
+
 @router.get("/c/{campeonato_id}", response_class=HTMLResponse)
 def ver_campeonato(campeonato_id: str) -> HTMLResponse:
     """Página PÚBLICA de un campeonato (enlace para compartir). Reemplaza a la
@@ -442,7 +463,8 @@ def ver_campeonato(campeonato_id: str) -> HTMLResponse:
         return HTMLResponse(campeonato_web.html_simple(
             "No encontrado", "Este campeonato no existe o fue eliminado."),
             status_code=404)
-    return HTMLResponse(campeonato_web.html_campeonato(data))
+    return HTMLResponse(
+        campeonato_web.html_campeonato(data, campeonato_id=campeonato_id))
 
 
 @router.get("/l/{academia_id}", response_class=HTMLResponse)

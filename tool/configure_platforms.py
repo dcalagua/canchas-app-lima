@@ -134,6 +134,27 @@ def android_manifest(text):
     # llamada (o abrir la pantalla completa) se reuse la misma tarea/actividad.
     text = text.replace(
         'android:launchMode="singleTop"', 'android:launchMode="singleTask"')
+    # DEEP LINKS del campeonato: el enlace compartido https://…/c/{id} (App
+    # Link, autoVerify contra /.well-known/assetlinks.json del backend) y el
+    # esquema propio pichangol:// (botón "Unirme en la app" de la página web)
+    # abren la app directo en la ficha del campeonato (EnlacesService).
+    if 'android:scheme="pichangol"' not in text:
+        filtros = (
+            '\n            <intent-filter android:autoVerify="true">\n'
+            '                <action android:name="android.intent.action.VIEW"/>\n'
+            '                <category android:name="android.intent.category.DEFAULT"/>\n'
+            '                <category android:name="android.intent.category.BROWSABLE"/>\n'
+            '                <data android:scheme="https" android:host="www.pichangol.app" android:pathPrefix="/c/"/>\n'
+            '                <data android:scheme="https" android:host="pichangol.app" android:pathPrefix="/c/"/>\n'
+            '                <data android:scheme="https" android:host="pg.ebim.pe" android:pathPrefix="/c/"/>\n'
+            '            </intent-filter>\n'
+            '            <intent-filter>\n'
+            '                <action android:name="android.intent.action.VIEW"/>\n'
+            '                <category android:name="android.intent.category.DEFAULT"/>\n'
+            '                <category android:name="android.intent.category.BROWSABLE"/>\n'
+            '                <data android:scheme="pichangol"/>\n'
+            '            </intent-filter>\n        ')
+        text = text.replace("</activity>", filtros + "</activity>", 1)
     # Compartir historia DIRECTO a IG/FB (intent "Add to Story"): Android 11+
     # exige declarar los paquetes que consultamos (package visibility).
     if "com.instagram.android" not in text:

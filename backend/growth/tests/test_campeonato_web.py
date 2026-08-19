@@ -65,3 +65,22 @@ def test_tabla_ordena_por_puntos():
     filas = campeonato_web._tabla(c)
     assert filas[0]["nombre"] == "A" and filas[0]["g"] == 1
     assert filas[1]["nombre"] == "B" and filas[1]["p"] == 1
+
+
+def test_cta_unirse_en_la_app(monkeypatch):
+    data = {"nombre": "Liga", "deporte": "tenis", "formato": "liga",
+            "inscripcionAbierta": True, "participantes": [], "partidos": []}
+    monkeypatch.setattr(campeonato_web, "obtener_campeonato", lambda _id: data)
+    r = client.get("/c/camp_9")
+    assert "intent://c/camp_9" in r.text          # abre la app si está
+    assert "browser_fallback_url" in r.text        # o lleva a descargarla
+    assert "Unirme en la app" in r.text
+
+
+def test_assetlinks(monkeypatch):
+    monkeypatch.setattr(config, "ANDROID_CERT_SHA256", "")
+    assert client.get("/.well-known/assetlinks.json").status_code == 404
+    monkeypatch.setattr(config, "ANDROID_CERT_SHA256", "aa:bb")
+    j = client.get("/.well-known/assetlinks.json").json()
+    assert j[0]["target"]["package_name"] == "pe.ebim.pichangol"
+    assert j[0]["target"]["sha256_cert_fingerprints"] == ["AA:BB"]
