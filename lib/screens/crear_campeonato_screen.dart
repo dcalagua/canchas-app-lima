@@ -311,6 +311,9 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
         minJugadoresEquipo: minJug,
         premios: _premios.text.trim(),
         auspiciador: _auspiciador.text.trim(),
+        // Conservar los LOGOS de auspiciadores ya subidos: al reconstruir sin
+        // este campo, la edición los borraba (default = lista vacía).
+        auspiciadoresLogos: e.auspiciadoresLogos,
       );
       appState.guardarCampeonato(c);
     } else {
