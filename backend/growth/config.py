@@ -162,6 +162,11 @@ SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "").strip()
 # Vacía = la ruta responde 404 y el botón intent:// de la página cubre igual.
 ANDROID_CERT_SHA256 = os.getenv("ANDROID_CERT_SHA256", "").strip()
 
+# Proveedor de IMÁGENES IA para el fondo de los afiches (auto-detección: se
+# usa el que esté seteado; ambos vacíos = afiche con gradiente de marca).
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN", "").strip()
+
 # Push "tu cancha fue aprobada": URL de la Edge Function de Supabase
 # (push-aprobacion) y su secreto compartido. Al aprobar un reclamo, el backend
 # growth le pega a esta función para que envíe el FCM al reclamante. Si la URL

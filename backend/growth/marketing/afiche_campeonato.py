@@ -17,6 +17,7 @@ import io
 
 from PIL import Image, ImageDraw, ImageFilter
 
+from . import arte_ia
 from .flyer import _bajar_imagen, _envolver, _font, _limpiar
 
 W, H = 1080, 1350
@@ -70,9 +71,46 @@ def _logo_circular(img: Image.Image, url: str, cx: int, cy: int, r: int):
     d.ellipse([cx - r, cy - r, cx + r, cy + r], outline=_DORADO, width=8)
 
 
+def _cover(im: Image.Image) -> Image.Image:
+    """Recorta/escala la imagen para llenar exactamente W×H (sin deformar)."""
+    esc = max(W / im.width, H / im.height)
+    im = im.resize((int(im.width * esc) + 1, int(im.height * esc) + 1))
+    x = (im.width - W) // 2
+    y = (im.height - H) // 2
+    return im.crop((x, y, x + W, y + H))
+
+
+def _fondo_ia(deporte: str) -> Image.Image | None:
+    """Fondo FOTOGRÁFICO generado por IA (si hay proveedor configurado), con
+    un velo azul noche + degradados arriba/abajo para que la tipografía
+    siempre se lea. None = usar el gradiente de marca."""
+    foto = arte_ia.fondo_para(deporte)
+    if foto is None:
+        return None
+    img = _cover(foto)
+    velo = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    dv = ImageDraw.Draw(velo)
+    # Tinte navy general (integra la foto a la marca).
+    dv.rectangle([0, 0, W, H], fill=(_NAVY[0], _NAVY[1], _NAVY[2], 96))
+    # Degradado superior e inferior (zonas de texto).
+    for i in range(430):
+        a = int(215 * (1 - i / 430))
+        dv.line([(0, i), (W, i)], fill=(_NAVY[0], _NAVY[1], _NAVY[2], a))
+    for i in range(520):
+        a = int(230 * (1 - i / 520))
+        yy = H - 1 - i
+        dv.line([(0, yy), (W, yy)], fill=(_NAVY[0], _NAVY[1], _NAVY[2], a))
+    img = img.convert("RGB")
+    img.paste(velo, (0, 0), velo)
+    return img
+
+
 def generar_afiche(c: dict) -> bytes:
-    """El afiche PNG del campeonato a partir de su `data` (jsonb)."""
-    img = _fondo()
+    """El afiche PNG del campeonato a partir de su `data` (jsonb). Con
+    proveedor de imágenes configurado (env en Railway), el fondo es una FOTO
+    deportiva generada por IA (cacheada por deporte); si no, el gradiente de
+    marca de siempre. Los textos SIEMPRE los pone Pillow (exactos)."""
+    img = _fondo_ia(str(c.get("deporte") or "")) or _fondo()
     d = ImageDraw.Draw(img)
 
     nombre = _limpiar(str(c.get("nombre") or "Campeonato"))
