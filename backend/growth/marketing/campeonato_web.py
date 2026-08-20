@@ -173,6 +173,53 @@ def _podio(c: dict) -> tuple[str | None, str | None]:
     return (_nombre_de(c, gid), _nombre_de(c, pid))
 
 
+_EMOJI = {"tenis": "🎾", "futbol": "⚽", "padel": "🏸", "pickleball": "🏓",
+          "voley": "🏐", "basquet": "🏀", "natacion": "🏊"}
+
+
+def _fmt_tiempo(centesimas: int) -> str:
+    m, r = divmod(int(centesimas), 6000)
+    s, cc = divmod(r, 100)
+    return f"{m}:{s:02d}.{cc:02d}" if m else f"{s}.{cc:02d} s"
+
+
+def _render_tiempos(c: dict) -> str:
+    """NATACIÓN (formato por tiempos): ranking por PRUEBA (50m Libre, etc.),
+    ordenado por tiempo; DSQ al final. Es el 'fixture' de estos torneos."""
+    pruebas = c.get("pruebas") or []
+    if not pruebas:
+        return ('<p class="vacio">Las pruebas aún no están publicadas. '
+                'Vuelve pronto.</p>')
+    out = []
+    for p in pruebas:
+        marcas = p.get("marcas") or []
+        reg = sorted(
+            (m for m in marcas
+             if not m.get("dsq") and (m.get("centesimas") or 0) > 0),
+            key=lambda m: m.get("centesimas") or 0)
+        dsq = [m for m in marcas if m.get("dsq")]
+        filas = []
+        for i, m in enumerate(reg):
+            medalla = {0: " 🥇", 1: " 🥈", 2: " 🥉"}.get(i, "")
+            filas.append(
+                f'<tr><td style="width:34px">{i + 1}</td>'
+                f'<td class="l">{_esc(_nombre_de(c, m.get("participanteId")))}'
+                f'{medalla}</td>'
+                f'<td style="width:110px">{_fmt_tiempo(m.get("centesimas") or 0)}'
+                f'</td></tr>')
+        for m in dsq:
+            filas.append(
+                f'<tr><td>—</td>'
+                f'<td class="l">{_esc(_nombre_de(c, m.get("participanteId")))}'
+                f'</td><td>DSQ</td></tr>')
+        cuerpo = ''.join(filas) or             '<tr><td class="l vacio">Sin tiempos registrados aún</td></tr>'
+        out.append(
+            f'<h3 class="prueba">🏊 {_esc(p.get("nombre") or "Prueba")}</h3>'
+            f'<div class="scroll"><table class="tabla" style="min-width:auto">'
+            f'<tbody>{cuerpo}</tbody></table></div>')
+    return ''.join(out)
+
+
 def _intent_unirse(campeonato_id: str) -> str:
     """URL intent:// de Android: abre la APP en la ficha del campeonato si está
     instalada; si no, cae a la descarga (browser_fallback_url). Es el botón
@@ -188,17 +235,23 @@ def html_campeonato(c: dict, campeonato_id: str = "",
                     og_image: str = "") -> str:
     """La página completa del campeonato (hero + fixture + participantes)."""
     deporte = _esc(c.get("deporte", ""))
-    formato = "Liga (tabla)" if c.get("formato") == "liga" else "Eliminación (llave)"
+    emo = _EMOJI.get(str(c.get("deporte") or ""), "🏆")
+    es_tiempos = c.get("formato") == "tiempos"
+    formato = ("Liga (tabla)" if c.get("formato") == "liga"
+               else "Por tiempos (pruebas)" if es_tiempos
+               else "Eliminación (llave)")
     mapa = ""
     if c.get("sedeLat") is not None and c.get("sedeLng") is not None:
         mapa = (f'<a class="mapbtn" href="https://www.google.com/maps/search/'
                 f'?api=1&query={c["sedeLat"]},{c["sedeLng"]}" target="_blank" '
                 f'rel="noopener">📍 Cómo llegar</a>')
     partidos = c.get("partidos") or []
-    if partidos:
+    if es_tiempos:
+        fixture = _render_tiempos(c)
+    elif partidos:
         fixture = _render_liga(c) if c.get("formato") == "liga" else _render_llave(c)
     else:
-        fixture = '<p class="vacio">El fixture aún no está publicado. Vuelve pronto.</p>'
+        fixture = '<p class="vacio">El fixture aún no está publicado. Vuelve pronto.</p>' 
     participantes = c.get("participantes") or []
     mon = str(c.get("moneda") or "").strip() or "S/"
     como = ("Ábrela y crea tu equipo (o únete con el código del capitán)."
@@ -213,7 +266,7 @@ def html_campeonato(c: dict, campeonato_id: str = "",
             f'<div class="cta"><b>Inscripciones abiertas</b>{costo_txt}<br>'
             f'<span>{como}</span><br>'
             f'<a class="mapbtn" style="margin-top:10px" href="{intent}">'
-            f'🎾 Unirme en la app</a><br>'
+            f'{emo} Unirme en la app</a><br>' 
             f'<span style="font-size:12px">Si no tienes Pichangol, el botón '
             f'te lleva a descargarla.</span></div>')
     if not inscripcion:
@@ -222,7 +275,7 @@ def html_campeonato(c: dict, campeonato_id: str = "",
             f'<div class="cta"><b>Sigue el torneo en Pichangol</b><br>'
             f'<span>Resultados, llave y avisos en tu teléfono.</span><br>'
             f'<a class="mapbtn" style="margin-top:10px" href="{intent}">'
-            f'🎾 Abrir en la app</a><br>'
+            f'{emo} Abrir en la app</a><br>' 
             f'<span style="font-size:12px">Si no tienes Pichangol, el botón '
             f'te lleva a descargarla.</span></div>')
     # ── Publicidad: premios + auspiciador (espacio de marca) ──
@@ -333,6 +386,7 @@ def html_campeonato(c: dict, campeonato_id: str = "",
   .auspicio{{background:#fff;border-left:4px solid {_ESMERALDA};border-radius:12px;padding:12px 14px;margin-top:12px;font-size:13.5px;color:#333}}
   .podio{{background:linear-gradient(135deg,var(--noche),#0B7A58);color:#fff;border-radius:14px;padding:14px 16px;margin-top:16px;font-size:14px;line-height:1.9}}
   .podio .oro{{font-size:18px;font-weight:800}}
+  .prueba{{font-size:14px;font-weight:800;margin:16px 4px 8px}}
   .galeria{{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}}
   .galeria img{{width:100%;height:130px;object-fit:cover;border-radius:12px;display:block}}
   .ausps{{display:flex;flex-wrap:wrap;gap:12px}}
@@ -357,7 +411,7 @@ def html_campeonato(c: dict, campeonato_id: str = "",
     {inscripcion}
     {bloque_premios}
     {bloque_auspiciador}
-    <h2>{"Tabla de posiciones" if c.get("formato") == "liga" else "Llave"}</h2>
+    <h2>{"Tabla de posiciones" if c.get("formato") == "liga" else "Pruebas y tiempos" if es_tiempos else "Llave"}</h2>
     {fixture}
     {bloque_galeria}
     <h2>Participantes ({len(participantes)})</h2>

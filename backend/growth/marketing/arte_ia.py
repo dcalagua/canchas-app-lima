@@ -142,10 +142,12 @@ _VARIACIONES = [
 
 def _prompt(deporte: str, variante: int = 0, tema: str = "") -> str:
     tema = (tema or "").strip()[:140]
-    escena = (_CANCHA if tema == "cancha" else _ESCENA).get(
-        deporte, _ESCENA["tenis"])
+    # Deporte desconocido → escena GENÉRICA (nunca un tenista por defecto).
     if tema == "cancha":
-        escena = _CANCHA.get(deporte, _CANCHA["tenis"])
+        escena = _CANCHA.get(deporte, "a beautiful empty sports venue")
+    else:
+        escena = _ESCENA.get(
+            deporte, "dynamic athletes in action, energetic sports scene")
     extra = _VARIACIONES[variante % len(_VARIACIONES)]
     # Temática curada, o la DESCRIPCIÓN LIBRE del organizador ("Mi idea").
     estilo = _TEMAS.get(tema, tema)
@@ -232,7 +234,7 @@ _generando: set[str] = set()
 
 
 def _clave(deporte: str, variante: int, tema: str = "") -> str:
-    d = deporte if deporte in _ESCENA else "tenis"
+    d = deporte if deporte in _ESCENA else "generico"
     base = f"{d}:{variante % len(_VARIACIONES)}"
     tema = (tema or "").strip()[:140]
     if not tema:
@@ -273,9 +275,9 @@ def fondo_para(deporte: str, variante: int = 0,
     None = sin proveedor / falló → el afiche usa el gradiente de marca."""
     if not disponible():
         return None
-    d = deporte if deporte in _ESCENA else "tenis"
+    d = deporte if deporte in _ESCENA else "generico"
     v = variante % len(_VARIACIONES)
-    k = _clave(d, v, tema)
+    k = _clave(deporte, v, tema)
     con = _cache.get(k)
     if con is not None:
         return con

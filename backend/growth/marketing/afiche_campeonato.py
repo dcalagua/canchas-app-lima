@@ -164,6 +164,7 @@ def generar_afiche(c: dict, esperar_ia: bool = True) -> bytes:
     auspiciador = _limpiar(str(c.get("auspiciador") or "")).strip()
     deporte = _ETI_DEPORTE.get(str(c.get("deporte") or ""), "")
     formato = ("LIGA (TABLA)" if c.get("formato") == "liga"
+               else "POR TIEMPOS" if c.get("formato") == "tiempos"
                else "ELIMINACIÓN DIRECTA")
     categoria = _limpiar(str(c.get("categoria") or "")).strip()
     fechas = _limpiar(str(c.get("fechas") or "")).strip()
