@@ -58,6 +58,11 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
   final _nombre = TextEditingController();
   final _categoria = TextEditingController();
   final _costo = TextEditingController();
+  // Publicidad del torneo: premios (uno por línea) y auspiciador oficial.
+  late final _premios =
+      TextEditingController(text: widget.editar?.premios ?? '');
+  late final _auspiciador =
+      TextEditingController(text: widget.editar?.auspiciador ?? '');
   late Deporte _deporte = widget.deporteSugerido ?? Deporte.futbol;
   FormatoTorneo _formato = FormatoTorneo.eliminacion;
   DateTimeRange? _rango;
@@ -304,6 +309,8 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
         edadMax: edadMax,
         logoUrl: e.logoUrl,
         minJugadoresEquipo: minJug,
+        premios: _premios.text.trim(),
+        auspiciador: _auspiciador.text.trim(),
       );
       appState.guardarCampeonato(c);
     } else {
@@ -324,6 +331,8 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
         edadMin: edadMin,
         edadMax: edadMax,
         minJugadoresEquipo: minJug,
+        premios: _premios.text.trim(),
+        auspiciador: _auspiciador.text.trim(),
       );
     }
     // Sube el logo (si eligió uno nuevo) ahora que el campeonato ya tiene id.
@@ -611,6 +620,36 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
               ],
             ),
           ],
+          const SizedBox(height: 20),
+          // ── Publicidad del torneo (pedido del director): premios y
+          // auspiciador se lucen en el mensaje de compartir (estilo RALLY
+          // CHALLENGE) y en la página pública del campeonato. ──
+          const Text('Publicidad del torneo 📣',
+              style: TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 4),
+          const Text(
+              'Los premios y el auspiciador salen en el mensaje de WhatsApp y '
+              'en la página del torneo.',
+              style: TextStyle(color: textoTenue, fontSize: 12)),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _auspiciador,
+            textCapitalization: TextCapitalization.characters,
+            decoration: const InputDecoration(
+                labelText: 'Auspiciador oficial (opcional)',
+                hintText: 'Ej. JORDI MEAT BOUTIQUE'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _premios,
+            maxLines: 4,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(
+                labelText: 'Premios (uno por línea, opcional)',
+                hintText: 'Trofeos para campeones y subcampeones\n'
+                    'Raqueteros WILSON\nTarros de pelotas',
+                alignLabelWithHint: true),
+          ),
     ];
   }
 }

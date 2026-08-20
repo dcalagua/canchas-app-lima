@@ -195,6 +195,33 @@ def html_campeonato(c: dict, campeonato_id: str = "") -> str:
             f'🎾 Abrir en la app</a><br>'
             f'<span style="font-size:12px">Si no tienes Pichangol, el botón '
             f'te lleva a descargarla.</span></div>')
+    # ── Publicidad: premios + auspiciador (espacio de marca) ──
+    auspiciador = str(c.get("auspiciador") or "").strip()
+    premios = [l.strip() for l in str(c.get("premios") or "").split("\n")
+               if l.strip()]
+    bloque_premios = ""
+    if premios:
+        items = "".join(f'<li>✅ {_esc(p)}</li>' for p in premios)
+        bloque_premios = (f'<h2>🎁 Premios</h2>'
+                          f'<ul class="premios">{items}</ul>')
+    bloque_auspiciador = ""
+    if auspiciador:
+        bloque_auspiciador = (
+            f'<div class="auspicio">🤝 Agradecimiento especial a '
+            f'<b>{_esc(auspiciador)}</b>, nuestro auspiciador oficial.</div>')
+    byline = (f'<div class="byline">by <b>{_esc(auspiciador)}</b></div>'
+              if auspiciador else "")
+    # Vista previa RICA en WhatsApp (og:tags): título, descripción y logo.
+    og_titulo = f'🏆 {c.get("nombre", "Campeonato")}' + (
+        f' by {auspiciador}' if auspiciador else '')
+    og_desc = " · ".join(x for x in [
+        deporte, formato,
+        f'Inicio {c.get("fechas")}' if c.get("fechas") else "",
+        "Inscripciones abiertas" if c.get("inscripcionAbierta") else "",
+    ] if x)
+    logo = str(c.get("logoUrl") or "").strip()
+    og_img = (f'<meta property="og:image" content="{_esc(logo)}">'
+              if logo.startswith("http") else "")
     cat = (f'<span class="cat">{_esc(c["categoria"])}</span><br>'
            if c.get("categoria") else "")
     fechas = f'📅 {_esc(c["fechas"])}<br>' if c.get("fechas") else ""
@@ -207,6 +234,10 @@ def html_campeonato(c: dict, campeonato_id: str = "") -> str:
     return f"""<!-- campeonato-web railway v1 --><!doctype html><html lang="es"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{_esc(c.get("nombre", "Campeonato"))} · Pichangol</title>
+<meta property="og:title" content="{_esc(og_titulo)}">
+<meta property="og:description" content="{_esc(og_desc)}">
+<meta property="og:type" content="website">
+{og_img}
 <style>
   :root{{--acento:{_ESMERALDA};--noche:{_NAVY};}}
   *{{box-sizing:border-box;margin:0;padding:0}}
@@ -238,12 +269,16 @@ def html_campeonato(c: dict, campeonato_id: str = "") -> str:
   .cta{{background:#fff;border:1.5px solid var(--acento);border-radius:14px;padding:14px 16px;margin-top:16px;font-size:14px}}
   .cta span{{color:#627080;font-size:13px}}
   .vacio{{color:#627080;padding:16px 4px}}
+  .byline{{margin-top:4px;font-size:14px;opacity:.95}}
+  .premios{{list-style:none;background:#fff;border-radius:14px;padding:12px 16px;font-size:14px;line-height:2}}
+  .auspicio{{background:#fff;border-left:4px solid {_ESMERALDA};border-radius:12px;padding:12px 14px;margin-top:12px;font-size:13.5px;color:#333}}
   .foot{{max-width:760px;margin:26px auto 0;padding:16px;text-align:center;color:#8a94a0;font-size:12px}}
   .foot a{{color:var(--noche);font-weight:700;text-decoration:none}}
 </style></head><body>
   <div class="hero">
     {cat}
     <h1>🏆 {_esc(c.get("nombre", ""))}</h1>
+    {byline}
     <div class="meta">
       {deporte} · {formato}<br>
       {fechas}
@@ -253,6 +288,8 @@ def html_campeonato(c: dict, campeonato_id: str = "") -> str:
   </div>
   <div class="wrap">
     {inscripcion}
+    {bloque_premios}
+    {bloque_auspiciador}
     <h2>{"Tabla de posiciones" if c.get("formato") == "liga" else "Llave"}</h2>
     {fixture}
     <h2>Participantes ({len(participantes)})</h2>

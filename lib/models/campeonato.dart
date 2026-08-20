@@ -398,6 +398,12 @@ class Campeonato {
   /// "completo". 0 = sin cupo definido (solo se muestra el conteo, sin marcar
   /// completo/incompleto). No hay tope máximo (pueden sumar suplentes).
   final int minJugadoresEquipo;
+  /// PREMIOS del torneo, uno por línea ("Trofeos para campeones", "Tarros de
+  /// pelotas"…). Se lucen en la publicidad de compartir y en la página web.
+  final String premios;
+  /// AUSPICIADOR oficial (ej. "JORDI MEAT BOUTIQUE"). Espacio de marca en la
+  /// publicidad y la página del torneo.
+  final String auspiciador;
 
   const Campeonato({
     required this.id,
@@ -426,6 +432,8 @@ class Campeonato {
     this.edadMax,
     this.logoUrl,
     this.minJugadoresEquipo = 0,
+    this.premios = '',
+    this.auspiciador = '',
   });
 
   /// ¿Las inscripciones ya cerraron por fecha? (para auto-sorteo / bloqueo).
@@ -485,6 +493,8 @@ class Campeonato {
     int? edadMax,
     String? logoUrl,
     int? minJugadoresEquipo,
+    String? premios,
+    String? auspiciador,
   }) =>
       Campeonato(
         id: id,
@@ -513,6 +523,8 @@ class Campeonato {
         edadMax: edadMax ?? this.edadMax,
         logoUrl: logoUrl ?? this.logoUrl,
         minJugadoresEquipo: minJugadoresEquipo ?? this.minJugadoresEquipo,
+        premios: premios ?? this.premios,
+        auspiciador: auspiciador ?? this.auspiciador,
       );
 
   Participante? participante(String? pid) {
@@ -553,6 +565,8 @@ class Campeonato {
         if (edadMax != null) 'edadMax': edadMax,
         if (logoUrl != null && logoUrl!.isNotEmpty) 'logoUrl': logoUrl,
         if (minJugadoresEquipo > 0) 'minJugadoresEquipo': minJugadoresEquipo,
+        if (premios.isNotEmpty) 'premios': premios,
+        if (auspiciador.isNotEmpty) 'auspiciador': auspiciador,
       };
 
   factory Campeonato.fromJson(Map<String, dynamic> j) => Campeonato(
@@ -600,6 +614,8 @@ class Campeonato {
         edadMax: (j['edadMax'] as num?)?.toInt(),
         logoUrl: j['logoUrl'] as String?,
         minJugadoresEquipo: (j['minJugadoresEquipo'] as num?)?.toInt() ?? 0,
+        premios: (j['premios'] ?? '') as String,
+        auspiciador: (j['auspiciador'] ?? '') as String,
       );
 }
 

@@ -84,3 +84,17 @@ def test_assetlinks(monkeypatch):
     j = client.get("/.well-known/assetlinks.json").json()
     assert j[0]["target"]["package_name"] == "pe.ebim.pichangol"
     assert j[0]["target"]["sha256_cert_fingerprints"] == ["AA:BB"]
+
+
+def test_premios_y_auspiciador(monkeypatch):
+    data = {"nombre": "Rally Challenge", "deporte": "tenis",
+            "formato": "eliminacion", "inscripcionAbierta": True,
+            "premios": "Trofeos\nTarros de pelotas",
+            "auspiciador": "JORDI MEAT BOUTIQUE",
+            "participantes": [], "partidos": []}
+    monkeypatch.setattr(campeonato_web, "obtener_campeonato", lambda _id: data)
+    r = client.get("/c/camp_r")
+    assert "Premios" in r.text and "Trofeos" in r.text
+    assert "JORDI MEAT BOUTIQUE" in r.text
+    assert "auspiciador oficial" in r.text
+    assert 'property="og:title"' in r.text  # vista previa rica en WhatsApp

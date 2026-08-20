@@ -844,7 +844,60 @@ class CampeonatoDetalleScreen extends StatelessWidget {
     }
   }
 
+  /// PUBLICIDAD del torneo (estilo RALLY CHALLENGE, pedido del director):
+  /// mensaje de convocatoria con formato, fechas, categorías, premios,
+  /// auspiciador, precio y el enlace para unirse con un tap. Se usa mientras
+  /// las inscripciones están abiertas; con el fixture en marcha se comparte
+  /// el resumen de resultados (abajo).
+  static String _publicidad(Campeonato c) {
+    final sb = StringBuffer();
+    final dep = emojiDeporte(c.deporte);
+    sb.writeln('🏆$dep *${c.nombre.toUpperCase()}*'
+        '${c.auspiciador.isNotEmpty ? ' by ${c.auspiciador}' : ''}');
+    sb.writeln('');
+    sb.writeln('¡Se viene un nuevo desafío! Cada partido cuenta — '
+        'asegura tu cupo.');
+    sb.writeln('');
+    sb.writeln('⚔️ *${c.formato.etiqueta.toUpperCase()}*');
+    if (c.fechas.isNotEmpty) sb.writeln('🏁 *Inicio*: ${c.fechas}');
+    if (c.categoria.isNotEmpty) sb.writeln('$dep *Categoría*: ${c.categoria}');
+    if (c.sede.isNotEmpty) sb.writeln('📍 ${c.sede}');
+    final premios = c.premios
+        .split('\n')
+        .map((l) => l.trim())
+        .where((l) => l.isNotEmpty)
+        .toList();
+    if (premios.isNotEmpty) {
+      sb.writeln('');
+      sb.writeln('🎁 *Premios*:');
+      for (final p in premios) {
+        sb.writeln('✅ $p');
+      }
+    }
+    sb.writeln('');
+    if (c.costoInscripcion > 0) {
+      sb.writeln('✨ Inscríbete por solo *${c.monedaSimbolo} '
+          '${c.costoInscripcion.toStringAsFixed(2)}* — ¡cupos limitados!');
+    } else {
+      sb.writeln('✨ Inscripción *GRATIS* — ¡cupos limitados!');
+    }
+    if (c.auspiciador.isNotEmpty) {
+      sb.writeln('');
+      sb.writeln('🤝 Agradecimiento especial a *${c.auspiciador}*, nuestro '
+          'auspiciador oficial.');
+    }
+    sb.writeln('');
+    sb.writeln('📲 Código para unirte: *${c.codigoInvitacion}*');
+    final link = SupabaseService.paginaCampeonato(c.id);
+    if (link != null) sb.writeln('👉 Inscríbete aquí: $link');
+    sb.writeln('');
+    sb.writeln('vía *Pichangol* · Reserva, juega, repite.');
+    return sb.toString();
+  }
+
   static String _resumen(Campeonato c) {
+    // Inscripciones abiertas y sin fixture → el mensaje es CONVOCATORIA.
+    if (c.inscripcionAbierta && !c.fixtureGenerado) return _publicidad(c);
     final sb = StringBuffer();
     sb.writeln('🏆 ${c.nombre}');
     if (c.categoria.isNotEmpty) sb.writeln('Categoría: ${c.categoria}');
