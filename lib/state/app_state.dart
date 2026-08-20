@@ -6869,6 +6869,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     cargarReservasRemotas(); // best-effort refresco
     sincronizarSaldo(); // saldo real del backend (sobrevive reinstalar)
+    sincronizarPro(); // membresía Pro REAL de ESTA cuenta (no se hereda)
     sincronizarAgenda(); // apodos + contactos + bloqueados en todos mis dispositivos
     cargarEstados(); // historias vigentes (24 h) de mis conocidos
     cargarMisNiveles(); // mi nivel de jugador por deporte (device-first)
@@ -6928,6 +6929,11 @@ class AppState extends ChangeNotifier {
     movimientos.clear();
     saldoClub = 0;
     _saldoOtrosPaises.clear();
+    // PICHANGOL PRO es POR CUENTA: al cambiar de usuario en el mismo equipo
+    // NO se hereda (bug reportado: todas las cuentas del teléfono "eran Pro").
+    // El estado real de la cuenta nueva lo baja sincronizarPro del backend.
+    proActivo = false;
+    proHasta = null;
   }
 
   /// "Empezar de cero" (solo pruebas dev/qas): deja el dispositivo VIRGEN.
