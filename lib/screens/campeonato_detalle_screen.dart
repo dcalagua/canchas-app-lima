@@ -336,29 +336,43 @@ class CampeonatoDetalleScreen extends StatelessWidget {
         backgroundColor: bosque, content: Text(msg)));
   }
 
-  Future<bool> _gateDni(BuildContext context, Campeonato c) async {
-    // Si el jugador YA está verificado en el app no re-pedimos el documento: la
-    // identidad ya está confirmada. Si además tenemos su edad (la trajimos del
-    // registro oficial al verificar), la categorizamos aquí mismo.
-    if (appState.jugadorVerificado) {
+  Future<bool> _gateDni(BuildContext context, Campeonato c) async =>
+      (await _gateDniDatos(context, c)).ok;
+
+  /// Igual que [_gateDni] pero devuelve también el NOMBRE COMPLETO y la EDAD
+  /// que trajo el registro oficial (se muestran para confirmar y se usan como
+  /// datos del participante). Con [paraHijo] se pide el documento DEL
+  /// COMPETIDOR (el menor), no el del apoderado, y se valida SU edad contra
+  /// la categoría del torneo.
+  Future<({bool ok, String? nombre, int? edad})> _gateDniDatos(
+      BuildContext context, Campeonato c,
+      {bool paraHijo = false}) async {
+    // Si el jugador YA está verificado en el app no re-pedimos el documento
+    // (solo cuando compite ÉL: cuando compite su hijo, SIEMPRE se verifica el
+    // documento del menor). Si tenemos su edad, la categorizamos aquí mismo.
+    if (!paraHijo && appState.jugadorVerificado) {
       final edad = appState.edadActual;
       final sinRangoEdad = c.edadMin == null && c.edadMax == null;
-      if (sinRangoEdad || edad == null) return true; // identidad basta
+      if (sinRangoEdad || edad == null) {
+        return (ok: true, nombre: null, edad: edad); // identidad basta
+      }
       if (c.edadMin != null && edad < c.edadMin!) {
         _avisoEdad(context,
             'Tienes $edad años; la categoría es desde ${c.edadMin}.');
-        return false;
+        return (ok: false, nombre: null, edad: edad);
       }
       if (c.edadMax != null && edad > c.edadMax!) {
         _avisoEdad(context,
             'Tienes $edad años; la categoría es hasta ${c.edadMax}.');
-        return false;
+        return (ok: false, nombre: null, edad: edad);
       }
-      return true; // verificado y dentro del rango
+      return (ok: true, nombre: null, edad: edad); // dentro del rango
     }
     final dni = TextEditingController();
     var cargando = false;
     String? error;
+    String? nombreVer; // nombre y apellidos que trajo el registro (confirmar)
+    int? edadVer; // edad calculada de la fecha de nacimiento del registro
     DateTime? nac; // solo países SIN API de documento (Bolivia): fecha manual
     // ¿El país tiene consulta automática del documento? Perú (DNI) y Ecuador
     // (cédula) sí; Bolivia (CI) no → ingreso MANUAL, sin validar contra registro.
@@ -368,50 +382,85 @@ class CampeonatoDetalleScreen extends StatelessWidget {
       context: context,
       builder: (dctx) => StatefulBuilder(
         builder: (dctx, setSB) => DialogoPichangol(
-          titulo: 'Verifica tu $docIdActual',
+          titulo: paraHijo
+              ? '$docIdActual de tu hijo(a)'
+              : 'Verifica tu $docIdActual',
           icono: Icons.badge_outlined,
           contenido: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                  '${manual ? 'Ingresa tu $docIdActual para inscribirte' : 'Este campeonato exige $docIdActual para validar identidad y edad'}'
-                  '${conEdad ? ' (categoría ${c.edadMin != null ? 'desde ${c.edadMin}' : ''}${c.edadMax != null ? ' hasta ${c.edadMax} años' : ''})' : ''}.',
-                  style: const TextStyle(color: textoTenue, fontSize: 12.5)),
-              const SizedBox(height: 10),
-              TextField(
-                controller: dni,
-                // Bolivia (CI): texto (admite complemento); Perú/Ecuador: número.
-                keyboardType:
-                    manual ? TextInputType.text : TextInputType.number,
-                maxLength: paisActual.docLongitud,
-                decoration: InputDecoration(
-                    labelText: paisActual.docLongitud != null
-                        ? '$docIdActual (${paisActual.docLongitud} dígitos)'
-                        : docIdActual,
-                    counterText: ''),
-              ),
-              // Bolivia con categoría por edad: no hay registro que dé la fecha,
-              // así que la pedimos a mano para calcular la edad.
-              if (manual && conEdad) ...[
+              if (nombreVer != null) ...[
+                // El registro trajo NOMBRES Y APELLIDOS → se confirma antes
+                // de seguir (pedido del director: "debe traer el nombre").
+                const Text('El registro dice:',
+                    style: TextStyle(color: textoTenue, fontSize: 12.5)),
                 const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    final hoy = DateTime.now();
-                    final f = await showDatePicker(
-                      context: dctx,
-                      initialDate: DateTime(hoy.year - 15),
-                      firstDate: DateTime(hoy.year - 90),
-                      lastDate: hoy,
-                      helpText: 'Tu fecha de nacimiento',
-                    );
-                    if (f != null) setSB(() => nac = f);
-                  },
-                  icon: const Icon(Icons.cake_outlined, size: 18),
-                  label: Text(nac == null
-                      ? 'Fecha de nacimiento'
-                      : 'Nací: ${nac!.day}/${nac!.month}/${nac!.year}'),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: limaSuave,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(nombreVer!,
+                          style:
+                              const TextStyle(fontWeight: FontWeight.w800)),
+                      if (edadVer != null)
+                        Text('$edadVer años',
+                            style: const TextStyle(
+                                color: textoTenue, fontSize: 12.5)),
+                    ],
+                  ),
                 ),
+                const SizedBox(height: 8),
+                Text(paraHijo ? '¿Es tu hijo(a)?' : '¿Eres tú?',
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
+              ] else ...[
+                Text(
+                    '${manual ? 'Ingresa ${paraHijo ? 'el $docIdActual de tu hijo(a)' : 'tu $docIdActual'} para inscribirte' : 'Este campeonato exige $docIdActual para validar identidad y edad${paraHijo ? ': el de tu HIJO(A), que es quien compite' : ''}'}'
+                    '${conEdad ? ' (categoría ${c.edadMin != null ? 'desde ${c.edadMin}' : ''}${c.edadMax != null ? ' hasta ${c.edadMax} años' : ''})' : ''}.',
+                    style: const TextStyle(color: textoTenue, fontSize: 12.5)),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: dni,
+                  // Bolivia (CI): texto (admite complemento); Perú/Ecuador: número.
+                  keyboardType:
+                      manual ? TextInputType.text : TextInputType.number,
+                  maxLength: paisActual.docLongitud,
+                  decoration: InputDecoration(
+                      labelText: paisActual.docLongitud != null
+                          ? '$docIdActual (${paisActual.docLongitud} dígitos)'
+                          : docIdActual,
+                      counterText: ''),
+                ),
+                // Bolivia con categoría por edad: no hay registro que dé la fecha,
+                // así que la pedimos a mano para calcular la edad.
+                if (manual && conEdad) ...[
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      final hoy = DateTime.now();
+                      final f = await showDatePicker(
+                        context: dctx,
+                        initialDate: DateTime(hoy.year - 15),
+                        firstDate: DateTime(hoy.year - 90),
+                        lastDate: hoy,
+                        helpText: paraHijo
+                            ? 'Fecha de nacimiento de tu hijo(a)'
+                            : 'Tu fecha de nacimiento',
+                      );
+                      if (f != null) setSB(() => nac = f);
+                    },
+                    icon: const Icon(Icons.cake_outlined, size: 18),
+                    label: Text(nac == null
+                        ? 'Fecha de nacimiento'
+                        : 'Nació: ${nac!.day}/${nac!.month}/${nac!.year}'),
+                  ),
+                ],
               ],
               if (error != null) ...[
                 const SizedBox(height: 6),
@@ -425,23 +474,38 @@ class CampeonatoDetalleScreen extends StatelessWidget {
           ),
           acciones: [
             TextButton(
-                onPressed: cargando ? null : () => Navigator.pop(dctx, false),
-                child: const Text('Cancelar')),
+                onPressed: cargando
+                    ? null
+                    : () {
+                        if (nombreVer != null) {
+                          // "No es": volver a pedir el documento.
+                          setSB(() {
+                            nombreVer = null;
+                            edadVer = null;
+                            dni.clear();
+                          });
+                        } else {
+                          Navigator.pop(dctx, false);
+                        }
+                      },
+                child: Text(nombreVer != null ? 'No, corregir' : 'Cancelar')),
             FilledButton(
               onPressed: cargando
                   ? null
-                  : () async {
+                  : nombreVer != null
+                      ? () => Navigator.pop(dctx, true)
+                      : () async {
                       final d = dni.text.trim();
                       // ── BOLIVIA (manual, sin API): CI self-declarado ──────
                       if (manual) {
                         if (d.length < 5) {
-                          setSB(() => error = 'Escribe tu $docIdActual.');
+                          setSB(() => error = 'Escribe el $docIdActual.');
                           return;
                         }
                         if (conEdad) {
                           if (nac == null) {
                             setSB(() =>
-                                error = 'Selecciona tu fecha de nacimiento.');
+                                error = 'Selecciona la fecha de nacimiento.');
                             return;
                           }
                           final edad = appState.edadDesdeFecha(nac!);
@@ -449,16 +513,17 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                               c.edadMin != null &&
                               edad < c.edadMin!) {
                             setSB(() => error =
-                                'Tienes $edad años; la categoría es desde ${c.edadMin}.');
+                                '${paraHijo ? 'Tu hijo(a) tiene' : 'Tienes'} $edad años; la categoría es desde ${c.edadMin}.');
                             return;
                           }
                           if (edad != null &&
                               c.edadMax != null &&
                               edad > c.edadMax!) {
                             setSB(() => error =
-                                'Tienes $edad años; la categoría es hasta ${c.edadMax}.');
+                                '${paraHijo ? 'Tu hijo(a) tiene' : 'Tienes'} $edad años; la categoría es hasta ${c.edadMax}.');
                             return;
                           }
+                          edadVer = appState.edadDesdeFecha(nac!);
                         }
                         Navigator.pop(dctx, true);
                         return;
@@ -492,51 +557,62 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                         return;
                       }
                       final edad = _edadDesde(r['fecha_nacimiento'] as String?);
-                      if (edad == null) {
-                        // Sin fecha: valida identidad pero no edad (deja pasar).
+                      if (edad != null) {
+                        // Valida la CATEGORÍA con la edad real del registro.
+                        if (c.edadMin != null && edad < c.edadMin!) {
+                          setSB(() {
+                            cargando = false;
+                            error =
+                                '${paraHijo ? 'Tu hijo(a) tiene' : 'Tienes'} $edad años; la categoría es desde ${c.edadMin}.';
+                          });
+                          return;
+                        }
+                        if (c.edadMax != null && edad > c.edadMax!) {
+                          setSB(() {
+                            cargando = false;
+                            error =
+                                '${paraHijo ? 'Tu hijo(a) tiene' : 'Tienes'} $edad años; la categoría es hasta ${c.edadMax}.';
+                          });
+                          return;
+                        }
+                      }
+                      final nombreReg =
+                          (r['nombre_completo'] ?? '').toString().trim();
+                      if (nombreReg.isEmpty) {
+                        // Sin nombre en el registro: identidad ok, seguir.
+                        edadVer = edad;
                         Navigator.pop(dctx, true);
                         return;
                       }
-                      if (c.edadMin != null && edad < c.edadMin!) {
-                        setSB(() {
-                          cargando = false;
-                          error =
-                              'Tienes $edad años; la categoría es desde ${c.edadMin}.';
-                        });
-                        return;
-                      }
-                      if (c.edadMax != null && edad > c.edadMax!) {
-                        setSB(() {
-                          cargando = false;
-                          error =
-                              'Tienes $edad años; la categoría es hasta ${c.edadMax}.';
-                        });
-                        return;
-                      }
-                      Navigator.pop(dctx, true);
+                      // Muestra NOMBRES Y APELLIDOS para confirmar.
+                      setSB(() {
+                        cargando = false;
+                        error = null;
+                        nombreVer = nombreReg;
+                        edadVer = edad;
+                      });
                     },
-              child: const Text('Verificar'),
+              child: Text(nombreVer != null
+                  ? (paraHijo ? 'Sí, es él/ella' : 'Sí, soy yo')
+                  : 'Verificar'),
             ),
           ],
         ),
       ),
     );
-    return ok == true;
+    return (ok: ok == true, nombre: nombreVer, edad: edadVer);
   }
 
-  /// El jugador se inscribe (queda como participante-app). Pregunta si compite
-  /// él o un hijo (apoderado) y cobra la inscripción si tiene costo.
+  /// El jugador se inscribe (queda como participante-app). ORDEN del flujo,
+  /// pedido del director: 1. ¿quién compite? — yo / mi hijo(a) —; 2. DNI del
+  /// COMPETIDOR si el torneo lo exige — trae nombres y apellidos del registro
+  /// y valida la categoría con la fecha de nacimiento —; 3. pago.
   Future<void> _inscribirme(BuildContext context, Campeonato c) async {
     if (!await LoginGoogleSheet.mostrar(context,
         motivo: 'inscribirte al campeonato')) {
       return;
     }
     if (!context.mounted) return;
-    // Gate de DNI/edad si el organizador lo exige (anti-suplantación de edad).
-    if (c.exigeDni) {
-      final pasa = await _gateDni(context, c);
-      if (!pasa || !context.mounted) return;
-    }
     final nombreNino = TextEditingController();
     final edad = TextEditingController();
     final wa = TextEditingController();
@@ -544,6 +620,11 @@ class CampeonatoDetalleScreen extends StatelessWidget {
     var consiente = false;
     String? error; // mensaje de validación DENTRO del popup
     final esFutbol = c.deporte.name == 'futbol';
+    // Si el torneo exige DNI y el país tiene consulta automática, el NOMBRE y
+    // la EDAD del competidor vienen del registro oficial (paso siguiente): no
+    // se piden a mano. En fútbol lo que se inscribe es un EQUIPO (el nombre
+    // del equipo sí se escribe).
+    final nombreDelDni = c.exigeDni && !esFutbol && paisActual.consultaDoc;
 
     final datos = await showDialog<
         ({bool hijo, String nombre, int? edad, String wa, bool consiente})>(
@@ -581,26 +662,31 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                 ),
                 if (paraHijo) ...[
                   const SizedBox(height: 10),
-                  TextField(
-                    controller: nombreNino,
-                    textCapitalization: TextCapitalization.words,
-                    decoration: InputDecoration(
-                        labelText: esFutbol
-                            ? 'Nombre del equipo'
-                            : 'Nombre del alumno (niño/a)'),
-                  ),
-                  const SizedBox(height: 8),
+                  if (!nombreDelDni) ...[
+                    TextField(
+                      controller: nombreNino,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: InputDecoration(
+                          labelText: esFutbol
+                              ? 'Nombre del equipo'
+                              : 'Nombre del alumno (niño/a)'),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
                   Row(
                     children: [
-                      Expanded(
-                        child: TextField(
-                          controller: edad,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                              labelText: 'Edad (opcional)'),
+                      // Con DNI exigido la edad viene del registro oficial.
+                      if (!c.exigeDni) ...[
+                        Expanded(
+                          child: TextField(
+                            controller: edad,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                                labelText: 'Edad (opcional)'),
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
+                        const SizedBox(width: 8),
+                      ],
                       Expanded(
                         child: TextField(
                           controller: wa,
@@ -629,6 +715,15 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                       'Inscripción: ${c.monedaSimbolo} ${c.costoInscripcion.toStringAsFixed(2)}',
                       style: const TextStyle(color: textoTenue)),
                 ],
+                if (c.exigeDni) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                      paraHijo && nombreDelDni
+                          ? 'En el siguiente paso verificamos el $docIdActual de tu hijo(a): su nombre y edad vienen del registro oficial.'
+                          : 'En el siguiente paso verificamos ${paraHijo ? 'el $docIdActual del competidor' : 'tu $docIdActual'}.',
+                      style:
+                          const TextStyle(color: textoTenue, fontSize: 12)),
+                ],
                 if (error != null) ...[
                   const SizedBox(height: 10),
                   Text(error!,
@@ -648,7 +743,7 @@ class CampeonatoDetalleScreen extends StatelessWidget {
               onPressed: () {
                 final nombre = nombreNino.text.trim();
                 // Validación DENTRO del popup: muestra el error y NO cierra.
-                if (paraHijo && nombre.isEmpty) {
+                if (paraHijo && !nombreDelDni && nombre.isEmpty) {
                   setSB(() => error = esFutbol
                       ? 'Escribe el nombre del equipo.'
                       : 'Escribe el nombre del alumno.');
@@ -667,8 +762,11 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                   consiente: consiente,
                 ));
               },
-              child: Text(
-                  c.costoInscripcion > 0 ? 'Continuar al pago' : 'Inscribirme'),
+              child: Text(c.exigeDni
+                  ? 'Continuar'
+                  : c.costoInscripcion > 0
+                      ? 'Continuar al pago'
+                      : 'Inscribirme'),
             ),
           ],
         ),
@@ -676,14 +774,31 @@ class CampeonatoDetalleScreen extends StatelessWidget {
     );
     // El diálogo sólo devuelve datos ya validados (nombre + consentimiento).
     if (datos == null || !context.mounted) return;
-    // Cobro de inscripción (si tiene costo): se paga del SALDO (billetera única).
+    // PASO 2: DNI del COMPETIDOR (si el torneo lo exige). Trae nombres y
+    // apellidos del registro (se confirman) y valida la categoría con la
+    // fecha de nacimiento real. Si compite el hijo, se verifica SU documento.
+    String? nombreDni;
+    int? edadDni;
+    if (c.exigeDni) {
+      final g = await _gateDniDatos(context, c,
+          paraHijo: datos.hijo && !esFutbol);
+      if (!g.ok || !context.mounted) return;
+      nombreDni = g.nombre;
+      edadDni = g.edad;
+    }
+    // PASO 3: cobro de inscripción (si tiene costo): se paga del SALDO
+    // (billetera única). Con preload: antes quedaba mudo mientras cobraba.
     if (c.costoInscripcion > 0) {
       final email = appState.usuario?.email ?? '';
-      final r = await PagosService.inscribirTorneo(
-        email: email,
-        academiaDueno: c.dueno,
-        cuotaSoles: c.costoInscripcion,
-        concepto: 'Inscripción ${c.nombre}',
+      final r = await conPreload(
+        context,
+        () => PagosService.inscribirTorneo(
+          email: email,
+          academiaDueno: c.dueno,
+          cuotaSoles: c.costoInscripcion,
+          concepto: 'Inscripción ${c.nombre}',
+        ),
+        texto: 'Procesando tu inscripción…',
       );
       if (!context.mounted) return;
       if (r['ok'] != true) {
@@ -717,8 +832,12 @@ class CampeonatoDetalleScreen extends StatelessWidget {
     }
     final res = appState.inscribirseCampeonato(
       c.id,
-      nombreParticipante: datos.hijo ? datos.nombre : null,
-      edad: datos.hijo ? datos.edad : null,
+      // Nombre y edad del competidor: primero lo que trajo el REGISTRO por su
+      // DNI (verificado); si no hubo consulta, lo escrito por el apoderado.
+      nombreParticipante: datos.hijo
+          ? (datos.nombre.isNotEmpty ? datos.nombre : nombreDni)
+          : null,
+      edad: datos.hijo ? (datos.edad ?? edadDni) : null,
       apoderadoWhatsapp: datos.hijo ? datos.wa : null,
     );
     if (context.mounted) {
