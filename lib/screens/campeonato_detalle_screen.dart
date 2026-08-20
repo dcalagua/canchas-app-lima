@@ -65,6 +65,13 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                 alignment: Alignment.centerLeft,
                 child: _EstadoCampeonato(c),
               ),
+              // Torneo TERMINADO: podio con campeón y subcampeón arriba de
+              // todo (los campeonatos pasados muestran cómo se desarrolló:
+              // ganadores + tabla/llave + galería de fotos).
+              if (!c.esTiempos && c.terminado && c.campeonId != null) ...[
+                const SizedBox(height: 12),
+                _PodioCard(campeonato: c),
+              ],
               if (c.sedeUbicacion != null) ...[
                 const SizedBox(height: 10),
                 SizedBox(
@@ -211,6 +218,12 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                       'resultados.',
                       style: TextStyle(color: textoTenue, fontSize: 12)),
                 ),
+              ],
+              // GALERÍA del torneo ("así se vivió"): la ven todos; el dueño
+              // sube fotos. En campeonatos pasados es la memoria del evento.
+              if (c.fotos.isNotEmpty || esDueno) ...[
+                const SizedBox(height: 18),
+                _GaleriaCard(campeonato: c, esDueno: esDueno),
               ],
               if (esDueno) ...[
                 const SizedBox(height: 20),
@@ -1222,6 +1235,19 @@ class _Participantes extends StatelessWidget {
   final Campeonato campeonato;
   final bool esDueno;
 
+  /// Nombre VIVO del participante-app: el de su PERFIL actual (si lo cambió
+  /// después de inscribirse), cayendo al nombre guardado al inscribirse.
+  String _nombreVigente(Participante p) => p.esApp && !p.esMenor && !p.esEquipo
+      ? (appState.nombreRealDe(p.email) ?? p.nombre)
+      : p.nombre;
+
+  /// Foto VIVA del participante-app (perfil actual → la de la inscripción).
+  String? _fotoVigente(Participante p) {
+    final f = p.esApp ? appState.fotoDe(p.email) : null;
+    if (f != null && f.isNotEmpty) return f;
+    return (p.fotoUrl != null && p.fotoUrl!.isNotEmpty) ? p.fotoUrl : null;
+  }
+
   /// Muestra el plantel del equipo; si soy el capitán, el código para compartir
   /// y agregar integrantes a mano.
   Future<void> _verEquipo(
@@ -1483,6 +1509,12 @@ class _Participantes extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = campeonato;
     final cs = Theme.of(context).colorScheme;
+    // Pre-carga los PERFILES de los inscritos-app (regla: nombre/foto reales;
+    // cargarPerfiles no repite los que ya están en caché).
+    appState.cargarPerfiles([
+      for (final p in c.participantes)
+        if (p.esApp && !p.esMenor && !p.esEquipo) p.email,
+    ]);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1517,9 +1549,10 @@ class _Participantes extends StatelessWidget {
                         size: 18,
                         color: c.equipoCompleto(p) ? lima : bosque)
                     : p.esApp
-                        ? (p.fotoUrl != null && p.fotoUrl!.isNotEmpty
+                        ? (_fotoVigente(p) != null
                             ? CircleAvatar(
-                                backgroundImage: NetworkImage(p.fotoUrl!))
+                                backgroundImage:
+                                    NetworkImage(_fotoVigente(p)!))
                             : Icon(
                                 p.esMenor
                                     ? Icons.child_care
@@ -1535,7 +1568,9 @@ class _Participantes extends StatelessWidget {
                         : '${p.nombre} · ${p.roster.length} jug.')
                     : p.esMenor
                         ? '${p.nombre} · apod. ${p.apoderadoNombre}'
-                        : p.nombre),
+                        // Nombre VIVO: si el inscrito cambió su nombre de
+                        // perfil, aquí se ve el actual (no el del registro).
+                        : _nombreVigente(p)),
                 onPressed:
                     p.esEquipo ? () => _verEquipo(context, c, p) : null,
                 onDeleted: esDueno
@@ -2648,6 +2683,218 @@ class _AuspiciadoresCard extends StatelessWidget {
                   ),
                 ),
               ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Podio del torneo TERMINADO: campeón y subcampeón (con el nombre de perfil
+/// VIVO de los inscritos-app). Se muestra arriba de la ficha en campeonatos
+/// pasados, junto con la tabla/llave de cómo se desarrolló.
+class _PodioCard extends StatelessWidget {
+  const _PodioCard({required this.campeonato});
+  final Campeonato campeonato;
+
+  String _nombre(String? id) {
+    final p = campeonato.participanteDe(id);
+    if (p == null) return '—';
+    if (p.esApp && !p.esMenor && !p.esEquipo) {
+      return appState.nombreRealDe(p.email) ?? p.nombre;
+    }
+    return p.nombre;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final campeon = _nombre(campeonato.campeonId);
+    final subId = campeonato.subcampeonId;
+    final sub = subId == null ? null : _nombre(subId);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+            colors: [bosque, Color(0xFF0B7A58)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('🏁 TORNEO FINALIZADO',
+              style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1)),
+          const SizedBox(height: 8),
+          Text('🥇 $campeon',
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 19,
+                  fontWeight: FontWeight.w900)),
+          if (sub != null && sub != '—')
+            Padding(
+              padding: const EdgeInsets.only(top: 3),
+              child: Text('🥈 $sub',
+                  style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700)),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// GALERÍA del torneo ("así se vivió"): fotos que sube el organizador y ven
+/// todos — en la ficha y en la página pública. Memoria de los campeonatos
+/// pasados. Tap = ver en grande; el dueño agrega/quita.
+class _GaleriaCard extends StatelessWidget {
+  const _GaleriaCard({required this.campeonato, required this.esDueno});
+  final Campeonato campeonato;
+  final bool esDueno;
+
+  Future<void> _agregar(BuildContext context) async {
+    final XFile? f = await ImagePicker().pickImage(
+        source: ImageSource.gallery, maxWidth: 1400, imageQuality: 86);
+    if (f == null || !context.mounted) return;
+    final bytes = await f.readAsBytes();
+    if (!context.mounted) return;
+    final ok = await conPreload(context,
+        () => appState.agregarFotoCampeonato(campeonato.id, bytes),
+        texto: 'Subiendo foto…');
+    if (!context.mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo subir la foto.')));
+    }
+  }
+
+  void _verGrande(BuildContext context, String url) {
+    showDialog<void>(
+      context: context,
+      builder: (dctx) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: const EdgeInsets.all(10),
+        child: Stack(
+          children: [
+            InteractiveViewer(
+              child: Center(child: Image.network(url, fit: BoxFit.contain)),
+            ),
+            Positioned(
+              top: 6,
+              right: 6,
+              child: IconButton(
+                onPressed: () => Navigator.pop(dctx),
+                icon: const Icon(Icons.close, color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final fotos = campeonato.fotos;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: trazo),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.photo_library_outlined, color: teal),
+              const SizedBox(width: 8),
+              Text('Galería del torneo',
+                  style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+              esDueno
+                  ? 'Sube fotos de cómo se vivió: quedan en la ficha y en la '
+                      'página del torneo.'
+                  : 'Así se vivió este torneo.',
+              style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              for (final url in fotos)
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    InkWell(
+                      onTap: () => _verGrande(context, url),
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        width: 104,
+                        height: 104,
+                        clipBehavior: Clip.antiAlias,
+                        decoration: BoxDecoration(
+                          color: Colors.black12,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: trazo),
+                        ),
+                        child: Image.network(url, fit: BoxFit.cover),
+                      ),
+                    ),
+                    if (esDueno)
+                      Positioned(
+                        top: -8,
+                        right: -8,
+                        child: GestureDetector(
+                          onTap: () => appState.quitarFotoCampeonato(
+                              campeonato.id, url),
+                          child: const CircleAvatar(
+                            radius: 12,
+                            backgroundColor: clayOscuro,
+                            child: Icon(Icons.close,
+                                size: 14, color: Colors.white),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              if (esDueno)
+                InkWell(
+                  onTap: () => _agregar(context),
+                  borderRadius: BorderRadius.circular(14),
+                  child: Container(
+                    width: 104,
+                    height: 104,
+                    decoration: BoxDecoration(
+                      color: limaSuave,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: trazo),
+                    ),
+                    child: const Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.add_photo_alternate_outlined,
+                            color: bosque),
+                        SizedBox(height: 2),
+                        Text('Foto',
+                            style: TextStyle(color: bosque, fontSize: 11)),
+                      ],
+                    ),
+                  ),
+                ),
             ],
           ),
         ],

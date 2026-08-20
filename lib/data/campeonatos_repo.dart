@@ -75,6 +75,29 @@ class CampeonatosRepo {
   /// Sube el LOGO del campeonato a Storage y devuelve su URL pública (con
   /// cache-buster). Reusa el bucket público `canchas` con carpeta `campeonatos/`
   /// (no requiere crear un bucket nuevo). null si falla / sin backend.
+  /// Busca campeonatos por NOMBRE (contiene, sin distinguir mayúsculas) en la
+  /// nube. Hasta 15 coincidencias, los más recientes primero. Fail-safe.
+  static Future<List<Campeonato>> buscarPorNombre(String q) async {
+    final texto = q.trim();
+    if (!SupabaseService.disponible || texto.length < 3) return const [];
+    try {
+      final rows = await SupabaseService.client
+          .from(_tabla)
+          .select()
+          .eq('eliminado', false)
+          .ilike('data->>nombre', '%$texto%')
+          .order('updated_at', ascending: false)
+          .limit(15);
+      return [
+        for (final r in (rows as List))
+          if (r['data'] != null)
+            Campeonato.fromJson(Map<String, dynamic>.from(r['data'] as Map)),
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
   static Future<String?> subirLogo(String campId, List<int> bytes) async {
     if (!SupabaseService.disponible || campId.isEmpty) return null;
     try {

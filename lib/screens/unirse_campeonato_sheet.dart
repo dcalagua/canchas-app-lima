@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../models/campeonato.dart';
+
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'campeonato_detalle_screen.dart';
@@ -39,6 +41,7 @@ class _UnirseSheetState extends State<_UnirseSheet> {
   final _ctrl = TextEditingController();
   bool _buscando = false;
   String? _error;
+  List<Campeonato> _resultados = const []; // coincidencias por NOMBRE
 
   @override
   void dispose() {
@@ -47,20 +50,41 @@ class _UnirseSheetState extends State<_UnirseSheet> {
   }
 
   Future<void> _buscar() async {
-    setState(() => _error = null);
-    if (_ctrl.text.trim().isEmpty) {
-      setState(() => _error = 'Pega el enlace o el código del campeonato.');
+    setState(() {
+      _error = null;
+      _resultados = const [];
+    });
+    final texto = _ctrl.text.trim();
+    if (texto.isEmpty) {
+      setState(() =>
+          _error = 'Pega el enlace/código, o escribe el nombre del torneo.');
       return;
     }
     setState(() => _buscando = true);
-    final c = await appState.buscarCampeonato(_ctrl.text);
+    // 1. Enlace / id / código exacto (como siempre).
+    final c = await appState.buscarCampeonato(texto);
     if (!mounted) return;
-    setState(() => _buscando = false);
-    if (c == null) {
-      setState(() => _error =
-          'No encontramos ese campeonato. Revisa el enlace/código o tu conexión.');
+    if (c != null) {
+      setState(() => _buscando = false);
+      _abrir(c);
       return;
     }
+    // 2. Por NOMBRE (contiene): lista para elegir. Incluye torneos pasados —
+    //    su ficha muestra ganadores, tabla y la galería de fotos.
+    final lista = await appState.buscarCampeonatosPorNombre(texto);
+    if (!mounted) return;
+    setState(() {
+      _buscando = false;
+      _resultados = lista;
+      if (lista.isEmpty) {
+        _error = 'No encontramos ese campeonato. Revisa el enlace/código, '
+            'prueba con otro nombre o revisa tu conexión.';
+      }
+    });
+  }
+
+  void _abrir(Campeonato c) {
+    appState.agregarCampeonatoCache(c);
     Navigator.of(context).pop(); // cierra la hoja
     Navigator.of(context).push(MaterialPageRoute(
         builder: (_) => CampeonatoDetalleScreen(campeonatoId: c.id)));
@@ -86,8 +110,9 @@ class _UnirseSheetState extends State<_UnirseSheet> {
           ),
           const SizedBox(height: 6),
           Text(
-              'Pega el enlace o el código que te compartieron. Abrimos la ficha '
-              'para que te inscribas.',
+              'Pega el enlace o código que te compartieron, o busca el torneo '
+              'por su nombre (también campeonatos pasados: verás ganadores, '
+              'tabla y fotos).',
               style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
           const SizedBox(height: 14),
           TextField(
@@ -97,7 +122,7 @@ class _UnirseSheetState extends State<_UnirseSheet> {
             maxLines: 2,
             onSubmitted: (_) => _buscar(),
             decoration: InputDecoration(
-              hintText: 'Enlace o código del campeonato',
+              hintText: 'Enlace, código o nombre del campeonato',
               errorText: _error,
               filled: true,
               fillColor: Theme.of(context).colorScheme.surface,
@@ -125,6 +150,55 @@ class _UnirseSheetState extends State<_UnirseSheet> {
               label: Text(_buscando ? 'Buscando…' : 'Buscar campeonato'),
             ),
           ),
+          if (_resultados.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Text('Coincidencias (${_resultados.length})',
+                style: t.bodySmall?.copyWith(
+                    color: textoTenueDe(context),
+                    fontWeight: FontWeight.w700)),
+            const SizedBox(height: 6),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 300),
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final r in _resultados)
+                    Card(
+                      elevation: 0,
+                      margin: const EdgeInsets.only(bottom: 8),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          side: const BorderSide(color: Color(0xFFE4E4E4))),
+                      child: ListTile(
+                        onTap: () => _abrir(r),
+                        leading: Text(emojiDeporte(r.deporte),
+                            style: const TextStyle(fontSize: 22)),
+                        title: Text(r.nombre,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w700)),
+                        subtitle: Text(
+                            [
+                              if (r.fechas.isNotEmpty) r.fechas,
+                              if (r.terminado)
+                                'Finalizado 🏁'
+                              else if (r.inscripcionAbierta &&
+                                  !r.fixtureGenerado)
+                                'Inscripciones abiertas'
+                              else
+                                'En juego',
+                            ].join(' · '),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12.5)),
+                        trailing: const Icon(Icons.chevron_right),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );

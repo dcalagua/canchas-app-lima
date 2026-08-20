@@ -945,6 +945,8 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     await PerfilesRepo.guardar(
         email: u.email, nombre: n, fotoUrl: u.fotoUrl, celular: cel);
+    // Mi nombre nuevo también en los campeonatos donde estoy inscrito.
+    sincronizarMiParticipacionCampeonatos();
     return true;
   }
 
@@ -2682,6 +2684,21 @@ class AppState extends ChangeNotifier {
     return c;
   }
 
+  /// Busca campeonatos POR NOMBRE en la nube (para "Unirme a un campeonato"
+  /// sin código). Incluye torneos pasados: su ficha muestra ganadores, tabla
+  /// y la galería de fotos de cómo se vivió.
+  Future<List<Campeonato>> buscarCampeonatosPorNombre(String q) =>
+      CampeonatosRepo.buscarPorNombre(q);
+
+  /// Agrega a la caché local un campeonato traído de la nube (p. ej. elegido
+  /// en la búsqueda por nombre) para poder abrir su ficha.
+  void agregarCampeonatoCache(Campeonato c) {
+    if (campeonatoPorId(c.id) == null) {
+      campeonatos.add(c);
+      notifyListeners();
+    }
+  }
+
   /// Crea un campeonato para una academia y lo comparte (nube). Devuelve el id.
   Campeonato crearCampeonato({
     required String academiaId,
@@ -2784,6 +2801,26 @@ class AppState extends ChangeNotifier {
     guardarCampeonato(c.copyWith(
         auspiciadoresLogos:
             c.auspiciadoresLogos.where((u) => u != url).toList()));
+  }
+
+  /// Sube una FOTO a la galería del campeonato ("así se vivió"): la ven todos
+  /// en la ficha y en la página pública del torneo.
+  Future<bool> agregarFotoCampeonato(String campId, List<int> bytes) async {
+    final c = campeonatoPorId(campId);
+    if (c == null) return false;
+    final url = await CampeonatosRepo.subirLogo(
+        '${campId}_foto_${DateTime.now().millisecondsSinceEpoch}', bytes);
+    if (url == null) return false;
+    guardarCampeonato(c.copyWith(fotos: [...c.fotos, url]));
+    return true;
+  }
+
+  /// Quita una foto de la galería del campeonato.
+  void quitarFotoCampeonato(String campId, String url) {
+    final c = campeonatoPorId(campId);
+    if (c == null) return;
+    guardarCampeonato(
+        c.copyWith(fotos: c.fotos.where((u) => u != url).toList()));
   }
 
   void eliminarCampeonato(String id) {
@@ -3067,6 +3104,35 @@ class AppState extends ChangeNotifier {
   }
 
   /// Trae los campeonatos de la nube y los fusiona por id. Best-effort.
+  /// Mis PARTICIPACIONES en campeonatos siguen a mi PERFIL: si cambié mi
+  /// nombre o mi foto, se actualizan solas en cada torneo donde me inscribí
+  /// con mi cuenta (ficha, página pública y para todos los demás). Se llama
+  /// al refrescar campeonatos y al cambiar nombre/foto del perfil.
+  void sincronizarMiParticipacionCampeonatos() {
+    final u = usuario;
+    if (u == null) return;
+    final email = u.email.toLowerCase();
+    final nombre = u.nombre.trim();
+    if (nombre.isEmpty) return;
+    final foto = (u.fotoUrl ?? '').trim();
+    for (final c in List<Campeonato>.of(campeonatos)) {
+      var cambio = false;
+      final parts = c.participantes.map((p) {
+        final esMio = !p.esMenor &&
+            !p.esEquipo &&
+            p.email.toLowerCase() == email;
+        if (!esMio) return p;
+        final nuevaFoto = foto.isNotEmpty ? foto : p.fotoUrl;
+        if (p.nombre == nombre && (p.fotoUrl ?? '') == (nuevaFoto ?? '')) {
+          return p;
+        }
+        cambio = true;
+        return p.copyWith(nombre: nombre, fotoUrl: nuevaFoto);
+      }).toList();
+      if (cambio) guardarCampeonato(c.copyWith(participantes: parts));
+    }
+  }
+
   Future<void> cargarCampeonatosRemotos() async {
     final remotos = await CampeonatosRepo.fetchRemotos();
     if (remotos.isEmpty) return;
@@ -3086,6 +3152,8 @@ class AppState extends ChangeNotifier {
     }
     // Al refrescar campeonatos, cierra los que vencieron y sortea su fixture.
     autoSortearVencidos();
+    // Y mis participaciones reflejan mi nombre/foto de perfil actuales.
+    sincronizarMiParticipacionCampeonatos();
   }
 
   /// Trae las academias de la nube y las fusiona con las locales (por id). Así,

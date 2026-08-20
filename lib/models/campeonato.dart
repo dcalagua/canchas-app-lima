@@ -231,6 +231,7 @@ class Participante {
 
   Participante copyWith({
     String? nombre,
+    String? fotoUrl,
     List<Integrante>? roster,
     String? codigo,
   }) =>
@@ -239,7 +240,7 @@ class Participante {
         nombre: nombre ?? this.nombre,
         contacto: contacto,
         email: email,
-        fotoUrl: fotoUrl,
+        fotoUrl: fotoUrl ?? this.fotoUrl,
         apoderadoNombre: apoderadoNombre,
         edad: edad,
         capitanEmail: capitanEmail,
@@ -407,6 +408,10 @@ class Campeonato {
   /// LOGOS de los auspiciadores (URLs en Storage). Un campeonato puede tener
   /// varias empresas auspiciando: sus logos salen en el AFICHE y en la página.
   final List<String> auspiciadoresLogos;
+  /// FOTOS del torneo (galería "así se vivió", URLs en Storage): las sube el
+  /// organizador y las ve todo el mundo en la ficha y en la página pública —
+  /// clave para campeonatos PASADOS (memoria del evento).
+  final List<String> fotos;
 
   const Campeonato({
     required this.id,
@@ -438,6 +443,7 @@ class Campeonato {
     this.premios = '',
     this.auspiciador = '',
     this.auspiciadoresLogos = const [],
+    this.fotos = const [],
   });
 
   /// ¿Las inscripciones ya cerraron por fecha? (para auto-sorteo / bloqueo).
@@ -456,6 +462,69 @@ class Campeonato {
   }
 
   bool get fixtureGenerado => partidos.isNotEmpty;
+
+  /// Participante por id (o null).
+  Participante? participanteDe(String? id) {
+    if (id == null) return null;
+    for (final p in participantes) {
+      if (p.id == id) return p;
+    }
+    return null;
+  }
+
+  /// ¿El torneo ya TERMINÓ? Cerrado por el organizador, o fixture completo:
+  /// en eliminación cuando la FINAL tiene ganador; en liga cuando todos los
+  /// partidos tienen marcador.
+  bool get terminado {
+    if (cerrado) return true;
+    if (!fixtureGenerado) return false;
+    if (formato == FormatoTorneo.eliminacion) {
+      var maxR = 0;
+      for (final p in partidos) {
+        if (p.ronda > maxR) maxR = p.ronda;
+      }
+      final fin = partidos.where((p) => p.ronda == maxR).toList();
+      return fin.length == 1 && fin.first.ganadorId != null;
+    }
+    return partidos
+        .every((m) => m.jugado || m.aId == null || m.bId == null);
+  }
+
+  /// CAMPEÓN del torneo (id de participante), o null si aún no terminó.
+  /// Liga → 1º de la tabla; eliminación → ganador de la final.
+  String? get campeonId {
+    if (!fixtureGenerado || !terminado) return null;
+    if (formato == FormatoTorneo.liga) {
+      final tabla = TorneoFixture.tabla(this);
+      return tabla.isEmpty ? null : tabla.first.participanteId;
+    }
+    var maxR = 0;
+    for (final p in partidos) {
+      if (p.ronda > maxR) maxR = p.ronda;
+    }
+    final fin = partidos.where((p) => p.ronda == maxR).toList();
+    return fin.length == 1 ? fin.first.ganadorId : null;
+  }
+
+  /// SUBCAMPEÓN (id), o null. Liga → 2º de la tabla; eliminación → el que
+  /// perdió la final.
+  String? get subcampeonId {
+    if (!fixtureGenerado || !terminado) return null;
+    if (formato == FormatoTorneo.liga) {
+      final tabla = TorneoFixture.tabla(this);
+      return tabla.length > 1 ? tabla[1].participanteId : null;
+    }
+    var maxR = 0;
+    for (final p in partidos) {
+      if (p.ronda > maxR) maxR = p.ronda;
+    }
+    final fin = partidos.where((p) => p.ronda == maxR).toList();
+    if (fin.length != 1) return null;
+    final f = fin.first;
+    final g = f.ganadorId;
+    if (g == null) return null;
+    return g == f.aId ? f.bId : f.aId;
+  }
   bool get esTiempos => formato == FormatoTorneo.tiempos;
 
   /// Código para invitar a inscribirse: el corto si existe, si no el id (para
@@ -500,6 +569,7 @@ class Campeonato {
     String? premios,
     String? auspiciador,
     List<String>? auspiciadoresLogos,
+    List<String>? fotos,
   }) =>
       Campeonato(
         id: id,
@@ -531,6 +601,7 @@ class Campeonato {
         premios: premios ?? this.premios,
         auspiciador: auspiciador ?? this.auspiciador,
         auspiciadoresLogos: auspiciadoresLogos ?? this.auspiciadoresLogos,
+        fotos: fotos ?? this.fotos,
       );
 
   Participante? participante(String? pid) {
@@ -575,6 +646,7 @@ class Campeonato {
         if (auspiciador.isNotEmpty) 'auspiciador': auspiciador,
         if (auspiciadoresLogos.isNotEmpty)
           'auspiciadoresLogos': auspiciadoresLogos,
+        if (fotos.isNotEmpty) 'fotos': fotos,
       };
 
   factory Campeonato.fromJson(Map<String, dynamic> j) => Campeonato(
@@ -627,6 +699,8 @@ class Campeonato {
         auspiciadoresLogos: (j['auspiciadoresLogos'] as List?)
                 ?.map((e) => e.toString())
                 .toList() ??
+            const [],
+        fotos: (j['fotos'] as List?)?.map((e) => e.toString()).toList() ??
             const [],
       );
 }

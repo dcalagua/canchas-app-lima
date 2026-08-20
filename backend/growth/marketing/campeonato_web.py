@@ -144,6 +144,35 @@ def _render_liga(c: dict) -> str:
     return ''.join(out)
 
 
+def _podio(c: dict) -> tuple[str | None, str | None]:
+    """(campeón, subcampeón) si el torneo TERMINÓ; (None, None) si sigue.
+    Liga → 1º y 2º de la tabla con todo jugado (o torneo cerrado);
+    eliminación → ganador y perdedor de la final."""
+    partidos = c.get("partidos") or []
+    if not partidos:
+        return (None, None)
+    if c.get("formato") == "liga":
+        completo = all(m.get("marcadorA") is not None
+                       and m.get("marcadorB") is not None for m in partidos)
+        if not completo and not c.get("cerrado"):
+            return (None, None)
+        t = _tabla(c)
+        camp = t[0]["nombre"] if t else None
+        sub = t[1]["nombre"] if len(t) > 1 else None
+        return (camp, sub)
+    max_r = max(p.get("ronda", 0) for p in partidos)
+    fin = [p for p in partidos if p.get("ronda", 0) == max_r]
+    if len(fin) != 1:
+        return (None, None)
+    f = fin[0]
+    a, b = f.get("marcadorA"), f.get("marcadorB")
+    if a is None or b is None or a == b:
+        return (None, None)
+    gid, pid = (f.get("aId"), f.get("bId")) if a > b else (f.get("bId"),
+                                                           f.get("aId"))
+    return (_nombre_de(c, gid), _nombre_de(c, pid))
+
+
 def _intent_unirse(campeonato_id: str) -> str:
     """URL intent:// de Android: abre la APP en la ficha del campeonato si está
     instalada; si no, cae a la descarga (browser_fallback_url). Es el botón
@@ -210,6 +239,26 @@ def html_campeonato(c: dict, campeonato_id: str = "",
         bloque_auspiciador = (
             f'<div class="auspicio">🤝 Agradecimiento especial a '
             f'<b>{_esc(auspiciador)}</b>, nuestro auspiciador oficial.</div>')
+    # Torneo TERMINADO: podio (campeón / subcampeón) arriba del fixture.
+    campeon, subcampeon = _podio(c)
+    bloque_podio = ""
+    if campeon:
+        sub_html = (f' &nbsp;·&nbsp; 🥈 {_esc(subcampeon)}'
+                    if subcampeon else "")
+        bloque_podio = (
+            f'<div class="podio">🏁 <b>Torneo finalizado</b><br>'
+            f'<span class="oro">🥇 {_esc(campeon)}</span>{sub_html}</div>')
+    # GALERÍA de fotos ("así se vivió") — memoria de campeonatos pasados.
+    fotos = [str(u) for u in (c.get("fotos") or [])
+             if str(u).startswith("http")]
+    bloque_galeria = ""
+    if fotos:
+        imgs = "".join(
+            f'<a href="{_esc(u)}" target="_blank" rel="noopener">'
+            f'<img src="{_esc(u)}" alt="foto del torneo" loading="lazy">'
+            f'</a>' for u in fotos)
+        bloque_galeria = (f'<h2>📸 Así se vivió</h2>'
+                          f'<div class="galeria">{imgs}</div>')
     # Franja de LOGOS de auspiciadores (varias empresas pueden auspiciar).
     logos_ausp = [str(u) for u in (c.get("auspiciadoresLogos") or [])
                   if str(u).startswith("http")]
@@ -282,6 +331,10 @@ def html_campeonato(c: dict, campeonato_id: str = "",
   .byline{{margin-top:4px;font-size:14px;opacity:.95}}
   .premios{{list-style:none;background:#fff;border-radius:14px;padding:12px 16px;font-size:14px;line-height:2}}
   .auspicio{{background:#fff;border-left:4px solid {_ESMERALDA};border-radius:12px;padding:12px 14px;margin-top:12px;font-size:13.5px;color:#333}}
+  .podio{{background:linear-gradient(135deg,var(--noche),#0B7A58);color:#fff;border-radius:14px;padding:14px 16px;margin-top:16px;font-size:14px;line-height:1.9}}
+  .podio .oro{{font-size:18px;font-weight:800}}
+  .galeria{{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}}
+  .galeria img{{width:100%;height:130px;object-fit:cover;border-radius:12px;display:block}}
   .ausps{{display:flex;flex-wrap:wrap;gap:12px}}
   .ausplogo{{display:flex;align-items:center;justify-content:center;width:104px;height:76px;background:#fff;border-radius:14px;box-shadow:0 1px 4px rgba(0,0,0,.06);padding:8px}}
   .ausplogo img{{max-width:100%;max-height:100%;object-fit:contain}}
@@ -300,11 +353,13 @@ def html_campeonato(c: dict, campeonato_id: str = "",
     {mapa}
   </div>
   <div class="wrap">
+    {bloque_podio}
     {inscripcion}
     {bloque_premios}
     {bloque_auspiciador}
     <h2>{"Tabla de posiciones" if c.get("formato") == "liga" else "Llave"}</h2>
     {fixture}
+    {bloque_galeria}
     <h2>Participantes ({len(participantes)})</h2>
     <div class="scroll"><table class="tabla" style="min-width:auto"><tbody>
       {filas_part}
