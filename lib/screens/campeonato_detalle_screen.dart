@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/campeonato.dart';
 import '../services/supabase_service.dart';
@@ -2302,6 +2303,17 @@ class _InvitarCard extends StatelessWidget {
                   onPressed: () => copiar(enlace, 'Enlace copiado'),
                   icon: const Icon(Icons.link, size: 18),
                   label: const Text('Copiar enlace'),
+                ),
+              // AFICHE del torneo (generado por el backend con la marca):
+              // se abre para guardarlo/compartirlo como imagen. El mismo
+              // afiche es la vista previa del enlace en WhatsApp.
+              if (enlace != null)
+                OutlinedButton.icon(
+                  onPressed: () => launchUrl(
+                      Uri.parse('$enlace/afiche.png'),
+                      mode: LaunchMode.externalApplication),
+                  icon: const Icon(Icons.image_outlined, size: 18),
+                  label: const Text('Ver afiche 🎨'),
                 ),
             ],
           ),

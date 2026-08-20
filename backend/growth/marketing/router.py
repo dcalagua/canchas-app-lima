@@ -22,6 +22,7 @@ import urllib.error
 import config
 from db.store import stores
 
+from . import afiche_campeonato
 from . import campeonato_web
 from . import link_preview as link_preview_svc
 from . import redes as redes_svc
@@ -429,8 +430,27 @@ def assetlinks() -> list[dict]:
     }]
 
 
+@router.get("/c/{campeonato_id}/afiche.png")
+def afiche_de_campeonato(campeonato_id: str) -> Response:
+    """AFICHE del campeonato (PNG 1080×1350): lo genera Pillow con la paleta
+    de la marca (opción A del director). Es el og:image del enlace (WhatsApp
+    muestra el afiche como vista previa) y se puede abrir/guardar desde la
+    app. Fail-safe: cualquier problema → 404."""
+    try:
+        data = campeonato_web.obtener_campeonato(campeonato_id)
+        if data is None:
+            raise HTTPException(status_code=404, detail="no_encontrado")
+        png = afiche_campeonato.generar_afiche(data)
+        return Response(content=png, media_type="image/png",
+                        headers={"Cache-Control": "public, max-age=600"})
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=404, detail="afiche_no_disponible")
+
+
 @router.get("/c/{campeonato_id}", response_class=HTMLResponse)
-def ver_campeonato(campeonato_id: str) -> HTMLResponse:
+def ver_campeonato(campeonato_id: str, request: Request) -> HTMLResponse:
     """Página PÚBLICA de un campeonato (enlace para compartir). Reemplaza a la
     Edge Function `campeonato-web` (su deploy manual servía el HTML como texto
     plano); aquí FastAPI garantiza text/html; charset=utf-8 y el redeploy es
@@ -463,8 +483,10 @@ def ver_campeonato(campeonato_id: str) -> HTMLResponse:
         return HTMLResponse(campeonato_web.html_simple(
             "No encontrado", "Este campeonato no existe o fue eliminado."),
             status_code=404)
-    return HTMLResponse(
-        campeonato_web.html_campeonato(data, campeonato_id=campeonato_id))
+    afiche = (f"{_base_landing(request)}/c/"
+              f"{campeonato_id}/afiche.png")
+    return HTMLResponse(campeonato_web.html_campeonato(
+        data, campeonato_id=campeonato_id, og_image=afiche))
 
 
 @router.get("/l/{academia_id}", response_class=HTMLResponse)

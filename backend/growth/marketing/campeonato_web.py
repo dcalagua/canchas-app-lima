@@ -155,7 +155,8 @@ def _intent_unirse(campeonato_id: str) -> str:
             f"S.browser_fallback_url={fallback};end")
 
 
-def html_campeonato(c: dict, campeonato_id: str = "") -> str:
+def html_campeonato(c: dict, campeonato_id: str = "",
+                    og_image: str = "") -> str:
     """La página completa del campeonato (hero + fixture + participantes)."""
     deporte = _esc(c.get("deporte", ""))
     formato = "Liga (tabla)" if c.get("formato") == "liga" else "Eliminación (llave)"
@@ -219,7 +220,7 @@ def html_campeonato(c: dict, campeonato_id: str = "") -> str:
         f'Inicio {c.get("fechas")}' if c.get("fechas") else "",
         "Inscripciones abiertas" if c.get("inscripcionAbierta") else "",
     ] if x)
-    logo = str(c.get("logoUrl") or "").strip()
+    logo = og_image or str(c.get("logoUrl") or "").strip()
     og_img = (f'<meta property="og:image" content="{_esc(logo)}">'
               if logo.startswith("http") else "")
     cat = (f'<span class="cat">{_esc(c["categoria"])}</span><br>'
