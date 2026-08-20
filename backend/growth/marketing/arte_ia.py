@@ -26,7 +26,7 @@ from PIL import Image
 
 import config
 
-_TIMEOUT = 90  # la generación de imagen puede tardar
+_TIMEOUT = 150  # la generación de imagen puede tardar (gpt-image-1 > 90 s)
 
 # Caché en memoria (clave deporte:variante → PIL.Image RGB) + copia DURABLE
 # en Supabase Storage (bucket canchas/afiches): así el arte NO se re-genera

@@ -276,6 +276,23 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                     'Cambia nombre, categoría, fechas, costo, logo o exige '
                     'documento para inscribirse.',
                     style: TextStyle(color: textoTenue, fontSize: 12)),
+                const SizedBox(height: 10),
+                // DUPLICAR: nueva edición con toda la config, lista en 2 taps
+                // (pedido del director: crear torneos sin re-configurar todo).
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _duplicar(context, c),
+                    icon: const Icon(Icons.copy_all_outlined),
+                    label: const Text('Duplicar campeonato (nueva edición)'),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                    'Crea la siguiente edición con la misma configuración '
+                    '(sede, costo, premios, auspiciadores y afiche); solo '
+                    'ajustas nombre y fechas.',
+                    style: TextStyle(color: textoTenue, fontSize: 12)),
                 const SizedBox(height: 14),
                 OutlinedButton.icon(
                   onPressed: () => _confirmarEliminar(context, c),
@@ -302,6 +319,33 @@ class CampeonatoDetalleScreen extends StatelessWidget {
           : '$n partido${n == 1 ? '' : 's'} sumado${n == 1 ? '' : 's'} al '
               'ranking del circuito.'),
     ));
+  }
+
+  /// DUPLICAR: crea la nueva edición del torneo con toda la configuración y
+  /// abre el wizard para ajustar nombre y fechas. Participantes, fixture y
+  /// fotos NO se copian (torneo limpio).
+  Future<void> _duplicar(BuildContext context, Campeonato c) async {
+    final ok = await confirmarPichangol(
+      context,
+      titulo: 'Duplicar campeonato',
+      mensaje: 'Creamos una NUEVA edición de "${c.nombre}" con su misma '
+          'configuración (deporte, sede, costo, premios, auspiciadores y '
+          'afiche). Los participantes y resultados no se copian. Luego '
+          'ajusta el nombre y las fechas.',
+      textoConfirmar: 'Duplicar',
+      icono: Icons.copy_all_outlined,
+    );
+    if (!ok || !context.mounted) return;
+    final nuevo = appState.duplicarCampeonato(c.id);
+    if (nuevo == null || !context.mounted) return;
+    // Ajustar nombre/fechas en el wizard y caer a la ficha de la nueva edición.
+    await Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => CrearCampeonatoScreen(
+            academiaId: nuevo.academiaId, editar: nuevo)));
+    if (!context.mounted) return;
+    Navigator.of(context).pushReplacement(MaterialPageRoute(
+        builder: (_) =>
+            CampeonatoDetalleScreen(campeonatoId: nuevo.id)));
   }
 
   Future<void> _editar(BuildContext context, Campeonato c) async {
@@ -2506,6 +2550,7 @@ class _InvitarCard extends StatelessWidget {
     final corte = enlace.indexOf('/c/');
     final base = corte > 0 ? enlace.substring(0, corte) : enlace;
     var tema = c.aficheTema; // temática seleccionada (arranca en la vigente)
+    var intento = 0; // "Reintentar": re-pide las miniaturas que fallaron
     const temas = <String, String>{
       '': 'Nocturno ⭐',
       'claro': 'Fondo claro',
@@ -2563,10 +2608,18 @@ class _InvitarCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: () => setSB(() => intento++),
+                  icon: const Icon(Icons.refresh, size: 18),
+                  label: const Text('Reintentar'),
+                ),
+              ),
               SizedBox(
                 height: 380,
                 child: GridView.count(
-                  key: ValueKey(tema),
+                  key: ValueKey('$tema#$intento'),
                   crossAxisCount: 2,
                   mainAxisSpacing: 10,
                   crossAxisSpacing: 10,
@@ -2584,7 +2637,8 @@ class _InvitarCard extends StatelessWidget {
                               Container(color: const Color(0xFF0F1B2D)),
                               Image.network(
                                 '$base/afiche/fondo/${c.deporte.name}/$v'
-                                '${tema.isEmpty ? '' : '?tema=${Uri.encodeQueryComponent(tema)}'}',
+                                '?r=$intento'
+                                '${tema.isEmpty ? '' : '&tema=${Uri.encodeQueryComponent(tema)}'}',
                                 fit: BoxFit.cover,
                                 loadingBuilder: (ctx2, child, prog) =>
                                     prog == null
@@ -2601,10 +2655,16 @@ class _InvitarCard extends StatelessWidget {
                                             ),
                                           ),
                                 errorBuilder: (ctx2, e2, st2) => const Center(
-                                  child: Text('No disponible',
-                                      style: TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 11)),
+                                  child: Padding(
+                                    padding: EdgeInsets.all(8),
+                                    child: Text(
+                                        'Aún no está lista.\nUsa Reintentar '
+                                        'abajo en un momento.',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 11)),
+                                  ),
                                 ),
                               ),
                               // ✓ = el arte que está en uso ahora.

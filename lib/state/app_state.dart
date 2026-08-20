@@ -2700,6 +2700,44 @@ class AppState extends ChangeNotifier {
   }
 
   /// Crea un campeonato para una academia y lo comparte (nube). Devuelve el id.
+  /// DUPLICA un campeonato (pedido del director: repetir un torneo sin
+  /// re-configurar todo): copia la CONFIGURACIÓN completa — deporte, formato,
+  /// categoría, sede, costo, moneda, candados de DNI/edad, premios,
+  /// auspiciadores (con logos), logo y arte del afiche — y arranca LIMPIA:
+  /// sin participantes, fixture, pruebas, fotos ni cierre; fechas por definir.
+  Campeonato? duplicarCampeonato(String id) {
+    final base = campeonatoPorId(id);
+    if (base == null) return null;
+    final nuevo = Campeonato(
+      id: 'camp_${DateTime.now().microsecondsSinceEpoch}',
+      academiaId: base.academiaId,
+      dueno: usuario?.email ?? base.dueno,
+      codigo: _nuevoCodigoEquipo(),
+      nombre: base.nombre,
+      deporte: base.deporte,
+      formato: base.formato,
+      categoria: base.categoria,
+      sede: base.sede,
+      sedeUbicacion: base.sedeUbicacion,
+      costoInscripcion: base.costoInscripcion,
+      moneda: base.moneda,
+      relampago: base.relampago,
+      exigeDni: base.exigeDni,
+      edadMin: base.edadMin,
+      edadMax: base.edadMax,
+      logoUrl: base.logoUrl,
+      minJugadoresEquipo: base.minJugadoresEquipo,
+      premios: base.premios,
+      auspiciador: base.auspiciador,
+      auspiciadoresLogos: base.auspiciadoresLogos,
+      aficheFondoUrl: base.aficheFondoUrl,
+      aficheVariante: base.aficheVariante,
+      aficheTema: base.aficheTema,
+    );
+    guardarCampeonato(nuevo);
+    return nuevo;
+  }
+
   Campeonato crearCampeonato({
     required String academiaId,
     required String nombre,

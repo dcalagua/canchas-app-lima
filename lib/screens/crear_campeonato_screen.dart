@@ -314,6 +314,12 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
         // Conservar los LOGOS de auspiciadores ya subidos: al reconstruir sin
         // este campo, la edición los borraba (default = lista vacía).
         auspiciadoresLogos: e.auspiciadoresLogos,
+        // Ídem: la GALERÍA de fotos y el FONDO del afiche elegido (foto
+        // propia / variante / temática) sobreviven a la edición.
+        fotos: e.fotos,
+        aficheFondoUrl: e.aficheFondoUrl,
+        aficheVariante: e.aficheVariante,
+        aficheTema: e.aficheTema,
       );
       appState.guardarCampeonato(c);
     } else {
