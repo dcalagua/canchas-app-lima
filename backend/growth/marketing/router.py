@@ -431,16 +431,19 @@ def assetlinks() -> list[dict]:
 
 
 @router.get("/c/{campeonato_id}/afiche.png")
-def afiche_de_campeonato(campeonato_id: str) -> Response:
+def afiche_de_campeonato(campeonato_id: str, rapido: int = 0) -> Response:
     """AFICHE del campeonato (PNG 1080×1350): lo genera Pillow con la paleta
     de la marca (opción A del director). Es el og:image del enlace (WhatsApp
     muestra el afiche como vista previa) y se puede abrir/guardar desde la
-    app. Fail-safe: cualquier problema → 404."""
+    app. Con ?rapido=1 (el og:image) NUNCA espera al fondo IA: el robot de
+    WhatsApp corta a los ~5 s, así que responde al instante (gradiente de
+    marca si la foto IA aún no está en caché, y la calienta en segundo
+    plano). Fail-safe: cualquier problema → 404."""
     try:
         data = campeonato_web.obtener_campeonato(campeonato_id)
         if data is None:
             raise HTTPException(status_code=404, detail="no_encontrado")
-        png = afiche_campeonato.generar_afiche(data)
+        png = afiche_campeonato.generar_afiche(data, esperar_ia=not rapido)
         return Response(content=png, media_type="image/png",
                         headers={"Cache-Control": "public, max-age=600"})
     except HTTPException:
@@ -484,7 +487,7 @@ def ver_campeonato(campeonato_id: str, request: Request) -> HTMLResponse:
             "No encontrado", "Este campeonato no existe o fue eliminado."),
             status_code=404)
     afiche = (f"{_base_landing(request)}/c/"
-              f"{campeonato_id}/afiche.png")
+              f"{campeonato_id}/afiche.png?rapido=1")
     return HTMLResponse(campeonato_web.html_campeonato(
         data, campeonato_id=campeonato_id, og_image=afiche))
 

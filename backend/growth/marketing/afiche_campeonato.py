@@ -80,11 +80,19 @@ def _cover(im: Image.Image) -> Image.Image:
     return im.crop((x, y, x + W, y + H))
 
 
-def _fondo_ia(deporte: str) -> Image.Image | None:
+def _fondo_ia(deporte: str, esperar: bool = True) -> Image.Image | None:
     """Fondo FOTOGRÁFICO generado por IA (si hay proveedor configurado), con
     un velo azul noche + degradados arriba/abajo para que la tipografía
-    siempre se lea. None = usar el gradiente de marca."""
-    foto = arte_ia.fondo_para(deporte)
+    siempre se lea. None = usar el gradiente de marca.
+    Con esperar=False NUNCA bloquea: usa solo la caché y, si falta, dispara
+    la generación en segundo plano (el robot de WhatsApp que baja el
+    og:image corta a los ~5 s; mejor gradiente al instante que nada)."""
+    if esperar:
+        foto = arte_ia.fondo_para(deporte)
+    else:
+        foto = arte_ia.fondo_cacheado(deporte)
+        if foto is None:
+            arte_ia.precalentar(deporte)
     if foto is None:
         return None
     img = _cover(foto)
@@ -105,50 +113,27 @@ def _fondo_ia(deporte: str) -> Image.Image | None:
     return img
 
 
-def _tiles_auspiciadores(img: Image.Image, d: ImageDraw.ImageDraw,
-                         urls: list[str]) -> bool:
-    """Fila de LOGOS de auspiciadores (tiles blancos redondeados) anclada
-    sobre el pie de marca, con el rótulo AUSPICIAN. Best-effort: solo entran
-    los logos que bajen bien (máx 4)."""
-    logos = []
-    for u in urls[:4]:
-        im = _bajar_imagen(u)
-        if im is not None:
-            logos.append(im.convert("RGB"))
-    if not logos:
-        return False
-    tw, th, sep = 190, 120, 18
-    total = len(logos) * tw + (len(logos) - 1) * sep
-    if total > W - 80:
-        tw = (W - 80 - (len(logos) - 1) * sep) // len(logos)
-        total = len(logos) * tw + (len(logos) - 1) * sep
-    y0 = H - 174 - th
-    f = _font(26)
-    eti = "AUSPICIAN"
-    d.text(((W - d.textlength(eti, font=f)) / 2, y0 - 42), eti, font=f,
-           fill=_DORADO)
-    x = (W - total) / 2
-    for im in logos:
-        # Logo "contain" con margen dentro de un tile blanco redondeado.
-        tile = Image.new("RGB", (tw, th), _BLANCO)
-        esc = min((tw - 22) / im.width, (th - 22) / im.height)
-        lw = max(1, int(im.width * esc))
-        lh = max(1, int(im.height * esc))
-        tile.paste(im.resize((lw, lh)), ((tw - lw) // 2, (th - lh) // 2))
-        mask = Image.new("L", (tw, th), 0)
-        ImageDraw.Draw(mask).rounded_rectangle([0, 0, tw - 1, th - 1],
-                                               radius=18, fill=255)
-        img.paste(tile, (int(x), y0), mask)
-        x += tw + sep
-    return True
+def _tile_logo(img: Image.Image, im: Image.Image, x: float, y: float,
+               tw: int, th: int) -> None:
+    """Un logo de auspiciador "contain" dentro de un tile blanco redondeado."""
+    tile = Image.new("RGB", (tw, th), _BLANCO)
+    esc = min((tw - 22) / im.width, (th - 22) / im.height)
+    lw = max(1, int(im.width * esc))
+    lh = max(1, int(im.height * esc))
+    tile.paste(im.resize((lw, lh)), ((tw - lw) // 2, (th - lh) // 2))
+    mask = Image.new("L", (tw, th), 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, tw - 1, th - 1],
+                                           radius=18, fill=255)
+    img.paste(tile, (int(x), int(y)), mask)
 
 
-def generar_afiche(c: dict) -> bytes:
+def generar_afiche(c: dict, esperar_ia: bool = True) -> bytes:
     """El afiche PNG del campeonato a partir de su `data` (jsonb). Con
     proveedor de imágenes configurado (env en Railway), el fondo es una FOTO
     deportiva generada por IA (cacheada por deporte); si no, el gradiente de
-    marca de siempre. Los textos SIEMPRE los pone Pillow (exactos)."""
-    img = _fondo_ia(str(c.get("deporte") or "")) or _fondo()
+    marca de siempre. Los textos SIEMPRE los pone Pillow (exactos).
+    esperar_ia=False (og:image) responde al instante con lo que haya."""
+    img = _fondo_ia(str(c.get("deporte") or ""), esperar_ia) or _fondo()
     d = ImageDraw.Draw(img)
 
     nombre = _limpiar(str(c.get("nombre") or "Campeonato"))
@@ -204,11 +189,13 @@ def generar_afiche(c: dict) -> bytes:
         y += 62
     y += 26
 
-    # Logo del campeonato (si tiene), centrado.
+    # Logo del campeonato (si tiene), centrado. Con logos de auspiciadores
+    # abajo, va un poco más chico para que todo respire sin encimarse.
     logo_url = str(c.get("logoUrl") or "").strip()
     if logo_url.startswith("http"):
-        _logo_circular(img, logo_url, W // 2, y + 110, 110)
-        y += 250
+        r_logo = 80 if logos_ausp else 110
+        _logo_circular(img, logo_url, W // 2, y + r_logo + 15, r_logo)
+        y += r_logo * 2 + 40
 
     # Caja de datos: INICIO / INSCRIPCIÓN (dos columnas con borde dorado).
     inscripcion = (f"{mon} {costo:.2f}" if costo > 0 else "GRATIS")
@@ -230,8 +217,16 @@ def generar_afiche(c: dict) -> bytes:
            fill=_DORADO, width=2)
     y = caja_y + caja_h + 46
 
-    # PREMIOS.
-    if premios:
+    # PREMIOS y AUSPICIAN. Con logos de auspiciadores va en DOS COLUMNAS
+    # (premios izquierda, logos derecha) DENTRO del flujo — antes los tiles
+    # iban anclados a una altura fija y con mucho contenido se encimaban
+    # sobre los premios. Sin logos, premios centrados como siempre.
+    logos_img = []
+    for u in logos_ausp[:4]:
+        im_l = _bajar_imagen(u)
+        if im_l is not None:
+            logos_img.append(im_l.convert("RGB"))
+    if premios and not logos_img:
         f = _font(34)
         d.text(((W - d.textlength("PREMIOS", font=f)) / 2, y), "PREMIOS",
                font=f, fill=_DORADO)
@@ -245,6 +240,42 @@ def generar_afiche(c: dict) -> bytes:
                    font=f, fill=_BLANCO)
             y += 50
         y += 18
+    elif premios or logos_img:
+        y_izq = y_der = y
+        if premios:
+            f = _font(34)
+            d.text((100, y_izq), "PREMIOS", font=f, fill=_DORADO)
+            y_izq += 56
+            f = _font(28, bold=False)
+            for p in premios:
+                linea = f"•  {p}"
+                corto = False
+                while len(linea) > 6 and d.textlength(linea, font=f) > 520:
+                    linea = linea[:-1]
+                    corto = True
+                d.text((100, y_izq), linea + ("…" if corto else ""),
+                       font=f, fill=_BLANCO)
+                y_izq += 46
+        if logos_img:
+            cx = 810 if premios else W // 2
+            f = _font(28)
+            eti = "AUSPICIAN"
+            d.text((cx - d.textlength(eti, font=f) / 2, y_der), eti,
+                   font=f, fill=_DORADO)
+            y_der += 46
+            tw, th, sep = 170, 88, 12
+            por_fila = 2 if premios else min(len(logos_img), 4)
+            i = 0
+            while i < len(logos_img):
+                fila = logos_img[i:i + por_fila]
+                total = len(fila) * tw + (len(fila) - 1) * sep
+                x = cx - total / 2
+                for im_l in fila:
+                    _tile_logo(img, im_l, x, y_der, tw, th)
+                    x += tw + sep
+                y_der += th + sep
+                i += por_fila
+        y = max(y_izq, y_der) + 18
 
     # AUSPICIA (espacio de marca, pastilla blanca). Si hay LOGOS, la fila de
     # tiles de abajo ya es el espacio de marca y la pastilla sobra.
@@ -257,10 +288,6 @@ def generar_afiche(c: dict) -> bytes:
                             fill=_BLANCO)
         d.text((x0 + 30, y + 15), texto, font=f, fill=_NAVY)
         y += 100
-
-    # LOGOS de los auspiciadores (tiles blancos, anclados sobre el pie).
-    if logos_ausp:
-        _tiles_auspiciadores(img, d, logos_ausp)
 
     # Pie de marca: pastilla esmeralda + eslogan (anclado abajo).
     f = _font(34)

@@ -118,6 +118,35 @@ def disponible() -> bool:
     return bool(config.OPENAI_API_KEY or config.REPLICATE_API_TOKEN)
 
 
+_generando: set[str] = set()
+
+
+def fondo_cacheado(deporte: str) -> Image.Image | None:
+    """Solo el fondo YA cacheado (nunca bloquea). Para respuestas que deben
+    ser inmediatas, p. ej. el og:image que baja el robot de WhatsApp."""
+    d = deporte if deporte in _ESCENA else "tenis"
+    return _cache.get(d)
+
+
+def precalentar(deporte: str) -> None:
+    """Dispara la generación del fondo IA en un hilo (si falta) y retorna al
+    instante: la siguiente petición ya lo encuentra en caché."""
+    if not disponible():
+        return
+    d = deporte if deporte in _ESCENA else "tenis"
+    if d in _cache or d in _generando:
+        return
+    _generando.add(d)
+
+    def _correr():
+        try:
+            fondo_para(d)
+        finally:
+            _generando.discard(d)
+
+    threading.Thread(target=_correr, daemon=True).start()
+
+
 def fondo_para(deporte: str) -> Image.Image | None:
     """Fondo IA para [deporte] (cacheado). None = sin proveedor / falló →
     el afiche usa el gradiente de marca."""
