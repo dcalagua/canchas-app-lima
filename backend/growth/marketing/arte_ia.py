@@ -27,10 +27,68 @@ import config
 
 _TIMEOUT = 90  # la generación de imagen puede tardar
 
-# Caché en memoria: deporte → PIL.Image (RGB). Se pierde al redeploy (se
-# regenera; cuesta centavos). El lock evita generar 2 veces en paralelo.
+# Caché en memoria (clave deporte:variante → PIL.Image RGB) + copia DURABLE
+# en Supabase Storage (bucket canchas/afiches): así el arte NO se re-genera
+# (ni se re-paga) en cada redeploy de Railway. Locks POR CLAVE: varias
+# variantes pueden generarse en paralelo (la galería pide 5 a la vez).
 _cache: dict[str, Image.Image] = {}
 _lock = threading.Lock()
+_locks: dict[str, threading.Lock] = {}
+
+
+def _lock_de(clave: str) -> threading.Lock:
+    with _lock:
+        return _locks.setdefault(clave, threading.Lock())
+
+
+def _storage_base() -> str | None:
+    base = (config.SUPABASE_URL or "").strip().strip('"').strip("'").rstrip("/")
+    if not base or not config.SUPABASE_ANON_KEY:
+        return None
+    if not base.startswith("http"):
+        base = f"https://{base}"
+    return base
+
+
+def _storage_ruta(clave: str) -> str:
+    return f"afiches/fondo_{clave.replace(':', '_')}.jpg"
+
+
+def _storage_leer(clave: str) -> Image.Image | None:
+    """¿Ya está el arte en Storage (de un deploy anterior)? Best-effort."""
+    base = _storage_base()
+    if base is None:
+        return None
+    url = f"{base}/storage/v1/object/public/canchas/{_storage_ruta(clave)}"
+    try:
+        with urllib.request.urlopen(url, timeout=10) as r:  # noqa: S310
+            return Image.open(io.BytesIO(r.read())).convert("RGB")
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _storage_guardar(clave: str, img: Image.Image) -> None:
+    """Persiste el arte generado (JPEG) para no re-pagarlo tras un redeploy."""
+    base = _storage_base()
+    if base is None:
+        return
+    try:
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=90)
+        req = urllib.request.Request(
+            f"{base}/storage/v1/object/canchas/{_storage_ruta(clave)}",
+            data=buf.getvalue(),
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {config.SUPABASE_ANON_KEY}",
+                "apikey": config.SUPABASE_ANON_KEY,
+                "Content-Type": "image/jpeg",
+                "x-upsert": "true",
+            })
+        with urllib.request.urlopen(req, timeout=30) as r:  # noqa: S310
+            r.read()
+    except Exception:  # noqa: BLE001
+        pass
 
 _ESCENA = {
     "tenis": "a tennis player mid-swing hitting a forehand on a tennis court",
@@ -127,6 +185,10 @@ def _replicate(deporte: str, variante: int = 0) -> bytes | None:
         return None
 
 
+def num_variantes() -> int:
+    return len(_VARIACIONES)
+
+
 def disponible() -> bool:
     return bool(config.OPENAI_API_KEY or config.REPLICATE_API_TOKEN)
 
@@ -175,10 +237,16 @@ def fondo_para(deporte: str, variante: int = 0) -> Image.Image | None:
     con = _cache.get(k)
     if con is not None:
         return con
-    with _lock:
+    with _lock_de(k):
         con = _cache.get(k)  # ¿otro hilo la generó mientras esperaba?
         if con is not None:
             return con
+        # 1) ¿Persistida en Storage de un deploy anterior? (gratis)
+        durable = _storage_leer(k)
+        if durable is not None:
+            _cache[k] = durable
+            return durable
+        # 2) Generar con el proveedor y persistir para la próxima.
         crudo = _openai(d, v) if config.OPENAI_API_KEY else _replicate(d, v)
         if not crudo:
             return None
@@ -187,4 +255,5 @@ def fondo_para(deporte: str, variante: int = 0) -> Image.Image | None:
         except Exception:
             return None
         _cache[k] = img
+        _storage_guardar(k, img)
         return img

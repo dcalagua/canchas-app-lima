@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import io
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -23,6 +24,7 @@ import config
 from db.store import stores
 
 from . import afiche_campeonato
+from . import arte_ia
 from . import campeonato_web
 from . import link_preview as link_preview_svc
 from . import redes as redes_svc
@@ -428,6 +430,25 @@ def assetlinks() -> list[dict]:
             "sha256_cert_fingerprints": huellas,
         },
     }]
+
+
+@router.get("/afiche/fondo/{deporte}/{variante}")
+def fondo_afiche_preview(deporte: str, variante: int) -> Response:
+    """MINIATURA de una variante del arte IA (galería 'Cambiar fondo del
+    afiche' del APK: el organizador VE las 5 propuestas y elige). Genera la
+    variante si falta (y queda persistida en Storage — no se re-paga).
+    404 = sin proveedor de imágenes configurado."""
+    if not arte_ia.disponible():
+        raise HTTPException(status_code=404, detail="sin_proveedor_ia")
+    img = arte_ia.fondo_para(deporte, variante)
+    if img is None:
+        raise HTTPException(status_code=404, detail="no_disponible")
+    mini = img.copy()
+    mini.thumbnail((480, 640))
+    buf = io.BytesIO()
+    mini.save(buf, format="JPEG", quality=80)
+    return Response(content=buf.getvalue(), media_type="image/jpeg",
+                    headers={"Cache-Control": "public, max-age=86400"})
 
 
 @router.get("/c/{campeonato_id}/afiche.png")

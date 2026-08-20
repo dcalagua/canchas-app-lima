@@ -2419,10 +2419,10 @@ class _InvitarCard extends StatelessWidget {
             ),
             ListTile(
               leading: const Icon(Icons.auto_awesome, color: teal),
-              title: const Text('Generar OTRO arte con IA'),
-              subtitle: const Text('Cambia la imagen automática (el próximo '
-                  'afiche tarda ~1 min la primera vez)'),
-              onTap: () => Navigator.pop(bctx, 'ia'),
+              title: const Text('Elegir el arte IA (galería)'),
+              subtitle: const Text('Mira 5 propuestas generadas por IA y '
+                  'elige la que más te guste'),
+              onTap: () => Navigator.pop(bctx, 'galeria'),
             ),
             if (c.aficheFondoUrl.isNotEmpty)
               ListTile(
@@ -2451,18 +2451,119 @@ class _InvitarCard extends StatelessWidget {
           content: Text(ok
               ? 'Listo: el afiche ahora usa tu foto de fondo.'
               : 'No se pudo subir la foto. Intenta de nuevo.')));
-    } else if (opcion == 'ia') {
-      appState.variarArteAfiche(c.id);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          backgroundColor: bosque,
-          content: Text('Pedido ✅: el próximo afiche saldrá con un arte '
-              'nuevo (la primera descarga tarda ~1 min).')));
+    } else if (opcion == 'galeria') {
+      await _galeriaArte(context);
     } else {
       appState.quitarFondoAfiche(c.id);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           backgroundColor: bosque,
           content: Text('El afiche vuelve al arte automático.')));
     }
+  }
+
+  /// GALERÍA de artes IA: muestra las 5 propuestas (miniaturas que genera el
+  /// backend, cacheadas y persistidas) y el organizador ELIGE la que le
+  /// gusta. La primera vez cada miniatura puede tardar ~1 min en aparecer.
+  Future<void> _galeriaArte(BuildContext context) async {
+    final c = campeonato;
+    final enlace = SupabaseService.paginaCampeonato(c.id);
+    if (enlace == null) return;
+    final corte = enlace.indexOf('/c/');
+    final base = corte > 0 ? enlace.substring(0, corte) : enlace;
+    final elegido = await showModalBottomSheet<int>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (bctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Elige el arte del afiche 🎨',
+                  style:
+                      TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+              const SizedBox(height: 4),
+              const Text(
+                  'La IA genera 5 propuestas para tu deporte. La primera '
+                  'vez cada una puede tardar ~1 min en aparecer.',
+                  style: TextStyle(color: textoTenue, fontSize: 12)),
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 420,
+                child: GridView.count(
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
+                  childAspectRatio: 0.78,
+                  children: [
+                    for (var v = 0; v < 5; v++)
+                      InkWell(
+                        onTap: () => Navigator.pop(bctx, v),
+                        borderRadius: BorderRadius.circular(14),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(14),
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              Container(color: const Color(0xFF0F1B2D)),
+                              Image.network(
+                                '$base/afiche/fondo/${c.deporte.name}/$v',
+                                fit: BoxFit.cover,
+                                loadingBuilder: (ctx2, child, prog) =>
+                                    prog == null
+                                        ? child
+                                        : const Center(
+                                            child: SizedBox(
+                                              width: 22,
+                                              height: 22,
+                                              child:
+                                                  CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                      color:
+                                                          Colors.white70),
+                                            ),
+                                          ),
+                                errorBuilder: (ctx2, e2, st2) => const Center(
+                                  child: Text('No disponible',
+                                      style: TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 11)),
+                                ),
+                              ),
+                              // ✓ = la variante que está en uso ahora.
+                              if (c.aficheFondoUrl.isEmpty &&
+                                  c.aficheVariante % 5 == v)
+                                const Positioned(
+                                  top: 6,
+                                  right: 6,
+                                  child: CircleAvatar(
+                                    radius: 12,
+                                    backgroundColor: lima,
+                                    child: Icon(Icons.check,
+                                        size: 14, color: Colors.white),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (elegido == null || !context.mounted) return;
+    appState.elegirArteAfiche(c.id, elegido);
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        backgroundColor: bosque,
+        content: Text('Listo ✅: el afiche usará ese arte.')));
   }
 
   /// Comparte el AFICHE como IMAGEN + el texto publicitario en un solo envío
