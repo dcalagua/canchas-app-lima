@@ -49,6 +49,24 @@ class CampeonatoDetalleScreen extends StatelessWidget {
           final u = appState.usuario;
           final esDueno =
               u != null && c.dueno.toLowerCase() == u.email.toLowerCase();
+          // ¿YA participo? (yo mismo, un hijo que inscribí, mi equipo como
+          // capitán, o un plantel donde juego). Si sí, en vez del botón
+          // "Inscribirme" se muestra el aviso "Ya estás inscrito".
+          final miEmail = (u?.email ?? '').toLowerCase();
+          final misParticipaciones = miEmail.isEmpty
+              ? const <Participante>[]
+              : [
+                  for (final p in c.participantes)
+                    if (p.email.toLowerCase() == miEmail ||
+                        p.capitanEmail.toLowerCase() == miEmail ||
+                        p.roster.any(
+                            (i) => i.email.toLowerCase() == miEmail))
+                      p,
+                ];
+          final yaInscrito = misParticipaciones.isNotEmpty;
+          // Solo inscribió hijos → puede inscribir a OTRO hijo(a).
+          final soloHijos = yaInscrito &&
+              misParticipaciones.every((p) => p.esMenor);
           final puedeInscribirse = !esDueno &&
               !c.cerrado &&
               c.inscripcionAbierta &&
@@ -120,7 +138,25 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                 const Text('Las inscripciones cerraron. Espera el fixture.',
                     style: TextStyle(color: textoTenue, fontSize: 12.5)),
               ],
-              if (puedeInscribirse) ...[
+              // YA INSCRITO: aviso claro en lugar del botón (pedido del
+              // director). Dice bajo qué nombre/equipo participa.
+              if (yaInscrito && !esDueno) ...[
+                const SizedBox(height: 12),
+                _YaInscritoCard(participaciones: misParticipaciones),
+                // Apoderado: puede inscribir a OTRO hijo(a) al mismo torneo.
+                if (soloHijos && puedeInscribirse) ...[
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => _inscribirme(context, c),
+                      icon: const Icon(Icons.person_add_alt_1),
+                      label: const Text('Inscribir a otro hijo(a)'),
+                    ),
+                  ),
+                ],
+              ],
+              if (puedeInscribirse && !yaInscrito) ...[
                 const SizedBox(height: 12),
                 if (c.deporte.name == 'futbol') ...[
                   // Fútbol = equipos: el capitán crea equipo (con código) y los
@@ -2985,6 +3021,60 @@ class _GaleriaCard extends StatelessWidget {
                   ),
                 ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Aviso "YA ESTÁS INSCRITO" (reemplaza al botón Inscribirme cuando el
+/// usuario ya participa): dice bajo qué nombre, hijo(a) o equipo.
+class _YaInscritoCard extends StatelessWidget {
+  const _YaInscritoCard({required this.participaciones});
+  final List<Participante> participaciones;
+
+  String _detalle(Participante p) {
+    final yo = (appState.usuario?.email ?? '').toLowerCase();
+    if (p.esMenor) return 'Inscribiste a ${p.nombre}';
+    if (p.esEquipo) {
+      return p.capitanEmail.toLowerCase() == yo
+          ? 'Tu equipo: ${p.nombre} (eres el capitán)'
+          : 'Juegas en el equipo ${p.nombre}';
+    }
+    return 'Participas como ${appState.nombreRealDe(p.email) ?? p.nombre}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: limaSuave,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: bosque.withOpacity(0.25)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.check_circle, color: bosque),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Ya estás inscrito en este torneo ✅',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w800, color: bosque)),
+                for (final p in participaciones)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(_detalle(p),
+                        style: const TextStyle(
+                            fontSize: 12.5, color: textoTenue)),
+                  ),
+              ],
+            ),
           ),
         ],
       ),
