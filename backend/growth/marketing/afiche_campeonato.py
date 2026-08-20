@@ -80,21 +80,9 @@ def _cover(im: Image.Image) -> Image.Image:
     return im.crop((x, y, x + W, y + H))
 
 
-def _fondo_ia(deporte: str, esperar: bool = True) -> Image.Image | None:
-    """Fondo FOTOGRÁFICO generado por IA (si hay proveedor configurado), con
-    un velo azul noche + degradados arriba/abajo para que la tipografía
-    siempre se lea. None = usar el gradiente de marca.
-    Con esperar=False NUNCA bloquea: usa solo la caché y, si falta, dispara
-    la generación en segundo plano (el robot de WhatsApp que baja el
-    og:image corta a los ~5 s; mejor gradiente al instante que nada)."""
-    if esperar:
-        foto = arte_ia.fondo_para(deporte)
-    else:
-        foto = arte_ia.fondo_cacheado(deporte)
-        if foto is None:
-            arte_ia.precalentar(deporte)
-    if foto is None:
-        return None
+def _con_velo(foto: Image.Image) -> Image.Image:
+    """Foto → fondo del afiche: cover a W×H + velo azul noche + degradados
+    arriba/abajo para que la tipografía siempre se lea."""
     img = _cover(foto)
     velo = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     dv = ImageDraw.Draw(velo)
@@ -111,6 +99,30 @@ def _fondo_ia(deporte: str, esperar: bool = True) -> Image.Image | None:
     img = img.convert("RGB")
     img.paste(velo, (0, 0), velo)
     return img
+
+
+def _fondo_propio(url: str) -> Image.Image | None:
+    """FOTO DEL ORGANIZADOR como fondo del afiche (la eligió en la app:
+    'Cambiar fondo del afiche' → 'Usar una foto mía'). Best-effort."""
+    foto = _bajar_imagen(url)
+    return None if foto is None else _con_velo(foto.convert("RGB"))
+
+
+def _fondo_ia(deporte: str, esperar: bool = True,
+              variante: int = 0) -> Image.Image | None:
+    """Fondo FOTOGRÁFICO generado por IA (si hay proveedor configurado).
+    [variante] cambia el encuadre ('Generar OTRO arte' en la app).
+    None = usar el gradiente de marca.
+    Con esperar=False NUNCA bloquea: usa solo la caché y, si falta, dispara
+    la generación en segundo plano (el robot de WhatsApp que baja el
+    og:image corta a los ~5 s; mejor gradiente al instante que nada)."""
+    if esperar:
+        foto = arte_ia.fondo_para(deporte, variante)
+    else:
+        foto = arte_ia.fondo_cacheado(deporte, variante)
+        if foto is None:
+            arte_ia.precalentar(deporte, variante)
+    return None if foto is None else _con_velo(foto)
 
 
 def _tile_logo(img: Image.Image, im: Image.Image, x: float, y: float,
@@ -132,8 +144,18 @@ def generar_afiche(c: dict, esperar_ia: bool = True) -> bytes:
     proveedor de imágenes configurado (env en Railway), el fondo es una FOTO
     deportiva generada por IA (cacheada por deporte); si no, el gradiente de
     marca de siempre. Los textos SIEMPRE los pone Pillow (exactos).
-    esperar_ia=False (og:image) responde al instante con lo que haya."""
-    img = _fondo_ia(str(c.get("deporte") or ""), esperar_ia) or _fondo()
+    esperar_ia=False (og:image) responde al instante con lo que haya.
+    Prioridad del fondo: foto PROPIA del organizador (aficheFondoUrl) →
+    arte IA en su variante (aficheVariante) → gradiente de marca."""
+    fondo_url = str(c.get("aficheFondoUrl") or "").strip()
+    try:
+        variante = int(c.get("aficheVariante") or 0)
+    except (TypeError, ValueError):
+        variante = 0
+    img = _fondo_propio(fondo_url) if fondo_url.startswith("http") else None
+    if img is None:
+        img = _fondo_ia(str(c.get("deporte") or ""), esperar_ia, variante)
+    img = img or _fondo()
     d = ImageDraw.Draw(img)
 
     nombre = _limpiar(str(c.get("nombre") or "Campeonato"))

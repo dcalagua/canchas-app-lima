@@ -43,10 +43,23 @@ _ESCENA = {
 }
 
 
-def _prompt(deporte: str) -> str:
+# Variantes de encuadre/estilo: "generar otro arte" avanza a la siguiente
+# (cache por deporte+variante, así el organizador puede cambiar el fondo).
+_VARIACIONES = [
+    "",
+    "low angle action shot, ",
+    "wide angle dramatic perspective, ",
+    "close-up on the decisive moment, ",
+    "backlit silhouette against stadium lights, ",
+]
+
+
+def _prompt(deporte: str, variante: int = 0) -> str:
     escena = _ESCENA.get(deporte, _ESCENA["tenis"])
+    extra = _VARIACIONES[variante % len(_VARIACIONES)]
     return (
-        f"Dramatic professional sports photography poster background: {escena}, "
+        f"Dramatic professional sports photography poster background: "
+        f"{extra}{escena}, "
         "shot at night with cinematic rim lighting, deep navy blue and emerald "
         "green color grading, dark moody atmosphere, subject in the lower two "
         "thirds of the frame, generous dark empty space at the top and bottom "
@@ -55,12 +68,12 @@ def _prompt(deporte: str) -> str:
     )
 
 
-def _openai(deporte: str) -> bytes | None:
+def _openai(deporte: str, variante: int = 0) -> bytes | None:
     """OpenAI Images: gpt-image-1 y, si no está habilitado, dall-e-3."""
     for modelo, size in (("gpt-image-1", "1024x1536"),
                          ("dall-e-3", "1024x1792")):
         try:
-            cuerpo = {"model": modelo, "prompt": _prompt(deporte),
+            cuerpo = {"model": modelo, "prompt": _prompt(deporte, variante),
                       "size": size, "n": 1}
             if modelo == "gpt-image-1":
                 cuerpo["quality"] = "medium"
@@ -87,10 +100,10 @@ def _openai(deporte: str) -> bytes | None:
     return None
 
 
-def _replicate(deporte: str) -> bytes | None:
+def _replicate(deporte: str, variante: int = 0) -> bytes | None:
     """Replicate Flux (schnell): rápido y ~$0.003 por imagen."""
     try:
-        cuerpo = {"input": {"prompt": _prompt(deporte),
+        cuerpo = {"input": {"prompt": _prompt(deporte, variante),
                             "aspect_ratio": "4:5",
                             "output_format": "png"}}
         req = urllib.request.Request(
@@ -121,51 +134,57 @@ def disponible() -> bool:
 _generando: set[str] = set()
 
 
-def fondo_cacheado(deporte: str) -> Image.Image | None:
+def _clave(deporte: str, variante: int) -> str:
+    d = deporte if deporte in _ESCENA else "tenis"
+    return f"{d}:{variante % len(_VARIACIONES)}"
+
+
+def fondo_cacheado(deporte: str, variante: int = 0) -> Image.Image | None:
     """Solo el fondo YA cacheado (nunca bloquea). Para respuestas que deben
     ser inmediatas, p. ej. el og:image que baja el robot de WhatsApp."""
-    d = deporte if deporte in _ESCENA else "tenis"
-    return _cache.get(d)
+    return _cache.get(_clave(deporte, variante))
 
 
-def precalentar(deporte: str) -> None:
+def precalentar(deporte: str, variante: int = 0) -> None:
     """Dispara la generación del fondo IA en un hilo (si falta) y retorna al
     instante: la siguiente petición ya lo encuentra en caché."""
     if not disponible():
         return
-    d = deporte if deporte in _ESCENA else "tenis"
-    if d in _cache or d in _generando:
+    k = _clave(deporte, variante)
+    if k in _cache or k in _generando:
         return
-    _generando.add(d)
+    _generando.add(k)
 
     def _correr():
         try:
-            fondo_para(d)
+            fondo_para(deporte, variante)
         finally:
-            _generando.discard(d)
+            _generando.discard(k)
 
     threading.Thread(target=_correr, daemon=True).start()
 
 
-def fondo_para(deporte: str) -> Image.Image | None:
-    """Fondo IA para [deporte] (cacheado). None = sin proveedor / falló →
-    el afiche usa el gradiente de marca."""
+def fondo_para(deporte: str, variante: int = 0) -> Image.Image | None:
+    """Fondo IA para [deporte] en su [variante] (cacheado). None = sin
+    proveedor / falló → el afiche usa el gradiente de marca."""
     if not disponible():
         return None
     d = deporte if deporte in _ESCENA else "tenis"
-    con = _cache.get(d)
+    v = variante % len(_VARIACIONES)
+    k = _clave(d, v)
+    con = _cache.get(k)
     if con is not None:
         return con
     with _lock:
-        con = _cache.get(d)  # ¿otro hilo la generó mientras esperaba?
+        con = _cache.get(k)  # ¿otro hilo la generó mientras esperaba?
         if con is not None:
             return con
-        crudo = _openai(d) if config.OPENAI_API_KEY else _replicate(d)
+        crudo = _openai(d, v) if config.OPENAI_API_KEY else _replicate(d, v)
         if not crudo:
             return None
         try:
             img = Image.open(io.BytesIO(crudo)).convert("RGB")
         except Exception:
             return None
-        _cache[d] = img
+        _cache[k] = img
         return img

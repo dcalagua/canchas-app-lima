@@ -2823,6 +2823,34 @@ class AppState extends ChangeNotifier {
         c.copyWith(fotos: c.fotos.where((u) => u != url).toList()));
   }
 
+  /// El organizador SUBE SU PROPIA FOTO como fondo del AFICHE del torneo
+  /// (reemplaza al arte IA hasta que la quite).
+  Future<bool> ponerFondoAfiche(String campId, List<int> bytes) async {
+    final c = campeonatoPorId(campId);
+    if (c == null) return false;
+    final url = await CampeonatosRepo.subirLogo(
+        '${campId}_fondo_${DateTime.now().millisecondsSinceEpoch}', bytes);
+    if (url == null) return false;
+    guardarCampeonato(c.copyWith(aficheFondoUrl: url));
+    return true;
+  }
+
+  /// Quita la foto propia del fondo del afiche (vuelve al arte automático).
+  void quitarFondoAfiche(String campId) {
+    final c = campeonatoPorId(campId);
+    if (c == null) return;
+    guardarCampeonato(c.copyWith(aficheFondoUrl: ''));
+  }
+
+  /// Pide OTRO arte IA para el fondo del afiche (varía la imagen). También
+  /// quita la foto propia si la había.
+  void variarArteAfiche(String campId) {
+    final c = campeonatoPorId(campId);
+    if (c == null) return;
+    guardarCampeonato(c.copyWith(
+        aficheFondoUrl: '', aficheVariante: c.aficheVariante + 1));
+  }
+
   void eliminarCampeonato(String id) {
     campeonatos.removeWhere((c) => c.id == id);
     notifyListeners();

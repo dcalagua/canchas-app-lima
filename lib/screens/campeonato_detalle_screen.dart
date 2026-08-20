@@ -2350,6 +2350,85 @@ class _InvitarCard extends StatelessWidget {
   // las inscripciones están abiertas; con fixture, el resumen de resultados.
   String _mensaje() => CampeonatoDetalleScreen._resumen(campeonato);
 
+  /// El ORGANIZADOR elige la imagen de fondo del afiche: su propia foto
+  /// (p. ej. su cancha o el flyer de su marca), OTRO arte generado por IA,
+  /// o volver al arte automático.
+  Future<void> _cambiarFondo(BuildContext context) async {
+    final c = campeonato;
+    final opcion = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (bctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 16, 20, 4),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Fondo del afiche 🖼️',
+                    style:
+                        TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.add_photo_alternate_outlined,
+                  color: bosque),
+              title: const Text('Usar una foto mía'),
+              subtitle: const Text('De tu galería: tu cancha, tu equipo, '
+                  'el arte de tu marca…'),
+              onTap: () => Navigator.pop(bctx, 'foto'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.auto_awesome, color: teal),
+              title: const Text('Generar OTRO arte con IA'),
+              subtitle: const Text('Cambia la imagen automática (el próximo '
+                  'afiche tarda ~1 min la primera vez)'),
+              onTap: () => Navigator.pop(bctx, 'ia'),
+            ),
+            if (c.aficheFondoUrl.isNotEmpty)
+              ListTile(
+                leading: const Icon(Icons.restore),
+                title: const Text('Quitar mi foto (volver al automático)'),
+                onTap: () => Navigator.pop(bctx, 'quitar'),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (opcion == null || !context.mounted) return;
+    if (opcion == 'foto') {
+      final XFile? f = await ImagePicker().pickImage(
+          source: ImageSource.gallery, maxWidth: 1600, imageQuality: 88);
+      if (f == null || !context.mounted) return;
+      final bytes = await f.readAsBytes();
+      if (!context.mounted) return;
+      final ok = await conPreload(
+          context, () => appState.ponerFondoAfiche(c.id, bytes),
+          texto: 'Subiendo fondo…');
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: ok ? bosque : null,
+          content: Text(ok
+              ? 'Listo: el afiche ahora usa tu foto de fondo.'
+              : 'No se pudo subir la foto. Intenta de nuevo.')));
+    } else if (opcion == 'ia') {
+      appState.variarArteAfiche(c.id);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          backgroundColor: bosque,
+          content: Text('Pedido ✅: el próximo afiche saldrá con un arte '
+              'nuevo (la primera descarga tarda ~1 min).')));
+    } else {
+      appState.quitarFondoAfiche(c.id);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          backgroundColor: bosque,
+          content: Text('El afiche vuelve al arte automático.')));
+    }
+  }
+
   /// Comparte el AFICHE como IMAGEN + el texto publicitario en un solo envío
   /// (pedido del director: como los flyers de Rally Challenge). Baja el PNG
   /// del backend y abre la hoja de compartir del sistema.
@@ -2501,6 +2580,16 @@ class _InvitarCard extends StatelessWidget {
                       mode: LaunchMode.externalApplication),
                   icon: const Icon(Icons.visibility_outlined, size: 18),
                   label: const Text('Ver afiche'),
+                ),
+              // Solo el ORGANIZADOR: elegir la imagen de fondo del afiche
+              // (foto propia, otro arte IA, o volver al automático).
+              if (enlace != null &&
+                  (appState.usuario?.email ?? '').toLowerCase() ==
+                      campeonato.dueno.toLowerCase())
+                TextButton.icon(
+                  onPressed: () => _cambiarFondo(context),
+                  icon: const Icon(Icons.wallpaper_outlined, size: 18),
+                  label: const Text('Cambiar fondo del afiche'),
                 ),
             ],
           ),
