@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'dart:io';
+
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/campeonato.dart';
@@ -75,6 +80,10 @@ class CampeonatoDetalleScreen extends StatelessWidget {
               ],
               const SizedBox(height: 12),
               _InvitarCard(campeonato: c),
+              if (esDueno) ...[
+                const SizedBox(height: 14),
+                _AuspiciadoresCard(campeonato: c),
+              ],
               // Cronograma / verificación (chips informativos).
               if (c.inscripcionHasta != null ||
                   c.relampago ||
@@ -2183,18 +2192,35 @@ class _InvitarCard extends StatelessWidget {
   const _InvitarCard({required this.campeonato});
   final Campeonato campeonato;
 
-  String _mensaje() {
-    final c = campeonato;
-    final enlace = SupabaseService.paginaCampeonato(c.id);
-    final sb = StringBuffer()
-      ..writeln('🏆 ${c.nombre}')
-      ..writeln('${c.deporte.etiqueta} · inscríbete en Pichangol.')
-      ..writeln('')
-      ..writeln('Código para unirte: ${c.codigoInvitacion}')
-      ..writeln('En la app: Anfitrión → Mis campeonatos → 🔗 Unirme (o '
-          'Campeonatos → 🔗) y pega el código.');
-    if (enlace != null) sb.writeln('\n👉 $enlace');
-    return sb.toString();
+  // El mensaje es la PUBLICIDAD completa (estilo Rally Challenge) mientras
+  // las inscripciones están abiertas; con fixture, el resumen de resultados.
+  String _mensaje() => CampeonatoDetalleScreen._resumen(campeonato);
+
+  /// Comparte el AFICHE como IMAGEN + el texto publicitario en un solo envío
+  /// (pedido del director: como los flyers de Rally Challenge). Baja el PNG
+  /// del backend y abre la hoja de compartir del sistema.
+  Future<void> _compartirAfiche(BuildContext context, String enlace) async {
+    final ok = await conPreload(context, () async {
+      try {
+        final r = await http
+            .get(Uri.parse('$enlace/afiche.png'))
+            .timeout(const Duration(seconds: 100));
+        if (r.statusCode != 200) return false;
+        final dir = await getTemporaryDirectory();
+        final ruta = '${dir.path}/afiche_${campeonato.id}.png';
+        await File(ruta).writeAsBytes(r.bodyBytes);
+        await Share.shareXFiles([XFile(ruta, mimeType: 'image/png')],
+            text: _mensaje());
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }, texto: 'Preparando afiche…');
+    if (!ok && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No se pudo preparar el afiche. Revisa tu conexión '
+              'e intenta de nuevo (la primera vez puede tardar).')));
+    }
   }
 
   @override
@@ -2304,16 +2330,23 @@ class _InvitarCard extends StatelessWidget {
                   icon: const Icon(Icons.link, size: 18),
                   label: const Text('Copiar enlace'),
                 ),
-              // AFICHE del torneo (generado por el backend con la marca):
-              // se abre para guardarlo/compartirlo como imagen. El mismo
-              // afiche es la vista previa del enlace en WhatsApp.
+              // AFICHE del torneo: se comparte como IMAGEN junto con el
+              // texto publicitario (un solo envío, como el flyer de Rally
+              // Challenge). Mantener presionado en el chat = guardar imagen.
+              if (enlace != null)
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(backgroundColor: bosque),
+                  onPressed: () => _compartirAfiche(context, enlace),
+                  icon: const Icon(Icons.image_outlined, size: 18),
+                  label: const Text('Compartir afiche 🎨'),
+                ),
               if (enlace != null)
                 OutlinedButton.icon(
                   onPressed: () => launchUrl(
                       Uri.parse('$enlace/afiche.png'),
                       mode: LaunchMode.externalApplication),
-                  icon: const Icon(Icons.image_outlined, size: 18),
-                  label: const Text('Ver afiche 🎨'),
+                  icon: const Icon(Icons.visibility_outlined, size: 18),
+                  label: const Text('Ver afiche'),
                 ),
             ],
           ),
@@ -2381,6 +2414,122 @@ class _LogoCampeonato extends StatelessWidget {
               child: const Icon(Icons.photo_camera,
                   size: 12, color: Colors.white),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Gestión de LOGOS de auspiciadores (solo el dueño): un campeonato puede
+/// estar auspiciado por varias empresas y sus logos salen en el AFICHE y en
+/// la página pública. Subida a Storage, quitar con la X.
+class _AuspiciadoresCard extends StatelessWidget {
+  const _AuspiciadoresCard({required this.campeonato});
+  final Campeonato campeonato;
+
+  Future<void> _agregar(BuildContext context) async {
+    final XFile? f = await ImagePicker().pickImage(
+        source: ImageSource.gallery, maxWidth: 800, imageQuality: 88);
+    if (f == null || !context.mounted) return;
+    final bytes = await f.readAsBytes();
+    if (!context.mounted) return;
+    final ok = await conPreload(context,
+        () => appState.agregarLogoAuspiciador(campeonato.id, bytes),
+        texto: 'Subiendo logo…');
+    if (!context.mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo subir el logo.')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final logos = campeonato.auspiciadoresLogos;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: trazo),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.handshake_outlined, color: teal),
+              const SizedBox(width: 8),
+              Text('Auspiciadores',
+                  style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+              'Sube el logo de cada empresa que auspicia: salen en el afiche '
+              'y en la página del torneo.',
+              style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              for (final url in logos)
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Container(
+                      width: 84,
+                      height: 84,
+                      clipBehavior: Clip.antiAlias,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: trazo),
+                      ),
+                      child: Image.network(url, fit: BoxFit.contain),
+                    ),
+                    Positioned(
+                      top: -8,
+                      right: -8,
+                      child: GestureDetector(
+                        onTap: () => appState.quitarLogoAuspiciador(
+                            campeonato.id, url),
+                        child: const CircleAvatar(
+                          radius: 12,
+                          backgroundColor: clayOscuro,
+                          child:
+                              Icon(Icons.close, size: 14, color: Colors.white),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              InkWell(
+                onTap: () => _agregar(context),
+                borderRadius: BorderRadius.circular(14),
+                child: Container(
+                  width: 84,
+                  height: 84,
+                  decoration: BoxDecoration(
+                    color: limaSuave,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: trazo),
+                  ),
+                  child: const Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.add_photo_alternate_outlined, color: bosque),
+                      SizedBox(height: 2),
+                      Text('Logo',
+                          style: TextStyle(color: bosque, fontSize: 11)),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),

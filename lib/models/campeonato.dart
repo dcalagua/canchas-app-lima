@@ -404,6 +404,9 @@ class Campeonato {
   /// AUSPICIADOR oficial (ej. "JORDI MEAT BOUTIQUE"). Espacio de marca en la
   /// publicidad y la página del torneo.
   final String auspiciador;
+  /// LOGOS de los auspiciadores (URLs en Storage). Un campeonato puede tener
+  /// varias empresas auspiciando: sus logos salen en el AFICHE y en la página.
+  final List<String> auspiciadoresLogos;
 
   const Campeonato({
     required this.id,
@@ -434,6 +437,7 @@ class Campeonato {
     this.minJugadoresEquipo = 0,
     this.premios = '',
     this.auspiciador = '',
+    this.auspiciadoresLogos = const [],
   });
 
   /// ¿Las inscripciones ya cerraron por fecha? (para auto-sorteo / bloqueo).
@@ -495,6 +499,7 @@ class Campeonato {
     int? minJugadoresEquipo,
     String? premios,
     String? auspiciador,
+    List<String>? auspiciadoresLogos,
   }) =>
       Campeonato(
         id: id,
@@ -525,6 +530,7 @@ class Campeonato {
         minJugadoresEquipo: minJugadoresEquipo ?? this.minJugadoresEquipo,
         premios: premios ?? this.premios,
         auspiciador: auspiciador ?? this.auspiciador,
+        auspiciadoresLogos: auspiciadoresLogos ?? this.auspiciadoresLogos,
       );
 
   Participante? participante(String? pid) {
@@ -567,6 +573,8 @@ class Campeonato {
         if (minJugadoresEquipo > 0) 'minJugadoresEquipo': minJugadoresEquipo,
         if (premios.isNotEmpty) 'premios': premios,
         if (auspiciador.isNotEmpty) 'auspiciador': auspiciador,
+        if (auspiciadoresLogos.isNotEmpty)
+          'auspiciadoresLogos': auspiciadoresLogos,
       };
 
   factory Campeonato.fromJson(Map<String, dynamic> j) => Campeonato(
@@ -616,6 +624,10 @@ class Campeonato {
         minJugadoresEquipo: (j['minJugadoresEquipo'] as num?)?.toInt() ?? 0,
         premios: (j['premios'] ?? '') as String,
         auspiciador: (j['auspiciador'] ?? '') as String,
+        auspiciadoresLogos: (j['auspiciadoresLogos'] as List?)
+                ?.map((e) => e.toString())
+                .toList() ??
+            const [],
       );
 }
 

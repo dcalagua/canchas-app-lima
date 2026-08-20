@@ -105,6 +105,44 @@ def _fondo_ia(deporte: str) -> Image.Image | None:
     return img
 
 
+def _tiles_auspiciadores(img: Image.Image, d: ImageDraw.ImageDraw,
+                         urls: list[str]) -> bool:
+    """Fila de LOGOS de auspiciadores (tiles blancos redondeados) anclada
+    sobre el pie de marca, con el rótulo AUSPICIAN. Best-effort: solo entran
+    los logos que bajen bien (máx 4)."""
+    logos = []
+    for u in urls[:4]:
+        im = _bajar_imagen(u)
+        if im is not None:
+            logos.append(im.convert("RGB"))
+    if not logos:
+        return False
+    tw, th, sep = 190, 120, 18
+    total = len(logos) * tw + (len(logos) - 1) * sep
+    if total > W - 80:
+        tw = (W - 80 - (len(logos) - 1) * sep) // len(logos)
+        total = len(logos) * tw + (len(logos) - 1) * sep
+    y0 = H - 174 - th
+    f = _font(26)
+    eti = "AUSPICIAN"
+    d.text(((W - d.textlength(eti, font=f)) / 2, y0 - 42), eti, font=f,
+           fill=_DORADO)
+    x = (W - total) / 2
+    for im in logos:
+        # Logo "contain" con margen dentro de un tile blanco redondeado.
+        tile = Image.new("RGB", (tw, th), _BLANCO)
+        esc = min((tw - 22) / im.width, (th - 22) / im.height)
+        lw = max(1, int(im.width * esc))
+        lh = max(1, int(im.height * esc))
+        tile.paste(im.resize((lw, lh)), ((tw - lw) // 2, (th - lh) // 2))
+        mask = Image.new("L", (tw, th), 0)
+        ImageDraw.Draw(mask).rounded_rectangle([0, 0, tw - 1, th - 1],
+                                               radius=18, fill=255)
+        img.paste(tile, (int(x), y0), mask)
+        x += tw + sep
+    return True
+
+
 def generar_afiche(c: dict) -> bytes:
     """El afiche PNG del campeonato a partir de su `data` (jsonb). Con
     proveedor de imágenes configurado (env en Railway), el fondo es una FOTO
@@ -122,8 +160,12 @@ def generar_afiche(c: dict) -> bytes:
     fechas = _limpiar(str(c.get("fechas") or "")).strip()
     mon = str(c.get("moneda") or "").strip() or "S/"
     costo = float(c.get("costoInscripcion") or 0)
+    logos_ausp = [str(u) for u in (c.get("auspiciadoresLogos") or [])
+                  if str(u).startswith("http")]
+    # Con logos de auspiciadores abajo hay menos alto libre: máx 3 premios.
     premios = [_limpiar(l).strip() for l in
-               str(c.get("premios") or "").split("\n") if l.strip()][:4]
+               str(c.get("premios") or "").split("\n")
+               if l.strip()][:3 if logos_ausp else 4]
 
     y = 64
     # Chip superior: deporte · categoría.
@@ -204,8 +246,9 @@ def generar_afiche(c: dict) -> bytes:
             y += 50
         y += 18
 
-    # AUSPICIA (espacio de marca, pastilla blanca).
-    if auspiciador:
+    # AUSPICIA (espacio de marca, pastilla blanca). Si hay LOGOS, la fila de
+    # tiles de abajo ya es el espacio de marca y la pastilla sobra.
+    if auspiciador and not logos_ausp:
         f = _font(32)
         texto = f"AUSPICIA: {auspiciador.upper()}"
         ancho = d.textlength(texto, font=f) + 60
@@ -214,6 +257,10 @@ def generar_afiche(c: dict) -> bytes:
                             fill=_BLANCO)
         d.text((x0 + 30, y + 15), texto, font=f, fill=_NAVY)
         y += 100
+
+    # LOGOS de los auspiciadores (tiles blancos, anclados sobre el pie).
+    if logos_ausp:
+        _tiles_auspiciadores(img, d, logos_ausp)
 
     # Pie de marca: pastilla esmeralda + eslogan (anclado abajo).
     f = _font(34)

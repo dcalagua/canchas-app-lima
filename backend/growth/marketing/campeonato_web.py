@@ -210,6 +210,15 @@ def html_campeonato(c: dict, campeonato_id: str = "",
         bloque_auspiciador = (
             f'<div class="auspicio">🤝 Agradecimiento especial a '
             f'<b>{_esc(auspiciador)}</b>, nuestro auspiciador oficial.</div>')
+    # Franja de LOGOS de auspiciadores (varias empresas pueden auspiciar).
+    logos_ausp = [str(u) for u in (c.get("auspiciadoresLogos") or [])
+                  if str(u).startswith("http")]
+    if logos_ausp:
+        tiles = "".join(
+            f'<span class="ausplogo"><img src="{_esc(u)}" alt="auspiciador" '
+            f'loading="lazy"></span>' for u in logos_ausp)
+        bloque_auspiciador += (
+            f'<h2>🤝 Auspician</h2><div class="ausps">{tiles}</div>')
     byline = (f'<div class="byline">by <b>{_esc(auspiciador)}</b></div>'
               if auspiciador else "")
     # Vista previa RICA en WhatsApp (og:tags): título, descripción y logo.
@@ -273,6 +282,9 @@ def html_campeonato(c: dict, campeonato_id: str = "",
   .byline{{margin-top:4px;font-size:14px;opacity:.95}}
   .premios{{list-style:none;background:#fff;border-radius:14px;padding:12px 16px;font-size:14px;line-height:2}}
   .auspicio{{background:#fff;border-left:4px solid {_ESMERALDA};border-radius:12px;padding:12px 14px;margin-top:12px;font-size:13.5px;color:#333}}
+  .ausps{{display:flex;flex-wrap:wrap;gap:12px}}
+  .ausplogo{{display:flex;align-items:center;justify-content:center;width:104px;height:76px;background:#fff;border-radius:14px;box-shadow:0 1px 4px rgba(0,0,0,.06);padding:8px}}
+  .ausplogo img{{max-width:100%;max-height:100%;object-fit:contain}}
   .foot{{max-width:760px;margin:26px auto 0;padding:16px;text-align:center;color:#8a94a0;font-size:12px}}
   .foot a{{color:var(--noche);font-weight:700;text-decoration:none}}
 </style></head><body>

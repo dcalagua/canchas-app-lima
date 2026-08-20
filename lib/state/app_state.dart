@@ -2764,6 +2764,28 @@ class AppState extends ChangeNotifier {
     return true;
   }
 
+  /// Sube el LOGO de un auspiciador y lo suma al campeonato (varias empresas
+  /// pueden auspiciar; sus logos salen en el afiche y la página del torneo).
+  Future<bool> agregarLogoAuspiciador(String campId, List<int> bytes) async {
+    final c = campeonatoPorId(campId);
+    if (c == null) return false;
+    final url = await CampeonatosRepo.subirLogo(
+        '${campId}_ausp_${DateTime.now().millisecondsSinceEpoch}', bytes);
+    if (url == null) return false;
+    guardarCampeonato(
+        c.copyWith(auspiciadoresLogos: [...c.auspiciadoresLogos, url]));
+    return true;
+  }
+
+  /// Quita el logo de un auspiciador del campeonato.
+  void quitarLogoAuspiciador(String campId, String url) {
+    final c = campeonatoPorId(campId);
+    if (c == null) return;
+    guardarCampeonato(c.copyWith(
+        auspiciadoresLogos:
+            c.auspiciadoresLogos.where((u) => u != url).toList()));
+  }
+
   void eliminarCampeonato(String id) {
     campeonatos.removeWhere((c) => c.id == id);
     notifyListeners();
