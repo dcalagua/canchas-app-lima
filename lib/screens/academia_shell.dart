@@ -137,7 +137,7 @@ class _AcademiaShellState extends State<AcademiaShell> {
                       for (final it in items)
                         NavigationRailDestination(
                           icon: it.$2 == 'Mensajes'
-                              ? const IconoChatPichan()
+                              ? const IconoMensajesLogo()
                               : Icon(it.$1, color: it.$3),
                           label: Text(it.$2),
                         ),
@@ -234,7 +234,7 @@ class _BarraAcademiaScroll extends StatelessWidget {
             // Ícono SIEMPRE con color (regla Airbnb "con vida"); Mensajes usa el
             // ícono de chat de marca.
             i == iMensajes
-                ? IconoChatPichan(activo: sel)
+                ? IconoMensajesLogo(activo: sel)
                 : Icon(iconos[i], color: color, size: 25),
             const SizedBox(height: 3),
             Text(

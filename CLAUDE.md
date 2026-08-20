@@ -312,8 +312,11 @@ sigue el lenguaje Airbnb sobre la paleta EBIM:
   **No** usar `AlertDialog`/`showDialog` suelto con estilos propios en pantallas
   nuevas; migrar los viejos a este componente cuando se toquen.
 - **Íconos del menú lateral CON COLOR (Airbnb "con vida"):** los íconos de los
-  rails/barras de navegación van coloreados por sección (no gris plano). Mensajes
-  usa `widgets/icono_chat_pichan.dart` (burbuja verde WhatsApp con "P").
+  rails/barras de navegación van coloreados por sección (no gris plano). La
+  pestaña **Mensajes lleva el LOGO de Pichangol** (`IconoMensajesLogo` en
+  `widgets/icono_chat_pichan.dart`, asset `assets/brand/logo_pin.png`; decisión
+  del director ago-2026). La burbuja `IconoChatPichan` sigue existiendo para
+  otros usos (p. ej. compartir).
 - **Avatares SIEMPRE con foto real:** cualquier avatar de jugador (ranking,
   jugadores disponibles, retos —incluido el reto de dobles—, chat, perfil, etc.)
   DEBE mostrar la foto del perfil (`appState.fotoDe(email)` o `usuario.fotoUrl`),
