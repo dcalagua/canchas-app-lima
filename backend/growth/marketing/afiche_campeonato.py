@@ -109,7 +109,7 @@ def _fondo_propio(url: str) -> Image.Image | None:
 
 
 def _fondo_ia(deporte: str, esperar: bool = True,
-              variante: int = 0) -> Image.Image | None:
+              variante: int = 0, tema: str = "") -> Image.Image | None:
     """Fondo FOTOGRÁFICO generado por IA (si hay proveedor configurado).
     [variante] cambia el encuadre ('Generar OTRO arte' en la app).
     None = usar el gradiente de marca.
@@ -117,11 +117,11 @@ def _fondo_ia(deporte: str, esperar: bool = True,
     la generación en segundo plano (el robot de WhatsApp que baja el
     og:image corta a los ~5 s; mejor gradiente al instante que nada)."""
     if esperar:
-        foto = arte_ia.fondo_para(deporte, variante)
+        foto = arte_ia.fondo_para(deporte, variante, tema)
     else:
-        foto = arte_ia.fondo_cacheado(deporte, variante)
+        foto = arte_ia.fondo_cacheado(deporte, variante, tema)
         if foto is None:
-            arte_ia.precalentar(deporte, variante)
+            arte_ia.precalentar(deporte, variante, tema)
     return None if foto is None else _con_velo(foto)
 
 
@@ -152,9 +152,11 @@ def generar_afiche(c: dict, esperar_ia: bool = True) -> bytes:
         variante = int(c.get("aficheVariante") or 0)
     except (TypeError, ValueError):
         variante = 0
+    tema = str(c.get("aficheTema") or "").strip()
     img = _fondo_propio(fondo_url) if fondo_url.startswith("http") else None
     if img is None:
-        img = _fondo_ia(str(c.get("deporte") or ""), esperar_ia, variante)
+        img = _fondo_ia(str(c.get("deporte") or ""), esperar_ia, variante,
+                        tema)
     img = img or _fondo()
     d = ImageDraw.Draw(img)
 

@@ -2461,22 +2461,66 @@ class _InvitarCard extends StatelessWidget {
     }
   }
 
+  /// Pide la DESCRIPCIÓN LIBRE de la temática ("Mi idea"): p. ej. "fondo
+  /// claro, cancha de arcilla, sin gente". Es entrada creativa (como una
+  /// búsqueda): va directo al generador de imágenes.
+  Future<String?> _pedirTema(BuildContext context, {String inicial = ''}) {
+    final ctrl = TextEditingController(text: inicial);
+    return showDialog<String>(
+      context: context,
+      builder: (dctx) => DialogoPichangol(
+        titulo: 'Tu idea para el afiche ✍️',
+        icono: Icons.brush_outlined,
+        contenido: TextField(
+          controller: ctrl,
+          autofocus: true,
+          maxLength: 140,
+          minLines: 1,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            hintText: 'Ej.: fondo claro, cancha de arcilla, sin gente',
+            counterText: '',
+          ),
+        ),
+        acciones: [
+          TextButton(
+              onPressed: () => Navigator.pop(dctx),
+              child: const Text('Cancelar')),
+          FilledButton(
+              onPressed: () => Navigator.pop(dctx, ctrl.text.trim()),
+              child: const Text('Generar')),
+        ],
+      ),
+    );
+  }
+
   /// GALERÍA de artes IA: muestra las 5 propuestas (miniaturas que genera el
   /// backend, cacheadas y persistidas) y el organizador ELIGE la que le
-  /// gusta. La primera vez cada miniatura puede tardar ~1 min en aparecer.
+  /// gusta. Arriba puede cambiar la TEMÁTICA (chips curados o "Mi idea" en
+  /// texto libre) y la galería se regenera con ese estilo. La primera vez
+  /// cada miniatura puede tardar ~1 min en aparecer.
   Future<void> _galeriaArte(BuildContext context) async {
     final c = campeonato;
     final enlace = SupabaseService.paginaCampeonato(c.id);
     if (enlace == null) return;
     final corte = enlace.indexOf('/c/');
     final base = corte > 0 ? enlace.substring(0, corte) : enlace;
+    var tema = c.aficheTema; // temática seleccionada (arranca en la vigente)
+    const temas = <String, String>{
+      '': 'Nocturno ⭐',
+      'claro': 'Fondo claro',
+      'cancha': 'Solo la cancha',
+      'amanecer': 'Amanecer',
+      'celebracion': 'Celebración',
+    };
     final elegido = await showModalBottomSheet<int>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
-      builder: (bctx) => SafeArea(
+      builder: (bctx) => StatefulBuilder(
+        builder: (bctx, setSB) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
           child: Column(
@@ -2488,13 +2532,41 @@ class _InvitarCard extends StatelessWidget {
                       TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
               const SizedBox(height: 4),
               const Text(
-                  'La IA genera 5 propuestas para tu deporte. La primera '
-                  'vez cada una puede tardar ~1 min en aparecer.',
+                  'Elige la TEMÁTICA y la IA genera 5 propuestas para tu '
+                  'deporte (la primera vez cada una tarda ~1 min).',
                   style: TextStyle(color: textoTenue, fontSize: 12)),
+              const SizedBox(height: 10),
+              // TEMÁTICAS: chips curados + "Mi idea" (texto libre creativo).
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final e in temas.entries)
+                    ChoiceChip(
+                      label: Text(e.value),
+                      selected: tema == e.key,
+                      onSelected: (_) => setSB(() => tema = e.key),
+                    ),
+                  ChoiceChip(
+                    label: Text(temas.containsKey(tema)
+                        ? 'Mi idea ✍️'
+                        : 'Mi idea: "${tema.length > 18 ? '${tema.substring(0, 18)}…' : tema}"'),
+                    selected: !temas.containsKey(tema),
+                    onSelected: (_) async {
+                      final nuevo = await _pedirTema(bctx,
+                          inicial: temas.containsKey(tema) ? '' : tema);
+                      if (nuevo != null && nuevo.isNotEmpty) {
+                        setSB(() => tema = nuevo);
+                      }
+                    },
+                  ),
+                ],
+              ),
               const SizedBox(height: 12),
               SizedBox(
-                height: 420,
+                height: 380,
                 child: GridView.count(
+                  key: ValueKey(tema),
                   crossAxisCount: 2,
                   mainAxisSpacing: 10,
                   crossAxisSpacing: 10,
@@ -2511,7 +2583,8 @@ class _InvitarCard extends StatelessWidget {
                             children: [
                               Container(color: const Color(0xFF0F1B2D)),
                               Image.network(
-                                '$base/afiche/fondo/${c.deporte.name}/$v',
+                                '$base/afiche/fondo/${c.deporte.name}/$v'
+                                '${tema.isEmpty ? '' : '?tema=${Uri.encodeQueryComponent(tema)}'}',
                                 fit: BoxFit.cover,
                                 loadingBuilder: (ctx2, child, prog) =>
                                     prog == null
@@ -2534,8 +2607,9 @@ class _InvitarCard extends StatelessWidget {
                                           fontSize: 11)),
                                 ),
                               ),
-                              // ✓ = la variante que está en uso ahora.
+                              // ✓ = el arte que está en uso ahora.
                               if (c.aficheFondoUrl.isEmpty &&
+                                  c.aficheTema == tema &&
                                   c.aficheVariante % 5 == v)
                                 const Positioned(
                                   top: 6,
@@ -2558,9 +2632,10 @@ class _InvitarCard extends StatelessWidget {
           ),
         ),
       ),
+      ),
     );
     if (elegido == null || !context.mounted) return;
-    appState.elegirArteAfiche(c.id, elegido);
+    appState.elegirArteAfiche(c.id, elegido, tema: tema);
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         backgroundColor: bosque,
         content: Text('Listo ✅: el afiche usará ese arte.')));

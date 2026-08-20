@@ -2842,13 +2842,16 @@ class AppState extends ChangeNotifier {
     guardarCampeonato(c.copyWith(aficheFondoUrl: ''));
   }
 
-  /// El organizador ELIGE una variante del arte IA en la galería del afiche.
-  /// También quita la foto propia si la había.
-  void elegirArteAfiche(String campId, int variante) {
+  /// El organizador ELIGE una variante del arte IA en la galería del afiche
+  /// (con su TEMÁTICA: nocturna de marca, fondo claro, solo la cancha… o su
+  /// propia idea). También quita la foto propia si la había.
+  void elegirArteAfiche(String campId, int variante, {String? tema}) {
     final c = campeonatoPorId(campId);
     if (c == null) return;
-    guardarCampeonato(
-        c.copyWith(aficheFondoUrl: '', aficheVariante: variante));
+    guardarCampeonato(c.copyWith(
+        aficheFondoUrl: '',
+        aficheVariante: variante,
+        aficheTema: tema ?? c.aficheTema));
   }
 
   /// Pide OTRO arte IA para el fondo del afiche (varía la imagen). También

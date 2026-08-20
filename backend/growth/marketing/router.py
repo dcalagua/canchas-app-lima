@@ -433,14 +433,15 @@ def assetlinks() -> list[dict]:
 
 
 @router.get("/afiche/fondo/{deporte}/{variante}")
-def fondo_afiche_preview(deporte: str, variante: int) -> Response:
+def fondo_afiche_preview(deporte: str, variante: int,
+                         tema: str = "") -> Response:
     """MINIATURA de una variante del arte IA (galería 'Cambiar fondo del
     afiche' del APK: el organizador VE las 5 propuestas y elige). Genera la
     variante si falta (y queda persistida en Storage — no se re-paga).
     404 = sin proveedor de imágenes configurado."""
     if not arte_ia.disponible():
         raise HTTPException(status_code=404, detail="sin_proveedor_ia")
-    img = arte_ia.fondo_para(deporte, variante)
+    img = arte_ia.fondo_para(deporte, variante, tema.strip()[:140])
     if img is None:
         raise HTTPException(status_code=404, detail="no_disponible")
     mini = img.copy()

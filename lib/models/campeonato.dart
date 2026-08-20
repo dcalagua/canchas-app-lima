@@ -418,6 +418,10 @@ class Campeonato {
   /// Variante del ARTE IA del afiche: "generar otro arte" la incrementa para
   /// que el fondo IA cambie (sin repetir el mismo).
   final int aficheVariante;
+  /// TEMÁTICA del arte IA del afiche: '' = nocturna de marca; claves curadas
+  /// (claro/cancha/amanecer/celebracion) o la DESCRIPCIÓN LIBRE del
+  /// organizador ("Mi idea": p. ej. "fondo claro, cancha de arcilla").
+  final String aficheTema;
 
   const Campeonato({
     required this.id,
@@ -452,6 +456,7 @@ class Campeonato {
     this.fotos = const [],
     this.aficheFondoUrl = '',
     this.aficheVariante = 0,
+    this.aficheTema = '',
   });
 
   /// ¿Las inscripciones ya cerraron por fecha? (para auto-sorteo / bloqueo).
@@ -580,6 +585,7 @@ class Campeonato {
     List<String>? fotos,
     String? aficheFondoUrl,
     int? aficheVariante,
+    String? aficheTema,
   }) =>
       Campeonato(
         id: id,
@@ -614,6 +620,7 @@ class Campeonato {
         fotos: fotos ?? this.fotos,
         aficheFondoUrl: aficheFondoUrl ?? this.aficheFondoUrl,
         aficheVariante: aficheVariante ?? this.aficheVariante,
+        aficheTema: aficheTema ?? this.aficheTema,
       );
 
   Participante? participante(String? pid) {
@@ -661,6 +668,7 @@ class Campeonato {
         if (fotos.isNotEmpty) 'fotos': fotos,
         if (aficheFondoUrl.isNotEmpty) 'aficheFondoUrl': aficheFondoUrl,
         if (aficheVariante != 0) 'aficheVariante': aficheVariante,
+        if (aficheTema.isNotEmpty) 'aficheTema': aficheTema,
       };
 
   factory Campeonato.fromJson(Map<String, dynamic> j) => Campeonato(
@@ -718,6 +726,7 @@ class Campeonato {
             const [],
         aficheFondoUrl: (j['aficheFondoUrl'] ?? '') as String,
         aficheVariante: (j['aficheVariante'] as num?)?.toInt() ?? 0,
+        aficheTema: (j['aficheTema'] ?? '') as String,
       );
 }
 
