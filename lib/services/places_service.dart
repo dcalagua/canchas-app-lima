@@ -128,6 +128,7 @@ class PlacesService {
   // deportivo"+"country club"). Cada consulta = 1 request de cuota Places.
   static const _consultas = [
     'canchas de fútbol',
+    'campo deportivo', // "Campo Deportivo X" (reporte del director: no salía)
     'pichanga', // jerga PE: locales llamados "La Pichanga" solo salen con esto
     'grass sintético',
     'complejo deportivo',
@@ -568,6 +569,13 @@ class PlacesService {
         n.contains('estadio')) {
       return Deporte.futbol;
     }
+
+    // 2.5) El NOMBRE grita recinto deportivo (campo deportivo, villa
+    //      deportiva…) pero ningún deporte específico matcheó arriba y el
+    //      branch de fútbol tampoco: entra como fútbol (multiuso). Caso real:
+    //      "Campo Deportivo Edu Jr" — estaba en _nombreFuerteDeportivo pero
+    //      nada lo clasificaba y Google no le puso tipo deportivo.
+    if (nombreEsDeportivoFuerte) return Deporte.futbol;
 
     // 3) Sin señal de deporte en el nombre.
     // 3a) Tipos FUERTES de campo/cancha (estadio, arena, complejo, campo,
