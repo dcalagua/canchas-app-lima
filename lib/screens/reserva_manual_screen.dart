@@ -5,6 +5,7 @@ import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/buscador_usuario_sheet.dart';
+import '../widgets/candado_pro.dart';
 import '../widgets/cargando_pichangol.dart';
 
 /// RESERVA MANUAL del dueño: registra la reserva de un cliente que llamó por
@@ -163,6 +164,10 @@ class _ReservaManualScreenState extends State<ReservaManualScreen> {
   Future<void> _guardar() async {
     final c = _cancha;
     if (c == null) return;
+    // Defensa extra del candado PRO (las entradas a esta pantalla ya lo
+    // exigen; esto protege cualquier puerta futura): guardar exige Pro.
+    if (!await exigirPro(context, funcion: 'La reserva manual')) return;
+    if (!mounted) return;
     if (_hora == null) {
       _aviso('Elige una hora.');
       return;
