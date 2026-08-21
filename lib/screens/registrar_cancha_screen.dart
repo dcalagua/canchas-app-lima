@@ -127,6 +127,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
 
   GoogleMapController? _map;
   LatLng? _ubicacion; // null hasta geocodificar o tocar el mapa
+  bool _ubicandoGps = false; // leyendo el GPS para "usar mi ubicación"
   bool _geocodificando = false;
   String? _errorGeo;
 
@@ -258,6 +259,28 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
         _errorGeo = 'No pude ubicar la dirección. Toca el mapa para marcarla a mano.';
       });
     }
+  }
+
+  /// "Estoy en la cancha": pone el pin en MI ubicación GPS actual (alta
+  /// precisión) y rellena la dirección sola. Pedido del director: registrar
+  /// parado en el local sin tipear la dirección.
+  Future<void> _usarMiUbicacion() async {
+    if (_ubicandoGps) return;
+    setState(() {
+      _ubicandoGps = true;
+      _errorGeo = null;
+    });
+    final pos = await LocationService.ubicacionPrecisa();
+    if (!mounted) return;
+    setState(() => _ubicandoGps = false);
+    if (pos == null) {
+      setState(() => _errorGeo =
+          'No pude leer tu GPS. Activa la ubicación del teléfono y vuelve a '
+          'intentar (o marca el punto tocando el mapa).');
+      return;
+    }
+    await _moverPin(pos); // pin + dirección automática
+    _map?.animateCamera(CameraUpdate.newLatLngZoom(pos, 17));
   }
 
   /// Mueve el pin y **rellena la dirección automáticamente** desde esa
@@ -720,6 +743,24 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
             const SizedBox(height: 8),
             Text(_errorGeo!, style: const TextStyle(color: coralOscuro)),
           ],
+          const SizedBox(height: 10),
+          // UBICACIÓN EN TIEMPO REAL: si estás parado en el local, un tap
+          // pone el pin en tu GPS y llena la dirección sola.
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _ubicandoGps ? null : _usarMiUbicacion,
+              icon: _ubicandoGps
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.my_location),
+              label: Text(_ubicandoGps
+                  ? 'Leyendo tu GPS…'
+                  : 'Estoy en la cancha: usar mi ubicación'),
+            ),
+          ),
           const SizedBox(height: 12),
 
           // Mapa de confirmación: marcador arrastrable + tocar para ajustar.
