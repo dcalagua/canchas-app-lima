@@ -37,6 +37,21 @@ jugador es 100% Pichangol, EBIM solo aparece discreto como respaldo).
   mano en Supabase.
 - **Flutter 3.24.5**: NO existe `Color.withValues`/`.a`. Por eso
   `font_awesome_flutter` está **clavado en 10.8.0** (10.9.0 rompe el build).
+- **MULTI-PAÍS SIEMPRE (regla del director, ago-2026):** TODO lo que se
+  construya debe estar pensado para los 3 países del despliegue — **Perú,
+  Bolivia y Ecuador** — desde el día uno:
+  - **Moneda por país**: usar `paisActual.moneda` (S/, Bs, $) o
+    `monedaDeCoordenadas(...)` para lo anclado a una sede; NUNCA "S/" fijo en
+    UI, backend ni páginas públicas. Lo que viaja a la nube guarda su moneda
+    (p. ej. `Campeonato.moneda`, `pichangol_bodega_productos.moneda`) para que
+    las páginas públicas la muestren bien.
+  - **Sin jerga local fija**: "Yape/Plin" solo si `paisActual.iso == 'PE'`
+    (fuera: "QR / transferencia"); documento = DNI/CI/cédula según
+    `docIdActual`/`PaisConfig`.
+  - **Catálogos y sugerencias por país**: marcas/productos (bodega:
+    `_sugerenciasPE/BO/EC`), prefijo telefónico (`codigoTelActual`),
+    validación de documento por país.
+  - Referencia central: `lib/config/pais.dart` (`PaisConfig`, `paisActual`).
 
 ## App Flutter (`lib/`)
 
