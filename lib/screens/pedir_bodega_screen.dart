@@ -107,6 +107,102 @@ class _PedirBodegaScreenState extends State<PedirBodegaScreen> {
       return;
     }
     if (!mounted) return;
+    // CONFIRMACIÓN (el único "paso 2", modal): resumen del pedido + a dónde
+    // te lo llevamos. La carta queda limpia y el pedido sale en 2 taps.
+    final zonas = _config?.zonas ?? const <String>[];
+    var z = zonas.contains(_zona) ? _zona : (zonas.isNotEmpty ? zonas.first : '');
+    final resumen = [
+      for (final e in _ticket.entries)
+        (
+          _productos.firstWhere((x) => x.id == e.key),
+          e.value,
+        ),
+    ];
+    final zonaSel = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (bctx) => StatefulBuilder(
+        builder: (bctx, setSB) => SafeArea(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+                20, 16, 20, 16 + MediaQuery.of(bctx).viewInsets.bottom),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Confirma tu pedido 🧾',
+                    style:
+                        TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+                const SizedBox(height: 10),
+                for (final (p, cant) in resumen)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(
+                      children: [
+                        Expanded(child: Text('$cant × ${p.nombre}')),
+                        Text('${p.moneda} ${(p.precio * cant).toStringAsFixed(2)}',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w700)),
+                      ],
+                    ),
+                  ),
+                const Divider(height: 18),
+                Row(
+                  children: [
+                    const Expanded(
+                        child: Text('Total',
+                            style: TextStyle(fontWeight: FontWeight.w800))),
+                    Text('$_mon ${_total.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w900, fontSize: 16)),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                const Text('¿Dónde te lo llevamos? 🏃',
+                    style: TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final zz in zonas)
+                      ChoiceChip(
+                        label: Text(zz),
+                        selected: z == zz,
+                        onSelected: (_) => setSB(() => z = zz),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                        backgroundColor: lima,
+                        padding: const EdgeInsets.symmetric(vertical: 14)),
+                    onPressed:
+                        z.isEmpty ? null : () => Navigator.pop(bctx, z),
+                    child: const Text('Enviar pedido 🛎️',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 15)),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Center(
+                  child: Text('Pagas al recibirlo, como siempre.',
+                      style: TextStyle(color: textoTenue, fontSize: 12)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    if (zonaSel == null || !mounted) return;
+    _zona = zonaSel;
     setState(() => _enviando = true);
     // Anti-troll: debes estar EN el local (≤250 m) para pedir.
     if (widget.ubicacionLocal != null) {
@@ -271,22 +367,8 @@ class _PedirBodegaScreenState extends State<PedirBodegaScreen> {
                       ),
                     ] else ...[
                       if (cfg?.aceptaPedidos ?? false) ...[
-                        const Text('¿Dónde estás? Te lo llevamos ahí 🏃',
-                            style: TextStyle(fontWeight: FontWeight.w700)),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            for (final z in cfg?.zonas ?? const <String>[])
-                              ChoiceChip(
-                                label: Text(z),
-                                selected: _zona == z,
-                                onSelected: (_) => setState(() => _zona = z),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
+                        // El antojo primero (regla UX): la ZONA se elige al
+                        // confirmar el pedido, no antes de ver la carta.
                         const Text('Toca para agregar a tu pedido',
                             style:
                                 TextStyle(color: textoTenue, fontSize: 12.5)),
@@ -387,7 +469,7 @@ class _PedirBodegaScreenState extends State<PedirBodegaScreen> {
                   child: Text(
                       _enviando
                           ? 'Enviando…'
-                          : 'Pedir a la $_zona · $_mon ${_total.toStringAsFixed(2)}',
+                          : 'Pedir · $_mon ${_total.toStringAsFixed(2)} · ${_ticket.values.fold(0, (a, b) => a + b)} ítem(s)',
                       style: const TextStyle(
                           fontWeight: FontWeight.w800, fontSize: 16)),
                 ),
