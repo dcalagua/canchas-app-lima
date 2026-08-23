@@ -55,3 +55,64 @@ def test_qr_de_la_carta_es_png():
     assert r.status_code == 200
     assert r.headers["content-type"] == "image/png"
     assert r.content[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_packshot_tipo_por_nombre_y_categoria():
+    # Por NOMBRE (multi-país: Pilsen, Paceña y Pilsener son cerveza… por
+    # categoría; Gatorade/Powerade → rehidratante por nombre).
+    assert bodega_web._packshot_tipo("Cerveza artesanal", "Otros") == "cerveza"
+    assert bodega_web._packshot_tipo("Gatorade", "Deportivo") == "rehidratante"
+    assert bodega_web._packshot_tipo("Agua San Luis", "Bebidas") == "agua"
+    assert bodega_web._packshot_tipo("Doritos", "Snacks") == "papitas"
+    # Por CATEGORÍA cuando el nombre no dice nada.
+    assert bodega_web._packshot_tipo("Paceña", "Cervezas") == "cerveza"
+    assert bodega_web._packshot_tipo("Inca Kola", "Bebidas") == "gaseosa"
+    assert bodega_web._packshot_tipo("Algo raro", "Otros") == "generico"
+    # Todos los tipos emitidos existen en el catálogo del generador.
+    from marketing import packshot
+    tipos = set(packshot.tipos())
+    for _, t in bodega_web._PACKSHOT_KEYS:
+        assert t in tipos
+    for t in bodega_web._PACKSHOT_CAT.values():
+        assert t in tipos
+
+
+def test_html_carta_con_packshots():
+    productos = [
+        {"nombre": "Paceña", "categoria": "Cervezas", "precio": 15,
+         "stock": 6, "foto_url": None, "moneda": "Bs"},
+        {"nombre": "Gatorade", "categoria": "Deportivo", "precio": 5,
+         "stock": 3, "foto_url": "http://x/g.jpg"},
+    ]
+    h = bodega_web.html_carta(productos, con_packshots=True)
+    # Sin foto → packshot genérico (con el emoji debajo por si no carga).
+    assert '/bodega/packshot/cerveza' in h
+    # Con foto real → la foto manda, sin packshot para ese producto.
+    assert 'src="http://x/g.jpg"' in h
+    assert '/bodega/packshot/pelotas' not in h
+    # Sin el flag (sin proveedor IA) no se emiten packshots.
+    assert '/bodega/packshot/' not in bodega_web.html_carta(productos)
+
+
+def test_ruta_packshot_sin_proveedor_es_404(monkeypatch):
+    import config
+    monkeypatch.setattr(config, "OPENAI_API_KEY", "", raising=False)
+    monkeypatch.setattr(config, "REPLICATE_API_TOKEN", "", raising=False)
+    from marketing import packshot
+    monkeypatch.setattr(packshot, "_cache", {})
+    monkeypatch.setattr(packshot, "_storage_leer", lambda tipo: None)
+    r = cli.get("/bodega/packshot/cerveza")
+    assert r.status_code == 404
+    # Tipo desconocido → 404 aunque hubiera proveedor.
+    r2 = cli.get("/bodega/packshot/loquesea")
+    assert r2.status_code == 404
+
+
+def test_ruta_packshot_cacheado(monkeypatch):
+    from marketing import packshot
+    monkeypatch.setattr(packshot, "_cache", {"cerveza": b"JPEGFALSO"})
+    r = cli.get("/bodega/packshot/cerveza")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "image/jpeg"
+    assert r.content == b"JPEGFALSO"
+    assert "max-age=604800" in r.headers.get("cache-control", "")

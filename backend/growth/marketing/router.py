@@ -27,6 +27,7 @@ from . import afiche_campeonato
 from . import arte_ia
 from . import bodega_web
 from . import campeonato_web
+from . import packshot as packshot_svc
 from . import link_preview as link_preview_svc
 from . import redes as redes_svc
 from .flyer import generar_flyer
@@ -448,7 +449,8 @@ def ver_carta_bodega(carta_id: str) -> HTMLResponse:
             "Página no disponible",
             "El servidor aún no está configurado. Intenta más tarde."),
             status_code=503)
-    return HTMLResponse(bodega_web.html_carta(productos))
+    return HTMLResponse(bodega_web.html_carta(
+        productos, con_packshots=packshot_svc.disponible()))
 
 
 @router.get("/b/{carta_id}/qr.png")
@@ -468,6 +470,19 @@ def qr_carta_bodega(carta_id: str, request: Request) -> Response:
                         headers={"Cache-Control": "public, max-age=86400"})
     except Exception:
         raise HTTPException(status_code=404, detail="qr_no_disponible")
+
+
+@router.get("/bodega/packshot/{tipo}")
+def packshot_bodega(tipo: str) -> Response:
+    """PACKSHOT genérico por TIPO de producto (IA, sin marcas): la "imagen"
+    automática de la bodega cuando el dueño aún no sube foto real. Se genera
+    UNA vez por tipo y queda en Storage (no se re-paga). 404 = sin proveedor
+    de imágenes o falló (el APK/carta muestran el emoji de siempre)."""
+    datos = packshot_svc.imagen(tipo)
+    if not datos:
+        raise HTTPException(status_code=404, detail="packshot_no_disponible")
+    return Response(content=datos, media_type="image/jpeg",
+                    headers={"Cache-Control": "public, max-age=604800"})
 
 
 @router.get("/afiche/fondo/{deporte}/{variante}")

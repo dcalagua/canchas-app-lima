@@ -50,6 +50,40 @@ def _emoji_producto(nombre: str, categoria: str) -> str:
     return _EMOJI_CAT.get(categoria, "🛒")
 
 
+# TIPO de packshot IA (imagen genérica sin marca, `/bodega/packshot/{tipo}`).
+# Espejo del APK (packshotTipoDe en lib/models/bodega.dart).
+_PACKSHOT_KEYS = [
+    ("agua", "agua"), ("jugo", "jugo"), ("frugos", "jugo"),
+    ("cifrut", "jugo"),
+    ("gatorade", "rehidratante"), ("powerade", "rehidratante"),
+    ("sporade", "rehidratante"), ("volt", "rehidratante"),
+    ("profit", "rehidratante"),
+    ("paleta", "paleta"), ("pelota", "pelotas"),
+    ("papita", "papitas"), ("lays", "papitas"), ("dorito", "papitas"),
+    ("chifle", "papitas"), ("chizito", "papitas"), ("kchito", "papitas"),
+    ("galleta", "galletas"), ("chocolate", "chocolate"),
+    ("sublime", "chocolate"),
+    ("maní", "mani"), ("mani", "mani"), ("sandwich", "sandwich"),
+    ("sánguche", "sandwich"),
+    ("hielo", "hielo"), ("gorra", "gorra"), ("toalla", "toalla"),
+]
+
+_PACKSHOT_CAT = {
+    "Cervezas": "cerveza", "Bebidas": "gaseosa", "Snacks": "papitas",
+    "Deportivo": "pelotas",
+}
+
+
+def _packshot_tipo(nombre: str, categoria: str) -> str:
+    n = (nombre or "").lower()
+    if "cerveza" in n:
+        return "cerveza"
+    for clave, tipo in _PACKSHOT_KEYS:
+        if clave in n:
+            return tipo
+    return _PACKSHOT_CAT.get(categoria, "generico")
+
+
 def _esc(s) -> str:
     return html.escape(str(s if s is not None else ""), quote=True)
 
@@ -84,9 +118,11 @@ def obtener_productos(carta_id: str) -> list[dict] | None:
         return _leer("nombre,categoria,precio,stock,foto_url")
 
 
-def html_carta(productos: list[dict]) -> str:
+def html_carta(productos: list[dict], con_packshots: bool = False) -> str:
     """La carta pública: productos agrupados por categoría, con precio y
-    "Agotado" cuando no hay stock."""
+    "Agotado" cuando no hay stock. [con_packshots] (hay proveedor IA): los
+    productos SIN foto real muestran el packshot genérico por tipo, con el
+    emoji debajo por si el packshot no carga."""
     por_cat: dict[str, list[dict]] = {}
     for p in productos:
         por_cat.setdefault(str(p.get("categoria") or "Otros"), []).append(p)
@@ -100,9 +136,15 @@ def html_carta(productos: list[dict]) -> str:
             foto = str(p.get("foto_url") or "").strip()
             emo_prod = _emoji_producto(
                 str(p.get("nombre") or ""), cat)
-            img = (f'<img src="{_esc(foto)}" alt="" loading="lazy">'
-                   if foto.startswith("http") else
-                   f'<span class="ph">{emo_prod}</span>')
+            if foto.startswith("http"):
+                img = f'<img src="{_esc(foto)}" alt="" loading="lazy">'
+            elif con_packshots:
+                tipo = _packshot_tipo(str(p.get("nombre") or ""), cat)
+                img = (f'<span class="ph">{emo_prod}'
+                       f'<img src="/bodega/packshot/{tipo}" alt="" '
+                       'loading="lazy" onerror="this.remove()"></span>')
+            else:
+                img = f'<span class="ph">{emo_prod}</span>'
             precio = float(p.get("precio") or 0)
             mon = str(p.get("moneda") or "S/").strip() or "S/"
             filas.append(
@@ -133,6 +175,8 @@ def html_carta(productos: list[dict]) -> str:
   .item{{display:flex;align-items:center;gap:12px;padding:11px 14px;border-bottom:1px solid #f0f3f7}}
   .item:last-child{{border-bottom:none}}
   .item img,.item .ph{{width:42px;height:42px;border-radius:10px;object-fit:cover;flex:none;display:flex;align-items:center;justify-content:center;background:#e9f6ef;font-size:20px}}
+  .ph{{position:relative}}
+  .ph img{{position:absolute;inset:0;width:100%;height:100%;border-radius:10px;object-fit:cover}}
   .nom{{flex:1;font-weight:700;font-size:14.5px}}
   .pre{{font-weight:800;color:{_ESMERALDA};font-variant-numeric:tabular-nums}}
   .off .nom,.off .pre{{color:#a5aeb8}}

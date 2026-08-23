@@ -9,6 +9,7 @@ import '../theme.dart';
 import '../utils/geo.dart';
 import '../widgets/ancho_lectura.dart';
 import '../widgets/cargando_pichangol.dart';
+import '../widgets/imagen_producto_bodega.dart';
 import 'login_google_sheet.dart';
 
 /// PEDIR A LA CANCHA (bodega del local): el jugador, DENTRO del local, arma
@@ -391,27 +392,8 @@ class _PedirBodegaScreenState extends State<PedirBodegaScreen> {
                             onTap: (cfg?.aceptaPedidos ?? false)
                                 ? () => _sumar(p, 1)
                                 : null,
-                            leading: p.fotoUrl != null &&
-                                    p.fotoUrl!.isNotEmpty
-                                ? ClipRRect(
-                                    borderRadius: BorderRadius.circular(10),
-                                    child: Image.network(p.fotoUrl!,
-                                        width: 44,
-                                        height: 44,
-                                        fit: BoxFit.cover))
-                                : Container(
-                                    width: 44,
-                                    height: 44,
-                                    alignment: Alignment.center,
-                                    decoration: BoxDecoration(
-                                      color: limaSuave,
-                                      borderRadius:
-                                          BorderRadius.circular(10),
-                                    ),
-                                    child: Text(p.emoji,
-                                        style:
-                                            const TextStyle(fontSize: 22)),
-                                  ),
+                            // Foto real > packshot IA genérico > emoji.
+                            leading: ImagenProductoBodega(producto: p),
                             title: Text(p.nombre,
                                 style: const TextStyle(
                                     fontWeight: FontWeight.w700)),

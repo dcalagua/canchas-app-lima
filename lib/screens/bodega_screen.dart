@@ -14,6 +14,7 @@ import '../widgets/candado_pro.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/ancho_lectura.dart';
+import '../widgets/imagen_producto_bodega.dart';
 
 /// MI BODEGA — POS ligero del dueño (función Pichangol Pro): caja rápida de
 /// venta, catálogo con stock y reportes. La plata NO pasa por Pichangol (el
@@ -1170,27 +1171,14 @@ class _BodegaScreenState extends State<BodegaScreen> {
             onTap: () => _editarProducto(p),
             leading: GestureDetector(
               onTap: () => _cambiarFoto(p),
+              // Cascada: foto real del dueño > packshot IA genérico > emoji.
+              // La mini cámara indica que puede subir SU foto cuando quiera.
               child: p.fotoUrl != null && p.fotoUrl!.isNotEmpty
-                  ? ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: Image.network(p.fotoUrl!,
-                          width: 44, height: 44, fit: BoxFit.cover))
-                  // Emoji-imagen automática (multi-país) + mini cámara para
-                  // indicar que puede subir SU foto cuando quiera.
+                  ? ImagenProductoBodega(producto: p)
                   : Stack(
                       clipBehavior: Clip.none,
                       children: [
-                        Container(
-                          width: 44,
-                          height: 44,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: limaSuave,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text(p.emoji,
-                              style: const TextStyle(fontSize: 22)),
-                        ),
+                        ImagenProductoBodega(producto: p),
                         const Positioned(
                           right: -4,
                           bottom: -4,

@@ -53,6 +53,21 @@ class SupabaseService {
     return '${base.endsWith('/') ? base.substring(0, base.length - 1) : base}/b/$cartaId';
   }
 
+  /// URL del PACKSHOT IA genérico por tipo de producto de la bodega (imagen
+  /// automática sin marca; el backend la genera una vez y la cachea). null si
+  /// no hay backend configurado — se usa el emoji.
+  static String? packshotBodega(String tipo) {
+    const landing = String.fromEnvironment('LANDING_BASE_URL');
+    const growth = String.fromEnvironment('GROWTH_API_URL');
+    final base = landing.isNotEmpty
+        ? landing
+        : growth.isNotEmpty
+            ? growth
+            : null;
+    if (base == null) return null;
+    return '${base.endsWith('/') ? base.substring(0, base.length - 1) : base}/bodega/packshot/$tipo';
+  }
+
   static String? paginaCampeonato(String id) {
     const landing = String.fromEnvironment('LANDING_BASE_URL');
     const growth = String.fromEnvironment('GROWTH_API_URL');

@@ -160,14 +160,13 @@ def _prompt(deporte: str, variante: int = 0, tema: str = "") -> str:
     )
 
 
-def _openai(deporte: str, variante: int = 0,
-            tema: str = "") -> bytes | None:
+def _openai(prompt: str) -> bytes | None:
     """OpenAI Images: gpt-image-1 y, si no está habilitado, dall-e-3."""
     for modelo, size in (("gpt-image-1", "1024x1536"),
                          ("dall-e-3", "1024x1792")):
         try:
             cuerpo = {"model": modelo,
-                      "prompt": _prompt(deporte, variante, tema),
+                      "prompt": prompt,
                       "size": size, "n": 1}
             if modelo == "gpt-image-1":
                 cuerpo["quality"] = "medium"
@@ -194,11 +193,10 @@ def _openai(deporte: str, variante: int = 0,
     return None
 
 
-def _replicate(deporte: str, variante: int = 0,
-               tema: str = "") -> bytes | None:
+def _replicate(prompt: str) -> bytes | None:
     """Replicate Flux (schnell): rápido y ~$0.003 por imagen."""
     try:
-        cuerpo = {"input": {"prompt": _prompt(deporte, variante, tema),
+        cuerpo = {"input": {"prompt": prompt,
                             "aspect_ratio": "4:5",
                             "output_format": "png"}}
         req = urllib.request.Request(
@@ -224,6 +222,17 @@ def _replicate(deporte: str, variante: int = 0,
 
 def num_variantes() -> int:
     return len(_VARIACIONES)
+
+
+def generar(prompt: str) -> bytes | None:
+    """Genera UNA imagen con el proveedor configurado (prompt arbitrario).
+    La usan los fondos de afiches y los packshots de la bodega. None si no
+    hay proveedor o falló."""
+    if config.OPENAI_API_KEY:
+        return _openai(prompt)
+    if config.REPLICATE_API_TOKEN:
+        return _replicate(prompt)
+    return None
 
 
 def disponible() -> bool:
@@ -291,8 +300,7 @@ def fondo_para(deporte: str, variante: int = 0,
             _cache[k] = durable
             return durable
         # 2) Generar con el proveedor y persistir para la próxima.
-        crudo = (_openai(d, v, tema) if config.OPENAI_API_KEY
-                 else _replicate(d, v, tema))
+        crudo = generar(_prompt(d, v, tema))
         if not crudo:
             return None
         try:

@@ -45,6 +45,51 @@ String emojiProductoBodega(String nombre, String categoria) {
   };
 }
 
+/// TIPO de packshot IA del producto: imagen GENÉRICA sin marca que sirve el
+/// backend (`GET /bodega/packshot/{tipo}`). Sin logos oficiales (Pilsen,
+/// Paceña… son marcas registradas): el packshot muestra QUÉ es el producto,
+/// igual en los 3 países. La foto real del dueño siempre manda; si el
+/// packshot no carga se cae al emoji.
+String packshotTipoDe(String nombre, String categoria) {
+  final n = nombre.toLowerCase();
+  if (n.contains('cerveza')) return 'cerveza';
+  if (n.contains('agua')) return 'agua';
+  if (n.contains('jugo') || n.contains('frugos') || n.contains('cifrut')) {
+    return 'jugo';
+  }
+  if (n.contains('gatorade') ||
+      n.contains('powerade') ||
+      n.contains('sporade') ||
+      n.contains('volt') ||
+      n.contains('profit')) {
+    return 'rehidratante';
+  }
+  if (n.contains('paleta')) return 'paleta';
+  if (n.contains('pelota')) return 'pelotas';
+  if (n.contains('papita') ||
+      n.contains('lays') ||
+      n.contains('dorito') ||
+      n.contains('chifle') ||
+      n.contains('chizito') ||
+      n.contains('kchito')) {
+    return 'papitas';
+  }
+  if (n.contains('galleta')) return 'galletas';
+  if (n.contains('chocolate') || n.contains('sublime')) return 'chocolate';
+  if (n.contains('maní') || n.contains('mani')) return 'mani';
+  if (n.contains('sandwich') || n.contains('sánguche')) return 'sandwich';
+  if (n.contains('hielo')) return 'hielo';
+  if (n.contains('gorra')) return 'gorra';
+  if (n.contains('toalla')) return 'toalla';
+  return switch (categoria) {
+    'Cervezas' => 'cerveza',
+    'Bebidas' => 'gaseosa',
+    'Snacks' => 'papitas',
+    'Deportivo' => 'pelotas',
+    _ => 'generico',
+  };
+}
+
 /// Un producto de la bodega del local (cerveza, gaseosa, agua, snack…).
 class ProductoBodega {
   final String id;
@@ -77,6 +122,9 @@ class ProductoBodega {
 
   /// Emoji-imagen del producto (cuando no hay foto real).
   String get emoji => emojiProductoBodega(nombre, categoria);
+
+  /// Tipo de packshot IA genérico (imagen automática sin marca).
+  String get packshotTipo => packshotTipoDe(nombre, categoria);
 
   ProductoBodega copyWith({
     String? nombre,
