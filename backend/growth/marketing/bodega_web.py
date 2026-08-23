@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import html
 import json
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -39,17 +40,25 @@ def obtener_productos(carta_id: str) -> list[dict] | None:
     if not base.startswith("http"):
         base = f"https://{base}"
     q = urllib.parse.quote(carta_id, safe="")
-    url = (f"{base}/rest/v1/pichangol_bodega_productos"
-           f"?carta_id=eq.{q}&eliminado=eq.false"
-           f"&select=nombre,categoria,precio,stock,foto_url"
-           f"&order=categoria,nombre")
-    req = urllib.request.Request(url, headers={
-        "apikey": config.SUPABASE_ANON_KEY,
-        "Authorization": f"Bearer {config.SUPABASE_ANON_KEY}",
-    })
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        rows = json.loads(resp.read().decode("utf-8"))
-    return rows if isinstance(rows, list) else []
+
+    def _leer(columnas: str) -> list[dict]:
+        url = (f"{base}/rest/v1/pichangol_bodega_productos"
+               f"?carta_id=eq.{q}&eliminado=eq.false"
+               f"&select={columnas}&order=categoria,nombre")
+        req = urllib.request.Request(url, headers={
+            "apikey": config.SUPABASE_ANON_KEY,
+            "Authorization": f"Bearer {config.SUPABASE_ANON_KEY}",
+        })
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            rows = json.loads(resp.read().decode("utf-8"))
+        return rows if isinstance(rows, list) else []
+
+    try:
+        # Con moneda (país del local: S/, Bs, $).
+        return _leer("nombre,categoria,precio,stock,foto_url,moneda")
+    except urllib.error.HTTPError:
+        # La columna moneda aún no existe (falta supabase_bodega_moneda.sql).
+        return _leer("nombre,categoria,precio,stock,foto_url")
 
 
 def html_carta(productos: list[dict]) -> str:
@@ -70,11 +79,12 @@ def html_carta(productos: list[dict]) -> str:
                    if foto.startswith("http") else
                    f'<span class="ph">{emoji}</span>')
             precio = float(p.get("precio") or 0)
+            mon = str(p.get("moneda") or "S/").strip() or "S/"
             filas.append(
                 f'<div class="item{" off" if agotado else ""}">{img}'
                 f'<div class="nom">{_esc(p.get("nombre"))}'
                 f'{"<span class=agot>Agotado</span>" if agotado else ""}</div>'
-                f'<div class="pre">S/ {precio:.2f}</div></div>')
+                f'<div class="pre">{_esc(mon)} {precio:.2f}</div></div>')
         secciones.append(
             f'<h2>{emoji} {_esc(cat)}</h2><div class="lista">'
             + "".join(filas) + "</div>")
@@ -108,7 +118,7 @@ def html_carta(productos: list[dict]) -> str:
 </style></head><body>
   <div class="hero">
     <h1>🧃 Carta de la bodega</h1>
-    <p>Pide en el mostrador y paga ahí mismo (Yape o efectivo). Precios siempre al día.</p>
+    <p>Pide en el mostrador y paga ahí mismo. Precios siempre al día.</p>
   </div>
   <div class="wrap">{cuerpo}</div>
   <div class="foot">Bodega administrada con <b>Pichangol</b> · Reserva, juega, repite.</div>

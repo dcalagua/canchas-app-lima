@@ -25,6 +25,17 @@ def test_html_carta_agrupa_y_marca_agotados():
     assert 'src="http://x/g.jpg"' in h
 
 
+def test_html_carta_moneda_por_pais():
+    # Bolivia (Bs) y default S/ cuando la fila no trae moneda.
+    h = bodega_web.html_carta([
+        {"nombre": "Paceña", "categoria": "Cervezas", "precio": 15,
+         "stock": 6, "foto_url": None, "moneda": "Bs"},
+        {"nombre": "Pilsen", "categoria": "Cervezas", "precio": 8,
+         "stock": 6, "foto_url": None},
+    ])
+    assert "Bs 15.00" in h and "S/ 8.00" in h
+
+
 def test_html_carta_vacia():
     h = bodega_web.html_carta([])
     assert "aún no tiene productos" in h

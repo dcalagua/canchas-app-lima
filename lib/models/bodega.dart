@@ -14,6 +14,9 @@ class ProductoBodega {
   final int stock;
   final int stockMin; // alerta de reposición cuando stock <= stockMin
   final String? fotoUrl;
+  /// Símbolo de la moneda del local ('S/', 'Bs', r'$'): la bodega se muestra
+  /// y registra en la moneda del PAÍS del dueño.
+  final String moneda;
 
   const ProductoBodega({
     required this.id,
@@ -25,6 +28,7 @@ class ProductoBodega {
     this.stock = 0,
     this.stockMin = 0,
     this.fotoUrl,
+    this.moneda = 'S/',
   });
 
   bool get stockBajo => stock <= stockMin;
@@ -47,6 +51,7 @@ class ProductoBodega {
         stock: stock ?? this.stock,
         stockMin: stockMin ?? this.stockMin,
         fotoUrl: fotoUrl ?? this.fotoUrl,
+        moneda: moneda,
       );
 
   Map<String, dynamic> toRow() => {
@@ -59,6 +64,7 @@ class ProductoBodega {
         'stock': stock,
         'stock_min': stockMin,
         'foto_url': fotoUrl,
+        'moneda': moneda,
         'eliminado': false,
       };
 
@@ -72,6 +78,7 @@ class ProductoBodega {
         stock: (r['stock'] as num?)?.toInt() ?? 0,
         stockMin: (r['stock_min'] as num?)?.toInt() ?? 0,
         fotoUrl: r['foto_url'] as String?,
+        moneda: (r['moneda'] ?? 'S/') as String,
       );
 }
 

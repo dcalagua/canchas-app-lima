@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../config/pais.dart';
 import '../data/bodega_repo.dart';
 import '../models/bodega.dart';
 import '../services/supabase_service.dart';
@@ -33,12 +34,14 @@ class _BodegaScreenState extends State<BodegaScreen> {
   List<VentaBodega> _ventas = [];
   final Map<String, int> _ticket = {}; // productoId → cantidad
 
-  // Sugerencias rápidas de productos por categoría (data limpia: un tap llena
-  // el nombre; el TextField queda para marcas propias, que son nombres).
+  // Sugerencias rápidas de productos por categoría Y POR PAÍS (regla del
+  // director: las marcas cambian — Pilsen/Cristal en Perú, Paceña/Huari en
+  // Bolivia, Pilsener/Club en Ecuador). Un tap llena el nombre; el TextField
+  // queda para marcas propias, que son nombres.
   static const _categorias = <String>[
     'Bebidas', 'Cervezas', 'Deportivo', 'Snacks', 'Otros',
   ];
-  static const _sugerencias = <String, List<String>>{
+  static const _sugerenciasPE = <String, List<String>>{
     'Bebidas': [
       'Agua San Luis', 'Agua San Mateo', 'Coca-Cola', 'Inca Kola', 'Sprite',
       'Fanta', 'Frugos', 'Cifrut',
@@ -54,6 +57,44 @@ class _BodegaScreenState extends State<BodegaScreen> {
     ],
     'Otros': ['Hielo', 'Cigarros', 'Toalla', 'Gorra'],
   };
+  static const _sugerenciasBO = <String, List<String>>{
+    'Bebidas': [
+      'Agua Vital', 'Coca-Cola', 'Sprite', 'Fanta', 'Salvietti',
+      'Jugos Del Valle',
+    ],
+    'Cervezas': ['Paceña', 'Huari', 'Potosina', 'Corona', 'Heineken'],
+    'Deportivo': [
+      'Gatorade', 'Powerade', 'Alquiler de paleta', 'Alquiler de pelotas',
+      'Tubo de pelotas',
+    ],
+    'Snacks': ['Papitas', 'Doritos', 'Chizitos', 'Galletas', 'Maní',
+      'Sandwich'],
+    'Otros': ['Hielo', 'Cigarros', 'Toalla', 'Gorra'],
+  };
+  static const _sugerenciasEC = <String, List<String>>{
+    'Bebidas': [
+      'Agua Güitig', 'Agua Tesalia', 'Coca-Cola', 'Sprite', 'Fanta',
+      'Fioravanti',
+    ],
+    'Cervezas': ['Pilsener', 'Club Premium', 'Corona', 'Heineken'],
+    'Deportivo': [
+      'Gatorade', 'Powerade', 'Profit', 'Alquiler de paleta',
+      'Alquiler de pelotas', 'Tubo de pelotas',
+    ],
+    'Snacks': ['Papitas', 'Doritos', 'Kchitos', 'Galletas', 'Maní',
+      'Sandwich'],
+    'Otros': ['Hielo', 'Cigarros', 'Toalla', 'Gorra'],
+  };
+
+  /// Sugerencias del PAÍS activo (default: Perú).
+  Map<String, List<String>> get _sugerencias => switch (paisActual.iso) {
+        'BO' => _sugerenciasBO,
+        'EC' => _sugerenciasEC,
+        _ => _sugerenciasPE,
+      };
+
+  /// Símbolo de moneda del país del dueño ('S/', 'Bs', r'$').
+  String get _mon => paisActual.moneda;
 
   String get _email => (appState.usuario?.email ?? '').toLowerCase();
 
@@ -131,7 +172,7 @@ class _BodegaScreenState extends State<BodegaScreen> {
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                    'Cobrar S/ ${_totalTicket.toStringAsFixed(2)} — ¿cómo pagó?',
+                    'Cobrar $_mon ${_totalTicket.toStringAsFixed(2)} — ¿cómo pagó?',
                     style: const TextStyle(
                         fontWeight: FontWeight.w800, fontSize: 17)),
               ),
@@ -143,7 +184,9 @@ class _BodegaScreenState extends State<BodegaScreen> {
             ),
             ListTile(
               leading: const Text('📱', style: TextStyle(fontSize: 22)),
-              title: const Text('Yape / Plin del local'),
+              title: Text(paisActual.iso == 'PE'
+                  ? 'Yape / Plin del local'
+                  : 'QR / transferencia del local'),
               onTap: () => Navigator.pop(bctx, 'yape'),
             ),
             ListTile(
@@ -313,7 +356,8 @@ class _BodegaScreenState extends State<BodegaScreen> {
                     keyboardType: const TextInputType.numberWithOptions(
                         decimal: true),
                     decoration: const InputDecoration(
-                        labelText: 'Precio de venta', prefixText: 'S/ '),
+                        labelText: 'Precio de venta',
+                        prefixText: '${paisActual.moneda} '),
                   ),
                   const SizedBox(height: 8),
                   stepper('Stock actual', stock, (v) => setSB(() => stock = v)),
@@ -378,6 +422,7 @@ class _BodegaScreenState extends State<BodegaScreen> {
                             stock: stock,
                             stockMin: stockMin,
                             fotoUrl: base?.fotoUrl,
+                            moneda: paisActual.moneda,
                           );
                           final okG = await BodegaRepo.guardarProducto(p);
                           if (!bctx.mounted) return;
@@ -553,7 +598,7 @@ class _BodegaScreenState extends State<BodegaScreen> {
                       padding: const EdgeInsets.symmetric(vertical: 15)),
                   onPressed: _cobrar,
                   child: Text(
-                      'Cobrar S/ ${_totalTicket.toStringAsFixed(2)} · ${_ticket.values.fold(0, (a, b) => a + b)} ítem(s)',
+                      'Cobrar $_mon ${_totalTicket.toStringAsFixed(2)} · ${_ticket.values.fold(0, (a, b) => a + b)} ítem(s)',
                       style: const TextStyle(
                           fontWeight: FontWeight.w800, fontSize: 16)),
                 ),
@@ -675,7 +720,7 @@ class _BodegaScreenState extends State<BodegaScreen> {
                                   ? Colors.grey
                                   : cs.onSurface)),
                     ),
-                    Text('S/ ${p.precio.toStringAsFixed(2)}',
+                    Text('$_mon ${p.precio.toStringAsFixed(2)}',
                         style: const TextStyle(
                             color: bosque, fontWeight: FontWeight.w800)),
                     const SizedBox(height: 2),
@@ -756,7 +801,7 @@ class _BodegaScreenState extends State<BodegaScreen> {
             title: Text(p.nombre,
                 style: const TextStyle(fontWeight: FontWeight.w700)),
             subtitle: Text(
-                '${p.categoria} · S/ ${p.precio.toStringAsFixed(2)}',
+                '${p.categoria} · $_mon ${p.precio.toStringAsFixed(2)}',
                 style: const TextStyle(fontSize: 12.5)),
             trailing: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -826,15 +871,15 @@ class _BodegaScreenState extends State<BodegaScreen> {
 
     return [
       Row(children: [
-        kpi('Hoy', 'S/ ${totalHoy.toStringAsFixed(2)}'),
+        kpi('Hoy', '$_mon ${totalHoy.toStringAsFixed(2)}'),
         const SizedBox(width: 10),
-        kpi('Últimos 7 días', 'S/ ${total7.toStringAsFixed(2)}'),
+        kpi('Últimos 7 días', '$_mon ${total7.toStringAsFixed(2)}'),
       ]),
       const SizedBox(height: 10),
       Row(children: [
         kpi('Ventas hoy', '${ventasHoy.length}'),
         const SizedBox(width: 10),
-        kpi('Stock valorizado', 'S/ ${valorizado.toStringAsFixed(2)}'),
+        kpi('Stock valorizado', '$_mon ${valorizado.toStringAsFixed(2)}'),
       ]),
       if (bajos.isNotEmpty) ...[
         const SizedBox(height: 16),

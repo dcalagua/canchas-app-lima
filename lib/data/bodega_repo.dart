@@ -54,13 +54,22 @@ class BodegaRepo {
   }
 
   /// Crea/actualiza un producto (upsert por id). Devuelve true si persistió.
+  /// Tolerante a schema drift: si la columna `moneda` aún no existe en la BD
+  /// (falta correr supabase_bodega_moneda.sql), reintenta sin ella.
   static Future<bool> guardarProducto(ProductoBodega p) async {
     if (!SupabaseService.disponible) return false;
+    final fila = p.toRow();
     try {
-      await SupabaseService.client.from(_tProductos).upsert(p.toRow());
+      await SupabaseService.client.from(_tProductos).upsert(fila);
       return true;
     } catch (_) {
-      return false;
+      try {
+        fila.remove('moneda');
+        await SupabaseService.client.from(_tProductos).upsert(fila);
+        return true;
+      } catch (_) {
+        return false;
+      }
     }
   }
 

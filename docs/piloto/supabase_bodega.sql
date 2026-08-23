@@ -19,6 +19,7 @@ create table if not exists public.pichangol_bodega_productos (
   stock      integer not null default 0,
   stock_min  integer not null default 0,
   foto_url   text,
+  moneda     text not null default 'S/',
   eliminado  boolean not null default false,
   updated_at timestamptz not null default now()
 );
