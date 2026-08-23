@@ -355,7 +355,7 @@ class _BodegaScreenState extends State<BodegaScreen> {
                     controller: precio,
                     keyboardType: const TextInputType.numberWithOptions(
                         decimal: true),
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                         labelText: 'Precio de venta',
                         prefixText: '${paisActual.moneda} '),
                   ),
