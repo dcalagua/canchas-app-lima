@@ -29,12 +29,13 @@ class BodegaScreen extends StatefulWidget {
 }
 
 class _BodegaScreenState extends State<BodegaScreen> {
-  int _tab = 0; // 0 Caja · 1 Productos · 2 Reporte · 3 Pedidos
+  int _tab = 0; // 0 Caja · 1 Productos · 2 Reporte · 3 Pedidos · 4 Cuentas
   bool _cargando = true;
   List<ProductoBodega> _productos = [];
   List<VentaBodega> _ventas = [];
   List<PedidoBodega> _pedidos = []; // pedidos a la cancha (últimos 2 días)
-  ConfigBodega? _config; // acepta pedidos + zonas
+  List<CuentaBodega> _cuentas = []; // cuentas abiertas/cerradas (30 días)
+  ConfigBodega? _config; // acepta pedidos + zonas + cuenta abierta
   final Map<String, int> _ticket = {}; // productoId → cantidad
 
   // Sugerencias rápidas de productos por categoría Y POR PAÍS (regla del
@@ -118,6 +119,7 @@ class _BodegaScreenState extends State<BodegaScreen> {
       BodegaRepo.fetchVentas(_email, desde: desde),
       BodegaRepo.fetchPedidosDueno(_email),
       BodegaRepo.fetchConfig(_email),
+      BodegaRepo.fetchCuentas(_email),
     ]);
     if (!mounted) return;
     setState(() {
@@ -125,6 +127,7 @@ class _BodegaScreenState extends State<BodegaScreen> {
       _ventas = res[1] as List<VentaBodega>;
       _pedidos = res[2] as List<PedidoBodega>;
       _config = res[3] as ConfigBodega;
+      _cuentas = res[4] as List<CuentaBodega>;
       _cargando = false;
       // Limpia del ticket productos que ya no existen.
       _ticket.removeWhere((id, _) => !_productos.any((p) => p.id == id));
@@ -201,6 +204,17 @@ class _BodegaScreenState extends State<BodegaScreen> {
               title: const Text('Cortesía (no se cobra)'),
               onTap: () => Navigator.pop(bctx, 'cortesia'),
             ),
+            // CUENTA ABIERTA: anota el consumo del mostrador a la cuenta de
+            // un cliente identificado (la abre un pedido por la app); paga
+            // TODO al retirarse.
+            if ((_config?.permiteCuenta ?? false) && _abiertas > 0)
+              ListTile(
+                leading: const Text('📒', style: TextStyle(fontSize: 22)),
+                title: const Text('A la cuenta (paga al salir)'),
+                subtitle: Text('$_abiertas cuenta(s) abierta(s)',
+                    style: const TextStyle(fontSize: 12)),
+                onTap: () => Navigator.pop(bctx, 'cuenta'),
+              ),
             const SizedBox(height: 8),
           ],
         ),
@@ -219,6 +233,10 @@ class _BodegaScreenState extends State<BodegaScreen> {
           cantidad: e.value,
           precio: p.precio));
       nuevoStock[p.id] = (p.stock - e.value) < 0 ? 0 : p.stock - e.value;
+    }
+    if (medio == 'cuenta') {
+      await _anotarTicketACuenta(items, nuevoStock);
+      return;
     }
     final venta = VentaBodega(
       id: 'bv_${DateTime.now().microsecondsSinceEpoch}',
@@ -259,6 +277,107 @@ class _BodegaScreenState extends State<BodegaScreen> {
           ? 'Venta registrada ✅ · stock actualizado'
           : 'Venta registrada ✅ · ¡Repón: ${bajos.join(', ')}!'),
     ));
+  }
+
+  /// Anota el ticket de la CAJA a una cuenta abierta (el cliente paga al
+  /// salir). El stock baja al instante; la venta se registra al CERRAR la
+  /// cuenta (así el reporte no se duplica).
+  Future<void> _anotarTicketACuenta(
+      List<ItemVentaBodega> items, Map<String, int> nuevoStock) async {
+    final abiertas = [for (final c in _cuentas) if (c.abierta) c];
+    if (abiertas.isEmpty) return;
+    final cuenta = await showModalBottomSheet<CuentaBodega>(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (bctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 16, 20, 4),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('¿A la cuenta de quién?',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w800, fontSize: 17)),
+              ),
+            ),
+            for (final c in abiertas)
+              ListTile(
+                leading: const Text('📒', style: TextStyle(fontSize: 22)),
+                title: Text(c.clienteNombre,
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: Text(
+                    'Lleva ${c.moneda} ${c.total.toStringAsFixed(2)}',
+                    style: const TextStyle(fontSize: 12)),
+                onTap: () => Navigator.pop(bctx, c),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (cuenta == null || !mounted) return;
+    final agregado = items.fold<double>(0, (a, i) => a + i.subtotal);
+    final tope = _config?.topeCuenta ?? 0;
+    if (tope > 0 && cuenta.total + agregado > tope) {
+      await avisarPichangol(
+        context,
+        titulo: 'Tope de cuenta alcanzado',
+        mensaje: 'La cuenta de ${cuenta.clienteNombre} llegaría a '
+            '${cuenta.moneda} ${(cuenta.total + agregado).toStringAsFixed(2)} '
+            'y tu tope es ${cuenta.moneda} ${tope.toStringAsFixed(0)}. '
+            'Cobra este consumo al entregar (o cierra la cuenta primero).',
+        icono: Icons.speed,
+      );
+      return;
+    }
+    final res = await conPreload(
+        context,
+        () => BodegaRepo.anotarACuenta(
+              dueno: _email,
+              cliente: cuenta.cliente,
+              clienteNombre: cuenta.clienteNombre,
+              items: items,
+              moneda: cuenta.moneda,
+            ),
+        texto: 'Anotando…');
+    if (!mounted) return;
+    if (res == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          backgroundColor: clayOscuro,
+          content: Text('No se pudo anotar (¿la cuenta se cerró?). '
+              'Refresca e intenta de nuevo.')));
+      _cargar();
+      return;
+    }
+    await BodegaRepo.actualizarStock(nuevoStock);
+    setState(() {
+      _cuentas = [
+        for (final x in _cuentas) x.id == res.id ? res : x,
+      ];
+      _productos = [
+        for (final p in _productos)
+          nuevoStock.containsKey(p.id)
+              ? p.copyWith(stock: nuevoStock[p.id])
+              : p,
+      ];
+      _ticket.clear();
+    });
+    if (res.cliente.isNotEmpty) {
+      appState.avisarPedidoBodega(
+        email: res.cliente,
+        titulo: 'Anotado en tu cuenta 📒',
+        cuerpo: 'Se agregó ${items.map((i) => '${i.cantidad} ${i.nombre}').join(' + ')}. '
+            'Llevas ${res.moneda} ${res.total.toStringAsFixed(2)}; pagas al salir.',
+      );
+    }
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        backgroundColor: bosque,
+        content: Text('Anotado a la cuenta de ${res.clienteNombre} 📒 · '
+            'lleva ${res.moneda} ${res.total.toStringAsFixed(2)}')));
   }
 
   // ── PRODUCTOS (alta/edición) ───────────────────────────────────────────────
@@ -600,6 +719,12 @@ class _BodegaScreenState extends State<BodegaScreen> {
                               ? '🛎️ Pedidos'
                               : '🛎️ Pedidos ($_pendientes)'
                         ),
+                        (
+                          4,
+                          _abiertas == 0
+                              ? '📒 Cuentas'
+                              : '📒 Cuentas ($_abiertas)'
+                        ),
                       ])
                         ChoiceChip(
                           label: Text(t),
@@ -611,6 +736,8 @@ class _BodegaScreenState extends State<BodegaScreen> {
                   const SizedBox(height: 14),
                   if (_tab == 3)
                     ..._vistaPedidos(context)
+                  else if (_tab == 4)
+                    ..._vistaCuentas(context)
                   else if (_productos.isEmpty)
                     _vacio(context)
                   else if (_tab == 0)
@@ -719,6 +846,8 @@ class _BodegaScreenState extends State<BodegaScreen> {
 
   int get _pendientes =>
       _pedidos.where((p) => p.pendiente && !p.expirado).length;
+
+  int get _abiertas => _cuentas.where((c) => c.abierta).length;
 
   Future<void> _toggleAceptaPedidos(bool v) async {
     final cfg = (_config ?? ConfigBodega(dueno: _email))
@@ -862,7 +991,17 @@ class _BodegaScreenState extends State<BodegaScreen> {
 
   /// ENTREGAR Y COBRAR: registra la venta (descuenta stock) con el medio
   /// elegido y marca el pedido entregado. El pedido pre-carga el ticket.
+  /// Con cuenta abierta activada, "A la cuenta" anota el consumo y el
+  /// cliente paga TODO al retirarse.
   Future<void> _entregarPedido(PedidoBodega p) async {
+    // ¿Puede ir a la cuenta? Cliente identificado + toggle activo + tope.
+    final cuentaCliente = _cuentas.cast<CuentaBodega?>().firstWhere(
+        (c) => c!.abierta && c.cliente == p.cliente,
+        orElse: () => null);
+    final tope = _config?.topeCuenta ?? 0;
+    final cabeEnCuenta = (_config?.permiteCuenta ?? false) &&
+        p.cliente.isNotEmpty &&
+        (tope <= 0 || (cuentaCliente?.total ?? 0) + p.total <= tope);
     final medio = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: Theme.of(context).colorScheme.surface,
@@ -896,6 +1035,16 @@ class _BodegaScreenState extends State<BodegaScreen> {
                 leading: const Text('🎁', style: TextStyle(fontSize: 22)),
                 title: const Text('Cortesía (no se cobra)'),
                 onTap: () => Navigator.pop(bctx, 'cortesia')),
+            if (cabeEnCuenta)
+              ListTile(
+                  leading: const Text('📒', style: TextStyle(fontSize: 22)),
+                  title: const Text('A la cuenta (paga al salir)'),
+                  subtitle: Text(
+                      cuentaCliente == null
+                          ? 'Le abre su cuenta en la bodega'
+                          : 'Lleva ${cuentaCliente.moneda} ${cuentaCliente.total.toStringAsFixed(2)}',
+                      style: const TextStyle(fontSize: 12)),
+                  onTap: () => Navigator.pop(bctx, 'cuenta')),
             const SizedBox(height: 8),
           ],
         ),
@@ -943,6 +1092,52 @@ class _BodegaScreenState extends State<BodegaScreen> {
         nuevoStock[prod.id] =
             (prod.stock - i.cantidad) < 0 ? 0 : prod.stock - i.cantidad;
       }
+    }
+    if (medio == 'cuenta') {
+      // A LA CUENTA: stock baja ya, la VENTA se registra al cerrar la
+      // cuenta (así el reporte no duplica).
+      final res = await conPreload(
+          context,
+          () => BodegaRepo.anotarACuenta(
+                dueno: _email,
+                cliente: p.cliente,
+                clienteNombre: p.clienteNombre,
+                items: p.items,
+                moneda: p.moneda,
+              ),
+          texto: 'Anotando…');
+      if (!mounted) return;
+      if (res == null) {
+        await BodegaRepo.actualizarEstadoPedido(p.id, 'confirmado');
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            backgroundColor: clayOscuro,
+            content: Text('No se pudo anotar a la cuenta. '
+                'Vuelve a intentarlo.')));
+        return;
+      }
+      await BodegaRepo.actualizarStock(nuevoStock);
+      setState(() {
+        _pedidos = [
+          for (final x in _pedidos)
+            x.id == p.id ? x.conEstado('entregado') : x,
+        ];
+        _productos = [
+          for (final x in _productos)
+            nuevoStock.containsKey(x.id)
+                ? x.copyWith(stock: nuevoStock[x.id])
+                : x,
+        ];
+        _cuentas = _cuentas.any((c) => c.id == res.id)
+            ? [for (final c in _cuentas) c.id == res.id ? res : c]
+            : [res, ..._cuentas];
+      });
+      appState.avisarPedidoBodega(
+        email: p.cliente,
+        titulo: 'Anotado en tu cuenta 📒',
+        cuerpo: 'Tu pedido (${p.resumen}) quedó en tu cuenta. Llevas '
+            '${res.moneda} ${res.total.toStringAsFixed(2)}; pagas al salir.',
+      );
+      return;
     }
     final venta = VentaBodega(
       id: 'bv_${DateTime.now().microsecondsSinceEpoch}',
@@ -1118,6 +1313,299 @@ class _BodegaScreenState extends State<BodegaScreen> {
             ],
           ),
         ),
+    ];
+  }
+
+  // ── CUENTA ABIERTA ("apúntamelo, pago al salir") ───────────────────────────
+
+  Future<void> _togglePermiteCuenta(bool v) async {
+    final cfg =
+        (_config ?? ConfigBodega(dueno: _email)).copyWith(permiteCuenta: v);
+    setState(() => _config = cfg);
+    await BodegaRepo.guardarConfig(cfg);
+    // Verifica que persistió (si falta correr el SQL de cuentas, el guardado
+    // cae al modo sin columnas nuevas y el toggle se perdería en silencio).
+    final relee = await BodegaRepo.fetchConfig(_email);
+    if (!mounted) return;
+    if (relee.permiteCuenta != v) {
+      setState(() => _config = relee);
+      await avisarPichangol(
+        context,
+        titulo: 'Falta actualizar la base',
+        mensaje: 'Para activar la cuenta abierta hay que correr el script '
+            'supabase_bodega_cuentas.sql en Supabase (avísale a tu admin).',
+        icono: Icons.storage_outlined,
+      );
+    }
+  }
+
+  Future<void> _ponerTope(double v) async {
+    final cfg =
+        (_config ?? ConfigBodega(dueno: _email)).copyWith(topeCuenta: v);
+    setState(() => _config = cfg);
+    await BodegaRepo.guardarConfig(cfg);
+  }
+
+  /// CIERRA la cuenta: cobra TODO junto y recién ahí registra UNA venta en
+  /// el reporte (el stock ya bajó al entregar cada consumo). Candado: con
+  /// dos equipos, solo uno cierra.
+  Future<void> _cerrarCuenta(CuentaBodega c) async {
+    final medio = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (bctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                    'Cerrar la cuenta de ${c.clienteNombre} · cobrar '
+                    '${c.moneda} ${c.total.toStringAsFixed(2)} — ¿cómo pagó?',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800, fontSize: 16)),
+              ),
+            ),
+            ListTile(
+                leading: const Text('💵', style: TextStyle(fontSize: 22)),
+                title: const Text('Efectivo'),
+                onTap: () => Navigator.pop(bctx, 'efectivo')),
+            ListTile(
+                leading: const Text('📱', style: TextStyle(fontSize: 22)),
+                title: Text(paisActual.iso == 'PE'
+                    ? 'Yape / Plin del local'
+                    : 'QR / transferencia del local'),
+                onTap: () => Navigator.pop(bctx, 'yape')),
+            ListTile(
+                leading: const Text('🎁', style: TextStyle(fontSize: 22)),
+                title: const Text('Cortesía (no se cobra)'),
+                onTap: () => Navigator.pop(bctx, 'cortesia')),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (medio == null || !mounted) return;
+    final gano = await BodegaRepo.cerrarCuentaSi(c.id, medio);
+    if (!mounted) return;
+    if (!gano) {
+      await avisarPichangol(
+        context,
+        titulo: 'Ya estaba cerrada',
+        mensaje: 'Esta cuenta ya fue cerrada desde otro equipo. '
+            'No se cobró dos veces.',
+        icono: Icons.done_all,
+      );
+      _cargar();
+      return;
+    }
+    final venta = VentaBodega(
+      id: 'bv_${DateTime.now().microsecondsSinceEpoch}',
+      dueno: _email,
+      items: c.items,
+      total: medio == 'cortesia' ? 0 : c.total,
+      medioPago: medio,
+      creado: DateTime.now(),
+    );
+    // Stock YA descontado al anotar cada consumo → mapa vacío.
+    final ok = await conPreload(
+        context, () => BodegaRepo.registrarVenta(venta, const {}),
+        texto: 'Registrando…');
+    if (!mounted) return;
+    final cerrada = CuentaBodega(
+      id: c.id,
+      dueno: c.dueno,
+      cliente: c.cliente,
+      clienteNombre: c.clienteNombre,
+      items: c.items,
+      total: c.total,
+      moneda: c.moneda,
+      estado: 'cerrada',
+      medioPago: medio,
+      creado: c.creado,
+    );
+    setState(() {
+      if (ok) _ventas = [venta, ..._ventas];
+      _cuentas = [for (final x in _cuentas) x.id == c.id ? cerrada : x];
+    });
+    if (c.cliente.isNotEmpty) {
+      appState.avisarPedidoBodega(
+        email: c.cliente,
+        titulo: 'Cuenta cerrada ✅',
+        cuerpo: medio == 'cortesia'
+            ? 'Tu cuenta quedó como cortesía del local. ¡Gracias!'
+            : 'Pagaste ${c.moneda} ${c.total.toStringAsFixed(2)}. '
+                '¡Gracias, vuelve pronto!',
+      );
+    }
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        backgroundColor: ok ? bosque : clayOscuro,
+        content: Text(ok
+            ? 'Cuenta cerrada y venta registrada ✅'
+            : 'Cuenta cerrada, pero la venta no entró al reporte '
+                '(sin conexión). Revisa el reporte más tarde.')));
+  }
+
+  List<Widget> _vistaCuentas(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final cfg = _config ?? ConfigBodega(dueno: _email);
+    String hace(DateTime d) {
+      final m = DateTime.now().difference(d).inMinutes;
+      if (m < 60) return 'hace $m min';
+      final h = m ~/ 60;
+      if (h < 24) return 'hace $h h';
+      return 'hace ${h ~/ 24} día(s)';
+    }
+
+    final abiertas = [for (final c in _cuentas) if (c.abierta) c];
+    final cerradas = [for (final c in _cuentas) if (!c.abierta) c];
+    return [
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+        decoration: BoxDecoration(
+          color: cs.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: trazo),
+        ),
+        child: Column(
+          children: [
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Permito cuenta abierta 📒',
+                  style:
+                      TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5)),
+              subtitle: const Text(
+                  'El cliente identificado consume y paga todo al retirarse. '
+                  'La abres con "A la cuenta" al entregar o cobrar.',
+                  style: TextStyle(fontSize: 12)),
+              value: cfg.permiteCuenta,
+              onChanged: _togglePermiteCuenta,
+            ),
+            if (cfg.permiteCuenta) ...[
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Tope por cuenta (pasado el tope, se cobra al '
+                    'entregar)',
+                    style: TextStyle(fontSize: 12.5, color: textoTenue)),
+              ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final v in const [50.0, 100.0, 200.0, 300.0, 0.0])
+                      ChoiceChip(
+                        label: Text(v == 0
+                            ? 'Sin tope'
+                            : '$_mon ${v.toStringAsFixed(0)}'),
+                        selected: cfg.topeCuenta == v,
+                        onSelected: (_) => _ponerTope(v),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+          ],
+        ),
+      ),
+      const SizedBox(height: 12),
+      if (abiertas.isEmpty)
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 26),
+          child: Center(
+            child: Text(
+                'Sin cuentas abiertas. Al entregar un pedido (o cobrar en '
+                'caja) elige "A la cuenta 📒" y el cliente paga al salir.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: textoTenue)),
+          ),
+        ),
+      for (final c in abiertas)
+        Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: limaSuave,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: lima),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text('📒 ${c.clienteNombre}',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 15)),
+                  ),
+                  Text('${c.moneda} ${c.total.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w900, color: bosque)),
+                ],
+              ),
+              const SizedBox(height: 2),
+              Text(c.resumen,
+                  style: const TextStyle(fontSize: 12.5)),
+              Text('Abierta ${hace(c.creado)}',
+                  style:
+                      const TextStyle(color: textoTenue, fontSize: 12)),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(backgroundColor: bosque),
+                  onPressed: () => _cerrarCuenta(c),
+                  icon: const Icon(Icons.point_of_sale, size: 18),
+                  label: const Text('Cobrar y cerrar cuenta'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      if (cerradas.isNotEmpty) ...[
+        const SizedBox(height: 6),
+        const Text('Cerradas (últimos 30 días)',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+        const SizedBox(height: 8),
+        for (final c in cerradas)
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: cs.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: trazo),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                      '${c.clienteNombre} · ${c.resumen}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12.5)),
+                ),
+                Text(
+                    c.medioPago == 'cortesia'
+                        ? 'Cortesía'
+                        : '${c.moneda} ${c.total.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12.5,
+                        color: textoTenue)),
+              ],
+            ),
+          ),
+      ],
     ];
   }
 

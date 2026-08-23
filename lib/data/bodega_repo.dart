@@ -148,13 +148,23 @@ class BodegaRepo {
     }
   }
 
+  /// Tolerante a schema drift: si las columnas de cuenta abierta aún no
+  /// existen (falta correr supabase_bodega_cuentas.sql), reintenta sin ellas.
   static Future<bool> guardarConfig(ConfigBodega c) async {
     if (!SupabaseService.disponible) return false;
+    final fila = c.toRow();
     try {
-      await SupabaseService.client.from(_tConfig).upsert(c.toRow());
+      await SupabaseService.client.from(_tConfig).upsert(fila);
       return true;
     } catch (_) {
-      return false;
+      try {
+        fila.remove('permite_cuenta');
+        fila.remove('tope_cuenta');
+        await SupabaseService.client.from(_tConfig).upsert(fila);
+        return true;
+      } catch (_) {
+        return false;
+      }
     }
   }
 
@@ -263,6 +273,153 @@ class BodegaRepo {
       return (false, ((lista.first as Map)['estado'] ?? '') as String);
     } catch (_) {
       return (false, null);
+    }
+  }
+
+  // ── CUENTA ABIERTA ("apúntamelo, pago al salir") ───────────────────────────
+  static const _tCuentas = 'pichangol_bodega_cuentas';
+
+  /// Descuenta stock SIN registrar venta (consumos anotados a una cuenta:
+  /// la venta se registra recién al CERRAR la cuenta, pero el stock baja al
+  /// entregar). Best-effort por producto.
+  static Future<void> actualizarStock(
+      Map<String, int> nuevoStockPorProducto) async {
+    if (!SupabaseService.disponible) return;
+    for (final e in nuevoStockPorProducto.entries) {
+      try {
+        await SupabaseService.client
+            .from(_tProductos)
+            .update({'stock': e.value}).eq('id', e.key);
+      } catch (_) {}
+    }
+  }
+
+  /// Cuentas del dueño de los últimos 30 días (abiertas y cerradas; la UI
+  /// ordena abiertas primero). Fail-safe.
+  static Future<List<CuentaBodega>> fetchCuentas(String dueno) async {
+    final d = dueno.trim().toLowerCase();
+    if (!SupabaseService.disponible || d.isEmpty) return const [];
+    try {
+      final desde = DateTime.now().subtract(const Duration(days: 30));
+      final rows = await SupabaseService.client
+          .from(_tCuentas)
+          .select()
+          .eq('dueno', d)
+          .gte('creado', desde.toUtc().toIso8601String())
+          .order('creado', ascending: false)
+          .limit(100);
+      return [
+        for (final r in (rows as List))
+          CuentaBodega.fromRow(Map<String, dynamic>.from(r as Map)),
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// La cuenta ABIERTA del cliente con este local (para que el cliente vea
+  /// "llevas S/ X" en vivo). null si no tiene.
+  static Future<CuentaBodega?> fetchCuentaAbiertaCliente(
+      String cliente, String dueno) async {
+    final c = cliente.trim().toLowerCase();
+    if (!SupabaseService.disponible || c.isEmpty) return null;
+    try {
+      final rows = await SupabaseService.client
+          .from(_tCuentas)
+          .select()
+          .eq('cliente', c)
+          .eq('dueno', dueno.trim().toLowerCase())
+          .eq('estado', 'abierta')
+          .order('creado', ascending: false)
+          .limit(1);
+      final lista = rows as List;
+      if (lista.isEmpty) return null;
+      return CuentaBodega.fromRow(
+          Map<String, dynamic>.from(lista.first as Map));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// ANOTA consumo a la cuenta abierta del cliente (la crea si no existe).
+  /// Devuelve la cuenta resultante o null si no se pudo persistir.
+  static Future<CuentaBodega?> anotarACuenta({
+    required String dueno,
+    required String cliente,
+    required String clienteNombre,
+    required List<ItemVentaBodega> items,
+    required String moneda,
+  }) async {
+    if (!SupabaseService.disponible || items.isEmpty) return null;
+    final agregado =
+        items.fold<double>(0, (a, i) => a + i.subtotal);
+    final abierta = await fetchCuentaAbiertaCliente(cliente, dueno);
+    try {
+      if (abierta == null) {
+        final nueva = CuentaBodega(
+          id: 'bc_${DateTime.now().microsecondsSinceEpoch}',
+          dueno: dueno.trim().toLowerCase(),
+          cliente: cliente.trim().toLowerCase(),
+          clienteNombre: clienteNombre,
+          items: items,
+          total: agregado,
+          moneda: moneda,
+          creado: DateTime.now(),
+        );
+        await SupabaseService.client.from(_tCuentas).insert(nueva.toRow());
+        return nueva;
+      }
+      final combinados = [...abierta.items, ...items];
+      final total = abierta.total + agregado;
+      // Candado suave: solo suma si la cuenta SIGUE abierta (si el otro
+      // equipo la cerró hace un segundo, mejor fallar y que se reintente
+      // como cuenta nueva desde la UI refrescada).
+      final rows = await SupabaseService.client
+          .from(_tCuentas)
+          .update({
+            'items': combinados.map((i) => i.toJson()).toList(),
+            'total': total,
+            'actualizado': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('id', abierta.id)
+          .eq('estado', 'abierta')
+          .select('id');
+      if ((rows as List).isEmpty) return null;
+      return CuentaBodega(
+        id: abierta.id,
+        dueno: abierta.dueno,
+        cliente: abierta.cliente,
+        clienteNombre: abierta.clienteNombre,
+        items: combinados,
+        total: total,
+        moneda: abierta.moneda,
+        creado: abierta.creado,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// CIERRA la cuenta (candado: solo si sigue abierta — con dos equipos solo
+  /// uno cobra). Devuelve true si este equipo ganó el cierre.
+  static Future<bool> cerrarCuentaSi(String id, String medioPago) async {
+    if (!SupabaseService.disponible) return false;
+    try {
+      final ahora = DateTime.now().toUtc().toIso8601String();
+      final rows = await SupabaseService.client
+          .from(_tCuentas)
+          .update({
+            'estado': 'cerrada',
+            'medio_pago': medioPago,
+            'cerrado': ahora,
+            'actualizado': ahora,
+          })
+          .eq('id', id)
+          .eq('estado', 'abierta')
+          .select('id');
+      return (rows as List).isNotEmpty;
+    } catch (_) {
+      return false;
     }
   }
 

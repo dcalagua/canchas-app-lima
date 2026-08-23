@@ -279,6 +279,21 @@ venta + descuenta stock). Candados: toggle `acepta_pedidos` (off default) +
 zonas configurables + GPS ≤250 m + expira a los 10 min. Tablas
 `pichangol_bodega_pedidos`/`pichangol_bodega_config`
 (SQL `docs/piloto/supabase_bodega_pedidos.sql`).
+**CUENTA ABIERTA (hecho):** "apúntamelo, pago al salir" — el dueño la activa
+(toggle `permite_cuenta`, off default) con TOPE por cuenta (`tope_cuenta`,
+chips 50/100/200/300/sin tope, moneda del local). "A la cuenta 📒" aparece al
+entregar un pedido (cliente identificado) y en la caja (solo cuentas ya
+abiertas); el stock baja al entregar, la VENTA se registra UNA sola vez al
+CERRAR la cuenta (cobro efectivo/yape/cortesía). Cliente ve "llevas X" en
+vivo en `pedir_bodega_screen`. Candados de concurrencia en cerrar/anotar
+(solo si sigue abierta) y en todo cambio de estado de pedidos
+(`cambiarEstadoPedidoSi`: cancelar vs confirmar, cobro doble entre equipos).
+Tabla `pichangol_bodega_cuentas` + columnas config
+(SQL `docs/piloto/supabase_bodega_cuentas.sql`).
+**Packshots IA (hecho):** imagen automática del producto = foto real del
+dueño > packshot IA genérico por TIPO sin marcas (`marketing/packshot.py`,
+`GET /bodega/packshot/{tipo}`, Storage `bodega/packshot_*.jpg`,
+`packshotTipoDe`/`ImagenProductoBodega` en el APK) > emoji.
 Fase 3 (backlog): pago in-app del pedido (saldo Pichangol).
 
 ## Mensajería: arquitectura DEVICE-FIRST (cache, tal cual WhatsApp)

@@ -40,6 +40,7 @@ class _PedirBodegaScreenState extends State<PedirBodegaScreen> {
   ConfigBodega? _config;
   List<ProductoBodega> _productos = [];
   List<PedidoBodega> _misPedidos = [];
+  CuentaBodega? _miCuenta; // cuenta abierta con este local ("llevas S/ X")
   final Map<String, int> _ticket = {};
   String _zona = '';
   bool _enviando = false;
@@ -59,8 +60,13 @@ class _PedirBodegaScreenState extends State<PedirBodegaScreen> {
       if (_email.isNotEmpty)
         BodegaRepo.fetchPedidosCliente(_email, widget.duenoEmail),
     ]);
+    final cuenta = _email.isEmpty
+        ? null
+        : await BodegaRepo.fetchCuentaAbiertaCliente(
+            _email, widget.duenoEmail);
     if (!mounted) return;
     setState(() {
+      _miCuenta = cuenta;
       _config = res[0] as ConfigBodega;
       _productos = (res[1] as List<ProductoBodega>)
           .where((p) => p.stock > 0)
@@ -322,6 +328,46 @@ class _PedirBodegaScreenState extends State<PedirBodegaScreen> {
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
                   children: [
+                    // TU CUENTA ABIERTA (si el local te la abrió): total en
+                    // vivo, cero sorpresas al salir.
+                    if (_miCuenta != null)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: limaSuave,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: lima),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Expanded(
+                                  child: Text('📒 Tu cuenta abierta',
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 15)),
+                                ),
+                                Text(
+                                    '${_miCuenta!.moneda} ${_miCuenta!.total.toStringAsFixed(2)}',
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w900,
+                                        color: bosque,
+                                        fontSize: 15)),
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            Text(_miCuenta!.resumen,
+                                style: const TextStyle(fontSize: 12.5)),
+                            const Text(
+                                'La pagas al salir, en el mostrador.',
+                                style: TextStyle(
+                                    color: textoTenue, fontSize: 12)),
+                          ],
+                        ),
+                      ),
                     // Mis pedidos activos (estado en vivo con pull-to-refresh).
                     for (final p in _misPedidos.where(
                         (p) => p.estado != 'cancelado'))

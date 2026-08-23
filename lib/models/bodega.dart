@@ -254,23 +254,42 @@ class ConfigBodega {
   final bool aceptaPedidos;
   final List<String> zonas;
 
+  /// CUENTA ABIERTA ("apúntamelo, pago al salir"): el dueño decide si la
+  /// ofrece. Apagada por defecto — es SU riesgo de cobranza.
+  final bool permiteCuenta;
+
+  /// Tope por cuenta en la moneda del local (0 = sin tope): al llegar, los
+  /// siguientes consumos se cobran al entregar.
+  final double topeCuenta;
+
   const ConfigBodega({
     required this.dueno,
     this.aceptaPedidos = false,
     this.zonas = const ['Cancha 1', 'Cancha 2', 'Mesa', 'Mostrador'],
+    this.permiteCuenta = false,
+    this.topeCuenta = 100,
   });
 
-  ConfigBodega copyWith({bool? aceptaPedidos, List<String>? zonas}) =>
+  ConfigBodega copyWith({
+    bool? aceptaPedidos,
+    List<String>? zonas,
+    bool? permiteCuenta,
+    double? topeCuenta,
+  }) =>
       ConfigBodega(
         dueno: dueno,
         aceptaPedidos: aceptaPedidos ?? this.aceptaPedidos,
         zonas: zonas ?? this.zonas,
+        permiteCuenta: permiteCuenta ?? this.permiteCuenta,
+        topeCuenta: topeCuenta ?? this.topeCuenta,
       );
 
   Map<String, dynamic> toRow() => {
         'dueno': dueno,
         'acepta_pedidos': aceptaPedidos,
         'zonas': zonas,
+        'permite_cuenta': permiteCuenta,
+        'tope_cuenta': topeCuenta,
       };
 
   factory ConfigBodega.fromRow(Map<String, dynamic> r) => ConfigBodega(
@@ -278,6 +297,72 @@ class ConfigBodega {
         aceptaPedidos: (r['acepta_pedidos'] ?? false) as bool,
         zonas: (r['zonas'] as List?)?.map((e) => e.toString()).toList() ??
             const ['Cancha 1', 'Cancha 2', 'Mesa', 'Mostrador'],
+        permiteCuenta: (r['permite_cuenta'] ?? false) as bool,
+        topeCuenta: (r['tope_cuenta'] as num?)?.toDouble() ?? 100,
+      );
+}
+
+/// CUENTA ABIERTA de un cliente en la bodega del local: consume durante su
+/// estadía (pedidos a la cancha o mostrador) y paga TODO al retirarse. La
+/// venta (reporte) se registra recién al CERRARLA; el stock ya se descontó
+/// al entregar cada consumo.
+class CuentaBodega {
+  final String id;
+  final String dueno;
+  final String cliente; // correo (cliente IDENTIFICADO, requisito)
+  final String clienteNombre;
+  final List<ItemVentaBodega> items;
+  final double total;
+  final String moneda;
+  final String estado; // abierta | cerrada
+  final String medioPago; // con qué pagó al cerrar ('' mientras abierta)
+  final DateTime creado;
+
+  const CuentaBodega({
+    required this.id,
+    required this.dueno,
+    required this.cliente,
+    required this.clienteNombre,
+    required this.items,
+    required this.total,
+    required this.moneda,
+    this.estado = 'abierta',
+    this.medioPago = '',
+    required this.creado,
+  });
+
+  bool get abierta => estado == 'abierta';
+
+  String get resumen =>
+      items.map((i) => '${i.cantidad} ${i.nombre}').join(' + ');
+
+  Map<String, dynamic> toRow() => {
+        'id': id,
+        'dueno': dueno,
+        'cliente': cliente,
+        'cliente_nombre': clienteNombre,
+        'items': items.map((i) => i.toJson()).toList(),
+        'total': total,
+        'moneda': moneda,
+        'estado': estado,
+        'medio_pago': medioPago,
+      };
+
+  factory CuentaBodega.fromRow(Map<String, dynamic> r) => CuentaBodega(
+        id: (r['id'] ?? '') as String,
+        dueno: (r['dueno'] ?? '') as String,
+        cliente: (r['cliente'] ?? '') as String,
+        clienteNombre: (r['cliente_nombre'] ?? '') as String,
+        items: ((r['items'] as List?) ?? const [])
+            .map((e) =>
+                ItemVentaBodega.fromJson(Map<String, dynamic>.from(e as Map)))
+            .toList(),
+        total: (r['total'] as num?)?.toDouble() ?? 0,
+        moneda: (r['moneda'] ?? 'S/') as String,
+        estado: (r['estado'] ?? 'abierta') as String,
+        medioPago: (r['medio_pago'] ?? '') as String,
+        creado: DateTime.tryParse((r['creado'] ?? '') as String)?.toLocal() ??
+            DateTime.now(),
       );
 }
 
