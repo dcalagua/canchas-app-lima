@@ -230,6 +230,42 @@ class BodegaRepo {
     }
   }
 
+  /// Cambia el estado SOLO si el pedido sigue en [desde] — candado de
+  /// concurrencia (mismo espíritu que la doble reserva: el PRIMERO gana y el
+  /// segundo se entera). Cubre: el cliente cancela mientras el dueño
+  /// confirma, y el dueño con dos equipos cobrando el mismo pedido.
+  /// Devuelve (ok, estadoActual): ok=true → cambió; ok=false con
+  /// estadoActual → otro le ganó y ese es el estado vigente en la nube;
+  /// ok=false y estadoActual=null → error de red (no se sabe, no tocar UI).
+  static Future<(bool, String?)> cambiarEstadoPedidoSi(
+      String id, String nuevo,
+      {required String desde}) async {
+    if (!SupabaseService.disponible) return (false, null);
+    try {
+      final rows = await SupabaseService.client
+          .from(_tPedidos)
+          .update({
+            'estado': nuevo,
+            'actualizado': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('id', id)
+          .eq('estado', desde)
+          .select('estado');
+      if ((rows as List).isNotEmpty) return (true, null);
+      // No matcheó: alguien cambió el estado primero. ¿En qué quedó?
+      final cur = await SupabaseService.client
+          .from(_tPedidos)
+          .select('estado')
+          .eq('id', id)
+          .limit(1);
+      final lista = cur as List;
+      if (lista.isEmpty) return (false, null);
+      return (false, ((lista.first as Map)['estado'] ?? '') as String);
+    } catch (_) {
+      return (false, null);
+    }
+  }
+
   /// Ventas del dueño desde [desde] (para el reporte). Más recientes primero.
   static Future<List<VentaBodega>> fetchVentas(String dueno,
       {required DateTime desde}) async {

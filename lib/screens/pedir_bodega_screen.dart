@@ -9,6 +9,7 @@ import '../theme.dart';
 import '../utils/geo.dart';
 import '../widgets/ancho_lectura.dart';
 import '../widgets/cargando_pichangol.dart';
+import '../widgets/dialogo_pichangol.dart';
 import '../widgets/imagen_producto_bodega.dart';
 import 'login_google_sheet.dart';
 
@@ -271,12 +272,29 @@ class _PedirBodegaScreenState extends State<PedirBodegaScreen> {
   }
 
   Future<void> _cancelar(PedidoBodega p) async {
-    await BodegaRepo.actualizarEstadoPedido(p.id, 'cancelado');
-    appState.avisarPedidoBodega(
-      email: p.dueno,
-      titulo: 'Pedido cancelado',
-      cuerpo: '${p.clienteNombre} canceló su pedido (${p.resumen}).',
-    );
+    // Candado de concurrencia: solo se cancela si SIGUE pendiente. Si el
+    // dueño lo confirmó un segundo antes, el pedido ya va en camino y el
+    // cliente se entera aquí (en vez de cancelarle a alguien que ya salió).
+    final (ok, actual) = await BodegaRepo.cambiarEstadoPedidoSi(
+        p.id, 'cancelado',
+        desde: 'pendiente');
+    if (!mounted) return;
+    if (ok) {
+      appState.avisarPedidoBodega(
+        email: p.dueno,
+        titulo: 'Pedido cancelado',
+        cuerpo: '${p.clienteNombre} canceló su pedido (${p.resumen}).',
+      );
+    } else if (actual == 'confirmado' || actual == 'entregado') {
+      await avisarPichangol(
+        context,
+        titulo: 'Ya va en camino 🏃',
+        mensaje: 'El local confirmó tu pedido justo antes de que lo '
+            'cancelaras. Recíbelo y paga al recibirlo; cualquier cambio '
+            'coordínalo en el mostrador.',
+        icono: Icons.delivery_dining,
+      );
+    }
     _cargar();
   }
 

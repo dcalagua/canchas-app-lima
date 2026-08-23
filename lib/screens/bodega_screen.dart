@@ -818,8 +818,30 @@ class _BodegaScreenState extends State<BodegaScreen> {
 
   Future<void> _responderPedido(PedidoBodega p, bool confirmar) async {
     final estado = confirmar ? 'confirmado' : 'rechazado';
-    final ok = await BodegaRepo.actualizarEstadoPedido(p.id, estado);
-    if (!ok) return;
+    // Candado de concurrencia: responde solo si SIGUE pendiente. Si el
+    // cliente lo canceló (o el otro equipo del dueño ya respondió) un
+    // segundo antes, el primero gana y aquí solo se refleja.
+    final (ok, actual) = await BodegaRepo.cambiarEstadoPedidoSi(p.id, estado,
+        desde: 'pendiente');
+    if (!mounted) return;
+    if (!ok) {
+      if (actual == null) return; // error de red: no tocar nada
+      setState(() {
+        _pedidos = [
+          for (final x in _pedidos) x.id == p.id ? x.conEstado(actual) : x,
+        ];
+      });
+      if (actual == 'cancelado') {
+        await avisarPichangol(
+          context,
+          titulo: 'El cliente lo canceló',
+          mensaje: 'Este pedido fue cancelado por el cliente antes de que '
+              'lo confirmaras. No hay nada que llevar.',
+          icono: Icons.remove_shopping_cart_outlined,
+        );
+      }
+      return; // sin push: el que ganó ya avisó lo suyo
+    }
     setState(() {
       _pedidos = [
         for (final x in _pedidos) x.id == p.id ? x.conEstado(estado) : x,
@@ -880,6 +902,38 @@ class _BodegaScreenState extends State<BodegaScreen> {
       ),
     );
     if (medio == null || !mounted) return;
+    // Candado de concurrencia: RECLAMA el pedido (confirmado → entregado)
+    // ANTES de registrar la venta. Si el dueño tiene la bodega abierta en
+    // dos equipos, solo UNO cobra — sin esto habría venta y descuento de
+    // stock DOBLES por el mismo pedido.
+    final (claim, actual) = await BodegaRepo.cambiarEstadoPedidoSi(
+        p.id, 'entregado',
+        desde: 'confirmado');
+    if (!mounted) return;
+    if (!claim) {
+      if (actual == null) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            backgroundColor: clayOscuro,
+            content: Text('Sin conexión: no se pudo registrar. '
+                'Vuelve a intentarlo.')));
+        return;
+      }
+      setState(() {
+        _pedidos = [
+          for (final x in _pedidos) x.id == p.id ? x.conEstado(actual) : x,
+        ];
+      });
+      if (actual == 'entregado') {
+        await avisarPichangol(
+          context,
+          titulo: 'Ya estaba cobrado',
+          mensaje: 'Este pedido ya fue entregado y cobrado desde otro '
+              'equipo. No se registró una segunda venta.',
+          icono: Icons.done_all,
+        );
+      }
+      return;
+    }
     final nuevoStock = <String, int>{};
     for (final i in p.items) {
       final prod = _productos
@@ -901,8 +955,17 @@ class _BodegaScreenState extends State<BodegaScreen> {
     final ok = await conPreload(
         context, () => BodegaRepo.registrarVenta(venta, nuevoStock),
         texto: 'Registrando…');
-    if (!mounted || !ok) return;
-    await BodegaRepo.actualizarEstadoPedido(p.id, 'entregado');
+    if (!mounted) return;
+    if (!ok) {
+      // La venta no entró: devuelve el pedido a "confirmado" (best-effort)
+      // para que se pueda volver a cobrar, y avisa.
+      await BodegaRepo.actualizarEstadoPedido(p.id, 'confirmado');
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          backgroundColor: clayOscuro,
+          content: Text('No se pudo registrar la venta. '
+              'Vuelve a intentarlo.')));
+      return;
+    }
     setState(() {
       _ventas = [venta, ..._ventas];
       _productos = [
