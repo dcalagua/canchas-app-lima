@@ -263,8 +263,10 @@ class _BodegaScreenState extends State<BodegaScreen> {
             ? base.precio.toStringAsFixed(2)
             : '');
     var categoria = base?.categoria ?? 'Bebidas';
-    var stock = base?.stock ?? 0;
-    var stockMin = base?.stockMin ?? 2;
+    // Stock TIPEABLE además de los botones +/- (pedido del director).
+    final stockCtrl = TextEditingController(text: '${base?.stock ?? 0}');
+    final stockMinCtrl =
+        TextEditingController(text: '${base?.stockMin ?? 2}');
     String? error;
 
     final ok = await showModalBottomSheet<bool>(
@@ -276,26 +278,42 @@ class _BodegaScreenState extends State<BodegaScreen> {
       builder: (bctx) => StatefulBuilder(
         builder: (bctx, setSB) {
           final bottom = MediaQuery.of(bctx).viewInsets.bottom;
-          Widget stepper(String label, int valor, ValueChanged<int> onCambio,
+          // Número EDITABLE (teclado) + botones +/- (ambos caminos valen).
+          Widget stepper(String label, TextEditingController ctrl,
               {int min = 0}) {
+            int val() => int.tryParse(ctrl.text.trim()) ?? min;
+            void poner(int v) =>
+                setSB(() => ctrl.text = '${v < min ? min : v}');
             return Row(
               children: [
                 Expanded(
                     child: Text(label,
                         style: const TextStyle(fontWeight: FontWeight.w600))),
                 IconButton(
-                    onPressed: valor > min
-                        ? () => onCambio(valor - 1)
-                        : null,
+                    onPressed: val() > min ? () => poner(val() - 1) : null,
                     icon: const Icon(Icons.remove_circle_outline)),
                 SizedBox(
-                    width: 34,
-                    child: Text('$valor',
-                        textAlign: TextAlign.center,
-                        style:
-                            const TextStyle(fontWeight: FontWeight.w800))),
+                  width: 64,
+                  child: TextField(
+                    controller: ctrl,
+                    textAlign: TextAlign.center,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(5),
+                    ],
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800, fontSize: 15),
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      contentPadding:
+                          EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
                 IconButton(
-                    onPressed: () => onCambio(valor + 1),
+                    onPressed: () => poner(val() + 1),
                     icon: const Icon(Icons.add_circle_outline, color: bosque)),
               ],
             );
@@ -360,9 +378,8 @@ class _BodegaScreenState extends State<BodegaScreen> {
                         prefixText: '${paisActual.moneda} '),
                   ),
                   const SizedBox(height: 8),
-                  stepper('Stock actual', stock, (v) => setSB(() => stock = v)),
-                  stepper('Avisarme cuando queden', stockMin,
-                      (v) => setSB(() => stockMin = v)),
+                  stepper('Stock actual', stockCtrl),
+                  stepper('Avisarme cuando queden', stockMinCtrl),
                   if (error != null) ...[
                     const SizedBox(height: 6),
                     Text(error!,
@@ -419,8 +436,10 @@ class _BodegaScreenState extends State<BodegaScreen> {
                             nombre: n,
                             categoria: categoria,
                             precio: pr,
-                            stock: stock,
-                            stockMin: stockMin,
+                            stock:
+                                int.tryParse(stockCtrl.text.trim()) ?? 0,
+                            stockMin:
+                                int.tryParse(stockMinCtrl.text.trim()) ?? 0,
                             fotoUrl: base?.fotoUrl,
                             moneda: paisActual.moneda,
                           );
