@@ -244,6 +244,19 @@ cobra su comisión (5% mín S/2) y deja el **neto "por recibir"** del vendedor
   `liquidaciones()`/"por recibir". El catálogo NO vive en el backend growth (es
   Supabase).
 
+## Mi bodega (POS ligero del dueño, función Pro)
+
+Pestaña **Bodega** del panel del dueño (`bodega_screen.dart`): caja rápida
+(venta en 3 s, descuenta stock, medio efectivo/yape/cortesía — la plata NO
+pasa por Pichangol, cero comisión), catálogo con stock y alertas de
+reposición, reportes (hoy/7 días/top/valorizado) y **carta digital pública**
+`/b/{carta_id}` con QR imprimible (`/b/{id}/qr.png`, lib `qrcode` en el
+backend growth). `carta_id` = hash FNV del correo (no expone el email).
+Datos: `lib/models/bodega.dart`, `lib/data/bodega_repo.dart`, tablas
+`pichangol_bodega_productos`/`pichangol_bodega_ventas`
+(SQL `docs/piloto/supabase_bodega.sql`). Candado Pro dentro de la pantalla.
+Fase 2 (backlog): pago in-app opcional que descuenta stock solo.
+
 ## Mensajería: arquitectura DEVICE-FIRST (cache, tal cual WhatsApp)
 
 **REGLA de arquitectura (transversal a TODA la mensajería):** chats, inbox,

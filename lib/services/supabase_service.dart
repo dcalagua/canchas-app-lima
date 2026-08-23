@@ -39,6 +39,20 @@ class SupabaseService {
   /// LANDING_BASE_URL está seteado) — la Edge Function `campeonato-web` quedó
   /// deprecada (su deploy manual servía el HTML como texto plano). Fallback:
   /// la función vieja solo si no hay backend configurado.
+  /// URL pública de la CARTA de la bodega del dueño (QR imprimible). null si
+  /// no hay backend configurado.
+  static String? paginaBodega(String cartaId) {
+    const landing = String.fromEnvironment('LANDING_BASE_URL');
+    const growth = String.fromEnvironment('GROWTH_API_URL');
+    final base = landing.isNotEmpty
+        ? landing
+        : growth.isNotEmpty
+            ? growth
+            : null;
+    if (base == null) return null;
+    return '${base.endsWith('/') ? base.substring(0, base.length - 1) : base}/b/$cartaId';
+  }
+
   static String? paginaCampeonato(String id) {
     const landing = String.fromEnvironment('LANDING_BASE_URL');
     const growth = String.fromEnvironment('GROWTH_API_URL');

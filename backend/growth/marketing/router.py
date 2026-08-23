@@ -25,6 +25,7 @@ from db.store import stores
 
 from . import afiche_campeonato
 from . import arte_ia
+from . import bodega_web
 from . import campeonato_web
 from . import link_preview as link_preview_svc
 from . import redes as redes_svc
@@ -430,6 +431,43 @@ def assetlinks() -> list[dict]:
             "sha256_cert_fingerprints": huellas,
         },
     }]
+
+
+@router.get("/b/{carta_id}", response_class=HTMLResponse)
+def ver_carta_bodega(carta_id: str) -> HTMLResponse:
+    """CARTA pública de la bodega de un local (el dueño imprime el QR y la
+    pega junto a su Yape). Fail-safe: sin config/red → página de aviso."""
+    try:
+        productos = bodega_web.obtener_productos(carta_id)
+    except Exception:
+        return HTMLResponse(campeonato_web.html_simple(
+            "Error", "No se pudo cargar la carta. Intenta más tarde."),
+            status_code=502)
+    if productos is None:
+        return HTMLResponse(campeonato_web.html_simple(
+            "Página no disponible",
+            "El servidor aún no está configurado. Intenta más tarde."),
+            status_code=503)
+    return HTMLResponse(bodega_web.html_carta(productos))
+
+
+@router.get("/b/{carta_id}/qr.png")
+def qr_carta_bodega(carta_id: str, request: Request) -> Response:
+    """QR imprimible de la carta (/b/{carta_id}). El dueño lo pega junto a su
+    Yape impreso. 404 si la librería no está disponible (fail-safe)."""
+    try:
+        import io as _io
+
+        import qrcode
+
+        url = f"{_base_landing(request)}/b/{carta_id}"
+        img = qrcode.make(url, box_size=12, border=2)
+        buf = _io.BytesIO()
+        img.save(buf, format="PNG")
+        return Response(content=buf.getvalue(), media_type="image/png",
+                        headers={"Cache-Control": "public, max-age=86400"})
+    except Exception:
+        raise HTTPException(status_code=404, detail="qr_no_disponible")
 
 
 @router.get("/afiche/fondo/{deporte}/{variante}")

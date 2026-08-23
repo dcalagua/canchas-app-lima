@@ -4,6 +4,7 @@ import '../theme.dart';
 import '../widgets/barra_nav_scroll.dart';
 import '../widgets/icono_chat_pichan.dart';
 import '../widgets/menu_lateral_scroll.dart';
+import 'bodega_screen.dart';
 import 'clientes_screen.dart';
 import 'cuenta_screen.dart';
 import 'mensajes_screen.dart';
@@ -33,6 +34,7 @@ class _HomeShellState extends State<HomeShell> {
     MisCanchasScreen(),     // tus canchas reales (editar precio/horarios/servicios)
     ReservasHubScreen(),    // Reservas: conmutador Lista (cobros) + Calendario (agenda)
     ClientesScreen(),       // base de clientes (CRM ligero, derivado de reservas)
+    BodegaScreen(),         // MI BODEGA: POS ligero + stock (función Pro)
     MensajesScreen(),       // chat con clientes (inbox del dueño/profe)
     ReportesHubScreen(),    // Reportes: pestañas Resumen + Cobros (unificado)
     CuentaScreen(),         // BILLETERA: saldo único + recargar + por recibir
@@ -43,6 +45,7 @@ class _HomeShellState extends State<HomeShell> {
     Icons.sports_soccer,
     Icons.event_note,
     Icons.groups,
+    Icons.storefront,
     Icons.chat_bubble,
     Icons.bar_chart,
     Icons.account_balance_wallet,
@@ -51,6 +54,7 @@ class _HomeShellState extends State<HomeShell> {
     'Canchas',
     'Reservas',
     'Clientes',
+    'Bodega',
     'Mensajes',
     'Reportes',
     'Billetera',
@@ -60,12 +64,13 @@ class _HomeShellState extends State<HomeShell> {
     lima,               // Canchas
     naranja,            // Reservas (Lista + Calendario)
     morado,             // Clientes
-    lima,               // Mensajes (se ignora: va el ícono de WhatsApp)
+    coral,              // Bodega (POS ligero, función Pro)
+    lima,               // Mensajes (se ignora: va el logo Pichangol)
     teal,               // Reportes
     amarillo,           // Billetera
   ];
   // Índice de la pestaña Mensajes → usa el ícono de chat con "P" (marca Pichan).
-  static const _iMensajes = 3;
+  static const _iMensajes = 4;
 
   @override
   Widget build(BuildContext context) {
