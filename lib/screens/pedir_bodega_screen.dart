@@ -246,51 +246,52 @@ class _PedirBodegaScreenState extends State<PedirBodegaScreen> {
                           ],
                         ),
                       ),
+                    // La CARTA se ve SIEMPRE (aunque el local no reciba
+                    // pedidos todavía): el cliente conoce los precios y compra
+                    // en el mostrador. Solo el PEDIR depende del toggle.
                     if (cfg != null && !cfg.aceptaPedidos) ...[
-                      const SizedBox(height: 30),
-                      const Center(
-                          child: Text('🛒', style: TextStyle(fontSize: 40))),
-                      const SizedBox(height: 10),
-                      const Center(
-                        child: Text('Este local aún no recibe pedidos',
-                            style: TextStyle(
-                                fontWeight: FontWeight.w800, fontSize: 17)),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF6E5),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Text(
+                            '🛒 Este local aún no recibe pedidos a la '
+                            'cancha: mira la carta y compra en el mostrador.',
+                            style: TextStyle(fontSize: 12.5)),
                       ),
-                      const SizedBox(height: 6),
-                      const Center(
-                        child: Text(
-                            'Acércate al mostrador para comprar. (El dueño '
-                            'puede activar los pedidos en Mi bodega.)',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: textoTenue)),
-                      ),
-                    ] else if (_productos.isEmpty) ...[
+                    ],
+                    if (_productos.isEmpty) ...[
                       const SizedBox(height: 30),
                       const Center(
                         child: Text('La bodega aún no tiene productos.',
                             style: TextStyle(color: textoTenue)),
                       ),
                     ] else ...[
-                      const Text('¿Dónde estás? Te lo llevamos ahí 🏃',
-                          style: TextStyle(fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          for (final z in cfg?.zonas ?? const <String>[])
-                            ChoiceChip(
-                              label: Text(z),
-                              selected: _zona == z,
-                              onSelected: (_) => setState(() => _zona = z),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      const Text('Toca para agregar a tu pedido',
-                          style:
-                              TextStyle(color: textoTenue, fontSize: 12.5)),
-                      const SizedBox(height: 8),
+                      if (cfg?.aceptaPedidos ?? false) ...[
+                        const Text('¿Dónde estás? Te lo llevamos ahí 🏃',
+                            style: TextStyle(fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            for (final z in cfg?.zonas ?? const <String>[])
+                              ChoiceChip(
+                                label: Text(z),
+                                selected: _zona == z,
+                                onSelected: (_) => setState(() => _zona = z),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        const Text('Toca para agregar a tu pedido',
+                            style:
+                                TextStyle(color: textoTenue, fontSize: 12.5)),
+                        const SizedBox(height: 8),
+                      ],
                       for (final p in _productos)
                         Container(
                           margin: const EdgeInsets.only(bottom: 8),
@@ -305,7 +306,9 @@ class _PedirBodegaScreenState extends State<PedirBodegaScreen> {
                                     : trazo),
                           ),
                           child: ListTile(
-                            onTap: () => _sumar(p, 1),
+                            onTap: (cfg?.aceptaPedidos ?? false)
+                                ? () => _sumar(p, 1)
+                                : null,
                             leading: p.fotoUrl != null &&
                                     p.fotoUrl!.isNotEmpty
                                 ? ClipRRect(
@@ -333,10 +336,12 @@ class _PedirBodegaScreenState extends State<PedirBodegaScreen> {
                                 style: const TextStyle(
                                     color: bosque,
                                     fontWeight: FontWeight.w700)),
-                            trailing: (_ticket[p.id] ?? 0) == 0
-                                ? const Icon(Icons.add_circle_outline,
-                                    color: bosque)
-                                : Row(
+                            trailing: !(cfg?.aceptaPedidos ?? false)
+                                ? null
+                                : (_ticket[p.id] ?? 0) == 0
+                                    ? const Icon(Icons.add_circle_outline,
+                                        color: bosque)
+                                    : Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       IconButton(
