@@ -123,6 +123,113 @@ class BodegaRepo {
     return true;
   }
 
+  // ── Fase 2: PEDIDOS A LA CANCHA ────────────────────────────────────────────
+  static const _tPedidos = 'pichangol_bodega_pedidos';
+  static const _tConfig = 'pichangol_bodega_config';
+
+  /// Config de la bodega del dueño (acepta pedidos + zonas). Default: NO
+  /// acepta (cada local decide si tiene quién lleve). Fail-safe.
+  static Future<ConfigBodega> fetchConfig(String dueno) async {
+    final d = dueno.trim().toLowerCase();
+    if (!SupabaseService.disponible || d.isEmpty) {
+      return ConfigBodega(dueno: d);
+    }
+    try {
+      final rows = await SupabaseService.client
+          .from(_tConfig)
+          .select()
+          .eq('dueno', d)
+          .limit(1);
+      final lista = rows as List;
+      if (lista.isEmpty) return ConfigBodega(dueno: d);
+      return ConfigBodega.fromRow(Map<String, dynamic>.from(lista.first as Map));
+    } catch (_) {
+      return ConfigBodega(dueno: d);
+    }
+  }
+
+  static Future<bool> guardarConfig(ConfigBodega c) async {
+    if (!SupabaseService.disponible) return false;
+    try {
+      await SupabaseService.client.from(_tConfig).upsert(c.toRow());
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Crea el pedido del cliente. Devuelve true si quedó registrado.
+  static Future<bool> crearPedido(PedidoBodega p) async {
+    if (!SupabaseService.disponible) return false;
+    try {
+      await SupabaseService.client.from(_tPedidos).insert(p.toRow());
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Pedidos del DUEÑO de los últimos 2 días (pendientes arriba en la UI).
+  static Future<List<PedidoBodega>> fetchPedidosDueno(String dueno) async {
+    final d = dueno.trim().toLowerCase();
+    if (!SupabaseService.disponible || d.isEmpty) return const [];
+    try {
+      final desde = DateTime.now().subtract(const Duration(days: 2));
+      final rows = await SupabaseService.client
+          .from(_tPedidos)
+          .select()
+          .eq('dueno', d)
+          .gte('creado', desde.toUtc().toIso8601String())
+          .order('creado', ascending: false)
+          .limit(100);
+      return [
+        for (final r in (rows as List))
+          PedidoBodega.fromRow(Map<String, dynamic>.from(r as Map)),
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Pedidos del CLIENTE con este dueño en las últimas 12 h (para ver el
+  /// estado del que acaba de hacer).
+  static Future<List<PedidoBodega>> fetchPedidosCliente(
+      String cliente, String dueno) async {
+    final c = cliente.trim().toLowerCase();
+    if (!SupabaseService.disponible || c.isEmpty) return const [];
+    try {
+      final desde = DateTime.now().subtract(const Duration(hours: 12));
+      final rows = await SupabaseService.client
+          .from(_tPedidos)
+          .select()
+          .eq('cliente', c)
+          .eq('dueno', dueno.trim().toLowerCase())
+          .gte('creado', desde.toUtc().toIso8601String())
+          .order('creado', ascending: false)
+          .limit(10);
+      return [
+        for (final r in (rows as List))
+          PedidoBodega.fromRow(Map<String, dynamic>.from(r as Map)),
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Cambia el estado de un pedido (confirmado/entregado/rechazado/cancelado).
+  static Future<bool> actualizarEstadoPedido(String id, String estado) async {
+    if (!SupabaseService.disponible) return false;
+    try {
+      await SupabaseService.client.from(_tPedidos).update({
+        'estado': estado,
+        'actualizado': DateTime.now().toUtc().toIso8601String(),
+      }).eq('id', id);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Ventas del dueño desde [desde] (para el reporte). Más recientes primero.
   static Future<List<VentaBodega>> fetchVentas(String dueno,
       {required DateTime desde}) async {

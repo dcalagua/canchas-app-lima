@@ -7643,6 +7643,14 @@ class AppState extends ChangeNotifier {
     }();
   }
 
+  /// Push de PEDIDOS de bodega (cliente→dueño al pedir; dueño→cliente al
+  /// confirmar/entregar/rechazar). Mismo doble canal fail-safe de _pushAviso.
+  void avisarPedidoBodega(
+      {required String email, required String titulo, required String cuerpo}) {
+    _pushAviso(
+        email: email, titulo: titulo, cuerpo: cuerpo, tipo: 'bodega_pedido');
+  }
+
   // ── Aviso LOCAL al JUGADOR con el resultado de SU reserva ─────────────────
   /// Pedido del director: al jugador SIEMPRE le llega una notificación con el
   /// resultado de su reserva — confirmada ✅ o rechazada ❌ con el MOTIVO (y

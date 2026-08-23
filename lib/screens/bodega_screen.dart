@@ -28,10 +28,12 @@ class BodegaScreen extends StatefulWidget {
 }
 
 class _BodegaScreenState extends State<BodegaScreen> {
-  int _tab = 0; // 0 Caja · 1 Productos · 2 Reporte
+  int _tab = 0; // 0 Caja · 1 Productos · 2 Reporte · 3 Pedidos
   bool _cargando = true;
   List<ProductoBodega> _productos = [];
   List<VentaBodega> _ventas = [];
+  List<PedidoBodega> _pedidos = []; // pedidos a la cancha (últimos 2 días)
+  ConfigBodega? _config; // acepta pedidos + zonas
   final Map<String, int> _ticket = {}; // productoId → cantidad
 
   // Sugerencias rápidas de productos por categoría Y POR PAÍS (regla del
@@ -113,11 +115,15 @@ class _BodegaScreenState extends State<BodegaScreen> {
     final res = await Future.wait([
       BodegaRepo.fetchProductos(_email),
       BodegaRepo.fetchVentas(_email, desde: desde),
+      BodegaRepo.fetchPedidosDueno(_email),
+      BodegaRepo.fetchConfig(_email),
     ]);
     if (!mounted) return;
     setState(() {
       _productos = res[0] as List<ProductoBodega>;
       _ventas = res[1] as List<VentaBodega>;
+      _pedidos = res[2] as List<PedidoBodega>;
+      _config = res[3] as ConfigBodega;
       _cargando = false;
       // Limpia del ticket productos que ya no existen.
       _ticket.removeWhere((id, _) => !_productos.any((p) => p.id == id));
@@ -581,9 +587,19 @@ class _BodegaScreenState extends State<BodegaScreen> {
                   // Pestañas internas estilo chips (Caja / Productos / Reporte).
                   Wrap(
                     spacing: 8,
+                    runSpacing: 8,
                     children: [
-                      for (final (i, t)
-                          in const [(0, '🛒 Caja'), (1, '📦 Productos'), (2, '📊 Reporte')])
+                      for (final (i, t) in [
+                        (0, '🛒 Caja'),
+                        (1, '📦 Productos'),
+                        (2, '📊 Reporte'),
+                        (
+                          3,
+                          _pendientes == 0
+                              ? '🛎️ Pedidos'
+                              : '🛎️ Pedidos ($_pendientes)'
+                        ),
+                      ])
                         ChoiceChip(
                           label: Text(t),
                           selected: _tab == i,
@@ -592,7 +608,9 @@ class _BodegaScreenState extends State<BodegaScreen> {
                     ],
                   ),
                   const SizedBox(height: 14),
-                  if (_productos.isEmpty)
+                  if (_tab == 3)
+                    ..._vistaPedidos(context)
+                  else if (_productos.isEmpty)
                     _vacio(context)
                   else if (_tab == 0)
                     ..._vistaCaja(context)
@@ -696,6 +714,347 @@ class _BodegaScreenState extends State<BodegaScreen> {
         ],
       ),
     );
+  }
+
+  int get _pendientes =>
+      _pedidos.where((p) => p.pendiente && !p.expirado).length;
+
+  Future<void> _toggleAceptaPedidos(bool v) async {
+    final cfg = (_config ?? ConfigBodega(dueno: _email))
+        .copyWith(aceptaPedidos: v);
+    setState(() => _config = cfg);
+    final ok = await BodegaRepo.guardarConfig(cfg);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No se pudo guardar. ¿Corriste el SQL de pedidos '
+              'de la bodega en Supabase?')));
+    }
+  }
+
+  Future<void> _editarZonas() async {
+    final cfg = _config ?? ConfigBodega(dueno: _email);
+    final zonas = List<String>.of(cfg.zonas);
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (bctx) => StatefulBuilder(
+        builder: (bctx, setSB) {
+          final bottom = MediaQuery.of(bctx).viewInsets.bottom;
+          final nueva = TextEditingController();
+          return Padding(
+            padding: EdgeInsets.fromLTRB(20, 16, 20, 16 + bottom),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Zonas de entrega 📍',
+                    style:
+                        TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+                const SizedBox(height: 4),
+                const Text(
+                    'El cliente elige a dónde le llevas su pedido.',
+                    style: TextStyle(color: textoTenue, fontSize: 12.5)),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final z in zonas)
+                      InputChip(
+                        label: Text(z),
+                        onDeleted: zonas.length > 1
+                            ? () => setSB(() => zonas.remove(z))
+                            : null,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: nueva,
+                  maxLength: 20,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: InputDecoration(
+                    labelText: 'Agregar zona',
+                    hintText: 'Ej.: Cancha 3',
+                    counterText: '',
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.add_circle, color: bosque),
+                      onPressed: () {
+                        final z = nueva.text.trim();
+                        if (z.isNotEmpty && !zonas.contains(z)) {
+                          setSB(() {
+                            zonas.add(z);
+                            nueva.clear();
+                          });
+                        }
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton(
+                    onPressed: () => Navigator.pop(bctx, true),
+                    child: const Text('Guardar'),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+    if (ok == true) {
+      final cfg2 = cfg.copyWith(zonas: zonas);
+      setState(() => _config = cfg2);
+      await BodegaRepo.guardarConfig(cfg2);
+    }
+  }
+
+  Future<void> _responderPedido(PedidoBodega p, bool confirmar) async {
+    final estado = confirmar ? 'confirmado' : 'rechazado';
+    final ok = await BodegaRepo.actualizarEstadoPedido(p.id, estado);
+    if (!ok) return;
+    setState(() {
+      _pedidos = [
+        for (final x in _pedidos) x.id == p.id ? x.conEstado(estado) : x,
+      ];
+    });
+    appState.avisarPedidoBodega(
+      email: p.cliente,
+      titulo: confirmar
+          ? 'Pedido confirmado 🏃'
+          : 'Pedido rechazado 😔',
+      cuerpo: confirmar
+          ? 'Tu pedido (${p.resumen}) va en camino a la ${p.zona}. Pagas al '
+              'recibirlo.'
+          : 'El local no pudo tomar tu pedido (${p.resumen}). Acércate al '
+              'mostrador.',
+    );
+  }
+
+  /// ENTREGAR Y COBRAR: registra la venta (descuenta stock) con el medio
+  /// elegido y marca el pedido entregado. El pedido pre-carga el ticket.
+  Future<void> _entregarPedido(PedidoBodega p) async {
+    final medio = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (bctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                    'Entregado a la ${p.zona} · cobrar ${p.moneda} ${p.total.toStringAsFixed(2)} — ¿cómo pagó?',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800, fontSize: 16)),
+              ),
+            ),
+            ListTile(
+                leading: const Text('💵', style: TextStyle(fontSize: 22)),
+                title: const Text('Efectivo'),
+                onTap: () => Navigator.pop(bctx, 'efectivo')),
+            ListTile(
+                leading: const Text('📱', style: TextStyle(fontSize: 22)),
+                title: Text(paisActual.iso == 'PE'
+                    ? 'Yape / Plin del local'
+                    : 'QR / transferencia del local'),
+                onTap: () => Navigator.pop(bctx, 'yape')),
+            ListTile(
+                leading: const Text('🎁', style: TextStyle(fontSize: 22)),
+                title: const Text('Cortesía (no se cobra)'),
+                onTap: () => Navigator.pop(bctx, 'cortesia')),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (medio == null || !mounted) return;
+    final nuevoStock = <String, int>{};
+    for (final i in p.items) {
+      final prod = _productos
+          .cast<ProductoBodega?>()
+          .firstWhere((x) => x!.id == i.productoId, orElse: () => null);
+      if (prod != null) {
+        nuevoStock[prod.id] =
+            (prod.stock - i.cantidad) < 0 ? 0 : prod.stock - i.cantidad;
+      }
+    }
+    final venta = VentaBodega(
+      id: 'bv_${DateTime.now().microsecondsSinceEpoch}',
+      dueno: _email,
+      items: p.items,
+      total: medio == 'cortesia' ? 0 : p.total,
+      medioPago: medio,
+      creado: DateTime.now(),
+    );
+    final ok = await conPreload(
+        context, () => BodegaRepo.registrarVenta(venta, nuevoStock),
+        texto: 'Registrando…');
+    if (!mounted || !ok) return;
+    await BodegaRepo.actualizarEstadoPedido(p.id, 'entregado');
+    setState(() {
+      _ventas = [venta, ..._ventas];
+      _productos = [
+        for (final x in _productos)
+          nuevoStock.containsKey(x.id)
+              ? x.copyWith(stock: nuevoStock[x.id])
+              : x,
+      ];
+      _pedidos = [
+        for (final x in _pedidos)
+          x.id == p.id ? x.conEstado('entregado') : x,
+      ];
+    });
+    appState.avisarPedidoBodega(
+      email: p.cliente,
+      titulo: 'Pedido entregado ✅',
+      cuerpo: '¡Que lo disfrutes! Gracias por pedir en ${'la bodega'}.',
+    );
+  }
+
+  List<Widget> _vistaPedidos(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final cfg = _config ?? ConfigBodega(dueno: _email);
+    final orden = [..._pedidos]..sort((a, b) {
+        int peso(PedidoBodega p) =>
+            p.pendiente ? 0 : p.confirmado ? 1 : 2;
+        final d = peso(a) - peso(b);
+        return d != 0 ? d : b.creado.compareTo(a.creado);
+      });
+    String hace(DateTime d) {
+      final m = DateTime.now().difference(d).inMinutes;
+      return m < 1 ? 'ahora' : m < 60 ? 'hace $m min' : 'hace ${m ~/ 60} h';
+    }
+
+    return [
+      // Toggle + zonas (config del dueño).
+      Container(
+        padding: const EdgeInsets.fromLTRB(14, 4, 6, 4),
+        decoration: BoxDecoration(
+          color: cs.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: trazo),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Acepto pedidos a la cancha',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 14.5)),
+                subtitle: const Text(
+                    'Tus clientes piden desde su cancha y tú confirmas.',
+                    style: TextStyle(fontSize: 12)),
+                value: cfg.aceptaPedidos,
+                onChanged: _toggleAceptaPedidos,
+              ),
+            ),
+            IconButton(
+              tooltip: 'Zonas de entrega',
+              onPressed: _editarZonas,
+              icon: const Icon(Icons.edit_location_alt_outlined,
+                  color: bosque),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 12),
+      if (orden.isEmpty)
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 30),
+          child: Center(
+            child: Text('Sin pedidos aún. Activa el switch y tus clientes '
+                'podrán pedir desde su cancha 🍺',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: textoTenue)),
+          ),
+        ),
+      for (final p in orden)
+        Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: p.pendiente && !p.expirado ? limaSuave : cs.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+                color: p.pendiente && !p.expirado ? lima : trazo),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text('${p.resumen} → ${p.zona}',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 15)),
+                  ),
+                  Text('${p.moneda} ${p.total.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w900, color: bosque)),
+                ],
+              ),
+              const SizedBox(height: 2),
+              Text('${p.clienteNombre} · ${hace(p.creado)}',
+                  style:
+                      const TextStyle(color: textoTenue, fontSize: 12.5)),
+              const SizedBox(height: 10),
+              if (p.pendiente)
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton(
+                        style:
+                            FilledButton.styleFrom(backgroundColor: lima),
+                        onPressed: () => _responderPedido(p, true),
+                        child: const Text('Confirmar ✅'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton(
+                      onPressed: () => _responderPedido(p, false),
+                      child: const Text('Rechazar',
+                          style: TextStyle(color: Colors.redAccent)),
+                    ),
+                  ],
+                )
+              else if (p.confirmado)
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(backgroundColor: bosque),
+                    onPressed: () => _entregarPedido(p),
+                    icon: const Icon(Icons.check_circle_outline, size: 18),
+                    label: const Text('Entregado · cobrar y descontar stock'),
+                  ),
+                )
+              else
+                Text(
+                    switch (p.estado) {
+                      'entregado' => 'Entregado ✅ (venta registrada)',
+                      'rechazado' => 'Rechazado',
+                      'cancelado' => 'Cancelado por el cliente',
+                      _ => 'Sin respuesta (expiró)',
+                    },
+                    style: const TextStyle(
+                        color: textoTenue,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
+    ];
   }
 
   // CAJA: un card por producto; tap = +1, botón "-" resta.

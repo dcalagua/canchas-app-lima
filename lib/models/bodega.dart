@@ -152,3 +152,119 @@ class VentaBodega {
             DateTime.now(),
       );
 }
+
+/// Configuración de la bodega (Fase 2, pedidos a la cancha): si el dueño
+/// acepta pedidos y las ZONAS de entrega (Cancha 1, Mesa…). Apagado por
+/// defecto: cada local decide si tiene quién lleve.
+class ConfigBodega {
+  final String dueno;
+  final bool aceptaPedidos;
+  final List<String> zonas;
+
+  const ConfigBodega({
+    required this.dueno,
+    this.aceptaPedidos = false,
+    this.zonas = const ['Cancha 1', 'Cancha 2', 'Mesa', 'Mostrador'],
+  });
+
+  ConfigBodega copyWith({bool? aceptaPedidos, List<String>? zonas}) =>
+      ConfigBodega(
+        dueno: dueno,
+        aceptaPedidos: aceptaPedidos ?? this.aceptaPedidos,
+        zonas: zonas ?? this.zonas,
+      );
+
+  Map<String, dynamic> toRow() => {
+        'dueno': dueno,
+        'acepta_pedidos': aceptaPedidos,
+        'zonas': zonas,
+      };
+
+  factory ConfigBodega.fromRow(Map<String, dynamic> r) => ConfigBodega(
+        dueno: (r['dueno'] ?? '') as String,
+        aceptaPedidos: (r['acepta_pedidos'] ?? false) as bool,
+        zonas: (r['zonas'] as List?)?.map((e) => e.toString()).toList() ??
+            const ['Cancha 1', 'Cancha 2', 'Mesa', 'Mostrador'],
+      );
+}
+
+/// Un PEDIDO a la cancha: el jugador lo arma desde su ubicación en el local,
+/// el dueño lo confirma y se lo llevan; al entregar se cobra como siempre.
+class PedidoBodega {
+  final String id;
+  final String dueno;
+  final String cliente; // correo del que pide
+  final String clienteNombre;
+  final String zona; // a dónde llevarlo (Cancha 2, Mesa…)
+  final List<ItemVentaBodega> items;
+  final double total;
+  final String moneda;
+  final String estado; // pendiente|confirmado|entregado|rechazado|cancelado
+  final DateTime creado;
+
+  const PedidoBodega({
+    required this.id,
+    required this.dueno,
+    required this.cliente,
+    required this.clienteNombre,
+    required this.zona,
+    required this.items,
+    required this.total,
+    required this.moneda,
+    this.estado = 'pendiente',
+    required this.creado,
+  });
+
+  bool get pendiente => estado == 'pendiente';
+  bool get confirmado => estado == 'confirmado';
+
+  /// Un pendiente sin respuesta en 10 min se muestra EXPIRADO (no dejar al
+  /// cliente colgado); el dueño aún puede confirmarlo si llega a tiempo.
+  bool get expirado =>
+      pendiente && DateTime.now().difference(creado).inMinutes >= 10;
+
+  String get resumen =>
+      items.map((i) => '${i.cantidad} ${i.nombre}').join(' + ');
+
+  PedidoBodega conEstado(String e) => PedidoBodega(
+        id: id,
+        dueno: dueno,
+        cliente: cliente,
+        clienteNombre: clienteNombre,
+        zona: zona,
+        items: items,
+        total: total,
+        moneda: moneda,
+        estado: e,
+        creado: creado,
+      );
+
+  Map<String, dynamic> toRow() => {
+        'id': id,
+        'dueno': dueno,
+        'cliente': cliente,
+        'cliente_nombre': clienteNombre,
+        'zona': zona,
+        'items': items.map((i) => i.toJson()).toList(),
+        'total': total,
+        'moneda': moneda,
+        'estado': estado,
+      };
+
+  factory PedidoBodega.fromRow(Map<String, dynamic> r) => PedidoBodega(
+        id: (r['id'] ?? '') as String,
+        dueno: (r['dueno'] ?? '') as String,
+        cliente: (r['cliente'] ?? '') as String,
+        clienteNombre: (r['cliente_nombre'] ?? '') as String,
+        zona: (r['zona'] ?? '') as String,
+        items: ((r['items'] as List?) ?? const [])
+            .map((e) =>
+                ItemVentaBodega.fromJson(Map<String, dynamic>.from(e as Map)))
+            .toList(),
+        total: (r['total'] as num?)?.toDouble() ?? 0,
+        moneda: (r['moneda'] ?? 'S/') as String,
+        estado: (r['estado'] ?? 'pendiente') as String,
+        creado: DateTime.tryParse((r['creado'] ?? '') as String)?.toLocal() ??
+            DateTime.now(),
+      );
+}

@@ -269,8 +269,17 @@ reposición, reportes (hoy/7 días/top/valorizado) y **carta digital pública**
 backend growth). `carta_id` = hash FNV del correo (no expone el email).
 Datos: `lib/models/bodega.dart`, `lib/data/bodega_repo.dart`, tablas
 `pichangol_bodega_productos`/`pichangol_bodega_ventas`
-(SQL `docs/piloto/supabase_bodega.sql`). Candado Pro dentro de la pantalla.
-Fase 2 (backlog): pago in-app opcional que descuenta stock solo.
+(SQL `docs/piloto/supabase_bodega.sql` + `supabase_bodega_moneda.sql`).
+Candado Pro dentro de la pantalla.
+**Fase 2 — PEDIDOS A LA CANCHA (hecho):** el jugador pide desde la ficha del
+club (`pedir_bodega_screen.dart`, botón "Bodega del local" en club_detalle,
+solo locales verificados) → push al dueño (`avisarPedidoBodega`) → pestaña
+"Pedidos" de la bodega: Confirmar/Rechazar y "Entregado · cobrar" (registra
+venta + descuenta stock). Candados: toggle `acepta_pedidos` (off default) +
+zonas configurables + GPS ≤250 m + expira a los 10 min. Tablas
+`pichangol_bodega_pedidos`/`pichangol_bodega_config`
+(SQL `docs/piloto/supabase_bodega_pedidos.sql`).
+Fase 3 (backlog): pago in-app del pedido (saldo Pichangol).
 
 ## Mensajería: arquitectura DEVICE-FIRST (cache, tal cual WhatsApp)
 

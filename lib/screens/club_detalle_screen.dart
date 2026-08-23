@@ -21,6 +21,7 @@ import '../widgets/candado_pro.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/marca.dart';
 import 'bonos_dueno_screen.dart';
+import 'pedir_bodega_screen.dart';
 import 'chat_screen.dart';
 import 'editar_cancha_screen.dart';
 import '../utils/moneda.dart';
@@ -982,6 +983,32 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                     // Servicios (amenities) que el dueño marcó para esta cancha.
                     if (_cancha.amenidades.isNotEmpty) ...[
                       _FilaAmenities(claves: _cancha.amenidades),
+                      const SizedBox(height: 20),
+                    ],
+                    // BODEGA del local: pedir a tu cancha (Fase 2 de Mi
+                    // bodega). Solo locales verificados con dueño; la
+                    // pantalla valida si el dueño aceptó pedidos.
+                    if (_cancha.verificada &&
+                        _cancha.dueno.isNotEmpty &&
+                        _cancha.dueno.toLowerCase() !=
+                            (appState.usuario?.email ?? '')
+                                .toLowerCase()) ...[
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                  builder: (_) => PedirBodegaScreen(
+                                        duenoEmail: _cancha.dueno,
+                                        nombreLocal: widget.club.nombre,
+                                        ubicacionLocal: _cancha.ubicacion,
+                                      ))),
+                          icon: const Text('🍺',
+                              style: TextStyle(fontSize: 16)),
+                          label: const Text(
+                              'Bodega del local · pide a tu cancha'),
+                        ),
+                      ),
                       const SizedBox(height: 20),
                     ],
                     // Día
