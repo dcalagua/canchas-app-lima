@@ -3,6 +3,48 @@
 /// con su Yape/efectivo); aquí solo se registra la venta y baja el stock.
 library;
 
+/// "Imagen" AUTOMÁTICA del producto: emoji grande según QUÉ es (no la
+/// marca), así funciona igual en los 3 países (Pilsen, Paceña y Pilsener
+/// son 🍺). La foto real del dueño (fotoUrl) siempre manda si existe.
+String emojiProductoBodega(String nombre, String categoria) {
+  final n = nombre.toLowerCase();
+  if (n.contains('agua')) return '💧';
+  if (n.contains('jugo') || n.contains('frugos') || n.contains('cifrut')) {
+    return '🧃';
+  }
+  if (n.contains('gatorade') ||
+      n.contains('powerade') ||
+      n.contains('sporade') ||
+      n.contains('volt') ||
+      n.contains('profit')) {
+    return '⚡';
+  }
+  if (n.contains('paleta')) return '🏓';
+  if (n.contains('pelota')) return '🎾';
+  if (n.contains('papita') ||
+      n.contains('lays') ||
+      n.contains('dorito') ||
+      n.contains('chifle') ||
+      n.contains('chizito') ||
+      n.contains('kchito')) {
+    return '🍟';
+  }
+  if (n.contains('galleta')) return '🍪';
+  if (n.contains('chocolate') || n.contains('sublime')) return '🍫';
+  if (n.contains('maní') || n.contains('mani')) return '🥜';
+  if (n.contains('sandwich') || n.contains('sánguche')) return '🥪';
+  if (n.contains('hielo')) return '🧊';
+  if (n.contains('cigarro')) return '🚬';
+  if (n.contains('gorra')) return '🧢';
+  return switch (categoria) {
+    'Cervezas' => '🍺',
+    'Bebidas' => '🥤',
+    'Deportivo' => '🎽',
+    'Snacks' => '🍿',
+    _ => '🛒',
+  };
+}
+
 /// Un producto de la bodega del local (cerveza, gaseosa, agua, snack…).
 class ProductoBodega {
   final String id;
@@ -32,6 +74,9 @@ class ProductoBodega {
   });
 
   bool get stockBajo => stock <= stockMin;
+
+  /// Emoji-imagen del producto (cuando no hay foto real).
+  String get emoji => emojiProductoBodega(nombre, categoria);
 
   ProductoBodega copyWith({
     String? nombre,

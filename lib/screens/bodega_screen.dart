@@ -1089,14 +1089,24 @@ class _BodegaScreenState extends State<BodegaScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
-                      child: Text(p.nombre,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              color: p.stock <= 0
-                                  ? Colors.grey
-                                  : cs.onSurface)),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(p.emoji,
+                              style: const TextStyle(fontSize: 20)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(p.nombre,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    color: p.stock <= 0
+                                        ? Colors.grey
+                                        : cs.onSurface)),
+                          ),
+                        ],
+                      ),
                     ),
                     Text('$_mon ${p.precio.toStringAsFixed(2)}',
                         style: const TextStyle(
@@ -1165,15 +1175,33 @@ class _BodegaScreenState extends State<BodegaScreen> {
                       borderRadius: BorderRadius.circular(10),
                       child: Image.network(p.fotoUrl!,
                           width: 44, height: 44, fit: BoxFit.cover))
-                  : Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: limaSuave,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(Icons.add_a_photo_outlined,
-                          size: 18, color: bosque),
+                  // Emoji-imagen automática (multi-país) + mini cámara para
+                  // indicar que puede subir SU foto cuando quiera.
+                  : Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: limaSuave,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(p.emoji,
+                              style: const TextStyle(fontSize: 22)),
+                        ),
+                        const Positioned(
+                          right: -4,
+                          bottom: -4,
+                          child: CircleAvatar(
+                            radius: 8,
+                            backgroundColor: bosque,
+                            child: Icon(Icons.add_a_photo_outlined,
+                                size: 9, color: Colors.white),
+                          ),
+                        ),
+                      ],
                     ),
             ),
             title: Text(p.nombre,

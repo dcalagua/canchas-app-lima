@@ -402,13 +402,15 @@ class _PedirBodegaScreenState extends State<PedirBodegaScreen> {
                                 : Container(
                                     width: 44,
                                     height: 44,
+                                    alignment: Alignment.center,
                                     decoration: BoxDecoration(
                                       color: limaSuave,
                                       borderRadius:
                                           BorderRadius.circular(10),
                                     ),
-                                    child: const Icon(Icons.local_drink,
-                                        size: 20, color: bosque),
+                                    child: Text(p.emoji,
+                                        style:
+                                            const TextStyle(fontSize: 22)),
                                   ),
                             title: Text(p.nombre,
                                 style: const TextStyle(

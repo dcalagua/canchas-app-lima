@@ -26,6 +26,29 @@ _EMOJI_CAT = {
     "Snacks": "🍿", "Otros": "🛒",
 }
 
+# "Imagen" automática del producto: emoji según QUÉ es (no la marca) — igual
+# en los 3 países (Pilsen/Paceña/Pilsener → 🍺). Espejo del APK
+# (emojiProductoBodega en lib/models/bodega.dart).
+_EMOJI_KEYS = [
+    ("agua", "💧"), ("jugo", "🧃"), ("frugos", "🧃"), ("cifrut", "🧃"),
+    ("gatorade", "⚡"), ("powerade", "⚡"), ("sporade", "⚡"),
+    ("volt", "⚡"), ("profit", "⚡"),
+    ("paleta", "🏓"), ("pelota", "🎾"),
+    ("papita", "🍟"), ("lays", "🍟"), ("dorito", "🍟"), ("chifle", "🍟"),
+    ("chizito", "🍟"), ("kchito", "🍟"),
+    ("galleta", "🍪"), ("chocolate", "🍫"), ("sublime", "🍫"),
+    ("maní", "🥜"), ("mani", "🥜"), ("sandwich", "🥪"),
+    ("hielo", "🧊"), ("cigarro", "🚬"), ("gorra", "🧢"),
+]
+
+
+def _emoji_producto(nombre: str, categoria: str) -> str:
+    n = (nombre or "").lower()
+    for clave, emo in _EMOJI_KEYS:
+        if clave in n:
+            return emo
+    return _EMOJI_CAT.get(categoria, "🛒")
+
 
 def _esc(s) -> str:
     return html.escape(str(s if s is not None else ""), quote=True)
@@ -75,9 +98,11 @@ def html_carta(productos: list[dict]) -> str:
         for p in items:
             agotado = (p.get("stock") or 0) <= 0
             foto = str(p.get("foto_url") or "").strip()
+            emo_prod = _emoji_producto(
+                str(p.get("nombre") or ""), cat)
             img = (f'<img src="{_esc(foto)}" alt="" loading="lazy">'
                    if foto.startswith("http") else
-                   f'<span class="ph">{emoji}</span>')
+                   f'<span class="ph">{emo_prod}</span>')
             precio = float(p.get("precio") or 0)
             mon = str(p.get("moneda") or "S/").strip() or "S/"
             filas.append(
