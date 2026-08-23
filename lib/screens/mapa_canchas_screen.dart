@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../models/club.dart';
+import '../services/location_service.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -397,6 +398,45 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
     );
   }
 
+  bool _yendoAMiUbicacion = false;
+
+  /// Botón "MI UBICACIÓN" (pedido del director): centra el mapa en tu GPS.
+  /// El botón nativo de Google está apagado porque el header flotante lo
+  /// tapaba; este vive a la derecha, sobre la lámina plegada.
+  Widget _botonMiUbicacion() {
+    return Material(
+      elevation: 4,
+      shape: const CircleBorder(),
+      color: Theme.of(context).colorScheme.surface,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: () async {
+          if (_yendoAMiUbicacion) return;
+          setState(() => _yendoAMiUbicacion = true);
+          final pos = await LocationService.ubicacionActual();
+          if (!mounted) return;
+          setState(() => _yendoAMiUbicacion = false);
+          if (pos == null) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                content: Text('Activa la ubicación del teléfono para '
+                    'centrar el mapa donde estás.')));
+            return;
+          }
+          _mapCtrl?.animateCamera(CameraUpdate.newLatLngZoom(pos, 15));
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: _yendoAMiUbicacion
+              ? const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.my_location, size: 22, color: bosque),
+        ),
+      ),
+    );
+  }
+
   /// El mapa en sí (mismo comportamiento en teléfono y tablet).
   Widget _mapa() => GoogleMap(
         // Zoom abierto (se ve el barrio completo, como Airbnb).
@@ -719,6 +759,11 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
                   child: Stack(
                     children: [
                       Positioned.fill(child: _mapa()),
+                      Positioned(
+                        right: 14,
+                        bottom: 24,
+                        child: _botonMiUbicacion(),
+                      ),
                       if (_ofrecerBusqueda || _buscando)
                         Positioned(
                           top: 14,
@@ -787,6 +832,13 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
               ),
             ),
             ),
+          ),
+          // Botón "mi ubicación": centra el mapa en tu GPS. Queda sobre la
+          // lámina plegada; al subir la lámina, esta lo cubre (correcto).
+          Positioned(
+            right: 14,
+            bottom: 150 + MediaQuery.of(context).padding.bottom,
+            child: _botonMiUbicacion(),
           ),
           // Lámina arrastrable inferior (como el "Más de 1000 alojamientos"
           // de Airbnb) con 3 NIVELES: asomada → hasta DEBAJO de los atributos
