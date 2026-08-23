@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-
-import '../theme.dart';
 
 /// Globo flotante de CHAT interno (siempre a la mano). Con identidad Pichangol:
 /// - Si hay una imagen ([logoUrl]: LOGO de la academia o FOTO de la cancha) →
-///   la usa como avatar con una insignia verde de chat (matiz "WhatsApp") → se
-///   siente personal.
-/// - Si NO hay imagen (o falla la carga) → un robot (asistente), verde de marca,
-///   con la puntita amarilla (la "o" pelota de Pichang·o·l).
+///   la usa como avatar → se siente personal.
+/// - Si NO hay imagen (o falla la carga) → la MASCOTA de la marca: el pin de
+///   Pichangol (el de la pestaña Mensajes, decisión del director) sobre blanco.
+/// En AMBOS casos lleva la insignia verde de chat (matiz "WhatsApp") para que
+/// se lea como "aquí se chatea", no como un botón cualquiera.
 /// Se usa como `floatingActionButton` en las fichas (academia, cancha/club).
 class ChatBurbuja extends StatelessWidget {
   const ChatBurbuja({
@@ -19,29 +17,23 @@ class ChatBurbuja extends StatelessWidget {
 
   final VoidCallback onTap;
 
-  /// Logo de la academia/cancha. Si viene (y carga), reemplaza al robot.
+  /// Logo de la academia/cancha. Si viene (y carga), reemplaza al pin.
   final String? logoUrl;
 
   // Verde WhatsApp oficial: da el "matiz de chat" a la insignia sobre el logo.
   static const _verdeWa = Color(0xFF25D366);
 
-  // Contenido del robot (sin fondo: el fondo lima lo pone el Material).
-  Widget _robotContenido() => Stack(
-        clipBehavior: Clip.none,
+  // Fallback de marca: el pin de Pichangol (la "o" pelota) sobre blanco —
+  // el mismo asset de la pestaña Mensajes, nada de robots genéricos.
+  Widget _pichangolContenido() => Container(
+        color: Colors.white,
         alignment: Alignment.center,
-        children: [
-          const FaIcon(FontAwesomeIcons.robot, size: 24, color: Colors.white),
-          Positioned(
-            top: 8,
-            right: 12,
-            child: Container(
-              width: 6,
-              height: 6,
-              decoration: const BoxDecoration(
-                  color: Color(0xFFD9B45A), shape: BoxShape.circle),
-            ),
-          ),
-        ],
+        child: Image.asset(
+          'assets/brand/logo_pin.png',
+          width: 32,
+          height: 32,
+          filterQuality: FilterQuality.medium,
+        ),
       );
 
   @override
@@ -54,13 +46,13 @@ class ChatBurbuja extends StatelessWidget {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          // Círculo tappable con sombra (estilo FAB). El fondo va en el Material
-          // (blanco si hay logo, lima si es robot) para que la elevación renderice.
+          // Círculo tappable con sombra (estilo FAB). Fondo blanco en ambos
+          // casos (logo o pin de marca) para que la elevación renderice.
           Material(
             elevation: 4,
             shape: const CircleBorder(),
             clipBehavior: Clip.antiAlias,
-            color: tieneLogo ? Colors.white : lima,
+            color: Colors.white,
             child: InkWell(
               onTap: onTap,
               customBorder: const CircleBorder(),
@@ -71,35 +63,31 @@ class ChatBurbuja extends StatelessWidget {
                     ? Image.network(
                         logoUrl!.trim(),
                         fit: BoxFit.cover,
-                        // Si el logo no carga, cae al robot sobre fondo lima.
-                        errorBuilder: (_, __, ___) => Container(
-                            color: lima,
-                            alignment: Alignment.center,
-                            child: _robotContenido()),
+                        // Si el logo no carga, cae al pin de Pichangol.
+                        errorBuilder: (_, __, ___) => _pichangolContenido(),
                       )
-                    : _robotContenido(),
+                    : _pichangolContenido(),
               ),
             ),
           ),
-          // Insignia de chat (matiz WhatsApp) SOLO cuando hay logo: deja claro
-          // que el avatar es un botón para chatear.
-          if (tieneLogo)
-            Positioned(
-              right: -1,
-              bottom: -1,
-              child: Container(
-                width: 22,
-                height: 22,
-                decoration: BoxDecoration(
-                  color: _verdeWa,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 2),
-                ),
-                alignment: Alignment.center,
-                child: const Icon(Icons.chat_bubble_rounded,
-                    size: 10, color: Colors.white),
+          // Insignia de chat (matiz WhatsApp) SIEMPRE: deja claro que este
+          // globo es para chatear, con logo del local o con el pin de marca.
+          Positioned(
+            right: -1,
+            bottom: -1,
+            child: Container(
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                color: _verdeWa,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 2),
               ),
+              alignment: Alignment.center,
+              child: const Icon(Icons.chat_bubble_rounded,
+                  size: 10, color: Colors.white),
             ),
+          ),
         ],
       ),
     );
