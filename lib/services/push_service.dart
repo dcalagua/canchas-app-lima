@@ -79,6 +79,15 @@ class PushService {
   /// aprobada"). Lo define main.dart.
   static void Function()? alAbrirMisCanchas;
 
+  /// Callback que abre "Mi bodega" en la pestaña Pedidos (al tocar el push de
+  /// un pedido, siendo DUEÑO). Lo define main.dart.
+  static void Function()? alAbrirBodegaDueno;
+
+  /// Callback que abre la pantalla de pedidos del CLIENTE en la bodega del
+  /// local [duenoEmail] (al tocar el push confirmado/entregado/anotado).
+  /// Lo define main.dart.
+  static void Function(String duenoEmail)? alAbrirBodegaCliente;
+
   /// Invoca la Edge Function `push-reserva` para avisar al DUEÑO de la cancha
   /// que entró una reserva (push dedicado, fuera del chat). Se pasa SOLO el id
   /// (o el del grupo si son varias horas); el servidor deriva destinatario y
@@ -157,6 +166,20 @@ class PushService {
       alAbrirMisCanchas?.call();
       return;
     }
+    // Push de PEDIDO DE BODEGA → abre la pantalla del rol correcto: el CLIENTE
+    // va a sus pedidos del local (data trae el correo del dueño = el local);
+    // el DUEÑO va a Mi bodega, pestaña Pedidos. Avisos viejos sin 'destino'
+    // caen por el correo del dueño si viaja.
+    if (data['tipo'] == 'bodega_pedido') {
+      final destino = (data['destino'] ?? '').toString();
+      final dueno = (data['dueno'] ?? '').toString();
+      if (destino == 'cliente' || dueno.isNotEmpty) {
+        alAbrirBodegaCliente?.call(dueno);
+      } else {
+        alAbrirBodegaDueno?.call();
+      }
+      return;
+    }
     final hilo = (data['hilo'] ?? '').toString();
     if (hilo.isNotEmpty) alAbrirChat?.call(hilo);
   }
@@ -226,11 +249,15 @@ class PushService {
       final c = (n?.body ?? '').trim();
       if (t.isEmpty && c.isEmpty) return; // data-only: nada que pintar
       // Pedido de bodega: avisa al panel para que se refresque solo.
-      if (m.data['tipo'] == 'bodega_pedido') nuevoPedidoBodega.value++;
+      final esBodega = m.data['tipo'] == 'bodega_pedido';
+      if (esBodega) nuevoPedidoBodega.value++;
       try {
         _sonidoPush.play(AssetSource('sonidos/pichan.mp3'));
       } catch (_) {}
-      _mostrarBanner(t.isEmpty ? 'Pichangol' : t, c);
+      // El banner in-app también navega al tocarlo (igual que la notificación
+      // del sistema): pedidos de bodega van a su pantalla.
+      _mostrarBanner(t.isEmpty ? 'Pichangol' : t, c,
+          onTap: esBodega ? () => _abrir(m.data) : null);
       return;
     }
     // Avisa a la bandeja para que se refresque sola (aunque el chat esté abierto

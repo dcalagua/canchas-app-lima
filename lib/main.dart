@@ -6,9 +6,12 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'brand.dart';
 import 'config/pais.dart';
 import 'data/presencia_repo.dart';
+import 'models/models.dart';
+import 'screens/bodega_screen.dart';
 import 'screens/llamada_screen.dart';
 import 'screens/mensajes_screen.dart';
 import 'screens/home_shell.dart';
+import 'screens/pedir_bodega_screen.dart';
 import 'screens/reservas_dueno_screen.dart';
 import 'services/enlaces_service.dart';
 import 'services/recordatorio_service.dart';
@@ -59,6 +62,38 @@ void main() async {
     final nav = PushService.navigatorKey.currentState;
     if (nav == null) return;
     nav.push(MaterialPageRoute(builder: (_) => const HomeShell()));
+  };
+  // Al tocar el push de un PEDIDO DE BODEGA siendo DUEÑO, abre Mi bodega
+  // directo en la pestaña Pedidos.
+  PushService.alAbrirBodegaDueno = () {
+    final nav = PushService.navigatorKey.currentState;
+    if (nav == null) return;
+    nav.push(MaterialPageRoute(
+        builder: (_) => const BodegaScreen(tabInicial: 3)));
+  };
+  // Al tocar el push confirmado/entregado/anotado siendo CLIENTE, abre su
+  // pantalla de pedidos del local (el nombre y la ubicación se resuelven de
+  // las canchas ya cargadas del dueño; sin match igual se abre y muestra el
+  // estado del pedido).
+  PushService.alAbrirBodegaCliente = (duenoEmail) {
+    final nav = PushService.navigatorKey.currentState;
+    final d = duenoEmail.trim().toLowerCase();
+    if (nav == null || d.isEmpty) return;
+    Cancha? c;
+    for (final x in [...appState.canchasExtra, ...appState.canchasRemotas]) {
+      if (x.dueno.trim().toLowerCase() == d) {
+        c = x;
+        break;
+      }
+    }
+    nav.push(MaterialPageRoute(
+        builder: (_) => PedirBodegaScreen(
+              duenoEmail: d,
+              nombreLocal: (c?.club.trim().isNotEmpty ?? false)
+                  ? c!.club.trim()
+                  : (c?.nombre ?? 'Local'),
+              ubicacionLocal: c?.ubicacion,
+            )));
   };
   // Al CONTESTAR una llamada entrante (CallKit), abre la pantalla de llamada
   // WebRTC en modo "contestar".

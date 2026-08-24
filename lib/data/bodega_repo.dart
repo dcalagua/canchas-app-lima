@@ -220,7 +220,9 @@ class BodegaRepo {
     final c = cliente.trim().toLowerCase();
     if (!SupabaseService.disponible || c.isEmpty) return const [];
     try {
-      final desde = DateTime.now().subtract(const Duration(hours: 12));
+      // 30 días: la pantalla del cliente separa los ACTIVOS (arriba, con su
+      // recorrido) del HISTORIAL agrupado por fecha.
+      final desde = DateTime.now().subtract(const Duration(days: 30));
       final rows = await SupabaseService.client
           .from(_tPedidos)
           .select()
@@ -228,7 +230,7 @@ class BodegaRepo {
           .eq('dueno', dueno.trim().toLowerCase())
           .gte('creado', desde.toUtc().toIso8601String())
           .order('creado', ascending: false)
-          .limit(10);
+          .limit(50);
       return [
         for (final r in (rows as List))
           PedidoBodega.fromRow(Map<String, dynamic>.from(r as Map)),

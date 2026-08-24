@@ -7663,10 +7663,24 @@ class AppState extends ChangeNotifier {
 
   /// Push de PEDIDOS de bodega (cliente→dueño al pedir; dueño→cliente al
   /// confirmar/entregar/rechazar). Mismo doble canal fail-safe de _pushAviso.
+  /// [destino] viaja en el data del push para que el TAP en la notificación
+  /// abra la pantalla correcta: 'dueno' → panel Mi bodega (pestaña Pedidos);
+  /// 'cliente' → su pantalla de pedidos del local ([dueno] identifica el local).
   void avisarPedidoBodega(
-      {required String email, required String titulo, required String cuerpo}) {
+      {required String email,
+      required String titulo,
+      required String cuerpo,
+      String destino = '',
+      String dueno = ''}) {
     _pushAviso(
-        email: email, titulo: titulo, cuerpo: cuerpo, tipo: 'bodega_pedido');
+        email: email,
+        titulo: titulo,
+        cuerpo: cuerpo,
+        tipo: 'bodega_pedido',
+        data: {
+          if (destino.isNotEmpty) 'destino': destino,
+          if (dueno.isNotEmpty) 'dueno': dueno.trim().toLowerCase(),
+        });
   }
 
   // ── Aviso LOCAL al JUGADOR con el resultado de SU reserva ─────────────────

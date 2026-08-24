@@ -48,8 +48,19 @@ class _PedirBodegaScreenState extends State<PedirBodegaScreen> {
   final Map<String, int> _ticket = {};
   String _zona = '';
   bool _enviando = false;
+  bool _verHistorial = false; // historial por fecha, colapsado por defecto
+  Timer? _poll;
 
   String get _email => (appState.usuario?.email ?? '').toLowerCase();
+
+  /// Pedidos EN CURSO (aún no completan el ciclo): esperando confirmación o
+  /// en camino. Van arriba con su recorrido.
+  List<PedidoBodega> get _activos =>
+      [for (final p in _misPedidos) if (p.pendiente || p.confirmado) p];
+
+  /// Historial (ciclo cerrado): entregado / rechazado / cancelado.
+  List<PedidoBodega> get _historial =>
+      [for (final p in _misPedidos) if (!p.pendiente && !p.confirmado) p];
 
   @override
   void initState() {
@@ -58,10 +69,17 @@ class _PedirBodegaScreenState extends State<PedirBodegaScreen> {
     // Con la app abierta, el push "confirmado/entregado" refresca el estado
     // del pedido al toque (además del banner in-app).
     PushService.nuevoPedidoBodega.addListener(_alLlegarPush);
+    // RESPALDO del push: mientras haya un pedido en curso, sondea en silencio
+    // cada 20 s — el recorrido avanza solo aunque el push no llegue (permiso
+    // denegado, token caído). Sin pedidos activos no gasta red.
+    _poll = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (mounted && _activos.isNotEmpty) _cargar();
+    });
   }
 
   @override
   void dispose() {
+    _poll?.cancel();
     PushService.nuevoPedidoBodega.removeListener(_alLlegarPush);
     super.dispose();
   }
@@ -354,6 +372,7 @@ class _PedirBodegaScreenState extends State<PedirBodegaScreen> {
       cuerpo:
           '${pedido.resumen} · $_mon ${pedido.total.toStringAsFixed(2)} · ${pedido.clienteNombre}. '
           '${conSaldo ? 'Ya está pagado con saldo Pichangol: solo entrégalo.' : 'Confírmalo en Mi bodega.'}',
+      destino: 'dueno',
     );
     setState(() {
       _misPedidos = [pedido, ..._misPedidos];
@@ -394,6 +413,7 @@ class _PedirBodegaScreenState extends State<PedirBodegaScreen> {
         email: p.dueno,
         titulo: 'Pedido cancelado',
         cuerpo: '${p.clienteNombre} canceló su pedido (${p.resumen}).',
+        destino: 'dueno',
       );
     } else if (actual == 'confirmado' || actual == 'entregado') {
       await avisarPichangol(
@@ -484,6 +504,109 @@ class _PedirBodegaScreenState extends State<PedirBodegaScreen> {
     return (p.pagado ? '$txt · pagado 💳' : txt, color);
   }
 
+  /// HISTORIAL de pedidos (ciclo cerrado: entregado/rechazado/cancelado),
+  /// agrupado por fecha (Hoy / Ayer / fecha) y COLAPSADO por defecto: aunque
+  /// pidas varias veces al día, arriba solo viven los pedidos en curso.
+  List<Widget> _seccionHistorial(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final hist = _historial;
+    if (hist.isEmpty) return const [];
+    String hora(DateTime d) =>
+        '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+    String grupo(DateTime d) {
+      final hoy = DateTime.now();
+      bool mismo(DateTime a, DateTime b) =>
+          a.year == b.year && a.month == b.month && a.day == b.day;
+      if (mismo(d, hoy)) return 'Hoy';
+      if (mismo(d, hoy.subtract(const Duration(days: 1)))) return 'Ayer';
+      return AppState.fechaBonita(d.toIso8601String());
+    }
+
+    (String, Color) chip(PedidoBodega p) => switch (p.estado) {
+          'entregado' => ('Entregado ✅', bosque),
+          'rechazado' => ('Rechazado', clayOscuro),
+          'cancelado' => ('Cancelado', Colors.grey),
+          _ => ('Sin respuesta', clayOscuro),
+        };
+
+    final widgets = <Widget>[
+      const SizedBox(height: 18),
+      InkWell(
+        onTap: () => setState(() => _verHistorial = !_verHistorial),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(
+            children: [
+              const Expanded(
+                child: Text('🧾 Pedidos anteriores',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w800, fontSize: 15)),
+              ),
+              Text('${hist.length}',
+                  style: const TextStyle(
+                      color: textoTenue, fontWeight: FontWeight.w700)),
+              Icon(_verHistorial ? Icons.expand_less : Icons.expand_more,
+                  color: textoTenue),
+            ],
+          ),
+        ),
+      ),
+    ];
+    if (!_verHistorial) return widgets;
+    String? fechaPrevia;
+    for (final p in hist) {
+      final g = grupo(p.creado);
+      if (g != fechaPrevia) {
+        fechaPrevia = g;
+        widgets.add(Padding(
+          padding: const EdgeInsets.only(top: 8, bottom: 6),
+          child: Text(g,
+              style: const TextStyle(
+                  color: textoTenue,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w800)),
+        ));
+      }
+      final (eti, color) = chip(p);
+      widgets.add(Container(
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: cs.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: trazo),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('${p.resumen} → ${p.zona}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700, fontSize: 13)),
+                  Text(
+                      '${hora(p.creado)} · ${p.moneda} ${p.total.toStringAsFixed(2)}${p.pagado ? ' · 💳 saldo' : ''}',
+                      style: const TextStyle(
+                          color: textoTenue, fontSize: 11.5)),
+                ],
+              ),
+            ),
+            Text(eti,
+                style: TextStyle(
+                    color: color,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800)),
+          ],
+        ),
+      ));
+    }
+    return widgets;
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -538,9 +661,8 @@ class _PedirBodegaScreenState extends State<PedirBodegaScreen> {
                           ],
                         ),
                       ),
-                    // Mis pedidos activos (estado en vivo con pull-to-refresh).
-                    for (final p in _misPedidos.where(
-                        (p) => p.estado != 'cancelado'))
+                    // Pedidos EN CURSO (estado en vivo: push + sondeo).
+                    for (final p in _activos)
                       Container(
                         margin: const EdgeInsets.only(bottom: 10),
                         padding: const EdgeInsets.all(12),
@@ -574,11 +696,9 @@ class _PedirBodegaScreenState extends State<PedirBodegaScreen> {
                               ],
                             ),
                             // RECORRIDO del pedido (se ilumina paso a paso y
-                            // avanza solo con cada push). Si murió en el
-                            // camino (rechazado/cancelado), texto claro.
-                            if (p.estado == 'rechazado' ||
-                                p.estado == 'cancelado' ||
-                                (p.pendiente && p.expirado))
+                            // avanza solo con cada push/sondeo). Un pendiente
+                            // sin respuesta (expiró) se avisa en texto claro.
+                            if (p.pendiente && p.expirado)
                               Padding(
                                 padding: const EdgeInsets.only(top: 2),
                                 child: Text(_estadoVisual(p).$1,
@@ -696,6 +816,8 @@ class _PedirBodegaScreenState extends State<PedirBodegaScreen> {
                           style:
                               TextStyle(color: textoTenue, fontSize: 12)),
                     ],
+                    // Historial por fecha, al final y colapsado.
+                    ..._seccionHistorial(context),
                   ],
                 ),
               ),

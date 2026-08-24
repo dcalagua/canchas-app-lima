@@ -28,7 +28,11 @@ import '../widgets/imagen_producto_bodega.dart';
 /// 3 segundos y el stock baja solo. Incluye la CARTA digital pública
 /// (/b/{cartaId}) con su QR imprimible.
 class BodegaScreen extends StatefulWidget {
-  const BodegaScreen({super.key});
+  const BodegaScreen({super.key, this.tabInicial = 0});
+
+  /// Pestaña con la que abre (0 Caja … 3 Pedidos): el push de un pedido
+  /// abre directo en Pedidos.
+  final int tabInicial;
 
   @override
   State<BodegaScreen> createState() => _BodegaScreenState();
@@ -114,6 +118,7 @@ class _BodegaScreenState extends State<BodegaScreen> {
   @override
   void initState() {
     super.initState();
+    _tab = widget.tabInicial;
     _cargar();
     // Refresco automático al llegar el push de un pedido con la app abierta
     // (estilo WhatsApp): la pestaña Pedidos muestra el pedido sin pull.
@@ -575,6 +580,8 @@ class _BodegaScreenState extends State<BodegaScreen> {
         titulo: 'Anotado en tu cuenta 📒',
         cuerpo: 'Se agregó ${items.map((i) => '${i.cantidad} ${i.nombre}').join(' + ')}. '
             'Llevas ${res.moneda} ${res.total.toStringAsFixed(2)}; pagas al salir.',
+        destino: 'cliente',
+        dueno: _email,
       );
     }
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -1194,6 +1201,8 @@ class _BodegaScreenState extends State<BodegaScreen> {
               '${p.pagado ? 'Ya está pagado 💳' : 'Pagas al recibirlo.'}'
           : 'El local no pudo tomar tu pedido (${p.resumen}). '
               '${p.pagado ? 'Tu saldo se devuelve solo 💸' : 'Acércate al mostrador.'}',
+      destino: 'cliente',
+      dueno: _email,
     );
   }
 
@@ -1282,6 +1291,8 @@ class _BodegaScreenState extends State<BodegaScreen> {
       email: p.cliente,
       titulo: 'Pedido entregado ✅',
       cuerpo: '¡Que lo disfrutes! Ya estaba pagado con tu saldo 💳',
+      destino: 'cliente',
+      dueno: _email,
     );
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         backgroundColor: bosque,
@@ -1437,6 +1448,8 @@ class _BodegaScreenState extends State<BodegaScreen> {
         titulo: 'Anotado en tu cuenta 📒',
         cuerpo: 'Tu pedido (${p.resumen}) quedó en tu cuenta. Llevas '
             '${res.moneda} ${res.total.toStringAsFixed(2)}; pagas al salir.',
+        destino: 'cliente',
+        dueno: _email,
       );
       return;
     }
@@ -1479,6 +1492,8 @@ class _BodegaScreenState extends State<BodegaScreen> {
       email: p.cliente,
       titulo: 'Pedido entregado ✅',
       cuerpo: '¡Que lo disfrutes! Gracias por pedir en ${'la bodega'}.',
+      destino: 'cliente',
+      dueno: _email,
     );
   }
 
@@ -1750,6 +1765,8 @@ class _BodegaScreenState extends State<BodegaScreen> {
             ? 'Tu cuenta quedó como cortesía del local. ¡Gracias!'
             : 'Pagaste ${c.moneda} ${c.total.toStringAsFixed(2)}. '
                 '¡Gracias, vuelve pronto!',
+        destino: 'cliente',
+        dueno: _email,
       );
     }
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
