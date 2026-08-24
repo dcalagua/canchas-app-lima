@@ -7,7 +7,7 @@ import '../widgets/google_logo.dart';
 import '../widgets/nivel_chip.dart';
 import '../widgets/responsive.dart';
 import 'nivel_onboarding_screen.dart';
-import 'academias_screen.dart';
+import 'mis_clases_screen.dart';
 import 'mis_bonos_screen.dart';
 import 'mis_pagos_screen.dart';
 import 'mis_puntos_screen.dart';
@@ -126,12 +126,17 @@ class PerfilScreen extends StatelessWidget {
   /// estilo Airbnb (íconos de línea + chevron).
   List<Widget> _colDerecha(BuildContext context, dynamic u) => [
         const SizedBox(height: 6),
-        _ItemAirbnb(
-          icono: Icons.school_outlined,
-          titulo: 'Academias',
-          onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const AcademiasScreen())),
-        ),
+        // Regla UX (decisión del director ago-2026): DESCUBRIR vive en
+        // Explorar (chip 🎓 Academias); el Perfil es "lo mío". Por eso aquí
+        // ya no va el catálogo de academias — va "Mis clases" SOLO si estás
+        // matriculado (tú o tu hijo): tus clases, cuotas y pagos en un tap.
+        if (appState.misMatriculas.isNotEmpty)
+          _ItemAirbnb(
+            icono: Icons.school_outlined,
+            titulo: 'Mis clases y pagos',
+            onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const MisClasesScreen())),
+          ),
         if (u == null)
           _ItemAirbnb(
             icono: Icons.storefront_outlined,
