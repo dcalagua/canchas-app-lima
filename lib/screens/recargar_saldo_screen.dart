@@ -13,6 +13,7 @@ import '../widgets/pago_procesando.dart';
 import '../widgets/responsive.dart';
 import '../widgets/sesion_requerida.dart';
 import '../utils/moneda.dart';
+import 'recarga_qr_screen.dart';
 
 /// Recarga de saldo del dueño con Culqi (tarjeta o Yape). Tokeniza con la llave
 /// pública en el celular y confirma el cobro contra el backend. Devuelve el monto
@@ -47,6 +48,9 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
   String? _pk;
   String _modo = 'off'; // test | live | off (de /pagos/config)
   String? _error;
+  // ¿La recarga por QR (Yape directo) está configurada en el backend? Solo
+  // aplica al flujo Perú (Yape no existe fuera).
+  bool _qrDisponible = false;
 
   bool get _esTest => _modo == 'test';
 
@@ -92,6 +96,13 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
         if (_esTest) _metodo = _Metodo.tarjeta;
       }
     });
+    // ¿Recarga por QR (Yape directo) activa? Solo en el flujo Perú.
+    if (widget.pais == null || widget.pais!.iso == 'PE') {
+      final qr = await PagosService.recargaQrConfig();
+      if (mounted && (qr?['activo'] ?? false) == true) {
+        setState(() => _qrDisponible = true);
+      }
+    }
   }
 
   @override
@@ -309,6 +320,44 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
                   child: Text('Pago seguro procesado por Culqi',
                       style: TextStyle(color: textoTenue, fontSize: 12)),
                 ),
+                // RECARGA POR QR (Yape directo, sin comisión): camino
+                // alternativo aprobado por el operador en la torre. Solo se
+                // ofrece si el backend tiene el QR configurado (Perú).
+                if (_qrDisponible) ...[
+                  const SizedBox(height: 18),
+                  const Row(children: [
+                    Expanded(child: Divider()),
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 10),
+                      child: Text('o', style: TextStyle(color: textoTenue)),
+                    ),
+                    Expanded(child: Divider()),
+                  ]),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 14)),
+                      onPressed: () async {
+                        final enviado = await Navigator.of(context)
+                            .push<bool>(MaterialPageRoute(
+                                builder: (_) => const RecargaQrScreen()));
+                        // Enviada la constancia no hay monto acreditado aún
+                        // (queda en revisión): se cierra sin acreditar.
+                        if (enviado == true && context.mounted) {
+                          Navigator.of(context).pop();
+                        }
+                      },
+                      icon: const Icon(Icons.qr_code_2, color: bosque),
+                      label: const Text(
+                          'Yapear al QR de Pichangol (sin tarjeta)',
+                          style: TextStyle(
+                              color: bosque, fontWeight: FontWeight.w700)),
+                    ),
+                  ),
+                ],
               ],
             ),
     );

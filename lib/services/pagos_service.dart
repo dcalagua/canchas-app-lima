@@ -1183,6 +1183,68 @@ class PagosService {
     }
   }
 
+  // ── RECARGA POR QR (Yape directo, sin comisión de pasarela) ───────────────
+  /// Config del backend: {activo, qr_url, numero, nombre}. null si no se pudo.
+  static Future<Map<String, dynamic>?> recargaQrConfig() async {
+    if (!disponible) return null;
+    try {
+      final r = await http
+          .get(Uri.parse('$_baseUrl/pagos/recarga-qr/config'),
+              headers: _appHeaders())
+          .timeout(const Duration(seconds: 10));
+      if (r.statusCode != 200) return null;
+      return jsonDecode(r.body) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Crea la SOLICITUD de recarga por QR (queda en revisión del operador).
+  /// Devuelve el JSON del backend ({ok, error?, solicitud}) o null (red).
+  static Future<Map<String, dynamic>?> crearRecargaQr({
+    required String email,
+    required int monto,
+    required String fotoUrl,
+  }) async {
+    if (!disponible) return null;
+    try {
+      final r = await http
+          .post(Uri.parse('$_baseUrl/pagos/recarga-qr'),
+              headers: await _headersUsuario(json: true),
+              body: jsonEncode({
+                'email': email.trim().toLowerCase(),
+                'monto_soles': monto,
+                'foto_url': fotoUrl,
+              }))
+          .timeout(const Duration(seconds: 15));
+      if (r.statusCode != 200) return null;
+      return jsonDecode(r.body) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Solicitudes de recarga por QR del usuario (para "En revisión ⏳").
+  static Future<List<Map<String, dynamic>>> recargasQrEstado(
+      String email) async {
+    final e = email.trim().toLowerCase();
+    if (!disponible || e.isEmpty) return const [];
+    try {
+      final r = await http
+          .get(
+              Uri.parse(
+                  '$_baseUrl/pagos/recarga-qr/estado/${Uri.encodeComponent(e)}'),
+              headers: _appHeaders())
+          .timeout(const Duration(seconds: 10));
+      if (r.statusCode != 200) return const [];
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      return ((j['solicitudes'] as List?) ?? const [])
+          .cast<Map<String, dynamic>>();
+    } catch (_) {
+      return const [];
+    }
+  }
+
   /// Deja la billetera del [duenoId] en virgen EN EL BACKEND (saldo 0 y sin
   /// movimientos). Necesario porque el saldo/pagos viven en el servidor y
   /// volverían al re-sincronizar. La usa "Dejar en virgen". Best-effort.

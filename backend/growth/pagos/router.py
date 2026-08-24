@@ -454,6 +454,175 @@ def post_reset_mi_billetera(
     return {"ok": True, **r}
 
 
+# ── RECARGAS POR QR (Yape directo, sin comisión de pasarela) ────────────────
+# El usuario yapea al QR de Pichangol, sube su constancia y el OPERADOR la
+# aprueba en la torre (modelo concierge, como los reclamos): al aprobar se
+# acredita el saldo, se registra el pago (medio yape_qr) y le llega el push
+# "Recarga acreditada". Cero comisión mientras el volumen es chico.
+
+
+def _aviso_push_usuario(email: str, titulo: str, cuerpo: str,
+                        tipo: str = "aviso") -> None:
+    """Encola un push al usuario vía la tabla `pichangol_avisos` de Supabase
+    (Database Webhook → Edge Function push-aviso). Best-effort: sin Supabase
+    configurado o con error de red, no rompe el flujo."""
+    if not config.SUPABASE_URL or not config.SUPABASE_ANON_KEY:
+        return
+    base = config.SUPABASE_URL
+    if not base.startswith("http"):
+        base = f"https://{base}"
+    try:
+        import json as _json
+        import urllib.request as _ur
+        req = _ur.Request(
+            f"{base}/rest/v1/pichangol_avisos",
+            data=_json.dumps({
+                "email": email.strip().lower(),
+                "titulo": titulo,
+                "cuerpo": cuerpo,
+                "tipo": tipo,
+                "creado": datetime.now(timezone.utc).isoformat(),
+            }).encode(),
+            method="POST",
+            headers={
+                "apikey": config.SUPABASE_ANON_KEY,
+                "Authorization": f"Bearer {config.SUPABASE_ANON_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal",
+            })
+        with _ur.urlopen(req, timeout=8) as r:  # noqa: S310
+            r.read()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+class RecargaQrReq(BaseModel):
+    email: str                 # billetera a recargar (el propio usuario)
+    monto_soles: float
+    foto_url: str = ""         # constancia del Yape (subida al Storage)
+
+
+@router.get("/recarga-qr/config", dependencies=_APP)
+def get_recarga_qr_config() -> dict:
+    """Config para el APK: si la recarga por QR está activa (hay QR subido) y
+    qué mostrar (imagen del QR, número y nombre del titular)."""
+    return {
+        "activo": bool(config.RECARGA_YAPE_QR_URL),
+        "qr_url": config.RECARGA_YAPE_QR_URL,
+        "numero": config.RECARGA_YAPE_NUMERO,
+        "nombre": config.RECARGA_YAPE_NOMBRE,
+    }
+
+
+@router.post("/recarga-qr", dependencies=_APP)
+def post_recarga_qr(req: RecargaQrReq,
+                    x_user_token: str | None = Header(default=None)) -> dict:
+    """Crea la SOLICITUD de recarga por QR (queda pendiente de aprobación del
+    operador). Una pendiente por usuario a la vez (anti-spam)."""
+    email = req.email.strip().lower()
+    if not email or req.monto_soles <= 0:
+        raise HTTPException(status_code=400, detail="datos_invalidos")
+    if req.monto_soles > 1000:
+        raise HTTPException(status_code=400, detail="monto_maximo_1000")
+    _require_usuario(email, x_user_token)  # PROD: solo su propia billetera
+    for r in stores.recargas_qr:
+        if r.get("email") == email and r.get("estado") == "pendiente":
+            return {"ok": False, "error": "ya_tienes_una_pendiente",
+                    "solicitud": r}
+    sol = {
+        "id": stores.next_id("recarga_qr"),
+        "email": email,
+        "monto_soles": round(float(req.monto_soles), 2),
+        "foto_url": (req.foto_url or "").strip(),
+        "estado": "pendiente",
+        "creado_en": _ahora_iso(),
+        "resuelto_en": None,
+        "motivo": None,
+    }
+    stores.recargas_qr.append(sol)
+    return {"ok": True, "solicitud": sol}
+
+
+@router.get("/recarga-qr/estado/{email}", dependencies=_APP)
+def get_recarga_qr_estado(email: str) -> dict:
+    """Solicitudes del usuario (la pendiente y las últimas resueltas), para
+    que la billetera muestre 'En revisión ⏳' y el desenlace."""
+    e = email.strip().lower()
+    mias = [r for r in stores.recargas_qr if r.get("email") == e]
+    return {"solicitudes": list(reversed(mias[-5:]))}
+
+
+@router.get("/recargas-qr", dependencies=_ADMIN)
+def get_recargas_qr_admin(estado: str | None = None) -> dict:
+    """TORRE: lista de solicitudes de recarga por QR (pendientes primero)."""
+    sols = [r for r in stores.recargas_qr
+            if estado is None or r.get("estado") == estado]
+    orden = sorted(sols, key=lambda r: (r.get("estado") != "pendiente",
+                                        -(r.get("id") or 0)))
+    return {"solicitudes": orden,
+            "pendientes": sum(1 for r in stores.recargas_qr
+                              if r.get("estado") == "pendiente")}
+
+
+class ResolverRecargaQrReq(BaseModel):
+    motivo: str = ""           # al rechazar: no_llego | monto_no_coincide |
+    #                            constancia_ilegible (selección en la torre)
+
+
+@router.post("/recarga-qr/{solicitud_id}/aprobar", dependencies=_ADMIN)
+def post_recarga_qr_aprobar(solicitud_id: int) -> dict:
+    """TORRE: el operador VERIFICÓ el Yape en su app → acredita el saldo,
+    registra el pago (recarga, medio yape_qr) y avisa al usuario con push.
+    Idempotente: aprobar dos veces no acredita doble."""
+    for r in stores.recargas_qr:
+        if r.get("id") == solicitud_id:
+            if r.get("estado") != "pendiente":
+                return {"ok": True, "duplicada": True, "solicitud": r}
+            centimos = _soles_a_centimos(r["monto_soles"])
+            nuevo = stores.acreditar(r["email"], centimos)
+            stores.registrar_pago(
+                tipo="recarga", monto_centimos=centimos, moneda="PEN",
+                estado="aprobado", dueno_id=r["email"],
+                culqi_charge_id=f"qr_{solicitud_id}",
+                concepto="Recarga por Yape (QR)", medio="yape_qr")
+            r["estado"] = "aprobada"
+            r["resuelto_en"] = _ahora_iso()
+            _aviso_push_usuario(
+                r["email"], "Recarga acreditada ✅",
+                f"+S/ {r['monto_soles']:.2f} a tu saldo Pichangol por tu "
+                "Yape al QR. ¡Gracias!", tipo="recarga")
+            return {"ok": True, "duplicada": False, "solicitud": r,
+                    "saldo_centimos": nuevo}
+    raise HTTPException(status_code=404, detail="solicitud_no_encontrada")
+
+
+@router.post("/recarga-qr/{solicitud_id}/rechazar", dependencies=_ADMIN)
+def post_recarga_qr_rechazar(solicitud_id: int,
+                             req: ResolverRecargaQrReq) -> dict:
+    """TORRE: rechaza la solicitud (con motivo por selección) y avisa al
+    usuario con push para que corrija o pregunte."""
+    _MOTIVOS = {
+        "no_llego": "no encontramos tu Yape",
+        "monto_no_coincide": "el monto no coincide con tu Yape",
+        "constancia_ilegible": "la constancia no se puede leer",
+    }
+    for r in stores.recargas_qr:
+        if r.get("id") == solicitud_id:
+            if r.get("estado") != "pendiente":
+                return {"ok": True, "duplicada": True, "solicitud": r}
+            r["estado"] = "rechazada"
+            r["motivo"] = req.motivo or "no_llego"
+            r["resuelto_en"] = _ahora_iso()
+            detalle = _MOTIVOS.get(r["motivo"], "no se pudo validar")
+            _aviso_push_usuario(
+                r["email"], "Recarga no acreditada ❌",
+                f"Tu recarga de S/ {r['monto_soles']:.2f} no se acreditó: "
+                f"{detalle}. Vuelve a intentarlo o escríbenos.",
+                tipo="recarga")
+            return {"ok": True, "duplicada": False, "solicitud": r}
+    raise HTTPException(status_code=404, detail="solicitud_no_encontrada")
+
+
 class ConsolidarReq(BaseModel):
     desde_id: str              # llave secundaria (p. ej. id de una academia)
     hacia_id: str              # billetera del dueño (su correo)

@@ -98,6 +98,12 @@ PAGOS_AUTH_USUARIO = os.getenv("PAGOS_AUTH_USUARIO", "")
 # Opcional: client ids OAuth permitidos (separados por coma) para exigir que el
 # token sea de NUESTRA app (audiencia). Vacío = no se valida la audiencia.
 GOOGLE_OAUTH_CLIENT_IDS = os.getenv("GOOGLE_OAUTH_CLIENT_IDS", "")
+# RECARGAS POR QR (Yape directo, sin comisión de pasarela): URL de la imagen
+# del QR de Yape de Pichangol (subida al Storage) + número y nombre del titular
+# que muestra el APK. Vacío = la opción no se ofrece en el APK.
+RECARGA_YAPE_QR_URL = os.getenv("RECARGA_YAPE_QR_URL", "")
+RECARGA_YAPE_NUMERO = os.getenv("RECARGA_YAPE_NUMERO", "")
+RECARGA_YAPE_NOMBRE = os.getenv("RECARGA_YAPE_NOMBRE", "Pichangol")
 # Rate-limit anti-spam de los endpoints con efecto externo (crear reclamo, OTP):
 # máx RECLAMO_RATE_LIMIT solicitudes por IP en una ventana de RATE_WINDOW segundos.
 # 0 = desactivado. Protege el backend (y el costo de Factiliza/WhatsApp) si la URL

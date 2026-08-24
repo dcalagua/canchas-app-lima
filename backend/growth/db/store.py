@@ -460,6 +460,11 @@ class Stores:
         # PAGOS (Culqi): saldo prepago por dueño (céntimos) + libro de pagos.
         self.saldos: dict[str, int] = {}          # dueno_id -> céntimos
         self.pagos: list[PagoRegistro] = []
+        # RECARGAS POR QR (Yape directo, sin pasarela): solicitudes que el
+        # usuario manda con su constancia y el OPERADOR aprueba/rechaza en la
+        # torre. {id, email, monto_soles, foto_url, estado, creado_en,
+        # resuelto_en, motivo} — estado: pendiente | aprobada | rechazada.
+        self.recargas_qr: list[dict] = []
         # SUSCRIPCIONES a servicios de marketing (landing/redes/presencia). Clave
         # "{academia_id}:{servicio}" -> dict con estado y próximo cobro. Se debita
         # del saldo del dueño cada mes (mismo saldo prepago de Culqi).
@@ -894,6 +899,7 @@ class Stores:
             "jugadores_circuito": {
                 k: dict(v) for k, v in self.jugadores_circuito.items()},
             "ranking_snapshot": dict(self.ranking_snapshot),
+            "recargas_qr": [dict(r) for r in self.recargas_qr],
         }
 
     def load_state(self, data: dict) -> None:
@@ -961,6 +967,7 @@ class Stores:
             k: dict(v) for k, v in (data.get("jugadores_circuito") or {}).items()
         }
         self.ranking_snapshot = dict(data.get("ranking_snapshot") or {})
+        self.recargas_qr = [dict(r) for r in data.get("recargas_qr", [])]
 
     # --- normalización a TABLAS SQL (fase 1: saldos/pagos/vistas/reclamos) ----
     # Estas colecciones (plata + impacto + reclamos) migran a tablas propias en

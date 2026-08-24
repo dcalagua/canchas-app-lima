@@ -27,6 +27,9 @@ class CuentaScreen extends StatefulWidget {
 class _CuentaScreenState extends State<CuentaScreen> {
   static const _saldoBajo = 15;
 
+  // Recargas por QR (Yape directo) del usuario aún EN REVISIÓN del operador.
+  List<Map<String, dynamic>> _recargasQrPend = const [];
+
   @override
   void initState() {
     super.initState();
@@ -35,6 +38,16 @@ class _CuentaScreenState extends State<CuentaScreen> {
     // ONLINE recién hecho ("por recibir") aparezca al abrir la billetera sin
     // reiniciar la app. Antes (StatelessWidget) no re-sincronizaba nunca.
     appState.flushContabilidad().then((_) => appState.sincronizarSaldo());
+    _cargarRecargasQr();
+  }
+
+  Future<void> _cargarRecargasQr() async {
+    final e = (appState.usuario?.email ?? '').toLowerCase();
+    if (e.isEmpty) return;
+    final sols = await PagosService.recargasQrEstado(e);
+    if (!mounted) return;
+    setState(() => _recargasQrPend =
+        sols.where((s) => s['estado'] == 'pendiente').toList());
   }
 
   @override
@@ -131,6 +144,36 @@ class _CuentaScreenState extends State<CuentaScreen> {
                   ),
                 );
               }),
+              // Recarga por QR en revisión: el saldo llega cuando el operador
+              // valida el Yape (push "Recarga acreditada").
+              for (final s in _recargasQrPend)
+                Container(
+                  margin: const EdgeInsets.only(top: 12),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFDF6E3),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFE8D9A0)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.hourglass_top,
+                          color: Color(0xFF8A5A00)),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Recarga por Yape (QR) de '
+                          '${appState.monedaSaldoSimbolo} ${((s['monto_soles'] as num?) ?? 0).toStringAsFixed(2)} '
+                          'en revisión. Te avisamos apenas se acredite.',
+                          style: t.bodySmall?.copyWith(
+                              color: const Color(0xFF8A5A00),
+                              fontWeight: FontWeight.w700,
+                              height: 1.3),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               const SizedBox(height: 16),
               // ACCIONES RÁPIDAS estilo billetera digital (Yape/Deuna): todo
               // lo de la billetera a un tap, en fila de botones circulares.
@@ -239,6 +282,9 @@ class _CuentaScreenState extends State<CuentaScreen> {
           content: Text('✅ Recargaste ${appState.monedaSaldoSimbolo}$monto. ¡Ya apareces destacado!'),
         ));
       }
+      // Refresca las recargas por QR (por si mandó una constancia): la
+      // billetera muestra "en revisión" al volver.
+      _cargarRecargasQr();
       return;
     }
     // Fallback (demo sin backend): pasarela simulada.

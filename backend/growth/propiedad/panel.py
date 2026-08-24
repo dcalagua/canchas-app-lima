@@ -1248,6 +1248,10 @@ _HTML = r"""<!DOCTYPE html>
             <span class="md-ico">⭐</span>
             <span class="md-txt"><b>Pichangol Pro</b><small>Suscripción mensual</small></span>
           </button>
+          <button class="md-item" data-pane="recargasQr" onclick="mostrarPane(this,'recargasQr');cargarRecargasQr()">
+            <span class="md-ico">📲</span>
+            <span class="md-txt"><b>Recargas QR</b><small>Yape directo · aprobar/rechazar</small></span>
+          </button>
         </aside>
         <div class="md-detail">
           <div class="md-pane" id="comision"></div>
@@ -1256,6 +1260,7 @@ _HTML = r"""<!DOCTYPE html>
           <div class="md-pane" id="circuitoPanel" style="display:none"></div>
           <div class="md-pane" id="rankingPanel" style="display:none"></div>
           <div class="md-pane" id="proPanel" style="display:none"></div>
+          <div class="md-pane" id="recargasQr" style="display:none"></div>
         </div>
       </div>
     </section>
@@ -2056,6 +2061,60 @@ function mostrarSeccion(sec){
   window.scrollTo({top:0,behavior:'smooth'});
   if(sec==='disputas') cargarDisputas();
   if(sec==='identidad') cargarDni();
+}
+
+// --- Recargas por QR (Yape directo): el operador verifica y aprueba -------------
+async function cargarRecargasQr(){
+  const box = document.getElementById('recargasQr');
+  if(!box) return;
+  box.innerHTML = '<div class="card">Cargando…</div>';
+  try{
+    const r = await fetch('/pagos/recargas-qr',{headers:headers()});
+    if(!r.ok){ box.innerHTML='<div class="card">No se pudo cargar.</div>'; return; }
+    const j = await r.json();
+    const sols = j.solicitudes||[];
+    if(!sols.length){
+      box.innerHTML = '<div class="card">Sin solicitudes de recarga por QR. '
+        + 'Aparecerán aquí cuando un usuario yapee al QR y suba su constancia.</div>';
+      return;
+    }
+    box.innerHTML = sols.map(s=>`
+      <div class="card" style="margin-bottom:12px">
+        <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
+          ${s.foto_url
+            ? `<a href="${s.foto_url}" target="_blank" title="Ver constancia completa">
+                 <img src="${s.foto_url}" style="width:110px;height:140px;object-fit:cover;border-radius:10px;border:1px solid var(--border)"></a>`
+            : `<div style="width:110px;height:140px;border-radius:10px;background:#f2f2f2;display:flex;align-items:center;justify-content:center;color:#889;font-size:12px">sin<br>constancia</div>`}
+          <div style="flex:1;min-width:220px">
+            <div style="font-weight:800;font-size:16px">S/ ${Number(s.monto_soles||0).toFixed(2)} · ${s.email}</div>
+            <div style="color:#667;font-size:12.5px;margin-top:2px">
+              ${fmtFecha(s.creado_en)} · <b>${s.estado}</b>${s.motivo?(' · '+s.motivo):''}</div>
+            ${s.estado==='pendiente' ? `
+            <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <button class="btn-ap" onclick="resolverRecargaQr(${s.id},'aprobar')">✅ Aprobar (verifiqué el Yape)</button>
+              <select id="motivoRq${s.id}" style="padding:8px;border-radius:10px;border:1px solid var(--border)">
+                <option value="no_llego">No llegó el Yape</option>
+                <option value="monto_no_coincide">Monto no coincide</option>
+                <option value="constancia_ilegible">Constancia ilegible</option>
+              </select>
+              <button class="btn-rc" onclick="resolverRecargaQr(${s.id},'rechazar')">Rechazar</button>
+            </div>` : ''}
+          </div>
+        </div>
+      </div>`).join('');
+  }catch(e){ box.innerHTML='<div class="card">Error de red.</div>'; }
+}
+async function resolverRecargaQr(id, accion){
+  let body = '{}';
+  if(accion==='rechazar'){
+    const sel = document.getElementById('motivoRq'+id);
+    body = JSON.stringify({motivo: sel ? sel.value : 'no_llego'});
+  } else if(!confirm('¿Verificaste el Yape en la app y el monto coincide?')){
+    return;
+  }
+  const r = await fetch('/pagos/recarga-qr/'+id+'/'+accion,
+    {method:'POST',headers:headers(),body:body});
+  if(r.ok){ cargarRecargasQr(); } else { alert('No se pudo ('+r.status+').'); }
 }
 
 // --- Identidad (DNI): revocar la verificación 1 DNI = 1 cuenta ------------------
