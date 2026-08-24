@@ -7279,12 +7279,18 @@ class AppState extends ChangeNotifier {
       // Reserva CONFIRMADA en el servidor → avisa al dueño (push dedicado).
       if (notificarDueno) _notificarDuenoReserva(cancha, [reserva]);
       if (avisarJugador) {
+        // Pago ONLINE = puntos al instante (derivados de la reserva pagada):
+        // el aviso lo dice, cerrando el loop de fidelidad sin push extra.
+        final pts = reserva.pagado && cobro == 'online'
+            ? reserva.totalConExtras.round()
+            : 0;
         _avisarJugadorReserva(
           clave: reserva.id,
           titulo: 'Reserva confirmada ✅',
           cuerpo:
               '${_lugarFechaHora(cancha, fecha, '$hora–${reserva.horaFin}')}. '
-              '¡Te esperamos!',
+              '¡Te esperamos!'
+              '${pts > 0 ? ' ⭐ Ganaste +$pts puntos Pichangol.' : ''}',
         );
       }
     } else {
@@ -7754,9 +7760,31 @@ class AppState extends ChangeNotifier {
     ReservasRepo.actualizar(upd); // best-effort
     // Ya cobró → no hace falta el recordatorio de "cobra en efectivo".
     if (pagado) RecordatorioService.cancelar(r.id);
-    // Nota FIDELIDAD: los puntos del jugador se DERIVAN de sus reservas
-    // pagadas (misPuntos) — marcar pagado el efectivo los "acredita" solo,
-    // sin contador aparte (por eso al jugador le conviene exigir la marca).
+    // FIDELIDAD: los puntos se DERIVAN de reservas pagadas — al marcar el
+    // efectivo, el jugador acaba de "ganarlos". PUSH "te llegaron puntos"
+    // (pedido del director): cierra el loop y refuerza que exigir la marca
+    // vale la pena. Solo en la TRANSICIÓN no pagado → pagado (des/marcar no
+    // duplica) y solo para reservas por la app (manual/bono no acumulan).
+    if (pagado &&
+        !r.pagado &&
+        r.traidaPorApp &&
+        r.usuario.isNotEmpty &&
+        r.medioPago != 'manual' &&
+        r.medioPago != 'bono') {
+      final pts = r.totalConExtras.round();
+      final cancha = miCanchaDeReserva(r.canchaId);
+      final lugar = cancha == null
+          ? 'tu reserva'
+          : 'tu reserva en ${cancha.club.trim().isNotEmpty ? cancha.club : cancha.nombre}';
+      _pushAviso(
+        email: r.usuario,
+        titulo: '¡Te llegaron puntos! ⭐',
+        cuerpo: 'El local confirmó tu pago: +$pts puntos Pichangol por '
+            '$lugar. Canjéalos como descuento en tu próxima reserva online.',
+        tipo: 'puntos',
+        data: {'reserva_id': r.id},
+      );
+    }
   }
 
   // ── CAJA DEL DÍA (dueño) ──────────────────────────────────────────────────
