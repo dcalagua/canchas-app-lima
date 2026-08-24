@@ -589,7 +589,16 @@ auth por usuario en `/pagos/movimientos` (PROD).
   SQL: `docs/piloto/supabase_puntos_canjes.sql`. OJO: el backend growth
   `/puntos/*` es el motor de INCENTIVOS growth (traer_cancha, etc.; ahora con
   caducidad FIFO 180d y valor 100 pts = 3 configurable) — el APK NO lo usa
-  para la fidelidad de reservas. **Pendiente:** push "te llegaron puntos".
+  para la fidelidad de reservas. Push "te llegaron puntos": HECHO (reservas
+  efectivo al `marcarPago`; bodega al entregar).
+  **PUNTOS POR BODEGA (decisión del director, ago-2026):** SOLO los pedidos
+  de bodega **pagados con SALDO Pichangol** suman puntos (incentivar la
+  billetera; el efectivo del local NO acumula — cero comisión + fraude
+  fácil). Derivado igual que reservas: `BodegaRepo.puntosBodegaCliente`
+  (pedidos `pagado=true` + `entregado`, 12 meses) → `AppState._puntosBodega`
+  (`cargarPuntosBodega` en login/splash/Mis puntos) se SUMA en `misPuntos`.
+  Push ⭐ al entregarse (`avisarPuntosBodega`); nudge "⭐ ganas +N puntos"
+  en la confirmación del pedido; historial unificado en `mis_puntos_screen`.
 
 ### Horarios de cancha (apertura/cierre) y cruce de medianoche
 - `Cancha.horariosSlots()` genera los INICIOS reservables de apertura a cierre en

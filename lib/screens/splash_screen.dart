@@ -35,6 +35,7 @@ class _SplashScreenState extends State<SplashScreen> {
     appState.sincronizarSaldo(); // saldo real del backend (sobrevive reinstalar)
     appState.sincronizarPro(); // membresía Pichangol Pro del jugador
     appState.cargarPuntosCanjeados(); // canjes de puntos (disponibles reales)
+    appState.cargarPuntosBodega(); // puntos de bodega (pagados con saldo)
     appState.cargarRetosResultados(); // retos jugados → ranking global
     appState.cargarRetosPendientes(); // retos por responder/reportar → badge
     appState.cargarMiembrosPro(); // insignia PRO en el ranking

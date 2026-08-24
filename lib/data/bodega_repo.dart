@@ -240,6 +240,40 @@ class BodegaRepo {
     }
   }
 
+  /// PUNTOS de bodega del cliente (fidelidad, arquitectura DERIVADA — sin
+  /// contador aparte): sus pedidos PAGADOS CON SALDO Pichangol y ENTREGADOS
+  /// de los últimos 12 meses. Solo el saldo suma (la plata pasa por la app y
+  /// el pago es verificable); efectivo/Yape del local quedan fuera. Devuelve
+  /// (total de puntos, movimientos) o null si no se pudo consultar.
+  static Future<(int, List<PedidoBodega>)?> puntosBodegaCliente(
+      String cliente) async {
+    final c = cliente.trim().toLowerCase();
+    if (!SupabaseService.disponible || c.isEmpty) return null;
+    try {
+      final desde = DateTime.now().subtract(const Duration(days: 365));
+      final rows = await SupabaseService.client
+          .from(_tPedidos)
+          .select()
+          .eq('cliente', c)
+          .eq('pagado', true)
+          .eq('estado', 'entregado')
+          .gte('creado', desde.toUtc().toIso8601String())
+          .order('creado', ascending: false)
+          .limit(200);
+      final movs = [
+        for (final r in (rows as List))
+          PedidoBodega.fromRow(Map<String, dynamic>.from(r as Map)),
+      ];
+      var total = 0;
+      for (final p in movs) {
+        total += p.total.round();
+      }
+      return (total, movs);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Cambia el estado de un pedido (confirmado/entregado/rechazado/cancelado).
   static Future<bool> actualizarEstadoPedido(String id, String estado) async {
     if (!SupabaseService.disponible) return false;

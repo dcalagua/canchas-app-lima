@@ -85,7 +85,11 @@ class _PedirBodegaScreenState extends State<PedirBodegaScreen> {
   }
 
   void _alLlegarPush() {
-    if (mounted) _cargar();
+    if (!mounted) return;
+    _cargar();
+    // Si el push fue la entrega de un pedido pagado con saldo, los puntos
+    // recién ganados se reflejan al toque en "Mis puntos".
+    unawaited(appState.cargarPuntosBodega());
   }
 
   Future<void> _cargar() async {
@@ -247,6 +251,17 @@ class _PedirBodegaScreenState extends State<PedirBodegaScreen> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 6),
+                  // Fidelidad: solo el SALDO suma puntos — el empujón para
+                  // usar la billetera (decisión del director).
+                  Text(
+                      conSaldo
+                          ? '⭐ Ganas +${_total.round()} puntos con este pedido'
+                          : '⭐ Págalo con tu saldo y ganas +${_total.round()} puntos',
+                      style: const TextStyle(
+                          color: bosque,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700)),
                 ],
                 const SizedBox(height: 14),
                 SizedBox(

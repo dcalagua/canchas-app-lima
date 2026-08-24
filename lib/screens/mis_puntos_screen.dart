@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../models/bodega.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -28,6 +29,7 @@ class _MisPuntosScreenState extends State<MisPuntosScreen> {
   Future<void> _refrescar() async {
     await appState.cargarReservasRemotas();
     await appState.cargarPuntosCanjeados();
+    await appState.cargarPuntosBodega();
   }
 
   String _nombreCancha(String id) {
@@ -47,9 +49,94 @@ class _MisPuntosScreenState extends State<MisPuntosScreen> {
     return '${d.day} ${meses[d.month - 1]}';
   }
 
+  /// Fila del historial: una RESERVA por la app (pagada suma; sin pagar es
+  /// la palanca "que lo marquen").
+  Widget _filaReserva(BuildContext context, Reserva r) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: trazo),
+      ),
+      child: Row(
+        children: [
+          Text(r.pagado ? '🎾' : '⏳',
+              style: const TextStyle(fontSize: 20)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(_nombreCancha(r.canchaId),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 13.5)),
+                Text(
+                    '${_fechaCorta(r.fecha)} · ${r.horaInicio}'
+                    '${r.pagado ? '' : ' · por confirmar'}',
+                    style: const TextStyle(
+                        color: textoTenue, fontSize: 11.5)),
+              ],
+            ),
+          ),
+          Text('+${r.totalConExtras.round()}',
+              style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 15,
+                  color: r.pagado ? bosque : textoTenue)),
+        ],
+      ),
+    );
+  }
+
+  /// Fila del historial: un PEDIDO DE BODEGA pagado con saldo (ya entregado).
+  Widget _filaBodega(BuildContext context, PedidoBodega p) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: trazo),
+      ),
+      child: Row(
+        children: [
+          const Text('🧃', style: TextStyle(fontSize: 20)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Bodega · ${p.resumen}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 13.5)),
+                Text(
+                    '${_fechaCorta(p.creado.toIso8601String())} · pagado '
+                    'con saldo 💳',
+                    style: const TextStyle(
+                        color: textoTenue, fontSize: 11.5)),
+              ],
+            ),
+          ),
+          Text('+${p.total.round()}',
+              style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 15,
+                  color: bosque)),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('Mis puntos')),
       body: AnchoLectura(
@@ -71,6 +158,17 @@ class _MisPuntosScreenState extends State<MisPuntosScreen> {
                     (DateTime.tryParse(r.fecha)?.isAfter(desde) ?? false))
                   r,
             ]..sort((a, b) => b.fecha.compareTo(a.fecha));
+            // Historial UNIFICADO: reservas + pedidos de bodega pagados con
+            // saldo, todo ordenado por fecha (lo más reciente arriba).
+            final historial = <(DateTime, Widget)>[
+              for (final r in movs)
+                (
+                  DateTime.tryParse(r.fecha) ?? DateTime(2000),
+                  _filaReserva(context, r),
+                ),
+              for (final p in appState.puntosBodegaMovs)
+                (p.creado, _filaBodega(context, p)),
+            ]..sort((a, b) => b.$1.compareTo(a.$1));
             return RefreshIndicator(
               onRefresh: _refrescar,
               child: ListView(
@@ -151,6 +249,9 @@ class _MisPuntosScreenState extends State<MisPuntosScreen> {
                           'app (últimos 12 meses).\n'
                           '• Pago online: puntos al instante. Efectivo: '
                           'cuando el local confirma tu pago.\n'
+                          '• Los pedidos de bodega pagados con tu SALDO '
+                          'Pichangol también suman (al entregarse). En '
+                          'efectivo no acumulan.\n'
                           '• Cada 100 puntos = S/ 3 de descuento al pagar '
                           'online tu próxima reserva (el descuento lo pone '
                           'Pichangol, no el local).',
@@ -164,55 +265,16 @@ class _MisPuntosScreenState extends State<MisPuntosScreen> {
                       style: TextStyle(
                           fontWeight: FontWeight.w800, fontSize: 15)),
                   const SizedBox(height: 8),
-                  if (movs.isEmpty)
+                  if (historial.isEmpty)
                     const VacioPichangol(
                       clave: 'puntos_vacio',
                       emoji: '⭐',
                       titulo: 'Aún no tienes puntos',
-                      mensaje: 'Reserva y paga por la app para empezar a '
-                          'acumular. Cada sol pagado es un punto.',
+                      mensaje: 'Reserva y paga por la app (o paga tu pedido '
+                          'de bodega con saldo) para empezar a acumular. '
+                          'Cada sol pagado es un punto.',
                     ),
-                  for (final r in movs)
-                    Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: cs.surface,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: trazo),
-                      ),
-                      child: Row(
-                        children: [
-                          Text(r.pagado ? '🎾' : '⏳',
-                              style: const TextStyle(fontSize: 20)),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(_nombreCancha(r.canchaId),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 13.5)),
-                                Text(
-                                    '${_fechaCorta(r.fecha)} · ${r.horaInicio}'
-                                    '${r.pagado ? '' : ' · por confirmar'}',
-                                    style: const TextStyle(
-                                        color: textoTenue, fontSize: 11.5)),
-                              ],
-                            ),
-                          ),
-                          Text('+${r.totalConExtras.round()}',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w900,
-                                  fontSize: 15,
-                                  color: r.pagado ? bosque : textoTenue)),
-                        ],
-                      ),
-                    ),
+                  for (final e in historial) e.$2,
                 ],
               ),
             );

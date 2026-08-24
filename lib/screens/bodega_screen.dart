@@ -1294,6 +1294,9 @@ class _BodegaScreenState extends State<BodegaScreen> {
       destino: 'cliente',
       dueno: _email,
     );
+    // FIDELIDAD: pagar la bodega con saldo Pichangol SUMA puntos (decisión
+    // del director: incentivar la billetera). Se acreditan al ENTREGARSE.
+    appState.avisarPuntosBodega(email: p.cliente, puntos: p.total.round());
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         backgroundColor: bosque,
         content: Text('Entregado ✅ · ya estaba pagado con saldo (el monto '

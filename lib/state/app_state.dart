@@ -26,6 +26,8 @@ import '../models/nivel.dart';
 import '../data/niveles_repo.dart';
 import '../data/perfiles_repo.dart';
 import '../data/puntos_repo.dart';
+import '../data/bodega_repo.dart';
+import '../models/bodega.dart';
 import '../data/bloqueos_repo.dart';
 import '../data/descuentos_repo.dart';
 import '../data/referidos_repo.dart';
@@ -987,9 +989,41 @@ class AppState extends ChangeNotifier {
   // para exigir esa confirmación (sube el registro de cobros). La reserva
   // MANUAL (cliente propio del dueño, fuera de comisión) no acumula.
 
-  /// Puntos ACREDITADOS del jugador (reservas por la app ya pagadas, últimos
-  /// 12 meses).
-  int get misPuntos => _puntosDe(pagadas: true);
+  /// Puntos ACREDITADOS del jugador: reservas por la app ya pagadas + pedidos
+  /// de BODEGA pagados con su saldo Pichangol (últimos 12 meses). El saldo es
+  /// el único camino de bodega que suma (decisión del director: incentivar la
+  /// billetera; el efectivo del local no comisiona ni es verificable).
+  int get misPuntos => _puntosDe(pagadas: true) + _puntosBodega;
+
+  // Puntos de BODEGA (derivados de la nube: pedidos pagados con saldo y
+  // entregados). Se cargan en el login / al abrir Mis puntos.
+  int _puntosBodega = 0;
+  List<PedidoBodega> _puntosBodegaMovs = [];
+
+  /// Puntos ganados con pedidos de bodega pagados con saldo (12 meses).
+  int get misPuntosBodega => _puntosBodega;
+
+  /// Movimientos de bodega que sustentan esos puntos (para "Mis puntos").
+  List<PedidoBodega> get puntosBodegaMovs => _puntosBodegaMovs;
+
+  /// Trae de la nube los pedidos de bodega pagados con saldo (base derivada
+  /// de puntos). Fail-safe: si no se pudo consultar, conserva lo que había.
+  Future<void> cargarPuntosBodega() async {
+    final e = (usuario?.email ?? '').trim().toLowerCase();
+    if (e.isEmpty) {
+      _puntosBodega = 0;
+      _puntosBodegaMovs = [];
+      return;
+    }
+    final res = await BodegaRepo.puntosBodegaCliente(e);
+    if (res == null) return;
+    final (total, movs) = res;
+    if (total != _puntosBodega || movs.length != _puntosBodegaMovs.length) {
+      _puntosBodega = total;
+      _puntosBodegaMovs = movs;
+      notifyListeners();
+    }
+  }
 
   /// Puntos "por confirmar": reservas por la app aún NO marcadas como pagadas
   /// (típicamente efectivo que el dueño no registró). La palanca del jugador.
@@ -6877,6 +6911,7 @@ class AppState extends ChangeNotifier {
     sincronizarSaldo(); // saldo real del backend (sobrevive reinstalar)
     sincronizarPro(); // membresía Pro REAL de ESTA cuenta (no se hereda)
     cargarPuntosCanjeados(); // canjes de puntos de ESTA cuenta (disponibles)
+    cargarPuntosBodega(); // puntos por pedidos de bodega pagados con saldo
     sincronizarAgenda(); // apodos + contactos + bloqueados en todos mis dispositivos
     cargarEstados(); // historias vigentes (24 h) de mis conocidos
     cargarMisNiveles(); // mi nivel de jugador por deporte (device-first)
@@ -7681,6 +7716,20 @@ class AppState extends ChangeNotifier {
           if (destino.isNotEmpty) 'destino': destino,
           if (dueno.isNotEmpty) 'dueno': dueno.trim().toLowerCase(),
         });
+  }
+
+  /// PUSH "te llegaron puntos" por un pedido de bodega pagado con saldo (se
+  /// dispara al ENTREGARSE, igual que el efectivo de reservas se acredita al
+  /// marcarse el cobro). Cierra el loop de la fidelidad de la billetera.
+  void avisarPuntosBodega({required String email, required int puntos}) {
+    if (puntos <= 0) return;
+    _pushAviso(
+      email: email,
+      titulo: '¡Te llegaron puntos! ⭐',
+      cuerpo: 'Ganaste +$puntos puntos Pichangol por tu pedido pagado con '
+          'saldo. Canjéalos como descuento en tu próxima reserva online.',
+      tipo: 'puntos',
+    );
   }
 
   // ── Aviso LOCAL al JUGADOR con el resultado de SU reserva ─────────────────
