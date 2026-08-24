@@ -1125,7 +1125,8 @@ class AppState extends ChangeNotifier {
       {required double montoBase,
       required int sena,
       required String reservaId,
-      required String etiqueta}) {
+      required String etiqueta,
+      String medio = ''}) {
     if (cancha.dueno.isEmpty) return null;
     switch (cobro) {
       case 'efectivo':
@@ -1139,12 +1140,15 @@ class AppState extends ChangeNotifier {
           'kind': 'liquidacion', 'dueno': cancha.dueno, 'monto': montoBase,
           'reserva_id': reservaId, 'concepto': 'Reserva online · $etiqueta',
           'online': true,
+          // Con qué pagó el jugador (yape/tarjeta): estado de cuenta del dueño.
+          'medio': medio,
         };
       case 'sena':
         return {
           'kind': 'liquidacion', 'dueno': cancha.dueno,
           'monto': sena.toDouble(), 'reserva_id': reservaId,
           'concepto': 'Seña · $etiqueta', 'online': true,
+          'medio': 'sena',
         };
       default:
         return null;
@@ -1181,7 +1185,8 @@ class AppState extends ChangeNotifier {
               duenoId: (e['dueno'] ?? '').toString(),
               montoSoles: monto,
               reservaId: rid,
-              concepto: (e['concepto'] ?? '').toString());
+              concepto: (e['concepto'] ?? '').toString(),
+              medio: (e['medio'] ?? '').toString());
         }
         quitar = r != null; // 200 (ok o duplicada) → listo
       }
@@ -6188,6 +6193,7 @@ class AppState extends ChangeNotifier {
             brutoSoles: bruto,
             comisionSoles: comisionRecibo,
             fuente: fuente,
+            medio: ((m['medio'] ?? '') as String),
           );
         }));
       notifyListeners();
@@ -7273,7 +7279,8 @@ class AppState extends ChangeNotifier {
         reservaId: reserva.id,
         etiqueta: quien.isEmpty
             ? '$lugar · $diaLabel $hora'
-            : '$lugar · $quien · $diaLabel $hora');
+            : '$lugar · $quien · $diaLabel $hora',
+        medio: reserva.medioPago);
     if (res == ResultadoReserva.ok) {
       if (accion != null) _encolarConta(accion);
       // Reserva CONFIRMADA en el servidor → avisa al dueño (push dedicado).

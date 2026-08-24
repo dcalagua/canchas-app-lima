@@ -344,6 +344,7 @@ class PagosService {
     required double montoSoles,
     required String reservaId,
     String? concepto,
+    String medio = '', // yape | tarjeta | sena (estado de cuenta del dueño)
   }) async {
     if (!disponible || duenoId.isEmpty) return null;
     try {
@@ -356,6 +357,7 @@ class PagosService {
               'monto_soles': montoSoles,
               'reserva_id': reservaId,
               if (concepto != null) 'concepto': concepto,
+              if (medio.isNotEmpty) 'medio': medio,
             }),
           )
           .timeout(const Duration(seconds: 15));

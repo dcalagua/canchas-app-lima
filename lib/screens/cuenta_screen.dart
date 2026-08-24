@@ -368,8 +368,16 @@ class _FilaMovimiento extends StatelessWidget {
     //  - comisión que sale del saldo → "de tu saldo"
     //  - reserva online → "por recibir / recibido" (Pichangol te lo transfiere)
     final esComisionSaldo = !esRecarga && !esLiquidacion && m.fuente == 'saldo';
+    // Medio con el que pagó el jugador (yape/tarjeta/seña), si viajó del
+    // backend: el dueño ve por dónde entró la plata sin abrir el recibo.
+    final medioTxt = switch (m.medio) {
+      'yape' => ' · Yape',
+      'tarjeta' => ' · Tarjeta',
+      'sena' => ' · Seña',
+      _ => '',
+    };
     final sub = esLiquidacion
-        ? '${m.cuando} · ${liqPagada ? 'recibido' : 'por recibir'}'
+        ? '${m.cuando}$medioTxt · ${liqPagada ? 'recibido' : 'por recibir'}'
         : (esComisionSaldo ? '${m.cuando} · de tu saldo' : m.cuando);
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -896,7 +904,15 @@ Future<void> _descargarEstado(BuildContext context, DateTime desde,
               _tdEC(_fechaCortaEC(
                   DateTime.tryParse(m.fechaIso)?.toLocal() ?? DateTime.now())),
               _celdaConceptoEC(m, mon),
-              _tdEC(m.montoSoles >= 0 ? 'Ingreso' : 'Egreso'),
+              // Tipo + MEDIO con el que pagó el jugador (si se conoce):
+              // "Ingreso · Yape" / "Ingreso · Tarjeta" / "Ingreso · Seña".
+              _tdEC((m.montoSoles >= 0 ? 'Ingreso' : 'Egreso') +
+                  switch (m.medio) {
+                    'yape' => ' · Yape',
+                    'tarjeta' => ' · Tarjeta',
+                    'sena' => ' · Seña',
+                    _ => '',
+                  }),
               _tdEC(
                   '${m.montoSoles >= 0 ? '+' : '-'} $mon ${m.montoSoles.abs().toStringAsFixed(2)}',
                   alignRight: true,

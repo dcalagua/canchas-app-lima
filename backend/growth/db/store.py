@@ -416,6 +416,9 @@ class PagoRegistro:
     liquidado_en: datetime | None = None
     metodo_liquidacion: str | None = None      # yape | transferencia | efectivo
     referencia_liquidacion: str | None = None  # nº de operación / nota
+    # MEDIO con el que pagó el JUGADOR (yape | tarjeta | sena): trazabilidad
+    # del origen del cobro para el estado de cuenta del dueño.
+    medio: str | None = None
 
 
 class Stores:
@@ -1143,7 +1146,8 @@ def _pago_from(d: dict) -> PagoRegistro:
         liquidado=bool(d.get("liquidado", False)),
         liquidado_en=_dt(d.get("liquidado_en")),
         metodo_liquidacion=d.get("metodo_liquidacion"),
-        referencia_liquidacion=d.get("referencia_liquidacion"))
+        referencia_liquidacion=d.get("referencia_liquidacion"),
+        medio=d.get("medio"))
 
 
 def _insc_from(d: dict) -> Inscripcion:

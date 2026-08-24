@@ -126,6 +126,9 @@ class LiquidacionOnlineReq(BaseModel):
     monto_soles: float         # precio BRUTO que pagó el jugador online
     reserva_id: str            # idempotencia
     concepto: str | None = None
+    # MEDIO con el que pagó el jugador (yape | tarjeta | sena): trazabilidad
+    # para el estado de cuenta del dueño. Vacío = no informado (APKs viejos).
+    medio: str = ""
 
 
 class VentaProductoReq(BaseModel):
@@ -646,7 +649,8 @@ def post_liquidacion_online(req: LiquidacionOnlineReq) -> dict:
             tipo="liquidacion_full", monto_centimos=bruto, moneda="PEN",
             estado="aprobado", dueno_id=req.dueno_id,
             culqi_charge_id=req.reserva_id,
-            concepto=req.concepto or "Reserva online")
+            concepto=req.concepto or "Reserva online",
+            medio=req.medio.strip() or None)
         return {"ok": True, "duplicada": False, "fuente": "saldo",
                 "bruto_centimos": bruto, "comision_centimos": com_saldo,
                 "neto_centimos": bruto, "saldo_centimos": nuevo,
@@ -657,7 +661,8 @@ def post_liquidacion_online(req: LiquidacionOnlineReq) -> dict:
         tipo="liquidacion_online", monto_centimos=bruto, moneda="PEN",
         estado="aprobado", dueno_id=req.dueno_id,
         culqi_charge_id=req.reserva_id,
-        concepto=req.concepto or "Reserva online")
+        concepto=req.concepto or "Reserva online",
+        medio=req.medio.strip() or None)
     return {"ok": True, "duplicada": False, "fuente": "transaccion",
             "requiere_recarga": True, "bruto_centimos": bruto,
             "comision_centimos": comision, "neto_centimos": bruto - comision}
@@ -1379,6 +1384,10 @@ def get_movimientos(dueno_id: str) -> dict:
         base = {"tipo": p.tipo, "creado_en": p.creado_en.isoformat(),
                 "comprobante": p.id,
                 "concepto": p.concepto or _NOMBRE.get(p.tipo, "Movimiento")}
+        # Medio con el que pagó el jugador (yape/tarjeta/sena), si se conoce:
+        # el APK lo muestra en el estado de cuenta.
+        if getattr(p, "medio", None):
+            base["medio"] = p.medio
         if p.tipo == "recarga":
             return {**base, "monto_soles": p.monto_centimos / 100.0}
         if p.tipo in _EGRESOS:

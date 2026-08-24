@@ -724,6 +724,10 @@ class MovimientoSaldo {
   /// 'transaccion' (del pago del jugador, recibes el neto) o '' (no aplica).
   final String fuente;
 
+  /// MEDIO con el que pagó el jugador ('yape' | 'tarjeta' | 'sena' | ''):
+  /// trazabilidad del origen del cobro en billetera y estado de cuenta.
+  final String medio;
+
   const MovimientoSaldo({
     required this.tipo,
     required this.monto,
@@ -736,6 +740,7 @@ class MovimientoSaldo {
     this.brutoSoles = 0,
     this.comisionSoles = 0,
     this.fuente = '',
+    this.medio = '',
   });
 
   bool get esIngreso =>
@@ -753,6 +758,7 @@ class MovimientoSaldo {
         'brutoSoles': brutoSoles,
         'comisionSoles': comisionSoles,
         'fuente': fuente,
+        'medio': medio,
       };
 
   factory MovimientoSaldo.fromJson(Map<String, dynamic> j) => MovimientoSaldo(
@@ -767,5 +773,6 @@ class MovimientoSaldo {
         brutoSoles: ((j['brutoSoles'] ?? 0) as num).toDouble(),
         comisionSoles: ((j['comisionSoles'] ?? 0) as num).toDouble(),
         fuente: (j['fuente'] ?? '') as String,
+        medio: (j['medio'] ?? '') as String,
       );
 }
