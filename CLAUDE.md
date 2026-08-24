@@ -218,14 +218,19 @@ off → redeploy inmediato en cada push). URL pública:
   `marketing/router.py:_require_pro` responde **402 `requiere_pro`**. Fail-open:
   apagado por defecto y no bloquea a APKs que no mandan `email` — sólo a quien SÍ
   se identifica y no es Pro. El APK manda `email` y ante 402 ofrece activar Pro).
-- **Recargas por QR (Yape directo, hecho ago-2026):** el usuario yapea al QR
-  de Pichangol, sube su constancia (`RecargaQrScreen`, bucket
-  `canchas/recargas/`) y el OPERADOR aprueba/rechaza en la torre (`/admin` →
-  Cobros → Recargas QR): al aprobar se acredita el saldo (pago `recarga`,
-  medio `yape_qr`) y llega push vía `pichangol_avisos`. Envs Railway:
-  `RECARGA_YAPE_QR_URL` (imagen del QR; vacía = opción oculta en el APK),
-  `RECARGA_YAPE_NUMERO`, `RECARGA_YAPE_NOMBRE`. Endpoints `/pagos/recarga-qr*`
-  (app) y `/pagos/recargas-qr` (admin). Una pendiente por usuario; tope S/1000.
+- **Recargas por QR (Yape directo) — código HECHO, EN STANDBY (decisión del
+  director ago-2026):** NO activar hasta tener un **QR de Yape EMPRESA a
+  nombre de Pichangol/EBIM** (un QR personal mata la confianza). El flujo
+  completo ya está: el usuario yapea al QR, sube su constancia
+  (`RecargaQrScreen`, bucket `canchas/recargas/`) y el OPERADOR
+  aprueba/rechaza en la torre (`/admin` → Cobros → Recargas QR): al aprobar
+  se acredita el saldo (pago `recarga`, medio `yape_qr`) y llega push vía
+  `pichangol_avisos`. Mientras las envs de Railway estén VACÍAS, la opción
+  queda OCULTA en el APK (así se queda por ahora). Para activar cuando exista
+  el Yape Empresa: `RECARGA_YAPE_QR_URL` (imagen del QR) +
+  `RECARGA_YAPE_NUMERO` + `RECARGA_YAPE_NOMBRE`. Endpoints
+  `/pagos/recarga-qr*` (app) y `/pagos/recargas-qr` (admin). Una pendiente
+  por usuario; tope S/1000.
 - **Auth por usuario billetera (endurecimiento PROD):** `PAGOS_AUTH_USUARIO=1`
   exige ID token de Google (header `X-User-Token`) en saldo/movimientos/reset;
   apagado default. Opcional `GOOGLE_OAUTH_CLIENT_IDS` (audiencia).
