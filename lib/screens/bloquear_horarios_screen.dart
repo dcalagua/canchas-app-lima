@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/candado_pro.dart';
 
 /// El DUEÑO cierra horas de su cancha (mantenimiento, walk-in, clase) para que
 /// nadie las reserve. Antes esto solo vivía en la ficha pública (inalcanzable
@@ -45,6 +46,15 @@ class _BloquearHorariosScreenState extends State<BloquearHorariosScreen> {
   bool _bloqueado(String hora) =>
       appState.estaBloqueado(widget.cancha.id, _iso, hora);
 
+  /// Candado Pichangol Pro TAMBIÉN aquí (defensa en profundidad, como en la
+  /// reserva manual): la entrada ya lo exige, pero si el Pro venció con la
+  /// pantalla abierta, el toque igual pide la suscripción.
+  Future<void> _alternar(String hora) async {
+    if (!await exigirPro(context, funcion: 'El bloqueo de horas')) return;
+    if (!mounted) return;
+    appState.alternarBloqueo(widget.cancha.id, _iso, hora);
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = widget.cancha;
@@ -84,10 +94,7 @@ class _BloquearHorariosScreenState extends State<BloquearHorariosScreen> {
                         hora: h,
                         reservado: _reservado(h),
                         bloqueado: _bloqueado(h),
-                        onTap: _reservado(h)
-                            ? null
-                            : () => appState.alternarBloqueo(
-                                widget.cancha.id, _iso, h),
+                        onTap: _reservado(h) ? null : () => _alternar(h),
                       ),
                   ],
                 ),
