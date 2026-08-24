@@ -4,6 +4,7 @@ import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/ancho_lectura.dart';
+import '../widgets/ilustracion_pichangol.dart';
 
 /// MIS PUNTOS (fidelidad del jugador). Los puntos se DERIVAN de sus reservas
 /// pagadas por la app (últimos 12 meses): 1 punto por S/ 1 pagado — online al
@@ -164,15 +165,12 @@ class _MisPuntosScreenState extends State<MisPuntosScreen> {
                           fontWeight: FontWeight.w800, fontSize: 15)),
                   const SizedBox(height: 8),
                   if (movs.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 26),
-                      child: Center(
-                        child: Text(
-                            'Aún no tienes puntos. Reserva y paga por la '
-                            'app para empezar a acumular ⭐',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: textoTenue)),
-                      ),
+                    const VacioPichangol(
+                      clave: 'puntos_vacio',
+                      emoji: '⭐',
+                      titulo: 'Aún no tienes puntos',
+                      mensaje: 'Reserva y paga por la app para empezar a '
+                          'acumular. Cada sol pagado es un punto.',
                     ),
                   for (final r in movs)
                     Container(

@@ -18,6 +18,7 @@ import '../widgets/candado_pro.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/ancho_lectura.dart';
+import '../widgets/ilustracion_pichangol.dart';
 import '../widgets/imagen_producto_bodega.dart';
 
 /// MI BODEGA — POS ligero del dueño (función Pichangol Pro): caja rápida de
@@ -1010,7 +1011,8 @@ class _BodegaScreenState extends State<BodegaScreen> {
       padding: const EdgeInsets.symmetric(vertical: 40),
       child: Column(
         children: [
-          const Text('📦', style: TextStyle(fontSize: 40)),
+          const IlustracionPichangol(
+              clave: 'bodega_vacia', emoji: '📦', size: 120),
           const SizedBox(height: 10),
           const Text('Arma tu bodega en 2 minutos',
               style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
@@ -1515,14 +1517,12 @@ class _BodegaScreenState extends State<BodegaScreen> {
       ),
       const SizedBox(height: 12),
       if (orden.isEmpty)
-        const Padding(
-          padding: EdgeInsets.symmetric(vertical: 30),
-          child: Center(
-            child: Text('Sin pedidos aún. Activa el switch y tus clientes '
-                'podrán pedir desde su cancha 🍺',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: textoTenue)),
-          ),
+        const VacioPichangol(
+          clave: 'pedidos_vacio',
+          emoji: '🛎️',
+          mensaje: 'Sin pedidos aún. Activa el switch y tus clientes '
+              'podrán pedir desde su cancha 🍺',
+          size: 110,
         ),
       for (final p in orden)
         Container(
@@ -1813,15 +1813,12 @@ class _BodegaScreenState extends State<BodegaScreen> {
       ),
       const SizedBox(height: 12),
       if (abiertas.isEmpty)
-        const Padding(
-          padding: EdgeInsets.symmetric(vertical: 26),
-          child: Center(
-            child: Text(
-                'Sin cuentas abiertas. Al entregar un pedido (o cobrar en '
-                'caja) elige "A la cuenta 📒" y el cliente paga al salir.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: textoTenue)),
-          ),
+        const VacioPichangol(
+          clave: 'cuentas_vacio',
+          emoji: '📒',
+          mensaje: 'Sin cuentas abiertas. Al entregar un pedido (o cobrar '
+              'en caja) elige "A la cuenta 📒" y el cliente paga al salir.',
+          size: 110,
         ),
       for (final c in abiertas)
         Container(

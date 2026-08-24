@@ -8,6 +8,7 @@ import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/dialogo_pichangol.dart';
+import '../widgets/ilustracion_pichangol.dart';
 import '../widgets/responsive.dart';
 import '../widgets/logo_academia.dart';
 import '../widgets/pago_tarjeta_sheet.dart';
@@ -42,16 +43,12 @@ class MisClasesScreen extends StatelessWidget {
           }
           final matriculas = appState.misMatriculas;
           if (matriculas.isEmpty) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(32),
-                child: Text(
-                    'Aún no estás matriculado en ninguna academia.\n'
-                    'Entra a "Academias" y matricúlate, o únete con el código de '
-                    'tu profe.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: textoTenue, height: 1.4)),
-              ),
+            return const VacioPichangol(
+              clave: 'clases_vacias',
+              emoji: '🎓',
+              titulo: 'Aún no tienes clases',
+              mensaje: 'Entra a "Academias" en Explorar y matricúlate, o '
+                  'únete con el código de tu profe.',
             );
           }
           return ListView(

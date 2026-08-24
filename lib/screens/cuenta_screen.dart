@@ -15,6 +15,7 @@ import 'pago_sheet.dart';
 import 'recargar_saldo_screen.dart';
 import '../utils/moneda.dart';
 import '../widgets/ancho_lectura.dart';
+import '../widgets/ilustracion_pichangol.dart';
 
 /// Cuenta del club: saldo prepago (modelo inDrive), recargas y movimientos.
 class CuentaScreen extends StatefulWidget {
@@ -341,8 +342,13 @@ class _CuentaScreenState extends State<CuentaScreen> {
                       t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
               const SizedBox(height: 10),
               if (appState.movimientos.isEmpty)
-                Text('Aún no hay movimientos.',
-                    style: t.bodyMedium?.copyWith(color: textoTenueDe(context)))
+                const VacioPichangol(
+                  clave: 'billetera_vacia',
+                  emoji: '👛',
+                  mensaje: 'Aún no hay movimientos. Recarga tu saldo o '
+                      'recibe pagos y aparecerán aquí.',
+                  size: 110,
+                )
               else ...[
                 // 💰 Pagos de tus CLIENTES (Pichangol te los transfiere): reservas
                 // online, bonos y ventas del marketplace.

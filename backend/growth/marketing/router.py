@@ -27,6 +27,7 @@ from . import afiche_campeonato
 from . import arte_ia
 from . import bodega_web
 from . import campeonato_web
+from . import ilustracion as ilustracion_svc
 from . import packshot as packshot_svc
 from . import link_preview as link_preview_svc
 from . import redes as redes_svc
@@ -470,6 +471,20 @@ def qr_carta_bodega(carta_id: str, request: Request) -> Response:
                         headers={"Cache-Control": "public, max-age=86400"})
     except Exception:
         raise HTTPException(status_code=404, detail="qr_no_disponible")
+
+
+@router.get("/ilustracion/{clave}")
+def ilustracion_marca(clave: str) -> Response:
+    """ILUSTRACIÓN de marca por clave (estados vacíos y momentos del APK):
+    estilo flat consistente con la paleta Pichangol, generada UNA vez y
+    persistida en Storage. 404 = sin proveedor o clave desconocida (el APK
+    muestra el emoji de siempre)."""
+    datos = ilustracion_svc.imagen(clave)
+    if not datos:
+        raise HTTPException(status_code=404,
+                            detail="ilustracion_no_disponible")
+    return Response(content=datos, media_type="image/jpeg",
+                    headers={"Cache-Control": "public, max-age=604800"})
 
 
 @router.get("/bodega/packshot/{tipo}")

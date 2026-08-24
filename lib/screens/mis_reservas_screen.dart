@@ -4,6 +4,7 @@ import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/dialogo_pichangol.dart';
+import '../widgets/ilustracion_pichangol.dart';
 import '../utils/ubicacion_share.dart';
 import '../widgets/court_lines.dart';
 import '../utils/moneda.dart';
@@ -807,7 +808,8 @@ class _Vacio extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.sports_soccer, size: 64, color: verdeClaro),
+            const IlustracionPichangol(
+                clave: 'reservas_vacias', emoji: '🎾', size: 120),
             const SizedBox(height: 16),
             Text(
                 historial ? 'Sin reservas anteriores' : 'Aún no tienes reservas',
