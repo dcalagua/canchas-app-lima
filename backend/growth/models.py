@@ -20,6 +20,14 @@ class CanjearRequest(BaseModel):
     fuente_financiamiento: str = "pichangol"  # pichangol | dueno
 
 
+class AcreditarReservaRequest(BaseModel):
+    """Fidelidad: puntos por una reserva efectivamente pagada."""
+    usuario_id: str
+    monto: float
+    moneda: str = "S/"  # S/ | Bs | $ (define el factor de puntos)
+    reserva_id: str
+
+
 class PrimeraReservaRequest(BaseModel):
     cancha_id: str
 

@@ -10,6 +10,7 @@ import 'nivel_onboarding_screen.dart';
 import 'academias_screen.dart';
 import 'mis_bonos_screen.dart';
 import 'mis_pagos_screen.dart';
+import 'mis_puntos_screen.dart';
 import 'mis_reservas_screen.dart';
 import 'marketplace_screen.dart';
 import '../widgets/banner_pro.dart';
@@ -150,6 +151,14 @@ class PerfilScreen extends StatelessWidget {
             titulo: 'Mis pagos',
             onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const MisPagosScreen())),
+          ),
+          _ItemAirbnb(
+            icono: Icons.stars_outlined,
+            titulo: appState.puntosSaldo > 0
+                ? 'Mis puntos · ${appState.puntosSaldo} ⭐'
+                : 'Mis puntos',
+            onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const MisPuntosScreen())),
           ),
           if (appState.usaCircuito)
             _ItemAirbnb(

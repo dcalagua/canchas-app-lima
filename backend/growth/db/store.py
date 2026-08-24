@@ -79,6 +79,16 @@ CONFIG_DEFAULT: dict[str, str] = {
     "puntos_pedir_cancha": "50",
     # 100 puntos = S/ 1 de vale
     "equivalencia_puntos_por_sol": "100",
+    # --- FIDELIDAD del JUGADOR (reservas pagadas, ago-2026) -----------------
+    # Puntos por unidad de moneda pagada (S/ 1 o Bs 1 = 1 punto); en USD
+    # (Ecuador) $1 = 3 puntos para emparejar el valor. Todo editable en torre.
+    "fidelidad_puntos_por_unidad": "1",
+    "fidelidad_puntos_por_usd": "3",
+    # Valor del canje: 100 puntos = 3 unidades de moneda local (retorno ~3%,
+    # lo absorbe la comisión de Pichangol, no el neto del dueño).
+    "fidelidad_valor_100_puntos": "3",
+    # Caducidad de los puntos LIBERADOS en días (0 = no caducan).
+    "fidelidad_caducidad_dias": "180",
     # tope mensual de premios financiados por Pichangol (en soles)
     "tope_mensual_premios_pichangol_soles": "500",
     # tope de solicitudes que ACREDITAN puntos por usuario/mes
