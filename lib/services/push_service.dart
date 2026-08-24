@@ -97,6 +97,11 @@ class PushService {
     } catch (_) {}
   }
 
+  /// Contador que sube cuando llega un push de PEDIDO DE BODEGA en foreground:
+  /// la pestaña Pedidos de Mi bodega lo escucha y se refresca sola (estilo
+  /// WhatsApp, igual que nuevaReserva con el panel de Reservas).
+  static final ValueNotifier<int> nuevoPedidoBodega = ValueNotifier<int>(0);
+
   /// Contador que se incrementa cada vez que llega un push de CHAT en foreground.
   /// La bandeja (inbox) lo escucha para refrescarse SOLA al instante, sin tener
   /// que reabrir ni hacer pull-to-refresh (estilo WhatsApp).
@@ -210,10 +215,28 @@ class PushService {
       return;
     }
     final hilo = (m.data['hilo'] ?? '').toString();
+    // AVISOS GENÉRICOS sin hilo de chat (pedido de bodega, retos, academia,
+    // puntos, recargas…): con la app ABIERTA el sistema NO los pinta y antes
+    // se DESCARTABAN en silencio (bug reportado por el director: el pedido no
+    // "llegó" porque el dueño tenía la app al frente). Sonido + banner in-app,
+    // igual que reservas/chat.
+    if (hilo.isEmpty) {
+      final n = m.notification;
+      final t = (n?.title ?? '').trim();
+      final c = (n?.body ?? '').trim();
+      if (t.isEmpty && c.isEmpty) return; // data-only: nada que pintar
+      // Pedido de bodega: avisa al panel para que se refresque solo.
+      if (m.data['tipo'] == 'bodega_pedido') nuevoPedidoBodega.value++;
+      try {
+        _sonidoPush.play(AssetSource('sonidos/pichan.mp3'));
+      } catch (_) {}
+      _mostrarBanner(t.isEmpty ? 'Pichangol' : t, c);
+      return;
+    }
     // Avisa a la bandeja para que se refresque sola (aunque el chat esté abierto
     // o silenciado): así el mensaje "se siembra" al toque, sin reabrir.
-    if (hilo.isNotEmpty) nuevoMensaje.value++;
-    if (hilo.isEmpty || hilo == appState.hiloChatAbierto) return;
+    nuevoMensaje.value++;
+    if (hilo == appState.hiloChatAbierto) return;
     // Chat silenciado (campanita): no molestamos con el aviso in-app.
     if (appState.chatSilenciado(hilo)) return;
     final n = m.notification;

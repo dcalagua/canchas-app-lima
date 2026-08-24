@@ -10,6 +10,7 @@ import '../config/pais.dart';
 import '../data/bodega_repo.dart';
 import '../models/bodega.dart';
 import '../services/pagos_service.dart';
+import '../services/push_service.dart';
 import '../services/supabase_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -114,6 +115,19 @@ class _BodegaScreenState extends State<BodegaScreen> {
   void initState() {
     super.initState();
     _cargar();
+    // Refresco automático al llegar el push de un pedido con la app abierta
+    // (estilo WhatsApp): la pestaña Pedidos muestra el pedido sin pull.
+    PushService.nuevoPedidoBodega.addListener(_alLlegarPedido);
+  }
+
+  @override
+  void dispose() {
+    PushService.nuevoPedidoBodega.removeListener(_alLlegarPedido);
+    super.dispose();
+  }
+
+  void _alLlegarPedido() {
+    if (mounted) _cargar();
   }
 
   Future<void> _cargar() async {

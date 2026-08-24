@@ -7,6 +7,7 @@ import '../data/bodega_repo.dart';
 import '../models/bodega.dart';
 import '../services/location_service.dart';
 import '../services/pagos_service.dart';
+import '../services/push_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/geo.dart';
@@ -54,6 +55,19 @@ class _PedirBodegaScreenState extends State<PedirBodegaScreen> {
   void initState() {
     super.initState();
     _cargar();
+    // Con la app abierta, el push "confirmado/entregado" refresca el estado
+    // del pedido al toque (además del banner in-app).
+    PushService.nuevoPedidoBodega.addListener(_alLlegarPush);
+  }
+
+  @override
+  void dispose() {
+    PushService.nuevoPedidoBodega.removeListener(_alLlegarPush);
+    super.dispose();
+  }
+
+  void _alLlegarPush() {
+    if (mounted) _cargar();
   }
 
   Future<void> _cargar() async {
@@ -394,6 +408,68 @@ class _PedirBodegaScreenState extends State<PedirBodegaScreen> {
     _cargar();
   }
 
+  /// RECORRIDO del pedido (pedido del director, estilo timeline de hitos):
+  /// Enviado → En camino → Entregado, con los pasos iluminándose conforme
+  /// avanza. Se actualiza SOLO al llegar cada push (nuevoPedidoBodega).
+  Widget _recorridoPedido(BuildContext context, PedidoBodega p) {
+    final cs = Theme.of(context).colorScheme;
+    final paso = p.estado == 'entregado' ? 2 : (p.confirmado ? 1 : 0);
+    const pasos = [('🛎️', 'Enviado'), ('🏃', 'En camino'), ('✅', 'Entregado')];
+
+    Widget nodo(int i) => Container(
+          width: 34,
+          height: 34,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: i <= paso ? limaSuave : cs.surface,
+            shape: BoxShape.circle,
+            border: Border.all(
+                color: i <= paso ? bosque : trazo,
+                width: i == paso ? 2 : 1),
+          ),
+          child: Opacity(
+            opacity: i <= paso ? 1 : 0.35,
+            child:
+                Text(pasos[i].$1, style: const TextStyle(fontSize: 15)),
+          ),
+        );
+
+    Widget tramo(int hasta) => Expanded(
+          child: Container(
+            height: 3,
+            margin: const EdgeInsets.symmetric(horizontal: 4),
+            decoration: BoxDecoration(
+              color: hasta <= paso ? bosque : trazo,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        );
+
+    return Column(
+      children: [
+        Row(children: [nodo(0), tramo(1), nodo(1), tramo(2), nodo(2)]),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            for (var i = 0; i < pasos.length; i++)
+              Expanded(
+                child: Text(pasos[i].$2,
+                    textAlign: i == 0
+                        ? TextAlign.left
+                        : i == 2
+                            ? TextAlign.right
+                            : TextAlign.center,
+                    style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        color: i <= paso ? bosque : textoTenue)),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
   (String, Color) _estadoVisual(PedidoBodega p) {
     final (txt, color) = switch (p.estado) {
       'confirmado' => ('Confirmado · va en camino 🏃', bosque),
@@ -473,31 +549,57 @@ class _PedirBodegaScreenState extends State<PedirBodegaScreen> {
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(color: trazo),
                         ),
-                        child: Row(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('${p.resumen} → ${p.zona}',
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text('${p.resumen} → ${p.zona}',
                                       style: const TextStyle(
                                           fontWeight: FontWeight.w700)),
-                                  const SizedBox(height: 2),
-                                  Text(_estadoVisual(p).$1,
-                                      style: TextStyle(
-                                          fontSize: 12.5,
-                                          fontWeight: FontWeight.w600,
-                                          color: _estadoVisual(p).$2)),
-                                ],
-                              ),
+                                ),
+                                if (p.pendiente)
+                                  TextButton(
+                                    onPressed: () => _cancelar(p),
+                                    style: TextButton.styleFrom(
+                                        padding: const EdgeInsets
+                                            .symmetric(horizontal: 8),
+                                        visualDensity:
+                                            VisualDensity.compact),
+                                    child: const Text('Cancelar',
+                                        style: TextStyle(
+                                            color: Colors.redAccent)),
+                                  ),
+                              ],
                             ),
-                            if (p.pendiente)
-                              TextButton(
-                                onPressed: () => _cancelar(p),
-                                child: const Text('Cancelar',
-                                    style:
-                                        TextStyle(color: Colors.redAccent)),
-                              ),
+                            // RECORRIDO del pedido (se ilumina paso a paso y
+                            // avanza solo con cada push). Si murió en el
+                            // camino (rechazado/cancelado), texto claro.
+                            if (p.estado == 'rechazado' ||
+                                p.estado == 'cancelado' ||
+                                (p.pendiente && p.expirado))
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(_estadoVisual(p).$1,
+                                    style: TextStyle(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: _estadoVisual(p).$2)),
+                              )
+                            else ...[
+                              const SizedBox(height: 8),
+                              _recorridoPedido(context, p),
+                              if (p.pagado)
+                                const Padding(
+                                  padding: EdgeInsets.only(top: 6),
+                                  child: Text('💳 Pagado con tu saldo',
+                                      style: TextStyle(
+                                          fontSize: 11.5,
+                                          fontWeight: FontWeight.w700,
+                                          color: bosque)),
+                                ),
+                            ],
                           ],
                         ),
                       ),
