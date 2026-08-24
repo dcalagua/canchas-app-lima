@@ -234,6 +234,14 @@ off → redeploy inmediato en cada push). URL pública:
 - **Auth por usuario billetera (endurecimiento PROD):** `PAGOS_AUTH_USUARIO=1`
   exige ID token de Google (header `X-User-Token`) en saldo/movimientos/reset;
   apagado default. Opcional `GOOGLE_OAUTH_CLIENT_IDS` (audiencia).
+- **Promos de billetera (hecho ago-2026):** BONO DE RECARGA (config en torre
+  `/admin` → Cobros → Promociones: % extra + recarga mínima + tope; 0% =
+  apagado; se acredita solo en TODOS los caminos de recarga — Culqi síncrono,
+  webhook, QR aprobado, Libélula — idempotente por cargo, pago
+  `bono_recarga` + push 🎁) y CUPONES de saldo (crear/desactivar en torre;
+  canje `/pagos/cupon/canjear`, un canje por usuario, pago `cupon`). APK:
+  banner de la promo en billetera y en Recargar; "¿Tienes un cupón?" en la
+  billetera. El costo lo asume Pichangol (marketing).
 - **Tests:** `cd backend/growth && python3 -m pytest -q` (deben pasar todos).
   Cumplimiento Ley 29733 (DNI = dato personal: solo validar dueño, no publicar).
 

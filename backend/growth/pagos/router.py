@@ -373,6 +373,9 @@ def _marcar_pagada(ident: str) -> dict | None:
                     tipo="recarga", monto_centimos=centimos, moneda="BOB",
                     estado="aprobado", dueno_id=d["dueno_id"],
                     email=d.get("email", ""), concepto="Recarga (Libélula)")
+                # PROMO bono de recarga (los umbrales aplican en Bs).
+                _aplicar_bono_recarga(
+                    d["dueno_id"], centimos / 100.0, f"lib_{ident}")
     return d
 
 
@@ -591,8 +594,10 @@ def post_recarga_qr_aprobar(solicitud_id: int) -> dict:
                 r["email"], "Recarga acreditada ✅",
                 f"+S/ {r['monto_soles']:.2f} a tu saldo Pichangol por tu "
                 "Yape al QR. ¡Gracias!", tipo="recarga")
+            bono = _aplicar_bono_recarga(
+                r["email"], r["monto_soles"], f"qr_{solicitud_id}")
             return {"ok": True, "duplicada": False, "solicitud": r,
-                    "saldo_centimos": nuevo}
+                    "bono_soles": bono, "saldo_centimos": nuevo}
     raise HTTPException(status_code=404, detail="solicitud_no_encontrada")
 
 
@@ -621,6 +626,168 @@ def post_recarga_qr_rechazar(solicitud_id: int,
                 tipo="recarga")
             return {"ok": True, "duplicada": False, "solicitud": r}
     raise HTTPException(status_code=404, detail="solicitud_no_encontrada")
+
+
+# ── PROMOCIONES de la billetera: bono de recarga + cupones ─────────────────
+# Lo paga Pichangol (costo de marketing), todo editable en la torre. El bono
+# se aplica SOLO en recargas (no en liquidaciones) y es idempotente por cargo.
+
+
+def _promo_bono_cfg() -> tuple[float, float, float]:
+    def _f(clave: str) -> float:
+        try:
+            return float(stores.cfg(clave))
+        except (TypeError, ValueError):
+            return 0.0
+    return (_f("promo_bono_recarga_pct"), _f("promo_bono_recarga_min"),
+            _f("promo_bono_recarga_tope"))
+
+
+def _aplicar_bono_recarga(dueno_id: str, monto_soles: float,
+                          ref: str) -> float:
+    """Si el bono de recarga está activo (pct > 0) y la recarga alcanza el
+    mínimo, acredita el extra. Idempotente por [ref] (un bono por cargo).
+    Devuelve el bono acreditado en soles (0 = no aplicó)."""
+    pct, minimo, tope = _promo_bono_cfg()
+    if pct <= 0 or monto_soles < minimo or not dueno_id:
+        return 0.0
+    bono = round(monto_soles * pct / 100, 2)
+    if tope > 0:
+        bono = min(bono, tope)
+    if bono <= 0:
+        return 0.0
+    ref_bono = f"{ref}_bono"
+    if stores.pago_por_charge(ref_bono) is not None:
+        return 0.0  # ya se dio el bono de este cargo
+    cent = _soles_a_centimos(bono)
+    stores.acreditar(dueno_id, cent)
+    stores.registrar_pago(
+        tipo="bono_recarga", monto_centimos=cent, moneda="PEN",
+        estado="aprobado", dueno_id=dueno_id, culqi_charge_id=ref_bono,
+        concepto=f"Bono de recarga (+{pct:g}%)")
+    _aviso_push_usuario(
+        dueno_id, "¡Bono de recarga! 🎁",
+        f"Te regalamos +{bono:.2f} extra en tu saldo por tu recarga. "
+        "¡A jugar!", tipo="recarga")
+    return bono
+
+
+@router.get("/promos", dependencies=_APP)
+def get_promos() -> dict:
+    """Promos vigentes para mostrar en la billetera del APK (banner)."""
+    pct, minimo, tope = _promo_bono_cfg()
+    return {"bono_recarga": {
+        "activo": pct > 0, "pct": pct, "min": minimo, "tope": tope}}
+
+
+class PromoBonoReq(BaseModel):
+    pct: float = 0
+    minimo: float = 50
+    tope: float = 20
+
+
+@router.get("/promos/admin", dependencies=_ADMIN)
+def get_promos_admin() -> dict:
+    pct, minimo, tope = _promo_bono_cfg()
+    return {"pct": pct, "min": minimo, "tope": tope}
+
+
+@router.post("/promos/admin", dependencies=_ADMIN)
+def set_promos_admin(req: PromoBonoReq) -> dict:
+    """TORRE: configura el bono de recarga (pct 0 = apagado)."""
+    if req.pct < 0 or req.pct > 100 or req.minimo < 0 or req.tope < 0:
+        raise HTTPException(status_code=400, detail="valores_invalidos")
+    stores.config["promo_bono_recarga_pct"] = str(req.pct)
+    stores.config["promo_bono_recarga_min"] = str(req.minimo)
+    stores.config["promo_bono_recarga_tope"] = str(req.tope)
+    return {"ok": True, **get_promos_admin()}
+
+
+class CuponCrearReq(BaseModel):
+    codigo: str = ""           # vacío = se genera (PCG-XXXXXX)
+    valor_soles: float
+    usos_max: int = 100
+
+
+class CuponCanjeReq(BaseModel):
+    email: str
+    codigo: str
+
+
+def _cupon_norm(codigo: str) -> str:
+    return codigo.strip().upper().replace(" ", "")
+
+
+@router.get("/cupones", dependencies=_ADMIN)
+def get_cupones() -> dict:
+    """TORRE: cupones con sus usos."""
+    return {"cupones": [
+        {"codigo": k, "valor_soles": v.get("valor_soles", 0),
+         "usos_max": v.get("usos_max", 0),
+         "usados": len(v.get("usados", [])),
+         "activo": v.get("activo", True),
+         "creado_en": v.get("creado_en")}
+        for k, v in sorted(stores.cupones.items())
+    ]}
+
+
+@router.post("/cupones", dependencies=_ADMIN)
+def post_cupon_crear(req: CuponCrearReq) -> dict:
+    """TORRE: crea un cupón de saldo (campañas con academias, sorteos…)."""
+    if req.valor_soles <= 0 or req.valor_soles > 500:
+        raise HTTPException(status_code=400, detail="valor_invalido")
+    if req.usos_max <= 0 or req.usos_max > 10000:
+        raise HTTPException(status_code=400, detail="usos_invalidos")
+    codigo = _cupon_norm(req.codigo) or f"PCG-{uuid.uuid4().hex[:6].upper()}"
+    if codigo in stores.cupones:
+        raise HTTPException(status_code=409, detail="codigo_ya_existe")
+    stores.cupones[codigo] = {
+        "valor_soles": round(req.valor_soles, 2),
+        "usos_max": req.usos_max,
+        "usados": [],
+        "activo": True,
+        "creado_en": _ahora_iso(),
+    }
+    return {"ok": True, "codigo": codigo}
+
+
+@router.post("/cupones/{codigo}/desactivar", dependencies=_ADMIN)
+def post_cupon_desactivar(codigo: str) -> dict:
+    c = stores.cupones.get(_cupon_norm(codigo))
+    if c is None:
+        raise HTTPException(status_code=404, detail="cupon_no_encontrado")
+    c["activo"] = False
+    return {"ok": True}
+
+
+@router.post("/cupon/canjear", dependencies=_APP)
+def post_cupon_canjear(req: CuponCanjeReq,
+                       x_user_token: str | None = Header(default=None)) -> dict:
+    """El usuario canjea un cupón: acredita el valor a SU saldo. Un canje por
+    usuario por cupón; respeta el candado de identidad de PROD."""
+    email = req.email.strip().lower()
+    codigo = _cupon_norm(req.codigo)
+    if not email or not codigo:
+        raise HTTPException(status_code=400, detail="datos_invalidos")
+    _require_usuario(email, x_user_token)
+    c = stores.cupones.get(codigo)
+    if c is None or not c.get("activo", True):
+        return {"ok": False, "error": "cupon_invalido"}
+    usados = c.setdefault("usados", [])
+    if email in usados:
+        return {"ok": False, "error": "ya_lo_canjeaste"}
+    if len(usados) >= int(c.get("usos_max", 0)):
+        return {"ok": False, "error": "cupon_agotado"}
+    valor = float(c.get("valor_soles", 0))
+    cent = _soles_a_centimos(valor)
+    usados.append(email)
+    nuevo = stores.acreditar(email, cent)
+    stores.registrar_pago(
+        tipo="cupon", monto_centimos=cent, moneda="PEN", estado="aprobado",
+        dueno_id=email, culqi_charge_id=f"cupon_{codigo}_{email}",
+        concepto=f"Cupón {codigo}")
+    return {"ok": True, "valor_soles": valor,
+            "saldo_centimos": nuevo, "saldo_soles": nuevo / 100.0}
 
 
 class ConsolidarReq(BaseModel):
@@ -1602,7 +1769,8 @@ def get_movimientos(dueno_id: str,
     # `venta_producto` = venta del marketplace Y canje/compra de BONO de horas:
     # Pichangol cobró al comprador y le debe el NETO al dueño (misma
     # contabilidad que una reserva online). DEBE aparecer en el historial.
-    _INCLUIR = ("recarga", "liquidacion_online", "liquidacion_full",
+    _INCLUIR = ("recarga", "bono_recarga", "cupon",
+                "liquidacion_online", "liquidacion_full",
                 "venta_producto",
                 "inscripcion_torneo_ingreso") + _EGRESOS
     propios = [
@@ -1612,6 +1780,8 @@ def get_movimientos(dueno_id: str,
     ]
     _NOMBRE = {
         "recarga": "Recarga de saldo",
+        "bono_recarga": "Bono de recarga 🎁",
+        "cupon": "Cupón canjeado 🎁",
         "comision_reserva": "Comisión de reserva",
         "suscripcion": "Servicio de marketing",
         "suscripcion_pro": "Pichangol Pro",
@@ -1630,7 +1800,7 @@ def get_movimientos(dueno_id: str,
         # el APK lo muestra en el estado de cuenta.
         if getattr(p, "medio", None):
             base["medio"] = p.medio
-        if p.tipo == "recarga":
+        if p.tipo in ("recarga", "bono_recarga", "cupon"):
             return {**base, "monto_soles": p.monto_centimos / 100.0}
         if p.tipo in _EGRESOS:
             # Egreso de saldo: negativo.
@@ -1770,16 +1940,21 @@ def post_recarga(req: RecargaReq) -> dict:
 
     charge_id = r["charge_id"]
     # Idempotencia: si el webhook ya acreditó este cargo, no dupliques.
+    bono = 0.0
     if stores.pago_por_charge(charge_id) is None:
         stores.acreditar(req.dueno_id, centimos)
         stores.registrar_pago(
             tipo="recarga", monto_centimos=centimos, moneda="PEN",
             estado="aprobado", dueno_id=req.dueno_id, email=req.email,
             culqi_charge_id=charge_id, concepto="Recarga de saldo")
+        # PROMO: bono de recarga (si está activa en la torre).
+        bono = _aplicar_bono_recarga(
+            req.dueno_id, centimos / 100.0, charge_id)
     saldo = stores.saldo_centimos(req.dueno_id)
     return {
         "ok": True,
         "charge_id": charge_id,
+        "bono_soles": bono,
         "saldo_centimos": saldo,
         "saldo_soles": saldo / 100.0,
     }
@@ -1850,6 +2025,8 @@ async def post_webhook(request: Request, t: str | None = None) -> dict:
             tipo="recarga", monto_centimos=info["monto_centimos"], moneda="PEN",
             estado="aprobado", dueno_id=meta["dueno_id"],
             culqi_charge_id=charge_id, concepto="Recarga (webhook)")
+        _aplicar_bono_recarga(
+            meta["dueno_id"], info["monto_centimos"] / 100.0, charge_id)
     else:
         # fee u otro: sólo lo registramos (idempotencia/auditoría).
         stores.registrar_pago(

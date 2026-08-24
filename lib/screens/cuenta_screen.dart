@@ -29,6 +29,8 @@ class _CuentaScreenState extends State<CuentaScreen> {
 
   // Recargas por QR (Yape directo) del usuario aún EN REVISIÓN del operador.
   List<Map<String, dynamic>> _recargasQrPend = const [];
+  // Promo vigente del bono de recarga (banner). null = sin promo.
+  Map<String, dynamic>? _promoBono;
 
   @override
   void initState() {
@@ -39,6 +41,79 @@ class _CuentaScreenState extends State<CuentaScreen> {
     // reiniciar la app. Antes (StatelessWidget) no re-sincronizaba nunca.
     appState.flushContabilidad().then((_) => appState.sincronizarSaldo());
     _cargarRecargasQr();
+    PagosService.promos().then((p) {
+      final b = p?['bono_recarga'];
+      if (mounted && b is Map && (b['activo'] ?? false) == true) {
+        setState(() => _promoBono = Map<String, dynamic>.from(b));
+      }
+    });
+  }
+
+  /// Canjea un CUPÓN de saldo (código de campaña): acredita al instante.
+  Future<void> _canjearCupon() async {
+    final email = (appState.usuario?.email ?? '').toLowerCase();
+    if (email.isEmpty) return;
+    final ctrl = TextEditingController();
+    final codigo = await showDialog<String>(
+      context: context,
+      builder: (dctx) => AlertDialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Text('🎟️ Canjear cupón',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          textCapitalization: TextCapitalization.characters,
+          decoration: const InputDecoration(
+            hintText: 'CÓDIGO',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (v) => Navigator.pop(dctx, v),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dctx),
+              child: const Text('Cancelar')),
+          FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: lima),
+              onPressed: () => Navigator.pop(dctx, ctrl.text),
+              child: const Text('Canjear')),
+        ],
+      ),
+    );
+    if (codigo == null || codigo.trim().isEmpty || !mounted) return;
+    final r = await PagosService.canjearCupon(email: email, codigo: codigo);
+    if (!mounted) return;
+    if (r == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Sin conexión. Intenta de nuevo.')));
+      return;
+    }
+    if (r['ok'] == true) {
+      final valor = (r['valor_soles'] as num?)?.toDouble() ?? 0;
+      await appState.sincronizarSaldo();
+      RecordatorioService.mostrarAhora(
+        clave: 'cupon_${DateTime.now().millisecondsSinceEpoch}',
+        titulo: 'Cupón canjeado 🎁',
+        cuerpo:
+            '+${appState.monedaSaldoSimbolo} ${valor.toStringAsFixed(2)} a tu '
+            'saldo Pichangol.',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: pino,
+          content: Text(
+              '🎁 ¡Cupón canjeado! +${appState.monedaSaldoSimbolo} ${valor.toStringAsFixed(2)} a tu saldo.')));
+    } else {
+      final msj = switch ((r['error'] ?? '').toString()) {
+        'ya_lo_canjeaste' => 'Ese cupón ya lo canjeaste antes.',
+        'cupon_agotado' => 'Ese cupón ya se agotó 😔',
+        _ => 'Código inválido o vencido. Revísalo e intenta de nuevo.',
+      };
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(msj)));
+    }
   }
 
   Future<void> _cargarRecargasQr() async {
@@ -174,6 +249,40 @@ class _CuentaScreenState extends State<CuentaScreen> {
                     ],
                   ),
                 ),
+              // PROMO vigente: bono de recarga (configurado en la torre).
+              if (_promoBono != null)
+                Container(
+                  margin: const EdgeInsets.only(top: 12),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(colors: [
+                      Color(0xFFFFF6D8),
+                      Color(0xFFFFEFC2),
+                    ]),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFE8D9A0)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Text('🎁', style: TextStyle(fontSize: 26)),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Recarga ${appState.monedaSaldoSimbolo} '
+                          '${((_promoBono!['min'] as num?) ?? 0).toStringAsFixed(0)} '
+                          'o más y te regalamos '
+                          '${((_promoBono!['pct'] as num?) ?? 0).toStringAsFixed(0)}% extra '
+                          '(hasta ${appState.monedaSaldoSimbolo} '
+                          '${((_promoBono!['tope'] as num?) ?? 0).toStringAsFixed(0)}).',
+                          style: t.bodySmall?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              color: const Color(0xFF7A5C00),
+                              height: 1.3),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               const SizedBox(height: 16),
               // ACCIONES RÁPIDAS estilo billetera digital (Yape/Deuna): todo
               // lo de la billetera a un tap, en fila de botones circulares.
@@ -217,7 +326,16 @@ class _CuentaScreenState extends State<CuentaScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 22),
+              Center(
+                child: TextButton.icon(
+                  onPressed: _canjearCupon,
+                  icon: const Text('🎟️', style: TextStyle(fontSize: 16)),
+                  label: const Text('¿Tienes un cupón? Canjéalo aquí',
+                      style: TextStyle(
+                          color: bosque, fontWeight: FontWeight.w700)),
+                ),
+              ),
+              const SizedBox(height: 12),
               Text('Movimientos',
                   style:
                       t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),

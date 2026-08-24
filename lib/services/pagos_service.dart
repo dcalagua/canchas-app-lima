@@ -1245,6 +1245,45 @@ class PagosService {
     }
   }
 
+  // ── PROMOCIONES de la billetera ───────────────────────────────────────────
+  /// Promos vigentes ({bono_recarga: {activo, pct, min, tope}}). null si no
+  /// se pudo (sin promo visible).
+  static Future<Map<String, dynamic>?> promos() async {
+    if (!disponible) return null;
+    try {
+      final r = await http
+          .get(Uri.parse('$_baseUrl/pagos/promos'), headers: _appHeaders())
+          .timeout(const Duration(seconds: 10));
+      if (r.statusCode != 200) return null;
+      return jsonDecode(r.body) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Canjea un CUPÓN de saldo. Devuelve el JSON del backend
+  /// ({ok, valor_soles, saldo_soles} o {ok:false, error}) o null (red).
+  static Future<Map<String, dynamic>?> canjearCupon({
+    required String email,
+    required String codigo,
+  }) async {
+    if (!disponible) return null;
+    try {
+      final r = await http
+          .post(Uri.parse('$_baseUrl/pagos/cupon/canjear'),
+              headers: await _headersUsuario(json: true),
+              body: jsonEncode({
+                'email': email.trim().toLowerCase(),
+                'codigo': codigo.trim(),
+              }))
+          .timeout(const Duration(seconds: 12));
+      if (r.statusCode != 200) return null;
+      return jsonDecode(r.body) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Deja la billetera del [duenoId] en virgen EN EL BACKEND (saldo 0 y sin
   /// movimientos). Necesario porque el saldo/pagos viven en el servidor y
   /// volverían al re-sincronizar. La usa "Dejar en virgen". Best-effort.

@@ -1252,6 +1252,10 @@ _HTML = r"""<!DOCTYPE html>
             <span class="md-ico">📲</span>
             <span class="md-txt"><b>Recargas QR</b><small>Yape directo · aprobar/rechazar</small></span>
           </button>
+          <button class="md-item" data-pane="promosPanel" onclick="mostrarPane(this,'promosPanel');cargarPromos()">
+            <span class="md-ico">🎁</span>
+            <span class="md-txt"><b>Promociones</b><small>Bono de recarga · cupones</small></span>
+          </button>
         </aside>
         <div class="md-detail">
           <div class="md-pane" id="comision"></div>
@@ -1261,6 +1265,7 @@ _HTML = r"""<!DOCTYPE html>
           <div class="md-pane" id="rankingPanel" style="display:none"></div>
           <div class="md-pane" id="proPanel" style="display:none"></div>
           <div class="md-pane" id="recargasQr" style="display:none"></div>
+          <div class="md-pane" id="promosPanel" style="display:none"></div>
         </div>
       </div>
     </section>
@@ -2115,6 +2120,90 @@ async function resolverRecargaQr(id, accion){
   const r = await fetch('/pagos/recarga-qr/'+id+'/'+accion,
     {method:'POST',headers:headers(),body:body});
   if(r.ok){ cargarRecargasQr(); } else { alert('No se pudo ('+r.status+').'); }
+}
+
+// --- Promociones: bono de recarga (config) + cupones de saldo -------------------
+async function cargarPromos(){
+  const box = document.getElementById('promosPanel');
+  if(!box) return;
+  box.innerHTML = '<div class="card">Cargando…</div>';
+  try{
+    const [rb, rc] = await Promise.all([
+      fetch('/pagos/promos/admin',{headers:headers()}),
+      fetch('/pagos/cupones',{headers:headers()}),
+    ]);
+    if(!rb.ok || !rc.ok){ box.innerHTML='<div class="card">No se pudo cargar.</div>'; return; }
+    const b = await rb.json();
+    const cupones = (await rc.json()).cupones||[];
+    box.innerHTML = `
+      <div class="card" style="margin-bottom:12px">
+        <div style="font-weight:800;font-size:15px;margin-bottom:4px">🎁 Bono de recarga</div>
+        <div style="color:#667;font-size:12.5px;margin-bottom:10px">
+          "Recarga S/ ${b.min} o más y te regalamos ${b.pct}% extra (máx S/ ${b.tope})".
+          Lo paga Pichangol. <b>0% = promo apagada.</b></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
+          <label style="font-size:12px">% extra<br>
+            <input id="promoPct" type="number" min="0" max="100" step="1" value="${b.pct}"
+              style="width:90px;padding:8px;border-radius:10px;border:1px solid var(--border)"></label>
+          <label style="font-size:12px">Recarga mínima (S/)<br>
+            <input id="promoMin" type="number" min="0" step="1" value="${b.min}"
+              style="width:110px;padding:8px;border-radius:10px;border:1px solid var(--border)"></label>
+          <label style="font-size:12px">Tope del bono (S/)<br>
+            <input id="promoTope" type="number" min="0" step="1" value="${b.tope}"
+              style="width:110px;padding:8px;border-radius:10px;border:1px solid var(--border)"></label>
+          <button class="btn-ap" onclick="guardarPromoBono()">Guardar</button>
+        </div>
+      </div>
+      <div class="card">
+        <div style="font-weight:800;font-size:15px;margin-bottom:4px">🎟️ Cupones de saldo</div>
+        <div style="color:#667;font-size:12.5px;margin-bottom:10px">Para campañas con
+          academias, sorteos o disculpas. Un canje por usuario por cupón.</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:12px">
+          <label style="font-size:12px">Código (vacío = automático)<br>
+            <input id="cupCod" placeholder="BIENVENIDA"
+              style="width:150px;padding:8px;border-radius:10px;border:1px solid var(--border)"></label>
+          <label style="font-size:12px">Valor (S/)<br>
+            <input id="cupVal" type="number" min="1" max="500" value="10"
+              style="width:90px;padding:8px;border-radius:10px;border:1px solid var(--border)"></label>
+          <label style="font-size:12px">Usos máx.<br>
+            <input id="cupUsos" type="number" min="1" max="10000" value="100"
+              style="width:90px;padding:8px;border-radius:10px;border:1px solid var(--border)"></label>
+          <button class="btn-ap" onclick="crearCupon()">Crear cupón</button>
+        </div>
+        ${cupones.length ? cupones.map(c=>`
+          <div style="display:flex;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--border);flex-wrap:wrap">
+            <b style="font-family:monospace">${c.codigo}</b>
+            <span>S/ ${Number(c.valor_soles).toFixed(2)}</span>
+            <span style="color:#667;font-size:12.5px">${c.usados}/${c.usos_max} usados</span>
+            <span style="font-size:12px;font-weight:700;color:${c.activo?'var(--bosque)':'#999'}">${c.activo?'activo':'desactivado'}</span>
+            ${c.activo?`<button class="btn-rc" onclick="desactivarCupon('${c.codigo}')">Desactivar</button>`:''}
+          </div>`).join('') : '<div style="color:#889">Aún no hay cupones.</div>'}
+      </div>`;
+  }catch(e){ box.innerHTML='<div class="card">Error de red.</div>'; }
+}
+async function guardarPromoBono(){
+  const body = JSON.stringify({
+    pct: Number(document.getElementById('promoPct').value||0),
+    minimo: Number(document.getElementById('promoMin').value||0),
+    tope: Number(document.getElementById('promoTope').value||0)});
+  const r = await fetch('/pagos/promos/admin',{method:'POST',headers:headers(),body});
+  if(r.ok){ cargarPromos(); } else { alert('Valores inválidos.'); }
+}
+async function crearCupon(){
+  const body = JSON.stringify({
+    codigo: document.getElementById('cupCod').value||'',
+    valor_soles: Number(document.getElementById('cupVal').value||0),
+    usos_max: Number(document.getElementById('cupUsos').value||0)});
+  const r = await fetch('/pagos/cupones',{method:'POST',headers:headers(),body});
+  if(r.ok){ cargarPromos(); }
+  else if(r.status===409){ alert('Ese código ya existe.'); }
+  else { alert('Datos inválidos (valor 1–500, usos 1–10000).'); }
+}
+async function desactivarCupon(codigo){
+  if(!confirm('¿Desactivar el cupón '+codigo+'? Ya no se podrá canjear.')) return;
+  const r = await fetch('/pagos/cupones/'+encodeURIComponent(codigo)+'/desactivar',
+    {method:'POST',headers:headers()});
+  if(r.ok) cargarPromos();
 }
 
 // --- Identidad (DNI): revocar la verificación 1 DNI = 1 cuenta ------------------

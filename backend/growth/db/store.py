@@ -89,6 +89,13 @@ CONFIG_DEFAULT: dict[str, str] = {
     "fidelidad_valor_100_puntos": "3",
     # Caducidad de los puntos LIBERADOS en días (0 = no caducan).
     "fidelidad_caducidad_dias": "180",
+    # --- PROMOCIONES de la billetera (ago-2026, editable en torre) ----------
+    # BONO DE RECARGA: % extra que se regala al recargar (0 = promo apagada),
+    # con recarga mínima que la activa y tope del bono por recarga (en la
+    # moneda local del saldo). Lo paga Pichangol (costo de marketing).
+    "promo_bono_recarga_pct": "0",
+    "promo_bono_recarga_min": "50",
+    "promo_bono_recarga_tope": "20",
     # tope mensual de premios financiados por Pichangol (en soles)
     "tope_mensual_premios_pichangol_soles": "500",
     # tope de solicitudes que ACREDITAN puntos por usuario/mes
@@ -465,6 +472,10 @@ class Stores:
         # torre. {id, email, monto_soles, foto_url, estado, creado_en,
         # resuelto_en, motivo} — estado: pendiente | aprobada | rechazada.
         self.recargas_qr: list[dict] = []
+        # CUPONES de saldo (promos): {CODIGO: {valor_soles, usos_max, activo,
+        # creado_en, usados: [emails]}}. Un canje por usuario por cupón; el
+        # operador los crea/desactiva en la torre.
+        self.cupones: dict[str, dict] = {}
         # SUSCRIPCIONES a servicios de marketing (landing/redes/presencia). Clave
         # "{academia_id}:{servicio}" -> dict con estado y próximo cobro. Se debita
         # del saldo del dueño cada mes (mismo saldo prepago de Culqi).
@@ -900,6 +911,7 @@ class Stores:
                 k: dict(v) for k, v in self.jugadores_circuito.items()},
             "ranking_snapshot": dict(self.ranking_snapshot),
             "recargas_qr": [dict(r) for r in self.recargas_qr],
+            "cupones": {k: dict(v) for k, v in self.cupones.items()},
         }
 
     def load_state(self, data: dict) -> None:
@@ -968,6 +980,9 @@ class Stores:
         }
         self.ranking_snapshot = dict(data.get("ranking_snapshot") or {})
         self.recargas_qr = [dict(r) for r in data.get("recargas_qr", [])]
+        self.cupones = {
+            k: dict(v) for k, v in (data.get("cupones") or {}).items()
+        }
 
     # --- normalización a TABLAS SQL (fase 1: saldos/pagos/vistas/reclamos) ----
     # Estas colecciones (plata + impacto + reclamos) migran a tablas propias en

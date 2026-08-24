@@ -51,6 +51,43 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
   // ¿La recarga por QR (Yape directo) está configurada en el backend? Solo
   // aplica al flujo Perú (Yape no existe fuera).
   bool _qrDisponible = false;
+  // Promo del bono de recarga (banner que empuja a recargar más). null = sin.
+  Map<String, dynamic>? _promoBono;
+
+  /// Banner de la promo de bono de recarga (si está activa en la torre).
+  Widget _bannerPromo() {
+    final b = _promoBono;
+    if (b == null) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.only(top: 14),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+            colors: [Color(0xFFFFF6D8), Color(0xFFFFEFC2)]),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE8D9A0)),
+      ),
+      child: Row(
+        children: [
+          const Text('🎁', style: TextStyle(fontSize: 22)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Recarga $_mon ${((b['min'] as num?) ?? 0).toStringAsFixed(0)} '
+              'o más y te regalamos '
+              '${((b['pct'] as num?) ?? 0).toStringAsFixed(0)}% extra '
+              '(hasta $_mon ${((b['tope'] as num?) ?? 0).toStringAsFixed(0)}).',
+              style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF7A5C00),
+                  height: 1.3),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   bool get _esTest => _modo == 'test';
 
@@ -102,6 +139,12 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
       if (mounted && (qr?['activo'] ?? false) == true) {
         setState(() => _qrDisponible = true);
       }
+    }
+    // ¿Bono de recarga vigente? (banner que empuja a recargar).
+    final promos = await PagosService.promos();
+    final b = promos?['bono_recarga'];
+    if (mounted && b is Map && (b['activo'] ?? false) == true) {
+      setState(() => _promoBono = Map<String, dynamic>.from(b));
     }
   }
 
@@ -262,6 +305,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
                       ),
                   ],
                 ),
+                _bannerPromo(),
                 const SizedBox(height: 22),
                 Text('Método de pago',
                     style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
