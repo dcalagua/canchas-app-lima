@@ -189,10 +189,11 @@ def android_manifest(text):
             'android:resource="@drawable/ic_stat_pichangol"/>\n'
             '        <meta-data android:name="com.google.firebase.messaging.default_notification_color" '
             'android:resource="@color/pichangol_notif"/>\n'
-            # Canal por defecto de FCM: el "pichan_msgs" que crea MainActivity con
-            # el sonido custom "Pichan" (Android 8+ toma el sonido del CANAL).
+            # Canal por defecto de FCM: el "pichan_msgs_v2" que crea MainActivity
+            # con el sonido custom (v2: el sonido cambió y los canales son
+            # inmutables — Android 8+ toma el sonido del CANAL).
             '        <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" '
-            'android:value="pichan_msgs"/>\n    </application>'
+            'android:value="pichan_msgs_v2"/>\n    </application>'
         )
         text = text.replace("</application>", notif, 1)
     if "com.google.android.geo.API_KEY" not in text:
@@ -690,7 +691,7 @@ def configurar_notificacion_android():
 def configurar_sonido_notificacion():
     """Sonido de notificación custom "Pichan" (estilo Yape). Copia el mp3 a
     res/raw/pichan.mp3 y reescribe MainActivity.kt para CREAR el canal de
-    notificación `pichan_msgs` con ese sonido (Android 8+ toma el sonido del
+    notificación `pichan_msgs_v2` con ese sonido (Android 8+ toma el sonido del
     canal, no del payload). El manifest apunta a ese canal como el por defecto de
     FCM, así el push en segundo plano suena "Pichan" sin cambios en el backend."""
     raiz = "android/app/src/main"
@@ -800,14 +801,19 @@ def configurar_sonido_notificacion():
         "    private fun crearCanalNotif() {\n"
         "        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {\n"
         "            val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager\n"
-        "            if (mgr.getNotificationChannel(\"pichan_msgs\") == null) {\n"
+        "            // v2: los canales de Android son INMUTABLES una vez creados en el\n"
+        "            // equipo — al cambiar el sonido (ago-2026) hay que crear un canal\n"
+        "            // NUEVO y borrar el viejo para que los teléfonos ya instalados\n"
+        "            // tomen el audio nuevo.\n"
+        "            mgr.deleteNotificationChannel(\"pichan_msgs\")\n"
+        "            if (mgr.getNotificationChannel(\"pichan_msgs_v2\") == null) {\n"
         "                val sonido = Uri.parse(\"android.resource://\" + packageName + \"/raw/pichan\")\n"
         "                val attrs = AudioAttributes.Builder()\n"
         "                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)\n"
         "                    .setUsage(AudioAttributes.USAGE_NOTIFICATION)\n"
         "                    .build()\n"
         "                val canal = NotificationChannel(\n"
-        "                    \"pichan_msgs\", \"Mensajes Pichangol\", NotificationManager.IMPORTANCE_HIGH)\n"
+        "                    \"pichan_msgs_v2\", \"Mensajes Pichangol\", NotificationManager.IMPORTANCE_HIGH)\n"
         "                canal.description = \"Notificaciones de mensajes y retos\"\n"
         "                canal.setSound(sonido, attrs)\n"
         "                canal.enableVibration(true)\n"
@@ -819,7 +825,7 @@ def configurar_sonido_notificacion():
     )
     with open(kt, "w", encoding="utf-8") as f:
         f.write(contenido)
-    print("  MainActivity: canal pichan_msgs + MethodChannel share_story; provider_paths_app.xml")
+    print("  MainActivity: canal pichan_msgs_v2 + MethodChannel share_story; provider_paths_app.xml")
 
 
 def main():
