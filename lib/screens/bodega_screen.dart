@@ -304,7 +304,7 @@ class _BodegaScreenState extends State<BodegaScreen> {
       final item = (e, r.jugador.trim().isEmpty ? e : r.jugador.trim());
       (r.fecha == hoy ? deHoy : otros).add(item);
     }
-    final lista = [...deHoy, ...otros.take(30)];
+    final lista = [...deHoy, ...otros.take(300)];
     if (lista.isEmpty) {
       if (mounted) {
         await avisarPichangol(
@@ -320,52 +320,115 @@ class _BodegaScreenState extends State<BodegaScreen> {
     }
     appState.cargarPerfiles([for (final (e, _) in lista) e]);
     if (!mounted) return null;
+    // Con muchos registrados hace falta BUSCAR (pedido del director): campo
+    // de búsqueda arriba + lista filtrada en vivo (texto libre permitido:
+    // es un buscador).
+    var filtro = '';
     return showModalBottomSheet<(String, String)>(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
-      builder: (bctx) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 16, 20, 4),
-              child: Text('Abrir cuenta · ¿para quién?',
-                  style:
-                      TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
-            ),
-            for (final (e, nombre) in lista)
-              Builder(builder: (_) {
-                final foto = appState.fotoDe(e);
-                return ListTile(
-                  // Avatar con FOTO real (regla del app); inicial si no hay.
-                  leading: CircleAvatar(
-                    radius: 18,
-                    backgroundColor: limaSuave,
-                    backgroundImage: foto != null && foto.isNotEmpty
-                        ? CachedNetworkImageProvider(foto)
-                        : null,
-                    child: foto == null || foto.isEmpty
-                        ? Text(
-                            nombre.isNotEmpty ? nombre[0].toUpperCase() : '?',
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w800, color: bosque))
-                        : null,
+      builder: (bctx) => StatefulBuilder(builder: (bctx, setSB) {
+        final q = filtro.trim().toLowerCase();
+        final visibles = [
+          for (final it in lista)
+            if (q.isEmpty ||
+                it.$2.toLowerCase().contains(q) ||
+                it.$1.contains(q))
+              it,
+        ];
+        final bottom = MediaQuery.of(bctx).viewInsets.bottom;
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(bottom: bottom),
+            child: SizedBox(
+              height: MediaQuery.of(bctx).size.height * 0.72,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
+                    child: Text('Abrir cuenta · ¿para quién?',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 17)),
                   ),
-                  title: Text(nombre,
-                      style: const TextStyle(fontWeight: FontWeight.w700)),
-                  subtitle: deHoy.any((x) => x.$1 == e)
-                      ? const Text('Con reserva hoy · está en el local',
-                          style: TextStyle(fontSize: 11.5, color: bosque))
-                      : null,
-                  onTap: () => Navigator.pop(bctx, (e, nombre)),
-                );
-              }),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                    child: TextField(
+                      autofocus: false,
+                      onChanged: (v) => setSB(() => filtro = v),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        hintText: 'Buscar por nombre…',
+                        prefixIcon: const Icon(Icons.search, size: 20),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(999),
+                            borderSide: const BorderSide(color: trazo)),
+                        enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(999),
+                            borderSide: const BorderSide(color: trazo)),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: visibles.isEmpty
+                        ? const Center(
+                            child: Text('Nadie coincide con esa búsqueda.',
+                                style: TextStyle(color: textoTenue)))
+                        : ListView(
+                            children: [
+                              for (final (e, nombre) in visibles)
+                                Builder(builder: (_) {
+                                  final foto = appState.fotoDe(e);
+                                  return ListTile(
+                                    // Avatar con FOTO real (regla del app).
+                                    leading: CircleAvatar(
+                                      radius: 18,
+                                      backgroundColor: limaSuave,
+                                      backgroundImage:
+                                          foto != null && foto.isNotEmpty
+                                              ? CachedNetworkImageProvider(
+                                                  foto)
+                                              : null,
+                                      child: foto == null || foto.isEmpty
+                                          ? Text(
+                                              nombre.isNotEmpty
+                                                  ? nombre[0].toUpperCase()
+                                                  : '?',
+                                              style: const TextStyle(
+                                                  fontWeight:
+                                                      FontWeight.w800,
+                                                  color: bosque))
+                                          : null,
+                                    ),
+                                    title: Text(nombre,
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.w700)),
+                                    subtitle: deHoy.any((x) => x.$1 == e)
+                                        ? const Text(
+                                            'Con reserva hoy · está en el local',
+                                            style: TextStyle(
+                                                fontSize: 11.5,
+                                                color: bosque))
+                                        : null,
+                                    onTap: () =>
+                                        Navigator.pop(bctx, (e, nombre)),
+                                  );
+                                }),
+                              const SizedBox(height: 8),
+                            ],
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }),
     );
   }
 
