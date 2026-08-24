@@ -1,23 +1,17 @@
 import 'package:flutter/material.dart';
 
-/// Ícono de la pestaña MENSAJES en las barras/rails: el LOGO de Pichangol
-/// (pin con la pelota), pedido del director. Activo = a todo color; inactivo
-/// baja un poco la opacidad (regla Airbnb "con vida": nunca gris plano).
+/// Ícono de la pestaña MENSAJES en las barras/rails. Decisión del director
+/// (ago-2026): NO usar el logo de Pichangol aquí — va la BURBUJA DE CHAT
+/// propia (verde con la "P" de Pichan): se lee como "mensajes" de un vistazo
+/// y sigue "con vida" (regla Airbnb: color, nunca gris plano).
 class IconoMensajesLogo extends StatelessWidget {
   const IconoMensajesLogo({super.key, this.size = 27, this.activo = true});
   final double size;
   final bool activo;
 
   @override
-  Widget build(BuildContext context) => Opacity(
-        opacity: activo ? 1 : 0.62,
-        child: Image.asset(
-          'assets/brand/logo_pin.png',
-          width: size,
-          height: size,
-          filterQuality: FilterQuality.medium,
-        ),
-      );
+  Widget build(BuildContext context) =>
+      IconoChatPichan(size: size, activo: activo);
 }
 
 /// Ícono propio de la mensajería Pichangol ("Pichan"): una burbuja de chat con
