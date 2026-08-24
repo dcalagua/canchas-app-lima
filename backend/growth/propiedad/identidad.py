@@ -10,6 +10,7 @@ error devuelve no-disponible y el flujo sigue (validación humana igual).
 from __future__ import annotations
 
 import json
+import urllib.error
 import urllib.request
 
 import config
@@ -97,19 +98,27 @@ def consultar_cedula(cedula: str) -> dict:
         return {"ok": False, "error": "no_configurado"}
 
     url = f"{config.CIPHERBYTE_BASE_URL}/cedula/{cedula}"
-    req = urllib.request.Request(
-        url,
-        headers={
-            "X-Api-Key": config.CIPHERBYTE_API_TOKEN,
-            "Accept": "application/json",
-        },
-        method="GET",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            payload = json.loads(resp.read().decode("utf-8"))
-    except Exception as e:  # noqa: BLE001
-        return {"ok": False, "error": str(e)[:160]}
+
+    def _pedir(headers: dict) -> tuple[dict | None, str | None, int]:
+        req = urllib.request.Request(
+            url, headers={"Accept": "application/json", **headers},
+            method="GET")
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return json.loads(resp.read().decode("utf-8")), None, 200
+        except urllib.error.HTTPError as e:  # noqa: PERF203
+            return None, str(e)[:160], e.code
+        except Exception as e:  # noqa: BLE001
+            return None, str(e)[:160], 0
+
+    # El esquema es ApiKeyAuth: se intenta X-Api-Key y, si el gateway lo
+    # rechaza por auth (401/403), se reintenta como Bearer (fallback).
+    payload, err, code = _pedir({"X-Api-Key": config.CIPHERBYTE_API_TOKEN})
+    if payload is None and code in (401, 403):
+        payload, err, code = _pedir(
+            {"Authorization": f"Bearer {config.CIPHERBYTE_API_TOKEN}"})
+    if payload is None:
+        return {"ok": False, "error": err or "sin_respuesta"}
 
     if not isinstance(payload, dict):
         return {"ok": False, "error": "respuesta_invalida"}

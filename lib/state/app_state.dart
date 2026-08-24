@@ -1297,16 +1297,6 @@ class AppState extends ChangeNotifier {
     return c;
   }
 
-  /// De qué FUENTE sale una cancha por id (diagnóstico). Ayuda a entender por qué
-  /// una ficha muestra datos viejos: 'extra' (registrada en este equipo),
-  /// 'remota' (Supabase), 'google' (descubierta) o 'snapshot' (no está en listas).
-  String fuenteCancha(String id) {
-    if (canchasExtra.any((x) => x.id == id)) return 'extra';
-    if (canchasRemotas.any((x) => x.id == id)) return 'remota';
-    if (canchasDescubiertas.any((x) => x.id == id)) return 'google';
-    return 'snapshot';
-  }
-
   /// Avisa al DUEÑO de la cancha que entró una reserva, con un PUSH DEDICADO
   /// (fuera del chat) vía la Edge Function `push-reserva`. Se manda solo el id
   /// (o el del grupo si son varias horas); el servidor deriva destinatario y
