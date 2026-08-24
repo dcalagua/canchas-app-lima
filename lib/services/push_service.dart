@@ -91,19 +91,25 @@ class PushService {
   /// Invoca la Edge Function `push-reserva` para avisar al DUEÑO de la cancha
   /// que entró una reserva (push dedicado, fuera del chat). Se pasa SOLO el id
   /// (o el del grupo si son varias horas); el servidor deriva destinatario y
-  /// texto. Best-effort: si la función no está desplegada, no rompe nada.
-  static Future<void> avisarReserva(
+  /// texto. Devuelve `true` solo si la función CONFIRMÓ el envío (enviados>0):
+  /// con eso el que llama puede caer a un canal de respaldo. Fail-safe.
+  static Future<bool> avisarReserva(
       {String reservaId = '', String grupoId = ''}) async {
-    if (!SupabaseService.disponible) return;
-    if (reservaId.isEmpty && grupoId.isEmpty) return;
+    if (!SupabaseService.disponible) return false;
+    if (reservaId.isEmpty && grupoId.isEmpty) return false;
     try {
-      await SupabaseService.client.functions.invoke('push-reserva', body: {
+      final res =
+          await SupabaseService.client.functions.invoke('push-reserva', body: {
         if (grupoId.isNotEmpty)
           'grupo_id': grupoId
         else
           'reserva_id': reservaId,
       });
-    } catch (_) {}
+      final d = res.data;
+      return d is Map && d['enviados'] is num && (d['enviados'] as num) > 0;
+    } catch (_) {
+      return false; // no desplegada / sin red → que el caller use su respaldo
+    }
   }
 
   /// Contador que sube cuando llega un push de PEDIDO DE BODEGA en foreground:

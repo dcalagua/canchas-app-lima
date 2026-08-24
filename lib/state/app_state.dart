@@ -1346,8 +1346,29 @@ class AppState extends ChangeNotifier {
     final yo = (usuario?.email ?? '').trim().toLowerCase();
     if (dueno.isEmpty || dueno == yo || rs.isEmpty) return;
     final r0 = rs.first;
-    unawaited(PushService.avisarReserva(
-        reservaId: r0.id, grupoId: r0.grupoReservaId));
+    () async {
+      final entregado = await PushService.avisarReserva(
+          reservaId: r0.id, grupoId: r0.grupoReservaId);
+      if (entregado) return;
+      // RESPALDO (bug reportado por el director: al dueño no le llegaba la
+      // "Nueva reserva"): si `push-reserva` no confirmó el envío (función no
+      // desplegada, fila de cancha sin dueño por duplicados, error de red),
+      // el aviso sale por el canal PROBADO de avisos (push-aviso + tabla de
+      // respaldo) armado con los datos locales. Mismo `tipo: reserva` → el
+      // tap abre el panel de Reservas y el panel se refresca solo.
+      final orden = [...rs]
+        ..sort((a, b) => a.horaInicio.compareTo(b.horaInicio));
+      final rango = '${orden.first.horaInicio}–${orden.last.horaFin}';
+      final quien = orden.first.jugador.trim().isEmpty
+          ? 'Un jugador'
+          : orden.first.jugador.trim();
+      _pushAviso(
+        email: dueno,
+        titulo: 'Nueva reserva 📅',
+        cuerpo: '$quien · ${_lugarFechaHora(cancha, orden.first.fecha, rango)}',
+        tipo: 'reserva',
+      );
+    }();
   }
 
   /// Reintenta subir a Supabase las reservas que quedaron pendientes (offline).
@@ -7323,16 +7344,22 @@ class AppState extends ChangeNotifier {
       if (avisarJugador) {
         // Pago ONLINE = puntos al instante (derivados de la reserva pagada):
         // el aviso lo dice, cerrando el loop de fidelidad sin push extra.
+        // EFECTIVO: los puntos llegan cuando el local confirme el pago — el
+        // aviso lo adelanta para que el jugador sepa qué esperar (y exija la
+        // marca del cobro).
         final pts = reserva.pagado && cobro == 'online'
             ? reserva.totalConExtras.round()
             : 0;
+        final ptsEfectivo =
+            cobro == 'efectivo' ? reserva.totalConExtras.round() : 0;
         _avisarJugadorReserva(
           clave: reserva.id,
           titulo: 'Reserva confirmada ✅',
           cuerpo:
               '${_lugarFechaHora(cancha, fecha, '$hora–${reserva.horaFin}')}. '
               '¡Te esperamos!'
-              '${pts > 0 ? ' ⭐ Ganaste +$pts puntos Pichangol.' : ''}',
+              '${pts > 0 ? ' ⭐ Ganaste +$pts puntos Pichangol.' : ''}'
+              '${ptsEfectivo > 0 ? ' ⭐ Pagando en la cancha ganas +$ptsEfectivo puntos (se acreditan cuando el local registre tu pago).' : ''}',
         );
       }
     } else {
@@ -7481,11 +7508,21 @@ class AppState extends ChangeNotifier {
                   r.fecha == cancha.fechaRealSlot(fecha, r.horaInicio))
               .toList();
       if (delGrupo.isNotEmpty) _notificarDuenoReserva(cancha, delGrupo);
+      // Puntos del BLOQUE completo en el aviso (antes solo el camino de una
+      // hora los mencionaba — bug reportado por el director).
+      var ptsBloque = 0;
+      for (final r in delGrupo) {
+        ptsBloque += r.totalConExtras.round();
+      }
+      final ganadosYa = cobro == 'online' && ptsBloque > 0;
+      final ganaraEfectivo = cobro == 'efectivo' && ptsBloque > 0;
       _avisarJugadorReserva(
         clave: claveBloque,
         titulo: 'Reserva confirmada ✅',
         cuerpo:
-            '${_lugarFechaHora(cancha, fechaBloque, rango)}. ¡Te esperamos!',
+            '${_lugarFechaHora(cancha, fechaBloque, rango)}. ¡Te esperamos!'
+            '${ganadosYa ? ' ⭐ Ganaste +$ptsBloque puntos Pichangol.' : ''}'
+            '${ganaraEfectivo ? ' ⭐ Pagando en la cancha ganas +$ptsBloque puntos (se acreditan cuando el local registre tu pago).' : ''}',
       );
     } else {
       _avisarJugadorReserva(
