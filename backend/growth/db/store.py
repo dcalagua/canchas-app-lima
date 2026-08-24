@@ -737,8 +737,10 @@ class Stores:
         out = []
         for p in self.pagos:
             if p.tipo not in ("liquidacion_online", "liquidacion_full",
-                              "venta_producto"):
+                              "venta_producto", "venta_bodega"):
                 continue
+            if p.estado != "aprobado":
+                continue  # reembolsados/anulados no se liquidan
             if dueno_id is not None and p.dueno_id != dueno_id:
                 continue
             if solo_pendientes and p.liquidado:

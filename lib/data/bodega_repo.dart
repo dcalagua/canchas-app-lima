@@ -169,13 +169,25 @@ class BodegaRepo {
   }
 
   /// Crea el pedido del cliente. Devuelve true si quedó registrado.
+  /// Tolerante a schema drift SOLO si el pedido NO va pagado: sin la columna
+  /// `pagado` (falta supabase_bodega_pago.sql) reintenta sin ella. Un pedido
+  /// PAGADO es estricto: si la columna falta, mejor fallar (y no cobrar) que
+  /// registrar un pedido pagado que el dueño cobraría de nuevo.
   static Future<bool> crearPedido(PedidoBodega p) async {
     if (!SupabaseService.disponible) return false;
+    final fila = p.toRow();
     try {
-      await SupabaseService.client.from(_tPedidos).insert(p.toRow());
+      await SupabaseService.client.from(_tPedidos).insert(fila);
       return true;
     } catch (_) {
-      return false;
+      if (p.pagado) return false;
+      try {
+        fila.remove('pagado');
+        await SupabaseService.client.from(_tPedidos).insert(fila);
+        return true;
+      } catch (_) {
+        return false;
+      }
     }
   }
 

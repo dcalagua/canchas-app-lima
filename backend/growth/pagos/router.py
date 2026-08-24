@@ -628,6 +628,100 @@ def post_recarga_qr_rechazar(solicitud_id: int,
     raise HTTPException(status_code=404, detail="solicitud_no_encontrada")
 
 
+# ── BODEGA fase 3: pagar el PEDIDO con saldo Pichangol ──────────────────────
+# El cliente PREPAGA su pedido a la cancha con su saldo (billetera única): se
+# le debita y el dueño queda con el monto COMPLETO "por recibir" (la bodega es
+# CERO COMISIÓN por decisión de producto — comisión congelada en 0). Si el
+# pedido se cancela/rechaza/expira, el reembolso devuelve el saldo íntegro.
+
+
+class BodegaPagoReq(BaseModel):
+    cliente: str               # quien paga (su saldo)
+    dueno_id: str              # dueño de la bodega (recibe el neto)
+    monto_soles: float
+    pedido_id: str             # idempotencia (un cobro por pedido)
+    concepto: str | None = None
+
+
+@router.post("/bodega-pago", dependencies=_APP)
+def post_bodega_pago(req: BodegaPagoReq,
+                     x_user_token: str | None = Header(default=None)) -> dict:
+    """Debita el saldo del cliente y deja el monto completo por recibir del
+    dueño. Idempotente por pedido_id."""
+    cliente = req.cliente.strip().lower()
+    dueno = req.dueno_id.strip().lower()
+    pid = req.pedido_id.strip()
+    if not cliente or not dueno or not pid or req.monto_soles <= 0:
+        raise HTTPException(status_code=400, detail="datos_invalidos")
+    _require_usuario(cliente, x_user_token)  # PROD: solo su propio saldo
+    ref = f"bod_{pid}"
+    ya = stores.pago_por_charge(ref)
+    if ya is not None:
+        return {"ok": ya.estado == "aprobado", "duplicada": True,
+                "estado": ya.estado}
+    cent = _soles_a_centimos(req.monto_soles)
+    if stores.saldo_centimos(cliente) < cent:
+        return {"ok": False, "error": "saldo_insuficiente",
+                "saldo_soles": stores.saldo_centimos(cliente) / 100.0}
+    stores.debitar(cliente, cent)
+    # Egreso del CLIENTE (visible en su billetera).
+    stores.registrar_pago(
+        tipo="bodega_pago", monto_centimos=cent, moneda="PEN",
+        estado="aprobado", dueno_id=cliente,
+        culqi_charge_id=f"{ref}_deb",
+        concepto=req.concepto or "Pedido de bodega", medio="saldo")
+    # POR RECIBIR del DUEÑO, monto completo (comisión congelada en 0).
+    stores.registrar_pago(
+        tipo="venta_bodega", monto_centimos=cent, moneda="PEN",
+        estado="aprobado", dueno_id=dueno, culqi_charge_id=ref,
+        comision_centimos=0,
+        concepto=req.concepto or "Pedido de bodega (pagado con saldo)",
+        medio="saldo")
+    return {"ok": True, "duplicada": False,
+            "saldo_centimos": stores.saldo_centimos(cliente)}
+
+
+class BodegaReembolsoReq(BaseModel):
+    pedido_id: str
+
+
+@router.post("/bodega-reembolso", dependencies=_APP)
+def post_bodega_reembolso(req: BodegaReembolsoReq) -> dict:
+    """Reembolsa un pedido PAGADO con saldo que no procedió (cancelado,
+    rechazado o expirado): anula ambos asientos y devuelve el saldo íntegro
+    al cliente. Idempotente. Si el dueño ya cobró su liquidación, se corta
+    (resolución manual del operador)."""
+    ref = f"bod_{req.pedido_id.strip()}"
+    venta = stores.pago_por_charge(ref)
+    if venta is None or venta.tipo != "venta_bodega":
+        raise HTTPException(status_code=404, detail="pago_no_encontrado")
+    if venta.estado != "aprobado":
+        return {"ok": True, "duplicada": True}  # ya reembolsado
+    if venta.liquidado:
+        return {"ok": False, "error": "ya_liquidada_al_dueno"}
+    deb = stores.pago_por_charge(f"{ref}_deb")
+    venta.estado = "anulado"
+    cliente = deb.dueno_id if deb is not None else None
+    if deb is not None:
+        deb.estado = "anulado"
+        stores.acreditar(deb.dueno_id, deb.monto_centimos)
+        _aviso_push_usuario(
+            deb.dueno_id, "Te devolvimos tu saldo 💸",
+            f"Tu pedido de bodega no procedió: +S/ "
+            f"{deb.monto_centimos / 100:.2f} de vuelta en tu saldo.",
+            tipo="recarga")
+    return {"ok": True, "duplicada": False, "cliente": cliente}
+
+
+@router.get("/bodega-pago/{pedido_id}", dependencies=_APP)
+def get_bodega_pago(pedido_id: str) -> dict:
+    """¿Este pedido está realmente PAGADO con saldo? (El dueño lo verifica
+    antes de entregar sin cobrar — cierra la ventana de fraude/fallas.)"""
+    ya = stores.pago_por_charge(f"bod_{pedido_id.strip()}")
+    return {"pagado": ya is not None and ya.tipo == "venta_bodega"
+            and ya.estado == "aprobado"}
+
+
 # ── PROMOCIONES de la billetera: bono de recarga + cupones ─────────────────
 # Lo paga Pichangol (costo de marketing), todo editable en la torre. El bono
 # se aplica SOLO en recargas (no en liquidaciones) y es idempotente por cargo.
@@ -1648,8 +1742,11 @@ def _liquidacion_dict(p) -> dict:
     """Serializa una liquidación con su desglose y estado de pago."""
     bruto = p.monto_centimos
     # 'liquidacion_full' (billetera-first): la comisión ya salió del SALDO del
-    # dueño, así que el neto por recibir es el BRUTO completo (comisión 0 aquí).
-    comision = 0 if p.tipo == "liquidacion_full" else comision_centimos(bruto / 100.0)
+    # dueño → neto = bruto. 'venta_bodega' (pago con saldo): SIN comisión por
+    # decisión de producto (la bodega es cero comisión) → usa la congelada (0).
+    comision = (p.comision_centimos
+                if p.tipo in ("liquidacion_full", "venta_bodega")
+                else comision_centimos(bruto / 100.0))
     neto = bruto - comision
     return {
         "reserva_id": p.culqi_charge_id,
@@ -1765,13 +1862,13 @@ def get_movimientos(dueno_id: str,
     # ingresos por torneo) y salidas (comisión de reserva, servicios, Pichangol
     # Pro, inscripción a torneo). Cada fila lleva su N.º de comprobante (p.id).
     _EGRESOS = ("comision_reserva", "suscripcion", "suscripcion_pro",
-                "inscripcion_torneo")
+                "inscripcion_torneo", "bodega_pago")
     # `venta_producto` = venta del marketplace Y canje/compra de BONO de horas:
     # Pichangol cobró al comprador y le debe el NETO al dueño (misma
     # contabilidad que una reserva online). DEBE aparecer en el historial.
     _INCLUIR = ("recarga", "bono_recarga", "cupon",
                 "liquidacion_online", "liquidacion_full",
-                "venta_producto",
+                "venta_producto", "venta_bodega",
                 "inscripcion_torneo_ingreso") + _EGRESOS
     propios = [
         p for p in stores.pagos
@@ -1790,6 +1887,8 @@ def get_movimientos(dueno_id: str,
         "liquidacion_online": "Reserva online (neto)",
         "liquidacion_full": "Reserva online (recibes 100%)",
         "venta_producto": "Venta / bono (neto)",
+        "venta_bodega": "Venta de bodega (pagada con saldo)",
+        "bodega_pago": "Bodega · pagado con saldo",
     }
 
     def _fila(p) -> dict:
@@ -1810,8 +1909,8 @@ def get_movimientos(dueno_id: str,
         bruto = p.monto_centimos
         if p.tipo == "liquidacion_full":
             comision = 0  # la comisión ya salió del saldo (billetera-first)
-        elif p.tipo == "inscripcion_torneo_ingreso":
-            comision = p.comision_centimos
+        elif p.tipo in ("inscripcion_torneo_ingreso", "venta_bodega"):
+            comision = p.comision_centimos  # bodega: 0 (cero comisión)
         else:
             comision = comision_centimos(bruto / 100.0)
         neto = bruto - comision
@@ -1822,7 +1921,7 @@ def get_movimientos(dueno_id: str,
                 "neto_soles": neto / 100.0,
                 "liquidado": (p.liquidado if p.tipo in
                               ("liquidacion_online", "liquidacion_full",
-                               "venta_producto")
+                               "venta_producto", "venta_bodega")
                               else True)}
 
     # stores.pagos está en orden de inserción (viejo→nuevo); lo invertimos para

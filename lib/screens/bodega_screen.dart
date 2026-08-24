@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../config/pais.dart';
 import '../data/bodega_repo.dart';
 import '../models/bodega.dart';
+import '../services/pagos_service.dart';
 import '../services/supabase_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -1161,16 +1164,20 @@ class _BodegaScreenState extends State<BodegaScreen> {
         for (final x in _pedidos) x.id == p.id ? x.conEstado(estado) : x,
       ];
     });
+    // Pedido PREPAGADO rechazado → reembolso automático al cliente.
+    if (!confirmar && p.pagado) {
+      unawaited(PagosService.bodegaReembolso(p.id));
+    }
     appState.avisarPedidoBodega(
       email: p.cliente,
       titulo: confirmar
           ? 'Pedido confirmado 🏃'
           : 'Pedido rechazado 😔',
       cuerpo: confirmar
-          ? 'Tu pedido (${p.resumen}) va en camino a la ${p.zona}. Pagas al '
-              'recibirlo.'
-          : 'El local no pudo tomar tu pedido (${p.resumen}). Acércate al '
-              'mostrador.',
+          ? 'Tu pedido (${p.resumen}) va en camino a la ${p.zona}. '
+              '${p.pagado ? 'Ya está pagado 💳' : 'Pagas al recibirlo.'}'
+          : 'El local no pudo tomar tu pedido (${p.resumen}). '
+              '${p.pagado ? 'Tu saldo se devuelve solo 💸' : 'Acércate al mostrador.'}',
     );
   }
 
@@ -1178,7 +1185,100 @@ class _BodegaScreenState extends State<BodegaScreen> {
   /// elegido y marca el pedido entregado. El pedido pre-carga el ticket.
   /// Con cuenta abierta activada, "A la cuenta" anota el consumo y el
   /// cliente paga TODO al retirarse.
+  /// Entrega de un pedido PREPAGADO con saldo (fase 3): verifica el pago
+  /// contra el backend (cierra la ventana de fraude/fallas), reclama el
+  /// pedido y registra la venta con medio 'saldo' SIN cobrar nada.
+  Future<void> _entregarPedidoPagado(PedidoBodega p) async {
+    final pagado = await conPreload(
+        context, () => PagosService.bodegaPagoVerificar(p.id),
+        texto: 'Verificando pago…');
+    if (!mounted) return;
+    if (pagado == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          backgroundColor: clayOscuro,
+          content: Text('Sin conexión: no se pudo verificar el pago. '
+              'Intenta de nuevo.')));
+      return;
+    }
+    if (!pagado) {
+      // El pedido dice pagado pero el backend no lo confirma (falla rara o
+      // reembolsado): se cobra como un pedido normal, nadie pierde plata.
+      await avisarPichangol(
+        context,
+        titulo: 'Pago no confirmado',
+        mensaje: 'Este pedido figura pagado pero el sistema no confirma el '
+            'cobro (pudo reembolsarse). Cóbralo al entregar como un pedido '
+            'normal.',
+        icono: Icons.report_gmailerrorred_outlined,
+      );
+      return;
+    }
+    // CANDADO de concurrencia (igual que el flujo normal): reclama primero.
+    final (claim, actual) = await BodegaRepo.cambiarEstadoPedidoSi(
+        p.id, 'entregado',
+        desde: 'confirmado');
+    if (!mounted) return;
+    if (!claim) {
+      if (actual != null) {
+        setState(() {
+          _pedidos = [
+            for (final x in _pedidos) x.id == p.id ? x.conEstado(actual) : x,
+          ];
+        });
+      }
+      return;
+    }
+    final nuevoStock = <String, int>{};
+    for (final i in p.items) {
+      final prod = _productos
+          .cast<ProductoBodega?>()
+          .firstWhere((x) => x!.id == i.productoId, orElse: () => null);
+      if (prod != null) {
+        nuevoStock[prod.id] =
+            (prod.stock - i.cantidad) < 0 ? 0 : prod.stock - i.cantidad;
+      }
+    }
+    final venta = VentaBodega(
+      id: 'bv_${DateTime.now().microsecondsSinceEpoch}',
+      dueno: _email,
+      items: p.items,
+      total: p.total,
+      medioPago: 'saldo',
+      creado: DateTime.now(),
+    );
+    final ok = await conPreload(
+        context, () => BodegaRepo.registrarVenta(venta, nuevoStock),
+        texto: 'Registrando…');
+    if (!mounted) return;
+    setState(() {
+      if (ok) _ventas = [venta, ..._ventas];
+      _productos = [
+        for (final x in _productos)
+          nuevoStock.containsKey(x.id)
+              ? x.copyWith(stock: nuevoStock[x.id])
+              : x,
+      ];
+      _pedidos = [
+        for (final x in _pedidos) x.id == p.id ? x.conEstado('entregado') : x,
+      ];
+    });
+    appState.avisarPedidoBodega(
+      email: p.cliente,
+      titulo: 'Pedido entregado ✅',
+      cuerpo: '¡Que lo disfrutes! Ya estaba pagado con tu saldo 💳',
+    );
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        backgroundColor: bosque,
+        content: Text('Entregado ✅ · ya estaba pagado con saldo (el monto '
+            'entra a tu "por recibir")')));
+  }
+
   Future<void> _entregarPedido(PedidoBodega p) async {
+    // PREPAGADO con saldo: no hay nada que cobrar (flujo aparte).
+    if (p.pagado) {
+      await _entregarPedidoPagado(p);
+      return;
+    }
     // ¿Puede ir a la cuenta? Cliente identificado + toggle activo + tope.
     final cuentaCliente = _cuentas.cast<CuentaBodega?>().firstWhere(
         (c) => c!.abierta && c.cliente == p.cliente,
@@ -1453,6 +1553,15 @@ class _BodegaScreenState extends State<BodegaScreen> {
               Text('${p.clienteNombre} · ${hace(p.creado)}',
                   style:
                       const TextStyle(color: textoTenue, fontSize: 12.5)),
+              if (p.pagado)
+                const Padding(
+                  padding: EdgeInsets.only(top: 4),
+                  child: Text('💳 PAGADO con saldo Pichangol · solo entrégalo',
+                      style: TextStyle(
+                          color: bosque,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 12.5)),
+                ),
               const SizedBox(height: 10),
               if (p.pendiente)
                 Row(
@@ -1480,7 +1589,9 @@ class _BodegaScreenState extends State<BodegaScreen> {
                     style: FilledButton.styleFrom(backgroundColor: bosque),
                     onPressed: () => _entregarPedido(p),
                     icon: const Icon(Icons.check_circle_outline, size: 18),
-                    label: const Text('Entregado · cobrar y descontar stock'),
+                    label: Text(p.pagado
+                        ? 'Entregado ✓ (ya pagado con saldo)'
+                        : 'Entregado · cobrar y descontar stock'),
                   ),
                 )
               else

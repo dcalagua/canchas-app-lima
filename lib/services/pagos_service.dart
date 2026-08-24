@@ -1245,6 +1245,71 @@ class PagosService {
     }
   }
 
+  // ── BODEGA fase 3: pagar el pedido con saldo Pichangol ────────────────────
+  /// Cobra el pedido del saldo del cliente (idempotente por [pedidoId]) y
+  /// deja el monto COMPLETO por recibir del dueño (bodega = cero comisión).
+  /// Devuelve el JSON ({ok, error?: saldo_insuficiente}) o null (red).
+  static Future<Map<String, dynamic>?> bodegaPago({
+    required String cliente,
+    required String duenoId,
+    required double monto,
+    required String pedidoId,
+    String? concepto,
+  }) async {
+    if (!disponible) return null;
+    try {
+      final r = await http
+          .post(Uri.parse('$_baseUrl/pagos/bodega-pago'),
+              headers: await _headersUsuario(json: true),
+              body: jsonEncode({
+                'cliente': cliente.trim().toLowerCase(),
+                'dueno_id': duenoId.trim().toLowerCase(),
+                'monto_soles': monto,
+                'pedido_id': pedidoId,
+                if (concepto != null) 'concepto': concepto,
+              }))
+          .timeout(const Duration(seconds: 15));
+      if (r.statusCode != 200) return null;
+      return jsonDecode(r.body) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Reembolsa un pedido pagado con saldo que no procedió. Idempotente.
+  static Future<bool> bodegaReembolso(String pedidoId) async {
+    if (!disponible) return false;
+    try {
+      final r = await http
+          .post(Uri.parse('$_baseUrl/pagos/bodega-reembolso'),
+              headers: _appHeaders(json: true),
+              body: jsonEncode({'pedido_id': pedidoId}))
+          .timeout(const Duration(seconds: 15));
+      if (r.statusCode != 200) return false;
+      return ((jsonDecode(r.body) as Map)['ok'] ?? false) == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// ¿El pedido está REALMENTE pagado con saldo? (el dueño verifica antes de
+  /// entregar sin cobrar). null = no se pudo verificar (red).
+  static Future<bool?> bodegaPagoVerificar(String pedidoId) async {
+    if (!disponible) return null;
+    try {
+      final r = await http
+          .get(
+              Uri.parse(
+                  '$_baseUrl/pagos/bodega-pago/${Uri.encodeComponent(pedidoId)}'),
+              headers: _appHeaders())
+          .timeout(const Duration(seconds: 10));
+      if (r.statusCode != 200) return null;
+      return ((jsonDecode(r.body) as Map)['pagado'] ?? false) == true;
+    } catch (_) {
+      return null;
+    }
+  }
+
   // ── PROMOCIONES de la billetera ───────────────────────────────────────────
   /// Promos vigentes ({bono_recarga: {activo, pct, min, tope}}). null si no
   /// se pudo (sin promo visible).

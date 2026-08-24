@@ -378,6 +378,10 @@ class PedidoBodega {
   final double total;
   final String moneda;
   final String estado; // pendiente|confirmado|entregado|rechazado|cancelado
+
+  /// PAGADO con saldo Pichangol al pedir (fase 3): el dueño entrega sin
+  /// cobrar (verifica contra el backend) y el monto le queda "por recibir".
+  final bool pagado;
   final DateTime creado;
 
   const PedidoBodega({
@@ -390,6 +394,7 @@ class PedidoBodega {
     required this.total,
     required this.moneda,
     this.estado = 'pendiente',
+    this.pagado = false,
     required this.creado,
   });
 
@@ -414,6 +419,7 @@ class PedidoBodega {
         total: total,
         moneda: moneda,
         estado: e,
+        pagado: pagado,
         creado: creado,
       );
 
@@ -427,6 +433,7 @@ class PedidoBodega {
         'total': total,
         'moneda': moneda,
         'estado': estado,
+        'pagado': pagado,
       };
 
   factory PedidoBodega.fromRow(Map<String, dynamic> r) => PedidoBodega(
@@ -442,6 +449,7 @@ class PedidoBodega {
         total: (r['total'] as num?)?.toDouble() ?? 0,
         moneda: (r['moneda'] ?? 'S/') as String,
         estado: (r['estado'] ?? 'pendiente') as String,
+        pagado: (r['pagado'] ?? false) as bool,
         creado: DateTime.tryParse((r['creado'] ?? '') as String)?.toLocal() ??
             DateTime.now(),
       );

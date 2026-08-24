@@ -318,7 +318,17 @@ Tabla `pichangol_bodega_cuentas` + columnas config
 dueño > packshot IA genérico por TIPO sin marcas (`marketing/packshot.py`,
 `GET /bodega/packshot/{tipo}`, Storage `bodega/packshot_*.jpg`,
 `packshotTipoDe`/`ImagenProductoBodega` en el APK) > emoji.
-Fase 3 (backlog): pago in-app del pedido (saldo Pichangol).
+**Fase 3 — PAGO CON SALDO (hecho ago-2026):** el cliente puede PREPAGAR el
+pedido con su saldo Pichangol en la confirmación (solo si alcanza y la
+moneda coincide): debita al pedir, el pedido nace `pagado=true` (columna
+SQL `supabase_bodega_pago.sql`; insert ESTRICTO si pagado — sin la columna
+no se cobra) y el dueño recibe el monto COMPLETO "por recibir" (bodega =
+CERO comisión, `venta_bodega` con comisión congelada 0; egreso del cliente
+`bodega_pago`). El dueño VERIFICA el pago contra el backend antes de
+entregar sin cobrar (`GET /pagos/bodega-pago/{id}`) y la venta se registra
+con medio `saldo`. Cancelación/rechazo → `POST /pagos/bodega-reembolso`
+(idempotente, bloqueado si ya se liquidó al dueño) + push 💸. La cuenta
+abierta sigue cobrándose al cierre (efectivo/yape).
 
 ## Mensajería: arquitectura DEVICE-FIRST (cache, tal cual WhatsApp)
 

@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../data/bodega_repo.dart';
 import '../models/bodega.dart';
 import '../services/location_service.dart';
+import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/geo.dart';
@@ -126,6 +129,12 @@ class _PedirBodegaScreenState extends State<PedirBodegaScreen> {
           e.value,
         ),
     ];
+    // ¿Puede PREPAGAR con su saldo Pichangol? (fase 3): saldo suficiente y en
+    // la MISMA moneda del local. Si no, paga al recibir como siempre.
+    final puedeSaldo = appState.saldoClub >= _total &&
+        _total > 0 &&
+        appState.monedaSaldoSimbolo == _mon;
+    var conSaldo = false;
     final zonaSel = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
@@ -184,6 +193,29 @@ class _PedirBodegaScreenState extends State<PedirBodegaScreen> {
                       ),
                   ],
                 ),
+                if (puedeSaldo) ...[
+                  const SizedBox(height: 14),
+                  const Text('¿Cómo pagas? 💳',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('Al recibir (efectivo/Yape)'),
+                        selected: !conSaldo,
+                        onSelected: (_) => setSB(() => conSaldo = false),
+                      ),
+                      ChoiceChip(
+                        label: Text(
+                            'Con mi saldo (${appState.monedaSaldoSimbolo} ${appState.saldoClub})'),
+                        selected: conSaldo,
+                        onSelected: (_) => setSB(() => conSaldo = true),
+                      ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 14),
                 SizedBox(
                   width: double.infinity,
@@ -193,15 +225,23 @@ class _PedirBodegaScreenState extends State<PedirBodegaScreen> {
                         padding: const EdgeInsets.symmetric(vertical: 14)),
                     onPressed:
                         z.isEmpty ? null : () => Navigator.pop(bctx, z),
-                    child: const Text('Enviar pedido 🛎️',
-                        style: TextStyle(
+                    child: Text(
+                        conSaldo
+                            ? 'Pagar y enviar pedido 💳'
+                            : 'Enviar pedido 🛎️',
+                        style: const TextStyle(
                             fontWeight: FontWeight.w800, fontSize: 15)),
                   ),
                 ),
                 const SizedBox(height: 4),
-                const Center(
-                  child: Text('Pagas al recibirlo, como siempre.',
-                      style: TextStyle(color: textoTenue, fontSize: 12)),
+                Center(
+                  child: Text(
+                      conSaldo
+                          ? 'Se descuenta de tu saldo; si el local no lo '
+                              'toma, se te devuelve solo.'
+                          : 'Pagas al recibirlo, como siempre.',
+                      style:
+                          const TextStyle(color: textoTenue, fontSize: 12)),
                 ),
               ],
             ),
@@ -250,31 +290,67 @@ class _PedirBodegaScreenState extends State<PedirBodegaScreen> {
       items: items,
       total: _total,
       moneda: _mon,
+      pagado: conSaldo,
       creado: DateTime.now(),
     );
     final ok = await BodegaRepo.crearPedido(pedido);
     if (!mounted) return;
-    setState(() => _enviando = false);
     if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('No se pudo enviar el pedido. Revisa tu conexión.')));
+      setState(() => _enviando = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(conSaldo
+              ? 'No se pudo registrar el pedido (no se cobró nada). '
+                  'Intenta pagando al recibir.'
+              : 'No se pudo enviar el pedido. Revisa tu conexión.')));
       return;
     }
+    // PREPAGO con saldo (fase 3): cobra RECIÉN con el pedido ya registrado.
+    // Si el cobro falla, el pedido se cancela al instante (no viaja nadie).
+    if (conSaldo) {
+      final pago = await PagosService.bodegaPago(
+        cliente: _email,
+        duenoId: pedido.dueno,
+        monto: pedido.total,
+        pedidoId: pedido.id,
+        concepto: 'Bodega · ${pedido.resumen}',
+      );
+      if (!mounted) return;
+      if (pago == null || pago['ok'] != true) {
+        await BodegaRepo.cambiarEstadoPedidoSi(pedido.id, 'cancelado',
+            desde: 'pendiente');
+        setState(() => _enviando = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            backgroundColor: clayOscuro,
+            content: Text(pago?['error'] == 'saldo_insuficiente'
+                ? 'Tu saldo no alcanza: el pedido se canceló y no se '
+                    'cobró nada. Recarga o paga al recibir.'
+                : 'No se pudo cobrar tu saldo: el pedido se canceló y no '
+                    'se cobró nada.')));
+        return;
+      }
+      unawaited(appState.sincronizarSaldo()); // refleja el débito al toque
+    }
+    setState(() => _enviando = false);
     // Push al dueño: "📦 2 Pilsen · Cancha 2 · Juan".
     appState.avisarPedidoBodega(
       email: widget.duenoEmail,
-      titulo: '🧃 Pedido a la ${pedido.zona}',
+      titulo: conSaldo
+          ? '💳 Pedido PAGADO a la ${pedido.zona}'
+          : '🧃 Pedido a la ${pedido.zona}',
       cuerpo:
-          '${pedido.resumen} · $_mon ${pedido.total.toStringAsFixed(2)} · ${pedido.clienteNombre}. Confírmalo en Mi bodega.',
+          '${pedido.resumen} · $_mon ${pedido.total.toStringAsFixed(2)} · ${pedido.clienteNombre}. '
+          '${conSaldo ? 'Ya está pagado con saldo Pichangol: solo entrégalo.' : 'Confírmalo en Mi bodega.'}',
     );
     setState(() {
       _misPedidos = [pedido, ..._misPedidos];
       _ticket.clear();
     });
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         backgroundColor: bosque,
-        content: Text('Pedido enviado 🏃 Te avisamos cuando lo confirmen. '
-            'Pagas al recibirlo, como siempre.')));
+        content: Text(conSaldo
+            ? 'Pedido pagado y enviado 💳 Te avisamos cuando lo confirmen.'
+            : 'Pedido enviado 🏃 Te avisamos cuando lo confirmen. '
+                'Pagas al recibirlo, como siempre.')));
   }
 
   Future<void> _cancelar(PedidoBodega p) async {
@@ -286,6 +362,20 @@ class _PedirBodegaScreenState extends State<PedirBodegaScreen> {
         desde: 'pendiente');
     if (!mounted) return;
     if (ok) {
+      // Pedido PREPAGADO con saldo → reembolso automático (idempotente).
+      if (p.pagado) {
+        final devuelto = await PagosService.bodegaReembolso(p.id);
+        if (devuelto) unawaited(appState.sincronizarSaldo());
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              backgroundColor: bosque,
+              content: Text(devuelto
+                  ? 'Pedido cancelado: te devolvimos ${p.moneda} '
+                      '${p.total.toStringAsFixed(2)} a tu saldo 💸'
+                  : 'Pedido cancelado. La devolución a tu saldo se '
+                      'procesará en breve.')));
+        }
+      }
       appState.avisarPedidoBodega(
         email: p.dueno,
         titulo: 'Pedido cancelado',
@@ -304,15 +394,19 @@ class _PedirBodegaScreenState extends State<PedirBodegaScreen> {
     _cargar();
   }
 
-  (String, Color) _estadoVisual(PedidoBodega p) => switch (p.estado) {
-        'confirmado' => ('Confirmado · va en camino 🏃', bosque),
-        'entregado' => ('Entregado ✅', bosque),
-        'rechazado' => ('Rechazado por el local ❌', clayOscuro),
-        'cancelado' => ('Cancelado', Colors.grey),
-        _ => p.expirado
-            ? ('Sin respuesta aún… pregunta en el mostrador', clayOscuro)
-            : ('Esperando confirmación ⏳', Colors.orange),
-      };
+  (String, Color) _estadoVisual(PedidoBodega p) {
+    final (txt, color) = switch (p.estado) {
+      'confirmado' => ('Confirmado · va en camino 🏃', bosque),
+      'entregado' => ('Entregado ✅', bosque),
+      'rechazado' => ('Rechazado por el local ❌', clayOscuro),
+      'cancelado' => ('Cancelado', Colors.grey),
+      _ => p.expirado
+          ? ('Sin respuesta aún… pregunta en el mostrador', clayOscuro)
+          : ('Esperando confirmación ⏳', Colors.orange),
+    };
+    // Prepagado con saldo: que se vea SIEMPRE (nadie te cobra de nuevo).
+    return (p.pagado ? '$txt · pagado 💳' : txt, color);
+  }
 
   @override
   Widget build(BuildContext context) {
