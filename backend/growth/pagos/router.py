@@ -58,6 +58,70 @@ def _require_admin(x_admin_token: str | None = Header(default=None)) -> None:
 _ADMIN = [Depends(_require_admin)]
 
 
+# ── AUTH POR USUARIO (endurecimiento PROD) ──────────────────────────────────
+# La billetera está keyeada por CORREO: con solo la X-App-Key (que viaja en el
+# APK) alguien podría consultar el saldo/movimientos de OTRO usuario o resetear
+# su billetera. Con `PAGOS_AUTH_USUARIO=1` (env), esos endpoints exigen además
+# el ID TOKEN de Google del usuario (header `X-User-Token`): se verifica contra
+# Google (tokeninfo) y el correo del token debe COINCIDIR con el consultado.
+# Apagado por defecto (piloto / APKs viejos); en PROD se prende.
+
+# Caché token→(email, expira): un token de Google dura ~1 h; así no se llama a
+# Google en cada request.
+_tokens_cache: dict[str, tuple[str, datetime]] = {}
+
+
+def _email_de_token(token: str) -> str | None:
+    """Email verificado del ID token de Google, o None si es inválido. Usa
+    tokeninfo (sin dependencias de crypto) + caché en memoria."""
+    ahora = datetime.now(timezone.utc)
+    en_cache = _tokens_cache.get(token)
+    if en_cache is not None and en_cache[1] > ahora:
+        return en_cache[0]
+    import json as _json
+    import urllib.parse as _up
+    import urllib.request as _ur
+    try:
+        q = _up.urlencode({"id_token": token})
+        with _ur.urlopen(  # noqa: S310
+                f"https://oauth2.googleapis.com/tokeninfo?{q}",
+                timeout=8) as resp:
+            info = _json.loads(resp.read().decode("utf-8"))
+    except Exception:  # noqa: BLE001
+        return None
+    email = (info.get("email") or "").strip().lower()
+    if not email or str(info.get("email_verified")).lower() not in (
+            "true", "1"):
+        return None
+    # Si se configuraron los client ids permitidos, exige que el token sea
+    # de NUESTRA app (audiencia), no de cualquier app con login de Google.
+    permitidos = [a.strip() for a in
+                  (config.GOOGLE_OAUTH_CLIENT_IDS or "").split(",")
+                  if a.strip()]
+    if permitidos and info.get("aud") not in permitidos:
+        return None
+    try:
+        exp = datetime.fromtimestamp(int(info.get("exp", 0)), tz=timezone.utc)
+    except (TypeError, ValueError):
+        exp = ahora + timedelta(minutes=10)
+    # Poda simple del caché para que no crezca sin límite.
+    if len(_tokens_cache) > 500:
+        _tokens_cache.clear()
+    _tokens_cache[token] = (email, min(exp, ahora + timedelta(hours=1)))
+    return email
+
+
+def _require_usuario(dueno_id: str, x_user_token: str | None) -> None:
+    """Con PAGOS_AUTH_USUARIO=1: el token debe ser válido y SU correo debe ser
+    el consultado. Apagado (default): no exige nada (rollout gradual)."""
+    if (config.PAGOS_AUTH_USUARIO or "").strip() not in ("1", "true", "on"):
+        return
+    email = _email_de_token((x_user_token or "").strip()) \
+        if (x_user_token or "").strip() else None
+    if email is None or email != dueno_id.strip().lower():
+        raise HTTPException(status_code=403, detail="usuario_no_autorizado")
+
+
 def _soles_a_centimos(soles: float) -> int:
     return int(round(float(soles) * 100))
 
@@ -364,7 +428,9 @@ def bo_retorno(id: str = "") -> HTMLResponse:
 
 
 @router.get("/saldo/{dueno_id}", dependencies=_APP)
-def get_saldo(dueno_id: str) -> dict:
+def get_saldo(dueno_id: str,
+              x_user_token: str | None = Header(default=None)) -> dict:
+    _require_usuario(dueno_id, x_user_token)  # PROD: solo su propio saldo
     c = stores.saldo_centimos(dueno_id)
     return {"dueno_id": dueno_id, "saldo_centimos": c, "saldo_soles": c / 100.0}
 
@@ -374,12 +440,16 @@ class ResetBilleteraReq(BaseModel):
 
 
 @router.post("/reset-mi-billetera", dependencies=_APP)
-def post_reset_mi_billetera(req: ResetBilleteraReq) -> dict:
+def post_reset_mi_billetera(
+        req: ResetBilleteraReq,
+        x_user_token: str | None = Header(default=None)) -> dict:
     """El DUEÑO deja SU billetera en virgen (saldo 0 y sin movimientos) al 'dejar
     en virgen' desde la app. Como el saldo/pagos viven en el backend, sin esto
     volverían al re-sincronizar. Solo toca al usuario que se manda; no borra la
-    plata de otros (por eso no exige token admin). El middleware persiste el
-    snapshot tras el POST."""
+    plata de otros (por eso no exige token admin). Con PAGOS_AUTH_USUARIO=1
+    exige el ID token de Google del PROPIO usuario (nadie resetea billeteras
+    ajenas con solo la app key). El middleware persiste el snapshot."""
+    _require_usuario(req.dueno_id, x_user_token)
     r = stores.reset_billetera_de(req.dueno_id)
     return {"ok": True, **r}
 
@@ -1342,11 +1412,14 @@ def post_vistas_consultar(req: VistasReq) -> dict:
 
 
 @router.get("/movimientos/{dueno_id}", dependencies=_APP)
-def get_movimientos(dueno_id: str) -> dict:
+def get_movimientos(dueno_id: str,
+                    x_user_token: str | None = Header(default=None)) -> dict:
     """Historial de movimientos de saldo del dueño (recargas aprobadas), del más
     reciente al más antiguo. El saldo vive en el backend, así que este historial
     SOBREVIVE a reinstalar la app (a diferencia del historial local del teléfono).
+    Con PAGOS_AUTH_USUARIO=1 (PROD) solo el propio usuario ve sus movimientos.
     """
+    _require_usuario(dueno_id, x_user_token)
     # Trazabilidad del dueño (3 tipos):
     #  - recarga            → entra saldo (+)
     #  - comision_reserva   → sale de su saldo por reserva en efectivo (−)

@@ -48,4 +48,19 @@ class AuthService {
       await _google.signOut();
     } catch (_) {}
   }
+
+  /// ID TOKEN de Google del usuario logueado — la prueba de identidad que el
+  /// backend de pagos verifica contra Google (auth por usuario de la
+  /// billetera, endurecimiento PROD). null si no hay sesión real de Google
+  /// (login de pruebas) o el dispositivo no lo expone; en ese caso el backend
+  /// decide según su flag. Refresca en silencio si la sesión sigue viva.
+  static Future<String?> idToken() async {
+    try {
+      final cuenta = _google.currentUser ?? await _google.signInSilently();
+      if (cuenta == null) return null;
+      return (await cuenta.authentication).idToken;
+    } catch (_) {
+      return null;
+    }
+  }
 }

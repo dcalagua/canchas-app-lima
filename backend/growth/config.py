@@ -90,6 +90,14 @@ ADMIN_PANEL_USUARIOS = os.getenv("ADMIN_PANEL_USUARIOS", "")
 # VACÍA, no se exige (permite un despliegue gradual sin romper apps ya instaladas);
 # una vez configurada aquí y en el APK, un curl externo sin la clave recibe 401.
 APP_API_KEY = os.getenv("APP_API_KEY", "")
+# AUTH POR USUARIO de la billetera (endurecimiento PROD): con "1", los
+# endpoints de saldo/movimientos/reset exigen el ID token de Google del propio
+# usuario (header X-User-Token) y que su correo coincida con el consultado.
+# Apagado por defecto (piloto / APKs viejos siguen funcionando).
+PAGOS_AUTH_USUARIO = os.getenv("PAGOS_AUTH_USUARIO", "")
+# Opcional: client ids OAuth permitidos (separados por coma) para exigir que el
+# token sea de NUESTRA app (audiencia). Vacío = no se valida la audiencia.
+GOOGLE_OAUTH_CLIENT_IDS = os.getenv("GOOGLE_OAUTH_CLIENT_IDS", "")
 # Rate-limit anti-spam de los endpoints con efecto externo (crear reclamo, OTP):
 # máx RECLAMO_RATE_LIMIT solicitudes por IP en una ventana de RATE_WINDOW segundos.
 # 0 = desactivado. Protege el backend (y el costo de Factiliza/WhatsApp) si la URL

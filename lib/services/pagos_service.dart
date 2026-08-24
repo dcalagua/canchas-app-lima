@@ -3,6 +3,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'auth_service.dart';
+
 /// Cliente de PAGOS (Culqi, modelo inDrive). Dos capas:
 /// 1. **Tokenización** con la llave PÚBLICA contra `secure.culqi.com` (tarjeta o
 ///    Yape) — se hace en el celular; nunca manda datos de tarjeta a nuestro
@@ -597,12 +599,23 @@ class PagosService {
     }
   }
 
+  /// Cabeceras con la IDENTIDAD del usuario (ID token de Google) además de la
+  /// app key: los endpoints de billetera del backend verifican que el correo
+  /// del token sea el consultado (nadie mira/borra billeteras ajenas).
+  static Future<Map<String, String>> _headersUsuario(
+      {bool json = false}) async {
+    final h = _appHeaders(json: json);
+    final t = await AuthService.idToken();
+    if (t != null && t.isNotEmpty) h['X-User-Token'] = t;
+    return h;
+  }
+
   /// Saldo actual del dueño (en soles). Null si no se pudo.
   static Future<double?> saldo(String duenoId) async {
     if (!disponible) return null;
     try {
       final uri = Uri.parse('$_baseUrl/pagos/saldo/$duenoId');
-      final r = await http.get(uri, headers: _appHeaders())
+      final r = await http.get(uri, headers: await _headersUsuario())
           .timeout(const Duration(seconds: 12));
       if (r.statusCode != 200) return null;
       final j = jsonDecode(r.body) as Map<String, dynamic>;
@@ -1159,7 +1172,7 @@ class PagosService {
     if (!disponible) return null;
     try {
       final uri = Uri.parse('$_baseUrl/pagos/movimientos/$duenoId');
-      final r = await http.get(uri, headers: _appHeaders())
+      final r = await http.get(uri, headers: await _headersUsuario())
           .timeout(const Duration(seconds: 12));
       if (r.statusCode != 200) return null;
       final j = jsonDecode(r.body) as Map<String, dynamic>;
@@ -1178,7 +1191,7 @@ class PagosService {
     try {
       final r = await http
           .post(Uri.parse('$_baseUrl/pagos/reset-mi-billetera'),
-              headers: _appHeaders(json: true),
+              headers: await _headersUsuario(json: true),
               body: jsonEncode({'dueno_id': duenoId.trim()}))
           .timeout(const Duration(seconds: 15));
       return r.statusCode == 200;
