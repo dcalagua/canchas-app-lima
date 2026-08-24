@@ -759,3 +759,83 @@ def test_pro_cortesia_revocar_con_dias_cero():
                     json={"email": "rev@x.com", "dias": 0}).json()
     assert r["ok"] is True and r["revocada"] is True
     assert client.get("/pagos/pro/estado/rev@x.com").json()["activa"] is False
+
+
+def test_comision_efectivo_consume_regalo_primero():
+    """El REGALO de bienvenida absorbe la comisión antes de tocar plata real
+    (marcha blanca: el dueño no siente la comisión)."""
+    stores.acreditar_promo("regalado@x.com", 10000)  # S/100 de regalo
+    client.post("/pagos/recarga", json={
+        "token": "t", "dueno_id": "regalado@x.com", "email": "regalado@x.com",
+        "monto_soles": 20})
+    r = client.post("/pagos/comision-reserva", json={
+        "dueno_id": "regalado@x.com", "monto_soles": 120.0,
+        "reserva_id": "rsv_regalo_1"}).json()
+    assert r["ok"] is True
+    assert r["promo_usado_centimos"] == r["comision_centimos"] > 0
+    # La plata REAL quedó intacta; el regalo bajó.
+    assert stores.saldo_centimos("regalado@x.com") == 2000
+    assert stores.saldo_promo_centimos("regalado@x.com") ==         10000 - r["comision_centimos"]
+    # El movimiento lo dice claro.
+    p = stores.pago_por_charge("rsv_regalo_1")
+    assert "regalo" in (p.concepto or "")
+
+
+def test_comision_regalo_parcial_completa_del_saldo_real():
+    stores.acreditar_promo("mixto@x.com", 100)  # S/1 de regalo (no alcanza)
+    client.post("/pagos/recarga", json={
+        "token": "t", "dueno_id": "mixto@x.com", "email": "mixto@x.com",
+        "monto_soles": 20})
+    r = client.post("/pagos/comision-reserva", json={
+        "dueno_id": "mixto@x.com", "monto_soles": 120.0,
+        "reserva_id": "rsv_regalo_2"}).json()
+    assert r["promo_usado_centimos"] == 100
+    assert stores.saldo_promo_centimos("mixto@x.com") == 0
+    assert stores.saldo_centimos("mixto@x.com") ==         2000 - (r["comision_centimos"] - 100)
+
+
+def test_liquidacion_online_billetera_first_con_solo_regalo():
+    """Con SOLO saldo de regalo, la reserva online sigue siendo billetera-first:
+    la comisión sale del regalo y el dueño recibe el BRUTO completo."""
+    stores.acreditar_promo("soloregalo@x.com", 10000)
+    r = client.post("/pagos/liquidacion-online", json={
+        "dueno_id": "soloregalo@x.com", "monto_soles": 100.0,
+        "reserva_id": "rsv_regalo_3"}).json()
+    assert r["ok"] is True and r["fuente"] == "saldo"
+    assert stores.saldo_centimos("soloregalo@x.com") == 0  # real intacto (era 0)
+    assert stores.saldo_promo_centimos("soloregalo@x.com") < 10000
+
+
+def test_saldo_endpoint_expone_el_regalo():
+    stores.acreditar_promo("veo@x.com", 5000)
+    r = client.get("/pagos/saldo/veo@x.com").json()
+    assert r["saldo_promo_soles"] == 50.0
+    assert r["saldo_soles"] == 0.0  # el regalo NO se mezcla con la plata real
+
+
+def test_bienvenida_otorga_pro_y_regalo_una_sola_vez():
+    from pagos.router import otorgar_bienvenida
+    stores.config["bienvenida_pro_dias"] = "60"
+    stores.config["bienvenida_saldo_soles"] = "100"
+    try:
+        r = otorgar_bienvenida("nuevo@x.com")
+        assert r["ok"] is True
+        assert stores.pro_activo("nuevo@x.com") is True
+        assert stores.membresias_pro["nuevo@x.com"]["cortesia"] is True
+        assert stores.saldo_promo_centimos("nuevo@x.com") == 10000
+        assert any(p.tipo == "bono_bienvenida" and p.dueno_id == "nuevo@x.com"
+                   for p in stores.pagos)
+        # Idempotente: registrar una 2.ª cancha no duplica el regalo.
+        r2 = otorgar_bienvenida("nuevo@x.com")
+        assert r2.get("ya_otorgada") is True
+        assert stores.saldo_promo_centimos("nuevo@x.com") == 10000
+    finally:
+        stores.config["bienvenida_pro_dias"] = "0"
+        stores.config["bienvenida_saldo_soles"] = "0"
+
+
+def test_bienvenida_apagada_no_regala():
+    from pagos.router import otorgar_bienvenida
+    r = otorgar_bienvenida("nadie2@x.com")
+    assert r.get("apagada") is True
+    assert stores.saldo_promo_centimos("nadie2@x.com") == 0

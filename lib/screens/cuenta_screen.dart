@@ -160,7 +160,41 @@ class _CuentaScreenState extends State<CuentaScreen> {
                 destacado: appState.destacadoActivo,
                 onRecargar: () => _abrirRecarga(context),
               ),
-              if (appState.saldoClub <= _saldoBajo) ...[
+              // REGALO de bienvenida (marcha blanca): que el dueño lo VEA y
+              // entienda que sus comisiones salen de aquí primero.
+              if (appState.saldoRegalo > 0) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: limaSuave,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: lima),
+                  ),
+                  child: Row(
+                    children: [
+                      const Text('🎁', style: TextStyle(fontSize: 22)),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Tienes ${appState.monedaSaldoSimbolo} '
+                          '${appState.saldoRegalo.toStringAsFixed(2)} de saldo '
+                          'de REGALO por unirte a Pichangol: tus comisiones se '
+                          'descuentan de aquí primero, sin tocar tu plata.',
+                          style: t.bodySmall?.copyWith(
+                              color: bosque,
+                              fontWeight: FontWeight.w600,
+                              height: 1.3),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              // Con regalo vigente NO se asusta al dueño con "saldo bajo":
+              // sus comisiones están cubiertas por el regalo.
+              if (appState.saldoClub <= _saldoBajo &&
+                  appState.saldoRegalo <= 0) ...[
                 const SizedBox(height: 12),
                 Container(
                   padding: const EdgeInsets.all(14),

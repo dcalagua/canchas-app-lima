@@ -435,7 +435,10 @@ def get_saldo(dueno_id: str,
               x_user_token: str | None = Header(default=None)) -> dict:
     _require_usuario(dueno_id, x_user_token)  # PROD: solo su propio saldo
     c = stores.saldo_centimos(dueno_id)
-    return {"dueno_id": dueno_id, "saldo_centimos": c, "saldo_soles": c / 100.0}
+    promo = stores.saldo_promo_centimos(dueno_id)
+    return {"dueno_id": dueno_id, "saldo_centimos": c, "saldo_soles": c / 100.0,
+            # Regalo de bienvenida (solo comisiones): el APK lo muestra aparte.
+            "saldo_promo_centimos": promo, "saldo_promo_soles": promo / 100.0}
 
 
 class ResetBilleteraReq(BaseModel):
@@ -1084,6 +1087,61 @@ def post_pro_cortesia(req: ProCortesiaReq) -> dict:
     return {"ok": True, "email": email, "hasta": hasta, "cortesia": True}
 
 
+def otorgar_bienvenida(email: str) -> dict:
+    """BIENVENIDA automática de la marcha blanca: cuando a un dueño NUEVO se le
+    ACTIVA su primera cancha, recibe lo configurado en la torre — días de Pro de
+    cortesía y/o un saldo de REGALO que solo absorbe comisiones. Idempotente
+    (un regalo por correo, aunque registre varias canchas). Con la config en 0
+    no hace nada. La llama el flujo de reclamos al activar."""
+    email = (email or "").strip().lower()
+    if not email or "@" not in email:
+        return {"ok": False, "error": "email_invalido"}
+
+    def _num(clave: str) -> float:
+        try:
+            return float(stores.cfg(clave) or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    dias = int(_num("bienvenida_pro_dias"))
+    saldo_soles = _num("bienvenida_saldo_soles")
+    if dias <= 0 and saldo_soles <= 0:
+        return {"ok": False, "apagada": True}
+    if email in stores.bienvenidas:
+        return {"ok": False, "ya_otorgada": True}
+    ahora_dt = datetime.now(timezone.utc)
+    stores.bienvenidas[email] = ahora_dt.isoformat()
+    partes = []
+    if dias > 0:
+        base = ahora_dt
+        m = stores.membresias_pro.get(email) or {}
+        try:
+            cur = datetime.fromisoformat(m["hasta"]) if m.get("hasta") else None
+            if cur and cur > base:
+                base = cur
+        except (KeyError, TypeError, ValueError):
+            pass
+        stores.membresias_pro[email] = {
+            "hasta": (base + timedelta(days=dias)).isoformat(),
+            "cortesia": True, "pais": "PE"}
+        partes.append(f"{dias} días de Pichangol Pro")
+    if saldo_soles > 0:
+        cent = _soles_a_centimos(saldo_soles)
+        stores.acreditar_promo(email, cent)
+        stores.registrar_pago(
+            tipo="bono_bienvenida", monto_centimos=cent, moneda="PEN",
+            estado="aprobado", dueno_id=email,
+            concepto="Regalo de bienvenida (cubre tus comisiones)")
+        partes.append(f"S/ {saldo_soles:.0f} de saldo de regalo para "
+                      "tus comisiones")
+    _aviso_push_usuario(
+        email, "🎁 ¡Bienvenido a Pichangol!",
+        "Por activar tu cancha te regalamos " + " y ".join(partes) +
+        ". Ya está en tu cuenta.")
+    return {"ok": True, "email": email, "pro_dias": dias,
+            "saldo_soles": saldo_soles}
+
+
 @router.get("/pro/miembros-admin", dependencies=_ADMIN)
 def get_pro_miembros_admin() -> dict:
     """Detalle de TODAS las membresías Pro para la torre: correo, vencimiento,
@@ -1167,13 +1225,20 @@ def post_comision_reserva(req: ComisionReservaReq) -> dict:
         return {"ok": True, "duplicada": True,
                 "comision_centimos": ya.monto_centimos,
                 "saldo_centimos": c, "saldo_soles": c / 100.0}
-    nuevo = stores.debitar(req.dueno_id, comision)
+    # El REGALO de bienvenida absorbe la comisión primero (marcha blanca): el
+    # dueño no toca su plata hasta agotar el regalo.
+    promo_usado, nuevo = stores.debitar_comision(req.dueno_id, comision)
+    sufijo = (" · cubierta por tu saldo de regalo 🎁" if promo_usado >= comision
+              and comision > 0 else
+              f" · S/ {promo_usado / 100.0:.2f} de tu regalo 🎁"
+              if promo_usado > 0 else "")
     stores.registrar_pago(
         tipo="comision_reserva", monto_centimos=comision, moneda="PEN",
         estado="aprobado", dueno_id=req.dueno_id,
         culqi_charge_id=req.reserva_id,
-        concepto=req.concepto or "Comisión de reserva")
+        concepto=(req.concepto or "Comisión de reserva") + sufijo)
     return {"ok": True, "duplicada": False, "comision_centimos": comision,
+            "promo_usado_centimos": promo_usado,
             "saldo_centimos": nuevo, "saldo_soles": nuevo / 100.0}
 
 
@@ -1206,14 +1271,20 @@ def post_liquidacion_online(req: LiquidacionOnlineReq) -> dict:
                 "neto_centimos": round(d["neto_soles"] * 100)}
 
     saldo = stores.saldo_centimos(req.dueno_id)
-    if saldo >= com_saldo:
-        # BILLETERA-FIRST: comisión del saldo; el dueño recibe el bruto completo.
-        nuevo = stores.debitar(req.dueno_id, com_saldo)
+    promo = stores.saldo_promo_centimos(req.dueno_id)
+    if saldo + promo >= com_saldo:
+        # BILLETERA-FIRST: comisión del saldo (el REGALO de bienvenida primero);
+        # el dueño recibe el bruto completo.
+        promo_usado, nuevo = stores.debitar_comision(req.dueno_id, com_saldo)
+        sufijo = (" · cubierta por tu saldo de regalo 🎁"
+                  if promo_usado >= com_saldo and com_saldo > 0 else
+                  f" · S/ {promo_usado / 100.0:.2f} de tu regalo 🎁"
+                  if promo_usado > 0 else "")
         stores.registrar_pago(
             tipo="comision_reserva", monto_centimos=com_saldo, moneda="PEN",
             estado="aprobado", dueno_id=req.dueno_id,
             culqi_charge_id=f"{req.reserva_id}_com",
-            concepto=f"Comisión · {req.concepto or 'Reserva online'}")
+            concepto=f"Comisión · {req.concepto or 'Reserva online'}{sufijo}")
         stores.registrar_pago(
             tipo="liquidacion_full", monto_centimos=bruto, moneda="PEN",
             estado="aprobado", dueno_id=req.dueno_id,
@@ -1935,7 +2006,7 @@ def get_movimientos(dueno_id: str,
     # `venta_producto` = venta del marketplace Y canje/compra de BONO de horas:
     # Pichangol cobró al comprador y le debe el NETO al dueño (misma
     # contabilidad que una reserva online). DEBE aparecer en el historial.
-    _INCLUIR = ("recarga", "bono_recarga", "cupon",
+    _INCLUIR = ("recarga", "bono_recarga", "bono_bienvenida", "cupon",
                 "liquidacion_online", "liquidacion_full",
                 "venta_producto", "venta_bodega",
                 "inscripcion_torneo_ingreso") + _EGRESOS
@@ -1947,6 +2018,7 @@ def get_movimientos(dueno_id: str,
     _NOMBRE = {
         "recarga": "Recarga de saldo",
         "bono_recarga": "Bono de recarga 🎁",
+        "bono_bienvenida": "Regalo de bienvenida 🎁",
         "cupon": "Cupón canjeado 🎁",
         "comision_reserva": "Comisión de reserva",
         "suscripcion": "Servicio de marketing",
@@ -1968,7 +2040,7 @@ def get_movimientos(dueno_id: str,
         # el APK lo muestra en el estado de cuenta.
         if getattr(p, "medio", None):
             base["medio"] = p.medio
-        if p.tipo in ("recarga", "bono_recarga", "cupon"):
+        if p.tipo in ("recarga", "bono_recarga", "bono_bienvenida", "cupon"):
             return {**base, "monto_soles": p.monto_centimos / 100.0}
         if p.tipo in _EGRESOS:
             # Egreso de saldo: negativo.

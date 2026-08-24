@@ -242,6 +242,22 @@ off → redeploy inmediato en cada push). URL pública:
   canje `/pagos/cupon/canjear`, un canje por usuario, pago `cupon`). APK:
   banner de la promo en billetera y en Recargar; "¿Tienes un cupón?" en la
   billetera. El costo lo asume Pichangol (marketing).
+- **MARCHA BLANCA / onboarding de dueños (hecho ago-2026):** (1) **Pro de
+  CORTESÍA**: torre `/admin` → Cobros → Pichangol Pro → "🎁 Pro de cortesía"
+  (correo + 30/60/90/180 días; revocable; `POST /pagos/pro/cortesia`, admin).
+  La cortesía NUNCA se auto-renueva del saldo (candado en
+  `procesar_renovaciones_pro`) y queda FUERA del MRR. (2) **BIENVENIDA
+  AUTOMÁTICA** (config torre, mismo pane: `bienvenida_pro_dias` +
+  `bienvenida_saldo_soles`, 0/0 = off): al ACTIVARSE la primera cancha de un
+  dueño (`_bienvenida_al_activar` en los 3 caminos de reclamos), recibe días
+  de Pro cortesía + **SALDO DE REGALO** (`stores.saldos_promo`, bolsillo
+  SEPARADO que SOLO consumen comisiones vía `debitar_comision` — regalo
+  primero, plata real después; NO liquidable/transferible/gastable en
+  Pro/torneo/bodega, así no se vuelve plata real que salga de PCG). Un regalo
+  por correo (`stores.bienvenidas`), pago auditable `bono_bienvenida` + push
+  🎁. `/pagos/saldo` devuelve `saldo_promo_soles`; el APK lo pinta en la
+  billetera (banner 🎁 en `cuenta_screen`, silencia el aviso "saldo bajo"
+  mientras haya regalo).
 - **Tests:** `cd backend/growth && python3 -m pytest -q` (deben pasar todos).
   Cumplimiento Ley 29733 (DNI = dato personal: solo validar dueño, no publicar).
 

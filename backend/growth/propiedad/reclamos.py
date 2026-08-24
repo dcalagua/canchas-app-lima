@@ -156,6 +156,17 @@ def _notificar_admin(texto: str) -> None:
         pass
 
 
+def _bienvenida_al_activar(r: "ReclamoPropiedad") -> None:
+    """MARCHA BLANCA: al ACTIVARSE la cancha, el dueño nuevo recibe su regalo
+    de bienvenida (Pro de cortesía y/o saldo de regalo, config de la torre).
+    Import diferido para no acoplar propiedad↔pagos al cargar. Fail-safe."""
+    try:
+        from pagos.router import otorgar_bienvenida
+        otorgar_bienvenida(r.solicitante_id or "")
+    except Exception:  # noqa: BLE001 — el regalo jamás rompe una activación
+        pass
+
+
 def _notificar_reclamante_aprobado(r: "ReclamoPropiedad") -> None:
     """Push "¡Tu cancha fue aprobada!" al reclamante, vía la Edge Function de
     Supabase (push-aprobacion). El backend growth NO hace FCM; delega en Supabase.
@@ -609,6 +620,7 @@ def validar_en_sitio(codigo: str, lat: float, lng: float,
             f"Local: {r.nombre_local}\nValidador: {validador or 's/n'}\n"
             f"Distancia GPS: {round(dist) if dist is not None else 's/d'} m")
         _notificar_reclamante_aprobado(r)  # push "¡tu cancha fue aprobada!"
+        _bienvenida_al_activar(r)  # regalo de bienvenida (marcha blanca)
         return {"ok": True, "estado": "activada", "verificada": True,
                 "distancia_m": round(dist) if dist is not None else None}
 
@@ -683,6 +695,7 @@ def aprobar_directo(reclamo_id: int, revisor: str | None = None) -> dict:
         f"✅ Cancha ACTIVADA por aprobación directa (panel)\n"
         f"Local: {r.nombre_local}\nAdmin: {revisor or 's/n'}")
     _notificar_reclamante_aprobado(r)  # push "¡tu cancha fue aprobada!"
+    _bienvenida_al_activar(r)  # regalo de bienvenida (marcha blanca)
     return {"ok": True, "estado": "activada", "verificada": True, "modo": modo}
 
 
@@ -703,6 +716,7 @@ def activar_admin(reclamo_id: int) -> dict:
     c.verificada_en_persona = True
     c.metodo_verificacion = "en_sitio"
     _notificar_reclamante_aprobado(r)  # push "¡tu cancha fue aprobada!"
+    _bienvenida_al_activar(r)  # regalo de bienvenida (marcha blanca)
     return {"ok": True, "estado": "activada", "verificada": True}
 
 

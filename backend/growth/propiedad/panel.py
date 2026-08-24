@@ -515,7 +515,32 @@ def get_pro_admin(x_admin_token: str | None = Header(default=None)) -> dict:
             "mrr_soles": round(mrr_pais["pe"], 2),
             "mrr_por_pais": {k: round(v, 2) for k, v in mrr_pais.items()},
             "activos_por_pais": activos_pais,
+            "bienvenida": {
+                "pro_dias": stores.cfg("bienvenida_pro_dias") or "0",
+                "saldo_soles": stores.cfg("bienvenida_saldo_soles") or "0",
+            },
             "miembros": miembros}
+
+
+class BienvenidaReq(BaseModel):
+    pro_dias: int = 0
+    saldo_soles: float = 0.0
+
+
+@router.post("/admin/api/pro/bienvenida")
+def set_bienvenida_admin(
+        req: BienvenidaReq,
+        x_admin_token: str | None = Header(default=None)) -> dict:
+    """MARCHA BLANCA automática: qué recibe cada dueño NUEVO al activarse su
+    primera cancha — días de Pro de cortesía y/o saldo de REGALO (solo cubre
+    comisiones). 0 y 0 = apagada."""
+    _check(x_admin_token)
+    dias = max(0, min(int(req.pro_dias), 365))
+    saldo = max(0.0, min(float(req.saldo_soles), 1000.0))
+    stores.config["bienvenida_pro_dias"] = str(dias)
+    stores.config["bienvenida_saldo_soles"] = (
+        str(saldo if saldo % 1 else int(saldo)))
+    return {"ok": True, "pro_dias": dias, "saldo_soles": saldo}
 
 
 class ProPrecioReq(BaseModel):
@@ -1957,6 +1982,26 @@ async function cargarPro(){
             <button class="btn-ap" onclick="darCortesia()">Dar Pro de cortesía</button>
           </div>
         </div>
+        <div style="border:1px dashed var(--border);border-radius:12px;padding:12px;margin:12px 0">
+          <div style="font-weight:800;margin-bottom:2px">🚀 Bienvenida AUTOMÁTICA de nuevos dueños</div>
+          <div class="row">Cada dueño nuevo, al ACTIVARSE su primera cancha, recibe esto solo
+            (un regalo por correo). El saldo de regalo SOLO cubre comisiones (no se liquida
+            ni se gasta en otra cosa). Pon 0 y 0 para apagarla.</div>
+          <div class="actions" style="align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px">
+            <span style="font-size:12.5px;font-weight:600">Pro de cortesía</span>
+            <select id="bvDias" style="padding:8px;border:1px solid var(--border);border-radius:8px">
+              <option value="0">sin Pro</option>
+              <option value="30">30 días</option>
+              <option value="60">60 días</option>
+              <option value="90">90 días</option>
+              <option value="180">180 días</option>
+            </select>
+            <span style="font-size:12.5px;font-weight:600">Saldo de regalo S/</span>
+            <input id="bvSaldo" inputmode="decimal"
+              style="width:74px;padding:8px;border:1px solid var(--border);border-radius:8px;text-align:right">
+            <button class="btn-ap" onclick="guardarBienvenida()">Guardar</button>
+          </div>
+        </div>
         <table style="width:100%;border-collapse:collapse;font-size:13px">
           <thead><tr style="border-bottom:1px solid var(--border)">
             <th style="text-align:left;padding:4px 6px">Jugador</th>
@@ -1969,6 +2014,13 @@ async function cargarPro(){
         </table>
         <div id="pro_res" class="row" style="margin-top:8px;color:var(--muted)"></div>
       </div>`;
+    const bv = j.bienvenida || {};
+    const sel = document.getElementById('bvDias');
+    if(sel){
+      const d = String(parseInt(bv.pro_dias)||0);
+      if([...sel.options].some(o=>o.value===d)) sel.value = d;
+      document.getElementById('bvSaldo').value = bv.saldo_soles || '0';
+    }
   }catch(e){ document.getElementById('proPanel').innerHTML =
       '<div class="card">No se pudo cargar Pichangol Pro.</div>'; }
 }
@@ -1988,6 +2040,15 @@ async function renovarPro(){
   document.getElementById('pro_res').textContent =
     `Renovadas: ${j.renovadas||0} · sin saldo: ${j.sin_saldo||0}.`;
   await cargarPro();
+}
+async function guardarBienvenida(){
+  const dias = parseInt(document.getElementById('bvDias').value)||0;
+  const saldo = parseFloat((document.getElementById('bvSaldo').value||'0').replace(',','.'))||0;
+  const r = await fetch('/admin/api/pro/bienvenida',{method:'POST',headers:headers(),
+    body:JSON.stringify({pro_dias:dias, saldo_soles:saldo})});
+  if(r.status===401){ salir(); return; }
+  if(r.ok) toast((dias||saldo) ? `Bienvenida activa: ${dias} días de Pro + S/ ${saldo}` : 'Bienvenida apagada');
+  else toast('No se pudo guardar');
 }
 async function darCortesia(){
   const email = (document.getElementById('cortesiaEmail').value||'').trim().toLowerCase();

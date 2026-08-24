@@ -5722,6 +5722,12 @@ class AppState extends ChangeNotifier {
   // Virgen (como PRD): arranca en 0; el saldo real baja del backend al iniciar
   // sesión (antes arrancaba en 30 de demo, que confundía en pruebas limpias).
   int saldoClub = 0;
+
+  /// Saldo de REGALO (bienvenida marcha blanca): lo regala Pichangol al activar
+  /// la primera cancha y SOLO absorbe comisiones (no se recarga ni transfiere).
+  /// Viene del backend en cada sincronización; no se persiste (se repinta al
+  /// sincronizar).
+  double saldoRegalo = 0;
   // ¿Ya se le mostró al dueño el mensaje de bienvenida (onboarding "stack de
   // valor")? Se muestra una sola vez al entrar a "Mis canchas".
   bool bienvenidaDuenoVista = false;
@@ -6164,8 +6170,12 @@ class AppState extends ChangeNotifier {
     final s = await PagosService.saldo(email);
     if (s != null) {
       final nuevo = s.round();
-      if (nuevo != saldoClub) {
+      // Saldo de REGALO (bienvenida marcha blanca): solo cubre comisiones;
+      // la billetera lo muestra aparte para que el dueño lo VEA.
+      final regalo = PagosService.ultimoSaldoRegalo;
+      if (nuevo != saldoClub || regalo != saldoRegalo) {
         saldoClub = nuevo;
+        saldoRegalo = regalo;
         notifyListeners();
         _persistirDatos();
       }

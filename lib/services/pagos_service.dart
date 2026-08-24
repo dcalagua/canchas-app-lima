@@ -611,6 +611,11 @@ class PagosService {
   }
 
   /// Saldo actual del dueño (en soles). Null si no se pudo.
+  /// Además del saldo REAL, el backend puede traer un saldo de REGALO
+  /// (`saldo_promo_soles`, bienvenida de la marcha blanca: solo cubre
+  /// comisiones) — queda en [ultimoSaldoRegalo] para que la billetera lo pinte.
+  static double ultimoSaldoRegalo = 0;
+
   static Future<double?> saldo(String duenoId) async {
     if (!disponible) return null;
     try {
@@ -619,6 +624,7 @@ class PagosService {
           .timeout(const Duration(seconds: 12));
       if (r.statusCode != 200) return null;
       final j = jsonDecode(r.body) as Map<String, dynamic>;
+      ultimoSaldoRegalo = (j['saldo_promo_soles'] as num?)?.toDouble() ?? 0;
       return (j['saldo_soles'] as num?)?.toDouble();
     } catch (_) {
       return null;

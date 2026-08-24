@@ -25,6 +25,11 @@ CONFIG_DEFAULT: dict[str, str] = {
     # WhatsApp de contacto de Pichangol/EBIM para SERVICIOS (landing, redes),
     # por PAÍS y editable desde la torre de control. Se guarda el número LOCAL
     # (sin código de país); el backend antepone el código (PE 51 / EC 593 / BO 591).
+    # BIENVENIDA de nuevos dueños (marcha blanca, torre → Cobros → Pro):
+    # al ACTIVARSE su primera cancha reciben días de Pro de cortesía y/o un
+    # saldo de REGALO (solo comisiones). 0 = apagado.
+    "bienvenida_pro_dias": "0",
+    "bienvenida_saldo_soles": "0",
     "contacto_whatsapp_pe": "",
     "contacto_whatsapp_ec": "998706994",
     "contacto_whatsapp_bo": "",
@@ -466,6 +471,14 @@ class Stores:
         self.ranking_snapshot: dict = {}
         # PAGOS (Culqi): saldo prepago por dueño (céntimos) + libro de pagos.
         self.saldos: dict[str, int] = {}          # dueno_id -> céntimos
+        # SALDO PROMOCIONAL (regalo de bienvenida de la marcha blanca): bolsillo
+        # SEPARADO que SOLO consumen las comisiones (debitar_comision). Nunca es
+        # liquidable, transferible ni gastable en torneos/Pro/bodega — así el
+        # regalo no puede convertirse en plata real que salga de Pichangol.
+        self.saldos_promo: dict[str, int] = {}    # dueno_id -> céntimos
+        # BIENVENIDAS ya otorgadas (idempotencia: un regalo por correo, aunque
+        # el dueño registre varias canchas). email -> fecha ISO.
+        self.bienvenidas: dict[str, str] = {}
         self.pagos: list[PagoRegistro] = []
         # RECARGAS POR QR (Yape directo, sin pasarela): solicitudes que el
         # usuario manda con su constancia y el OPERADOR aprueba/rechaza en la
@@ -599,6 +612,33 @@ class Stores:
         self.saldos[dueno_id] = nuevo
         return nuevo
 
+    def saldo_promo_centimos(self, dueno_id: str) -> int:
+        return self.saldos_promo.get(dueno_id, 0)
+
+    def acreditar_promo(self, dueno_id: str, centimos: int) -> int:
+        """Suma saldo PROMOCIONAL (regalo de bienvenida). Solo lo consumen las
+        comisiones vía `debitar_comision`; jamás se liquida ni transfiere."""
+        self.saldos_promo[dueno_id] = (
+            self.saldos_promo.get(dueno_id, 0) + int(centimos))
+        return self.saldos_promo[dueno_id]
+
+    def debitar_comision(self, dueno_id: str, centimos: int) -> tuple[int, int]:
+        """Cobra una COMISIÓN consumiendo PRIMERO el saldo promocional (regalo
+        de bienvenida) y el resto del saldo real — el dueño "no siente" la
+        comisión hasta agotar su regalo (decisión del director, marcha blanca).
+        Devuelve (promo_usado_centimos, nuevo_saldo_real_centimos)."""
+        resto = max(0, int(centimos))
+        promo = self.saldos_promo.get(dueno_id, 0)
+        promo_usado = min(promo, resto)
+        if promo_usado:
+            self.saldos_promo[dueno_id] = promo - promo_usado
+            resto -= promo_usado
+        if resto > 0:
+            nuevo = self.debitar(dueno_id, resto)
+        else:
+            nuevo = self.saldo_centimos(dueno_id)
+        return (promo_usado, nuevo)
+
     def transferir_saldo(self, desde_id: str, hacia_id: str) -> int:
         """BILLETERA ÚNICA por usuario: mueve TODO el saldo prepago de [desde_id]
         a [hacia_id]. Se usa para consolidar el saldo que quedó bajo una llave
@@ -680,6 +720,8 @@ class Stores:
         self.retos = []
         self.ventas = []
         self.saldos = {}
+        self.saldos_promo = {}
+        self.bienvenidas = {}
         self.suscripciones = {}
         self.suscripciones_alumno = {}
         self.metodo_suscripcion = {}
@@ -710,6 +752,9 @@ class Stores:
         # Quita el saldo (cualquier variante de caja del mismo correo).
         for k in [k for k in list(self.saldos) if _match(k)]:
             self.saldos.pop(k, None)
+        for k in [k for k in list(self.saldos_promo) if _match(k)]:
+            self.saldos_promo.pop(k, None)
+        self.bienvenidas.pop(clave, None)  # re-registrar en pruebas re-regala
         antes = len(self.pagos)
         self.pagos = [p for p in self.pagos if not _match(p.dueno_id)]
         return {"saldo": saldo_habia, "pagos": antes - len(self.pagos)}
@@ -893,6 +938,8 @@ class Stores:
             "dni_verificados": dict(self.dni_verificados),
             "inscripciones": [como_dict(i) for i in self.inscripciones],
             "saldos": dict(self.saldos),
+            "saldos_promo": dict(self.saldos_promo),
+            "bienvenidas": dict(self.bienvenidas),
             "pagos": [como_dict(p) for p in self.pagos],
             "suscripciones": {k: dict(v) for k, v in self.suscripciones.items()},
             "landings": {k: dict(v) for k, v in self.landings.items()},
@@ -943,6 +990,10 @@ class Stores:
             k: str(v) for k, v in (data.get("dni_verificados") or {}).items()}
         self.inscripciones = [_insc_from(d) for d in data.get("inscripciones", [])]
         self.saldos = {k: int(v) for k, v in (data.get("saldos") or {}).items()}
+        self.saldos_promo = {
+            k: int(v) for k, v in (data.get("saldos_promo") or {}).items()}
+        self.bienvenidas = {
+            k: str(v) for k, v in (data.get("bienvenidas") or {}).items()}
         self.pagos = [_pago_from(d) for d in data.get("pagos", [])]
         self.suscripciones = {
             k: dict(v) for k, v in (data.get("suscripciones") or {}).items()
