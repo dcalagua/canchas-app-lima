@@ -1016,6 +1016,12 @@ def procesar_renovaciones_pro() -> dict:
             cur = None
         if cur and cur > ahora_dt:
             continue  # aún vigente
+        if m.get("cortesia"):
+            # Pro de CORTESÍA (marcha blanca): lo regaló el operador, NUNCA se
+            # renueva solo debitando la billetera del dueño (ahí está la plata
+            # de sus liquidaciones). Vencida la cortesía, simplemente expira;
+            # si quiere seguir, se suscribe pagando como cualquier usuario.
+            continue
         precio = _pro_precio_centimos(m.get("pais", "PE"))
         if stores.saldo_centimos(email) >= precio:
             stores.debitar(email, precio)
@@ -1035,6 +1041,69 @@ def procesar_renovaciones_pro() -> dict:
 def post_pro_renovar() -> dict:
     """Cron/manual: renueva las membresías Pro vencidas (cobra del saldo)."""
     return procesar_renovaciones_pro()
+
+
+# ─────────────── PRO DE CORTESÍA (marcha blanca, torre de control) ────────────
+class ProCortesiaReq(BaseModel):
+    email: str
+    dias: int = 90          # 0 = revocar (la membresía vence al instante)
+    pais: str = "PE"
+
+
+@router.post("/pro/cortesia", dependencies=_ADMIN)
+def post_pro_cortesia(req: ProCortesiaReq) -> dict:
+    """MARCHA BLANCA: el OPERADOR regala Pichangol Pro a un correo por N días,
+    sin cobrar nada (canchas aliadas del lanzamiento). La cortesía NUNCA se
+    auto-renueva del saldo (ver procesar_renovaciones_pro): al vencer expira y
+    el dueño decide si paga. `dias=0` la revoca. Extiende desde el vencimiento
+    vigente si es mayor (regalar 2 veces no pisa días)."""
+    email = req.email.strip().lower()
+    if not email or "@" not in email:
+        return {"ok": False, "error": "email_invalido"}
+    dias = max(0, min(int(req.dias), 365))
+    ahora_dt = datetime.now(timezone.utc)
+    if dias == 0:
+        stores.membresias_pro.pop(email, None)
+        return {"ok": True, "email": email, "revocada": True}
+    base = ahora_dt
+    m = stores.membresias_pro.get(email) or {}
+    try:
+        cur = datetime.fromisoformat(m["hasta"]) if m.get("hasta") else None
+        if cur and cur > base:
+            base = cur
+    except (KeyError, TypeError, ValueError):
+        pass
+    hasta = (base + timedelta(days=dias)).isoformat()
+    stores.membresias_pro[email] = {
+        "hasta": hasta, "cortesia": True, "pais": (req.pais or "PE").upper()}
+    # Registro auditable (monto 0): quién recibió cortesía y cuándo.
+    stores.registrar_pago(
+        tipo="pro_cortesia", monto_centimos=0, moneda="PEN",
+        estado="aprobado", dueno_id=email,
+        concepto=f"Pichangol Pro cortesía ({dias} días)")
+    return {"ok": True, "email": email, "hasta": hasta, "cortesia": True}
+
+
+@router.get("/pro/miembros-admin", dependencies=_ADMIN)
+def get_pro_miembros_admin() -> dict:
+    """Detalle de TODAS las membresías Pro para la torre: correo, vencimiento,
+    si es cortesía y si sigue vigente."""
+    ahora_dt = datetime.now(timezone.utc)
+    filas = []
+    for email, m in sorted(stores.membresias_pro.items()):
+        hasta = m.get("hasta")
+        try:
+            dt = datetime.fromisoformat(hasta) if hasta else None
+        except (TypeError, ValueError):
+            dt = None
+        filas.append({
+            "email": email,
+            "hasta": hasta,
+            "cortesia": bool(m.get("cortesia")),
+            "pais": m.get("pais", "PE"),
+            "vigente": dt is not None and dt > ahora_dt,
+        })
+    return {"miembros": filas}
 
 
 # ─────────────────────── INSCRIPCIÓN A TORNEO (billetera única) ───────────────

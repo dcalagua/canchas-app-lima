@@ -710,3 +710,52 @@ def test_liquidacion_billetera_first_idempotente():
                if p.tipo == "liquidacion_full" and p.culqi_charge_id == "bf_3")
     assert ncom == 1 and nliq == 1
     assert stores.saldo_centimos("bfi@x.com") == 4400  # debitó una sola vez
+
+
+def test_pro_cortesia_activa_sin_cobrar():
+    """MARCHA BLANCA: el operador regala Pro sin tocar la billetera."""
+    r = client.post("/pagos/pro/cortesia",
+                    json={"email": "aliado@x.com", "dias": 90}).json()
+    assert r["ok"] is True and r["cortesia"] is True
+    est = client.get("/pagos/pro/estado/aliado@x.com").json()
+    assert est["activa"] is True
+    # No se debitó nada (nunca tuvo saldo) y quedó registro auditable monto 0.
+    assert stores.saldo_centimos("aliado@x.com") == 0
+    assert any(p.tipo == "pro_cortesia" and p.monto_centimos == 0
+               for p in stores.pagos)
+    # Sale en la lista pública de miembros (insignia PRO).
+    assert "aliado@x.com" in client.get("/pagos/pro/miembros").json()["emails"]
+
+
+def test_pro_cortesia_requiere_admin_y_valida_email():
+    assert client.post("/pagos/pro/cortesia",
+                       json={"email": "a@x.com", "dias": 30},
+                       headers={"X-Admin-Token": "malo"}).status_code == 401
+    r = client.post("/pagos/pro/cortesia",
+                    json={"email": "sin-arroba", "dias": 30}).json()
+    assert r["ok"] is False and r["error"] == "email_invalido"
+
+
+def test_pro_cortesia_vencida_no_se_renueva_del_saldo():
+    """CANDADO CLAVE: la cortesía vencida NUNCA debita la billetera del dueño
+    (ahí está la plata de sus liquidaciones). Solo expira."""
+    h = {"X-Admin-Token": "adm_test"}
+    stores.membresias_pro["regalo@x.com"] = {
+        "hasta": "2020-01-01T00:00:00+00:00", "cortesia": True}
+    client.post("/pagos/recarga", json={
+        "token": "t", "dueno_id": "regalo@x.com", "email": "regalo@x.com",
+        "monto_soles": 50})
+    out = client.post("/pagos/pro/renovar-vencidas", headers=h).json()
+    assert out["renovadas"] == 0
+    # La plata del dueño quedó INTACTA y la membresía vencida.
+    assert stores.saldo_centimos("regalo@x.com") == 5000
+    assert client.get("/pagos/pro/estado/regalo@x.com").json()["activa"] is False
+
+
+def test_pro_cortesia_revocar_con_dias_cero():
+    client.post("/pagos/pro/cortesia", json={"email": "rev@x.com", "dias": 60})
+    assert client.get("/pagos/pro/estado/rev@x.com").json()["activa"] is True
+    r = client.post("/pagos/pro/cortesia",
+                    json={"email": "rev@x.com", "dias": 0}).json()
+    assert r["ok"] is True and r["revocada"] is True
+    assert client.get("/pagos/pro/estado/rev@x.com").json()["activa"] is False

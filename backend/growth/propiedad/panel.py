@@ -493,13 +493,17 @@ def get_pro_admin(x_admin_token: str | None = Header(default=None)) -> dict:
             dt = None
         activa = dt is not None and dt > ahora
         pais = (m.get("pais") or "PE").lower()
+        cortesia = bool(m.get("cortesia"))
         if activa:
             activos += 1
-            if pais in mrr_pais:
+            # Las CORTESÍAS (marcha blanca) no pagan → fuera del MRR (que el
+            # ingreso estimado sea honesto).
+            if pais in mrr_pais and not cortesia:
                 mrr_pais[pais] += _pro_precio_pais(pais)
                 activos_pais[pais] += 1
         miembros.append({"email": email, "hasta": m.get("hasta"),
                          "activa": activa, "pais": pais.upper(),
+                         "cortesia": cortesia,
                          "ultimo_cobro": m.get("ultimo_cobro")})
     miembros.sort(key=lambda x: (not x["activa"], x["email"]))
     return {"precio_soles": _pro_precio_pais("pe"),
@@ -1895,13 +1899,21 @@ async function cargarPro(){
       const est = m.activa
         ? '<span style="color:#176B3A;font-weight:800">Activa</span>'
         : '<span style="color:#B23A3A">Vencida</span>';
+      const tipo = m.cortesia
+        ? '<span style="background:#FFF3D6;color:#8A6100;font-weight:800;font-size:11px;padding:2px 8px;border-radius:999px">🎁 cortesía</span>'
+        : '<span style="color:var(--muted);font-size:12px">pagada</span>';
       let hasta = '—';
       try{ if(m.hasta) hasta = new Date(m.hasta).toLocaleDateString(); }catch(e){}
+      const acc = m.cortesia && m.activa
+        ? `<button class="btn-rc" style="padding:3px 10px;font-size:11.5px" onclick="revocarCortesia('${esc(m.email)}')">Revocar</button>`
+        : '';
       return `<tr><td style="padding:4px 6px">${esc(m.email)}</td>`+
              `<td style="padding:4px 6px">${esc(m.pais||'PE')}</td>`+
+             `<td style="padding:4px 6px">${tipo}</td>`+
              `<td style="padding:4px 6px">${est}</td>`+
-             `<td style="padding:4px 6px">${hasta}</td></tr>`;
-    }).join('') || '<tr><td colspan="4" style="color:var(--muted);padding:6px">Sin miembros aún.</td></tr>';
+             `<td style="padding:4px 6px">${hasta}</td>`+
+             `<td style="padding:4px 6px">${acc}</td></tr>`;
+    }).join('') || '<tr><td colspan="6" style="color:var(--muted);padding:6px">Sin miembros aún.</td></tr>';
     const precioInput = (iso,label) =>
       `<div style="display:flex;align-items:center;gap:6px">
          <span style="font-size:12px;font-weight:600">${label} ${SYM[iso]||''}</span>
@@ -1929,12 +1941,30 @@ async function cargarPro(){
           <div><div style="font-size:18px;font-weight:800;color:#14463A">$ ${(Number(mrrP.ec)||0).toFixed(2)}</div><div class="row">🇪🇨 Ecuador · ${actP.ec||0}</div></div>
           <div><div style="font-size:18px;font-weight:800;color:#14463A">Bs ${(Number(mrrP.bo)||0).toFixed(2)}</div><div class="row">🇧🇴 Bolivia · ${actP.bo||0}</div></div>
         </div>
+        <div style="border:1px dashed var(--border);border-radius:12px;padding:12px;margin:12px 0">
+          <div style="font-weight:800;margin-bottom:2px">🎁 Pro de CORTESÍA (marcha blanca)</div>
+          <div class="row">Regala Pro a las canchas aliadas del lanzamiento, sin cobrarles.
+            La cortesía NUNCA se renueva sola del saldo del dueño: al vencer, expira.</div>
+          <div class="actions" style="align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
+            <input id="cortesiaEmail" placeholder="correo del dueño"
+              style="flex:1;min-width:210px;padding:8px;border:1px solid var(--border);border-radius:8px">
+            <select id="cortesiaDias" style="padding:8px;border:1px solid var(--border);border-radius:8px">
+              <option value="30">30 días</option>
+              <option value="60">60 días</option>
+              <option value="90" selected>90 días</option>
+              <option value="180">180 días</option>
+            </select>
+            <button class="btn-ap" onclick="darCortesia()">Dar Pro de cortesía</button>
+          </div>
+        </div>
         <table style="width:100%;border-collapse:collapse;font-size:13px">
           <thead><tr style="border-bottom:1px solid var(--border)">
             <th style="text-align:left;padding:4px 6px">Jugador</th>
             <th style="text-align:left;padding:4px 6px">País</th>
+            <th style="text-align:left;padding:4px 6px">Tipo</th>
             <th style="text-align:left;padding:4px 6px">Estado</th>
-            <th style="text-align:left;padding:4px 6px">Vigente hasta</th></tr></thead>
+            <th style="text-align:left;padding:4px 6px">Vigente hasta</th>
+            <th style="text-align:left;padding:4px 6px"></th></tr></thead>
           <tbody>${filas}</tbody>
         </table>
         <div id="pro_res" class="row" style="margin-top:8px;color:var(--muted)"></div>
@@ -1958,6 +1988,26 @@ async function renovarPro(){
   document.getElementById('pro_res').textContent =
     `Renovadas: ${j.renovadas||0} · sin saldo: ${j.sin_saldo||0}.`;
   await cargarPro();
+}
+async function darCortesia(){
+  const email = (document.getElementById('cortesiaEmail').value||'').trim().toLowerCase();
+  const dias = parseInt(document.getElementById('cortesiaDias').value)||90;
+  if(!email || !email.includes('@')){ toast('Pon el correo del dueño'); return; }
+  const r = await fetch('/pagos/pro/cortesia',{method:'POST',headers:headers(),
+    body:JSON.stringify({email, dias})});
+  if(r.status===401){ salir(); return; }
+  const j = await r.json().catch(()=>({}));
+  if(j.ok){ toast(`Pro de cortesía activado (${dias} días)`); await cargarPro(); }
+  else toast('No se pudo activar: '+(j.error||'error'));
+}
+async function revocarCortesia(email){
+  if(!confirm(`¿Revocar el Pro de cortesía de ${email}? Pierde el acceso Pro al instante.`)) return;
+  const r = await fetch('/pagos/pro/cortesia',{method:'POST',headers:headers(),
+    body:JSON.stringify({email, dias:0})});
+  if(r.status===401){ salir(); return; }
+  const j = await r.json().catch(()=>({}));
+  if(j.ok){ toast('Cortesía revocada'); await cargarPro(); }
+  else toast('No se pudo revocar');
 }
 
 // --- WhatsApp de contacto por PAÍS (servicios: landing, redes) -------------
