@@ -839,3 +839,20 @@ def test_bienvenida_apagada_no_regala():
     r = otorgar_bienvenida("nadie2@x.com")
     assert r.get("apagada") is True
     assert stores.saldo_promo_centimos("nadie2@x.com") == 0
+
+
+def test_regalo_saldo_manual_admin():
+    """Botón 'Regalar saldo' de la torre: acredita saldo PROMOCIONAL (solo
+    comisiones), auditable, y exige token admin."""
+    r = client.post("/pagos/regalo-saldo",
+                    json={"email": "aliada@x.com", "soles": 200}).json()
+    assert r["ok"] is True and r["saldo_promo_soles"] == 200.0
+    assert stores.saldo_promo_centimos("aliada@x.com") == 20000
+    assert stores.saldo_centimos("aliada@x.com") == 0  # plata real intacta
+    # Sin admin token → 401; monto 0 → rechazado.
+    assert client.post("/pagos/regalo-saldo",
+                       json={"email": "aliada@x.com", "soles": 10},
+                       headers={"X-Admin-Token": "malo"}).status_code == 401
+    assert client.post("/pagos/regalo-saldo",
+                       json={"email": "aliada@x.com", "soles": 0}
+                       ).json()["ok"] is False

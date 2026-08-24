@@ -1967,9 +1967,10 @@ async function cargarPro(){
           <div><div style="font-size:18px;font-weight:800;color:#14463A">Bs ${(Number(mrrP.bo)||0).toFixed(2)}</div><div class="row">🇧🇴 Bolivia · ${actP.bo||0}</div></div>
         </div>
         <div style="border:1px dashed var(--border);border-radius:12px;padding:12px;margin:12px 0">
-          <div style="font-weight:800;margin-bottom:2px">🎁 Pro de CORTESÍA (marcha blanca)</div>
-          <div class="row">Regala Pro a las canchas aliadas del lanzamiento, sin cobrarles.
-            La cortesía NUNCA se renueva sola del saldo del dueño: al vencer, expira.</div>
+          <div style="font-weight:800;margin-bottom:2px">🎁 Regalos manuales (marcha blanca)</div>
+          <div class="row">Regala Pro y/o SALDO a las canchas aliadas del lanzamiento, sin cobrarles.
+            La cortesía NUNCA se renueva sola del saldo del dueño (al vencer, expira) y el
+            saldo de regalo SOLO cubre comisiones (no se liquida ni transfiere).</div>
           <div class="actions" style="align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
             <input id="cortesiaEmail" placeholder="correo del dueño"
               style="flex:1;min-width:210px;padding:8px;border:1px solid var(--border);border-radius:8px">
@@ -1980,6 +1981,13 @@ async function cargarPro(){
               <option value="180">180 días</option>
             </select>
             <button class="btn-ap" onclick="darCortesia()">Dar Pro de cortesía</button>
+          </div>
+          <div class="actions" style="align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
+            <span style="font-size:12.5px;font-weight:600">Saldo de regalo S/</span>
+            <input id="regaloSaldo" inputmode="decimal" placeholder="200"
+              style="width:80px;padding:8px;border:1px solid var(--border);border-radius:8px;text-align:right">
+            <button class="btn-ap" onclick="darRegaloSaldo()">Regalar saldo 🎁</button>
+            <span class="row" style="margin:0">al mismo correo de arriba</span>
           </div>
         </div>
         <div style="border:1px dashed var(--border);border-radius:12px;padding:12px;margin:12px 0">
@@ -2060,6 +2068,18 @@ async function darCortesia(){
   const j = await r.json().catch(()=>({}));
   if(j.ok){ toast(`Pro de cortesía activado (${dias} días)`); await cargarPro(); }
   else toast('No se pudo activar: '+(j.error||'error'));
+}
+async function darRegaloSaldo(){
+  const email = (document.getElementById('cortesiaEmail').value||'').trim().toLowerCase();
+  const soles = parseFloat((document.getElementById('regaloSaldo').value||'0').replace(',','.'))||0;
+  if(!email || !email.includes('@')){ toast('Pon el correo del dueño'); return; }
+  if(soles<=0){ toast('Pon el monto del regalo'); return; }
+  const r = await fetch('/pagos/regalo-saldo',{method:'POST',headers:headers(),
+    body:JSON.stringify({email, soles})});
+  if(r.status===401){ salir(); return; }
+  const j = await r.json().catch(()=>({}));
+  if(j.ok) toast(`Saldo de regalo acreditado: S/ ${soles} (total S/ ${j.saldo_promo_soles})`);
+  else toast('No se pudo regalar: '+(j.error||'error'));
 }
 async function revocarCortesia(email){
   if(!confirm(`¿Revocar el Pro de cortesía de ${email}? Pierde el acceso Pro al instante.`)) return;
@@ -2416,7 +2436,11 @@ async function resolverDisputa(id, accion){
 async function cargarLiquidaciones(){
   const box = document.getElementById('liquidaciones');
   try{
-    const r = await fetch('/pagos/liquidaciones/pendientes',{headers:headers()});
+    // no-store: sin esto el navegador puede CACHEAR el GET y, tras marcar un
+    // pago, la lista se re-pintaba con la respuesta VIEJA (bug reportado por
+    // el director: "tengo que refrescar para ver el cambio").
+    const r = await fetch('/pagos/liquidaciones/pendientes',
+        {headers:headers(), cache:'no-store'});
     if(!r.ok){ box.innerHTML=''; return; }
     const j = await r.json();
     const pend = j.pendientes||[];
@@ -2471,7 +2495,7 @@ async function cargarLiquidaciones(){
           </div>
           <div class="liq-der">
             <div class="liq-monto" title="Bruto ${S(p.bruto_soles||0)} − comisión Pichangol ${S(p.comision_soles||0)}">${S(p.neto_soles||0)}</div>
-            <button class="liq-btn" onclick="pagarLiquidacion('${esc(p.reserva_id)}')">Marcar pagado</button>
+            <button class="liq-btn" onclick="pagarLiquidacion('${esc(p.reserva_id)}','${S(p.neto_soles||0)}')">Marcar pagado</button>
           </div>
         </div>`).join('');
       return `
@@ -2507,15 +2531,57 @@ async function cargarLiquidaciones(){
       ${bloques}`;
   }catch(e){ box.innerHTML=''; }
 }
-async function pagarLiquidacion(rid){
-  const metodo = prompt('¿Cómo le pagaste al dueño? (yape / transferencia / efectivo)','yape');
-  if(metodo===null) return;
-  const ref = prompt('Referencia / nº de operación (opcional):','') || '';
+// MODAL de marca de pago (regla de la casa: nunca popup del navegador,
+// siempre modal propio). Devuelve {medio, ref} o null si canceló.
+function modalPagoLiquidacion(resumen){
+  return new Promise(res=>{
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(10,20,15,.45);'+
+      'display:flex;align-items:center;justify-content:center;z-index:9999';
+    ov.innerHTML = `
+      <div style="background:#fff;border-radius:18px;max-width:400px;width:92%;padding:20px 22px;box-shadow:0 18px 50px rgba(0,0,0,.25)">
+        <div style="font-weight:800;font-size:16px">Marcar liquidación pagada</div>
+        <div style="color:var(--muted);font-size:13px;margin-top:2px">${resumen}</div>
+        <div style="font-weight:700;font-size:13px;margin-top:14px">¿Cómo le pagaste al dueño?</div>
+        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+          <button data-m="yape" class="mp-chip">📱 Yape</button>
+          <button data-m="transferencia" class="mp-chip">🏦 Transferencia</button>
+          <button data-m="efectivo" class="mp-chip">💵 Efectivo</button>
+        </div>
+        <input id="mp_ref" placeholder="Referencia / n.º de operación (opcional)"
+          style="width:100%;margin-top:12px;padding:10px;border:1px solid var(--border);border-radius:10px;box-sizing:border-box">
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
+          <button id="mp_cancel" style="padding:9px 16px;border-radius:999px;border:none;background:transparent;font-weight:700;cursor:pointer">Cancelar</button>
+          <button id="mp_ok" class="btn-ap" style="padding:9px 18px;border-radius:999px;cursor:pointer">Confirmar pago ✓</button>
+        </div>
+      </div>`;
+    let medio = 'yape';
+    const chips = ov.querySelectorAll('.mp-chip');
+    const pintar = ()=>chips.forEach(b=>{
+      const on = b.dataset.m===medio;
+      b.style.cssText = 'padding:8px 14px;border-radius:999px;font-weight:700;'+
+        'cursor:pointer;border:1px solid var(--border);background:'+
+        (on ? '#EBEBEB' : '#fff');
+    });
+    pintar();
+    chips.forEach(b=>b.onclick=()=>{ medio=b.dataset.m; pintar(); });
+    ov.querySelector('#mp_cancel').onclick=()=>{ ov.remove(); res(null); };
+    ov.onclick=e=>{ if(e.target===ov){ ov.remove(); res(null); } };
+    ov.querySelector('#mp_ok').onclick=()=>{
+      const ref = ov.querySelector('#mp_ref').value.trim();
+      ov.remove(); res({medio, ref});
+    };
+    document.body.appendChild(ov);
+  });
+}
+async function pagarLiquidacion(rid, neto){
+  const sel = await modalPagoLiquidacion(neto ? `Neto al dueño: ${neto}` : '');
+  if(!sel) return;
   const r = await fetch('/pagos/liquidaciones/'+encodeURIComponent(rid)+'/pagar',{
     method:'POST', headers:headers(),
-    body:JSON.stringify({metodo:metodo.trim(), referencia:ref.trim()})});
-  if(r.ok){ cargarLiquidaciones(); }
-  else { alert('No se pudo marcar como pagado. Revisa tu conexión/token.'); }
+    body:JSON.stringify({metodo:sel.medio, referencia:sel.ref})});
+  if(r.ok){ toast('Liquidación marcada como pagada ✓'); await cargarLiquidaciones(); }
+  else toast('No se pudo marcar como pagado. Revisa tu conexión/token.');
 }
 
 async function cargarUbicacion(){

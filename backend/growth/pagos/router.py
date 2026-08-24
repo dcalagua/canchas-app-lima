@@ -1087,6 +1087,37 @@ def post_pro_cortesia(req: ProCortesiaReq) -> dict:
     return {"ok": True, "email": email, "hasta": hasta, "cortesia": True}
 
 
+class RegaloSaldoReq(BaseModel):
+    email: str
+    soles: float
+
+
+@router.post("/regalo-saldo", dependencies=_ADMIN)
+def post_regalo_saldo(req: RegaloSaldoReq) -> dict:
+    """El OPERADOR regala saldo PROMOCIONAL manualmente (marcha blanca: p. ej.
+    a las canchas aliadas que ya estaban activadas antes de la bienvenida
+    automática). Mismo bolsillo que la bienvenida: SOLO cubre comisiones, no se
+    liquida ni transfiere. Auditable (pago `bono_bienvenida`) + push 🎁."""
+    email = req.email.strip().lower()
+    if not email or "@" not in email:
+        return {"ok": False, "error": "email_invalido"}
+    soles = max(0.0, min(float(req.soles), 1000.0))
+    if soles <= 0:
+        return {"ok": False, "error": "monto_invalido"}
+    cent = _soles_a_centimos(soles)
+    total = stores.acreditar_promo(email, cent)
+    stores.registrar_pago(
+        tipo="bono_bienvenida", monto_centimos=cent, moneda="PEN",
+        estado="aprobado", dueno_id=email,
+        concepto="Regalo de saldo (cubre tus comisiones)")
+    _aviso_push_usuario(
+        email, "🎁 Te regalamos saldo",
+        f"Pichangol te regaló S/ {soles:.2f} de saldo: tus comisiones se "
+        "descuentan de ahí primero, sin tocar tu plata.")
+    return {"ok": True, "email": email, "saldo_promo_centimos": total,
+            "saldo_promo_soles": total / 100.0}
+
+
 def otorgar_bienvenida(email: str) -> dict:
     """BIENVENIDA automática de la marcha blanca: cuando a un dueño NUEVO se le
     ACTIVA su primera cancha, recibe lo configurado en la torre — días de Pro de
