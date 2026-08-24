@@ -538,15 +538,18 @@ auth por usuario en `/pagos/movimientos` (PROD).
 - **Candado PRO:** **Reserva manual** y **Bloqueo de horas** pasan a ser features de la
   **suscripción Pichangol Pro** (gate `appState` tipo `esPro`/`pro_activo`, con CTA
   "Hazte Pro" — ver `hazte_pro_screen.dart` y `stores.pro_activo` del backend).
-- **Historial del JUGADOR + PUNTOS acumulables (incentivo cruzado):** el jugador
-  tiene su historial de reservas (online + efectivo, con estado pagado/por pagar).
-  El efectivo se valida cuando el DUEÑO lo marca pagado (`AppState.marcarPago`). Se
-  conecta con **puntos acumulables** (beneficios Pichangol/PCG): los puntos del
-  efectivo recién se acreditan cuando el dueño marca pagado → el jugador **exige**
-  al dueño que marque el efectivo (sube la confirmación de cobros). Pendiente:
-  pantalla de historial del jugador + motor de puntos (regla, caducidad, canje) +
-  gatillo (online auto, efectivo al marcar). Ojo: la reserva MANUAL (cliente propio
-  del dueño) hoy queda fuera de comisión/billetera; evaluar si acumula puntos.
+- **PUNTOS PICHANGOL (fidelidad, HECHO ago-2026):** motor en el backend growth
+  (`puntos/service.py`, extiende el motor de incentivos): `acreditar_reserva`
+  (1 pto por S/1 o Bs1; $1 = 3 ptos; IDEMPOTENTE por reserva_id, liberado al
+  instante), caducidad 180 días con consumo FIFO, canje 100 pts = 3 unidades
+  de moneda (`fidelidad_*` en config, editable en torre). Endpoints
+  `/puntos/acreditar-reserva` y `/puntos/canjear` exigen X-App-Key. APK:
+  `PuntosService` + cola `_puntosPend` con reintento offline; gatillos: online
+  al pagar, efectivo/seña al `marcarPago` (el jugador exige que marquen), bono
+  al comprar, MANUAL no acumula; puntos POR CUENTA (reset en logout, sync en
+  login); pantalla "Mis puntos" en Perfil. **Pendiente:** canje aplicado al
+  CHECKOUT de la reserva (descuento absorbido por la comisión de Pichangol) y
+  push "te llegaron puntos".
 
 ### Horarios de cancha (apertura/cierre) y cruce de medianoche
 - `Cancha.horariosSlots()` genera los INICIOS reservables de apertura a cierre en
