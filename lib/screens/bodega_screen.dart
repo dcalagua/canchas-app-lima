@@ -37,6 +37,9 @@ class _BodegaScreenState extends State<BodegaScreen> {
   List<CuentaBodega> _cuentas = []; // cuentas abiertas/cerradas (30 días)
   ConfigBodega? _config; // acepta pedidos + zonas + cuenta abierta
   final Map<String, int> _ticket = {}; // productoId → cantidad
+  // Filtros de la CAJA estilo POS (referencia: Comerza de EBIM).
+  String _busquedaCaja = '';
+  String _catCaja = 'Todo';
 
   // Sugerencias rápidas de productos por categoría Y POR PAÍS (regla del
   // director: las marcas cambian — Pilsen/Cristal en Perú, Paceña/Huari en
@@ -1612,10 +1615,203 @@ class _BodegaScreenState extends State<BodegaScreen> {
   // CAJA: un card por producto; tap = +1, botón "-" resta.
   List<Widget> _vistaCaja(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    // Filtro tipo POS (referencia Comerza, el POS de EBIM): búsqueda +
+    // categorías arriba, y el TICKET siempre visible con sus líneas.
+    final q = _busquedaCaja.trim().toLowerCase();
+    final cats = [
+      'Todo',
+      for (final c in _categorias)
+        if (_productos.any((p) => p.categoria == c)) c,
+    ];
+    final filtrados = [
+      for (final p in _productos)
+        if ((_catCaja == 'Todo' || p.categoria == _catCaja) &&
+            (q.isEmpty || p.nombre.toLowerCase().contains(q)))
+          p,
+    ];
     return [
-      const Text('Toca un producto para sumarlo al ticket.',
-          style: TextStyle(color: textoTenue, fontSize: 12.5)),
+      // Búsqueda (texto libre permitido: es un buscador).
+      TextField(
+        onChanged: (v) => setState(() => _busquedaCaja = v),
+        decoration: InputDecoration(
+          isDense: true,
+          hintText: 'Buscar producto…',
+          prefixIcon: const Icon(Icons.search, size: 20),
+          suffixIcon: _busquedaCaja.isEmpty
+              ? null
+              : IconButton(
+                  icon: const Icon(Icons.close, size: 18),
+                  onPressed: () => setState(() => _busquedaCaja = ''),
+                ),
+          filled: true,
+          fillColor: cs.surface,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(999),
+              borderSide: const BorderSide(color: trazo)),
+          enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(999),
+              borderSide: const BorderSide(color: trazo)),
+        ),
+      ),
       const SizedBox(height: 10),
+      if (cats.length > 2)
+        SizedBox(
+          height: 38,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: cats.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemBuilder: (_, i) => ChoiceChip(
+              label: Text(cats[i]),
+              selected: _catCaja == cats[i],
+              onSelected: (_) => setState(() => _catCaja = cats[i]),
+            ),
+          ),
+        ),
+      if (cats.length > 2) const SizedBox(height: 10),
+      // TICKET visible con sus líneas (editar cantidad / quitar / vaciar),
+      // total grande y Cobrar — el corazón de un POS.
+      if (_ticket.isNotEmpty) ...[
+        Container(
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+          decoration: BoxDecoration(
+            color: cs.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: lima, width: 1.4),
+          ),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                        'Ticket · ${_ticket.length} línea(s)',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 14.5)),
+                  ),
+                  TextButton(
+                    onPressed: () => setState(_ticket.clear),
+                    style: TextButton.styleFrom(
+                        padding:
+                            const EdgeInsets.symmetric(horizontal: 8),
+                        foregroundColor: textoTenue),
+                    child: const Text('Vaciar'),
+                  ),
+                ],
+              ),
+              for (final e in _ticket.entries.toList())
+                if (_productos.any((p) => p.id == e.key))
+                  Builder(builder: (_) {
+                    final p =
+                        _productos.firstWhere((x) => x.id == e.key);
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.start,
+                              children: [
+                                Text(p.nombre,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 13.5)),
+                                Text(
+                                    '$_mon ${p.precio.toStringAsFixed(2)} c/u',
+                                    style: const TextStyle(
+                                        color: textoTenue,
+                                        fontSize: 11.5)),
+                              ],
+                            ),
+                          ),
+                          GestureDetector(
+                            onTap: () => _sumar(p, -1),
+                            child: const Icon(Icons.remove_circle_outline,
+                                size: 22, color: clayOscuro),
+                          ),
+                          SizedBox(
+                            width: 30,
+                            child: Text('${e.value}',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w900)),
+                          ),
+                          GestureDetector(
+                            onTap: () => _sumar(p, 1),
+                            child: const Icon(Icons.add_circle_outline,
+                                size: 22, color: bosque),
+                          ),
+                          SizedBox(
+                            width: 74,
+                            child: Text(
+                                '$_mon ${(p.precio * e.value).toStringAsFixed(2)}',
+                                textAlign: TextAlign.right,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 13.5)),
+                          ),
+                          const SizedBox(width: 4),
+                          GestureDetector(
+                            onTap: () =>
+                                setState(() => _ticket.remove(p.id)),
+                            child: const Icon(Icons.close,
+                                size: 16, color: textoTenue),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+              const Divider(height: 18),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text('TOTAL',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 13,
+                            color: textoTenue)),
+                  ),
+                  Text('$_mon ${_totalTicket.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w900, fontSize: 21)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  style: FilledButton.styleFrom(
+                      backgroundColor: lima,
+                      padding:
+                          const EdgeInsets.symmetric(vertical: 13)),
+                  onPressed: _cobrar,
+                  child: const Text('Cobrar',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w800, fontSize: 15)),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+      ] else ...[
+        const Text('Toca un producto para sumarlo al ticket.',
+            style: TextStyle(color: textoTenue, fontSize: 12.5)),
+        const SizedBox(height: 10),
+      ],
+      if (filtrados.isEmpty)
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 26),
+          child: Center(
+            child: Text('Sin resultados con ese filtro.',
+                style: TextStyle(color: textoTenue)),
+          ),
+        ),
       GridView.count(
         crossAxisCount: MediaQuery.of(context).size.width >= 480 ? 3 : 2,
         shrinkWrap: true,
@@ -1624,7 +1820,7 @@ class _BodegaScreenState extends State<BodegaScreen> {
         crossAxisSpacing: 10,
         childAspectRatio: 1.35,
         children: [
-          for (final p in _productos)
+          for (final p in filtrados)
             InkWell(
               onTap: p.stock <= 0 ? null : () => _sumar(p, 1),
               borderRadius: BorderRadius.circular(16),
