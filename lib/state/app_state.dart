@@ -7799,6 +7799,39 @@ class AppState extends ChangeNotifier {
     );
   }
 
+  /// Desglose del COBRADO del día por MEDIO de pago (suma == cajaDia.cobrado,
+  /// misma lógica). Claves técnicas: 'yape' | 'tarjeta' | 'efectivo' |
+  /// 'manual' | 'sena' | 'online' — la pantalla pone la etiqueta por país
+  /// (Yape solo en Perú). Para el arqueo: cuánta plata entró por cada canal.
+  Map<String, int> cajaDiaPorMedio(String iso) {
+    final out = <String, int>{};
+    void suma(String k, int v) {
+      if (v > 0) out[k] = (out[k] ?? 0) + v;
+    }
+
+    for (final r in reservasDelDiaDueno(iso)) {
+      if (r.esBono) continue; // se cobró al comprar el bono (no es plata de hoy)
+      final t = r.totalConExtras.round();
+      if (r.pagado) {
+        suma(
+            switch (r.medioPago) {
+              'yape' => 'yape',
+              'tarjeta' => 'tarjeta',
+              'efectivo' => 'efectivo',
+              'manual' => 'manual',
+              'sena' => 'sena',
+              // Reservas viejas sin medio guardado: se deduce.
+              _ => r.traidaPorApp ? 'online' : 'manual',
+            },
+            t);
+      } else {
+        // Solo la seña (pagada online por adelantado) ya es plata cobrada.
+        suma('sena', r.sena.clamp(0, t));
+      }
+    }
+    return out;
+  }
+
   // Cierres de caja (arqueo por día). Se persisten local.
   final List<CierreCaja> cierresCaja = [];
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../config/pais.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -55,12 +56,28 @@ class _CajaDiaScreenState extends State<CajaDiaScreen> {
   void _cambiar(int delta) =>
       setState(() => _fecha = _fecha.add(Duration(days: delta)));
 
+  /// Etiqueta del medio de pago POR PAÍS (Yape solo existe en Perú).
+  String _medioEtiqueta(String clave) => switch (clave) {
+        'yape' => paisActual.iso == 'PE' ? '📱 Yape/Plin' : '📱 QR/transf.',
+        'tarjeta' => '💳 Tarjeta',
+        'efectivo' => '💵 Efectivo',
+        'manual' => '✍️ Manual',
+        'sena' => '🔒 Señas (online)',
+        _ => '🌐 Online',
+      };
+
   Future<void> _cerrarCaja() async {
     final c = appState.cajaDia(_iso);
+    // El arqueo muestra POR DÓNDE entró la plata (efectivo vs digital).
+    final medios = appState.cajaDiaPorMedio(_iso);
+    final desglose = medios.isEmpty
+        ? ''
+        : '\n${medios.entries.map((e) => '${_medioEtiqueta(e.key)}: $_mon ${e.value}').join('\n')}';
     final ok = await confirmarPichangol(
       context,
       titulo: 'Cerrar caja del día',
-      mensaje: 'Cobrado: $_mon ${c.cobrado}\nPor cobrar: $_mon ${c.porCobrar}\n'
+      mensaje: 'Cobrado: $_mon ${c.cobrado}$desglose\n'
+          'Por cobrar: $_mon ${c.porCobrar}\n'
           'Reservas: ${c.reservas}\n\nSe guarda el arqueo de $_label.',
       textoConfirmar: 'Cerrar caja',
       icono: Icons.point_of_sale,
@@ -152,6 +169,34 @@ class _CajaDiaScreenState extends State<CajaDiaScreen> {
                               _Mini('Ocupación', '${caja.ocupacion}%'),
                             ],
                           ),
+                          // Desglose del cobrado por MEDIO (para el arqueo:
+                          // cuánto entró por cada canal). Etiqueta por país.
+                          if (appState.cajaDiaPorMedio(_iso).isNotEmpty) ...[
+                            const Divider(height: 22),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              alignment: WrapAlignment.center,
+                              children: [
+                                for (final e
+                                    in appState.cajaDiaPorMedio(_iso).entries)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: limaSuave,
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    child: Text(
+                                        '${_medioEtiqueta(e.key)} · $_mon ${e.value}',
+                                        style: const TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            color: bosque)),
+                                  ),
+                              ],
+                            ),
+                          ],
                         ],
                       ),
                     ),
