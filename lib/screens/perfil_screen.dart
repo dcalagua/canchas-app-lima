@@ -154,8 +154,8 @@ class PerfilScreen extends StatelessWidget {
           ),
           _ItemAirbnb(
             icono: Icons.stars_outlined,
-            titulo: appState.puntosSaldo > 0
-                ? 'Mis puntos · ${appState.puntosSaldo} ⭐'
+            titulo: appState.misPuntosDisponibles > 0
+                ? 'Mis puntos · ${appState.misPuntosDisponibles} ⭐'
                 : 'Mis puntos',
             onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const MisPuntosScreen())),

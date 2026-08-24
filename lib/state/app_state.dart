@@ -55,7 +55,6 @@ import '../services/auth_service.dart';
 import '../services/avisos_service.dart';
 import '../services/circuito_service.dart';
 import '../services/pagos_service.dart';
-import '../services/puntos_service.dart';
 import '../services/retos_service.dart';
 import '../services/push_service.dart';
 import '../services/places_service.dart';
@@ -1077,15 +1076,8 @@ class AppState extends ChangeNotifier {
   static const _kContaPend = 'conta_pendiente_json';
   static const _kContaEspera = 'conta_espera_json';
   static const _kReembolsos = 'reembolsos_pendientes_json';
-  // FIDELIDAD: acreditaciones de puntos pendientes de llegar al backend
-  // (offline-safe; el backend es idempotente por reserva → reintentar es
-  // seguro). {email, monto, moneda, reserva_id}.
-  final List<Map<String, dynamic>> _puntosPend = [];
-  static const _kPuntosPend = 'puntos_pendientes_json';
-
-  /// Saldo de puntos de fidelidad del usuario (caché del backend).
-  Map<String, dynamic>? puntosInfo;
-  int get puntosSaldo => (puntosInfo?['disponible'] as num?)?.toInt() ?? 0;
+  /// Puntos ya canjeados por el usuario (para "Mis puntos" y el Perfil).
+  int get misPuntosCanjeados => _puntosCanjeados;
 
   int get reembolsosPendientes => _reembolsosPend.length;
 
@@ -1115,9 +1107,6 @@ class AppState extends ChangeNotifier {
         (jsonDecode(esp) as Map<String, dynamic>).forEach(
             (k, v) => _contaEnEspera[k] = Map<String, dynamic>.from(v as Map));
       }
-      _puntosPend
-        ..clear()
-        ..addAll(_listaMapa(prefs.getString(_kPuntosPend)));
     } catch (_) {}
   }
 
@@ -1127,66 +1116,7 @@ class AppState extends ChangeNotifier {
       await prefs.setString(_kContaPend, jsonEncode(_contaPend));
       await prefs.setString(_kReembolsos, jsonEncode(_reembolsosPend));
       await prefs.setString(_kContaEspera, jsonEncode(_contaEnEspera));
-      await prefs.setString(_kPuntosPend, jsonEncode(_puntosPend));
     } catch (_) {}
-  }
-
-  // ── FIDELIDAD: puntos del jugador por reservas pagadas ────────────────────
-  /// Encola la acreditación de puntos de una reserva PAGADA (con reintento
-  /// offline). Reglas: online al pagar; efectivo/seña cuando el dueño marca
-  /// pagado; la reserva MANUAL no acumula (cliente propio, fuera de la app).
-  void _encolarPuntos({
-    required String email,
-    required double monto,
-    required String moneda,
-    required String reservaId,
-  }) {
-    final e = email.trim().toLowerCase();
-    if (e.isEmpty || monto <= 0 || reservaId.isEmpty) return;
-    if (_puntosPend.any((x) => x['reserva_id'] == reservaId)) return;
-    _puntosPend.add({
-      'email': e,
-      'monto': monto,
-      'moneda': moneda,
-      'reserva_id': reservaId,
-    });
-    unawaited(_persistirContabilidad());
-    unawaited(flushPuntos());
-  }
-
-  /// Manda al backend las acreditaciones pendientes (idempotente por
-  /// reserva_id → repetir es seguro) y refresca el saldo si tocó al usuario.
-  Future<void> flushPuntos() async {
-    if (_puntosPend.isEmpty || !PuntosService.disponible) return;
-    var cambios = false;
-    var meToco = false;
-    final yo = (usuario?.email ?? '').trim().toLowerCase();
-    for (final e in [..._puntosPend]) {
-      final r = await PuntosService.acreditarReserva(
-        email: (e['email'] ?? '').toString(),
-        monto: (e['monto'] as num?)?.toDouble() ?? 0,
-        moneda: (e['moneda'] ?? 'S/').toString(),
-        reservaId: (e['reserva_id'] ?? '').toString(),
-      );
-      if (r != null) {
-        _puntosPend.removeWhere((x) => x['reserva_id'] == e['reserva_id']);
-        cambios = true;
-        if (e['email'] == yo) meToco = true;
-      }
-    }
-    if (cambios) await _persistirContabilidad();
-    if (meToco) await sincronizarPuntos();
-  }
-
-  /// Refresca el saldo de puntos del usuario desde el backend (caché).
-  Future<void> sincronizarPuntos() async {
-    final e = (usuario?.email ?? '').trim().toLowerCase();
-    if (e.isEmpty) return;
-    final s = await PuntosService.saldo(e);
-    if (s != null) {
-      puntosInfo = s;
-      notifyListeners();
-    }
   }
 
   /// Construye la acción contable de una reserva según cómo se cobró. Null si la
@@ -5167,14 +5097,6 @@ class AppState extends ChangeNotifier {
     );
     _misBonos = [c, ..._misBonos];
     notifyListeners();
-    // FIDELIDAD: el pack se paga online al comprarlo → puntos al toque
-    // (las reservas canjeadas con bono ya no acumulan: sería doble).
-    _encolarPuntos(
-      email: c.comprador,
-      monto: o.precio,
-      moneda: paisActual.moneda,
-      reservaId: c.id,
-    );
     return BonosRepo.registrarCompra(c);
   }
 
@@ -6950,8 +6872,7 @@ class AppState extends ChangeNotifier {
     cargarReservasRemotas(); // best-effort refresco
     sincronizarSaldo(); // saldo real del backend (sobrevive reinstalar)
     sincronizarPro(); // membresía Pro REAL de ESTA cuenta (no se hereda)
-    sincronizarPuntos(); // saldo de puntos de fidelidad de ESTA cuenta
-    flushPuntos(); // acreditaciones que quedaron pendientes (offline)
+    cargarPuntosCanjeados(); // canjes de puntos de ESTA cuenta (disponibles)
     sincronizarAgenda(); // apodos + contactos + bloqueados en todos mis dispositivos
     cargarEstados(); // historias vigentes (24 h) de mis conocidos
     cargarMisNiveles(); // mi nivel de jugador por deporte (device-first)
@@ -7016,10 +6937,10 @@ class AppState extends ChangeNotifier {
     // El estado real de la cuenta nueva lo baja sincronizarPro del backend.
     proActivo = false;
     proHasta = null;
-    // PUNTOS de fidelidad: también por cuenta (mismo motivo que Pro). La cola
-    // _puntosPend se queda: cada entrada lleva su propio correo y el backend
-    // es idempotente, así no se pierden acreditaciones al cambiar de cuenta.
-    puntosInfo = null;
+    // PUNTOS: los ganados se derivan de misReservas (ya se limpian); lo
+    // CANJEADO también es por cuenta → reset (la cuenta nueva lo baja de
+    // Supabase en cargarPuntosCanjeados).
+    _puntosCanjeados = 0;
   }
 
   /// "Empezar de cero" (solo pruebas dev/qas): deja el dispositivo VIRGEN.
@@ -7355,17 +7276,6 @@ class AppState extends ChangeNotifier {
         etiqueta: quien.isEmpty
             ? '$lugar · $diaLabel $hora'
             : '$lugar · $quien · $diaLabel $hora');
-    // FIDELIDAD: el pago ONLINE ya se cobró → puntos al jugador al toque.
-    // Efectivo/seña acreditan cuando el dueño marca pagado (marcarPago); el
-    // BONO acreditó al comprar el pack; la manual no acumula.
-    if (cobro == 'online' && reserva.usuario.isNotEmpty) {
-      _encolarPuntos(
-        email: reserva.usuario,
-        monto: reserva.precio.toDouble(),
-        moneda: reserva.moneda,
-        reservaId: reserva.id,
-      );
-    }
     if (res == ResultadoReserva.ok) {
       if (accion != null) _encolarConta(accion);
       // Reserva CONFIRMADA en el servidor → avisa al dueño (push dedicado).
@@ -7846,22 +7756,9 @@ class AppState extends ChangeNotifier {
     ReservasRepo.actualizar(upd); // best-effort
     // Ya cobró → no hace falta el recordatorio de "cobra en efectivo".
     if (pagado) RecordatorioService.cancelar(r.id);
-    // FIDELIDAD: el efectivo/seña acredita puntos RECIÉN cuando el dueño lo
-    // marca pagado (el jugador le exige que marque → suben las confirmaciones
-    // de cobro). Manual no acumula. Idempotente por reserva en el backend:
-    // marcar/desmarcar/marcar no duplica.
-    if (pagado &&
-        upd.traidaPorApp &&
-        upd.usuario.isNotEmpty &&
-        upd.medioPago != 'manual' &&
-        upd.medioPago != 'bono') {
-      _encolarPuntos(
-        email: upd.usuario,
-        monto: upd.precio.toDouble(),
-        moneda: upd.moneda,
-        reservaId: upd.id,
-      );
-    }
+    // Nota FIDELIDAD: los puntos del jugador se DERIVAN de sus reservas
+    // pagadas (misPuntos) — marcar pagado el efectivo los "acredita" solo,
+    // sin contador aparte (por eso al jugador le conviene exigir la marca).
   }
 
   // ── CAJA DEL DÍA (dueño) ──────────────────────────────────────────────────

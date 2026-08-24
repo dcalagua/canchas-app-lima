@@ -538,18 +538,23 @@ auth por usuario en `/pagos/movimientos` (PROD).
 - **Candado PRO:** **Reserva manual** y **Bloqueo de horas** pasan a ser features de la
   **suscripción Pichangol Pro** (gate `appState` tipo `esPro`/`pro_activo`, con CTA
   "Hazte Pro" — ver `hazte_pro_screen.dart` y `stores.pro_activo` del backend).
-- **PUNTOS PICHANGOL (fidelidad, HECHO ago-2026):** motor en el backend growth
-  (`puntos/service.py`, extiende el motor de incentivos): `acreditar_reserva`
-  (1 pto por S/1 o Bs1; $1 = 3 ptos; IDEMPOTENTE por reserva_id, liberado al
-  instante), caducidad 180 días con consumo FIFO, canje 100 pts = 3 unidades
-  de moneda (`fidelidad_*` en config, editable en torre). Endpoints
-  `/puntos/acreditar-reserva` y `/puntos/canjear` exigen X-App-Key. APK:
-  `PuntosService` + cola `_puntosPend` con reintento offline; gatillos: online
-  al pagar, efectivo/seña al `marcarPago` (el jugador exige que marquen), bono
-  al comprar, MANUAL no acumula; puntos POR CUENTA (reset en logout, sync en
-  login); pantalla "Mis puntos" en Perfil. **Pendiente:** canje aplicado al
-  CHECKOUT de la reserva (descuento absorbido por la comisión de Pichangol) y
-  push "te llegaron puntos".
+- **PUNTOS PICHANGOL (fidelidad, HECHO ago-2026) — ARQUITECTURA DERIVADA:**
+  los puntos GANADOS se DERIVAN de las reservas del jugador (`AppState.
+  misPuntos/_puntosDe`: 1 pto por S/1 de `totalConExtras` de reservas
+  `traidaPorApp` PAGADAS, últimos 12 meses — sin contador aparte = sin doble
+  acreditación, retroactivo y consistente entre equipos). Online acredita al
+  instante; EFECTIVO al `marcarPago` del dueño (el jugador exige que marquen);
+  MANUAL no acumula. Lo CANJEADO vive en Supabase `pichangol_puntos_canjes`
+  (`PuntosRepo`; disponibles = ganados − canjeados; `cargarPuntosCanjeados` en
+  login + reset por cuenta en logout). CANJE EN CHECKOUT (hecho): toggle en el
+  resumen de `club_detalle` (`usarPuntos`), 100 pts = S/3, solo pago online en
+  S/, 1 canje por reserva; el descuento lo absorbe la comisión PCG (la
+  liquidación al dueño va con el precio completo). UI: tarjeta en Mis reservas
+  (`_PuntosCard`) + pantalla "Mis puntos" en Perfil (`mis_puntos_screen.dart`).
+  SQL: `docs/piloto/supabase_puntos_canjes.sql`. OJO: el backend growth
+  `/puntos/*` es el motor de INCENTIVOS growth (traer_cancha, etc.; ahora con
+  caducidad FIFO 180d y valor 100 pts = 3 configurable) — el APK NO lo usa
+  para la fidelidad de reservas. **Pendiente:** push "te llegaron puntos".
 
 ### Horarios de cancha (apertura/cierre) y cruce de medianoche
 - `Cancha.horariosSlots()` genera los INICIOS reservables de apertura a cierre en
