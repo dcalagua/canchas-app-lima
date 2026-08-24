@@ -16,8 +16,13 @@ import '../services/supabase_service.dart';
 class CanchasCacheRepo {
   static const _tabla = 'pichangol_canchas_cache';
 
+  /// Cosecha más RECIENTE (máximo `visto_en`) de la zona del último `cerca()`:
+  /// decide si la zona está FRESCA o toca re-consultar Google (frescura + ToS).
+  static DateTime? ultimaCosecha;
+
   /// Canchas cosechadas dentro de un cuadro de ~[radioKm] alrededor de [centro].
   static Future<List<Cancha>> cerca(LatLng centro, double radioKm) async {
+    ultimaCosecha = null;
     if (!SupabaseService.disponible) return const [];
     try {
       // Bounding box aproximado (1° lat ≈ 111 km). Suficiente para el radar.
@@ -40,6 +45,11 @@ class CanchasCacheRepo {
         final lng = (m['lng'] as num?)?.toDouble();
         if (id.isEmpty || nombre.isEmpty || lat == null || lng == null) {
           continue;
+        }
+        final visto = DateTime.tryParse((m['visto_en'] ?? '').toString());
+        if (visto != null &&
+            (ultimaCosecha == null || visto.isAfter(ultimaCosecha!))) {
+          ultimaCosecha = visto;
         }
         final deporte = Deporte.values.firstWhere(
           (d) => d.name == (m['deporte'] ?? '').toString(),

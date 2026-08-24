@@ -4597,9 +4597,17 @@ class AppState extends ChangeNotifier {
       _agregarDescubiertas(cache);
       if (cosechadas > 0) notifyListeners();
     } catch (_) {}
-    // 2) Zona ya cosechada (≥8 lugares) → NO gastar Google (salvo búsqueda
-    //    explícita). Zona nueva/rala → descubrir en Google y cosechar.
-    if (!forzarGoogle && cosechadas >= 8) {
+    // 2) Zona ya cosechada (≥8 lugares) y FRESCA (<30 días) → NO gastar
+    //    Google (salvo búsqueda explícita). Zona nueva, rala o VIEJA →
+    //    (re)descubrir en Google y re-cosechar (frescura + ToS: canchas
+    //    nuevas aparecen y las cerradas se re-verifican; el upsert renueva
+    //    visto_en). La UI ya pintó lo cosechado: el refresco no bloquea.
+    final fresca = CanchasCacheRepo.ultimaCosecha != null &&
+        DateTime.now()
+                .difference(CanchasCacheRepo.ultimaCosecha!.toLocal())
+                .inDays <
+            30;
+    if (!forzarGoogle && cosechadas >= 8 && fresca) {
       descubriendo = false;
       notifyListeners();
       return;
