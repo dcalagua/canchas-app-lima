@@ -6,9 +6,11 @@ import 'package:printing/printing.dart';
 import '../models/models.dart';
 import '../services/pagos_service.dart';
 import '../services/payments_service.dart';
+import '../services/recordatorio_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'metodos_pago_screen.dart';
+import 'mis_puntos_screen.dart';
 import 'pago_sheet.dart';
 import 'recargar_saldo_screen.dart';
 import '../utils/moneda.dart';
@@ -130,45 +132,52 @@ class _CuentaScreenState extends State<CuentaScreen> {
                 );
               }),
               const SizedBox(height: 16),
-              // Tarjetas guardadas (Culqi One-Click): parte de la billetera única.
-              Material(
-                color: Theme.of(context).colorScheme.surface,
-                borderRadius: BorderRadius.circular(16),
-                child: ListTile(
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      side: BorderSide(color: trazo)),
-                  leading: const CircleAvatar(
-                      backgroundColor: limaSuave,
-                      child: Icon(Icons.credit_card, color: bosque)),
-                  title: const Text('Tarjetas guardadas',
-                      style: TextStyle(fontWeight: FontWeight.w700)),
-                  subtitle: const Text('Para pagar y recargar rápido'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => const MetodosPagoScreen())),
-                ),
-              ),
-              const SizedBox(height: 22),
+              // ACCIONES RÁPIDAS estilo billetera digital (Yape/Deuna): todo
+              // lo de la billetera a un tap, en fila de botones circulares.
               Row(
                 children: [
-                  Expanded(
-                    child: Text('Movimientos',
-                        style: t.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w700)),
+                  _AccionBilletera(
+                    icono: Icons.add,
+                    etiqueta: 'Recargar',
+                    color: lima,
+                    onTap: () => _abrirRecarga(context),
                   ),
-                  if (appState.movimientos.isNotEmpty)
-                    TextButton.icon(
-                      onPressed: () => _abrirEstadoCuenta(
-                          context, appState.monedaSaldoSimbolo),
-                      icon: const Icon(Icons.download_outlined,
-                          size: 18, color: bosque),
-                      label: const Text('Estado de cuenta',
-                          style: TextStyle(
-                              color: bosque, fontWeight: FontWeight.w700)),
-                    ),
+                  _AccionBilletera(
+                    icono: Icons.credit_card,
+                    etiqueta: 'Tarjetas',
+                    color: bosque,
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => const MetodosPagoScreen())),
+                  ),
+                  _AccionBilletera(
+                    icono: Icons.stars,
+                    etiqueta: 'Puntos',
+                    color: const Color(0xFFB08908),
+                    insignia: appState.misPuntosDisponibles,
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => const MisPuntosScreen())),
+                  ),
+                  _AccionBilletera(
+                    icono: Icons.description_outlined,
+                    etiqueta: 'Estado\nde cuenta',
+                    color: teal,
+                    onTap: () {
+                      if (appState.movimientos.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text('Aún no hay movimientos.')));
+                        return;
+                      }
+                      _abrirEstadoCuenta(
+                          context, appState.monedaSaldoSimbolo);
+                    },
+                  ),
                 ],
               ),
+              const SizedBox(height: 22),
+              Text('Movimientos',
+                  style:
+                      t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
               const SizedBox(height: 10),
               if (appState.movimientos.isEmpty)
                 Text('Aún no hay movimientos.',
@@ -215,6 +224,15 @@ class _CuentaScreenState extends State<CuentaScreen> {
           MaterialPageRoute(builder: (_) => const RecargarSaldoScreen()));
       if (monto != null && monto > 0) {
         appState.recargar(monto); // refleja el saldo en la UI (autoritativo: backend)
+        // Notificación tipo billetera digital ("¡Yapeaste!"): comprobante
+        // inmediato en la bandeja del sistema, además del snackbar.
+        RecordatorioService.mostrarAhora(
+          clave: 'recarga_${DateTime.now().millisecondsSinceEpoch}',
+          titulo: 'Recarga acreditada ✅',
+          cuerpo:
+              '+${appState.monedaSaldoSimbolo} $monto a tu saldo Pichangol. '
+              'Nuevo saldo: ${appState.monedaSaldoSimbolo} ${appState.saldoClub}.',
+        );
         if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           backgroundColor: pino,
@@ -247,6 +265,83 @@ class _CuentaScreenState extends State<CuentaScreen> {
             );
           }
         },
+      ),
+    );
+  }
+}
+
+/// Botón circular de acción rápida de la billetera (estilo Yape/Deuna):
+/// ícono en burbuja de color + etiqueta abajo; [insignia] > 0 muestra el
+/// contador (p. ej. puntos disponibles).
+class _AccionBilletera extends StatelessWidget {
+  final IconData icono;
+  final String etiqueta;
+  final Color color;
+  final int insignia;
+  final VoidCallback onTap;
+  const _AccionBilletera({
+    required this.icono,
+    required this.etiqueta,
+    required this.color,
+    required this.onTap,
+    this.insignia = 0,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Column(
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.14),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(icono, color: color, size: 24),
+                  ),
+                  if (insignia > 0)
+                    Positioned(
+                      right: -6,
+                      top: -4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: color,
+                          borderRadius: BorderRadius.circular(999),
+                          border:
+                              Border.all(color: Colors.white, width: 1.5),
+                        ),
+                        child: Text(
+                            insignia > 999 ? '999+' : '$insignia',
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800)),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(etiqueta,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      height: 1.1)),
+            ],
+          ),
+        ),
       ),
     );
   }
