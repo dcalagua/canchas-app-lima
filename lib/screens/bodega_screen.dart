@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -208,13 +209,16 @@ class _BodegaScreenState extends State<BodegaScreen> {
               onTap: () => Navigator.pop(bctx, 'cortesia'),
             ),
             // CUENTA ABIERTA: anota el consumo del mostrador a la cuenta de
-            // un cliente identificado (la abre un pedido por la app); paga
-            // TODO al retirarse.
-            if ((_config?.permiteCuenta ?? false) && _abiertas > 0)
+            // un cliente REGISTRADO (una ya abierta, o se abre eligiendo al
+            // cliente de la base del local); paga TODO al retirarse.
+            if (_config?.permiteCuenta ?? false)
               ListTile(
                 leading: const Text('📒', style: TextStyle(fontSize: 22)),
                 title: const Text('A la cuenta (paga al salir)'),
-                subtitle: Text('$_abiertas cuenta(s) abierta(s)',
+                subtitle: Text(
+                    _abiertas > 0
+                        ? '$_abiertas cuenta(s) abierta(s)'
+                        : 'Abrir cuenta a un cliente registrado',
                     style: const TextStyle(fontSize: 12)),
                 onTap: () => Navigator.pop(bctx, 'cuenta'),
               ),
@@ -282,56 +286,170 @@ class _BodegaScreenState extends State<BodegaScreen> {
     ));
   }
 
-  /// Anota el ticket de la CAJA a una cuenta abierta (el cliente paga al
-  /// salir). El stock baja al instante; la venta se registra al CERRAR la
-  /// cuenta (así el reporte no se duplica).
-  Future<void> _anotarTicketACuenta(
-      List<ItemVentaBodega> items, Map<String, int> nuevoStock) async {
-    final abiertas = [for (final c in _cuentas) if (c.abierta) c];
-    if (abiertas.isEmpty) return;
-    final cuenta = await showModalBottomSheet<CuentaBodega>(
+  /// Elige un cliente REGISTRADO de la base del local (reservas de sus
+  /// canchas) para abrirle cuenta: primero los que tienen reserva HOY (están
+  /// en el local), luego los recientes. Por SELECCIÓN (regla del app).
+  Future<(String, String)?> _elegirClienteRegistrado(
+      Set<String> conCuenta) async {
+    final hoy = appState.isoDe(DateTime.now());
+    final vistos = <String>{};
+    final deHoy = <(String, String)>[];
+    final otros = <(String, String)>[];
+    final rs = [...appState.reservas]
+      ..sort((a, b) => b.fecha.compareTo(a.fecha));
+    for (final r in rs) {
+      if (appState.miCanchaDeReserva(r.canchaId) == null) continue;
+      final e = r.usuario.trim().toLowerCase();
+      if (e.isEmpty || conCuenta.contains(e) || !vistos.add(e)) continue;
+      final item = (e, r.jugador.trim().isEmpty ? e : r.jugador.trim());
+      (r.fecha == hoy ? deHoy : otros).add(item);
+    }
+    final lista = [...deHoy, ...otros.take(30)];
+    if (lista.isEmpty) {
+      if (mounted) {
+        await avisarPichangol(
+          context,
+          titulo: 'Sin clientes registrados',
+          mensaje: 'La cuenta abierta es solo para clientes registrados '
+              '(así sabes quién te debe). Aparecerán aquí cuando reserven '
+              'en tus canchas con la app.',
+          icono: Icons.badge_outlined,
+        );
+      }
+      return null;
+    }
+    appState.cargarPerfiles([for (final (e, _) in lista) e]);
+    if (!mounted) return null;
+    return showModalBottomSheet<(String, String)>(
       context: context,
       backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (bctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        child: ListView(
+          shrinkWrap: true,
           children: [
             const Padding(
               padding: EdgeInsets.fromLTRB(20, 16, 20, 4),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text('¿A la cuenta de quién?',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w800, fontSize: 17)),
-              ),
+              child: Text('Abrir cuenta · ¿para quién?',
+                  style:
+                      TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
             ),
-            for (final c in abiertas)
-              ListTile(
-                leading: const Text('📒', style: TextStyle(fontSize: 22)),
-                title: Text(c.clienteNombre,
-                    style: const TextStyle(fontWeight: FontWeight.w700)),
-                subtitle: Text(
-                    'Lleva ${c.moneda} ${c.total.toStringAsFixed(2)}',
-                    style: const TextStyle(fontSize: 12)),
-                onTap: () => Navigator.pop(bctx, c),
-              ),
+            for (final (e, nombre) in lista)
+              Builder(builder: (_) {
+                final foto = appState.fotoDe(e);
+                return ListTile(
+                  // Avatar con FOTO real (regla del app); inicial si no hay.
+                  leading: CircleAvatar(
+                    radius: 18,
+                    backgroundColor: limaSuave,
+                    backgroundImage: foto != null && foto.isNotEmpty
+                        ? CachedNetworkImageProvider(foto)
+                        : null,
+                    child: foto == null || foto.isEmpty
+                        ? Text(
+                            nombre.isNotEmpty ? nombre[0].toUpperCase() : '?',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w800, color: bosque))
+                        : null,
+                  ),
+                  title: Text(nombre,
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: deHoy.any((x) => x.$1 == e)
+                      ? const Text('Con reserva hoy · está en el local',
+                          style: TextStyle(fontSize: 11.5, color: bosque))
+                      : null,
+                  onTap: () => Navigator.pop(bctx, (e, nombre)),
+                );
+              }),
             const SizedBox(height: 8),
           ],
         ),
       ),
     );
-    if (cuenta == null || !mounted) return;
+  }
+
+  /// Anota el ticket de la CAJA a una cuenta abierta — o ABRE una nueva
+  /// eligiendo al cliente registrado (pedido de palabra en el mostrador). El
+  /// stock baja al instante; la venta se registra al CERRAR la cuenta.
+  Future<void> _anotarTicketACuenta(
+      List<ItemVentaBodega> items, Map<String, int> nuevoStock) async {
+    final abiertas = [for (final c in _cuentas) if (c.abierta) c];
+    String cliente;
+    String clienteNombre;
+    double totalPrevio;
+    if (abiertas.isEmpty) {
+      // Sin cuentas abiertas → directo al selector de cliente registrado.
+      final sel = await _elegirClienteRegistrado(const {});
+      if (sel == null || !mounted) return;
+      (cliente, clienteNombre) = sel;
+      totalPrevio = 0;
+    } else {
+      final cuenta = await showModalBottomSheet<Object>(
+        context: context,
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+        builder: (bctx) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 16, 20, 4),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('¿A la cuenta de quién?',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w800, fontSize: 17)),
+                ),
+              ),
+              for (final c in abiertas)
+                ListTile(
+                  leading: const Text('📒', style: TextStyle(fontSize: 22)),
+                  title: Text(c.clienteNombre,
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: Text(
+                      'Lleva ${c.moneda} ${c.total.toStringAsFixed(2)}',
+                      style: const TextStyle(fontSize: 12)),
+                  onTap: () => Navigator.pop(bctx, c),
+                ),
+              ListTile(
+                leading: const Icon(Icons.person_add_alt_1_outlined,
+                    color: bosque),
+                title: const Text('Abrir cuenta nueva',
+                    style: TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: const Text('A un cliente registrado del local',
+                    style: TextStyle(fontSize: 12)),
+                onTap: () => Navigator.pop(bctx, 'nueva'),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      );
+      if (cuenta == null || !mounted) return;
+      if (cuenta == 'nueva') {
+        final sel = await _elegirClienteRegistrado(
+            {for (final c in abiertas) c.cliente});
+        if (sel == null || !mounted) return;
+        (cliente, clienteNombre) = sel;
+        totalPrevio = 0;
+      } else {
+        final c = cuenta as CuentaBodega;
+        cliente = c.cliente;
+        clienteNombre = c.clienteNombre;
+        totalPrevio = c.total;
+      }
+    }
     final agregado = items.fold<double>(0, (a, i) => a + i.subtotal);
     final tope = _config?.topeCuenta ?? 0;
-    if (tope > 0 && cuenta.total + agregado > tope) {
+    if (tope > 0 && totalPrevio + agregado > tope) {
       await avisarPichangol(
         context,
         titulo: 'Tope de cuenta alcanzado',
-        mensaje: 'La cuenta de ${cuenta.clienteNombre} llegaría a '
-            '${cuenta.moneda} ${(cuenta.total + agregado).toStringAsFixed(2)} '
-            'y tu tope es ${cuenta.moneda} ${tope.toStringAsFixed(0)}. '
+        mensaje: 'La cuenta de $clienteNombre llegaría a '
+            '$_mon ${(totalPrevio + agregado).toStringAsFixed(2)} '
+            'y tu tope es $_mon ${tope.toStringAsFixed(0)}. '
             'Cobra este consumo al entregar (o cierra la cuenta primero).',
         icono: Icons.speed,
       );
@@ -341,10 +459,10 @@ class _BodegaScreenState extends State<BodegaScreen> {
         context,
         () => BodegaRepo.anotarACuenta(
               dueno: _email,
-              cliente: cuenta.cliente,
-              clienteNombre: cuenta.clienteNombre,
+              cliente: cliente,
+              clienteNombre: clienteNombre,
               items: items,
-              moneda: cuenta.moneda,
+              moneda: _mon,
             ),
         texto: 'Anotando…');
     if (!mounted) return;
@@ -358,9 +476,10 @@ class _BodegaScreenState extends State<BodegaScreen> {
     }
     await BodegaRepo.actualizarStock(nuevoStock);
     setState(() {
-      _cuentas = [
-        for (final x in _cuentas) x.id == res.id ? res : x,
-      ];
+      // Upsert: si la cuenta es nueva (recién abierta) entra a la lista.
+      _cuentas = _cuentas.any((x) => x.id == res.id)
+          ? [for (final x in _cuentas) x.id == res.id ? res : x]
+          : [res, ..._cuentas];
       _productos = [
         for (final p in _productos)
           nuevoStock.containsKey(p.id)
