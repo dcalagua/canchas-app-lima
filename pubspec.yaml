@@ -107,7 +107,7 @@ dependencies:
   # entrenador virtual. Misma familia ML Kit que text_recognition (commons ya
   # compila verde); la incógnita es `camera` (CameraX).
   camera: ^0.10.6
-  google_mlkit_pose_detection: ^0.13.0
+  google_mlkit_pose_detection: ^0.12.1  # ^0.13 pide commons ^0.9 y choca con text_recognition
 
 dev_dependencies:
   flutter_test:
