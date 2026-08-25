@@ -117,18 +117,42 @@ def _descargar_video(url: str) -> bytes:
     return datos
 
 
-def _extraer_frames(video: bytes, max_frames: int = 8) -> list[bytes]:
-    """Fotogramas JPEG (1 cada 2 s, escalados a 640px) vía imageio-ffmpeg."""
+def _duracion_seg(exe: str, vin: str) -> float:
+    """Duración del clip leyendo el stderr de `ffmpeg -i` (no hay ffprobe)."""
+    import re
+    out = subprocess.run(  # noqa: S603 — exe empaquetado, args fijos
+        [exe, "-i", vin], check=False, capture_output=True, text=True,
+        timeout=30)
+    m = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", out.stderr or "")
+    if not m:
+        return 0.0
+    h, mi, s = int(m.group(1)), int(m.group(2)), float(m.group(3))
+    return h * 3600 + mi * 60 + s
+
+
+def _extraer_frames(video: bytes, max_frames: int = 16) -> list[bytes]:
+    """Fotogramas JPEG repartidos PAREJO por todo el clip (imageio-ffmpeg).
+
+    Un golpe dura ~1.5 s: muestrear cada 2 s (versión inicial) casi nunca
+    capturaba el swing y el coach reclamaba el encuadre. Ahora se lee la
+    duración real y se extraen hasta [max_frames] cuadros equiespaciados
+    (en un clip de 8 s ≈ uno cada 0.5 s: preparación, lanzamiento, impacto
+    y terminación), a 800px para que se vea la mecánica.
+    """
     import imageio_ffmpeg
     exe = imageio_ffmpeg.get_ffmpeg_exe()
     with tempfile.TemporaryDirectory() as d:
         vin = os.path.join(d, "clip.mp4")
         with open(vin, "wb") as f:
             f.write(video)
+        dur = _duracion_seg(exe, vin)
+        # Intervalo parejo sobre TODO el clip; nunca más fino que 0.15 s.
+        intervalo = max(dur / max_frames if dur > 0 else 0.5, 0.15)
         patron = os.path.join(d, "f%02d.jpg")
         subprocess.run(  # noqa: S603 — exe empaquetado, args fijos
-            [exe, "-y", "-i", vin, "-vf", "fps=1/2,scale=640:-2",
-             "-frames:v", str(max_frames), "-q:v", "5", patron],
+            [exe, "-y", "-i", vin, "-vf",
+             f"fps=1/{intervalo:.3f},scale=800:-2",
+             "-frames:v", str(max_frames), "-q:v", "4", patron],
             check=True, capture_output=True, timeout=120)
         frames = []
         for n in sorted(os.listdir(d)):
@@ -148,9 +172,15 @@ _INFORME_SPEC = (
     '"tip_reloj": str (imperativo, MÁXIMO 42 caracteres, ej. '
     '"Lanza la pelota más arriba")}, máx 3], '
     '"drills": [str (ejercicio concreto para la próxima sesión), máx 3]}. '
-    "Si el encuadre no permite ver el cuerpo completo o el golpe, pon "
-    'encuadre_ok=false y explica en "resumen" cómo grabarse mejor '
-    "(de costado, cuerpo completo, a 3-5 metros)."
+    "REGLA DE ORO: ANALIZA PRIMERO. Los fotogramas son un muestreo del video "
+    "(puede faltar el instante exacto del impacto): trabaja con las FASES que "
+    "sí se ven (postura, preparación, lanzamiento, terminación) y entrega "
+    "SIEMPRE fortalezas, correcciones y drills con lo observable. Pon "
+    "encuadre_ok=false SOLO si la persona sale diminuta o cortada en la "
+    "MAYORÍA de los fotogramas y de verdad no se distingue ninguna fase — e "
+    "incluso en ese caso, entrega el análisis parcial de lo que se alcance a "
+    "ver además de la sugerencia de encuadre. Nunca devuelvas las listas "
+    "vacías solo por el encuadre."
 )
 
 
@@ -166,8 +196,9 @@ def _ia_analizar(frames: list[bytes], deporte: str, golpe: str) -> dict | None:
         client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
         contenido: list[dict[str, Any]] = [{
             "type": "text",
-            "text": (f"Fotogramas en orden (1 cada 2 segundos) de mi "
-                     f"{golpe} de {deporte}. Analízalos como mi entrenador."),
+            "text": (f"Fotogramas en orden cronológico (muestreo parejo de "
+                     f"todo el clip) de mi {golpe} de {deporte}. "
+                     "Analízalos como mi entrenador."),
         }]
         for fr in frames:
             contenido.append({

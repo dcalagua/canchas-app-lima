@@ -177,9 +177,11 @@ SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "").strip()
 ANDROID_CERT_SHA256 = os.getenv("ANDROID_CERT_SHA256", "").strip()
 
 # ── ENTRENADOR VIRTUAL (visión IA sobre el video del golpe) ──────────────────
-# Modelo de visión (frames del clip → informe de coach). Haiku 4.5 ve imágenes
-# y es barato; subir a un modelo mayor si el feedback se queda corto.
-ENTRENADOR_MODEL = os.getenv("ENTRENADOR_MODEL", "claude-haiku-4-5-20251001")
+# Modelo de visión (frames del clip → informe de coach). Sonnet: juzgar
+# TÉCNICA deportiva en fotogramas le queda grande a un modelo chico (con
+# Haiku el coach se refugiaba en "mal encuadre"); sigue costando centavos
+# por análisis con el límite mensual.
+ENTRENADOR_MODEL = os.getenv("ENTRENADOR_MODEL", "claude-sonnet-5")
 # Candado Pro del jugador (fail-open, como CM_REQUIERE_PRO): "1" = solo Pro.
 ENTRENADOR_REQUIERE_PRO = os.getenv("ENTRENADOR_REQUIERE_PRO", "0") == "1"
 # Control de costo: análisis por correo al mes y peso máximo del clip (MB).

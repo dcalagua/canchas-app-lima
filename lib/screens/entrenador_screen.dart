@@ -141,9 +141,10 @@ class _EntrenadorScreenState extends State<EntrenadorScreen> {
                 border: Border.all(color: lima),
               ),
               child: const Text(
-                '🎥 Graba tu golpe (15–20 s, de costado y cuerpo completo) '
-                'y tu coach te dice qué estás haciendo bien y qué corregir, '
-                'con ejercicios para tu próxima sesión.',
+                '🎥 Graba SOLO el golpe: un clip de 5–10 s, de costado y '
+                'con el cuerpo completo en cuadro. Mientras más corto el '
+                'video, más de cerca ve el coach cada fase de tu movimiento. '
+                'Te dirá qué haces bien, qué corregir y qué practicar.',
                 style: TextStyle(fontSize: 13.5, height: 1.35),
               ),
             ),
