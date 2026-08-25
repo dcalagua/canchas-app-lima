@@ -1,5 +1,17 @@
 # PRD · Checklist del servicio Railway `pg-backend-prd`
 
+> **ESTADO (24-ago-2026): pasos 1 y 2 YA EJECUTADOS por Claude vía el
+> conector de Railway.** Servicio `pg-backend-prd` creado (rama `prd`, root
+> `backend/growth`), 35 variables cargadas (los secretos compartidos como
+> referencias `${{pg-backend.VAR}}`; tokens ADMIN/APP/WEBHOOK nuevos ya
+> generados y puestos), dominio `pg-backend-prd-production.up.railway.app`,
+> deploy SUCCESS y `/health` 200. Las 8 Edge Functions de PCG-PRD también
+> están desplegadas y los triggers de push cableados.
+> **Falta (manual):** `DATABASE_URL` (contraseña de la BD de PCG-PRD),
+> secrets `FCM_SERVICE_ACCOUNT` / `PUSH_APROBACION_SECRET` / `PLACES_API_KEY`
+> en PCG-PRD → Edge Functions, llaves Culqi live, corte de dominio (paso 4)
+> y APK PRD (paso 5).
+
 Estado del resto del PRD: Supabase **PCG-PRD** ya creado y migrado
 (org GRUPO EBIM, ref `xjoqotzfgniinxyxvhxj`, São Paulo): 40 tablas con RLS,
 7 buckets, realtime y triggers de push listos. La rama **`prd`** del repo ya
