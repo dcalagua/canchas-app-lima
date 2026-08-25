@@ -26,7 +26,7 @@ def test_claves_del_catalogo():
     # Las claves que usa el APK existen en el catálogo.
     for clave in ("billetera_vacia", "puntos_vacio", "bodega_vacia",
                   "pedidos_vacio", "cuentas_vacio", "reservas_vacias",
-                  "clases_vacias"):
+                  "clases_vacias", "entrenador_vacio"):
         assert clave in ilustracion.claves()
 
 

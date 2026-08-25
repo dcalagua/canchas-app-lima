@@ -45,6 +45,8 @@ _CLAVES = {
                        "ball over a small sports field"),
     "celebracion": ("confetti and a golden trophy over a small sports "
                     "court, celebration moment"),
+    "entrenador_vacio": ("a friendly tennis racket wearing a coach whistle "
+                         "next to a small video camera on a tripod"),
 }
 
 

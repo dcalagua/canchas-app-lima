@@ -10,6 +10,7 @@ import 'nivel_onboarding_screen.dart';
 import 'mis_clases_screen.dart';
 import 'mis_bonos_screen.dart';
 import 'mis_pagos_screen.dart';
+import 'entrenador_screen.dart';
 import 'mis_puntos_screen.dart';
 import 'mis_reservas_screen.dart';
 import 'marketplace_screen.dart';
@@ -164,6 +165,12 @@ class PerfilScreen extends StatelessWidget {
                 : 'Mis puntos',
             onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const MisPuntosScreen())),
+          ),
+          _ItemAirbnb(
+            icono: Icons.sports_tennis_outlined,
+            titulo: 'Entrenador virtual',
+            onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const EntrenadorScreen())),
           ),
           if (appState.usaCircuito)
             _ItemAirbnb(

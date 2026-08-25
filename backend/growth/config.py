@@ -176,6 +176,16 @@ SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "").strip()
 # Vacía = la ruta responde 404 y el botón intent:// de la página cubre igual.
 ANDROID_CERT_SHA256 = os.getenv("ANDROID_CERT_SHA256", "").strip()
 
+# ── ENTRENADOR VIRTUAL (visión IA sobre el video del golpe) ──────────────────
+# Modelo de visión (frames del clip → informe de coach). Haiku 4.5 ve imágenes
+# y es barato; subir a un modelo mayor si el feedback se queda corto.
+ENTRENADOR_MODEL = os.getenv("ENTRENADOR_MODEL", "claude-haiku-4-5-20251001")
+# Candado Pro del jugador (fail-open, como CM_REQUIERE_PRO): "1" = solo Pro.
+ENTRENADOR_REQUIERE_PRO = os.getenv("ENTRENADOR_REQUIERE_PRO", "0") == "1"
+# Control de costo: análisis por correo al mes y peso máximo del clip (MB).
+ENTRENADOR_LIMITE_MES = os.getenv("ENTRENADOR_LIMITE_MES", "20")
+ENTRENADOR_MAX_MB = os.getenv("ENTRENADOR_MAX_MB", "40")
+
 # Proveedor de IMÁGENES IA para el fondo de los afiches (auto-detección: se
 # usa el que esté seteado; ambos vacíos = afiche con gradiente de marca).
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()

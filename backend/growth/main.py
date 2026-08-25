@@ -15,6 +15,7 @@ from compliance.consent import consent_store
 from concierge.router import router as concierge_router
 from convocatorias.router import router as convocatorias_router
 from db import pg
+from entrenador.router import router as entrenador_router
 from db.store import seed_verificadores, stores
 from legal.router import router as legal_router
 from models import ConfigRequest, ConsentimientoRequest
@@ -81,6 +82,7 @@ async def _persistir(request: Request, call_next):
     return response
 
 app.include_router(puntos_router)
+app.include_router(entrenador_router)
 app.include_router(solicitudes_router)
 app.include_router(vf_router)
 app.include_router(propiedad_router)

@@ -435,6 +435,25 @@ sigue el lenguaje Airbnb sobre la paleta EBIM:
   móvil vertical no cambia nada (devuelve el hijo tal cual). Toda pantalla nueva
   debe respetarlo; el spinner/loader también centrado.
 
+## Entrenador virtual (visión IA, HECHO fase 0 ago-2026)
+
+"Coach que ve tu video": el jugador graba su golpe (≤20 s) →
+`entrenador_screen.dart` (Perfil → Entrenador virtual; deporte/golpe por
+chips, multi-deporte) sube el clip al bucket `canchas/entrenador/` →
+`POST /entrenador/analizar` (backend `entrenador/router.py`): extrae frames
+(imageio-ffmpeg), visión IA (`ENTRENADOR_MODEL`, default haiku) con prompt de
+coach → informe JSON (resumen, fortalezas, correcciones con `tip_reloj` ≤42
+chars, drills, `encuadre_ok`). Historial en Supabase
+`pichangol_entrenador_analisis` (SQL `docs/piloto/supabase_entrenador.sql`;
+PRD ya aplicado). **TIPS AL RELOJ** (idea del director): toggle "⌚ Tips en mi
+reloj" → las correcciones salen como avisos push cortos vía
+`pichangol_avisos` y Android los ESPEJA al smartwatch emparejado (sin app de
+reloj); sin reloj quedan en el informe. Candados: `ENTRENADOR_REQUIERE_PRO`
+(fail-open, como CM), `ENTRENADOR_LIMITE_MES` (20), `ENTRENADOR_MAX_MB` (40),
+solo videos del propio Supabase. El video NO se conserva en el backend.
+Fase 2 (backlog): pose estimation on-device (ML Kit — ojo plugin nativo vs
+Flutter 3.24.5, probar en CI aislado).
+
 ## Pendientes / backlog
 
 - **Community Manager AUTÓNOMO (servicio estrella, ingreso recurrente):** la
