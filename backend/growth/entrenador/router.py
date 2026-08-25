@@ -269,6 +269,32 @@ def _persistir(analisis_id: str, email: str, deporte: str, golpe: str,
         pass
 
 
+def _borrar_video(video_url: str) -> None:
+    """Borra el clip del bucket tras un análisis EXITOSO (pedido del director:
+    que los videos no ocupen espacio — el informe queda, el video ya no sirve).
+    Requiere la policy de DELETE acotada a `entrenador/` (SQL del entrenador).
+    Best-effort: si falla, el video queda y se poda después."""
+    base = (config.SUPABASE_URL or "").rstrip("/")
+    marca = "/storage/v1/object/public/canchas/"
+    if not base or marca not in video_url:
+        return
+    ruta = video_url.split(marca, 1)[1].split("?", 1)[0]
+    if not ruta.startswith("entrenador/"):
+        return  # jamás borrar fuera de la carpeta del entrenador
+    try:
+        req = urllib.request.Request(
+            f"{base}/storage/v1/object/canchas/{ruta}",
+            method="DELETE",
+            headers={
+                "apikey": config.SUPABASE_ANON_KEY,
+                "Authorization": f"Bearer {config.SUPABASE_ANON_KEY}",
+            })
+        with urllib.request.urlopen(req, timeout=15) as r:  # noqa: S310
+            r.read()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _tips_al_reloj(email: str, deporte: str, informe: dict) -> int:
     """Manda las correcciones como avisos push CORTOS (el teléfono los espeja
     al smartwatch emparejado). Devuelve cuántos tips salieron."""
@@ -316,6 +342,9 @@ def post_analizar(req: AnalizarReq) -> dict:
 
     analisis_id = f"ent_{uuid.uuid4().hex[:12]}"
     _persistir(analisis_id, email, deporte, golpe, informe)
+    # Análisis exitoso → el video ya cumplió su función: se borra del bucket
+    # (no ocupa espacio ni queda dando vueltas — privacidad + costo).
+    _borrar_video(req.video_url)
     tips = _tips_al_reloj(email, deporte, informe) if req.tips_reloj else 0
     return {"ok": True, "id": analisis_id, "informe": informe,
             "tips_reloj_enviados": tips,

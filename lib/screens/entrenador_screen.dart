@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -64,6 +66,13 @@ class _EntrenadorScreenState extends State<EntrenadorScreen> {
         source: origen, maxDuration: const Duration(seconds: 20));
     if (clip == null || !mounted) return;
     final bytes = await clip.readAsBytes();
+    // El clip ya está en memoria: borra la COPIA temporal del teléfono para
+    // no ocupar espacio (image_picker copia a la caché del app; el original
+    // de la galería, si lo hubiera, no se toca). El video en la nube lo borra
+    // el backend apenas el informe sale.
+    try {
+      await File(clip.path).delete();
+    } catch (_) {}
     if (!mounted) return;
     if (bytes.length > 40 * 1024 * 1024) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -396,9 +405,13 @@ class _HistorialCard extends StatelessWidget {
     final informe =
         (analisis['informe'] as Map?)?.cast<String, dynamic>() ?? const {};
     final creado = DateTime.tryParse(analisis['creado']?.toString() ?? '');
-    final fecha = creado == null
+    // Fecha Y HORA de la grabación (pedido del director): "mié 25 ago · 21:15".
+    final local = creado?.toLocal();
+    final fecha = local == null
         ? ''
-        : AppState.fechaBonita(creado.toLocal().toIso8601String());
+        : '${AppState.fechaBonita(local.toIso8601String())} · '
+            '${local.hour.toString().padLeft(2, '0')}:'
+            '${local.minute.toString().padLeft(2, '0')}';
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(

@@ -15,9 +15,10 @@ import main  # noqa: E402
 
 cli = TestClient(main.app)
 
-# La función REAL de descarga, capturada ANTES de que el fixture la mockee
-# (para el test que valida el candado de host).
+# Funciones REALES capturadas ANTES de que el fixture autouse las mockee
+# (para los tests que validan sus candados internos).
 _DESCARGAR_REAL = ent._descargar_video
+_BORRAR_REAL = ent._borrar_video
 
 _INFORME = {
     "encuadre_ok": True,
@@ -54,7 +55,9 @@ def _mundo(monkeypatch):
         pr, "_aviso_push_usuario",
         lambda email, titulo, cuerpo, tipo="aviso": tips.append(
             (email, titulo, cuerpo, tipo)))
-    yield {"guardados": guardados, "tips": tips}
+    borrados = []
+    monkeypatch.setattr(ent, "_borrar_video", lambda url: borrados.append(url))
+    yield {"guardados": guardados, "tips": tips, "borrados": borrados}
 
 
 def _body(**extra):
@@ -119,3 +122,33 @@ def test_ia_caida_responde_503(monkeypatch, _mundo):
     monkeypatch.setattr(ent, "_ia_analizar", lambda f, d, g: None)
     assert cli.post("/entrenador/analizar",
                     json=_body()).status_code == 503
+    # Con la IA caída el video NO se borra (el jugador puede reintentar).
+    assert _mundo["borrados"] == []
+
+
+def test_video_se_borra_tras_analisis_exitoso(_mundo):
+    """Pedido del director: los clips no ocupan espacio — informe listo,
+    video fuera."""
+    r = cli.post("/entrenador/analizar", json=_body()).json()
+    assert r["ok"] is True
+    assert len(_mundo["borrados"]) == 1
+
+
+def test_borrar_video_solo_toca_la_carpeta_entrenador(monkeypatch):
+    """La función real jamás borra fuera de entrenador/ (candado de ruta)."""
+    llamadas = []
+    monkeypatch.setattr(config, "SUPABASE_URL", "https://qa.supabase.co")
+    monkeypatch.setattr(config, "SUPABASE_ANON_KEY", "anon_qa")
+    monkeypatch.setattr(ent.urllib.request, "urlopen",
+                        lambda req, timeout=15: llamadas.append(req) or
+                        __import__("io").BytesIO(b""))
+    # Ruta fuera de entrenador/ → NO se llama al storage.
+    _BORRAR_REAL("https://qa.supabase.co/storage/v1/object/public/"
+                 "canchas/ilustraciones/il_x.jpg")
+    assert llamadas == []
+    # Ruta correcta → sí borra (DELETE a la ruta exacta, sin querystring).
+    _BORRAR_REAL("https://qa.supabase.co/storage/v1/object/public/"
+                 "canchas/entrenador/clip.mp4?v=123")
+    assert len(llamadas) == 1
+    assert llamadas[0].get_method() == "DELETE"
+    assert llamadas[0].full_url.endswith("/canchas/entrenador/clip.mp4")

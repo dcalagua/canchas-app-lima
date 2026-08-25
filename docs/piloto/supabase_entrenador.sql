@@ -27,3 +27,12 @@ create policy entrenador_select on public.pichangol_entrenador_analisis
 drop policy if exists entrenador_insert on public.pichangol_entrenador_analisis;
 create policy entrenador_insert on public.pichangol_entrenador_analisis
   for insert to anon, authenticated with check (true);
+
+-- AUTO-BORRADO del clip tras el análisis: el backend elimina el video de
+-- `canchas/entrenador/` cuando el informe ya salió (el video no se conserva).
+-- Policy de DELETE acotada SOLO a esa carpeta (nada más se puede borrar).
+drop policy if exists canchas_bucket_delete_entrenador on storage.objects;
+create policy canchas_bucket_delete_entrenador
+  on storage.objects for delete
+  to anon, authenticated
+  using (bucket_id = 'canchas' and name like 'entrenador/%');
