@@ -238,7 +238,8 @@ class _CanalDetalleScreenState extends State<CanalDetalleScreen> {
         destructivo: true,
         icono: Icons.delete_outline);
     if (!ok) return;
-    final hecho = await CanalesRepo.eliminarPost(p.id);
+    final hecho = await CanalesRepo.eliminarPost(p.id,
+        canalId: p.canalId, mediaUrl: p.mediaUrl);
     if (hecho && mounted) {
       setState(() => _posts = _posts.where((x) => x.id != p.id).toList());
     }

@@ -187,3 +187,48 @@ def test_radiografia_marca_cuando_no_puede_leer_storage(monkeypatch):
 def test_barrido_automatico_apagado_por_defecto():
     """No se automatiza un borrado hasta verificar la detección en la torre."""
     assert config.STORAGE_BARRIDO_AUTO is False
+
+
+def test_arte_generado_compartido_es_intocable():
+    """REGRESIÓN: los fondos de afiche (`afiches/`) los genera el backend y no
+    pertenecen a ninguna fila. La primera versión los habría borrado por tratar
+    toda carpeta del bucket como galería de una cancha."""
+    assert sl._protegido("canchas", "afiches/fondo_tenis_lima.jpg")
+    assert sl._borrar_objeto("canchas", "afiches/fondo_x.jpg") is False
+    assert sl._protegido("canchas", "ilustraciones/il_entrenador_vacio.jpg")
+
+
+def test_la_galeria_solo_alcanza_canchas_conocidas_y_borradas():
+    """La consulta parte de un JOIN contra la tabla de canchas: una carpeta del
+    sistema no puede colarse porque no existe una cancha con ese id, y una
+    cancha VIVA tampoco porque se exige eliminada = true."""
+    sql = sl._CONSULTAS["canchas_galeria"]
+    assert "join pichangol_canchas" in sql
+    assert "coalesce(c.eliminada, false) = true" in sql
+    # Mismo criterio para la portada.
+    assert "coalesce(c.eliminada, false) = true" in sl._CONSULTAS["canchas_portada"]
+
+
+def test_cubre_todos_los_buckets_que_el_app_usa():
+    """Ningún bucket que reciba subidas puede quedarse sin barrido: es como se
+    llenó `canales` de archivos que nadie iba a borrar."""
+    buckets = set()
+    for sql in sl._CONSULTAS.values():
+        for b in ("canchas", "estados", "productos", "chat", "canales",
+                  "grupos", "verificacion"):
+            if f"'{b}'" in sql:
+                buckets.add(b)
+    assert buckets == {"canchas", "estados", "productos", "chat", "canales",
+                       "grupos", "verificacion"}
+
+
+def test_media_referenciada_se_cruza_por_url_no_por_nombre():
+    """La media de posts y chats se cruza contra la URL guardada en su fila:
+    adivinar el id desde el nombre del archivo es lo que falla cuando la ruta
+    lleva timestamps o el hilo va saneado."""
+    assert "p.media_url like" in sl._CONSULTAS["canales_posts"]
+    assert "m.media_url like" in sl._CONSULTAS["chat_media"]
+    assert "m.resp_media like" in sl._CONSULTAS["chat_media"]
+    # La historia viva del chat no se toca: sólo entra lo que ningún mensaje
+    # referencia, y los avatares van por su propia consulta.
+    assert "not like 'perfiles/%'" in sl._CONSULTAS["chat_media"]

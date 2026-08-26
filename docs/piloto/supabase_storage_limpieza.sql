@@ -11,11 +11,19 @@
 --   · producto de bodega      → canchas/bodega/<id>.jpg                (BodegaRepo.eliminarProducto)
 --   · campeonato eliminado    → canchas/campeonatos/<id>.jpg           (CampeonatosRepo.eliminar)
 --   · avatar reemplazado      → chat/perfiles/<usuario>/* (viejos)     (PerfilesRepo.subirFoto)
+--   · publicación de canal    → canales/<canalId>/<postId>.<ext>       (CanalesRepo.eliminarPost)
+--   · canal eliminado         → canales/<canalId>/* (portada + posts)  (CanalesRepo.eliminarCanal)
 --   · video del entrenador    → canchas/entrenador/<id>.mp4            (backend, tras el informe)
 --   · "Dejar en virgen"       → todo lo anterior + verificacion/<usuario>/*
 --
+-- Y la torre (/admin → Mantenimiento → "Limpiar almacenamiento") barre lo que
+-- el teléfono no alcanzó, incluyendo la media de chats/canales/grupos cuya
+-- fila ya no existe.
+--
 -- PROTEGIDO (sin policy de delete = imborrable desde el app):
 --   · canchas/recargas/*  — constancias de pago QR: registro contable/antifraude.
+--   (ilustraciones/, afiches/ y bodega/packshot* sí tienen policy porque viven
+--    en el mismo bucket, pero el barrido los trata como intocables por código.)
 --
 -- Correr en el SQL Editor de Supabase (dev). En PRD lo aplica Claude (prd_10).
 
@@ -41,13 +49,30 @@ create policy productos_bucket_delete_limpieza
   to anon, authenticated
   using (bucket_id = 'productos');
 
--- Bucket `chat`: SOLO la carpeta de avatares (perfiles/). La media de los
--- chats es historia compartida (estilo WhatsApp) y NO se toca.
+-- Bucket `chat`: avatares viejos + media de conversaciones ya borradas. Ojo:
+-- mientras un mensaje siga existiendo, su foto/audio NO es huérfano y el
+-- barrido no lo toca (la historia del chat se respeta, estilo WhatsApp).
 drop policy if exists chat_bucket_delete_perfiles on storage.objects;
-create policy chat_bucket_delete_perfiles
+drop policy if exists chat_bucket_delete_limpieza on storage.objects;
+create policy chat_bucket_delete_limpieza
   on storage.objects for delete
   to anon, authenticated
-  using (bucket_id = 'chat' and name like 'perfiles/%');
+  using (bucket_id = 'chat');
+
+-- Bucket `canales`: portada del canal y media de sus publicaciones
+-- (`<canalId>/portada.jpg`, `<canalId>/<postId>.<ext>`).
+drop policy if exists canales_bucket_delete_limpieza on storage.objects;
+create policy canales_bucket_delete_limpieza
+  on storage.objects for delete
+  to anon, authenticated
+  using (bucket_id = 'canales');
+
+-- Bucket `grupos`: foto del grupo (`<grupoId>.jpg`).
+drop policy if exists grupos_bucket_delete_limpieza on storage.objects;
+create policy grupos_bucket_delete_limpieza
+  on storage.objects for delete
+  to anon, authenticated
+  using (bucket_id = 'grupos');
 
 -- Bucket `verificacion` (privado): doc + selfie. Minimización de datos
 -- personales (Ley 29733): una vez validada la identidad, el documento no

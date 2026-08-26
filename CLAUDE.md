@@ -263,11 +263,22 @@ off → redeploy inmediato en cada push). URL pública:
   canchas/estados/productos/bodega/campeonatos, avatares viejos al cambiar foto,
   y estados+docs de identidad en "Dejar en virgen"). Para lo ACUMULADO antes,
   la torre `/admin` → Mantenimiento → **"Limpiar almacenamiento"** hace el
-  barrido de huérfanos (`backend/growth/storage_limpieza.py`: detecta por SQL
-  contra `storage.objects` con LEFT JOIN —nunca `NOT IN`, que con un NULL
-  devuelve vacío en silencio— y borra por Storage API). **Jamás se borran**
-  `canchas/recargas/*` (constancias), `ilustraciones/` ni `bodega/packshot*`.
-  Requiere las policies de `docs/piloto/supabase_storage_limpieza.sql`.
+  barrido (`backend/growth/storage_limpieza.py`: detecta por SQL contra
+  `storage.objects` y borra por Storage API). **Principio: nunca borrar lo que
+  no se reconoce** — cada consulta parte de un JOIN contra la tabla dueña y
+  sólo marca el archivo si esa fila dice que murió; lo que no corresponde a
+  nada conocido se REPORTA (`desconocidos`), no se borra. Buckets cubiertos:
+  `canchas`, `estados`, `productos`, `chat` (avatares viejos + media de chats
+  borrados), `canales`, `grupos`, `verificacion`. **Jamás se borran**
+  `canchas/recargas/*` (constancias), `ilustraciones/`, `afiches/` ni
+  `bodega/packshot*` (arte compartido del backend). Cuidado al escribir SQL de
+  detección: `NOT IN` con un solo NULL devuelve vacío en silencio (usar JOIN),
+  y una denylist de carpetas se rompe apenas el backend crea una carpeta nueva.
+  La torre muestra cuántos archivos ALCANZA A VER (radiografía): un "0
+  huérfanos" sin ese dato no distingue "limpio" de "no veo nada". Opcional:
+  cron `STORAGE_BARRIDO_AUTO=1` (apagado por defecto) cada
+  `STORAGE_BARRIDO_HORAS`. Requiere las policies de
+  `docs/piloto/supabase_storage_limpieza.sql`.
 - **Tests:** `cd backend/growth && python3 -m pytest -q` (deben pasar todos).
   Cumplimiento Ley 29733 (DNI = dato personal: solo validar dueño, no publicar).
 

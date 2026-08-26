@@ -24,58 +24,68 @@ import config
 from db import pg
 
 # Carpetas del bucket `canchas` que NUNCA se tocan, pase lo que pase.
-# recargas/    = constancias de pago (registro contable/antifraude).
-# ilustraciones/, bodega/packshot* = arte compartido, sin dueño individual.
-PROTEGIDAS = ("recargas/", "ilustraciones/", "bodega/packshot")
+# recargas/     = constancias de pago (registro contable/antifraude).
+# ilustraciones/, afiches/, bodega/packshot* = arte generado y COMPARTIDO por
+# todo el sistema: no pertenece a ninguna fila, así que ninguna consulta de
+# "huérfanos" debe poder alcanzarlo.
+PROTEGIDAS = ("recargas/", "ilustraciones/", "afiches/", "bodega/packshot")
 
-# Una consulta por "familia" de archivos. Cada una devuelve (bucket, name) de lo
-# que ya NO tiene dueño. Se escriben con LEFT JOIN (no NOT IN) a propósito: con
-# NOT IN, un solo NULL en la subconsulta haría que NO devuelva NADA en silencio.
+# PRINCIPIO DE ESTE MÓDULO: **nunca borrar lo que no se reconoce.**
+#
+# La primera versión hacía lo contrario: asumía que toda carpeta del bucket
+# `canchas` era la galería de una cancha, salvo una lista de excepciones. Bastó
+# que el backend empezara a guardar fondos de afiche en `afiches/` para que ese
+# arte quedara marcado como huérfano. Por eso ahora cada consulta parte de una
+# fila CONOCIDA (join contra la tabla dueña) y solo marca el archivo cuando esa
+# fila dice explícitamente que murió. Un archivo que no corresponde a nada
+# conocido NO se borra: se REPORTA aparte (`desconocidos`) para que el operador
+# lo mire con calma.
+#
+# Los archivos referenciados por URL (media de posts y de chats) se cruzan
+# contra la URL guardada en su fila, no adivinando ids desde el nombre.
 _CONSULTAS: dict[str, str] = {
     # Clips del entrenador: el análisis los borra solo; >1 h = quedó colgado.
+    # Efímeros por diseño, así que aquí sí vale la regla por antigüedad.
     "entrenador": """
         select 'canchas', o.name from storage.objects o
         where o.bucket_id = 'canchas' and o.name like 'entrenador/%'
           and o.created_at < now() - interval '1 hour'
     """,
-    # Foto de portada de cancha: `<id>.jpg` en la raíz del bucket.
+    # Portada de una cancha BORRADA (`<id>.jpg` en la raíz). El join exige que
+    # la cancha exista y esté marcada eliminada: un archivo suelto que no
+    # corresponde a ninguna cancha se ignora.
     "canchas_portada": """
         select 'canchas', o.name from storage.objects o
-        left join pichangol_canchas c
-               on c.id::text = replace(o.name, '.jpg', '')
-              and coalesce(c.eliminada, false) = false
+        join pichangol_canchas c on c.id::text = replace(o.name, '.jpg', '')
         where o.bucket_id = 'canchas' and position('/' in o.name) = 0
-          and c.id is null
+          and coalesce(c.eliminada, false) = true
     """,
-    # Galería de cancha: `<id>/<algo>.jpg`.
+    # Galería de una cancha BORRADA (`<id>/<algo>.jpg`). Como el join es contra
+    # el id real de la cancha, una carpeta del sistema (afiches/, recargas/…)
+    # nunca puede colarse: no existe una cancha con ese id.
     "canchas_galeria": """
         select 'canchas', o.name from storage.objects o
-        left join pichangol_canchas c
-               on c.id::text = split_part(o.name, '/', 1)
-              and coalesce(c.eliminada, false) = false
+        join pichangol_canchas c on c.id::text = split_part(o.name, '/', 1)
         where o.bucket_id = 'canchas' and position('/' in o.name) > 0
-          and split_part(o.name, '/', 1) not in
-              ('entrenador', 'bodega', 'campeonatos', 'recargas', 'ilustraciones')
-          and c.id is null
+          and coalesce(c.eliminada, false) = true
     """,
     "bodega": """
         select 'canchas', o.name from storage.objects o
-        left join pichangol_bodega_productos p
-               on p.id::text = replace(replace(o.name, 'bodega/', ''), '.jpg', '')
-              and coalesce(p.eliminado, false) = false
+        join pichangol_bodega_productos p
+          on p.id::text = replace(replace(o.name, 'bodega/', ''), '.jpg', '')
         where o.bucket_id = 'canchas' and o.name like 'bodega/%'
           and o.name not like 'bodega/packshot%'
-          and p.id is null
+          and coalesce(p.eliminado, false) = true
     """,
     "campeonatos": """
         select 'canchas', o.name from storage.objects o
-        left join pichangol_campeonatos t
-               on t.id::text = replace(replace(o.name, 'campeonatos/', ''), '.jpg', '')
-              and coalesce(t.eliminado, false) = false
+        join pichangol_campeonatos t
+          on t.id::text = replace(replace(o.name, 'campeonatos/', ''), '.jpg', '')
         where o.bucket_id = 'canchas' and o.name like 'campeonatos/%'
-          and t.id is null
+          and coalesce(t.eliminado, false) = true
     """,
-    # Historias: la fila vive 24 h; su media debe morir con ella.
+    # Historias: la fila vive 24 h y luego se borra; su media debe morir con
+    # ella. Efímeras por diseño = la regla por antigüedad es la correcta.
     "estados": """
         select 'estados', o.name from storage.objects o
         left join pichangol_estados e
@@ -83,14 +93,16 @@ _CONSULTAS: dict[str, str] = {
               and e.creado_en >= now() - interval '24 hours'
         where o.bucket_id = 'estados' and e.id is null
     """,
+    # Marketplace: la fila se borra de verdad (no lógico), y el bucket sólo
+    # tiene fotos de producto, sin carpetas de sistema.
     "productos": """
         select 'productos', o.name from storage.objects o
-        left join pichangol_productos p
-               on p.id::text = replace(o.name, '.jpg', '')
-        where o.bucket_id = 'productos' and p.id is null
+        left join pichangol_productos p on p.id::text = replace(o.name, '.jpg', '')
+        where o.bucket_id = 'productos' and position('/' in o.name) = 0
+          and p.id is null
     """,
-    # Avatares: se versionan por timestamp; sobrevive solo el más nuevo de cada
-    # usuario (la media de los chats NO entra: es historia compartida).
+    # Avatares: se versionan por timestamp; sobrevive sólo el más nuevo de cada
+    # usuario. La media de los CHATS va aparte (abajo).
     "avatares_viejos": """
         select 'chat', o.name from storage.objects o
         where o.bucket_id = 'chat' and o.name like 'perfiles/%'
@@ -99,14 +111,61 @@ _CONSULTAS: dict[str, str] = {
             where o2.bucket_id = 'chat' and o2.name like 'perfiles/%'
               and split_part(o2.name, '/', 2) = split_part(o.name, '/', 2))
     """,
+    # Media de chats cuyos mensajes ya no existen (se borró la conversación).
+    # Se cruza contra la URL guardada en el mensaje —incluida la de una cita—,
+    # no adivinando el hilo desde el nombre de la carpeta.
+    "chat_media": """
+        select 'chat', o.name from storage.objects o
+        left join pichangol_mensajes m
+               on m.media_url like '%' || o.name
+               or m.resp_media like '%' || o.name
+        where o.bucket_id = 'chat' and o.name not like 'perfiles/%'
+          and position('/' in o.name) > 0 and m.id is null
+    """,
+    # Portada de un canal que ya no existe.
+    "canales_portada": """
+        select 'canales', o.name from storage.objects o
+        left join pichangol_canales c on c.id::text = split_part(o.name, '/', 1)
+        where o.bucket_id = 'canales' and o.name like '%/portada.jpg'
+          and c.id is null
+    """,
+    # Media de publicaciones de canal borradas (o de canales que ya no están).
+    "canales_posts": """
+        select 'canales', o.name from storage.objects o
+        left join pichangol_canal_posts p on p.media_url like '%' || o.name
+        where o.bucket_id = 'canales' and position('/' in o.name) > 0
+          and o.name not like '%/portada.jpg' and p.id is null
+    """,
+    # Foto de un grupo que ya no existe.
+    "grupos": """
+        select 'grupos', o.name from storage.objects o
+        left join pichangol_grupos g on g.id::text = replace(o.name, '.jpg', '')
+        where o.bucket_id = 'grupos' and position('/' in o.name) = 0
+          and g.id is null
+    """,
     # Doc/selfie de identidad que ya nadie referencia (minimización, Ley 29733).
     "verificacion": """
         select 'verificacion', o.name from storage.objects o
-        left join pichangol_verificaciones v
-               on o.name in (v.doc_path, v.selfie_path)
+        left join pichangol_verificaciones v on o.name in (v.doc_path, v.selfie_path)
         where o.bucket_id = 'verificacion' and v.email is null
     """,
 }
+
+# Archivos del bucket `canchas` que no son de ninguna cancha ni de una carpeta
+# de sistema conocida. NO se borran: se muestran en la torre para que el
+# operador decida. Es la contracara del principio: lo desconocido se reporta.
+_SQL_DESCONOCIDOS = """
+    select o.name from storage.objects o
+    left join pichangol_canchas c
+           on c.id::text = case when position('/' in o.name) > 0
+                                then split_part(o.name, '/', 1)
+                                else replace(o.name, '.jpg', '') end
+    where o.bucket_id = 'canchas' and c.id is null
+      and split_part(o.name, '/', 1) not in
+          ('entrenador', 'bodega', 'campeonatos', 'recargas', 'ilustraciones',
+           'afiches')
+    limit 25
+"""
 
 
 def _protegido(bucket: str, name: str) -> bool:

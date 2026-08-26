@@ -1611,7 +1611,13 @@ function pintarStorage(j){
     if(f.error) return `• ${k}: no se pudo leer (${f.error})`;
     return `• ${k}: ${f.n}` + (f.n && f.ejemplos&&f.ejemplos.length ? ` (ej. ${f.ejemplos[0]})` : '');
   });
-  el.innerHTML = cabecera + `<b>Huérfanos detectados: ${j.total||0}</b><br/>` + lineas.join('<br/>');
+  let desc = '';
+  if((rx.desconocidos||[]).length){
+    desc = `<br/><br/><b>No reconocidos (NO se borran):</b> ${rx.desconocidos.length}` +
+      `<br/>${rx.desconocidos.slice(0,5).map(x=>'· '+x).join('<br/>')}` +
+      `<br/><i>Archivos que no corresponden a ninguna cancha ni a una carpeta conocida del sistema. Se listan para que los revises a mano.</i>`;
+  }
+  el.innerHTML = cabecera + `<b>Huérfanos detectados: ${j.total||0}</b><br/>` + lineas.join('<br/>') + desc;
 }
 async function revisarStorage(){
   const el = document.getElementById('stg_res');

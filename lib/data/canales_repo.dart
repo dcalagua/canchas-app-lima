@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' show FileOptions;
 
 import '../models/canal.dart';
 import '../services/supabase_service.dart';
+import 'storage_limpieza.dart';
 
 /// Canales de difusión (tipo WhatsApp Channels) en Supabase. Tablas
 /// `pichangol_canales`, `pichangol_canal_seguidores`, `pichangol_canal_posts` +
@@ -210,10 +211,48 @@ class CanalesRepo {
     }
   }
 
-  static Future<bool> eliminarPost(String postId) async {
+  /// Borra una publicación del canal y, con ella, su media del bucket (la
+  /// ruta es `<canalId>/<postId>.<ext>`): si no, la foto o el video quedan
+  /// ocupando espacio sin que nadie pueda verlos nunca más.
+  static Future<bool> eliminarPost(String postId,
+      {String canalId = '', String mediaUrl = ''}) async {
     if (!disponible || postId.isEmpty) return false;
     try {
       await SupabaseService.client.from(_tPosts).delete().eq('id', postId);
+      await _borrarMediaDePost(canalId, postId, mediaUrl);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// La extensión viaja en la URL guardada (jpg o mp4); si no la hay, se
+  /// intentan las dos. Best-effort: nunca hace fallar el borrado del post.
+  static Future<void> _borrarMediaDePost(
+      String canalId, String postId, String mediaUrl) async {
+    if (canalId.isEmpty || postId.isEmpty) return;
+    final exts = <String>[];
+    final limpia = mediaUrl.split('?').first;
+    for (final e in const ['jpg', 'mp4']) {
+      if (limpia.endsWith('.$e')) exts.add(e);
+    }
+    if (exts.isEmpty) exts.addAll(const ['jpg', 'mp4']);
+    await StorageLimpieza.borrar(
+        _bucket, [for (final e in exts) '$canalId/$postId.$e']);
+  }
+
+  /// Borra el canal entero: sus publicaciones, sus seguidores y TODA su media
+  /// (portada + media de cada post viven en la carpeta `<canalId>/`).
+  static Future<bool> eliminarCanal(String canalId) async {
+    if (!disponible || canalId.isEmpty) return false;
+    try {
+      await SupabaseService.client.from(_tPosts).delete().eq('canal_id', canalId);
+      await SupabaseService.client
+          .from(_tSeguidores)
+          .delete()
+          .eq('canal_id', canalId);
+      await SupabaseService.client.from(_tCanales).delete().eq('id', canalId);
+      await StorageLimpieza.borrarCarpeta(_bucket, canalId);
       return true;
     } catch (_) {
       return false;
