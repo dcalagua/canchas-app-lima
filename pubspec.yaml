@@ -102,10 +102,10 @@ dependencies:
   # nacimiento. Gratis/offline (ML Kit). Plugin nativo: el CI ya fuerza
   # compileSdk 34 en subproyectos y minSdk 23; en iOS se sube el target a 15.5.
   google_mlkit_text_recognition: ^0.13.1
-  # EXPERIMENTO encuadre asistido (rama exp/camara-pose): cámara propia con
-  # preview + detección de cuerpo en vivo para guiar el ángulo/distancia del
-  # entrenador virtual. Misma familia ML Kit que text_recognition (commons ya
-  # compila verde); la incógnita es `camera` (CameraX).
+  # ENCUADRE ASISTIDO del entrenador virtual: cámara propia con preview +
+  # detección de cuerpo en vivo (ML Kit Pose) que guía el ángulo/distancia y
+  # auto-graba. El clip nace en el espacio privado del app (nunca pasa por la
+  # galería) y se borra tras el análisis.
   camera: ^0.10.6
   google_mlkit_pose_detection: ^0.12.1  # ^0.13 pide commons ^0.9 y choca con text_recognition
 

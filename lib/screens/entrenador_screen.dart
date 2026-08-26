@@ -1,9 +1,11 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../services/entrenador_service.dart';
+import 'encuadre_asistido_screen.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/ancho_lectura.dart';
@@ -60,20 +62,53 @@ class _EntrenadorScreenState extends State<EntrenadorScreen> {
     if (mounted) setState(() => _historial = h);
   }
 
+  /// Grabar con la CÁMARA PROPIA (encuadre asistido): la guía en vivo acomoda
+  /// el ángulo/distancia y auto-graba con cuenta 3-2-1. El clip nace en el
+  /// espacio privado del app — nunca toca la galería del teléfono — y aquí se
+  /// borra apenas queda en memoria.
+  Future<void> _grabarAsistido() async {
+    if (_analizando) return;
+    final String? ruta = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+          builder: (_) =>
+              EncuadreAsistidoScreen(deporte: _deporte, golpe: _golpe)),
+    );
+    if (ruta == null || !mounted) return;
+    final f = File(ruta);
+    final Uint8List bytes;
+    try {
+      bytes = await f.readAsBytes();
+    } catch (_) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No se pudo leer el video. Graba de nuevo.')));
+      return;
+    }
+    try {
+      await f.delete();
+    } catch (_) {}
+    if (!mounted) return;
+    await _procesarClip(bytes);
+  }
+
+  /// Elegir un clip ya grabado de la galería (el original del usuario NO se
+  /// toca; solo se borra la copia temporal que image_picker deja en caché).
   Future<void> _grabar(ImageSource origen) async {
     if (_analizando) return;
     final XFile? clip = await ImagePicker().pickVideo(
         source: origen, maxDuration: const Duration(seconds: 20));
     if (clip == null || !mounted) return;
     final bytes = await clip.readAsBytes();
-    // El clip ya está en memoria: borra la COPIA temporal del teléfono para
-    // no ocupar espacio (image_picker copia a la caché del app; el original
-    // de la galería, si lo hubiera, no se toca). El video en la nube lo borra
-    // el backend apenas el informe sale.
     try {
       await File(clip.path).delete();
     } catch (_) {}
     if (!mounted) return;
+    await _procesarClip(bytes);
+  }
+
+  /// Sube el clip (ya en memoria) y pide el informe al coach. El video en la
+  /// nube lo borra el backend apenas el informe sale.
+  Future<void> _procesarClip(Uint8List bytes) async {
     if (bytes.length > 40 * 1024 * 1024) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('El video pesa demasiado. Graba 15–20 segundos.')));
@@ -150,10 +185,11 @@ class _EntrenadorScreenState extends State<EntrenadorScreen> {
                 border: Border.all(color: lima),
               ),
               child: const Text(
-                '🎥 Graba SOLO el golpe: un clip de 5–10 s, de costado y '
-                'con el cuerpo completo en cuadro. Mientras más corto el '
-                'video, más de cerca ve el coach cada fase de tu movimiento. '
-                'Te dirá qué haces bien, qué corregir y qué practicar.',
+                '🎥 Graba SOLO el golpe: un clip de 5–10 s. La cámara de '
+                'Pichangol te guía sola al ángulo perfecto ("retrocede unos '
+                'pasos", "gírate de costado") y graba con cuenta 3-2-1. El '
+                'coach te dirá qué haces bien, qué corregir y qué practicar. '
+                'Los videos se borran solos después del análisis.',
                 style: TextStyle(fontSize: 13.5, height: 1.35),
               ),
             ),
@@ -246,7 +282,7 @@ class _EntrenadorScreenState extends State<EntrenadorScreen> {
                       style: FilledButton.styleFrom(
                           backgroundColor: lima,
                           padding: const EdgeInsets.symmetric(vertical: 14)),
-                      onPressed: () => _grabar(ImageSource.camera),
+                      onPressed: _grabarAsistido,
                       icon: const Icon(Icons.videocam),
                       label: const Text('Grabar mi golpe',
                           style: TextStyle(fontWeight: FontWeight.w800)),
