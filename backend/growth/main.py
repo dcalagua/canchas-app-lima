@@ -11,6 +11,7 @@ import asyncio
 
 from fastapi import Depends, FastAPI, Request
 
+import config
 from compliance.consent import consent_store
 from concierge.router import router as concierge_router
 from convocatorias.router import router as convocatorias_router
@@ -140,6 +141,39 @@ async def _iniciar_cron_cm() -> None:
             except Exception:  # noqa: BLE001
                 pass
             await asyncio.sleep(30 * 60)  # cada 30 minutos
+
+    asyncio.create_task(_loop())
+
+
+@app.on_event("startup")
+async def _iniciar_cron_storage() -> None:
+    """RECOLECTOR DE BASURA del Storage: cada N horas borra los archivos que
+    quedaron sin dueño. El APK ya borra en caliente al eliminar una cancha, un
+    producto o un estado; esto cubre lo que ese borrado NO alcanza (el teléfono
+    se quedó sin red a medio camino, el usuario tiene un APK viejo, faltaba la
+    policy del bucket). Así el bucket no crece por goteo.
+
+    Apagado por defecto (`STORAGE_BARRIDO_AUTO=1` para encenderlo): un borrado
+    automático solo se justifica cuando la revisión manual de la torre ya
+    mostró números correctos."""
+    if not config.STORAGE_BARRIDO_AUTO:
+        return
+
+    async def _loop() -> None:
+        await asyncio.sleep(300)  # deja arrancar el servicio
+        try:
+            horas = max(1, int(config.STORAGE_BARRIDO_HORAS))
+        except (TypeError, ValueError):
+            horas = 24
+        while True:
+            try:
+                import storage_limpieza
+                # En un hilo: son consultas + N llamadas HTTP al Storage API,
+                # todas bloqueantes; no deben congelar el event loop.
+                await asyncio.to_thread(storage_limpieza.limpiar)
+            except Exception:  # noqa: BLE001
+                pass
+            await asyncio.sleep(horas * 3600)
 
     asyncio.create_task(_loop())
 

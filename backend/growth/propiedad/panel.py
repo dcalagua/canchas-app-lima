@@ -1592,13 +1592,26 @@ function modalConfirmar(titulo, mensaje, textoOk){
 function pintarStorage(j){
   const el = document.getElementById('stg_res');
   if(!j || !j.ok){ el.textContent = 'No se pudo revisar: ' + ((j&&j.error)||'error'); return; }
+  const rx = j.radiografia||{};
+  let cabecera = '';
+  if(rx.objetos_vistos === -1){
+    cabecera = `<b style="color:#9A1722">⚠️ No se puede leer storage.objects</b>` +
+      `<br/>${rx.error_storage||''}<br/>Sin esto el barrido no ve nada (0 no significa "limpio").<br/>`;
+  } else if(rx.objetos_vistos === 0){
+    cabecera = `<b style="color:#9A1722">⚠️ El barrido no ve ningún archivo</b>` +
+      `<br/>Base: <code>${rx.base||'?'}</code>. Revisa que DATABASE_URL apunte al mismo proyecto que el Storage.<br/>`;
+  } else if(rx.objetos_vistos !== undefined){
+    const porB = rx.objetos_por_bucket||{};
+    const det = Object.keys(porB).map(b=>`${b}: ${porB[b]}`).join(' · ');
+    cabecera = `Archivos vistos: <b>${rx.objetos_vistos}</b> (${det})<br/>`;
+  }
   const fam = j.familias||{};
   const lineas = Object.keys(fam).map(k=>{
     const f = fam[k];
     if(f.error) return `• ${k}: no se pudo leer (${f.error})`;
     return `• ${k}: ${f.n}` + (f.n && f.ejemplos&&f.ejemplos.length ? ` (ej. ${f.ejemplos[0]})` : '');
   });
-  el.innerHTML = `<b>Huérfanos detectados: ${j.total||0}</b><br/>` + lineas.join('<br/>');
+  el.innerHTML = cabecera + `<b>Huérfanos detectados: ${j.total||0}</b><br/>` + lineas.join('<br/>');
 }
 async function revisarStorage(){
   const el = document.getElementById('stg_res');

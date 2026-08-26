@@ -188,6 +188,15 @@ ENTRENADOR_REQUIERE_PRO = os.getenv("ENTRENADOR_REQUIERE_PRO", "0") == "1"
 ENTRENADOR_LIMITE_MES = os.getenv("ENTRENADOR_LIMITE_MES", "20")
 ENTRENADOR_MAX_MB = os.getenv("ENTRENADOR_MAX_MB", "40")
 
+# BARRIDO AUTOMÁTICO DE STORAGE (recolector de basura de archivos huérfanos).
+# El APK ya borra en caliente al eliminar la cancha/producto/estado; esto es la
+# RED DE SEGURIDAD del servidor para lo que ese borrado no alcance (teléfono sin
+# red, APK viejo, policy faltante). Apagado por defecto: se enciende recién
+# cuando la torre (/admin → Mantenimiento → Revisar) muestra números correctos,
+# para no automatizar un borrado que no se verificó.
+STORAGE_BARRIDO_AUTO = os.getenv("STORAGE_BARRIDO_AUTO", "0") == "1"
+STORAGE_BARRIDO_HORAS = os.getenv("STORAGE_BARRIDO_HORAS", "24")
+
 # Proveedor de IMÁGENES IA para el fondo de los afiches (auto-detección: se
 # usa el que esté seteado; ambos vacíos = afiche con gradiente de marca).
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()

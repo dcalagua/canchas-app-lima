@@ -115,14 +115,39 @@ def _protegido(bucket: str, name: str) -> bool:
     return bucket == "canchas" and name.startswith(PROTEGIDAS)
 
 
+def _radiografia(cur) -> dict:
+    """Qué ALCANZA A VER el barrido. Sin esto, un "0 huérfanos" es ambiguo: no
+    se distingue "todo limpio" de "no veo ni un archivo" (permisos/RLS sobre
+    `storage.objects`, o `DATABASE_URL` apuntando a otra base). Con esto el
+    operador —y quien depure— lo ve de inmediato."""
+    info: dict = {}
+    try:
+        cur.execute("select current_database()")
+        info["base"] = cur.fetchone()[0]
+    except Exception as e:  # noqa: BLE001
+        info["base"] = f"?: {str(e)[:80]}"
+    try:
+        cur.execute("select bucket_id, count(*) from storage.objects "
+                    "group by bucket_id order by bucket_id")
+        info["objetos_por_bucket"] = {b: n for b, n in cur.fetchall()}
+        info["objetos_vistos"] = sum(info["objetos_por_bucket"].values())
+    except Exception as e:  # noqa: BLE001
+        info["objetos_vistos"] = -1  # -1 = ni siquiera se pudo leer
+        info["error_storage"] = str(e)[:160]
+    return info
+
+
 def analizar() -> dict:
-    """DRY-RUN: cuántos huérfanos hay por familia y unos ejemplos. No borra."""
+    """DRY-RUN: cuántos huérfanos hay por familia y unos ejemplos. No borra.
+    Incluye una radiografía de lo que el barrido alcanza a ver."""
     if not pg.habilitado:
         return {"ok": False, "error": "sin_base_de_datos"}
     por_familia: dict[str, dict] = {}
     total = 0
+    radiografia: dict = {}
     try:
         with pg._conn() as conn, conn.cursor() as cur:
+            radiografia = _radiografia(cur)
             for familia, sql in _CONSULTAS.items():
                 try:
                     cur.execute(sql)
@@ -140,8 +165,9 @@ def analizar() -> dict:
                 }
                 total += len(filas)
     except Exception as e:  # noqa: BLE001
-        return {"ok": False, "error": str(e)[:200]}
-    return {"ok": True, "total": total, "familias": por_familia}
+        return {"ok": False, "error": str(e)[:200], "radiografia": radiografia}
+    return {"ok": True, "total": total, "familias": por_familia,
+            "radiografia": radiografia}
 
 
 def _borrar_objeto(bucket: str, name: str) -> bool:

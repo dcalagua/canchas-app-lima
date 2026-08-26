@@ -124,3 +124,66 @@ def test_limpiar_no_borra_lo_protegido_aunque_la_consulta_lo_traiga(monkeypatch)
     assert r["ok"] is True
     assert all("recargas/" not in x for x in borrados)
     assert "estados/e9.jpg" in borrados
+
+
+def test_radiografia_distingue_limpio_de_ciego(monkeypatch):
+    """Un '0 huérfanos' es ambiguo sin saber cuántos archivos alcanzó a ver el
+    barrido: sin este dato no se distingue "todo limpio" de "no veo nada"."""
+    class _Cur:
+        def __init__(self): self.ultima = ""
+        def execute(self, sql):
+            self.ultima = sql
+            if "storage.objects" in sql and "bucket_id, count" in sql:
+                self._filas = [("canchas", 12), ("estados", 3)]
+            elif "current_database" in sql:
+                self._filas = [("postgres",)]
+            else:
+                self._filas = []
+        def fetchone(self): return self._filas[0]
+        def fetchall(self): return list(self._filas)
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    class _Conn:
+        def cursor(self): return _Cur()
+        def rollback(self): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    monkeypatch.setattr(sl.pg, "habilitado", True)
+    monkeypatch.setattr(sl.pg, "_conn", lambda: _Conn())
+    r = sl.analizar()
+    assert r["ok"] is True
+    assert r["radiografia"]["objetos_vistos"] == 15
+    assert r["radiografia"]["objetos_por_bucket"]["canchas"] == 12
+
+
+def test_radiografia_marca_cuando_no_puede_leer_storage(monkeypatch):
+    """Si `storage.objects` no se puede leer (permisos/RLS), se marca con -1 en
+    vez de reportar un tranquilizador 0."""
+    class _Cur:
+        def execute(self, sql):
+            if "storage.objects" in sql:
+                raise RuntimeError("permission denied for table objects")
+            self._filas = [("postgres",)]
+        def fetchone(self): return self._filas[0]
+        def fetchall(self): return []
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    class _Conn:
+        def cursor(self): return _Cur()
+        def rollback(self): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    monkeypatch.setattr(sl.pg, "habilitado", True)
+    monkeypatch.setattr(sl.pg, "_conn", lambda: _Conn())
+    r = sl.analizar()
+    assert r["radiografia"]["objetos_vistos"] == -1
+    assert "permission denied" in r["radiografia"]["error_storage"]
+
+
+def test_barrido_automatico_apagado_por_defecto():
+    """No se automatiza un borrado hasta verificar la detección en la torre."""
+    assert config.STORAGE_BARRIDO_AUTO is False
