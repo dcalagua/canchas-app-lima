@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' show FileOptions;
 
 import '../models/producto.dart';
 import '../services/supabase_service.dart';
+import 'storage_limpieza.dart';
 
 /// Acceso a los productos del Marketplace en Supabase (tabla
 /// `pichangol_productos`). Todo fail-safe: sin Supabase o ante error devuelve
@@ -63,6 +64,8 @@ class ProductosRepo {
     if (!SupabaseService.disponible) return false;
     try {
       await SupabaseService.client.from(_tabla).delete().eq('id', id);
+      // Su foto no debe quedar huérfana en el bucket.
+      await StorageLimpieza.borrar(_bucket, ['$id.jpg']);
       return true;
     } catch (_) {
       return false;

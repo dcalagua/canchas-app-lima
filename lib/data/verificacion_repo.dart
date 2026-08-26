@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/supabase_service.dart';
+import 'storage_limpieza.dart';
 
 /// Verificación de identidad del jugador (doc + selfie). Cumplimiento Ley 29733:
 /// las imágenes van a un bucket PRIVADO ('verificacion'), NUNCA públicas y no se
@@ -14,6 +15,16 @@ class VerificacionRepo {
   static const _bucket = 'verificacion';
 
   static bool get disponible => SupabaseService.disponible;
+
+  /// Borra del bucket las fotos (documento + selfie) del usuario. Minimización
+  /// de datos personales (Ley 29733): el DNI/CI solo sirve para validar — no
+  /// debe quedarse para siempre. Lo llama "Dejar en virgen". Fail-safe.
+  static Future<void> borrarDocsDe(String email) async {
+    final e = email.trim().toLowerCase();
+    if (!disponible || e.isEmpty) return;
+    final carpeta = e.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+    await StorageLimpieza.borrarCarpeta(_bucket, carpeta);
+  }
 
   /// Sube documento + selfie al bucket privado y registra la verificación.
   /// Devuelve el estado ('verificado') o null si falló.

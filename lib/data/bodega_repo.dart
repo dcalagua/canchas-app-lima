@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' show FileOptions;
 
 import '../models/bodega.dart';
 import '../services/supabase_service.dart';
+import 'storage_limpieza.dart';
 
 /// MI BODEGA en Supabase (tablas `pichangol_bodega_productos` y
 /// `pichangol_bodega_ventas`). Fail-safe: sin backend no rompe la app.
@@ -80,6 +81,9 @@ class BodegaRepo {
       await SupabaseService.client
           .from(_tProductos)
           .update({'eliminado': true}).eq('id', id);
+      // Borra SU foto del bucket (ruta por id de producto). Los packshots IA
+      // genéricos (`bodega/packshot_*.jpg`) son compartidos y NO se tocan.
+      await StorageLimpieza.borrar('canchas', ['bodega/$id.jpg']);
       return true;
     } catch (_) {
       return false;

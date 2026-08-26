@@ -607,6 +607,14 @@ class AppState extends ChangeNotifier {
   /// con pull-to-refresh.
   Future<void> cargarEstados() async {
     if (!EstadosRepo.disponible) return;
+    // Barrido de MIS estados vencidos (media + filas): cada usuario limpia lo
+    // suyo al cargar, así el bucket no acumula historias muertas. Best-effort
+    // en segundo plano — no frena la carga de los vigentes.
+    final yo = usuario?.email;
+    if (yo != null && yo.isNotEmpty) {
+      // ignore: unawaited_futures
+      EstadosRepo.limpiarVencidosDe(yo);
+    }
     final vigentes = await EstadosRepo.fetchVigentes();
     _estados
       ..clear()
@@ -7147,6 +7155,12 @@ class AppState extends ChangeNotifier {
       for (final id in misCanchaIds) {
         eliminarCancha(id);
       }
+      // MIS estados/historias: filas + media del bucket (todos, no solo los
+      // vencidos — "borra TODO lo tuyo").
+      await EstadosRepo.limpiarVencidosDe(email, antiguedad: Duration.zero);
+      // Fotos de mi verificación (doc + selfie): minimización de datos (Ley
+      // 29733) — el documento ya validó, no debe quedarse en el bucket.
+      await VerificacionRepo.borrarDocsDe(email);
       // Torre de control (backend): borra MIS reclamos de propiedad para que mis
       // canchas reclamadas también desaparezcan del servidor.
       await PropiedadService.borrarMisReclamos(email);

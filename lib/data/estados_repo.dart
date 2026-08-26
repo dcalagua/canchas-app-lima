@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' show FileOptions;
 
 import '../models/estado.dart';
 import '../services/supabase_service.dart';
+import 'storage_limpieza.dart';
 
 /// Acceso a los ESTADOS / HISTORIAS (tipo WhatsApp) en Supabase. Tabla
 /// `pichangol_estados` (dura 24 h) + tabla `pichangol_estados_vistas` (quién vio
@@ -50,14 +51,49 @@ class EstadosRepo {
     }
   }
 
-  /// Borra un estado propio. Fail-safe.
+  /// Borra un estado propio (fila + su media del bucket). Fail-safe.
   static Future<bool> eliminar(String id) async {
     if (!disponible) return false;
     try {
       await SupabaseService.client.from(_tabla).delete().eq('id', id);
+      await StorageLimpieza.borrar(_bucket, ['$id.jpg', '$id.mp4']);
       return true;
     } catch (_) {}
     return false;
+  }
+
+  /// Barre los estados VENCIDOS (más viejos que [antiguedad], default 24 h)
+  /// del autor [email]: borra su media del bucket, sus vistas y sus filas.
+  /// Cada usuario limpia lo SUYO al cargar estados ("cada uno barre su
+  /// vereda") — así el bucket no acumula historias muertas sin necesitar un
+  /// cron en el servidor. Con `antiguedad: Duration.zero` borra TODOS los
+  /// estados del autor (lo usa "Dejar en virgen"). Fail-safe.
+  static Future<void> limpiarVencidosDe(String email,
+      {Duration antiguedad = const Duration(hours: 24)}) async {
+    final e = email.trim().toLowerCase();
+    if (!disponible || e.isEmpty) return;
+    try {
+      final limite =
+          DateTime.now().toUtc().subtract(antiguedad).toIso8601String();
+      final rows = await SupabaseService.client
+          .from(_tabla)
+          .select('id')
+          .eq('autor_email', e)
+          .lt('creado_en', limite);
+      final ids = [
+        for (final r in (rows as List))
+          ((r as Map)['id'] ?? '').toString()
+      ]..removeWhere((id) => id.isEmpty);
+      if (ids.isEmpty) return;
+      await StorageLimpieza.borrar(_bucket, [
+        for (final id in ids) ...['$id.jpg', '$id.mp4'],
+      ]);
+      await SupabaseService.client
+          .from(_tablaVistas)
+          .delete()
+          .inFilter('estado_id', ids);
+      await SupabaseService.client.from(_tabla).delete().inFilter('id', ids);
+    } catch (_) {}
   }
 
   /// Marca que [email] vio el estado [estadoId] (upsert idempotente).

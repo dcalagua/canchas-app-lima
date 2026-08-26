@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' show FileOptions;
 
 import '../models/models.dart';
 import '../services/supabase_service.dart';
+import 'storage_limpieza.dart';
 
 /// Acceso a canchas en Supabase (tabla `pichangol_canchas`). Todo es fail-safe:
 /// si Supabase no está disponible o falla, devuelve vacío / no hace nada y la
@@ -128,6 +129,10 @@ class CanchasRepo {
           .from(_tabla)
           .update({'eliminada': true}).eq('id', id);
     } catch (_) {}
+    // Limpia sus fotos del bucket (portada + galería): una cancha eliminada
+    // no debe dejar archivos huérfanos ocupando storage.
+    await StorageLimpieza.borrar('canchas', ['$id.jpg']);
+    await StorageLimpieza.borrarCarpeta('canchas', id);
   }
 
   /// Motivo del último fallo de [subirFoto], en texto legible para el dueño.

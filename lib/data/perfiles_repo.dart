@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/supabase_service.dart';
+import 'storage_limpieza.dart';
 
 /// PERFILES públicos de usuario en Supabase (`pichangol_perfiles`): el nombre y
 /// la foto que la persona quiere mostrar (a veces su Gmail muestra cualquier
@@ -83,6 +84,9 @@ class PerfilesRepo {
             fileOptions:
                 const FileOptions(contentType: 'image/jpeg', upsert: true),
           );
+      // Los avatares se versionan por timestamp: borra los ANTERIORES para
+      // que cada cambio de foto no deje huérfanos acumulándose en el bucket.
+      await StorageLimpieza.borrarCarpeta('chat', carpeta, excepto: path);
       return SupabaseService.client.storage.from('chat').getPublicUrl(path);
     } catch (_) {
       return null;

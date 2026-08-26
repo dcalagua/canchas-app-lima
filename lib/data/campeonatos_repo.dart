@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' show FileOptions;
 
 import '../models/campeonato.dart';
 import '../services/supabase_service.dart';
+import 'storage_limpieza.dart';
 
 /// Acceso a CAMPEONATOS en Supabase (tabla `pichangol_campeonatos`). Guarda el
 /// campeonato completo (participantes + fixture + resultados) como JSON en la
@@ -134,5 +135,7 @@ class CampeonatosRepo {
           .from(_tabla)
           .update({'eliminado': true}).eq('id', id);
     } catch (_) {}
+    // Su afiche/foto no debe quedar huérfano en el bucket.
+    await StorageLimpieza.borrar('canchas', ['campeonatos/$id.jpg']);
   }
 }
