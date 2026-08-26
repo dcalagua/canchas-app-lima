@@ -1,3 +1,11 @@
+-- ⚠️ OBSOLETO — usa la TORRE DE CONTROL en su lugar.
+--
+-- Este script dependía de pg_net (asíncrono, sin forma de ver el error desde
+-- el SQL Editor) y por eso podía "correr bien" sin borrar nada. El barrido
+-- ahora vive en la torre: /admin → Mantenimiento → "Limpiar almacenamiento",
+-- con revisión previa (cuántos huérfanos hay y ejemplos) antes de borrar.
+-- Se conserva solo como referencia de las reglas de detección.
+--
 -- LIMPIEZA ÚNICA de archivos HUÉRFANOS históricos en Storage (dev/piloto).
 -- Borra vía el STORAGE API (pg_net) — la forma correcta: elimina el archivo
 -- físico, no solo la fila. Requiere haber corrido antes

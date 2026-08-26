@@ -258,6 +258,16 @@ off → redeploy inmediato en cada push). URL pública:
   🎁. `/pagos/saldo` devuelve `saldo_promo_soles`; el APK lo pinta en la
   billetera (banner 🎁 en `cuenta_screen`, silencia el aviso "saldo bajo"
   mientras haya regalo).
+- **Limpieza de Storage (hecho ago-2026):** el APK borra cada archivo cuando
+  muere su dueño lógico (`lib/data/storage_limpieza.dart` + los `eliminar` de
+  canchas/estados/productos/bodega/campeonatos, avatares viejos al cambiar foto,
+  y estados+docs de identidad en "Dejar en virgen"). Para lo ACUMULADO antes,
+  la torre `/admin` → Mantenimiento → **"Limpiar almacenamiento"** hace el
+  barrido de huérfanos (`backend/growth/storage_limpieza.py`: detecta por SQL
+  contra `storage.objects` con LEFT JOIN —nunca `NOT IN`, que con un NULL
+  devuelve vacío en silencio— y borra por Storage API). **Jamás se borran**
+  `canchas/recargas/*` (constancias), `ilustraciones/` ni `bodega/packshot*`.
+  Requiere las policies de `docs/piloto/supabase_storage_limpieza.sql`.
 - **Tests:** `cd backend/growth && python3 -m pytest -q` (deben pasar todos).
   Cumplimiento Ley 29733 (DNI = dato personal: solo validar dueño, no publicar).
 

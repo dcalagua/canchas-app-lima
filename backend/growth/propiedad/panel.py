@@ -25,6 +25,7 @@ import config
 from convocatorias import service as convocatorias_service
 from db import pg
 from db.store import stores
+import storage_limpieza
 from propiedad import admin_auth, reclamos
 
 router = APIRouter(tags=["panel"])
@@ -326,6 +327,25 @@ def reiniciar_pagos_admin(
     _check(x_admin_token)
     n = stores.reiniciar_libro_pagos()
     return {"ok": True, "borrados": n}
+
+
+@router.get("/admin/api/storage/huerfanos")
+def storage_huerfanos_admin(
+        x_admin_token: str | None = Header(default=None)) -> dict:
+    """DRY-RUN del barrido de Storage: cuántos archivos quedaron sin dueño
+    (canchas borradas, historias vencidas, avatares viejos…) y ejemplos. No
+    borra nada — es lo que la torre muestra antes de que el operador confirme."""
+    _check(x_admin_token)
+    return storage_limpieza.analizar()
+
+
+@router.post("/admin/api/storage/limpiar")
+def storage_limpiar_admin(
+        x_admin_token: str | None = Header(default=None)) -> dict:
+    """Borra los huérfanos detectados (borrado FÍSICO vía Storage API). Las
+    constancias de recargas y el arte compartido quedan protegidos siempre."""
+    _check(x_admin_token)
+    return storage_limpieza.limpiar()
 
 
 @router.post("/admin/api/reset-virgen")
@@ -1533,8 +1553,79 @@ function renderMantenimiento(){
       <div class="actions" style="flex-wrap:wrap;gap:8px">
         <button class="btn-rc" style="font-weight:800;background:#9A1722;color:#fff;border-color:#9A1722" onclick="resetTotal()">🧨 Borrar TODO (virgen total)</button>
       </div>
+      <div class="row" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+        <b>\U0001F9F9 Limpiar almacenamiento (archivos huérfanos)</b><br/>
+        Borra del Storage los archivos cuyo dueño ya no existe: fotos de canchas
+        eliminadas, historias vencidas, fotos de productos borrados, afiches de
+        campeonatos, avatares viejos y documentos de identidad sin referencia.
+        <b>Nunca toca</b> las constancias de recargas ni el arte compartido.
+        Primero revisa qué encontró; recién ahí borra.
+      </div>
+      <div class="actions" style="flex-wrap:wrap;gap:8px">
+        <button class="btn-ap" onclick="revisarStorage()">\U0001F50D Revisar archivos huérfanos</button>
+        <button class="btn-rc" onclick="limpiarStorage()">\U0001F9F9 Borrar huérfanos</button>
+      </div>
+      <div id="stg_res" class="row" style="margin-top:8px;color:var(--muted)"></div>
       <div id="mant_res" class="row" style="margin-top:10px;color:var(--muted)"></div>
     </div>`;
+}
+function modalConfirmar(titulo, mensaje, textoOk){
+  return new Promise(res=>{
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(10,20,15,.45);'+
+      'display:flex;align-items:center;justify-content:center;z-index:9999';
+    ov.innerHTML = `
+      <div style="background:#fff;border-radius:18px;max-width:420px;width:92%;padding:20px 22px;box-shadow:0 18px 50px rgba(0,0,0,.25)">
+        <div style="font-weight:800;font-size:16px">${titulo}</div>
+        <div style="color:var(--muted);font-size:13px;margin-top:6px;line-height:1.45">${mensaje}</div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
+          <button id="mc_no" style="padding:9px 16px;border-radius:999px;border:none;background:transparent;font-weight:700;cursor:pointer">Cancelar</button>
+          <button id="mc_si" class="btn-rc" style="padding:9px 18px;border-radius:999px;cursor:pointer;font-weight:800">${textoOk}</button>
+        </div>
+      </div>`;
+    ov.querySelector('#mc_no').onclick=()=>{ ov.remove(); res(false); };
+    ov.onclick=e=>{ if(e.target===ov){ ov.remove(); res(false); } };
+    ov.querySelector('#mc_si').onclick=()=>{ ov.remove(); res(true); };
+    document.body.appendChild(ov);
+  });
+}
+function pintarStorage(j){
+  const el = document.getElementById('stg_res');
+  if(!j || !j.ok){ el.textContent = 'No se pudo revisar: ' + ((j&&j.error)||'error'); return; }
+  const fam = j.familias||{};
+  const lineas = Object.keys(fam).map(k=>{
+    const f = fam[k];
+    if(f.error) return `• ${k}: no se pudo leer (${f.error})`;
+    return `• ${k}: ${f.n}` + (f.n && f.ejemplos&&f.ejemplos.length ? ` (ej. ${f.ejemplos[0]})` : '');
+  });
+  el.innerHTML = `<b>Huérfanos detectados: ${j.total||0}</b><br/>` + lineas.join('<br/>');
+}
+async function revisarStorage(){
+  const el = document.getElementById('stg_res');
+  el.textContent = 'Revisando…';
+  try{
+    const r = await fetch('/admin/api/storage/huerfanos',{headers:headers(),cache:'no-store'});
+    if(r.status===401){ salir(); return; }
+    pintarStorage(await r.json());
+  }catch(e){ el.textContent='No se pudo revisar.'; }
+}
+async function limpiarStorage(){
+  const ok = await modalConfirmar('¿Borrar los archivos huérfanos?',
+    'Se eliminan del Storage los archivos cuyo dueño ya no existe. Las constancias de recargas y el arte compartido quedan intactos. Esto no se puede deshacer.',
+    'Sí, borrar');
+  if(!ok) return;
+  const el = document.getElementById('stg_res');
+  el.textContent = 'Borrando… (puede tomar un minuto)';
+  try{
+    const r = await fetch('/admin/api/storage/limpiar',{method:'POST',headers:headers()});
+    if(r.status===401){ salir(); return; }
+    const j = await r.json();
+    if(!j.ok){ el.textContent = 'No se pudo: ' + (j.error||'error'); return; }
+    el.innerHTML = `<b>Listo:</b> ${j.borrados||0} archivos borrados` +
+      (j.fallidos ? `, ${j.fallidos} fallaron (¿falta la policy de DELETE del bucket?)` : '') +
+      (j.pendientes ? `, ${j.pendientes} quedaron para la próxima corrida` : '') + '.';
+    toast('Almacenamiento limpio');
+  }catch(e){ el.textContent='No se pudo borrar.'; }
 }
 async function resetTotal(){
   if(!confirm('⚠️ VIRGEN TOTAL\\n\\nBorra ABSOLUTAMENTE TODO del servidor, INCLUIDOS los reclamos de propiedad (las canchas dejan de estar reclamadas) y la config. Esto NO se puede deshacer.')) return;
