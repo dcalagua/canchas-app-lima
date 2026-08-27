@@ -26,6 +26,17 @@ jugador es 100% Pichangol, EBIM solo aparece discreto como respaldo).
 - **Idioma:** todas las respuestas al usuario en **español**.
 - **Rama de desarrollo:** `claude/apk-google-maps-setup-fvpl9w`. Commitear y
   pushear ahí (`git push -u origin <rama>`). No crear PRs salvo que se pida.
+- **PRODUCCIÓN SOLO CON AUTORIZACIÓN EXPLÍCITA (regla del director, ago-2026):**
+  nada toca PRD hasta que el director diga "pasa a PRD" / "sube a producción".
+  Eso incluye: push a la rama `prd`, migraciones o SQL sobre **PCG-PRD**
+  (`xjoqotzfgniinxyxvhxj`), variables de `pg-backend-prd` en Railway y builds
+  de PRD. Sin esa orden, se trabaja SIEMPRE contra dev/QAS: rama
+  `claude/apk-google-maps-setup-fvpl9w`, Supabase **"Pichangol"**
+  (`iuwnpjbxsltgmsybooeg`, otra cuenta — el conector MCP de Claude NO la ve) y
+  torre `https://pg-backend-production-c176.up.railway.app/admin`. Ojo: el
+  conector Supabase de Claude sí ve PCG-PRD, así que es fácil tocar producción
+  por accidente; ante la duda, preguntar. Cada torre muestra a qué proyecto
+  habla en Mantenimiento → Limpiar almacenamiento (línea "Base de datos / Storage").
 - **No exponer secretos** en commits/PRs/código. El usuario ha pegado en el chat
   contraseñas/tokens (DB, Factiliza) — recordar rotarlos; nunca guardarlos en el
   repo. No incluir el identificador de modelo en artefactos del repo.
