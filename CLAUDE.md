@@ -193,6 +193,18 @@ off → redeploy inmediato en cada push). URL pública:
   validar en sitio), `service.py` (OTP), `identidad.py` (Factiliza DNI/RUC),
   `twilio_adapter.py` + `whatsapp_adapter.py` (OTP multicanal), `router.py`,
   `panel.py` (panel web admin).
+- **TORRES DE CONTROL (una por ambiente, IDÉNTICAS a la vista):**
+  - **QAS / dev** → `https://pg-backend-production-c176.up.railway.app/admin`
+    (mismo servicio: `https://pg.ebim.pe/admin`). Habla con Supabase
+    **"Pichangol"** (`iuwnpjbxsltgmsybooeg`). Es la de trabajo diario.
+  - **PRD** → `https://pg-backend-prd-production.up.railway.app/admin`. Habla
+    con **PCG-PRD** (`xjoqotzfgniinxyxvhxj`). NO se toca sin autorización.
+  - ⚠️ **TRAMPA:** `https://www.pichangol.app/admin` hoy apunta al servicio
+    **dev/QAS** (`pg-backend`), NO a producción. El dominio recién se mueve a
+    PRD en el corte (ver «Estrategia de ambientes»). Hasta entonces, entrar por
+    ahí creyendo que es producción es un error fácil.
+  - Cada torre muestra su ambiente en la barra lateral (`PICHANGOL_ENTORNO` +
+    ref del proyecto Supabase; PRD sale en rojo). Ante la duda, mirar ahí.
 - **Panel web `/admin` = TORRE DE CONTROL del operador (SaaS).** Página HTML
   self-contained, co-marca **Pichangol + EBIM** (solo aquí), protegida por
   **`ADMIN_PANEL_TOKEN`** (header `X-Admin-Token`, no viaja en URL). Endpoints

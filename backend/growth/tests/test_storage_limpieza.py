@@ -317,3 +317,24 @@ def test_ref_del_proyecto_se_extrae_sin_exponer_credenciales():
     assert sl._ref_de_url(url) == "abcdefghijklmnop"
     assert "CLAVE" not in sl._ref_de_url(url)
     assert sl._ref_de_url("") == ""
+
+
+def test_la_torre_dice_siempre_a_que_ambiente_habla(monkeypatch):
+    """Las torres de QAS y PRD son idénticas; confundirlas ya hizo creer que
+    producción estaba sucia cuando lo sucio era dev. La página debe llevar el
+    ambiente a la vista, sin depender de recordar la URL."""
+    from propiedad import panel
+
+    monkeypatch.setattr(config, "SUPABASE_URL", "https://abcdefghijklmnop.supabase.co")
+    monkeypatch.setenv("PICHANGOL_ENTORNO", "PRD")
+    html = panel.panel()
+    assert "PRD · abcdefghijklmnop" in html
+    assert "__AMBIENTE__" not in html  # el marcador quedó reemplazado
+
+    # Sin la env, el ref del proyecto ya identifica el ambiente.
+    monkeypatch.delenv("PICHANGOL_ENTORNO")
+    assert "abcdefghijklmnop" in panel.panel()
+
+    # Sin nada configurado, lo dice en vez de mostrar un vacío tranquilizador.
+    monkeypatch.setattr(config, "SUPABASE_URL", "")
+    assert "ambiente sin identificar" in panel.panel()

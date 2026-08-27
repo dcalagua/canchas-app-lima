@@ -13,6 +13,7 @@ en la cabecera X-Admin-Token. Sin `ADMIN_PANEL_TOKEN`, el panel responde 503.
 
 from __future__ import annotations
 
+import os
 import time
 
 from datetime import datetime, timezone
@@ -815,7 +816,21 @@ def get_canal_publico() -> dict:
 
 @router.get("/admin", response_class=HTMLResponse)
 def panel() -> str:
-    return _HTML
+    """La torre de QAS y la de PRD son idénticas: se distinguen sólo por la URL,
+    y confundirlas hace tomar decisiones sobre el ambiente equivocado (o creer
+    que producción está sucia cuando lo sucio es dev). Por eso la página lleva
+    SIEMPRE, a la vista, el ambiente y el proyecto Supabase con el que habla."""
+    return _HTML.replace("__AMBIENTE__", _etiqueta_ambiente())
+
+
+def _etiqueta_ambiente() -> str:
+    """`PICHANGOL_ENTORNO` manda si está seteado (QAS / PRD); si no, se muestra
+    el ref del proyecto Supabase, que ya identifica el ambiente sin ambigüedad."""
+    entorno = (os.getenv("PICHANGOL_ENTORNO", "") or "").strip().upper()
+    ref = storage_limpieza._ref_de_url(config.SUPABASE_URL)
+    if entorno and ref:
+        return f"{entorno} · {ref}"
+    return entorno or ref or "ambiente sin identificar"
 
 
 _HTML = r"""<!DOCTYPE html>
@@ -967,6 +982,8 @@ _HTML = r"""<!DOCTYPE html>
   .side-brand .pin{width:34px;height:34px;border-radius:10px;overflow:hidden;flex-shrink:0}
   .side-brand .wm{font-size:18px;color:var(--ink)}
   .side-sub{font-size:10.5px;font-weight:700;color:var(--muted);margin-top:1px}
+    .side-amb{font-size:11px;font-weight:800;letter-spacing:.4px;margin-top:4px;padding:2px 8px;border-radius:999px;display:inline-block;background:#EBEBEB;color:#555}
+    .side-amb.prd{background:#9A1722;color:#fff}
   .side-sub .ebim{color:var(--green-deep);font-size:10.5px}
   .nav{display:flex;flex-direction:column;gap:2px;flex:1}
   .side-cred{text-align:center;font-size:11px;color:var(--muted);font-weight:600;
@@ -1206,6 +1223,7 @@ _HTML = r"""<!DOCTYPE html>
       <div>
         <span class="wm">Pichang<svg class="ball" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polygon points="12,8.2 14.9,10.3 13.8,13.8 10.2,13.8 9.1,10.3"/><path d="M12 8.2V4.3M14.9 10.3l3.6-1.7M13.8 13.8l2.5 3.2M10.2 13.8l-2.5 3.2M9.1 10.3L5.5 8.6"/></svg>l</span>
         <div class="side-sub">Torre de control · <span class="ebim">EBIM</span></div>
+        <div class="side-amb" id="side_amb" title="Proyecto Supabase al que habla esta torre"></div>
       </div>
     </div>
     <nav class="nav" id="topnav">
@@ -2851,6 +2869,13 @@ function toast(msg){
   const d=document.createElement('div'); d.className='toast'; d.textContent=msg;
   document.body.appendChild(d); setTimeout(()=>d.remove(),2600);
 }
+(function pintarAmbiente(){
+  const el = document.getElementById('side_amb');
+  if(!el) return;
+  const txt = "__AMBIENTE__";
+  el.textContent = txt;
+  if(/PRD|PROD/i.test(txt)) el.classList.add('prd');
+})();
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
 
 function renderTabs(){
