@@ -222,6 +222,18 @@ def test_cubre_todos_los_buckets_que_el_app_usa():
                        "grupos", "verificacion"}
 
 
+def test_avatar_sobrevive_solo_si_el_perfil_lo_apunta():
+    """REGRESIÓN: antes se conservaba "el más nuevo" de cada usuario, así que la
+    foto quedaba para siempre aunque el perfil se hubiera borrado o ya no la
+    usara. Ahora sobrevive únicamente la que una fila de perfil referencia."""
+    sql = sl._CONSULTAS["avatares"]
+    assert "left join pichangol_perfiles" in sql
+    assert "p.foto_url like" in sql
+    assert "p.email is null" in sql
+    # Ya no queda rastro de la regla vieja ("conserva el máximo por carpeta").
+    assert "max(o2.name)" not in sql
+
+
 def test_media_referenciada_se_cruza_por_url_no_por_nombre():
     """La media de posts y chats se cruza contra la URL guardada en su fila:
     adivinar el id desde el nombre del archivo es lo que falla cuando la ruta

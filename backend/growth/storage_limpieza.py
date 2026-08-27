@@ -101,15 +101,17 @@ _CONSULTAS: dict[str, str] = {
         where o.bucket_id = 'productos' and position('/' in o.name) = 0
           and p.id is null
     """,
-    # Avatares: se versionan por timestamp; sobrevive sólo el más nuevo de cada
-    # usuario. La media de los CHATS va aparte (abajo).
-    "avatares_viejos": """
+    # Avatares: sobrevive el que el PERFIL realmente apunta, no "el más nuevo".
+    # Antes se conservaba siempre el último archivo de cada usuario, así que la
+    # foto quedaba para siempre aunque el perfil se hubiera borrado o ya no la
+    # usara. Una imagen que ninguna fila referencia no se ve en ningún lado del
+    # app: es basura (y, si es la foto de una persona, además un dato personal
+    # que no corresponde conservar).
+    "avatares": """
         select 'chat', o.name from storage.objects o
+        left join pichangol_perfiles p on p.foto_url like '%' || o.name
         where o.bucket_id = 'chat' and o.name like 'perfiles/%'
-          and o.name <> (
-            select max(o2.name) from storage.objects o2
-            where o2.bucket_id = 'chat' and o2.name like 'perfiles/%'
-              and split_part(o2.name, '/', 2) = split_part(o.name, '/', 2))
+          and position('/' in o.name) > 0 and p.email is null
     """,
     # Media de chats cuyos mensajes ya no existen (se borró la conversación).
     # Se cruza contra la URL guardada en el mensaje —incluida la de una cita—,
