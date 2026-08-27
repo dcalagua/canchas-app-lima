@@ -1625,16 +1625,19 @@ function pintarStorage(j){
     (rx.ve_todo === true ? '<b>sí</b>'
       : `<b style="color:#9A1722">${veTodo}</b> (si no las ve todas, un 0 no significa "limpio")`) +
     `</div>`;
+  // OJO: aquí va `+=`, no `=`. Con asignación estas ramas BORRABAN el
+  // diagnóstico de arriba, que es justamente el dato que hacía falta para
+  // interpretar el conteo (y por eso nunca llegó a verse en pantalla).
   if(rx.objetos_vistos === -1){
-    cabecera = `<b style="color:#9A1722">⚠️ No se puede leer storage.objects</b>` +
+    cabecera += `<b style="color:#9A1722">⚠️ No se puede leer storage.objects</b>` +
       `<br/>${rx.error_storage||''}<br/>Sin esto el barrido no ve nada (0 no significa "limpio").<br/>`;
   } else if(rx.objetos_vistos === 0){
-    cabecera = `<b style="color:#9A1722">⚠️ El barrido no ve ningún archivo</b>` +
-      `<br/>Base: <code>${rx.base||'?'}</code>. Revisa que DATABASE_URL apunte al mismo proyecto que el Storage.<br/>`;
+    cabecera += `<b style="color:#9A1722">⚠️ El barrido no ve ningún archivo</b>` +
+      `<br/>Revisa que DATABASE_URL apunte al mismo proyecto que el Storage.<br/>`;
   } else if(rx.objetos_vistos !== undefined){
     const porB = rx.objetos_por_bucket||{};
     const det = Object.keys(porB).map(b=>`${b}: ${porB[b]}`).join(' · ');
-    cabecera = `Archivos vistos: <b>${rx.objetos_vistos}</b> (${det})<br/>`;
+    cabecera += `Archivos vistos: <b>${rx.objetos_vistos}</b> (${det})<br/>`;
   }
   const fam = j.familias||{};
   const lineas = Object.keys(fam).map(k=>{
