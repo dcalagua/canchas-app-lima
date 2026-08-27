@@ -259,6 +259,20 @@ def _radiografia(cur) -> dict:
     except Exception as e:  # noqa: BLE001
         info["objetos_vistos"] = -1  # -1 = ni siquiera se pudo leer
         info["error_storage"] = str(e)[:160]
+    # Archivos que no corresponden a nada conocido: se REPORTAN, nunca se
+    # borran (contracara del principio "no borrar lo que no se reconoce").
+    try:
+        cur.execute(_SQL_DESCONOCIDOS)
+        info["desconocidos"] = [n for (n,) in cur.fetchall()]
+    except Exception:  # noqa: BLE001
+        info["desconocidos"] = []
+    # ¿El recolector de basura está armado? Lo dice la torre para que el
+    # operador lo confirme sin entrar a Railway a mirar la variable.
+    info["barrido_auto"] = bool(config.STORAGE_BARRIDO_AUTO)
+    try:
+        info["barrido_horas"] = max(1, int(config.STORAGE_BARRIDO_HORAS))
+    except (TypeError, ValueError):
+        info["barrido_horas"] = 24
     return info
 
 

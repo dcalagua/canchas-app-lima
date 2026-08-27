@@ -338,3 +338,35 @@ def test_la_torre_dice_siempre_a_que_ambiente_habla(monkeypatch):
     # Sin nada configurado, lo dice en vez de mostrar un vacío tranquilizador.
     monkeypatch.setattr(config, "SUPABASE_URL", "")
     assert "ambiente sin identificar" in panel.panel().body.decode()
+
+
+def test_la_torre_reporta_si_el_barrido_automatico_esta_armado(monkeypatch):
+    """El operador debe poder confirmar desde la torre que el recolector quedó
+    encendido, sin entrar a Railway a mirar la variable."""
+    class _Cur:
+        def execute(self, sql):
+            self._filas = ([("postgres", True)] if "current_user" in sql
+                           else [(True,)] if "select exists" in sql
+                           else [("canchas", 14)] if "bucket_id, count" in sql
+                           else [])
+        def fetchone(self): return self._filas[0]
+        def fetchall(self): return list(self._filas)
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    class _Conn:
+        def cursor(self): return _Cur()
+        def rollback(self): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    monkeypatch.setattr(sl.pg, "habilitado", True)
+    monkeypatch.setattr(sl.pg, "_conn", lambda: _Conn())
+    monkeypatch.setattr(config, "STORAGE_BARRIDO_AUTO", True)
+    monkeypatch.setattr(config, "STORAGE_BARRIDO_HORAS", "24")
+    r = sl.analizar()
+    assert r["radiografia"]["barrido_auto"] is True
+    assert r["radiografia"]["barrido_horas"] == 24
+
+    monkeypatch.setattr(config, "STORAGE_BARRIDO_AUTO", False)
+    assert sl.analizar()["radiografia"]["barrido_auto"] is False

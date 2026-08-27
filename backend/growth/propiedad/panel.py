@@ -1630,6 +1630,10 @@ function pintarStorage(j){
     `<br/>Usuario BD: <code>${rx.usuario_bd||'?'}</code> · ve todas las filas: ` +
     (rx.ve_todo === true ? '<b>sí</b>'
       : `<b style="color:#9A1722">${veTodo}</b> (si no las ve todas, un 0 no significa "limpio")`) +
+    `<br/>Barrido automático: ` +
+    (rx.barrido_auto
+      ? `<b style="color:#1F6E49">activado</b> (cada ${rx.barrido_horas||24} h)`
+      : `<b>apagado</b> — sólo se limpia cuando pulsas el botón`) +
     `</div>`;
   // OJO: aquí va `+=`, no `=`. Con asignación estas ramas BORRABAN el
   // diagnóstico de arriba, que es justamente el dato que hacía falta para
