@@ -1,3 +1,9 @@
+-- ⚠️ NO CORRER "POR SI ACASO". Este script es una CONTINGENCIA: sólo aplica si
+-- la torre muestra "ve todas las filas: NO" apuntando al proyecto correcto.
+-- El caso que lo motivó resultó ser otro (se estaba mirando la torre de PRD,
+-- cuya base está vacía por diseño), así que la ceguera por RLS quedó SIN
+-- confirmar. Verifica primero el diagnóstico de la torre.
+--
 -- LECTURA DE storage.objects PARA EL SERVIDOR (arregla el "0 huérfanos" falso).
 --
 -- Síntoma: la torre (/admin → Mantenimiento → Limpiar almacenamiento) reporta
