@@ -199,10 +199,13 @@ off → redeploy inmediato en cada push). URL pública:
     **"Pichangol"** (`iuwnpjbxsltgmsybooeg`). Es la de trabajo diario.
   - **PRD** → `https://pg-backend-prd-production.up.railway.app/admin`. Habla
     con **PCG-PRD** (`xjoqotzfgniinxyxvhxj`). NO se toca sin autorización.
-  - ⚠️ **TRAMPA:** `https://www.pichangol.app/admin` hoy apunta al servicio
-    **dev/QAS** (`pg-backend`), NO a producción. El dominio recién se mueve a
-    PRD en el corte (ver «Estrategia de ambientes»). Hasta entonces, entrar por
-    ahí creyendo que es producción es un error fácil.
+  - **`www.pichangol.app` → PRD** (movido ago-2026, autorizado por el director):
+    el dominio de marca apunta al servicio `pg-backend-prd`, así que
+    `https://www.pichangol.app/admin` **es la torre de PRODUCCIÓN**. Antes
+    apuntaba a dev/QAS y esa trampa hizo revisar producción creyendo que era
+    dev. QAS queda con `pg.ebim.pe` y su host `*.up.railway.app`.
+    Las landings del piloto siguen emitiendo `pg.ebim.pe` (`LANDING_BASE_URL`
+    de `pg-backend` sin cambios); la de PRD se ajusta en el corte.
   - Cada torre muestra su ambiente en la barra lateral (`PICHANGOL_ENTORNO` +
     ref del proyecto Supabase; PRD sale en rojo). Ante la duda, mirar ahí.
 - **Panel web `/admin` = TORRE DE CONTROL del operador (SaaS).** Página HTML
