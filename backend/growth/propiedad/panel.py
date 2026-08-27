@@ -1593,17 +1593,20 @@ function pintarStorage(j){
   const el = document.getElementById('stg_res');
   if(!j || !j.ok){ el.textContent = 'No se pudo revisar: ' + ((j&&j.error)||'error'); return; }
   const rx = j.radiografia||{};
-  let cabecera = '';
-  if(rx.proyecto_bd && rx.proyecto_storage && rx.proyecto_bd !== rx.proyecto_storage){
-    cabecera += `<b style="color:#9A1722">⚠️ La base y el Storage son de proyectos distintos</b>` +
-      `<br/>BD: <code>${rx.proyecto_bd}</code> · Storage: <code>${rx.proyecto_storage}</code>` +
-      `<br/>Se comparan archivos de un proyecto contra filas de otro: el resultado no sirve.<br/>`;
-  }
-  if(rx.ve_todo === false){
-    cabecera += `<b style="color:#9A1722">⚠️ El usuario de la BD no ve todas las filas</b>` +
-      `<br/>Usuario <code>${rx.usuario_bd||'?'}</code> sin permiso para saltar RLS: ve una parte del Storage ` +
-      `y cree que el resto no existe. Por eso puede reportar 0 huérfanos siendo falso.<br/>`;
-  }
+  // Los diagnósticos se muestran SIEMPRE con su valor: si sólo se avisara
+  // cuando fallan, un dato que no se pudo leer se vería igual que "todo bien".
+  const bd = rx.proyecto_bd || '(no reconocido)';
+  const stg = rx.proyecto_storage || '(no reconocido)';
+  const mismo = rx.proyecto_bd && rx.proyecto_storage && rx.proyecto_bd === rx.proyecto_storage;
+  const veTodo = rx.ve_todo === true ? 'sí' : (rx.ve_todo === false ? 'NO' : '(no se pudo leer)');
+  let cabecera = `<div style="margin-bottom:6px">Base de datos: <code>${bd}</code> · ` +
+    `Storage: <code>${stg}</code> ` +
+    (mismo ? '✓ mismo proyecto'
+           : '<b style="color:#9A1722">⚠️ NO es el mismo proyecto: se comparan archivos de uno contra filas de otro</b>') +
+    `<br/>Usuario BD: <code>${rx.usuario_bd||'?'}</code> · ve todas las filas: ` +
+    (rx.ve_todo === true ? '<b>sí</b>'
+      : `<b style="color:#9A1722">${veTodo}</b> (si no las ve todas, un 0 no significa "limpio")`) +
+    `</div>`;
   if(rx.objetos_vistos === -1){
     cabecera = `<b style="color:#9A1722">⚠️ No se puede leer storage.objects</b>` +
       `<br/>${rx.error_storage||''}<br/>Sin esto el barrido no ve nada (0 no significa "limpio").<br/>`;
