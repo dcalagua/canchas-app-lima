@@ -501,6 +501,17 @@ solo videos del propio Supabase. El video NO se conserva en el backend.
 Fase 2 (backlog): pose estimation on-device (ML Kit — ojo plugin nativo vs
 Flutter 3.24.5, probar en CI aislado).
 
+### Feature flags por ENTORNO (`lib/config/features.dart`)
+
+El CI inyecta `--dart-define=ENTORNO=dev|qas|prod`, y de ahí salen `kEntorno` y
+`kEsProduccion`. Lo que aún se prueba se ata al entorno, NO a un booleano suelto:
+así el APK de PROD lo oculta solo, sin depender de que alguien recuerde apagarlo
+antes del corte.
+- `kEntrenadorVirtualActivo = !kEsProduccion` — **Entrenador virtual sigue en
+  QAS y NO sale a producción** (decisión del director, ago-2026). Único acceso:
+  Perfil → "Entrenador virtual". El backend `/entrenador/*` queda intacto.
+- `kServiciosPichangolActivo = false` — Servicios Pichangol, oculto en el piloto.
+
 ## Pendientes / backlog
 
 - **Community Manager AUTÓNOMO (servicio estrella, ingreso recurrente):** la

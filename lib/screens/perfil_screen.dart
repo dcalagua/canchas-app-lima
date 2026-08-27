@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../config/features.dart';
 import '../brand.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -166,12 +167,15 @@ class PerfilScreen extends StatelessWidget {
             onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const MisPuntosScreen())),
           ),
-          _ItemAirbnb(
-            icono: Icons.sports_tennis_outlined,
-            titulo: 'Entrenador virtual',
-            onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const EntrenadorScreen())),
-          ),
+          // Entrenador virtual: se prueba en QAS y aún no sale a producción,
+          // así que el APK de PROD no muestra la entrada (features.dart).
+          if (kEntrenadorVirtualActivo)
+            _ItemAirbnb(
+              icono: Icons.sports_tennis_outlined,
+              titulo: 'Entrenador virtual',
+              onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const EntrenadorScreen())),
+            ),
           if (appState.usaCircuito)
             _ItemAirbnb(
               icono: Icons.emoji_events_outlined,
