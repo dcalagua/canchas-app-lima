@@ -1594,6 +1594,16 @@ function pintarStorage(j){
   if(!j || !j.ok){ el.textContent = 'No se pudo revisar: ' + ((j&&j.error)||'error'); return; }
   const rx = j.radiografia||{};
   let cabecera = '';
+  if(rx.proyecto_bd && rx.proyecto_storage && rx.proyecto_bd !== rx.proyecto_storage){
+    cabecera += `<b style="color:#9A1722">⚠️ La base y el Storage son de proyectos distintos</b>` +
+      `<br/>BD: <code>${rx.proyecto_bd}</code> · Storage: <code>${rx.proyecto_storage}</code>` +
+      `<br/>Se comparan archivos de un proyecto contra filas de otro: el resultado no sirve.<br/>`;
+  }
+  if(rx.ve_todo === false){
+    cabecera += `<b style="color:#9A1722">⚠️ El usuario de la BD no ve todas las filas</b>` +
+      `<br/>Usuario <code>${rx.usuario_bd||'?'}</code> sin permiso para saltar RLS: ve una parte del Storage ` +
+      `y cree que el resto no existe. Por eso puede reportar 0 huérfanos siendo falso.<br/>`;
+  }
   if(rx.objetos_vistos === -1){
     cabecera = `<b style="color:#9A1722">⚠️ No se puede leer storage.objects</b>` +
       `<br/>${rx.error_storage||''}<br/>Sin esto el barrido no ve nada (0 no significa "limpio").<br/>`;
@@ -1609,6 +1619,7 @@ function pintarStorage(j){
   const lineas = Object.keys(fam).map(k=>{
     const f = fam[k];
     if(f.error) return `• ${k}: no se pudo leer (${f.error})`;
+    if(f.omitida) return `• ${k}: <span style="color:#946200">omitida</span> — ${f.omitida}`;
     return `• ${k}: ${f.n}` + (f.n && f.ejemplos&&f.ejemplos.length ? ` (ej. ${f.ejemplos[0]})` : '');
   });
   let desc = '';

@@ -16,6 +16,7 @@ o el storage responde mal, devuelve el detalle y sigue.
 
 from __future__ import annotations
 
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -170,6 +171,57 @@ _SQL_DESCONOCIDOS = """
 """
 
 
+def _ref_de_url(url: str) -> str:
+    """Ref del proyecto Supabase a partir de su URL. Sirve para las dos formas:
+    `https://<ref>.supabase.co` y la de Postgres (`db.<ref>.supabase.co` o el
+    pooler, donde el ref va en el usuario `postgres.<ref>`). Devuelve '' si no
+    se reconoce. NUNCA devuelve credenciales."""
+    if not url:
+        return ""
+    m = re.search(r"(?:db\.)?([a-z]{16,})\.supabase\.(?:co|com)", url)
+    if m and m.group(1) not in ("pooler",):
+        return m.group(1)
+    m = re.search(r"postgres\.([a-z]{16,})[:@]", url)
+    return m.group(1) if m else ""
+
+
+# Tabla de referencia de cada familia que detecta por AUSENCIA (LEFT JOIN):
+# "no hay fila que lo apunte → es huérfano". Ese razonamiento se cae si la
+# tabla se ve VACÍA por un problema de permisos (RLS filtrando filas), porque
+# entonces TODO parece huérfano y el barrido borraría archivos vivos. Antes de
+# usar una de estas consultas se exige que su tabla tenga filas; si no las
+# tiene, la familia se salta y se dice por qué. Las familias que detectan por
+# PRESENCIA (join exigiendo `eliminada = true`) no necesitan este candado: si
+# no ven filas, simplemente no borran nada.
+_REFERENCIA: dict[str, str] = {
+    "estados": "pichangol_estados",
+    "productos": "pichangol_productos",
+    "avatares": "pichangol_perfiles",
+    "chat_media": "pichangol_mensajes",
+    "canales_portada": "pichangol_canales",
+    "canales_posts": "pichangol_canal_posts",
+    "grupos": "pichangol_grupos",
+    "verificacion": "pichangol_verificaciones",
+}
+
+
+def _referencia_utilizable(cur, familia: str) -> tuple[bool, str]:
+    """¿Se puede confiar en la tabla de referencia de esta familia? Devuelve
+    (sí/no, motivo)."""
+    tabla = _REFERENCIA.get(familia)
+    if not tabla:
+        return True, ""  # detecta por presencia: no depende de esto
+    try:
+        cur.execute(f"select exists(select 1 from {tabla})")  # noqa: S608
+        if cur.fetchone()[0]:
+            return True, ""
+        return False, (f"{tabla} se ve vacía: no se puede distinguir "
+                       "'no hay nada' de 'no puedo ver las filas', así que "
+                       "no se borra nada de aquí")
+    except Exception as e:  # noqa: BLE001
+        return False, f"no se pudo leer {tabla}: {str(e)[:100]}"
+
+
 def _protegido(bucket: str, name: str) -> bool:
     """Cinturón de seguridad final: aunque una consulta se equivoque, estas
     rutas no se borran nunca."""
@@ -182,11 +234,23 @@ def _radiografia(cur) -> dict:
     `storage.objects`, o `DATABASE_URL` apuntando a otra base). Con esto el
     operador —y quien depure— lo ve de inmediato."""
     info: dict = {}
+    # ¿La BD y el Storage son del MISMO proyecto? Si no, el barrido compara
+    # archivos de un lado contra filas del otro y todo sale mal. El "ref" del
+    # proyecto no es secreto (va en la URL pública); la contraseña nunca se toca.
+    info["proyecto_bd"] = _ref_de_url(pg.DATABASE_URL)
+    info["proyecto_storage"] = _ref_de_url(config.SUPABASE_URL)
     try:
-        cur.execute("select current_database()")
-        info["base"] = cur.fetchone()[0]
+        # ¿El usuario de la BD puede ver TODAS las filas, o RLS se las filtra?
+        # Si RLS lo filtra, ve una parte del Storage y cree que el resto no
+        # existe: de ahí un "0 huérfanos" tranquilizador pero falso.
+        cur.execute("select current_user, "
+                    "coalesce((select rolbypassrls from pg_roles "
+                    "where rolname = current_user), false)")
+        usuario, bypass = cur.fetchone()
+        info["usuario_bd"] = usuario
+        info["ve_todo"] = bool(bypass)
     except Exception as e:  # noqa: BLE001
-        info["base"] = f"?: {str(e)[:80]}"
+        info["usuario_bd"] = f"?: {str(e)[:80]}"
     try:
         cur.execute("select bucket_id, count(*) from storage.objects "
                     "group by bucket_id order by bucket_id")
@@ -210,6 +274,11 @@ def analizar() -> dict:
         with pg._conn() as conn, conn.cursor() as cur:
             radiografia = _radiografia(cur)
             for familia, sql in _CONSULTAS.items():
+                ok_ref, motivo = _referencia_utilizable(cur, familia)
+                if not ok_ref:
+                    por_familia[familia] = {"n": 0, "omitida": motivo}
+                    conn.rollback()
+                    continue
                 try:
                     cur.execute(sql)
                     filas = [(b, n) for b, n in cur.fetchall()
@@ -265,9 +334,14 @@ def limpiar(tope: int = 2000) -> dict:
         return prev
     if not config.SUPABASE_URL or not config.SUPABASE_ANON_KEY:
         return {"ok": False, "error": "sin_supabase"}
-    borrados, fallidos, pendientes = 0, 0, 0
+    borrados, fallidos, pendientes, omitidas = 0, 0, 0, 0
     with pg._conn() as conn, conn.cursor() as cur:
-        for sql in _CONSULTAS.values():
+        for familia, sql in _CONSULTAS.items():
+            ok_ref, _ = _referencia_utilizable(cur, familia)
+            if not ok_ref:
+                omitidas += 1
+                conn.rollback()
+                continue
             try:
                 cur.execute(sql)
                 filas = cur.fetchall()
@@ -285,4 +359,5 @@ def limpiar(tope: int = 2000) -> dict:
                 else:
                     fallidos += 1
     return {"ok": True, "borrados": borrados, "fallidos": fallidos,
-            "pendientes": pendientes, "detectados": prev.get("total", 0)}
+            "pendientes": pendientes, "omitidas": omitidas,
+            "detectados": prev.get("total", 0)}

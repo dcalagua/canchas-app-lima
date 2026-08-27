@@ -63,9 +63,14 @@ def test_una_tabla_faltante_no_tumba_el_barrido(monkeypatch):
     """Si un ambiente no tiene alguna tabla (p. ej. bodega), esa familia se
     reporta con su error y las demás siguen contándose."""
     class _Cur:
+        def __init__(self): self._existe = True
         def execute(self, sql):
             if "pichangol_bodega_productos" in sql:
                 raise RuntimeError('relation "pichangol_bodega_productos" does not exist')
+            self._existe = "select exists(select 1 from" in sql
+        def fetchone(self):
+            # Chequeo de referencia: la tabla tiene filas. Radiografía: usuario.
+            return (True,) if self._existe else ("postgres", True)
         def fetchall(self):
             return [("estados", "viejo.jpg")]
         def __enter__(self): return self
@@ -244,3 +249,71 @@ def test_media_referenciada_se_cruza_por_url_no_por_nombre():
     # La historia viva del chat no se toca: sólo entra lo que ningún mensaje
     # referencia, y los avatares van por su propia consulta.
     assert "not like 'perfiles/%'" in sl._CONSULTAS["chat_media"]
+
+
+class _CurRef:
+    """Cursor de prueba: la tabla de referencia indicada se ve VACÍA."""
+
+    def __init__(self, vacias=(), filas=(("estados", "x.jpg"),)):
+        self.vacias, self._filas, self._res = vacias, list(filas), None
+
+    def execute(self, sql):
+        if "select exists(select 1 from" in sql:
+            tabla = sql.split("from ")[1].split(")")[0].strip()
+            self._res = [(tabla not in self.vacias,)]
+        elif "current_user" in sql:
+            self._res = [("postgres", True)]
+        elif "bucket_id, count" in sql:
+            self._res = [("canchas", 14)]
+        else:
+            self._res = list(self._filas)
+
+    def fetchone(self): return self._res[0]
+    def fetchall(self): return list(self._res)
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+
+
+class _ConnRef:
+    def __init__(self, cur): self._cur = cur
+    def cursor(self): return self._cur
+    def rollback(self): pass
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+
+
+def test_no_borra_cuando_la_tabla_de_referencia_se_ve_vacia(monkeypatch):
+    """El caso peligroso: si RLS oculta las filas, "nadie referencia este
+    archivo" deja de significar "es huérfano" y el barrido borraría lo VIVO.
+    Ante esa duda no se borra nada de esa familia."""
+    cur = _CurRef(vacias=("pichangol_canales", "pichangol_canal_posts"))
+    monkeypatch.setattr(sl.pg, "habilitado", True)
+    monkeypatch.setattr(sl.pg, "_conn", lambda: _ConnRef(cur))
+    r = sl.analizar()
+    assert r["familias"]["canales_portada"]["n"] == 0
+    assert "no se puede distinguir" in r["familias"]["canales_portada"]["omitida"]
+    # Una familia con su tabla visible sí se evalúa.
+    assert "omitida" not in r["familias"]["estados"]
+
+
+def test_limpiar_omite_esas_familias_sin_intentar_borrar(monkeypatch):
+    cur = _CurRef(vacias=("pichangol_canales",))
+    borrados = []
+    monkeypatch.setattr(sl.pg, "habilitado", True)
+    monkeypatch.setattr(sl.pg, "_conn", lambda: _ConnRef(cur))
+    monkeypatch.setattr(sl, "_borrar_objeto",
+                        lambda b, n: (borrados.append(f"{b}/{n}"), True)[1])
+    r = sl.limpiar()
+    assert r["omitidas"] >= 1
+    assert all("canales" not in x for x in borrados)
+
+
+def test_ref_del_proyecto_se_extrae_sin_exponer_credenciales():
+    """Compara BD vs Storage sin tocar la contraseña de la cadena."""
+    assert sl._ref_de_url("https://abcdefghijklmnop.supabase.co") == "abcdefghijklmnop"
+    # Pooler: el ref viaja en el usuario.
+    url = ("postgresql://postgres.abcdefghijklmnop:CLAVE@"
+           "aws-0-sa-east-1.pooler.supabase.com:6543/postgres")
+    assert sl._ref_de_url(url) == "abcdefghijklmnop"
+    assert "CLAVE" not in sl._ref_de_url(url)
+    assert sl._ref_de_url("") == ""
