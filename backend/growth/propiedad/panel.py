@@ -815,12 +815,18 @@ def get_canal_publico() -> dict:
 
 
 @router.get("/admin", response_class=HTMLResponse)
-def panel() -> str:
+def panel() -> HTMLResponse:
     """La torre de QAS y la de PRD son idénticas: se distinguen sólo por la URL,
     y confundirlas hace tomar decisiones sobre el ambiente equivocado (o creer
     que producción está sucia cuando lo sucio es dev). Por eso la página lleva
     SIEMPRE, a la vista, el ambiente y el proyecto Supabase con el que habla."""
-    return _HTML.replace("__AMBIENTE__", _etiqueta_ambiente())
+    # `no-store`: el JS de la torre viaja DENTRO de este HTML, así que una
+    # página cacheada significa lógica vieja corriendo contra un backend nuevo
+    # — y el operador viendo resultados que ya no corresponden al código.
+    return HTMLResponse(
+        content=_HTML.replace("__AMBIENTE__", _etiqueta_ambiente()),
+        headers={"Cache-Control": "no-store, must-revalidate",
+                 "Pragma": "no-cache"})
 
 
 def _etiqueta_ambiente() -> str:

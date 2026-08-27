@@ -327,14 +327,14 @@ def test_la_torre_dice_siempre_a_que_ambiente_habla(monkeypatch):
 
     monkeypatch.setattr(config, "SUPABASE_URL", "https://abcdefghijklmnop.supabase.co")
     monkeypatch.setenv("PICHANGOL_ENTORNO", "PRD")
-    html = panel.panel()
+    html = panel.panel().body.decode()
     assert "PRD · abcdefghijklmnop" in html
     assert "__AMBIENTE__" not in html  # el marcador quedó reemplazado
 
     # Sin la env, el ref del proyecto ya identifica el ambiente.
     monkeypatch.delenv("PICHANGOL_ENTORNO")
-    assert "abcdefghijklmnop" in panel.panel()
+    assert "abcdefghijklmnop" in panel.panel().body.decode()
 
     # Sin nada configurado, lo dice en vez de mostrar un vacío tranquilizador.
     monkeypatch.setattr(config, "SUPABASE_URL", "")
-    assert "ambiente sin identificar" in panel.panel()
+    assert "ambiente sin identificar" in panel.panel().body.decode()
