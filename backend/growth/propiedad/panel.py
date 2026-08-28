@@ -1642,8 +1642,15 @@ function pintarStorage(j){
     cabecera += `<b style="color:#9A1722">⚠️ No se puede leer storage.objects</b>` +
       `<br/>${rx.error_storage||''}<br/>Sin esto el barrido no ve nada (0 no significa "limpio").<br/>`;
   } else if(rx.objetos_vistos === 0){
-    cabecera += `<b style="color:#9A1722">⚠️ El barrido no ve ningún archivo</b>` +
-      `<br/>Revisa que DATABASE_URL apunte al mismo proyecto que el Storage.<br/>`;
+    // Cero archivos NO siempre es un problema: en un ambiente recién montado
+    // el Storage está legítimamente vacío. Sólo se alarma cuando además hay
+    // algo mal cableado; si el proyecto coincide y el usuario ve todas las
+    // filas, el dato es simplemente "todavía no hay nada". Una alarma roja en
+    // un caso normal enseña al operador a ignorar las alarmas.
+    cabecera += (mismo && rx.ve_todo === true)
+      ? `El Storage está vacío: no hay ningún archivo todavía.<br/>`
+      : `<b style="color:#9A1722">⚠️ El barrido no ve ningún archivo</b>` +
+        `<br/>Revisa que DATABASE_URL apunte al mismo proyecto que el Storage.<br/>`;
   } else if(rx.objetos_vistos !== undefined){
     const porB = rx.objetos_por_bucket||{};
     const det = Object.keys(porB).map(b=>`${b}: ${porB[b]}`).join(' · ');
