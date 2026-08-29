@@ -313,6 +313,17 @@ off → redeploy inmediato en cada push). URL pública:
 
 ## Build (GitHub Actions → APK)
 
+- **Nivel de API (Play Store):** `tool/configure_platforms.py::configurar_target_sdk`
+  fuerza `compileSdk`/`targetSdk` a `SDK_OBJETIVO` (**35**) y silencia el aviso
+  del AGP viejo (`android.suppressUnsupportedCompileSdk`). Sin esto Play RECHAZA
+  el App Bundle ("debe orientarse al menos a API 35"). Los subproyectos de plugin
+  van al mismo nivel. Ojo: apuntar a 35 activa el modo borde a borde de Android
+  15 — revisar que ninguna pantalla quede tapada por las barras del sistema.
+- **AAB para Play:** sólo lo generan los builds MANUALES (`workflow_dispatch`).
+  `entorno=dev` → paquete `pe.ebim.pichangol`; `entorno=qas` → `.qas`, que
+  **rompe el login con Google** (el cliente OAuth está registrado para el
+  paquete de producción) — no usar `.qas` para pruebas con usuarios reales.
+
 - Workflow `.github/workflows/build.yml`: jobs Android + iOS.
   `--build-number=${{ github.run_number }}` (versionCode único).
 - APK con nombre único `dist/pichangol-<run_number>.apk` (evita cache de APK

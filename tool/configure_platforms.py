@@ -403,7 +403,7 @@ def configurar_compile_sdk_global():
         "                    if (namespace == null) {\n"
         "                        namespace p.group\n"
         "                    }\n"
-        "                    compileSdkVersion 34\n"
+        "                    compileSdkVersion " + str(SDK_OBJETIVO) + "\n"
         "                }\n"
         "            }\n"
         "        }\n"
@@ -457,6 +457,57 @@ def configurar_bundle_id_ios():
         with open(path, "w", encoding="utf-8") as f:
             f.write(nuevo)
         print(f"  bundle id iOS → {APPLICATION_ID}")
+
+
+# Nivel de API al que se compila y apunta la app. Google Play EXIGE que las
+# versiones nuevas apunten al menos a API 35 (Android 15); con 34 el bundle se
+# rechaza al subirlo. Se centraliza aquí para que app y plugins vayan juntos.
+SDK_OBJETIVO = 35
+
+
+def configurar_target_sdk():
+    """Sube compileSdk y targetSdk a SDK_OBJETIVO (requisito de Play Store).
+
+    Flutter 3.24.5 genera `flutter.compileSdkVersion` / `flutter.targetSdkVersion`
+    (= 34), y Play rechaza el App Bundle por quedarse corto. Además, el AGP que
+    trae esta versión de Flutter no "conoce" el SDK 35 y aborta con un error de
+    compatibilidad; `android.suppressUnsupportedCompileSdk` es la vía oficial de
+    Google para compilar igual mientras no se sube el AGP (compilar contra 35 no
+    cambia el comportamiento del código, solo el nivel declarado).
+
+    OJO al probar en teléfono: apuntar a 35 activa el modo borde a borde de
+    Android 15, así que conviene revisar que ninguna pantalla quede tapada por
+    la barra de estado o la de navegación."""
+    path = "android/app/build.gradle"
+    if not os.path.exists(path):
+        return
+    with open(path, "r", encoding="utf-8") as f:
+        text = f.read()
+    nuevo = re.sub(
+        r"compileSdk(?:Version)?\s*=?\s*flutter\.compileSdkVersion",
+        f"compileSdk = {SDK_OBJETIVO}",
+        text,
+    )
+    nuevo = re.sub(
+        r"targetSdk(?:Version)?\s*=?\s*flutter\.targetSdkVersion",
+        f"targetSdk = {SDK_OBJETIVO}",
+        nuevo,
+    )
+    if nuevo != text:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(nuevo)
+        print(f"  compileSdk/targetSdk → {SDK_OBJETIVO} (requisito de Play)")
+
+    # Sin esto, el AGP de Flutter 3.24.5 corta el build al ver un SDK que no
+    # tiene en su tabla de compatibilidad.
+    gp = "android/gradle.properties"
+    if os.path.exists(gp):
+        with open(gp, "r", encoding="utf-8") as f:
+            props = f.read()
+        if "suppressUnsupportedCompileSdk" not in props:
+            with open(gp, "a", encoding="utf-8") as f:
+                f.write(f"\nandroid.suppressUnsupportedCompileSdk={SDK_OBJETIVO}\n")
+            print("  aviso de compileSdk no soportado silenciado (AGP viejo)")
 
 
 def configurar_min_sdk():
@@ -831,6 +882,7 @@ def configurar_sonido_notificacion():
 def main():
     print(f"Configurando plataformas (MAPS_API_KEY {'definida' if KEY != 'YOUR_MAPS_API_KEY_HERE' else 'placeholder'})")
     configurar_min_sdk()
+    configurar_target_sdk()
     configurar_application_id()
     configurar_bundle_id_ios()
     patch("android/app/src/main/AndroidManifest.xml", android_manifest)
