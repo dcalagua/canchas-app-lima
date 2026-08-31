@@ -554,6 +554,14 @@ antes del corte.
   QAS y NO sale a producción** (decisión del director, ago-2026). Único acceso:
   Perfil → "Entrenador virtual". El backend `/entrenador/*` queda intacto.
 - `kServiciosPichangolActivo = false` — Servicios Pichangol, oculto en el piloto.
+- `kHerramientasPruebaActivas = !kEsProduccion` — la **Zona de pruebas** de
+  Ajustes ("Dejar en virgen", "Empezar de cero", **"Depurar academias"**,
+  simuladores de llamada) NO viaja en el APK de la tienda: "Depurar academias"
+  lista todas las academias con el correo de su dueño y borra cualquiera en la
+  nube. En producción el usuario tiene Perfil → "Eliminar mi cuenta"; el
+  **diagnóstico de push** vive fuera de esa zona (sección "Diagnóstico") porque
+  sólo lee y sirve para dar soporte. `OCULTAR_PRUEBAS=1` las apaga también en
+  dev/QAS.
 
 ## Pendientes / backlog
 
