@@ -6981,6 +6981,32 @@ class AppState extends ChangeNotifier {
     cargarInvitacionesRemotas(); // ¿lo invitaron a alguna academia por correo?
   }
 
+  /// ELIMINAR MI CUENTA (obligatorio para Google Play, y derecho de cancelación
+  /// de la Ley 29733). Es irreversible.
+  ///
+  /// Reusa `resetVirgen`, que ya borra en la nube todo lo que le pertenece al
+  /// usuario (canchas, academias, alumnos, reservas, reseñas, chats, campeonatos,
+  /// estados, documentos de identidad, reclamos de propiedad y su billetera en el
+  /// backend), y agrega lo que define su IDENTIDAD: el perfil público con su
+  /// avatar y su verificación. Al final cierra sesión y deja el equipo limpio.
+  ///
+  /// NO borra los comprobantes de pagos y liquidaciones: las normas contables y
+  /// tributarias obligan a conservarlos, y así está declarado en
+  /// /legal/eliminar-cuenta. Tampoco los mensajes que la persona ya envió a
+  /// otros: viven en la conversación de quien los recibió.
+  Future<void> eliminarMiCuenta() async {
+    final email = usuario?.email.trim().toLowerCase() ?? '';
+    // 1) Todo lo que el usuario creó (local y en la nube).
+    await resetVirgen();
+    // 2) Su identidad pública: perfil + avatar, y su verificación.
+    if (email.isNotEmpty) {
+      await PerfilesRepo.eliminar(email);
+      await VerificacionRepo.eliminar(email);
+    }
+    // 3) Fuera de esta sesión y de este equipo.
+    await cerrarSesionUsuario();
+  }
+
   Future<void> cerrarSesionUsuario() async {
     await PushService.olvidar(); // deja de recibir push de esta cuenta
     await AuthService.salir();

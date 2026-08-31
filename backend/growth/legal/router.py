@@ -191,16 +191,19 @@ def eliminar_cuenta() -> str:
     <p>Puedes pedir la eliminación de tu cuenta de <b>Pichangol</b> y de los
     datos asociados en cualquier momento. No necesitas tener la app instalada.</p>
 
-    <h2>Cómo solicitarla</h2>
+    <h2>Cómo eliminarla</h2>
+    <div class="box"><b>Desde la app (inmediato):</b> entra a
+    <b>Perfil → Eliminar mi cuenta</b>, confirma, y se borra al momento.</div>
+    <p><b>Si ya no tienes la app instalada</b>, escríbenos:</p>
     <ol>
-      <li>Escribe a <a href="mailto:{CONTACTO}?subject=Eliminar%20mi%20cuenta%20Pichangol">{CONTACTO}</a>
+      <li>Envía un correo a <a href="mailto:{CONTACTO}?subject=Eliminar%20mi%20cuenta%20Pichangol">{CONTACTO}</a>
       desde <b>el mismo correo con el que ingresas</b> a Pichangol, con el asunto
       «Eliminar mi cuenta».</li>
       <li>Verificamos que la solicitud venga de tu cuenta y la procesamos.</li>
       <li>Te confirmamos por correo cuando esté hecha.</li>
     </ol>
-    <p><b>Plazo:</b> hasta <b>30 días calendario</b> desde tu solicitud;
-    normalmente mucho antes.</p>
+    <p><b>Plazo por esta vía:</b> hasta <b>30 días calendario</b> desde tu
+    solicitud; normalmente mucho antes.</p>
 
     <h2>Qué se elimina</h2>
     <ul>

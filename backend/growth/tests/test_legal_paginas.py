@@ -40,6 +40,8 @@ def test_eliminar_cuenta_dice_que_se_borra_y_que_se_conserva():
     assert "qué se conserva" in html
     assert "30 días" in html          # plazo comprometido
     assert "dcalagua@ebim.pe" in html  # vía de contacto
+    # Play exige que exista un camino DENTRO de la app, no sólo por correo.
+    assert "perfil → eliminar mi cuenta" in html
 
 
 def test_el_callback_de_meta_sigue_vivo():

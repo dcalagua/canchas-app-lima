@@ -26,6 +26,17 @@ class VerificacionRepo {
     await StorageLimpieza.borrarCarpeta(_bucket, carpeta);
   }
 
+  /// Borra la verificación del usuario: la fila y sus imágenes. Parte de
+  /// "Eliminar mi cuenta" (y minimización de datos, Ley 29733).
+  static Future<void> eliminar(String email) async {
+    final e = email.trim().toLowerCase();
+    if (!disponible || e.isEmpty) return;
+    await borrarDocsDe(e);
+    try {
+      await SupabaseService.client.from(_tabla).delete().eq('email', e);
+    } catch (_) {}
+  }
+
   /// Sube documento + selfie al bucket privado y registra la verificación.
   /// Devuelve el estado ('verificado') o null si falló.
   static Future<String?> enviar({

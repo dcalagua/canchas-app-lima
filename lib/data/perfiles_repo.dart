@@ -45,6 +45,19 @@ class PerfilesRepo {
     }
   }
 
+  /// Borra el perfil público del usuario (nombre, foto, celular, recado, bio)
+  /// y su avatar del bucket. Lo usa "Eliminar mi cuenta": después de esto, el
+  /// correo deja de tener identidad visible para el resto de la app.
+  static Future<void> eliminar(String email) async {
+    final e = email.trim().toLowerCase();
+    if (!disponible || e.isEmpty) return;
+    final carpeta = 'perfiles/${e.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_')}';
+    await StorageLimpieza.borrarCarpeta('chat', carpeta);
+    try {
+      await SupabaseService.client.from(_tabla).delete().eq('email', e);
+    } catch (_) {}
+  }
+
   /// Lee la BIO (campos estilo Airbnb) del perfil. {} si no hay o falla.
   static Future<Map<String, String>> leerBio(String email) async {
     final e = email.trim().toLowerCase();

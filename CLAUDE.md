@@ -523,7 +523,11 @@ recoge: ubicación, contenido subido, mensajes, documento de identidad, pagos v�
 Culqi, notificaciones, videos del entrenador analizados por IA y transferencia
 internacional. **Al agregar un dato nuevo hay que actualizarla**: una política
 que omite un dato que sí se recoge hace que Play rechace la ficha y no cubre
-nada ante la ley. Falta (pendiente): un "Eliminar mi cuenta" DENTRO del APK.
+nada ante la ley. **"Eliminar mi cuenta"** vive en Perfil (último ítem, en rojo)
+→ `AppState.eliminarMiCuenta`: reusa `resetVirgen` (todo lo que el usuario creó,
+local y nube) y suma su identidad (perfil + avatar + verificación), con doble
+confirmación. NO borra comprobantes de pagos (obligación contable) ni los
+mensajes que ya entregó a otros — así está declarado en la página pública.
 
 ### Pago online: interruptor por ambiente (ago-2026)
 

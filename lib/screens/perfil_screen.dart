@@ -16,6 +16,8 @@ import 'mis_puntos_screen.dart';
 import 'mis_reservas_screen.dart';
 import 'marketplace_screen.dart';
 import '../widgets/banner_pro.dart';
+import '../widgets/cargando_pichangol.dart';
+import '../widgets/dialogo_pichangol.dart';
 import 'ajustes_screen.dart';
 import 'anfitrion_screen.dart';
 import 'login_google_sheet.dart';
@@ -206,7 +208,53 @@ class PerfilScreen extends StatelessWidget {
             titulo: 'Cierra la sesión',
             onTap: () => appState.cerrarSesionUsuario(),
           ),
+        // Eliminar la cuenta: Google Play lo exige DENTRO de la app para todo
+        // producto que permita registrarse, y es el derecho de cancelación de
+        // la Ley 29733. Va al final y en rojo: se busca cuando se busca.
+        if (u != null)
+          _ItemAirbnb(
+            icono: Icons.person_remove_outlined,
+            titulo: 'Eliminar mi cuenta',
+            destructivo: true,
+            onTap: () => _eliminarCuenta(context),
+          ),
       ];
+
+  /// Doble confirmación y borrado. La primera explica QUÉ se borra y qué se
+  /// conserva (igual que la página pública); la segunda evita el toque
+  /// accidental en una acción que no tiene vuelta atrás.
+  Future<void> _eliminarCuenta(BuildContext context) async {
+    final ok = await confirmarPichangol(
+      context,
+      titulo: '¿Eliminar tu cuenta?',
+      mensaje: 'Se borran tu perfil y tu foto, tus reservas, tus canchas y '
+          'academias, tus mensajes, estados y publicaciones, y los documentos '
+          'de tu verificación de identidad.\n\n'
+          'Por obligación contable se conservan los comprobantes de pagos y '
+          'liquidaciones. Los mensajes que enviaste siguen en la conversación '
+          'de quien los recibió.\n\n'
+          'Esto NO se puede deshacer.',
+      textoConfirmar: 'Continuar',
+      destructivo: true,
+      icono: Icons.person_remove_outlined,
+    );
+    if (!ok || !context.mounted) return;
+    final seguro = await confirmarPichangol(
+      context,
+      titulo: 'Confirma una vez más',
+      mensaje: 'Si tienes una cancha con reservas futuras, coordina antes su '
+          'cancelación para no dejar a nadie sin su hora.',
+      textoConfirmar: 'Sí, eliminar mi cuenta',
+      destructivo: true,
+      icono: Icons.warning_amber_rounded,
+    );
+    if (!seguro || !context.mounted) return;
+    await conPreload(context, () => appState.eliminarMiCuenta());
+    if (!context.mounted) return;
+    Navigator.of(context).popUntil((r) => r.isFirst);
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Tu cuenta fue eliminada. Gracias por usar Pichangol.')));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -715,15 +763,21 @@ class _ItemAirbnb extends StatelessWidget {
       {required this.icono,
       required this.titulo,
       required this.onTap,
-      this.badge = 0});
+      this.badge = 0,
+      this.destructivo = false});
   final IconData icono;
   final String titulo;
   final VoidCallback onTap;
   final int badge;
 
+  /// Acción sin vuelta atrás (eliminar cuenta): se pinta en rojo para que no
+  /// se confunda con el resto del menú.
+  final bool destructivo;
+
   @override
   Widget build(BuildContext context) {
-    Widget lead = Icon(icono, size: 26, color: tinta);
+    Widget lead =
+        Icon(icono, size: 26, color: destructivo ? clayOscuro : tinta);
     if (badge > 0) {
       lead = Badge.count(
         count: badge,
@@ -745,7 +799,9 @@ class _ItemAirbnb extends StatelessWidget {
                   style: TextStyle(
                       fontSize: 16.5,
                       fontWeight: FontWeight.w600,
-                      color: Theme.of(context).colorScheme.onSurface)),
+                      color: destructivo
+                          ? clayOscuro
+                          : Theme.of(context).colorScheme.onSurface)),
             ),
             const Icon(Icons.chevron_right, color: Color(0xFF9A9A9A)),
           ],
