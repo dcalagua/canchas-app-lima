@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../brand.dart';
+import '../config/features.dart';
 import '../services/whatsapp_link.dart';
 import '../services/llamada_service.dart';
 import '../state/app_state.dart';
@@ -19,15 +20,6 @@ import 'verificar_identidad_screen.dart';
 /// Theme-aware a propósito (usa el ColorScheme) para verse bien en ambos modos.
 class AjustesScreen extends StatelessWidget {
   const AjustesScreen({super.key});
-
-  static const _entorno =
-      String.fromEnvironment('ENTORNO', defaultValue: 'dev');
-  // Herramientas de limpieza para el PILOTO: visibles en todos los builds
-  // (incluido prod, que es el que usa Google real) salvo que se pida ocultarlas
-  // con --dart-define=OCULTAR_PRUEBAS=1 para el lanzamiento en Play Store.
-  static const _ocultarPruebas =
-      String.fromEnvironment('OCULTAR_PRUEBAS', defaultValue: '0');
-  static bool get _mostrarHerramientasPrueba => _ocultarPruebas != '1';
 
   static const _kReleaseUrl =
       'https://github.com/dcalagua/canchas-app-lima/releases/tag/v0.1.0';
@@ -287,14 +279,14 @@ class AjustesScreen extends StatelessWidget {
                 seleccionado: appState.temaModo == ThemeMode.dark,
                 onTap: () => appState.setTemaModo(ThemeMode.dark),
               ),
-              if (_mostrarHerramientasPrueba) ...[
+              if (kHerramientasPruebaActivas) ...[
                 const SizedBox(height: 28),
                 Text('Zona de pruebas',
                     style:
                         t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
                 const SizedBox(height: 4),
                 Text(
-                    'Herramientas del piloto (entorno: $_entorno). Deja la app '
+                    'Herramientas del piloto (entorno: $kEntorno). Deja la app '
                     'como recién instalada o limpia academias sueltas.',
                     style: t.bodySmall?.copyWith(
                         color: Theme.of(context)
@@ -367,23 +359,38 @@ class AjustesScreen extends StatelessWidget {
                       style: TextStyle(fontWeight: FontWeight.w800)),
                   onPressed: () => _verRegistroLlamadas(context),
                 ),
-                const SizedBox(height: 10),
-                OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: morado,
-                    side: const BorderSide(color: morado),
-                    minimumSize: const Size.fromHeight(50),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14)),
-                  ),
-                  icon: const Icon(Icons.notifications_active_outlined),
-                  label: const Text('Diagnóstico de notificaciones push',
-                      style: TextStyle(fontWeight: FontWeight.w800)),
-                  onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                          builder: (_) => const DiagnosticoPushScreen())),
-                ),
               ],
+              const SizedBox(height: 28),
+              // Diagnóstico de push: sólo LEE el estado del teléfono (permiso,
+              // token, último aviso). No borra nada, así que se queda también en
+              // producción — es lo que permite atender a un dueño que dice "no
+              // me llegan los avisos" sin tener su teléfono delante.
+              Text('Diagnóstico',
+                  style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+              const SizedBox(height: 4),
+              Text(
+                  'Si no te llegan los avisos de reservas, pedidos o mensajes, '
+                  'revisa aquí qué está pasando en tu teléfono.',
+                  style: t.bodySmall?.copyWith(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withOpacity(0.6))),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: morado,
+                  side: const BorderSide(color: morado),
+                  minimumSize: const Size.fromHeight(50),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                ),
+                icon: const Icon(Icons.notifications_active_outlined),
+                label: const Text('Diagnóstico de notificaciones push',
+                    style: TextStyle(fontWeight: FontWeight.w800)),
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => const DiagnosticoPushScreen())),
+              ),
               const SizedBox(height: 28),
               const _VersionApp(),
             ],
