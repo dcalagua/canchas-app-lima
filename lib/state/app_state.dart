@@ -6798,12 +6798,28 @@ class AppState extends ChangeNotifier {
   /// ¿WhatsApp va tan visible como el chat interno? (modo 'whatsapp_libre').
   bool get whatsappLibre => canalComunicacion == 'whatsapp_libre';
 
+  /// ¿Se puede COBRAR de verdad con tarjeta/Yape en este ambiente? Lo decide el
+  /// backend según sus llaves de Culqi. Mientras esté en false, el checkout NO
+  /// ofrece pago online: sólo "Pagar en la cancha". Arranca en false para que,
+  /// si la consulta falla, jamás se le muestre a un jugador una pantalla de
+  /// pago que no puede completarse (y menos una que simule haber cobrado).
+  bool pagoOnlineDisponible = false;
+
   Future<void> cargarCanalComunicacion() async {
-    final c = await GrowthService.canalComunicacion();
-    if (c != null && c != canalComunicacion) {
+    final j = await GrowthService.configPublica();
+    if (j == null) return;
+    var cambio = false;
+    final c = (j['canal'] ?? '').toString();
+    if (c.isNotEmpty && c != canalComunicacion) {
       canalComunicacion = c;
-      notifyListeners();
+      cambio = true;
     }
+    final pago = j['pago_online'] == true;
+    if (pago != pagoOnlineDisponible) {
+      pagoOnlineDisponible = pago;
+      cambio = true;
+    }
+    if (cambio) notifyListeners();
   }
 
   /// Carga una lista JSON persistida en [destino] (fail-safe).

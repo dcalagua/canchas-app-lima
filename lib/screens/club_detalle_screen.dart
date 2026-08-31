@@ -1692,6 +1692,10 @@ class _ResumenReservaState extends State<_ResumenReserva> {
   /// ¿Esta cancha exige seña por adelantado (anti no-show)?
   bool get _exigeSena => cancha.exigeSena;
 
+  /// ¿El ambiente NO puede cobrar online? Entonces el checkout ofrece sólo
+  /// "pagar en la cancha" (lo decide el backend por sus llaves de Culqi).
+  bool get _soloEfectivo => !appState.pagoOnlineDisponible;
+
   /// Monto de la seña: % del precio de la cancha (no incluye servicios extra).
   int get _senaMonto => (widget.total * cancha.senaPct / 100).round();
 
@@ -1885,7 +1889,10 @@ class _ResumenReservaState extends State<_ResumenReserva> {
               children: [
                 Icon(Icons.lock_outline, size: 15, color: textoTenue),
                 const SizedBox(width: 6),
-                Text('Pago seguro · Confirmación al instante',
+                Text(
+                    _soloEfectivo
+                        ? 'Reserva confirmada al instante · pagas en el local'
+                        : 'Pago seguro · Confirmación al instante',
                     style: t.bodySmall?.copyWith(color: textoTenue)),
               ],
             ),
@@ -1910,6 +1917,39 @@ class _ResumenReservaState extends State<_ResumenReserva> {
               ),
               const SizedBox(height: 10),
             ],
+            // SIN PAGO ONLINE (el ambiente no tiene cobro real configurado):
+            // el único camino honesto es reservar y pagar en la cancha. Nunca
+            // se le muestra al jugador una pantalla de pago que no se puede
+            // completar, ni se simula un cobro que no ocurrió.
+            if (_soloEfectivo) ...[
+              if (widget.permiteEfectivo)
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                        backgroundColor: lima,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 15)),
+                    onPressed: () => _cerrar('cancha'),
+                    icon: const Icon(Icons.payments_outlined, size: 18),
+                    label: const Text('Reservar y pagar en la cancha',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 15)),
+                  ),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: estadoWarnBg,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Text(
+                      'Esta cancha todavía no acepta reservas por la app. '
+                      'Escríbele al local para coordinar tu hora.',
+                      style: TextStyle(fontSize: 13.5, height: 1.3)),
+                ),
+            ] else ...[
             // Botón principal: con seña, pagar la seña; sin seña, pagar todo.
             SizedBox(
               width: double.infinity,
@@ -1964,6 +2004,7 @@ class _ResumenReservaState extends State<_ResumenReserva> {
                       style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
                 ),
               ),
+            ],
             ],
           ],
         ),

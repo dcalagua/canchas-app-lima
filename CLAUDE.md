@@ -512,6 +512,21 @@ solo videos del propio Supabase. El video NO se conserva en el backend.
 Fase 2 (backlog): pose estimation on-device (ML Kit — ojo plugin nativo vs
 Flutter 3.24.5, probar en CI aislado).
 
+### Pago online: interruptor por ambiente (ago-2026)
+
+`GET /config/canal` (público, el APK ya lo consultaba) devuelve además
+`pago_online`. Lo decide `propiedad/panel.py::pago_online_disponible()`: sólo
+una llave **`sk_live`** de Culqi lo habilita; `PAGO_ONLINE_ACTIVO=1|0` fuerza
+el valor (probar en QAS con llaves de prueba, o corte de emergencia en PRD).
+
+En el APK, `appState.pagoOnlineDisponible` (arranca en **false**, fail-safe) hace
+que el checkout de `club_detalle` ofrezca SÓLO "Reservar y pagar en la cancha".
+Motivo: sin cobro real, "Pagar ahora" lleva a un pago imposible — y simularlo
+sería mentirle al jugador y llenar la billetera del dueño de plata inexistente.
+Al cargar la llave live, el botón de pago aparece **sin publicar un APK nuevo**.
+Ojo: con seña configurada el flujo exige pago online, así que durante esta fase
+las canchas del piloto van con **seña 0**.
+
 ### Feature flags por ENTORNO (`lib/config/features.dart`)
 
 El CI inyecta `--dart-define=ENTORNO=dev|qas|prod`, y de ahí salen `kEntorno` y

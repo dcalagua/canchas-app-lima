@@ -810,8 +810,30 @@ def get_contacto_publico(pais: str | None = None) -> dict:
 @router.get("/config/canal")
 def get_canal_publico() -> dict:
     """PÚBLICO: el APK lee el canal de comunicación para decidir si muestra el
-    botón de WhatsApp (pcg_primero | solo_pcg | whatsapp_libre)."""
-    return {"canal": reclamos.canal_comunicacion()}
+    botón de WhatsApp (pcg_primero | solo_pcg | whatsapp_libre), y si el PAGO
+    ONLINE está disponible."""
+    return {
+        "canal": reclamos.canal_comunicacion(),
+        "pago_online": pago_online_disponible(),
+    }
+
+
+def pago_online_disponible() -> bool:
+    """¿Se puede cobrar de verdad con tarjeta/Yape en este ambiente?
+
+    Mientras no haya llaves LIVE de Culqi, un jugador que toque "Pagar ahora"
+    se topa con un cobro que no puede completarse. Antes que mostrarle una
+    pantalla de pago rota —o peor, simular que pagó— el APK esconde esa opción
+    y deja sólo "Pagar en la cancha". Cuando lleguen las llaves reales, esto se
+    vuelve true solo y el botón reaparece SIN publicar un APK nuevo.
+
+    `PAGO_ONLINE_ACTIVO` permite forzarlo a mano ("1"/"0") para probar en QAS
+    con llaves de prueba; sin esa env se decide por la llave: sólo `sk_live`
+    habilita el cobro."""
+    forzado = (os.getenv("PAGO_ONLINE_ACTIVO", "") or "").strip()
+    if forzado:
+        return forzado == "1"
+    return (config.CULQI_SECRET_KEY or "").startswith("sk_live")
 
 
 @router.get("/admin", response_class=HTMLResponse)

@@ -48,14 +48,21 @@ class GrowthService {
   /// + WhatsApp de respaldo) | 'solo_pcg' (oculta WhatsApp) | 'whatsapp_libre'
   /// (ambos por igual). Devuelve null si no se pudo (la app cae a 'pcg_primero').
   static Future<String?> canalComunicacion() async {
+    final j = await configPublica();
+    final c = (j?['canal'] ?? '').toString();
+    return c.isNotEmpty ? c : null;
+  }
+
+  /// Configuración pública del ambiente: canal de comunicación y si el PAGO
+  /// ONLINE está habilitado. Null si no se pudo consultar (la app conserva sus
+  /// valores actuales, sin bloquear nada).
+  static Future<Map<String, dynamic>?> configPublica() async {
     if (!disponible) return null;
     try {
       final uri = Uri.parse('$_baseUrl/config/canal');
       final resp = await http.get(uri).timeout(const Duration(seconds: 6));
       if (resp.statusCode != 200) return null;
-      final j = jsonDecode(resp.body) as Map<String, dynamic>;
-      final c = (j['canal'] ?? '').toString();
-      return c.isNotEmpty ? c : null;
+      return jsonDecode(resp.body) as Map<String, dynamic>;
     } catch (_) {
       return null;
     }
