@@ -1,6 +1,8 @@
 """Páginas legales exigidas por Meta (y por buenas prácticas / Ley 29733):
 
 - GET  /legal/privacidad            → Política de privacidad (pública).
+- GET  /legal/eliminar-cuenta       → Eliminación de CUENTA (la exige Google Play
+                                      para toda app con registro de usuarios).
 - GET  /legal/eliminacion-datos     → Instrucciones de eliminación de datos.
 - POST /legal/eliminacion-datos     → Data Deletion Callback de Meta: verifica la
                                       firma (signed_request con el App Secret) y
@@ -29,7 +31,7 @@ from marketing import redes as redes_svc
 router = APIRouter(tags=["legal"])
 
 CONTACTO = "dcalagua@ebim.pe"
-VIGENCIA = "21 de julio de 2026"
+VIGENCIA = "29 de agosto de 2026"
 
 _ESTILO = """
 <style>
@@ -70,61 +72,167 @@ def _doc(titulo: str, cuerpo: str) -> str:
 @router.get("/legal/privacidad", response_class=HTMLResponse)
 def privacidad() -> str:
     cuerpo = f"""
-    <p>En <b>Pichangol</b> (Grupo EBIM SAC) respetamos tu privacidad y cumplimos la
-    <b>Ley N.° 29733</b> de Protección de Datos Personales del Perú y las políticas
-    de la plataforma de Meta. Esta política explica qué datos tratamos y para qué.</p>
+    <p>En <b>Pichangol</b> (Grupo EBIM SAC) tratamos tus datos conforme a la
+    <b>Ley N.° 29733</b> de Protección de Datos Personales del Perú y su
+    reglamento. Esta política explica <b>qué recogemos, para qué, con quién se
+    comparte y cómo lo borras</b>.</p>
 
-    <h2>1. Quién es el responsable</h2>
-    <p>Grupo EBIM SAC, responsable del tratamiento. Contacto para privacidad:
-    <a href="mailto:{CONTACTO}">{CONTACTO}</a>.</p>
+    <h2>1. Responsable</h2>
+    <p><b>Grupo EBIM SAC</b> (Lima, Perú), responsable del tratamiento.
+    Contacto para privacidad: <a href="mailto:{CONTACTO}">{CONTACTO}</a>.</p>
 
     <h2>2. Qué datos tratamos</h2>
     <ul>
-      <li><b>De tu cuenta:</b> nombre y correo con el que ingresas a Pichangol.</li>
-      <li><b>De tu academia/cancha:</b> nombre, sede, fotos que subes, tarifario y
-      datos de contacto, para mostrar tu ficha, tu landing y generar contenido.</li>
-      <li><b>Servicio "Gestión de redes" (opcional):</b> si conectas tu Instagram o
-      Facebook, guardamos un <b>token de acceso</b> (cifrado), y el identificador y
-      nombre de tu Página de Facebook y tu cuenta de Instagram profesional. Lo usamos
-      <b>únicamente</b> para publicar el contenido que apruebas, en tu nombre.</li>
+      <li><b>Cuenta:</b> nombre, correo y foto de tu cuenta de Google al iniciar
+      sesión. Opcionalmente celular y una foto de perfil que tú elijas.</li>
+      <li><b>Ubicación:</b> tu ubicación aproximada para mostrarte canchas
+      cercanas. En dos casos usamos ubicación precisa y sólo en ese momento:
+      cuando reclamas ser dueño de una cancha (anti-fraude) y cuando pides a la
+      bodega del local. <b>No hacemos seguimiento en segundo plano.</b></li>
+      <li><b>Reservas y pagos:</b> qué cancha, día y hora reservaste, el importe
+      y el medio de pago. Los <b>datos de tu tarjeta los procesa Culqi</b>
+      (pasarela autorizada): Pichangol <b>nunca</b> ve ni guarda el número
+      completo de tu tarjeta.</li>
+      <li><b>Contenido que subes:</b> fotos de tus canchas o productos, fotos y
+      videos de estados, publicaciones de canales, y las fotos, audios o archivos
+      que envías por chat.</li>
+      <li><b>Mensajes:</b> el contenido de tus conversaciones dentro de la app,
+      necesario para entregarlo a tu destinatario.</li>
+      <li><b>Verificación de identidad (opcional):</b> si decides verificarte,
+      tu número de documento. En Perú lo validamos contra el registro oficial y
+      <b>no guardamos la foto del documento</b>. Si en tu país la validación
+      requiere imagen, esa imagen se guarda en un espacio privado y se elimina
+      cuando dejas de necesitarla o cuando borras tus datos.</li>
+      <li><b>Notificaciones:</b> un identificador del dispositivo para enviarte
+      avisos (reserva confirmada, pedido listo). No identifica a la persona.</li>
+      <li><b>Entrenador virtual (opcional):</b> el video corto de tu golpe. Se
+      analiza y <b>el video se borra automáticamente</b> apenas se genera tu
+      informe; sólo queda el texto del análisis.</li>
+      <li><b>Redes sociales (opcional, sólo dueños):</b> si conectas Instagram o
+      Facebook, un token de acceso cifrado y el identificador de tu página. No
+      pedimos ni guardamos tu contraseña.</li>
     </ul>
-    <div class="box">No pedimos ni guardamos tu contraseña de Facebook/Instagram.
-    El permiso lo otorgas tú a través de Meta y puedes revocarlo cuando quieras.</div>
 
     <h2>3. Para qué los usamos</h2>
     <ul>
-      <li>Operar la plataforma (reservas, academias, pagos).</li>
-      <li>Prestar los servicios que contratas (landing, generación de posts, y
-      publicación en tus redes si activas "Gestión de redes").</li>
+      <li>Crear tu cuenta y mostrarte canchas cerca de ti.</li>
+      <li>Gestionar reservas, cobros, comisiones y liquidaciones a los dueños.</li>
+      <li>Permitir la comunicación entre jugador y cancha.</li>
+      <li>Prevenir fraude (que quien reclama una cancha esté realmente en ella).</li>
+      <li>Enviarte avisos sobre TUS reservas y pedidos.</li>
+      <li>Cumplir obligaciones contables y legales.</li>
     </ul>
+    <div class="box"><b>No vendemos tus datos</b> ni los cedemos a terceros para
+    publicidad.</div>
 
     <h2>4. Con quién se comparten</h2>
-    <p>Solo con lo necesario para el servicio: <b>Meta</b> (para publicar en tus
-    redes cuando tú lo apruebas) y proveedores de infraestructura que alojan la
-    plataforma. <b>No vendemos</b> tus datos ni los usamos para fines ajenos.</p>
+    <ul>
+      <li><b>El dueño de la cancha que reservas:</b> tu nombre, tu contacto y los
+      datos de esa reserva. Es indispensable para que te atienda.</li>
+      <li><b>Culqi</b> (Perú): procesamiento de pagos con tarjeta y Yape.</li>
+      <li><b>Google</b>: inicio de sesión, mapas y envío de notificaciones.</li>
+      <li><b>Supabase y Railway</b>: alojamiento de la base de datos y del
+      servicio.</li>
+      <li><b>Anthropic</b>: sólo si usas el entrenador virtual, para analizar los
+      fotogramas de tu video. No se usan para entrenar modelos.</li>
+      <li><b>Meta</b>: sólo si un dueño activa la publicación en sus redes.</li>
+      <li><b>Autoridades</b>, cuando la ley lo exija.</li>
+    </ul>
+    <p><b>Transferencia internacional:</b> algunos de estos proveedores procesan
+    la información en servidores fuera del Perú. Al usar Pichangol aceptas esa
+    transferencia, que se realiza con proveedores que ofrecen niveles adecuados
+    de protección.</p>
 
-    <h2>5. Cuánto los conservamos</h2>
-    <p>Mientras tu cuenta o tu servicio estén activos. Si <b>desconectas</b> tus
-    redes (desde la app o desde Facebook) eliminamos el token de acceso asociado.</p>
+    <h2>5. Cuánto tiempo los conservamos</h2>
+    <ul>
+      <li>Mientras tu cuenta esté activa.</li>
+      <li>Los <b>estados</b> duran 24 horas y su foto o video se borra solo.</li>
+      <li>Los <b>videos del entrenador</b> se borran apenas se genera el informe.</li>
+      <li>Al eliminar una cancha, un producto o una publicación, sus imágenes se
+      borran del almacenamiento.</li>
+      <li>Los <b>registros de pagos</b> se conservan el plazo que exigen las
+      normas contables y tributarias, aunque cierres tu cuenta.</li>
+    </ul>
 
-    <h2>6. Tus derechos (ARCO — Ley 29733)</h2>
-    <p>Puedes solicitar acceso, rectificación, cancelación u oposición al
-    tratamiento de tus datos escribiendo a <a href="mailto:{CONTACTO}">{CONTACTO}</a>.</p>
+    <h2>6. Menores de edad</h2>
+    <p>Pichangol está dirigido a mayores de edad. Un padre, madre o apoderado
+    puede matricular a un menor en una academia; en ese caso trata esos datos
+    bajo su responsabilidad y con su consentimiento.</p>
 
-    <h2>7. Cómo revocar el acceso a tus redes</h2>
-    <ol>
-      <li>En la app: <b>Servicios → Gestión de redes → Desconectar</b>.</li>
-      <li>O en Facebook: <b>Configuración → Apps y sitios web</b> → quitar
-      "Pichangol".</li>
-      <li>O escríbenos a <a href="mailto:{CONTACTO}">{CONTACTO}</a>.</li>
-    </ol>
-    <p>Ver también: <a href="/legal/eliminacion-datos">Eliminación de datos</a>.</p>
+    <h2>7. Seguridad</h2>
+    <p>Ciframos las comunicaciones, restringimos el acceso a la información y los
+    documentos de identidad se guardan en un espacio privado, no público. Ningún
+    sistema es infalible: si ocurriera un incidente que te afecte, te lo
+    comunicaremos.</p>
 
-    <h2>8. Cambios</h2>
-    <p>Si actualizamos esta política, publicaremos la nueva versión en esta misma
-    dirección con su fecha de vigencia.</p>
+    <h2>8. Tus derechos (ARCO — Ley 29733)</h2>
+    <p>Puedes pedir <b>acceso, rectificación, cancelación u oposición</b> al
+    tratamiento de tus datos escribiendo a
+    <a href="mailto:{CONTACTO}">{CONTACTO}</a>. Responderemos en los plazos que
+    fija la ley. También puedes reclamar ante la Autoridad Nacional de Protección
+    de Datos Personales del Perú.</p>
+
+    <h2>9. Eliminar tu cuenta</h2>
+    <p>Puedes pedir la eliminación de tu cuenta y tus datos en cualquier momento:
+    <a href="/legal/eliminar-cuenta">cómo eliminar tu cuenta</a>.</p>
+
+    <h2>10. Cambios</h2>
+    <p>Si actualizamos esta política publicaremos la nueva versión en esta misma
+    dirección, con su fecha de vigencia.</p>
     """
     return _doc("Política de privacidad", cuerpo)
+
+
+@router.get("/legal/eliminar-cuenta", response_class=HTMLResponse)
+def eliminar_cuenta() -> str:
+    """Página de ELIMINACIÓN DE CUENTA que exige Google Play para toda app con
+    registro de usuarios. Debe ser pública y accesible sin instalar la app."""
+    cuerpo = f"""
+    <p>Puedes pedir la eliminación de tu cuenta de <b>Pichangol</b> y de los
+    datos asociados en cualquier momento. No necesitas tener la app instalada.</p>
+
+    <h2>Cómo solicitarla</h2>
+    <ol>
+      <li>Escribe a <a href="mailto:{CONTACTO}?subject=Eliminar%20mi%20cuenta%20Pichangol">{CONTACTO}</a>
+      desde <b>el mismo correo con el que ingresas</b> a Pichangol, con el asunto
+      «Eliminar mi cuenta».</li>
+      <li>Verificamos que la solicitud venga de tu cuenta y la procesamos.</li>
+      <li>Te confirmamos por correo cuando esté hecha.</li>
+    </ol>
+    <p><b>Plazo:</b> hasta <b>30 días calendario</b> desde tu solicitud;
+    normalmente mucho antes.</p>
+
+    <h2>Qué se elimina</h2>
+    <ul>
+      <li>Tu perfil: nombre, correo, celular y foto.</li>
+      <li>Tus reservas y tu historial de actividad.</li>
+      <li>Tus mensajes, estados y publicaciones.</li>
+      <li>Las fotos y videos que subiste, incluidos los de verificación de
+      identidad.</li>
+      <li>Tus canchas o productos publicados, si eres dueño.</li>
+      <li>Tus tokens de notificaciones y de redes sociales conectadas.</li>
+    </ul>
+
+    <h2>Qué se conserva, y por qué</h2>
+    <ul>
+      <li><b>Comprobantes de pagos y liquidaciones:</b> las normas contables y
+      tributarias del Perú obligan a conservarlos por el plazo legal, aun después
+      de cerrar la cuenta. Se guardan disociados de tu perfil siempre que sea
+      posible.</li>
+      <li><b>Mensajes que enviaste a otra persona:</b> permanecen en la
+      conversación de quien los recibió, igual que en cualquier app de mensajería.</li>
+      <li><b>Publicaciones ya hechas en tus propias redes sociales:</b> son tuyas
+      y viven en tu cuenta; puedes borrarlas desde ahí.</li>
+    </ul>
+
+    <div class="box">Eliminar tu cuenta es <b>irreversible</b>. Si eres dueño de
+    una cancha con reservas futuras, avísanos para coordinar su cancelación y no
+    dejar a jugadores sin su hora.</div>
+
+    <p class="mut">¿Sólo quieres desconectar tus redes sociales, sin borrar la
+    cuenta? Mira <a href="/legal/eliminacion-datos">eliminación de datos de redes</a>.</p>
+    """
+    return _doc("Eliminar tu cuenta", cuerpo)
 
 
 @router.get("/legal/terminos", response_class=HTMLResponse)

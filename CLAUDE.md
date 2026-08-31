@@ -512,6 +512,19 @@ solo videos del propio Supabase. El video NO se conserva en el backend.
 Fase 2 (backlog): pose estimation on-device (ML Kit — ojo plugin nativo vs
 Flutter 3.24.5, probar en CI aislado).
 
+### Páginas legales (Play Store / Ley 29733)
+
+`backend/growth/legal/router.py` sirve, públicas y sin login:
+`/legal/privacidad`, `/legal/terminos`, `/legal/eliminar-cuenta` (la que exige
+Play para apps con registro) y `/legal/eliminacion-datos` (+ callback POST de
+Meta, no tocar). En PRD son `https://www.pichangol.app/legal/...`.
+La privacidad se reescribió (ago-2026) para declarar lo que la app realmente
+recoge: ubicación, contenido subido, mensajes, documento de identidad, pagos vía
+Culqi, notificaciones, videos del entrenador analizados por IA y transferencia
+internacional. **Al agregar un dato nuevo hay que actualizarla**: una política
+que omite un dato que sí se recoge hace que Play rechace la ficha y no cubre
+nada ante la ley. Falta (pendiente): un "Eliminar mi cuenta" DENTRO del APK.
+
 ### Pago online: interruptor por ambiente (ago-2026)
 
 `GET /config/canal` (público, el APK ya lo consultaba) devuelve además
