@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../config/features.dart';
 import '../config/pais.dart';
 import '../screens/login_google_sheet.dart';
 import '../screens/pago_sheet.dart';
@@ -8,6 +9,7 @@ import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'cargando_pichangol.dart';
+import 'dialogo_pichangol.dart';
 import '../utils/input_formatos.dart';
 import 'marcas_pago.dart';
 import 'pago_libelula.dart';
@@ -56,7 +58,23 @@ class PagoTarjeta {
     if (!context.mounted) return false;
 
     if (!disponible) {
-      // Demo: pasarela simulada.
+      // Sin pasarela real no se cobra. En PRODUCCIÓN jamás se simula: dar por
+      // pagado lo que nadie pagó le mete al vendedor plata que no existe en su
+      // "por recibir", emite un comprobante falso y le miente al comprador.
+      // Se avisa y se devuelve false; el flujo que llamó decide qué hacer.
+      if (kEsProduccion) {
+        await avisarPichangol(
+          context,
+          titulo: 'Pago en la app no disponible',
+          mensaje: 'Todavía no tenemos habilitado el cobro dentro de '
+              'Pichangol, así que no se te cobró nada. Coordina el pago '
+              'directamente con el local o el vendedor.',
+          icono: Icons.credit_card_off_outlined,
+        );
+        return false;
+      }
+      // dev/QAS: pasarela SIMULADA, para poder recorrer el flujo completo sin
+      // llaves reales. Nunca sale de estos entornos.
       final r = await PagoSheet.mostrar(context,
           monto: monto, concepto: concepto, moneda: moneda);
       return r != null && r.exito;
