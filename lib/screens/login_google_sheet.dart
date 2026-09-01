@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../brand.dart';
+import '../config/features.dart';
 import '../services/auth_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -47,11 +48,10 @@ class LoginGoogleSheet extends StatefulWidget {
 class _LoginGoogleSheetState extends State<LoginGoogleSheet> {
   bool _cargando = false;
 
-  // Modo pruebas: en dev/qas el OAuth de Google no está configurado, así que se
-  // permite entrar con un correo escrito (cuentas distintas → probar roles).
-  static const _entorno =
-      String.fromEnvironment('ENTORNO', defaultValue: 'dev');
-  bool get _modoPruebas => _entorno != 'prod';
+  // Entrar escribiendo un correo NO verifica nada: quien escriba el correo de
+  // otro entra como esa persona. Sirve para probar roles en dev/QAS y no puede
+  // existir en la tienda, donde la única puerta es Google.
+  bool get _modoPruebas => !kEsProduccion;
 
   final _email = TextEditingController();
   final _nombre = TextEditingController();
@@ -81,7 +81,8 @@ class _LoginGoogleSheetState extends State<LoginGoogleSheet> {
         titulo: 'No se pudo entrar con Google',
         mensaje: 'Detalle técnico (para diagnóstico):\n\n$err\n\n'
             'Si dice "ApiException: 10", es el SHA-1/paquete del cliente '
-            'OAuth. Mientras tanto puedes entrar con tu correo abajo.',
+            'OAuth.${_modoPruebas ? ' Mientras tanto puedes entrar con tu '
+                'correo abajo.' : ''}',
         icono: Icons.error_outline,
       );
     }
@@ -177,57 +178,57 @@ class _LoginGoogleSheetState extends State<LoginGoogleSheet> {
                 onPressed: _entrar,
               ),
             ),
-            // Respaldo por CORREO: si Google falla o para simular cuentas en
-            // pruebas. En prod queda discreto (abajo), pero disponible.
-            const SizedBox(height: 18),
-            Row(children: [
-              const Expanded(child: Divider()),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                child: Text(
-                    _modoPruebas
-                        ? 'o entra con tu correo (pruebas)'
-                        : 'o si Google falla, entra con tu correo',
-                    style: t.bodySmall?.copyWith(color: textoTenue)),
-              ),
-              const Expanded(child: Divider()),
-            ]),
-            const SizedBox(height: 14),
-            TextField(
-              controller: _nombre,
-              textCapitalization: TextCapitalization.words,
-              decoration: const InputDecoration(
-                labelText: 'Nombre (opcional)',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _email,
-              keyboardType: TextInputType.emailAddress,
-              autocorrect: false,
-              decoration: const InputDecoration(
-                labelText: 'Correo',
-                hintText: 'ej. dcalagua@ebim.pe',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: cs.primary,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16)),
+            // Entrada por CORREO: solo en dev/QAS, para simular cuentas y
+            // probar roles. NO viaja a producción — no valida identidad, así
+            // que ahí sería suplantar a cualquiera escribiendo su correo.
+            if (_modoPruebas) ...[
+              const SizedBox(height: 18),
+              Row(children: [
+                const Expanded(child: Divider()),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Text('o entra con tu correo (pruebas)',
+                      style: t.bodySmall?.copyWith(color: textoTenue)),
                 ),
-                onPressed: _entrarManual,
-                child: const Text('Entrar con correo',
-                    style:
-                        TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                const Expanded(child: Divider()),
+              ]),
+              const SizedBox(height: 14),
+              TextField(
+                controller: _nombre,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(
+                  labelText: 'Nombre (opcional)',
+                  border: OutlineInputBorder(),
+                ),
               ),
-            ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _email,
+                keyboardType: TextInputType.emailAddress,
+                autocorrect: false,
+                decoration: const InputDecoration(
+                  labelText: 'Correo',
+                  hintText: 'ej. dcalagua@ebim.pe',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: cs.primary,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
+                  ),
+                  onPressed: _entrarManual,
+                  child: const Text('Entrar con correo',
+                      style:
+                          TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                ),
+              ),
+            ],
           ],
           const SizedBox(height: 16),
           Center(
