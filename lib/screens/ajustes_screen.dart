@@ -391,12 +391,93 @@ class AjustesScreen extends StatelessWidget {
                 onPressed: () => Navigator.of(context).push(MaterialPageRoute(
                     builder: (_) => const DiagnosticoPushScreen())),
               ),
+              const SizedBox(height: 10),
+              const _FirmaApp(),
               const SizedBox(height: 28),
               const _VersionApp(),
             ],
           );
         },
       ),
+    );
+  }
+}
+
+/// Con QUÉ certificado está firmada la app instalada, y de dónde vino.
+///
+/// Es el dato que decide si el login con Google funciona: Google exige un
+/// cliente OAuth registrado con ESTE SHA-1 exacto más el nombre del paquete. Un
+/// APK instalado a mano lleva la firma de nuestro keystore; el mismo APK bajado
+/// de Play lleva la de Play App Signing, que es OTRA. Cuando el login falla con
+/// "ApiException: 10", esta línea dice cuál de las dos hay que registrar, en vez
+/// de deducirlo.
+class _FirmaApp extends StatelessWidget {
+  const _FirmaApp();
+
+  /// `A1B2C3…` → `A1:B2:C3:…`, que es como Google pide y muestra las huellas.
+  static String _conDosPuntos(String hex) {
+    final h = hex.trim().toUpperCase().replaceAll(RegExp(r'[^0-9A-F]'), '');
+    if (h.length < 2) return hex.trim();
+    final pares = <String>[];
+    for (var i = 0; i + 1 < h.length; i += 2) {
+      pares.add(h.substring(i, i + 2));
+    }
+    return pares.join(':');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tenue = cs.onSurface.withOpacity(0.6);
+    return FutureBuilder<PackageInfo>(
+      future: PackageInfo.fromPlatform(),
+      builder: (context, snap) {
+        final info = snap.data;
+        if (info == null) return const SizedBox.shrink();
+        final firma = _conDosPuntos(info.buildSignature);
+        final tienda = info.installerStore;
+        final origen = (tienda == null || tienda.isEmpty)
+            ? 'instalada a mano (sideload)'
+            : tienda;
+        final texto = 'paquete: ${info.packageName}\n'
+            'firma SHA-1: ${firma.isEmpty ? '(no disponible)' : firma}\n'
+            'origen: $origen';
+        return InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () async {
+            await Clipboard.setData(ClipboardData(text: texto));
+            if (!context.mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Datos de firma copiados')));
+          },
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: cs.surface,
+              border: Border.all(color: const Color(0xFFE4E4E4)),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Firma de esta instalación (toca para copiar)',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: tenue)),
+                const SizedBox(height: 6),
+                SelectableText(texto,
+                    style: TextStyle(
+                        fontSize: 11.5,
+                        height: 1.5,
+                        fontFamily: 'monospace',
+                        color: cs.onSurface)),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
