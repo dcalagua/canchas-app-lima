@@ -462,22 +462,27 @@ def configurar_bundle_id_ios():
 # Nivel de API al que se compila y apunta la app. Google Play EXIGE que las
 # versiones nuevas apunten al menos a API 35 (Android 15); con 34 el bundle se
 # rechaza al subirlo. Se centraliza aquí para que app y plugins vayan juntos.
-SDK_OBJETIVO = 35
+SDK_OBJETIVO = 36
 
 
 def configurar_target_sdk():
     """Sube compileSdk y targetSdk a SDK_OBJETIVO (requisito de Play Store).
 
     Flutter 3.24.5 genera `flutter.compileSdkVersion` / `flutter.targetSdkVersion`
-    (= 34), y Play rechaza el App Bundle por quedarse corto. Además, el AGP que
-    trae esta versión de Flutter no "conoce" el SDK 35 y aborta con un error de
-    compatibilidad; `android.suppressUnsupportedCompileSdk` es la vía oficial de
-    Google para compilar igual mientras no se sube el AGP (compilar contra 35 no
-    cambia el comportamiento del código, solo el nivel declarado).
+    (= 34), y Play rechaza el App Bundle por quedarse corto. El mínimo que exige
+    Play SUBE con el tiempo: primero fue 34, luego 35 y desde ago-2026 pide 36.
+    Por eso el nivel vive en una sola constante: cuando Play lo vuelva a subir,
+    se cambia SDK_OBJETIVO y nada más.
 
-    OJO al probar en teléfono: apuntar a 35 activa el modo borde a borde de
-    Android 15, así que conviene revisar que ninguna pantalla quede tapada por
-    la barra de estado o la de navegación."""
+    Además, el AGP que trae esta versión de Flutter no "conoce" ese SDK y aborta
+    con un error de compatibilidad; `android.suppressUnsupportedCompileSdk` es la
+    vía oficial de Google para compilar igual mientras no se sube el AGP
+    (compilar contra un SDK más nuevo no cambia el comportamiento del código,
+    solo el nivel declarado).
+
+    OJO al probar en teléfono: apuntar a 35+ activa el modo borde a borde, así
+    que conviene revisar que ninguna pantalla quede tapada por la barra de
+    estado o la de navegación."""
     path = "android/app/build.gradle"
     if not os.path.exists(path):
         return
@@ -504,10 +509,16 @@ def configurar_target_sdk():
     if os.path.exists(gp):
         with open(gp, "r", encoding="utf-8") as f:
             props = f.read()
-        if "suppressUnsupportedCompileSdk" not in props:
+        linea = f"android.suppressUnsupportedCompileSdk={SDK_OBJETIVO}"
+        if "suppressUnsupportedCompileSdk" in props:
+            # Puede venir con un nivel viejo (35) de una corrida anterior.
+            props = re.sub(r"android\.suppressUnsupportedCompileSdk=\d+", linea, props)
+            with open(gp, "w", encoding="utf-8") as f:
+                f.write(props)
+        else:
             with open(gp, "a", encoding="utf-8") as f:
-                f.write(f"\nandroid.suppressUnsupportedCompileSdk={SDK_OBJETIVO}\n")
-            print("  aviso de compileSdk no soportado silenciado (AGP viejo)")
+                f.write(f"\n{linea}\n")
+        print("  aviso de compileSdk no soportado silenciado (AGP viejo)")
 
 
 def configurar_min_sdk():
