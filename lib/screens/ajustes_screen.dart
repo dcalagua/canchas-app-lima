@@ -406,11 +406,17 @@ class AjustesScreen extends StatelessWidget {
 /// Con QUÉ certificado está firmada la app instalada, y de dónde vino.
 ///
 /// Es el dato que decide si el login con Google funciona: Google exige un
-/// cliente OAuth registrado con ESTE SHA-1 exacto más el nombre del paquete. Un
-/// APK instalado a mano lleva la firma de nuestro keystore; el mismo APK bajado
-/// de Play lleva la de Play App Signing, que es OTRA. Cuando el login falla con
-/// "ApiException: 10", esta línea dice cuál de las dos hay que registrar, en vez
-/// de deducirlo.
+/// cliente OAuth registrado con la huella de ESTE certificado más el nombre del
+/// paquete. Un APK instalado a mano lleva la firma de nuestro keystore; el mismo
+/// APK bajado de Play lleva la de Play App Signing, que es OTRA. Cuando el login
+/// falla con "ApiException: 10", esta línea dice cuál de las dos hay que
+/// registrar, en vez de deducirlo.
+///
+/// OJO con el algoritmo: `buildSignature` no siempre es SHA-1 (en Android
+/// devuelve SHA-256). Se etiqueta por el largo real de la huella en vez de
+/// asumirlo, porque en Play Console hay que comparar contra la del MISMO
+/// algoritmo — un SHA-256 y un SHA-1 del mismo certificado no se parecen en
+/// nada y hacen creer que son certificados distintos.
 class _FirmaApp extends StatelessWidget {
   const _FirmaApp();
 
@@ -435,12 +441,20 @@ class _FirmaApp extends StatelessWidget {
         final info = snap.data;
         if (info == null) return const SizedBox.shrink();
         final firma = _conDosPuntos(info.buildSignature);
+        // 20 bytes = SHA-1, 32 = SHA-256. Cualquier otro largo: no se etiqueta.
+        final bytes = firma.isEmpty ? 0 : firma.split(':').length;
+        final algoritmo = bytes == 20
+            ? 'SHA-1'
+            : bytes == 32
+                ? 'SHA-256'
+                : '';
         final tienda = info.installerStore;
         final origen = (tienda == null || tienda.isEmpty)
             ? 'instalada a mano (sideload)'
             : tienda;
         final texto = 'paquete: ${info.packageName}\n'
-            'firma SHA-1: ${firma.isEmpty ? '(no disponible)' : firma}\n'
+            'firma${algoritmo.isEmpty ? '' : ' $algoritmo'}: '
+            '${firma.isEmpty ? '(no disponible)' : firma}\n'
             'origen: $origen';
         return InkWell(
           borderRadius: BorderRadius.circular(12),
