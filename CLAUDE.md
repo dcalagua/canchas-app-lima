@@ -326,6 +326,27 @@ off → redeploy inmediato en cada push). URL pública:
   **rompe el login con Google** (el cliente OAuth está registrado para el
   paquete de producción) — no usar `.qas` para pruebas con usuarios reales.
 
+- **LOGIN CON GOOGLE EN LA VERSIÓN DE PLAY (trampa resuelta sep-2026):** Play
+  App Signing re-firma el AAB, así que la app bajada de la tienda NO lleva la
+  firma del keystore del CI. Google Sign-In exige un cliente OAuth Android por
+  cada certificado (paquete + SHA-1); si falta uno, `ApiException: 10`. Hoy hay
+  CUATRO huellas registradas en Firebase `fire-b9e79` (app `pe.ebim.pichangol`)
+  y cada una con su cliente OAuth en Google Cloud (Firebase NO crea el cliente
+  solo — hay que crearlo a mano en Credenciales):
+  1. keystore del CI (sideload) `B9:37:…:81:07`;
+  2. **llave de firma ANTERIOR de Play** `B1:37:61:D0:…:CC:FB:83:D1` — Play la
+     generó el 29-ago-2026 y la rotó el mismo día; la consola la esconde al
+     fondo de "Firma de apps → Claves de firma de la app anteriores" con 0 %
+     de instalaciones, pero el APK entregado la lleva como PRIMER certificado
+     del historial (`signingCertificateHistory[0]`) y ES la que Google Sign-In
+     valida. Fue la causa de un día entero de "error 10" con todo lo demás
+     bien configurado;
+  3. clásica actual `A5:C1:…:51:73:18`; 4. poscuántica `4C:55:…:42:EC:BB`.
+  Para diagnosticar sin adivinar: **Ajustes → Diagnóstico → "Firma de esta
+  instalación"** muestra el SHA-256 del primer certificado del historial y el
+  origen (Play vs sideload); se compara contra las huellas de Play Console.
+  Ojo: la consola muestra SHA-1 y SHA-256 del MISMO certificado y no se parecen
+  en nada — comparar siempre el mismo algoritmo.
 - Workflow `.github/workflows/build.yml`: jobs Android + iOS.
   `--build-number=${{ github.run_number }}` (versionCode único).
 - APK con nombre único `dist/pichangol-<run_number>.apk` (evita cache de APK
