@@ -9,6 +9,7 @@ import '../widgets/cargando_pichangol.dart';
 import '../utils/input_formatos.dart';
 import '../widgets/marcas_pago.dart';
 import '../widgets/pago_libelula.dart';
+import '../widgets/pago_payphone.dart';
 import '../widgets/pago_procesando.dart';
 import '../widgets/responsive.dart';
 import '../widgets/sesion_requerida.dart';
@@ -105,15 +106,20 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
   /// dueño (histórico Perú).
   String get _mon => widget.pais?.moneda ?? appState.monedaSaldoSimbolo;
 
-  /// ¿La pasarela del país está integrada? Perú (Culqi) y Bolivia (Libélula).
-  /// Los demás muestran el aviso "próximamente" en vez del formulario de cobro.
+  /// ¿La pasarela del país está integrada? Perú (Culqi), Bolivia (Libélula) y
+  /// Ecuador (PayPhone). Los demás muestran el aviso "próximamente" en vez del
+  /// formulario de cobro.
   bool get _pasarelaLista =>
       widget.pais == null ||
       widget.pais!.pasarela == 'culqi' ||
-      widget.pais!.pasarela == 'libelula';
+      widget.pais!.pasarela == 'libelula' ||
+      widget.pais!.pasarela == 'payphone';
 
-  /// Bolivia: el cobro es hospedado (Libélula), no tokenización en la app.
-  bool get _esLibelula => widget.pais?.pasarela == 'libelula';
+  /// Bolivia y Ecuador: el cobro es HOSPEDADO (Libélula / PayPhone abren su
+  /// propia página en un WebView), no tokenización de tarjeta en la app.
+  bool get _esLibelula =>
+      widget.pais?.pasarela == 'libelula' ||
+      widget.pais?.pasarela == 'payphone';
 
   @override
   void initState() {
@@ -166,15 +172,26 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
       setState(() => _error = 'Inicia sesión para recargar.');
       return;
     }
-    final ok = await PagoLibelula.cobrar(
-      context,
-      monto: _monto,
-      concepto: 'Recarga de saldo Pichangol',
-      email: _email,
-      moneda: _mon,
-      tipo: 'recarga',
-      duenoId: widget.duenoId ?? _email, // billetera única: el correo del dueño
-    );
+    final esPayPhone = widget.pais?.pasarela == 'payphone';
+    final ok = esPayPhone
+        ? await PagoPayPhone.cobrar(
+            context,
+            monto: _monto,
+            concepto: 'Recarga de saldo Pichangol',
+            email: _email,
+            moneda: _mon,
+            tipo: 'recarga',
+            duenoId: widget.duenoId ?? _email,
+          )
+        : await PagoLibelula.cobrar(
+            context,
+            monto: _monto,
+            concepto: 'Recarga de saldo Pichangol',
+            email: _email,
+            moneda: _mon,
+            tipo: 'recarga',
+            duenoId: widget.duenoId ?? _email, // billetera única: el correo
+          );
     if (!mounted) return;
     if (ok) {
       await appState.sincronizarSaldo(); // el backend ya acreditó; refresca

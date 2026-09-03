@@ -29,6 +29,7 @@ from db.store import stores
 
 from . import culqi
 from . import libelula
+from . import payphone
 
 router = APIRouter(prefix="/pagos", tags=["pagos"])
 
@@ -428,6 +429,171 @@ def bo_retorno(id: str = "") -> HTMLResponse:
             "<h2>¡Pago recibido! ✅</h2>"
             "<p>Ya puedes volver a Pichangol.</p></div>")
     return HTMLResponse(content=page, headers={"Cache-Control": "no-store"})
+
+
+# ── PAYPHONE (Ecuador): preparar → pagar en la página hospedada → CONFIRMAR ──
+# El cobro NO existe hasta que PayPhone lo confirma (Confirm es la única fuente
+# de verdad) y si no se confirma en 5 minutos PayPhone lo revierte solo. Por eso
+# el retorno confirma al instante y el APK, además, manda el transaction_id al
+# consultar el estado (doble vía, idempotente).
+class PagoEcReq(BaseModel):
+    email: str
+    monto_usd: float
+    concepto: str = "Pago Pichangol"
+    nombre: str = ""
+    telefono: str = ""
+    documento: str = ""
+    tipo: str = ""       # reserva | sena | matricula | producto | pro | recarga
+    ref: str = ""        # id de la reserva/matrícula/… (trazabilidad)
+    dueno_id: str = ""   # a quién se liquidará / acredita (recarga)
+
+
+@router.get("/ec/config", dependencies=_APP)
+def get_ec_config() -> dict:
+    """¿Está activa la pasarela de Ecuador? (el APK decide si puede cobrar)."""
+    return {"disponible": payphone.disponible(), "moneda": "USD"}
+
+
+@router.post("/ec/pago", dependencies=_APP)
+def post_ec_pago(req: PagoEcReq) -> dict:
+    """Prepara el pago en PayPhone y devuelve las URLs hospedadas donde el APK
+    (WebView) manda a pagar. Guarda el pago como PENDIENTE."""
+    if not payphone.disponible():
+        return {"ok": False, "error": "no_configurado"}
+    email = (req.email or "").strip().lower()
+    if not email:
+        return {"ok": False, "error": "correo_requerido"}
+    monto = round(float(req.monto_usd), 2)
+    if monto <= 0:
+        return {"ok": False, "error": "monto_invalido"}
+    ident = uuid.uuid4().hex[:16]  # PayPhone sugiere ids cortos y únicos
+    base = (config.PUBLIC_BASE_URL or "").rstrip("/")
+    if not base:
+        return {"ok": False, "error": "sin_base_url"}
+    r = payphone.preparar(
+        client_tx_id=ident, monto_usd=monto, concepto=req.concepto,
+        response_url=f"{base}/pagos/ec/retorno",
+        cancel_url=f"{base}/pagos/ec/cancelado",
+        email=email, telefono=req.telefono, documento=req.documento)
+    if not r.get("ok"):
+        return r
+    stores.payphone_pagos[ident] = {
+        "identificador": ident,
+        "payment_id": r.get("payment_id"),
+        "transaction_id": None,
+        "email": email,
+        "monto_usd": monto,
+        "concepto": req.concepto,
+        "tipo": req.tipo,
+        "ref": req.ref,
+        "dueno_id": (req.dueno_id or "").strip().lower(),
+        "pagado": False,
+        "estado": "pendiente",
+        "autorizacion": None,
+        "fecha_pago": None,
+        "creado_en": _ahora_iso(),
+    }
+    return {
+        "ok": True,
+        "identificador": ident,
+        "url_pasarela": r.get("url_tarjeta") or r.get("url_payphone"),
+        "url_payphone": r.get("url_payphone"),
+        "retorno": f"{base}/pagos/ec/retorno",
+    }
+
+
+def _confirmar_ec(ident: str, transaction_id: str) -> dict | None:
+    """Confirma con PayPhone y, si aprobó, marca pagado (idempotente). Si es
+    una RECARGA, acredita el saldo al dueño una sola vez. Devuelve el pago o
+    None si no existe."""
+    d = stores.payphone_pagos.get(ident)
+    if not d:
+        return None
+    if d.get("pagado"):
+        return d
+    tx = str(transaction_id or d.get("transaction_id") or "").strip()
+    if not tx:
+        return d
+    d["transaction_id"] = tx
+    c = payphone.confirmar(transaction_id=tx, client_tx_id=ident)
+    if not c.get("ok"):
+        d["estado"] = f"error: {c.get('error', '')}"[:80]
+        return d
+    d["estado"] = str(c.get("estado") or "")[:40]
+    d["autorizacion"] = c.get("autorizacion")
+    if not c.get("aprobado"):
+        return d
+    # Defensa: si PayPhone reporta un monto y no cuadra, NO se da por pagado.
+    mc = c.get("monto_centavos")
+    if isinstance(mc, (int, float)) and int(mc) != payphone.centavos(d["monto_usd"]):
+        d["estado"] = "monto_no_cuadra"
+        return d
+    d["pagado"] = True
+    d["fecha_pago"] = _ahora_iso()
+    if d.get("tipo") == "recarga" and d.get("dueno_id"):
+        cts = payphone.centavos(d["monto_usd"])
+        if cts > 0:
+            stores.acreditar(d["dueno_id"], cts)
+            stores.registrar_pago(
+                tipo="recarga", monto_centimos=cts, moneda="USD",
+                estado="aprobado", dueno_id=d["dueno_id"],
+                email=d.get("email", ""), concepto="Recarga (PayPhone)")
+            # PROMO bono de recarga (los umbrales aplican en USD).
+            _aplicar_bono_recarga(d["dueno_id"], cts / 100.0, f"pp_{ident}")
+    return d
+
+
+def _pagina_ec(titulo: str, cuerpo: str) -> HTMLResponse:
+    page = ("<!doctype html><meta charset=utf-8>"
+            "<meta name=viewport content='width=device-width,initial-scale=1'>"
+            "<title>Pago Pichangol</title>"
+            "<div style='font-family:system-ui;text-align:center;padding:44px;"
+            f"color:#14463A'><h2>{_html.escape(titulo)}</h2>"
+            f"<p>{_html.escape(cuerpo)}</p></div>")
+    return HTMLResponse(content=page, headers={"Cache-Control": "no-store"})
+
+
+@router.get("/ec/retorno", response_class=HTMLResponse)
+def ec_retorno(id: str = "", clientTransactionId: str = "") -> HTMLResponse:
+    """Página a la que PayPhone devuelve al cliente tras pagar (con ?id=<tx>&
+    clientTransactionId=<ident>). CONFIRMA de inmediato (regla de los 5 min).
+    Pública (la abre el navegador/WebView). Un GET con datos falsos no aprueba
+    nada: la verdad la dice Confirm."""
+    ident = (clientTransactionId or "").strip()
+    d = _confirmar_ec(ident, id) if ident else None
+    if d and d.get("pagado"):
+        return _pagina_ec("¡Pago recibido! ✅", "Ya puedes volver a Pichangol.")
+    if d:
+        return _pagina_ec("Pago no aprobado",
+                          "PayPhone no aprobó el cobro. Puedes intentarlo de "
+                          "nuevo desde la app; no se te cobró nada.")
+    return _pagina_ec("Pago no encontrado",
+                      "Vuelve a Pichangol e intenta otra vez.")
+
+
+@router.get("/ec/cancelado", response_class=HTMLResponse)
+def ec_cancelado(clientTransactionId: str = "") -> HTMLResponse:
+    """PayPhone manda aquí si el cliente cancela en la pasarela."""
+    d = stores.payphone_pagos.get((clientTransactionId or "").strip())
+    if d and not d.get("pagado"):
+        d["estado"] = "cancelado"
+    return _pagina_ec("Pago cancelado", "No se te cobró nada. Puedes volver a "
+                      "Pichangol e intentarlo cuando quieras.")
+
+
+@router.get("/ec/pago/{identificador}", dependencies=_APP)
+def get_ec_pago(identificador: str, transaction_id: str = "") -> dict:
+    """Estado de un pago (el APK consulta si ya se pagó). Si el APK trae el
+    transaction_id que vio en la URL de retorno, CONFIRMA aquí mismo — así el
+    cobro se confirma aunque el retorno nunca haya llegado al backend."""
+    d = stores.payphone_pagos.get(identificador)
+    if not d:
+        return {"ok": False, "error": "no_encontrado"}
+    if not d.get("pagado") and (transaction_id or d.get("transaction_id")):
+        d = _confirmar_ec(identificador, transaction_id) or d
+    return {"ok": True, "pagado": bool(d.get("pagado")),
+            "estado": d.get("estado"), "monto_usd": d.get("monto_usd"),
+            "concepto": d.get("concepto"), "autorizacion": d.get("autorizacion")}
 
 
 @router.get("/saldo/{dueno_id}", dependencies=_APP)

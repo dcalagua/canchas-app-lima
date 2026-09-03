@@ -272,6 +272,65 @@ class PagosService {
     }
   }
 
+  /// ECUADOR (PayPhone): prepara el pago y devuelve {ok, identificador,
+  /// url_pasarela, url_payphone, retorno} o {ok:false, error}. null si no hay
+  /// backend. [tipo] 'recarga' + [duenoId] hacen que el backend acredite el
+  /// saldo al confirmarse el pago.
+  static Future<Map<String, dynamic>?> crearPagoEc({
+    required String email,
+    required double montoUsd,
+    required String concepto,
+    String tipo = '',
+    String ref = '',
+    String duenoId = '',
+    String nombre = '',
+    String telefono = '',
+    String documento = '',
+  }) async {
+    if (!disponible) return null;
+    try {
+      final r = await http.post(
+        Uri.parse('$_baseUrl/pagos/ec/pago'),
+        headers: _appHeaders(json: true),
+        body: jsonEncode({
+          'email': email,
+          'monto_usd': montoUsd,
+          'concepto': concepto,
+          'tipo': tipo,
+          'ref': ref,
+          'dueno_id': duenoId,
+          'nombre': nombre,
+          'telefono': telefono,
+          'documento': documento,
+        }),
+      ).timeout(const Duration(seconds: 25));
+      if (r.statusCode != 200) return {'ok': false, 'error': 'HTTP ${r.statusCode}'};
+      return Map<String, dynamic>.from(jsonDecode(r.body) as Map);
+    } catch (_) {
+      return {'ok': false, 'error': 'sin_conexion'};
+    }
+  }
+
+  /// Estado de un pago de PayPhone: {ok, pagado, estado}. Si se manda el
+  /// [transactionId] que PayPhone puso en la URL de retorno, el backend
+  /// CONFIRMA ahí mismo (regla de los 5 minutos). null si no se pudo consultar.
+  static Future<Map<String, dynamic>?> estadoPagoEc(String identificador,
+      {String transactionId = ''}) async {
+    if (!disponible || identificador.isEmpty) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/pagos/ec/pago/$identificador').replace(
+          queryParameters:
+              transactionId.isEmpty ? null : {'transaction_id': transactionId});
+      final r = await http
+          .get(uri, headers: _appHeaders())
+          .timeout(const Duration(seconds: 20));
+      if (r.statusCode != 200) return null;
+      return Map<String, dynamic>.from(jsonDecode(r.body) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Cobra al jugador solo la comisión (fallback saldo cero). {ok, chargeId}.
   static Future<Map<String, dynamic>> feeReserva({
     required String token,

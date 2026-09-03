@@ -258,6 +258,19 @@ COMISION_MIN_SOLES = float(os.getenv("COMISION_MIN_SOLES", "2"))
 LIBELULA_APPKEY = os.getenv("LIBELULA_APPKEY", "")
 LIBELULA_BASE_URL = os.getenv("LIBELULA_BASE_URL", "https://api.libelula.bo")
 
+# --- PayPhone (pasarela de pagos de ECUADOR: tarjeta · saldo PayPhone) -------
+# "Botón de pagos" por redirección: el backend PREPARA la transacción con el
+# token de Developer y PayPhone devuelve URLs hospedadas donde el cliente paga;
+# al terminar lo devuelve al responseUrl con ?id=<tx>&clientTransactionId=<id>
+# y hay que CONFIRMAR dentro de 5 minutos o PayPhone REVIERTE el cobro. Token y
+# storeId SÓLO viven aquí (Railway), nunca en el APK. Sin ambos el módulo queda
+# inactivo (fail-safe). Se obtienen en PayPhone Business → Developer →
+# Aplicaciones (rol "Developer" sobre el RUC del comercio).
+PAYPHONE_TOKEN = os.getenv("PAYPHONE_TOKEN", "")
+PAYPHONE_STORE_ID = os.getenv("PAYPHONE_STORE_ID", "")
+PAYPHONE_BASE_URL = os.getenv(
+    "PAYPHONE_BASE_URL", "https://pay.payphonetodoesposible.com")
+
 ZONAS = ("lima_norte", "lima_sur", "lima_este", "lima_moderna", "callao")
 
 # Mapeo distrito -> zona (parcial; lo no mapeado cae a 'lima_moderna').

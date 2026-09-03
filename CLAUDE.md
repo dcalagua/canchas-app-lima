@@ -62,6 +62,14 @@ jugador es 100% Pichangol, EBIM solo aparece discreto como respaldo).
   - **Catálogos y sugerencias por país**: marcas/productos (bodega:
     `_sugerenciasPE/BO/EC`), prefijo telefónico (`codigoTelActual`),
     validación de documento por país.
+  - **Pasarela por país** (`PaisConfig.pasarela`, la decide `paisActual`):
+    PE → **Culqi** (tokeniza en la app; `pago_tarjeta_sheet.dart`), BO →
+    **Libélula** (página hospedada en WebView; `pago_libelula.dart`), EC →
+    **PayPhone** (botón de pagos hospedado en USD; `pago_payphone.dart`,
+    backend `pagos/payphone.py` + `/pagos/ec/*`, hecho sep-2026). Todo cobro
+    entra por `PagoTarjeta.cobrar`, que enruta por país. **Sin pasarela
+    configurada, en PRODUCCIÓN nunca se simula** (`kEsProduccion`): se avisa y
+    se devuelve false; en dev/QAS cae a la pasarela simulada para probar.
   - Referencia central: `lib/config/pais.dart` (`PaisConfig`, `paisActual`).
 
 ## App Flutter (`lib/`)
@@ -235,6 +243,12 @@ off → redeploy inmediato en cada push). URL pública:
   `PICHANGOL_ADMIN_WHATSAPP`, `TWILIO_*`, `WHATSAPP_*`, `OTP_CANAL_PREFERIDO`
   (`whatsapp|twilio_whatsapp|sms`), `VALIDADOR_ACTIVA_AUTOMATICO`,
   `RECLAMO_VALIDACION_GPS_MAX_M=150`, `RECLAMO_UBICACION_MAX_M=150`, `DATABASE_URL`,
+  `LIBELULA_APPKEY` (Bolivia), `PAYPHONE_TOKEN` + `PAYPHONE_STORE_ID`
+  (Ecuador; se sacan en PayPhone Business → Developer → Aplicaciones; sin
+  ambos el módulo queda inactivo y `/pagos/ec/config` responde
+  `disponible:false`). PayPhone exige CONFIRMAR cada cobro antes de 5 min o
+  lo revierte: lo hace `/pagos/ec/retorno` al instante y, de respaldo, el APK
+  manda el `transaction_id` al consultar `/pagos/ec/pago/{id}`.
   `APP_API_KEY` (clave app↔backend: si está seteada, los endpoints PÚBLICOS de
   `propiedad/router.py` exigen la cabecera `X-App-Key` — solo el APK oficial la
   trae; vacía = no se exige, para rollout gradual). Debe coincidir con el

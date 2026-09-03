@@ -9,30 +9,38 @@ import '../theme.dart';
 import 'cargando_pichangol.dart';
 import 'dialogo_pichangol.dart';
 
-/// Cobro con LIBÉLULA (Bolivia). Modelo "deuda + pasarela hospedada": el backend
-/// registra la deuda y devuelve una URL; aquí abrimos esa URL en un WebView para
-/// que el cliente pague (QR interoperable · tarjeta · Tigo Money). Al volver a la
-/// URL de retorno (o al cerrar), confirmamos con el backend si la deuda se pagó.
+/// Cobro con PAYPHONE (Ecuador). Modelo "botón de pagos por redirección": el
+/// backend PREPARA la transacción y devuelve una URL hospedada; aquí la abrimos
+/// en un WebView para que el cliente pague (tarjeta Visa/Mastercard/Diners/
+/// Discover o saldo PayPhone). Al terminar, PayPhone vuelve a la URL de retorno
+/// del backend con `?id=<tx>&clientTransactionId=<ident>`.
 ///
-/// Devuelve true si el pago se confirmó. Si Libélula no está configurada en el
-/// backend, cae a la pasarela SIMULADA (para no romper la demo/pruebas).
-class PagoLibelula {
+/// REGLA DE ORO de PayPhone: el cobro hay que CONFIRMARLO antes de 5 minutos o
+/// se revierte solo. Por eso (1) dejamos que la URL de retorno LLEGUE al
+/// backend (que confirma al instante) y (2) además le pasamos al backend el
+/// `id` que vimos en esa URL al consultar el estado — si el retorno no llegó
+/// por cualquier motivo, se confirma igual. Doble vía, idempotente.
+///
+/// Devuelve true si el pago se confirmó. Sin PayPhone configurada: en dev/QAS
+/// cae a la pasarela SIMULADA; en producción avisa y devuelve false (nunca se
+/// inventa un pago).
+class PagoPayPhone {
   // Anti doble-click: mientras hay un cobro en curso, los taps extra se ignoran
-  // (evita que se registren varias deudas y se abran varias pasarelas).
+  // (evita preparar varias transacciones y abrir varias pasarelas).
   static bool _enCurso = false;
 
   static Future<bool> cobrar(
     BuildContext context, {
-    required num monto, // unidad mayor (Bs), admite 2 decimales
+    required num monto, // unidad mayor (USD), admite 2 decimales
     required String concepto,
     required String email,
-    String moneda = 'Bs',
+    String moneda = '\$',
     String tipo = '',
     String ref = '',
     String duenoId = '',
   }) async {
-    if (_enCurso) return false; // ya hay un pago abriéndose
-    _enCurso = true; // se setea SÍNCRONO: bloquea incluso el doble-tap de 1 frame
+    if (_enCurso) return false;
+    _enCurso = true; // síncrono: bloquea incluso el doble-tap de 1 frame
     try {
       return await _flujo(context,
           monto: monto, concepto: concepto, email: email, moneda: moneda,
@@ -44,7 +52,7 @@ class PagoLibelula {
 
   static Future<bool> _flujo(
     BuildContext context, {
-    required num monto, // unidad mayor (Bs), admite 2 decimales
+    required num monto,
     required String concepto,
     required String email,
     required String moneda,
@@ -54,9 +62,8 @@ class PagoLibelula {
   }) async {
     final correo = (appState.usuario?.email ?? email).trim();
     final nombre = appState.usuario?.nombre ?? '';
-    // 1) Registrar la deuda en el backend (que llama a Libélula). El [tipo]
-    //    'recarga' + [duenoId] hace que el backend acredite el saldo al pagarse.
-    //    Mientras tanto, preload de marca (registrar la deuda puede demorar).
+    // 1) Preparar el pago en el backend (que llama a PayPhone). Preload de
+    //    marca mientras tanto (preparar puede demorar un par de segundos).
     final nav = Navigator.of(context, rootNavigator: true);
     showDialog<void>(
       context: context,
@@ -76,9 +83,9 @@ class PagoLibelula {
     );
     Map<String, dynamic>? r;
     try {
-      r = await PagosService.crearDeudaBo(
+      r = await PagosService.crearPagoEc(
         email: correo,
-        montoBs: monto.toDouble(),
+        montoUsd: monto.toDouble(),
         concepto: concepto,
         nombre: nombre,
         tipo: tipo,
@@ -98,7 +105,7 @@ class PagoLibelula {
           context,
           titulo: 'Pago en la app no disponible',
           mensaje: 'Todavía no tenemos habilitado el cobro dentro de '
-              'Pichangol en Bolivia, así que no se te cobró nada. Coordina '
+              'Pichangol en Ecuador, así que no se te cobró nada. Coordina '
               'el pago directamente con el local o el vendedor.',
           icono: Icons.credit_card_off_outlined,
         );
@@ -111,7 +118,8 @@ class PagoLibelula {
     if (r['ok'] != true) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           backgroundColor: const Color(0xFFC0392B),
-          content: Text('No se pudo iniciar el pago. ${r['error'] ?? ''}'.trim())));
+          content:
+              Text('No se pudo iniciar el pago. ${r['error'] ?? ''}'.trim())));
       return false;
     }
 
@@ -119,44 +127,65 @@ class PagoLibelula {
     final ident = (r['identificador'] ?? '').toString();
     if (url.isEmpty || ident.isEmpty) return false;
 
-    // 2) Abrir la pasarela de Libélula en un WebView; se cierra al llegar a la
-    //    URL de retorno del backend (/pagos/bo/retorno) o si el usuario sale.
-    final volvio = await Navigator.of(context).push<bool>(MaterialPageRoute(
+    // 2) Abrir la pasarela de PayPhone en un WebView. Devuelve el `id` de la
+    //    transacción que PayPhone puso en la URL de retorno ('' si el usuario
+    //    cerró sin terminar).
+    final txId = await Navigator.of(context).push<String>(MaterialPageRoute(
       fullscreenDialog: true,
-      builder: (_) => _LibelulaWebView(url: url, concepto: concepto),
+      builder: (_) => _PayPhoneWebView(url: url, concepto: concepto),
     ));
     if (!context.mounted) return false;
 
-    // 3) Confirmar contra el backend (el callback marca pagado; si no llegó, el
-    //    backend reconcilia consultando a Libélula). Da unos segundos.
-    return _confirmar(context, ident, intentos: volvio == true ? 8 : 3);
+    // 3) Confirmar contra el backend, mandando el transaction_id si lo vimos:
+    //    el backend CONFIRMA con PayPhone (antes de los 5 minutos) y responde
+    //    pagado. Si no hubo retorno, igual se sondea unas veces por si acaso.
+    final tx = txId ?? '';
+    return _confirmar(context, ident, tx, intentos: tx.isNotEmpty ? 8 : 3);
   }
 
-  /// Sondea el estado de la deuda mostrando "Confirmando pago…".
-  static Future<bool> _confirmar(BuildContext context, String ident,
+  /// Sondea el estado del pago mostrando "Confirmando pago…".
+  static Future<bool> _confirmar(
+      BuildContext context, String ident, String transactionId,
       {int intentos = 6}) async {
     final res = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => _ConfirmandoPago(identificador: ident, intentos: intentos),
+      builder: (_) => _ConfirmandoPago(
+          identificador: ident, transactionId: transactionId, intentos: intentos),
     );
     return res == true;
   }
 }
 
-/// Pantalla WebView con la pasarela de Libélula.
-class _LibelulaWebView extends StatefulWidget {
-  const _LibelulaWebView({required this.url, required this.concepto});
+/// Pantalla WebView con la pasarela hospedada de PayPhone.
+class _PayPhoneWebView extends StatefulWidget {
+  const _PayPhoneWebView({required this.url, required this.concepto});
   final String url;
   final String concepto;
 
   @override
-  State<_LibelulaWebView> createState() => _LibelulaWebViewState();
+  State<_PayPhoneWebView> createState() => _PayPhoneWebViewState();
 }
 
-class _LibelulaWebViewState extends State<_LibelulaWebView> {
+class _PayPhoneWebViewState extends State<_PayPhoneWebView> {
   late final WebViewController _controller;
   bool _cargando = true;
+  bool _cerrado = false;
+
+  /// Saca el `id` (transactionId de PayPhone) de la URL de retorno.
+  static String _txDe(String url) {
+    try {
+      return Uri.parse(url).queryParameters['id'] ?? '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  void _cerrar(String tx) {
+    if (_cerrado || !mounted) return;
+    _cerrado = true;
+    Navigator.of(context).pop(tx);
+  }
 
   @override
   void initState() {
@@ -167,15 +196,17 @@ class _LibelulaWebViewState extends State<_LibelulaWebView> {
         onPageStarted: (_) {
           if (mounted) setState(() => _cargando = true);
         },
-        onPageFinished: (_) {
+        onPageFinished: (url) {
           if (mounted) setState(() => _cargando = false);
+          // La página de retorno del backend ya cargó: el backend acaba de
+          // CONFIRMAR con PayPhone. Cerramos llevándonos el id por si acaso.
+          if (url.contains('/pagos/ec/retorno')) _cerrar(_txDe(url));
+          if (url.contains('/pagos/ec/cancelado')) _cerrar('');
         },
         onNavigationRequest: (req) {
-          // Al volver a nuestra URL de retorno, el pago se hizo: cerramos OK.
-          if (req.url.contains('/pagos/bo/retorno')) {
-            Navigator.of(context).pop(true);
-            return NavigationDecision.prevent;
-          }
+          // OJO: al retorno se le deja LLEGAR al backend (NavigationDecision.
+          // navigate), porque es ahí donde se confirma el cobro dentro de los
+          // 5 minutos. No se intercepta como en Libélula.
           return NavigationDecision.navigate;
         },
       ))
@@ -188,12 +219,12 @@ class _LibelulaWebViewState extends State<_LibelulaWebView> {
       appBar: AppBar(
         backgroundColor: bosque,
         foregroundColor: Colors.white,
-        title: const Text('Pago seguro · Libélula',
+        title: const Text('Pago seguro · PayPhone',
             style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
         leading: IconButton(
           icon: const Icon(Icons.close),
           tooltip: 'Cancelar',
-          onPressed: () => Navigator.of(context).pop(false),
+          onPressed: () => _cerrar(''),
         ),
       ),
       body: Stack(
@@ -209,8 +240,13 @@ class _LibelulaWebViewState extends State<_LibelulaWebView> {
 
 /// Diálogo que sondea el backend hasta confirmar el pago (o agotar intentos).
 class _ConfirmandoPago extends StatefulWidget {
-  const _ConfirmandoPago({required this.identificador, required this.intentos});
+  const _ConfirmandoPago({
+    required this.identificador,
+    required this.transactionId,
+    required this.intentos,
+  });
   final String identificador;
+  final String transactionId;
   final int intentos;
 
   @override
@@ -226,12 +262,16 @@ class _ConfirmandoPagoState extends State<_ConfirmandoPago> {
 
   Future<void> _sondear() async {
     for (var i = 0; i < widget.intentos; i++) {
-      final e = await PagosService.estadoDeudaBo(widget.identificador);
+      final e = await PagosService.estadoPagoEc(widget.identificador,
+          transactionId: widget.transactionId);
       if (!mounted) return;
       if (e != null && e['pagado'] == true) {
         Navigator.of(context).pop(true);
         return;
       }
+      // Rechazado/cancelado en firme: no tiene sentido seguir sondeando.
+      final est = (e?['estado'] ?? '').toString().toLowerCase();
+      if (est == 'cancelado' || est == 'canceled' || est == 'rejected') break;
       await Future.delayed(const Duration(seconds: 2));
     }
     if (mounted) Navigator.of(context).pop(false);
