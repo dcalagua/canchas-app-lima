@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../utils/moneda.dart';
@@ -181,6 +182,29 @@ const PaisConfig _paisPorDefecto = PaisConfig(
 PaisConfig paisActual = _paisPorDefecto;
 
 const String _kPaisIso = 'pais_iso';
+const String _kPaisElegido = 'pais_elegido';
+const String _kPaisCasa = 'pais_casa';
+const String _kSugerenciaDescartada = 'pais_sugerencia_descartada';
+
+/// ¿El usuario ELIGIÓ país a mano (bienvenida, banner, Perfil)? Mientras sea
+/// false, el GPS manda (comportamiento de siempre). Cuando es true, el GPS ya
+/// no cambia el país solo: propone (ver [sugerenciaPais]) y el usuario decide.
+bool paisElegido = false;
+
+/// País que el GPS detectó distinto al activo, pendiente de que el usuario lo
+/// acepte o lo descarte. Explorar lo escucha para pintar el banner "Estás en
+/// Ecuador · Ver canchas aquí / Seguir en Perú". null = nada que proponer.
+final ValueNotifier<PaisConfig?> sugerenciaPais = ValueNotifier(null);
+
+/// ISO de la última sugerencia que el usuario descartó ("Seguir en Perú"):
+/// no se vuelve a proponer hasta que el GPS diga OTRO país. Así el banner
+/// sale una vez por viaje, no en cada arranque.
+String _sugerenciaDescartada = '';
+
+/// PAÍS DE CASA: el de la billetera del usuario (moneda del saldo y pasarela
+/// de recarga). Es independiente del país que explora. null = aún no fijado
+/// (usuario nuevo): `AppState.paisBilletera` cae al GPS.
+PaisConfig? paisCasa;
 
 /// Aplica un país (por su config), sincroniza el símbolo de moneda global y,
 /// si [persistir], lo guarda para el próximo arranque.
@@ -212,12 +236,64 @@ PaisConfig? paisPorMoneda(String simbolo) {
 /// Selecciona el país por su código ISO (el que devuelve el reverse-geocode).
 /// Si el país no está soportado, mantiene el actual (no rompe la moneda). Es la
 /// puerta de entrada desde la detección por GPS.
+///
+/// Si el usuario ya ELIGIÓ país a mano, el GPS no lo pisa: deja la propuesta
+/// en [sugerenciaPais] y Explorar pregunta. Un limeño de viaje en Guayaquil
+/// sigue viendo su app en S/ hasta que él diga "ver canchas aquí".
 Future<void> setPaisPorIso(String? iso) async {
   final code = (iso ?? '').toUpperCase().trim();
   final p = paisesSoportados[code];
   if (p == null) return; // país no soportado → no tocar la moneda actual
-  if (p.iso == paisActual.iso) return; // sin cambios
+  if (p.iso == paisActual.iso) {
+    // Volvió al país activo: cualquier sugerencia pendiente ya no aplica.
+    if (sugerenciaPais.value != null) sugerenciaPais.value = null;
+    return;
+  }
+  if (!paisElegido) {
+    await _aplicarPais(p);
+    return;
+  }
+  if (p.iso == _sugerenciaDescartada) return; // ya dijo "seguir en el mío"
+  if (sugerenciaPais.value?.iso != p.iso) sugerenciaPais.value = p;
+}
+
+/// El usuario ELIGE país (bienvenida, banner de Explorar, Perfil). Se aplica,
+/// se marca la elección explícita y se limpia cualquier sugerencia pendiente.
+Future<void> elegirPais(PaisConfig p) async {
+  paisElegido = true;
+  _sugerenciaDescartada = '';
+  sugerenciaPais.value = null;
   await _aplicarPais(p);
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kPaisElegido, true);
+    await prefs.remove(_kSugerenciaDescartada);
+  } catch (_) {}
+}
+
+/// "Seguir en mi país": descarta la sugerencia del GPS hasta que cambie.
+Future<void> descartarSugerenciaPais() async {
+  final iso = sugerenciaPais.value?.iso ?? '';
+  sugerenciaPais.value = null;
+  if (iso.isEmpty) return;
+  _sugerenciaDescartada = iso;
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kSugerenciaDescartada, iso);
+  } catch (_) {}
+}
+
+/// Fija el país de CASA (billetera). Persiste.
+Future<void> setPaisCasa(PaisConfig? p) async {
+  paisCasa = p;
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    if (p == null) {
+      await prefs.remove(_kPaisCasa);
+    } else {
+      await prefs.setString(_kPaisCasa, p.iso);
+    }
+  } catch (_) {}
 }
 
 /// Carga el país persistido en el arranque, para que la moneda sea correcta
@@ -228,6 +304,9 @@ Future<void> cargarPaisPersistido() async {
     final iso = prefs.getString(_kPaisIso);
     final p = paisesSoportados[(iso ?? '').toUpperCase()];
     if (p != null) await _aplicarPais(p, persistir: false);
+    paisElegido = prefs.getBool(_kPaisElegido) ?? false;
+    paisCasa = paisesSoportados[(prefs.getString(_kPaisCasa) ?? '').toUpperCase()];
+    _sugerenciaDescartada = prefs.getString(_kSugerenciaDescartada) ?? '';
   } catch (_) {
     // Sin persistencia: se queda con el país por defecto.
   }

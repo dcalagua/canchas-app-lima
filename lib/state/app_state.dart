@@ -5986,7 +5986,26 @@ class AppState extends ChangeNotifier {
       final c = mis.first;
       return paisDeCoordenadas(c.ubicacion.latitude, c.ubicacion.longitude);
     }
-    return paisActual;
+    return paisCasa ?? paisActual;
+  }
+
+  /// ¿Puede cambiar su país de casa? Solo con la billetera en cero: cambiar
+  /// de moneda con saldo adentro sería convertir S/ en $ por decreto.
+  bool get puedeCambiarPaisCasa => saldoClub <= 0 && saldoRegalo <= 0;
+
+  /// Cambia el país de CASA (Perfil → "Mi país"). Con saldo, no hace nada y
+  /// devuelve false (la UI explica). Sin saldo, descongela la moneda del saldo
+  /// para que la próxima recarga la fije en la nueva.
+  Future<bool> cambiarPaisCasa(PaisConfig p) async {
+    if (!puedeCambiarPaisCasa) return false;
+    await setPaisCasa(p);
+    monedaSaldo = '';
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_kMonedaSaldo);
+    } catch (_) {}
+    notifyListeners();
+    return true;
   }
   // Virgen (como PRD): sin movimientos demo. El historial real baja del backend.
   final List<MovimientoSaldo> movimientos = [];

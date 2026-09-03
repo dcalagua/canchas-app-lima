@@ -11,6 +11,7 @@ import '../brand.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../config/pais.dart';
+import '../widgets/selector_pais.dart';
 import '../services/llamada_service.dart';
 import '../services/location_service.dart';
 import '../services/pagos_service.dart';
@@ -293,6 +294,37 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
   DateTime? _fechaBusqueda;
   String? _horaBusqueda;
   bool _busquedaHecha = false; // tras buscar, el mapa abre con ATRIBUTOS
+
+  /// Cambia el país que se explora (banner o selector). Si estamos físicamente
+  /// en ese país, se queda en la ubicación real; si no (eligió otro país desde
+  /// casa), centra en su ciudad principal y descubre canchas ahí.
+  Future<void> _cambiarPaisExploracion(PaisConfig p) async {
+    await elegirPais(p);
+    if (!mounted) return;
+    final centro = _centroBusqueda;
+    final aqui = centro != null &&
+        paisDeCoordenadas(centro.latitude, centro.longitude).iso == p.iso;
+    if (aqui) {
+      setState(() {});
+      return;
+    }
+    final d = ubicacionPorDefecto(p.iso);
+    setState(() {
+      _labelBusqueda = null;
+      _busquedaHecha = false;
+    });
+    _aplicarUbicacion(LatLng(d.lat, d.lng), descubrir: true);
+    setState(() => _labelBusqueda = '${p.bandera} ${p.nombre}');
+  }
+
+  /// Selector manual de país (toque en la bandera de la barra).
+  Future<void> _elegirPaisManual() async {
+    final p = await elegirPaisSheet(context,
+        actualIso: paisActual.iso,
+        titulo: '¿Dónde quieres ver canchas?',
+        mensaje: 'Cambia el país que exploras. Tu billetera no cambia.');
+    if (p != null && p.iso != paisActual.iso) await _cambiarPaisExploracion(p);
+  }
 
   Future<void> _abrirBuscar() async {
     final res = await Navigator.of(context).push<ResultadoBusquedaGuiada>(
@@ -657,6 +689,24 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                     label: _labelBusqueda,
                     subtitulo: _subtituloBusqueda,
                     onClear: _limpiarBusqueda,
+                    onPais: _elegirPaisManual,
+                  ),
+                  // El GPS detectó OTRO país del que el usuario eligió: se
+                  // propone una vez (no se cambia solo). Estilo Airbnb:
+                  // tarjeta blanca, dos acciones, cero modal.
+                  ValueListenableBuilder<PaisConfig?>(
+                    valueListenable: sugerenciaPais,
+                    builder: (_, sug, __) => sug == null
+                        ? const SizedBox.shrink()
+                        : Padding(
+                            padding: const EdgeInsets.only(top: 10),
+                            child: _BannerPais(
+                              sugerido: sug,
+                              actual: paisActual,
+                              onAceptar: () => _cambiarPaisExploracion(sug),
+                              onDescartar: descartarSugerenciaPais,
+                            ),
+                          ),
                   ),
                   const SizedBox(height: 10),
                   _FiltrosDeporte(
@@ -779,11 +829,13 @@ class _BarraBusqueda extends StatelessWidget {
   final VoidCallback onClear;
   final String? label;
   final String? subtitulo; // "⚽ Fútbol · Hoy · 19:00" (búsqueda guiada)
+  final VoidCallback? onPais; // toque en la bandera → cambiar país
   const _BarraBusqueda({
     required this.onBuscar,
     required this.onClear,
     this.label,
     this.subtitulo,
+    this.onPais,
   });
 
   @override
@@ -807,8 +859,18 @@ class _BarraBusqueda extends StatelessWidget {
                     const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                 child: Row(
                   children: [
-                    const Icon(Icons.search, color: coral),
-                    const SizedBox(width: 12),
+                    // Bandera del país que se explora: toque = cambiar país.
+                    // Reemplaza la lupa como "ancla" visual de dónde estás.
+                    InkWell(
+                      onTap: onPais,
+                      borderRadius: BorderRadius.circular(16),
+                      child: Padding(
+                        padding: const EdgeInsets.all(2),
+                        child: Text(paisActual.bandera,
+                            style: const TextStyle(fontSize: 22)),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1147,6 +1209,83 @@ class _SeccionHeader extends StatelessWidget {
                     color: color, fontWeight: FontWeight.w700, fontSize: 12)),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Banner "Estás en Ecuador": el GPS detectó un país distinto al elegido.
+/// Blanco, borde suave, dos acciones; desaparece al decidir y no vuelve a
+/// salir hasta que el GPS diga otro país.
+class _BannerPais extends StatelessWidget {
+  const _BannerPais({
+    required this.sugerido,
+    required this.actual,
+    required this.onAceptar,
+    required this.onDescartar,
+  });
+  final PaisConfig sugerido;
+  final PaisConfig actual;
+  final VoidCallback onAceptar;
+  final VoidCallback onDescartar;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      elevation: 3,
+      shadowColor: const Color(0x14000000),
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 10, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(sugerido.bandera, style: const TextStyle(fontSize: 22)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Parece que estás en ${sugerido.nombre}',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14.5,
+                        color: Color(0xFF222222)),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '¿Quieres ver canchas de ${sugerido.nombre} y precios en '
+              '${sugerido.moneda}? Tu billetera se queda como está.',
+              style: const TextStyle(fontSize: 12.5, color: textoTenue),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: onDescartar,
+                  style: TextButton.styleFrom(foregroundColor: textoTenue),
+                  child: Text('Seguir en ${actual.nombre}'),
+                ),
+                const SizedBox(width: 4),
+                FilledButton(
+                  onPressed: onAceptar,
+                  style: FilledButton.styleFrom(
+                      backgroundColor: lima,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12))),
+                  child: const Text('Ver canchas aquí',
+                      style: TextStyle(fontWeight: FontWeight.w800)),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -10,6 +10,7 @@ import '../services/pagos_service.dart';
 import '../services/places_service.dart';
 import '../services/propiedad_service.dart';
 import '../services/whatsapp_link.dart';
+import '../config/pais.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/ancho_lectura.dart';
@@ -1696,6 +1697,10 @@ class _ResumenReservaState extends State<_ResumenReserva> {
   /// "pagar en la cancha" (lo decide el backend por sus llaves de Culqi).
   bool get _soloEfectivo => !appState.pagoOnlineDisponible;
 
+  /// País donde ESTÁ la cancha: decide moneda y pasarela del cobro.
+  PaisConfig get _paisCancha => paisDeCoordenadas(
+      widget.cancha.ubicacion.latitude, widget.cancha.ubicacion.longitude);
+
   /// Monto de la seña: % del precio de la cancha (no incluye servicios extra).
   int get _senaMonto => (widget.total * cancha.senaPct / 100).round();
 
@@ -1889,11 +1894,18 @@ class _ResumenReservaState extends State<_ResumenReserva> {
               children: [
                 Icon(Icons.lock_outline, size: 15, color: textoTenue),
                 const SizedBox(width: 6),
-                Text(
-                    _soloEfectivo
-                        ? 'Reserva confirmada al instante · pagas en el local'
-                        : 'Pago seguro · Confirmación al instante',
-                    style: t.bodySmall?.copyWith(color: textoTenue)),
+                // La pasarela y la moneda las decide el PAÍS DE LA CANCHA
+                // (sus coordenadas), no el GPS del jugador: una cancha de
+                // Guayaquil se paga en $ por PayPhone aunque reserves desde
+                // Lima. Se dice explícito para que nadie se sorprenda.
+                Flexible(
+                  child: Text(
+                      _soloEfectivo
+                          ? 'Reserva confirmada al instante · pagas en el local'
+                          : 'Pagas en ${_paisCancha.moneda} · ${_paisCancha.pasarelaNombre}',
+                      textAlign: TextAlign.center,
+                      style: t.bodySmall?.copyWith(color: textoTenue)),
+                ),
               ],
             ),
             const SizedBox(height: 16),
