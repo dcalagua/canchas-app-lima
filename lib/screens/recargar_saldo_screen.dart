@@ -29,10 +29,12 @@ class RecargarSaldoScreen extends StatefulWidget {
   final String? duenoId;
   final String? titulo;
 
-  /// País del saldo que se recarga. Define la MONEDA mostrada y la PASARELA:
-  /// Perú (Culqi) usa el formulario Yape/tarjeta; los demás países aún no tienen
-  /// pasarela integrada (#35 Libélula) y muestran un aviso "próximamente".
-  /// Si es null, se asume el flujo Culqi de Perú (comportamiento histórico).
+  /// País del saldo que se recarga. Define la MONEDA mostrada y la PASARELA
+  /// (Perú → Culqi con Yape/tarjeta; Bolivia → Libélula; Ecuador → PayPhone).
+  /// Si es null se usa el país de la BILLETERA del usuario
+  /// (`appState.paisBilletera`), nunca el del GPS: antes, con null, caía a
+  /// Culqi mientras la moneda salía del GPS, y un dueño en Guayaquil veía
+  /// "$ 50" con Yape.
   final PaisConfig? pais;
 
   @override
@@ -102,24 +104,25 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
 
   String get _email => appState.usuario?.email ?? '';
 
-  /// Moneda a mostrar: la del país del saldo si se pasó, si no la del saldo del
-  /// dueño (histórico Perú).
-  String get _mon => widget.pais?.moneda ?? appState.monedaSaldoSimbolo;
+  /// País de la billetera que se recarga: el que pasó el llamador o, si no,
+  /// el de la billetera del usuario. Moneda y pasarela salen SIEMPRE de aquí.
+  PaisConfig get _pais => widget.pais ?? appState.paisBilletera;
+
+  /// Moneda a mostrar: la de la billetera.
+  String get _mon => _pais.moneda;
 
   /// ¿La pasarela del país está integrada? Perú (Culqi), Bolivia (Libélula) y
   /// Ecuador (PayPhone). Los demás muestran el aviso "próximamente" en vez del
   /// formulario de cobro.
   bool get _pasarelaLista =>
-      widget.pais == null ||
-      widget.pais!.pasarela == 'culqi' ||
-      widget.pais!.pasarela == 'libelula' ||
-      widget.pais!.pasarela == 'payphone';
+      _pais.pasarela == 'culqi' ||
+      _pais.pasarela == 'libelula' ||
+      _pais.pasarela == 'payphone';
 
   /// Bolivia y Ecuador: el cobro es HOSPEDADO (Libélula / PayPhone abren su
   /// propia página en un WebView), no tokenización de tarjeta en la app.
   bool get _esLibelula =>
-      widget.pais?.pasarela == 'libelula' ||
-      widget.pais?.pasarela == 'payphone';
+      _pais.pasarela == 'libelula' || _pais.pasarela == 'payphone';
 
   @override
   void initState() {
@@ -140,7 +143,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
       }
     });
     // ¿Recarga por QR (Yape directo) activa? Solo en el flujo Perú.
-    if (widget.pais == null || widget.pais!.iso == 'PE') {
+    if (_pais.iso == 'PE') {
       final qr = await PagosService.recargaQrConfig();
       if (mounted && (qr?['activo'] ?? false) == true) {
         setState(() => _qrDisponible = true);
@@ -172,7 +175,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
       setState(() => _error = 'Inicia sesión para recargar.');
       return;
     }
-    final esPayPhone = widget.pais?.pasarela == 'payphone';
+    final esPayPhone = _pais.pasarela == 'payphone';
     final ok = esPayPhone
         ? await PagoPayPhone.cobrar(
             context,
@@ -353,8 +356,9 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
                         color: const Color(0xFFFFF1EC),
                         borderRadius: BorderRadius.circular(12)),
                     child: const Text(
-                        'Los pagos aún no están habilitados en el servidor. '
-                        'Vuelve a intentar cuando estén activas las llaves de Culqi.',
+                        'Las recargas con Yape y tarjeta todavía no están '
+                        'activas. Estamos terminando de habilitarlas; mientras '
+                        'tanto puedes seguir usando Pichangol con normalidad.',
                         style: TextStyle(fontSize: 13)),
                   ),
                 ],
@@ -462,7 +466,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                    'Pagas de forma segura con ${widget.pais!.pasarelaNombre}. '
+                    'Pagas de forma segura con ${_pais.pasarelaNombre}. '
                     'Se abre la pasarela y, al confirmarse, se acredita tu saldo.',
                     style: const TextStyle(color: bosque, fontSize: 13)),
               ),
@@ -498,7 +502,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
   /// está lista (hoy: Bolivia → Libélula, #35). Muestra la moneda y la pasarela
   /// que corresponderá, para que el dueño sepa que su país está contemplado.
   Widget _pasarelaProximamente() {
-    final p = widget.pais!;
+    final p = _pais;
     final t = Theme.of(context).textTheme;
     return ListView(
       padding: const EdgeInsets.all(22),

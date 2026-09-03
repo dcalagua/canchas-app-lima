@@ -5969,6 +5969,25 @@ class AppState extends ChangeNotifier {
     if (mis.isNotEmpty) return mis.first.monedaSimbolo;
     return paisActual.moneda;
   }
+
+  /// PAÍS DE LA BILLETERA ("país de casa"). Decide la moneda del saldo y la
+  /// PASARELA con la que se recarga. NO es el país del GPS: un dueño limeño de
+  /// viaje en Guayaquil recarga en S/ por Culqi, no en $ por PayPhone. Misma
+  /// precedencia que [monedaSaldoSimbolo]: moneda congelada por la primera
+  /// recarga → país de su primera cancha (por coordenadas) → GPS como último
+  /// recurso (usuario nuevo sin saldo ni canchas).
+  PaisConfig get paisBilletera {
+    if (monedaSaldo.isNotEmpty) {
+      final p = paisPorMoneda(monedaSaldo);
+      if (p != null) return p;
+    }
+    final mis = misCanchas;
+    if (mis.isNotEmpty) {
+      final c = mis.first;
+      return paisDeCoordenadas(c.ubicacion.latitude, c.ubicacion.longitude);
+    }
+    return paisActual;
+  }
   // Virgen (como PRD): sin movimientos demo. El historial real baja del backend.
   final List<MovimientoSaldo> movimientos = [];
   bool get destacadoActivo => saldoClub > 0;

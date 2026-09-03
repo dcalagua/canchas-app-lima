@@ -197,6 +197,18 @@ Future<void> _aplicarPais(PaisConfig p, {bool persistir = true}) async {
   }
 }
 
+/// País al que pertenece un símbolo de moneda ('S/' → PE, 'Bs' → BO, '\$' → EC).
+/// Sirve para recuperar el país de una BILLETERA a partir de su moneda
+/// congelada. null si el símbolo no es de un país soportado.
+PaisConfig? paisPorMoneda(String simbolo) {
+  final s = simbolo.trim();
+  if (s.isEmpty) return null;
+  for (final p in paisesSoportados.values) {
+    if (p.moneda == s || p.monedaIso == s.toUpperCase()) return p;
+  }
+  return null;
+}
+
 /// Selecciona el país por su código ISO (el que devuelve el reverse-geocode).
 /// Si el país no está soportado, mantiene el actual (no rompe la moneda). Es la
 /// puerta de entrada desde la detección por GPS.
