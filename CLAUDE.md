@@ -71,6 +71,19 @@ jugador es 100% Pichangol, EBIM solo aparece discreto como respaldo).
     configurada, en PRODUCCIÓN nunca se simula** (`kEsProduccion`): se avisa y
     se devuelve false; en dev/QAS cae a la pasarela simulada para probar.
   - Referencia central: `lib/config/pais.dart` (`PaisConfig`, `paisActual`).
+  - **TRES países, no uno (decisión del director, sep-2026, opción C):**
+    (1) **país que EXPLORA** = `paisActual` (GPS, pero el usuario lo elige a
+    mano en la bienvenida, en la bandera de la barra de Explorar o en el
+    banner "Parece que estás en Ecuador"; con elección explícita
+    `paisElegido=true` el GPS ya no lo pisa, solo propone vía
+    `sugerenciaPais`, una vez por viaje); (2) **país de CASA / billetera** =
+    `appState.paisBilletera` (moneda congelada del saldo → país de su 1.ª
+    cancha → `paisCasa` persistido → GPS); decide la moneda del saldo y la
+    pasarela de RECARGA; se cambia en Perfil → "Mi país" SOLO con saldo 0;
+    (3) **país del COBRO** = `paisDeCoordenadas(cancha.ubicacion)`: decide
+    moneda y pasarela del checkout ("Pagas en $ · PayPhone"). NUNCA preguntar
+    el país con un modal en cada arranque. Selector único:
+    `widgets/selector_pais.dart`.
 
 ## App Flutter (`lib/`)
 
