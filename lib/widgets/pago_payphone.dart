@@ -191,6 +191,15 @@ class _PayPhoneWebViewState extends State<_PayPhoneWebView> {
     Navigator.of(context).pop(tx);
   }
 
+  /// Abre un enlace no-web en la app que corresponda. Los `intent://` de
+  /// Android traen el paquete destino; se intenta tal cual y, si el sistema no
+  /// lo resuelve, se ignora en silencio (la pasarela sigue en pantalla).
+  Future<void> _abrirFuera(Uri uri) async {
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {}
+  }
+
   @override
   void initState() {
     super.initState();
@@ -208,6 +217,16 @@ class _PayPhoneWebViewState extends State<_PayPhoneWebView> {
           if (url.contains('/pagos/ec/cancelado')) _cerrar('');
         },
         onNavigationRequest: (req) {
+          // Esquemas que no son web (whatsapp://, intent://, tel:, mailto:,
+          // payphone://…): el WebView no los sabe abrir y muestra
+          // ERR_UNKNOWN_URL_SCHEME. Se entregan al sistema — así "pagar con
+          // saldo PayPhone" abre la app de PayPhone y el botón de ayuda abre
+          // WhatsApp — y la pasarela se queda abierta esperando el retorno.
+          final uri = Uri.tryParse(req.url);
+          if (uri != null && uri.scheme != 'http' && uri.scheme != 'https') {
+            _abrirFuera(uri);
+            return NavigationDecision.prevent;
+          }
           // OJO: al retorno se le deja LLEGAR al backend (NavigationDecision.
           // navigate), porque es ahí donde se confirma el cobro dentro de los
           // 5 minutos. No se intercepta como en Libélula.

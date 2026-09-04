@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../config/features.dart';
@@ -171,6 +172,13 @@ class _LibelulaWebViewState extends State<_LibelulaWebView> {
           if (mounted) setState(() => _cargando = false);
         },
         onNavigationRequest: (req) {
+          // Esquemas no web (tigo://, whatsapp://, intent://…): al sistema.
+          final uri = Uri.tryParse(req.url);
+          if (uri != null && uri.scheme != 'http' && uri.scheme != 'https') {
+            launchUrl(uri, mode: LaunchMode.externalApplication)
+                .catchError((_) => false);
+            return NavigationDecision.prevent;
+          }
           // Al volver a nuestra URL de retorno, el pago se hizo: cerramos OK.
           if (req.url.contains('/pagos/bo/retorno')) {
             Navigator.of(context).pop(true);
