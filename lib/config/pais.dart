@@ -186,9 +186,11 @@ const String _kPaisElegido = 'pais_elegido';
 const String _kPaisCasa = 'pais_casa';
 const String _kSugerenciaDescartada = 'pais_sugerencia_descartada';
 
-/// ¿El usuario ELIGIÓ país a mano (bienvenida, banner, Perfil)? Mientras sea
-/// false, el GPS manda (comportamiento de siempre). Cuando es true, el GPS ya
-/// no cambia el país solo: propone (ver [sugerenciaPais]) y el usuario decide.
+/// ¿Ya hay un país FIJADO (primera detección del GPS al instalar, o elección a
+/// mano en el banner / Perfil)? Mientras sea false, el GPS manda. Cuando es
+/// true, el GPS ya no cambia el país solo: propone (ver [sugerenciaPais]) y el
+/// usuario decide. Decisión del director (sep-2026): al instalar NO se
+/// pregunta —se toma el país donde estás—; se pregunta solo al viajar.
 bool paisElegido = false;
 
 /// País que el GPS detectó distinto al activo, pendiente de que el usuario lo
@@ -250,7 +252,17 @@ Future<void> setPaisPorIso(String? iso) async {
     return;
   }
   if (!paisElegido) {
+    // PRIMERA detección real (usuario nuevo): se adopta sin preguntar y queda
+    // como país de casa (billetera). Desde aquí el GPS ya no cambia el país
+    // solo: si después detecta otro, PROPONE (banner) y el usuario decide.
     await _aplicarPais(p);
+    paisElegido = true;
+    if (paisCasa == null) paisCasa = p;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_kPaisElegido, true);
+      if (paisCasa?.iso == p.iso) await prefs.setString(_kPaisCasa, p.iso);
+    } catch (_) {}
     return;
   }
   if (p.iso == _sugerenciaDescartada) return; // ya dijo "seguir en el mío"

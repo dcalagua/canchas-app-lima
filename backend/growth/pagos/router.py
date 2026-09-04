@@ -509,7 +509,8 @@ def post_ec_pago(req: PagoEcReq) -> dict:
 
 
 @router.get("/ec/ir/{identificador}", response_class=HTMLResponse)
-def ec_ir(identificador: str, medio: str = "tarjeta") -> HTMLResponse:
+def ec_ir(identificador: str, request: Request,
+          medio: str = "tarjeta") -> HTMLResponse:
     """Página PUENTE hacia la pasarela de PayPhone, servida desde NUESTRO
     dominio. PayPhone rechaza su página de pago ("No autorizado… intenta desde
     la página de origen") si el navegador llega sin un origen autorizado; un
@@ -518,6 +519,11 @@ def ec_ir(identificador: str, medio: str = "tarjeta") -> HTMLResponse:
     la pasarela, con lo que el Referer/origen es el nuestro. Sin JS, queda el
     botón. Pública: sólo redirige a una URL que PayPhone ya emitió."""
     d = stores.payphone_pagos.get(identificador)
+    import logging as _logging
+    _logging.getLogger("payphone").info(
+        "payphone puente id=%s host=%s referer=%s ua=%s", identificador,
+        request.headers.get("host"), request.headers.get("referer", "-"),
+        (request.headers.get("user-agent") or "")[:60])
     if not d or d.get("pagado"):
         return _pagina_ec("Pago no disponible",
                           "Vuelve a Pichangol e inicia el pago otra vez.")

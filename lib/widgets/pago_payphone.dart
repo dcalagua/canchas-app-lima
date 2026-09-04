@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../config/features.dart';
@@ -229,6 +230,18 @@ class _PayPhoneWebViewState extends State<_PayPhoneWebView> {
           tooltip: 'Cancelar',
           onPressed: () => _cerrar(''),
         ),
+        actions: [
+          // Salida de emergencia: si la pasarela no carga dentro del WebView
+          // (cookies, políticas del sitio), la misma página puente se abre en
+          // el navegador del teléfono. El retorno igual llega al backend y la
+          // app confirma al volver.
+          IconButton(
+            icon: const Icon(Icons.open_in_browser),
+            tooltip: 'Abrir en el navegador',
+            onPressed: () => launchUrl(Uri.parse(widget.url),
+                mode: LaunchMode.externalApplication),
+          ),
+        ],
       ),
       body: Stack(
         children: [

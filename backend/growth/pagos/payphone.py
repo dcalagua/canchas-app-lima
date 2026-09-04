@@ -27,10 +27,22 @@ Ref: docs.payphone.app → "Botón de pago por redirección" (Prepare / Confirm)
 from __future__ import annotations
 
 import json
+import logging
 import urllib.error
 import urllib.request
+from urllib.parse import urlsplit
 
 import config
+
+log = logging.getLogger("payphone")
+# Uvicorn no configura el logger raíz: sin handler propio, los INFO de este
+# módulo no saldrían en Railway. Handler simple a stdout, sin propagar.
+if not log.handlers:
+    _h = logging.StreamHandler()
+    _h.setFormatter(logging.Formatter("%(levelname)s:     %(message)s"))
+    log.addHandler(_h)
+    log.setLevel(logging.INFO)
+    log.propagate = False
 
 PREPARE_PATH = "/api/button/Prepare"
 CONFIRM_PATH = "/api/button/V2/Confirm"
@@ -129,9 +141,23 @@ def preparar(
     try:
         r = _post(PREPARE_PATH, payload)
     except Exception as e:  # noqa: BLE001
+        log.warning("payphone prepare error: %s", str(e)[:160])
         return {"ok": False, "error": str(e)[:160]}
     url_tarjeta = r.get("payWithCard")
     url_payphone = r.get("payWithPayPhone")
+    # Diagnóstico SIN secretos: qué mandamos (menos token) y qué volvió (solo
+    # claves, código HTTP y host de las URLs). Sirve para leer en Railway por
+    # qué PayPhone rechaza sin tener que adivinar.
+    def _host(u):
+        try:
+            return urlsplit(str(u or "")).netloc or "-"
+        except Exception:  # noqa: BLE001
+            return "?"
+    log.info("payphone prepare tx=%s store=%s amount=%s resp_keys=%s http=%s "
+             "card_host=%s app_host=%s msg=%s",
+             client_tx_id, config.PAYPHONE_STORE_ID, cts, sorted(r.keys()),
+             r.get("_http", 200), _host(url_tarjeta), _host(url_payphone),
+             str(r.get("message") or r.get("Message") or "")[:120])
     if not url_tarjeta and not url_payphone:
         return {"ok": False, "error": _mensaje_error(r, "sin_url_pasarela")}
     return {
@@ -155,8 +181,12 @@ def confirmar(*, transaction_id: str, client_tx_id: str) -> dict:
     try:
         r = _post(CONFIRM_PATH, payload)
     except Exception as e:  # noqa: BLE001
+        log.warning("payphone confirm error tx=%s: %s", tx, str(e)[:160])
         return {"ok": False, "error": str(e)[:160]}
     estado = str(r.get("transactionStatus") or "").strip()
+    log.info("payphone confirm tx=%s client=%s status=%s code=%s http=%s msg=%s",
+             tx, client_tx_id, estado, r.get("statusCode"), r.get("_http", 200),
+             str(r.get("message") or "")[:120])
     if not estado and r.get("_http"):
         return {"ok": False, "error": _mensaje_error(r, f"http_{r['_http']}")}
     aprobado = estado.lower() == ESTADO_APROBADO or r.get("statusCode") == 3
