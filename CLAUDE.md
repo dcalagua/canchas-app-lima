@@ -252,6 +252,15 @@ off → redeploy inmediato en cada push). URL pública:
   > `GET /reclamo/{cancha_id}` (estado), `/lugar-reclamado`, `/otp/*`,
   > `/reclamo/validar` (validador, protegido por código+GPS). Aprobación por
   > WhatsApp usa `aprobar_por_codigo` (firma Twilio), no el endpoint HTTP.
+- **`PUBLIC_BASE_URL` por ambiente (trampa resuelta sep-2026):** es la base
+  de TODAS las URLs que el backend le entrega a terceros para volver (retorno
+  y cancelación de PayPhone, callback de Libélula, página puente `/pagos/ec/ir`,
+  media del CM). QAS (`pg-backend`) DEBE ser `https://pg.ebim.pe` y PRD
+  (`pg-backend-prd`) `https://www.pichangol.app`. QAS quedó con el dominio de
+  marca tras moverlo a PRD y todos los retornos de pasarela de pruebas caían en
+  producción (que no conoce el pago) → PayPhone "No autorizado" + reversa a
+  los 5 min. Al registrar dominios autorizados en una pasarela, registrar el
+  host de `PUBLIC_BASE_URL` de ESE ambiente.
 - **Config (env, `config.py`):** `ADMIN_PANEL_TOKEN`, `FACTILIZA_API_TOKEN`,
   `PICHANGOL_ADMIN_WHATSAPP`, `TWILIO_*`, `WHATSAPP_*`, `OTP_CANAL_PREFERIDO`
   (`whatsapp|twilio_whatsapp|sms`), `VALIDADOR_ACTIVA_AUTOMATICO`,
