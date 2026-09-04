@@ -523,11 +523,12 @@ sigue el lenguaje Airbnb sobre la paleta EBIM:
   nuevas; migrar los viejos a este componente cuando se toquen.
 - **Íconos del menú lateral CON COLOR (Airbnb "con vida"):** los íconos de los
   rails/barras de navegación van coloreados por sección (no gris plano). La
-  pestaña **Mensajes lleva la BURBUJA de chat propia** (`IconoChatPichan`:
-  burbuja verde con la "P" de Pichan; `IconoMensajesLogo` delega en ella —
-  decisión del director ago-2026: el logo de PCG NO va en esa pestaña; antes
-  llevó el pin y se revirtió). El globo de chat de las fichas (ChatBurbuja)
-  sí usa el pin de Pichangol como fallback sin logo del local.
+  pestaña **Mensajes lleva un ícono de chat NORMAL** (`Icons.chat_bubble` /
+  `_outline`, vía `IconoMensajesLogo`/`IconoChatPichan`, que heredan el color
+  del tema o reciben el de la sección) — decisión del director sep-2026:
+  ni el logo de PCG ni la burbuja con la "P" (ambas se probaron y se
+  revirtieron). El globo de chat de las fichas (ChatBurbuja) sí usa el pin de
+  Pichangol como fallback sin logo del local.
 - **Avatares SIEMPRE con foto real:** cualquier avatar de jugador (ranking,
   jugadores disponibles, retos —incluido el reto de dobles—, chat, perfil, etc.)
   DEBE mostrar la foto del perfil (`appState.fotoDe(email)` o `usuario.fotoUrl`),
