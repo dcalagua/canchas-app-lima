@@ -111,6 +111,26 @@ def test_flujo_pago(monkeypatch):
     assert len(confirmaciones) == n
 
 
+def test_pagina_puente_navega_a_payphone(monkeypatch):
+    """El APK abre /ec/ir/{id} (nuestro dominio) y esa página navega a la URL
+    hospedada de PayPhone; así la pasarela recibe un origen autorizado."""
+    monkeypatch.setattr(payphone, "preparar", _preparar_ok)
+    j = client.post("/pagos/ec/pago", json={"email": "a@b.com", "monto_usd": 5}).json()
+    assert j["url_lanzador"] == f"https://pg.example.com/pagos/ec/ir/{j['identificador']}"
+    r = client.get(f"/pagos/ec/ir/{j['identificador']}")
+    assert r.status_code == 200
+    assert "https://pay.payphone/card/x" in r.text
+    assert "window.location.href" in r.text
+    assert r.headers["cache-control"] == "no-store"
+    # medio=payphone → la URL del saldo PayPhone.
+    r2 = client.get(f"/pagos/ec/ir/{j['identificador']}", params={"medio": "payphone"})
+    assert "https://pay.payphone/app/x" in r2.text
+    # Id desconocido o pago ya pagado → no redirige a nada.
+    assert "no disponible" in client.get("/pagos/ec/ir/zzz").text.lower()
+    stores.payphone_pagos[j["identificador"]]["pagado"] = True
+    assert "no disponible" in client.get(f"/pagos/ec/ir/{j['identificador']}").text.lower()
+
+
 def test_estado_confirma_con_transaction_id(monkeypatch):
     """Si el retorno nunca llegó al backend, el APK manda el transaction_id que
     vio en la URL y el estado confirma ahí mismo (antes de los 5 minutos)."""

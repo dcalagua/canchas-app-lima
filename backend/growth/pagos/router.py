@@ -481,6 +481,9 @@ def post_ec_pago(req: PagoEcReq) -> dict:
         "identificador": ident,
         "payment_id": r.get("payment_id"),
         "transaction_id": None,
+        # URLs hospedadas de PayPhone: las sirve la página PUENTE (/ec/ir).
+        "url_tarjeta": r.get("url_tarjeta"),
+        "url_payphone": r.get("url_payphone"),
         "email": email,
         "monto_usd": monto,
         "concepto": req.concepto,
@@ -498,8 +501,51 @@ def post_ec_pago(req: PagoEcReq) -> dict:
         "identificador": ident,
         "url_pasarela": r.get("url_tarjeta") or r.get("url_payphone"),
         "url_payphone": r.get("url_payphone"),
+        # El APK abre ESTA (nuestro dominio), no la de PayPhone directo: la
+        # página de PayPhone exige llegar desde un dominio autorizado.
+        "url_lanzador": f"{base}/pagos/ec/ir/{ident}",
         "retorno": f"{base}/pagos/ec/retorno",
     }
+
+
+@router.get("/ec/ir/{identificador}", response_class=HTMLResponse)
+def ec_ir(identificador: str, medio: str = "tarjeta") -> HTMLResponse:
+    """Página PUENTE hacia la pasarela de PayPhone, servida desde NUESTRO
+    dominio. PayPhone rechaza su página de pago ("No autorizado… intenta desde
+    la página de origen") si el navegador llega sin un origen autorizado; un
+    WebView que abre la URL a pelo no lo tiene. Esta página está en el dominio
+    registrado en la app de PayPhone (AuthDomains) y navega por JavaScript a
+    la pasarela, con lo que el Referer/origen es el nuestro. Sin JS, queda el
+    botón. Pública: sólo redirige a una URL que PayPhone ya emitió."""
+    d = stores.payphone_pagos.get(identificador)
+    if not d or d.get("pagado"):
+        return _pagina_ec("Pago no disponible",
+                          "Vuelve a Pichangol e inicia el pago otra vez.")
+    url = (d.get("url_payphone") if medio == "payphone" else None) \
+        or d.get("url_tarjeta") or d.get("url_payphone") or ""
+    if not url:
+        return _pagina_ec("Pago no disponible",
+                          "Vuelve a Pichangol e inicia el pago otra vez.")
+    u = _html.escape(url, quote=True)
+    page = ("<!doctype html><html lang=es><head><meta charset=utf-8>"
+            "<meta name=viewport content='width=device-width,initial-scale=1'>"
+            "<meta name=referrer content=origin>"
+            "<title>Pago Pichangol</title></head>"
+            "<body style='font-family:system-ui;text-align:center;padding:44px;"
+            "color:#14463A'><p>Abriendo el pago seguro de PayPhone…</p>"
+            f"<p><a href=\"{u}\" style='display:inline-block;margin-top:12px;"
+            "padding:12px 20px;border-radius:12px;background:#AEEA94;"
+            "color:#14463A;font-weight:700;text-decoration:none'>"
+            "Continuar al pago</a></p>"
+            f"<script>setTimeout(function(){{window.location.href={_json_str(url)};}},150);"
+            "</script></body></html>")
+    return HTMLResponse(content=page, headers={"Cache-Control": "no-store"})
+
+
+def _json_str(s: str) -> str:
+    """String JS seguro (comillas y </script> escapados)."""
+    import json as _json
+    return _json.dumps(s).replace("</", "<\\/")
 
 
 def _confirmar_ec(ident: str, transaction_id: str) -> dict | None:

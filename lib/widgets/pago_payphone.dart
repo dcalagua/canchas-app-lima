@@ -123,7 +123,10 @@ class PagoPayPhone {
       return false;
     }
 
-    final url = (r['url_pasarela'] ?? '').toString();
+    // Se abre la página PUENTE del backend (nuestro dominio), que navega a la
+    // pasarela: PayPhone rechaza su página si el navegador llega sin un
+    // origen autorizado ("No autorizado… intenta desde la página de origen").
+    final url = (r['url_lanzador'] ?? r['url_pasarela'] ?? '').toString();
     final ident = (r['identificador'] ?? '').toString();
     if (url.isEmpty || ident.isEmpty) return false;
 
