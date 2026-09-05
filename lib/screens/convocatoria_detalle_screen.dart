@@ -4,7 +4,11 @@ import '../models/convocatoria.dart';
 import '../services/convocatorias_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/dialogo_pichangol.dart';
+import '../widgets/cargando_pichangol.dart';
+import '../widgets/responsive.dart';
 import 'convocatorias_screen.dart' show EstadoChip, ModoChip;
+import 'login_google_sheet.dart';
 
 /// Ficha de una convocatoria: el jugador ve su estado y se anota / cancela; el
 /// dueño (admin) cierra la convocatoria, la reabre y marca asistencia.
@@ -51,20 +55,27 @@ class _ConvocatoriaDetalleScreenState extends State<ConvocatoriaDetalleScreen> {
   }
 
   Future<void> _anotarme() async {
-    var email = _miEmail;
-    if (email == null || email.isEmpty) {
-      final ok = await appState.entrarConGoogle();
-      if (!ok) {
-        _aviso('Inicia sesión con Google para anotarte.', error: true);
-        return;
-      }
-      email = appState.usuario?.email;
-      if (email == null) return;
+    if (!await LoginGoogleSheet.mostrar(context,
+        motivo: 'anotarte a esta convocatoria')) {
+      return;
     }
+    if (!mounted) return;
+    final email = appState.usuario?.email;
+    if (email == null || email.isEmpty) return;
     setState(() => _ocupado = true);
-    final r = await ConvocatoriasService.inscribir(
-        widget.convId, email, appState.usuario?.nombre ?? email);
-    setState(() => _ocupado = false);
+    Map<String, dynamic>? res;
+    try {
+      res = await conPreload(
+          context,
+          () => ConvocatoriasService.inscribir(
+              widget.convId, email, appState.usuario?.nombre ?? email),
+          texto: 'Anotándote…');
+    } finally {
+      if (mounted) setState(() => _ocupado = false);
+    }
+    if (!mounted) return;
+    // Copia a un final: Dart no promueve una variable asignada dentro de `try`.
+    final r = res;
     if (r == null || r['ok'] != true) {
       _aviso(_mensajeError(r), error: true);
       return;
@@ -132,7 +143,7 @@ class _ConvocatoriaDetalleScreenState extends State<ConvocatoriaDetalleScreen> {
     final resultado = await showModalBottomSheet<Map<String, bool>>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => _AsistenciaSheet(
@@ -160,20 +171,12 @@ class _ConvocatoriaDetalleScreenState extends State<ConvocatoriaDetalleScreen> {
   }
 
   Future<bool?> _confirmar(String titulo, String cuerpo) {
-    return showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(titulo),
-        content: Text(cuerpo),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('No')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Sí')),
-        ],
-      ),
+    return confirmarPichangol(
+      context,
+      titulo: titulo,
+      mensaje: cuerpo,
+      textoConfirmar: 'Sí',
+      textoCancelar: 'No',
     );
   }
 
@@ -183,13 +186,16 @@ class _ConvocatoriaDetalleScreenState extends State<ConvocatoriaDetalleScreen> {
     return Scaffold(
       appBar: AppBar(title: Text(d?.convocatoria.titulo ?? 'Pichanga')),
       body: _cargando
-          ? const Center(child: CircularProgressIndicator())
+          ? const CargandoPichangol()
           : d == null
               ? _ErrorCarga(onReintentar: _cargar)
               : RefreshIndicator(
                   onRefresh: _cargar,
                   child: ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
+                    // Regla app: contenido centrado en pantallas anchas.
+                    padding: EdgeInsets.fromLTRB(
+                        ladoTablet(context, 16, 700), 16,
+                        ladoTablet(context, 16, 700), 40),
                     children: [
                       _Cabecera(conv: d.convocatoria),
                       const SizedBox(height: 16),
@@ -372,12 +378,7 @@ class _AccionesJugador extends StatelessWidget {
     }
     return FilledButton.icon(
       onPressed: ocupado ? null : onAnotarme,
-      icon: ocupado
-          ? const SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2, color: lima))
-          : const Icon(Icons.how_to_reg),
+      icon: const Icon(Icons.how_to_reg),
       label: const Text('Anotarme'),
     );
   }
@@ -538,10 +539,10 @@ class _FilaInscrito extends StatelessWidget {
       child: ListTile(
         leading: CircleAvatar(
           radius: 16,
-          backgroundColor: soyYo ? bosque : limaSuave,
+          backgroundColor: soyYo ? lima : limaSuave,
           child: Text('$orden',
               style: TextStyle(
-                  color: soyYo ? lima : bosque,
+                  color: soyYo ? Colors.white : bosque,
                   fontWeight: FontWeight.w700,
                   fontSize: 13)),
         ),

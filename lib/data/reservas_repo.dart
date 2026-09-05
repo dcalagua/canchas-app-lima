@@ -20,10 +20,20 @@ enum ResultadoReserva { ok, ocupado, sinConexion, error }
 class ReservasRepo {
   static const _tabla = 'pichangol_reservas';
 
+  /// Último error del INSERT (para diagnóstico: distingue RLS vs columna faltante
+  /// vs auth). Se muestra en la app cuando una reserva no se pudo registrar.
+  static String ultimoError = '';
+
+  /// ¿El último fetchRemotas respondió BIEN? (una lista vacía por ERROR no
+  /// debe usarse para borrar reservas locales en la reconciliación).
+  static bool ultimoFetchOk = false;
+
   static Future<List<Reserva>> fetchRemotas() async {
+    ultimoFetchOk = false;
     if (!SupabaseService.disponible) return [];
     try {
       final rows = await SupabaseService.client.from(_tabla).select();
+      ultimoFetchOk = true;
       return (rows as List)
           .map((r) => _fromRow(r as Map<String, dynamic>))
           .toList();
@@ -36,17 +46,51 @@ class ReservasRepo {
   /// camino que da garantía real anti-doble-reserva entre dispositivos.
   static Future<ResultadoReserva> insertarSegura(Reserva r) async {
     if (!SupabaseService.disponible) return ResultadoReserva.sinConexion;
-    try {
-      await SupabaseService.client.from(_tabla).insert(_toRow(r));
-      return ResultadoReserva.ok;
-    } on PostgrestException catch (e) {
-      // 23505 = unique_violation → el slot ya estaba tomado.
-      if (e.code == '23505') return ResultadoReserva.ocupado;
-      return ResultadoReserva.error;
-    } catch (_) {
-      return ResultadoReserva.error;
+    ultimoError = '';
+    // Se intenta el INSERT con MENOS columnas cada vez, para que una columna que
+    // aún no exista en la BD (schema drift) NUNCA impida registrar la reserva.
+    // Orden: fila completa → sin extras/moneda/deporte → SOLO lo esencial.
+    final intentos = <Map<String, dynamic>>[
+      _toRow(r),
+      _toRow(r, conDeporte: false),
+      _toRowCore(r),
+    ];
+    ResultadoReserva peor = ResultadoReserva.error;
+    for (final fila in intentos) {
+      try {
+        await SupabaseService.client.from(_tabla).insert(fila);
+        ultimoError = '';
+        return ResultadoReserva.ok;
+      } on PostgrestException catch (e) {
+        // 23505 = unique_violation → el slot ya estaba tomado (no reintentar).
+        if (e.code == '23505') return ResultadoReserva.ocupado;
+        ultimoError = 'DB ${e.code ?? ''}: ${e.message}'.trim();
+        // 42703 = columna inexistente → probar el siguiente intento (menos
+        // columnas). Cualquier otro error (RLS 42501, etc.) también reintenta el
+        // core por si acaso, pero guarda el mensaje para diagnóstico.
+        peor = ResultadoReserva.error;
+        continue;
+      } catch (e) {
+        ultimoError = e.toString();
+        peor = ResultadoReserva.error;
+        continue;
+      }
     }
+    return peor;
   }
+
+  /// Fila MÍNIMA garantizada (solo columnas que existen desde la 1ª versión de la
+  /// tabla). Último recurso para que la reserva SIEMPRE quede en la nube.
+  static Map<String, dynamic> _toRowCore(Reserva r) => {
+        'id': r.id,
+        'cancha_id': r.canchaId,
+        'jugador': r.jugador,
+        'fecha': r.fecha,
+        'dia': r.dia,
+        'hora_inicio': r.horaInicio,
+        'hora_fin': r.horaFin,
+        'usuario': r.usuario,
+      };
 
   /// Insert best-effort (sin reportar colisión). Se mantiene por compatibilidad;
   /// para reservar usar [insertarSegura].
@@ -54,7 +98,13 @@ class ReservasRepo {
     if (!SupabaseService.disponible) return;
     try {
       await SupabaseService.client.from(_tabla).insert(_toRow(r));
-    } catch (_) {}
+    } catch (_) {
+      try {
+        await SupabaseService.client
+            .from(_tabla)
+            .insert(_toRow(r, conDeporte: false));
+      } catch (_) {}
+    }
   }
 
   /// Elimina TODAS las reservas de una cancha (p. ej. cuando el admin rechaza/
@@ -69,6 +119,16 @@ class ReservasRepo {
     } catch (_) {}
   }
 
+  /// Elimina UNA reserva por id (p. ej. el jugador la cancela). Libera el slot
+  /// borrando la fila, así el UNIQUE(cancha, fecha, hora) queda libre y el
+  /// horario vuelve a estar disponible. Fail-safe.
+  static Future<void> eliminar(String id) async {
+    if (!SupabaseService.disponible) return;
+    try {
+      await SupabaseService.client.from(_tabla).delete().eq('id', id);
+    } catch (_) {}
+  }
+
   /// Actualiza una reserva existente (estado / pago) por id. Fail-safe.
   static Future<void> actualizar(Reserva r) async {
     if (!SupabaseService.disponible) return;
@@ -77,10 +137,17 @@ class ReservasRepo {
           .from(_tabla)
           .update(_toRow(r))
           .eq('id', r.id);
-    } catch (_) {}
+    } catch (_) {
+      try {
+        await SupabaseService.client
+            .from(_tabla)
+            .update(_toRow(r, conDeporte: false))
+            .eq('id', r.id);
+      } catch (_) {}
+    }
   }
 
-  static Map<String, dynamic> _toRow(Reserva r) => {
+  static Map<String, dynamic> _toRow(Reserva r, {bool conDeporte = true}) => {
         'id': r.id,
         'cancha_id': r.canchaId,
         'jugador': r.jugador,
@@ -95,6 +162,21 @@ class ReservasRepo {
         'sena': r.sena,
         'pagado': r.pagado,
         'usuario': r.usuario,
+        // Columnas nuevas: deporte del slot (loza multiuso) + moneda de la
+        // cancha + servicios extra elegidos (árbitro/pelotero…, JSONB).
+        if (conDeporte) 'deporte': r.deporte,
+        if (conDeporte) 'moneda': r.moneda,
+        if (conDeporte) 'extras': r.extras.map((s) => s.toJson()).toList(),
+        // Teléfono del cliente en reservas manuales del dueño (columna nueva;
+        // va bajo el mismo guard para no romper si aún no se corrió el ALTER).
+        if (conDeporte && r.telefono.isNotEmpty) 'telefono': r.telefono,
+        // Grupo de una reserva de varias horas seguidas (columna nueva; mismo
+        // guard para no romper si aún no se corrió el ALTER en Supabase).
+        if (conDeporte && r.grupoReservaId.isNotEmpty)
+          'grupo_reserva_id': r.grupoReservaId,
+        // Medio de pago (trazabilidad): yape/tarjeta/efectivo/sena/manual.
+        // Mismo guard: no rompe si aún no se corrió el ALTER en Supabase.
+        if (conDeporte && r.medioPago.isNotEmpty) 'medio_pago': r.medioPago,
       };
 
   static Reserva _fromRow(Map<String, dynamic> r) => Reserva(
@@ -112,6 +194,12 @@ class ReservasRepo {
         sena: ((r['sena'] ?? 0) as num).toInt(),
         pagado: (r['pagado'] ?? false) as bool,
         usuario: (r['usuario'] ?? '') as String,
+        deporte: (r['deporte'] ?? '') as String,
+        moneda: (r['moneda'] ?? '') as String,
+        extras: ServicioExtra.listaDe(r['extras']),
+        telefono: (r['telefono'] ?? '') as String,
+        grupoReservaId: (r['grupo_reserva_id'] ?? '') as String,
+        medioPago: (r['medio_pago'] ?? '') as String,
       );
 
   static EstadoReserva _estado(String? s) {

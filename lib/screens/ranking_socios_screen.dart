@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../services/convocatorias_service.dart';
 import '../theme.dart';
+import '../widgets/responsive.dart';
+import '../widgets/cargando_pichangol.dart';
 import 'convocatorias_screen.dart' show EstadoChip;
 
 /// Ranking de recurrencia por socio (la trazabilidad pedida): quién se inscribe
@@ -43,7 +45,7 @@ class _RankingSociosScreenState extends State<RankingSociosScreen> {
           future: _futuro,
           builder: (context, snap) {
             if (snap.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
+              return const CargandoPichangol();
             }
             final filas = snap.data ?? const [];
             if (filas.isEmpty) {
@@ -70,7 +72,9 @@ class _RankingSociosScreenState extends State<RankingSociosScreen> {
               );
             }
             return ListView.separated(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
+              // Regla app: contenido centrado (ancho máx) en pantallas anchas.
+              padding: EdgeInsets.fromLTRB(
+                  ladoTablet(context, 16, 700), 16, ladoTablet(context, 16, 700), 40),
               itemCount: filas.length + 1,
               separatorBuilder: (_, __) => const SizedBox(height: 10),
               itemBuilder: (context, i) {

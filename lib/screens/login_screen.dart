@@ -73,7 +73,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       );
                     },
                     style: FilledButton.styleFrom(
-                      backgroundColor: verdeCancha,
+                      backgroundColor: lima,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
                     child: const Text('Ingresar al panel'),

@@ -1,0 +1,840 @@
+import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart' show LatLng;
+
+import '../models/academia.dart';
+import '../models/invitacion.dart';
+import '../models/models.dart';
+import '../services/location_service.dart';
+import '../services/pagos_service.dart';
+import '../state/app_state.dart';
+import '../theme.dart';
+import '../widgets/dialogo_pichangol.dart';
+import '../utils/geo.dart';
+import '../utils/redes.dart';
+import '../widgets/responsive.dart';
+import 'academia_detalle_screen.dart';
+import 'jugadores_disponibles_screen.dart';
+import 'ranking_global_screen.dart';
+import 'login_google_sheet.dart';
+import 'mis_clases_screen.dart';
+import '../config/pais.dart';
+
+/// Directorio público de academias (Fase 1): el jugador ve las academias, su
+/// deporte, dónde entrenan y sus planes. Al tocar una entra a la ficha, donde
+/// ve el feed de fotos, se matricula (pago simulado) y sigue sus redes.
+class AcademiasScreen extends StatefulWidget {
+  const AcademiasScreen({super.key});
+  @override
+  State<AcademiasScreen> createState() => _AcademiasScreenState();
+}
+
+class _AcademiasScreenState extends State<AcademiasScreen> {
+  Deporte? _filtro; // null = todos los deportes
+  LatLng? _ubicacion; // para ordenar por cercanía
+  final _buscar = TextEditingController();
+  String _query = ''; // texto de búsqueda por nombre / sede
+
+  @override
+  void initState() {
+    super.initState();
+    // Ubicación del usuario (best-effort) para mostrar las academias más cerca.
+    LocationService.ubicacionActual().then((p) {
+      if (mounted && p != null) setState(() => _ubicacion = p);
+    });
+  }
+
+  @override
+  void dispose() {
+    _buscar.dispose();
+    super.dispose();
+  }
+
+  /// Normaliza para buscar sin tildes ni mayúsculas.
+  static String _norm(String s) {
+    var x = s.trim().toLowerCase();
+    const acc = {'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u', 'ü': 'u'};
+    acc.forEach((k, v) => x = x.replaceAll(k, v));
+    return x;
+  }
+
+  double? _distancia(Academia a) {
+    final u = _ubicacion, s = a.sedeUbicacion;
+    if (u == null || s == null) return null;
+    return distanciaKm(u, s);
+  }
+
+  /// Acceso a "Mis clases y pagos" del alumno (comprobantes + próximos pagos).
+  Widget _misClasesAcceso(BuildContext context) {
+    final n = appState.misMatriculas.length;
+    return Material(
+      color: bosque,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => const MisClasesScreen())),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              const Icon(Icons.receipt_long, color: lima),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Mis clases y pagos',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15)),
+                    Text(
+                        n == 1
+                            ? '1 academia · comprobantes y próximos pagos'
+                            : '$n academias · comprobantes y próximos pagos',
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 12.5)),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: Colors.white70),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Academias')),
+      body: ListenableBuilder(
+        listenable: appState,
+        builder: (context, _) {
+          // Filtro por PAÍS: el directorio muestra solo academias del país donde
+          // está el jugador (por la ubicación de su sede). Una academia de Lima
+          // no le aparece a un usuario en Bolivia. Excepciones: la academia sin
+          // sede ubicada (no se puede discriminar) y la propia del dueño (para
+          // que siempre pueda verla/gestionarla).
+          final iso = paisActual.iso;
+          final email = appState.usuario?.email.toLowerCase();
+          final crudas = [
+            for (final a in appState.academias)
+              if (email != null && a.dueno.toLowerCase() == email ||
+                  a.sedeUbicacion == null ||
+                  paisDeCoordenadas(a.sedeUbicacion!.latitude,
+                          a.sedeUbicacion!.longitude)
+                          .iso ==
+                      iso)
+                a
+          ]..sort((a, b) {
+              // Primero por destacado; a igualdad, la más COMPLETA (más fotos +
+              // planes) queda antes, para que el dedupe conserve la mejor.
+              final d = appState
+                  .nivelDestacadoAcademia(b)
+                  .compareTo(appState.nivelDestacadoAcademia(a));
+              if (d != 0) return d;
+              return (b.fotos.length + b.planes.length)
+                  .compareTo(a.fotos.length + a.planes.length);
+            });
+          // Dedupe: si el MISMO dueño tiene dos academias con el MISMO nombre (se
+          // creó dos veces por error), muestra solo una. No colapsa academias de
+          // distintos dueños ni con nombres distintos.
+          final vistos = <String>{};
+          final academias = [
+            for (final a in crudas)
+              if (vistos.add(
+                  '${a.dueno.trim().toLowerCase()}|${a.nombre.trim().toLowerCase()}'))
+                a
+          ];
+          // Deportes que hay en el directorio (para armar los chips de filtro).
+          final deportesDisponibles = <Deporte>{for (final a in academias) a.deporte}
+              .toList()
+            ..sort((x, y) => x.index.compareTo(y.index));
+          // Filtro por DEPORTE + por NOMBRE (o sede) escrito, y orden por
+          // CERCANÍA (las más cerca primero; los destacados conservan prioridad).
+          final q = _norm(_query);
+          final filtradas = [
+            for (final a in academias)
+              if ((_filtro == null || a.deporte == _filtro) &&
+                  (q.isEmpty ||
+                      _norm(a.nombre).contains(q) ||
+                      _norm(a.sedeClub).contains(q)))
+                a
+          ];
+          if (_ubicacion != null) {
+            filtradas.sort((a, b) {
+              final d = appState
+                  .nivelDestacadoAcademia(b)
+                  .compareTo(appState.nivelDestacadoAcademia(a));
+              if (d != 0) return d;
+              final da = _distancia(a) ?? double.infinity;
+              final db = _distancia(b) ?? double.infinity;
+              return da.compareTo(db);
+            });
+          }
+          // Métrica de impacto: impresión por cada academia destacada mostrada.
+          final destacadasVistas = [
+            for (final a in filtradas)
+              if (appState.esDestacadaAcademia(a)) a.id
+          ];
+          if (destacadasVistas.isNotEmpty) {
+            PagosService.registrarVistasUnaVez(destacadasVistas);
+          }
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              // Buscador por NOMBRE (estilo Airbnb): barra blanca redondeada con
+              // lupa. Filtra por nombre de academia o sede mientras escribes.
+              _BarraBusqueda(
+                controller: _buscar,
+                onChanged: (v) => setState(() => _query = v),
+                onLimpiar: () => setState(() {
+                  _buscar.clear();
+                  _query = '';
+                }),
+              ),
+              const SizedBox(height: 12),
+              // Filtro por DEPORTE: chips Todos + los deportes que hay.
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  ChoiceChip(
+                    label: const Text('Todos'),
+                    selected: _filtro == null,
+                    onSelected: (_) => setState(() => _filtro = null),
+                  ),
+                  for (final d in deportesDisponibles)
+                    ChoiceChip(
+                      label: Text('${emojiDeporte(d)}  ${d.etiqueta}'),
+                      selected: _filtro == d,
+                      onSelected: (_) => setState(() => _filtro = d),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              // La liga es una capa de TENIS: el banner sale al filtrar raqueta.
+              // Es CONTEXTUAL: si aún NO estás en el circuito, INVITA a unirte
+              // (no muestra el ranking directo); si ya estás, es el atajo a tu
+              // ranking.
+              if (_filtro != null && _filtro!.esRaqueta) ...[
+                _RankingGlobalBanner(inscrito: appState.usaCircuito),
+                const SizedBox(height: 14),
+              ],
+              if (appState.misMatriculas.isNotEmpty) ...[
+                _misClasesAcceso(context),
+                const SizedBox(height: 12),
+              ],
+              const _MisInvitaciones(),
+              const _UnirmeConCodigo(),
+              const SizedBox(height: 16),
+              if (filtradas.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 24, 8, 8),
+                  child: Text(
+                      _query.trim().isNotEmpty
+                          ? 'No encontramos academias que coincidan con '
+                              '"${_query.trim()}". Prueba otro nombre o deporte.'
+                          : _filtro == null
+                              ? 'Todavía no hay academias publicadas. ¿Tienes una? '
+                                  'Créala desde tu Perfil.'
+                              : 'Aún no hay academias de ${_filtro!.etiqueta} cerca. '
+                                  'Prueba con otro deporte.',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: textoTenue)),
+                )
+              else if (esTablet(context))
+                // Tablet/landscape: academias en grilla de 2-3 columnas.
+                LayoutBuilder(builder: (context, cons) {
+                  final cols = columnasTablet(cons.maxWidth);
+                  final w = (cons.maxWidth - 14 * (cols - 1)) / cols;
+                  return Wrap(
+                    spacing: 14,
+                    children: [
+                      for (final a in filtradas)
+                        SizedBox(
+                          width: w,
+                          child: _TarjetaAcademia(
+                              academia: a,
+                              distancia: _distancia(a),
+                              nivelDestacado:
+                                  appState.nivelDestacadoAcademia(a)),
+                        ),
+                    ],
+                  );
+                })
+              else
+                for (final a in filtradas)
+                  _TarjetaAcademia(
+                      academia: a,
+                      distancia: _distancia(a),
+                      nivelDestacado: appState.nivelDestacadoAcademia(a)),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Barra de búsqueda SÓLIDA estilo WhatsApp: pastilla rellena gris, plana (sin
+/// borde ni sombra), con lupa y botón para limpiar. Busca por nombre o sede.
+class _BarraBusqueda extends StatelessWidget {
+  const _BarraBusqueda({
+    required this.controller,
+    required this.onChanged,
+    required this.onLimpiar,
+  });
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onLimpiar;
+
+  @override
+  Widget build(BuildContext context) {
+    // Buscador SÓLIDO estilo WhatsApp: pastilla rellena, plana, sin borde ni
+    // sombra (mismo look que el buscador de Mensajes).
+    final oscuro = Theme.of(context).brightness == Brightness.dark;
+    final fill = oscuro ? Colors.white10 : const Color(0xFFEFEFEF);
+    return TextField(
+      controller: controller,
+      textInputAction: TextInputAction.search,
+      onChanged: onChanged,
+      decoration: InputDecoration(
+        hintText: 'Busca una academia por nombre',
+        prefixIcon: const Icon(Icons.search, size: 20, color: textoTenue),
+        suffixIcon: controller.text.isEmpty
+            ? null
+            : IconButton(
+                tooltip: 'Limpiar',
+                icon: const Icon(Icons.close, size: 18, color: textoTenue),
+                onPressed: onLimpiar,
+              ),
+        isDense: true,
+        filled: true,
+        fillColor: fill,
+        contentPadding:
+            const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
+        border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(999),
+            borderSide: BorderSide.none),
+      ),
+    );
+  }
+}
+
+/// Tarjeta-CTA para que un alumno se una a la academia de su profe con el
+/// CÓDIGO que este le pasó (estilo "unirse a una clase" de Google Classroom).
+class _UnirmeConCodigo extends StatelessWidget {
+  const _UnirmeConCodigo();
+
+  Future<void> _abrir(BuildContext context) async {
+    // Unirse requiere sesión (la cuenta es siempre de un adulto).
+    if (!await LoginGoogleSheet.mostrar(context, motivo: 'matricularte')) {
+      return; // canceló el login
+    }
+    if (!context.mounted) return;
+    final codigo = TextEditingController();
+    final nombreNino = TextEditingController();
+    final edad = TextEditingController();
+    final waApoderado = TextEditingController();
+    var paraHijo = false;
+    var consiente = false;
+    String? error; // validación DENTRO del popup
+
+    final res = await showDialog<({bool ok, String mensaje})>(
+      context: context,
+      builder: (dctx) => StatefulBuilder(
+        builder: (dctx, setSB) => DialogoPichangol(
+          titulo: 'Unirme a una academia',
+          icono: Icons.school_outlined,
+          contenido: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Ingresa el código de 6 caracteres del profesor.'),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: codigo,
+                  autofocus: true,
+                  textCapitalization: TextCapitalization.characters,
+                  textAlign: TextAlign.center,
+                  maxLength: 8,
+                  style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 4),
+                  decoration:
+                      const InputDecoration(hintText: 'RAQ4X2', counterText: ''),
+                ),
+                const SizedBox(height: 8),
+                const Text('¿Quién va a entrenar?',
+                    style: TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ChoiceChip(
+                        label: const Center(child: Text('Yo')),
+                        selected: !paraHijo,
+                        onSelected: (_) => setSB(() => paraHijo = false),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ChoiceChip(
+                        label: const Center(child: Text('Mi hijo(a)')),
+                        selected: paraHijo,
+                        onSelected: (_) => setSB(() => paraHijo = true),
+                      ),
+                    ),
+                  ],
+                ),
+                if (paraHijo) ...[
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: nombreNino,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(
+                        labelText: 'Nombre del alumno (niño/a)'),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: edad,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                              labelText: 'Edad (opcional)'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: waApoderado,
+                          keyboardType: TextInputType.phone,
+                          decoration: InputDecoration(
+                              labelText: 'Tu WhatsApp', prefixText: '$codigoTelActual '),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    dense: true,
+                    value: consiente,
+                    onChanged: (v) => setSB(() => consiente = v ?? false),
+                    title: const Text(
+                        'Soy el apoderado y autorizo el registro del menor.',
+                        style: TextStyle(fontSize: 12)),
+                  ),
+                ],
+                if (error != null) ...[
+                  const SizedBox(height: 10),
+                  Text(error!,
+                      style: const TextStyle(
+                          color: Colors.redAccent,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600)),
+                ],
+              ],
+            ),
+          ),
+          acciones: [
+            TextButton(
+                onPressed: () => Navigator.of(dctx).pop(),
+                child: const Text('Cancelar')),
+            FilledButton(
+              onPressed: () {
+                // Validación DENTRO del popup: muestra el error y NO cierra.
+                if (paraHijo && nombreNino.text.trim().isEmpty) {
+                  setSB(() => error = 'Escribe el nombre del alumno.');
+                  return;
+                }
+                if (paraHijo && !consiente) {
+                  setSB(() => error =
+                      'Marca la casilla: confirma que eres el apoderado.');
+                  return;
+                }
+                final r = appState.matricularConCodigo(
+                  codigo.text,
+                  nombreAlumno: paraHijo ? nombreNino.text : null,
+                  edad: paraHijo ? int.tryParse(edad.text.trim()) : null,
+                  apoderadoWhatsapp: paraHijo ? waApoderado.text : null,
+                );
+                // Código inválido / no encontrado → error inline, sigue abierto.
+                if (!r.ok) {
+                  setSB(() => error = r.mensaje);
+                  return;
+                }
+                Navigator.of(dctx).pop(r);
+              },
+              child: const Text('Unirme'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (res != null && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(res.mensaje),
+        backgroundColor: res.ok ? bosque : null,
+      ));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: cs.surface,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () => _abrir(context),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: lima.withOpacity(0.7)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                    color: lima.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12)),
+                child: Icon(Icons.qr_code_2, color: cs.primary),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('¿Tu profe te dio un código?',
+                        style: t.titleSmall
+                            ?.copyWith(fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 2),
+                    Text('Únete a su academia y sigue tus clases y pagos.',
+                        style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: cs.primary),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Invitaciones pendientes dirigidas al usuario (por correo): "te invitaron a
+/// tal academia". Un toque las acepta y lo matricula como alumno-app.
+class _MisInvitaciones extends StatelessWidget {
+  const _MisInvitaciones();
+
+  @override
+  Widget build(BuildContext context) {
+    final invs = appState.misInvitacionesPendientes();
+    if (invs.isEmpty) return const SizedBox.shrink();
+    return Column(
+      children: [
+        for (final inv in invs) _TarjetaInvitacionRecibida(inv: inv),
+      ],
+    );
+  }
+}
+
+class _TarjetaInvitacionRecibida extends StatelessWidget {
+  const _TarjetaInvitacionRecibida({required this.inv});
+  final Invitacion inv;
+
+  Future<void> _aceptar(BuildContext context) async {
+    final res = appState.aceptarInvitacion(inv);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(res.mensaje), backgroundColor: res.ok ? bosque : null));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: lima.withOpacity(0.9), width: 1.4),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                    color: lima.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12)),
+                child: Icon(Icons.mark_email_unread_outlined, color: cs.primary),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Te invitaron a ${inv.academiaNombre}',
+                        style: t.titleSmall
+                            ?.copyWith(fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 2),
+                    Text('Acepta para ver tus clases y pagos.',
+                        style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              TextButton(
+                onPressed: () => appState.rechazarInvitacion(inv),
+                child: const Text('Ahora no'),
+              ),
+              const Spacer(),
+              FilledButton.icon(
+                onPressed: () => _aceptar(context),
+                icon: const Icon(Icons.check, size: 18),
+                label: const Text('Aceptar'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TarjetaAcademia extends StatelessWidget {
+  const _TarjetaAcademia(
+      {required this.academia, this.nivelDestacado = 0, this.distancia});
+  final Academia academia;
+
+  /// Nivel de destacado (0 = no; 1 bronce, 2 plata, 3 oro). Su dueño puso
+  /// saldo → badge con medalla + va arriba en la lista.
+  final int nivelDestacado;
+
+  /// Distancia en km al usuario (null si no se conoce su ubicación).
+  final double? distancia;
+
+  String get _distanciaLabel {
+    final d = distancia;
+    if (d == null) return '';
+    return d < 1 ? ' · ${(d * 1000).round()} m' : ' · ${d.toStringAsFixed(1)} km';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    double? desde;
+    for (final p in academia.planes) {
+      final v = p.precioMes;
+      if (desde == null || v < desde) desde = v;
+    }
+    final portada = academia.fotos.isNotEmpty ? academia.fotos.first : null;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: trazo),
+        boxShadow: const [
+          BoxShadow(color: Color(0x14000000), blurRadius: 14, offset: Offset(0, 5)),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => AcademiaDetalleScreen(academiaId: academia.id))),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Portada del feed (si el profe subió fotos).
+            if (portada != null)
+              AspectRatio(
+                aspectRatio: 16 / 9,
+                child: Image.network(portada, fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) =>
+                        Container(color: limaSuave)),
+              ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 22,
+                        backgroundColor: colorDeporte(academia.deporte),
+                        backgroundImage: (academia.logoUrl != null &&
+                                academia.logoUrl!.isNotEmpty)
+                            ? NetworkImage(academia.logoUrl!)
+                            : null,
+                        child: (academia.logoUrl != null &&
+                                academia.logoUrl!.isNotEmpty)
+                            ? null
+                            : Icon(iconoDeporte(academia.deporte),
+                                color: Colors.white),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (nivelDestacado > 0)
+                              Container(
+                                margin: const EdgeInsets.only(bottom: 3),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                    color: lima,
+                                    borderRadius: BorderRadius.circular(999)),
+                                child: Text(
+                                    '${medallaDestacado(nivelDestacado)} DESTACADO',
+                                    style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w800)),
+                              ),
+                            Text(academia.nombre,
+                                style: t.titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.w800)),
+                            Text(
+                                '${academia.deporte.etiqueta}'
+                                '${academia.sedeClub.isNotEmpty ? ' · ${academia.sedeClub}' : ''}'
+                                '$_distanciaLabel',
+                                style:
+                                    t.bodySmall?.copyWith(color: textoTenueDe(context))),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.chevron_right, color: textoTenue),
+                    ],
+                  ),
+                  if (academia.redes.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        for (final e in academia.redes.entries)
+                          if (urlRed(e.key, e.value) != null)
+                            RedBadge(
+                                clave: e.key, valor: e.value, size: 34),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      if (desde != null)
+                        Text('desde ${academia.monedaSimbolo} ${desde.toStringAsFixed(2)}',
+                            style: t.titleSmall?.copyWith(
+                                color: cs.primary, fontWeight: FontWeight.w800))
+                      else
+                        const SizedBox.shrink(),
+                      Text('Ver y matricularme',
+                          style: t.labelLarge?.copyWith(
+                              color: cs.primary, fontWeight: FontWeight.w800)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Banner de acceso al RANKING GLOBAL (tabla cruzada por deporte). Solo se
+/// muestra cuando ya hay partidos registrados en alguna academia.
+class _RankingGlobalBanner extends StatelessWidget {
+  const _RankingGlobalBanner({required this.inscrito});
+
+  /// ¿El usuario YA es del circuito? Si no, el banner INVITA a unirse (no abre
+  /// el ranking); si sí, es el atajo directo a su ranking.
+  final bool inscrito;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () async {
+          if (inscrito) {
+            // Ya en la liga → atajo a su ranking.
+            await Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => const RankingGlobalScreen()));
+          } else {
+            // Aún NO en la liga → INVITA a unirse (no muestra el ranking).
+            // Al unirse, appState notifica y la vista se refresca sola.
+            await mostrarUnirseCircuito(context);
+          }
+        },
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(colors: [lima, teal]),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Icon(inscrito ? Icons.leaderboard : Icons.public,
+                  color: Colors.white, size: 26),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Liga de tenis Pichangol',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15)),
+                    const SizedBox(height: 2),
+                    Text(
+                        inscrito
+                            ? 'Ver tu ranking, retar jugadores y subir en tu ciudad.'
+                            : 'Ranking de tu ciudad, retos entre jugadores y tu '
+                                'carnet oficial. Únete y sube.',
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 12.5)),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: Colors.white54),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

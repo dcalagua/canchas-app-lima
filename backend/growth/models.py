@@ -20,6 +20,14 @@ class CanjearRequest(BaseModel):
     fuente_financiamiento: str = "pichangol"  # pichangol | dueno
 
 
+class AcreditarReservaRequest(BaseModel):
+    """Fidelidad: puntos por una reserva efectivamente pagada."""
+    usuario_id: str
+    monto: float
+    moneda: str = "S/"  # S/ | Bs | $ (define el factor de puntos)
+    reserva_id: str
+
+
 class PrimeraReservaRequest(BaseModel):
     cancha_id: str
 
@@ -85,8 +93,13 @@ class AprobarManualRequest(BaseModel):
 # --- Reclamo de propiedad (concierge + validación en sitio) ---
 class ReclamoRequest(BaseModel):
     cancha_id: str
-    solicitante_id: str
+    solicitante_id: str            # correo del reclamante (login; obligatorio)
+    solicitante_nombre: str = ""   # nombre del reclamante (de su cuenta Google)
     nombre_local: str
+    # Prueba de propiedad (opcional): foto (fachada/cartel/recibo) + nota libre
+    # que el reclamante deja para acelerar el triage del operador.
+    foto_evidencia_url: str = ""
+    nota_reclamante: str = ""
     telefono_contacto: str | None = None
     dni: str | None = None
     ruc: str | None = None

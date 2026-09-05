@@ -10,6 +10,7 @@ error devuelve no-disponible y el flujo sigue (validación humana igual).
 from __future__ import annotations
 
 import json
+import urllib.error
 import urllib.request
 
 import config
@@ -61,6 +62,105 @@ def consultar_dni(dni: str) -> dict:
         "nombres": nombres,
         "apellido_paterno": ap,
         "apellido_materno": am,
+        # Para calcular la EDAD real (categorías Sub-N de campeonatos). Formato
+        # de Factiliza; el APK parsea y calcula la edad actual.
+        "fecha_nacimiento": data.get("fecha_nacimiento"),
+    }
+
+
+# --- Cédula ECUADOR (CipherByte), espejo de consultar_dni ------------------
+def cedula_disponible() -> bool:
+    return bool(config.CIPHERBYTE_API_TOKEN)
+
+
+def _cedula_valida(c: str | None) -> bool:
+    return bool(c) and c.isdigit() and len(c) == 10
+
+
+def _primero(d: dict, claves: list[str]):
+    """Primer valor no vacío entre varias claves candidatas (la respuesta de
+    CipherByte puede nombrar los campos de distintas formas)."""
+    for k in claves:
+        v = d.get(k)
+        if v not in (None, ""):
+            return v
+    return None
+
+
+def consultar_cedula(cedula: str) -> dict:
+    """Consulta la cédula ecuatoriana (CipherByte). Devuelve {ok, cedula,
+    nombre_completo, nombres, apellidos, fecha_nacimiento} o {ok: False, error}.
+    Parseo DEFENSIVO: la respuesta puede venir anidada y con nombres de campo
+    variados; se prueban varias variantes. Nunca lanza."""
+    if not _cedula_valida(cedula):
+        return {"ok": False, "error": "cedula_invalida"}
+    if not cedula_disponible():
+        return {"ok": False, "error": "no_configurado"}
+
+    url = f"{config.CIPHERBYTE_BASE_URL}/cedula/{cedula}"
+
+    def _pedir(headers: dict) -> tuple[dict | None, str | None, int]:
+        req = urllib.request.Request(
+            url, headers={"Accept": "application/json", **headers},
+            method="GET")
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return json.loads(resp.read().decode("utf-8")), None, 200
+        except urllib.error.HTTPError as e:  # noqa: PERF203
+            return None, str(e)[:160], e.code
+        except Exception as e:  # noqa: BLE001
+            return None, str(e)[:160], 0
+
+    # El esquema es ApiKeyAuth: se intenta X-Api-Key y, si el gateway lo
+    # rechaza por auth (401/403), se reintenta como Bearer (fallback).
+    payload, err, code = _pedir({"X-Api-Key": config.CIPHERBYTE_API_TOKEN})
+    if payload is None and code in (401, 403):
+        payload, err, code = _pedir(
+            {"Authorization": f"Bearer {config.CIPHERBYTE_API_TOKEN}"})
+    if payload is None:
+        return {"ok": False, "error": err or "sin_respuesta"}
+
+    if not isinstance(payload, dict):
+        return {"ok": False, "error": "respuesta_invalida"}
+
+    # Bandera de éxito explícita (si viene y es negativa, corta).
+    exito = payload.get("success", payload.get("ok", payload.get("status")))
+    if exito is False or (isinstance(exito, str)
+                          and exito.lower() in ("false", "error", "0", "fail")):
+        return {"ok": False, "error": "no_encontrado"}
+
+    # Desanida el contenedor de datos si la respuesta lo trae.
+    data = payload
+    for cont in ("data", "result", "resultado", "persona", "informacion",
+                 "response", "datos"):
+        if isinstance(payload.get(cont), dict):
+            data = payload[cont]
+            break
+
+    nombres = _primero(data, ["nombres", "nombre", "names", "primer_nombre",
+                              "firstName", "first_name"])
+    apellidos = _primero(data, ["apellidos", "apellido", "lastName",
+                                "last_name", "surname"])
+    completo = _primero(data, ["nombre_completo", "nombreCompleto", "fullName",
+                               "full_name", "nombres_completos",
+                               "nombre_apellidos", "razon_social"])
+    if not completo:
+        completo = " ".join(x for x in [nombres, apellidos] if x) or None
+    if not completo:
+        # Sin nombre reconocible: trátalo como no encontrado (no rompas el flujo).
+        return {"ok": False, "error": "no_encontrado"}
+
+    fnac = _primero(data, ["fecha_nacimiento", "fechaNacimiento",
+                           "fechanacimiento", "fecha_de_nacimiento",
+                           "birthDate", "birth_date", "fecha_nac", "nacimiento"])
+    return {
+        "ok": True,
+        "cedula": cedula,
+        "nombre_completo": completo,
+        "nombres": nombres,
+        "apellidos": apellidos,
+        # Para calcular la EDAD (categorías Sub-N). El APK parsea el formato.
+        "fecha_nacimiento": fnac,
     }
 
 

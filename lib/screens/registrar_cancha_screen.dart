@@ -16,8 +16,13 @@ import '../services/propiedad_service.dart';
 import '../services/sport_detector.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
+import '../widgets/wizard_pichangol.dart';
+import '../widgets/responsive.dart';
 import '../widgets/selector_horario.dart';
 import 'login_google_sheet.dart';
+import '../utils/moneda.dart';
+import '../config/pais.dart';
 
 /// Registrar una cancha escribiendo la dirección: se geocodifica y aparece en el
 /// mapa automáticamente (estilo eSupplier). Un local puede tener varias canchas
@@ -35,12 +40,14 @@ class RegistrarCanchaScreen extends StatefulWidget {
 }
 
 class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
-  final _nombre = TextEditingController();
+  final _nombre = TextEditingController(); // nombre del LOCAL (club)
+  final _nombreCancha = TextEditingController(); // nombre de la cancha (opcional)
   final _direccion = TextEditingController();
   final _precio = TextEditingController(text: '120.00');
-  final _ruc = TextEditingController(); // opcional: refuerza la verificación
   final _contacto = TextEditingController(); // WhatsApp del dueño (obligatorio)
-  final _dni = TextEditingController(); // DNI del reclamante (obligatorio)
+  final _dni = TextEditingController(); // DNI del reclamante (OPCIONAL)
+  final _nota = TextEditingController(); // nota para el equipo (OPCIONAL)
+  Uint8List? _fotoEvidencia; // prueba de propiedad: fachada/cartel/recibo (OPC.)
 
   /// true cuando se está RECLAMANDO una cancha descubierta en Google (trae base).
   bool get _esReclamo => widget.base != null;
@@ -48,11 +55,6 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
   // Resultado de la consulta a Factiliza (se muestra debajo del campo).
   String? _dniNombre;
   bool _dniCargando = false;
-  String? _rucRazon;
-  bool _rucCargando = false;
-
-  // Relación del reclamante con la cancha (combo).
-  String _relacion = 'dueño';
 
   /// Evita doble-envío (doble tap / red lenta): sin esto, cada envío genera un
   /// id de cancha nuevo (basado en timestamp) y por lo tanto un reclamo
@@ -68,13 +70,19 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
       ]));
 
   Future<void> _consultarDni(String v) async {
+    // Consulta automática donde hay registro oficial (Perú: DNI/RENIEC vía
+    // Factiliza; Ecuador: cédula vía CipherByte). En otros países el documento
+    // se ingresa sin verificación en línea.
+    if (!paisActual.consultaDoc) return;
     final d = v.replaceAll(RegExp(r'[^0-9]'), '');
-    if (d.length != 8) {
+    if (d.length != (paisActual.docLongitud ?? 8)) {
       setState(() => _dniNombre = null);
       return;
     }
     setState(() => _dniCargando = true);
-    final r = await PropiedadService.consultarDni(d);
+    final r = paisActual.iso == 'EC'
+        ? await PropiedadService.consultarCedula(d)
+        : await PropiedadService.consultarDni(d);
     if (!mounted) return;
     setState(() {
       _dniCargando = false;
@@ -84,25 +92,33 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
     });
   }
 
-  Future<void> _consultarRuc(String v) async {
-    final d = v.replaceAll(RegExp(r'[^0-9]'), '');
-    if (d.length != 11) {
-      setState(() => _rucRazon = null);
-      return;
-    }
-    setState(() => _rucCargando = true);
-    final r = await PropiedadService.consultarRuc(d);
-    if (!mounted) return;
-    setState(() {
-      _rucCargando = false;
-      _rucRazon = (r != null && r['ok'] == true)
-          ? (r['razon_social'] as String?)
-          : null;
-    });
-  }
-
   // Deportes del local (varios a la vez). Fútbol viene marcado por defecto.
   final Set<Deporte> _deportes = {Deporte.futbol};
+  // Tipo de piso por deporte (cuando son canchas SEPARADAS).
+  final Map<Deporte, String> _superficies = {};
+  // ¿Los deportes marcados se juegan en la MISMA cancha (loza multiuso)? Por
+  // defecto sí (caso más común): una sola cancha con varios deportes y agenda
+  // compartida. Si es false, se crean canchas separadas (una por deporte).
+  bool _lozaMultiuso = true;
+  // Tipo de piso ÚNICO cuando es loza multiuso (o un solo deporte).
+  String _superficie = '';
+  // El deporte "principal" (ícono/color): el primero según el orden de catálogo.
+  Deporte get _deportePrincipal => deportesActivos.firstWhere(
+        (d) => _deportes.contains(d),
+        orElse: () => _deportes.isEmpty ? Deporte.futbol : _deportes.first,
+      );
+  // Superficies posibles para una loza multiuso: unión de las de cada deporte.
+  List<String> get _superficiesUnion {
+    final out = <String>[];
+    for (final d in deportesActivos.where(_deportes.contains)) {
+      for (final s in superficiesDe(d)) {
+        if (!out.contains(s)) out.add(s);
+      }
+    }
+    return out;
+  }
+  // ¿Se debe tratar como UNA sola cancha? (un solo deporte, o loza multiuso).
+  bool get _esCanchaUnica => _deportes.length == 1 || _lozaMultiuso;
 
   // Horario de atención y duración de turno (se aplican a las canchas creadas).
   String _apertura = '07:00';
@@ -111,6 +127,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
 
   GoogleMapController? _map;
   LatLng? _ubicacion; // null hasta geocodificar o tocar el mapa
+  bool _ubicandoGps = false; // leyendo el GPS para "usar mi ubicación"
   bool _geocodificando = false;
   String? _errorGeo;
 
@@ -122,6 +139,9 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
   List<String> _fotosBase = const [];
 
   static const _limaCentro = LatLng(-12.0931, -77.0465);
+  // Centro inicial del mapa detectado por GPS (Perú/Bolivia/Ecuador…), para no
+  // arrancar clavado en Lima cuando el dueño registra desde otro país/ciudad.
+  LatLng? _centroInicial;
 
   @override
   void initState() {
@@ -137,19 +157,51 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
       _fotosBase = b.fotos.isNotEmpty
           ? b.fotos
           : (b.fotoUrl != null ? [b.fotoUrl!] : const []);
+    } else {
+      // Cancha nueva (sin ubicación fija): centra el mapa en donde está el dueño.
+      _autoCentrarMapa();
     }
+  }
+
+  /// Detecta la ubicación del dueño y centra el mapa ahí (sin fijar el pin: el
+  /// dueño confirma el punto exacto tocando/arrastrando o por dirección).
+  Future<void> _autoCentrarMapa() async {
+    // 1) Rápida (última conocida) para reubicar de inmediato; 2) precisa (GPS).
+    final rapida = await LocationService.ultimaConocida();
+    if (rapida != null) _aplicarCentro(rapida);
+    final precisa = await LocationService.ubicacionActual();
+    if (precisa != null) _aplicarCentro(precisa);
+  }
+
+  void _aplicarCentro(LatLng pos) {
+    if (!mounted || _ubicacion != null) return; // no pisar un pin ya elegido
+    setState(() => _centroInicial = pos); // por si el mapa aún no se creó
+    _map?.animateCamera(CameraUpdate.newLatLngZoom(pos, 14));
   }
 
   @override
   void dispose() {
     _nombre.dispose();
+    _nombreCancha.dispose();
     _direccion.dispose();
     _precio.dispose();
-    _ruc.dispose();
     _contacto.dispose();
     _dni.dispose();
+    _nota.dispose();
     _map?.dispose();
     super.dispose();
+  }
+
+  /// Foto de EVIDENCIA (prueba de propiedad): fachada/cartel/recibo. Opcional; no
+  /// pasa por la detección de deporte (no es la foto de la cancha). Cámara o
+  /// galería para que el reclamante pueda tomarla en el momento.
+  Future<void> _elegirEvidencia(ImageSource fuente) async {
+    final XFile? file =
+        await ImagePicker().pickImage(source: fuente, maxWidth: 1280);
+    if (file == null) return;
+    final bytes = await file.readAsBytes();
+    if (!mounted) return;
+    setState(() => _fotoEvidencia = bytes);
   }
 
   Future<void> _elegirFoto() async {
@@ -185,7 +237,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
       _errorGeo = null;
     });
     try {
-      final locs = await locationFromAddress('$q, Lima, Perú');
+      final locs = await locationFromAddress('$q, ${paisActual.geocodeHint}');
       if (locs.isEmpty) {
         setState(() {
           _geocodificando = false;
@@ -207,6 +259,28 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
         _errorGeo = 'No pude ubicar la dirección. Toca el mapa para marcarla a mano.';
       });
     }
+  }
+
+  /// "Estoy en la cancha": pone el pin en MI ubicación GPS actual (alta
+  /// precisión) y rellena la dirección sola. Pedido del director: registrar
+  /// parado en el local sin tipear la dirección.
+  Future<void> _usarMiUbicacion() async {
+    if (_ubicandoGps) return;
+    setState(() {
+      _ubicandoGps = true;
+      _errorGeo = null;
+    });
+    final pos = await LocationService.ubicacionPrecisa();
+    if (!mounted) return;
+    setState(() => _ubicandoGps = false);
+    if (pos == null) {
+      setState(() => _errorGeo =
+          'No pude leer tu GPS. Activa la ubicación del teléfono y vuelve a '
+          'intentar (o marca el punto tocando el mapa).');
+      return;
+    }
+    await _moverPin(pos); // pin + dirección automática
+    _map?.animateCamera(CameraUpdate.newLatLngZoom(pos, 17));
   }
 
   /// Mueve el pin y **rellena la dirección automáticamente** desde esa
@@ -239,19 +313,32 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
     return partes.join(', ');
   }
 
-  /// Best-effort: deduce el distrito desde las coordenadas (para clasificar).
-  Future<Distrito> _distritoDe(LatLng p) async {
+  /// Best-effort desde las coordenadas, en UNA sola llamada de reverse-geocode:
+  /// - `distrito`: clasificación gruesa heredada (Lima) para compat.
+  /// - `barrio`: nombre REAL de la zona (sublocalidad/localidad), lo que ve el
+  ///   usuario en cualquier país (ej. "Sopocachi", "Equipetrol", "San Borja").
+  Future<(Distrito, String)> _zonaDe(LatLng p) async {
+    var distrito = Distrito.sanBorja;
+    var barrio = '';
     try {
       final marks = await placemarkFromCoordinates(p.latitude, p.longitude);
       for (final m in marks) {
-        final texto = '${m.subLocality} ${m.locality} ${m.subAdministrativeArea}'
-            .toLowerCase();
+        final sub = (m.subLocality ?? '').trim();
+        final loc = (m.locality ?? '').trim();
+        final sa = (m.subAdministrativeArea ?? '').trim();
+        if (barrio.isEmpty) {
+          barrio = sub.isNotEmpty ? sub : (loc.isNotEmpty ? loc : sa);
+        }
+        final texto = '$sub $loc $sa'.toLowerCase();
         for (final d in Distrito.values) {
-          if (texto.contains(d.etiqueta.toLowerCase())) return d;
+          if (texto.contains(d.etiqueta.toLowerCase())) {
+            distrito = d;
+            break;
+          }
         }
       }
     } catch (_) {}
-    return Distrito.sanBorja;
+    return (distrito, barrio);
   }
 
   Future<void> _publicar() async {
@@ -278,124 +365,205 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
       _avisar('Elige al menos un deporte.');
       return;
     }
+    // Tipo de piso OBLIGATORIO (solo al crear cancha nueva; al reclamar, el piso
+    // se define después en Editar). Una sola superficie para loza multiuso /
+    // deporte único; una por deporte cuando son canchas separadas.
+    if (!_esReclamo) {
+      if (_esCanchaUnica) {
+        if (_superficie.isEmpty) {
+          _avisar('Marca el tipo de piso de la cancha.');
+          return;
+        }
+      } else {
+        final faltan =
+            _deportes.where((d) => (_superficies[d] ?? '').isEmpty).toList();
+        if (faltan.isNotEmpty) {
+          _avisar(
+              'Marca el tipo de piso de: ${faltan.map((d) => d.etiqueta).join(', ')}.');
+          return;
+        }
+      }
+    }
     final aMin = horaEnMinutos(_apertura), cMin = horaEnMinutos(_cierre);
     if (aMin == null || cMin == null || cMin <= aMin) {
       _avisar('El cierre debe ser después de la apertura.');
       return;
     }
     final contacto = _contacto.text.trim();
-    if (contacto.replaceAll(RegExp(r'[^0-9]'), '').length < 9) {
+    if (contacto.replaceAll(RegExp(r'[^0-9]'), '').length < paisActual.telLongitud) {
       _avisar('Pon tu WhatsApp de contacto para que el equipo te valide.');
       return;
     }
+    // Documento OPCIONAL: solo se valida el formato si el dueño lo escribió y el
+    // país tiene un largo fijo (el CI boliviano no lo tiene → no se valida largo).
     final dni = _dni.text.trim();
-    if (dni.replaceAll(RegExp(r'[^0-9]'), '').length != 8) {
-      _avisar('Pon tu DNI (8 dígitos) para validar tu identidad.');
-      return;
-    }
-    final rucDigs = _ruc.text.replaceAll(RegExp(r'[^0-9]'), '');
-    if (rucDigs.isNotEmpty && rucDigs.length != 11) {
-      _avisar('El RUC debe tener 11 dígitos (o déjalo vacío).');
+    final dniDigs = dni.replaceAll(RegExp(r'[^0-9]'), '');
+    final docLen = paisActual.docLongitud;
+    if (docLen != null && dniDigs.isNotEmpty && dniDigs.length != docLen) {
+      _avisar('Si pones tu ${docIdActual}, debe tener $docLen dígitos (o déjalo vacío).');
       return;
     }
     // Anti-fraude: para registrar/reclamar hay que identificarse con Google, así
     // la cancha queda atada a una cuenta real y pasa a verificación.
-    if (!appState.logueado) {
-      final ok = await LoginGoogleSheet.mostrar(context);
-      if (!ok || !mounted) {
-        _avisar('Inicia sesión para registrar tu cancha.');
-        return;
-      }
+    if (!await LoginGoogleSheet.mostrar(context,
+        motivo: 'registrar tu cancha')) {
+      if (mounted) _avisar('Inicia sesión para registrar tu cancha.');
+      return;
     }
+    if (!mounted) return;
     final precio =
         double.tryParse(_precio.text.trim().replaceAll(',', '.')) ?? 100;
     final direccion = _direccion.text.trim();
-    final distrito = await _distritoDe(_ubicacion!);
-    final ts = DateTime.now().millisecondsSinceEpoch;
 
-    // Sube la foto nueva (si hay) y conserva las que ya traía de Google.
-    String? fotoSubida;
-    if (_foto != null) {
-      fotoSubida = await CanchasRepo.subirFoto('u$ts', _foto!);
-    }
-    final fotos = <String>[
-      if (fotoSubida != null) fotoSubida,
-      ..._fotosBase,
-    ];
-    final fotoUrl = fotos.isNotEmpty ? fotos.first : null;
+    // Regla: el envío real (geolocaliza la zona, sube la foto y crea el reclamo
+    // en el servidor) demora → se muestra el preload de marca, no un spinner.
+    final res = await conPreload(context, () async {
+      final (distrito, barrio) = await _zonaDe(_ubicacion!);
+      final ts = DateTime.now().millisecondsSinceEpoch;
 
-    // Atamos la cancha a la cuenta del dueño (correo) para recuperarla luego en
-    // "Mis canchas" desde cualquier dispositivo.
-    final dueno = appState.usuario?.email ?? '';
-
-    // Un local con varias canchas = una Cancha por deporte, mismo punto y dirección.
-    final deportes = _deportes.toList();
-    final creadas = <Cancha>[];
-    for (final dep in deportes) {
-      final nombreCancha =
-          deportes.length > 1 ? '$nombre · ${dep.etiqueta}' : nombre;
-      final cancha = Cancha(
-        id: 'u${ts}_${dep.name}',
-        nombre: nombreCancha,
-        club: nombre, // el local es su propio club (nombre que escribió el dueño)
-        distrito: distrito,
-        deporte: dep,
-        precioHora: precio,
-        ubicacion: _ubicacion!,
-        clubFundador: false,
-        digitalizada: true,
-        direccion: direccion.isEmpty ? null : direccion,
-        fotoUrl: fotoUrl,
-        fotos: fotos,
-        dueno: dueno,
-        verificada: false, // pendiente de verificación hasta validar al dueño
-        horaApertura: _apertura,
-        horaCierre: _cierre,
-        duracionSlotMin: _duracion,
-      );
-      creadas.add(cancha);
-      appState.agregarCancha(cancha);
-    }
-
-    // Verificación de EXISTENCIA en segundo plano (no bloquea el cierre). Confirma
-    // que el local es real, pero NO te da la propiedad: la cancha queda "en
-    // revisión de propiedad" hasta validar al dueño (código al teléfono del local,
-    // aprobación manual o visita). Recién ahí se habilitan reservas.
-    appState.verificarVenue(creadas,
-        ruc: _ruc.text.trim(), razonSocial: nombre);
-
-    // Modelo concierge: al reclamar/registrar se crea una SOLICITUD DE RECLAMO y
-    // le llega un WhatsApp al equipo de Pichangol con un código para vetear al
-    // dueño. Nada se activa hasta validarlo (revisión + visita en sitio).
-    // Se ESPERA la respuesta para confirmar que el reclamo quedó en el servidor.
-    bool reclamoOk = true;
-    bool yaReclamada = false;
-    if (creadas.isNotEmpty) {
-      // GPS del dispositivo AL reclamar: el admin puede exigir (torre de control)
-      // que coincida con la cancha para aprobar (anti-fraude "estás en el lugar").
-      final desdeAqui = await LocationService.ubicacionPrecisa();
-      final r = await PropiedadService.crearReclamo(
-        canchaId: creadas.first.id,
-        solicitanteId: dueno,
-        nombreLocal: nombre,
-        telefonoContacto: contacto,
-        dni: dni,
-        ruc: _ruc.text.trim(),
-        relacion: _relacion,
-        ubicacion: _ubicacion,
-        solicitanteUbicacion: desdeAqui,
-      );
-      reclamoOk = r != null && r['ok'] == true;
-      yaReclamada = r != null && r['error'] == 'ya_reclamada';
-    }
-
-    // Si OTRO usuario ya reclamó esta cancha (o el mismo lugar), no puedes
-    // reclamarla: revierte las canchas locales recién creadas.
-    if (yaReclamada) {
-      for (final c in creadas) {
-        appState.eliminarCancha(c.id);
+      // Sube la foto nueva (si hay) y conserva las que ya traía de Google.
+      String? fotoSubida;
+      if (_foto != null) {
+        fotoSubida = await CanchasRepo.subirFoto('u$ts', _foto!);
       }
-    }
+      final fotos = <String>[
+        if (fotoSubida != null) fotoSubida,
+        ..._fotosBase,
+      ];
+      final fotoUrl = fotos.isNotEmpty ? fotos.first : null;
+
+      // Atamos la cancha a la cuenta del dueño (correo) para recuperarla luego en
+      // "Mis canchas" desde cualquier dispositivo.
+      final dueno = appState.usuario?.email ?? '';
+
+      final deportes = _deportes.toList();
+      final nombreCanchaInput = _nombreCancha.text.trim();
+      final creadas = <Cancha>[];
+      if (_esCanchaUnica) {
+        // UNA sola cancha: un deporte, o loza multiuso (varios deportes, misma
+        // superficie y AGENDA COMPARTIDA). El principal define ícono/color.
+        final principal = _deportePrincipal;
+        final nombreCancha = nombreCanchaInput.isNotEmpty
+            ? nombreCanchaInput
+            : (deportes.length == 1 ? '${principal.etiqueta} 1' : 'Cancha 1');
+        final cancha = Cancha(
+          id: 'u$ts',
+          nombre: nombreCancha,
+          club: nombre,
+          distrito: distrito,
+          barrio: barrio,
+          deporte: principal,
+          deportes: deportes, // todos los deportes jugables en esta loza
+          precioHora: precio,
+          ubicacion: _ubicacion!,
+          clubFundador: false,
+          digitalizada: true,
+          direccion: direccion.isEmpty ? null : direccion,
+          fotoUrl: fotoUrl,
+          fotos: fotos,
+          dueno: dueno,
+          verificada: false,
+          horaApertura: _apertura,
+          horaCierre: _cierre,
+          duracionSlotMin: _duracion,
+          superficie: _superficie,
+          // La moneda se congela por el país donde ESTÁ la cancha (su GPS), no
+          // por el país del dispositivo del dueño: una cancha en La Paz cobra en
+          // Bs aunque el dueño la registre desde Perú.
+          moneda: monedaDeCoordenadas(
+              _ubicacion!.latitude, _ubicacion!.longitude),
+        );
+        creadas.add(cancha);
+        appState.agregarCancha(cancha);
+      } else {
+        // Canchas SEPARADAS: una Cancha por deporte (superficies y agendas propias).
+        for (final dep in deportes) {
+          final cancha = Cancha(
+            id: 'u${ts}_${dep.name}',
+            nombre: '${dep.etiqueta} 1',
+            club: nombre, // el local es su propio club
+            distrito: distrito,
+            barrio: barrio,
+            deporte: dep,
+            deportes: [dep],
+            precioHora: precio,
+            ubicacion: _ubicacion!,
+            clubFundador: false,
+            digitalizada: true,
+            direccion: direccion.isEmpty ? null : direccion,
+            fotoUrl: fotoUrl,
+            fotos: fotos,
+            dueno: dueno,
+            verificada: false, // pendiente de verificación hasta validar al dueño
+            horaApertura: _apertura,
+            horaCierre: _cierre,
+            duracionSlotMin: _duracion,
+            superficie: _superficies[dep] ?? '',
+            // Moneda por la ubicación real de la cancha, no por el país del
+            // dispositivo del dueño (ver nota arriba).
+            moneda: monedaDeCoordenadas(
+                _ubicacion!.latitude, _ubicacion!.longitude),
+          );
+          creadas.add(cancha);
+          appState.agregarCancha(cancha);
+        }
+      }
+
+      // Verificación de EXISTENCIA en segundo plano (no bloquea el cierre).
+      // Confirma que el local es real, pero NO te da la propiedad: la cancha
+      // queda "en revisión de propiedad" hasta validar al dueño (código al
+      // teléfono del local, aprobación manual o visita). Recién ahí hay reservas.
+      appState.verificarVenue(creadas, razonSocial: nombre);
+
+      // Modelo concierge: al reclamar/registrar se crea una SOLICITUD DE RECLAMO
+      // y le llega un WhatsApp al equipo de Pichangol con un código para vetear
+      // al dueño. Nada se activa hasta validarlo (revisión + visita en sitio).
+      // Se ESPERA la respuesta para confirmar que el reclamo quedó en el servidor.
+      var reclamoOk = true;
+      var yaReclamada = false;
+      if (creadas.isNotEmpty) {
+        // GPS del dispositivo AL reclamar: el admin puede exigir (torre de
+        // control) que coincida con la cancha para aprobar (anti-fraude).
+        final desdeAqui = await LocationService.ubicacionPrecisa();
+        // Prueba de propiedad (opcional): sube la foto de evidencia si la puso.
+        var evidenciaUrl = '';
+        if (_fotoEvidencia != null) {
+          evidenciaUrl =
+              await CanchasRepo.subirFoto('ev$ts', _fotoEvidencia!) ?? '';
+        }
+        final r = await PropiedadService.crearReclamo(
+          canchaId: creadas.first.id,
+          solicitanteId: dueno,
+          solicitanteNombre: appState.usuario?.nombre ?? '',
+          nombreLocal: nombre,
+          fotoEvidenciaUrl: evidenciaUrl,
+          notaReclamante: _nota.text.trim(),
+          telefonoContacto: contacto,
+          dni: dni, // opcional (puede ir vacío)
+          ubicacion: _ubicacion,
+          solicitanteUbicacion: desdeAqui,
+        );
+        reclamoOk = r != null && r['ok'] == true;
+        yaReclamada = r != null && r['error'] == 'ya_reclamada';
+      }
+
+      // Si OTRO usuario ya reclamó esta cancha (o el mismo lugar), no puedes
+      // reclamarla: revierte las canchas locales recién creadas.
+      if (yaReclamada) {
+        for (final c in creadas) {
+          appState.eliminarCancha(c.id);
+        }
+      }
+      return (
+        creadas: creadas,
+        reclamoOk: reclamoOk,
+        yaReclamada: yaReclamada,
+      );
+    }, texto: 'Enviando tu solicitud…');
+
+    final creadas = res.creadas;
+    final reclamoOk = res.reclamoOk;
+    final yaReclamada = res.yaReclamada;
 
     if (!mounted) return;
     // Devuelve la cancha creada (si no fue revertida) para que la ficha anterior
@@ -412,8 +580,8 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
                 ? '⚠️ Esta cancha ya fue reclamada por otro usuario y está en '
                     'revisión. No puedes reclamarla.'
                 : reclamoOk
-                    ? '✅ Reclamo enviado. En revisión: te contactaremos por '
-                        'WhatsApp para validar que eres el dueño antes de activarla.'
+                    ? '✅ ¡Listo! Tu cancha quedó EN REVISIÓN. Nuestro equipo la '
+                        'valida y la activamos pronto; verás el estado en "Mis canchas".'
                     : '⚠️ Cancha registrada, pero la solicitud no llegó al '
                         'servidor. Ábrela y toca "Reenviar solicitud de verificación".'),
         duration: const Duration(seconds: 5),
@@ -427,17 +595,83 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-          title: Text(_esReclamo ? 'Reclamar cancha' : 'Registrar cancha')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // La subida manual de fotos solo tiene sentido al CREAR una cancha
-          // nueva. Al reclamar, las fotos ya vienen de Google y luego el dueño
-          // conecta sus redes (tras verificar), así que aquí se oculta.
-          if (!_esReclamo) ...[
+  // ── WIZARD estilo Airbnb (pedido del director): pasos a pantalla
+  // completa con título grande, barra de progreso segmentada y Atrás /
+  // Siguiente. La lógica de guardado (_publicar) es la misma de siempre.
+  int _paso = 0;
+
+  List<PasoWizard> _pasosDe(
+      BuildContext context) {
+    if (_esReclamo) {
+      return [
+        PasoWizard(
+          titulo: 'Ubica tu cancha',
+          sub: 'Confirma el nombre del local y el punto exacto en el mapa. '
+              'Las fotos ya las trajimos de Google.',
+          hijos: [..._hijosNombre(context), ..._hijosMapa(context)],
+        ),
+        PasoWizard(
+          titulo: 'Cuéntanos de ti',
+          sub: 'El equipo usa estos datos solo para validar que el local es '
+              'tuyo. Nada se publica.',
+          hijos: _hijosContacto(context),
+        ),
+        PasoWizard(
+          titulo: 'Revisa y envía',
+          sub: 'Tu solicitud viaja a la torre de control de Pichangol; te '
+              'avisamos con una notificación cuando quede aprobada.',
+          hijos: _hijosResumen(context),
+        ),
+      ];
+    }
+    return [
+      PasoWizard(
+        titulo: 'Describe tu local',
+        sub: 'Una buena foto y el nombre con el que te conocen tus clientes.',
+        hijos: [..._hijosFoto(context), ..._hijosNombre(context)],
+      ),
+      PasoWizard(
+        titulo: 'Ubícalo en el mapa',
+        sub: 'Los jugadores te encuentran por este punto: afínalo bien.',
+        hijos: _hijosMapa(context),
+      ),
+      PasoWizard(
+        titulo: 'Deportes, precio y horario',
+        sub: 'Qué se juega en tu local y cuánto cuesta la hora.',
+        hijos: _hijosDeportes(context),
+      ),
+      PasoWizard(
+        titulo: 'Cuéntanos de ti',
+        sub: 'El equipo valida contigo por WhatsApp antes de activar tu local.',
+        hijos: _hijosContacto(context),
+      ),
+    ];
+  }
+
+  /// Validación LIGERA por paso (la final la hace _publicar como siempre).
+  bool _validarPaso(int i) {
+    final esNombre = i == 0;
+    final esUbicacion = _esReclamo ? i == 0 : i == 1;
+    final esContacto = (_esReclamo && i == 1) || (!_esReclamo && i == 3);
+    String? falta;
+    if (esNombre && _nombre.text.trim().isEmpty) {
+      falta = 'Ponle nombre al local para continuar.';
+    }
+    if (falta == null && esUbicacion && _direccion.text.trim().isEmpty) {
+      falta = 'Escribe la dirección del local.';
+    }
+    if (falta == null && esContacto && _contacto.text.trim().isEmpty) {
+      falta = 'Déjanos tu WhatsApp: es como el equipo valida contigo.';
+    }
+    if (falta != null) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(falta)));
+      return false;
+    }
+    return true;
+  }
+
+  List<Widget> _hijosFoto(BuildContext context) => [
             _ZonaFoto(foto: _foto, onTap: _elegirFoto),
             const SizedBox(height: 12),
             if (_analizando)
@@ -453,152 +687,33 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
               )
             else if (_deteccion != null)
               _ResultadoIA(deteccion: _deteccion!),
-          ] else
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                  color: limaSuave, borderRadius: BorderRadius.circular(10)),
-              child: Text(
-                'Las fotos ya las trajimos de Google. Cuando verifiques que eres '
-                'el dueño, podrás conectar tus redes e importar más.',
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: tinta),
-              ),
-            ),
           const SizedBox(height: 20),
+      ];
 
-          // ORDEN del reclamo: identidad primero (DNI, WhatsApp, relación, RUC),
-          // luego nombre, dirección y mapa. Los deportes/precio/redes se
-          // configuran DESPUÉS de aprobada la cancha.
-
-          // DNI del reclamante (OBLIGATORIO): filtro de identidad. Dato personal
-          // (Ley 29733): con consentimiento, solo lo ve el equipo para validar y
-          // no se publica. Al completar 8 dígitos consulta sus datos (Factiliza).
-          TextField(
-            controller: _dni,
-            keyboardType: TextInputType.number,
-            maxLength: 8,
-            inputFormatters: [
-              FilteringTextInputFormatter.digitsOnly,
-              LengthLimitingTextInputFormatter(8),
-            ],
-            onChanged: _consultarDni,
-            decoration: InputDecoration(
-              label: _lblReq('Tu DNI'),
-              hintText: '8 dígitos — validamos tu identidad',
-              prefixIcon: const Icon(Icons.badge_outlined, color: verdeCancha),
-              suffixIcon: _dniCargando
-                  ? const Padding(
-                      padding: EdgeInsets.all(14),
-                      child: SizedBox(
-                          width: 16,
-                          height: 16,
-                          child:
-                              CircularProgressIndicator(strokeWidth: 2)))
-                  : null,
-              counterText: '',
-            ),
-          ),
-          if (_dniNombre != null)
-            _ResultadoConsulta(icono: Icons.check_circle, texto: _dniNombre!)
-          else
-            Padding(
-              padding: const EdgeInsets.only(top: 2, left: 4, bottom: 8),
-              child: Text(
-                'Tu DNI solo se usa para validar que eres el dueño. No se publica.',
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: textoTenue, fontSize: 11),
-              ),
-            ),
-          const SizedBox(height: 8),
-
-          // WhatsApp de contacto del dueño (OBLIGATORIO): por aquí el equipo de
-          // Pichangol se comunica para validar el reclamo.
-          TextField(
-            controller: _contacto,
-            keyboardType: TextInputType.phone,
-            inputFormatters: [
-              FilteringTextInputFormatter.digitsOnly,
-              LengthLimitingTextInputFormatter(9),
-            ],
-            decoration: InputDecoration(
-              label: _lblReq('Tu WhatsApp de contacto'),
-              hintText: '987 654 321',
-              prefixIcon: const _PrefijoPeru(),
-              prefixIconConstraints: const BoxConstraints(minWidth: 76),
-              suffixIcon: const Padding(
-                padding: EdgeInsets.all(12),
-                child: FaIcon(FontAwesomeIcons.whatsapp,
-                    color: Color(0xFF25D366), size: 20),
-              ),
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          // Relación con la cancha (dueño / concesionario / arrendatario).
-          DropdownButtonFormField<String>(
-            value: _relacion,
-            decoration: InputDecoration(
-              label: _lblReq('Tu relación con la cancha'),
-              prefixIcon:
-                  const Icon(Icons.handshake_outlined, color: verdeCancha),
-            ),
-            items: const [
-              DropdownMenuItem(value: 'dueño', child: Text('Dueño')),
-              DropdownMenuItem(
-                  value: 'concesionario', child: Text('Concesionario')),
-              DropdownMenuItem(
-                  value: 'arrendatario', child: Text('Arrendatario')),
-            ],
-            onChanged: (v) => setState(() => _relacion = v ?? 'dueño'),
-          ),
-          const SizedBox(height: 14),
-
-          // RUC opcional (solo si quiere ser cliente formal). Al completar 11
-          // dígitos consulta la razón social (Factiliza).
-          TextField(
-            controller: _ruc,
-            keyboardType: TextInputType.number,
-            maxLength: 11,
-            inputFormatters: [
-              FilteringTextInputFormatter.digitsOnly,
-              LengthLimitingTextInputFormatter(11),
-            ],
-            onChanged: _consultarRuc,
-            decoration: InputDecoration(
-              labelText: 'RUC del negocio (opcional)',
-              hintText: '11 dígitos — si quieres ser cliente formal',
-              prefixIcon:
-                  const Icon(Icons.verified_outlined, color: verdeCancha),
-              suffixIcon: _rucCargando
-                  ? const Padding(
-                      padding: EdgeInsets.all(14),
-                      child: SizedBox(
-                          width: 16,
-                          height: 16,
-                          child:
-                              CircularProgressIndicator(strokeWidth: 2)))
-                  : null,
-              counterText: '',
-            ),
-          ),
-          if (_rucRazon != null)
-            _ResultadoConsulta(icono: Icons.store, texto: _rucRazon!),
-          const SizedBox(height: 14),
-
-          // Nombre del local / cancha.
+  List<Widget> _hijosNombre(BuildContext context) => [
+          // Nombre del LOCAL (el negocio: agrupa todas sus canchas).
           TextField(
             controller: _nombre,
             decoration: InputDecoration(
-              label: _lblReq('Nombre del local / cancha'),
+              label: _lblReq('Nombre del local'),
+              hintText: 'Ej.: Campo Deportivo Machuca',
             ),
           ),
           const SizedBox(height: 14),
+          // Nombre de la CANCHA (opcional). Si se deja vacío, se nombra sola por
+          // deporte ("Fútbol 1", "Tenis 1"…). Con varios deportes se ignora y
+          // cada cancha se nombra por su deporte.
+          TextField(
+            controller: _nombreCancha,
+            decoration: const InputDecoration(
+              labelText: 'Nombre de la cancha (opcional)',
+              hintText: 'Ej.: Cancha 1 — si lo dejas vacío la nombramos sola',
+            ),
+          ),
+          const SizedBox(height: 14),
+      ];
 
+  List<Widget> _hijosMapa(BuildContext context) => [
           // Dirección + botón geocodificar (auto-ubica en el mapa).
           TextField(
             controller: _direccion,
@@ -618,7 +733,8 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
                     )
                   : IconButton(
                       tooltip: 'Ubicar en el mapa',
-                      icon: const Icon(Icons.search, color: verdeCancha),
+                      icon: Icon(Icons.search,
+                          color: Theme.of(context).colorScheme.primary),
                       onPressed: _ubicarDireccion,
                     ),
             ),
@@ -627,11 +743,29 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
             const SizedBox(height: 8),
             Text(_errorGeo!, style: const TextStyle(color: coralOscuro)),
           ],
+          const SizedBox(height: 10),
+          // UBICACIÓN EN TIEMPO REAL: si estás parado en el local, un tap
+          // pone el pin en tu GPS y llena la dirección sola.
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _ubicandoGps ? null : _usarMiUbicacion,
+              icon: _ubicandoGps
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.my_location),
+              label: Text(_ubicandoGps
+                  ? 'Leyendo tu GPS…'
+                  : 'Estoy en la cancha: usar mi ubicación'),
+            ),
+          ),
           const SizedBox(height: 12),
 
           // Mapa de confirmación: marcador arrastrable + tocar para ajustar.
           _MapaUbicacion(
-            inicial: _ubicacion ?? _limaCentro,
+            inicial: _ubicacion ?? _centroInicial ?? _limaCentro,
             ubicacion: _ubicacion,
             onMapCreated: (c) => _map = c,
             onElegir: _moverPin,
@@ -644,10 +778,9 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
             style: const TextStyle(color: Colors.grey, fontSize: 12),
           ),
           const SizedBox(height: 18),
+      ];
 
-          // Deportes y precio: SOLO al crear una cancha nueva. Al reclamar, esto
-          // (más fotos y redes) se configura DESPUÉS de aprobada la cancha.
-          if (!_esReclamo) ...[
+  List<Widget> _hijosDeportes(BuildContext context) => [
             const Text('¿Qué deportes hay en este local?',
                 style: TextStyle(fontWeight: FontWeight.w700)),
             const SizedBox(height: 4),
@@ -658,19 +791,16 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
               spacing: 10,
               runSpacing: 8,
               children: [
-                for (final d in Deporte.values)
+                for (final d in deportesActivos)
                   FilterChip(
-                    avatar: Icon(iconoDeporte(d),
-                        size: 18,
-                        color: _deportes.contains(d)
-                            ? Colors.white
-                            : colorDeporte(d)),
-                    label: Text(d.etiqueta),
+                    label: Text('${emojiDeporte(d)}  ${d.etiqueta}'),
                     selected: _deportes.contains(d),
                     selectedColor: colorDeporte(d),
                     checkmarkColor: Colors.white,
                     labelStyle: TextStyle(
-                      color: _deportes.contains(d) ? Colors.white : tinta,
+                      color: _deportes.contains(d)
+                          ? Colors.white
+                          : Theme.of(context).colorScheme.onSurface,
                       fontWeight: FontWeight.w600,
                     ),
                     onSelected: (s) => setState(() {
@@ -678,18 +808,138 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
                         _deportes.add(d);
                       } else {
                         _deportes.remove(d);
+                        _superficies.remove(d); // se limpia su piso
                       }
                     }),
                   ),
               ],
             ),
+            // Si marcó VARIOS deportes: ¿es la misma cancha (loza multiuso) o
+            // canchas separadas? Define si se crea 1 cancha o N.
+            if (_deportes.length > 1) ...[
+              const SizedBox(height: 16),
+              const Text('¿Cómo son estas canchas?',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 10,
+                runSpacing: 8,
+                children: [
+                  ChoiceChip(
+                    label: const Text('Una loza multiuso'),
+                    selected: _lozaMultiuso,
+                    selectedColor: lima,
+                    labelStyle: TextStyle(
+                        color: _lozaMultiuso
+                            ? bosque
+                            : Theme.of(context).colorScheme.onSurface,
+                        fontWeight: FontWeight.w600),
+                    onSelected: (_) => setState(() => _lozaMultiuso = true),
+                  ),
+                  ChoiceChip(
+                    label: const Text('Canchas separadas'),
+                    selected: !_lozaMultiuso,
+                    selectedColor: lima,
+                    labelStyle: TextStyle(
+                        color: !_lozaMultiuso
+                            ? bosque
+                            : Theme.of(context).colorScheme.onSurface,
+                        fontWeight: FontWeight.w600),
+                    onSelected: (_) => setState(() => _lozaMultiuso = false),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                  _lozaMultiuso
+                      ? 'Una sola cancha donde se juegan todos: misma superficie y '
+                          'una sola agenda (reservar ocupa la cancha para todos).'
+                      : 'Canchas físicas distintas: cada una con su superficie y '
+                          'su propia agenda.',
+                  style: const TextStyle(color: Colors.grey, fontSize: 12)),
+            ],
             const SizedBox(height: 16),
+            // Superficie: ÚNICA para loza multiuso / deporte único; una por
+            // deporte cuando son canchas separadas.
+            if (_esCanchaUnica) ...[
+              const Text('Tipo de piso',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 2),
+              const Text('Obligatorio: la superficie de la cancha.',
+                  style: TextStyle(color: Colors.grey, fontSize: 12)),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final s in _superficiesUnion)
+                    ChoiceChip(
+                      avatar: Icon(iconoSuperficie(s),
+                          size: 16,
+                          color: _superficie == s ? Colors.white : textoTenue),
+                      label: Text(s),
+                      selected: _superficie == s,
+                      selectedColor: lima,
+                      labelStyle: TextStyle(
+                          color: _superficie == s
+                              ? Colors.white
+                              : Theme.of(context).colorScheme.onSurface,
+                          fontWeight: FontWeight.w600),
+                      onSelected: (sel) =>
+                          setState(() => _superficie = sel ? s : ''),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+            ] else ...[
+              const Text('Tipo de piso de cada cancha',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 2),
+              const Text('Obligatorio: elige la superficie de cada deporte.',
+                  style: TextStyle(color: Colors.grey, fontSize: 12)),
+              const SizedBox(height: 10),
+              for (final d in deportesActivos.where(_deportes.contains)) ...[
+                Row(
+                  children: [
+                    Text(emojiDeporte(d), style: const TextStyle(fontSize: 15)),
+                    const SizedBox(width: 6),
+                    Text(d.etiqueta,
+                        style: const TextStyle(fontWeight: FontWeight.w600)),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final s in superficiesDe(d))
+                      ChoiceChip(
+                        avatar: Icon(iconoSuperficie(s),
+                            size: 16,
+                            color: _superficies[d] == s ? Colors.white : textoTenue),
+                        label: Text(s),
+                        selected: _superficies[d] == s,
+                        selectedColor: lima,
+                        labelStyle: TextStyle(
+                            color: _superficies[d] == s
+                                ? Colors.white
+                                : Theme.of(context).colorScheme.onSurface,
+                            fontWeight: FontWeight.w600),
+                        onSelected: (sel) => setState(
+                            () => _superficies[d] = sel ? s : ''),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+              ],
+            ],
+            const SizedBox(height: 4),
             TextField(
               controller: _precio,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Precio por hora',
-                prefixText: 'S/ ',
+                prefixText: '$monedaSimbolo ',
               ),
             ),
             const SizedBox(height: 18),
@@ -701,47 +951,206 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
               onCierre: (v) => setState(() => _cierre = v),
               onDuracion: (v) => setState(() => _duracion = v),
             ),
-          ] else
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                  color: const Color(0xFFEAF6C2),
-                  borderRadius: BorderRadius.circular(10)),
+      ];
+
+  List<Widget> _hijosContacto(BuildContext context) => [
+          TextField(
+            controller: _contacto,
+            keyboardType: TextInputType.phone,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(paisActual.telLongitud),
+            ],
+            decoration: InputDecoration(
+              label: _lblReq('Tu WhatsApp de contacto'),
+              hintText: 'Tu número de celular',
+              prefixIcon: const _PrefijoPeru(),
+              prefixIconConstraints: const BoxConstraints(minWidth: 76),
+              suffixIcon: const Padding(
+                padding: EdgeInsets.all(12),
+                child: FaIcon(FontAwesomeIcons.whatsapp,
+                    color: Color(0xFF25D366), size: 20),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          // DNI OPCIONAL: acelera la validación. Dato personal (Ley 29733): solo
+          // lo ve el equipo para validar y no se publica.
+          TextField(
+            controller: _dni,
+            keyboardType: TextInputType.number,
+            maxLength: paisActual.docLongitud,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(paisActual.docLongitud ?? 20),
+            ],
+            onChanged: _consultarDni,
+            decoration: InputDecoration(
+              labelText: 'Tu ${docIdActual} (opcional)',
+              hintText: paisActual.consultaDoc
+                  ? '${paisActual.docLongitud} dígitos — acelera la validación'
+                  : 'Ayuda a validar que eres el dueño',
+              prefixIcon: Icon(Icons.badge_outlined,
+                  color: Theme.of(context).colorScheme.primary),
+              suffixIcon: _dniCargando
+                  ? const Padding(
+                      padding: EdgeInsets.all(14),
+                      child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2)))
+                  : null,
+              counterText: '',
+            ),
+          ),
+          if (_dniNombre != null)
+            _ResultadoConsulta(icono: Icons.check_circle, texto: _dniNombre!)
+          else
+            Padding(
+              padding: const EdgeInsets.only(top: 2, left: 4),
               child: Text(
-                'Los deportes, el precio y la conexión con tus redes los '
-                'configuras cuando aprobemos tu cancha.',
+                'Tu ${docIdActual} solo se usa para validar que eres el dueño. No se publica.',
                 style: Theme.of(context)
                     .textTheme
                     .bodySmall
-                    ?.copyWith(color: tinta),
+                    ?.copyWith(color: textoTenue, fontSize: 11),
               ),
             ),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              style: FilledButton.styleFrom(
-                backgroundColor: bosque,
-                foregroundColor: lima,
-                padding: const EdgeInsets.symmetric(vertical: 15),
-              ),
-              onPressed: _enviando ? null : _publicar,
-              icon: _enviando
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
-                  : Icon(_esReclamo ? Icons.verified_user : Icons.send),
-              label: Text(_enviando
-                  ? 'Enviando...'
-                  : (_esReclamo
-                      ? 'Reclamar cancha'
-                      : 'Enviar para validación')),
+
+          const SizedBox(height: 16),
+          // PRUEBA DE PROPIEDAD (opcional): nota + foto (fachada/cartel/recibo).
+          // Acelera el triage del equipo (no es obligatorio para reclamar).
+          Text('Prueba de propiedad (opcional)',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleSmall
+                  ?.copyWith(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _nota,
+            maxLines: 2,
+            maxLength: 240,
+            decoration: const InputDecoration(
+              labelText: 'Nota para el equipo',
+              hintText: 'Ej.: soy el administrador, atendemos de 8am a 11pm.',
+              counterText: '',
             ),
           ),
-        ],
+          const SizedBox(height: 10),
+          _EvidenciaFoto(
+            foto: _fotoEvidencia,
+            onCamara: () => _elegirEvidencia(ImageSource.camera),
+            onGaleria: () => _elegirEvidencia(ImageSource.gallery),
+            onQuitar: () => setState(() => _fotoEvidencia = null),
+          ),
+      ];
+
+  /// Paso final del RECLAMO: resumen de la solicitud + qué sigue.
+  List<Widget> _hijosResumen(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    Widget fila(IconData icono, String etiqueta, String valor) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 7),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icono, size: 18, color: lima),
+              const SizedBox(width: 10),
+              SizedBox(
+                width: 86,
+                child: Text(etiqueta,
+                    style: t.bodySmall
+                        ?.copyWith(color: textoTenueDe(context))),
+              ),
+              Expanded(
+                child: Text(valor,
+                    style:
+                        t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+              ),
+            ],
+          ),
+        );
+    final dni = _dni.text.trim();
+    final nota = _nota.text.trim();
+    return [
+      Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: trazo),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            fila(Icons.storefront, 'Local', _nombre.text.trim()),
+            if (_nombreCancha.text.trim().isNotEmpty)
+              fila(Icons.sports_soccer, 'Cancha', _nombreCancha.text.trim()),
+            fila(Icons.place_outlined, 'Dirección', _direccion.text.trim()),
+            // Con la bandera y el prefijo del país detectado (🇵🇪 +51 / 🇪🇨
+            // +593 / 🇧🇴 +591), igual que el campo donde lo escribió.
+            fila(Icons.chat, 'WhatsApp',
+                '$banderaActual $codigoTelActual ${_contacto.text.trim()}'),
+            if (dni.isNotEmpty)
+              fila(Icons.badge_outlined, docIdActual,
+                  _dniNombre != null ? '$dni · verificado ✓' : dni),
+            if (_fotoEvidencia != null)
+              fila(Icons.photo_camera_outlined, 'Evidencia',
+                  'Foto adjunta ✓'),
+            if (nota.isNotEmpty) fila(Icons.notes, 'Nota', nota),
+          ],
+        ),
       ),
+      const SizedBox(height: 18),
+      Text('¿Qué sigue?',
+          style: t.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+      const SizedBox(height: 10),
+      for (final (n, txt) in const [
+        (1, 'El equipo de Pichangol revisa tu solicitud y te contacta por '
+            'WhatsApp si necesita confirmar algo.'),
+        (2, 'Cuando quede aprobada, te llega una notificación al celular.'),
+        (3, 'Recién ahí configuras deportes, precios y horarios — y empiezas '
+            'a recibir reservas.'),
+      ])
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 24,
+                height: 24,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                    color: limaSuave, shape: BoxShape.circle),
+                child: Text('$n',
+                    style: const TextStyle(
+                        color: bosque,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12)),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(txt,
+                    style: t.bodySmall?.copyWith(
+                        color: textoTenueDe(context), height: 1.35)),
+              ),
+            ],
+          ),
+        ),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return WizardPichangol(
+      paso: _paso,
+      pasos: _pasosDe(context),
+      onPaso: (v) => setState(() => _paso = v),
+      onEnviar: _publicar,
+      enviando: _enviando,
+      textoEnviar: _esReclamo ? 'Enviar solicitud' : 'Enviar para validación',
+      tituloSalir: _esReclamo ? '¿Salir del reclamo?' : '¿Salir del registro?',
+      validarPaso: _validarPaso,
     );
   }
 }
@@ -792,6 +1201,65 @@ class _MapaUbicacion extends StatelessWidget {
                 },
         ),
       ),
+    );
+  }
+}
+
+/// Selector de FOTO DE EVIDENCIA (prueba de propiedad): preview + tomar/elegir +
+/// quitar. Estilo Airbnb (tarjeta blanca, borde suave). Opcional.
+class _EvidenciaFoto extends StatelessWidget {
+  final Uint8List? foto;
+  final VoidCallback onCamara;
+  final VoidCallback onGaleria;
+  final VoidCallback onQuitar;
+  const _EvidenciaFoto({
+    required this.foto,
+    required this.onCamara,
+    required this.onGaleria,
+    required this.onQuitar,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    if (foto != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: Image.memory(foto!, height: 150, fit: BoxFit.cover),
+          ),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: onQuitar,
+              icon: const Icon(Icons.close, size: 16),
+              label: const Text('Quitar foto'),
+            ),
+          ),
+        ],
+      );
+    }
+    return Row(
+      children: [
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: onCamara,
+            icon: const Icon(Icons.photo_camera_outlined),
+            label: const Text('Tomar foto'),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: onGaleria,
+            icon: Icon(Icons.image_outlined, color: cs.primary),
+            label: const Text('Galería'),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -863,20 +1331,22 @@ class _ResultadoIA extends StatelessWidget {
   }
 }
 
-/// Prefijo de teléfono peruano: banderita 🇵🇪 + "+51".
+/// Prefijo de teléfono según el país detectado: bandera + código (ej. 🇧🇴 +591).
 class _PrefijoPeru extends StatelessWidget {
   const _PrefijoPeru();
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.only(left: 12, right: 4),
+    return Padding(
+      padding: const EdgeInsets.only(left: 12, right: 4),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('🇵🇪', style: TextStyle(fontSize: 18)),
-          SizedBox(width: 4),
-          Text('+51',
-              style: TextStyle(fontWeight: FontWeight.w800, color: tinta)),
+          Text(banderaActual, style: const TextStyle(fontSize: 18)),
+          const SizedBox(width: 4),
+          Text(codigoTelActual,
+              style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: Theme.of(context).colorScheme.onSurface)),
         ],
       ),
     );
@@ -898,8 +1368,10 @@ class _ResultadoConsulta extends StatelessWidget {
           const SizedBox(width: 6),
           Expanded(
             child: Text(texto,
-                style: const TextStyle(
-                    color: tinta, fontWeight: FontWeight.w700, fontSize: 12)),
+                style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12)),
           ),
         ],
       ),

@@ -12,18 +12,21 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const KEY = Deno.env.get("PLACES_API_KEY") ?? "";
 
+// 10 consultas (antes 19): las quitadas se solapaban casi al 100% con estas.
+// Cada consulta = 1 request de cuota SearchText de Places.
 const CONSULTAS = [
   "canchas de fútbol",
-  "cancha sintética de fútbol",
-  "pichanga",
+  "campo deportivo",
+  "pichanga", // jerga PE: locales llamados "La Pichanga" solo salen con esto
   "grass sintético",
-  "fútbol 7",
-  "loza deportiva",
   "complejo deportivo",
-  "club de tenis",
   "cancha de tenis",
+  "club de tenis",
   "cancha de pádel",
-  "club de pádel",
+  "cancha de vóley",
+  "cancha de básquet",
+  "club deportivo",
+  "country club",
 ];
 
 // Cuántos lugares y fotos resolvemos (control de latencia/cuota).
@@ -75,6 +78,7 @@ serve(async (req) => {
     // poder probar pegando una URL en el navegador.
     let lat: number, lng: number, radius: number | undefined;
     let conFotos = false; // por defecto NO resuelve fotos (respuesta rápida)
+    let region = "PE"; // país para el regionCode de Google (lo manda el APK)
     if (req.method === "GET") {
       const u = new URL(req.url);
       lat = Number(u.searchParams.get("lat"));
@@ -82,40 +86,68 @@ serve(async (req) => {
       radius = Number(u.searchParams.get("radius")) || undefined;
       const f = u.searchParams.get("fotos");
       conFotos = f === "1" || f === "true";
+      const r = u.searchParams.get("region");
+      if (r && r.trim()) region = r.trim().toUpperCase();
     } else {
       const b = await req.json();
       lat = b.lat;
       lng = b.lng;
       radius = b.radius;
       conFotos = b.fotos === true;
+      if (typeof b.region === "string" && b.region.trim()) {
+        region = b.region.trim().toUpperCase();
+      }
     }
-    // Las 4 consultas de texto salen en PARALELO (antes, secuenciales).
+    // Las consultas de texto salen en PARALELO. Además de los lugares, capturamos
+    // el STATUS y el primer error crudo de Google (diag): antes un rechazo
+    // (billing, key inválida, API no habilitada) se tragaba en silencio y la
+    // función respondía places:[] sin pista alguna de la causa.
+    const diag: { statuses: Record<string, number>; primerError: string } = {
+      statuses: {},
+      primerError: "",
+    };
     const respuestas = await Promise.all(
-      CONSULTAS.map((q) =>
-        fetch("https://places.googleapis.com/v1/places:searchText", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Goog-Api-Key": KEY,
-            "X-Goog-FieldMask":
-              "places.id,places.displayName,places.location,places.formattedAddress,places.types,places.photos",
-          },
-          body: JSON.stringify({
-            textQuery: q,
-            languageCode: "es",
-            regionCode: "PE",
-            maxResultCount: 20,
-            locationBias: {
-              circle: {
-                center: { latitude: lat, longitude: lng },
-                radius: radius ?? 4000,
+      CONSULTAS.map(async (q) => {
+        try {
+          const r = await fetch(
+            "https://places.googleapis.com/v1/places:searchText",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Goog-Api-Key": KEY,
+                "X-Goog-FieldMask":
+                  "places.id,places.displayName,places.location,places.formattedAddress,places.types,places.photos",
               },
+              body: JSON.stringify({
+                textQuery: q,
+                languageCode: "es",
+                regionCode: region,
+                maxResultCount: 20,
+                // Rankear por DISTANCIA: devuelve las canchas MÁS CERCANAS
+                // primero (no las más "populares").
+                rankPreference: "DISTANCE",
+                locationBias: {
+                  circle: {
+                    center: { latitude: lat, longitude: lng },
+                    radius: radius ?? 4000,
+                  },
+                },
+              }),
             },
-          }),
-        })
-          .then((r) => (r.ok ? r.json() : { places: [] }))
-          .catch(() => ({ places: [] }))
-      ),
+          );
+          diag.statuses[String(r.status)] =
+            (diag.statuses[String(r.status)] ?? 0) + 1;
+          if (r.ok) return await r.json();
+          if (!diag.primerError) {
+            diag.primerError = (await r.text()).slice(0, 500);
+          }
+          return { places: [] };
+        } catch (e) {
+          if (!diag.primerError) diag.primerError = `fetch: ${e}`;
+          return { places: [] };
+        }
+      }),
     );
 
     const porId = new Map<string, unknown>();
@@ -127,7 +159,8 @@ serve(async (req) => {
 
     // Modo rápido (default): devuelve las canchas SIN resolver fotos. La app las
     // muestra al instante y vuelve a pedir con fotos=true para enriquecerlas.
-    if (!conFotos) return json({ places: lista });
+    // `diag` viaja siempre: la app lo ignora y el Test del dashboard lo muestra.
+    if (!conFotos) return json({ places: lista, diag });
 
     // Modo con fotos: resuelve las fotos reales de los primeros lugares.
     const conFoto = await Promise.all(
@@ -139,7 +172,7 @@ serve(async (req) => {
     );
     const resto = lista.slice(MAX_LUGARES_CON_FOTO);
 
-    return json({ places: [...conFoto, ...resto] });
+    return json({ places: [...conFoto, ...resto], diag });
   } catch (e) {
     return json({ places: [], error: String(e) }, 500);
   }

@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pichangol — Reserva canchas de fútbol, tenis y pádel en Lima</title>
+<meta name="description" content="Pichangol es la plataforma para reservar y pagar canchas de fútbol, tenis y pádel en Lima. Una solución de GRUPO EBIM S.A.C." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700;9..40,800&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --lima:#AEEA94; --lima-suave:#EFF8E4; --bosque:#14463A; --tinta:#123D2D;
+    --papel:#F4F6F1; --trazo:#E0E5DB; --tenue:#7C8A80; --amarillo:#F2C94C;
+    --blanco:#ffffff;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;font-family:"DM Sans",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    color:var(--tinta);background:var(--papel);line-height:1.55;
+  }
+  a{color:var(--bosque)}
+  .wrap{max-width:960px;margin:0 auto;padding:0 20px}
+  /* Nav */
+  header.nav{
+    position:sticky;top:0;z-index:50;background:rgba(244,246,241,.92);
+    backdrop-filter:blur(8px);border-bottom:1px solid var(--trazo);
+  }
+  .nav-in{display:flex;align-items:center;justify-content:space-between;gap:12px;height:60px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:20px;color:var(--bosque);text-decoration:none}
+  .dot{width:14px;height:14px;border-radius:50%;background:var(--lima);border:3px solid var(--bosque);display:inline-block}
+  nav.links{display:flex;gap:18px;flex-wrap:wrap}
+  nav.links a{font-size:14px;font-weight:500;color:var(--tinta);text-decoration:none;opacity:.85}
+  nav.links a:hover{opacity:1;color:var(--bosque)}
+  @media(max-width:720px){nav.links{display:none}}
+  /* Hero */
+  .hero{background:linear-gradient(160deg,var(--lima) 0%,var(--lima-suave) 70%);padding:64px 0 56px}
+  .hero h1{font-size:clamp(30px,6vw,48px);line-height:1.1;margin:0 0 14px;color:var(--bosque);font-weight:800}
+  .hero p.lead{font-size:clamp(17px,2.5vw,20px);max-width:640px;margin:0 0 26px;color:var(--tinta)}
+  .cta{display:inline-flex;align-items:center;gap:8px;background:var(--bosque);color:var(--lima);
+    padding:14px 22px;border-radius:14px;font-weight:700;text-decoration:none;border:none;cursor:pointer;font-size:16px}
+  .cta.sec{background:transparent;color:var(--bosque);border:1.6px solid var(--bosque)}
+  .cta-row{display:flex;gap:12px;flex-wrap:wrap}
+  /* Sections */
+  section{padding:52px 0;border-top:1px solid var(--trazo)}
+  section h2{font-size:clamp(24px,4vw,32px);color:var(--bosque);margin:0 0 8px;font-weight:800}
+  section .sub{color:var(--tenue);margin:0 0 28px;font-size:16px}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+  @media(max-width:720px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--blanco);border:1px solid var(--trazo);border-radius:16px;padding:22px;box-shadow:0 5px 14px rgba(0,0,0,.05)}
+  .card .ic{width:44px;height:44px;border-radius:12px;background:var(--lima-suave);display:flex;align-items:center;justify-content:center;font-size:22px;margin-bottom:12px}
+  .card h3{margin:0 0 6px;font-size:18px;color:var(--bosque)}
+  .card p{margin:0;color:var(--tinta);font-size:15px}
+  /* Steps */
+  .steps{counter-reset:s;display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+  @media(max-width:720px){.steps{grid-template-columns:1fr 1fr}}
+  .step{position:relative;padding:22px 16px 16px;background:var(--blanco);border:1px solid var(--trazo);border-radius:14px}
+  .step:before{counter-increment:s;content:counter(s);position:absolute;top:-14px;left:16px;width:30px;height:30px;border-radius:50%;background:var(--bosque);color:var(--lima);display:flex;align-items:center;justify-content:center;font-weight:800}
+  .step h4{margin:8px 0 4px;color:var(--bosque);font-size:16px}
+  .step p{margin:0;font-size:14px;color:var(--tinta)}
+  /* Contact */
+  .contact-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:720px){.contact-grid{grid-template-columns:1fr}}
+  .info li{margin:0 0 10px;list-style:none;display:flex;gap:10px;align-items:flex-start}
+  .info ul{padding:0;margin:0}
+  .info .k{font-weight:700;color:var(--bosque);min-width:96px;display:inline-block}
+  .socials{display:flex;gap:12px;margin-top:8px}
+  .socials a{display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border:1px solid var(--trazo);border-radius:999px;text-decoration:none;font-size:14px;font-weight:600}
+  /* Legal blocks */
+  .legal h3{color:var(--bosque);margin:26px 0 6px;font-size:19px}
+  .legal h4{color:var(--tinta);margin:16px 0 4px;font-size:16px}
+  .legal p, .legal li{font-size:15px;color:#22402f}
+  .legal ul{padding-left:20px}
+  details.acc{background:var(--blanco);border:1px solid var(--trazo);border-radius:14px;padding:6px 18px;margin-bottom:12px}
+  details.acc>summary{cursor:pointer;font-weight:700;color:var(--bosque);padding:14px 0;font-size:17px;list-style:none}
+  details.acc>summary::-webkit-details-marker{display:none}
+  details.acc>summary:before{content:"+ ";color:var(--amarillo);font-weight:800}
+  details.acc[open]>summary:before{content:"– "}
+  /* Form */
+  form .row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:720px){form .row{grid-template-columns:1fr}}
+  label{display:block;font-size:13px;font-weight:700;color:var(--bosque);margin:12px 0 4px}
+  input,select,textarea{width:100%;padding:11px 12px;border:1px solid var(--trazo);border-radius:10px;font:inherit;background:var(--blanco);color:var(--tinta)}
+  textarea{min-height:96px;resize:vertical}
+  .hint{font-size:12px;color:var(--tenue);margin-top:4px}
+  .radio-row{display:flex;gap:18px;margin-top:6px}
+  .radio-row label{display:flex;align-items:center;gap:6px;font-weight:500;margin:0}
+  .radio-row input{width:auto}
+  .ok{background:var(--lima-suave);border:1px solid var(--lima);border-radius:12px;padding:16px;margin-top:16px;display:none}
+  .ok.show{display:block}
+  .ok b{color:var(--bosque)}
+  /* Footer */
+  footer{background:var(--bosque);color:#dce8df;padding:34px 0;margin-top:0}
+  footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:center}
+  footer a{color:var(--lima)}
+  .ebim{font-size:13px;opacity:.85}
+  .pill{display:inline-block;background:var(--lima-suave);color:var(--bosque);font-weight:700;font-size:13px;padding:5px 12px;border-radius:999px;margin-bottom:14px}
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-in">
+    <a class="brand" href="#inicio"><span class="dot"></span> Pichangol</a>
+    <nav class="links">
+      <a href="#como">Cómo funciona</a>
+      <a href="#pagos">Pagos</a>
+      <a href="#contacto">Contacto</a>
+      <a href="#terminos">Términos</a>
+      <a href="#devoluciones">Cancelaciones</a>
+      <a href="#reclamaciones">Libro de Reclamaciones</a>
+    </nav>
+  </div>
+</header>
+
+<!-- HERO -->
+<div class="hero" id="inicio">
+  <div class="wrap">
+    <span class="pill">Una solución de GRUPO EBIM S.A.C.</span>
+    <h1>Reserva tu cancha en Lima. Rápido y seguro.</h1>
+    <p class="lead">Pichangol es la plataforma donde encuentras, reservas y pagas canchas de
+      <b>fútbol, tenis, pádel y pickleball</b> cerca de ti. Reserva, juega, repite.</p>
+    <div class="cta-row">
+      <a class="cta" href="#como">Cómo funciona</a>
+      <a class="cta sec" href="#contacto">Contáctanos</a>
+    </div>
+  </div>
+</div>
+
+<!-- QUÉ OFRECEMOS -->
+<section id="servicio">
+  <div class="wrap">
+    <h2>Qué ofrecemos</h2>
+    <p class="sub">Un marketplace de reserva de canchas deportivas en Lima, desde la app.</p>
+    <div class="grid">
+      <div class="card">
+        <div class="ic">📍</div>
+        <h3>Encuentra canchas cerca</h3>
+        <p>Busca por deporte y zona, mira fotos, precios por hora y disponibilidad en tiempo real.</p>
+      </div>
+      <div class="card">
+        <div class="ic">📅</div>
+        <h3>Reserva tu horario</h3>
+        <p>Eliges día y hora, ves el precio con signo S/ y confirmas tu reserva en segundos.</p>
+      </div>
+      <div class="card">
+        <div class="ic">🎓</div>
+        <h3>Academias y clases</h3>
+        <p>Descubre academias de tenis, fútbol y más; conoce sus planes y matricúlate desde la app.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CÓMO FUNCIONA -->
+<section id="como">
+  <div class="wrap">
+    <h2>Cómo funciona</h2>
+    <p class="sub">Reservar en Pichangol toma menos de un minuto.</p>
+    <div class="steps">
+      <div class="step"><h4>Busca</h4><p>Elige el deporte y la zona donde quieres jugar.</p></div>
+      <div class="step"><h4>Elige</h4><p>Compara canchas, precios y horarios disponibles.</p></div>
+      <div class="step"><h4>Reserva</h4><p>Confirma tu día y hora en la app.</p></div>
+      <div class="step"><h4>Paga y juega</h4><p>Pagas de forma segura por Yape o tarjeta. Reserva, juega, repite.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- PAGOS Y SEGURIDAD -->
+<section id="pagos">
+  <div class="wrap">
+    <h2>Pagos y seguridad</h2>
+    <p class="sub">Tus pagos se procesan con una pasarela certificada.</p>
+    <div class="grid">
+      <div class="card">
+        <div class="ic">📱</div>
+        <h3>Yape y tarjetas</h3>
+        <p>Aceptamos Yape y tarjetas Visa / Mastercard. Los cobros se procesan mediante Culqi,
+          pasarela de pagos autorizada; Pichangol no almacena los datos de tu tarjeta.</p>
+      </div>
+      <div class="card">
+        <div class="ic">🔒</div>
+        <h3>Datos protegidos</h3>
+        <p>Cumplimos la Ley N.° 29733 de Protección de Datos Personales. Usamos tus datos solo
+          para operar el servicio de reservas.</p>
+      </div>
+      <div class="card">
+        <div class="ic">🧾</div>
+        <h3>Comprobante</h3>
+        <p>Cada operación genera una referencia de pago y el detalle de tu reserva en la app.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CONTACTO -->
+<section id="contacto">
+  <div class="wrap">
+    <h2>Contacto</h2>
+    <p class="sub">Estamos para ayudarte con tus reservas y pagos.</p>
+    <div class="contact-grid">
+      <div class="card info">
+        <ul>
+          <li><span class="k">Empresa</span> <span>GRUPO EBIM S.A.C. (marca <b>Pichangol</b>)</span></li>
+          <li><span class="k">RUC</span> <span>20602517986</span></li>
+          <li><span class="k">Dirección</span> <span>Centro Empresarial Basadre, Torre 8, Of. 1601, San Isidro, Lima, Perú</span></li>
+          <li><span class="k">WhatsApp</span> <span><a href="https://wa.me/51967923419">+51 967 923 419</a></span></li>
+          <li><span class="k">Correo</span> <span><a href="mailto:contacto@ebim.pe">contacto@ebim.pe</a></span></li>
+          <li><span class="k">Horario</span> <span>Lun a Sáb, 9:00 a 19:00</span></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0;color:var(--bosque)">¿Tienes una cancha?</h3>
+        <p style="color:var(--tinta)">Publícala en Pichangol y recibe reservas. Escríbenos por WhatsApp
+          y te ayudamos a registrarla.</p>
+        <p style="margin-top:14px"><a class="cta" href="https://wa.me/51967923419">Escribir por WhatsApp</a></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TÉRMINOS Y CONDICIONES -->
+<section id="terminos" class="legal">
+  <div class="wrap">
+    <h2>Términos y Condiciones</h2>
+    <p class="sub">Última actualización: julio 2026.</p>
+
+    <details class="acc" open>
+      <summary>1. Quiénes somos</summary>
+      <p>Pichangol es una plataforma operada por <b>GRUPO EBIM S.A.C.</b>, RUC 20602517986, con domicilio en
+        Centro Empresarial Basadre, Torre 8, Of. 1601, San Isidro, Lima, Perú ("Pichangol", "nosotros"). Pichangol
+        pone en contacto a jugadores con establecimientos que ofrecen canchas deportivas ("Canchas") y permite
+        reservar y pagar horarios.</p>
+    </details>
+
+    <details class="acc">
+      <summary>2. El servicio</summary>
+      <p>Pichangol facilita la búsqueda, reserva y pago de horarios de Canchas de terceros. La prestación del
+        servicio deportivo (uso de la cancha) es responsabilidad del establecimiento. Pichangol actúa como
+        intermediario tecnológico y medio de pago de la reserva.</p>
+    </details>
+
+    <details class="acc">
+      <summary>3. Cuenta y uso</summary>
+      <ul>
+        <li>Debes brindar información veraz para reservar.</li>
+        <li>Eres responsable del uso de tu cuenta y de las reservas que realices.</li>
+        <li>No puedes usar la plataforma para fines ilícitos ni suplantar a terceros.</li>
+      </ul>
+    </details>
+
+    <details class="acc">
+      <summary>4. Reservas y precios</summary>
+      <p>Los precios se muestran en Soles (S/) e incluyen los tributos aplicables. Una reserva se confirma cuando
+        el pago es aprobado por la pasarela. Los horarios están sujetos a disponibilidad; si un establecimiento no
+        pudiera honrar una reserva pagada, se procederá a la devolución conforme a la sección de Cancelaciones y
+        Devoluciones.</p>
+    </details>
+
+    <details class="acc">
+      <summary>5. Pagos</summary>
+      <p>Los pagos se procesan a través de <b>Culqi</b>, pasarela de pagos autorizada, mediante Yape o tarjeta.
+        Pichangol no almacena los datos completos de tu tarjeta. La referencia de la operación queda registrada en
+        la app.</p>
+    </details>
+
+    <details class="acc">
+      <summary>6. Responsabilidad</summary>
+      <p>Pichangol no es propietario de las Canchas ni presta el servicio deportivo. No respondemos por daños
+        derivados del uso de las instalaciones. Nuestra responsabilidad se limita al correcto procesamiento de la
+        reserva y su pago.</p>
+    </details>
+
+    <details class="acc">
+      <summary>7. Propiedad intelectual</summary>
+      <p>La marca Pichangol, el logotipo y el software son de titularidad de GRUPO EBIM S.A.C. No pueden usarse sin
+        autorización.</p>
+    </details>
+
+    <details class="acc">
+      <summary>8. Ley aplicable</summary>
+      <p>Estos términos se rigen por las leyes de la República del Perú. Cualquier controversia se somete a la
+        jurisdicción de Lima Cercado.</p>
+    </details>
+  </div>
+</section>
+
+<!-- CANCELACIONES Y DEVOLUCIONES -->
+<section id="devoluciones" class="legal">
+  <div class="wrap">
+    <h2>Política de cancelaciones y devoluciones</h2>
+    <p class="sub">Reglas claras para reservas y reembolsos.</p>
+
+    <h3>Cancelación por el jugador</h3>
+    <ul>
+      <li><b>Con más de 6 horas de anticipación</b> al inicio de la reserva: puedes cancelar y se procede a la
+        <b>devolución del 100%</b> del monto pagado por la reserva.</li>
+      <li><b>Con menos de 6 horas de anticipación</b>: la reserva no es reembolsable, ya que el horario se bloqueó
+        para ti y el establecimiento reservó el espacio.</li>
+    </ul>
+
+    <h3>Cancelación por el establecimiento</h3>
+    <p>Si el establecimiento no puede honrar una reserva pagada (por fuerza mayor, clima u otro), tienes derecho a
+      <b>reprogramar sin costo</b> o a la <b>devolución del 100%</b>.</p>
+
+    <h3>Cómo solicitar una devolución</h3>
+    <p>Escríbenos a <a href="mailto:contacto@ebim.pe">contacto@ebim.pe</a> o por WhatsApp al
+      <a href="https://wa.me/51967923419">+51 967 923 419</a> indicando tu nombre, la fecha/hora de la reserva y el
+      motivo. Las devoluciones aprobadas se realizan por el <b>mismo medio de pago</b> (Yape o tarjeta) en un plazo
+      de <b>hasta 7 días hábiles</b>, según los tiempos de la pasarela y el banco emisor.</p>
+
+    <h3>Derecho a información</h3>
+    <p>Para cualquier disconformidad puedes usar nuestro <a href="#reclamaciones">Libro de Reclamaciones</a>.</p>
+  </div>
+</section>
+
+<!-- PRIVACIDAD -->
+<section id="privacidad" class="legal">
+  <div class="wrap">
+    <h2>Política de Privacidad</h2>
+    <p class="sub">Tratamiento de datos personales — Ley N.° 29733.</p>
+    <p>GRUPO EBIM S.A.C. trata tus datos personales (nombre, correo, teléfono y datos de la reserva) con la
+      finalidad de operar el servicio de reservas y pagos, brindarte soporte y cumplir obligaciones legales. Los
+      datos de pago son procesados por la pasarela Culqi; no almacenamos los datos completos de tu tarjeta.</p>
+    <p>Puedes ejercer tus derechos de acceso, rectificación, cancelación y oposición (ARCO) escribiendo a
+      <a href="mailto:contacto@ebim.pe">contacto@ebim.pe</a>. Conservamos tus datos mientras dure la relación y por
+      los plazos que exija la ley. No vendemos tus datos a terceros.</p>
+  </div>
+</section>
+
+<!-- LIBRO DE RECLAMACIONES -->
+<section id="reclamaciones" class="legal">
+  <div class="wrap">
+    <h2>📕 Libro de Reclamaciones</h2>
+    <p class="sub">Conforme al Código de Protección y Defensa del Consumidor (Ley N.° 29571) y el D.S. 011-2011-PCM.
+      Registra aquí tu reclamo o queja; recibirás un número de registro y te responderemos en un plazo máximo de
+      <b>15 días hábiles</b>.</p>
+
+    <form id="lr-form" novalidate>
+      <h3>1. Identificación del consumidor reclamante</h3>
+      <div class="row">
+        <div><label for="c_nombre">Nombre completo *</label><input id="c_nombre" name="c_nombre" required /></div>
+        <div><label for="c_doc">DNI / CE *</label><input id="c_doc" name="c_doc" required /></div>
+      </div>
+      <div class="row">
+        <div><label for="c_tel">Teléfono *</label><input id="c_tel" name="c_tel" required /></div>
+        <div><label for="c_email">Correo electrónico *</label><input id="c_email" name="c_email" type="email" required /></div>
+      </div>
+      <label for="c_dir">Domicilio</label><input id="c_dir" name="c_dir" />
+      <div class="radio-row" style="margin-top:12px">
+        <span style="font-size:13px;font-weight:700;color:var(--bosque)">¿Eres menor de edad?</span>
+        <label><input type="radio" name="c_menor" value="No" checked /> No</label>
+        <label><input type="radio" name="c_menor" value="Sí" /> Sí (un padre/madre/tutor presenta el reclamo)</label>
+      </div>
+
+      <h3>2. Identificación del bien contratado</h3>
+      <div class="row">
+        <div>
+          <label for="b_tipo">Tipo *</label>
+          <select id="b_tipo" name="b_tipo">
+            <option value="Servicio">Servicio</option>
+            <option value="Producto">Producto</option>
+          </select>
+        </div>
+        <div><label for="b_monto">Monto reclamado (S/)</label><input id="b_monto" name="b_monto" inputmode="decimal" placeholder="Ej.: 60.00" /></div>
+      </div>
+      <label for="b_desc">Descripción del bien o servicio</label>
+      <input id="b_desc" name="b_desc" placeholder="Ej.: Reserva de cancha de fútbol — 12/07 8:00 p. m." />
+
+      <h3>3. Detalle</h3>
+      <div class="radio-row" style="margin-bottom:6px">
+        <label><input type="radio" name="d_tipo" value="Reclamo" checked /> <b>Reclamo</b> (disconformidad con el servicio)</label>
+        <label><input type="radio" name="d_tipo" value="Queja" /> <b>Queja</b> (malestar por la atención)</label>
+      </div>
+      <label for="d_detalle">Detalle del reclamo o queja *</label>
+      <textarea id="d_detalle" name="d_detalle" required></textarea>
+      <label for="d_pedido">Pedido del consumidor *</label>
+      <textarea id="d_pedido" name="d_pedido" required placeholder="¿Qué solución solicitas?"></textarea>
+
+      <div style="margin-top:18px">
+        <button type="submit" class="cta">Enviar reclamo</button>
+        <span class="hint">Los campos con * son obligatorios.</span>
+      </div>
+
+      <div class="ok" id="lr-ok">
+        <p><b>✅ Reclamo registrado.</b> Tu número de registro es <b id="lr-num"></b>.</p>
+        <p>Guarda este número. Se abrió tu aplicación de correo con una copia dirigida a
+          <b>contacto@ebim.pe</b>; envíala para completar el registro. Te responderemos en un máximo de 15 días
+          hábiles al correo indicado.</p>
+      </div>
+    </form>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div>
+      <div style="font-weight:800;font-size:18px;color:#fff"><span class="dot"></span> Pichangol</div>
+      <div class="ebim">Reserva, juega, repite. · Una solución de GRUPO EBIM S.A.C.</div>
+    </div>
+    <div class="ebim">
+      RUC 20602517986 · San Isidro, Lima ·
+      <a href="mailto:contacto@ebim.pe">contacto@ebim.pe</a> ·
+      <a href="#reclamaciones">Libro de Reclamaciones</a> ·
+      <a href="/legal/terminos">Términos y condiciones</a> ·
+      <a href="/legal/privacidad">Política de privacidad</a> ·
+      <a href="/legal/eliminar-cuenta">Eliminar mi cuenta</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+  // Libro de Reclamaciones: valida, genera número de registro y prepara la
+  // copia por correo (nativo, sin formularios de terceros).
+  (function(){
+    var form = document.getElementById('lr-form');
+    if(!form) return;
+    form.addEventListener('submit', function(e){
+      e.preventDefault();
+      var req = form.querySelectorAll('[required]');
+      for(var i=0;i<req.length;i++){
+        if(!req[i].value.trim()){ req[i].focus(); req[i].style.borderColor='#d9534f'; return; }
+      }
+      var f = new FormData(form);
+      var now = new Date();
+      var pad = function(n){return (n<10?'0':'')+n;};
+      var num = 'PICH-' + now.getFullYear() + pad(now.getMonth()+1) + pad(now.getDate()) + '-' +
+                pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds());
+      var fecha = pad(now.getDate())+'/'+pad(now.getMonth()+1)+'/'+now.getFullYear()+' '+pad(now.getHours())+':'+pad(now.getMinutes());
+      var L = [
+        'HOJA DE RECLAMACIÓN N.° ' + num,
+        'Fecha y hora: ' + fecha,
+        'Proveedor: GRUPO EBIM S.A.C. (Pichangol) — RUC 20602517986',
+        '',
+        '1) CONSUMIDOR',
+        'Nombre: ' + f.get('c_nombre'),
+        'DNI/CE: ' + f.get('c_doc'),
+        'Teléfono: ' + f.get('c_tel'),
+        'Correo: ' + f.get('c_email'),
+        'Domicilio: ' + (f.get('c_dir')||'-'),
+        'Menor de edad: ' + f.get('c_menor'),
+        '',
+        '2) BIEN CONTRATADO',
+        'Tipo: ' + f.get('b_tipo'),
+        'Monto reclamado (S/): ' + (f.get('b_monto')||'-'),
+        'Descripción: ' + (f.get('b_desc')||'-'),
+        '',
+        '3) DETALLE',
+        'Tipo: ' + f.get('d_tipo'),
+        'Detalle: ' + f.get('d_detalle'),
+        'Pedido: ' + f.get('d_pedido')
+      ].join('\n');
+
+      document.getElementById('lr-num').textContent = num;
+      document.getElementById('lr-ok').classList.add('show');
+
+      var asunto = 'Libro de Reclamaciones ' + num + ' - Pichangol';
+      var mailto = 'mailto:contacto@ebim.pe?subject=' + encodeURIComponent(asunto) +
+                   '&body=' + encodeURIComponent(L);
+      window.location.href = mailto;
+      document.getElementById('lr-ok').scrollIntoView({behavior:'smooth'});
+    });
+  })();
+</script>
+</body>
+</html>

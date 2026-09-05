@@ -4,6 +4,7 @@ import '../models/convocatoria.dart';
 import '../services/convocatorias_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 
 /// Formulario del dueño para crear una convocatoria ("pichanga"). Aquí elige el
 /// **modo de asignación** entre las 3 opciones configurables.
@@ -64,16 +65,20 @@ class _CrearConvocatoriaScreenState extends State<CrearConvocatoriaScreen> {
 
   Future<void> _guardar() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_guardando) return;
     setState(() => _guardando = true);
-    final d = await ConvocatoriasService.crear(
-      clubId: widget.clubId,
-      titulo: _titulo.text.trim(),
-      cupos: int.tryParse(_cupos.text.trim()) ?? 14,
-      categoria: _categoria,
-      fechaPartido: _fechaTexto(),
-      modo: _modo,
-      creadoPor: appState.usuario?.email ?? widget.clubNombre,
-    );
+    final d = await conPreload(
+        context,
+        () => ConvocatoriasService.crear(
+              clubId: widget.clubId,
+              titulo: _titulo.text.trim(),
+              cupos: int.tryParse(_cupos.text.trim()) ?? 14,
+              categoria: _categoria,
+              fechaPartido: _fechaTexto(),
+              modo: _modo,
+              creadoPor: appState.usuario?.email ?? widget.clubNombre,
+            ),
+        texto: 'Creando convocatoria…');
     if (!mounted) return;
     setState(() => _guardando = false);
     if (d == null) {
@@ -88,6 +93,7 @@ class _CrearConvocatoriaScreenState extends State<CrearConvocatoriaScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('Nueva pichanga')),
       body: Form(
@@ -154,7 +160,7 @@ class _CrearConvocatoriaScreenState extends State<CrearConvocatoriaScreen> {
                 ),
                 child: Text(_fechaTexto() ?? 'Elegir fecha',
                     style: TextStyle(
-                        color: _fecha == null ? textoTenue : tinta)),
+                        color: _fecha == null ? textoTenue : cs.onSurface)),
               ),
             ),
             const SizedBox(height: 24),
@@ -175,13 +181,7 @@ class _CrearConvocatoriaScreenState extends State<CrearConvocatoriaScreen> {
             const SizedBox(height: 28),
             FilledButton.icon(
               onPressed: _guardando ? null : _guardar,
-              icon: _guardando
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child:
-                          CircularProgressIndicator(strokeWidth: 2, color: lima))
-                  : const Icon(Icons.check),
+              icon: const Icon(Icons.check),
               label: const Text('Crear convocatoria'),
             ),
           ],
@@ -217,24 +217,26 @@ class _ModoOption extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: seleccionado ? limaSuave : Colors.white,
+            color: seleccionado ? limaSuave : Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: seleccionado ? sage : trazo,
+              color: seleccionado ? lima : trazo,
               width: seleccionado ? 1.6 : 1,
             ),
           ),
           child: Row(
             children: [
-              Icon(_icono, color: seleccionado ? bosque : textoTenue),
+              Icon(_icono, color: seleccionado ? lima : textoTenue),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(modo.etiqueta,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w800, fontSize: 15)),
+                        style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                            color: seleccionado ? bosque : null)),
                     const SizedBox(height: 2),
                     Text(modo.descripcion,
                         style: TextStyle(color: textoTenue, fontSize: 13)),
@@ -245,7 +247,7 @@ class _ModoOption extends StatelessWidget {
                 seleccionado
                     ? Icons.radio_button_checked
                     : Icons.radio_button_off,
-                color: seleccionado ? bosque : trazo,
+                color: seleccionado ? lima : trazo,
               ),
             ],
           ),

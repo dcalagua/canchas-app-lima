@@ -1,13 +1,28 @@
 import 'package:flutter/material.dart';
 
+import '../config/features.dart';
+import '../config/pais.dart';
 import '../models/club.dart';
 import '../models/models.dart';
+import '../services/pagos_service.dart';
+import '../services/recordatorio_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'agregar_cancha_screen.dart';
+import 'bonos_dueno_screen.dart';
+import 'caja_dia_screen.dart';
+import 'servicios_screen.dart';
+import 'bienvenida_dueno_sheet.dart';
+import 'bloquear_horarios_screen.dart';
 import 'editar_cancha_screen.dart';
+import 'recargar_saldo_screen.dart';
 import 'registrar_cancha_screen.dart';
-import 'reservas_dueno_screen.dart';
+import '../utils/moneda.dart';
+import '../widgets/ancho_lectura.dart';
+import '../widgets/banner_pro.dart';
+import '../widgets/candado_pro.dart';
+import '../widgets/dialogo_pichangol.dart';
+import '../widgets/vacio_airbnb.dart';
 
 /// Canchas del dueño agrupadas por LOCAL (un local = varias canchas, posibles
 /// de distintos deportes). Cada local permite agregar más canchas y editar las
@@ -26,58 +41,685 @@ class _MisCanchasScreenState extends State<MisCanchasScreen> {
     // Al abrir, pregunta al backend si el admin ya aprobó alguna cancha pendiente
     // (quita el cartel "pendiente" y habilita reservas si así fue).
     appState.sincronizarPropiedades();
+    // Y RE-BAJA las canchas de Supabase para traer la config más fresca
+    // (duración/precio/horario) que se editó en OTRO equipo del mismo dueño.
+    // Sin esto, la copia local de la tablet se quedaba con el valor viejo.
+    appState.cargarCanchasRemotas();
+    // Cierre de caja: auto-cierra días pasados sin cerrar (respaldo, etiquetado)
+    // y programa el recordatorio diario ~23:00 para que el dueño la cierre.
+    appState.autocerrarCajasPendientes();
+    if (appState.misCanchas.isNotEmpty) {
+      RecordatorioService.programarRecordatorioCierreDiario();
+    }
+    // Mensaje de bienvenida al dueño (una sola vez) con el "stack de valor".
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) BienvenidaDuenoSheet.mostrarSiCorresponde(context);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: papel,
-      appBar: AppBar(
-        title: const Text('Mis canchas'),
-        actions: [
-          IconButton(
-            tooltip: 'Reservas',
-            icon: const Icon(Icons.event_note),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const ReservasDuenoScreen()),
-            ),
-          ),
-        ],
-      ),
       floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: pino,
-        foregroundColor: lima,
+        backgroundColor: lima,
+        foregroundColor: Colors.white,
         onPressed: () => Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => const RegistrarCanchaScreen()),
         ),
         icon: const Icon(Icons.add_location_alt),
         label: const Text('Nuevo local'),
       ),
-      body: ListenableBuilder(
+      body: AnchoLectura(child: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
           final canchas = appState.misCanchas;
           final hayPendientes = canchas.any((c) => c.pendienteVerificacion);
           final locales = Club.agrupar(canchas);
-          return RefreshIndicator(
-            onRefresh: () => appState.sincronizarPropiedades(),
-            child: canchas.isEmpty
-                ? ListView(children: const [SizedBox(height: 120), _Vacio()])
-                : ListView(
-                    padding: const EdgeInsets.fromLTRB(18, 16, 18, 90),
-                    children: [
-                      if (hayPendientes) ...[
-                        const _AvisoPendiente(),
-                        const SizedBox(height: 14),
-                      ],
-                      for (final local in locales) ...[
-                        _LocalCard(local: local),
-                        const SizedBox(height: 14),
-                      ],
-                    ],
-                  ),
+          // Agrupa los locales por PAÍS (según la ubicación real de cada uno)
+          // para que el dueño diferencie sus canchas de Perú, Bolivia, etc. El
+          // encabezado de país solo aparece si hay más de un país.
+          final porPais = <String, List<Club>>{};
+          for (final l in locales) {
+            final iso = paisDeCoordenadas(
+                    l.ubicacion.latitude, l.ubicacion.longitude)
+                .iso;
+            porPais.putIfAbsent(iso, () => []).add(l);
+          }
+          final isosPais = porPais.keys.toList();
+          final multiPais = isosPais.length > 1;
+          return Column(
+            children: [
+              _HeaderMisCanchas(
+                  nLocales: locales.length, nCanchas: canchas.length),
+              Expanded(
+                child: RefreshIndicator(
+                  onRefresh: () async {
+                    await appState.cargarCanchasRemotas();
+                    await appState.sincronizarPropiedades();
+                  },
+                  child: canchas.isEmpty
+                      ? ListView(
+                          children: const [SizedBox(height: 60), _Vacio()])
+                      : ListView(
+                          padding: const EdgeInsets.fromLTRB(18, 16, 18, 90),
+                          children: [
+                            // Hazte Pro visible en el panel (solo si NO es Pro).
+                            const BannerPro(
+                                margen: EdgeInsets.only(bottom: 14),
+                                mensaje:
+                                    'Reserva manual, bloqueo de horas y '
+                                    'campeonatos para tu negocio.'),
+                            // ARRIBA lo del día: la caja de hoy y, enseguida, tus
+                            // canchas (lo de trabajo). El resumen del mes y el
+                            // "destacar" bajan a una sección plegable para no
+                            // robar espacio.
+                            const _CajaHoyCard(),
+                            const SizedBox(height: 14),
+                            if (hayPendientes) ...[
+                              const _AvisoPendiente(),
+                              const SizedBox(height: 14),
+                            ],
+                            // Locales agrupados por país (encabezado solo si el
+                            // dueño tiene canchas en más de un país). Tablet/
+                            // landscape: grilla de 2-3 columnas por país.
+                            for (final iso in isosPais) ...[
+                              if (multiPais) ...[
+                                _PaisSeccionHeader(
+                                    iso: iso, nLocales: porPais[iso]!.length),
+                                const SizedBox(height: 12),
+                              ],
+                              if (MediaQuery.of(context).size.width >= 720)
+                                _GridLocales(locales: porPais[iso]!)
+                              else
+                                for (final local in porPais[iso]!) ...[
+                                  _LocalCard(local: local),
+                                  const SizedBox(height: 14),
+                                ],
+                              if (multiPais) const SizedBox(height: 8),
+                            ],
+                            const SizedBox(height: 4),
+                            // Secundario y plegable: resumen del mes + destacar.
+                            _SeccionMetricasMes(canchas: canchas),
+                          ],
+                        ),
+                ),
+              ),
+            ],
           );
         },
+      )),
+    );
+  }
+}
+
+/// "Caja de hoy": el resumen del día que recibe al dueño al abrir — cuánto
+/// cobró, cuánto le falta cobrar y cuántas reservas tiene hoy. Abre la Caja del
+/// día completa. Es el ancla del hábito: se abre a diario para cuadrar.
+class _CajaHoyCard extends StatelessWidget {
+  const _CajaHoyCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tenue = textoTenueDe(context);
+    final iso = appState.isoDe(DateTime.now());
+    final caja = appState.cajaDia(iso);
+    final mon = appState.misCanchas.isEmpty
+        ? 'S/'
+        : appState.misCanchas.first.monedaSimbolo;
+    final cerrada = appState.cierreDe(iso) != null;
+    // Tarjeta BLANCA (estilo Airbnb): se despega del header verde "Mis canchas"
+    // que va justo arriba, así el label "Caja de hoy" ya no se funde con él.
+    return InkWell(
+      onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const CajaDiaScreen())),
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: cs.surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: trazo),
+          boxShadow: const [
+            BoxShadow(
+                color: Color(0x0F000000), blurRadius: 10, offset: Offset(0, 3)),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.point_of_sale, color: lima, size: 20),
+                const SizedBox(width: 8),
+                Text('Caja de hoy',
+                    style: TextStyle(
+                        color: cs.onSurface,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16)),
+                const Spacer(),
+                if (cerrada)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                        color: limaSuave,
+                        borderRadius: BorderRadius.circular(999)),
+                    child: const Text('Cerrada',
+                        style: TextStyle(
+                            color: lima,
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w800)),
+                  )
+                else
+                  Icon(Icons.chevron_right, color: tenue),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Cobrado',
+                          style: TextStyle(color: tenue, fontSize: 12)),
+                      Text('$mon ${caja.cobrado}',
+                          style: const TextStyle(
+                              color: lima,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 22)),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Por cobrar',
+                          style: TextStyle(color: tenue, fontSize: 12)),
+                      Text('$mon ${caja.porCobrar}',
+                          style: const TextStyle(
+                              color: amarillo,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 22)),
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text('${caja.reservas}',
+                        style: TextStyle(
+                            color: cs.onSurface,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 22)),
+                    Text('reserva${caja.reservas == 1 ? '' : 's'} · ${caja.ocupacion}%',
+                        style: TextStyle(color: tenue, fontSize: 11)),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Sección PLEGABLE con el resumen del mes ("lo que Pichangol te generó") y el
+/// "destacar tus canchas" (upsell). Colapsada por defecto: no roba espacio a la
+/// caja del día ni a la lista de canchas (el contenido de trabajo va arriba).
+class _SeccionMetricasMes extends StatelessWidget {
+  const _SeccionMetricasMes({required this.canchas});
+  final List<Cancha> canchas;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        tilePadding: EdgeInsets.zero,
+        leading: Icon(Icons.insights_outlined, color: cs.primary),
+        title: const Text('Resumen del mes y destacar',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+        subtitle: const Text(
+            'Lo que te generó Pichangol y cómo destacar tus canchas',
+            style: TextStyle(fontSize: 12)),
+        childrenPadding: const EdgeInsets.only(top: 4, bottom: 6),
+        children: [
+          _GeneradoCard(canchas: canchas),
+          const SizedBox(height: 14),
+          const _DestacarCanchasCard(),
+        ],
+      ),
+    );
+  }
+}
+
+/// Panel "Lo que Pichangol te generó": muestra las reservas y las ventas del MES
+/// que le llegaron al dueño por la app. Hace VISIBLE el valor de la plataforma
+/// (retención: la comisión se siente ganada, no cobrada).
+class _GeneradoCard extends StatelessWidget {
+  const _GeneradoCard({required this.canchas});
+  final List<Cancha> canchas;
+
+  static const _meses = [
+    'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
+  ];
+
+  String _miles(int n) {
+    final s = n.toString();
+    final b = StringBuffer();
+    for (var i = 0; i < s.length; i++) {
+      if (i > 0 && (s.length - i) % 3 == 0) b.write(',');
+      b.write(s[i]);
+    }
+    return b.toString();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ahora = DateTime.now();
+    final mesIso =
+        '${ahora.year}-${ahora.month.toString().padLeft(2, '0')}'; // "2026-07"
+    final ids = canchas.map((c) => c.id).toSet();
+    var nReservas = 0;
+    var ventas = 0;
+    for (final r in appState.reservas) {
+      if (!ids.contains(r.canchaId)) continue;
+      if (!r.fecha.startsWith(mesIso)) continue;
+      if (r.estado == EstadoReserva.noShow) continue; // no-show no es venta
+      nReservas++;
+      ventas += r.precio;
+    }
+    final mon = canchas.isNotEmpty ? canchas.first.monedaSimbolo : monedaSimbolo;
+    final t = Theme.of(context).textTheme;
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        // Verde bosque→WhatsApp: es un "logro", se resalta con la marca.
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF128C7E), Color(0xFF075E54)],
+        ),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+              color: const Color(0xFF075E54).withOpacity(0.30),
+              blurRadius: 16,
+              offset: const Offset(0, 6)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.trending_up, color: Colors.white, size: 20),
+              const SizedBox(width: 8),
+              Text('Lo que Pichangol te generó',
+                  style: t.titleMedium?.copyWith(
+                      color: Colors.white, fontWeight: FontWeight.w800)),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Text('${_meses[ahora.month - 1]} ${ahora.year}',
+              style: t.bodySmall?.copyWith(color: Colors.white70)),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _Metrica(
+                    valor: '$nReservas',
+                    etiqueta: nReservas == 1 ? 'reserva' : 'reservas'),
+              ),
+              Container(width: 1, height: 40, color: Colors.white24),
+              Expanded(
+                child: _Metrica(
+                    valor: '$mon ${_miles(ventas)}', etiqueta: 'reservado'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            nReservas == 0
+                ? 'Aún no tienes reservas este mes por la app. Cuando te lleguen, '
+                    'verás aquí cuánto te trae Pichangol.'
+                : 'Reservas que te llegaron por la app. ¡Sigue así! 🎉',
+            style: t.bodySmall?.copyWith(color: Colors.white70, height: 1.3),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Metrica extends StatelessWidget {
+  const _Metrica({required this.valor, required this.etiqueta});
+  final String valor;
+  final String etiqueta;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(valor,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: t.headlineSmall
+                ?.copyWith(color: Colors.white, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 2),
+        Text(etiqueta, style: t.bodySmall?.copyWith(color: Colors.white70)),
+      ],
+    );
+  }
+}
+
+/// "Destaca tus canchas": prepago que pone tus canchas primero en Explorar (con
+/// medalla), igual que las academias. Más saldo = mejor nivel (Bronce/Plata/Oro).
+class _DestacarCanchasCard extends StatefulWidget {
+  const _DestacarCanchasCard();
+  @override
+  State<_DestacarCanchasCard> createState() => _DestacarCanchasCardState();
+}
+
+class _DestacarCanchasCardState extends State<_DestacarCanchasCard> {
+  Map<String, int>? _vistas; // {semana, total} de impresiones de tus canchas
+  String? _paisSel; // ISO del país seleccionado para destacar (multi-país)
+
+  @override
+  void initState() {
+    super.initState();
+    appState.sincronizarSaldo();
+    appState.cargarDestacados();
+    _cargarVistas();
+  }
+
+  Future<void> _cargarVistas() async {
+    final email = appState.usuario?.email;
+    if (email == null || email.isEmpty) return;
+    final v = await PagosService.resumenVistas([email]);
+    if (mounted && v != null) setState(() => _vistas = v);
+  }
+
+  /// Nivel de destacado (0-3) según un monto de saldo. Mismos umbrales que el
+  /// backend: >0 bronce, >=50 plata, >=200 oro.
+  int _nivelDe(int saldo) {
+    if (saldo >= 200) return 3;
+    if (saldo >= 50) return 2;
+    if (saldo > 0) return 1;
+    return 0;
+  }
+
+  Future<void> _recargar(String iso) async {
+    final monto = await Navigator.of(context).push<int>(MaterialPageRoute(
+      builder: (_) => RecargarSaldoScreen(
+        titulo: 'Destacar mis canchas',
+        pais: paisesSoportados[iso],
+      ),
+    ));
+    if (monto != null && mounted) {
+      appState.recargarPais(iso, monto); // refleja el saldo del país al instante
+      await appState.sincronizarSaldo();
+      await appState.cargarDestacados();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    // Países donde el dueño tiene canchas (por la ubicación real de cada una).
+    final paises = appState.paisesDeMisCanchas;
+    // País seleccionado: el elegido, o el primero (donde tiene más canchas).
+    final iso = (_paisSel != null && paises.contains(_paisSel))
+        ? _paisSel!
+        : (paises.isNotEmpty ? paises.first : 'PE');
+    final saldo = appState.saldoDePais(iso);
+    final nivel = _nivelDe(saldo);
+    final destacada = nivel > 0;
+    // Moneda del país seleccionado (S/ Perú, Bs Bolivia…), no la del GPS.
+    final mon = paisesSoportados[iso]?.moneda ??
+        (appState.misCanchas.isNotEmpty
+            ? appState.misCanchas.first.monedaSimbolo
+            : appState.monedaSaldoSimbolo);
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF128C7E), Color(0xFF075E54)],
+        ),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(destacada ? Icons.star : Icons.trending_up,
+                  color: Colors.white, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                  destacada
+                      ? '${medallaDestacado(nivel)} Nivel ${etiquetaNivelDestacado(nivel)}'
+                      : 'Destaca tus canchas',
+                  style: t.titleMedium?.copyWith(
+                      color: Colors.white, fontWeight: FontWeight.w800)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            destacada
+                ? 'Tus canchas salen primero en Explorar. Saldo: $mon $saldo. '
+                    'Más saldo = mejor posición: Plata desde $mon 50, Oro desde $mon 200.'
+                : 'Pon saldo y tus canchas aparecen destacadas (arriba y con '
+                    'medalla) para que más jugadores las reserven. '
+                    'Bronce desde $mon 1, Plata $mon 50, Oro $mon 200.',
+            style: t.bodySmall
+                ?.copyWith(color: Colors.white.withOpacity(0.92), height: 1.3),
+          ),
+          if (_vistas != null && (_vistas!['semana'] ?? 0) > 0) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.16),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '👀 ${_vistas!['semana']} jugadores vieron tus canchas esta semana'
+                '${(_vistas!['total'] ?? 0) > (_vistas!['semana'] ?? 0) ? ' · ${_vistas!['total']} en total' : ''}',
+                style: t.bodySmall
+                    ?.copyWith(color: Colors.white, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+          // Selector de PAÍS: sólo si el dueño tiene canchas en más de un país.
+          // Cada país lleva su propio saldo/moneda y su propia pasarela.
+          if (paises.length > 1) ...[
+            const SizedBox(height: 12),
+            Text('¿Dónde quieres destacar?',
+                style: t.bodySmall?.copyWith(
+                    color: Colors.white.withOpacity(0.92),
+                    fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              children: [
+                for (final p in paises)
+                  _PaisChip(
+                    iso: p,
+                    sel: p == iso,
+                    onTap: () => setState(() => _paisSel = p),
+                  ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                  backgroundColor: Colors.white, foregroundColor: lima),
+              onPressed: () => _recargar(iso),
+              icon: const Icon(Icons.add),
+              label: Text(saldo > 0
+                  ? 'Recargar y destacar ($mon $saldo)'
+                  : 'Poner saldo y destacar'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Chip de país para el selector de "dónde destacar" (bandera + nombre). Sobre
+/// el fondo verde de la tarjeta: seleccionado = blanco sólido, resto translúcido.
+class _PaisChip extends StatelessWidget {
+  const _PaisChip({required this.iso, required this.sel, required this.onTap});
+  final String iso;
+  final bool sel;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = paisesSoportados[iso];
+    final etiqueta = p != null ? '${p.bandera} ${p.nombre}' : iso;
+    return Material(
+      color: sel ? Colors.white : Colors.white.withOpacity(0.18),
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          child: Text(etiqueta,
+              style: TextStyle(
+                  color: sel ? const Color(0xFF075E54) : Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13)),
+        ),
+      ),
+    );
+  }
+}
+
+/// Encabezado de sección por PAÍS en "Mis canchas" (bandera + nombre + conteo).
+/// Separa visualmente los locales de Perú, Bolivia, etc. para que el dueño con
+/// canchas en varios países las diferencie de un vistazo.
+class _PaisSeccionHeader extends StatelessWidget {
+  const _PaisSeccionHeader({required this.iso, required this.nLocales});
+  final String iso;
+  final int nLocales;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final p = paisesSoportados[iso];
+    final nombre = p?.nombre ?? iso;
+    final bandera = p?.bandera ?? '🏳️';
+    return Row(
+      children: [
+        Text(bandera, style: const TextStyle(fontSize: 22)),
+        const SizedBox(width: 8),
+        Text(nombre,
+            style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+        const SizedBox(width: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+              color: limaSuave, borderRadius: BorderRadius.circular(10)),
+          child: Text('$nLocales ${nLocales == 1 ? 'local' : 'locales'}',
+              style: t.labelSmall
+                  ?.copyWith(color: bosque, fontWeight: FontWeight.w700)),
+        ),
+        const SizedBox(width: 8),
+        const Expanded(child: Divider(height: 1, color: trazo)),
+      ],
+    );
+  }
+}
+
+/// Grilla de locales (2-3 columnas) para tablet/landscape.
+class _GridLocales extends StatelessWidget {
+  const _GridLocales({required this.locales});
+  final List<Club> locales;
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, cons) {
+      final cols = cons.maxWidth >= 1100 ? 3 : 2;
+      final w = (cons.maxWidth - 14 * (cols - 1)) / cols;
+      return Wrap(
+        spacing: 14,
+        runSpacing: 14,
+        children: [
+          for (final local in locales)
+            SizedBox(width: w, child: _LocalCard(local: local)),
+        ],
+      );
+    });
+  }
+}
+
+/// Header premium (degradado sage) del panel "Mis canchas", igual que la Agenda.
+class _HeaderMisCanchas extends StatelessWidget {
+  const _HeaderMisCanchas({required this.nLocales, required this.nCanchas});
+  final int nLocales;
+  final int nCanchas;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final padTop = MediaQuery.of(context).padding.top;
+    // Celular apaisado (poca altura) → cabecera compacta para no comer pantalla.
+    final compacto = MediaQuery.of(context).size.height < 520;
+    final subtitulo = nCanchas == 0
+        ? 'Registra o reclama tu primer local'
+        : '$nLocales ${nLocales == 1 ? 'local' : 'locales'} · '
+            '$nCanchas ${nCanchas == 1 ? 'cancha' : 'canchas'}';
+    return Container(
+      width: double.infinity,
+      padding: compacto
+          ? EdgeInsets.fromLTRB(20, 10 + padTop, 20, 12)
+          : EdgeInsets.fromLTRB(22, 18 + padTop, 22, 20),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [lima, teal], // verde WhatsApp
+        ),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Atrás: sale del panel del dueño y vuelve a donde estabas. Solo si
+          // hay una pantalla previa (si es la raíz, no se muestra).
+          if (Navigator.of(context).canPop())
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => Navigator.of(context).maybePop(),
+              child: const Padding(
+                padding: EdgeInsets.only(bottom: 6),
+                child: Icon(Icons.arrow_back, color: Colors.white, size: 22),
+              ),
+            ),
+          Text('Mis canchas',
+              style: (compacto ? t.titleLarge : t.headlineSmall)
+                  ?.copyWith(color: Colors.white, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 2),
+          Text(subtitulo,
+              style: t.bodyMedium?.copyWith(color: Colors.white70)),
+        ],
       ),
     );
   }
@@ -111,9 +753,10 @@ class _AvisoPendiente extends StatelessWidget {
                         fontWeight: FontWeight.w800, color: clayOscuro)),
                 const SizedBox(height: 3),
                 Text(
-                  'Ya puedes editar precio, deporte, horario y fotos tocando la '
-                  'cancha. Cuando el equipo apruebe la propiedad se habilitan las '
-                  'reservas. Desliza hacia abajo para actualizar el estado.',
+                  'Mientras el equipo revisa la propiedad, la cancha no se puede '
+                  'editar ni administrar. Cuando la aprueben podrás poner precio, '
+                  'deporte, horario y fotos, y se habilitan las reservas. Desliza '
+                  'hacia abajo para actualizar el estado.',
                   style:
                       t.bodySmall?.copyWith(color: textoTenue, height: 1.35),
                 ),
@@ -135,10 +778,11 @@ class _LocalCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     final n = local.canchas.length;
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: trazo),
       ),
@@ -148,7 +792,7 @@ class _LocalCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.storefront, color: pino, size: 20),
+              Icon(Icons.storefront, color: cs.primary, size: 20),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(local.nombre,
@@ -157,30 +801,58 @@ class _LocalCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis),
               ),
               Text('$n ${n == 1 ? 'cancha' : 'canchas'}',
-                  style: t.bodySmall?.copyWith(color: textoTenue)),
+                  style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
             ],
           ),
           if (local.direccion != null) ...[
             const SizedBox(height: 3),
             Text(local.direccion!,
-                style: t.bodySmall?.copyWith(color: textoTenue),
+                style: t.bodySmall?.copyWith(color: textoTenueDe(context)),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis),
           ],
           const SizedBox(height: 8),
           for (final c in local.canchas) _FilaCancha(cancha: c),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                    builder: (_) => AgregarCanchaScreen(local: local.principal)),
+          Wrap(
+            children: [
+              TextButton.icon(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                      builder: (_) =>
+                          AgregarCanchaScreen(local: local.principal)),
+                ),
+                icon: Icon(Icons.add, color: cs.primary, size: 20),
+                label: Text('Agregar cancha',
+                    style: TextStyle(
+                        color: cs.primary, fontWeight: FontWeight.w700)),
               ),
-              icon: const Icon(Icons.add, color: pino, size: 20),
-              label: const Text('Agregar cancha',
-                  style:
-                      TextStyle(color: pino, fontWeight: FontWeight.w700)),
-            ),
+              TextButton.icon(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                      builder: (_) => BonosDuenoScreen(
+                          club: local.nombre,
+                          moneda: local.principal.monedaSimbolo)),
+                ),
+                icon: Icon(Icons.confirmation_number_outlined,
+                    color: cs.primary, size: 20),
+                label: Text('Bonos de horas',
+                    style: TextStyle(
+                        color: cs.primary, fontWeight: FontWeight.w700)),
+              ),
+              if (kServiciosPichangolActivo)
+                TextButton.icon(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                        builder: (_) => ServiciosScreen(
+                            negocio: appState.negocioServiciosDeClub(local))),
+                  ),
+                  icon:
+                      Icon(Icons.campaign_outlined, color: cs.primary, size: 20),
+                  label: Text('Servicios Pichangol',
+                      style: TextStyle(
+                          color: cs.primary, fontWeight: FontWeight.w700)),
+                ),
+            ],
           ),
         ],
       ),
@@ -194,14 +866,32 @@ class _FilaCancha extends StatelessWidget {
   const _FilaCancha({required this.cancha});
   final Cancha cancha;
 
+  /// Aviso cuando la cancha está en revisión: aún no se puede editar/administrar.
+  void _avisarEnRevision(BuildContext context) {
+    avisarPichangol(
+      context,
+      titulo: 'Cancha en revisión',
+      mensaje: 'Esta cancha está en revisión de propiedad. Podrás editar el '
+          'precio, el deporte, el horario y las fotos —y administrar sus '
+          'horarios— cuando el equipo apruebe la propiedad.\n\n'
+          'Desliza hacia abajo en "Mis canchas" para actualizar el estado.',
+      icono: Icons.hourglass_bottom,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final enRevision = cancha.pendienteVerificacion;
     return InkWell(
       borderRadius: BorderRadius.circular(12),
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => EditarCanchaScreen(cancha: cancha)),
-      ),
+      onTap: () => enRevision
+          ? _avisarEnRevision(context)
+          : Navigator.of(context).push(
+              MaterialPageRoute(
+                  builder: (_) => EditarCanchaScreen(cancha: cancha)),
+            ),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 9),
         child: Row(
@@ -224,9 +914,9 @@ class _FilaCancha extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis),
                   Text(
-                    '${cancha.deporte.etiqueta} · S/ ${cancha.precioHora.toStringAsFixed(2)}/h · '
+                    '${cancha.deporte.etiqueta} · ${cancha.monedaSimbolo} ${cancha.precioHora.toStringAsFixed(2)}/h · '
                     '${cancha.horaApertura}–${cancha.horaCierre}',
-                    style: t.bodySmall?.copyWith(color: textoTenue),
+                    style: t.bodySmall?.copyWith(color: textoTenueDe(context)),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -247,7 +937,32 @@ class _FilaCancha extends StatelessWidget {
                         fontSize: 10,
                         fontWeight: FontWeight.w700)),
               ),
-            const Icon(Icons.chevron_right, color: textoTenue),
+            // Cerrar horas (mantenimiento / clientes de teléfono): abre el grid
+            // de bloqueo directamente (antes era inalcanzable para el dueño).
+            // En revisión no se puede administrar todavía.
+            IconButton(
+              tooltip: enRevision
+                  ? 'Disponible al aprobar la propiedad'
+                  : 'Bloquear horarios',
+              icon: Icon(Icons.event_busy_outlined,
+                  color: enRevision ? textoTenueDe(context) : cs.primary),
+              onPressed: () async {
+                if (enRevision) {
+                  _avisarEnRevision(context);
+                  return;
+                }
+                // Candado Pichangol Pro (regla del director: el bloqueo de
+                // horarios es una función Pro, igual que en la ficha).
+                if (!await exigirPro(context,
+                    funcion: 'El bloqueo de horas')) {
+                  return;
+                }
+                if (!context.mounted) return;
+                Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => BloquearHorariosScreen(cancha: cancha)));
+              },
+            ),
+            Icon(Icons.chevron_right, color: textoTenueDe(context)),
           ],
         ),
       ),
@@ -260,37 +975,14 @@ class _Vacio extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.add_location_alt, size: 64, color: verdeClaro),
-            const SizedBox(height: 16),
-            Text('Aún no registras canchas',
-                style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 6),
-            Text(
-              'Registra tu local para que aparezca en el mapa; luego puedes '
-              'agregarle todas las canchas que tengas.',
-              textAlign: TextAlign.center,
-              style: t.bodyMedium?.copyWith(color: textoTenue),
-            ),
-            const SizedBox(height: 18),
-            FilledButton.icon(
-              style: FilledButton.styleFrom(
-                  backgroundColor: pino, foregroundColor: lima),
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                    builder: (_) => const RegistrarCanchaScreen()),
-              ),
-              icon: const Icon(Icons.add_location_alt),
-              label: const Text('Registrar mi local'),
-            ),
-          ],
-        ),
+    return VacioAirbnb(
+      icono: Icons.add_location_alt,
+      titulo: 'Aún no registras\nninguna cancha',
+      mensaje: 'Registra tu local para que aparezca en Pichangol; luego '
+          'puedes agregarle todas las canchas que tengas.',
+      textoBoton: 'Registrar mi local',
+      onBoton: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const RegistrarCanchaScreen()),
       ),
     );
   }

@@ -119,6 +119,41 @@ def test_aprobar_uno_cierra_duplicados_preexistentes():
     assert "Duplicado" in (dup_actualizado.nota or "")
 
 
+def test_rechazar_libera_el_lugar_y_cierra_hermanos_pendientes():
+    """Rechazar un reclamo deja el lugar RECLAMABLE de nuevo, y también cierra los
+    reclamos hermanos NO terminales del mismo lugar (evita que uno pendiente siga
+    'secuestrando' la ficha tras un rechazo)."""
+    r1 = _crear()
+    # Straggler pendiente de la MISMA cancha (p. ej. quedó por una carrera al
+    # reiniciar el backend).
+    hermano = ReclamoPropiedad(
+        id=stores.next_id("reclamo"), cancha_id="c1", solicitante_id="otro@x.com",
+        nombre_local="La Pichanga", codigo="888888", estado="pendiente_triage",
+        creado_en=ahora())
+    stores.reclamos.append(hermano)
+
+    reclamos.triage(r1["reclamo_id"], aprobado=False, revisor="dennis")
+
+    # El lugar quedó libre para reclamar (ningún reclamo bloqueante).
+    assert reclamos.lugar_reclamado(None, None, "c1") == {"reclamada": False}
+    herm = next(r for r in stores.reclamos if r.id == hermano.id)
+    assert herm.estado == "rechazada"
+
+
+def test_liberar_lugar_revoca_cancha_activada_y_la_vuelve_reclamable():
+    """'Liberar lugar' sobre una cancha ya ACTIVADA la revoca (deja de estar
+    verificada) y el lugar vuelve a ser reclamable."""
+    r = _crear()
+    reclamos.aprobar_directo(r["reclamo_id"], revisor="dennis")
+    assert stores.cancha("c1").verificada is True
+
+    res = reclamos.liberar_lugar(r["reclamo_id"], revisor="dennis")
+
+    assert res["ok"] and res["estado"] == "rechazada"
+    assert stores.cancha("c1").verificada is False
+    assert reclamos.lugar_reclamado(None, None, "c1") == {"reclamada": False}
+
+
 def test_reclamo_se_persiste_en_snapshot():
     _crear()
     estado = stores.to_state()
@@ -126,6 +161,36 @@ def test_reclamo_se_persiste_en_snapshot():
     # Roundtrip.
     stores.load_state(estado)
     assert len(stores.reclamos) == 1
+
+
+def test_reclamo_guarda_nombre_del_solicitante_y_sobrevive_snapshot():
+    r = reclamos.crear_reclamo(
+        "c1", "due@x.com", "La Pichanga", lat=LAT, lng=LNG,
+        solicitante_nombre="Dennis Calagua")
+    rec = next(x for x in stores.reclamos if x.id == r["reclamo_id"])
+    assert rec.solicitante_nombre == "Dennis Calagua"
+    assert rec.creado_en is not None  # fecha/hora del reclamo
+    # Roundtrip del snapshot: el nombre no se pierde.
+    stores.load_state(stores.to_state())
+    rec2 = next(x for x in stores.reclamos if x.id == r["reclamo_id"])
+    assert rec2.solicitante_nombre == "Dennis Calagua"
+    # El panel lo expone.
+    fila = next(x for x in reclamos.listar() if x["id"] == r["reclamo_id"])
+    assert fila["solicitante_nombre"] == "Dennis Calagua"
+    assert fila.get("creado_en")
+
+
+def test_borrar_reclamos_de_solo_toca_los_del_solicitante():
+    reclamos.crear_reclamo("c1", "yo@x.com", "Mi cancha", lat=LAT, lng=LNG)
+    reclamos.crear_reclamo("c2", "otro@x.com", "Otra cancha",
+                           lat=LAT + 0.5, lng=LNG + 0.5)
+    # Borra solo los míos (case-insensitive); el del otro se conserva.
+    n = stores.borrar_reclamos_de("YO@x.com")
+    assert n == 1
+    ids = {r.cancha_id for r in stores.reclamos}
+    assert ids == {"c2"}
+    # Idempotente: borrar de nuevo no borra nada.
+    assert stores.borrar_reclamos_de("yo@x.com") == 0
 
 
 # --- Anti doble-reclamo: una cancha reclamada no la reclama otro ---
@@ -257,6 +322,20 @@ def test_estado_es_mio_para_asignar_dueno_sin_apropiacion():
     assert reclamos.estado("c1")["es_mio"] is False
 
 
+def test_existencia_no_confiere_propiedad():
+    """La verificación de EXISTENCIA (IA) escribe CanchaEstado.verificada, pero
+    eso NO debe hacer reservable un reclamo pendiente: existir ≠ ser dueño. La app
+    solo debe ver verificada=True cuando el reclamo llega a 'activada'."""
+    r = _crear()  # pendiente_triage
+    stores.cancha("c1").verificada = True  # simula IA de existencia
+    est = reclamos.estado("c1")
+    assert est["estado"] == "pendiente_triage"
+    assert est["verificada"] is False
+    # Recién al aprobar la PROPIEDAD reporta verificada.
+    reclamos.aprobar_directo(r["reclamo_id"])
+    assert reclamos.estado("c1")["verificada"] is True
+
+
 def test_no_se_puede_aprobar_un_reclamo_rechazado():
     r = _crear()
     reclamos.triage(r["reclamo_id"], aprobado=False)  # rechazada
@@ -304,3 +383,36 @@ def test_lugar_reclamado_para_bloquear_el_boton():
     # Otro lugar lejano → libre.
     r3 = reclamos.lugar_reclamado(LAT + 0.02, LNG, cancha_id="gp_y")
     assert r3["reclamada"] is False
+
+
+def test_estado_reclamo_vigente_gana_a_rechazo_viejo_mismo_lugar():
+    """Un reclamo VIGENTE del mismo lugar (aunque con distinto cancha_id) no debe
+    quedar oculto tras un rechazo VIEJO. Reproduce el caso del panel que mostraba
+    'SOLICITUD RECHAZADA' pese a existir un reclamo nuevo pendiente."""
+    # Reclamo viejo (id X) que fue rechazado.
+    viejo = reclamos.crear_reclamo("viejo", "due@x.com", "Sabor Golazo",
+                                   lat=LAT, lng=LNG)
+    reclamos.triage(viejo["reclamo_id"], aprobado=False, revisor="admin")
+    assert reclamos.estado("viejo")["estado"] == "rechazada"
+
+    # El mismo dueño vuelve a reclamar el MISMO lugar, pero se registra con OTRO
+    # cancha_id (cancha re-descubierta / duplicada), a pocos metros.
+    nuevo = reclamos.crear_reclamo("nuevo", "due@x.com", "Sabor Golazo",
+                                   lat=LAT + 0.0002, lng=LNG)
+    assert nuevo["ok"] and nuevo["estado"] == "pendiente_triage"
+
+    # Consultar por CUALQUIERA de los dos ids debe reportar el reclamo VIGENTE,
+    # no el rechazo viejo.
+    for cid in ("viejo", "nuevo"):
+        est = reclamos.estado(cid, solicitante="due@x.com")
+        assert est["estado"] == "pendiente_triage", cid
+        assert est["es_mio"] is True, cid
+
+
+def test_estado_sin_vigente_devuelve_rechazo_del_solicitante():
+    """Si NO hay reclamo vigente, el reclamante ve su propio rechazo (flujo A:
+    'Solicitud no aprobada' + volver a solicitar)."""
+    r = reclamos.crear_reclamo("c1", "due@x.com", "La Pichanga", lat=LAT, lng=LNG)
+    reclamos.triage(r["reclamo_id"], aprobado=False, revisor="admin")
+    est = reclamos.estado("c1", solicitante="due@x.com")
+    assert est["estado"] == "rechazada" and est["es_mio"] is True

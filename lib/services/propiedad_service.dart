@@ -43,6 +43,42 @@ class PropiedadService {
     }
   }
 
+  /// Consulta la CÉDULA ecuatoriana (identidad) vía backend → CipherByte.
+  /// Devuelve {ok, nombre_completo, ...} o null si no se pudo.
+  static Future<Map<String, dynamic>?> consultarCedula(String cedula) async {
+    if (!disponible) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/propiedad/cedula/$cedula');
+      final resp = await http.get(uri, headers: _appHeaders())
+          .timeout(const Duration(seconds: 12));
+      if (resp.statusCode != 200) return null;
+      return Map<String, dynamic>.from(jsonDecode(resp.body) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Verifica identidad por documento con la regla ANTI-FRAUDE
+  /// **1 documento = 1 cuenta**. Valida contra el registro oficial del país
+  /// ([pais]: 'PE' → DNI/RENIEC; 'EC' → cédula) y liga el documento (solo su
+  /// hash) al correo. Devuelve {ok, nombre_completo, fecha_nacimiento} o
+  /// {ok:false, error:'dni_en_uso'|...}.
+  static Future<Map<String, dynamic>?> verificarDni(
+      String dni, String email, {String pais = 'PE'}) async {
+    if (!disponible) return null;
+    try {
+      final resp = await http
+          .post(Uri.parse('$_baseUrl/propiedad/verificar-dni'),
+              headers: _appHeaders(json: true),
+              body: jsonEncode({'dni': dni, 'email': email, 'pais': pais}))
+          .timeout(const Duration(seconds: 12));
+      if (resp.statusCode != 200) return null;
+      return Map<String, dynamic>.from(jsonDecode(resp.body) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Consulta el RUC (negocio) vía backend → Factiliza.
   /// Devuelve {ok, razon_social, ...} o null si no se pudo.
   static Future<Map<String, dynamic>?> consultarRuc(String ruc) async {
@@ -73,6 +109,26 @@ class PropiedadService {
       final resp = await http.get(uri, headers: _appHeaders()).timeout(const Duration(seconds: 12));
       if (resp.statusCode != 200) return null;
       return Map<String, dynamic>.from(jsonDecode(resp.body) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Borra en el servidor (torre de control) los reclamos que inició [email].
+  /// Lo usa "Dejar en virgen" para que las canchas reclamadas por el dueño
+  /// desaparezcan también del backend y pueda reclamarlas de cero. Devuelve
+  /// cuántos se borraron, o null si no se pudo (best-effort).
+  static Future<int?> borrarMisReclamos(String email) async {
+    if (!disponible || email.trim().isEmpty) return null;
+    try {
+      final resp = await http
+          .post(Uri.parse('$_baseUrl/propiedad/reclamos/borrar-mios'),
+              headers: _appHeaders(json: true),
+              body: jsonEncode({'solicitante': email.trim()}))
+          .timeout(const Duration(seconds: 15));
+      if (resp.statusCode != 200) return null;
+      final m = Map<String, dynamic>.from(jsonDecode(resp.body) as Map);
+      return (m['borrados'] as num?)?.toInt() ?? 0;
     } catch (_) {
       return null;
     }
@@ -111,6 +167,9 @@ class PropiedadService {
     required String canchaId,
     required String solicitanteId,
     required String nombreLocal,
+    String solicitanteNombre = '',
+    String fotoEvidenciaUrl = '',
+    String notaReclamante = '',
     String? telefonoContacto,
     String? dni,
     String? ruc,
@@ -127,6 +186,12 @@ class PropiedadService {
               body: jsonEncode({
                 'cancha_id': canchaId,
                 'solicitante_id': solicitanteId,
+                if (solicitanteNombre.trim().isNotEmpty)
+                  'solicitante_nombre': solicitanteNombre.trim(),
+                if (fotoEvidenciaUrl.trim().isNotEmpty)
+                  'foto_evidencia_url': fotoEvidenciaUrl.trim(),
+                if (notaReclamante.trim().isNotEmpty)
+                  'nota_reclamante': notaReclamante.trim(),
                 'nombre_local': nombreLocal,
                 if (telefonoContacto != null && telefonoContacto.isNotEmpty)
                   'telefono_contacto': telefonoContacto,
