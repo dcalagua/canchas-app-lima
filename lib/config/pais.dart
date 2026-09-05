@@ -63,6 +63,15 @@ class PaisConfig {
   /// espacio. En Perú son las zonas de Lima; en Bolivia/Ecuador, sus ciudades.
   final List<String> zonas;
 
+  /// Montos SUGERIDOS de recarga de saldo (chips), en la unidad mayor de la
+  /// moneda del país y calibrados a su poder adquisitivo: S/ 20 no es lo mismo
+  /// que \$ 20. Además de los chips, la pantalla ofrece "Otro monto" acotado
+  /// por [recargaMin]/[recargaMax] (mínimo que acepta la pasarela y tope
+  /// antifraude de una sola recarga).
+  final List<int> recargas;
+  final int recargaMin;
+  final int recargaMax;
+
   const PaisConfig({
     required this.iso,
     required this.nombre,
@@ -78,6 +87,9 @@ class PaisConfig {
     required this.consultaDoc,
     required this.geocodeHint,
     required this.zonas,
+    required this.recargas,
+    required this.recargaMin,
+    required this.recargaMax,
   });
 }
 
@@ -104,6 +116,9 @@ const Map<String, PaisConfig> paisesSoportados = {
       'lima_moderna',
       'callao',
     ],
+    recargas: [20, 50, 100, 200],
+    recargaMin: 10, // Culqi cobra desde S/ 1; 10 evita micro-recargas
+    recargaMax: 1000, // mismo tope que la recarga por QR
   ),
   'BO': PaisConfig(
     iso: 'BO',
@@ -129,6 +144,9 @@ const Map<String, PaisConfig> paisesSoportados = {
       'cochabamba',
       'sucre',
     ],
+    recargas: [50, 100, 200, 500],
+    recargaMin: 20,
+    recargaMax: 3000,
   ),
   'EC': PaisConfig(
     iso: 'EC',
@@ -150,6 +168,9 @@ const Map<String, PaisConfig> paisesSoportados = {
       'cuenca',
       'ambato',
     ],
+    recargas: [5, 10, 20, 50],
+    recargaMin: 1, // PayPhone cobra desde \$ 1
+    recargaMax: 300,
   ),
 };
 
@@ -176,6 +197,9 @@ const PaisConfig _paisPorDefecto = PaisConfig(
     'lima_moderna',
     'callao',
   ],
+  recargas: [20, 50, 100, 200],
+  recargaMin: 10,
+  recargaMax: 1000,
 );
 
 /// País actualmente activo. La UI de moneda lee de aquí (vía `monedaSimbolo`).

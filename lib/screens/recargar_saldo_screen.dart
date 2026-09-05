@@ -44,8 +44,11 @@ class RecargarSaldoScreen extends StatefulWidget {
 enum _Metodo { yape, tarjeta }
 
 class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
-  static const _montos = [20, 50, 100, 200];
-  int _monto = 50;
+  // Monto elegido, en la unidad mayor de la moneda de la billetera. Los chips
+  // salen de `PaisConfig.recargas` (calibrados por país: \$ 5 en Ecuador, S/ 20
+  // en Perú); "Otro monto" acepta cualquier entero entre recargaMin y
+  // recargaMax del país.
+  late int _monto;
   _Metodo _metodo = _Metodo.yape;
   bool _cargando = true;
   String? _pk;
@@ -127,7 +130,133 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
   @override
   void initState() {
     super.initState();
+    final sug = _pais.recargas;
+    _monto = sug.length > 1 ? sug[1] : sug.first;
     _cargarConfig();
+  }
+
+  /// Chips de monto (sugeridos del país + "Otro monto"). Compartido por el
+  /// formulario Culqi y el hospedado (Libélula/PayPhone).
+  Widget _chipsMonto(ColorScheme cs) {
+    final sug = _pais.recargas;
+    final otro = !sug.contains(_monto);
+    Widget chip(String texto, bool sel, VoidCallback onTap, {IconData? icono}) {
+      return ChoiceChip(
+        label: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icono != null) ...[
+              Icon(icono, size: 16, color: sel ? Colors.white : cs.onSurface),
+              const SizedBox(width: 4),
+            ],
+            Text(texto),
+          ],
+        ),
+        selected: sel,
+        selectedColor: lima,
+        labelStyle: TextStyle(
+            fontWeight: FontWeight.w800,
+            color: sel ? Colors.white : cs.onSurface),
+        onSelected: (_) => onTap(),
+      );
+    }
+
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: [
+        for (final m in sug)
+          chip('$_mon $m', _monto == m, () => setState(() => _monto = m)),
+        chip(otro ? '$_mon $_monto' : 'Otro monto', otro, _elegirOtroMonto,
+            icono: Icons.edit_outlined),
+      ],
+    );
+  }
+
+  /// Hoja para escribir un monto libre (el monto es una de las pocas entradas
+  /// de texto permitidas en la app). Valida el rango del país.
+  Future<void> _elegirOtroMonto() async {
+    final min = _pais.recargaMin;
+    final max = _pais.recargaMax;
+    final ctrl = TextEditingController(
+        text: _pais.recargas.contains(_monto) ? '' : '$_monto');
+    String? error;
+    final elegido = await showModalBottomSheet<int>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) {
+          void confirmar() {
+            final v = int.tryParse(ctrl.text.trim());
+            if (v == null || v < min || v > max) {
+              setSheet(() => error = 'Entre $_mon $min y $_mon $max.');
+              return;
+            }
+            Navigator.of(ctx).pop(v);
+          }
+
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+                22, 18, 22, 22 + MediaQuery.of(ctx).viewInsets.bottom),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('¿Cuánto quieres recargar?',
+                    style: TextStyle(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF222222))),
+                const SizedBox(height: 6),
+                Text('Entre $_mon $min y $_mon $max, sin decimales.',
+                    style: const TextStyle(fontSize: 13.5, color: textoTenue)),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: ctrl,
+                  autofocus: true,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(5),
+                  ],
+                  style: const TextStyle(
+                      fontSize: 22, fontWeight: FontWeight.w800),
+                  decoration: InputDecoration(
+                    prefixText: '$_mon ',
+                    prefixStyle: const TextStyle(
+                        fontSize: 22, fontWeight: FontWeight.w800),
+                    hintText: '${_pais.recargas.first}',
+                    errorText: error,
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                  ),
+                  onSubmitted: (_) => confirmar(),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                        backgroundColor: lima,
+                        foregroundColor: bosque,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14))),
+                    onPressed: confirmar,
+                    child: const Text('Usar este monto',
+                        style: TextStyle(fontWeight: FontWeight.w800)),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+    if (elegido != null && mounted) setState(() => _monto = elegido);
   }
 
   Future<void> _cargarConfig() async {
@@ -309,22 +438,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
                 Text('¿Cuánto quieres recargar?',
                     style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
                 const SizedBox(height: 12),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    for (final m in _montos)
-                      ChoiceChip(
-                        label: Text('$_mon $m'),
-                        selected: _monto == m,
-                        selectedColor: lima,
-                        labelStyle: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            color: _monto == m ? Colors.white : cs.onSurface),
-                        onSelected: (_) => setState(() => _monto = m),
-                      ),
-                  ],
-                ),
+                _chipsMonto(cs),
                 _bannerPromo(),
                 const SizedBox(height: 22),
                 Text('Método de pago',
@@ -439,22 +553,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
         Text('¿Cuánto quieres recargar?',
             style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
         const SizedBox(height: 12),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: [
-            for (final m in _montos)
-              ChoiceChip(
-                label: Text('$_mon $m'),
-                selected: _monto == m,
-                selectedColor: lima,
-                labelStyle: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    color: _monto == m ? Colors.white : cs.onSurface),
-                onSelected: (_) => setState(() => _monto = m),
-              ),
-          ],
-        ),
+        _chipsMonto(cs),
         const SizedBox(height: 22),
         Container(
           padding: const EdgeInsets.all(14),
