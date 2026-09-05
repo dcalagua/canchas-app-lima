@@ -372,6 +372,7 @@ class PagosService {
     required double montoSoles,
     required String reservaId,
     String? concepto,
+    String moneda = '', // ISO/símbolo de la cancha; vacío = PEN en el backend
   }) async {
     if (!disponible || duenoId.isEmpty) return null;
     try {
@@ -384,6 +385,7 @@ class PagosService {
               'monto_soles': montoSoles,
               'reserva_id': reservaId,
               if (concepto != null) 'concepto': concepto,
+              if (moneda.isNotEmpty) 'moneda': moneda,
             }),
           )
           .timeout(const Duration(seconds: 15));
@@ -406,6 +408,7 @@ class PagosService {
     required String reservaId,
     String? concepto,
     String medio = '', // yape | tarjeta | sena (estado de cuenta del dueño)
+    String moneda = '', // ISO/símbolo de la cancha; vacío = PEN en el backend
   }) async {
     if (!disponible || duenoId.isEmpty) return null;
     try {
@@ -419,6 +422,7 @@ class PagosService {
               'reserva_id': reservaId,
               if (concepto != null) 'concepto': concepto,
               if (medio.isNotEmpty) 'medio': medio,
+              if (moneda.isNotEmpty) 'moneda': moneda,
             }),
           )
           .timeout(const Duration(seconds: 15));
@@ -444,6 +448,7 @@ class PagosService {
     String compradorEmail = '',
     String compradorNombre = '',
     String vendedorNombre = '',
+    String moneda = '', // ISO/símbolo del producto; vacío = PEN en el backend
   }) async {
     if (!disponible || vendedorId.isEmpty) return null;
     try {
@@ -456,6 +461,7 @@ class PagosService {
               'monto_soles': montoSoles,
               'venta_id': ventaId,
               if (concepto != null) 'concepto': concepto,
+              if (moneda.isNotEmpty) 'moneda': moneda,
               'producto_id': productoId,
               'producto_nombre': productoNombre,
               'comprador_email': compradorEmail,

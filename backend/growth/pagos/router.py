@@ -127,32 +127,54 @@ def _soles_a_centimos(soles: float) -> int:
     return int(round(float(soles) * 100))
 
 
-def comision_centimos(monto_soles: float) -> int:
-    """Comisión de Pichangol por una reserva: COMISION_PORC % con mínimo
-    COMISION_MIN_SOLES. Devuelve céntimos."""
+_MONEDA_ISO = {"S/": "PEN", "S/.": "PEN", "PEN": "PEN", "$": "USD", "USD": "USD",
+               "BS": "BOB", "BS.": "BOB", "BOB": "BOB"}
+_MONEDA_SIMBOLO = {"PEN": "S/", "USD": "$", "BOB": "Bs"}
+
+
+def moneda_iso(moneda: str | None) -> str:
+    """Normaliza símbolo o ISO a ISO ('S/' → PEN, '$' → USD, 'Bs' → BOB).
+    Vacío/desconocido → PEN (los APKs viejos no mandan moneda)."""
+    return _MONEDA_ISO.get((moneda or "").strip().upper(), "PEN")
+
+
+def moneda_simbolo(moneda: str | None) -> str:
+    return _MONEDA_SIMBOLO.get(moneda_iso(moneda), "S/")
+
+
+def comision_centimos(monto_soles: float, moneda: str = "PEN") -> int:
+    """Comisión de Pichangol por una reserva: COMISION_PORC % con MÍNIMO POR
+    MONEDA (`config.comision_min`). [monto_soles] va en la unidad mayor de
+    [moneda] (el nombre es histórico). Devuelve céntimos/centavos."""
     bruto = float(monto_soles) * config.COMISION_PORC / 100.0
-    con_min = max(bruto, config.COMISION_MIN_SOLES)
+    con_min = max(bruto, config.comision_min(moneda_iso(moneda)))
     return int(round(con_min * 100))
 
 
-def comision_saldo_centimos(monto_soles: float) -> int:
+def comision_saldo_centimos(monto_soles: float, moneda: str = "PEN") -> int:
     """Comisión cuando se cobra del SALDO prepago del dueño (billetera-first).
     Configurable desde la torre de control (cfg `comision_saldo_pct` y
     `comision_saldo_min_soles`) — puede ser MENOR que la estándar, como
     incentivo por mantener saldo. Sin configurar → usa la comisión estándar.
+    El mínimo de la torre está en SOLES y sólo aplica a PEN; en las otras
+    monedas rige el mínimo por moneda de `config` (el % de la torre sí).
 
     OJO: `stores.cfg()` devuelve "0" para claves ausentes, así que aquí se lee
     `stores.config` directo — ausente ≠ 0% (0% sí es configurable a propósito)."""
+    iso = moneda_iso(moneda)
     try:
         pct = float(stores.config.get("comision_saldo_pct"))  # type: ignore[arg-type]
     except (TypeError, ValueError):
-        return comision_centimos(monto_soles)
+        return comision_centimos(monto_soles, iso)
     if pct < 0:
-        return comision_centimos(monto_soles)
-    try:
-        min_s = max(0.0, float(stores.config.get("comision_saldo_min_soles", 0)))
-    except (TypeError, ValueError):
-        min_s = 0.0
+        return comision_centimos(monto_soles, iso)
+    if iso == "PEN":
+        try:
+            min_s = max(0.0, float(stores.config.get("comision_saldo_min_soles", 0)))
+        except (TypeError, ValueError):
+            min_s = 0.0
+    else:
+        min_s = config.comision_min(iso)
     return int(round(max(float(monto_soles) * pct / 100.0, min_s) * 100))
 
 
@@ -184,6 +206,7 @@ class ComisionReservaReq(BaseModel):
     monto_soles: float         # precio de la reserva (base para calcular comisión)
     reserva_id: str            # id de la reserva (idempotencia: no cobrar 2 veces)
     concepto: str | None = None
+    moneda: str = "PEN"        # ISO o símbolo de la cancha (PEN | USD | BOB); vacío = PEN
 
 
 class LiquidacionOnlineReq(BaseModel):
@@ -194,6 +217,7 @@ class LiquidacionOnlineReq(BaseModel):
     # MEDIO con el que pagó el jugador (yape | tarjeta | sena): trazabilidad
     # para el estado de cuenta del dueño. Vacío = no informado (APKs viejos).
     medio: str = ""
+    moneda: str = "PEN"        # moneda de la cancha (decide el mínimo de comisión)
 
 
 class VentaProductoReq(BaseModel):
@@ -207,6 +231,7 @@ class VentaProductoReq(BaseModel):
     comprador_email: str = ""
     comprador_nombre: str = ""
     vendedor_nombre: str = ""
+    moneda: str = "PEN"        # moneda del producto (mínimo de comisión por moneda)
 
 
 class MarcarLiquidacionReq(BaseModel):
@@ -1492,7 +1517,8 @@ def post_comision_reserva(req: ComisionReservaReq) -> dict:
     ofrece al jugador si el dueño tiene saldo. Idempotente por `reserva_id`: no
     cobra dos veces la misma reserva."""
     # Sale del saldo → aplica la tarifa configurable de billetera (torre).
-    comision = comision_saldo_centimos(req.monto_soles)
+    iso = moneda_iso(req.moneda)
+    comision = comision_saldo_centimos(req.monto_soles, iso)
     # Idempotencia: si esta reserva ya generó comisión, no la cobres de nuevo.
     ya = stores.pago_por_charge(req.reserva_id)
     if ya is not None and ya.tipo == "comision_reserva":
@@ -1505,10 +1531,10 @@ def post_comision_reserva(req: ComisionReservaReq) -> dict:
     promo_usado, nuevo = stores.debitar_comision(req.dueno_id, comision)
     sufijo = (" · cubierta por tu saldo de regalo 🎁" if promo_usado >= comision
               and comision > 0 else
-              f" · S/ {promo_usado / 100.0:.2f} de tu regalo 🎁"
+              f" · {moneda_simbolo(iso)} {promo_usado / 100.0:.2f} de tu regalo 🎁"
               if promo_usado > 0 else "")
     stores.registrar_pago(
-        tipo="comision_reserva", monto_centimos=comision, moneda="PEN",
+        tipo="comision_reserva", monto_centimos=comision, moneda=iso,
         estado="aprobado", dueno_id=req.dueno_id,
         culqi_charge_id=req.reserva_id,
         concepto=(req.concepto or "Comisión de reserva") + sufijo)
@@ -1531,10 +1557,11 @@ def post_liquidacion_online(req: LiquidacionOnlineReq) -> dict:
 
     Idempotente por `reserva_id`."""
     bruto = _soles_a_centimos(req.monto_soles)
-    comision = comision_centimos(req.monto_soles)
+    iso = moneda_iso(req.moneda)
+    comision = comision_centimos(req.monto_soles, iso)
     # Tarifa de BILLETERA (configurable en la torre, puede ser menor): es la que
     # aplica cuando la comisión sale del saldo.
-    com_saldo = comision_saldo_centimos(req.monto_soles)
+    com_saldo = comision_saldo_centimos(req.monto_soles, iso)
     ya = stores.pago_por_charge(req.reserva_id)
     if ya is not None and ya.tipo in ("liquidacion_online", "liquidacion_full"):
         d = _liquidacion_dict(ya)
@@ -1553,15 +1580,15 @@ def post_liquidacion_online(req: LiquidacionOnlineReq) -> dict:
         promo_usado, nuevo = stores.debitar_comision(req.dueno_id, com_saldo)
         sufijo = (" · cubierta por tu saldo de regalo 🎁"
                   if promo_usado >= com_saldo and com_saldo > 0 else
-                  f" · S/ {promo_usado / 100.0:.2f} de tu regalo 🎁"
+                  f" · {moneda_simbolo(iso)} {promo_usado / 100.0:.2f} de tu regalo 🎁"
                   if promo_usado > 0 else "")
         stores.registrar_pago(
-            tipo="comision_reserva", monto_centimos=com_saldo, moneda="PEN",
+            tipo="comision_reserva", monto_centimos=com_saldo, moneda=iso,
             estado="aprobado", dueno_id=req.dueno_id,
             culqi_charge_id=f"{req.reserva_id}_com",
             concepto=f"Comisión · {req.concepto or 'Reserva online'}{sufijo}")
         stores.registrar_pago(
-            tipo="liquidacion_full", monto_centimos=bruto, moneda="PEN",
+            tipo="liquidacion_full", monto_centimos=bruto, moneda=iso,
             estado="aprobado", dueno_id=req.dueno_id,
             culqi_charge_id=req.reserva_id,
             concepto=req.concepto or "Reserva online",
@@ -1573,7 +1600,7 @@ def post_liquidacion_online(req: LiquidacionOnlineReq) -> dict:
 
     # Sin saldo suficiente → comisión de la transacción (neto), como antes.
     stores.registrar_pago(
-        tipo="liquidacion_online", monto_centimos=bruto, moneda="PEN",
+        tipo="liquidacion_online", monto_centimos=bruto, moneda=iso,
         estado="aprobado", dueno_id=req.dueno_id,
         culqi_charge_id=req.reserva_id,
         concepto=req.concepto or "Reserva online",
@@ -1592,14 +1619,15 @@ def post_venta(req: VentaProductoReq) -> dict:
     from db.store import Venta, ahora  # local para no ensuciar el import global
 
     bruto = _soles_a_centimos(req.monto_soles)
-    comision = comision_centimos(req.monto_soles)
+    iso = moneda_iso(req.moneda)
+    comision = comision_centimos(req.monto_soles, iso)
     ya = stores.pago_por_charge(req.venta_id)
     if ya is not None and ya.tipo == "venta_producto":
-        com = comision_centimos(ya.monto_centimos / 100.0)
+        com = comision_centimos(ya.monto_centimos / 100.0, ya.moneda)
         return {"ok": True, "duplicada": True, "bruto_centimos": ya.monto_centimos,
                 "comision_centimos": com, "neto_centimos": ya.monto_centimos - com}
     stores.registrar_pago(
-        tipo="venta_producto", monto_centimos=bruto, moneda="PEN",
+        tipo="venta_producto", monto_centimos=bruto, moneda=iso,
         estado="aprobado", dueno_id=req.vendedor_id,
         culqi_charge_id=req.venta_id,
         concepto=req.concepto or "Venta de producto (marketplace)")
@@ -2161,7 +2189,7 @@ def _liquidacion_dict(p) -> dict:
     # decisión de producto (la bodega es cero comisión) → usa la congelada (0).
     comision = (p.comision_centimos
                 if p.tipo in ("liquidacion_full", "venta_bodega")
-                else comision_centimos(bruto / 100.0))
+                else comision_centimos(bruto / 100.0, p.moneda))
     neto = bruto - comision
     return {
         "reserva_id": p.culqi_charge_id,
@@ -2328,7 +2356,7 @@ def get_movimientos(dueno_id: str,
         elif p.tipo in ("inscripcion_torneo_ingreso", "venta_bodega"):
             comision = p.comision_centimos  # bodega: 0 (cero comisión)
         else:
-            comision = comision_centimos(bruto / 100.0)
+            comision = comision_centimos(bruto / 100.0, p.moneda)
         neto = bruto - comision
         return {**base,
                 "monto_soles": neto / 100.0,

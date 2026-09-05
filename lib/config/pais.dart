@@ -72,6 +72,12 @@ class PaisConfig {
   final int recargaMin;
   final int recargaMax;
 
+  /// MÍNIMO de la comisión de Pichangol (5 %) en la moneda del país. Decisión
+  /// del director (sep-2026): S/ 2, \$ 0.50, Bs 3. Espejo de
+  /// `config.comision_min` en el backend growth; el backend es quien cobra,
+  /// esto es para mostrar/estimar en el APK.
+  final double comisionMin;
+
   const PaisConfig({
     required this.iso,
     required this.nombre,
@@ -90,6 +96,7 @@ class PaisConfig {
     required this.recargas,
     required this.recargaMin,
     required this.recargaMax,
+    required this.comisionMin,
   });
 }
 
@@ -119,6 +126,7 @@ const Map<String, PaisConfig> paisesSoportados = {
     recargas: [20, 50, 100, 200],
     recargaMin: 10, // Culqi cobra desde S/ 1; 10 evita micro-recargas
     recargaMax: 1000, // mismo tope que la recarga por QR
+    comisionMin: 2,
   ),
   'BO': PaisConfig(
     iso: 'BO',
@@ -147,6 +155,7 @@ const Map<String, PaisConfig> paisesSoportados = {
     recargas: [50, 100, 200, 500],
     recargaMin: 20,
     recargaMax: 3000,
+    comisionMin: 3,
   ),
   'EC': PaisConfig(
     iso: 'EC',
@@ -171,6 +180,7 @@ const Map<String, PaisConfig> paisesSoportados = {
     recargas: [5, 10, 20, 50],
     recargaMin: 1, // PayPhone cobra desde \$ 1
     recargaMax: 300,
+    comisionMin: 0.5,
   ),
 };
 
@@ -200,6 +210,7 @@ const PaisConfig _paisPorDefecto = PaisConfig(
   recargas: [20, 50, 100, 200],
   recargaMin: 10,
   recargaMax: 1000,
+  comisionMin: 2,
 );
 
 /// País actualmente activo. La UI de moneda lee de aquí (vía `monedaSimbolo`).
@@ -427,6 +438,16 @@ PaisConfig paisDeCoordenadas(double lat, double lng) {
 
 /// Símbolo de moneda ('S/', 'Bs', '$') que corresponde a una coordenada, para
 /// congelar `Cancha.moneda` por la ubicación real de la cancha.
+/// País cuya moneda tiene ese símbolo o ISO ('S/'|'PEN' → PE, '\$'|'USD' → EC,
+/// 'Bs'|'BOB' → BO). Desconocido → Perú (comportamiento histórico).
+PaisConfig paisPorMonedaOIso(String moneda) {
+  final m = moneda.trim().toUpperCase();
+  for (final p in paisesSoportados.values) {
+    if (p.moneda.toUpperCase() == m || p.monedaIso == m) return p;
+  }
+  return paisesSoportados['PE']!;
+}
+
 String monedaDeCoordenadas(double lat, double lng) =>
     paisDeCoordenadas(lat, lng).moneda;
 

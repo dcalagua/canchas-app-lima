@@ -245,9 +245,25 @@ CULQI_API_BASE = os.getenv("CULQI_API_BASE", "https://api.culqi.com/v2")
 # la URL registrada en el panel de Culqi. Filtro ligero anti-ruido; la fuente de
 # verdad es re-consultar el cargo a Culqi con la sk. Vacío = no se exige.
 CULQI_WEBHOOK_TOKEN = os.getenv("CULQI_WEBHOOK_TOKEN", "")
-# Comisión de Pichangol por reserva (modelo inDrive). 5% con mínimo S/2.
+# Comisión de Pichangol por reserva (modelo inDrive). 5% con MÍNIMO POR
+# MONEDA (decisión del director, sep-2026): S/ 2 (PEN), $ 0.50 (USD, Ecuador)
+# y Bs 3 (BOB, Bolivia). Un solo mínimo "2" en cualquier moneda era 20% de una
+# reserva de $10 en Guayaquil y casi nada en La Paz.
 COMISION_PORC = float(os.getenv("COMISION_PORC", "5"))
-COMISION_MIN_SOLES = float(os.getenv("COMISION_MIN_SOLES", "2"))
+COMISION_MIN_SOLES = float(os.getenv("COMISION_MIN_SOLES", "2"))   # PEN
+COMISION_MIN_USD = float(os.getenv("COMISION_MIN_USD", "0.5"))     # EC
+COMISION_MIN_BOB = float(os.getenv("COMISION_MIN_BOB", "3"))       # BO
+
+
+def comision_min(moneda: str = "PEN") -> float:
+    """Mínimo de comisión en la unidad mayor de [moneda] (ISO). Desconocida →
+    el de soles (comportamiento histórico)."""
+    m = (moneda or "PEN").strip().upper()
+    if m in ("USD", "$"):
+        return COMISION_MIN_USD
+    if m in ("BOB", "BS"):
+        return COMISION_MIN_BOB
+    return COMISION_MIN_SOLES
 
 # --- Libélula (pasarela de pagos de BOLIVIA: QR · tarjeta · Tigo Money) ------
 # Modelo distinto a Culqi: el backend REGISTRA una "deuda" (con el appkey) y
