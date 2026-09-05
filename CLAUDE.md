@@ -282,6 +282,12 @@ off → redeploy inmediato en cada push). URL pública:
   `disponible:false`). PayPhone exige CONFIRMAR cada cobro antes de 5 min o
   lo revierte: lo hace `/pagos/ec/retorno` al instante y, de respaldo, el APK
   manda el `transaction_id` al consultar `/pagos/ec/pago/{id}`.
+  **Persistencia en GET (trampa, sep-2026):** el middleware de `main.py`
+  solo guarda el snapshot tras POST/PUT/DELETE; los RETORNOS de pasarela
+  llegan por GET (el navegador del cliente vuelve) → todo handler GET que
+  mute plata debe llamar `pagos/router.py::_persistir_ahora()` (lo hacen
+  `/pagos/ec/retorno`, `/pagos/ec/pago/{id}` y `/pagos/ec/cancelado`). Se
+  perdió la primera recarga real de PayPhone por esto.
   `APP_API_KEY` (clave app↔backend: si está seteada, los endpoints PÚBLICOS de
   `propiedad/router.py` exigen la cabecera `X-App-Key` — solo el APK oficial la
   trae; vacía = no se exige, para rollout gradual). Debe coincidir con el

@@ -225,3 +225,30 @@ def test_snapshot_roundtrip():
     s2.load_state(state)
     assert s2.payphone_pagos["abc"]["pagado"] is True
     assert s2.payphone_pagos["abc"]["monto_usd"] == 10.0
+
+
+def test_retorno_por_get_persiste_al_instante(monkeypatch):
+    """El retorno de PayPhone llega por GET y el middleware solo persiste en
+    POST/PUT/DELETE: el saldo acreditado debe guardarse AHÍ MISMO o se pierde
+    en el siguiente redeploy (pasó con la primera recarga real, 5-sep-2026)."""
+    from db import pg
+    guardados: list[str] = []
+    monkeypatch.setattr(pg, "habilitado", True)
+    monkeypatch.setattr(pg, "guardar", lambda state: guardados.append("snap"))
+    monkeypatch.setattr(pg, "guardar_normalizado", lambda st: guardados.append("norm"))
+    monkeypatch.setattr(payphone, "preparar", _preparar_ok)
+    monkeypatch.setattr(payphone, "confirmar", lambda **kw: {
+        "ok": True, "aprobado": True, "estado": "Approved",
+        "transaction_id": "77", "monto_centavos": 100})
+    ident = client.post("/pagos/ec/pago", json={
+        "email": "g@b.com", "monto_usd": 1, "tipo": "recarga",
+        "dueno_id": "g@b.com"}).json()["identificador"]
+    guardados.clear()  # el POST ya persistió por middleware; lo que importa es el GET
+    client.get("/pagos/ec/retorno", params={"id": "77", "clientTransactionId": ident})
+    assert "snap" in guardados and "norm" in guardados
+    assert stores.saldo_centimos("g@b.com") == 100
+    # Cancelar por GET también deja rastro persistido.
+    ident2 = client.post("/pagos/ec/pago", json={"email": "g@b.com", "monto_usd": 2}).json()["identificador"]
+    guardados.clear()
+    client.get("/pagos/ec/cancelado", params={"clientTransactionId": ident2})
+    assert "snap" in guardados

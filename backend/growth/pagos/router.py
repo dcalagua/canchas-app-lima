@@ -554,10 +554,27 @@ def _json_str(s: str) -> str:
     return _json.dumps(s).replace("</", "<\\/")
 
 
+def _persistir_ahora() -> None:
+    """Guarda el estado YA. El middleware de main.py solo persiste tras
+    POST/PUT/DELETE, pero los retornos de pasarela llegan por GET (es el
+    navegador del cliente el que vuelve): sin esto, un saldo acreditado en el
+    retorno vivía solo en memoria y se PERDÍA en el siguiente redeploy. Pasó
+    el 5-sep-2026 con la primera recarga real de PayPhone ($1 → $0 tras un
+    push). Fail-safe: sin DATABASE_URL no hace nada."""
+    try:
+        from db import pg
+        if not pg.habilitado:
+            return
+        pg.guardar(stores.to_state())
+        pg.guardar_normalizado(stores)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _confirmar_ec(ident: str, transaction_id: str) -> dict | None:
     """Confirma con PayPhone y, si aprobó, marca pagado (idempotente). Si es
     una RECARGA, acredita el saldo al dueño una sola vez. Devuelve el pago o
-    None si no existe."""
+    None si no existe. Persiste al instante todo cambio (llega por GET)."""
     d = stores.payphone_pagos.get(ident)
     if not d:
         return None
@@ -566,6 +583,13 @@ def _confirmar_ec(ident: str, transaction_id: str) -> dict | None:
     tx = str(transaction_id or d.get("transaction_id") or "").strip()
     if not tx:
         return d
+    try:
+        return _confirmar_ec_inner(d, ident, tx)
+    finally:
+        _persistir_ahora()
+
+
+def _confirmar_ec_inner(d: dict, ident: str, tx: str) -> dict:
     d["transaction_id"] = tx
     c = payphone.confirmar(transaction_id=tx, client_tx_id=ident)
     if not c.get("ok"):
@@ -630,6 +654,7 @@ def ec_cancelado(clientTransactionId: str = "") -> HTMLResponse:
     d = stores.payphone_pagos.get((clientTransactionId or "").strip())
     if d and not d.get("pagado"):
         d["estado"] = "cancelado"
+        _persistir_ahora()
     return _pagina_ec("Pago cancelado", "No se te cobró nada. Cierra esta "
                       "ventana para volver a Pichangol e intentarlo cuando quieras.")
 
