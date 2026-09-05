@@ -76,6 +76,18 @@ jugador es 100% Pichangol, EBIM solo aparece discreto como respaldo).
     entra por `PagoTarjeta.cobrar`, que enruta por país. **Sin pasarela
     configurada, en PRODUCCIÓN nunca se simula** (`kEsProduccion`): se avisa y
     se devuelve false; en dev/QAS cae a la pasarela simulada para probar.
+  - **Comisión con MÍNIMO POR MONEDA (decisión del director, sep-2026):**
+    5 % con mínimo **S/ 2 · \$ 0.50 · Bs 3** (`config.comision_min` en el
+    backend, `PaisConfig.comisionMin` en el APK). Los endpoints
+    `/pagos/comision-reserva`, `/pagos/liquidacion-online` y `/pagos/venta`
+    reciben `moneda` (ISO o símbolo; vacío = PEN para APKs viejos) y la
+    GUARDAN en el pago, así el desglose de liquidaciones recalcula con la
+    moneda real. El APK la manda desde el país de las coordenadas de la
+    cancha (`_accionContable`) o la moneda del producto. Test
+    `test_comision_moneda.py`. Pendiente: la cuota de torneo sigue en PEN.
+  - **Montos de recarga por país:** `PaisConfig.recargas` (chips) +
+    `recargaMin`/`recargaMax` ("Otro monto"): S/ 20-200 (10-1000), \$ 5-50
+    (1-300), Bs 50-500 (20-3000). Para PRD subir el mínimo de EC a \$ 5.
   - Referencia central: `lib/config/pais.dart` (`PaisConfig`, `paisActual`).
   - **TRES países, no uno (decisión del director, sep-2026, opción C):**
     (1) **país que EXPLORA** = `paisActual` (GPS, pero el usuario lo elige a
