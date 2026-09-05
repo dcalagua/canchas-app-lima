@@ -2982,7 +2982,7 @@ class _SeccionBonosState extends State<_SeccionBonos> {
         montoSoles: o.precio,
         ventaId: ventaId,
         concepto: 'Bono ${o.horas}h · $_club',
-        moneda: _paisCancha.monedaIso,
+        moneda: widget.cancha.monedaSimbolo,
         compradorEmail: u.email.toLowerCase(),
         compradorNombre: u.nombre,
       );
