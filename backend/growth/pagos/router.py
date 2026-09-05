@@ -1387,15 +1387,28 @@ def post_regalo_saldo(req: RegaloSaldoReq) -> dict:
             "saldo_promo_soles": total / 100.0}
 
 
-def otorgar_bienvenida(email: str) -> dict:
+BIENVENIDA_CLAVE_POR_PAIS = {"PE": "bienvenida_saldo_soles",
+                             "EC": "bienvenida_saldo_usd",
+                             "BO": "bienvenida_saldo_bob"}
+
+
+def otorgar_bienvenida(email: str, pais: str = "PE") -> dict:
     """BIENVENIDA automática de la marcha blanca: cuando a un dueño NUEVO se le
     ACTIVA su primera cancha, recibe lo configurado en la torre — días de Pro de
-    cortesía y/o un saldo de REGALO que solo absorbe comisiones. Idempotente
-    (un regalo por correo, aunque registre varias canchas). Con la config en 0
-    no hace nada. La llama el flujo de reclamos al activar."""
+    cortesía y/o un saldo de REGALO que solo absorbe comisiones. El MONTO es
+    POR PAÍS (decisión del director, sep-2026: S/ 20 · $ 5 · Bs 35) y se
+    acredita en la moneda del país de la CANCHA activada ([pais], ISO).
+    Idempotente (un regalo por correo, aunque registre varias canchas). Con la
+    config en 0 no hace nada. La llama el flujo de reclamos al activar."""
+    from paises import moneda_de_pais, simbolo_de_moneda
     email = (email or "").strip().lower()
     if not email or "@" not in email:
         return {"ok": False, "error": "email_invalido"}
+    pais = (pais or "PE").strip().upper()
+    if pais not in BIENVENIDA_CLAVE_POR_PAIS:
+        pais = "PE"
+    moneda = moneda_de_pais(pais)
+    simbolo = simbolo_de_moneda(moneda)
 
     def _num(clave: str) -> float:
         try:
@@ -1404,7 +1417,7 @@ def otorgar_bienvenida(email: str) -> dict:
             return 0.0
 
     dias = int(_num("bienvenida_pro_dias"))
-    saldo_soles = _num("bienvenida_saldo_soles")
+    saldo_soles = _num(BIENVENIDA_CLAVE_POR_PAIS[pais])
     if dias <= 0 and saldo_soles <= 0:
         return {"ok": False, "apagada": True}
     if email in stores.bienvenidas:
@@ -1423,23 +1436,23 @@ def otorgar_bienvenida(email: str) -> dict:
             pass
         stores.membresias_pro[email] = {
             "hasta": (base + timedelta(days=dias)).isoformat(),
-            "cortesia": True, "pais": "PE"}
+            "cortesia": True, "pais": pais}
         partes.append(f"{dias} días de Pichangol Pro")
     if saldo_soles > 0:
         cent = _soles_a_centimos(saldo_soles)
         stores.acreditar_promo(email, cent)
         stores.registrar_pago(
-            tipo="bono_bienvenida", monto_centimos=cent, moneda="PEN",
+            tipo="bono_bienvenida", monto_centimos=cent, moneda=moneda,
             estado="aprobado", dueno_id=email,
             concepto="Regalo de bienvenida (cubre tus comisiones)")
-        partes.append(f"S/ {saldo_soles:.0f} de saldo de regalo para "
+        partes.append(f"{simbolo} {saldo_soles:g} de saldo de regalo para "
                       "tus comisiones")
     _aviso_push_usuario(
         email, "🎁 ¡Bienvenido a Pichangol!",
         "Por activar tu cancha te regalamos " + " y ".join(partes) +
         ". Ya está en tu cuenta.")
-    return {"ok": True, "email": email, "pro_dias": dias,
-            "saldo_soles": saldo_soles}
+    return {"ok": True, "email": email, "pro_dias": dias, "pais": pais,
+            "moneda": moneda, "saldo_soles": saldo_soles}
 
 
 @router.get("/pro/miembros-admin", dependencies=_ADMIN)

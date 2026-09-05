@@ -341,7 +341,10 @@ off → redeploy inmediato en cada push). URL pública:
   AUTOMÁTICA** (config torre, mismo pane: `bienvenida_pro_dias` +
   `bienvenida_saldo_soles`, 0/0 = off): al ACTIVARSE la primera cancha de un
   dueño (`_bienvenida_al_activar` en los 3 caminos de reclamos), recibe días
-  de Pro cortesía + **SALDO DE REGALO** (`stores.saldos_promo`, bolsillo
+  de Pro cortesía + **SALDO DE REGALO POR PAÍS** (decisión del director,
+  sep-2026: **S/ 20 · \$ 5 · Bs 35**; claves `bienvenida_saldo_soles|usd|bob`,
+  el país sale de las coordenadas del reclamo vía `paises.py::
+  pais_de_coordenadas`, espejo de las cajas del APK) (`stores.saldos_promo`, bolsillo
   SEPARADO que SOLO consumen comisiones vía `debitar_comision` — regalo
   primero, plata real después; NO liquidable/transferible/gastable en
   Pro/torneo/bodega, así no se vuelve plata real que salga de PCG). Un regalo

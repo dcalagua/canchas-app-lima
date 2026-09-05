@@ -29,7 +29,9 @@ CONFIG_DEFAULT: dict[str, str] = {
     # al ACTIVARSE su primera cancha reciben días de Pro de cortesía y/o un
     # saldo de REGALO (solo comisiones). 0 = apagado.
     "bienvenida_pro_dias": "0",
-    "bienvenida_saldo_soles": "0",
+    "bienvenida_saldo_soles": "0",   # regalo para dueños de PERÚ (S/)
+    "bienvenida_saldo_usd": "0",     # ECUADOR ($)
+    "bienvenida_saldo_bob": "0",     # BOLIVIA (Bs)
     "contacto_whatsapp_pe": "",
     "contacto_whatsapp_ec": "998706994",
     "contacto_whatsapp_bo": "",
