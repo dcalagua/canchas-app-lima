@@ -66,7 +66,13 @@ jugador es 100% Pichangol, EBIM solo aparece discreto como respaldo).
     PE → **Culqi** (tokeniza en la app; `pago_tarjeta_sheet.dart`), BO →
     **Libélula** (página hospedada en WebView; `pago_libelula.dart`), EC →
     **PayPhone** (botón de pagos hospedado en USD; `pago_payphone.dart`,
-    backend `pagos/payphone.py` + `/pagos/ec/*`, hecho sep-2026). Todo cobro
+    backend `pagos/payphone.py` + `/pagos/ec/*`, hecho sep-2026). **La
+    página de PayPhone se abre en NAVEGADOR REAL (Chrome Custom Tab vía
+    `launchUrl(inAppBrowserView)`), NUNCA en WebView:** PayPhone rechaza el
+    WebView de Android ("No autorizado… intenta desde la página de origen")
+    aunque dominio y puente estén bien; la misma URL en Chrome carga. La app
+    se queda en un diálogo que sondea `/pagos/ec/pago/{id}` (y al volver al
+    frente) hasta que el retorno confirme; el WebView queda solo de respaldo. Todo cobro
     entra por `PagoTarjeta.cobrar`, que enruta por país. **Sin pasarela
     configurada, en PRODUCCIÓN nunca se simula** (`kEsProduccion`): se avisa y
     se devuelve false; en dev/QAS cae a la pasarela simulada para probar.

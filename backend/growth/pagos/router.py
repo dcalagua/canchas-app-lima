@@ -614,7 +614,8 @@ def ec_retorno(id: str = "", clientTransactionId: str = "") -> HTMLResponse:
     ident = (clientTransactionId or "").strip()
     d = _confirmar_ec(ident, id) if ident else None
     if d and d.get("pagado"):
-        return _pagina_ec("¡Pago recibido! ✅", "Ya puedes volver a Pichangol.")
+        return _pagina_ec("¡Pago recibido! ✅", "Cierra esta ventana para volver a "
+                          "Pichangol: tu pago ya quedó confirmado.")
     if d:
         return _pagina_ec("Pago no aprobado",
                           "PayPhone no aprobó el cobro. Puedes intentarlo de "
@@ -629,8 +630,8 @@ def ec_cancelado(clientTransactionId: str = "") -> HTMLResponse:
     d = stores.payphone_pagos.get((clientTransactionId or "").strip())
     if d and not d.get("pagado"):
         d["estado"] = "cancelado"
-    return _pagina_ec("Pago cancelado", "No se te cobró nada. Puedes volver a "
-                      "Pichangol e intentarlo cuando quieras.")
+    return _pagina_ec("Pago cancelado", "No se te cobró nada. Cierra esta "
+                      "ventana para volver a Pichangol e intentarlo cuando quieras.")
 
 
 @router.get("/ec/pago/{identificador}", dependencies=_APP)
