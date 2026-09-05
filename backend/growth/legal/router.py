@@ -19,6 +19,7 @@ import base64
 import hashlib
 import hmac
 import json
+import os
 import urllib.parse
 
 from fastapi import APIRouter, Request
@@ -67,6 +68,25 @@ def _doc(titulo: str, cuerpo: str) -> str:
         f"(Lima, Perú). Contacto: <a href='mailto:{CONTACTO}'>{CONTACTO}</a>.</p>"
         f"<p class='mut'>Vigente desde el {VIGENCIA}.</p></footer>"
         "</div></body></html>")
+
+
+# Home de marketing (`home.html`, junto a este archivo): es lo que ve quien
+# entra al dominio de marca a secas. La revisan las pasarelas al afiliar el
+# comercio (Culqi exige una URL viva con razón social/RUC, contacto, términos,
+# política de cancelaciones y Libro de Reclamaciones). Se lee del disco en cada
+# request (22 KB, sin costo) para que un cambio de texto no requiera reiniciar.
+_HOME = os.path.join(os.path.dirname(os.path.abspath(__file__)), "home.html")
+
+
+@router.get("/", response_class=HTMLResponse, include_in_schema=False)
+def home() -> HTMLResponse:
+    try:
+        with open(_HOME, encoding="utf-8") as f:
+            return HTMLResponse(f.read())
+    except OSError:
+        return HTMLResponse(_doc("Pichangol", "<p>Reserva, juega, repite.</p>"
+                                    f"<p>Contacto: <a href='mailto:{CONTACTO}'>"
+                                    f"{CONTACTO}</a></p>"))
 
 
 @router.get("/legal/privacidad", response_class=HTMLResponse)

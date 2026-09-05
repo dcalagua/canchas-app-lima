@@ -148,8 +148,13 @@ para la API del APK.
   secret `LANDING_BASE_URL` en GitHub Actions (para el APK) **y** variable
   `LANDING_BASE_URL` en Railway `pg-backend` (para el HTML) = `https://pg.ebim.pe`
   en el **piloto**, `https://www.pichangol.app` en **PROD**.
-- El apex `pichangol.app` (sin `www`) queda libre para la home de marketing
-  (`landing/index.html`).
+- **Home de marca en la raíz (`GET /`, hecho sep-2026):** el backend sirve
+  `backend/growth/legal/home.html` (antes `landing/index.html`, que no se
+  servía en ningún lado y `www.pichangol.app/` daba 404). Es la **URL del
+  comercio** que se declara en Culqi/PayPhone al afiliar: razón social, RUC,
+  contacto, términos, cancelaciones, Libro de Reclamaciones y enlaces a
+  `/legal/*`. Test `test_home_de_marca_en_la_raiz`.
+- El apex `pichangol.app` (sin `www`) sigue libre (podría redirigir al `www`).
 
 ## Estrategia de ambientes (piloto → prod)
 

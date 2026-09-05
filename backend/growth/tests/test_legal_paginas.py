@@ -49,3 +49,18 @@ def test_el_callback_de_meta_sigue_vivo():
     assert cli.get("/legal/eliminacion-datos").status_code == 200
     # Sin firma válida, el callback responde igual (no revienta).
     assert cli.post("/legal/eliminacion-datos").status_code in (200, 400)
+
+
+def test_home_de_marca_en_la_raiz():
+    """La raíz del dominio sirve la home de marketing: es la URL del comercio
+    que revisan las pasarelas (Culqi) al afiliar, y debe tener razón social,
+    RUC, contacto, términos, cancelaciones y Libro de Reclamaciones, además de
+    enlaces a las páginas legales oficiales."""
+    r = cli.get("/")
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+    for texto in ("GRUPO EBIM S.A.C.", "20602517986", "contacto@ebim.pe",
+                  'id="terminos"', 'id="devoluciones"', 'id="reclamaciones"',
+                  'href="/legal/terminos"', 'href="/legal/privacidad"',
+                  'href="/legal/eliminar-cuenta"'):
+        assert texto in r.text, texto
