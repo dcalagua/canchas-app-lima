@@ -326,8 +326,12 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
           );
     if (!mounted) return;
     if (ok) {
-      await appState.sincronizarSaldo(); // el backend ya acreditó; refresca
-      if (mounted) Navigator.of(context).pop(_monto);
+      // El backend ya acreditó. NO se sincroniza aquí: el llamador refleja el
+      // monto devuelto (`appState.recargar`), igual que en el camino Culqi, y
+      // la siguiente sincronización deja el saldo autoritativo del backend.
+      // Sincronizar Y devolver el monto duplicaba el saldo en pantalla
+      // (\$1 recargado → \$2 mostrado hasta reabrir la billetera).
+      Navigator.of(context).pop(_monto);
     }
   }
 
