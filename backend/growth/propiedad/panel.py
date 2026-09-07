@@ -578,6 +578,37 @@ def set_bienvenida_admin(
             "saldo_usd": usd, "saldo_bob": bob}
 
 
+@router.get("/admin/api/reclamaciones")
+def get_reclamaciones_admin(
+        x_admin_token: str | None = Header(default=None)) -> dict:
+    """Libro de Reclamaciones: todas las hojas, las pendientes primero."""
+    _check(x_admin_token)
+    hojas = sorted(stores.reclamaciones,
+                   key=lambda h: (h.get("estado") != "pendiente", -int(h.get("id", 0))))
+    pend = sum(1 for h in stores.reclamaciones if h.get("estado") == "pendiente")
+    return {"reclamaciones": hojas, "pendientes": pend, "total": len(stores.reclamaciones)}
+
+
+class ReclamacionRespuestaReq(BaseModel):
+    respuesta: str = ""
+
+
+@router.post("/admin/api/reclamaciones/{rid}/atender")
+def atender_reclamacion_admin(
+        rid: int, req: ReclamacionRespuestaReq,
+        x_admin_token: str | None = Header(default=None)) -> dict:
+    """Marca la hoja como atendida y guarda la respuesta dada al consumidor
+    (la respuesta formal se le envía por correo; aquí queda el registro)."""
+    _check(x_admin_token)
+    for h in stores.reclamaciones:
+        if int(h.get("id", 0)) == rid:
+            h["estado"] = "atendida"
+            h["respuesta"] = (req.respuesta or "").strip()[:2000]
+            h["respondida_en"] = datetime.now(timezone.utc).isoformat()
+            return {"ok": True, "numero": h.get("numero")}
+    return {"ok": False, "error": "no_encontrada"}
+
+
 class ProPrecioReq(BaseModel):
     precio_soles: float
     pais: str = "pe"
@@ -1365,6 +1396,10 @@ _HTML = r"""<!DOCTYPE html>
             <span class="md-ico">🎁</span>
             <span class="md-txt"><b>Promociones</b><small>Bono de recarga · cupones</small></span>
           </button>
+          <button class="md-item" data-pane="reclamacionesPanel" onclick="mostrarPane(this,'reclamacionesPanel');cargarReclamaciones()">
+            <span class="md-ico">📕</span>
+            <span class="md-txt"><b>Libro de Reclamaciones</b><small>INDECOPI · responder en 15 días hábiles</small></span>
+          </button>
         </aside>
         <div class="md-detail">
           <div class="md-pane" id="comision"></div>
@@ -1375,6 +1410,7 @@ _HTML = r"""<!DOCTYPE html>
           <div class="md-pane" id="proPanel" style="display:none"></div>
           <div class="md-pane" id="recargasQr" style="display:none"></div>
           <div class="md-pane" id="promosPanel" style="display:none"></div>
+          <div class="md-pane" id="reclamacionesPanel" style="display:none"></div>
         </div>
       </div>
     </section>
@@ -2408,6 +2444,55 @@ function mostrarSeccion(sec){
 }
 
 // --- Recargas por QR (Yape directo): el operador verifica y aprueba -------------
+async function cargarReclamaciones(){
+  const box = document.getElementById('reclamacionesPanel');
+  if(!box) return;
+  box.innerHTML = '<div class="card">Cargando…</div>';
+  try{
+    const r = await fetch('/admin/api/reclamaciones',{headers:headers()});
+    if(r.status===401){ salir(); return; }
+    if(!r.ok){ box.innerHTML='<div class="card">No se pudo cargar.</div>'; return; }
+    const j = await r.json();
+    const hs = j.reclamaciones||[];
+    const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    if(!hs.length){
+      box.innerHTML = '<div class="card">Sin hojas de reclamación. Se registran desde el Libro de '
+        + 'Reclamaciones de la home pública (<code>/#reclamaciones</code>).</div>';
+      return;
+    }
+    box.innerHTML = `<div class="row" style="margin-bottom:10px;color:var(--muted)">
+        ${j.pendientes||0} pendiente(s) de ${j.total||hs.length}. Plazo legal: 15 días hábiles desde la fecha.</div>` +
+      hs.map(h=>`
+      <div class="card" style="margin-bottom:12px;${h.estado==='pendiente'?'border-left:4px solid #e0a800':''}">
+        <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <div style="font-weight:800;font-size:15px">${esc(h.numero)} · ${esc(h.detalle&&h.detalle.tipo)}</div>
+          <div style="color:#667;font-size:12.5px">${fmtFecha(h.fecha)} · <b>${esc(h.estado)}</b></div>
+        </div>
+        <div style="font-size:13px;margin-top:6px">
+          <b>Consumidor:</b> ${esc(h.consumidor.nombre)} · DNI/CE ${esc(h.consumidor.doc)} ·
+          <a href="mailto:${esc(h.consumidor.email)}">${esc(h.consumidor.email)}</a>
+          ${h.consumidor.tel?(' · '+esc(h.consumidor.tel)):''}${h.consumidor.menor==='Sí'?' · <b>menor de edad</b>':''}</div>
+        <div style="font-size:13px;margin-top:4px"><b>Bien:</b> ${esc(h.bien.tipo)}${h.bien.monto?(' · S/ '+esc(h.bien.monto)):''}${h.bien.desc?(' · '+esc(h.bien.desc)):''}</div>
+        <div style="font-size:13px;margin-top:6px;white-space:pre-wrap"><b>Detalle:</b> ${esc(h.detalle.detalle)}</div>
+        <div style="font-size:13px;margin-top:4px;white-space:pre-wrap"><b>Pedido:</b> ${esc(h.detalle.pedido)}</div>
+        ${h.estado==='pendiente' ? `
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <input id="resp${h.id}" placeholder="Respuesta dada al consumidor (resumen)"
+            style="flex:1;min-width:240px;padding:8px;border:1px solid var(--border);border-radius:8px">
+          <button class="btn-ap" onclick="atenderReclamacion(${h.id})">✅ Marcar atendida</button>
+        </div>` : `<div style="font-size:12.5px;color:#667;margin-top:6px">Atendida ${fmtFecha(h.respondida_en)}${h.respuesta?(' · '+esc(h.respuesta)):''}</div>`}
+      </div>`).join('');
+  }catch(e){ box.innerHTML='<div class="card">No se pudo cargar.</div>'; }
+}
+async function atenderReclamacion(id){
+  const respuesta = (document.getElementById('resp'+id)||{}).value||'';
+  if(!confirm('¿Marcar la hoja como atendida? Recuerda enviar la respuesta formal al correo del consumidor.')) return;
+  const r = await fetch('/admin/api/reclamaciones/'+id+'/atender',{method:'POST',headers:headers(),
+    body:JSON.stringify({respuesta})});
+  if(r.status===401){ salir(); return; }
+  if(r.ok){ toast('Hoja atendida'); await cargarReclamaciones(); }
+  else toast('No se pudo guardar');
+}
 async function cargarRecargasQr(){
   const box = document.getElementById('recargasQr');
   if(!box) return;

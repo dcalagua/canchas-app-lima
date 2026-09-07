@@ -165,7 +165,18 @@ para la API del APK.
   servía en ningún lado y `www.pichangol.app/` daba 404). Es la **URL del
   comercio** que se declara en Culqi/PayPhone al afiliar: razón social, RUC,
   contacto, términos, cancelaciones, Libro de Reclamaciones y enlaces a
-  `/legal/*`. Test `test_home_de_marca_en_la_raiz`.
+  `/legal/*`. Test `test_home_de_marca_en_la_raiz`. **Requisitos de Culqi
+  para la URL del comercio (infografía, sep-2026), ya cubiertos:** ≥5
+  servicios con foto (SVG inline), descripción y precio visible + botón de
+  compra (sección `#servicios`, enlaza a Play); **Libro de Reclamaciones
+  INTEGRADO** (INDECOPI: no correo ni formularios externos): la home hace
+  `POST /reclamaciones` (`legal/router.py`, número `PICH-AAAAMMDD-NNNN`,
+  `stores.reclamaciones` en el snapshot) y el operador lo atiende en la
+  torre `/admin` → Cobros → Libro de Reclamaciones (responder en ≤15 días
+  hábiles); SSL en todo el dominio; contacto con número, correo y dirección.
+  Culqi además exige que la app esté PUBLICADA en Play (o darles acceso de
+  tester). La URL registrada en Culqi debe ser `www.pichangol.app`, NO
+  `grupoebim.com` (observación de Culqi, sep-2026).
 - El apex `pichangol.app` (sin `www`) sigue libre (podría redirigir al `www`).
 
 ## Estrategia de ambientes (piloto → prod)

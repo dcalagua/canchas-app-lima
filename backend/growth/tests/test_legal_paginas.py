@@ -64,3 +64,47 @@ def test_home_de_marca_en_la_raiz():
                   'href="/legal/terminos"', 'href="/legal/privacidad"',
                   'href="/legal/eliminar-cuenta"'):
         assert texto in r.text, texto
+
+
+def test_libro_de_reclamaciones_integrado():
+    """INDECOPI / Culqi: el Libro de Reclamaciones vive en el backend (no en un
+    correo ni formulario externo): registra con número correlativo, la torre lo
+    lista y lo marca atendido."""
+    from db.store import stores
+    hoja = {"c_nombre": "Ana Pérez", "c_doc": "12345678", "c_tel": "999",
+            "c_email": "Ana@x.com", "b_tipo": "Servicio", "b_monto": "60",
+            "b_desc": "Reserva 12/07", "d_tipo": "Reclamo",
+            "d_detalle": "La cancha estaba ocupada.", "d_pedido": "Devolución."}
+    r = cli.post("/reclamaciones", json=hoja).json()
+    assert r["ok"] and r["numero"].startswith("PICH-")
+    assert any(h["numero"] == r["numero"] and h["consumidor"]["email"] == "ana@x.com"
+               for h in stores.reclamaciones)
+    # Campos obligatorios: sin detalle no se registra.
+    assert cli.post("/reclamaciones", json={**hoja, "d_detalle": ""}).json()["ok"] is False
+    # La home muestra el formulario apuntando al backend y el catálogo con precios.
+    home = cli.get("/").text
+    assert "fetch('/reclamaciones'" in home and 'id="servicios"' in home
+    assert home.count('class="prod"') >= 5 and "Desde S/" in home
+    assert "play.google.com/store/apps/details?id=pe.ebim.pichangol" in home
+    # Torre: listar y atender (exige token admin).
+    import config
+    assert cli.get("/admin/api/reclamaciones").status_code in (401, 503)
+    tok = config.ADMIN_PANEL_TOKEN or "x"
+    prev = config.ADMIN_PANEL_TOKEN
+    config.ADMIN_PANEL_TOKEN = tok
+    try:
+        j = cli.get("/admin/api/reclamaciones", headers={"X-Admin-Token": tok}).json()
+        mine = [h for h in j["reclamaciones"] if h["numero"] == r["numero"]][0]
+        assert mine["estado"] == "pendiente"
+        a = cli.post(f"/admin/api/reclamaciones/{mine['id']}/atender",
+                     headers={"X-Admin-Token": tok},
+                     json={"respuesta": "Se devolvió el monto."}).json()
+        assert a["ok"]
+        j2 = cli.get("/admin/api/reclamaciones", headers={"X-Admin-Token": tok}).json()
+        assert [h for h in j2["reclamaciones"] if h["id"] == mine["id"]][0]["estado"] == "atendida"
+    finally:
+        config.ADMIN_PANEL_TOKEN = prev
+    # Sobrevive al snapshot.
+    from db.store import Stores
+    s2 = Stores(); s2.load_state(stores.to_state())
+    assert any(h["numero"] == r["numero"] for h in s2.reclamaciones)

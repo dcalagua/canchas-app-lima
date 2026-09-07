@@ -550,6 +550,12 @@ class Stores:
         # autorizacion, fecha_pago, creado_en}. Se crea pendiente al preparar;
         # se marca pagado al CONFIRMAR con PayPhone (nunca por un GET suelto).
         self.payphone_pagos: dict[str, dict] = {}
+        # LIBRO DE RECLAMACIONES (Ley 29571 / D.S. 011-2011-PCM): hojas
+        # registradas desde la home pública. INDECOPI exige que esté integrado
+        # en la web (no un formulario externo) y responder en 15 días hábiles.
+        # {id, numero, fecha, consumidor{...}, bien{...}, detalle{...},
+        #  estado: pendiente|atendida, respuesta, respondida_en}
+        self.reclamaciones: list[dict] = []
         self._idem: dict[tuple[str, str], dict] = {}
         self._ids: dict[str, int] = {}
 
@@ -966,6 +972,7 @@ class Stores:
                 k: dict(v) for k, v in self.libelula_deudas.items()},
             "payphone_pagos": {
                 k: dict(v) for k, v in self.payphone_pagos.items()},
+            "reclamaciones": [dict(r) for r in self.reclamaciones],
             "jugadores_circuito": {
                 k: dict(v) for k, v in self.jugadores_circuito.items()},
             "ranking_snapshot": dict(self.ranking_snapshot),
@@ -1041,6 +1048,7 @@ class Stores:
         self.payphone_pagos = {
             k: dict(v) for k, v in (data.get("payphone_pagos") or {}).items()
         }
+        self.reclamaciones = [dict(r) for r in (data.get("reclamaciones") or [])]
         self.jugadores_circuito = {
             k: dict(v) for k, v in (data.get("jugadores_circuito") or {}).items()
         }
