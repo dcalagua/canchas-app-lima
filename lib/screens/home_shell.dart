@@ -93,7 +93,9 @@ class _HomeShellState extends State<HomeShell> {
                     for (var i = 0; i < _iconos.length; i++)
                       NavigationRailDestination(
                         icon: i == _iMensajes
-                            ? IconoMensajesLogo(activo: _index == _iMensajes)
+                            ? IconoMensajesLogo(
+                                activo: _index == _iMensajes,
+                                color: _colores[i])
                             : Icon(_iconos[i], color: _colores[i]),
                         label: Text(_etiquetas[i]),
                       ),

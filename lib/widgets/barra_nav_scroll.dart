@@ -63,7 +63,7 @@ class BarraNavScroll extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             i == iMensajes
-                ? IconoChatPichan(activo: sel)
+                ? IconoChatPichan(activo: sel, color: color)
                 : Icon(iconos[i], color: color, size: 25),
             const SizedBox(height: 3),
             Text(

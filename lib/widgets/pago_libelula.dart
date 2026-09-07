@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../config/features.dart';
 import '../screens/pago_sheet.dart';
 import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'cargando_pichangol.dart';
+import 'dialogo_pichangol.dart';
 
 /// Cobro con LIBÉLULA (Bolivia). Modelo "deuda + pasarela hospedada": el backend
 /// registra la deuda y devuelve una URL; aquí abrimos esa URL en un WebView para
@@ -88,8 +91,20 @@ class PagoLibelula {
     }
     if (!context.mounted) return false;
 
-    // Sin pasarela configurada → demo simulada (igual que Culqi).
+    // Sin pasarela configurada: en producción NO se simula nunca (sería
+    // acreditar plata inexistente); en dev/QAS sí, para recorrer el flujo.
     if (r == null || r['error'] == 'no_configurado') {
+      if (kEsProduccion) {
+        await avisarPichangol(
+          context,
+          titulo: 'Pago en la app no disponible',
+          mensaje: 'Todavía no tenemos habilitado el cobro dentro de '
+              'Pichangol en Bolivia, así que no se te cobró nada. Coordina '
+              'el pago directamente con el local o el vendedor.',
+          icono: Icons.credit_card_off_outlined,
+        );
+        return false;
+      }
       final sim = await PagoSheet.mostrar(context,
           monto: monto, concepto: concepto, moneda: moneda);
       return sim != null && sim.exito;
@@ -157,6 +172,13 @@ class _LibelulaWebViewState extends State<_LibelulaWebView> {
           if (mounted) setState(() => _cargando = false);
         },
         onNavigationRequest: (req) {
+          // Esquemas no web (tigo://, whatsapp://, intent://…): al sistema.
+          final uri = Uri.tryParse(req.url);
+          if (uri != null && uri.scheme != 'http' && uri.scheme != 'https') {
+            launchUrl(uri, mode: LaunchMode.externalApplication)
+                .catchError((_) => false);
+            return NavigationDecision.prevent;
+          }
           // Al volver a nuestra URL de retorno, el pago se hizo: cerramos OK.
           if (req.url.contains('/pagos/bo/retorno')) {
             Navigator.of(context).pop(true);

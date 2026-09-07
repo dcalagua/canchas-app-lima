@@ -1,92 +1,45 @@
 import 'package:flutter/material.dart';
 
-/// Ícono de la pestaña MENSAJES en las barras/rails. Decisión del director
-/// (ago-2026): NO usar el logo de Pichangol aquí — va la BURBUJA DE CHAT
-/// propia (verde con la "P" de Pichan): se lee como "mensajes" de un vistazo
-/// y sigue "con vida" (regla Airbnb: color, nunca gris plano).
+/// Ícono de la pestaña MENSAJES en las barras/rails.
+///
+/// Decisión del director (sep-2026): va un ícono de chat NORMAL, del mismo
+/// lenguaje que Explorar/Partidos/Reservas (línea cuando no está seleccionado,
+/// relleno cuando sí). Nada de logo ni burbuja de marca: la pestaña se lee
+/// como "mensajes" de un vistazo y no compite con el logo de Pichangol.
+/// (Historial: llevó el pin de PCG → se revirtió; luego la burbuja con la "P"
+/// de Pichan → también se revirtió. Este es el definitivo.)
+///
+/// Si no se pasa [color], hereda el del `IconTheme` (así en la barra inferior
+/// se pinta igual que las demás pestañas); los rails/barras "con vida" le pasan
+/// el color de su sección, como a los otros íconos.
 class IconoMensajesLogo extends StatelessWidget {
-  const IconoMensajesLogo({super.key, this.size = 27, this.activo = true});
+  const IconoMensajesLogo(
+      {super.key, this.size = 25, this.activo = true, this.color});
   final double size;
   final bool activo;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) =>
-      IconoChatPichan(size: size, activo: activo);
+      IconoChatPichan(size: size, activo: activo, color: color);
 }
 
-/// Ícono propio de la mensajería Pichangol ("Pichan"): una burbuja de chat con
-/// degradado verde de marca (lima → teal, el mismo del header) y la "P" de Pichan
-/// en blanco. Se lee como "chat", es identidad propia (NO el logo de WhatsApp) y
-/// va "con vida" (regla de UI Airbnb): no se apaga a gris; solo baja un poco de
-/// opacidad cuando la pestaña no está seleccionada. Dibujado con CustomPainter →
-/// nítido a cualquier tamaño, sin asset externo.
+/// Mismo ícono, nombre histórico (lo usan varias barras).
 class IconoChatPichan extends StatelessWidget {
-  const IconoChatPichan({super.key, this.size = 24, this.activo = true});
+  const IconoChatPichan(
+      {super.key, this.size = 25, this.activo = true, this.color});
   final double size;
 
-  /// Si false (pestaña no seleccionada), se muestra con un poco menos de opacidad.
+  /// Seleccionado → versión rellena; si no, la de línea.
   final bool activo;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
-    return Opacity(
-      opacity: activo ? 1 : 0.72,
-      child: SizedBox(
-        width: size,
-        height: size,
-        child: const CustomPaint(painter: _PichanPainter()),
-      ),
+    return Icon(
+      activo ? Icons.chat_bubble : Icons.chat_bubble_outline,
+      size: size,
+      color: color,
     );
   }
-}
-
-class _PichanPainter extends CustomPainter {
-  const _PichanPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final s = size.width;
-    final paint = Paint()
-      ..isAntiAlias = true
-      ..shader = const LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [Color(0xFF128C7E), Color(0xFF008489)], // lima → teal (marca)
-      ).createShader(Offset.zero & size);
-
-    // Cuerpo de la burbuja (cuadrado muy redondeado, estilo WhatsApp).
-    final m = s * 0.06;
-    final body = RRect.fromRectAndRadius(
-      Rect.fromLTRB(m, m, s - m, s * 0.80),
-      Radius.circular(s * 0.26),
-    );
-    canvas.drawRRect(body, paint);
-
-    // Colita de la burbuja (abajo a la izquierda).
-    final tail = Path()
-      ..moveTo(s * 0.24, s * 0.70)
-      ..lineTo(s * 0.20, s * 0.95)
-      ..lineTo(s * 0.44, s * 0.76)
-      ..close();
-    canvas.drawPath(tail, paint);
-
-    // La "P" de Pichan, calada en blanco, centrada en el cuerpo (arriba de la cola).
-    final tp = TextPainter(
-      text: TextSpan(
-        text: 'P',
-        style: TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w900,
-          fontSize: s * 0.52,
-          height: 1,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    tp.paint(
-        canvas, Offset(s / 2 - tp.width / 2, s * 0.40 - tp.height / 2));
-  }
-
-  @override
-  bool shouldRepaint(covariant _PichanPainter oldDelegate) => false;
 }

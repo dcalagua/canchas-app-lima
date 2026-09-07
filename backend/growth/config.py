@@ -245,9 +245,25 @@ CULQI_API_BASE = os.getenv("CULQI_API_BASE", "https://api.culqi.com/v2")
 # la URL registrada en el panel de Culqi. Filtro ligero anti-ruido; la fuente de
 # verdad es re-consultar el cargo a Culqi con la sk. Vacío = no se exige.
 CULQI_WEBHOOK_TOKEN = os.getenv("CULQI_WEBHOOK_TOKEN", "")
-# Comisión de Pichangol por reserva (modelo inDrive). 5% con mínimo S/2.
+# Comisión de Pichangol por reserva (modelo inDrive). 5% con MÍNIMO POR
+# MONEDA (decisión del director, sep-2026): S/ 2 (PEN), $ 0.50 (USD, Ecuador)
+# y Bs 3 (BOB, Bolivia). Un solo mínimo "2" en cualquier moneda era 20% de una
+# reserva de $10 en Guayaquil y casi nada en La Paz.
 COMISION_PORC = float(os.getenv("COMISION_PORC", "5"))
-COMISION_MIN_SOLES = float(os.getenv("COMISION_MIN_SOLES", "2"))
+COMISION_MIN_SOLES = float(os.getenv("COMISION_MIN_SOLES", "2"))   # PEN
+COMISION_MIN_USD = float(os.getenv("COMISION_MIN_USD", "0.5"))     # EC
+COMISION_MIN_BOB = float(os.getenv("COMISION_MIN_BOB", "3"))       # BO
+
+
+def comision_min(moneda: str = "PEN") -> float:
+    """Mínimo de comisión en la unidad mayor de [moneda] (ISO). Desconocida →
+    el de soles (comportamiento histórico)."""
+    m = (moneda or "PEN").strip().upper()
+    if m in ("USD", "$"):
+        return COMISION_MIN_USD
+    if m in ("BOB", "BS"):
+        return COMISION_MIN_BOB
+    return COMISION_MIN_SOLES
 
 # --- Libélula (pasarela de pagos de BOLIVIA: QR · tarjeta · Tigo Money) ------
 # Modelo distinto a Culqi: el backend REGISTRA una "deuda" (con el appkey) y
@@ -257,6 +273,19 @@ COMISION_MIN_SOLES = float(os.getenv("COMISION_MIN_SOLES", "2"))
 # (fail-safe). La llave de PRUEBAS y la de PRODUCCIÓN apuntan a la misma URL.
 LIBELULA_APPKEY = os.getenv("LIBELULA_APPKEY", "")
 LIBELULA_BASE_URL = os.getenv("LIBELULA_BASE_URL", "https://api.libelula.bo")
+
+# --- PayPhone (pasarela de pagos de ECUADOR: tarjeta · saldo PayPhone) -------
+# "Botón de pagos" por redirección: el backend PREPARA la transacción con el
+# token de Developer y PayPhone devuelve URLs hospedadas donde el cliente paga;
+# al terminar lo devuelve al responseUrl con ?id=<tx>&clientTransactionId=<id>
+# y hay que CONFIRMAR dentro de 5 minutos o PayPhone REVIERTE el cobro. Token y
+# storeId SÓLO viven aquí (Railway), nunca en el APK. Sin ambos el módulo queda
+# inactivo (fail-safe). Se obtienen en PayPhone Business → Developer →
+# Aplicaciones (rol "Developer" sobre el RUC del comercio).
+PAYPHONE_TOKEN = os.getenv("PAYPHONE_TOKEN", "")
+PAYPHONE_STORE_ID = os.getenv("PAYPHONE_STORE_ID", "")
+PAYPHONE_BASE_URL = os.getenv(
+    "PAYPHONE_BASE_URL", "https://pay.payphonetodoesposible.com")
 
 ZONAS = ("lima_norte", "lima_sur", "lima_este", "lima_moderna", "callao")
 

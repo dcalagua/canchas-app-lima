@@ -9,6 +9,7 @@ import '../widgets/cargando_pichangol.dart';
 import '../utils/input_formatos.dart';
 import '../widgets/marcas_pago.dart';
 import '../widgets/pago_libelula.dart';
+import '../widgets/pago_payphone.dart';
 import '../widgets/pago_procesando.dart';
 import '../widgets/responsive.dart';
 import '../widgets/sesion_requerida.dart';
@@ -28,10 +29,12 @@ class RecargarSaldoScreen extends StatefulWidget {
   final String? duenoId;
   final String? titulo;
 
-  /// País del saldo que se recarga. Define la MONEDA mostrada y la PASARELA:
-  /// Perú (Culqi) usa el formulario Yape/tarjeta; los demás países aún no tienen
-  /// pasarela integrada (#35 Libélula) y muestran un aviso "próximamente".
-  /// Si es null, se asume el flujo Culqi de Perú (comportamiento histórico).
+  /// País del saldo que se recarga. Define la MONEDA mostrada y la PASARELA
+  /// (Perú → Culqi con Yape/tarjeta; Bolivia → Libélula; Ecuador → PayPhone).
+  /// Si es null se usa el país de la BILLETERA del usuario
+  /// (`appState.paisBilletera`), nunca el del GPS: antes, con null, caía a
+  /// Culqi mientras la moneda salía del GPS, y un dueño en Guayaquil veía
+  /// "$ 50" con Yape.
   final PaisConfig? pais;
 
   @override
@@ -41,8 +44,11 @@ class RecargarSaldoScreen extends StatefulWidget {
 enum _Metodo { yape, tarjeta }
 
 class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
-  static const _montos = [20, 50, 100, 200];
-  int _monto = 50;
+  // Monto elegido, en la unidad mayor de la moneda de la billetera. Los chips
+  // salen de `PaisConfig.recargas` (calibrados por país: \$ 5 en Ecuador, S/ 20
+  // en Perú); "Otro monto" acepta cualquier entero entre recargaMin y
+  // recargaMax del país.
+  late int _monto;
   _Metodo _metodo = _Metodo.yape;
   bool _cargando = true;
   String? _pk;
@@ -101,24 +107,156 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
 
   String get _email => appState.usuario?.email ?? '';
 
-  /// Moneda a mostrar: la del país del saldo si se pasó, si no la del saldo del
-  /// dueño (histórico Perú).
-  String get _mon => widget.pais?.moneda ?? appState.monedaSaldoSimbolo;
+  /// País de la billetera que se recarga: el que pasó el llamador o, si no,
+  /// el de la billetera del usuario. Moneda y pasarela salen SIEMPRE de aquí.
+  PaisConfig get _pais => widget.pais ?? appState.paisBilletera;
 
-  /// ¿La pasarela del país está integrada? Perú (Culqi) y Bolivia (Libélula).
-  /// Los demás muestran el aviso "próximamente" en vez del formulario de cobro.
+  /// Moneda a mostrar: la de la billetera.
+  String get _mon => _pais.moneda;
+
+  /// ¿La pasarela del país está integrada? Perú (Culqi), Bolivia (Libélula) y
+  /// Ecuador (PayPhone). Los demás muestran el aviso "próximamente" en vez del
+  /// formulario de cobro.
   bool get _pasarelaLista =>
-      widget.pais == null ||
-      widget.pais!.pasarela == 'culqi' ||
-      widget.pais!.pasarela == 'libelula';
+      _pais.pasarela == 'culqi' ||
+      _pais.pasarela == 'libelula' ||
+      _pais.pasarela == 'payphone';
 
-  /// Bolivia: el cobro es hospedado (Libélula), no tokenización en la app.
-  bool get _esLibelula => widget.pais?.pasarela == 'libelula';
+  /// Bolivia y Ecuador: el cobro es HOSPEDADO (Libélula / PayPhone abren su
+  /// propia página en un WebView), no tokenización de tarjeta en la app.
+  bool get _esLibelula =>
+      _pais.pasarela == 'libelula' || _pais.pasarela == 'payphone';
 
   @override
   void initState() {
     super.initState();
+    final sug = _pais.recargas;
+    _monto = sug.length > 1 ? sug[1] : sug.first;
     _cargarConfig();
+  }
+
+  /// Chips de monto (sugeridos del país + "Otro monto"). Compartido por el
+  /// formulario Culqi y el hospedado (Libélula/PayPhone).
+  Widget _chipsMonto(ColorScheme cs) {
+    final sug = _pais.recargas;
+    final otro = !sug.contains(_monto);
+    Widget chip(String texto, bool sel, VoidCallback onTap, {IconData? icono}) {
+      return ChoiceChip(
+        label: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icono != null) ...[
+              Icon(icono, size: 16, color: sel ? Colors.white : cs.onSurface),
+              const SizedBox(width: 4),
+            ],
+            Text(texto),
+          ],
+        ),
+        selected: sel,
+        selectedColor: lima,
+        labelStyle: TextStyle(
+            fontWeight: FontWeight.w800,
+            color: sel ? Colors.white : cs.onSurface),
+        onSelected: (_) => onTap(),
+      );
+    }
+
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: [
+        for (final m in sug)
+          chip('$_mon $m', _monto == m, () => setState(() => _monto = m)),
+        chip(otro ? '$_mon $_monto' : 'Otro monto', otro, _elegirOtroMonto,
+            icono: Icons.edit_outlined),
+      ],
+    );
+  }
+
+  /// Hoja para escribir un monto libre (el monto es una de las pocas entradas
+  /// de texto permitidas en la app). Valida el rango del país.
+  Future<void> _elegirOtroMonto() async {
+    final min = _pais.recargaMin;
+    final max = _pais.recargaMax;
+    final ctrl = TextEditingController(
+        text: _pais.recargas.contains(_monto) ? '' : '$_monto');
+    String? error;
+    final elegido = await showModalBottomSheet<int>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) {
+          void confirmar() {
+            final v = int.tryParse(ctrl.text.trim());
+            if (v == null || v < min || v > max) {
+              setSheet(() => error = 'Entre $_mon $min y $_mon $max.');
+              return;
+            }
+            Navigator.of(ctx).pop(v);
+          }
+
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+                22, 18, 22, 22 + MediaQuery.of(ctx).viewInsets.bottom),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('¿Cuánto quieres recargar?',
+                    style: TextStyle(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF222222))),
+                const SizedBox(height: 6),
+                Text('Entre $_mon $min y $_mon $max, sin decimales.',
+                    style: const TextStyle(fontSize: 13.5, color: textoTenue)),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: ctrl,
+                  autofocus: true,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(5),
+                  ],
+                  style: const TextStyle(
+                      fontSize: 22, fontWeight: FontWeight.w800),
+                  decoration: InputDecoration(
+                    prefixText: '$_mon ',
+                    prefixStyle: const TextStyle(
+                        fontSize: 22, fontWeight: FontWeight.w800),
+                    hintText: '${_pais.recargas.first}',
+                    errorText: error,
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                  ),
+                  onSubmitted: (_) => confirmar(),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                        backgroundColor: lima,
+                        foregroundColor: bosque,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14))),
+                    onPressed: confirmar,
+                    child: const Text('Usar este monto',
+                        style: TextStyle(fontWeight: FontWeight.w800)),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+    if (elegido != null && mounted) setState(() => _monto = elegido);
   }
 
   Future<void> _cargarConfig() async {
@@ -134,7 +272,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
       }
     });
     // ¿Recarga por QR (Yape directo) activa? Solo en el flujo Perú.
-    if (widget.pais == null || widget.pais!.iso == 'PE') {
+    if (_pais.iso == 'PE') {
       final qr = await PagosService.recargaQrConfig();
       if (mounted && (qr?['activo'] ?? false) == true) {
         setState(() => _qrDisponible = true);
@@ -166,19 +304,34 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
       setState(() => _error = 'Inicia sesión para recargar.');
       return;
     }
-    final ok = await PagoLibelula.cobrar(
-      context,
-      monto: _monto,
-      concepto: 'Recarga de saldo Pichangol',
-      email: _email,
-      moneda: _mon,
-      tipo: 'recarga',
-      duenoId: widget.duenoId ?? _email, // billetera única: el correo del dueño
-    );
+    final esPayPhone = _pais.pasarela == 'payphone';
+    final ok = esPayPhone
+        ? await PagoPayPhone.cobrar(
+            context,
+            monto: _monto,
+            concepto: 'Recarga de saldo Pichangol',
+            email: _email,
+            moneda: _mon,
+            tipo: 'recarga',
+            duenoId: widget.duenoId ?? _email,
+          )
+        : await PagoLibelula.cobrar(
+            context,
+            monto: _monto,
+            concepto: 'Recarga de saldo Pichangol',
+            email: _email,
+            moneda: _mon,
+            tipo: 'recarga',
+            duenoId: widget.duenoId ?? _email, // billetera única: el correo
+          );
     if (!mounted) return;
     if (ok) {
-      await appState.sincronizarSaldo(); // el backend ya acreditó; refresca
-      if (mounted) Navigator.of(context).pop(_monto);
+      // El backend ya acreditó. NO se sincroniza aquí: el llamador refleja el
+      // monto devuelto (`appState.recargar`), igual que en el camino Culqi, y
+      // la siguiente sincronización deja el saldo autoritativo del backend.
+      // Sincronizar Y devolver el monto duplicaba el saldo en pantalla
+      // (\$1 recargado → \$2 mostrado hasta reabrir la billetera).
+      Navigator.of(context).pop(_monto);
     }
   }
 
@@ -289,22 +442,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
                 Text('¿Cuánto quieres recargar?',
                     style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
                 const SizedBox(height: 12),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    for (final m in _montos)
-                      ChoiceChip(
-                        label: Text('$_mon $m'),
-                        selected: _monto == m,
-                        selectedColor: lima,
-                        labelStyle: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            color: _monto == m ? Colors.white : cs.onSurface),
-                        onSelected: (_) => setState(() => _monto = m),
-                      ),
-                  ],
-                ),
+                _chipsMonto(cs),
                 _bannerPromo(),
                 const SizedBox(height: 22),
                 Text('Método de pago',
@@ -336,8 +474,9 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
                         color: const Color(0xFFFFF1EC),
                         borderRadius: BorderRadius.circular(12)),
                     child: const Text(
-                        'Los pagos aún no están habilitados en el servidor. '
-                        'Vuelve a intentar cuando estén activas las llaves de Culqi.',
+                        'Las recargas con Yape y tarjeta todavía no están '
+                        'activas. Estamos terminando de habilitarlas; mientras '
+                        'tanto puedes seguir usando Pichangol con normalidad.',
                         style: TextStyle(fontSize: 13)),
                   ),
                 ],
@@ -418,22 +557,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
         Text('¿Cuánto quieres recargar?',
             style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
         const SizedBox(height: 12),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: [
-            for (final m in _montos)
-              ChoiceChip(
-                label: Text('$_mon $m'),
-                selected: _monto == m,
-                selectedColor: lima,
-                labelStyle: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    color: _monto == m ? Colors.white : cs.onSurface),
-                onSelected: (_) => setState(() => _monto = m),
-              ),
-          ],
-        ),
+        _chipsMonto(cs),
         const SizedBox(height: 22),
         Container(
           padding: const EdgeInsets.all(14),
@@ -445,7 +569,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                    'Pagas de forma segura con ${widget.pais!.pasarelaNombre}. '
+                    'Pagas de forma segura con ${_pais.pasarelaNombre}. '
                     'Se abre la pasarela y, al confirmarse, se acredita tu saldo.',
                     style: const TextStyle(color: bosque, fontSize: 13)),
               ),
@@ -481,7 +605,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
   /// está lista (hoy: Bolivia → Libélula, #35). Muestra la moneda y la pasarela
   /// que corresponderá, para que el dueño sepa que su país está contemplado.
   Widget _pasarelaProximamente() {
-    final p = widget.pais!;
+    final p = _pais;
     final t = Theme.of(context).textTheme;
     return ListView(
       padding: const EdgeInsets.all(22),

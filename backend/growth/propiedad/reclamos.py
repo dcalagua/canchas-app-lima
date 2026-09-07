@@ -162,7 +162,11 @@ def _bienvenida_al_activar(r: "ReclamoPropiedad") -> None:
     Import diferido para no acoplar propiedad↔pagos al cargar. Fail-safe."""
     try:
         from pagos.router import otorgar_bienvenida
-        otorgar_bienvenida(r.solicitante_id or "")
+        from paises import pais_de_coordenadas
+        # El regalo va en la MONEDA del país de la cancha (sus coordenadas):
+        # S/ en Lima, $ en Guayaquil, Bs en La Paz. Sin coordenadas → Perú.
+        otorgar_bienvenida(r.solicitante_id or "",
+                           pais=pais_de_coordenadas(r.lat, r.lng))
     except Exception:  # noqa: BLE001 — el regalo jamás rompe una activación
         pass
 

@@ -13,6 +13,7 @@ import 'dialogo_pichangol.dart';
 import '../utils/input_formatos.dart';
 import 'marcas_pago.dart';
 import 'pago_libelula.dart';
+import 'pago_payphone.dart';
 import 'pago_procesando.dart';
 import '../utils/moneda.dart';
 
@@ -51,6 +52,12 @@ class PagoTarjeta {
       return PagoLibelula.cobrar(context,
           monto: monto, concepto: concepto, email: email,
           moneda: moneda.isNotEmpty ? moneda : 'Bs');
+    }
+    // ECUADOR: la pasarela es PayPhone (botón de pagos hospedado, en USD).
+    if (paisActual.pasarela == 'payphone') {
+      return PagoPayPhone.cobrar(context,
+          monto: monto, concepto: concepto, email: email,
+          moneda: moneda.isNotEmpty ? moneda : '\$');
     }
 
     final cfg = await PagosService.config();

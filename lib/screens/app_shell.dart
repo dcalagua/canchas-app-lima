@@ -110,7 +110,8 @@ class _AppShellState extends State<AppShell> {
                   icon: Icon(Icons.event_note_outlined),
                   selectedIcon: Icon(Icons.event_note),
                   label: 'Reservas'),
-              // Mensajes lleva el LOGO de Pichangol (pedido del director).
+              // Mensajes: ícono de chat normal, como las demás pestañas
+              // (decisión del director, sep-2026; ni logo ni burbuja de marca).
               const NavigationDestination(
                   icon: IconoMensajesLogo(activo: false),
                   selectedIcon: IconoMensajesLogo(activo: true),

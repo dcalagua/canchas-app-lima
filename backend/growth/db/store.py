@@ -29,7 +29,9 @@ CONFIG_DEFAULT: dict[str, str] = {
     # al ACTIVARSE su primera cancha reciben días de Pro de cortesía y/o un
     # saldo de REGALO (solo comisiones). 0 = apagado.
     "bienvenida_pro_dias": "0",
-    "bienvenida_saldo_soles": "0",
+    "bienvenida_saldo_soles": "0",   # regalo para dueños de PERÚ (S/)
+    "bienvenida_saldo_usd": "0",     # ECUADOR ($)
+    "bienvenida_saldo_bob": "0",     # BOLIVIA (Bs)
     "contacto_whatsapp_pe": "",
     "contacto_whatsapp_ec": "998706994",
     "contacto_whatsapp_bo": "",
@@ -542,6 +544,18 @@ class Stores:
         # fecha_pago, tipo, ref, dueno_id, creado_en}. La app la crea (pendiente),
         # el callback la marca pagada; sobrevive reinicios vía snapshot.
         self.libelula_deudas: dict[str, dict] = {}
+        # PAGOS de PayPhone (Ecuador), clave = identificador nuestro
+        # (clientTransactionId). {identificador, payment_id, transaction_id,
+        # email, monto_usd, concepto, tipo, ref, dueno_id, pagado, estado,
+        # autorizacion, fecha_pago, creado_en}. Se crea pendiente al preparar;
+        # se marca pagado al CONFIRMAR con PayPhone (nunca por un GET suelto).
+        self.payphone_pagos: dict[str, dict] = {}
+        # LIBRO DE RECLAMACIONES (Ley 29571 / D.S. 011-2011-PCM): hojas
+        # registradas desde la home pública. INDECOPI exige que esté integrado
+        # en la web (no un formulario externo) y responder en 15 días hábiles.
+        # {id, numero, fecha, consumidor{...}, bien{...}, detalle{...},
+        #  estado: pendiente|atendida, respuesta, respondida_en}
+        self.reclamaciones: list[dict] = []
         self._idem: dict[tuple[str, str], dict] = {}
         self._ids: dict[str, int] = {}
 
@@ -956,6 +970,9 @@ class Stores:
                 k: dict(v) for k, v in self.membresias_pro.items()},
             "libelula_deudas": {
                 k: dict(v) for k, v in self.libelula_deudas.items()},
+            "payphone_pagos": {
+                k: dict(v) for k, v in self.payphone_pagos.items()},
+            "reclamaciones": [dict(r) for r in self.reclamaciones],
             "jugadores_circuito": {
                 k: dict(v) for k, v in self.jugadores_circuito.items()},
             "ranking_snapshot": dict(self.ranking_snapshot),
@@ -1028,6 +1045,10 @@ class Stores:
         self.libelula_deudas = {
             k: dict(v) for k, v in (data.get("libelula_deudas") or {}).items()
         }
+        self.payphone_pagos = {
+            k: dict(v) for k, v in (data.get("payphone_pagos") or {}).items()
+        }
+        self.reclamaciones = [dict(r) for r in (data.get("reclamaciones") or [])]
         self.jugadores_circuito = {
             k: dict(v) for k, v in (data.get("jugadores_circuito") or {}).items()
         }

@@ -19,10 +19,14 @@ import base64
 import hashlib
 import hmac
 import json
+import os
 import urllib.parse
+
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from pydantic import BaseModel
 
 import config
 from db.store import stores
@@ -67,6 +71,83 @@ def _doc(titulo: str, cuerpo: str) -> str:
         f"(Lima, Perú). Contacto: <a href='mailto:{CONTACTO}'>{CONTACTO}</a>.</p>"
         f"<p class='mut'>Vigente desde el {VIGENCIA}.</p></footer>"
         "</div></body></html>")
+
+
+# Home de marketing (`home.html`, junto a este archivo): es lo que ve quien
+# entra al dominio de marca a secas. La revisan las pasarelas al afiliar el
+# comercio (Culqi exige una URL viva con razón social/RUC, contacto, términos,
+# política de cancelaciones y Libro de Reclamaciones). Se lee del disco en cada
+# request (22 KB, sin costo) para que un cambio de texto no requiera reiniciar.
+_HOME = os.path.join(os.path.dirname(os.path.abspath(__file__)), "home.html")
+
+
+@router.get("/", response_class=HTMLResponse, include_in_schema=False)
+def home() -> HTMLResponse:
+    try:
+        with open(_HOME, encoding="utf-8") as f:
+            return HTMLResponse(f.read())
+    except OSError:
+        return HTMLResponse(_doc("Pichangol", "<p>Reserva, juega, repite.</p>"
+                                    f"<p>Contacto: <a href='mailto:{CONTACTO}'>"
+                                    f"{CONTACTO}</a></p>"))
+
+
+class ReclamacionReq(BaseModel):
+    """Hoja de reclamación (campos del D.S. 011-2011-PCM)."""
+    c_nombre: str
+    c_doc: str
+    c_tel: str = ""
+    c_email: str
+    c_dir: str = ""
+    c_menor: str = "No"
+    b_tipo: str = "Servicio"
+    b_monto: str = ""
+    b_desc: str = ""
+    d_tipo: str = "Reclamo"
+    d_detalle: str
+    d_pedido: str
+
+
+def _lim(v: str, n: int) -> str:
+    return (v or "").strip()[:n]
+
+
+@router.post("/reclamaciones")
+def post_reclamacion(req: ReclamacionReq) -> dict:
+    """LIBRO DE RECLAMACIONES integrado (lo exige INDECOPI y lo revisa Culqi
+    al afiliar: no puede depender de correo ni formularios externos). Registra
+    la hoja con número correlativo y fecha; el operador la atiende desde la
+    torre (/admin → Cobros → Libro de Reclamaciones) en ≤ 15 días hábiles.
+    Pública y sin login; el middleware persiste el snapshot (POST)."""
+    nombre = _lim(req.c_nombre, 120)
+    doc = _lim(req.c_doc, 20)
+    email = _lim(req.c_email, 120).lower()
+    detalle = _lim(req.d_detalle, 2000)
+    pedido = _lim(req.d_pedido, 1000)
+    if not nombre or not doc or "@" not in email or not detalle or not pedido:
+        return {"ok": False, "error": "faltan_campos"}
+    if len(stores.reclamaciones) >= 20000:  # tope defensivo
+        return {"ok": False, "error": "libro_lleno"}
+    ahora = datetime.now(timezone.utc)
+    n = stores.next_id("reclamacion")
+    numero = f"PICH-{ahora.strftime('%Y%m%d')}-{n:04d}"
+    hoja = {
+        "id": n, "numero": numero, "fecha": ahora.isoformat(),
+        "estado": "pendiente", "respuesta": "", "respondida_en": "",
+        "consumidor": {
+            "nombre": nombre, "doc": doc, "tel": _lim(req.c_tel, 30),
+            "email": email, "dir": _lim(req.c_dir, 200),
+            "menor": _lim(req.c_menor, 3) or "No"},
+        "bien": {
+            "tipo": "Producto" if _lim(req.b_tipo, 12) == "Producto" else "Servicio",
+            "monto": _lim(req.b_monto, 20), "desc": _lim(req.b_desc, 300)},
+        "detalle": {
+            "tipo": "Queja" if _lim(req.d_tipo, 10) == "Queja" else "Reclamo",
+            "detalle": detalle, "pedido": pedido},
+    }
+    stores.reclamaciones.append(hoja)
+    return {"ok": True, "numero": numero, "fecha": hoja["fecha"],
+            "plazo": "15 días hábiles", "contacto": CONTACTO}
 
 
 @router.get("/legal/privacidad", response_class=HTMLResponse)

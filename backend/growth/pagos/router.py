@@ -29,6 +29,7 @@ from db.store import stores
 
 from . import culqi
 from . import libelula
+from . import payphone
 
 router = APIRouter(prefix="/pagos", tags=["pagos"])
 
@@ -126,32 +127,54 @@ def _soles_a_centimos(soles: float) -> int:
     return int(round(float(soles) * 100))
 
 
-def comision_centimos(monto_soles: float) -> int:
-    """Comisión de Pichangol por una reserva: COMISION_PORC % con mínimo
-    COMISION_MIN_SOLES. Devuelve céntimos."""
+_MONEDA_ISO = {"S/": "PEN", "S/.": "PEN", "PEN": "PEN", "$": "USD", "USD": "USD",
+               "BS": "BOB", "BS.": "BOB", "BOB": "BOB"}
+_MONEDA_SIMBOLO = {"PEN": "S/", "USD": "$", "BOB": "Bs"}
+
+
+def moneda_iso(moneda: str | None) -> str:
+    """Normaliza símbolo o ISO a ISO ('S/' → PEN, '$' → USD, 'Bs' → BOB).
+    Vacío/desconocido → PEN (los APKs viejos no mandan moneda)."""
+    return _MONEDA_ISO.get((moneda or "").strip().upper(), "PEN")
+
+
+def moneda_simbolo(moneda: str | None) -> str:
+    return _MONEDA_SIMBOLO.get(moneda_iso(moneda), "S/")
+
+
+def comision_centimos(monto_soles: float, moneda: str = "PEN") -> int:
+    """Comisión de Pichangol por una reserva: COMISION_PORC % con MÍNIMO POR
+    MONEDA (`config.comision_min`). [monto_soles] va en la unidad mayor de
+    [moneda] (el nombre es histórico). Devuelve céntimos/centavos."""
     bruto = float(monto_soles) * config.COMISION_PORC / 100.0
-    con_min = max(bruto, config.COMISION_MIN_SOLES)
+    con_min = max(bruto, config.comision_min(moneda_iso(moneda)))
     return int(round(con_min * 100))
 
 
-def comision_saldo_centimos(monto_soles: float) -> int:
+def comision_saldo_centimos(monto_soles: float, moneda: str = "PEN") -> int:
     """Comisión cuando se cobra del SALDO prepago del dueño (billetera-first).
     Configurable desde la torre de control (cfg `comision_saldo_pct` y
     `comision_saldo_min_soles`) — puede ser MENOR que la estándar, como
     incentivo por mantener saldo. Sin configurar → usa la comisión estándar.
+    El mínimo de la torre está en SOLES y sólo aplica a PEN; en las otras
+    monedas rige el mínimo por moneda de `config` (el % de la torre sí).
 
     OJO: `stores.cfg()` devuelve "0" para claves ausentes, así que aquí se lee
     `stores.config` directo — ausente ≠ 0% (0% sí es configurable a propósito)."""
+    iso = moneda_iso(moneda)
     try:
         pct = float(stores.config.get("comision_saldo_pct"))  # type: ignore[arg-type]
     except (TypeError, ValueError):
-        return comision_centimos(monto_soles)
+        return comision_centimos(monto_soles, iso)
     if pct < 0:
-        return comision_centimos(monto_soles)
-    try:
-        min_s = max(0.0, float(stores.config.get("comision_saldo_min_soles", 0)))
-    except (TypeError, ValueError):
-        min_s = 0.0
+        return comision_centimos(monto_soles, iso)
+    if iso == "PEN":
+        try:
+            min_s = max(0.0, float(stores.config.get("comision_saldo_min_soles", 0)))
+        except (TypeError, ValueError):
+            min_s = 0.0
+    else:
+        min_s = config.comision_min(iso)
     return int(round(max(float(monto_soles) * pct / 100.0, min_s) * 100))
 
 
@@ -183,6 +206,7 @@ class ComisionReservaReq(BaseModel):
     monto_soles: float         # precio de la reserva (base para calcular comisión)
     reserva_id: str            # id de la reserva (idempotencia: no cobrar 2 veces)
     concepto: str | None = None
+    moneda: str = "PEN"        # ISO o símbolo de la cancha (PEN | USD | BOB); vacío = PEN
 
 
 class LiquidacionOnlineReq(BaseModel):
@@ -193,6 +217,7 @@ class LiquidacionOnlineReq(BaseModel):
     # MEDIO con el que pagó el jugador (yape | tarjeta | sena): trazabilidad
     # para el estado de cuenta del dueño. Vacío = no informado (APKs viejos).
     medio: str = ""
+    moneda: str = "PEN"        # moneda de la cancha (decide el mínimo de comisión)
 
 
 class VentaProductoReq(BaseModel):
@@ -206,6 +231,7 @@ class VentaProductoReq(BaseModel):
     comprador_email: str = ""
     comprador_nombre: str = ""
     vendedor_nombre: str = ""
+    moneda: str = "PEN"        # moneda del producto (mínimo de comisión por moneda)
 
 
 class MarcarLiquidacionReq(BaseModel):
@@ -428,6 +454,249 @@ def bo_retorno(id: str = "") -> HTMLResponse:
             "<h2>¡Pago recibido! ✅</h2>"
             "<p>Ya puedes volver a Pichangol.</p></div>")
     return HTMLResponse(content=page, headers={"Cache-Control": "no-store"})
+
+
+# ── PAYPHONE (Ecuador): preparar → pagar en la página hospedada → CONFIRMAR ──
+# El cobro NO existe hasta que PayPhone lo confirma (Confirm es la única fuente
+# de verdad) y si no se confirma en 5 minutos PayPhone lo revierte solo. Por eso
+# el retorno confirma al instante y el APK, además, manda el transaction_id al
+# consultar el estado (doble vía, idempotente).
+class PagoEcReq(BaseModel):
+    email: str
+    monto_usd: float
+    concepto: str = "Pago Pichangol"
+    nombre: str = ""
+    telefono: str = ""
+    documento: str = ""
+    tipo: str = ""       # reserva | sena | matricula | producto | pro | recarga
+    ref: str = ""        # id de la reserva/matrícula/… (trazabilidad)
+    dueno_id: str = ""   # a quién se liquidará / acredita (recarga)
+
+
+@router.get("/ec/config", dependencies=_APP)
+def get_ec_config() -> dict:
+    """¿Está activa la pasarela de Ecuador? (el APK decide si puede cobrar)."""
+    return {"disponible": payphone.disponible(), "moneda": "USD"}
+
+
+@router.post("/ec/pago", dependencies=_APP)
+def post_ec_pago(req: PagoEcReq) -> dict:
+    """Prepara el pago en PayPhone y devuelve las URLs hospedadas donde el APK
+    (WebView) manda a pagar. Guarda el pago como PENDIENTE."""
+    if not payphone.disponible():
+        return {"ok": False, "error": "no_configurado"}
+    email = (req.email or "").strip().lower()
+    if not email:
+        return {"ok": False, "error": "correo_requerido"}
+    monto = round(float(req.monto_usd), 2)
+    if monto <= 0:
+        return {"ok": False, "error": "monto_invalido"}
+    ident = uuid.uuid4().hex[:16]  # PayPhone sugiere ids cortos y únicos
+    base = (config.PUBLIC_BASE_URL or "").rstrip("/")
+    if not base:
+        return {"ok": False, "error": "sin_base_url"}
+    r = payphone.preparar(
+        client_tx_id=ident, monto_usd=monto, concepto=req.concepto,
+        response_url=f"{base}/pagos/ec/retorno",
+        cancel_url=f"{base}/pagos/ec/cancelado",
+        email=email, telefono=req.telefono, documento=req.documento)
+    if not r.get("ok"):
+        return r
+    stores.payphone_pagos[ident] = {
+        "identificador": ident,
+        "payment_id": r.get("payment_id"),
+        "transaction_id": None,
+        # URLs hospedadas de PayPhone: las sirve la página PUENTE (/ec/ir).
+        "url_tarjeta": r.get("url_tarjeta"),
+        "url_payphone": r.get("url_payphone"),
+        "email": email,
+        "monto_usd": monto,
+        "concepto": req.concepto,
+        "tipo": req.tipo,
+        "ref": req.ref,
+        "dueno_id": (req.dueno_id or "").strip().lower(),
+        "pagado": False,
+        "estado": "pendiente",
+        "autorizacion": None,
+        "fecha_pago": None,
+        "creado_en": _ahora_iso(),
+    }
+    return {
+        "ok": True,
+        "identificador": ident,
+        "url_pasarela": r.get("url_tarjeta") or r.get("url_payphone"),
+        "url_payphone": r.get("url_payphone"),
+        # El APK abre ESTA (nuestro dominio), no la de PayPhone directo: la
+        # página de PayPhone exige llegar desde un dominio autorizado.
+        "url_lanzador": f"{base}/pagos/ec/ir/{ident}",
+        "retorno": f"{base}/pagos/ec/retorno",
+    }
+
+
+@router.get("/ec/ir/{identificador}", response_class=HTMLResponse)
+def ec_ir(identificador: str, request: Request,
+          medio: str = "tarjeta") -> HTMLResponse:
+    """Página PUENTE hacia la pasarela de PayPhone, servida desde NUESTRO
+    dominio. PayPhone rechaza su página de pago ("No autorizado… intenta desde
+    la página de origen") si el navegador llega sin un origen autorizado; un
+    WebView que abre la URL a pelo no lo tiene. Esta página está en el dominio
+    registrado en la app de PayPhone (AuthDomains) y navega por JavaScript a
+    la pasarela, con lo que el Referer/origen es el nuestro. Sin JS, queda el
+    botón. Pública: sólo redirige a una URL que PayPhone ya emitió."""
+    d = stores.payphone_pagos.get(identificador)
+    import logging as _logging
+    _logging.getLogger("payphone").info(
+        "payphone puente id=%s host=%s referer=%s ua=%s", identificador,
+        request.headers.get("host"), request.headers.get("referer", "-"),
+        (request.headers.get("user-agent") or "")[:60])
+    if not d or d.get("pagado"):
+        return _pagina_ec("Pago no disponible",
+                          "Vuelve a Pichangol e inicia el pago otra vez.")
+    url = (d.get("url_payphone") if medio == "payphone" else None) \
+        or d.get("url_tarjeta") or d.get("url_payphone") or ""
+    if not url:
+        return _pagina_ec("Pago no disponible",
+                          "Vuelve a Pichangol e inicia el pago otra vez.")
+    u = _html.escape(url, quote=True)
+    page = ("<!doctype html><html lang=es><head><meta charset=utf-8>"
+            "<meta name=viewport content='width=device-width,initial-scale=1'>"
+            "<meta name=referrer content=origin>"
+            "<title>Pago Pichangol</title></head>"
+            "<body style='font-family:system-ui;text-align:center;padding:44px;"
+            "color:#14463A'><p>Abriendo el pago seguro de PayPhone…</p>"
+            f"<p><a href=\"{u}\" style='display:inline-block;margin-top:12px;"
+            "padding:12px 20px;border-radius:12px;background:#AEEA94;"
+            "color:#14463A;font-weight:700;text-decoration:none'>"
+            "Continuar al pago</a></p>"
+            f"<script>setTimeout(function(){{window.location.href={_json_str(url)};}},150);"
+            "</script></body></html>")
+    return HTMLResponse(content=page, headers={"Cache-Control": "no-store"})
+
+
+def _json_str(s: str) -> str:
+    """String JS seguro (comillas y </script> escapados)."""
+    import json as _json
+    return _json.dumps(s).replace("</", "<\\/")
+
+
+def _persistir_ahora() -> None:
+    """Guarda el estado YA. El middleware de main.py solo persiste tras
+    POST/PUT/DELETE, pero los retornos de pasarela llegan por GET (es el
+    navegador del cliente el que vuelve): sin esto, un saldo acreditado en el
+    retorno vivía solo en memoria y se PERDÍA en el siguiente redeploy. Pasó
+    el 5-sep-2026 con la primera recarga real de PayPhone ($1 → $0 tras un
+    push). Fail-safe: sin DATABASE_URL no hace nada."""
+    try:
+        from db import pg
+        if not pg.habilitado:
+            return
+        pg.guardar(stores.to_state())
+        pg.guardar_normalizado(stores)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _confirmar_ec(ident: str, transaction_id: str) -> dict | None:
+    """Confirma con PayPhone y, si aprobó, marca pagado (idempotente). Si es
+    una RECARGA, acredita el saldo al dueño una sola vez. Devuelve el pago o
+    None si no existe. Persiste al instante todo cambio (llega por GET)."""
+    d = stores.payphone_pagos.get(ident)
+    if not d:
+        return None
+    if d.get("pagado"):
+        return d
+    tx = str(transaction_id or d.get("transaction_id") or "").strip()
+    if not tx:
+        return d
+    try:
+        return _confirmar_ec_inner(d, ident, tx)
+    finally:
+        _persistir_ahora()
+
+
+def _confirmar_ec_inner(d: dict, ident: str, tx: str) -> dict:
+    d["transaction_id"] = tx
+    c = payphone.confirmar(transaction_id=tx, client_tx_id=ident)
+    if not c.get("ok"):
+        d["estado"] = f"error: {c.get('error', '')}"[:80]
+        return d
+    d["estado"] = str(c.get("estado") or "")[:40]
+    d["autorizacion"] = c.get("autorizacion")
+    if not c.get("aprobado"):
+        return d
+    # Defensa: si PayPhone reporta un monto y no cuadra, NO se da por pagado.
+    mc = c.get("monto_centavos")
+    if isinstance(mc, (int, float)) and int(mc) != payphone.centavos(d["monto_usd"]):
+        d["estado"] = "monto_no_cuadra"
+        return d
+    d["pagado"] = True
+    d["fecha_pago"] = _ahora_iso()
+    if d.get("tipo") == "recarga" and d.get("dueno_id"):
+        cts = payphone.centavos(d["monto_usd"])
+        if cts > 0:
+            stores.acreditar(d["dueno_id"], cts)
+            stores.registrar_pago(
+                tipo="recarga", monto_centimos=cts, moneda="USD",
+                estado="aprobado", dueno_id=d["dueno_id"],
+                email=d.get("email", ""), concepto="Recarga (PayPhone)")
+            # PROMO bono de recarga (los umbrales aplican en USD).
+            _aplicar_bono_recarga(d["dueno_id"], cts / 100.0, f"pp_{ident}")
+    return d
+
+
+def _pagina_ec(titulo: str, cuerpo: str) -> HTMLResponse:
+    page = ("<!doctype html><meta charset=utf-8>"
+            "<meta name=viewport content='width=device-width,initial-scale=1'>"
+            "<title>Pago Pichangol</title>"
+            "<div style='font-family:system-ui;text-align:center;padding:44px;"
+            f"color:#14463A'><h2>{_html.escape(titulo)}</h2>"
+            f"<p>{_html.escape(cuerpo)}</p></div>")
+    return HTMLResponse(content=page, headers={"Cache-Control": "no-store"})
+
+
+@router.get("/ec/retorno", response_class=HTMLResponse)
+def ec_retorno(id: str = "", clientTransactionId: str = "") -> HTMLResponse:
+    """Página a la que PayPhone devuelve al cliente tras pagar (con ?id=<tx>&
+    clientTransactionId=<ident>). CONFIRMA de inmediato (regla de los 5 min).
+    Pública (la abre el navegador/WebView). Un GET con datos falsos no aprueba
+    nada: la verdad la dice Confirm."""
+    ident = (clientTransactionId or "").strip()
+    d = _confirmar_ec(ident, id) if ident else None
+    if d and d.get("pagado"):
+        return _pagina_ec("¡Pago recibido! ✅", "Cierra esta ventana para volver a "
+                          "Pichangol: tu pago ya quedó confirmado.")
+    if d:
+        return _pagina_ec("Pago no aprobado",
+                          "PayPhone no aprobó el cobro. Puedes intentarlo de "
+                          "nuevo desde la app; no se te cobró nada.")
+    return _pagina_ec("Pago no encontrado",
+                      "Vuelve a Pichangol e intenta otra vez.")
+
+
+@router.get("/ec/cancelado", response_class=HTMLResponse)
+def ec_cancelado(clientTransactionId: str = "") -> HTMLResponse:
+    """PayPhone manda aquí si el cliente cancela en la pasarela."""
+    d = stores.payphone_pagos.get((clientTransactionId or "").strip())
+    if d and not d.get("pagado"):
+        d["estado"] = "cancelado"
+        _persistir_ahora()
+    return _pagina_ec("Pago cancelado", "No se te cobró nada. Cierra esta "
+                      "ventana para volver a Pichangol e intentarlo cuando quieras.")
+
+
+@router.get("/ec/pago/{identificador}", dependencies=_APP)
+def get_ec_pago(identificador: str, transaction_id: str = "") -> dict:
+    """Estado de un pago (el APK consulta si ya se pagó). Si el APK trae el
+    transaction_id que vio en la URL de retorno, CONFIRMA aquí mismo — así el
+    cobro se confirma aunque el retorno nunca haya llegado al backend."""
+    d = stores.payphone_pagos.get(identificador)
+    if not d:
+        return {"ok": False, "error": "no_encontrado"}
+    if not d.get("pagado") and (transaction_id or d.get("transaction_id")):
+        d = _confirmar_ec(identificador, transaction_id) or d
+    return {"ok": True, "pagado": bool(d.get("pagado")),
+            "estado": d.get("estado"), "monto_usd": d.get("monto_usd"),
+            "concepto": d.get("concepto"), "autorizacion": d.get("autorizacion")}
 
 
 @router.get("/saldo/{dueno_id}", dependencies=_APP)
@@ -1118,15 +1387,28 @@ def post_regalo_saldo(req: RegaloSaldoReq) -> dict:
             "saldo_promo_soles": total / 100.0}
 
 
-def otorgar_bienvenida(email: str) -> dict:
+BIENVENIDA_CLAVE_POR_PAIS = {"PE": "bienvenida_saldo_soles",
+                             "EC": "bienvenida_saldo_usd",
+                             "BO": "bienvenida_saldo_bob"}
+
+
+def otorgar_bienvenida(email: str, pais: str = "PE") -> dict:
     """BIENVENIDA automática de la marcha blanca: cuando a un dueño NUEVO se le
     ACTIVA su primera cancha, recibe lo configurado en la torre — días de Pro de
-    cortesía y/o un saldo de REGALO que solo absorbe comisiones. Idempotente
-    (un regalo por correo, aunque registre varias canchas). Con la config en 0
-    no hace nada. La llama el flujo de reclamos al activar."""
+    cortesía y/o un saldo de REGALO que solo absorbe comisiones. El MONTO es
+    POR PAÍS (decisión del director, sep-2026: S/ 20 · $ 5 · Bs 35) y se
+    acredita en la moneda del país de la CANCHA activada ([pais], ISO).
+    Idempotente (un regalo por correo, aunque registre varias canchas). Con la
+    config en 0 no hace nada. La llama el flujo de reclamos al activar."""
+    from paises import moneda_de_pais, simbolo_de_moneda
     email = (email or "").strip().lower()
     if not email or "@" not in email:
         return {"ok": False, "error": "email_invalido"}
+    pais = (pais or "PE").strip().upper()
+    if pais not in BIENVENIDA_CLAVE_POR_PAIS:
+        pais = "PE"
+    moneda = moneda_de_pais(pais)
+    simbolo = simbolo_de_moneda(moneda)
 
     def _num(clave: str) -> float:
         try:
@@ -1135,7 +1417,7 @@ def otorgar_bienvenida(email: str) -> dict:
             return 0.0
 
     dias = int(_num("bienvenida_pro_dias"))
-    saldo_soles = _num("bienvenida_saldo_soles")
+    saldo_soles = _num(BIENVENIDA_CLAVE_POR_PAIS[pais])
     if dias <= 0 and saldo_soles <= 0:
         return {"ok": False, "apagada": True}
     if email in stores.bienvenidas:
@@ -1154,23 +1436,23 @@ def otorgar_bienvenida(email: str) -> dict:
             pass
         stores.membresias_pro[email] = {
             "hasta": (base + timedelta(days=dias)).isoformat(),
-            "cortesia": True, "pais": "PE"}
+            "cortesia": True, "pais": pais}
         partes.append(f"{dias} días de Pichangol Pro")
     if saldo_soles > 0:
         cent = _soles_a_centimos(saldo_soles)
         stores.acreditar_promo(email, cent)
         stores.registrar_pago(
-            tipo="bono_bienvenida", monto_centimos=cent, moneda="PEN",
+            tipo="bono_bienvenida", monto_centimos=cent, moneda=moneda,
             estado="aprobado", dueno_id=email,
             concepto="Regalo de bienvenida (cubre tus comisiones)")
-        partes.append(f"S/ {saldo_soles:.0f} de saldo de regalo para "
+        partes.append(f"{simbolo} {saldo_soles:g} de saldo de regalo para "
                       "tus comisiones")
     _aviso_push_usuario(
         email, "🎁 ¡Bienvenido a Pichangol!",
         "Por activar tu cancha te regalamos " + " y ".join(partes) +
         ". Ya está en tu cuenta.")
-    return {"ok": True, "email": email, "pro_dias": dias,
-            "saldo_soles": saldo_soles}
+    return {"ok": True, "email": email, "pro_dias": dias, "pais": pais,
+            "moneda": moneda, "saldo_soles": saldo_soles}
 
 
 @router.get("/pro/miembros-admin", dependencies=_ADMIN)
@@ -1248,7 +1530,8 @@ def post_comision_reserva(req: ComisionReservaReq) -> dict:
     ofrece al jugador si el dueño tiene saldo. Idempotente por `reserva_id`: no
     cobra dos veces la misma reserva."""
     # Sale del saldo → aplica la tarifa configurable de billetera (torre).
-    comision = comision_saldo_centimos(req.monto_soles)
+    iso = moneda_iso(req.moneda)
+    comision = comision_saldo_centimos(req.monto_soles, iso)
     # Idempotencia: si esta reserva ya generó comisión, no la cobres de nuevo.
     ya = stores.pago_por_charge(req.reserva_id)
     if ya is not None and ya.tipo == "comision_reserva":
@@ -1261,10 +1544,10 @@ def post_comision_reserva(req: ComisionReservaReq) -> dict:
     promo_usado, nuevo = stores.debitar_comision(req.dueno_id, comision)
     sufijo = (" · cubierta por tu saldo de regalo 🎁" if promo_usado >= comision
               and comision > 0 else
-              f" · S/ {promo_usado / 100.0:.2f} de tu regalo 🎁"
+              f" · {moneda_simbolo(iso)} {promo_usado / 100.0:.2f} de tu regalo 🎁"
               if promo_usado > 0 else "")
     stores.registrar_pago(
-        tipo="comision_reserva", monto_centimos=comision, moneda="PEN",
+        tipo="comision_reserva", monto_centimos=comision, moneda=iso,
         estado="aprobado", dueno_id=req.dueno_id,
         culqi_charge_id=req.reserva_id,
         concepto=(req.concepto or "Comisión de reserva") + sufijo)
@@ -1287,10 +1570,11 @@ def post_liquidacion_online(req: LiquidacionOnlineReq) -> dict:
 
     Idempotente por `reserva_id`."""
     bruto = _soles_a_centimos(req.monto_soles)
-    comision = comision_centimos(req.monto_soles)
+    iso = moneda_iso(req.moneda)
+    comision = comision_centimos(req.monto_soles, iso)
     # Tarifa de BILLETERA (configurable en la torre, puede ser menor): es la que
     # aplica cuando la comisión sale del saldo.
-    com_saldo = comision_saldo_centimos(req.monto_soles)
+    com_saldo = comision_saldo_centimos(req.monto_soles, iso)
     ya = stores.pago_por_charge(req.reserva_id)
     if ya is not None and ya.tipo in ("liquidacion_online", "liquidacion_full"):
         d = _liquidacion_dict(ya)
@@ -1309,15 +1593,15 @@ def post_liquidacion_online(req: LiquidacionOnlineReq) -> dict:
         promo_usado, nuevo = stores.debitar_comision(req.dueno_id, com_saldo)
         sufijo = (" · cubierta por tu saldo de regalo 🎁"
                   if promo_usado >= com_saldo and com_saldo > 0 else
-                  f" · S/ {promo_usado / 100.0:.2f} de tu regalo 🎁"
+                  f" · {moneda_simbolo(iso)} {promo_usado / 100.0:.2f} de tu regalo 🎁"
                   if promo_usado > 0 else "")
         stores.registrar_pago(
-            tipo="comision_reserva", monto_centimos=com_saldo, moneda="PEN",
+            tipo="comision_reserva", monto_centimos=com_saldo, moneda=iso,
             estado="aprobado", dueno_id=req.dueno_id,
             culqi_charge_id=f"{req.reserva_id}_com",
             concepto=f"Comisión · {req.concepto or 'Reserva online'}{sufijo}")
         stores.registrar_pago(
-            tipo="liquidacion_full", monto_centimos=bruto, moneda="PEN",
+            tipo="liquidacion_full", monto_centimos=bruto, moneda=iso,
             estado="aprobado", dueno_id=req.dueno_id,
             culqi_charge_id=req.reserva_id,
             concepto=req.concepto or "Reserva online",
@@ -1329,7 +1613,7 @@ def post_liquidacion_online(req: LiquidacionOnlineReq) -> dict:
 
     # Sin saldo suficiente → comisión de la transacción (neto), como antes.
     stores.registrar_pago(
-        tipo="liquidacion_online", monto_centimos=bruto, moneda="PEN",
+        tipo="liquidacion_online", monto_centimos=bruto, moneda=iso,
         estado="aprobado", dueno_id=req.dueno_id,
         culqi_charge_id=req.reserva_id,
         concepto=req.concepto or "Reserva online",
@@ -1348,14 +1632,15 @@ def post_venta(req: VentaProductoReq) -> dict:
     from db.store import Venta, ahora  # local para no ensuciar el import global
 
     bruto = _soles_a_centimos(req.monto_soles)
-    comision = comision_centimos(req.monto_soles)
+    iso = moneda_iso(req.moneda)
+    comision = comision_centimos(req.monto_soles, iso)
     ya = stores.pago_por_charge(req.venta_id)
     if ya is not None and ya.tipo == "venta_producto":
-        com = comision_centimos(ya.monto_centimos / 100.0)
+        com = comision_centimos(ya.monto_centimos / 100.0, ya.moneda)
         return {"ok": True, "duplicada": True, "bruto_centimos": ya.monto_centimos,
                 "comision_centimos": com, "neto_centimos": ya.monto_centimos - com}
     stores.registrar_pago(
-        tipo="venta_producto", monto_centimos=bruto, moneda="PEN",
+        tipo="venta_producto", monto_centimos=bruto, moneda=iso,
         estado="aprobado", dueno_id=req.vendedor_id,
         culqi_charge_id=req.venta_id,
         concepto=req.concepto or "Venta de producto (marketplace)")
@@ -1917,7 +2202,7 @@ def _liquidacion_dict(p) -> dict:
     # decisión de producto (la bodega es cero comisión) → usa la congelada (0).
     comision = (p.comision_centimos
                 if p.tipo in ("liquidacion_full", "venta_bodega")
-                else comision_centimos(bruto / 100.0))
+                else comision_centimos(bruto / 100.0, p.moneda))
     neto = bruto - comision
     return {
         "reserva_id": p.culqi_charge_id,
@@ -2084,7 +2369,7 @@ def get_movimientos(dueno_id: str,
         elif p.tipo in ("inscripcion_torneo_ingreso", "venta_bodega"):
             comision = p.comision_centimos  # bodega: 0 (cero comisión)
         else:
-            comision = comision_centimos(bruto / 100.0)
+            comision = comision_centimos(bruto / 100.0, p.moneda)
         neto = bruto - comision
         return {**base,
                 "monto_soles": neto / 100.0,

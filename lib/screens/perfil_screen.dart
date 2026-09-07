@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../config/features.dart';
+import '../config/pais.dart';
 import '../brand.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -18,6 +19,7 @@ import 'marketplace_screen.dart';
 import '../widgets/banner_pro.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/dialogo_pichangol.dart';
+import '../widgets/selector_pais.dart';
 import 'ajustes_screen.dart';
 import 'anfitrion_screen.dart';
 import 'login_google_sheet.dart';
@@ -196,6 +198,15 @@ class PerfilScreen extends StatelessWidget {
           ),
         ],
         const Divider(height: 26, color: Color(0xFFEBEBEB)),
+        // País de CASA: el de la billetera (moneda del saldo y pasarela de
+        // recarga). Distinto del país que se explora en el mapa.
+        if (u != null)
+          _ItemAirbnb(
+            icono: Icons.public,
+            titulo:
+                'Mi país · ${appState.paisBilletera.bandera} ${appState.paisBilletera.nombre}',
+            onTap: () => _cambiarMiPais(context),
+          ),
         _ItemAirbnb(
           icono: Icons.settings_outlined,
           titulo: 'Configuración de la cuenta',
@@ -223,6 +234,37 @@ class PerfilScreen extends StatelessWidget {
   /// Doble confirmación y borrado. La primera explica QUÉ se borra y qué se
   /// conserva (igual que la página pública); la segunda evita el toque
   /// accidental en una acción que no tiene vuelta atrás.
+  /// Cambiar el país de casa (billetera). Con saldo no se permite: cambiar
+  /// de moneda con plata adentro sería convertirla por decreto.
+  Future<void> _cambiarMiPais(BuildContext context) async {
+    final actual = appState.paisBilletera;
+    if (!appState.puedeCambiarPaisCasa) {
+      await avisarPichangol(
+        context,
+        titulo: 'Tu billetera tiene saldo',
+        mensaje: 'Tienes saldo en ${actual.moneda}. Para cambiar tu país '
+            'primero úsalo o solicita su liquidación; después podrás elegir '
+            'otro país y tu próxima recarga será en su moneda.',
+        icono: Icons.account_balance_wallet_outlined,
+      );
+      return;
+    }
+    final p = await elegirPaisSheet(context,
+        actualIso: actual.iso,
+        titulo: 'Mi país',
+        mensaje: 'Define la moneda de tu billetera y cómo recargas '
+            '(Yape/tarjeta, PayPhone o Libélula). El país que exploras en el '
+            'mapa se cambia desde Explorar.');
+    if (p == null || p.iso == actual.iso) return;
+    final ok = await appState.cambiarPaisCasa(p);
+    if (!context.mounted) return;
+    if (ok) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Listo: tu billetera ahora es de ${p.nombre} '
+              '(${p.moneda}).')));
+    }
+  }
+
   Future<void> _eliminarCuenta(BuildContext context) async {
     final ok = await confirmarPichangol(
       context,

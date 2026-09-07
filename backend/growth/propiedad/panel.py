@@ -539,13 +539,17 @@ def get_pro_admin(x_admin_token: str | None = Header(default=None)) -> dict:
             "bienvenida": {
                 "pro_dias": stores.cfg("bienvenida_pro_dias") or "0",
                 "saldo_soles": stores.cfg("bienvenida_saldo_soles") or "0",
+                "saldo_usd": stores.cfg("bienvenida_saldo_usd") or "0",
+                "saldo_bob": stores.cfg("bienvenida_saldo_bob") or "0",
             },
             "miembros": miembros}
 
 
 class BienvenidaReq(BaseModel):
     pro_dias: int = 0
-    saldo_soles: float = 0.0
+    saldo_soles: float = 0.0   # Perú (S/)
+    saldo_usd: float = 0.0     # Ecuador ($)
+    saldo_bob: float = 0.0     # Bolivia (Bs)
 
 
 @router.post("/admin/api/pro/bienvenida")
@@ -557,11 +561,52 @@ def set_bienvenida_admin(
     comisiones). 0 y 0 = apagada."""
     _check(x_admin_token)
     dias = max(0, min(int(req.pro_dias), 365))
-    saldo = max(0.0, min(float(req.saldo_soles), 1000.0))
+
+    def _lim(v: float, tope: float) -> float:
+        v = max(0.0, min(float(v), tope))
+        return v if v % 1 else int(v)
+
+    # Montos POR PAÍS en su moneda (S/ · $ · Bs); topes por moneda.
+    saldo = _lim(req.saldo_soles, 1000.0)
+    usd = _lim(req.saldo_usd, 300.0)
+    bob = _lim(req.saldo_bob, 2000.0)
     stores.config["bienvenida_pro_dias"] = str(dias)
-    stores.config["bienvenida_saldo_soles"] = (
-        str(saldo if saldo % 1 else int(saldo)))
-    return {"ok": True, "pro_dias": dias, "saldo_soles": saldo}
+    stores.config["bienvenida_saldo_soles"] = str(saldo)
+    stores.config["bienvenida_saldo_usd"] = str(usd)
+    stores.config["bienvenida_saldo_bob"] = str(bob)
+    return {"ok": True, "pro_dias": dias, "saldo_soles": saldo,
+            "saldo_usd": usd, "saldo_bob": bob}
+
+
+@router.get("/admin/api/reclamaciones")
+def get_reclamaciones_admin(
+        x_admin_token: str | None = Header(default=None)) -> dict:
+    """Libro de Reclamaciones: todas las hojas, las pendientes primero."""
+    _check(x_admin_token)
+    hojas = sorted(stores.reclamaciones,
+                   key=lambda h: (h.get("estado") != "pendiente", -int(h.get("id", 0))))
+    pend = sum(1 for h in stores.reclamaciones if h.get("estado") == "pendiente")
+    return {"reclamaciones": hojas, "pendientes": pend, "total": len(stores.reclamaciones)}
+
+
+class ReclamacionRespuestaReq(BaseModel):
+    respuesta: str = ""
+
+
+@router.post("/admin/api/reclamaciones/{rid}/atender")
+def atender_reclamacion_admin(
+        rid: int, req: ReclamacionRespuestaReq,
+        x_admin_token: str | None = Header(default=None)) -> dict:
+    """Marca la hoja como atendida y guarda la respuesta dada al consumidor
+    (la respuesta formal se le envía por correo; aquí queda el registro)."""
+    _check(x_admin_token)
+    for h in stores.reclamaciones:
+        if int(h.get("id", 0)) == rid:
+            h["estado"] = "atendida"
+            h["respuesta"] = (req.respuesta or "").strip()[:2000]
+            h["respondida_en"] = datetime.now(timezone.utc).isoformat()
+            return {"ok": True, "numero": h.get("numero")}
+    return {"ok": False, "error": "no_encontrada"}
 
 
 class ProPrecioReq(BaseModel):
@@ -1351,6 +1396,10 @@ _HTML = r"""<!DOCTYPE html>
             <span class="md-ico">🎁</span>
             <span class="md-txt"><b>Promociones</b><small>Bono de recarga · cupones</small></span>
           </button>
+          <button class="md-item" data-pane="reclamacionesPanel" onclick="mostrarPane(this,'reclamacionesPanel');cargarReclamaciones()">
+            <span class="md-ico">📕</span>
+            <span class="md-txt"><b>Libro de Reclamaciones</b><small>INDECOPI · responder en 15 días hábiles</small></span>
+          </button>
         </aside>
         <div class="md-detail">
           <div class="md-pane" id="comision"></div>
@@ -1361,6 +1410,7 @@ _HTML = r"""<!DOCTYPE html>
           <div class="md-pane" id="proPanel" style="display:none"></div>
           <div class="md-pane" id="recargasQr" style="display:none"></div>
           <div class="md-pane" id="promosPanel" style="display:none"></div>
+          <div class="md-pane" id="reclamacionesPanel" style="display:none"></div>
         </div>
       </div>
     </section>
@@ -2178,7 +2228,8 @@ async function cargarPro(){
           <div style="font-weight:800;margin-bottom:2px">🚀 Bienvenida AUTOMÁTICA de nuevos dueños</div>
           <div class="row">Cada dueño nuevo, al ACTIVARSE su primera cancha, recibe esto solo
             (un regalo por correo). El saldo de regalo SOLO cubre comisiones (no se liquida
-            ni se gasta en otra cosa). Pon 0 y 0 para apagarla.</div>
+            ni se gasta en otra cosa) y va en la MONEDA del país de la cancha. Pon todo en 0
+            para apagarla.</div>
           <div class="actions" style="align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px">
             <span style="font-size:12.5px;font-weight:600">Pro de cortesía</span>
             <select id="bvDias" style="padding:8px;border:1px solid var(--border);border-radius:8px">
@@ -2188,9 +2239,15 @@ async function cargarPro(){
               <option value="90">90 días</option>
               <option value="180">180 días</option>
             </select>
-            <span style="font-size:12.5px;font-weight:600">Saldo de regalo S/</span>
+            <span style="font-size:12.5px;font-weight:600">Regalo 🇵🇪 S/</span>
             <input id="bvSaldo" inputmode="decimal"
-              style="width:74px;padding:8px;border:1px solid var(--border);border-radius:8px;text-align:right">
+              style="width:64px;padding:8px;border:1px solid var(--border);border-radius:8px;text-align:right">
+            <span style="font-size:12.5px;font-weight:600">🇪🇨 $</span>
+            <input id="bvSaldoUsd" inputmode="decimal"
+              style="width:64px;padding:8px;border:1px solid var(--border);border-radius:8px;text-align:right">
+            <span style="font-size:12.5px;font-weight:600">🇧🇴 Bs</span>
+            <input id="bvSaldoBob" inputmode="decimal"
+              style="width:64px;padding:8px;border:1px solid var(--border);border-radius:8px;text-align:right">
             <button class="btn-ap" onclick="guardarBienvenida()">Guardar</button>
           </div>
         </div>
@@ -2212,6 +2269,8 @@ async function cargarPro(){
       const d = String(parseInt(bv.pro_dias)||0);
       if([...sel.options].some(o=>o.value===d)) sel.value = d;
       document.getElementById('bvSaldo').value = bv.saldo_soles || '0';
+      document.getElementById('bvSaldoUsd').value = bv.saldo_usd || '0';
+      document.getElementById('bvSaldoBob').value = bv.saldo_bob || '0';
     }
   }catch(e){ document.getElementById('proPanel').innerHTML =
       '<div class="card">No se pudo cargar Pichangol Pro.</div>'; }
@@ -2235,11 +2294,12 @@ async function renovarPro(){
 }
 async function guardarBienvenida(){
   const dias = parseInt(document.getElementById('bvDias').value)||0;
-  const saldo = parseFloat((document.getElementById('bvSaldo').value||'0').replace(',','.'))||0;
+  const num = id => parseFloat((document.getElementById(id).value||'0').replace(',','.'))||0;
+  const saldo = num('bvSaldo'), usd = num('bvSaldoUsd'), bob = num('bvSaldoBob');
   const r = await fetch('/admin/api/pro/bienvenida',{method:'POST',headers:headers(),
-    body:JSON.stringify({pro_dias:dias, saldo_soles:saldo})});
+    body:JSON.stringify({pro_dias:dias, saldo_soles:saldo, saldo_usd:usd, saldo_bob:bob})});
   if(r.status===401){ salir(); return; }
-  if(r.ok) toast((dias||saldo) ? `Bienvenida activa: ${dias} días de Pro + S/ ${saldo}` : 'Bienvenida apagada');
+  if(r.ok) toast((dias||saldo||usd||bob) ? `Bienvenida activa: ${dias} días de Pro + S/ ${saldo} · $ ${usd} · Bs ${bob}` : 'Bienvenida apagada');
   else toast('No se pudo guardar');
 }
 async function darCortesia(){
@@ -2384,6 +2444,55 @@ function mostrarSeccion(sec){
 }
 
 // --- Recargas por QR (Yape directo): el operador verifica y aprueba -------------
+async function cargarReclamaciones(){
+  const box = document.getElementById('reclamacionesPanel');
+  if(!box) return;
+  box.innerHTML = '<div class="card">Cargando…</div>';
+  try{
+    const r = await fetch('/admin/api/reclamaciones',{headers:headers()});
+    if(r.status===401){ salir(); return; }
+    if(!r.ok){ box.innerHTML='<div class="card">No se pudo cargar.</div>'; return; }
+    const j = await r.json();
+    const hs = j.reclamaciones||[];
+    const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    if(!hs.length){
+      box.innerHTML = '<div class="card">Sin hojas de reclamación. Se registran desde el Libro de '
+        + 'Reclamaciones de la home pública (<code>/#reclamaciones</code>).</div>';
+      return;
+    }
+    box.innerHTML = `<div class="row" style="margin-bottom:10px;color:var(--muted)">
+        ${j.pendientes||0} pendiente(s) de ${j.total||hs.length}. Plazo legal: 15 días hábiles desde la fecha.</div>` +
+      hs.map(h=>`
+      <div class="card" style="margin-bottom:12px;${h.estado==='pendiente'?'border-left:4px solid #e0a800':''}">
+        <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <div style="font-weight:800;font-size:15px">${esc(h.numero)} · ${esc(h.detalle&&h.detalle.tipo)}</div>
+          <div style="color:#667;font-size:12.5px">${fmtFecha(h.fecha)} · <b>${esc(h.estado)}</b></div>
+        </div>
+        <div style="font-size:13px;margin-top:6px">
+          <b>Consumidor:</b> ${esc(h.consumidor.nombre)} · DNI/CE ${esc(h.consumidor.doc)} ·
+          <a href="mailto:${esc(h.consumidor.email)}">${esc(h.consumidor.email)}</a>
+          ${h.consumidor.tel?(' · '+esc(h.consumidor.tel)):''}${h.consumidor.menor==='Sí'?' · <b>menor de edad</b>':''}</div>
+        <div style="font-size:13px;margin-top:4px"><b>Bien:</b> ${esc(h.bien.tipo)}${h.bien.monto?(' · S/ '+esc(h.bien.monto)):''}${h.bien.desc?(' · '+esc(h.bien.desc)):''}</div>
+        <div style="font-size:13px;margin-top:6px;white-space:pre-wrap"><b>Detalle:</b> ${esc(h.detalle.detalle)}</div>
+        <div style="font-size:13px;margin-top:4px;white-space:pre-wrap"><b>Pedido:</b> ${esc(h.detalle.pedido)}</div>
+        ${h.estado==='pendiente' ? `
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <input id="resp${h.id}" placeholder="Respuesta dada al consumidor (resumen)"
+            style="flex:1;min-width:240px;padding:8px;border:1px solid var(--border);border-radius:8px">
+          <button class="btn-ap" onclick="atenderReclamacion(${h.id})">✅ Marcar atendida</button>
+        </div>` : `<div style="font-size:12.5px;color:#667;margin-top:6px">Atendida ${fmtFecha(h.respondida_en)}${h.respuesta?(' · '+esc(h.respuesta)):''}</div>`}
+      </div>`).join('');
+  }catch(e){ box.innerHTML='<div class="card">No se pudo cargar.</div>'; }
+}
+async function atenderReclamacion(id){
+  const respuesta = (document.getElementById('resp'+id)||{}).value||'';
+  if(!confirm('¿Marcar la hoja como atendida? Recuerda enviar la respuesta formal al correo del consumidor.')) return;
+  const r = await fetch('/admin/api/reclamaciones/'+id+'/atender',{method:'POST',headers:headers(),
+    body:JSON.stringify({respuesta})});
+  if(r.status===401){ salir(); return; }
+  if(r.ok){ toast('Hoja atendida'); await cargarReclamaciones(); }
+  else toast('No se pudo guardar');
+}
 async function cargarRecargasQr(){
   const box = document.getElementById('recargasQr');
   if(!box) return;

@@ -95,6 +95,7 @@ class _ProductoDetalleScreenState extends State<ProductoDetalleScreen> {
         montoSoles: p.precio,
         ventaId: ventaId,
         concepto: 'Venta: ${p.nombre}',
+        moneda: p.moneda,
         productoId: p.id,
         productoNombre: p.nombre,
         compradorEmail: u.email.toLowerCase(),

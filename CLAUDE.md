@@ -62,7 +62,46 @@ jugador es 100% Pichangol, EBIM solo aparece discreto como respaldo).
   - **Catálogos y sugerencias por país**: marcas/productos (bodega:
     `_sugerenciasPE/BO/EC`), prefijo telefónico (`codigoTelActual`),
     validación de documento por país.
+  - **Pasarela por país** (`PaisConfig.pasarela`, la decide `paisActual`):
+    PE → **Culqi** (tokeniza en la app; `pago_tarjeta_sheet.dart`), BO →
+    **Libélula** (página hospedada en WebView; `pago_libelula.dart`), EC →
+    **PayPhone** (botón de pagos hospedado en USD; `pago_payphone.dart`,
+    backend `pagos/payphone.py` + `/pagos/ec/*`, hecho sep-2026). **La
+    página de PayPhone se abre en NAVEGADOR REAL (Chrome Custom Tab vía
+    `launchUrl(inAppBrowserView)`), NUNCA en WebView:** PayPhone rechaza el
+    WebView de Android ("No autorizado… intenta desde la página de origen")
+    aunque dominio y puente estén bien; la misma URL en Chrome carga. La app
+    se queda en un diálogo que sondea `/pagos/ec/pago/{id}` (y al volver al
+    frente) hasta que el retorno confirme; el WebView queda solo de respaldo. Todo cobro
+    entra por `PagoTarjeta.cobrar`, que enruta por país. **Sin pasarela
+    configurada, en PRODUCCIÓN nunca se simula** (`kEsProduccion`): se avisa y
+    se devuelve false; en dev/QAS cae a la pasarela simulada para probar.
+  - **Comisión con MÍNIMO POR MONEDA (decisión del director, sep-2026):**
+    5 % con mínimo **S/ 2 · \$ 0.50 · Bs 3** (`config.comision_min` en el
+    backend, `PaisConfig.comisionMin` en el APK). Los endpoints
+    `/pagos/comision-reserva`, `/pagos/liquidacion-online` y `/pagos/venta`
+    reciben `moneda` (ISO o símbolo; vacío = PEN para APKs viejos) y la
+    GUARDAN en el pago, así el desglose de liquidaciones recalcula con la
+    moneda real. El APK la manda desde el país de las coordenadas de la
+    cancha (`_accionContable`) o la moneda del producto. Test
+    `test_comision_moneda.py`. Pendiente: la cuota de torneo sigue en PEN.
+  - **Montos de recarga por país:** `PaisConfig.recargas` (chips) +
+    `recargaMin`/`recargaMax` ("Otro monto"): S/ 20-200 (10-1000), \$ 5-50
+    (1-300), Bs 50-500 (20-3000). Para PRD subir el mínimo de EC a \$ 5.
   - Referencia central: `lib/config/pais.dart` (`PaisConfig`, `paisActual`).
+  - **TRES países, no uno (decisión del director, sep-2026, opción C):**
+    (1) **país que EXPLORA** = `paisActual` (GPS, pero el usuario lo elige a
+    mano en la bienvenida, en la bandera de la barra de Explorar o en el
+    banner "Parece que estás en Ecuador"; con elección explícita
+    `paisElegido=true` el GPS ya no lo pisa, solo propone vía
+    `sugerenciaPais`, una vez por viaje); (2) **país de CASA / billetera** =
+    `appState.paisBilletera` (moneda congelada del saldo → país de su 1.ª
+    cancha → `paisCasa` persistido → GPS); decide la moneda del saldo y la
+    pasarela de RECARGA; se cambia en Perfil → "Mi país" SOLO con saldo 0;
+    (3) **país del COBRO** = `paisDeCoordenadas(cancha.ubicacion)`: decide
+    moneda y pasarela del checkout ("Pagas en $ · PayPhone"). NUNCA preguntar
+    el país con un modal en cada arranque. Selector único:
+    `widgets/selector_pais.dart`.
 
 ## App Flutter (`lib/`)
 
@@ -121,8 +160,24 @@ para la API del APK.
   secret `LANDING_BASE_URL` en GitHub Actions (para el APK) **y** variable
   `LANDING_BASE_URL` en Railway `pg-backend` (para el HTML) = `https://pg.ebim.pe`
   en el **piloto**, `https://www.pichangol.app` en **PROD**.
-- El apex `pichangol.app` (sin `www`) queda libre para la home de marketing
-  (`landing/index.html`).
+- **Home de marca en la raíz (`GET /`, hecho sep-2026):** el backend sirve
+  `backend/growth/legal/home.html` (antes `landing/index.html`, que no se
+  servía en ningún lado y `www.pichangol.app/` daba 404). Es la **URL del
+  comercio** que se declara en Culqi/PayPhone al afiliar: razón social, RUC,
+  contacto, términos, cancelaciones, Libro de Reclamaciones y enlaces a
+  `/legal/*`. Test `test_home_de_marca_en_la_raiz`. **Requisitos de Culqi
+  para la URL del comercio (infografía, sep-2026), ya cubiertos:** ≥5
+  servicios con foto (SVG inline), descripción y precio visible + botón de
+  compra (sección `#servicios`, enlaza a Play); **Libro de Reclamaciones
+  INTEGRADO** (INDECOPI: no correo ni formularios externos): la home hace
+  `POST /reclamaciones` (`legal/router.py`, número `PICH-AAAAMMDD-NNNN`,
+  `stores.reclamaciones` en el snapshot) y el operador lo atiende en la
+  torre `/admin` → Cobros → Libro de Reclamaciones (responder en ≤15 días
+  hábiles); SSL en todo el dominio; contacto con número, correo y dirección.
+  Culqi además exige que la app esté PUBLICADA en Play (o darles acceso de
+  tester). La URL registrada en Culqi debe ser `www.pichangol.app`, NO
+  `grupoebim.com` (observación de Culqi, sep-2026).
+- El apex `pichangol.app` (sin `www`) sigue libre (podría redirigir al `www`).
 
 ## Estrategia de ambientes (piloto → prod)
 
@@ -231,10 +286,31 @@ off → redeploy inmediato en cada push). URL pública:
   > `GET /reclamo/{cancha_id}` (estado), `/lugar-reclamado`, `/otp/*`,
   > `/reclamo/validar` (validador, protegido por código+GPS). Aprobación por
   > WhatsApp usa `aprobar_por_codigo` (firma Twilio), no el endpoint HTTP.
+- **`PUBLIC_BASE_URL` por ambiente (trampa resuelta sep-2026):** es la base
+  de TODAS las URLs que el backend le entrega a terceros para volver (retorno
+  y cancelación de PayPhone, callback de Libélula, página puente `/pagos/ec/ir`,
+  media del CM). QAS (`pg-backend`) DEBE ser `https://pg.ebim.pe` y PRD
+  (`pg-backend-prd`) `https://www.pichangol.app`. QAS quedó con el dominio de
+  marca tras moverlo a PRD y todos los retornos de pasarela de pruebas caían en
+  producción (que no conoce el pago) → PayPhone "No autorizado" + reversa a
+  los 5 min. Al registrar dominios autorizados en una pasarela, registrar el
+  host de `PUBLIC_BASE_URL` de ESE ambiente.
 - **Config (env, `config.py`):** `ADMIN_PANEL_TOKEN`, `FACTILIZA_API_TOKEN`,
   `PICHANGOL_ADMIN_WHATSAPP`, `TWILIO_*`, `WHATSAPP_*`, `OTP_CANAL_PREFERIDO`
   (`whatsapp|twilio_whatsapp|sms`), `VALIDADOR_ACTIVA_AUTOMATICO`,
   `RECLAMO_VALIDACION_GPS_MAX_M=150`, `RECLAMO_UBICACION_MAX_M=150`, `DATABASE_URL`,
+  `LIBELULA_APPKEY` (Bolivia), `PAYPHONE_TOKEN` + `PAYPHONE_STORE_ID`
+  (Ecuador; se sacan en PayPhone Business → Developer → Aplicaciones; sin
+  ambos el módulo queda inactivo y `/pagos/ec/config` responde
+  `disponible:false`). PayPhone exige CONFIRMAR cada cobro antes de 5 min o
+  lo revierte: lo hace `/pagos/ec/retorno` al instante y, de respaldo, el APK
+  manda el `transaction_id` al consultar `/pagos/ec/pago/{id}`.
+  **Persistencia en GET (trampa, sep-2026):** el middleware de `main.py`
+  solo guarda el snapshot tras POST/PUT/DELETE; los RETORNOS de pasarela
+  llegan por GET (el navegador del cliente vuelve) → todo handler GET que
+  mute plata debe llamar `pagos/router.py::_persistir_ahora()` (lo hacen
+  `/pagos/ec/retorno`, `/pagos/ec/pago/{id}` y `/pagos/ec/cancelado`). Se
+  perdió la primera recarga real de PayPhone por esto.
   `APP_API_KEY` (clave app↔backend: si está seteada, los endpoints PÚBLICOS de
   `propiedad/router.py` exigen la cabecera `X-App-Key` — solo el APK oficial la
   trae; vacía = no se exige, para rollout gradual). Debe coincidir con el
@@ -276,7 +352,10 @@ off → redeploy inmediato en cada push). URL pública:
   AUTOMÁTICA** (config torre, mismo pane: `bienvenida_pro_dias` +
   `bienvenida_saldo_soles`, 0/0 = off): al ACTIVARSE la primera cancha de un
   dueño (`_bienvenida_al_activar` en los 3 caminos de reclamos), recibe días
-  de Pro cortesía + **SALDO DE REGALO** (`stores.saldos_promo`, bolsillo
+  de Pro cortesía + **SALDO DE REGALO POR PAÍS** (decisión del director,
+  sep-2026: **S/ 20 · \$ 5 · Bs 35**; claves `bienvenida_saldo_soles|usd|bob`,
+  el país sale de las coordenadas del reclamo vía `paises.py::
+  pais_de_coordenadas`, espejo de las cajas del APK) (`stores.saldos_promo`, bolsillo
   SEPARADO que SOLO consumen comisiones vía `debitar_comision` — regalo
   primero, plata real después; NO liquidable/transferible/gastable en
   Pro/torneo/bodega, así no se vuelve plata real que salga de PCG). Un regalo
@@ -496,11 +575,12 @@ sigue el lenguaje Airbnb sobre la paleta EBIM:
   nuevas; migrar los viejos a este componente cuando se toquen.
 - **Íconos del menú lateral CON COLOR (Airbnb "con vida"):** los íconos de los
   rails/barras de navegación van coloreados por sección (no gris plano). La
-  pestaña **Mensajes lleva la BURBUJA de chat propia** (`IconoChatPichan`:
-  burbuja verde con la "P" de Pichan; `IconoMensajesLogo` delega en ella —
-  decisión del director ago-2026: el logo de PCG NO va en esa pestaña; antes
-  llevó el pin y se revirtió). El globo de chat de las fichas (ChatBurbuja)
-  sí usa el pin de Pichangol como fallback sin logo del local.
+  pestaña **Mensajes lleva un ícono de chat NORMAL** (`Icons.chat_bubble` /
+  `_outline`, vía `IconoMensajesLogo`/`IconoChatPichan`, que heredan el color
+  del tema o reciben el de la sección) — decisión del director sep-2026:
+  ni el logo de PCG ni la burbuja con la "P" (ambas se probaron y se
+  revirtieron). El globo de chat de las fichas (ChatBurbuja) sí usa el pin de
+  Pichangol como fallback sin logo del local.
 - **Avatares SIEMPRE con foto real:** cualquier avatar de jugador (ranking,
   jugadores disponibles, retos —incluido el reto de dobles—, chat, perfil, etc.)
   DEBE mostrar la foto del perfil (`appState.fotoDe(email)` o `usuario.fotoUrl`),

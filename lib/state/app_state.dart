@@ -1170,12 +1170,17 @@ class AppState extends ChangeNotifier {
       required String etiqueta,
       String medio = ''}) {
     if (cancha.dueno.isEmpty) return null;
+    // Moneda de la CANCHA (país de sus coordenadas): decide el mínimo de la
+    // comisión en el backend (S/ 2 · \$ 0.50 · Bs 3).
+    final moneda = paisDeCoordenadas(
+            cancha.ubicacion.latitude, cancha.ubicacion.longitude)
+        .monedaIso;
     switch (cobro) {
       case 'efectivo':
         return {
           'kind': 'comision', 'dueno': cancha.dueno, 'monto': montoBase,
           'reserva_id': reservaId, 'concepto': 'Comisión · $etiqueta',
-          'online': false,
+          'online': false, 'moneda': moneda,
         };
       case 'online':
         return {
@@ -1183,14 +1188,14 @@ class AppState extends ChangeNotifier {
           'reserva_id': reservaId, 'concepto': 'Reserva online · $etiqueta',
           'online': true,
           // Con qué pagó el jugador (yape/tarjeta): estado de cuenta del dueño.
-          'medio': medio,
+          'medio': medio, 'moneda': moneda,
         };
       case 'sena':
         return {
           'kind': 'liquidacion', 'dueno': cancha.dueno,
           'monto': sena.toDouble(), 'reserva_id': reservaId,
           'concepto': 'Seña · $etiqueta', 'online': true,
-          'medio': 'sena',
+          'medio': 'sena', 'moneda': moneda,
         };
       default:
         return null;
@@ -1221,14 +1226,16 @@ class AppState extends ChangeNotifier {
               duenoId: (e['dueno'] ?? '').toString(),
               montoSoles: monto,
               reservaId: rid,
-              concepto: (e['concepto'] ?? '').toString());
+              concepto: (e['concepto'] ?? '').toString(),
+              moneda: (e['moneda'] ?? '').toString());
         } else {
           r = await PagosService.liquidacionOnline(
               duenoId: (e['dueno'] ?? '').toString(),
               montoSoles: monto,
               reservaId: rid,
               concepto: (e['concepto'] ?? '').toString(),
-              medio: (e['medio'] ?? '').toString());
+              medio: (e['medio'] ?? '').toString(),
+              moneda: (e['moneda'] ?? '').toString());
         }
         quitar = r != null; // 200 (ok o duplicada) → listo
       }
@@ -5969,6 +5976,44 @@ class AppState extends ChangeNotifier {
     if (mis.isNotEmpty) return mis.first.monedaSimbolo;
     return paisActual.moneda;
   }
+
+  /// PAÍS DE LA BILLETERA ("país de casa"). Decide la moneda del saldo y la
+  /// PASARELA con la que se recarga. NO es el país del GPS: un dueño limeño de
+  /// viaje en Guayaquil recarga en S/ por Culqi, no en $ por PayPhone. Misma
+  /// precedencia que [monedaSaldoSimbolo]: moneda congelada por la primera
+  /// recarga → país de su primera cancha (por coordenadas) → GPS como último
+  /// recurso (usuario nuevo sin saldo ni canchas).
+  PaisConfig get paisBilletera {
+    if (monedaSaldo.isNotEmpty) {
+      final p = paisPorMoneda(monedaSaldo);
+      if (p != null) return p;
+    }
+    final mis = misCanchas;
+    if (mis.isNotEmpty) {
+      final c = mis.first;
+      return paisDeCoordenadas(c.ubicacion.latitude, c.ubicacion.longitude);
+    }
+    return paisCasa ?? paisActual;
+  }
+
+  /// ¿Puede cambiar su país de casa? Solo con la billetera en cero: cambiar
+  /// de moneda con saldo adentro sería convertir S/ en $ por decreto.
+  bool get puedeCambiarPaisCasa => saldoClub <= 0 && saldoRegalo <= 0;
+
+  /// Cambia el país de CASA (Perfil → "Mi país"). Con saldo, no hace nada y
+  /// devuelve false (la UI explica). Sin saldo, descongela la moneda del saldo
+  /// para que la próxima recarga la fije en la nueva.
+  Future<bool> cambiarPaisCasa(PaisConfig p) async {
+    if (!puedeCambiarPaisCasa) return false;
+    await setPaisCasa(p);
+    monedaSaldo = '';
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_kMonedaSaldo);
+    } catch (_) {}
+    notifyListeners();
+    return true;
+  }
   // Virgen (como PRD): sin movimientos demo. El historial real baja del backend.
   final List<MovimientoSaldo> movimientos = [];
   bool get destacadoActivo => saldoClub > 0;
@@ -6107,9 +6152,15 @@ class AppState extends ChangeNotifier {
   }
 
   /// Comisión que descuenta del saldo cada reserva nueva (5%, mínimo $monedaSimbolo 2).
-  int comisionDe(num precio) {
-    final c = (precio * 0.05).round();
-    return c < 2 ? 2 : c;
+  /// Comisión de Pichangol (5 %) con MÍNIMO POR MONEDA (S/ 2, \$ 0.50, Bs 3;
+  /// `PaisConfig.comisionMin`). [moneda] = símbolo o ISO de la cancha; sin
+  /// moneda usa la del saldo/país actual. Estimación para la UI: el cobro real
+  /// lo hace el backend con la misma regla.
+  int comisionDe(num precio, {String? moneda}) {
+    final p = paisPorMonedaOIso(
+        (moneda == null || moneda.isEmpty) ? monedaSimbolo : moneda);
+    final c = precio * 0.05;
+    return (c < p.comisionMin ? p.comisionMin : c).round();
   }
 
   // ── PICHANGOL PRO (membresía del jugador) ──────────────────────────────────
@@ -6365,7 +6416,7 @@ class AppState extends ChangeNotifier {
   void _consumirComision(Cancha cancha) {
     if (cancha.club != SampleData.clubActivo) return;
     if (saldoClub <= 0) return;
-    final c = comisionDe(cancha.precioHora);
+    final c = comisionDe(cancha.precioHora, moneda: cancha.moneda);
     saldoClub = (saldoClub - c).clamp(0, 1 << 31);
     movimientos.insert(
       0,

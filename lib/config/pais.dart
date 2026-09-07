@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../utils/moneda.dart';
@@ -62,6 +63,21 @@ class PaisConfig {
   /// espacio. En Perú son las zonas de Lima; en Bolivia/Ecuador, sus ciudades.
   final List<String> zonas;
 
+  /// Montos SUGERIDOS de recarga de saldo (chips), en la unidad mayor de la
+  /// moneda del país y calibrados a su poder adquisitivo: S/ 20 no es lo mismo
+  /// que \$ 20. Además de los chips, la pantalla ofrece "Otro monto" acotado
+  /// por [recargaMin]/[recargaMax] (mínimo que acepta la pasarela y tope
+  /// antifraude de una sola recarga).
+  final List<int> recargas;
+  final int recargaMin;
+  final int recargaMax;
+
+  /// MÍNIMO de la comisión de Pichangol (5 %) en la moneda del país. Decisión
+  /// del director (sep-2026): S/ 2, \$ 0.50, Bs 3. Espejo de
+  /// `config.comision_min` en el backend growth; el backend es quien cobra,
+  /// esto es para mostrar/estimar en el APK.
+  final double comisionMin;
+
   const PaisConfig({
     required this.iso,
     required this.nombre,
@@ -77,6 +93,10 @@ class PaisConfig {
     required this.consultaDoc,
     required this.geocodeHint,
     required this.zonas,
+    required this.recargas,
+    required this.recargaMin,
+    required this.recargaMax,
+    required this.comisionMin,
   });
 }
 
@@ -103,6 +123,10 @@ const Map<String, PaisConfig> paisesSoportados = {
       'lima_moderna',
       'callao',
     ],
+    recargas: [20, 50, 100, 200],
+    recargaMin: 10, // Culqi cobra desde S/ 1; 10 evita micro-recargas
+    recargaMax: 1000, // mismo tope que la recarga por QR
+    comisionMin: 2,
   ),
   'BO': PaisConfig(
     iso: 'BO',
@@ -128,14 +152,18 @@ const Map<String, PaisConfig> paisesSoportados = {
       'cochabamba',
       'sucre',
     ],
+    recargas: [50, 100, 200, 500],
+    recargaMin: 20,
+    recargaMax: 3000,
+    comisionMin: 3,
   ),
   'EC': PaisConfig(
     iso: 'EC',
     nombre: 'Ecuador',
     moneda: '\$',
     monedaIso: 'USD',
-    pasarela: 'manual',
-    pasarelaNombre: 'Por definir',
+    pasarela: 'payphone',
+    pasarelaNombre: 'PayPhone (tarjeta · saldo PayPhone)',
     codigoTel: '593',
     bandera: '🇪🇨',
     docId: 'Cédula',
@@ -149,6 +177,10 @@ const Map<String, PaisConfig> paisesSoportados = {
       'cuenca',
       'ambato',
     ],
+    recargas: [5, 10, 20, 50],
+    recargaMin: 1, // PayPhone cobra desde \$ 1
+    recargaMax: 300,
+    comisionMin: 0.5,
   ),
 };
 
@@ -175,12 +207,41 @@ const PaisConfig _paisPorDefecto = PaisConfig(
     'lima_moderna',
     'callao',
   ],
+  recargas: [20, 50, 100, 200],
+  recargaMin: 10,
+  recargaMax: 1000,
+  comisionMin: 2,
 );
 
 /// País actualmente activo. La UI de moneda lee de aquí (vía `monedaSimbolo`).
 PaisConfig paisActual = _paisPorDefecto;
 
 const String _kPaisIso = 'pais_iso';
+const String _kPaisElegido = 'pais_elegido';
+const String _kPaisCasa = 'pais_casa';
+const String _kSugerenciaDescartada = 'pais_sugerencia_descartada';
+
+/// ¿Ya hay un país FIJADO (primera detección del GPS al instalar, o elección a
+/// mano en el banner / Perfil)? Mientras sea false, el GPS manda. Cuando es
+/// true, el GPS ya no cambia el país solo: propone (ver [sugerenciaPais]) y el
+/// usuario decide. Decisión del director (sep-2026): al instalar NO se
+/// pregunta —se toma el país donde estás—; se pregunta solo al viajar.
+bool paisElegido = false;
+
+/// País que el GPS detectó distinto al activo, pendiente de que el usuario lo
+/// acepte o lo descarte. Explorar lo escucha para pintar el banner "Estás en
+/// Ecuador · Ver canchas aquí / Seguir en Perú". null = nada que proponer.
+final ValueNotifier<PaisConfig?> sugerenciaPais = ValueNotifier(null);
+
+/// ISO de la última sugerencia que el usuario descartó ("Seguir en Perú"):
+/// no se vuelve a proponer hasta que el GPS diga OTRO país. Así el banner
+/// sale una vez por viaje, no en cada arranque.
+String _sugerenciaDescartada = '';
+
+/// PAÍS DE CASA: el de la billetera del usuario (moneda del saldo y pasarela
+/// de recarga). Es independiente del país que explora. null = aún no fijado
+/// (usuario nuevo): `AppState.paisBilletera` cae al GPS.
+PaisConfig? paisCasa;
 
 /// Aplica un país (por su config), sincroniza el símbolo de moneda global y,
 /// si [persistir], lo guarda para el próximo arranque.
@@ -197,15 +258,89 @@ Future<void> _aplicarPais(PaisConfig p, {bool persistir = true}) async {
   }
 }
 
+/// País al que pertenece un símbolo de moneda ('S/' → PE, 'Bs' → BO, '\$' → EC).
+/// Sirve para recuperar el país de una BILLETERA a partir de su moneda
+/// congelada. null si el símbolo no es de un país soportado.
+PaisConfig? paisPorMoneda(String simbolo) {
+  final s = simbolo.trim();
+  if (s.isEmpty) return null;
+  for (final p in paisesSoportados.values) {
+    if (p.moneda == s || p.monedaIso == s.toUpperCase()) return p;
+  }
+  return null;
+}
+
 /// Selecciona el país por su código ISO (el que devuelve el reverse-geocode).
 /// Si el país no está soportado, mantiene el actual (no rompe la moneda). Es la
 /// puerta de entrada desde la detección por GPS.
+///
+/// Si el usuario ya ELIGIÓ país a mano, el GPS no lo pisa: deja la propuesta
+/// en [sugerenciaPais] y Explorar pregunta. Un limeño de viaje en Guayaquil
+/// sigue viendo su app en S/ hasta que él diga "ver canchas aquí".
 Future<void> setPaisPorIso(String? iso) async {
   final code = (iso ?? '').toUpperCase().trim();
   final p = paisesSoportados[code];
   if (p == null) return; // país no soportado → no tocar la moneda actual
-  if (p.iso == paisActual.iso) return; // sin cambios
+  if (p.iso == paisActual.iso) {
+    // Volvió al país activo: cualquier sugerencia pendiente ya no aplica.
+    if (sugerenciaPais.value != null) sugerenciaPais.value = null;
+    return;
+  }
+  if (!paisElegido) {
+    // PRIMERA detección real (usuario nuevo): se adopta sin preguntar y queda
+    // como país de casa (billetera). Desde aquí el GPS ya no cambia el país
+    // solo: si después detecta otro, PROPONE (banner) y el usuario decide.
+    await _aplicarPais(p);
+    paisElegido = true;
+    if (paisCasa == null) paisCasa = p;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_kPaisElegido, true);
+      if (paisCasa?.iso == p.iso) await prefs.setString(_kPaisCasa, p.iso);
+    } catch (_) {}
+    return;
+  }
+  if (p.iso == _sugerenciaDescartada) return; // ya dijo "seguir en el mío"
+  if (sugerenciaPais.value?.iso != p.iso) sugerenciaPais.value = p;
+}
+
+/// El usuario ELIGE país (bienvenida, banner de Explorar, Perfil). Se aplica,
+/// se marca la elección explícita y se limpia cualquier sugerencia pendiente.
+Future<void> elegirPais(PaisConfig p) async {
+  paisElegido = true;
+  _sugerenciaDescartada = '';
+  sugerenciaPais.value = null;
   await _aplicarPais(p);
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kPaisElegido, true);
+    await prefs.remove(_kSugerenciaDescartada);
+  } catch (_) {}
+}
+
+/// "Seguir en mi país": descarta la sugerencia del GPS hasta que cambie.
+Future<void> descartarSugerenciaPais() async {
+  final iso = sugerenciaPais.value?.iso ?? '';
+  sugerenciaPais.value = null;
+  if (iso.isEmpty) return;
+  _sugerenciaDescartada = iso;
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kSugerenciaDescartada, iso);
+  } catch (_) {}
+}
+
+/// Fija el país de CASA (billetera). Persiste.
+Future<void> setPaisCasa(PaisConfig? p) async {
+  paisCasa = p;
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    if (p == null) {
+      await prefs.remove(_kPaisCasa);
+    } else {
+      await prefs.setString(_kPaisCasa, p.iso);
+    }
+  } catch (_) {}
 }
 
 /// Carga el país persistido en el arranque, para que la moneda sea correcta
@@ -216,6 +351,9 @@ Future<void> cargarPaisPersistido() async {
     final iso = prefs.getString(_kPaisIso);
     final p = paisesSoportados[(iso ?? '').toUpperCase()];
     if (p != null) await _aplicarPais(p, persistir: false);
+    paisElegido = prefs.getBool(_kPaisElegido) ?? false;
+    paisCasa = paisesSoportados[(prefs.getString(_kPaisCasa) ?? '').toUpperCase()];
+    _sugerenciaDescartada = prefs.getString(_kSugerenciaDescartada) ?? '';
   } catch (_) {
     // Sin persistencia: se queda con el país por defecto.
   }
@@ -300,6 +438,16 @@ PaisConfig paisDeCoordenadas(double lat, double lng) {
 
 /// Símbolo de moneda ('S/', 'Bs', '$') que corresponde a una coordenada, para
 /// congelar `Cancha.moneda` por la ubicación real de la cancha.
+/// País cuya moneda tiene ese símbolo o ISO ('S/'|'PEN' → PE, '\$'|'USD' → EC,
+/// 'Bs'|'BOB' → BO). Desconocido → Perú (comportamiento histórico).
+PaisConfig paisPorMonedaOIso(String moneda) {
+  final m = moneda.trim().toUpperCase();
+  for (final p in paisesSoportados.values) {
+    if (p.moneda.toUpperCase() == m || p.monedaIso == m) return p;
+  }
+  return paisesSoportados['PE']!;
+}
+
 String monedaDeCoordenadas(double lat, double lng) =>
     paisDeCoordenadas(lat, lng).moneda;
 
