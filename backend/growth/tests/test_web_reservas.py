@@ -261,3 +261,30 @@ def test_sin_base_de_datos_todo_es_fail_safe(monkeypatch):
 def test_home_enlaza_al_catalogo():
     home = client.get("/").text
     assert 'href="/canchas"' in home and "/canchas?deporte=futbol" in home
+
+
+def test_calendario_ics_y_acciones_del_comprobante(db, monkeypatch):
+    monkeypatch.setattr(culqi, "crear_cargo", lambda **kw: {"ok": True, "charge_id": "chr_2"})
+    import pagos.router as pr
+    monkeypatch.setattr(pr, "_aviso_push_usuario", lambda *a, **k: None)
+    f = _manana()
+    j = _asegurar(f, horas=("19:00",), extras=())
+    p = client.post("/web/pagar", json={"ids": j["ids"], "firma": j["firma"], "token": "tkn_9"}).json()
+    assert p["ok"]
+    ref = p["url"].rsplit("/", 1)[-1]
+    html = client.get(p["url"]).text
+    assert f"/reserva/{ref}.ics" in html and "Cómo llegar" in html and "wa.me/?text=" in html
+    assert "Pichang" in html and "Montserrat" in html  # identidad del app
+    ics = client.get(f"/reserva/{ref}.ics")
+    assert ics.status_code == 200 and "text/calendar" in ics.headers["content-type"]
+    assert "BEGIN:VEVENT" in ics.text and "Cancha Central" in ics.text
+    assert "DTSTART:" in ics.text and "T000000Z" in ics.text  # 19:00 Lima = 00:00Z del día siguiente
+    assert client.get("/reserva/zzz.ics").status_code == 404
+    assert "Reserva no encontrada" in client.get("/reserva/zzz").text
+
+
+def test_pagina_reservar_trae_tira_de_dias_y_resumen(db):
+    html = client.get("/reservar/c_lima").text
+    assert "Resumen de tu reserva" in html and 'id="dias"' in html.replace("'", '"')
+    assert "Hoy" in html and "Mañana" in html and "application/ld+json" in html
+    assert "/static/brand/logo_pin.png" in html

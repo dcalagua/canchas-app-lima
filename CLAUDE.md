@@ -196,7 +196,18 @@ para la API del APK.
   en \$ o Bs muestran el detalle y mandan a la app. El checkout se muestra
   con cualquier `CULQI_PUBLIC_KEY` (también `pk_test`, para que Culqi lo
   revise en PRD antes de dar las llaves live); el APK sigue apagado hasta
-  `sk_live`. Tests `test_web_reservas.py` (base simulada).
+  `sk_live`. Tests `test_web_reservas.py` (base simulada). **Look & feel =
+  el del APK** (decisión del director, sep-2026): `web/ui.py` es el sistema
+  de diseño web (tokens de `lib/theme.dart`: Montserrat, azul noche
+  `#0F1B2D`, esmeralda `#0E8F67`, papel `#F4F7FA`; wordmark Pichang[o]l con
+  la pelota SVG; chips/tarjetas/botones Airbnb; marcas Yape/Visa/MC; sello
+  "✓ Verificada"); `ui.shell()` envuelve TODAS las páginas públicas y la home
+  usa los mismos tokens. Assets de marca en `backend/growth/static/brand/`
+  (`/static/...`, montado en `main.py`; favicon/OG). Reserva: tira de 14
+  días (Hoy/Mañana/…), selector de deporte si la loza es multiuso, resumen
+  fijo "Resumen de tu reserva" (barra inferior en móvil), skeleton al
+  cargar, comprobante con check animado + `.ics` + Cómo llegar + WhatsApp,
+  JSON-LD `SportsActivityLocation`, 404 propio.
 - El apex `pichangol.app` (sin `www`) sigue libre (podría redirigir al `www`).
 
 ## Estrategia de ambientes (piloto → prod)

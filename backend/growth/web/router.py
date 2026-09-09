@@ -1,57 +1,69 @@
-"""RESERVA WEB (fase 1, sep-2026). Páginas públicas del dominio de marca:
+"""RESERVA WEB (sep-2026). Páginas públicas del dominio de marca, con el mismo
+look & feel del APK (`web/ui.py`):
 
-- GET  /canchas                    → catálogo de canchas verificadas (por país).
-- GET  /reservar/{cancha_id}       → fecha, horarios libres, precio, datos y pago.
+- GET  /canchas                    → catálogo de canchas verificadas (por país,
+                                     filtro por deporte y buscador).
+- GET  /reservar/{cancha_id}       → ficha + día (tira de 14 días) + horarios
+                                     libres con precio + datos + extras + pago
+                                     (Culqi Checkout: Yape y tarjeta) con
+                                     "Resumen de tu reserva" fijo.
 - GET  /web/disponibilidad/{id}    → JSON de slots del día (precio, ocupado).
 - POST /web/asegurar               → toma los slots (INSERT 'nueva', hold 10 min).
-- POST /web/pagar                  → cargo Culqi con el token del Checkout →
-                                     confirma, liquida al dueño y avisa.
+- POST /web/pagar                  → cargo Culqi → confirma, liquida al dueño
+                                     y le avisa.
 - POST /web/liberar                → el cliente cerró sin pagar: libera el hold.
 - GET  /reserva/{id}               → comprobante (por id o por grupo).
+- GET  /reserva/{id}.ics           → evento para el calendario del cliente.
 
 Misma base y mismas reglas que el APK: las filas van a `pichangol_reservas`
 con el esquema que lee el dueño en su app, el UNIQUE del slot evita la doble
 reserva, la contabilidad usa `/pagos/liquidacion-online` (billetera-first) y
 el dueño recibe el push "Nueva reserva 📅".
 
-MULTI-PAÍS: el cobro web sale sólo en soles (Culqi). Canchas en \$ o Bs
-muestran el detalle y mandan a reservar por la app (PayPhone / Libélula).
+MULTI-PAÍS: el cobro web sale sólo en soles (Culqi). Canchas en \\$ o Bs
+muestran la ficha completa y mandan a reservar por la app (PayPhone /
+Libélula).
 """
 
 from __future__ import annotations
 
 import hashlib
 import hmac
-import html as _html
 import json
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
+from urllib.parse import quote
 
-from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import APIRouter
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
 
 import config
 from paises import pais_de_coordenadas, moneda_de_pais, simbolo_de_moneda
 from pagos import culqi
-from web import datos, horarios
+from web import datos, horarios, ui
+from web.ui import e
 
 router = APIRouter()
 
 PLAY_URL = "https://play.google.com/store/apps/details?id=pe.ebim.pichangol"
 DIAS_ADELANTE = 30
+DIAS_TIRA = 14
 MAX_SLOTS = 4
-DEPORTES = {"futbol": "Fútbol", "tenis": "Tenis", "padel": "Pádel",
-            "pickleball": "Pickleball", "voley": "Vóley", "basquet": "Básquet"}
+DEPORTES = {"futbol": ("Fútbol", "⚽"), "tenis": ("Tenis", "🎾"), "padel": ("Pádel", "🏓"),
+            "pickleball": ("Pickleball", "🥒"), "voley": ("Vóley", "🏐"), "basquet": ("Básquet", "🏀"),
+            "futsal": ("Futsal", "⚽")}
 BANDERA = {"PE": "🇵🇪", "EC": "🇪🇨", "BO": "🇧🇴"}
 NOMBRE_PAIS = {"PE": "Perú", "EC": "Ecuador", "BO": "Bolivia"}
+EXTRAS_NOMBRE = {"arbitro": "Árbitro", "pelotero": "Pelotero (recoge pelotas)",
+                 "pelota": "Alquiler de pelota", "pecheras": "Petos / pecheras",
+                 "hidratacion": "Hidratación"}
+AMENIDAD_NOMBRE = {"estacionamiento": "Estacionamiento", "vestuarios": "Vestuarios", "duchas": "Duchas",
+                   "iluminacion": "Iluminación", "techada": "Techada", "cafeteria": "Cafetería",
+                   "wifi": "Wi-Fi", "tribuna": "Tribuna", "seguridad": "Seguridad"}
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
-
-def _e(s) -> str:
-    return _html.escape(str(s if s is not None else ""), quote=True)
-
 
 def _pais_de(c: dict) -> str:
     return pais_de_coordenadas(c.get("lat"), c.get("lng"))
@@ -70,8 +82,21 @@ def _moneda_de(c: dict) -> tuple[str, str]:
     return sim, iso
 
 
-def _deporte_nombre(clave: str) -> str:
-    return DEPORTES.get((clave or "").lower(), (clave or "Deporte").capitalize())
+def _deporte(clave: str) -> tuple[str, str]:
+    k = (clave or "").lower()
+    return DEPORTES.get(k, ((clave or "Deporte").capitalize(), "🏟️"))
+
+
+def _deportes_de(c: dict) -> list[str]:
+    lst = [str(x).lower() for x in (c.get("deportes") or []) if x]
+    p = (c.get("deporte") or "").lower()
+    if p and p not in lst:
+        lst.insert(0, p)
+    return lst or ([p] if p else [])
+
+
+def _zona(c: dict) -> str:
+    return ", ".join(x for x in (c.get("barrio"), (c.get("distrito") or "").replace("_", " ").title()) if x)
 
 
 def _secreto() -> bytes:
@@ -92,110 +117,70 @@ def _pago_web_disponible(iso: str) -> bool:
     return iso == "PEN" and bool(config.CULQI_PUBLIC_KEY)
 
 
-def _foto(c: dict) -> str:
-    u = (c.get("foto_url") or "").strip()
-    if not u and c.get("fotos"):
-        u = str(c["fotos"][0]).strip()
-    if u.startswith("http"):
-        return f'<img src="{_e(u)}" alt="{_e(c.get("nombre"))}" loading="lazy">'
-    dep = (c.get("deporte") or "").lower()
-    emoji = {"futbol": "⚽", "tenis": "🎾", "padel": "🏓", "pickleball": "🏓",
-             "voley": "🏐", "basquet": "🏀"}.get(dep, "🏟️")
-    return f'<div class="sinfoto">{emoji}</div>'
+def _fotos(c: dict) -> list[str]:
+    out = []
+    for u in [c.get("foto_url")] + list(c.get("fotos") or []):
+        u = str(u or "").strip()
+        if u.startswith("http") and u not in out:
+            out.append(u)
+    return out
 
 
-# ── HTML ──────────────────────────────────────────────────────────────────────
-
-_CSS = """
-:root{--lima:#AEEA94;--lima-suave:#E9F9E0;--bosque:#14463A;--tinta:#3b4a45;--texto:#222;--tenue:#667;--borde:#E4E4E4}
-*{box-sizing:border-box}body{margin:0;font-family:"DM Sans",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#F7F8F6;color:var(--texto)}
-a{color:var(--bosque)}.wrap{max-width:980px;margin:0 auto;padding:0 18px}
-header.nav{background:#fff;border-bottom:1px solid var(--borde);position:sticky;top:0;z-index:5}
-.nav-in{display:flex;align-items:center;justify-content:space-between;height:58px}
-.brand{font-weight:800;font-size:19px;color:var(--bosque);text-decoration:none;display:flex;align-items:center;gap:8px}
-.dot{width:14px;height:14px;border-radius:50%;border:3px solid var(--bosque);display:inline-block;position:relative}
-.dot::after{content:"";position:absolute;inset:2px;border-radius:50%;background:var(--lima)}
-.links a{margin-left:16px;text-decoration:none;font-weight:600;font-size:14px;color:var(--tinta)}
-h1{font-size:26px;margin:26px 0 6px}h2{font-size:20px;margin:22px 0 10px;color:var(--bosque)}
-.sub{color:var(--tenue);margin:0 0 18px;font-size:15px}
-.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
-@media(max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:560px){.grid{grid-template-columns:1fr}}
-.card{background:#fff;border-radius:18px;box-shadow:0 2px 12px rgba(0,0,0,.06);overflow:hidden;display:flex;flex-direction:column}
-.card img,.card .sinfoto{width:100%;height:160px;object-fit:cover;display:block}
-.sinfoto{background:linear-gradient(135deg,#AEEA94,#7CC96F);display:flex;align-items:center;justify-content:center;font-size:56px}
-.cb{padding:14px 16px 16px;display:flex;flex-direction:column;gap:4px;flex:1}
-.cb h3{margin:0;font-size:16.5px;color:var(--bosque)}.cb .m{font-size:13px;color:var(--tenue)}
-.precio{font-weight:800;font-size:17px;margin-top:6px}.precio small{font-weight:600;color:var(--tenue);font-size:12px}
-.cta{display:inline-block;background:var(--lima);color:var(--bosque);font-weight:800;padding:12px 20px;border-radius:14px;text-decoration:none;border:0;cursor:pointer;font-size:15px;text-align:center}
-.cta.sec{background:#fff;border:1px solid var(--borde);color:var(--bosque)}.cta:disabled{opacity:.55;cursor:default}
-.chip{display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--borde);border-radius:22px;padding:9px 14px;font-weight:700;font-size:14px;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.05);user-select:none}
-.chip.sel{background:#EBEBEB;border-color:#D6D6D6}.chip.off{opacity:.38;cursor:not-allowed;text-decoration:line-through}
-.chip small{font-weight:600;color:var(--tenue)}.chips{display:flex;flex-wrap:wrap;gap:10px}
-.panel{background:#fff;border-radius:18px;box-shadow:0 2px 12px rgba(0,0,0,.06);padding:18px 20px;margin:14px 0}
-label{display:block;font-size:13px;font-weight:700;color:var(--bosque);margin:12px 0 5px}
-input,select{width:100%;padding:12px;border:1px solid var(--borde);border-radius:12px;font-size:15px;font-family:inherit;background:#fff}
-.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:560px){.row{grid-template-columns:1fr}}
-.tot{display:flex;justify-content:space-between;align-items:center;font-weight:800;font-size:19px;margin-top:14px}
-.aviso{background:var(--lima-suave);border:1px solid var(--lima);border-radius:12px;padding:12px 14px;font-size:14px;margin-top:10px}
-.err{background:#FDECEC;border:1px solid #F5B5B5;border-radius:12px;padding:12px 14px;font-size:14px;margin-top:10px;display:none}
-.pill{display:inline-block;background:var(--lima-suave);color:var(--bosque);font-weight:700;font-size:12.5px;padding:5px 10px;border-radius:12px}
-footer{margin:40px 0 24px;color:var(--tenue);font-size:13px;text-align:center}footer a{margin:0 6px}
-.hero{display:grid;grid-template-columns:1.1fr 1fr;gap:18px;align-items:start}@media(max-width:760px){.hero{grid-template-columns:1fr}}
-.hero img,.hero .sinfoto{width:100%;height:240px;border-radius:18px;object-fit:cover}
-ul.datos{list-style:none;padding:0;margin:8px 0 0;font-size:14px;color:var(--tinta)}ul.datos li{margin:4px 0}
-.paso{display:flex;align-items:center;gap:10px;font-weight:800;color:var(--bosque);margin:18px 0 8px}
-.paso span{background:var(--bosque);color:#fff;border-radius:50%;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;font-size:13px}
-.ok{background:var(--lima-suave);border:1px solid var(--lima);border-radius:18px;padding:22px;text-align:center}
-.ok h1{margin-top:0}.tabla{width:100%;border-collapse:collapse;font-size:14px;margin-top:10px}.tabla td{padding:7px 4px;border-bottom:1px solid var(--borde)}
-"""
+def _foto_card(c: dict) -> str:
+    fs = _fotos(c)
+    if fs:
+        return f"<img src='{e(fs[0])}' alt='{e(c.get('nombre'))}' loading='lazy'>"
+    return f"<div class='sinfoto'>{_deporte(c.get('deporte'))[1]}</div>"
 
 
-def _shell(titulo: str, cuerpo: str, extra_head: str = "", desc: str = "") -> HTMLResponse:
-    page = (
-        "<!doctype html><html lang='es'><head><meta charset='utf-8'>"
-        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-        f"<title>{_e(titulo)} · Pichangol</title>"
-        f"<meta name='description' content='{_e(desc or titulo)}'>"
-        "<link rel='preconnect' href='https://fonts.googleapis.com'>"
-        "<link href='https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,600;9..40,700;9..40,800&display=swap' rel='stylesheet'>"
-        f"<style>{_CSS}</style>{extra_head}</head><body>"
-        "<header class='nav'><div class='wrap nav-in'>"
-        "<a class='brand' href='/'><span class='dot'></span> Pichangol</a>"
-        "<nav class='links'><a href='/canchas'>Canchas</a><a href='/#servicios'>Servicios</a>"
-        "<a href='/#contacto'>Contacto</a></nav></div></header>"
-        f"<main class='wrap'>{cuerpo}</main>"
-        "<footer>GRUPO EBIM S.A.C. · RUC 20602517986 · "
-        "<a href='/#terminos'>Términos</a><a href='/#devoluciones'>Cancelaciones</a>"
-        "<a href='/legal/privacidad'>Privacidad</a><a href='/#reclamaciones'>Libro de Reclamaciones</a>"
-        "</footer></body></html>")
-    return HTMLResponse(page, headers={"Cache-Control": "no-store"})
+def _galeria(c: dict) -> str:
+    fs = _fotos(c)
+    if not fs:
+        return f"<div class='galeria'><div class='sinfoto principal'>{_deporte(c.get('deporte'))[1]}</div></div>"
+    partes = [f"<img class='principal' src='{e(fs[0])}' alt='{e(c['nombre'])}'>"]
+    for u in fs[1:3]:
+        partes.append(f"<img src='{e(u)}' alt='' loading='lazy'>")
+    while len(partes) < 3 and len(fs) > 1:
+        partes.append(f"<div class='sinfoto'>{_deporte(c.get('deporte'))[1]}</div>")
+    return f"<div class='galeria'>{''.join(partes)}</div>"
+
+
+def _maps(c: dict) -> str:
+    return f"https://www.google.com/maps/search/?api=1&query={c.get('lat')},{c.get('lng')}"
+
+
+def _no_encontrada(que: str = "Cancha no disponible") -> HTMLResponse:
+    return ui.shell(que, (f"<div class='panel' style='text-align:center;margin-top:24px'><h1>{e(que)}</h1>"
+                          "<p class='sub'>Puede que el enlace sea viejo o que el local haya dejado de "
+                          "publicar en Pichangol.</p><div class='acciones' style='justify-content:center'>"
+                          "<a class='btn' href='/canchas'>Ver canchas disponibles</a></div></div>"))
 
 
 # ── catálogo ──────────────────────────────────────────────────────────────────
 
 @router.get("/canchas", response_class=HTMLResponse)
-def pagina_canchas(deporte: str = "") -> HTMLResponse:
+def pagina_canchas(deporte: str = "", q: str = "") -> HTMLResponse:
     todas = datos.canchas_verificadas()
     dep = (deporte or "").strip().lower()
-    if dep:
-        todas = [c for c in todas
-                 if (c.get("deporte") or "").lower() == dep
-                 or dep in [str(x).lower() for x in c.get("deportes") or []]]
+    disponibles = sorted({d for c in todas for d in _deportes_de(c)})
+    lista = [c for c in todas if not dep or dep in _deportes_de(c)]
     por_pais: dict[str, list[dict]] = {}
-    for c in todas:
+    for c in lista:
         por_pais.setdefault(_pais_de(c), []).append(c)
-    filtros = "".join(
-        f"<a class='chip{' sel' if dep == k else ''}' href='/canchas?deporte={k}'>{v}</a>"
-        for k, v in DEPORTES.items() if any(
-            (c.get("deporte") or "").lower() == k or k in [str(x).lower() for x in c.get("deportes") or []]
-            for c in datos.canchas_verificadas()))
-    cuerpo = ("<h1>Reserva tu cancha</h1>"
-              "<p class='sub'>Canchas verificadas por Pichangol. Elige, mira los horarios "
-              "libres y paga en línea. Recibes tu comprobante al instante.</p>"
-              f"<div class='chips'><a class='chip{' sel' if not dep else ''}' href='/canchas'>Todas</a>{filtros}</div>")
-    if not todas:
-        cuerpo += ("<div class='panel'>Todavía no hay canchas publicadas para este filtro. "
-                   f"Descárgate la app para ver todas: <a href='{PLAY_URL}'>Pichangol en Google Play</a>.</div>")
+    filtros = (f"<a class='chip{' sel' if not dep else ''}' href='/canchas'>Todas</a>"
+               + "".join(f"<a class='chip{' sel' if dep == k else ''}' href='/canchas?deporte={k}'>"
+                         f"{_deporte(k)[1]} {_deporte(k)[0]}</a>" for k in disponibles))
+    cuerpo = ("<div style='padding:26px 0 8px'><h1>¿Dónde juegas hoy?</h1>"
+              "<p class='sub'>Canchas verificadas por Pichangol. Elige, mira los horarios libres y paga "
+              "con Yape o tarjeta. Comprobante al instante.</p></div>"
+              "<div class='panel' style='padding:14px 16px;margin-bottom:18px'>"
+              "<input id='buscar' placeholder='Buscar por nombre, club o zona…' autocomplete='off' "
+              "style='margin-bottom:12px'>"
+              f"<div class='chips'>{filtros}</div></div>")
+    if not lista:
+        cuerpo += ("<div class='panel'><h3>Todavía no hay canchas publicadas aquí</h3>"
+                   "<p class='sub'>Estamos sumando locales. En la app ya puedes explorar el mapa completo.</p>"
+                   f"<div class='acciones'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a></div></div>")
     for pais in ("PE", "EC", "BO"):
         lst = por_pais.get(pais) or []
         if not lst:
@@ -203,15 +188,23 @@ def pagina_canchas(deporte: str = "") -> HTMLResponse:
         cards = ""
         for c in lst:
             sim, _iso = _moneda_de(c)
-            lugar = ", ".join(x for x in (c.get("barrio"), c.get("distrito").replace("_", " ").title()) if x)
-            cards += (f"<div class='card'>{_foto(c)}<div class='cb'>"
-                      f"<h3>{_e(c['nombre'])}</h3>"
-                      f"<div class='m'>{_e(c.get('club'))}{' · ' if c.get('club') else ''}{_e(lugar)}</div>"
-                      f"<div class='m'>{_deporte_nombre(c.get('deporte'))} · turnos de {c['duracion_slot_min']} min</div>"
-                      f"<div class='precio'>{_e(sim)} {c['precio_hora']:.2f} <small>por hora</small></div>"
-                      f"<a class='cta' href='/reservar/{_e(c['id'])}'>Ver horarios y reservar</a></div></div>")
-        cuerpo += f"<h2>{BANDERA[pais]} {NOMBRE_PAIS[pais]}</h2><div class='grid'>{cards}</div>"
-    return _shell("Canchas", cuerpo, desc="Reserva canchas de fútbol, tenis y pádel en línea.")
+            deps = " · ".join(_deporte(d)[0] for d in _deportes_de(c)[:3])
+            texto = f"{c['nombre']} {c.get('club', '')} {_zona(c)} {deps}".lower()
+            cards += (f"<a class='card cancha' href='/reservar/{e(c['id'])}' data-t='{e(texto)}' "
+                      "style='text-decoration:none;color:inherit'>"
+                      f"{_foto_card(c)}<div class='cb'>"
+                      f"<div style='display:flex;justify-content:space-between;gap:8px;align-items:center'>"
+                      f"<h3>{e(c['nombre'])}</h3>{ui.sello_verificada()}</div>"
+                      f"<div class='m'>{e(c.get('club'))}{' · ' if c.get('club') and _zona(c) else ''}{e(_zona(c))}</div>"
+                      f"<div class='m'>{e(deps)} · turnos de {c['duracion_slot_min']} min</div>"
+                      f"<div class='precio' style='margin-top:6px'>{e(sim)} {c['precio_hora']:.2f} <small>por hora</small></div>"
+                      "</div></a>")
+        cuerpo += (f"<h2 style='margin:26px 0 12px'>{BANDERA[pais]} {NOMBRE_PAIS[pais]}</h2>"
+                   f"<div class='grid'>{cards}</div>")
+    cuerpo += ("<script>(function(){var b=document.getElementById('buscar');if(!b)return;"
+               "b.addEventListener('input',function(){var q=b.value.trim().toLowerCase();"
+               "document.querySelectorAll('.card.cancha').forEach(function(c){c.style.display=(!q||c.dataset.t.indexOf(q)>=0)?'':'none';});});})();</script>")
+    return ui.shell("Canchas", cuerpo, desc="Reserva canchas de fútbol, tenis y pádel en línea y paga con Yape o tarjeta.")
 
 
 # ── disponibilidad ────────────────────────────────────────────────────────────
@@ -243,6 +236,7 @@ def _slots_del_dia(c: dict, fecha: str) -> list[dict]:
             "precio": horarios.precio_slot(ph, paso, desc.get((fr, h), 0)),
             "ocupado": (fr, h) in ocup,
             "valle": c["descuento_valle"] > 0 and horarios.es_valle(h, c["valle_desde"], c["valle_hasta"]),
+            "promo": desc.get((fr, h), 0),
         })
     return out
 
@@ -253,50 +247,79 @@ def disponibilidad(cancha_id: str, fecha: str = "") -> dict:
     if not c:
         return {"ok": False, "error": "no_encontrada"}
     d_min, d_max = _fechas_validas(_pais_de(c))
-    if not fecha or not (d_min <= fecha <= d_max):
-        return {"ok": False, "error": "fecha_fuera_de_rango", "min": d_min, "max": d_max}
-    try:
-        date.fromisoformat(fecha)
-    except ValueError:
+    if not fecha or not _es_iso(fecha):
         return {"ok": False, "error": "fecha_invalida"}
+    if not (d_min <= fecha <= d_max):
+        return {"ok": False, "error": "fecha_fuera_de_rango", "min": d_min, "max": d_max}
     sim, iso = _moneda_de(c)
     return {"ok": True, "fecha": fecha, "moneda": sim, "moneda_iso": iso,
             "slots": _slots_del_dia(c, fecha)}
+
+
+def _es_iso(s: str) -> bool:
+    try:
+        date.fromisoformat(s)
+        return True
+    except (TypeError, ValueError):
+        return False
 
 
 # ── página de reserva ─────────────────────────────────────────────────────────
 
 _JS_RESERVA = r"""
 (function(){
-  var C = window.__cancha, sel = {}, slots = [];
+  var C = window.__cancha, sel = {}, slots = [], hold = null, fechaSel = C.hoy;
   var $ = function(id){ return document.getElementById(id); };
   var fmt = function(n){ return C.moneda + ' ' + Number(n).toFixed(2); };
+  var esc = function(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); };
+  function extrasSel(){
+    return Array.prototype.map.call(document.querySelectorAll('input[name=extra]:checked'), function(x){
+      return {clave: x.dataset.clave, nombre: x.dataset.nombre, precio: parseFloat(x.value)||0}; });
+  }
   function total(){
     var t = 0; Object.keys(sel).forEach(function(k){ t += sel[k].precio; });
-    document.querySelectorAll('input[name=extra]:checked').forEach(function(x){ t += parseFloat(x.value)||0; });
+    extrasSel().forEach(function(x){ t += x.precio; });
     return t;
   }
-  function pintarTotal(){
-    var n = Object.keys(sel).length;
-    $('tot').textContent = fmt(total());
-    $('btnPagar').disabled = !n;
-    $('btnPagar').textContent = n ? ('Reservar y pagar ' + fmt(total())) : 'Elige un horario';
+  function pintarResumen(){
+    var ks = Object.keys(sel).sort(), n = ks.length, t = total();
+    var h = '';
+    if(!n){ h = '<div class="linea"><span style="color:var(--tenue)">Elige un horario para ver tu resumen.</span></div>'; }
+    else {
+      ks.forEach(function(k){ var s = sel[k];
+        h += '<div class="linea"><span>' + esc(C.etiquetas[s.fecha] || s.fecha) + ' · ' + s.hora + '–' + s.fin + '</span><b>' + fmt(s.precio) + '</b></div>'; });
+      extrasSel().forEach(function(x){ h += '<div class="linea"><span>' + esc(x.nombre) + '</span><b>' + fmt(x.precio) + '</b></div>'; });
+    }
+    $('lineas').innerHTML = h;
+    $('tot').textContent = fmt(t); $('totBarra').textContent = fmt(t);
+    var txt = n ? ('Reservar y pagar ' + fmt(t)) : 'Elige un horario';
+    ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).disabled = !n; $(id).textContent = txt; });
+  }
+  function pintarDias(){
+    $('dias').innerHTML = C.dias.map(function(d){
+      return '<span class="chip' + (d.iso === fechaSel ? ' sel' : '') + '" data-f="' + d.iso + '"><b>' + esc(d.corto) + '</b><small>' + esc(d.sub) + '</small></span>';
+    }).join('');
+    document.querySelectorAll('#dias .chip').forEach(function(el){
+      el.addEventListener('click', function(){ if(el.dataset.f === fechaSel) return; liberar(); fechaSel = el.dataset.f; pintarDias(); cargar(); });
+    });
   }
   function cargar(){
-    var f = $('fecha').value; sel = {}; pintarTotal();
-    $('slots').innerHTML = '<span class="m">Cargando horarios…</span>';
-    fetch('/web/disponibilidad/' + encodeURIComponent(C.id) + '?fecha=' + f)
+    sel = {}; pintarResumen();
+    $('slots').innerHTML = '<span class="skel"></span><span class="skel"></span><span class="skel"></span><span class="skel"></span>';
+    fetch('/web/disponibilidad/' + encodeURIComponent(C.id) + '?fecha=' + fechaSel)
       .then(function(r){ return r.json(); })
       .then(function(j){
-        if(!j.ok){ $('slots').innerHTML = '<span class="m">No pudimos cargar los horarios de ese día.</span>'; return; }
+        if(!j.ok){ $('slots').innerHTML = '<span class="sub">No pudimos cargar los horarios de ese día.</span>'; return; }
         slots = j.slots;
-        if(!slots.length){ $('slots').innerHTML = '<span class="m">No quedan turnos para este día. Prueba otra fecha.</span>'; return; }
+        var libres = slots.filter(function(s){ return !s.ocupado; }).length;
+        if(!slots.length){ $('slots').innerHTML = '<span class="sub">No quedan turnos para este día. Prueba otra fecha.</span>'; return; }
         $('slots').innerHTML = slots.map(function(s, i){
           var cls = 'chip' + (s.ocupado ? ' off' : '');
-          var extra = s.fecha !== f ? ' <small>(' + s.fecha.slice(5).split('-').reverse().join('/') + ')</small>' : '';
-          return '<span class="' + cls + '" data-i="' + i + '">' + s.hora + '–' + s.fin + extra +
-                 ' <small>' + fmt(s.precio) + (s.valle ? ' · hora feliz' : '') + '</small></span>';
-        }).join('');
+          var extra = s.fecha !== fechaSel ? ' <small>' + esc(C.etiquetas[s.fecha] || '') + '</small>' : '';
+          var tag = s.promo ? ' · −' + s.promo + '%' : (s.valle ? ' · hora feliz' : '');
+          return '<span class="' + cls + '" data-i="' + i + '" title="' + (s.ocupado ? 'Ocupado' : 'Disponible') + '">' + s.hora + '–' + s.fin + extra +
+                 ' <small>' + fmt(s.precio) + tag + '</small></span>';
+        }).join('') + (libres ? '' : '<div class="sub" style="width:100%">Todos los turnos de este día están tomados.</div>');
         document.querySelectorAll('#slots .chip').forEach(function(el){
           el.addEventListener('click', function(){
             var s = slots[parseInt(el.dataset.i)];
@@ -305,68 +328,69 @@ _JS_RESERVA = r"""
             if(sel[k]){ delete sel[k]; el.classList.remove('sel'); }
             else {
               if(Object.keys(sel).length >= C.maxSlots){ mostrarError('Puedes reservar hasta ' + C.maxSlots + ' turnos por pedido.'); return; }
-              sel[k] = s; el.classList.add('sel');
+              sel[k] = s; el.classList.add('sel'); ocultarError();
             }
-            pintarTotal();
+            pintarResumen();
           });
         });
-      }).catch(function(){ $('slots').innerHTML = '<span class="m">No pudimos cargar los horarios.</span>'; });
+      }).catch(function(){ $('slots').innerHTML = '<span class="sub">No pudimos cargar los horarios.</span>'; });
   }
-  function mostrarError(m){ var e = $('err'); e.textContent = m; e.style.display = 'block'; e.scrollIntoView({behavior:'smooth', block:'center'}); }
+  function mostrarError(m){ var el = $('err'); el.textContent = m; el.style.display = 'block'; el.scrollIntoView({behavior:'smooth', block:'center'}); }
   function ocultarError(){ $('err').style.display = 'none'; }
   function datos(){
     return { nombre: $('nombre').value.trim(), celular: $('celular').value.trim(), email: $('email').value.trim().toLowerCase() };
   }
   function validar(d){
+    if(!Object.keys(sel).length) return 'Elige al menos un horario.';
     if(d.nombre.length < 3) return 'Escribe tu nombre.';
     if(d.celular.replace(/\D/g,'').length < 8) return 'Escribe un celular válido.';
-    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.email)) return 'Escribe un correo válido (ahí va tu comprobante).';
-    if(!Object.keys(sel).length) return 'Elige al menos un horario.';
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.email)) return 'Escribe un correo válido: ahí va tu comprobante.';
     return '';
   }
-  var hold = null;
   function liberar(){
     if(!hold) return;
     var h = hold; hold = null;
     fetch('/web/liberar', {method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ids: h.ids, firma: h.firma})}).catch(function(){});
   }
-  $('btnPagar').addEventListener('click', function(){
+  function pagar(){
     ocultarError();
-    var d = datos(), v = validar(d); if(v){ mostrarError(v); return; }
-    var extras = Array.prototype.map.call(document.querySelectorAll('input[name=extra]:checked'), function(x){ return x.dataset.clave; });
+    var d = datos(), v = validar(d);
+    if(v){ mostrarError(v); if(!Object.keys(sel).length) $('slots').scrollIntoView({behavior:'smooth', block:'center'}); else $('nombre').scrollIntoView({behavior:'smooth', block:'center'}); return; }
+    var extras = extrasSel().map(function(x){ return x.clave; });
     var horas = Object.keys(sel).map(function(k){ return {fecha: sel[k].fecha, hora: sel[k].hora}; });
-    $('btnPagar').disabled = true; $('btnPagar').textContent = 'Reservando tu horario…';
+    var deporte = ($('deporte') && $('deporte').value) || '';
+    ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).disabled = true; $(id).textContent = 'Reservando tu horario…'; });
     fetch('/web/asegurar', {method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({cancha_id: C.id, horas: horas, extras: extras, nombre: d.nombre, celular: d.celular, email: d.email})})
+      body: JSON.stringify({cancha_id: C.id, horas: horas, extras: extras, deporte: deporte, nombre: d.nombre, celular: d.celular, email: d.email})})
       .then(function(r){ return r.json(); })
       .then(function(j){
         if(!j.ok){
-          pintarTotal();
+          pintarResumen();
           if(j.error === 'ocupado'){ mostrarError('Alguien acaba de tomar uno de esos horarios. Elige otro, por favor.'); cargar(); }
           else mostrarError('No pudimos reservar el horario. Inténtalo de nuevo.');
           return;
         }
         hold = j;
-        if(!C.pk){ mostrarError('El pago en línea no está disponible por ahora.'); liberar(); pintarTotal(); return; }
+        if(!C.pk){ mostrarError('El pago en línea no está disponible por ahora.'); liberar(); pintarResumen(); return; }
         Culqi.publicKey = C.pk;
         Culqi.settings({ title: 'Pichangol', currency: 'PEN', amount: j.total_centimos });
         Culqi.options({ lang: 'es', installments: false,
           paymentMethods: { tarjeta: true, yape: true, bancaMovil: false, agente: false, billetera: false, cuotealo: false },
-          style: { logo: C.logo, bannerColor: '#14463A', buttonBackground: '#AEEA94', buttonText: 'Pagar ' + fmt(j.total), buttonTextColor: '#14463A' } });
+          style: { logo: C.logo, bannerColor: '#0F1B2D', buttonBackground: '#0E8F67', buttonText: 'Pagar ' + fmt(j.total), buttonTextColor: '#FFFFFF' } });
         window.culqi = function(){
           if(Culqi.token){
             var token = Culqi.token.id, medio = (Culqi.token.iin && Culqi.token.iin.card_brand) ? 'tarjeta' : 'yape';
             Culqi.close();
-            $('btnPagar').textContent = 'Confirmando tu pago…';
+            ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).textContent = 'Confirmando tu pago…'; });
             var h = hold; hold = null;
             fetch('/web/pagar', {method:'POST', headers:{'Content-Type':'application/json'},
               body: JSON.stringify({ids: h.ids, firma: h.firma, token: token, medio: medio, email: d.email})})
               .then(function(r){ return r.json(); })
               .then(function(p){
                 if(p.ok){ window.location.href = p.url; }
-                else { hold = h; mostrarError(p.mensaje || 'El pago no se pudo procesar. No se te cobró nada.'); pintarTotal(); }
-              }).catch(function(){ hold = h; mostrarError('No pudimos confirmar el pago. Escríbenos con tu correo y horario.'); pintarTotal(); });
+                else { hold = null; mostrarError(p.mensaje || 'El pago no se pudo procesar. No se te cobró nada.'); pintarResumen(); cargar(); }
+              }).catch(function(){ mostrarError('No pudimos confirmar el pago. Escríbenos a contacto@ebim.pe con tu correo y horario.'); pintarResumen(); });
           } else if(Culqi.order){
             mostrarError('Este medio de pago no está habilitado. Usa Yape o tarjeta.');
           } else {
@@ -374,100 +398,152 @@ _JS_RESERVA = r"""
           }
         };
         Culqi.open();
-        // Si cierra el checkout sin pagar, el horario se libera al toque.
         var chk = setInterval(function(){
           var abierto = document.getElementById('culqi-container') || document.querySelector('iframe[src*="culqi"]');
-          if(!abierto && hold){ clearInterval(chk); liberar(); pintarTotal(); }
+          if(!abierto && hold){ clearInterval(chk); liberar(); pintarResumen(); }
           if(!hold) clearInterval(chk);
         }, 1500);
-      }).catch(function(){ pintarTotal(); mostrarError('No pudimos reservar el horario. Inténtalo de nuevo.'); });
-  });
-  document.querySelectorAll('input[name=extra]').forEach(function(x){ x.addEventListener('change', pintarTotal); });
-  $('fecha').addEventListener('change', function(){ liberar(); cargar(); });
+      }).catch(function(){ pintarResumen(); mostrarError('No pudimos reservar el horario. Inténtalo de nuevo.'); });
+  }
+  $('btnPagar').addEventListener('click', pagar);
+  $('btnPagarBarra').addEventListener('click', pagar);
+  document.querySelectorAll('input[name=extra]').forEach(function(x){ x.addEventListener('change', pintarResumen); });
   window.addEventListener('beforeunload', liberar);
-  cargar();
+  pintarDias(); cargar();
 })();
 """
+
+
+def _tira_dias(pais: str) -> tuple[list[dict], dict]:
+    hoy = horarios.ahora_local(pais).date()
+    dias, etiquetas = [], {}
+    for i in range(DIAS_TIRA):
+        d = hoy + timedelta(days=i)
+        iso = d.isoformat()
+        et = horarios.etiqueta_dia(iso, hoy)
+        corto = et if i < 2 else horarios.DIAS[d.weekday()]
+        sub = f"{d.day} {horarios.MESES[d.month - 1]}"
+        dias.append({"iso": iso, "corto": corto, "sub": sub})
+        etiquetas[iso] = et if i < 2 else f"{horarios.DIAS[d.weekday()]} {d.day}"
+    for i in range(DIAS_TIRA, DIAS_ADELANTE + 2):
+        d = hoy + timedelta(days=i)
+        etiquetas[d.isoformat()] = f"{horarios.DIAS[d.weekday()]} {d.day}"
+    return dias, etiquetas
+
+
+def _ficha(c: dict, sim: str, pais: str) -> str:
+    lugar = ", ".join(x for x in (c.get("direccion"), _zona(c)) if x)
+    deps = " · ".join(_deporte(d)[0] for d in _deportes_de(c))
+    amen = "".join(f"<span>{e(AMENIDAD_NOMBRE.get(str(a).lower(), str(a).replace('_', ' ').capitalize()))}</span>"
+                   for a in (c.get("amenidades") or [])[:8])
+    return (f"{_galeria(c)}"
+            "<div style='display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-top:16px'>"
+            f"<div><div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'>"
+            f"<span class='pill gris'>{BANDERA[pais]} {e(deps)}</span>{ui.sello_verificada()}</div>"
+            f"<h1 style='margin-top:8px'>{e(c['nombre'])}</h1>"
+            f"<p class='sub'>{e(c.get('club'))}</p></div>"
+            f"<div class='precio' style='font-size:22px;white-space:nowrap'>{e(sim)} {c['precio_hora']:.2f} <small>por hora</small></div></div>"
+            "<ul class='datos'>"
+            f"<li>📍 <span>{e(lugar or 'Dirección en la app')} · <a href='{_maps(c)}' target='_blank' rel='noopener'>Cómo llegar</a></span></li>"
+            f"<li>🕒 <span>{e(c['hora_apertura'])} a {e(c['hora_cierre'])} · turnos de {c['duracion_slot_min']} min</span></li>"
+            + (f"<li>⚡ <span>Hora feliz −{c['descuento_valle']} % de {e(c['valle_desde'] or '00:00')} a {e(c['valle_hasta'] or '12:00')}</span></li>" if c['descuento_valle'] > 0 else "")
+            + (f"<li>🏟️ <span>{e(c['superficie'])}</span></li>" if c.get("superficie") else "")
+            + "</ul>" + (f"<div class='amen'>{amen}</div>" if amen else ""))
+
+
+def _jsonld_cancha(c: dict, sim: str) -> str:
+    return json.dumps({
+        "@context": "https://schema.org", "@type": "SportsActivityLocation",
+        "name": c["nombre"], "image": _fotos(c)[:1],
+        "address": {"@type": "PostalAddress", "streetAddress": c.get("direccion") or "",
+                    "addressLocality": _zona(c), "addressCountry": _pais_de(c)},
+        "geo": {"@type": "GeoCoordinates", "latitude": c.get("lat"), "longitude": c.get("lng")},
+        "priceRange": f"{sim} {c['precio_hora']:.2f} por hora",
+        "url": f"{config.PUBLIC_BASE_URL.rstrip('/')}/reservar/{c['id']}" if getattr(config, 'PUBLIC_BASE_URL', '') else "",
+    }, ensure_ascii=False)
 
 
 @router.get("/reservar/{cancha_id}", response_class=HTMLResponse)
 def pagina_reservar(cancha_id: str) -> HTMLResponse:
     c = datos.cancha(cancha_id)
     if not c or not c.get("verificada") or c.get("eliminada") or not c.get("dueno"):
-        return _shell("Cancha no disponible",
-                      "<h1>Cancha no disponible</h1><p class='sub'>Esta cancha no está "
-                      "publicada para reservas en línea.</p><a class='cta' href='/canchas'>Ver canchas</a>")
+        return _no_encontrada()
     sim, iso = _moneda_de(c)
     pais = _pais_de(c)
-    d_min, d_max = _fechas_validas(pais)
-    lugar = ", ".join(x for x in (c.get("direccion"), c.get("distrito").replace("_", " ").title()) if x)
-    extras_html = ""
-    if c.get("servicios_extra"):
-        filas = ""
-        for s in c["servicios_extra"]:
-            clave = str(s.get("clave") or "")
-            nombre = {"arbitro": "Árbitro", "pelotero": "Pelotero", "pelota": "Alquiler de pelota",
-                      "pecheras": "Petos / pecheras", "hidratacion": "Hidratación"}.get(clave, clave.capitalize())
-            try:
-                precio = float(s.get("precio") or 0)
-            except (TypeError, ValueError):
-                precio = 0.0
-            if precio <= 0 or not clave:
-                continue
-            filas += (f"<label style='display:flex;gap:10px;align-items:center;font-weight:600'>"
-                      f"<input type='checkbox' name='extra' value='{precio:.2f}' data-clave='{_e(clave)}' style='width:auto'>"
-                      f"{_e(nombre)} <small style='color:var(--tenue)'>+ {_e(sim)} {precio:.2f}</small></label>")
-        if filas:
-            extras_html = f"<div class='paso'><span>3</span> Servicios extra (opcional)</div>{filas}"
-
-    cab = (f"<div class='hero'><div>{_foto(c)}</div><div>"
-           f"<span class='pill'>{BANDERA[pais]} {_deporte_nombre(c.get('deporte'))} · verificada ✓</span>"
-           f"<h1 style='margin-top:10px'>{_e(c['nombre'])}</h1>"
-           f"<p class='sub' style='margin-bottom:6px'>{_e(c.get('club'))}</p>"
-           f"<ul class='datos'><li>📍 {_e(lugar or 'Dirección en la app')}</li>"
-           f"<li>🕒 {_e(c['hora_apertura'])} a {_e(c['hora_cierre'])} · turnos de {c['duracion_slot_min']} min</li>"
-           f"<li>💵 <b>{_e(sim)} {c['precio_hora']:.2f}</b> por hora"
-           + (f" · hora feliz −{c['descuento_valle']}% de {_e(c['valle_desde'] or '00:00')} a {_e(c['valle_hasta'] or '12:00')}" if c['descuento_valle'] > 0 else "")
-           + "</li>"
-           + (f"<li>🏟️ {_e(c['superficie'])}</li>" if c.get("superficie") else "")
-           + "</ul></div></div>")
+    ficha = _ficha(c, sim, pais)
+    canonical = (f"{config.PUBLIC_BASE_URL.rstrip('/')}/reservar/{c['id']}"
+                 if getattr(config, "PUBLIC_BASE_URL", "") else "")
+    og = _fotos(c)[0] if _fotos(c) else "/static/brand/logo_pichangol.png"
 
     if not _pago_web_disponible(iso):
-        motivo = ("Esta cancha cobra en " + _e(sim) + " y el pago en línea desde la web está "
-                  "disponible por ahora solo en soles." if iso != "PEN" else
-                  "El pago en línea desde la web se está habilitando.")
-        cuerpo = (cab + f"<div class='panel'><h2 style='margin-top:0'>Reserva desde la app</h2>"
-                  f"<p>{motivo} Desde la app Pichangol reservas y pagas con los medios de tu país.</p>"
-                  f"<a class='cta' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a> "
-                  "<a class='cta sec' href='/canchas'>Ver otras canchas</a></div>")
-        return _shell(c["nombre"], cuerpo)
+        motivo = (f"Esta cancha cobra en {e(sim)} y el pago en línea desde la web está disponible por "
+                  "ahora solo en soles." if iso != "PEN" else "El pago en línea desde la web se está habilitando.")
+        cuerpo = (f"<div style='padding-top:22px'>{ficha}</div>"
+                  f"<div class='panel' style='margin-top:20px'><h2>Reserva desde la app</h2>"
+                  f"<p class='sub'>{motivo} En la app Pichangol reservas y pagas con los medios de tu país.</p>"
+                  f"<div class='acciones'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a>"
+                  "<a class='btn sec' href='/canchas'>Ver otras canchas</a></div></div>")
+        return ui.shell(c["nombre"], cuerpo, desc=f"{c['nombre']} · {c.get('club', '')}", canonical=canonical,
+                        og_image=og, jsonld=_jsonld_cancha(c, sim))
 
-    cfg = json.dumps({"id": c["id"], "moneda": sim, "pk": config.CULQI_PUBLIC_KEY,
-                      "maxSlots": MAX_SLOTS, "logo": ""})
-    cuerpo = (cab +
-              "<div class='panel'>"
-              "<div class='paso'><span>1</span> Elige el día y el horario</div>"
-              f"<input type='date' id='fecha' value='{d_min}' min='{d_min}' max='{d_max}'>"
-              f"<div class='m' style='margin:8px 0 10px;font-size:13px;color:var(--tenue)'>Hasta {MAX_SLOTS} turnos por pedido. "
-              "Los horarios marcados con (fecha) son de la madrugada del día siguiente.</div>"
-              "<div class='chips' id='slots'></div>"
-              "<div class='paso'><span>2</span> Tus datos</div>"
-              "<div class='row'><div><label for='nombre'>Nombre y apellido</label><input id='nombre' autocomplete='name' maxlength='80'></div>"
-              "<div><label for='celular'>Celular</label><input id='celular' inputmode='tel' autocomplete='tel' maxlength='20'></div></div>"
-              "<label for='email'>Correo (para tu comprobante)</label><input id='email' type='email' autocomplete='email' maxlength='120'>"
-              f"{extras_html}"
-              "<div class='tot'><span>Total</span><span id='tot'></span></div>"
-              "<div class='aviso'>Pagas con <b>Yape o tarjeta</b> a través de Culqi. Tu reserva queda confirmada al instante "
-              "y el local la ve en su agenda. Cancelación con más de 6 horas de anticipación: devolución del 100 %. "
-              "<a href='/#devoluciones'>Ver política</a>.</div>"
-              "<div class='err' id='err'></div>"
-              "<div style='margin-top:14px'><button class='cta' id='btnPagar' disabled>Elige un horario</button></div>"
-              "</div>"
-              f"<script>window.__cancha={cfg};</script>"
-              "<script src='https://checkout.culqi.com/js/v4'></script>"
-              f"<script>{_JS_RESERVA}</script>")
-    return _shell(f"Reservar {c['nombre']}", cuerpo,
-                  desc=f"Reserva {c['nombre']} y paga en línea con Yape o tarjeta.")
+    dias, etiquetas = _tira_dias(pais)
+    deps = _deportes_de(c)
+    selector_dep = ""
+    if len(deps) > 1:
+        ops = "".join(f"<option value='{e(d)}'>{_deporte(d)[1]} {_deporte(d)[0]}</option>" for d in deps)
+        selector_dep = f"<label for='deporte'>¿Qué vas a jugar?</label><select id='deporte'>{ops}</select>"
+    extras_html = ""
+    filas = ""
+    for s in c.get("servicios_extra") or []:
+        clave = str(s.get("clave") or "")
+        try:
+            precio = float(s.get("precio") or 0)
+        except (TypeError, ValueError):
+            precio = 0.0
+        if precio <= 0 or not clave:
+            continue
+        nombre = EXTRAS_NOMBRE.get(clave, clave.capitalize())
+        filas += (f"<label style='display:flex;gap:10px;align-items:center;font-weight:600;margin:8px 0'>"
+                  f"<input type='checkbox' name='extra' value='{precio:.2f}' data-clave='{e(clave)}' data-nombre='{e(nombre)}' style='width:auto'>"
+                  f"{e(nombre)} <small style='color:var(--tenue)'>+ {e(sim)} {precio:.2f}</small></label>")
+    if filas:
+        extras_html = f"<div class='paso'><span>3</span> Servicios extra <small style='color:var(--tenue);font-weight:600'>(opcional)</small></div>{filas}"
+
+    cfg = json.dumps({"id": c["id"], "moneda": sim, "pk": config.CULQI_PUBLIC_KEY, "maxSlots": MAX_SLOTS,
+                      "logo": "", "hoy": dias[0]["iso"], "dias": dias, "etiquetas": etiquetas}, ensure_ascii=False)
+    cuerpo = (
+        f"<div style='padding-top:22px'>{ficha}</div>"
+        "<div class='dos' style='margin-top:22px'>"
+        "<div class='panel'>"
+        "<div class='paso' style='margin-top:0'><span>1</span> Elige el día y el horario</div>"
+        "<div class='strip' id='dias'></div>"
+        f"{selector_dep}"
+        f"<div class='sub' style='margin:6px 0 12px;font-size:13px'>Hasta {MAX_SLOTS} turnos por pedido. Toca un horario para agregarlo; vuelve a tocarlo para quitarlo.</div>"
+        "<div class='chips' id='slots'></div>"
+        "<div class='paso'><span>2</span> Tus datos</div>"
+        "<div class='row'><div><label for='nombre'>Nombre y apellido</label><input id='nombre' autocomplete='name' maxlength='80' placeholder='Como en tu documento'></div>"
+        "<div><label for='celular'>Celular</label><input id='celular' inputmode='tel' autocomplete='tel' maxlength='20' placeholder='9 dígitos'></div></div>"
+        "<label for='email'>Correo</label><input id='email' type='email' autocomplete='email' maxlength='120' placeholder='Aquí va tu comprobante'>"
+        f"{extras_html}"
+        "<div class='estado bad' id='err'></div>"
+        "</div>"
+        "<aside class='resumen'><div class='panel'>"
+        "<h3>Resumen de tu reserva</h3>"
+        f"<div class='sub' style='margin-bottom:10px'>{e(c['nombre'])}{(' · ' + e(c.get('club'))) if c.get('club') else ''}</div>"
+        "<div id='lineas'></div>"
+        "<div class='total'><span>Total</span><span id='tot'></span></div>"
+        "<div style='margin-top:14px'><button class='btn lg' id='btnPagar' disabled>Elige un horario</button></div>"
+        f"<div style='margin-top:14px'>{ui.marcas_pago()}</div>"
+        "<div class='sub' style='font-size:12.5px;margin-top:12px'>Reserva confirmada al instante; el local la ve en su agenda. "
+        "Cancelación con más de 6 horas de anticipación: devolución del 100 %. <a href='/#devoluciones'>Ver política</a>.</div>"
+        "</div></aside></div>"
+        "<div class='barra-fija'><div><div class='sub' style='font-size:12px;margin:0'>Total</div><div class='t' id='totBarra'></div></div>"
+        "<button class='btn' id='btnPagarBarra' disabled>Elige un horario</button></div>"
+        f"<script>window.__cancha={cfg};</script>"
+        "<script src='https://checkout.culqi.com/js/v4'></script>"
+        f"<script>{_JS_RESERVA}</script>")
+    return ui.shell(f"Reservar {c['nombre']}", cuerpo, con_barra=True, canonical=canonical, og_image=og,
+                    desc=f"Reserva {c['nombre']} y paga en línea con Yape o tarjeta.", jsonld=_jsonld_cancha(c, sim))
 
 
 # ── asegurar / pagar / liberar ────────────────────────────────────────────────
@@ -481,6 +557,7 @@ class AsegurarReq(BaseModel):
     cancha_id: str
     horas: list[HoraReq]
     extras: list[str] = []
+    deporte: str = ""
     nombre: str
     celular: str = ""
     email: str
@@ -511,30 +588,36 @@ def asegurar(req: AsegurarReq) -> dict:
         return {"ok": False, "error": "datos_invalidos"}
     if not req.horas or len(req.horas) > MAX_SLOTS:
         return {"ok": False, "error": "horas_invalidas"}
+    for h in req.horas:
+        if not _es_iso(h.fecha):
+            return {"ok": False, "error": "fecha_invalida"}
     datos.liberar_holds_vencidos(c["id"])
     pais = _pais_de(c)
-    # Recalcular precio y validar cada hora contra la grilla real del día.
+    d_min, d_max = _fechas_validas(pais)
     pedidos = {(h.fecha, h.hora) for h in req.horas}
-    fechas_base = sorted({h.fecha for h in req.horas})
+    # Un slot de madrugada pertenece a la grilla del día ANTERIOR: se evalúan
+    # ambos días base y se valida cada hora contra la grilla real.
+    bases = set()
+    for fb in {h.fecha for h in req.horas}:
+        bases.add(fb)
+        bases.add((date.fromisoformat(fb) - timedelta(days=1)).isoformat())
     validos: dict[tuple[str, str], dict] = {}
-    for fb in fechas_base + [(date.fromisoformat(fb) - timedelta(days=1)).isoformat()
-                             for fb in fechas_base if _es_iso(fb)]:
-        if not _es_iso(fb):
-            return {"ok": False, "error": "fecha_invalida"}
-        d_min, d_max = _fechas_validas(pais)
-        if not (d_min <= fb <= d_max):
-            continue
-        for s in _slots_del_dia(c, fb):
-            validos[(s["fecha"], s["hora"])] = s
-    filas, total = [], 0
-    hoy = horarios.ahora_local(pais).date()
-    grupo = f"grp_web_{int(time.time() * 1000)}" if len(pedidos) > 1 else ""
+    for fb in sorted(bases):
+        if d_min <= fb <= d_max:
+            for s in _slots_del_dia(c, fb):
+                validos[(s["fecha"], s["hora"])] = s
+    deporte = (req.deporte or "").strip().lower()
+    if deporte and deporte not in _deportes_de(c):
+        deporte = ""
     extras_ok = []
     if req.extras:
         cat = {str(s.get("clave")): float(s.get("precio") or 0) for s in c.get("servicios_extra") or []}
         for k in req.extras:
-            if k in cat and cat[k] > 0:
+            if k in cat and cat[k] > 0 and k not in [x["clave"] for x in extras_ok]:
                 extras_ok.append({"clave": k, "precio": cat[k]})
+    hoy = horarios.ahora_local(pais).date()
+    grupo = f"grp_web_{int(time.time() * 1000)}" if len(pedidos) > 1 else ""
+    filas, total = [], 0
     for i, key in enumerate(sorted(pedidos)):
         s = validos.get(key)
         if not s or s["ocupado"]:
@@ -545,13 +628,12 @@ def asegurar(req: AsegurarReq) -> dict:
             "fecha": s["fecha"], "dia": horarios.etiqueta_dia(s["fecha"], hoy),
             "hora_inicio": s["hora"], "hora_fin": s["fin"], "estado": "nueva",
             "traida_por_app": True, "precio": s["precio"], "sena": 0, "pagado": False,
-            "usuario": email, "deporte": "", "moneda": sim,
+            "usuario": email, "deporte": deporte, "moneda": sim,
             "extras": extras_ok if i == 0 else [],
             "telefono": req.celular.strip()[:20], "grupo_reserva_id": grupo,
             "medio_pago": "web_hold",
         })
-    total_extras = sum(x["precio"] for x in extras_ok)
-    total = int(round(total + total_extras))
+    total = int(round(total + sum(x["precio"] for x in extras_ok)))
     if total < 1:
         return {"ok": False, "error": "monto_invalido"}
     r = datos.insertar_reservas(filas)
@@ -561,14 +643,6 @@ def asegurar(req: AsegurarReq) -> dict:
     return {"ok": True, "ids": ids, "grupo": grupo, "firma": _firma(ids),
             "total": total, "total_centimos": total * 100, "moneda": sim,
             "hold_segundos": datos.HOLD_SEGUNDOS}
-
-
-def _es_iso(s: str) -> bool:
-    try:
-        date.fromisoformat(s)
-        return True
-    except (TypeError, ValueError):
-        return False
 
 
 class LiberarReq(BaseModel):
@@ -597,7 +671,8 @@ def pagar(req: PagarReq) -> dict:
     Fallo del cargo → las filas se liberan y no se cobró nada. Éxito →
     confirmada + pagado + liquidación al dueño (billetera-first) + push."""
     if not _firma_ok(req.ids, req.firma):
-        return {"ok": False, "error": "firma", "mensaje": "La sesión de pago venció. Vuelve a elegir el horario."}
+        return {"ok": False, "error": "firma",
+                "mensaje": "La sesión de pago venció. Vuelve a elegir el horario."}
     filas = datos.reservas_de(req.ids)
     if not filas or len(filas) != len(req.ids):
         return {"ok": False, "error": "hold_vencido",
@@ -606,8 +681,7 @@ def pagar(req: PagarReq) -> dict:
         return {"ok": True, "url": _url_comprobante(filas)}
     c = datos.cancha(filas[0]["cancha_id"]) or {}
     sim, iso = _moneda_de(c) if c else ("S/", "PEN")
-    total = sum(int(f["precio"]) for f in filas)
-    total += int(round(sum(float(x.get("precio") or 0) for f in filas for x in (f.get("extras") or []))))
+    total = _total_de(filas)
     email = (req.email or filas[0].get("usuario") or "").strip().lower()
     concepto = f"Reserva {c.get('nombre', 'cancha')} {filas[0]['fecha']} {filas[0]['hora_inicio']}"
     cargo = culqi.crear_cargo(
@@ -618,11 +692,10 @@ def pagar(req: PagarReq) -> dict:
         datos.borrar_reservas(req.ids)
         msg = str(cargo.get("error") or "")
         return {"ok": False, "error": "cargo_rechazado",
-                "mensaje": "El pago fue rechazado por tu banco o billetera. No se te cobró nada; "
-                           "el horario quedó libre para que lo intentes de nuevo." + (f" ({msg[:80]})" if msg else "")}
+                "mensaje": "El pago fue rechazado por tu banco o billetera. No se te cobró nada y el "
+                           "horario quedó libre para que lo intentes de nuevo." + (f" ({msg[:80]})" if msg else "")}
     medio = "yape" if req.medio == "yape" else "tarjeta"
     datos.confirmar_reservas(req.ids, medio)
-    # Contabilidad y aviso al dueño: mismos caminos que una reserva online del APK.
     dueno = (c.get("dueno") or "").strip().lower()
     if dueno:
         try:
@@ -641,6 +714,12 @@ def pagar(req: PagarReq) -> dict:
     return {"ok": True, "url": _url_comprobante(filas), "charge_id": cargo.get("charge_id")}
 
 
+def _total_de(filas: list[dict]) -> int:
+    total = sum(int(f["precio"]) for f in filas)
+    total += int(round(sum(float(x.get("precio") or 0) for f in filas for x in (f.get("extras") or []))))
+    return total
+
+
 def _url_comprobante(filas: list[dict]) -> str:
     g = (filas[0].get("grupo_reserva_id") or "").strip()
     return f"/reserva/{g if g else filas[0]['id']}"
@@ -648,33 +727,97 @@ def _url_comprobante(filas: list[dict]) -> str:
 
 # ── comprobante ───────────────────────────────────────────────────────────────
 
+def _filas_comprobante(ref: str) -> list[dict]:
+    filas = datos.reservas_por_grupo(ref) if ref.startswith("grp_") else datos.reservas_de([ref])
+    return [f for f in filas if f.get("pagado") or f.get("estado") == "confirmada"]
+
+
+@router.get("/reserva/{ref}.ics")
+def comprobante_ics(ref: str) -> Response:
+    """Evento(s) para el calendario del cliente (Google/Apple/Outlook)."""
+    filas = _filas_comprobante(ref)
+    if not filas:
+        return Response("No encontrada", status_code=404)
+    c = datos.cancha(filas[0]["cancha_id"]) or {}
+    pais = _pais_de(c) if c else "PE"
+    tz = horarios.ahora_local(pais).tzinfo
+    lugar = ", ".join(x for x in (c.get("nombre"), c.get("direccion"), _zona(c)) if x)
+    ahora = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    ev = []
+    for f in filas:
+        try:
+            d = date.fromisoformat(f["fecha"])
+            hi = horarios.hora_en_minutos(f["hora_inicio"]) or 0
+            hf = horarios.hora_en_minutos(f["hora_fin"]) or hi + 60
+            if hf <= hi:
+                hf += 24 * 60
+            ini = datetime(d.year, d.month, d.day, tzinfo=tz) + timedelta(minutes=hi)
+            fin = datetime(d.year, d.month, d.day, tzinfo=tz) + timedelta(minutes=hf)
+        except (ValueError, TypeError):
+            continue
+        ev.append("BEGIN:VEVENT\r\n"
+                  f"UID:{f['id']}@pichangol.app\r\nDTSTAMP:{ahora}\r\n"
+                  f"DTSTART:{ini.astimezone(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}\r\n"
+                  f"DTEND:{fin.astimezone(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}\r\n"
+                  f"SUMMARY:Pichangol · {_ics(c.get('nombre') or 'Reserva')}\r\n"
+                  f"LOCATION:{_ics(lugar)}\r\n"
+                  f"DESCRIPTION:Reserva {_ics(ref)}. Comprobante: {_ics((config.PUBLIC_BASE_URL or '').rstrip('/'))}/reserva/{_ics(ref)}\r\n"
+                  "END:VEVENT\r\n")
+    body = ("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Pichangol//Reserva web//ES\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\n"
+            + "".join(ev) + "END:VCALENDAR\r\n")
+    return Response(body, media_type="text/calendar; charset=utf-8",
+                    headers={"Content-Disposition": f"attachment; filename=pichangol-{ref}.ics"})
+
+
+def _ics(s) -> str:
+    return str(s or "").replace("\\", "\\\\").replace(";", "\;").replace(",", "\\,").replace("\n", "\\n")
+
+
 @router.get("/reserva/{ref}", response_class=HTMLResponse)
 def pagina_comprobante(ref: str) -> HTMLResponse:
-    filas = datos.reservas_por_grupo(ref) if ref.startswith("grp_") else datos.reservas_de([ref])
-    filas = [f for f in filas if f.get("pagado") or f.get("estado") == "confirmada"]
+    filas = _filas_comprobante(ref)
     if not filas:
-        return _shell("Reserva no encontrada",
-                      "<h1>Reserva no encontrada</h1><p class='sub'>Revisa el enlace de tu comprobante "
-                      "o escríbenos a contacto@ebim.pe.</p><a class='cta' href='/canchas'>Ver canchas</a>")
+        return _no_encontrada("Reserva no encontrada")
     c = datos.cancha(filas[0]["cancha_id"]) or {}
     sim = filas[0].get("moneda") or "S/"
-    total = sum(int(f["precio"]) for f in filas)
+    total = _total_de(filas)
     extras = [x for f in filas for x in (f.get("extras") or [])]
-    total += int(round(sum(float(x.get("precio") or 0) for x in extras)))
-    horas = "".join(f"<tr><td>{horarios.fecha_larga(f['fecha'])}</td><td>{_e(f['hora_inicio'])}–{_e(f['hora_fin'])}</td>"
-                    f"<td style='text-align:right'>{_e(sim)} {int(f['precio']):.2f}</td></tr>" for f in filas)
-    horas += "".join(f"<tr><td colspan='2'>Extra: {_e(x.get('clave'))}</td>"
-                     f"<td style='text-align:right'>{_e(sim)} {float(x.get('precio') or 0):.2f}</td></tr>" for x in extras)
-    lugar = ", ".join(x for x in (c.get("direccion"), (c.get("distrito") or "").replace("_", " ").title()) if x)
-    cuerpo = (f"<div class='ok'><h1>¡Reserva confirmada! ✅</h1>"
-              f"<p>Comprobante <b>{_e(ref)}</b> · pagado por {_e(filas[0].get('medio_pago') or 'web')}</p>"
-              f"<p>Te esperamos en <b>{_e(c.get('nombre') or 'la cancha')}</b>{(' · ' + _e(c.get('club'))) if c.get('club') else ''}"
-              f"{(' · ' + _e(lugar)) if lugar else ''}.</p></div>"
-              f"<div class='panel'><table class='tabla'>{horas}"
-              f"<tr><td colspan='2'><b>Total pagado</b></td><td style='text-align:right'><b>{_e(sim)} {total:.2f}</b></td></tr></table>"
-              f"<p class='sub' style='margin-top:12px'>A nombre de {_e(filas[0].get('jugador'))} · {_e(filas[0].get('usuario'))}. "
-              "Guarda este enlace: es tu comprobante. Para cancelar con devolución (más de 6 horas antes) "
-              "escríbenos a <a href='mailto:contacto@ebim.pe'>contacto@ebim.pe</a> con este número.</p>"
-              f"<a class='cta' href='{PLAY_URL}'>Descarga la app y lleva tus reservas contigo</a> "
-              "<a class='cta sec' href='/canchas'>Reservar otra cancha</a></div>")
-    return _shell("Reserva confirmada", cuerpo)
+    lineas = "".join(
+        f"<div class='linea'><span>{e(horarios.fecha_larga(f['fecha']))} · {e(f['hora_inicio'])}–{e(f['hora_fin'])}</span>"
+        f"<b>{e(sim)} {int(f['precio']):.2f}</b></div>" for f in filas)
+    lineas += "".join(
+        f"<div class='linea'><span>{e(EXTRAS_NOMBRE.get(str(x.get('clave')), str(x.get('clave')).capitalize()))}</span>"
+        f"<b>{e(sim)} {float(x.get('precio') or 0):.2f}</b></div>" for x in extras)
+    lugar = ", ".join(x for x in (c.get("direccion"), _zona(c)) if x)
+    base = (config.PUBLIC_BASE_URL or "").rstrip("/")
+    texto_wa = quote(f"Reservé en {c.get('nombre', 'una cancha')} por Pichangol: "
+                     f"{horarios.fecha_larga(filas[0]['fecha'])} {filas[0]['hora_inicio']}–{filas[-1]['hora_fin']}. "
+                     f"Comprobante: {base}/reserva/{ref}")
+    medio = {"yape": "Yape", "tarjeta": "tarjeta"}.get(str(filas[0].get("medio_pago") or ""), "en línea")
+    cuerpo = (
+        "<div style='max-width:640px;margin:26px auto 0'>"
+        f"<div class='panel' style='text-align:center'>{ui.check_svg()}"
+        "<h1>¡Reserva confirmada!</h1>"
+        f"<p class='sub'>Comprobante <b>{e(ref)}</b> · pagado con {e(medio)}</p>"
+        f"<h3 style='margin-top:16px'>{e(c.get('nombre') or 'Cancha')}</h3>"
+        f"<div class='sub'>{e(c.get('club'))}{(' · ' + e(lugar)) if lugar else ''}</div>"
+        f"<div style='text-align:left;margin-top:16px'>{lineas}"
+        f"<div class='total'><span>Total pagado</span><span>{e(sim)} {total:.2f}</span></div></div>"
+        f"<div class='sub' style='margin-top:12px'>A nombre de <b>{e(filas[0].get('jugador'))}</b> · {e(filas[0].get('usuario'))}. "
+        "Guarda este enlace: es tu comprobante.</div>"
+        "<div class='acciones'>"
+        f"<a class='btn sec' href='/reserva/{e(ref)}.ics'>📅 Agregar al calendario</a>"
+        + (f"<a class='btn sec' href='{_maps(c)}' target='_blank' rel='noopener'>📍 Cómo llegar</a>" if c else "")
+        + f"<a class='btn sec' href='https://wa.me/?text={texto_wa}' target='_blank' rel='noopener'>💬 Compartir</a>"
+        "</div>"
+        "<div class='estado ok' style='text-align:left'>Cancelación con más de 6 horas de anticipación: devolución del 100 %. "
+        "Escríbenos a <a href='mailto:contacto@ebim.pe'>contacto@ebim.pe</a> citando el número de comprobante.</div>"
+        "</div>"
+        "<div class='panel' style='margin-top:16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap'>"
+        "<img src='/static/brand/logo_pin.png' alt='' style='width:56px;height:56px;border-radius:14px;border:1px solid var(--trazo)'>"
+        "<div style='flex:1;min-width:200px'><b>Lleva tus reservas contigo</b>"
+        "<div class='sub' style='font-size:13px'>Con la app ves tu agenda, acumulas puntos y reservas en dos toques.</div></div>"
+        f"<a class='btn' href='{PLAY_URL}'>Descargar la app</a></div>"
+        "<div style='text-align:center;margin-top:16px'><a href='/canchas'>Reservar otra cancha</a></div>"
+        "</div>")
+    return ui.shell("Reserva confirmada", cuerpo)

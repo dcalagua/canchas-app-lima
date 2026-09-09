@@ -7,9 +7,12 @@ Ejecutar (desde este directorio):
 
 from __future__ import annotations
 
+import os
+
 import asyncio
 
 from fastapi import Depends, FastAPI, Request
+from fastapi.staticfiles import StaticFiles
 
 import config
 from compliance.consent import consent_store
@@ -97,6 +100,10 @@ app.include_router(circuito_router)
 app.include_router(marketing_router)
 app.include_router(legal_router)
 app.include_router(web_router)
+# Assets de marca de la web pública (pin, logo para OG/favicon). Ruta fija
+# junto a este archivo para que Railway (root dir backend/growth) los sirva.
+app.mount("/static", StaticFiles(directory=os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "static")), name="static")
 app.include_router(concierge_router)
 
 
