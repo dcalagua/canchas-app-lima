@@ -19,6 +19,7 @@ from db import pg
 from entrenador.router import router as entrenador_router
 from db.store import seed_verificadores, stores
 from legal.router import router as legal_router
+from web.router import router as web_router
 from models import ConfigRequest, ConsentimientoRequest
 from marketing.router import router as marketing_router
 from pagos.router import (procesar_renovaciones, procesar_renovaciones_alumnos,
@@ -95,6 +96,7 @@ app.include_router(ventas_router)
 app.include_router(circuito_router)
 app.include_router(marketing_router)
 app.include_router(legal_router)
+app.include_router(web_router)
 app.include_router(concierge_router)
 
 

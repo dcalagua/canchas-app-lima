@@ -177,6 +177,26 @@ para la API del APK.
   Culqi además exige que la app esté PUBLICADA en Play (o darles acceso de
   tester). La URL registrada en Culqi debe ser `www.pichangol.app`, NO
   `grupoebim.com` (observación de Culqi, sep-2026).
+- **RESERVA WEB (fase 1, hecho sep-2026, autorizado por el director):**
+  `backend/growth/web/` — `GET /canchas` (catálogo de canchas verificadas,
+  agrupado por país, filtro `?deporte=`), `GET /reservar/{id}` (fecha,
+  horarios libres con precio, datos del cliente, extras, **Culqi Checkout
+  v4** con Yape + tarjeta), `GET /web/disponibilidad/{id}?fecha=` (JSON),
+  `POST /web/asegurar` (INSERT `pichangol_reservas` estado `nueva` con
+  hold de 10 min, id `web_<epoch_ms>_n`, firma HMAC), `POST /web/pagar`
+  (cargo Culqi → `confirmada`+`pagado`+`medio_pago` → `/pagos/
+  liquidacion-online` billetera-first → push "Nueva reserva 📅" al dueño),
+  `POST /web/liberar`, `GET /reserva/{id|grupo}` (comprobante). Lee y
+  escribe las MISMAS tablas del APK por Postgres directo (`web/datos.py`,
+  `DATABASE_URL`, sin RLS) — el dueño ve la reserva web en su agenda como
+  una online más; el UNIQUE `(cancha_id, fecha, hora_inicio)` evita la
+  doble reserva. `web/horarios.py` es ESPEJO de `Cancha` (slots, cierre
+  que cruza medianoche, fecha real de madrugada, hora feliz, descuentos por
+  slot, bloqueos). **Multi-país:** cobro web sólo en soles (Culqi); canchas
+  en \$ o Bs muestran el detalle y mandan a la app. El checkout se muestra
+  con cualquier `CULQI_PUBLIC_KEY` (también `pk_test`, para que Culqi lo
+  revise en PRD antes de dar las llaves live); el APK sigue apagado hasta
+  `sk_live`. Tests `test_web_reservas.py` (base simulada).
 - El apex `pichangol.app` (sin `www`) sigue libre (podría redirigir al `www`).
 
 ## Estrategia de ambientes (piloto → prod)
