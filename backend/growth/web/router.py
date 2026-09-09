@@ -39,7 +39,7 @@ from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
 
 import config
-from paises import pais_de_coordenadas, moneda_de_pais, simbolo_de_moneda
+from paises import _CAJAS, pais_de_coordenadas, moneda_de_pais, simbolo_de_moneda
 from pagos import culqi
 from web import datos, horarios, ui
 from web.ui import e
@@ -53,7 +53,7 @@ MAX_SLOTS = 4
 DEPORTES = {"futbol": ("Fútbol", "⚽"), "tenis": ("Tenis", "🎾"), "padel": ("Pádel", "🏓"),
             "pickleball": ("Pickleball", "🥒"), "voley": ("Vóley", "🏐"), "basquet": ("Básquet", "🏀"),
             "futsal": ("Futsal", "⚽")}
-BANDERA = {"PE": "🇵🇪", "EC": "🇪🇨", "BO": "🇧🇴"}
+CIUDAD_DEFECTO = {"PE": (-12.046, -77.043), "EC": (-2.17, -79.92), "BO": (-16.5, -68.15)}
 NOMBRE_PAIS = {"PE": "Perú", "EC": "Ecuador", "BO": "Bolivia"}
 EXTRAS_NOMBRE = {"arbitro": "Árbitro", "pelotero": "Pelotero (recoge pelotas)",
                  "pelota": "Alquiler de pelota", "pecheras": "Petos / pecheras",
@@ -160,8 +160,81 @@ def _no_encontrada(que: str = "Cancha no disponible") -> HTMLResponse:
 
 # ── catálogo ──────────────────────────────────────────────────────────────────
 
+_JS_EXPLORAR = r"""
+(function(){
+  var C = window.__explorar, cards = Array.prototype.slice.call(document.querySelectorAll('.card.cancha'));
+  var $ = function(id){ return document.getElementById(id); };
+  var yo = null, mapa = null, marcadores = [], miPin = null;
+  function km(a, b, c, d){ var R = 6371, dLat = (c-a)*Math.PI/180, dLng = (d-b)*Math.PI/180;
+    var x = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(dLng/2)*Math.sin(dLng/2);
+    return 2*R*Math.asin(Math.sqrt(x)); }
+  function paisDe(lat, lng){
+    var dentro = [], best = null, bd = 1e9;
+    Object.keys(C.cajas).forEach(function(k){ var c = C.cajas[k]; if(lat >= c[0] && lat <= c[1] && lng >= c[2] && lng <= c[3]) dentro.push(k); });
+    (dentro.length ? dentro : Object.keys(C.cajas)).forEach(function(k){ var c = C.cajas[k]; var d = Math.hypot(lat-c[4], lng-c[5]); if(d < bd){ bd = d; best = k; } });
+    return best;
+  }
+  function fmtKm(d){ return d < 1 ? (Math.round(d*1000) + ' m') : (d < 10 ? d.toFixed(1) + ' km' : Math.round(d) + ' km'); }
+  function ordenar(){
+    if(!yo) return;
+    var pais = paisDe(yo.lat, yo.lng);
+    cards.forEach(function(c){ var d = km(yo.lat, yo.lng, parseFloat(c.dataset.lat), parseFloat(c.dataset.lng)); c.dataset.d = d;
+      var el = c.querySelector('.dist'); if(el) el.textContent = 'a ' + fmtKm(d); });
+    document.querySelectorAll('.grupo-pais').forEach(function(g){
+      var grid = g.querySelector('.grid');
+      var hijos = Array.prototype.slice.call(grid.children).sort(function(a, b){ return parseFloat(a.dataset.d) - parseFloat(b.dataset.d); });
+      hijos.forEach(function(h){ grid.appendChild(h); });
+    });
+    var propio = document.querySelector('.grupo-pais[data-pais="' + pais + '"]');
+    if(propio && propio.parentNode){ propio.parentNode.insertBefore(propio, document.getElementById('grupos').firstChild); var t = propio.querySelector('h2 .cerca'); if(t) t.textContent = ' · cerca de ti'; }
+    $('ubicTxt').textContent = 'Mostrando las canchas más cercanas a ti.';
+    $('btnUbic').style.display = 'none';
+    if(mapa){ if(miPin) miPin.remove(); miPin = L.marker([yo.lat, yo.lng], {icon: L.divIcon({className: '', html: '<span class="pin-precio yo">Tú</span>', iconSize: null})}).addTo(mapa);
+      var pts = cards.filter(function(c){ return parseFloat(c.dataset.d) < 60; }).map(function(c){ return [parseFloat(c.dataset.lat), parseFloat(c.dataset.lng)]; });
+      pts.push([yo.lat, yo.lng]); mapa.fitBounds(L.latLngBounds(pts).pad(0.2), {maxZoom: 14}); }
+  }
+  function ubicar(interactivo){
+    if(!navigator.geolocation){ $('ubicTxt').textContent = 'Tu navegador no permite ubicación. Busca por zona.'; return; }
+    $('ubicTxt').textContent = 'Buscando tu ubicación…';
+    navigator.geolocation.getCurrentPosition(function(pos){
+      yo = {lat: pos.coords.latitude, lng: pos.coords.longitude};
+      try { localStorage.setItem('pcg_ubic', JSON.stringify(yo)); } catch(e){}
+      ordenar();
+    }, function(){
+      $('ubicTxt').textContent = interactivo ? 'No pudimos leer tu ubicación. Revisa el permiso del navegador o busca por zona.' : 'Permite tu ubicación para ver primero las canchas más cercanas.';
+      $('btnUbic').style.display = '';
+    }, {enableHighAccuracy: false, timeout: 8000, maximumAge: 300000});
+  }
+  function pintarMapa(){
+    if(!window.L || !$('mapa')) return;
+    var centro = C.centro; mapa = L.map('mapa', {scrollWheelZoom: false}).setView(centro, 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19, attribution: '&copy; OpenStreetMap'}).addTo(mapa);
+    var pts = [];
+    cards.forEach(function(c){
+      var lat = parseFloat(c.dataset.lat), lng = parseFloat(c.dataset.lng); if(!lat && !lng) return;
+      pts.push([lat, lng]);
+      var m = L.marker([lat, lng], {icon: L.divIcon({className: '', html: '<span class="pin-precio">' + c.dataset.precio + '</span>', iconSize: null})}).addTo(mapa);
+      m.bindPopup('<b>' + c.dataset.nombre + '</b><br>' + c.dataset.sub + '<br><span style="font-weight:800">' + c.dataset.precio + ' por hora</span><br><a class="btn" href="' + c.getAttribute('href') + '">Ver horarios</a>');
+      m.on('click', function(){ c.scrollIntoView({behavior: 'smooth', block: 'center'}); });
+      marcadores.push(m);
+    });
+    if(pts.length) mapa.fitBounds(L.latLngBounds(pts).pad(0.25), {maxZoom: 13});
+  }
+  var b = $('buscar');
+  if(b) b.addEventListener('input', function(){ var q = b.value.trim().toLowerCase();
+    cards.forEach(function(c){ c.style.display = (!q || c.dataset.t.indexOf(q) >= 0) ? '' : 'none'; }); });
+  $('btnUbic').addEventListener('click', function(){ ubicar(true); });
+  pintarMapa();
+  try { var g = JSON.parse(localStorage.getItem('pcg_ubic') || 'null'); if(g && g.lat){ yo = g; ordenar(); } } catch(e){}
+  ubicar(false);
+})();
+"""
+
+
 @router.get("/canchas", response_class=HTMLResponse)
-def pagina_canchas(deporte: str = "", q: str = "") -> HTMLResponse:
+def pagina_canchas(deporte: str = "") -> HTMLResponse:
+    """Pantalla inicial de la web (como Explorar en el app): pide ubicación,
+    ordena por cercanía, mapa con las canchas y el país del usuario primero."""
     todas = datos.canchas_verificadas()
     dep = (deporte or "").strip().lower()
     disponibles = sorted({d for c in todas for d in _deportes_de(c)})
@@ -175,14 +248,18 @@ def pagina_canchas(deporte: str = "", q: str = "") -> HTMLResponse:
     cuerpo = ("<div style='padding:26px 0 8px'><h1>¿Dónde juegas hoy?</h1>"
               "<p class='sub'>Canchas verificadas por Pichangol. Elige, mira los horarios libres y paga "
               "con Yape o tarjeta. Comprobante al instante.</p></div>"
+              "<div class='ubic'><span>📍</span><span class='t' id='ubicTxt'>Permite tu ubicación para ver primero las canchas más cercanas.</span>"
+              "<button class='btn' id='btnUbic'>Usar mi ubicación</button></div>"
               "<div class='panel' style='padding:14px 16px;margin-bottom:18px'>"
-              "<input id='buscar' placeholder='Buscar por nombre, club o zona…' autocomplete='off' "
-              "style='margin-bottom:12px'>"
+              "<input id='buscar' placeholder='Buscar por nombre, club o zona…' autocomplete='off' style='margin-bottom:12px'>"
               f"<div class='chips'>{filtros}</div></div>")
-    if not lista:
+    if lista:
+        cuerpo += "<div class='mapa' id='mapa' aria-label='Mapa de canchas'></div>"
+    else:
         cuerpo += ("<div class='panel'><h3>Todavía no hay canchas publicadas aquí</h3>"
                    "<p class='sub'>Estamos sumando locales. En la app ya puedes explorar el mapa completo.</p>"
                    f"<div class='acciones'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a></div></div>")
+    cuerpo += "<div id='grupos'>"
     for pais in ("PE", "EC", "BO"):
         lst = por_pais.get(pais) or []
         if not lst:
@@ -192,21 +269,32 @@ def pagina_canchas(deporte: str = "", q: str = "") -> HTMLResponse:
             sim, _iso = _moneda_de(c)
             deps = " · ".join(_deporte(d)[0] for d in _deportes_de(c)[:3])
             texto = f"{c['nombre']} {c.get('club', '')} {_zona(c)} {deps}".lower()
+            sub = " · ".join(x for x in (c.get("club"), _zona(c)) if x)
             cards += (f"<a class='card cancha' href='/reservar/{e(c['id'])}' data-t='{e(texto)}' "
+                      f"data-lat='{c.get('lat')}' data-lng='{c.get('lng')}' data-nombre='{e(c['nombre'])}' "
+                      f"data-sub='{e(sub)}' data-precio='{e(sim)} {c['precio_hora']:.0f}' "
                       "style='text-decoration:none;color:inherit'>"
                       f"{_foto_card(c)}<div class='cb'>"
                       f"<div style='display:flex;justify-content:space-between;gap:8px;align-items:center'>"
                       f"<h3>{e(c['nombre'])}</h3>{ui.sello_verificada()}</div>"
-                      f"<div class='m'>{e(c.get('club'))}{' · ' if c.get('club') and _zona(c) else ''}{e(_zona(c))}</div>"
-                      f"<div class='m'>{e(deps)} · turnos de {c['duracion_slot_min']} min</div>"
+                      f"<div class='m'>{e(sub)}</div>"
+                      f"<div class='m'>{e(deps)} · turnos de {c['duracion_slot_min']} min <span class='dist'></span></div>"
                       f"<div class='precio' style='margin-top:6px'>{e(sim)} {c['precio_hora']:.2f} <small>por hora</small></div>"
                       "</div></a>")
-        cuerpo += (f"<h2 style='margin:26px 0 12px'>{BANDERA[pais]} {NOMBRE_PAIS[pais]}</h2>"
-                   f"<div class='grid'>{cards}</div>")
-    cuerpo += ("<script>(function(){var b=document.getElementById('buscar');if(!b)return;"
-               "b.addEventListener('input',function(){var q=b.value.trim().toLowerCase();"
-               "document.querySelectorAll('.card.cancha').forEach(function(c){c.style.display=(!q||c.dataset.t.indexOf(q)>=0)?'':'none';});});})();</script>")
-    return ui.shell("Canchas", cuerpo, desc="Reserva canchas de fútbol, tenis y pádel en línea y paga con Yape o tarjeta.")
+        cuerpo += (f"<section class='grupo-pais' data-pais='{pais}'><h2 style='margin:26px 0 12px;display:flex;align-items:center;gap:8px'>"
+                   f"{ui.bandera(pais)} {NOMBRE_PAIS[pais]}<span class='cerca' style='color:var(--tenue);font-weight:600;font-size:14px'></span></h2>"
+                   f"<div class='grid'>{cards}</div></section>")
+    cuerpo += "</div>"
+    centro = list(CIUDAD_DEFECTO["PE"])
+    if lista:
+        c0 = lista[0]
+        centro = [c0.get("lat") or centro[0], c0.get("lng") or centro[1]]
+    cfg = json.dumps({"cajas": {k: list(v) for k, v in _CAJAS.items()}, "centro": centro})
+    head = ("<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' crossorigin=''>"
+            "<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' crossorigin=''></script>")
+    cuerpo += f"<script>window.__explorar={cfg};</script><script>{_JS_EXPLORAR}</script>"
+    return ui.shell("Canchas", cuerpo, extra_head=head,
+                    desc="Reserva canchas de fútbol, tenis y pádel cerca de ti y paga con Yape o tarjeta.")
 
 
 # ── disponibilidad ────────────────────────────────────────────────────────────
@@ -443,7 +531,7 @@ def _ficha(c: dict, sim: str, pais: str) -> str:
     return (f"{_galeria(c)}"
             "<div style='display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-top:16px'>"
             f"<div><div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'>"
-            f"<span class='pill gris'>{BANDERA[pais]} {e(deps)}</span>{ui.sello_verificada()}</div>"
+            f"<span class='pill gris'>{ui.bandera(pais)} {e(deps)}</span>{ui.sello_verificada()}</div>"
             f"<h1 style='margin-top:8px'>{e(c['nombre'])}</h1>"
             f"<p class='sub'>{e(c.get('club'))}</p></div>"
             f"<div class='precio' style='font-size:22px;white-space:nowrap'>{e(sim)} {c['precio_hora']:.2f} <small>por hora</small></div></div>"

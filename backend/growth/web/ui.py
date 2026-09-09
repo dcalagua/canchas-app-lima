@@ -31,7 +31,7 @@ TOKENS = """
 """
 
 CSS = TOKENS + """
-*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
+*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}html,body{overflow-x:hidden;max-width:100%}
 body{margin:0;background:var(--papel);color:var(--noche);font-family:"Montserrat",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-weight:500;line-height:1.45}
 a{color:var(--esmeralda)}img{max-width:100%}
 .wrap{max-width:1080px;margin:0 auto;padding:0 20px}
@@ -58,7 +58,7 @@ h1{font-size:28px;line-height:1.15}h2{font-size:20px}h3{font-size:16px}
 .chip:hover{border-color:#C9D3E0}.chip.sel{background:var(--tinte);border-color:var(--esmeralda);color:var(--teal)}
 .chip.off{opacity:.38;cursor:not-allowed;text-decoration:line-through}.chip small{font-weight:600;color:var(--tenue)}
 .chip.sel small{color:var(--teal)}.chips{display:flex;flex-wrap:wrap;gap:10px}
-.strip{display:flex;gap:10px;overflow-x:auto;padding:4px 2px 8px;scrollbar-width:none}.strip::-webkit-scrollbar{display:none}
+.strip{display:flex;gap:10px;overflow-x:auto;padding:4px 2px 8px;min-width:0;max-width:100%;scrollbar-width:none;-webkit-overflow-scrolling:touch}.strip::-webkit-scrollbar{display:none}
 .strip .chip{flex-direction:column;gap:2px;padding:10px 14px;min-width:74px;align-items:center}
 .strip .chip b{font-size:15px}.strip .chip small{font-size:11.5px}
 /* tarjetas */
@@ -70,7 +70,7 @@ h1{font-size:28px;line-height:1.15}h2{font-size:20px}h3{font-size:16px}
 .cb .m{font-size:13px;color:var(--tenue);font-weight:600}
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
 @media(max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:560px){.grid{grid-template-columns:1fr}}
-.panel{background:var(--blanco);border-radius:var(--r-lg);box-shadow:var(--sombra);padding:20px 22px}
+.panel{background:var(--blanco);border-radius:var(--r-lg);box-shadow:var(--sombra);padding:20px 22px;min-width:0}
 .pill{display:inline-flex;align-items:center;gap:5px;background:var(--tinte);color:var(--teal);font-weight:800;font-size:12px;padding:5px 10px;border-radius:999px;line-height:1}
 .pill.dorado{background:#FBF3DC;color:#8A6400}.pill.gris{background:var(--gris);color:var(--tenue)}
 .precio{font-weight:800;font-size:18px}.precio small{font-weight:600;color:var(--tenue);font-size:12.5px}
@@ -85,7 +85,7 @@ input:focus,select:focus{outline:2px solid var(--esmeralda);outline-offset:0;bor
 .estado.ok{background:var(--ok-bg);color:var(--ok-fg)}.estado.warn{background:var(--warn-bg);color:var(--warn-fg)}
 .estado.bad{background:var(--bad-bg);color:var(--bad-fg);display:none}
 /* layout reserva */
-.dos{display:grid;grid-template-columns:1fr 360px;gap:22px;align-items:start}
+.dos{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:22px;align-items:start}.dos>*{min-width:0}
 @media(max-width:900px){.dos{grid-template-columns:1fr}}
 .resumen{position:sticky;top:80px}
 @media(max-width:900px){.resumen{position:static}}
@@ -115,6 +115,20 @@ input:focus,select:focus{outline:2px solid var(--esmeralda);outline-offset:0;bor
 ul.datos{list-style:none;padding:0;margin:10px 0 0;font-size:14px;color:var(--tenue);font-weight:600}
 ul.datos li{margin:6px 0;display:flex;gap:8px;align-items:flex-start}
 .amen{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.amen span{background:var(--gris);border-radius:999px;padding:5px 10px;font-size:12.5px;font-weight:700;color:var(--tenue)}
+/* banderas (SVG: en Windows los emoji de bandera salen como texto) */
+.flag{display:inline-block;width:18px;height:13px;border-radius:2px;vertical-align:-1px;box-shadow:0 0 0 1px rgba(15,27,45,.12)}
+/* explorar: mapa + ubicación */
+.mapa{height:360px;border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--sombra);background:var(--gris);position:relative;z-index:0}
+@media(max-width:640px){.mapa{height:240px}}
+.pin-precio{background:var(--blanco);color:var(--noche);font-weight:800;font-size:12.5px;padding:5px 9px;border-radius:999px;box-shadow:0 2px 8px rgba(15,27,45,.25);border:1px solid var(--trazo);white-space:nowrap;font-family:"Montserrat",system-ui,sans-serif}
+.pin-precio.yo{background:var(--esmeralda);color:#fff;border-color:var(--esmeralda)}
+.leaflet-popup-content-wrapper{border-radius:14px;font-family:"Montserrat",system-ui,sans-serif}
+.leaflet-popup-content{margin:12px 14px;font-size:13.5px}.leaflet-popup-content b{font-size:14px}
+.leaflet-popup-content .btn{padding:8px 12px;font-size:13px;margin-top:8px}
+.ubic{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--tinte);border-radius:var(--r);padding:12px 14px;margin-bottom:14px}
+.ubic .btn{padding:10px 14px;font-size:14px}.ubic .t{flex:1;min-width:200px;font-size:14px;font-weight:600;color:var(--teal)}
+.dist{color:var(--teal);font-weight:800}
+.vista{display:none;gap:8px}@media(max-width:640px){.vista{display:flex;margin:10px 0}}
 /* skeleton / loading */
 .skel{background:linear-gradient(90deg,var(--gris) 25%,#F6F8FB 37%,var(--gris) 63%);background-size:400% 100%;animation:sk 1.2s infinite;border-radius:999px;height:38px;width:110px;display:inline-block}
 @keyframes sk{0%{background-position:100% 0}100%{background-position:0 0}}
@@ -152,6 +166,18 @@ def marcas_pago() -> str:
     return ("<div class='marcas'><span class='yape'>Yape</span><span class='visa'>VISA</span>"
             "<span class='mc'><i></i><i></i></span>"
             "<span class='candado'>🔒 Pago seguro · Culqi</span></div>")
+
+
+_FLAGS = {
+    "PE": "<svg class='flag' viewBox='0 0 3 2'><rect width='3' height='2' fill='#D91023'/><rect x='1' width='1' height='2' fill='#fff'/></svg>",
+    "EC": "<svg class='flag' viewBox='0 0 4 2'><rect width='4' height='2' fill='#FFD100'/><rect y='1' width='4' height='.5' fill='#0057B8'/><rect y='1.5' width='4' height='.5' fill='#D91023'/></svg>",
+    "BO": "<svg class='flag' viewBox='0 0 3 2'><rect width='3' height='2' fill='#007934'/><rect width='3' height='1.34' fill='#F4E400'/><rect width='3' height='.67' fill='#D52B1E'/></svg>",
+}
+
+
+def bandera(iso: str) -> str:
+    """Bandera como SVG inline (los emoji 🇵🇪 no se renderizan en Windows)."""
+    return _FLAGS.get((iso or "").upper(), "")
 
 
 def sello_verificada() -> str:

@@ -207,7 +207,15 @@ para la API del APK.
   días (Hoy/Mañana/…), selector de deporte si la loza es multiuso, resumen
   fijo "Resumen de tu reserva" (barra inferior en móvil), skeleton al
   cargar, comprobante con check animado + `.ics` + Cómo llegar + WhatsApp,
-  JSON-LD `SportsActivityLocation`, 404 propio.
+  JSON-LD `SportsActivityLocation`, 404 propio. **`/canchas` es la pantalla
+  inicial "Explorar" de la web (sep-2026):** pide ubicación al cargar (y con
+  el botón "Usar mi ubicación"), ordena por cercanía con la distancia en cada
+  tarjeta, pone primero el país del usuario (cajas de `paises._CAJAS`
+  pasadas al JS) y muestra un mapa **Leaflet + OpenStreetMap** (sin API key)
+  con pines de precio y popup "Ver horarios"; la ubicación se recuerda en
+  `localStorage`. Banderas como SVG (`ui.bandera`): los emoji de bandera no
+  se ven en Windows. Regla anti scroll horizontal: `html,body{overflow-x:
+  hidden}` + `minmax(0,1fr)`/`min-width:0` en las columnas de la grilla.
 - El apex `pichangol.app` (sin `www`) sigue libre (podría redirigir al `www`).
 
 ## Estrategia de ambientes (piloto → prod)

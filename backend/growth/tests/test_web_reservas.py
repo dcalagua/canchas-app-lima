@@ -131,7 +131,8 @@ def test_horarios_espejo_del_apk():
 def test_catalogo_agrupa_por_pais_y_filtra(db):
     r = client.get("/canchas")
     assert r.status_code == 200
-    assert "🇵🇪 Perú" in r.text and "🇪🇨 Ecuador" in r.text
+    assert "Perú" in r.text and "Ecuador" in r.text and "data-pais='PE'" in r.text
+    assert "leaflet" in r.text and "Usar mi ubicación" in r.text and "data-lat=" in r.text
     assert "Cancha Central" in r.text and "Cancha Guayaquil" in r.text
     assert "S/ 60.00" in r.text and "$ 10.00" in r.text
     assert "/reservar/c_lima" in r.text
