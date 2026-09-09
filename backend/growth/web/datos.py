@@ -60,21 +60,32 @@ def _norm_cancha(d: dict) -> dict:
     return d
 
 
-def canchas_verificadas() -> list[dict]:
-    """Canchas RESERVABLES en la web: registradas, verificadas, con dueño y no
-    eliminadas (las mismas que el APK deja reservar)."""
+def canchas_publicas() -> list[dict]:
+    """TODAS las canchas publicables en la web: registradas y no eliminadas.
+    Las verificadas con dueño son reservables en línea; las demás (aún sin
+    verificar) se muestran con "Reservar en la app" (decisión del director,
+    sep-2026: la web enseña el mismo mapa que el APK). Verificadas primero."""
     if not pg.habilitado:
         return []
     try:
         with pg._conn() as conn, conn.cursor() as cur:
             cur.execute(
                 f"SELECT {COLS_CANCHA} FROM pichangol_canchas "
-                "WHERE coalesce(verificada,false) AND coalesce(registrada,true) "
-                "AND NOT coalesce(eliminada,false) AND coalesce(dueno,'') <> '' "
-                "ORDER BY club, nombre")
+                "WHERE coalesce(registrada,true) AND NOT coalesce(eliminada,false) "
+                "ORDER BY (coalesce(verificada,false) AND coalesce(dueno,'') <> '') DESC, club, nombre")
             return [_norm_cancha(pg._fila_a_dict(_COLS, f)) for f in cur.fetchall()]
     except Exception:  # noqa: BLE001
         return []
+
+
+def reservable(c: dict) -> bool:
+    """Reservable en línea = verificada + con dueño (igual que `Cancha.reservable`)."""
+    return bool(c.get("verificada")) and bool((c.get("dueno") or "").strip()) and not c.get("eliminada")
+
+
+def canchas_verificadas() -> list[dict]:
+    """Canchas RESERVABLES en la web (las mismas que el APK deja reservar)."""
+    return [c for c in canchas_publicas() if reservable(c)]
 
 
 def cancha(cancha_id: str) -> dict | None:

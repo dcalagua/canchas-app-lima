@@ -216,6 +216,13 @@ para la API del APK.
   `localStorage`. Banderas como SVG (`ui.bandera`): los emoji de bandera no
   se ven en Windows. Regla anti scroll horizontal: `html,body{overflow-x:
   hidden}` + `minmax(0,1fr)`/`min-width:0` en las columnas de la grilla.
+  **Canchas NO verificadas también salen en la web** (decisión del director,
+  sep-2026): `datos.canchas_publicas()` = registradas y no eliminadas;
+  `datos.reservable(c)` = verificada + con dueño (espejo de
+  `Cancha.reservable`). Las pendientes van después, con pill "Aún sin
+  verificar", pin gris y botón "Reservar en la app"; su ficha explica que
+  está en verificación y manda a Play; `/web/asegurar` responde
+  `no_verificada`. Sólo las reservables muestran el checkout.
 - El apex `pichangol.app` (sin `www`) sigue libre (podría redirigir al `www`).
 
 ## Estrategia de ambientes (piloto → prod)

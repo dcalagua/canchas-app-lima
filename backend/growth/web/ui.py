@@ -122,6 +122,8 @@ ul.datos li{margin:6px 0;display:flex;gap:8px;align-items:flex-start}
 @media(max-width:640px){.mapa{height:240px}}
 .pin-precio{background:var(--blanco);color:var(--noche);font-weight:800;font-size:12.5px;padding:5px 9px;border-radius:999px;box-shadow:0 2px 8px rgba(15,27,45,.25);border:1px solid var(--trazo);white-space:nowrap;font-family:"Montserrat",system-ui,sans-serif}
 .pin-precio.yo{background:var(--esmeralda);color:#fff;border-color:var(--esmeralda)}
+.pin-precio.pend{background:var(--gris);color:var(--tenue)}
+.card.pend img,.card.pend .sinfoto{filter:saturate(.6)}
 .leaflet-popup-content-wrapper{border-radius:14px;font-family:"Montserrat",system-ui,sans-serif}
 .leaflet-popup-content{margin:12px 14px;font-size:13.5px}.leaflet-popup-content b{font-size:14px}
 .leaflet-popup-content .btn{padding:8px 12px;font-size:13px;margin-top:8px}

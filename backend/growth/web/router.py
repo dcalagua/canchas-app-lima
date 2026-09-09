@@ -213,8 +213,9 @@ _JS_EXPLORAR = r"""
     cards.forEach(function(c){
       var lat = parseFloat(c.dataset.lat), lng = parseFloat(c.dataset.lng); if(!lat && !lng) return;
       pts.push([lat, lng]);
-      var m = L.marker([lat, lng], {icon: L.divIcon({className: '', html: '<span class="pin-precio">' + c.dataset.precio + '</span>', iconSize: null})}).addTo(mapa);
-      m.bindPopup('<b>' + c.dataset.nombre + '</b><br>' + c.dataset.sub + '<br><span style="font-weight:800">' + c.dataset.precio + ' por hora</span><br><a class="btn" href="' + c.getAttribute('href') + '">Ver horarios</a>');
+      var ok = c.dataset.ok === '1';
+      var m = L.marker([lat, lng], {icon: L.divIcon({className: '', html: '<span class="pin-precio' + (ok ? '' : ' pend') + '">' + c.dataset.precio + '</span>', iconSize: null})}).addTo(mapa);
+      m.bindPopup('<b>' + c.dataset.nombre + '</b><br>' + c.dataset.sub + '<br><span style="font-weight:800">' + c.dataset.precio + ' por hora</span><br><a class="btn' + (ok ? '' : ' sec') + '" href="' + c.getAttribute('href') + '">' + (ok ? 'Ver horarios' : 'Reservar en la app') + '</a>');
       m.on('click', function(){ c.scrollIntoView({behavior: 'smooth', block: 'center'}); });
       marcadores.push(m);
     });
@@ -235,7 +236,7 @@ _JS_EXPLORAR = r"""
 def pagina_canchas(deporte: str = "") -> HTMLResponse:
     """Pantalla inicial de la web (como Explorar en el app): pide ubicación,
     ordena por cercanía, mapa con las canchas y el país del usuario primero."""
-    todas = datos.canchas_verificadas()
+    todas = datos.canchas_publicas()
     dep = (deporte or "").strip().lower()
     disponibles = sorted({d for c in todas for d in _deportes_de(c)})
     lista = [c for c in todas if not dep or dep in _deportes_de(c)]
@@ -270,17 +271,22 @@ def pagina_canchas(deporte: str = "") -> HTMLResponse:
             deps = " · ".join(_deporte(d)[0] for d in _deportes_de(c)[:3])
             texto = f"{c['nombre']} {c.get('club', '')} {_zona(c)} {deps}".lower()
             sub = " · ".join(x for x in (c.get("club"), _zona(c)) if x)
-            cards += (f"<a class='card cancha' href='/reservar/{e(c['id'])}' data-t='{e(texto)}' "
+            ok = datos.reservable(c)
+            sello = ui.sello_verificada() if ok else "<span class='pill gris'>Aún sin verificar</span>"
+            accion = ("" if ok else
+                      "<div style='margin-top:8px'><span class='btn sec' style='padding:9px 12px;font-size:13px'>"
+                      "📲 Reservar en la app</span></div>")
+            cards += (f"<a class='card cancha{'' if ok else ' pend'}' href='/reservar/{e(c['id'])}' data-t='{e(texto)}' "
                       f"data-lat='{c.get('lat')}' data-lng='{c.get('lng')}' data-nombre='{e(c['nombre'])}' "
-                      f"data-sub='{e(sub)}' data-precio='{e(sim)} {c['precio_hora']:.0f}' "
+                      f"data-sub='{e(sub)}' data-precio='{e(sim)} {c['precio_hora']:.0f}' data-ok='{1 if ok else 0}' "
                       "style='text-decoration:none;color:inherit'>"
                       f"{_foto_card(c)}<div class='cb'>"
                       f"<div style='display:flex;justify-content:space-between;gap:8px;align-items:center'>"
-                      f"<h3>{e(c['nombre'])}</h3>{ui.sello_verificada()}</div>"
+                      f"<h3>{e(c['nombre'])}</h3>{sello}</div>"
                       f"<div class='m'>{e(sub)}</div>"
                       f"<div class='m'>{e(deps)} · turnos de {c['duracion_slot_min']} min <span class='dist'></span></div>"
                       f"<div class='precio' style='margin-top:6px'>{e(sim)} {c['precio_hora']:.2f} <small>por hora</small></div>"
-                      "</div></a>")
+                      f"{accion}</div></a>")
         cuerpo += (f"<section class='grupo-pais' data-pais='{pais}'><h2 style='margin:26px 0 12px;display:flex;align-items:center;gap:8px'>"
                    f"{ui.bandera(pais)} {NOMBRE_PAIS[pais]}<span class='cerca' style='color:var(--tenue);font-weight:600;font-size:14px'></span></h2>"
                    f"<div class='grid'>{cards}</div></section>")
@@ -523,7 +529,8 @@ def _tira_dias(pais: str) -> tuple[list[dict], dict]:
     return dias, etiquetas
 
 
-def _ficha(c: dict, sim: str, pais: str) -> str:
+def _ficha(c: dict, sim: str, pais: str, verificada: bool = True) -> str:
+    sello = ui.sello_verificada() if verificada else "<span class='pill gris'>Aún sin verificar</span>"
     lugar = ", ".join(x for x in (c.get("direccion"), _zona(c)) if x)
     deps = " · ".join(_deporte(d)[0] for d in _deportes_de(c))
     amen = "".join(f"<span>{e(AMENIDAD_NOMBRE.get(str(a).lower(), str(a).replace('_', ' ').capitalize()))}</span>"
@@ -531,7 +538,7 @@ def _ficha(c: dict, sim: str, pais: str) -> str:
     return (f"{_galeria(c)}"
             "<div style='display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-top:16px'>"
             f"<div><div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'>"
-            f"<span class='pill gris'>{ui.bandera(pais)} {e(deps)}</span>{ui.sello_verificada()}</div>"
+            f"<span class='pill gris'>{ui.bandera(pais)} {e(deps)}</span>{sello}</div>"
             f"<h1 style='margin-top:8px'>{e(c['nombre'])}</h1>"
             f"<p class='sub'>{e(c.get('club'))}</p></div>"
             f"<div class='precio' style='font-size:22px;white-space:nowrap'>{e(sim)} {c['precio_hora']:.2f} <small>por hora</small></div></div>"
@@ -558,18 +565,22 @@ def _jsonld_cancha(c: dict, sim: str) -> str:
 @router.get("/reservar/{cancha_id}", response_class=HTMLResponse)
 def pagina_reservar(cancha_id: str) -> HTMLResponse:
     c = datos.cancha(cancha_id)
-    if not c or not c.get("verificada") or c.get("eliminada") or not c.get("dueno"):
+    if not c or c.get("eliminada") or not c.get("registrada", True):
         return _no_encontrada()
     sim, iso = _moneda_de(c)
     pais = _pais_de(c)
-    ficha = _ficha(c, sim, pais)
+    ficha = _ficha(c, sim, pais, verificada=datos.reservable(c))
     canonical = (f"{config.PUBLIC_BASE_URL.rstrip('/')}/reservar/{c['id']}"
                  if getattr(config, "PUBLIC_BASE_URL", "") else "")
     og = _fotos(c)[0] if _fotos(c) else "/static/brand/logo_pichangol.png"
 
-    if not _pago_web_disponible(iso):
-        motivo = (f"Esta cancha cobra en {e(sim)} y el pago en línea desde la web está disponible por "
-                  "ahora solo en soles." if iso != "PEN" else "El pago en línea desde la web se está habilitando.")
+    if not datos.reservable(c) or not _pago_web_disponible(iso):
+        if not datos.reservable(c):
+            motivo = ("Este local todavía está en proceso de verificación con Pichangol. Desde la app puedes "
+                      "reservar y pagar en la cancha, y te avisamos cuando acepte pagos en línea.")
+        else:
+            motivo = (f"Esta cancha cobra en {e(sim)} y el pago en línea desde la web está disponible por "
+                      "ahora solo en soles." if iso != "PEN" else "El pago en línea desde la web se está habilitando.")
         cuerpo = (f"<div style='padding-top:22px'>{ficha}</div>"
                   f"<div class='panel' style='margin-top:20px'><h2>Reserva desde la app</h2>"
                   f"<p class='sub'>{motivo} En la app Pichangol reservas y pagas con los medios de tu país.</p>"
@@ -669,8 +680,10 @@ def asegurar(req: AsegurarReq) -> dict:
     (`insertarSegura`): así el UNIQUE decide quién se queda con la hora. Si el
     cliente no paga, `/web/liberar` (o el vencimiento del hold) los suelta."""
     c = datos.cancha(req.cancha_id)
-    if not c or not c.get("verificada") or c.get("eliminada") or not c.get("dueno"):
+    if not c or c.get("eliminada"):
         return {"ok": False, "error": "no_encontrada"}
+    if not datos.reservable(c):
+        return {"ok": False, "error": "no_verificada"}
     sim, iso = _moneda_de(c)
     if not _pago_web_disponible(iso):
         return {"ok": False, "error": "pago_no_disponible"}

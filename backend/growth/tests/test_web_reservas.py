@@ -31,17 +31,21 @@ GYE = {**LIMA, "id": "c_gye", "nombre": "Cancha Guayaquil", "club": "Club Sur", 
        "lng": -79.92, "moneda": "$", "precio_hora": 10.0, "descuento_valle": 0}
 NOCHE = {**LIMA, "id": "c_noche", "nombre": "Nocturna", "hora_apertura": "18:00",
          "hora_cierre": "02:00", "descuento_valle": 0}
+PEND = {**LIMA, "id": "c_pend", "nombre": "Loza Pendiente", "verificada": False, "dueno": ""}
 
 
 class FakeDB:
     def __init__(self):
-        self.canchas = {c["id"]: c for c in (LIMA, GYE, NOCHE)}
+        self.canchas = {c["id"]: c for c in (LIMA, GYE, NOCHE, PEND)}
         self.reservas: dict[str, dict] = {}
         self.bloqueos: set = set()
         self.desc: dict = {}
 
+    def canchas_publicas(self):
+        return sorted(self.canchas.values(), key=lambda c: not (c["verificada"] and c["dueno"]))
+
     def canchas_verificadas(self):
-        return [c for c in self.canchas.values() if c["verificada"]]
+        return [c for c in self.canchas.values() if c["verificada"] and c["dueno"]]
 
     def cancha(self, cid):
         return self.canchas.get(cid)
@@ -91,7 +95,7 @@ class FakeDB:
 @pytest.fixture
 def db(monkeypatch):
     fake = FakeDB()
-    for fn in ("canchas_verificadas", "cancha", "ocupados", "descuentos", "liberar_holds_vencidos",
+    for fn in ("canchas_publicas", "canchas_verificadas", "cancha", "ocupados", "descuentos", "liberar_holds_vencidos",
                "insertar_reservas", "confirmar_reservas", "borrar_reservas", "reservas_de",
                "reservas_por_grupo"):
         monkeypatch.setattr(datos, fn, getattr(fake, fn))
@@ -289,3 +293,14 @@ def test_pagina_reservar_trae_tira_de_dias_y_resumen(db):
     assert "Resumen de tu reserva" in html and 'id="dias"' in html.replace("'", '"')
     assert "Hoy" in html and "Mañana" in html and "application/ld+json" in html
     assert "/static/brand/logo_pin.png" in html
+
+
+def test_no_verificadas_salen_con_reservar_en_la_app(db):
+    html = client.get("/canchas").text
+    assert "Loza Pendiente" in html and "Reservar en la app" in html and "Aún sin verificar" in html
+    # Las reservables van primero; la pendiente no tiene sello.
+    assert html.index("Cancha Central") < html.index("Loza Pendiente")
+    ficha = client.get("/reservar/c_pend").text
+    assert "proceso de verificación" in ficha and "checkout.culqi.com" not in ficha and "play.google.com" in ficha
+    r = _asegurar(_manana(), horas=("15:00",), extras=(), cancha="c_pend")
+    assert r["ok"] is False and r["error"] == "no_verificada"
