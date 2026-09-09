@@ -56,7 +56,8 @@ class _Conv {
     required this.noLeidos,
     this.tipo = 'academia',
     this.refId = '',
-  });
+    List<String>? hilos,
+  }) : hilos = (hilos == null || hilos.isEmpty) ? [hilo] : hilos;
   final String hilo;
   final String academiaId;
   final String cuentaEmail;
@@ -67,6 +68,19 @@ class _Conv {
   final int noLeidos;
   final String tipo; // 'academia' | 'cancha'
   final String refId; // canchaId/dueño para cancha
+
+  /// TODOS los hilos que esta fila representa. Una persona = un chat (como
+  /// WhatsApp): si con la misma persona existían un chat de cancha, uno
+  /// directo y/o uno de academia, la bandeja los fusiona en UNA fila; [hilo]
+  /// es el principal (el más reciente, donde se envía lo nuevo) y aquí van
+  /// todos. Fijar/archivar/silenciar/eliminar aplican al conjunto.
+  final List<String> hilos;
+
+  /// Los hilos fusionados distintos del principal (historial en el chat).
+  List<String> get hilosExtra => [
+        for (final h in hilos)
+          if (h != hilo) h,
+      ];
 
   /// JSON para caché local (SQLite). Incluye `hilo` y `cuando` sueltos para que
   /// DbLocal pueda ordenar sin re-parsear todo.
@@ -81,6 +95,7 @@ class _Conv {
         'noLeidos': noLeidos,
         'tipo': tipo,
         'refId': refId,
+        'hilos': hilos,
       };
 
   factory _Conv.fromJson(Map<String, dynamic> j) => _Conv(
@@ -95,6 +110,30 @@ class _Conv {
         noLeidos: (j['noLeidos'] ?? 0) as int,
         tipo: (j['tipo'] ?? 'academia').toString(),
         refId: (j['refId'] ?? '').toString(),
+        hilos: [
+          for (final h in (j['hilos'] as List? ?? const []))
+            if (h.toString().isNotEmpty) h.toString(),
+        ],
+      );
+
+  /// Copia con otro conjunto de hilos / contador (para la fusión por persona).
+  _Conv fusionada({
+    required List<String> hilos,
+    required int noLeidos,
+    required String titulo,
+  }) =>
+      _Conv(
+        hilo: hilo,
+        academiaId: academiaId,
+        cuentaEmail: cuentaEmail,
+        titulo: titulo,
+        preview: preview,
+        soyProfe: soyProfe,
+        cuando: cuando,
+        noLeidos: noLeidos,
+        tipo: tipo,
+        refId: refId,
+        hilos: hilos,
       );
 }
 
@@ -112,6 +151,125 @@ class _MensajesScreenState extends State<MensajesScreen> {
   // Cuántas academias/alumnos había en la última carga. Si cambia (terminaron de
   // cargar tras entrar a Mensajes), refrescamos solos para pintar sus chats.
   int _numFuentes = -1;
+
+  // ── Preferencias de bandeja sobre filas FUSIONADAS (varios hilos) ─────────
+  // Una fila puede representar varios hilos con la misma persona; el estado de
+  // la fila es "alguno de sus hilos" (leer) y las acciones aplican a todos.
+
+  /// ¿La fila está eliminada de la bandeja? Solo si TODOS sus hilos lo están.
+  /// El principal se evalúa con la fecha de su último mensaje (si llegó algo
+  /// más nuevo que el ocultado, reaparece); los fusionados solo por su marca,
+  /// porque [cuando] no es suya y no debe "des-ocultarlos" por accidente.
+  bool _oculta(_Conv c) {
+    if (!appState.chatOculto(c.hilo, c.cuando)) return false;
+    for (final h in c.hilosExtra) {
+      if (!appState.chatsOcultos.containsKey(h)) return false;
+    }
+    return true;
+  }
+  bool _fijada(_Conv c) => c.hilos.any(appState.chatFijado);
+  bool _archivada(_Conv c) => c.hilos.any(appState.chatArchivado);
+  bool _silenciada(_Conv c) => c.hilos.any(appState.chatSilenciado);
+
+  /// Fila de la bandeja cuyo hilo principal es [hilo] (o null).
+  _Conv? _convDe(String hilo) {
+    for (final c in _convs) {
+      if (c.hilo == hilo) return c;
+    }
+    return null;
+  }
+
+  /// Todos los hilos que representa la fila de [hilo] (o solo él).
+  List<String> _hilosDe(String hilo) => _convDe(hilo)?.hilos ?? [hilo];
+
+  bool _fijadoHilo(String hilo) {
+    final c = _convDe(hilo);
+    return c == null ? appState.chatFijado(hilo) : _fijada(c);
+  }
+
+  bool _archivadoHilo(String hilo) {
+    final c = _convDe(hilo);
+    return c == null ? appState.chatArchivado(hilo) : _archivada(c);
+  }
+
+  bool _silenciadoHilo(String hilo) {
+    final c = _convDe(hilo);
+    return c == null ? appState.chatSilenciado(hilo) : _silenciada(c);
+  }
+
+  /// Clave de la PERSONA con la que se conversa en una fila 1:1, o '' si no
+  /// aplica (grupos). Es la base de "una persona = un chat": el jugador que
+  /// escribió desde la ficha de la cancha (hilo de cancha) y luego desde
+  /// contactos (hilo directo) es la MISMA persona → una sola fila.
+  String _personaDe(_Conv c) {
+    switch (c.tipo) {
+      case 'grupo':
+        return '';
+      case 'directo':
+        return c.cuentaEmail.trim().toLowerCase();
+      case 'cancha':
+        return (c.soyProfe ? c.cuentaEmail : c.refId).trim().toLowerCase();
+      default: // academia
+        if (c.soyProfe) return c.cuentaEmail.trim().toLowerCase();
+        for (final a in appState.academias) {
+          if (a.id == c.academiaId) return a.dueno.trim().toLowerCase();
+        }
+        return '';
+    }
+  }
+
+  /// Fusiona en UNA fila las conversaciones 1:1 con la misma persona. La fila
+  /// resultante es la más reciente (ahí se envía lo nuevo), suma los no
+  /// leídos y lleva todos los hilos para mostrar el historial completo.
+  List<_Conv> _fusionarPorPersona(List<_Conv> convs) {
+    final grupos = <String, List<_Conv>>{};
+    final out = <_Conv>[];
+    for (final c in convs) {
+      final p = _personaDe(c);
+      if (p.isEmpty) {
+        out.add(c);
+        continue;
+      }
+      grupos.putIfAbsent(p, () => []).add(c);
+    }
+    grupos.forEach((persona, lista) {
+      if (lista.length == 1) {
+        out.add(lista.first);
+        return;
+      }
+      lista.sort((a, b) => b.cuando.compareTo(a.cuando));
+      final principal = lista.first;
+      final hilos = <String>{};
+      var noLeidos = 0;
+      for (final c in lista) {
+        hilos.addAll(c.hilos);
+        noLeidos += c.noLeidos;
+      }
+      // Título estable: si del otro lado hay un NEGOCIO (soy el jugador/alumno
+      // y uno de los hilos es de cancha/academia) manda el nombre del local o
+      // academia (como WhatsApp Business); si no, el nombre de perfil de la
+      // persona (así la fila se llama igual sin importar por dónde escribió).
+      String titulo = principal.titulo;
+      _Conv? negocio;
+      for (final c in lista) {
+        if (!c.soyProfe && c.tipo != 'directo') {
+          negocio = c; // la lista viene ordenada: el más reciente primero
+          break;
+        }
+      }
+      if (negocio != null) {
+        titulo = negocio.titulo;
+      } else {
+        titulo = appState.nombreMostrableDe(persona) ?? principal.titulo;
+      }
+      out.add(principal.fusionada(
+        hilos: [principal.hilo, ...hilos.where((h) => h != principal.hilo)],
+        noLeidos: noLeidos,
+        titulo: titulo,
+      ));
+    });
+    return out;
+  }
 
   @override
   void initState() {
@@ -170,8 +328,8 @@ class _MensajesScreenState extends State<MensajesScreen> {
     if (rows.isEmpty || !mounted) return;
     // Si el backend ya pintó (más nuevo), no piso su resultado.
     if (_convs.isNotEmpty) return;
-    final convs = rows.map((r) => _Conv.fromJson(r)).toList()
-      ..removeWhere((c) => appState.chatOculto(c.hilo, c.cuando))
+    final convs = _fusionarPorPersona(
+        rows.map((r) => _Conv.fromJson(r)).toList()..removeWhere(_oculta))
       ..sort((a, b) => b.cuando.compareTo(a.cuando));
     setState(() {
       _convs = convs;
@@ -410,10 +568,22 @@ class _MensajesScreenState extends State<MensajesScreen> {
         if (!vistos.contains(prev.hilo)) convs.add(prev);
       }
     } catch (_) {}
+    // Antes de filtrar, trae de la nube lo que el usuario eliminó/fijó/archivó
+    // en cualquier equipo (sobrevive reinstalar; una vez cada 10 min).
+    try {
+      await appState.sincronizarBandejaChats();
+    } catch (_) {}
+    if ((appState.usuario?.email ?? '').toLowerCase() != email) return;
     // Quita los chats que el usuario eliminó de su bandeja. Reaparecen solos si
     // llega un mensaje más nuevo que el momento en que se ocultaron (WhatsApp).
-    convs.removeWhere((c) => appState.chatOculto(c.hilo, c.cuando));
-    convs.sort((a, b) => b.cuando.compareTo(a.cuando));
+    // Se filtra POR HILO antes de fusionar: así, si con la misma persona hay
+    // un hilo eliminado y otro con mensaje nuevo, solo reaparece el vivo.
+    final fusion = _fusionarPorPersona(
+        convs.where((c) => !_oculta(c)).toList());
+    convs
+      ..clear()
+      ..addAll(fusion)
+      ..sort((a, b) => b.cuando.compareTo(a.cuando));
     // Sincroniza el contador de fuentes: así el listener solo re-refresca cuando
     // aparezcan NUEVAS academias/alumnos (no en bucle tras esta misma carga).
     _numFuentes = appState.academias.length + appState.alumnos.length;
@@ -427,7 +597,7 @@ class _MensajesScreenState extends State<MensajesScreen> {
     DbLocal.guardarConvs(email, [for (final c in convs) c.toJson()]);
     // Checks: al bajar los mensajes, marca ENTREGADOS mis hilos (2 grises para
     // el remitente aunque aún no abra el chat).
-    appState.marcarEntregados(convs.map((c) => c.hilo));
+    appState.marcarEntregados([for (final c in convs) ...c.hilos]);
     _abrirHiloPendiente(); // si vino de una notificación, entra al chat
   }
 
@@ -440,7 +610,7 @@ class _MensajesScreenState extends State<MensajesScreen> {
     if (hilo == null || hilo.isEmpty || _autoAbierto) return;
     _Conv? match;
     for (final c in _convs) {
-      if (c.hilo == hilo) {
+      if (c.hilos.contains(hilo)) {
         match = c;
         break;
       }
@@ -459,6 +629,7 @@ class _MensajesScreenState extends State<MensajesScreen> {
               soyProfe: c.soyProfe,
               tipo: c.tipo,
               refId: c.refId,
+              hilosExtra: c.hilosExtra,
             ),
           ))
           .then((_) => _cargar(silencioso: true));
@@ -529,6 +700,7 @@ class _MensajesScreenState extends State<MensajesScreen> {
               soyProfe: c.soyProfe,
               tipo: c.tipo,
               refId: c.refId,
+              hilosExtra: c.hilosExtra,
             ),
           ))
           .then((_) => _cargar(silencioso: true)); // al volver, refresca no-leídos/preview
@@ -556,7 +728,8 @@ class _MensajesScreenState extends State<MensajesScreen> {
     _Conv? existente;
     for (final c in _convs) {
       if (c.tipo == 'grupo') continue;
-      if (c.cuentaEmail.toLowerCase().trim() == e) {
+      // Misma PERSONA (por cualquier tipo de hilo: directo, cancha, academia).
+      if (_personaDe(c) == e || c.cuentaEmail.toLowerCase().trim() == e) {
         existente = c;
         break;
       }
@@ -707,6 +880,7 @@ class _MensajesScreenState extends State<MensajesScreen> {
       soyProfe: c.soyProfe,
       tipo: c.tipo,
       refId: c.refId,
+      hilosExtra: c.hilosExtra,
       embebido: true,
     );
   }
@@ -725,8 +899,8 @@ class _MensajesScreenState extends State<MensajesScreen> {
     // Modo selección: barra de acciones estilo WhatsApp (fijar/silenciar/
     // archivar/eliminar) sobre los chats marcados.
     if (_enSeleccion) {
-      final todosFijados = _seleccion.every(appState.chatFijado);
-      final todosArchivados = _seleccion.every(appState.chatArchivado);
+      final todosFijados = _seleccion.every(_fijadoHilo);
+      final todosArchivados = _seleccion.every(_archivadoHilo);
       return Material(
         color: bg,
         child: SizedBox(
@@ -877,7 +1051,7 @@ class _MensajesScreenState extends State<MensajesScreen> {
     final bytes = await file.readAsBytes();
     if (!mounted) return;
     final activos =
-        _convs.where((x) => !appState.chatArchivado(x.hilo)).toList();
+        _convs.where((x) => !_archivada(x)).toList();
     final c = await Navigator.of(context).push<_Conv>(MaterialPageRoute(
         builder: (_) => _SelectorEnviarFoto(convs: activos)));
     if (c == null || !mounted) return;
@@ -890,6 +1064,7 @@ class _MensajesScreenState extends State<MensajesScreen> {
             soyProfe: c.soyProfe,
             tipo: c.tipo,
             refId: c.refId,
+            hilosExtra: c.hilosExtra,
             fotoInicial: bytes,
           ),
         ))
@@ -955,25 +1130,33 @@ class _MensajesScreenState extends State<MensajesScreen> {
 
   // ── Acciones de la barra de selección (operan sobre TODOS los marcados) ──────
   void _fijarSeleccion() {
-    final target = !_seleccion.every(appState.chatFijado);
+    final target = !_seleccion.every(_fijadoHilo);
     for (final h in _seleccion) {
-      if (appState.chatFijado(h) != target) appState.toggleChatFijado(h);
+      for (final x in _hilosDe(h)) {
+        if (appState.chatFijado(x) != target) appState.toggleChatFijado(x);
+      }
     }
     setState(_seleccion.clear);
   }
 
   void _silenciarSeleccion() {
-    final target = !_seleccion.every(appState.chatSilenciado);
+    final target = !_seleccion.every(_silenciadoHilo);
     for (final h in _seleccion) {
-      if (appState.chatSilenciado(h) != target) appState.toggleChatSilenciado(h);
+      for (final x in _hilosDe(h)) {
+        if (appState.chatSilenciado(x) != target) {
+          appState.toggleChatSilenciado(x);
+        }
+      }
     }
     setState(_seleccion.clear);
   }
 
   void _archivarSeleccion() {
-    final target = !_seleccion.every(appState.chatArchivado);
+    final target = !_seleccion.every(_archivadoHilo);
     for (final h in _seleccion) {
-      if (appState.chatArchivado(h) != target) appState.toggleChatArchivado(h);
+      for (final x in _hilosDe(h)) {
+        if (appState.chatArchivado(x) != target) appState.toggleChatArchivado(x);
+      }
     }
     if (_sel != null && _seleccion.contains(_sel!.hilo)) _sel = null;
     setState(_seleccion.clear);
@@ -992,7 +1175,11 @@ class _MensajesScreenState extends State<MensajesScreen> {
     );
     if (!ok) return;
     for (final h in _seleccion) {
-      appState.ocultarChat(h);
+      // Oculta TODOS los hilos de la fila (cancha + directo + academia con la
+      // misma persona): así no reaparece "por el otro lado".
+      for (final x in _hilosDe(h)) {
+        appState.ocultarChat(x);
+      }
       _abiertos.remove(h);
       if (_sel?.hilo == h) _sel = null;
     }
@@ -1093,15 +1280,15 @@ class _MensajesScreenState extends State<MensajesScreen> {
               final activos = <_Conv>[];
               final archivados = <_Conv>[];
               for (final c in _convs) {
-                if (appState.chatArchivado(c.hilo)) {
+                if (_archivada(c)) {
                   archivados.add(c);
                 } else {
                   activos.add(c);
                 }
               }
               activos.sort((a, b) {
-                final pa = appState.chatFijado(a.hilo);
-                final pb = appState.chatFijado(b.hilo);
+                final pa = _fijada(a);
+                final pb = _fijada(b);
                 if (pa != pb) return pa ? -1 : 1;
                 return b.cuando.compareTo(a.cuando);
               });
@@ -1129,7 +1316,7 @@ class _MensajesScreenState extends State<MensajesScreen> {
                   vis = vis.where((c) => c.tipo == 'grupo');
                   break;
                 case _FiltroChat.fijados:
-                  vis = vis.where((c) => appState.chatFijado(c.hilo));
+                  vis = vis.where(_fijada);
                   break;
                 case _FiltroChat.todos:
                   break;
@@ -1145,8 +1332,8 @@ class _MensajesScreenState extends State<MensajesScreen> {
                         conv: c,
                         noLeidos: _abiertos.contains(c.hilo) ? 0 : c.noLeidos,
                         seleccionado: ancho && _sel?.hilo == c.hilo,
-                        fijado: appState.chatFijado(c.hilo),
-                        silenciado: appState.chatSilenciado(c.hilo),
+                        fijado: _fijada(c),
+                        silenciado: _silenciada(c),
                         marcado: _seleccion.contains(c.hilo),
                         // En modo selección, tocar marca/desmarca; si no, abre.
                         onTap: () => _enSeleccion

@@ -588,6 +588,31 @@ Piezas ya implementadas (reusar, no reinventar):
 - **Perfiles** (nombre/foto) persistidos en `SharedPreferences`
   (`AppState._perfiles`) para no re-bajarlos cada vez.
 
+- **UNA PERSONA = UN CHAT (hecho sep-2026):** con la misma persona podían
+  existir varios hilos (`cancha_<dueño>|<jugador>` desde la ficha,
+  `directo_a|b` desde contactos, `<academiaId>|<alumno>`) y salían como filas
+  DUPLICADAS. `mensajes_screen._fusionarPorPersona` agrupa por
+  `_personaDe(conv)` (correo de la contraparte) y deja UNA fila: el hilo
+  principal es el más reciente (ahí se envía lo nuevo), `_Conv.hilos` lleva
+  todos, no leídos sumados, título = nombre del local/academia si soy el
+  jugador/alumno, si no el nombre de perfil. `ChatScreen(hilosExtra:)` muestra
+  el historial de todos los hilos (`MensajesRepo.streamHilos`, `inFilter`) y
+  decide "mío" por correo en los mensajes de otros hilos. Fijar/archivar/
+  silenciar/eliminar aplican a TODOS los hilos de la fila. `hiloCancha`
+  ahora pasa el correo del dueño a minúsculas (evita hilos gemelos por
+  mayúsculas).
+- **BANDEJA EN LA NUBE (hecho sep-2026):** eliminar/fijar/archivar/silenciar
+  vivían SOLO en `SharedPreferences` → al reinstalar o volver a entrar, los
+  chats eliminados reaparecían. Ahora se espejan en Supabase
+  `pichangol_chat_prefs` (email, hilo, oculto_en, fijado, archivado,
+  silenciado; SQL `docs/piloto/supabase_chat_prefs.sql`) vía
+  `ChatPrefsRepo`: cada acción sube su fila (`AppState._subirPrefChat`) y
+  `sincronizarBandejaChats` (al login forzado + al abrir Mensajes, cada 10
+  min) baja y fusiona (la nube manda sobre los hilos que conoce; lo solo-local
+  se sube). Regla "reaparece si llega algo más nuevo" intacta (`chatOculto`
+  también limpia la nube). "Eliminar mi cuenta" y "Dejar en virgen" borran
+  las filas.
+
 **Al agregar cualquier cosa nueva a mensajería:** primero pregúntate "¿esto cómo
 lo cachea WhatsApp?" y hazlo cache-first (disco + pre-warm) antes de mostrar
 spinners. Un spinner de pantalla completa al reabrir un chat/inbox/estado se

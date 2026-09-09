@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/academias_repo.dart';
 import '../data/agenda_repo.dart';
+import '../data/chat_prefs_repo.dart';
 import '../data/estados_repo.dart';
 import '../data/lecturas_repo.dart';
 import '../data/presencia_repo.dart';
@@ -3889,6 +3890,7 @@ class AppState extends ChangeNotifier {
     chatsOcultos[hilo] = DateTime.now().toIso8601String();
     notifyListeners();
     _persistirDatos();
+    _subirPrefChat(hilo);
   }
 
   /// ¿El hilo debe ocultarse de la bandeja? Se oculta si el usuario lo eliminó y
@@ -3902,9 +3904,110 @@ class AppState extends ChangeNotifier {
     // Si hay un mensaje posterior al ocultado → reaparece (deja de estar oculto).
     if (ultimoMensaje.isAfter(ocultadoEn)) {
       chatsOcultos.remove(hilo);
+      _subirPrefChat(hilo); // también en la nube: vuelve a ser visible
       return false;
     }
     return true;
+  }
+
+  // ── Bandeja en la NUBE (sobrevive reinstalar / cambiar de equipo) ───────────
+  //
+  // Todo lo que el usuario decide sobre su bandeja (eliminar, fijar, archivar,
+  // silenciar) se guarda al instante en el teléfono (arriba) y se ESPEJA en
+  // Supabase `pichangol_chat_prefs` por (correo, hilo). Al iniciar sesión (y al
+  // abrir Mensajes) se baja y se fusiona con lo local, así "eliminar" es
+  // definitivo como en WhatsApp aunque instales una versión nueva.
+
+  /// Sube a la nube el estado actual de UN hilo (fire-and-forget, fail-safe).
+  void _subirPrefChat(String hilo) {
+    final e = _yo;
+    if (e.isEmpty || hilo.isEmpty) return;
+    ChatPrefsRepo.guardar(
+      email: e,
+      hilo: hilo,
+      ocultoEn: chatsOcultos[hilo],
+      fijado: chatsFijados.contains(hilo),
+      archivado: chatsArchivados.contains(hilo),
+      silenciado: chatsSilenciados.contains(hilo),
+    );
+  }
+
+  /// Correo para el que ya se bajó la bandeja de la nube (evita repetir la
+  /// descarga en cada refresco del inbox dentro de la misma sesión).
+  String _bandejaSincronizadaPara = '';
+  DateTime? _bandejaSincronizadaEn;
+
+  /// Baja de la nube las preferencias de bandeja de ESTA cuenta y las fusiona
+  /// con lo local. Regla: la nube manda sobre los hilos que conoce (es la
+  /// memoria compartida entre equipos); lo que solo existe en el teléfono se
+  /// conserva y se SUBE (p. ej. decisiones tomadas sin señal). Se corre al
+  /// iniciar sesión y, como respaldo, al abrir Mensajes (una vez cada 10 min,
+  /// o siempre con [forzar]). Fail-safe: sin red/tabla, no cambia nada.
+  Future<void> sincronizarBandejaChats({bool forzar = false}) async {
+    final e = _yo;
+    if (e.isEmpty || !ChatPrefsRepo.disponible) return;
+    final ahora = DateTime.now();
+    if (!forzar &&
+        _bandejaSincronizadaPara == e &&
+        _bandejaSincronizadaEn != null &&
+        ahora.difference(_bandejaSincronizadaEn!).inMinutes < 10) {
+      return;
+    }
+    final filas = await ChatPrefsRepo.leer(e);
+    // Si la sesión cambió mientras bajaba, no mezclar cuentas.
+    if (_yo != e) return;
+    _bandejaSincronizadaPara = e;
+    _bandejaSincronizadaEn = ahora;
+    final enNube = <String>{};
+    var cambio = false;
+    for (final f in filas) {
+      final hilo = (f['hilo'] ?? '').toString();
+      if (hilo.isEmpty) continue;
+      enNube.add(hilo);
+      final ocultoRaw = f['oculto_en'];
+      final oculto = ocultoRaw == null ? null : ocultoRaw.toString();
+      if (oculto != null && oculto.isNotEmpty) {
+        // Normaliza a ISO local para comparar con la fecha de los mensajes.
+        final dt = DateTime.tryParse(oculto)?.toLocal();
+        final iso = dt?.toIso8601String() ?? oculto;
+        if (chatsOcultos[hilo] != iso) {
+          chatsOcultos[hilo] = iso;
+          cambio = true;
+        }
+      } else if (chatsOcultos.remove(hilo) != null) {
+        cambio = true;
+      }
+      void aplica(Set<String> set, dynamic v) {
+        final on = v == true;
+        if (on ? set.add(hilo) : set.remove(hilo)) cambio = true;
+      }
+      aplica(chatsFijados, f['fijado']);
+      aplica(chatsArchivados, f['archivado']);
+      aplica(chatsSilenciados, f['silenciado']);
+    }
+    // Lo que solo está en el teléfono → sube a la nube.
+    final soloLocal = <String>{
+      ...chatsOcultos.keys,
+      ...chatsFijados,
+      ...chatsArchivados,
+      ...chatsSilenciados,
+    }.where((h) => h.isNotEmpty && !enNube.contains(h)).toList();
+    if (soloLocal.isNotEmpty) {
+      ChatPrefsRepo.guardarVarios(e, [
+        for (final h in soloLocal)
+          {
+            'hilo': h,
+            'oculto_en': chatsOcultos[h],
+            'fijado': chatsFijados.contains(h),
+            'archivado': chatsArchivados.contains(h),
+            'silenciado': chatsSilenciados.contains(h),
+          }
+      ]);
+    }
+    if (cambio) {
+      notifyListeners();
+      _persistirDatos();
+    }
   }
 
   // ── Acciones de bandeja (fijar / archivar / silenciar), estilo WhatsApp ──────
@@ -3917,6 +4020,7 @@ class AppState extends ChangeNotifier {
     if (!chatsFijados.remove(hilo)) chatsFijados.add(hilo);
     notifyListeners();
     _persistirDatos();
+    _subirPrefChat(hilo);
   }
 
   /// Archiva/desarchiva un hilo. Al archivar, también se desfija (como WhatsApp).
@@ -3927,6 +4031,7 @@ class AppState extends ChangeNotifier {
     }
     notifyListeners();
     _persistirDatos();
+    _subirPrefChat(hilo);
   }
 
   /// Silencia/activa los avisos de un hilo (la campanita).
@@ -3934,6 +4039,7 @@ class AppState extends ChangeNotifier {
     if (!chatsSilenciados.remove(hilo)) chatsSilenciados.add(hilo);
     notifyListeners();
     _persistirDatos();
+    _subirPrefChat(hilo);
   }
 
   List<Cuota> cuotasDe(String academiaId) => cuotas
@@ -7019,6 +7125,7 @@ class AppState extends ChangeNotifier {
     cargarPuntosCanjeados(); // canjes de puntos de ESTA cuenta (disponibles)
     cargarPuntosBodega(); // puntos por pedidos de bodega pagados con saldo
     sincronizarAgenda(); // apodos + contactos + bloqueados en todos mis dispositivos
+    sincronizarBandejaChats(forzar: true); // chats eliminados/fijados/archivados (nube)
     cargarEstados(); // historias vigentes (24 h) de mis conocidos
     cargarMisNiveles(); // mi nivel de jugador por deporte (device-first)
     cargarReservasSync(); // reservas offline pendientes de subir (outbox)
@@ -7053,6 +7160,7 @@ class AppState extends ChangeNotifier {
     if (email.isNotEmpty) {
       await PerfilesRepo.eliminar(email);
       await VerificacionRepo.eliminar(email);
+      await ChatPrefsRepo.eliminarTodo(email);
     }
     // 3) Fuera de esta sesión y de este equipo.
     await cerrarSesionUsuario();
@@ -7089,6 +7197,8 @@ class AppState extends ChangeNotifier {
     chatsFijados.clear();
     chatsArchivados.clear();
     chatsSilenciados.clear();
+    _bandejaSincronizadaPara = '';
+    _bandejaSincronizadaEn = null;
     _estados.clear();
     _estadosVistos.clear();
     _estadosOcultos.clear();
@@ -7234,6 +7344,7 @@ class AppState extends ChangeNotifier {
       // Chats: de mis academias + conversaciones de cancha donde participo.
       await MensajesRepo.eliminarDeAcademias(misAcademiaIds.toList());
       await MensajesRepo.eliminarCanchaDe(email);
+      await ChatPrefsRepo.eliminarTodo(email); // bandeja (ocultos/fijados) en la nube
       // Campeonatos de mis academias.
       for (final c in campeonatos.where((c) => misAcademiaIds.contains(c.academiaId))) {
         await CampeonatosRepo.eliminar(c.id);
