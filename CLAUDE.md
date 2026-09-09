@@ -223,6 +223,15 @@ para la API del APK.
   verificar", pin gris y botón "Reservar en la app"; su ficha explica que
   está en verificación y manda a Play; `/web/asegurar` responde
   `no_verificada`. Sólo las reservables muestran el checkout.
+  **Canchas DESCUBIERTAS en Google también (sep-2026):** `web/descubrir.py`
+  llama a la MISMA Edge Function `places-cerca` que el APK (key de Places
+  como secret de Supabase; el backend usa `SUPABASE_URL` + `SUPABASE_ANON_KEY`)
+  y aplica la misma heurística de `places_service.dart` (`deporte_de`), con
+  caché en memoria por celda de ~2 km + país (6 h) y dedup contra las
+  registradas (nombre + <120 m). `GET /web/descubrir?lat&lng[&fotos=1]`; el
+  explorador las pinta en "Más canchas cerca de ti" con "Aún sin registrar",
+  "Reservar en la app", "Cómo llegar" y "¿Es tuya? Reclámala"; pines grises
+  en el mapa. Sin Supabase/key → lista vacía, la web sigue.
 - El apex `pichangol.app` (sin `www`) sigue libre (podría redirigir al `www`).
 
 ## Estrategia de ambientes (piloto → prod)

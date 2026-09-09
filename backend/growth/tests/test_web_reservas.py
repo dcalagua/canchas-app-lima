@@ -304,3 +304,46 @@ def test_no_verificadas_salen_con_reservar_en_la_app(db):
     assert "proceso de verificación" in ficha and "checkout.culqi.com" not in ficha and "play.google.com" in ficha
     r = _asegurar(_manana(), horas=("15:00",), extras=(), cancha="c_pend")
     assert r["ok"] is False and r["error"] == "no_verificada"
+
+
+def test_descubrir_canchas_de_google_como_el_apk(db, monkeypatch):
+    from web import descubrir as d
+    d.limpiar_cache()
+    llamadas = []
+    crudos = [
+        {"id": "A1", "displayName": {"text": "Complejo Deportivo San Borja"}, "types": ["sports_complex"],
+         "location": {"latitude": -12.10, "longitude": -77.00}, "formattedAddress": "Av. X 100"},
+        {"id": "A2", "displayName": {"text": "Tenis Americanos"}, "types": ["shoe_store"],
+         "location": {"latitude": -12.10, "longitude": -77.00}},               # zapatería → fuera
+        {"id": "A3", "displayName": {"text": "Burn Fitness Center"}, "types": ["gym"],
+         "location": {"latitude": -12.10, "longitude": -77.00}},               # gimnasio → fuera
+        {"id": "A4", "displayName": {"text": "Cancha Central"}, "types": [],
+         "location": {"latitude": -12.0901, "longitude": -77.0001}},          # ya registrada → fuera
+        {"id": "A5", "displayName": {"text": "Club de Tenis Las Terrazas"}, "types": ["sports_club"],
+         "location": {"latitude": -12.12, "longitude": -77.02}, "fotos": ["https://f/1.jpg"]},
+    ]
+    monkeypatch.setattr(d, "_llamar_edge", lambda *a, **k: (llamadas.append(a) or crudos))
+    monkeypatch.setattr(config, "SUPABASE_URL", "https://x.supabase.co")
+    monkeypatch.setattr(config, "SUPABASE_ANON_KEY", "anon")
+    j = client.get("/web/descubrir?lat=-12.09&lng=-77.0").json()
+    assert j["ok"] and j["region"] == "PE"
+    nombres = [c["nombre"] for c in j["canchas"]]
+    assert nombres == ["Complejo Deportivo San Borja", "Club de Tenis Las Terrazas"]
+    assert j["canchas"][0]["deporte"] == "futbol" and j["canchas"][1]["deporte"] == "tenis"
+    assert j["canchas"][0]["id"] == "gp_A1" and j["canchas"][0]["km"] < 2
+    assert j["canchas"][1]["fotos"] == ["https://f/1.jpg"] and j["canchas"][1]["deporte_nombre"] == "Tenis"
+    # Caché por zona: la segunda consulta de la misma celda no vuelve a Google.
+    client.get("/web/descubrir?lat=-12.089&lng=-76.999")
+    assert len(llamadas) == 1
+    # El explorador trae la sección y el JS que la llena.
+    html = client.get("/canchas").text
+    assert "id='descubiertas'" in html and "/web/descubrir" in html and "Reclámala" in html
+    # Heurística directa.
+    assert d.deporte_de("Pista de skate Miraflores", []) is None
+    assert d.deporte_de("Campo Deportivo Edu Jr", []) == "futbol"
+    assert d.deporte_de("EquiBolivia", ["sports_activity_location"]) is None
+    assert d.deporte_de("Cancha de Pádel Sur", []) == "padel"
+    # Sin Supabase configurado → vacío, sin romper.
+    d.limpiar_cache()
+    monkeypatch.setattr(d, "_llamar_edge", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("red")))
+    assert client.get("/web/descubrir?lat=-12.09&lng=-77.0").json()["canchas"] == []

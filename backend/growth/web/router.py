@@ -41,7 +41,7 @@ from pydantic import BaseModel
 import config
 from paises import _CAJAS, pais_de_coordenadas, moneda_de_pais, simbolo_de_moneda
 from pagos import culqi
-from web import datos, horarios, ui
+from web import datos, descubrir, horarios, ui
 from web.ui import e
 
 router = APIRouter()
@@ -189,9 +189,45 @@ _JS_EXPLORAR = r"""
     if(propio && propio.parentNode){ propio.parentNode.insertBefore(propio, document.getElementById('grupos').firstChild); var t = propio.querySelector('h2 .cerca'); if(t) t.textContent = ' · cerca de ti'; }
     $('ubicTxt').textContent = 'Mostrando las canchas más cercanas a ti.';
     $('btnUbic').style.display = 'none';
+    descubrir(yo.lat, yo.lng);
     if(mapa){ if(miPin) miPin.remove(); miPin = L.marker([yo.lat, yo.lng], {icon: L.divIcon({className: '', html: '<span class="pin-precio yo">Tú</span>', iconSize: null})}).addTo(mapa);
       var pts = cards.filter(function(c){ return parseFloat(c.dataset.d) < 60; }).map(function(c){ return [parseFloat(c.dataset.lat), parseFloat(c.dataset.lng)]; });
       pts.push([yo.lat, yo.lng]); mapa.fitBounds(L.latLngBounds(pts).pad(0.2), {maxZoom: 14}); }
+  }
+  var descubiertas = {}, pinesDesc = [];
+  function esc2(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function pintarDescubiertas(lista, conFotos){
+    var sec = $('descubiertas'), grid = $('gridDesc');
+    if(!sec || !grid) return;
+    if(!lista.length){ if(!conFotos) sec.style.display = 'none'; return; }
+    sec.style.display = '';
+    var maps = function(c){ return 'https://www.google.com/maps/search/?api=1&query=' + c.lat + ',' + c.lng; };
+    grid.innerHTML = lista.map(function(c){
+      var foto = (c.fotos && c.fotos[0]) ? '<img src="' + esc2(c.fotos[0]) + '" alt="" loading="lazy">' : '<div class="sinfoto">' + (c.emoji || '🏟️') + '</div>';
+      return '<div class="card cancha pend" data-lat="' + c.lat + '" data-lng="' + c.lng + '" data-ok="0" data-nombre="' + esc2(c.nombre) + '" data-sub="' + esc2(c.direccion) + '" data-precio="' + esc2(c.deporte_nombre) + '" data-t="' + esc2((c.nombre + ' ' + c.direccion).toLowerCase()) + '">' + foto +
+        '<div class="cb"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><h3>' + esc2(c.nombre) + '</h3><span class="pill gris">Aún sin registrar</span></div>' +
+        '<div class="m">' + esc2(c.direccion) + '</div><div class="m">' + esc2(c.deporte_nombre) + ' <span class="dist">' + (c.km != null ? 'a ' + fmtKm(c.km) : '') + '</span></div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><a class="btn sec" style="padding:9px 12px;font-size:13px" href="' + C.play + '" rel="noopener">📲 Reservar en la app</a>' +
+        '<a class="btn sec" style="padding:9px 12px;font-size:13px" href="' + maps(c) + '" target="_blank" rel="noopener">📍 Cómo llegar</a></div>' +
+        '<div class="sub" style="font-size:12px;margin-top:6px">¿Es tu cancha? Reclámala en la app y recibe reservas.</div></div></div>';
+    }).join('');
+    if(mapa && window.L){
+      pinesDesc.forEach(function(m){ m.remove(); }); pinesDesc = [];
+      lista.forEach(function(c){
+        var m = L.marker([c.lat, c.lng], {icon: L.divIcon({className: '', html: '<span class="pin-precio pend">' + esc2(c.emoji || '') + ' ' + esc2(c.deporte_nombre) + '</span>', iconSize: null})}).addTo(mapa);
+        m.bindPopup('<b>' + esc2(c.nombre) + '</b><br>' + esc2(c.direccion) + '<br><a class="btn sec" href="' + C.play + '">Reservar en la app</a>');
+        pinesDesc.push(m);
+      });
+    }
+  }
+  function descubrir(lat, lng){
+    var k = lat.toFixed(2) + ',' + lng.toFixed(2);
+    if(descubiertas[k]) return; descubiertas[k] = true;
+    var sec = $('descubiertas'); if(sec){ sec.style.display = ''; $('gridDesc').innerHTML = '<span class="skel"></span><span class="skel"></span><span class="skel"></span>'; }
+    fetch('/web/descubrir?lat=' + lat + '&lng=' + lng).then(function(r){ return r.json(); })
+      .then(function(j){ pintarDescubiertas(j.canchas || [], false);
+        if((j.canchas || []).length) fetch('/web/descubrir?lat=' + lat + '&lng=' + lng + '&fotos=1').then(function(r){ return r.json(); }).then(function(j2){ if((j2.canchas || []).length) pintarDescubiertas(j2.canchas, true); }).catch(function(){}); })
+      .catch(function(){ if(sec) sec.style.display = 'none'; });
   }
   function ubicar(interactivo){
     if(!navigator.geolocation){ $('ubicTxt').textContent = 'Tu navegador no permite ubicación. Busca por zona.'; return; }
@@ -228,6 +264,9 @@ _JS_EXPLORAR = r"""
   pintarMapa();
   try { var g = JSON.parse(localStorage.getItem('pcg_ubic') || 'null'); if(g && g.lat){ yo = g; ordenar(); } } catch(e){}
   ubicar(false);
+  // Sin ubicación todavía: descubre alrededor del centro por defecto para que
+  // la pantalla inicial ya venga poblada.
+  if(!yo) descubrir(C.centro[0], C.centro[1]);
 })();
 """
 
@@ -291,16 +330,35 @@ def pagina_canchas(deporte: str = "") -> HTMLResponse:
                    f"{ui.bandera(pais)} {NOMBRE_PAIS[pais]}<span class='cerca' style='color:var(--tenue);font-weight:600;font-size:14px'></span></h2>"
                    f"<div class='grid'>{cards}</div></section>")
     cuerpo += "</div>"
+    cuerpo += ("<section id='descubiertas' style='display:none'><h2 style='margin:26px 0 4px'>Más canchas cerca de ti</h2>"
+               "<p class='sub' style='margin-bottom:12px'>Locales que aún no están en Pichangol. Reserva desde la app o, si es "
+               "tuyo, reclámalo y empieza a recibir reservas.</p><div class='grid' id='gridDesc'></div></section>")
     centro = list(CIUDAD_DEFECTO["PE"])
     if lista:
         c0 = lista[0]
         centro = [c0.get("lat") or centro[0], c0.get("lng") or centro[1]]
-    cfg = json.dumps({"cajas": {k: list(v) for k, v in _CAJAS.items()}, "centro": centro})
+    cfg = json.dumps({"cajas": {k: list(v) for k, v in _CAJAS.items()}, "centro": centro, "play": PLAY_URL})
     head = ("<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' crossorigin=''>"
             "<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' crossorigin=''></script>")
     cuerpo += f"<script>window.__explorar={cfg};</script><script>{_JS_EXPLORAR}</script>"
     return ui.shell("Canchas", cuerpo, extra_head=head,
                     desc="Reserva canchas de fútbol, tenis y pádel cerca de ti y paga con Yape o tarjeta.")
+
+
+# ── descubrir (Google Places, como el APK) ────────────────────────────────────
+
+@router.get("/web/descubrir")
+def descubrir_web(lat: float, lng: float, fotos: int = 0) -> dict:
+    """Canchas que Google conoce cerca del usuario y aún no están en Pichangol:
+    salen en el explorador con "Reservar en la app". Misma Edge Function y
+    heurística que el APK; caché por zona."""
+    region = pais_de_coordenadas(lat, lng)
+    reg = [{"nombre": c.get("nombre"), "lat": c.get("lat"), "lng": c.get("lng")}
+           for c in datos.canchas_publicas()]
+    lista = descubrir.descubrir_cerca(lat, lng, region=region, fotos=bool(fotos), registradas=reg)
+    for c in lista:
+        c["deporte_nombre"], c["emoji"] = _deporte(c["deporte"])
+    return {"ok": True, "region": region, "canchas": lista}
 
 
 # ── disponibilidad ────────────────────────────────────────────────────────────
