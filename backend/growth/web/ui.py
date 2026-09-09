@@ -64,8 +64,8 @@ h1{font-size:28px;line-height:1.15}h2{font-size:20px}h3{font-size:16px}
 /* tarjetas */
 .card{background:var(--blanco);border-radius:var(--r-lg);box-shadow:var(--sombra);overflow:hidden;display:flex;flex-direction:column}
 .card:hover{box-shadow:var(--sombra2)}
-.card img,.card .sinfoto{width:100%;aspect-ratio:4/3;object-fit:cover;display:block;background:var(--gris)}
-.sinfoto{display:flex;align-items:center;justify-content:center;font-size:54px;background:linear-gradient(135deg,#E7F4EF,#CFE9DD)}
+.card img{width:100%;aspect-ratio:4/3;object-fit:cover;display:block;background:var(--gris)}
+.sinfoto{width:100%;aspect-ratio:4/3;display:flex;align-items:center;justify-content:center;font-size:54px;background:linear-gradient(135deg,#E7F4EF,#CFE9DD)}
 .cb{padding:14px 16px 16px;display:flex;flex-direction:column;gap:5px;flex:1}
 .cb .m{font-size:13px;color:var(--tenue);font-weight:600}
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
@@ -108,6 +108,8 @@ input:focus,select:focus{outline:2px solid var(--esmeralda);outline-offset:0;bor
 /* hero ficha */
 .galeria{display:grid;grid-template-columns:2fr 1fr;grid-template-rows:170px 170px;gap:8px;border-radius:var(--r-lg);overflow:hidden}
 .galeria img,.galeria .sinfoto{width:100%;height:100%;object-fit:cover;aspect-ratio:auto}
+.galeria.una{grid-template-columns:1fr;grid-template-rows:300px}.galeria.una .principal{grid-row:auto}
+@media(max-width:640px){.galeria.una{grid-template-rows:220px}}
 .galeria .principal{grid-row:1/3}
 @media(max-width:640px){.galeria{grid-template-columns:1fr;grid-template-rows:220px}.galeria .principal{grid-row:auto}.galeria>*:not(.principal){display:none}}
 ul.datos{list-style:none;padding:0;margin:10px 0 0;font-size:14px;color:var(--tenue);font-weight:600}

@@ -136,7 +136,9 @@ def _foto_card(c: dict) -> str:
 def _galeria(c: dict) -> str:
     fs = _fotos(c)
     if not fs:
-        return f"<div class='galeria'><div class='sinfoto principal'>{_deporte(c.get('deporte'))[1]}</div></div>"
+        return f"<div class='galeria una'><div class='sinfoto principal'>{_deporte(c.get('deporte'))[1]}</div></div>"
+    if len(fs) == 1:
+        return f"<div class='galeria una'><img class='principal' src='{e(fs[0])}' alt='{e(c['nombre'])}'></div>"
     partes = [f"<img class='principal' src='{e(fs[0])}' alt='{e(c['nombre'])}'>"]
     for u in fs[1:3]:
         partes.append(f"<img src='{e(u)}' alt='' loading='lazy'>")
@@ -312,7 +314,9 @@ _JS_RESERVA = r"""
         if(!j.ok){ $('slots').innerHTML = '<span class="sub">No pudimos cargar los horarios de ese día.</span>'; return; }
         slots = j.slots;
         var libres = slots.filter(function(s){ return !s.ocupado; }).length;
-        if(!slots.length){ $('slots').innerHTML = '<span class="sub">No quedan turnos para este día. Prueba otra fecha.</span>'; return; }
+        if(!slots.length){
+          if(fechaSel === C.hoy && !C._salto && C.dias[1]){ C._salto = true; fechaSel = C.dias[1].iso; pintarDias(); cargar(); return; }
+          $('slots').innerHTML = '<span class="sub">No quedan turnos para este día. Prueba otra fecha.</span>'; return; }
         $('slots').innerHTML = slots.map(function(s, i){
           var cls = 'chip' + (s.ocupado ? ' off' : '');
           var extra = s.fecha !== fechaSel ? ' <small>' + esc(C.etiquetas[s.fecha] || '') + '</small>' : '';
