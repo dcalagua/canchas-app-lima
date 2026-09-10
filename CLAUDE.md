@@ -263,7 +263,17 @@ para la API del APK.
   12 h por lugar, 10 min si vino vacío) las resuelve en vivo. Las tarjetas y
   la galería de la ficha nacen con placeholder `data-buscar` y el JS las
   rellena (cola de 3 en paralelo); también las descubiertas más allá de las
-  16 con foto que devuelve la Edge. Test `test_primera_foto_siempre_como_el_app`.
+  16 con foto que devuelve la Edge. **Respaldo directo:** si la Edge no trae
+  fotos (en QAS pasó: las descubiertas salían sin foto aun con `fotos=1`) y
+  hay `PLACES_API_KEY` en Railway (llave SIN restricción Android, la misma
+  del secret de Supabase), el backend habla con Google Places (New)
+  (`_fotos_directo`: Place Details por `place_id` o Text Search por
+  nombre/club a 300 m; URLs públicas vía `skipHttpRedirect`). Cada
+  resolución imprime una línea `[foto] …` en los logs de Railway (lugares
+  que devolvió la Edge, cuántos con foto, `diag` de Google, origen) para
+  diagnosticar sin adivinar. Dedup de descubiertas también por CLUB
+  (`registradas` lleva `club`; "Fútbol 1" del club "Sabor Golazo" = el
+  lugar de Google). Test `test_primera_foto_siempre_como_el_app`.
 - El apex `pichangol.app` (sin `www`) sigue libre (podría redirigir al `www`).
 
 ## Estrategia de ambientes (piloto → prod)

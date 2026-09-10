@@ -137,7 +137,82 @@ def _llamar_edge(lat: float, lng: float, radio: float, region: str, fotos: bool)
         method="POST")
     with urllib.request.urlopen(req, timeout=25) as r:  # noqa: S310
         data = json.loads(r.read().decode("utf-8"))
+    global ultimo_diag
+    ultimo_diag = (data.get("diag") or data.get("error") or "") if isinstance(data, dict) else ""
     return list(data.get("places") or []) if isinstance(data, dict) else []
+
+
+# Último `diag` que devolvió la Edge (estados/primer error de Google): se
+# imprime en los logs de Railway para diagnosticar sin adivinar.
+ultimo_diag: object = ""
+
+
+def _http_json(url: str, headers: dict, body: dict | None = None, timeout: int = 12) -> dict:
+    """GET/POST JSON a Google Places (New). Lanza en error HTTP/red."""
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json", **headers},
+                                 method="POST" if data is not None else "GET")
+    with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310
+        return json.loads(r.read().decode("utf-8"))
+
+
+def _media_publica(nombre_foto: str, key: str) -> str:
+    """URL pública (sin key) de una foto de Google: `photoUri` con
+    skipHttpRedirect. '' si falla."""
+    try:
+        j = _http_json(f"https://places.googleapis.com/v1/{nombre_foto}/media?maxWidthPx=800&skipHttpRedirect=true&key={key}", {})
+        u = str(j.get("photoUri") or "")
+        return u if u.startswith("http") else ""
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _fotos_directo(place_id: str, nombre: str, club: str, lat: float, lng: float, region: str) -> list[str]:
+    """RESPALDO cuando la Edge no trae fotos: el backend habla con Google Places
+    (New) con `PLACES_API_KEY`. Con `place_id` → Place Details (fotos); sin
+    él → Text Search por nombre/club sesgado a 300 m y el más cercano (≤250 m),
+    como `fotosDeLugar` del APK. Máximo 3 fotos, URLs públicas."""
+    key = config.PLACES_API_KEY
+    if not key:
+        return []
+    try:
+        fotos_meta: list = []
+        if place_id:
+            j = _http_json(f"https://places.googleapis.com/v1/places/{place_id}",
+                           {"X-Goog-Api-Key": key, "X-Goog-FieldMask": "photos"})
+            fotos_meta = list(j.get("photos") or [])
+        else:
+            consulta = re.split(r"[–-]", club or nombre or "")[0].strip() or nombre
+            j = _http_json("https://places.googleapis.com/v1/places:searchText",
+                           {"X-Goog-Api-Key": key,
+                            "X-Goog-FieldMask": "places.id,places.displayName,places.location,places.photos"},
+                           {"textQuery": consulta, "languageCode": "es", "regionCode": region or "PE",
+                            "maxResultCount": 10, "rankPreference": "DISTANCE",
+                            "locationBias": {"circle": {"center": {"latitude": lat, "longitude": lng}, "radius": 300}}})
+            mejor, mejor_d = None, 1e9
+            for p in j.get("places") or []:
+                loc = p.get("location") or {}
+                try:
+                    d = _km(lat, lng, float(loc.get("latitude")), float(loc.get("longitude")))
+                except (TypeError, ValueError):
+                    continue
+                if (p.get("photos")) and d < mejor_d:
+                    mejor, mejor_d = p, d
+            if mejor is None or mejor_d > RADIO_FOTO_M / 1000.0 + 0.05:
+                return []
+            fotos_meta = list(mejor.get("photos") or [])
+        out = []
+        for ph in fotos_meta[:3]:
+            nombre_foto = str((ph or {}).get("name") or "")
+            if not nombre_foto:
+                continue
+            u = _media_publica(nombre_foto, key)
+            if u:
+                out.append(u)
+        return out
+    except Exception as ex:  # noqa: BLE001
+        print(f"[foto] directo fallo {nombre!r}: {ex}", flush=True)
+        return []
 
 
 _cache: dict[tuple, tuple[float, list[dict]]] = {}
@@ -177,12 +252,17 @@ def descubrir_cerca(lat: float, lng: float, region: str = "PE", fotos: bool = Fa
         with _lock:
             _cache[key] = (ahora, lista)
     # Quitar las que ya están registradas en Pichangol (por nombre + cercanía).
-    reg = [(_clave(r.get("nombre")), float(r.get("lat") or 0), float(r.get("lng") or 0))
-           for r in (registradas or [])]
+    reg = []
+    for r in (registradas or []):
+        claves = {_clave(r.get("nombre")), _clave(r.get("club"))} - {""}
+        # Nombre del club sin el sufijo de sede ("Sabor Golazo - Futbol 7").
+        claves |= {_clave(re.split(r"[–-]", str(r.get("club") or ""))[0])} - {""}
+        reg.append((claves, float(r.get("lat") or 0), float(r.get("lng") or 0)))
     out = []
     for c in lista:
         k = _clave(c["nombre"])
-        if any(k == rk and _km(c["lat"], c["lng"], rl, rg) < 0.12 for rk, rl, rg in reg):
+        k0 = _clave(re.split(r"[–-]", c["nombre"])[0])
+        if any((k in rk or k0 in rk) and _km(c["lat"], c["lng"], rl, rg) < 0.12 for rk, rl, rg in reg):
             continue
         c = dict(c)
         c["km"] = round(_km(lat, lng, c["lat"], c["lng"]), 2)
@@ -244,9 +324,11 @@ def _elegir_lugar(crudos: list[dict], nombre: str, club: str, lat: float, lng: f
     return fotos_mejor
 
 
-def fotos_de_lugar(nombre: str, club: str, lat: float, lng: float, region: str = "PE") -> list[str]:
+def fotos_de_lugar(nombre: str, club: str, lat: float, lng: float, region: str = "PE",
+                   place_id: str = "") -> list[str]:
     """Fotos públicas de Google del lugar donde está la cancha (o [] si no
-    hay). Fail-safe y con caché; una llamada a la Edge Function por lugar."""
+    hay). Primero la Edge Function (misma que el APK); si no trae fotos y hay
+    `PLACES_API_KEY`, el backend las resuelve directo. Fail-safe y con caché."""
     try:
         lat, lng = float(lat), float(lng)
     except (TypeError, ValueError):
@@ -261,9 +343,18 @@ def fotos_de_lugar(nombre: str, club: str, lat: float, lng: float, region: str =
         return list(hit[1])
     try:
         crudos = _llamar_edge(lat, lng, RADIO_FOTO_M, (region or "PE").upper(), True)
-    except Exception:  # noqa: BLE001
-        crudos = []
+        err = ""
+    except Exception as ex:  # noqa: BLE001
+        crudos, err = [], str(ex)
+    con_foto = sum(1 for p in crudos if isinstance(p, dict) and p.get("fotos"))
     fotos = _elegir_lugar(crudos, nombre, club, lat, lng)
+    origen = "edge" if fotos else ""
+    if not fotos:
+        fotos = _fotos_directo(place_id, nombre, club, lat, lng, region)
+        origen = "directo" if fotos else ""
+    print(f"[foto] {nombre!r} club={club!r} edge:lugares={len(crudos)} con_foto={con_foto} "
+          f"diag={ultimo_diag!r} err={err!r} key={'si' if config.PLACES_API_KEY else 'no'} "
+          f"-> {origen or 'sin fotos'} ({len(fotos)})", flush=True)
     with _lock:
         # Sin fotos se cachea poco (10 min): puede ser un error transitorio.
         _cache_fotos[key] = (ahora if fotos else ahora - TTL_FOTO_SEG + 600, fotos)

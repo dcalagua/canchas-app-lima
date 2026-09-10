@@ -169,6 +169,11 @@ LANDING_BASE_URL = os.getenv("LANDING_BASE_URL", "")
 # pública (la misma que lleva el APK). Vacías = la página avisa "no disponible".
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "").strip()
+# Llave de Google Places para que el BACKEND resuelva fotos de lugares cuando
+# la Edge Function `places-cerca` no las trae (respaldo de "primera foto
+# siempre" en la web). Debe ser una llave SIN restricción de app Android (la
+# misma que usa la Edge como secret). Vacía = solo se usa la Edge.
+PLACES_API_KEY = os.getenv("PLACES_API_KEY", "").strip()
 
 # Huella SHA-256 del certificado de firma del APK (para verificar los Android
 # App Links en /.well-known/assetlinks.json). Sacarla con:

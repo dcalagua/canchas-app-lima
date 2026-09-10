@@ -536,7 +536,7 @@ def descubrir_web(lat: float, lng: float, fotos: int = 0) -> dict:
     salen en el explorador con "Reservar en la app". Misma Edge Function y
     heurística que el APK; caché por zona."""
     region = pais_de_coordenadas(lat, lng)
-    reg = [{"nombre": c.get("nombre"), "lat": c.get("lat"), "lng": c.get("lng")}
+    reg = [{"nombre": c.get("nombre"), "club": c.get("club"), "lat": c.get("lat"), "lng": c.get("lng")}
            for c in datos.canchas_publicas()]
     lista = descubrir.descubrir_cerca(lat, lng, region=region, fotos=bool(fotos), registradas=reg)
     for c in lista:
@@ -561,7 +561,8 @@ def foto_web(id: str = "", nombre: str = "", club: str = "", lat: float = 0.0, l
     if not (nombre or club) or (not lat and not lng):
         return {"ok": False, "fotos": []}
     region = pais_de_coordenadas(lat, lng)
-    fotos = descubrir.fotos_de_lugar(nombre, club, lat, lng, region=region)
+    place_id = id[3:] if id.startswith("gp_") else ""
+    fotos = descubrir.fotos_de_lugar(nombre, club, lat, lng, region=region, place_id=place_id)
     return {"ok": True, "fotos": fotos, "origen": "google" if fotos else ""}
 
 

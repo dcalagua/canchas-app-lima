@@ -375,6 +375,37 @@ def test_primera_foto_siempre_como_el_app(db, monkeypatch):
     d.limpiar_cache()
     monkeypatch.setattr(d, "_llamar_edge", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("red")))
     assert client.get("/web/foto?id=c_lima").json()["fotos"] == []
+    # RESPALDO directo con PLACES_API_KEY: la Edge no trae fotos → el backend
+    # habla con Google (Place Details por place_id; Text Search por nombre).
+    d.limpiar_cache()
+    monkeypatch.setattr(config, "PLACES_API_KEY", "k")
+    pedidas = []
+
+    def fake_http(url, headers, body=None, timeout=12):
+        pedidas.append(url)
+        if "/media" in url:
+            return {"photoUri": "https://lh3/" + url.split("/photos/")[1].split("/")[0]}
+        if url.endswith("/places/P1"):
+            return {"photos": [{"name": "places/P1/photos/a"}, {"name": "places/P1/photos/b"}]}
+        if url.endswith("searchText"):
+            assert body["textQuery"] == "Sabor Golazo" and body["locationBias"]["circle"]["radius"] == 300
+            return {"places": [{"id": "X", "location": {"latitude": -12.0901, "longitude": -77.0001},
+                                "photos": [{"name": "places/X/photos/z"}]}]}
+        raise AssertionError(url)
+    monkeypatch.setattr(d, "_http_json", fake_http)
+    assert client.get("/web/foto?id=gp_P1&nombre=Lo%20que%20sea&lat=-12.09&lng=-77.0").json()["fotos"] == ["https://lh3/a", "https://lh3/b"]
+    assert client.get("/web/foto?id=c_lima").json()["fotos"] == ["https://lh3/z"]
+    assert any(u.endswith("/places/P1") for u in pedidas) and any(u.endswith("searchText") for u in pedidas)
+    # Dedup de descubiertas también por CLUB: "Fútbol 1" del club "Sabor Golazo -
+    # Futbol 7" ES el lugar "Sabor Golazo" de Google → no sale duplicado.
+    d.limpiar_cache()
+    monkeypatch.setattr(d, "_llamar_edge", lambda *a, **k: [
+        {"id": "G1", "displayName": {"text": "Sabor Golazo Futbol 7"}, "types": ["sports_complex"],
+         "location": {"latitude": -12.0901, "longitude": -77.0001}}])
+    assert [c["nombre"] for c in d.descubrir_cerca(-12.09, -77.0, registradas=[])] == ["Sabor Golazo Futbol 7"]
+    d.limpiar_cache()
+    assert d.descubrir_cerca(-12.09, -77.0, registradas=[{"nombre": "Fútbol 1", "club": "Sabor Golazo - Futbol 7",
+                                                            "lat": -12.0901, "lng": -77.0001}]) == []
 
 
 def test_descubrir_canchas_de_google_como_el_apk(db, monkeypatch):
