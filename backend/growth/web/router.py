@@ -354,15 +354,24 @@ _JS_EXPLORAR = r"""
       .catch(function(){}).then(function(){ enVuelo--; siguienteFoto(); });
   }
   function siguienteFoto(){
-    while(enVuelo < 3 && colaFotos.length){ enVuelo++; pedirFoto(colaFotos.shift()); }
+    while(enVuelo < 2 && colaFotos.length){ enVuelo++; pedirFoto(colaFotos.shift()); }
   }
+  function encolar(c){
+    if(pedidas[c.dataset.id]) return;
+    if(!parseFloat(c.dataset.lat) && !parseFloat(c.dataset.lng)) return;
+    pedidas[c.dataset.id] = 1; colaFotos.push(c); siguienteFoto();
+  }
+  // Solo se piden las fotos de las tarjetas que ENTRAN en pantalla (cuota de
+  // Google): una página con 60 descubiertas no dispara 60 consultas de golpe.
+  var obs = ('IntersectionObserver' in window) ? new IntersectionObserver(function(entries){
+    entries.forEach(function(en){ if(en.isIntersecting){ obs.unobserve(en.target); encolar(en.target); } });
+  }, {rootMargin: '200px 0px'}) : null;
   function resolverFotos(){
     cards().forEach(function(c){
-      if(pedidas[c.dataset.id] || !c.querySelector('.sinfoto[data-buscar]')) return;
-      if(!parseFloat(c.dataset.lat) && !parseFloat(c.dataset.lng)) return;
-      pedidas[c.dataset.id] = 1; colaFotos.push(c);
+      if(pedidas[c.dataset.id] || c.dataset.obs || !c.querySelector('.sinfoto[data-buscar]')) return;
+      c.dataset.obs = '1';
+      if(obs) obs.observe(c); else encolar(c);
     });
-    siguienteFoto();
   }
   var expl = $('expl'), btnMapa = $('btnMapa');
   function verMapa(on){

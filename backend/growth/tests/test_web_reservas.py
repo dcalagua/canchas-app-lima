@@ -396,6 +396,18 @@ def test_primera_foto_siempre_como_el_app(db, monkeypatch):
     assert client.get("/web/foto?id=gp_P1&nombre=Lo%20que%20sea&lat=-12.09&lng=-77.0").json()["fotos"] == ["https://lh3/a", "https://lh3/b"]
     assert client.get("/web/foto?id=c_lima").json()["fotos"] == ["https://lh3/z"]
     assert any(u.endswith("/places/P1") for u in pedidas) and any(u.endswith("searchText") for u in pedidas)
+    # CUOTA: un 429 de Google pausa las resoluciones 60 s y NO cachea el vacío.
+    import urllib.error
+    d.limpiar_cache()
+    def http_429(url, headers, body=None, timeout=12):
+        raise urllib.error.HTTPError(url, 429, "Too Many Requests", {}, None)
+    monkeypatch.setattr(d, "_http_json", http_429)
+    assert client.get("/web/foto?id=gp_P9&nombre=X&lat=-12.09&lng=-77.0").json()["fotos"] == []
+    assert d._en_pausa()
+    monkeypatch.setattr(d, "_http_json", fake_http)
+    assert client.get("/web/foto?id=gp_P1&nombre=X&lat=-12.09&lng=-77.0").json()["fotos"] == []  # en pausa
+    monkeypatch.setattr(d, "_pausa_hasta", 0.0)
+    assert client.get("/web/foto?id=gp_P1&nombre=X&lat=-12.09&lng=-77.0").json()["fotos"] == ["https://lh3/a", "https://lh3/b"]
     # Dedup de descubiertas también por CLUB: "Fútbol 1" del club "Sabor Golazo -
     # Futbol 7" ES el lugar "Sabor Golazo" de Google → no sale duplicado.
     d.limpiar_cache()

@@ -21,6 +21,7 @@ import re
 import threading
 import time
 import unicodedata
+import urllib.error
 import urllib.request
 
 import config
@@ -167,14 +168,16 @@ def _media_publica(nombre_foto: str, key: str) -> str:
         return ""
 
 
-def _fotos_directo(place_id: str, nombre: str, club: str, lat: float, lng: float, region: str) -> list[str]:
-    """RESPALDO cuando la Edge no trae fotos: el backend habla con Google Places
-    (New) con `PLACES_API_KEY`. Con `place_id` → Place Details (fotos); sin
-    él → Text Search por nombre/club sesgado a 300 m y el más cercano (≤250 m),
-    como `fotosDeLugar` del APK. Máximo 3 fotos, URLs públicas."""
+def _fotos_directo(place_id: str, nombre: str, club: str, lat: float, lng: float,
+                   region: str) -> tuple[list[str], bool]:
+    """Camino PRINCIPAL con `PLACES_API_KEY`: el backend habla con Google
+    Places (New) con UNA llamada por lugar. Con `place_id` → Place Details
+    (fotos); sin él → Text Search por nombre/club sesgado a 300 m y el más
+    cercano (≤250 m), como `fotosDeLugar` del APK. Máximo 3 fotos, URLs
+    públicas. Devuelve (fotos, ok): ok=False = error de red/cuota (no cachear)."""
     key = config.PLACES_API_KEY
     if not key:
-        return []
+        return [], False
     try:
         fotos_meta: list = []
         if place_id:
@@ -199,7 +202,7 @@ def _fotos_directo(place_id: str, nombre: str, club: str, lat: float, lng: float
                 if (p.get("photos")) and d < mejor_d:
                     mejor, mejor_d = p, d
             if mejor is None or mejor_d > RADIO_FOTO_M / 1000.0 + 0.05:
-                return []
+                return [], True
             fotos_meta = list(mejor.get("photos") or [])
         out = []
         for ph in fotos_meta[:3]:
@@ -209,10 +212,15 @@ def _fotos_directo(place_id: str, nombre: str, club: str, lat: float, lng: float
             u = _media_publica(nombre_foto, key)
             if u:
                 out.append(u)
-        return out
+        return out, True
+    except urllib.error.HTTPError as ex:
+        if ex.code == 429:
+            _pausar_por_cuota()
+        print(f"[foto] directo fallo {nombre!r}: HTTP {ex.code}", flush=True)
+        return [], False
     except Exception as ex:  # noqa: BLE001
         print(f"[foto] directo fallo {nombre!r}: {ex}", flush=True)
-        return []
+        return [], False
 
 
 _cache: dict[tuple, tuple[float, list[dict]]] = {}
@@ -283,6 +291,23 @@ def descubrir_cerca(lat: float, lng: float, region: str = "PE", fotos: bool = Fa
 RADIO_FOTO_M = 250.0
 TTL_FOTO_SEG = 12 * 3600
 _cache_fotos: dict[tuple, tuple[float, list[str]]] = {}
+# CANDADOS DE CUOTA (trampa real, sep-2026): pedir la foto de cada tarjeta
+# vía la Edge disparaba 12 Text Search por tarjeta → Google respondió 429
+# "SearchTextRequest per minute" y nada tenía foto. Ahora: (1) por tarjeta,
+# UNA llamada a Google (Place Details por id o un Text Search) y no la Edge;
+# (2) máximo 3 resoluciones en paralelo en el servidor; (3) ante un 429 se
+# PAUSAN las resoluciones 60 s y no se cachea el vacío (se reintenta luego).
+_semaforo = threading.BoundedSemaphore(3)
+_pausa_hasta = 0.0
+
+
+def _en_pausa() -> bool:
+    return time.time() < _pausa_hasta
+
+
+def _pausar_por_cuota(seg: float = 60.0) -> None:
+    global _pausa_hasta
+    _pausa_hasta = max(_pausa_hasta, time.time() + seg)
 
 
 def _tokens(s: str) -> set[str]:
@@ -335,29 +360,33 @@ def fotos_de_lugar(nombre: str, club: str, lat: float, lng: float, region: str =
         return []
     if not lat and not lng:
         return []
-    key = (round(lat, 4), round(lng, 4), _clave(nombre), _clave(club))
+    key = (round(lat, 4), round(lng, 4), _clave(nombre), _clave(club), place_id)
     ahora = time.time()
     with _lock:
         hit = _cache_fotos.get(key)
     if hit and ahora - hit[0] < TTL_FOTO_SEG:
         return list(hit[1])
-    try:
-        crudos = _llamar_edge(lat, lng, RADIO_FOTO_M, (region or "PE").upper(), True)
-        err = ""
-    except Exception as ex:  # noqa: BLE001
-        crudos, err = [], str(ex)
-    con_foto = sum(1 for p in crudos if isinstance(p, dict) and p.get("fotos"))
-    fotos = _elegir_lugar(crudos, nombre, club, lat, lng)
-    origen = "edge" if fotos else ""
-    if not fotos:
-        fotos = _fotos_directo(place_id, nombre, club, lat, lng, region)
-        origen = "directo" if fotos else ""
-    print(f"[foto] {nombre!r} club={club!r} edge:lugares={len(crudos)} con_foto={con_foto} "
-          f"diag={ultimo_diag!r} err={err!r} key={'si' if config.PLACES_API_KEY else 'no'} "
-          f"-> {origen or 'sin fotos'} ({len(fotos)})", flush=True)
-    with _lock:
-        # Sin fotos se cachea poco (10 min): puede ser un error transitorio.
-        _cache_fotos[key] = (ahora if fotos else ahora - TTL_FOTO_SEG + 600, fotos)
+    if _en_pausa():
+        return []  # cuota de Google agotada hace poco: no insistir, sin cachear
+    with _semaforo:
+        if config.PLACES_API_KEY:
+            fotos, ok = _fotos_directo(place_id, nombre, club, lat, lng, region)
+            detalle = "directo"
+        else:
+            # Sin llave propia: UNA llamada a la Edge (12 Text Search) por lugar.
+            try:
+                crudos = _llamar_edge(lat, lng, RADIO_FOTO_M, (region or "PE").upper(), True)
+                ok = True
+            except Exception:  # noqa: BLE001
+                crudos, ok = [], False
+            fotos = _elegir_lugar(crudos, nombre, club, lat, lng)
+            detalle = f"edge:lugares={len(crudos)} diag={str(ultimo_diag)[:160]!r}"
+    print(f"[foto] {nombre!r} club={club!r} id={place_id or '-'} {detalle} "
+          f"-> {'ok' if ok else 'ERROR'} ({len(fotos)} fotos)", flush=True)
+    if ok:
+        with _lock:
+            # Sin fotos se cachea poco (10 min): el lugar puede no tener aún.
+            _cache_fotos[key] = (ahora if fotos else ahora - TTL_FOTO_SEG + 600, fotos)
     return fotos
 
 
