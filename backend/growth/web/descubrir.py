@@ -157,15 +157,20 @@ def _http_json(url: str, headers: dict, body: dict | None = None, timeout: int =
         return json.loads(r.read().decode("utf-8"))
 
 
-def _media_publica(nombre_foto: str, key: str) -> str:
-    """URL pública (sin key) de una foto de Google: `photoUri` con
-    skipHttpRedirect. '' si falla."""
+def _media_publica(nombre_foto: str, key: str) -> tuple[str, str]:
+    """(URL pública sin key, error). `photoUri` con skipHttpRedirect."""
     try:
         j = _http_json(f"https://places.googleapis.com/v1/{nombre_foto}/media?maxWidthPx=800&skipHttpRedirect=true&key={key}", {})
         u = str(j.get("photoUri") or "")
-        return u if u.startswith("http") else ""
-    except Exception:  # noqa: BLE001
-        return ""
+        return (u, "") if u.startswith("http") else ("", f"sin photoUri: {str(j)[:120]}")
+    except urllib.error.HTTPError as ex:
+        try:
+            cuerpo = ex.read().decode("utf-8", "ignore")[:160]
+        except Exception:  # noqa: BLE001
+            cuerpo = ""
+        return "", f"HTTP {ex.code} {cuerpo}"
+    except Exception as ex:  # noqa: BLE001
+        return "", str(ex)[:160]
 
 
 def _fotos_directo(place_id: str, nombre: str, club: str, lat: float, lng: float,
@@ -205,13 +210,22 @@ def _fotos_directo(place_id: str, nombre: str, club: str, lat: float, lng: float
                 return [], True
             fotos_meta = list(mejor.get("photos") or [])
         out = []
+        err_media = ""
         for ph in fotos_meta[:3]:
             nombre_foto = str((ph or {}).get("name") or "")
             if not nombre_foto:
                 continue
-            u = _media_publica(nombre_foto, key)
+            u, err = _media_publica(nombre_foto, key)
             if u:
                 out.append(u)
+            elif not err_media:
+                err_media = err
+        # Diagnóstico honesto: "0 fotos" puede ser que Google NO tiene fotos
+        # del lugar (meta=0) o que el media falló (meta>0 + error).
+        print(f"[foto] detalle {nombre!r}: meta={len(fotos_meta)} resueltas={len(out)}"
+              f"{' media_error=' + err_media if err_media else ''}", flush=True)
+        if fotos_meta and not out:
+            return [], False  # había fotos y no se pudieron resolver: no cachear
         return out, True
     except urllib.error.HTTPError as ex:
         if ex.code == 429:
@@ -350,7 +364,7 @@ def _elegir_lugar(crudos: list[dict], nombre: str, club: str, lat: float, lng: f
 
 
 def fotos_de_lugar(nombre: str, club: str, lat: float, lng: float, region: str = "PE",
-                   place_id: str = "", cancha_id: str = "") -> list[str]:
+                   place_id: str = "", cancha_id: str = "", forzar: bool = False) -> list[str]:
     """Fotos públicas de Google del lugar donde está la cancha (o [] si no
     hay). Primero la Edge Function (misma que el APK); si no trae fotos y hay
     `PLACES_API_KEY`, el backend las resuelve directo. Fail-safe y con caché."""
@@ -363,7 +377,7 @@ def fotos_de_lugar(nombre: str, club: str, lat: float, lng: float, region: str =
     key = (round(lat, 4), round(lng, 4), _clave(nombre), _clave(club), place_id)
     ahora = time.time()
     with _lock:
-        hit = _cache_fotos.get(key)
+        hit = None if forzar else _cache_fotos.get(key)
     if hit and ahora - hit[0] < TTL_FOTO_SEG:
         return list(hit[1])
     # COSECHA en Supabase (`pichangol_lugares_fotos`): se paga UNA vez por
@@ -371,7 +385,7 @@ def fotos_de_lugar(nombre: str, club: str, lat: float, lng: float, region: str =
     from web import datos  # import perezoso (datos importa pg)
     clave_db = place_id or (f"cancha:{cancha_id}" if cancha_id else "")
     guardado = datos.leer_fotos_lugar(clave_db) if clave_db else None
-    if guardado is not None:
+    if guardado is not None and not forzar:
         fotos_db, vigente = guardado
         if vigente and (fotos_db or ahora - _sin_foto_visto.get(clave_db, 0) < 6 * 3600):
             with _lock:

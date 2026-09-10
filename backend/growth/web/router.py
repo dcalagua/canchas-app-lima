@@ -554,7 +554,8 @@ def descubrir_web(lat: float, lng: float, fotos: int = 0) -> dict:
 
 
 @router.get("/web/foto")
-def foto_web(id: str = "", nombre: str = "", club: str = "", lat: float = 0.0, lng: float = 0.0) -> dict:
+def foto_web(id: str = "", nombre: str = "", club: str = "", lat: float = 0.0, lng: float = 0.0,
+             refrescar: int = 0, token: str = "") -> dict:
     """PRIMERA FOTO de una cancha sin fotos propias (regla del director: la web
     muestra siempre la primera foto, como el app). Para una cancha registrada
     (`id`) usa sus fotos si las tiene; si no, resuelve las de Google en su
@@ -571,8 +572,10 @@ def foto_web(id: str = "", nombre: str = "", club: str = "", lat: float = 0.0, l
         return {"ok": False, "fotos": []}
     region = pais_de_coordenadas(lat, lng)
     place_id = id[3:] if id.startswith("gp_") else ""
+    # `refrescar=1` + token de admin: salta cachés y cosecha (diagnóstico).
+    forzar = bool(refrescar) and bool(config.ADMIN_PANEL_TOKEN) and hmac.compare_digest(token or "", config.ADMIN_PANEL_TOKEN)
     fotos = descubrir.fotos_de_lugar(nombre, club, lat, lng, region=region, place_id=place_id,
-                                     cancha_id="" if place_id else id)
+                                     cancha_id="" if place_id else id, forzar=forzar)
     return {"ok": True, "fotos": fotos, "origen": "google" if fotos else ""}
 
 
