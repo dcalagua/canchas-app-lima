@@ -232,6 +232,28 @@ para la API del APK.
   explorador las pinta en "Más canchas cerca de ti" con "Aún sin registrar",
   "Reservar en la app", "Cómo llegar" y "¿Es tuya? Reclámala"; pines grises
   en el mapa. Sin Supabase/key → lista vacía, la web sigue.
+- **PORTADA TIPO AIRBNB (`GET /`, hecho sep-2026, pedido del director):** la
+  raíz del dominio YA NO es la home de marketing sino el EXPLORADOR
+  (`web/router.py::_explorar`; `/canchas` es alias): cabecera con buscador en
+  pastilla (Dónde · Deporte · Cuándo · lupa), "Pon tu cancha" + "Descarga la
+  app", barra de categorías con ícono y subrayado (`CATEGORIAS`), grilla de
+  tarjetas Airbnb (`_tarjeta`: foto cuadrada con carrusel scroll-snap y
+  puntos, corazón = favorito en `localStorage`, badge Verificada / Aún sin
+  verificar, ★ promedio real de `pichangol_resenas` vía `datos.ratings()` o
+  "Nuevo", zona, deportes + turnos + distancia, precio por hora), botón
+  flotante "Mostrar mapa" (split view lista+mapa sticky en escritorio, mapa a
+  pantalla completa en móvil; Leaflet se dibuja al abrirlo; preferencia en
+  `localStorage`), "Filtros" (solo verificadas, precio máx.). El DEPORTE lo
+  filtra el servidor (`?deporte=`, categorías = enlaces, SEO); zona/texto,
+  verificadas y precio se filtran en el navegador; la FECHA del buscador
+  viaja a la ficha (`/reservar/{id}?fecha=` preselecciona el día de la tira).
+  Debajo de las canchas van las secciones de comercio que revisan Culqi e
+  INDECOPI (`web/marca.py` extrae de `legal/home.html` las secciones desde
+  "Qué ofrecemos" hasta el Libro de Reclamaciones y re-escribe su CSS bajo el
+  prefijo `.marca` para no pisar `ui.py`); el pie (`ui.footer()`, columnas
+  estilo Airbnb) lleva razón social, RUC, contacto y enlaces legales en TODAS
+  las páginas. `home.html` sigue siendo el texto legal/comercial editable, ya
+  no se sirve entero. Test `test_raiz_es_el_explorador_tipo_airbnb`.
 - El apex `pichangol.app` (sin `www`) sigue libre (podría redirigir al `www`).
 
 ## Estrategia de ambientes (piloto → prod)

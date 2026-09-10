@@ -60,6 +60,23 @@ def _norm_cancha(d: dict) -> dict:
     return d
 
 
+def ratings(ids: list[str]) -> dict[str, tuple[float, int]]:
+    """Reputación real por cancha desde `pichangol_resenas` (las mismas
+    reseñas ⭐ del APK): id → (promedio, cantidad). Fail-safe: {} sin base o
+    sin tabla."""
+    ids = [i for i in ids if i]
+    if not pg.habilitado or not ids:
+        return {}
+    try:
+        with pg._conn() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT cancha_id, avg(estrellas)::float, count(*)::int FROM pichangol_resenas "
+                "WHERE cancha_id = ANY(%s) AND estrellas BETWEEN 1 AND 5 GROUP BY cancha_id", (ids,))
+            return {str(r[0]): (float(r[1] or 0), int(r[2] or 0)) for r in cur.fetchall()}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 def canchas_publicas() -> list[dict]:
     """TODAS las canchas publicables en la web: registradas y no eliminadas.
     Las verificadas con dueño son reservables en línea; las demás (aún sin

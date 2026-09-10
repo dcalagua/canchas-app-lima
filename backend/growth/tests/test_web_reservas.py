@@ -138,7 +138,7 @@ def test_catalogo_agrupa_por_pais_y_filtra(db):
     assert "Perú" in r.text and "Ecuador" in r.text and "data-pais='PE'" in r.text
     assert "leaflet" in r.text and "Usar mi ubicación" in r.text and "data-lat=" in r.text
     assert "Cancha Central" in r.text and "Cancha Guayaquil" in r.text
-    assert "S/ 60.00" in r.text and "$ 10.00" in r.text
+    assert "S/ 60" in r.text and "$ 10" in r.text and "Mostrar mapa" in r.text
     assert "/reservar/c_lima" in r.text
     r = client.get("/canchas?deporte=tenis")
     assert "Cancha Central" not in r.text
@@ -263,9 +263,30 @@ def test_sin_base_de_datos_todo_es_fail_safe(monkeypatch):
     assert "Cancha no disponible" in client.get("/reservar/x").text
 
 
-def test_home_enlaza_al_catalogo():
+def test_raiz_es_el_explorador_tipo_airbnb(db):
+    """La raíz del dominio ES el explorador (buscador en pastilla, categorías,
+    tarjetas con foto/corazón, "Mostrar mapa") y debajo van las secciones de
+    marca/comercio que revisan Culqi e INDECOPI (servicios con precio y
+    botón, términos, cancelaciones, Libro de Reclamaciones integrado)."""
     home = client.get("/").text
-    assert 'href="/canchas"' in home and "/canchas?deporte=futbol" in home
+    for t in ("id='sQ'", "id='sDep'", "id='sF'", "class='cat sel'", "Cancha Central", "class='corazon'",
+              "Mostrar mapa", 'id="servicios"', "Servicios y precios", "/canchas?deporte=futbol",
+              'id="terminos"', 'id="devoluciones"', 'id="reclamaciones"', "lr-form", "/reclamaciones",
+              'href="/canchas"', 'href="/legal/terminos"', 'href="/legal/privacidad"',
+              "20602517986", "contacto@ebim.pe", ".marca .prods{"):
+        assert t in home, t
+    # El CSS de la home vieja va anidado bajo .marca: no pisa el sistema de diseño.
+    assert "\n  .card{" not in home and ".marca .card{" in home
+    # Categoría y fecha desde el buscador: el deporte lo filtra el servidor y la
+    # fecha viaja a la ficha y preselecciona el día.
+    f = _manana()
+    r = client.get(f"/?deporte=futbol&fecha={f}").text
+    assert "class='cat sel' href='/canchas?deporte=futbol'" in r and f"/reservar/c_gye?fecha={f}" in r
+    r = client.get("/?deporte=tenis").text
+    assert "Cancha Central" not in r and "Todavía no hay canchas de este deporte" in r
+    ficha = client.get(f"/reservar/c_lima?fecha={f}").text
+    assert f'"fecha": "{f}"' in ficha
+    assert '"fecha": ""' in client.get("/reservar/c_lima?fecha=2020-01-01").text
 
 
 def test_calendario_ics_y_acciones_del_comprobante(db, monkeypatch):

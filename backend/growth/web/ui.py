@@ -140,9 +140,105 @@ ul.datos li{margin:6px 0;display:flex;gap:8px;align-items:flex-start}
 @keyframes pop{0%{transform:scale(.4);opacity:0}100%{transform:scale(1);opacity:1}}
 .acciones{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
 .acciones .btn{flex:1;min-width:160px}
-footer{margin:56px 0 28px;color:var(--tenue);font-size:13px;text-align:center;font-weight:600}
-footer .wm{font-size:18px;margin-bottom:6px}footer a{color:var(--tenue);margin:0 7px;text-decoration:none}footer a:hover{color:var(--noche)}
-.ebim{font-size:12px;margin-top:8px}
+/* ── footer (columnas, estilo Airbnb) ── */
+footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--trazo);color:var(--tenue);font-size:13.5px;font-weight:600}
+.pie-cols{display:grid;grid-template-columns:repeat(4,1fr);gap:24px;padding:36px 0 24px}
+@media(max-width:900px){.pie-cols{grid-template-columns:1fr 1fr}}@media(max-width:560px){.pie-cols{grid-template-columns:1fr}}
+.pie-cols h4{margin:0 0 10px;font-size:14px;color:var(--noche);font-weight:800}
+.pie-cols a{display:block;color:var(--tenue);text-decoration:none;margin:7px 0}.pie-cols a:hover{color:var(--noche);text-decoration:underline}
+.pie-cols .wm{font-size:20px;margin-bottom:8px}
+.pie-bajo{border-top:1px solid var(--trazo);padding:16px 0 22px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:12.5px}
+.pie-bajo a{color:var(--tenue);text-decoration:none;margin-right:12px}.pie-bajo a:hover{text-decoration:underline}
+/* ── explorador tipo Airbnb (raíz del dominio) ── */
+.wrap-xl{max-width:1440px;margin:0 auto;padding:0 40px}
+@media(max-width:900px){.wrap-xl{padding:0 20px}}@media(max-width:560px){.wrap-xl{padding:0 16px}}
+.nav.abnb{border-bottom:0;box-shadow:0 1px 0 var(--trazo)}
+.nav.abnb .nav-in{height:80px}
+@media(max-width:900px){.nav.abnb .nav-in{height:auto;padding:12px 0 10px;flex-wrap:wrap}}
+.busq{display:flex;align-items:center;background:var(--blanco);border:1px solid var(--trazo);border-radius:999px;box-shadow:0 3px 12px rgba(15,27,45,.08);height:48px;padding-left:8px;flex:0 1 auto;min-width:0;transition:box-shadow .15s}
+.busq:hover{box-shadow:0 6px 20px rgba(15,27,45,.14)}
+.busq .seg{display:flex;flex-direction:column;justify-content:center;padding:0 16px;min-width:0;height:100%;cursor:pointer;border-radius:999px;position:relative}
+.busq .seg+.seg:before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:1px;background:var(--trazo)}
+.busq .seg:hover{background:var(--gris)}
+.busq .seg small{font-size:11px;font-weight:800;color:var(--noche);line-height:1.1}
+.busq .seg input,.busq .seg select{border:0;padding:0;margin:0;background:transparent;font-size:13.5px;font-weight:600;color:var(--noche);height:auto;width:100%;min-width:0;outline:none;box-shadow:none;font-family:inherit;line-height:1.2;-webkit-appearance:none;appearance:none}
+.busq .seg input::placeholder{color:var(--tenue);font-weight:600}
+.busq .seg.donde{min-width:190px}.busq .seg.dep{min-width:130px}.busq .seg.cuando{min-width:140px}
+.busq .lupa{width:40px;height:40px;border-radius:50%;background:var(--esmeralda);color:#fff;border:0;display:inline-flex;align-items:center;justify-content:center;margin:0 4px 0 6px;cursor:pointer;flex:none}
+.busq .lupa svg{width:18px;height:18px}
+.nav.abnb .links{gap:4px}.links a.host{font-weight:700}
+@media(max-width:900px){
+  .nav.abnb .busq{order:3;width:100%;flex:1 0 100%;height:52px}
+  .busq .seg{padding:0 12px}.busq .seg.donde{min-width:0;flex:1}.busq .seg.dep,.busq .seg.cuando{min-width:0;flex:0 0 auto}
+  .busq .seg.cuando{display:none}.links a.host{display:none}
+}
+@media(max-width:560px){.busq .seg.dep{display:none}}
+.cats{display:flex;align-items:center;gap:10px;padding:8px 0 0;position:relative}
+.cats .cat-strip{display:flex;gap:6px;overflow-x:auto;min-width:0;flex:1;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.cats .cat-strip::-webkit-scrollbar{display:none}
+.cat{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 14px 10px;border-bottom:2px solid transparent;color:var(--tenue);font-size:12px;font-weight:700;white-space:nowrap;cursor:pointer;text-decoration:none;user-select:none;opacity:.8;transition:opacity .15s}
+.cat .ico{font-size:24px;line-height:1;filter:grayscale(.15)}
+.cat:hover{opacity:1;color:var(--noche);border-bottom-color:var(--trazo)}
+.cat.sel{opacity:1;color:var(--noche);border-bottom-color:var(--noche)}
+.cats .filtros{flex:none;display:inline-flex;align-items:center;gap:8px;border:1px solid var(--trazo);border-radius:12px;padding:10px 14px;font-weight:700;font-size:13px;background:var(--blanco);cursor:pointer;color:var(--noche);font-family:inherit}
+.cats .filtros:hover{border-color:var(--noche)}.cats .filtros.on{border-color:var(--noche);box-shadow:inset 0 0 0 1px var(--noche)}
+.filtros-panel{display:none;gap:10px;flex-wrap:wrap;align-items:center;padding:10px 0 4px}
+.filtros-panel.open{display:flex}
+.expl{display:grid;grid-template-columns:minmax(0,1fr);gap:0;align-items:start;padding-top:8px}
+.expl>*{min-width:0}
+.expl.con-mapa{grid-template-columns:minmax(0,1fr) minmax(0,42%);gap:24px}
+.expl .mapa-lado{display:none}
+.expl.con-mapa .mapa-lado{display:block;position:sticky;top:100px}
+.expl.con-mapa .mapa-lado .mapa{height:calc(100vh - 124px);min-height:420px;border-radius:14px;box-shadow:none;border:1px solid var(--trazo)}
+@media(max-width:900px){
+  .expl.con-mapa{grid-template-columns:minmax(0,1fr)}
+  .expl.con-mapa .lista{display:none}
+  .expl.con-mapa .mapa-lado{position:static}
+  .expl.con-mapa .mapa-lado .mapa{height:calc(100vh - 200px);min-height:360px;border-radius:14px}
+}
+.tit{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:22px 0 10px}
+.tit h2{font-size:22px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}.tit .cerca{color:var(--tenue);font-weight:600;font-size:14px}
+@media(max-width:560px){.tit h2{font-size:19px}.tit .cerca{display:none}}
+.lst-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:24px 20px}
+@media(max-width:1180px){.lst-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:760px){.lst-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:20px 14px}}
+@media(max-width:440px){.lst-grid{grid-template-columns:1fr}}
+.expl.con-mapa .lst-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(max-width:1180px){.expl.con-mapa .lst-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lst{display:block;color:inherit;text-decoration:none;min-width:0}
+.lst .foto{position:relative;border-radius:14px;overflow:hidden;aspect-ratio:1/0.95;background:var(--gris)}
+.lst .fotos{display:flex;height:100%;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none}
+.lst .fotos::-webkit-scrollbar{display:none}
+.lst .fotos img,.lst .fotos .sinfoto{flex:0 0 100%;width:100%;height:100%;object-fit:cover;scroll-snap-align:start;aspect-ratio:auto;display:block}
+.lst .fotos .sinfoto{font-size:56px;display:flex}
+.lst .fotos img{color:transparent}
+.lst .foto img{transition:transform .35s}.lst:hover .foto img{transform:scale(1.03)}
+.lst .badge{position:absolute;top:12px;left:12px;background:var(--blanco);color:var(--noche);font-size:12px;font-weight:800;padding:6px 10px;border-radius:999px;box-shadow:0 1px 4px rgba(15,27,45,.2)}
+.lst .badge.pend{background:rgba(255,255,255,.92);color:var(--tenue)}
+.lst .corazon{position:absolute;top:10px;right:10px;width:32px;height:32px;border:0;background:transparent;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center}
+.lst .corazon svg{width:24px;height:24px;fill:rgba(15,27,45,.5);stroke:#fff;stroke-width:2;transition:transform .15s}
+.lst .corazon:hover svg{transform:scale(1.1)}.lst .corazon.on svg{fill:var(--rojo);stroke:var(--rojo)}
+.lst .dots{position:absolute;left:0;right:0;bottom:10px;display:flex;justify-content:center;gap:4px;pointer-events:none}
+.lst .dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.6)}.lst .dots i:first-child{background:#fff}
+.lst .flecha{position:absolute;top:50%;transform:translateY(-50%);width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,.92);border:0;display:none;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 1px 4px rgba(15,27,45,.25);font-size:14px;font-weight:800;color:var(--noche);padding:0}
+.lst .flecha.izq{left:10px}.lst .flecha.der{right:10px}
+@media(hover:hover){.lst:hover .flecha{display:inline-flex}}
+.lst .lb{padding:10px 2px 0;display:flex;flex-direction:column;gap:2px;font-size:14px}
+.lst .l1{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.lst .l1 b{font-weight:800;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.lst .rate{white-space:nowrap;font-weight:700;font-size:13.5px;color:var(--noche)}
+.lst .l2{color:var(--tenue);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lst .l3{margin-top:4px}.lst .l3 b{font-weight:800;font-size:15px}
+.lst .l3 .app{display:inline-block;margin-top:6px;border:1px solid var(--trazo);border-radius:8px;padding:5px 9px;font-size:12px;font-weight:700;color:var(--noche)}
+.lst.pend .foto img,.lst.pend .foto .sinfoto{filter:saturate(.55)}
+.btn-mapa{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;z-index:25;background:var(--noche);color:#fff;border:0;border-radius:999px;padding:13px 20px;font-weight:800;font-size:14px;cursor:pointer;box-shadow:0 8px 24px rgba(15,27,45,.28);display:inline-flex;align-items:center;gap:8px;font-family:inherit}
+.btn-mapa:hover{transform:translateX(-50%) scale(1.03)}
+.ubic-mini{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13.5px;font-weight:600;color:var(--tenue);padding:14px 0 0}
+.ubic-mini button{border:0;background:transparent;color:var(--esmeralda);font-weight:800;cursor:pointer;font-family:inherit;font-size:13.5px;padding:0;text-decoration:underline}
+.vacio{padding:40px 0;text-align:center;color:var(--tenue);font-weight:600}
+.marca{margin-top:48px;border-top:1px solid var(--trazo)}
+.marca section{padding:44px 0}
+.marca section:first-child{border-top:0}
 """
 
 
@@ -191,13 +287,47 @@ def check_svg() -> str:
             "stroke-linecap='round' stroke-linejoin='round' d='M5 12.5l4.5 4.5L19 7'/></svg></div>")
 
 
+def footer() -> str:
+    """Pie de página con columnas (estilo Airbnb) + datos del comercio que
+    exigen Culqi/INDECOPI (razón social, RUC, contacto) en TODAS las páginas."""
+    return (
+        "<footer class='pie'><div class='wrap-xl'><div class='pie-cols'>"
+        f"<div>{wordmark(20)}<div>Reserva, juega, repite.</div>"
+        "<div style='margin-top:10px;font-size:12.5px'>Fútbol · Tenis · Pádel · Pickleball<br>Perú · Ecuador · Bolivia</div></div>"
+        "<div><h4>Reservar</h4><a href=\"/canchas\">Todas las canchas</a><a href='/canchas?deporte=futbol'>Canchas de fútbol</a>"
+        "<a href='/canchas?deporte=tenis'>Canchas de tenis</a><a href='/canchas?deporte=padel'>Canchas de pádel</a>"
+        "<a href='/#servicios'>Servicios y precios</a></div>"
+        "<div><h4>Soporte</h4><a href='/#contacto'>Contacto</a><a href='/#como'>Cómo funciona</a>"
+        "<a href='/#pagos'>Pagos y seguridad</a><a href='/#devoluciones'>Cancelaciones y devoluciones</a>"
+        "<a href='/#reclamaciones'>📕 Libro de Reclamaciones</a></div>"
+        "<div><h4>Pichangol</h4><a href='https://play.google.com/store/apps/details?id=pe.ebim.pichangol' rel='noopener'>Descarga la app</a>"
+        "<a href='https://play.google.com/store/apps/details?id=pe.ebim.pichangol' rel='noopener'>Pon tu cancha en Pichangol</a>"
+        "<a href=\"/legal/terminos\">Términos y condiciones</a><a href=\"/legal/privacidad\">Política de privacidad</a>"
+        "<a href=\"/legal/eliminar-cuenta\">Eliminar mi cuenta</a></div>"
+        "</div><div class='pie-bajo'><div>© 2026 Pichangol · GRUPO EBIM S.A.C. · RUC 20602517986 · San Isidro, Lima, Perú · "
+        "<a href='mailto:contacto@ebim.pe'>contacto@ebim.pe</a></div>"
+        "<div><a href='/#terminos'>Términos</a><a href='/#privacidad'>Privacidad</a><a href='/#reclamaciones'>Libro de Reclamaciones</a></div>"
+        "</div></div></footer>")
+
+
+def nav_simple() -> str:
+    return ("<header class='nav'><div class='wrap nav-in'>"
+            f"{wordmark()}"
+            "<nav class='links'><a href='/canchas'>Canchas</a><a href='/#servicios'>Servicios</a>"
+            "<a href='/#contacto'>Contacto</a><a class='cta' href='/canchas'>Reservar</a></nav>"
+            "</div></header>")
+
+
 def shell(titulo: str, cuerpo: str, *, desc: str = "", extra_head: str = "",
           canonical: str = "", og_image: str = "/static/brand/logo_pichangol.png",
-          con_barra: bool = False, jsonld: str = "") -> HTMLResponse:
+          con_barra: bool = False, jsonld: str = "", nav: str = "",
+          ancho: bool = False, titulo_tab: str = "") -> HTMLResponse:
+    """Envuelve una página pública. [nav] = cabecera propia (la raíz lleva el
+    buscador tipo Airbnb); [ancho] = contenedor 1440 px (grilla de canchas)."""
     page = (
         "<!doctype html><html lang='es'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1,viewport-fit=cover'>"
-        f"<title>{e(titulo)} · Pichangol</title>"
+        f"<title>{e(titulo_tab or (titulo + ' · Pichangol'))}</title>"
         f"<meta name='description' content='{e(desc or titulo)}'>"
         f"<meta property='og:title' content='{e(titulo)} · Pichangol'>"
         f"<meta property='og:description' content='{e(desc or 'Reserva, juega, repite.')}'>"
@@ -211,16 +341,8 @@ def shell(titulo: str, cuerpo: str, *, desc: str = "", extra_head: str = "",
         f"<style>{CSS}</style>{extra_head}"
         + (f"<script type='application/ld+json'>{jsonld}</script>" if jsonld else "")
         + f"</head><body{' class=con-barra' if con_barra else ''}>"
-        "<header class='nav'><div class='wrap nav-in'>"
-        f"{wordmark()}"
-        "<nav class='links'><a href='/canchas'>Canchas</a><a href='/#servicios'>Servicios</a>"
-        "<a href='/#contacto'>Contacto</a><a class='cta' href='/canchas'>Reservar</a></nav>"
-        "</div></header>"
-        f"<main class='wrap'>{cuerpo}</main>"
-        f"<footer><div>{wordmark(18)}</div><div>Reserva, juega, repite.</div>"
-        "<div style='margin-top:8px'><a href='/#terminos'>Términos</a><a href='/#devoluciones'>Cancelaciones</a>"
-        "<a href='/legal/privacidad'>Privacidad</a><a href='/#reclamaciones'>Libro de Reclamaciones</a>"
-        "<a href='/#contacto'>Contacto</a></div>"
-        "<div class='ebim'>GRUPO EBIM S.A.C. · RUC 20602517986 · Lima, Perú</div></footer>"
+        f"{nav or nav_simple()}"
+        f"<main class='{'wrap-xl' if ancho else 'wrap'}'>{cuerpo}</main>"
+        f"{footer()}"
         "</body></html>")
     return HTMLResponse(page, headers={"Cache-Control": "no-store"})

@@ -41,7 +41,7 @@ from pydantic import BaseModel
 import config
 from paises import _CAJAS, pais_de_coordenadas, moneda_de_pais, simbolo_de_moneda
 from pagos import culqi
-from web import datos, descubrir, horarios, ui
+from web import datos, descubrir, horarios, marca, ui
 from web.ui import e
 
 router = APIRouter()
@@ -162,63 +162,133 @@ def _no_encontrada(que: str = "Cancha no disponible") -> HTMLResponse:
 
 _JS_EXPLORAR = r"""
 (function(){
-  var C = window.__explorar, cards = Array.prototype.slice.call(document.querySelectorAll('.card.cancha'));
-  var $ = function(id){ return document.getElementById(id); };
-  var yo = null, mapa = null, marcadores = [], miPin = null;
+  var C = window.__explorar, $ = function(id){ return document.getElementById(id); };
+  var cards = function(){ return Array.prototype.slice.call(document.querySelectorAll('.lst[data-lat]')); };
+  var yo = null, mapa = null, marcadores = [], miPin = null, pinesDesc = [], descubiertas = {};
+  var filtro = {q: '', dep: C.dep || '', fecha: '', soloOk: false, max: 0};
+  var favs = {};
+  try { favs = JSON.parse(localStorage.getItem('pcg_fav') || '{}') || {}; } catch(e){}
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function km(a, b, c, d){ var R = 6371, dLat = (c-a)*Math.PI/180, dLng = (d-b)*Math.PI/180;
     var x = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(dLng/2)*Math.sin(dLng/2);
     return 2*R*Math.asin(Math.sqrt(x)); }
+  function fmtKm(d){ return d < 1 ? (Math.round(d*1000) + ' m') : (d < 10 ? d.toFixed(1) + ' km' : Math.round(d) + ' km'); }
   function paisDe(lat, lng){
     var dentro = [], best = null, bd = 1e9;
     Object.keys(C.cajas).forEach(function(k){ var c = C.cajas[k]; if(lat >= c[0] && lat <= c[1] && lng >= c[2] && lng <= c[3]) dentro.push(k); });
     (dentro.length ? dentro : Object.keys(C.cajas)).forEach(function(k){ var c = C.cajas[k]; var d = Math.hypot(lat-c[4], lng-c[5]); if(d < bd){ bd = d; best = k; } });
     return best;
   }
-  function fmtKm(d){ return d < 1 ? (Math.round(d*1000) + ' m') : (d < 10 ? d.toFixed(1) + ' km' : Math.round(d) + ' km'); }
+  // ── corazones (favoritos en este navegador) ──
+  function pintarFavs(){ cards().forEach(function(c){ var b = c.querySelector('.corazon'); if(b) b.classList.toggle('on', !!favs[c.dataset.id]); }); }
+  document.addEventListener('click', function(ev){
+    var b = ev.target.closest('.corazon'); if(!b) return;
+    ev.preventDefault(); ev.stopPropagation();
+    var id = b.closest('.lst').dataset.id; if(favs[id]) delete favs[id]; else favs[id] = 1;
+    try { localStorage.setItem('pcg_fav', JSON.stringify(favs)); } catch(e){}
+    pintarFavs();
+  });
+  // ── carrusel de fotos de cada tarjeta ──
+  document.addEventListener('click', function(ev){
+    var f = ev.target.closest('.flecha'); if(!f) return;
+    ev.preventDefault(); ev.stopPropagation();
+    var box = f.closest('.foto').querySelector('.fotos'); var w = box.clientWidth;
+    box.scrollBy({left: f.classList.contains('der') ? w : -w, behavior: 'smooth'});
+  });
+  document.addEventListener('scroll', function(ev){
+    var box = ev.target; if(!box.classList || !box.classList.contains('fotos')) return;
+    var i = Math.round(box.scrollLeft / Math.max(1, box.clientWidth));
+    var dots = box.parentNode.querySelectorAll('.dots i'); dots.forEach(function(d, j){ d.style.background = j === i ? '#fff' : 'rgba(255,255,255,.6)'; });
+  }, true);
+  // ── filtros (buscador, deporte, fecha, solo verificadas, precio máx) ──
+  function aplicar(){
+    var n = 0;
+    cards().forEach(function(c){
+      var ok = true;
+      if(filtro.q && c.dataset.t.indexOf(filtro.q) < 0) ok = false;
+      if(filtro.soloOk && c.dataset.ok !== '1') ok = false;
+      if(filtro.max && parseFloat(c.dataset.pnum || '0') > filtro.max) ok = false;
+      c.style.display = ok ? '' : 'none'; if(ok) n++;
+      if(c.dataset.base){ c.setAttribute('href', c.dataset.base + (filtro.fecha ? '?fecha=' + filtro.fecha : '')); }
+    });
+    document.querySelectorAll('.grupo-pais').forEach(function(g){
+      var vis = Array.prototype.some.call(g.querySelectorAll('.lst'), function(c){ return c.style.display !== 'none'; });
+      g.style.display = vis ? '' : 'none';
+    });
+    var v = $('vacio'); if(v) v.style.display = n ? 'none' : '';
+    if(mapa) marcadores.forEach(function(m){ var ok = m._card.style.display !== 'none'; if(ok){ m.addTo(mapa); } else { m.remove(); } });
+  }
+  // Deporte: lo filtra el SERVIDOR (?deporte=), las categorías son enlaces normales (SEO, sin JS).
+  var sQ = $('sQ'), sDep = $('sDep'), sF = $('sF');
+  if(sQ) sQ.addEventListener('input', function(){ filtro.q = sQ.value.trim().toLowerCase(); aplicar(); });
+  if(sDep) sDep.addEventListener('change', function(){ location.href = '/canchas' + (sDep.value ? '?deporte=' + sDep.value : '') + (sF && sF.value ? (sDep.value ? '&' : '?') + 'fecha=' + sF.value : ''); });
+  if(sF) sF.addEventListener('change', function(){ filtro.fecha = sF.value; aplicar(); });
+  var bF = $('btnBuscar'); if(bF) bF.addEventListener('click', function(){ aplicar(); var g = $('grupos'); if(g) g.scrollIntoView({behavior: 'smooth', block: 'start'}); });
+  var bFil = $('btnFiltros'), pFil = $('filtrosPanel');
+  if(bFil) bFil.addEventListener('click', function(){ pFil.classList.toggle('open'); bFil.classList.toggle('on', pFil.classList.contains('open')); });
+  var fOk = $('fOk'); if(fOk) fOk.addEventListener('click', function(){ filtro.soloOk = !filtro.soloOk; fOk.classList.toggle('sel', filtro.soloOk); aplicar(); });
+  document.querySelectorAll('.fMax').forEach(function(b){ b.addEventListener('click', function(){
+    var v = parseFloat(b.dataset.max); filtro.max = (filtro.max === v) ? 0 : v;
+    document.querySelectorAll('.fMax').forEach(function(x){ x.classList.toggle('sel', parseFloat(x.dataset.max) === filtro.max); }); aplicar(); }); });
+  // ── cercanía ──
   function ordenar(){
     if(!yo) return;
     var pais = paisDe(yo.lat, yo.lng);
-    cards.forEach(function(c){ var d = km(yo.lat, yo.lng, parseFloat(c.dataset.lat), parseFloat(c.dataset.lng)); c.dataset.d = d;
+    cards().forEach(function(c){ var d = km(yo.lat, yo.lng, parseFloat(c.dataset.lat), parseFloat(c.dataset.lng)); c.dataset.d = d;
       var el = c.querySelector('.dist'); if(el) el.textContent = 'a ' + fmtKm(d); });
     document.querySelectorAll('.grupo-pais').forEach(function(g){
-      var grid = g.querySelector('.grid');
+      var grid = g.querySelector('.lst-grid'); if(!grid) return;
       var hijos = Array.prototype.slice.call(grid.children).sort(function(a, b){ return parseFloat(a.dataset.d) - parseFloat(b.dataset.d); });
       hijos.forEach(function(h){ grid.appendChild(h); });
     });
     var propio = document.querySelector('.grupo-pais[data-pais="' + pais + '"]');
-    if(propio && propio.parentNode){ propio.parentNode.insertBefore(propio, document.getElementById('grupos').firstChild); var t = propio.querySelector('h2 .cerca'); if(t) t.textContent = ' · cerca de ti'; }
-    $('ubicTxt').textContent = 'Mostrando las canchas más cercanas a ti.';
-    $('btnUbic').style.display = 'none';
+    if(propio && propio.parentNode){ propio.parentNode.insertBefore(propio, $('grupos').firstChild); var t = propio.querySelector('.cerca'); if(t) t.textContent = '· las más cercanas a ti primero'; }
+    var u = $('ubicTxt'); if(u) u.textContent = 'Mostrando las canchas más cercanas a ti.';
+    var bu = $('btnUbic'); if(bu) bu.style.display = 'none';
     descubrir(yo.lat, yo.lng);
     if(mapa){ if(miPin) miPin.remove(); miPin = L.marker([yo.lat, yo.lng], {icon: L.divIcon({className: '', html: '<span class="pin-precio yo">Tú</span>', iconSize: null})}).addTo(mapa);
-      var pts = cards.filter(function(c){ return parseFloat(c.dataset.d) < 60; }).map(function(c){ return [parseFloat(c.dataset.lat), parseFloat(c.dataset.lng)]; });
+      var pts = cards().filter(function(c){ return parseFloat(c.dataset.d) < 60; }).map(function(c){ return [parseFloat(c.dataset.lat), parseFloat(c.dataset.lng)]; });
       pts.push([yo.lat, yo.lng]); mapa.fitBounds(L.latLngBounds(pts).pad(0.2), {maxZoom: 14}); }
   }
-  var descubiertas = {}, pinesDesc = [];
-  function esc2(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function ubicar(interactivo){
+    var u = $('ubicTxt'), bu = $('btnUbic');
+    if(!navigator.geolocation){ if(u) u.textContent = 'Tu navegador no permite ubicación. Busca por zona.'; return; }
+    if(u) u.textContent = 'Buscando tu ubicación…';
+    navigator.geolocation.getCurrentPosition(function(pos){
+      yo = {lat: pos.coords.latitude, lng: pos.coords.longitude};
+      try { localStorage.setItem('pcg_ubic', JSON.stringify(yo)); } catch(e){}
+      ordenar();
+    }, function(){
+      if(u) u.textContent = interactivo ? 'No pudimos leer tu ubicación. Revisa el permiso del navegador o busca por zona.' : 'Permite tu ubicación para ver primero las canchas más cercanas.';
+      if(bu) bu.style.display = '';
+    }, {enableHighAccuracy: false, timeout: 8000, maximumAge: 300000});
+  }
+  // ── descubiertas (Google Places, como el APK) ──
+  function tarjetaDesc(c){
+    var foto = (c.fotos && c.fotos[0]) ? '<img src="' + esc(c.fotos[0]) + '" alt="" loading="lazy">' : '<div class="sinfoto">' + (c.emoji || '🏟️') + '</div>';
+    return '<a class="lst pend" href="' + C.play + '" rel="noopener" data-id="' + esc(c.id) + '" data-lat="' + c.lat + '" data-lng="' + c.lng + '" data-ok="0" data-deps="' + esc(c.deporte) + '" data-nombre="' + esc(c.nombre) + '" data-sub="' + esc(c.direccion) + '" data-precio="' + esc(c.deporte_nombre) + '" data-t="' + esc((c.nombre + ' ' + c.direccion).toLowerCase()) + '">' +
+      '<div class="foto"><div class="fotos">' + foto + '</div><span class="badge pend">Aún sin registrar</span></div>' +
+      '<div class="lb"><div class="l1"><b>' + esc(c.nombre) + '</b><span class="rate">' + esc(c.deporte_nombre) + '</span></div>' +
+      '<div class="l2">' + esc(c.direccion) + '</div><div class="l2"><span class="dist">' + (c.km != null ? 'a ' + fmtKm(c.km) : '') + '</span></div>' +
+      '<div class="l3"><span class="app">📲 Reservar en la app</span> <span class="app">📍 <span class="ir" data-lat="' + c.lat + '" data-lng="' + c.lng + '">Cómo llegar</span></span></div></div></a>';
+  }
+  document.addEventListener('click', function(ev){ var g = ev.target.closest('.ir'); if(!g) return; ev.preventDefault(); ev.stopPropagation();
+    window.open('https://www.google.com/maps/search/?api=1&query=' + g.dataset.lat + ',' + g.dataset.lng, '_blank'); });
   function pintarDescubiertas(lista, conFotos){
     var sec = $('descubiertas'), grid = $('gridDesc');
     if(!sec || !grid) return;
     if(!lista.length){ if(!conFotos) sec.style.display = 'none'; return; }
     sec.style.display = '';
-    var maps = function(c){ return 'https://www.google.com/maps/search/?api=1&query=' + c.lat + ',' + c.lng; };
-    grid.innerHTML = lista.map(function(c){
-      var foto = (c.fotos && c.fotos[0]) ? '<img src="' + esc2(c.fotos[0]) + '" alt="" loading="lazy">' : '<div class="sinfoto">' + (c.emoji || '🏟️') + '</div>';
-      return '<div class="card cancha pend" data-lat="' + c.lat + '" data-lng="' + c.lng + '" data-ok="0" data-nombre="' + esc2(c.nombre) + '" data-sub="' + esc2(c.direccion) + '" data-precio="' + esc2(c.deporte_nombre) + '" data-t="' + esc2((c.nombre + ' ' + c.direccion).toLowerCase()) + '">' + foto +
-        '<div class="cb"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><h3>' + esc2(c.nombre) + '</h3><span class="pill gris">Aún sin registrar</span></div>' +
-        '<div class="m">' + esc2(c.direccion) + '</div><div class="m">' + esc2(c.deporte_nombre) + ' <span class="dist">' + (c.km != null ? 'a ' + fmtKm(c.km) : '') + '</span></div>' +
-        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><a class="btn sec" style="padding:9px 12px;font-size:13px" href="' + C.play + '" rel="noopener">📲 Reservar en la app</a>' +
-        '<a class="btn sec" style="padding:9px 12px;font-size:13px" href="' + maps(c) + '" target="_blank" rel="noopener">📍 Cómo llegar</a></div>' +
-        '<div class="sub" style="font-size:12px;margin-top:6px">¿Es tu cancha? Reclámala en la app y recibe reservas.</div></div></div>';
-    }).join('');
+    grid.innerHTML = lista.map(tarjetaDesc).join('');
     if(mapa && window.L){
       pinesDesc.forEach(function(m){ m.remove(); }); pinesDesc = [];
       lista.forEach(function(c){
-        var m = L.marker([c.lat, c.lng], {icon: L.divIcon({className: '', html: '<span class="pin-precio pend">' + esc2(c.emoji || '') + ' ' + esc2(c.deporte_nombre) + '</span>', iconSize: null})}).addTo(mapa);
-        m.bindPopup('<b>' + esc2(c.nombre) + '</b><br>' + esc2(c.direccion) + '<br><a class="btn sec" href="' + C.play + '">Reservar en la app</a>');
+        var m = L.marker([c.lat, c.lng], {icon: L.divIcon({className: '', html: '<span class="pin-precio pend">' + esc(c.emoji || '') + ' ' + esc(c.deporte_nombre) + '</span>', iconSize: null})}).addTo(mapa);
+        m.bindPopup('<b>' + esc(c.nombre) + '</b><br>' + esc(c.direccion) + '<br><a class="btn sec" href="' + C.play + '">Reservar en la app</a>');
         pinesDesc.push(m);
       });
     }
+    aplicar();
   }
   function descubrir(lat, lng){
     var k = lat.toFixed(2) + ',' + lng.toFixed(2);
@@ -229,120 +299,193 @@ _JS_EXPLORAR = r"""
         if((j.canchas || []).length) fetch('/web/descubrir?lat=' + lat + '&lng=' + lng + '&fotos=1').then(function(r){ return r.json(); }).then(function(j2){ if((j2.canchas || []).length) pintarDescubiertas(j2.canchas, true); }).catch(function(){}); })
       .catch(function(){ if(sec) sec.style.display = 'none'; });
   }
-  function ubicar(interactivo){
-    if(!navigator.geolocation){ $('ubicTxt').textContent = 'Tu navegador no permite ubicación. Busca por zona.'; return; }
-    $('ubicTxt').textContent = 'Buscando tu ubicación…';
-    navigator.geolocation.getCurrentPosition(function(pos){
-      yo = {lat: pos.coords.latitude, lng: pos.coords.longitude};
-      try { localStorage.setItem('pcg_ubic', JSON.stringify(yo)); } catch(e){}
-      ordenar();
-    }, function(){
-      $('ubicTxt').textContent = interactivo ? 'No pudimos leer tu ubicación. Revisa el permiso del navegador o busca por zona.' : 'Permite tu ubicación para ver primero las canchas más cercanas.';
-      $('btnUbic').style.display = '';
-    }, {enableHighAccuracy: false, timeout: 8000, maximumAge: 300000});
-  }
+  // ── mapa (se dibuja al mostrarlo; split view en escritorio, pantalla completa en móvil) ──
   function pintarMapa(){
-    if(!window.L || !$('mapa')) return;
-    var centro = C.centro; mapa = L.map('mapa', {scrollWheelZoom: false}).setView(centro, 12);
+    if(mapa || !window.L || !$('mapa')) return;
+    mapa = L.map('mapa', {scrollWheelZoom: true}).setView(C.centro, 12);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19, attribution: '&copy; OpenStreetMap'}).addTo(mapa);
     var pts = [];
-    cards.forEach(function(c){
+    cards().forEach(function(c){
       var lat = parseFloat(c.dataset.lat), lng = parseFloat(c.dataset.lng); if(!lat && !lng) return;
+      if(c.classList.contains('pend') && c.dataset.id.indexOf('gp_') === 0) return;
       pts.push([lat, lng]);
       var ok = c.dataset.ok === '1';
-      var m = L.marker([lat, lng], {icon: L.divIcon({className: '', html: '<span class="pin-precio' + (ok ? '' : ' pend') + '">' + c.dataset.precio + '</span>', iconSize: null})}).addTo(mapa);
-      m.bindPopup('<b>' + c.dataset.nombre + '</b><br>' + c.dataset.sub + '<br><span style="font-weight:800">' + c.dataset.precio + ' por hora</span><br><a class="btn' + (ok ? '' : ' sec') + '" href="' + c.getAttribute('href') + '">' + (ok ? 'Ver horarios' : 'Reservar en la app') + '</a>');
-      m.on('click', function(){ c.scrollIntoView({behavior: 'smooth', block: 'center'}); });
-      marcadores.push(m);
+      var m = L.marker([lat, lng], {icon: L.divIcon({className: '', html: '<span class="pin-precio' + (ok ? '' : ' pend') + '">' + c.dataset.precio + '</span>', iconSize: null})});
+      m._card = c;
+      m.bindPopup('<b>' + esc(c.dataset.nombre) + '</b><br>' + esc(c.dataset.sub) + '<br><span style="font-weight:800">' + esc(c.dataset.precio) + ' por hora</span><br><a class="btn' + (ok ? '' : ' sec') + '" href="' + c.getAttribute('href') + '">' + (ok ? 'Ver horarios' : 'Reservar en la app') + '</a>');
+      m.on('mouseover', function(){ c.style.outline = '2px solid #0E8F67'; c.style.outlineOffset = '4px'; c.style.borderRadius = '14px'; });
+      m.on('mouseout', function(){ c.style.outline = ''; });
+      marcadores.push(m); m.addTo(mapa);
     });
+    if(yo){ miPin = L.marker([yo.lat, yo.lng], {icon: L.divIcon({className: '', html: '<span class="pin-precio yo">Tú</span>', iconSize: null})}).addTo(mapa); pts.push([yo.lat, yo.lng]); }
     if(pts.length) mapa.fitBounds(L.latLngBounds(pts).pad(0.25), {maxZoom: 13});
+    // Las descubiertas ya pintadas también van al mapa.
+    var desc = Array.prototype.slice.call(document.querySelectorAll('#gridDesc .lst'));
+    desc.forEach(function(c){ var m = L.marker([parseFloat(c.dataset.lat), parseFloat(c.dataset.lng)], {icon: L.divIcon({className: '', html: '<span class="pin-precio pend">' + esc(c.dataset.precio) + '</span>', iconSize: null})}).addTo(mapa);
+      m.bindPopup('<b>' + esc(c.dataset.nombre) + '</b><br>' + esc(c.dataset.sub) + '<br><a class="btn sec" href="' + C.play + '">Reservar en la app</a>'); pinesDesc.push(m); });
+    aplicar();
   }
-  var b = $('buscar');
-  if(b) b.addEventListener('input', function(){ var q = b.value.trim().toLowerCase();
-    cards.forEach(function(c){ c.style.display = (!q || c.dataset.t.indexOf(q) >= 0) ? '' : 'none'; }); });
-  $('btnUbic').addEventListener('click', function(){ ubicar(true); });
-  pintarMapa();
+  var expl = $('expl'), btnMapa = $('btnMapa');
+  function verMapa(on){
+    expl.classList.toggle('con-mapa', on);
+    btnMapa.innerHTML = on ? '<span>Mostrar lista</span> ☰' : '<span>Mostrar mapa</span> 🗺️';
+    try { localStorage.setItem('pcg_mapa', on ? '1' : '0'); } catch(e){}
+    if(on){ pintarMapa(); setTimeout(function(){ if(mapa) mapa.invalidateSize(); }, 60); }
+  }
+  if(btnMapa) btnMapa.addEventListener('click', function(){ verMapa(!expl.classList.contains('con-mapa')); });
+  var bu = $('btnUbic'); if(bu) bu.addEventListener('click', function(){ ubicar(true); });
+  pintarFavs();
   try { var g = JSON.parse(localStorage.getItem('pcg_ubic') || 'null'); if(g && g.lat){ yo = g; ordenar(); } } catch(e){}
   ubicar(false);
-  // Sin ubicación todavía: descubre alrededor del centro por defecto para que
-  // la pantalla inicial ya venga poblada.
   if(!yo) descubrir(C.centro[0], C.centro[1]);
+  aplicar();
+  try { if(localStorage.getItem('pcg_mapa') === '1' && window.innerWidth > 900) verMapa(true); } catch(e){}
 })();
 """
 
+_LUPA = ("<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3' stroke-linecap='round'>"
+         "<circle cx='11' cy='11' r='7'/><path d='M20 20l-3.5-3.5'/></svg>")
+_CORAZON = "<svg viewBox='0 0 24 24'><path d='M12 21s-7.5-4.6-9.5-9.2C1.2 8.6 3.2 5 6.8 5c2 0 3.4 1.1 5.2 3 1.8-1.9 3.2-3 5.2-3 3.6 0 5.6 3.6 4.3 6.8C19.5 16.4 12 21 12 21z'/></svg>"
+CATEGORIAS = [("", "Todas", "🏟️"), ("futbol", "Fútbol", "⚽"), ("tenis", "Tenis", "🎾"), ("padel", "Pádel", "🏓"),
+              ("futsal", "Futsal", "🥅"), ("pickleball", "Pickleball", "🥒"), ("voley", "Vóley", "🏐"),
+              ("basquet", "Básquet", "🏀")]
 
-@router.get("/canchas", response_class=HTMLResponse)
-def pagina_canchas(deporte: str = "") -> HTMLResponse:
-    """Pantalla inicial de la web (como Explorar en el app): pide ubicación,
-    ordena por cercanía, mapa con las canchas y el país del usuario primero."""
+
+def _nav_explorar(dep: str) -> str:
+    """Cabecera tipo Airbnb: wordmark, buscador en pastilla (Dónde · Deporte ·
+    Cuándo · lupa), 'Pon tu cancha' y la app; debajo, categorías con ícono."""
+    ops = "".join(f"<option value='{k}'{' selected' if k == dep else ''}>{n}</option>" for k, n, _ in CATEGORIAS)
+    hoy = date.today().isoformat()
+    cats = "".join(f"<a class='cat{' sel' if k == dep else ''}' href='/canchas{('?deporte=' + k) if k else ''}' data-dep='{k}'>"
+                   f"<span class='ico'>{ico}</span>{n}</a>" for k, n, ico in CATEGORIAS)
+    return (
+        "<header class='nav abnb'><div class='wrap-xl nav-in'>"
+        f"{ui.wordmark(24)}"
+        "<div class='busq' role='search'>"
+        "<label class='seg donde'><small>Dónde</small><input id='sQ' placeholder='Busca por zona, club o cancha' autocomplete='off'></label>"
+        f"<label class='seg dep'><small>Deporte</small><select id='sDep'>{ops}</select></label>"
+        f"<label class='seg cuando'><small>Cuándo</small><input id='sF' type='date' min='{hoy}'></label>"
+        f"<button class='lupa' id='btnBuscar' aria-label='Buscar'>{_LUPA}</button></div>"
+        f"<nav class='links'><a class='host' href='{PLAY_URL}' rel='noopener'>Pon tu cancha en Pichangol</a>"
+        f"<a class='cta' href='{PLAY_URL}' rel='noopener'>Descarga la app</a></nav>"
+        "</div>"
+        f"<div class='wrap-xl cats'><div class='cat-strip'>{cats}</div>"
+        "<button class='filtros' id='btnFiltros'>⚙️ Filtros</button></div>"
+        "<div class='wrap-xl filtros-panel' id='filtrosPanel'>"
+        "<span class='chip' id='fOk'>✓ Solo verificadas</span>"
+        "<span class='sub' style='margin:0 4px 0 8px'>Precio máx.:</span>"
+        "<span class='chip fMax' data-max='40'>40</span><span class='chip fMax' data-max='60'>60</span>"
+        "<span class='chip fMax' data-max='100'>100</span><span class='chip fMax' data-max='150'>150</span>"
+        "</div></header>")
+
+
+def _tarjeta(c: dict, rating: tuple[float, int] | None, fecha: str = "") -> str:
+    sim, _iso = _moneda_de(c)
+    deps = _deportes_de(c)
+    deps_txt = " · ".join(_deporte(d)[0] for d in deps[:3])
+    texto = f"{c['nombre']} {c.get('club', '')} {_zona(c)} {deps_txt} {c.get('direccion', '')}".lower()
+    sub = " · ".join(x for x in (c.get("club"), _zona(c)) if x)
+    ok = datos.reservable(c)
+    fs = _fotos(c)
+    if fs:
+        fotos = "".join(f"<img src='{e(u)}' alt='' loading='lazy'>" for u in fs[:5])
+    else:
+        fotos = f"<div class='sinfoto'>{_deporte(c.get('deporte'))[1]}</div>"
+    extra = ""
+    if len(fs) > 1:
+        extra = ("<button class='flecha izq' aria-label='Anterior'>‹</button><button class='flecha der' aria-label='Siguiente'>›</button>"
+                 f"<div class='dots'>{''.join('<i></i>' for _ in fs[:5])}</div>")
+    badge = "<span class='badge'>✓ Verificada</span>" if ok else "<span class='badge pend'>Aún sin verificar</span>"
+    if rating and rating[1] > 0:
+        rate = f"<span class='rate'>★ {rating[0]:.1f}".replace(".", ",") + f" <span style='color:var(--tenue);font-weight:600'>({rating[1]})</span></span>"
+    else:
+        rate = "<span class='rate' style='color:var(--tenue);font-weight:600'>Nuevo</span>"
+    base = f"/reservar/{c['id']}"
+    href = base + (f"?fecha={fecha}" if fecha else "")
+    l3 = (f"<div class='l3'><b>{e(sim)} {c['precio_hora']:.0f}</b> <span style='color:var(--tenue)'>por hora</span></div>"
+          if ok else
+          f"<div class='l3'><b>{e(sim)} {c['precio_hora']:.0f}</b> <span style='color:var(--tenue)'>por hora</span>"
+          "<br><span class='app'>📲 Reservar en la app</span></div>")
+    return (f"<a class='lst{'' if ok else ' pend'}' href='{e(href)}' data-base='{e(base)}' data-id='{e(c['id'])}' data-t='{e(texto)}' "
+            f"data-deps='{e(' '.join(deps))}' data-lat='{c.get('lat')}' data-lng='{c.get('lng')}' data-nombre='{e(c['nombre'])}' "
+            f"data-sub='{e(sub)}' data-precio='{e(sim)} {c['precio_hora']:.0f}' data-pnum='{c['precio_hora']:.2f}' data-ok='{1 if ok else 0}'>"
+            f"<div class='foto'><div class='fotos'>{fotos}</div>{badge}"
+            f"<button class='corazon' aria-label='Guardar'>{_CORAZON}</button>{extra}</div>"
+            f"<div class='lb'><div class='l1'><b>{e(c['nombre'])}</b>{rate}</div>"
+            f"<div class='l2'>{e(sub) or e(c.get('direccion', ''))}</div>"
+            f"<div class='l2'>{e(deps_txt)} · turnos de {c['duracion_slot_min']} min <span class='dist'></span></div>"
+            f"{l3}</div></a>")
+
+
+def _explorar(deporte: str = "", fecha: str = "") -> HTMLResponse:
+    """RAÍZ del dominio, tipo Airbnb: buscador en pastilla, categorías por
+    deporte, grilla de tarjetas con foto/corazón/★, "Mostrar mapa" (split
+    view en escritorio), cercanía por ubicación y canchas descubiertas en
+    Google; debajo, las secciones de marca/comercio (servicios y precios,
+    términos, cancelaciones, Libro de Reclamaciones) que revisan Culqi e
+    INDECOPI."""
     todas = datos.canchas_publicas()
     dep = (deporte or "").strip().lower()
-    disponibles = sorted({d for c in todas for d in _deportes_de(c)})
     lista = [c for c in todas if not dep or dep in _deportes_de(c)]
+    fecha = fecha if _es_iso(fecha) else ""
+    ratings = datos.ratings([c["id"] for c in lista])
     por_pais: dict[str, list[dict]] = {}
     for c in lista:
         por_pais.setdefault(_pais_de(c), []).append(c)
-    filtros = (f"<a class='chip{' sel' if not dep else ''}' href='/canchas'>Todas</a>"
-               + "".join(f"<a class='chip{' sel' if dep == k else ''}' href='/canchas?deporte={k}'>"
-                         f"{_deporte(k)[1]} {_deporte(k)[0]}</a>" for k in disponibles))
-    cuerpo = ("<div style='padding:26px 0 8px'><h1>¿Dónde juegas hoy?</h1>"
-              "<p class='sub'>Canchas verificadas por Pichangol. Elige, mira los horarios libres y paga "
-              "con Yape o tarjeta. Comprobante al instante.</p></div>"
-              "<div class='ubic'><span>📍</span><span class='t' id='ubicTxt'>Permite tu ubicación para ver primero las canchas más cercanas.</span>"
-              "<button class='btn' id='btnUbic'>Usar mi ubicación</button></div>"
-              "<div class='panel' style='padding:14px 16px;margin-bottom:18px'>"
-              "<input id='buscar' placeholder='Buscar por nombre, club o zona…' autocomplete='off' style='margin-bottom:12px'>"
-              f"<div class='chips'>{filtros}</div></div>")
-    if lista:
-        cuerpo += "<div class='mapa' id='mapa' aria-label='Mapa de canchas'></div>"
-    else:
-        cuerpo += ("<div class='panel'><h3>Todavía no hay canchas publicadas aquí</h3>"
-                   "<p class='sub'>Estamos sumando locales. En la app ya puedes explorar el mapa completo.</p>"
-                   f"<div class='acciones'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a></div></div>")
-    cuerpo += "<div id='grupos'>"
+    cuerpo = ("<div class='ubic-mini'><span>📍</span><span id='ubicTxt'>Permite tu ubicación para ver primero las canchas más cercanas.</span>"
+              "<button id='btnUbic'>Usar mi ubicación</button></div>")
+    cuerpo += "<div class='expl' id='expl'><div class='lista'><div id='grupos'>"
     for pais in ("PE", "EC", "BO"):
         lst = por_pais.get(pais) or []
         if not lst:
             continue
-        cards = ""
-        for c in lst:
-            sim, _iso = _moneda_de(c)
-            deps = " · ".join(_deporte(d)[0] for d in _deportes_de(c)[:3])
-            texto = f"{c['nombre']} {c.get('club', '')} {_zona(c)} {deps}".lower()
-            sub = " · ".join(x for x in (c.get("club"), _zona(c)) if x)
-            ok = datos.reservable(c)
-            sello = ui.sello_verificada() if ok else "<span class='pill gris'>Aún sin verificar</span>"
-            accion = ("" if ok else
-                      "<div style='margin-top:8px'><span class='btn sec' style='padding:9px 12px;font-size:13px'>"
-                      "📲 Reservar en la app</span></div>")
-            cards += (f"<a class='card cancha{'' if ok else ' pend'}' href='/reservar/{e(c['id'])}' data-t='{e(texto)}' "
-                      f"data-lat='{c.get('lat')}' data-lng='{c.get('lng')}' data-nombre='{e(c['nombre'])}' "
-                      f"data-sub='{e(sub)}' data-precio='{e(sim)} {c['precio_hora']:.0f}' data-ok='{1 if ok else 0}' "
-                      "style='text-decoration:none;color:inherit'>"
-                      f"{_foto_card(c)}<div class='cb'>"
-                      f"<div style='display:flex;justify-content:space-between;gap:8px;align-items:center'>"
-                      f"<h3>{e(c['nombre'])}</h3>{sello}</div>"
-                      f"<div class='m'>{e(sub)}</div>"
-                      f"<div class='m'>{e(deps)} · turnos de {c['duracion_slot_min']} min <span class='dist'></span></div>"
-                      f"<div class='precio' style='margin-top:6px'>{e(sim)} {c['precio_hora']:.2f} <small>por hora</small></div>"
-                      f"{accion}</div></a>")
-        cuerpo += (f"<section class='grupo-pais' data-pais='{pais}'><h2 style='margin:26px 0 12px;display:flex;align-items:center;gap:8px'>"
-                   f"{ui.bandera(pais)} {NOMBRE_PAIS[pais]}<span class='cerca' style='color:var(--tenue);font-weight:600;font-size:14px'></span></h2>"
-                   f"<div class='grid'>{cards}</div></section>")
+        cards = "".join(_tarjeta(c, ratings.get(c["id"]), fecha) for c in lst)
+        cuerpo += (f"<section class='grupo-pais' data-pais='{pais}'><div class='tit'><h2>{ui.bandera(pais)} Canchas en {NOMBRE_PAIS[pais]}"
+                   f"<span class='cerca'></span></h2></div><div class='lst-grid'>{cards}</div></section>")
     cuerpo += "</div>"
-    cuerpo += ("<section id='descubiertas' style='display:none'><h2 style='margin:26px 0 4px'>Más canchas cerca de ti</h2>"
-               "<p class='sub' style='margin-bottom:12px'>Locales que aún no están en Pichangol. Reserva desde la app o, si es "
-               "tuyo, reclámalo y empieza a recibir reservas.</p><div class='grid' id='gridDesc'></div></section>")
+    if not lista:
+        cuerpo += ("<div class='vacio' id='vacio'><h3>Todavía no hay canchas publicadas aquí</h3>"
+                   "<p class='sub'>Estamos sumando locales. En la app ya puedes explorar el mapa completo.</p>"
+                   f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a></div></div>")
+    else:
+        cuerpo += "<div class='vacio' id='vacio' style='display:none'>No hay canchas con esos filtros. Prueba con otro deporte o zona.</div>"
+    if todas and not lista:
+        cuerpo += ("<div class='vacio'>Todavía no hay canchas de este deporte. "
+                   "<a href='/canchas'>Ver todas las canchas</a></div>")
+    cuerpo += ("<section id='descubiertas' style='display:none'><div class='tit'><h2>Más canchas cerca de ti</h2></div>"
+               "<p class='sub' style='margin:-4px 0 12px'>Locales que aún no están en Pichangol. Reserva desde la app o, si es tu "
+               "cancha, ¡Reclámala! y empieza a recibir reservas.</p><div class='lst-grid' id='gridDesc'></div></section>")
+    cuerpo += "</div><aside class='mapa-lado'><div class='mapa' id='mapa' aria-label='Mapa de canchas'></div></aside></div>"
+    cuerpo += "<button class='btn-mapa' id='btnMapa'><span>Mostrar mapa</span> 🗺️</button>"
+    css_m, html_m, js_m = marca.secciones()
+    if html_m:
+        cuerpo += f"<div class='marca'>{html_m}</div>"
     centro = list(CIUDAD_DEFECTO["PE"])
     if lista:
         c0 = lista[0]
         centro = [c0.get("lat") or centro[0], c0.get("lng") or centro[1]]
-    cfg = json.dumps({"cajas": {k: list(v) for k, v in _CAJAS.items()}, "centro": centro, "play": PLAY_URL})
+    cfg = json.dumps({"cajas": {k: list(v) for k, v in _CAJAS.items()}, "centro": centro, "play": PLAY_URL, "dep": dep})
     head = ("<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' crossorigin=''>"
-            "<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' crossorigin=''></script>")
+            "<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' crossorigin=''></script>"
+            + (f"<style>{css_m}</style>" if css_m else ""))
     cuerpo += f"<script>window.__explorar={cfg};</script><script>{_JS_EXPLORAR}</script>"
-    return ui.shell("Canchas", cuerpo, extra_head=head,
-                    desc="Reserva canchas de fútbol, tenis y pádel cerca de ti y paga con Yape o tarjeta.")
+    if js_m:
+        cuerpo += f"<script>{js_m}</script>"
+    canonical = f"{config.PUBLIC_BASE_URL.rstrip('/')}/" if getattr(config, "PUBLIC_BASE_URL", "") else ""
+    return ui.shell("Pichangol", cuerpo, extra_head=head, nav=_nav_explorar(dep), ancho=True,
+                    titulo_tab="Pichangol · Reserva canchas de fútbol, tenis y pádel", canonical=canonical,
+                    desc="Reserva canchas de fútbol, tenis y pádel cerca de ti y paga con Yape o tarjeta. Perú, Ecuador y Bolivia.")
+
+
+@router.get("/", response_class=HTMLResponse, include_in_schema=False)
+def pagina_inicio(deporte: str = "", fecha: str = "") -> HTMLResponse:
+    return _explorar(deporte, fecha)
+
+
+@router.get("/canchas", response_class=HTMLResponse)
+def pagina_canchas(deporte: str = "", fecha: str = "") -> HTMLResponse:
+    """Alias histórico del explorador (enlaces de la app, la home y el pie)."""
+    return _explorar(deporte, fecha)
 
 
 # ── descubrir (Google Places, como el APK) ────────────────────────────────────
@@ -422,7 +565,7 @@ def _es_iso(s: str) -> bool:
 
 _JS_RESERVA = r"""
 (function(){
-  var C = window.__cancha, sel = {}, slots = [], hold = null, fechaSel = C.hoy;
+  var C = window.__cancha, sel = {}, slots = [], hold = null, fechaSel = C.fecha || C.hoy;
   var $ = function(id){ return document.getElementById(id); };
   var fmt = function(n){ return C.moneda + ' ' + Number(n).toFixed(2); };
   var esc = function(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); };
@@ -467,7 +610,7 @@ _JS_RESERVA = r"""
         slots = j.slots;
         var libres = slots.filter(function(s){ return !s.ocupado; }).length;
         if(!slots.length){
-          if(fechaSel === C.hoy && !C._salto && C.dias[1]){ C._salto = true; fechaSel = C.dias[1].iso; pintarDias(); cargar(); return; }
+          if(fechaSel === C.hoy && !C.fecha && !C._salto && C.dias[1]){ C._salto = true; fechaSel = C.dias[1].iso; pintarDias(); cargar(); return; }
           $('slots').innerHTML = '<span class="sub">No quedan turnos para este día. Prueba otra fecha.</span>'; return; }
         $('slots').innerHTML = slots.map(function(s, i){
           var cls = 'chip' + (s.ocupado ? ' off' : '');
@@ -621,7 +764,7 @@ def _jsonld_cancha(c: dict, sim: str) -> str:
 
 
 @router.get("/reservar/{cancha_id}", response_class=HTMLResponse)
-def pagina_reservar(cancha_id: str) -> HTMLResponse:
+def pagina_reservar(cancha_id: str, fecha: str = "") -> HTMLResponse:
     c = datos.cancha(cancha_id)
     if not c or c.get("eliminada") or not c.get("registrada", True):
         return _no_encontrada()
@@ -671,7 +814,9 @@ def pagina_reservar(cancha_id: str) -> HTMLResponse:
         extras_html = f"<div class='paso'><span>3</span> Servicios extra <small style='color:var(--tenue);font-weight:600'>(opcional)</small></div>{filas}"
 
     cfg = json.dumps({"id": c["id"], "moneda": sim, "pk": config.CULQI_PUBLIC_KEY, "maxSlots": MAX_SLOTS,
-                      "logo": "", "hoy": dias[0]["iso"], "dias": dias, "etiquetas": etiquetas}, ensure_ascii=False)
+                      "logo": "", "hoy": dias[0]["iso"], "dias": dias, "etiquetas": etiquetas,
+                      # Día preseleccionado desde el buscador de la portada (solo si cae en la tira).
+                      "fecha": fecha if any(d["iso"] == fecha for d in dias) else ""}, ensure_ascii=False)
     cuerpo = (
         f"<div style='padding-top:22px'>{ficha}</div>"
         "<div class='dos' style='margin-top:22px'>"
