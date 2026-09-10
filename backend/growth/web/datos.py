@@ -60,6 +60,49 @@ def _norm_cancha(d: dict) -> dict:
     return d
 
 
+# ── Cosecha de fotos por lugar (`pichangol_lugares_fotos`) ────────────────────
+# Una consulta a Google por lugar, UNA vez: la primera foto resuelta se guarda
+# aquí y se refresca sola pasados 30 días (límite de caché de los términos de
+# Google Maps Platform). Fail-safe: sin tabla, la web resuelve en vivo.
+
+FOTOS_VIGENCIA_SEG = 30 * 24 * 3600
+
+
+def leer_fotos_lugar(clave: str) -> tuple[list[str], bool] | None:
+    """(fotos, vigente) guardadas para `clave`, o None si no hay fila/tabla.
+    `vigente`=False → hay que refrescar (pero sirven mientras tanto)."""
+    if not pg.habilitado or not clave:
+        return None
+    try:
+        with pg._conn() as conn, conn.cursor() as cur:
+            cur.execute("SELECT fotos, extract(epoch from (now() - actualizado)) "
+                        "FROM pichangol_lugares_fotos WHERE clave = %s", (clave,))
+            f = cur.fetchone()
+            if not f:
+                return None
+            fotos = [str(u) for u in _json_list(f[0]) if str(u).startswith("http")]
+            return fotos, float(f[1] or 0) < FOTOS_VIGENCIA_SEG
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def guardar_fotos_lugar(clave: str, nombre: str, lat: float, lng: float, fotos: list[str]) -> bool:
+    if not pg.habilitado or not clave:
+        return False
+    try:
+        with pg._conn() as conn, conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO pichangol_lugares_fotos (clave, nombre, lat, lng, fotos, actualizado) "
+                "VALUES (%s, %s, %s, %s, %s::jsonb, now()) "
+                "ON CONFLICT (clave) DO UPDATE SET nombre = EXCLUDED.nombre, lat = EXCLUDED.lat, "
+                "lng = EXCLUDED.lng, fotos = EXCLUDED.fotos, actualizado = now()",
+                (clave, (nombre or "")[:200], lat, lng, json.dumps(fotos[:3])))
+            conn.commit()
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def ratings(ids: list[str]) -> dict[str, tuple[float, int]]:
     """Reputación real por cancha desde `pichangol_resenas` (las mismas
     reseñas ⭐ del APK): id → (promedio, cantidad). Fail-safe: {} sin base o

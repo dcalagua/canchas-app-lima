@@ -408,6 +408,26 @@ def test_primera_foto_siempre_como_el_app(db, monkeypatch):
     assert client.get("/web/foto?id=gp_P1&nombre=X&lat=-12.09&lng=-77.0").json()["fotos"] == []  # en pausa
     monkeypatch.setattr(d, "_pausa_hasta", 0.0)
     assert client.get("/web/foto?id=gp_P1&nombre=X&lat=-12.09&lng=-77.0").json()["fotos"] == ["https://lh3/a", "https://lh3/b"]
+    # COSECHA en Supabase: lo guardado y vigente se usa sin tocar Google; lo
+    # resuelto se guarda (clave = place_id, o cancha:<id> para registradas).
+    d.limpiar_cache()
+    guardadas = {}
+    monkeypatch.setattr(datos, "guardar_fotos_lugar", lambda clave, nombre, lat, lng, fotos: guardadas.__setitem__(clave, fotos) or True)
+    monkeypatch.setattr(datos, "leer_fotos_lugar", lambda clave: (["https://db/vieja.jpg"], True) if clave == "P7" else None)
+    pedidas.clear()
+    assert client.get("/web/foto?id=gp_P7&nombre=X&lat=-12.09&lng=-77.0").json()["fotos"] == ["https://db/vieja.jpg"]
+    assert pedidas == []  # ni una llamada a Google
+    assert client.get("/web/foto?id=gp_P1&nombre=X&lat=-12.09&lng=-77.0").json()["fotos"] == ["https://lh3/a", "https://lh3/b"]
+    assert guardadas["P1"] == ["https://lh3/a", "https://lh3/b"]
+    assert client.get("/web/foto?id=c_lima").json()["fotos"] == ["https://lh3/z"] and guardadas["cancha:c_lima"] == ["https://lh3/z"]
+    # Vencida (>30 días) → se refresca con Google; si Google falla, vale la vieja.
+    d.limpiar_cache()
+    monkeypatch.setattr(datos, "leer_fotos_lugar", lambda clave: (["https://db/vieja.jpg"], False))
+    monkeypatch.setattr(d, "_http_json", http_429)
+    monkeypatch.setattr(d, "_pausa_hasta", 0.0)
+    assert client.get("/web/foto?id=gp_P8&nombre=X&lat=-12.09&lng=-77.0").json()["fotos"] == ["https://db/vieja.jpg"]
+    monkeypatch.setattr(d, "_http_json", fake_http)
+    monkeypatch.setattr(datos, "leer_fotos_lugar", lambda clave: None)
     # Dedup de descubiertas también por CLUB: "Fútbol 1" del club "Sabor Golazo -
     # Futbol 7" ES el lugar "Sabor Golazo" de Google → no sale duplicado.
     d.limpiar_cache()

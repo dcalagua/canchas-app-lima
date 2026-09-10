@@ -350,7 +350,7 @@ def _elegir_lugar(crudos: list[dict], nombre: str, club: str, lat: float, lng: f
 
 
 def fotos_de_lugar(nombre: str, club: str, lat: float, lng: float, region: str = "PE",
-                   place_id: str = "") -> list[str]:
+                   place_id: str = "", cancha_id: str = "") -> list[str]:
     """Fotos públicas de Google del lugar donde está la cancha (o [] si no
     hay). Primero la Edge Function (misma que el APK); si no trae fotos y hay
     `PLACES_API_KEY`, el backend las resuelve directo. Fail-safe y con caché."""
@@ -366,8 +366,19 @@ def fotos_de_lugar(nombre: str, club: str, lat: float, lng: float, region: str =
         hit = _cache_fotos.get(key)
     if hit and ahora - hit[0] < TTL_FOTO_SEG:
         return list(hit[1])
+    # COSECHA en Supabase (`pichangol_lugares_fotos`): se paga UNA vez por
+    # lugar; pasados 30 días se refresca (y mientras tanto se usa lo guardado).
+    from web import datos  # import perezoso (datos importa pg)
+    clave_db = place_id or (f"cancha:{cancha_id}" if cancha_id else "")
+    guardado = datos.leer_fotos_lugar(clave_db) if clave_db else None
+    if guardado is not None:
+        fotos_db, vigente = guardado
+        if vigente and (fotos_db or ahora - _sin_foto_visto.get(clave_db, 0) < 6 * 3600):
+            with _lock:
+                _cache_fotos[key] = (ahora, fotos_db)
+            return list(fotos_db)
     if _en_pausa():
-        return []  # cuota de Google agotada hace poco: no insistir, sin cachear
+        return list(guardado[0]) if guardado else []  # cuota agotada hace poco: no insistir
     with _semaforo:
         if config.PLACES_API_KEY:
             fotos, ok = _fotos_directo(place_id, nombre, club, lat, lng, region)
@@ -387,10 +398,22 @@ def fotos_de_lugar(nombre: str, club: str, lat: float, lng: float, region: str =
         with _lock:
             # Sin fotos se cachea poco (10 min): el lugar puede no tener aún.
             _cache_fotos[key] = (ahora if fotos else ahora - TTL_FOTO_SEG + 600, fotos)
+        if clave_db:
+            datos.guardar_fotos_lugar(clave_db, nombre, lat, lng, fotos)
+            if not fotos:
+                _sin_foto_visto[clave_db] = ahora
+    elif guardado:
+        return list(guardado[0])  # error de red/cuota: lo guardado vale aunque esté viejo
     return fotos
+
+
+# Lugares que Google confirmó SIN fotos (para no volver a preguntar cada visita
+# aunque la fila cosechada esté vacía): se reintenta cada 6 h.
+_sin_foto_visto: dict[str, float] = {}
 
 
 def limpiar_cache() -> None:
     with _lock:
         _cache.clear()
         _cache_fotos.clear()
+        _sin_foto_visto.clear()

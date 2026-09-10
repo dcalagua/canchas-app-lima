@@ -571,7 +571,8 @@ def foto_web(id: str = "", nombre: str = "", club: str = "", lat: float = 0.0, l
         return {"ok": False, "fotos": []}
     region = pais_de_coordenadas(lat, lng)
     place_id = id[3:] if id.startswith("gp_") else ""
-    fotos = descubrir.fotos_de_lugar(nombre, club, lat, lng, region=region, place_id=place_id)
+    fotos = descubrir.fotos_de_lugar(nombre, club, lat, lng, region=region, place_id=place_id,
+                                     cancha_id="" if place_id else id)
     return {"ok": True, "fotos": fotos, "origen": "google" if fotos else ""}
 
 

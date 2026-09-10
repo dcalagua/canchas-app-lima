@@ -273,7 +273,20 @@ para la API del APK.
   que devolvió la Edge, cuántos con foto, `diag` de Google, origen) para
   diagnosticar sin adivinar. Dedup de descubiertas también por CLUB
   (`registradas` lleva `club`; "Fútbol 1" del club "Sabor Golazo" = el
-  lugar de Google). Test `test_primera_foto_siempre_como_el_app`.
+  lugar de Google). **CUOTA (trampa real, sep-2026):** la 1.ª versión pedía
+  la foto de cada tarjeta vía la Edge (12 Text Search por tarjeta) →
+  Google 429 "SearchTextRequest per minute" y NADA tenía foto. Regla:
+  con `PLACES_API_KEY` es UNA llamada a Google por lugar (Place Details por
+  id / un Text Search por club) y la Edge solo sin llave; semáforo de 3 en
+  el servidor; un 429 pausa 60 s sin cachear vacíos; el navegador pide
+  fotos solo de las tarjetas visibles (IntersectionObserver, 2 a la vez).
+  **COSECHA de fotos** (`pichangol_lugares_fotos`, SQL
+  `docs/piloto/supabase_lugares_fotos.sql`; `datos.leer/guardar_fotos_lugar`):
+  la primera foto resuelta se guarda por `place_id` (o `cancha:<id>`) y se
+  paga UNA vez; se refresca sola a los 30 días (tope de caché de los
+  términos de Google; nunca se descarga el archivo) y, si Google falla, vale
+  la guardada. Lugares que Google confirma SIN foto se reintentan cada 6 h.
+  Test `test_primera_foto_siempre_como_el_app`.
 - El apex `pichangol.app` (sin `www`) sigue libre (podría redirigir al `www`).
 
 ## Estrategia de ambientes (piloto → prod)
