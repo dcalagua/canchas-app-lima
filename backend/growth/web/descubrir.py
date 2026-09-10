@@ -391,6 +391,13 @@ def fotos_de_lugar(nombre: str, club: str, lat: float, lng: float, region: str =
             with _lock:
                 _cache_fotos[key] = (ahora, fotos_db)
             return list(fotos_db)
+    if place_id and not forzar:
+        with _lock:
+            de_edge = _fotos_edge.get(place_id)
+        if de_edge:
+            with _lock:
+                _cache_fotos[key] = (ahora, de_edge)
+            return list(de_edge)
     if _en_pausa():
         return list(guardado[0]) if guardado else []  # cuota agotada hace poco: no insistir
     with _semaforo:
@@ -421,6 +428,28 @@ def fotos_de_lugar(nombre: str, club: str, lat: float, lng: float, region: str =
     return fotos
 
 
+# Fotos que la Edge ya trajo para un lugar (pagadas en el descubrimiento de la
+# zona): se recuerdan en memoria y se cosechan en Supabase para que /web/foto
+# no vuelva a preguntarle a Google por ese place_id.
+_fotos_edge: dict[str, list[str]] = {}
+_edge_cosechadas: set[str] = set()
+
+
+def recordar_fotos_edge(c: dict) -> None:
+    pid = str(c.get("id") or "")
+    fotos = [str(u) for u in (c.get("fotos") or []) if str(u).startswith("http")]
+    if not pid.startswith("gp_") or not fotos:
+        return
+    place_id = pid[3:]
+    with _lock:
+        _fotos_edge[place_id] = fotos[:3]
+        nueva = place_id not in _edge_cosechadas
+        _edge_cosechadas.add(place_id)
+    if nueva:
+        from web import datos
+        datos.guardar_fotos_lugar(place_id, str(c.get("nombre") or ""), c.get("lat"), c.get("lng"), fotos[:3])
+
+
 # Lugares que Google confirmó SIN fotos (para no volver a preguntar cada visita
 # aunque la fila cosechada esté vacía): se reintenta cada 6 h.
 _sin_foto_visto: dict[str, float] = {}
@@ -431,3 +460,5 @@ def limpiar_cache() -> None:
         _cache.clear()
         _cache_fotos.clear()
         _sin_foto_visto.clear()
+        _fotos_edge.clear()
+        _edge_cosechadas.clear()

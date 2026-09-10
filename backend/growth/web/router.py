@@ -174,7 +174,7 @@ _JS_EXPLORAR = r"""
 (function(){
   var C = window.__explorar, $ = function(id){ return document.getElementById(id); };
   var cards = function(){ return Array.prototype.slice.call(document.querySelectorAll('.lst[data-lat]')); };
-  var yo = null, mapa = null, marcadores = [], miPin = null, pinesDesc = [], descubiertas = {};
+  var yo = null, mapa = null, marcadores = [], miPin = null, pinesDesc = [], descubiertas = {}, fotosConocidas = {};
   var filtro = {q: '', dep: C.dep || '', fecha: '', soloOk: false, max: 0};
   var favs = {};
   try { favs = JSON.parse(localStorage.getItem('pcg_fav') || '{}') || {}; } catch(e){}
@@ -275,9 +275,14 @@ _JS_EXPLORAR = r"""
   }
   // ── descubiertas (Google Places, como el APK) ──
   function tarjetaDesc(c){
-    var foto = (c.fotos && c.fotos[0]) ? '<img src="' + esc(c.fotos[0]) + '" alt="" loading="lazy">' : '<div class="sinfoto" data-buscar="1">' + (c.emoji || '🏟️') + '</div>';
+    // Fotos: las que trae la Edge, o las que ya resolvió /web/foto antes de
+    // este re-pintado (nunca se "esconde" una foto ya mostrada).
+    var fs = (c.fotos && c.fotos.length) ? c.fotos : (fotosConocidas[c.id] || []);
+    if(fs.length) fotosConocidas[c.id] = fs;
+    var foto = fs.length ? fs.slice(0, 3).map(function(u){ return '<img src="' + esc(u) + '" alt="" loading="lazy">'; }).join('') : '<div class="sinfoto" data-buscar="1">' + (c.emoji || '🏟️') + '</div>';
+    var extra = fs.length > 1 ? '<button class="flecha izq" aria-label="Anterior">‹</button><button class="flecha der" aria-label="Siguiente">›</button><div class="dots">' + fs.slice(0, 3).map(function(){ return '<i></i>'; }).join('') + '</div>' : '';
     return '<a class="lst pend" href="' + C.play + '" rel="noopener" data-id="' + esc(c.id) + '" data-lat="' + c.lat + '" data-lng="' + c.lng + '" data-ok="0" data-deps="' + esc(c.deporte) + '" data-nombre="' + esc(c.nombre) + '" data-sub="' + esc(c.direccion) + '" data-precio="' + esc(c.deporte_nombre) + '" data-t="' + esc((c.nombre + ' ' + c.direccion).toLowerCase()) + '">' +
-      '<div class="foto"><div class="fotos">' + foto + '</div><span class="badge pend">Aún sin registrar</span></div>' +
+      '<div class="foto"><div class="fotos">' + foto + '</div><span class="badge pend">Aún sin registrar</span>' + extra + '</div>' +
       '<div class="lb"><div class="l1"><b>' + esc(c.nombre) + '</b><span class="rate">' + esc(c.deporte_nombre) + '</span></div>' +
       '<div class="l2">' + esc(c.direccion) + '</div><div class="l2"><span class="dist">' + (c.km != null ? 'a ' + fmtKm(c.km) : '') + '</span></div>' +
       '<div class="l3"><span class="app">📲 Reservar en la app</span> <span class="app">📍 <span class="ir" data-lat="' + c.lat + '" data-lng="' + c.lng + '">Cómo llegar</span></span></div></div></a>';
@@ -341,6 +346,7 @@ _JS_EXPLORAR = r"""
   var colaFotos = [], enVuelo = 0, pedidas = {};
   function pintarFotos(card, fotos){
     var box = card.querySelector('.fotos'); if(!box || !fotos || !fotos.length) return;
+    fotosConocidas[card.dataset.id] = fotos;
     box.innerHTML = fotos.slice(0, 3).map(function(u){ return '<img src="' + esc(u) + '" alt="" loading="lazy">'; }).join('');
     if(fotos.length > 1){
       var f = card.querySelector('.foto');
@@ -550,6 +556,8 @@ def descubrir_web(lat: float, lng: float, fotos: int = 0) -> dict:
     lista = descubrir.descubrir_cerca(lat, lng, region=region, fotos=bool(fotos), registradas=reg)
     for c in lista:
         c["deporte_nombre"], c["emoji"] = _deporte(c["deporte"])
+        if c.get("fotos"):
+            descubrir.recordar_fotos_edge(c)  # cosecha gratis: ya las pagó la Edge
     return {"ok": True, "region": region, "canchas": lista}
 
 
