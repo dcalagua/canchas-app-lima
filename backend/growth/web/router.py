@@ -136,7 +136,17 @@ def _foto_card(c: dict) -> str:
 def _galeria(c: dict) -> str:
     fs = _fotos(c)
     if not fs:
-        return f"<div class='galeria una'><div class='sinfoto principal'>{_deporte(c.get('deporte'))[1]}</div></div>"
+        # Sin fotos propias: la galería arranca con el placeholder y un script
+        # pide a /web/foto la PRIMERA FOTO de Google del lugar (como el app).
+        q = (f"id={quote(str(c.get('id') or ''))}&nombre={quote(str(c.get('nombre') or ''))}"
+             f"&club={quote(str(c.get('club') or ''))}&lat={c.get('lat') or 0}&lng={c.get('lng') or 0}")
+        return (f"<div class='galeria una' id='galeria'><div class='sinfoto principal'>{_deporte(c.get('deporte'))[1]}</div></div>"
+                "<script>(function(){fetch('/web/foto?" + q + "').then(function(r){return r.json();}).then(function(j){"
+                "var f=(j&&j.fotos)||[];if(!f.length)return;var g=document.getElementById('galeria');if(!g)return;"
+                "var esc=function(s){return String(s).replace(/[&<>\"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[c];});};"
+                "if(f.length===1){g.innerHTML='<img class=principal src=\"'+esc(f[0])+'\" alt=\"\">';return;}"
+                "g.className='galeria';g.innerHTML='<img class=principal src=\"'+esc(f[0])+'\" alt=\"\">'+f.slice(1,3).map(function(u){return '<img src=\"'+esc(u)+'\" alt=\"\" loading=lazy>';}).join('');"
+                "}).catch(function(){});})();</script>")
     if len(fs) == 1:
         return f"<div class='galeria una'><img class='principal' src='{e(fs[0])}' alt='{e(c['nombre'])}'></div>"
     partes = [f"<img class='principal' src='{e(fs[0])}' alt='{e(c['nombre'])}'>"]
@@ -265,7 +275,7 @@ _JS_EXPLORAR = r"""
   }
   // ── descubiertas (Google Places, como el APK) ──
   function tarjetaDesc(c){
-    var foto = (c.fotos && c.fotos[0]) ? '<img src="' + esc(c.fotos[0]) + '" alt="" loading="lazy">' : '<div class="sinfoto">' + (c.emoji || '🏟️') + '</div>';
+    var foto = (c.fotos && c.fotos[0]) ? '<img src="' + esc(c.fotos[0]) + '" alt="" loading="lazy">' : '<div class="sinfoto" data-buscar="1">' + (c.emoji || '🏟️') + '</div>';
     return '<a class="lst pend" href="' + C.play + '" rel="noopener" data-id="' + esc(c.id) + '" data-lat="' + c.lat + '" data-lng="' + c.lng + '" data-ok="0" data-deps="' + esc(c.deporte) + '" data-nombre="' + esc(c.nombre) + '" data-sub="' + esc(c.direccion) + '" data-precio="' + esc(c.deporte_nombre) + '" data-t="' + esc((c.nombre + ' ' + c.direccion).toLowerCase()) + '">' +
       '<div class="foto"><div class="fotos">' + foto + '</div><span class="badge pend">Aún sin registrar</span></div>' +
       '<div class="lb"><div class="l1"><b>' + esc(c.nombre) + '</b><span class="rate">' + esc(c.deporte_nombre) + '</span></div>' +
@@ -280,6 +290,7 @@ _JS_EXPLORAR = r"""
     if(!lista.length){ if(!conFotos) sec.style.display = 'none'; return; }
     sec.style.display = '';
     grid.innerHTML = lista.map(tarjetaDesc).join('');
+    resolverFotos();
     if(mapa && window.L){
       pinesDesc.forEach(function(m){ m.remove(); }); pinesDesc = [];
       lista.forEach(function(c){
@@ -325,6 +336,34 @@ _JS_EXPLORAR = r"""
       m.bindPopup('<b>' + esc(c.dataset.nombre) + '</b><br>' + esc(c.dataset.sub) + '<br><a class="btn sec" href="' + C.play + '">Reservar en la app</a>'); pinesDesc.push(m); });
     aplicar();
   }
+  // ── PRIMERA FOTO siempre (como el app): las tarjetas sin foto propia piden
+  // la de Google en su ubicación (/web/foto, cacheado en el servidor). ──
+  var colaFotos = [], enVuelo = 0, pedidas = {};
+  function pintarFotos(card, fotos){
+    var box = card.querySelector('.fotos'); if(!box || !fotos || !fotos.length) return;
+    box.innerHTML = fotos.slice(0, 3).map(function(u){ return '<img src="' + esc(u) + '" alt="" loading="lazy">'; }).join('');
+    if(fotos.length > 1){
+      var f = card.querySelector('.foto');
+      f.insertAdjacentHTML('beforeend', '<button class="flecha izq" aria-label="Anterior">‹</button><button class="flecha der" aria-label="Siguiente">›</button><div class="dots">' + fotos.slice(0, 3).map(function(){ return '<i></i>'; }).join('') + '</div>');
+    }
+  }
+  function pedirFoto(card){
+    var q = 'id=' + encodeURIComponent(card.dataset.id || '') + '&nombre=' + encodeURIComponent(card.dataset.nombre || '') +
+            '&club=' + encodeURIComponent(card.dataset.club || '') + '&lat=' + card.dataset.lat + '&lng=' + card.dataset.lng;
+    fetch('/web/foto?' + q).then(function(r){ return r.json(); }).then(function(j){ pintarFotos(card, (j && j.fotos) || []); })
+      .catch(function(){}).then(function(){ enVuelo--; siguienteFoto(); });
+  }
+  function siguienteFoto(){
+    while(enVuelo < 3 && colaFotos.length){ enVuelo++; pedirFoto(colaFotos.shift()); }
+  }
+  function resolverFotos(){
+    cards().forEach(function(c){
+      if(pedidas[c.dataset.id] || !c.querySelector('.sinfoto[data-buscar]')) return;
+      if(!parseFloat(c.dataset.lat) && !parseFloat(c.dataset.lng)) return;
+      pedidas[c.dataset.id] = 1; colaFotos.push(c);
+    });
+    siguienteFoto();
+  }
   var expl = $('expl'), btnMapa = $('btnMapa');
   function verMapa(on){
     expl.classList.toggle('con-mapa', on);
@@ -335,6 +374,7 @@ _JS_EXPLORAR = r"""
   if(btnMapa) btnMapa.addEventListener('click', function(){ verMapa(!expl.classList.contains('con-mapa')); });
   var bu = $('btnUbic'); if(bu) bu.addEventListener('click', function(){ ubicar(true); });
   pintarFavs();
+  resolverFotos();
   try { var g = JSON.parse(localStorage.getItem('pcg_ubic') || 'null'); if(g && g.lat){ yo = g; ordenar(); } } catch(e){}
   ubicar(false);
   if(!yo) descubrir(C.centro[0], C.centro[1]);
@@ -390,7 +430,7 @@ def _tarjeta(c: dict, rating: tuple[float, int] | None, fecha: str = "") -> str:
     if fs:
         fotos = "".join(f"<img src='{e(u)}' alt='' loading='lazy'>" for u in fs[:5])
     else:
-        fotos = f"<div class='sinfoto'>{_deporte(c.get('deporte'))[1]}</div>"
+        fotos = f"<div class='sinfoto' data-buscar='1'>{_deporte(c.get('deporte'))[1]}</div>"
     extra = ""
     if len(fs) > 1:
         extra = ("<button class='flecha izq' aria-label='Anterior'>‹</button><button class='flecha der' aria-label='Siguiente'>›</button>"
@@ -407,7 +447,7 @@ def _tarjeta(c: dict, rating: tuple[float, int] | None, fecha: str = "") -> str:
           f"<div class='l3'><b>{e(sim)} {c['precio_hora']:.0f}</b> <span style='color:var(--tenue)'>por hora</span>"
           "<br><span class='app'>📲 Reservar en la app</span></div>")
     return (f"<a class='lst{'' if ok else ' pend'}' href='{e(href)}' data-base='{e(base)}' data-id='{e(c['id'])}' data-t='{e(texto)}' "
-            f"data-deps='{e(' '.join(deps))}' data-lat='{c.get('lat')}' data-lng='{c.get('lng')}' data-nombre='{e(c['nombre'])}' "
+            f"data-deps='{e(' '.join(deps))}' data-lat='{c.get('lat')}' data-lng='{c.get('lng')}' data-nombre='{e(c['nombre'])}' data-club='{e(c.get('club', ''))}' "
             f"data-sub='{e(sub)}' data-precio='{e(sim)} {c['precio_hora']:.0f}' data-pnum='{c['precio_hora']:.2f}' data-ok='{1 if ok else 0}'>"
             f"<div class='foto'><div class='fotos'>{fotos}</div>{badge}"
             f"<button class='corazon' aria-label='Guardar'>{_CORAZON}</button>{extra}</div>"
@@ -502,6 +542,27 @@ def descubrir_web(lat: float, lng: float, fotos: int = 0) -> dict:
     for c in lista:
         c["deporte_nombre"], c["emoji"] = _deporte(c["deporte"])
     return {"ok": True, "region": region, "canchas": lista}
+
+
+@router.get("/web/foto")
+def foto_web(id: str = "", nombre: str = "", club: str = "", lat: float = 0.0, lng: float = 0.0) -> dict:
+    """PRIMERA FOTO de una cancha sin fotos propias (regla del director: la web
+    muestra siempre la primera foto, como el app). Para una cancha registrada
+    (`id`) usa sus fotos si las tiene; si no, resuelve las de Google en su
+    ubicación (mismo criterio que `enriquecerSembradas` del APK). Para una
+    descubierta (`gp_…`) o cualquier lugar, por nombre + coordenadas."""
+    c = datos.cancha(id) if id and not id.startswith("gp_") else None
+    if c:
+        propias = _fotos(c)
+        if propias:
+            return {"ok": True, "fotos": propias[:5], "origen": "propias"}
+        nombre, club = c.get("nombre") or nombre, c.get("club") or club
+        lat, lng = c.get("lat") or lat, c.get("lng") or lng
+    if not (nombre or club) or (not lat and not lng):
+        return {"ok": False, "fotos": []}
+    region = pais_de_coordenadas(lat, lng)
+    fotos = descubrir.fotos_de_lugar(nombre, club, lat, lng, region=region)
+    return {"ok": True, "fotos": fotos, "origen": "google" if fotos else ""}
 
 
 # ── disponibilidad ────────────────────────────────────────────────────────────

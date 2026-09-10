@@ -327,6 +327,56 @@ def test_no_verificadas_salen_con_reservar_en_la_app(db):
     assert r["ok"] is False and r["error"] == "no_verificada"
 
 
+def test_primera_foto_siempre_como_el_app(db, monkeypatch):
+    """Regla del director: la web muestra SIEMPRE la primera foto, como el app.
+    Las canchas sembradas desde el app no guardan las fotos de Google; la web
+    las resuelve en vivo por nombre + cercanía con la misma Edge Function."""
+    from web import descubrir as d
+    d.limpiar_cache()
+    llamadas = []
+    crudos = [
+        {"id": "P1", "displayName": {"text": "Sabor Golazo Futbol 7"}, "types": ["sports_complex"],
+         "location": {"latitude": -12.0901, "longitude": -77.0001}, "fotos": ["https://f/golazo1.jpg", "https://f/golazo2.jpg"]},
+        {"id": "P2", "displayName": {"text": "Bodega Doña Rosa"}, "types": ["store"],
+         "location": {"latitude": -12.0900, "longitude": -77.0000}, "fotos": ["https://f/bodega.jpg"]},
+        {"id": "P3", "displayName": {"text": "Lejos FC"}, "types": [],
+         "location": {"latitude": -12.20, "longitude": -77.10}, "fotos": ["https://f/lejos.jpg"]},
+    ]
+    monkeypatch.setattr(d, "_llamar_edge", lambda *a, **k: (llamadas.append(a) or crudos))
+    monkeypatch.setattr(config, "SUPABASE_URL", "https://x.supabase.co")
+    monkeypatch.setattr(config, "SUPABASE_ANON_KEY", "anon")
+    # Coincidencia por nombre/club gana sobre el más cercano (la bodega).
+    assert d._elegir_lugar(crudos, "Cancha 1", "Sabor Golazo - Futbol 7", -12.09, -77.0) == ["https://f/golazo1.jpg", "https://f/golazo2.jpg"]
+    # Sin coincidencia de nombre: el lugar con fotos más cercano dentro del radio.
+    assert d._elegir_lugar(crudos, "Loza", "", -12.09, -77.0) == ["https://f/bodega.jpg"]
+    # Fuera del radio → nada.
+    assert d._elegir_lugar(crudos[2:], "Loza", "", -12.09, -77.0) == []
+    # Endpoint: cancha registrada sin fotos → fotos de Google; con fotos propias → las propias.
+    db.canchas["c_lima"]["club"] = "Sabor Golazo - Futbol 7"
+    j = client.get("/web/foto?id=c_lima").json()
+    assert j["ok"] and j["origen"] == "google" and j["fotos"][0] == "https://f/golazo1.jpg"
+    assert len(llamadas) == 1 and llamadas[0][2] == d.RADIO_FOTO_M and llamadas[0][4] is True
+    client.get("/web/foto?id=c_lima")
+    assert len(llamadas) == 1  # caché por lugar
+    db.canchas["c_gye"]["fotos"] = ["https://propia/1.jpg"]
+    j = client.get("/web/foto?id=c_gye").json()
+    assert j["origen"] == "propias" and j["fotos"] == ["https://propia/1.jpg"]
+    # Lugar descubierto (gp_…): por nombre + coordenadas.
+    j = client.get("/web/foto?id=gp_P1&nombre=Sabor%20Golazo&lat=-12.09&lng=-77.0").json()
+    assert j["fotos"][0] == "https://f/golazo1.jpg"
+    assert client.get("/web/foto").json()["ok"] is False
+    # La portada marca las tarjetas sin foto para que el navegador pida la primera
+    # foto, y la ficha hace lo mismo con su galería.
+    html = client.get("/").text
+    assert "data-buscar='1'" in html and "/web/foto?" in html and "data-club='Sabor Golazo - Futbol 7'" in html
+    ficha = client.get("/reservar/c_lima").text
+    assert "id='galeria'" in ficha and "/web/foto?id=c_lima" in ficha
+    # Sin Edge Function → [] sin romper.
+    d.limpiar_cache()
+    monkeypatch.setattr(d, "_llamar_edge", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("red")))
+    assert client.get("/web/foto?id=c_lima").json()["fotos"] == []
+
+
 def test_descubrir_canchas_de_google_como_el_apk(db, monkeypatch):
     from web import descubrir as d
     d.limpiar_cache()

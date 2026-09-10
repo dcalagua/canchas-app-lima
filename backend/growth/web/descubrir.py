@@ -191,6 +191,86 @@ def descubrir_cerca(lat: float, lng: float, region: str = "PE", fotos: bool = Fa
     return out[:MAX_RESULTADOS]
 
 
+# ── Primera foto de un lugar (como `enriquecerSembradas` del APK) ─────────────
+#
+# Las canchas SEMBRADAS desde el app (registradas a partir de un lugar de
+# Google) no guardan las fotos de Google en la base (caducan y son de Google);
+# el APK las resuelve en vivo por nombre + cercanía. La web hace lo mismo con
+# la MISMA Edge Function: pide los lugares con foto en un radio corto alrededor
+# de la cancha y se queda con el que mejor coincide por nombre (o el más
+# cercano). Caché por lugar (las URLs `photoUri` duran horas).
+
+RADIO_FOTO_M = 250.0
+TTL_FOTO_SEG = 12 * 3600
+_cache_fotos: dict[tuple, tuple[float, list[str]]] = {}
+
+
+def _tokens(s: str) -> set[str]:
+    base = unicodedata.normalize("NFKD", (s or "").lower())
+    base = "".join(ch for ch in base if not unicodedata.combining(ch))
+    return {t for t in re.split(r"[^a-z0-9]+", base) if len(t) >= 3}
+
+
+def _elegir_lugar(crudos: list[dict], nombre: str, club: str, lat: float, lng: float) -> list[str]:
+    """Entre los `places` de Google alrededor, elige las fotos del que mejor
+    coincide con la cancha: mayor coincidencia de palabras con el nombre/club
+    (quitando el sufijo de sede tras '-'), y a igual puntaje el más cercano.
+    Sin coincidencia de nombre, el lugar CON FOTOS más cercano (≤ 250 m)."""
+    quiero = set()
+    for n in (nombre, club):
+        quiero |= _tokens(re.split(r"[–-]", n or "")[0])
+    mejor: tuple[float, float] | None = None
+    fotos_mejor: list[str] = []
+    for p in crudos:
+        if not isinstance(p, dict):
+            continue
+        fotos = [str(u) for u in (p.get("fotos") or []) if str(u).startswith("http")]
+        if not fotos:
+            continue
+        dn = p.get("displayName")
+        pn = dn.get("text") if isinstance(dn, dict) else dn
+        loc = p.get("location") or {}
+        try:
+            d = _km(lat, lng, float(loc.get("latitude")), float(loc.get("longitude")))
+        except (TypeError, ValueError):
+            continue
+        if d > RADIO_FOTO_M / 1000.0 + 0.05:
+            continue
+        coinc = len(quiero & _tokens(str(pn or ""))) if quiero else 0
+        puntaje = (coinc, -d)
+        if mejor is None or puntaje > mejor:
+            mejor = puntaje
+            fotos_mejor = fotos[:3]
+    return fotos_mejor
+
+
+def fotos_de_lugar(nombre: str, club: str, lat: float, lng: float, region: str = "PE") -> list[str]:
+    """Fotos públicas de Google del lugar donde está la cancha (o [] si no
+    hay). Fail-safe y con caché; una llamada a la Edge Function por lugar."""
+    try:
+        lat, lng = float(lat), float(lng)
+    except (TypeError, ValueError):
+        return []
+    if not lat and not lng:
+        return []
+    key = (round(lat, 4), round(lng, 4), _clave(nombre), _clave(club))
+    ahora = time.time()
+    with _lock:
+        hit = _cache_fotos.get(key)
+    if hit and ahora - hit[0] < TTL_FOTO_SEG:
+        return list(hit[1])
+    try:
+        crudos = _llamar_edge(lat, lng, RADIO_FOTO_M, (region or "PE").upper(), True)
+    except Exception:  # noqa: BLE001
+        crudos = []
+    fotos = _elegir_lugar(crudos, nombre, club, lat, lng)
+    with _lock:
+        # Sin fotos se cachea poco (10 min): puede ser un error transitorio.
+        _cache_fotos[key] = (ahora if fotos else ahora - TTL_FOTO_SEG + 600, fotos)
+    return fotos
+
+
 def limpiar_cache() -> None:
     with _lock:
         _cache.clear()
+        _cache_fotos.clear()

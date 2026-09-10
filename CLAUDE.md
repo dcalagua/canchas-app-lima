@@ -254,6 +254,16 @@ para la API del APK.
   estilo Airbnb) lleva razón social, RUC, contacto y enlaces legales en TODAS
   las páginas. `home.html` sigue siendo el texto legal/comercial editable, ya
   no se sirve entero. Test `test_raiz_es_el_explorador_tipo_airbnb`.
+  **PRIMERA FOTO SIEMPRE (regla del director, sep-2026):** la web muestra la
+  primera foto como el app. Las canchas SEMBRADAS desde el app no guardan las
+  fotos de Google en la base; `GET /web/foto?id|nombre&club&lat&lng`
+  (`descubrir.fotos_de_lugar` → misma Edge Function `places-cerca` con radio
+  250 m y `fotos=true`; `_elegir_lugar` = mejor coincidencia de palabras con
+  nombre/club sin el sufijo de sede, a igual puntaje el más cercano; caché
+  12 h por lugar, 10 min si vino vacío) las resuelve en vivo. Las tarjetas y
+  la galería de la ficha nacen con placeholder `data-buscar` y el JS las
+  rellena (cola de 3 en paralelo); también las descubiertas más allá de las
+  16 con foto que devuelve la Edge. Test `test_primera_foto_siempre_como_el_app`.
 - El apex `pichangol.app` (sin `www`) sigue libre (podría redirigir al `www`).
 
 ## Estrategia de ambientes (piloto → prod)
