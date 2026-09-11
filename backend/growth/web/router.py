@@ -827,6 +827,9 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
     lista = [c for c in todas if not dep or dep in _deportes_de(c)]
     fecha = fecha if _es_iso(fecha) else ""
     ratings = datos.ratings([c["id"] for c in lista])
+    print(f"[explorar] dep={dep or '*'} {len(lista)} canchas: " + " | ".join(
+        f"{c['nombre']} {c['hora_apertura']}-{c['hora_cierre']}/{c['duracion_slot_min']}m{'' if datos.reservable(c) else ' (pend)'}"
+        for c in lista[:20]), flush=True)
     por_pais: dict[str, list[dict]] = {}
     for c in lista:
         por_pais.setdefault(_pais_de(c), []).append(c)
@@ -1081,6 +1084,11 @@ def libres(fecha: str = "", hora: str = "") -> dict:
     fechas = [fecha, (d + timedelta(days=1)).isoformat()]
     ocup = datos.ocupados_varias([c["id"] for c in canchas], fechas)
     out = {c["id"]: _hora_libre(c, fecha, hora, ocup.get(c["id"], set())) for c in canchas}
+    # Diagnóstico en los logs de Railway (como las líneas [foto]): horario real de cada cancha y el veredicto.
+    print(f"[libres] {fecha} {hora}: " + " | ".join(
+        f"{c['nombre']} {c['hora_apertura']}-{c['hora_cierre']}/{c['duracion_slot_min']}m "
+        f"{'libre' if out[c['id']] else ('ocupada' if any(h == hora for _f, h in ocup.get(c['id'], set())) else 'sin turno')}"
+        for c in canchas[:20]), flush=True)
     return {"ok": True, "fecha": fecha, "hora": hora, "libres": out}
 
 
