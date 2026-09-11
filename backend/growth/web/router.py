@@ -1151,14 +1151,27 @@ _JS_RESERVA = r"""
         if(!slots.length){
           if(fechaSel === C.hoy && !C.fecha && !C._salto && C.dias[1]){ C._salto = true; fechaSel = C.dias[1].iso; pintarDias(); cargar(); return; }
           $('slots').innerHTML = '<span class="sub">No quedan turnos para este día. Prueba otra fecha.</span>'; return; }
-        $('slots').innerHTML = slots.map(function(s, i){
-          var cls = 'chip' + (s.ocupado ? ' off' : '');
-          var extra = s.fecha !== fechaSel ? ' <small>' + esc(C.etiquetas[s.fecha] || '') + '</small>' : '';
-          var tag = s.promo ? ' · −' + s.promo + '%' : (s.valle ? ' · hora feliz' : '');
-          return '<span class="' + cls + '" data-i="' + i + '" title="' + (s.ocupado ? 'Ocupado' : 'Disponible') + '">' + s.hora + '–' + s.fin + extra +
-                 ' <small>' + fmt(s.precio) + tag + '</small></span>';
-        }).join('') + (libres ? '' : '<div class="sub" style="width:100%">Todos los turnos de este día están tomados.</div>');
-        document.querySelectorAll('#slots .chip').forEach(function(el){
+        // Turnos ORDENADOS por franja (Mañana / Tarde / Noche · madrugada) con el precio de cada uno a la vista.
+        var hmm = function(t){ var p = t.split(':'); return parseInt(p[0]) * 60 + parseInt(p[1]); };
+        var franjas = [['Mañana', '🌅', 0], ['Tarde', '☀️', 1], ['Noche', '🌙', 2]], grupos = [[], [], []];
+        slots.forEach(function(s, i){ var m = hmm(s.hora); var g = s.fecha !== fechaSel ? 2 : (m < 12 * 60 ? 0 : (m < 18 * 60 ? 1 : 2)); grupos[g].push([s, i]); });
+        var precios = slots.map(function(s){ return s.precio; }), pmin = Math.min.apply(null, precios), pmax = Math.max.apply(null, precios);
+        var html = '';
+        franjas.forEach(function(f, g){
+          if(!grupos[g].length) return;
+          var lib = grupos[g].filter(function(x){ return !x[0].ocupado; }).length;
+          html += '<div class="slots-grupo"><h5>' + f[1] + ' ' + f[0] + ' <small>· ' + (lib ? lib + ' libre' + (lib === 1 ? '' : 's') : 'sin turnos libres') + '</small></h5><div class="slots-grid">';
+          grupos[g].forEach(function(x){ var s = x[0], i = x[1];
+            var dia = s.fecha !== fechaSel ? '<span class="dia">' + esc(C.etiquetas[s.fecha] || '') + ' · madrugada</span>' : '';
+            var tag = s.promo ? '<span class="tag">−' + s.promo + ' % promo</span>' : (s.valle ? '<span class="tag">⚡ hora feliz</span>' : '');
+            html += '<div class="slot' + (s.ocupado ? ' off' : '') + '" data-i="' + i + '" title="' + (s.ocupado ? 'Ocupado' : 'Disponible') + '">' +
+                    dia + '<b>' + s.hora + ' <small>– ' + s.fin + '</small></b><span class="pr">' + (s.ocupado ? 'Ocupado' : fmt(s.precio)) + '</span>' + tag + '</div>';
+          });
+          html += '</div></div>';
+        });
+        if(pmax > pmin) html += '<p class="slots-nota">El precio varía según la hora: desde ' + fmt(pmin) + ' hasta ' + fmt(pmax) + ' por turno.</p>';
+        $('slots').innerHTML = html + (libres ? '' : '<div class="sub" style="width:100%">Todos los turnos de este día están tomados.</div>');
+        document.querySelectorAll('#slots .slot').forEach(function(el){
           el.addEventListener('click', function(){
             var s = slots[parseInt(el.dataset.i)];
             if(s.ocupado) return;
@@ -1178,11 +1191,26 @@ _JS_RESERVA = r"""
           for(var j = 0; j < slots.length; j++){
             var a = hm(slots[j].hora), b = hm(slots[j].fin); if(b <= a) b += 1440;
             var ww = want < a && b > 1440 ? want + 1440 : want;
-            if(!slots[j].ocupado && a <= ww && ww < b){ var chip = document.querySelector('#slots .chip[data-i="' + j + '"]'); if(chip){ chip.click(); chip.scrollIntoView({behavior: 'smooth', block: 'center'}); } break; }
+            if(!slots[j].ocupado && a <= ww && ww < b){ var chip = document.querySelector('#slots .slot[data-i="' + j + '"]'); if(chip){ chip.click(); chip.scrollIntoView({behavior: 'smooth', block: 'center'}); } break; }
           }
         }
       }).catch(function(){ $('slots').innerHTML = '<span class="sub">No pudimos cargar los horarios.</span>'; });
   }
+  // "Cómo llegar": el mapa se abre AQUÍ (Leaflet + OpenStreetMap), no en otra pestaña.
+  var bLlegar = $('btnLlegar'), mapaFicha = null;
+  if(bLlegar) bLlegar.addEventListener('click', function(ev){
+    ev.preventDefault();
+    var box = $('mapaFicha'), on = !box.classList.contains('open');
+    box.classList.toggle('open', on); bLlegar.textContent = on ? 'Ocultar mapa' : 'Cómo llegar';
+    if(on && !mapaFicha && window.L){
+      var lat = parseFloat(bLlegar.dataset.lat), lng = parseFloat(bLlegar.dataset.lng);
+      mapaFicha = L.map('mapaFichaMapa', {scrollWheelZoom: false}).setView([lat, lng], 16);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19, attribution: '© OpenStreetMap'}).addTo(mapaFicha);
+      L.marker([lat, lng]).addTo(mapaFicha).bindPopup('<b>' + esc(bLlegar.dataset.nombre) + '</b>').openPopup();
+      setTimeout(function(){ mapaFicha.invalidateSize(); }, 80);
+    } else if(on && mapaFicha){ setTimeout(function(){ mapaFicha.invalidateSize(); }, 80); }
+    if(on) box.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+  });
   function mostrarError(m){ var el = $('err'); el.textContent = m; el.style.display = 'block'; el.scrollIntoView({behavior:'smooth', block:'center'}); }
   function ocultarError(){ $('err').style.display = 'none'; }
   function datos(){
@@ -1305,11 +1333,15 @@ def _ficha(c: dict, sim: str, pais: str, verificada: bool = True) -> str:
             f"<p class='sub'>{e(c.get('club'))}</p></div>"
             f"<div class='precio' style='font-size:22px;white-space:nowrap'>{e(sim)} {c['precio_hora']:.2f} <small>por hora</small></div></div>"
             "<ul class='datos'>"
-            f"<li>📍 <span>{e(lugar or 'Dirección en la app')} · <a href='{_maps(c)}' target='_blank' rel='noopener'>Cómo llegar</a></span></li>"
+            f"<li>📍 <span>{e(lugar or 'Dirección en la app')} · <a href='#mapaFicha' id='btnLlegar' data-lat='{c.get('lat')}' data-lng='{c.get('lng')}' data-nombre='{e(c['nombre'])}'>Cómo llegar</a></span></li>"
             f"<li>🕒 <span>{e(c['hora_apertura'])} a {e(c['hora_cierre'])} · turnos de {c['duracion_slot_min']} min · último turno {e(c['hora_cierre'])}</span></li>"
             + (f"<li>⚡ <span>Hora feliz −{c['descuento_valle']} % de {e(c['valle_desde'] or '00:00')} a {e(c['valle_hasta'] or '12:00')}</span></li>" if c['descuento_valle'] > 0 else "")
             + (f"<li>🏟️ <span>{e(c['superficie'])}</span></li>" if c.get("superficie") else "")
-            + "</ul>" + (f"<div class='amen'>{amen}</div>" if amen else ""))
+            + "</ul>"
+            "<div class='mapa-ficha' id='mapaFicha'><div class='mapa' id='mapaFichaMapa' aria-label='Mapa de la cancha'></div>"
+            f"<div class='pie-mapa'><span>📍 {e(lugar or c['nombre'])}</span><a href='{_maps(c)}' target='_blank' rel='noopener'>Abrir en Google Maps</a>"
+            f"<a href='https://www.google.com/maps/dir/?api=1&destination={c.get('lat')},{c.get('lng')}' target='_blank' rel='noopener'>Indicaciones paso a paso</a></div></div>"
+            + (f"<div class='amen'>{amen}</div>" if amen else ""))
 
 
 def _jsonld_cancha(c: dict, sim: str) -> str:
@@ -1414,7 +1446,7 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
         "<div class='strip' id='dias'></div>"
         f"{selector_dep}"
         f"<div class='sub' style='margin:6px 0 12px;font-size:13px'>Hasta {MAX_SLOTS} turnos por pedido. Toca un horario para agregarlo; vuelve a tocarlo para quitarlo.</div>"
-        "<div class='chips' id='slots'></div>"
+        "<div id='slots'></div>"
         f"{paso_datos}"
         f"{extras_html}"
         "<div class='estado bad' id='err'></div>"
@@ -1436,7 +1468,9 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
         f"<script>{sesion.JS_SESION if sesion.activo() else ''}{_JS_RESERVA}</script>")
     return ui.shell(f"Reservar {c['nombre']}", cuerpo, con_barra=True, canonical=canonical, og_image=og,
                     desc=f"Reserva {c['nombre']} y paga en línea con Yape o tarjeta.", jsonld=_jsonld_cancha(c, sim),
-                    extra_head=sesion.GIS_SCRIPT if (sesion.activo() and not ses) else "", sesion=ses)
+                    extra_head=("<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' crossorigin=''>"
+                                "<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' crossorigin=''></script>"
+                                + (sesion.GIS_SCRIPT if (sesion.activo() and not ses) else "")), sesion=ses)
 
 
 # ── asegurar / pagar / liberar ────────────────────────────────────────────────

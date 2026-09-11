@@ -46,7 +46,7 @@ h1{font-size:28px;line-height:1.15}h2{font-size:20px}h3{font-size:16px}
 /* barra */
 .nav{background:var(--blanco);border-bottom:1px solid var(--trazo);position:sticky;top:0;z-index:20}
 .nav-in{height:64px;display:flex;align-items:center;justify-content:space-between;gap:12px}
-.wm{display:inline-flex;align-items:center;gap:6px;font-weight:800;font-style:italic;font-size:22px;letter-spacing:-.4px;color:var(--noche);text-decoration:none;line-height:1}
+.wm{display:inline-flex;align-items:center;gap:6px;font-weight:800;font-style:normal;font-size:22px;letter-spacing:-.4px;color:var(--noche);text-decoration:none;line-height:1}
 .wm img{width:1.7em;height:1.7em;object-fit:contain;display:block}
 .wm svg{width:.92em;height:.92em;margin:0 .03em;vertical-align:middle}
 .links{display:flex;gap:6px;align-items:center}
@@ -64,6 +64,29 @@ h1{font-size:28px;line-height:1.15}h2{font-size:20px}h3{font-size:16px}
 .chip:hover{border-color:#C9D3E0}.chip.sel{background:var(--tinte);border-color:var(--esmeralda);color:var(--teal)}
 .chip.off{opacity:.38;cursor:not-allowed;text-decoration:line-through}.chip small{font-weight:600;color:var(--tenue)}
 .chip.sel small{color:var(--teal)}.chips{display:flex;flex-wrap:wrap;gap:10px}
+/* mapa de "Cómo llegar" dentro de la ficha */
+.mapa-ficha{display:none;margin:10px 0 4px}
+.mapa-ficha.open{display:block}
+.mapa-ficha .mapa{height:300px;border-radius:14px;border:1px solid var(--trazo);box-shadow:none}
+.mapa-ficha .pie-mapa{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:8px;font-size:13px;color:var(--tenue);font-weight:600}
+.mapa-ficha .pie-mapa a{font-weight:700}
+/* turnos por franja (Mañana / Tarde / Noche) con precio visible */
+.slots-grupo{margin:14px 0 4px}
+.slots-grupo h5{margin:0 0 8px;font-size:13px;font-weight:700;color:var(--noche);display:flex;align-items:center;gap:8px}
+.slots-grupo h5 small{font-weight:600;color:var(--tenue)}
+.slots-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:8px}
+.slot{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:10px 12px;border:1px solid var(--trazo);border-radius:14px;background:var(--blanco);cursor:pointer;user-select:none;box-shadow:0 1px 3px rgba(15,27,45,.04);transition:border-color .12s,box-shadow .12s;min-width:0;position:relative}
+.slot:hover{border-color:var(--noche)}
+.slot b{font-size:15px;font-weight:800;color:var(--noche);line-height:1.1}
+.slot b small{font-weight:600;color:var(--tenue);font-size:12px}
+.slot .pr{font-size:13.5px;font-weight:700;color:var(--teal);margin-top:2px}
+.slot .tag{font-size:11px;font-weight:700;color:#946200;background:var(--warn-bg);border-radius:999px;padding:2px 7px;margin-top:3px}
+.slot .dia{font-size:11px;font-weight:700;color:var(--tenue)}
+.slot.sel{background:var(--noche);border-color:var(--noche)}.slot.sel b,.slot.sel b small,.slot.sel .pr,.slot.sel .dia{color:#fff}
+.slot.sel .tag{background:rgba(255,255,255,.18);color:#fff}
+.slot.off{opacity:.45;cursor:not-allowed;background:var(--gris)}.slot.off b{text-decoration:line-through}
+.slots-nota{font-size:12.5px;color:var(--tenue);font-weight:600;margin:8px 0 0}
+
 .strip{display:flex;gap:10px;overflow-x:auto;padding:4px 2px 8px;min-width:0;max-width:100%;scrollbar-width:none;-webkit-overflow-scrolling:touch}.strip::-webkit-scrollbar{display:none}
 .strip .chip{flex-direction:column;gap:2px;padding:10px 14px;min-width:74px;align-items:center}
 .strip .chip b{font-size:15px}.strip .chip small{font-size:11.5px}
@@ -415,7 +438,7 @@ PELOTA_SVG = (
 
 def wordmark(tam: int = 22, href: str = "/") -> str:
     """Logo oficial: pin verde con la pelota (`/static/brand/logo_pin.png`) +
-    "Pichangol" en azul noche, cursiva y peso 800 como en el logo."""
+    "Pichangol" en azul noche, peso 800, SIN cursiva (pedido del director)."""
     return (f"<a class='wm' href='{href}' style='font-size:{tam}px' aria-label='Pichangol'>"
             "<img src='/static/brand/logo_pin.png' alt=''><span>Pichangol</span></a>")
 

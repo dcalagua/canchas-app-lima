@@ -309,7 +309,7 @@ para la API del APK.
   `#0B8A3E` (CTA), verde oscuro `#067A38`, lima `#7CB518`, naranja `#F28C28`
   (corazón de favorito), azul noche `#0A1B3D` (texto), fondo blanco `#FFFFFF`. El
   wordmark web es el logo real: `/static/brand/logo_pin.png` + "Pichangol"
-  cursiva 800 (`ui.wordmark`). Buscador con foco tipo Airbnb (pastilla gris,
+  peso 800 SIN cursiva (`ui.wordmark`, pedido del director). Buscador con foco tipo Airbnb (pastilla gris,
   segmento activo blanco con sombra, cursor visible, chevron en el select);
   categorías centradas en escritorio.
 - **CABECERA TAL CUAL AIRBNB.COM (pedido del director, sep-2026):**
@@ -393,6 +393,14 @@ para la API del APK.
   `overflow-x:hidden` en `body` convierte al body en scroll container y
   mata el `position:sticky` de la cabecera → `html{overflow-x:hidden}` +
   `body{overflow-x:clip}`.
+- **FICHA DE RESERVA (sep-2026, pedidos del director):** "Cómo llegar" abre
+  el mapa DENTRO de la ficha (Leaflet + OpenStreetMap en `#mapaFicha`, con
+  enlaces "Abrir en Google Maps" e "Indicaciones paso a paso" debajo), no en
+  otra pestaña. Los turnos van ORDENADOS por franja (🌅 Mañana <12 · ☀️ Tarde
+  12-18 · 🌙 Noche + madrugada del día siguiente) en tarjetas `.slot` con
+  hora, fin, PRECIO del turno y etiqueta "⚡ hora feliz" / "−N % promo";
+  ocupado = gris tachado; seleccionado = azul noche; nota "El precio varía
+  según la hora: desde … hasta …" cuando hay diferencias.
 - **Pool de conexiones Postgres (`db/pg.py::conexion()`, sep-2026):** cada
   `_conn()` abría una conexión nueva al pooler de Supabase (TLS ≈ 300-500 ms)
   y la ficha hacía 4-5 seguidas → 2 s de espera. `web/datos.py` usa
