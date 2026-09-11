@@ -335,7 +335,12 @@ para la API del APK.
   quedan DESHABILITADAS** (`horaPasada`: solo turnos que empiezan después
   de este momento, reloj del navegador; grupos enteros en gris y aviso si
   ya no queda ninguna); una hora elegida que pasa a ser inválida se
-  descarta. **NADA se filtra hasta pulsar "Buscar"** (regla del director,
+  descarta. **También se deshabilitan las horas en las que NINGUNA cancha
+  de la lista tiene turno** (una que cierra 23:00 termina su último turno
+  a las 23:00, así que "23:00" no se ofrece; tooltip "Ninguna cancha tiene
+  turno a esta hora") y el vacío explica el motivo ("Ninguna cancha tiene
+  turno libre hoy a las 23:00…"). La tarjeta muestra el horario
+  (`07:00–23:00 · 60 min`) para que se entienda por qué sale o no. **NADA se filtra hasta pulsar "Buscar"** (regla del director,
   sep-2026, como Airbnb): lo elegido vive en `pend` (zona, fecha, hora) y
   `buscar()` lo copia a `filtro`, aplica, guarda la búsqueda reciente y
   pinta el resumen "Buscando: … · Limpiar" (`#resBusq`) en la línea de

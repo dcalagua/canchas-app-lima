@@ -230,7 +230,11 @@ _JS_EXPLORAR = r"""
       var vis = Array.prototype.some.call(g.querySelectorAll('.lst'), function(c){ return c.style.display !== 'none'; });
       g.style.display = vis ? '' : 'none';
     });
-    var v = $('vacio'); if(v) v.style.display = n ? 'none' : '';
+    var v = $('vacio'); if(v){ v.style.display = n ? 'none' : '';
+      if(!n && v.dataset.base !== undefined){
+        var why = filtro.hora ? 'Ninguna cancha' + (filtro.cerca ? ' cerca de ti' : '') + ' tiene turno libre ' + (filtro.fecha ? etiquetaFecha(filtro.fecha).toLowerCase() : '') + ' a las ' + filtro.hora + '. Prueba con otra hora u otro día.'
+                              : 'No hay canchas libres con esa búsqueda. Prueba con otra zona, día u hora.';
+        v.textContent = why; } }
     if(mapa) marcadores.forEach(function(m){ var ok = m._card.style.display !== 'none'; if(ok){ m.addTo(mapa); } else { m.remove(); } });
   }
   // Deporte: lo filtra el SERVIDOR (?deporte=), las pestañas son enlaces normales (SEO, sin JS).
@@ -294,10 +298,16 @@ _JS_EXPLORAR = r"""
     var grupos = document.querySelectorAll('#panHora .hgrupo'), todas = true;
     grupos.forEach(function(g){
       var alguna = false;
-      g.querySelectorAll('.hchip').forEach(function(b){ var off = horaPasada(b.dataset.hora); b.classList.toggle('off', off); b.disabled = off; b.classList.toggle('sel', !off && b.dataset.hora === pend.hora); if(!off) alguna = true; });
+      g.querySelectorAll('.hchip').forEach(function(b){
+        var pasada = horaPasada(b.dataset.hora);
+        // Solo se ofrecen horas en las que ALGUNA cancha de la lista tiene turno (una que cierra 23:00 termina su último turno a las 23:00).
+        var sinTurno = !pasada && !cards().some(function(c){ return abiertaA(c, b.dataset.hora); });
+        var off = pasada || sinTurno;
+        b.classList.toggle('off', off); b.disabled = off; b.title = pasada ? 'Esta hora ya pasó' : (sinTurno ? 'Ninguna cancha tiene turno a esta hora' : '');
+        b.classList.toggle('sel', !off && b.dataset.hora === pend.hora); if(!off) alguna = true; });
       g.classList.toggle('off', !alguna); if(alguna) todas = false;
     });
-    var av = $('horaAviso'); if(av) av.style.display = todas ? '' : 'none';
+    var av = $('horaAviso'); if(av){ av.style.display = todas ? '' : 'none'; av.textContent = pend.fecha === hoyIso ? 'Hoy ya no quedan turnos por delante. Elige otro día en “Cuándo”.' : 'Ninguna cancha de la lista tiene turnos a estas horas.'; }
   }
   function ponerHora(h, sinCerrar){
     pend.hora = h || ''; if(sH){ sH.value = pend.hora; sH.dataset.hora = pend.hora; }
@@ -791,7 +801,7 @@ def _tarjeta(c: dict, rating: tuple[float, int] | None, fecha: str = "") -> str:
             f"<button class='corazon' aria-label='Guardar'>{_CORAZON}</button>{extra}</div>"
             f"<div class='lb'><div class='l1'><b>{e(c['nombre'])}</b>{rate}</div>"
             f"<div class='l2'>{e(sub) or e(c.get('direccion', ''))}</div>"
-            f"<div class='l2'>{e(deps_txt)} · turnos de {c['duracion_slot_min']} min <span class='dist'></span></div>"
+            f"<div class='l2'>{e(deps_txt)} · {e(c.get('hora_apertura') or '07:00')}–{e(c.get('hora_cierre') or '23:00')} · {c['duracion_slot_min']} min <span class='dist'></span></div>"
             f"{l3}</div></a>")
 
 
@@ -827,7 +837,7 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
                    "<p class='sub'>Estamos sumando locales. En la app ya puedes explorar el mapa completo.</p>"
                    f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a></div></div>")
     else:
-        cuerpo += "<div class='vacio' id='vacio' style='display:none'>No hay canchas libres con esa búsqueda. Prueba con otra zona, día u hora.</div>"
+        cuerpo += "<div class='vacio' id='vacio' data-base='' style='display:none'>No hay canchas libres con esa búsqueda. Prueba con otra zona, día u hora.</div>"
     if todas and not lista:
         cuerpo += ("<div class='vacio'>Todavía no hay canchas de este deporte. "
                    "<a href='/canchas'>Ver todas las canchas</a></div>")
