@@ -287,6 +287,24 @@ para la API del APK.
   términos de Google; nunca se descarga el archivo) y, si Google falla, vale
   la guardada. Lugares que Google confirma SIN foto se reintentan cada 6 h.
   Test `test_primera_foto_siempre_como_el_app`.
+- **LOGIN CON GOOGLE EN LA WEB (decisión del director, sep-2026: mismo
+  flujo que el app):** `web/sesion.py`. Botón oficial de Google Identity
+  Services (`GOOGLE_WEB_CLIENT_ID` = client id OAuth de tipo "Aplicación
+  web" del proyecto de Google de Pichangol, con orígenes autorizados
+  `https://pg.ebim.pe` y `https://www.pichangol.app`); `POST /web/sesion`
+  verifica el ID token contra Google (tokeninfo, audiencia = ese client id
+  o `GOOGLE_OAUTH_CLIENT_IDS`) y deja la cookie httpOnly FIRMADA
+  `pcg_sesion` (HMAC con el secreto del backend, 30 días); `POST /web/salir`,
+  `GET /web/sesion`, página `GET /entrar?volver=`. Con el client id
+  configurado, la ficha muestra en "Tus datos" la caja "Inicia sesión con
+  Google para reservar" (sin recargar: `alIniciarSesion`), luego "Reservando
+  como" + Cambiar cuenta; `/web/asegurar` y `/web/pagar` responden
+  `sesion_requerida` sin cookie y la reserva queda a nombre del CORREO de
+  Google (`usuario`), así aparece en "Mis reservas" del app con la misma
+  cuenta. La barra muestra avatar/nombre o "Iniciar sesión"
+  (`ui.chip_sesion`). **Sin `GOOGLE_WEB_CLIENT_ID` la web sigue en modo
+  invitado** (nombre + correo) para no romper antes de crear el client id.
+  Test `test_reservar_exige_login_con_google_como_el_app`.
 - El apex `pichangol.app` (sin `www`) sigue libre (podría redirigir al `www`).
 
 ## Estrategia de ambientes (piloto → prod)

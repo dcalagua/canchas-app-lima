@@ -174,6 +174,12 @@ SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "").strip()
 # siempre" en la web). Debe ser una llave SIN restricción de app Android (la
 # misma que usa la Edge como secret). Vacía = solo se usa la Edge.
 PLACES_API_KEY = os.getenv("PLACES_API_KEY", "").strip()
+# LOGIN CON GOOGLE EN LA WEB (mismo flujo que el APK): client id OAuth de tipo
+# "Aplicación web" del proyecto de Google de Pichangol, con los orígenes
+# autorizados del dominio (https://pg.ebim.pe, https://www.pichangol.app).
+# Con valor → reservar en la web EXIGE iniciar sesión con Google; vacío → la
+# web sigue con el formulario de invitado (nombre + correo) hasta configurarlo.
+GOOGLE_WEB_CLIENT_ID = os.getenv("GOOGLE_WEB_CLIENT_ID", "").strip()
 
 # Huella SHA-256 del certificado de firma del APK (para verificar los Android
 # App Links en /.well-known/assetlinks.json). Sacarla con:

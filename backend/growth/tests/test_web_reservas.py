@@ -481,3 +481,53 @@ def test_descubrir_canchas_de_google_como_el_apk(db, monkeypatch):
     d.limpiar_cache()
     monkeypatch.setattr(d, "_llamar_edge", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("red")))
     assert client.get("/web/descubrir?lat=-12.09&lng=-77.0").json()["canchas"] == []
+
+
+def test_reservar_exige_login_con_google_como_el_app(db, monkeypatch):
+    """Decisión del director (sep-2026): en la web también se inicia sesión con
+    Gmail antes de reservar, igual que en el app. Con GOOGLE_WEB_CLIENT_ID la
+    ficha muestra el botón de Google, /web/asegurar y /web/pagar exigen la
+    cookie firmada y la reserva queda a nombre del correo de Google."""
+    from web import sesion
+    monkeypatch.setattr(config, "GOOGLE_WEB_CLIENT_ID", "cid-web")
+    # Sin sesión: la ficha pide iniciar sesión y reservar se rechaza.
+    cli = TestClient(app, base_url="https://testserver")
+    html = cli.get("/reservar/c_lima").text
+    assert "Inicia sesión con Google para reservar" in html and "accounts.google.com/gsi/client" in html
+    assert "data-client_id='cid-web'" in html and '"login": true' in html and "Iniciar sesión" in html
+    f = _manana()
+    body = {"cancha_id": "c_lima", "horas": [{"fecha": f, "hora": "19:00"}], "extras": [],
+            "nombre": "Ana", "celular": "999888777", "email": "otra@x.com"}
+    assert cli.post("/web/asegurar", json=body).json()["error"] == "sesion_requerida"
+    assert cli.get("/entrar?volver=/reservar/c_lima").status_code == 200
+    # Token inválido → sin sesión. Token válido (tokeninfo simulado) → cookie.
+    monkeypatch.setattr(sesion, "_tokeninfo", lambda t: {"email": "Ana@Gmail.com", "email_verified": "true",
+                                                         "aud": "otro-cid", "name": "Ana Pérez", "exp": "9999999999"})
+    assert cli.post("/web/sesion", json={"credential": "x"}).json()["error"] == "token_invalido"
+    monkeypatch.setattr(sesion, "_tokeninfo", lambda t: {"email": "Ana@Gmail.com", "email_verified": "true",
+                                                         "aud": "cid-web", "name": "Ana Pérez",
+                                                         "picture": "https://lh3/ana.jpg", "exp": "9999999999"})
+    r = cli.post("/web/sesion", json={"credential": "tok"})
+    assert r.json() == {"ok": True, "email": "ana@gmail.com", "nombre": "Ana Pérez", "foto": "https://lh3/ana.jpg"}
+    assert sesion.COOKIE in r.cookies and sesion.leer(r.cookies[sesion.COOKIE])["email"] == "ana@gmail.com"
+    assert sesion.leer(r.cookies[sesion.COOKIE][:-3] + "abc") is None  # firma alterada
+    # Con sesión: la ficha muestra "Reservando como" y la reserva es del correo de Google.
+    html = cli.get("/reservar/c_lima").text
+    assert "Ana Pérez" in html and "ana@gmail.com" in html and "Cambiar cuenta" in html
+    assert cli.get("/entrar?volver=/x", follow_redirects=False).status_code == 302
+    r = cli.post("/web/asegurar", json=body).json()
+    assert r["ok"]
+    fila = db.reservas[r["ids"][0]]
+    assert fila["usuario"] == "ana@gmail.com" and fila["jugador"] == "Ana"
+    monkeypatch.setattr(culqi, "crear_cargo", lambda **kw: {"ok": True, "charge_id": "chr_g", "email": kw["email"]})
+    import pagos.router as pr
+    monkeypatch.setattr(pr, "_aviso_push_usuario", lambda *a, **k: None)
+    p = cli.post("/web/pagar", json={"ids": r["ids"], "firma": r["firma"], "token": "tkn", "medio": "yape",
+                                     "email": "otra@x.com"}).json()
+    assert p["ok"] and db.reservas[r["ids"][0]]["pagado"]
+    # Salir: sin cookie vuelve a exigir sesión.
+    cli.post("/web/salir")
+    assert cli.post("/web/asegurar", json=body).json()["error"] == "sesion_requerida"
+    # Sin client id configurado, la web sigue con el formulario de invitado.
+    monkeypatch.setattr(config, "GOOGLE_WEB_CLIENT_ID", "")
+    assert "id='loginBox'" not in client.get("/reservar/c_lima").text and '"login": false' in client.get("/reservar/c_lima").text

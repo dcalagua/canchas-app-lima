@@ -44,7 +44,7 @@ h1{font-size:28px;line-height:1.15}h2{font-size:20px}h3{font-size:16px}
 .wm{display:inline-flex;align-items:center;font-weight:800;font-size:22px;letter-spacing:-.5px;color:var(--noche);text-decoration:none;line-height:1}
 .wm svg{width:.92em;height:.92em;margin:0 .03em;vertical-align:middle}
 .links{display:flex;gap:6px;align-items:center}
-.links a{color:var(--noche);text-decoration:none;font-weight:700;font-size:14px;padding:9px 12px;border-radius:999px}
+.links a{color:var(--noche);text-decoration:none;font-weight:700;font-size:14px;padding:9px 12px;border-radius:999px;white-space:nowrap}
 .links a:hover{background:var(--gris)}.links a.cta{background:var(--esmeralda);color:#fff;padding:10px 16px}
 @media(max-width:640px){.links a:not(.cta){display:none}}
 /* botones */
@@ -236,6 +236,17 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 .ubic-mini{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13.5px;font-weight:600;color:var(--tenue);padding:14px 0 0}
 .ubic-mini button{border:0;background:transparent;color:var(--esmeralda);font-weight:800;cursor:pointer;font-family:inherit;font-size:13.5px;padding:0;text-decoration:underline}
 .vacio{padding:40px 0;text-align:center;color:var(--tenue);font-weight:600}
+/* sesión con Google */
+.links a.yo{display:inline-flex;align-items:center;gap:8px;padding:5px 10px 5px 5px;border:1px solid var(--trazo);border-radius:999px;background:var(--blanco)}
+.links a.yo:hover{background:var(--blanco);box-shadow:var(--sombra)}
+.avatar{width:28px;height:28px;border-radius:50%;object-fit:cover;display:inline-flex;align-items:center;justify-content:center;background:var(--tinte);color:var(--teal);font-weight:800;font-size:13px}
+@media(max-width:640px){.links a.yo,.links a.entrar{display:inline-flex}.links a.yo .nom{display:none}}
+.login-box{background:var(--tinte);border-radius:var(--r);padding:16px 18px;margin-top:8px}
+.login-box b{font-size:15px}
+.quien{display:flex;align-items:center;gap:12px;margin:10px 0 4px;padding:12px 14px;border:1px solid var(--trazo);border-radius:var(--r);background:var(--blanco)}
+.quien img{width:40px;height:40px;border-radius:50%;object-fit:cover}
+.quien .m{font-size:13px;color:var(--tenue);font-weight:600}
+.quien>div{flex:1;min-width:0}.quien .btn{padding:8px 12px;font-size:13px}
 .marca{margin-top:48px;border-top:1px solid var(--trazo)}
 .marca section{padding:44px 0}
 .marca section:first-child{border-top:0}
@@ -310,18 +321,33 @@ def footer() -> str:
         "</div></div></footer>")
 
 
-def nav_simple() -> str:
+def chip_sesion(ses: dict | None, volver: str = "/") -> str:
+    """Avatar + nombre si hay sesión de Google; si no, "Iniciar sesión" (solo
+    cuando el login web está configurado)."""
+    from web import sesion as _s
+    if ses:
+        foto = (f"<img class='avatar' src='{e(ses.get('foto'))}' alt=''>" if ses.get("foto")
+                else f"<span class='avatar ini'>{e((ses.get('nombre') or ses.get('email') or '?')[:1].upper())}</span>")
+        return (f"<a class='yo' href='/entrar' title='{e(ses.get('email'))}' onclick='return false'>{foto}"
+                f"<span class='nom'>{e((ses.get('nombre') or ses.get('email') or '').split(' ')[0])}</span></a>")
+    if not _s.activo():
+        return ""
+    from urllib.parse import quote as _q
+    return f"<a class='entrar' href='/entrar?volver={_q(volver, safe='')}'>Iniciar sesión</a>"
+
+
+def nav_simple(ses: dict | None = None) -> str:
     return ("<header class='nav'><div class='wrap nav-in'>"
             f"{wordmark()}"
             "<nav class='links'><a href='/canchas'>Canchas</a><a href='/#servicios'>Servicios</a>"
-            "<a href='/#contacto'>Contacto</a><a class='cta' href='/canchas'>Reservar</a></nav>"
+            f"<a href='/#contacto'>Contacto</a>{chip_sesion(ses, '/canchas')}<a class='cta' href='/canchas'>Reservar</a></nav>"
             "</div></header>")
 
 
 def shell(titulo: str, cuerpo: str, *, desc: str = "", extra_head: str = "",
           canonical: str = "", og_image: str = "/static/brand/logo_pichangol.png",
           con_barra: bool = False, jsonld: str = "", nav: str = "",
-          ancho: bool = False, titulo_tab: str = "") -> HTMLResponse:
+          ancho: bool = False, titulo_tab: str = "", sesion: dict | None = None) -> HTMLResponse:
     """Envuelve una página pública. [nav] = cabecera propia (la raíz lleva el
     buscador tipo Airbnb); [ancho] = contenedor 1440 px (grilla de canchas)."""
     page = (
@@ -341,7 +367,7 @@ def shell(titulo: str, cuerpo: str, *, desc: str = "", extra_head: str = "",
         f"<style>{CSS}</style>{extra_head}"
         + (f"<script type='application/ld+json'>{jsonld}</script>" if jsonld else "")
         + f"</head><body{' class=con-barra' if con_barra else ''}>"
-        f"{nav or nav_simple()}"
+        f"{nav or nav_simple(sesion)}"
         f"<main class='{'wrap-xl' if ancho else 'wrap'}'>{cuerpo}</main>"
         f"{footer()}"
         "</body></html>")

@@ -34,14 +34,14 @@ import time
 from datetime import date, datetime, timedelta, timezone
 from urllib.parse import quote
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request, Response
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
 
 import config
 from paises import _CAJAS, pais_de_coordenadas, moneda_de_pais, simbolo_de_moneda
 from pagos import culqi
-from web import datos, descubrir, horarios, marca, ui
+from web import datos, descubrir, horarios, marca, sesion, ui
 from web.ui import e
 
 router = APIRouter()
@@ -406,7 +406,7 @@ CATEGORIAS = [("", "Todas", "🏟️"), ("futbol", "Fútbol", "⚽"), ("tenis", 
               ("basquet", "Básquet", "🏀")]
 
 
-def _nav_explorar(dep: str) -> str:
+def _nav_explorar(dep: str, ses: dict | None = None) -> str:
     """Cabecera tipo Airbnb: wordmark, buscador en pastilla (Dónde · Deporte ·
     Cuándo · lupa), 'Pon tu cancha' y la app; debajo, categorías con ícono."""
     ops = "".join(f"<option value='{k}'{' selected' if k == dep else ''}>{n}</option>" for k, n, _ in CATEGORIAS)
@@ -422,6 +422,7 @@ def _nav_explorar(dep: str) -> str:
         f"<label class='seg cuando'><small>Cuándo</small><input id='sF' type='date' min='{hoy}'></label>"
         f"<button class='lupa' id='btnBuscar' aria-label='Buscar'>{_LUPA}</button></div>"
         f"<nav class='links'><a class='host' href='{PLAY_URL}' rel='noopener'>Pon tu cancha en Pichangol</a>"
+        f"{ui.chip_sesion(ses, '/')}"
         f"<a class='cta' href='{PLAY_URL}' rel='noopener'>Descarga la app</a></nav>"
         "</div>"
         f"<div class='wrap-xl cats'><div class='cat-strip'>{cats}</div>"
@@ -472,7 +473,7 @@ def _tarjeta(c: dict, rating: tuple[float, int] | None, fecha: str = "") -> str:
             f"{l3}</div></a>")
 
 
-def _explorar(deporte: str = "", fecha: str = "") -> HTMLResponse:
+def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None) -> HTMLResponse:
     """RAÍZ del dominio, tipo Airbnb: buscador en pastilla, categorías por
     deporte, grilla de tarjetas con foto/corazón/★, "Mostrar mapa" (split
     view en escritorio), cercanía por ubicación y canchas descubiertas en
@@ -527,20 +528,21 @@ def _explorar(deporte: str = "", fecha: str = "") -> HTMLResponse:
     if js_m:
         cuerpo += f"<script>{js_m}</script>"
     canonical = f"{config.PUBLIC_BASE_URL.rstrip('/')}/" if getattr(config, "PUBLIC_BASE_URL", "") else ""
-    return ui.shell("Pichangol", cuerpo, extra_head=head, nav=_nav_explorar(dep), ancho=True,
+    ses = sesion.de_request(request)
+    return ui.shell("Pichangol", cuerpo, extra_head=head, nav=_nav_explorar(dep, ses), ancho=True, sesion=ses,
                     titulo_tab="Pichangol · Reserva canchas de fútbol, tenis y pádel", canonical=canonical,
                     desc="Reserva canchas de fútbol, tenis y pádel cerca de ti y paga con Yape o tarjeta. Perú, Ecuador y Bolivia.")
 
 
 @router.get("/", response_class=HTMLResponse, include_in_schema=False)
-def pagina_inicio(deporte: str = "", fecha: str = "") -> HTMLResponse:
-    return _explorar(deporte, fecha)
+def pagina_inicio(request: Request, deporte: str = "", fecha: str = "") -> HTMLResponse:
+    return _explorar(deporte, fecha, request)
 
 
 @router.get("/canchas", response_class=HTMLResponse)
-def pagina_canchas(deporte: str = "", fecha: str = "") -> HTMLResponse:
+def pagina_canchas(request: Request, deporte: str = "", fecha: str = "") -> HTMLResponse:
     """Alias histórico del explorador (enlaces de la app, la home y el pie)."""
-    return _explorar(deporte, fecha)
+    return _explorar(deporte, fecha, request)
 
 
 # ── descubrir (Google Places, como el APK) ────────────────────────────────────
@@ -559,6 +561,63 @@ def descubrir_web(lat: float, lng: float, fotos: int = 0) -> dict:
         if c.get("fotos"):
             descubrir.recordar_fotos_edge(c)  # cosecha gratis: ya las pagó la Edge
     return {"ok": True, "region": region, "canchas": lista}
+
+
+# ── sesión con Google (mismo flujo que el APK) ────────────────────────────────
+
+class SesionReq(BaseModel):
+    credential: str
+
+
+@router.post("/web/sesion")
+def abrir_sesion(req: SesionReq, response: Response) -> dict:
+    """Recibe el ID token del botón de Google, lo verifica y deja la cookie
+    firmada de sesión (30 días). Sin `GOOGLE_WEB_CLIENT_ID` → no disponible."""
+    if not sesion.activo():
+        return {"ok": False, "error": "no_configurado"}
+    u = sesion.verificar_id_token(req.credential)
+    if not u:
+        return {"ok": False, "error": "token_invalido"}
+    sesion.poner_cookie(response, sesion.emitir(u))
+    return {"ok": True, **u}
+
+
+@router.post("/web/salir")
+def cerrar_sesion(response: Response) -> dict:
+    sesion.borrar_cookie(response)
+    return {"ok": True}
+
+
+@router.get("/web/sesion")
+def ver_sesion(request: Request) -> dict:
+    u = sesion.de_request(request)
+    return {"ok": True, "activo": sesion.activo(), "sesion": u}
+
+
+def _volver_seguro(volver: str) -> str:
+    v = (volver or "").strip()
+    return v if v.startswith("/") and not v.startswith("//") else "/"
+
+
+@router.get("/entrar", response_class=HTMLResponse)
+def pagina_entrar(request: Request, volver: str = "/") -> HTMLResponse:
+    """Inicio de sesión con Google (como en el app). Al entrar vuelve a la
+    página desde la que se pidió (`volver`)."""
+    v = _volver_seguro(volver)
+    ses = sesion.de_request(request)
+    if ses or not sesion.activo():
+        return HTMLResponse("", status_code=302, headers={"Location": v})
+    cuerpo = ("<div class='panel' style='max-width:460px;margin:40px auto;text-align:center'>"
+              f"<div style='margin-bottom:8px'>{ui.wordmark(26, '/')}</div>"
+              "<h1 style='font-size:22px'>Inicia sesión para reservar</h1>"
+              "<p class='sub'>Usa tu cuenta de Google, la misma del app: tus reservas quedan en "
+              "\"Mis reservas\" y el comprobante llega a tu correo.</p>"
+              f"<div style='display:flex;justify-content:center;margin:22px 0 10px'>{sesion.boton_google()}</div>"
+              "<div class='estado bad' id='sesionErr'></div>"
+              "<p class='sub' style='font-size:12.5px'>Al continuar aceptas los <a href='/legal/terminos'>términos</a> y la "
+              "<a href='/legal/privacidad'>política de privacidad</a>.</p></div>"
+              f"<script>window.alIniciarSesion=function(){{location.href={json.dumps(v)};}};{sesion.JS_SESION}</script>")
+    return ui.shell("Iniciar sesión", cuerpo, extra_head=sesion.GIS_SCRIPT, sesion=None)
 
 
 @router.get("/web/foto")
@@ -720,10 +779,21 @@ _JS_RESERVA = r"""
   function mostrarError(m){ var el = $('err'); el.textContent = m; el.style.display = 'block'; el.scrollIntoView({behavior:'smooth', block:'center'}); }
   function ocultarError(){ $('err').style.display = 'none'; }
   function datos(){
-    return { nombre: $('nombre').value.trim(), celular: $('celular').value.trim(), email: $('email').value.trim().toLowerCase() };
+    var email = (C.login && C.sesion) ? C.sesion.email : $('email').value.trim().toLowerCase();
+    return { nombre: $('nombre').value.trim(), celular: $('celular').value.trim(), email: email };
   }
+  // Login con Google (como el app): al entrar, se muestran los datos sin recargar.
+  window.alIniciarSesion = function(u){
+    C.sesion = u;
+    var lb = $('loginBox'), db = $('datosBox'); if(lb) lb.style.display = 'none'; if(db) db.style.display = '';
+    if($('nombre') && !$('nombre').value) $('nombre').value = u.nombre || '';
+    if($('email')) $('email').value = u.email || '';
+    if(db && !$('quien')){ db.insertAdjacentHTML('afterbegin', '<div class="quien" id="quien">' + (u.foto ? '<img src="' + esc(u.foto) + '" alt="">' : '') + '<div><b>' + esc(u.nombre || u.email) + '</b><div class="m">' + esc(u.email) + '</div></div><button type="button" class="btn sec" onclick="cerrarSesion()">Cambiar cuenta</button></div>'); }
+    pintarResumen();
+  };
   function validar(d){
     if(!Object.keys(sel).length) return 'Elige al menos un horario.';
+    if(C.login && !C.sesion) return 'Inicia sesión con Google para reservar.';
     if(d.nombre.length < 3) return 'Escribe tu nombre.';
     if(d.celular.replace(/\D/g,'').length < 8) return 'Escribe un celular válido.';
     if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.email)) return 'Escribe un correo válido: ahí va tu comprobante.';
@@ -738,7 +808,7 @@ _JS_RESERVA = r"""
   function pagar(){
     ocultarError();
     var d = datos(), v = validar(d);
-    if(v){ mostrarError(v); if(!Object.keys(sel).length) $('slots').scrollIntoView({behavior:'smooth', block:'center'}); else $('nombre').scrollIntoView({behavior:'smooth', block:'center'}); return; }
+    if(v){ mostrarError(v); if(!Object.keys(sel).length) $('slots').scrollIntoView({behavior:'smooth', block:'center'}); else ($('loginBox') && !C.sesion ? $('loginBox') : $('nombre')).scrollIntoView({behavior:'smooth', block:'center'}); return; }
     var extras = extrasSel().map(function(x){ return x.clave; });
     var horas = Object.keys(sel).map(function(k){ return {fecha: sel[k].fecha, hora: sel[k].hora}; });
     var deporte = ($('deporte') && $('deporte').value) || '';
@@ -750,6 +820,7 @@ _JS_RESERVA = r"""
         if(!j.ok){
           pintarResumen();
           if(j.error === 'ocupado'){ mostrarError('Alguien acaba de tomar uno de esos horarios. Elige otro, por favor.'); cargar(); }
+          else if(j.error === 'sesion_requerida'){ C.sesion = null; mostrarError('Tu sesión venció. Inicia sesión con Google para reservar.'); var lb = $('loginBox'), db = $('datosBox'); if(lb) lb.style.display = ''; if(db) db.style.display = 'none'; }
           else mostrarError('No pudimos reservar el horario. Inténtalo de nuevo.');
           return;
         }
@@ -847,8 +918,9 @@ def _jsonld_cancha(c: dict, sim: str) -> str:
 
 
 @router.get("/reservar/{cancha_id}", response_class=HTMLResponse)
-def pagina_reservar(cancha_id: str, fecha: str = "") -> HTMLResponse:
+def pagina_reservar(request: Request, cancha_id: str, fecha: str = "") -> HTMLResponse:
     c = datos.cancha(cancha_id)
+    ses = sesion.de_request(request)
     if not c or c.get("eliminada") or not c.get("registrada", True):
         return _no_encontrada()
     sim, iso = _moneda_de(c)
@@ -871,7 +943,7 @@ def pagina_reservar(cancha_id: str, fecha: str = "") -> HTMLResponse:
                   f"<div class='acciones'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a>"
                   "<a class='btn sec' href='/canchas'>Ver otras canchas</a></div></div>")
         return ui.shell(c["nombre"], cuerpo, desc=f"{c['nombre']} · {c.get('club', '')}", canonical=canonical,
-                        og_image=og, jsonld=_jsonld_cancha(c, sim))
+                        og_image=og, jsonld=_jsonld_cancha(c, sim), sesion=ses)
 
     dias, etiquetas = _tira_dias(pais)
     deps = _deportes_de(c)
@@ -899,7 +971,32 @@ def pagina_reservar(cancha_id: str, fecha: str = "") -> HTMLResponse:
     cfg = json.dumps({"id": c["id"], "moneda": sim, "pk": config.CULQI_PUBLIC_KEY, "maxSlots": MAX_SLOTS,
                       "logo": "", "hoy": dias[0]["iso"], "dias": dias, "etiquetas": etiquetas,
                       # Día preseleccionado desde el buscador de la portada (solo si cae en la tira).
-                      "fecha": fecha if any(d["iso"] == fecha for d in dias) else ""}, ensure_ascii=False)
+                      "fecha": fecha if any(d["iso"] == fecha for d in dias) else "",
+                      # Login con Google (como el app): con client id configurado, reservar
+                      # exige sesión; la reserva queda a nombre del correo de Google.
+                      "login": sesion.activo(), "sesion": ses}, ensure_ascii=False)
+    if sesion.activo():
+        quien = ("" if not ses else
+                 f"<div class='quien' id='quien'>{('<img src=' + chr(39) + e(ses['foto']) + chr(39) + ' alt=' + chr(39) + chr(39) + '>') if ses.get('foto') else ''}"
+                 f"<div><b>{e(ses.get('nombre') or ses['email'])}</b><div class='m'>{e(ses['email'])}</div></div>"
+                 "<button type='button' class='btn sec' onclick='cerrarSesion()'>Cambiar cuenta</button></div>")
+        paso_datos = (
+            "<div class='paso'><span>2</span> Tus datos</div>"
+            f"<div class='login-box' id='loginBox'{' style=display:none' if ses else ''}>"
+            "<b>Inicia sesión con Google para reservar</b>"
+            "<div class='sub' style='margin:4px 0 12px'>Como en el app: tu reserva queda en \"Mis reservas\" y el comprobante llega a tu correo.</div>"
+            f"{sesion.boton_google()}<div class='estado bad' id='sesionErr'></div></div>"
+            f"<div id='datosBox'{'' if ses else ' style=display:none'}>{quien}"
+            "<div class='row'><div><label for='nombre'>Nombre y apellido</label>"
+            f"<input id='nombre' autocomplete='name' maxlength='80' placeholder='Como en tu documento' value='{e((ses or {}).get('nombre', ''))}'></div>"
+            "<div><label for='celular'>Celular</label><input id='celular' inputmode='tel' autocomplete='tel' maxlength='20' placeholder='9 dígitos'></div></div>"
+            f"<input id='email' type='hidden' value='{e((ses or {}).get('email', ''))}'></div>")
+    else:
+        paso_datos = (
+            "<div class='paso'><span>2</span> Tus datos</div>"
+            "<div class='row'><div><label for='nombre'>Nombre y apellido</label><input id='nombre' autocomplete='name' maxlength='80' placeholder='Como en tu documento'></div>"
+            "<div><label for='celular'>Celular</label><input id='celular' inputmode='tel' autocomplete='tel' maxlength='20' placeholder='9 dígitos'></div></div>"
+            "<label for='email'>Correo</label><input id='email' type='email' autocomplete='email' maxlength='120' placeholder='Aquí va tu comprobante'>")
     cuerpo = (
         f"<div style='padding-top:22px'>{ficha}</div>"
         "<div class='dos' style='margin-top:22px'>"
@@ -909,10 +1006,7 @@ def pagina_reservar(cancha_id: str, fecha: str = "") -> HTMLResponse:
         f"{selector_dep}"
         f"<div class='sub' style='margin:6px 0 12px;font-size:13px'>Hasta {MAX_SLOTS} turnos por pedido. Toca un horario para agregarlo; vuelve a tocarlo para quitarlo.</div>"
         "<div class='chips' id='slots'></div>"
-        "<div class='paso'><span>2</span> Tus datos</div>"
-        "<div class='row'><div><label for='nombre'>Nombre y apellido</label><input id='nombre' autocomplete='name' maxlength='80' placeholder='Como en tu documento'></div>"
-        "<div><label for='celular'>Celular</label><input id='celular' inputmode='tel' autocomplete='tel' maxlength='20' placeholder='9 dígitos'></div></div>"
-        "<label for='email'>Correo</label><input id='email' type='email' autocomplete='email' maxlength='120' placeholder='Aquí va tu comprobante'>"
+        f"{paso_datos}"
         f"{extras_html}"
         "<div class='estado bad' id='err'></div>"
         "</div>"
@@ -930,9 +1024,10 @@ def pagina_reservar(cancha_id: str, fecha: str = "") -> HTMLResponse:
         "<button class='btn' id='btnPagarBarra' disabled>Elige un horario</button></div>"
         f"<script>window.__cancha={cfg};</script>"
         "<script src='https://checkout.culqi.com/js/v4'></script>"
-        f"<script>{_JS_RESERVA}</script>")
+        f"<script>{sesion.JS_SESION if sesion.activo() else ''}{_JS_RESERVA}</script>")
     return ui.shell(f"Reservar {c['nombre']}", cuerpo, con_barra=True, canonical=canonical, og_image=og,
-                    desc=f"Reserva {c['nombre']} y paga en línea con Yape o tarjeta.", jsonld=_jsonld_cancha(c, sim))
+                    desc=f"Reserva {c['nombre']} y paga en línea con Yape o tarjeta.", jsonld=_jsonld_cancha(c, sim),
+                    extra_head=sesion.GIS_SCRIPT if (sesion.activo() and not ses) else "", sesion=ses)
 
 
 # ── asegurar / pagar / liberar ────────────────────────────────────────────────
@@ -961,7 +1056,7 @@ def _nuevo_id() -> str:
 
 
 @router.post("/web/asegurar")
-def asegurar(req: AsegurarReq) -> dict:
+def asegurar(req: AsegurarReq, request: Request = None) -> dict:
     """Toma los slots (INSERT 'nueva') ANTES de cobrar, igual que el APK
     (`insertarSegura`): así el UNIQUE decide quién se queda con la hora. Si el
     cliente no paga, `/web/liberar` (o el vencimiento del hold) los suelta."""
@@ -973,8 +1068,13 @@ def asegurar(req: AsegurarReq) -> dict:
     sim, iso = _moneda_de(c)
     if not _pago_web_disponible(iso):
         return {"ok": False, "error": "pago_no_disponible"}
-    nombre = req.nombre.strip()[:80]
-    email = req.email.strip().lower()[:120]
+    # Con login configurado, la reserva es del CORREO de la sesión de Google
+    # (como en el app); sin sesión no se reserva.
+    ses = sesion.de_request(request) if sesion.activo() else None
+    if sesion.activo() and not ses:
+        return {"ok": False, "error": "sesion_requerida"}
+    nombre = (req.nombre.strip() or (ses or {}).get("nombre", ""))[:80]
+    email = (ses["email"] if ses else req.email.strip().lower())[:120]
     if len(nombre) < 3 or "@" not in email:
         return {"ok": False, "error": "datos_invalidos"}
     if not req.horas or len(req.horas) > MAX_SLOTS:
@@ -1057,10 +1157,14 @@ class PagarReq(BaseModel):
 
 
 @router.post("/web/pagar")
-def pagar(req: PagarReq) -> dict:
+def pagar(req: PagarReq, request: Request = None) -> dict:
     """Cobra con Culqi el TOTAL del bloque asegurado y confirma las filas.
     Fallo del cargo → las filas se liberan y no se cobró nada. Éxito →
     confirmada + pagado + liquidación al dueño (billetera-first) + push."""
+    ses = sesion.de_request(request) if sesion.activo() else None
+    if sesion.activo() and not ses:
+        return {"ok": False, "error": "sesion_requerida",
+                "mensaje": "Inicia sesión con Google para pagar tu reserva."}
     if not _firma_ok(req.ids, req.firma):
         return {"ok": False, "error": "firma",
                 "mensaje": "La sesión de pago venció. Vuelve a elegir el horario."}
@@ -1073,7 +1177,7 @@ def pagar(req: PagarReq) -> dict:
     c = datos.cancha(filas[0]["cancha_id"]) or {}
     sim, iso = _moneda_de(c) if c else ("S/", "PEN")
     total = _total_de(filas)
-    email = (req.email or filas[0].get("usuario") or "").strip().lower()
+    email = (ses["email"] if ses else (req.email or filas[0].get("usuario") or "")).strip().lower()
     concepto = f"Reserva {c.get('nombre', 'cancha')} {filas[0]['fecha']} {filas[0]['hora_inicio']}"
     cargo = culqi.crear_cargo(
         token=req.token.strip(), monto_centimos=total * 100, email=email,
