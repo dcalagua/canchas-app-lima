@@ -404,8 +404,41 @@ para la API del APK.
   (`_agrupar_reservas`: 19:00–21:00 · 2 turnos, precio sumado). Sin cookie →
   302 a `/entrar?volver=/mis-reservas`; sin `GOOGLE_WEB_CLIENT_ID` explica
   que están en la app. Enlace "📅 Mis reservas" en el menú ☰ (solo con
-  sesión). Cancelar desde la web NO está (se pide por correo citando el
-  comprobante, como dice el aviso); el reembolso web es fase 2.
+  sesión). **Layout = "Viajes" de Airbnb (sep-2026):** columna izquierda
+  (≤520 px) con tarjetas `.viaje` (foto cuadrada — propia o resuelta con
+  `/web/foto` —, cancha, club, fecha · hora · turnos, avatar del jugador,
+  pill de estado, precio y "Cancelar reserva"); clic = comprobante. Derecha:
+  mapa Leaflet sticky con un pin por reserva próxima (popup "Ver reserva").
+  Debajo: `<details>` "Dónde has jugado" (pasadas) y "🗓️ Reservaciones
+  canceladas" (historial de `stores.cancelaciones_web` con el estado de la
+  devolución). Aviso verde tras cancelar (`sessionStorage` `pcg_aviso`).
+  **CANCELACIÓN CON REEMBOLSO DESDE LA WEB (hecho sep-2026, autorizado por
+  el director):** `POST /web/cancelar {ref}` (grupo o turno; solo con sesión
+  y solo reservas del propio correo; `estado_cancelacion()` decide: no se
+  cancela lo que ya empezó; con ≥ `WEB_CANCELACION_HORAS` (6, env) y pagada
+  → devolución del 100 %). Flujo: (1) si el cargo fue WEB (`stores` tipo
+  `cobro_web`, registrado en `/web/pagar` con el `charge_id` de Culqi y
+  `concepto=web:<ref>`) → `culqi.reembolsar` (`POST /v2/refunds`, funciona
+  en test y live) → `reembolsado` (o `fallo` si Culqi rechazó); si pagó en el
+  APP no tenemos su cargo → `manual` (el operador devuelve); < 6 h →
+  `sin_reembolso`; pago en la cancha → `no_aplica`. (2) Reversa contable del
+  dueño SOLO si el cliente recupera su plata: liquidación
+  (`liquidacion_full|online` por `reserva_id`) → `anulado` si aún no se le
+  pagó, y la comisión `<id>_com` → `anulado` devolviendo al dueño la parte
+  real a su saldo y la parte regalo (`PagoRegistro.promo_centimos`, nuevo
+  campo que guarda `post_liquidacion_online`) a su bolsillo promo; si YA se
+  le liquidó → pago `ajuste_cancelacion` (estado `pendiente`) +
+  `deuda_dueno_centimos` en el registro para descontar en la siguiente
+  liquidación. (3) Se BORRAN las filas de `pichangol_reservas` (igual que el
+  app al cancelar: libera el horario y el app deja de mostrarla; los puntos
+  derivados desaparecen solos). (4) Registro en `stores.cancelaciones_web`
+  (snapshot) + push al dueño ("Reserva cancelada 📅 … quedó libre") y al
+  jugador (qué pasa con su plata) + línea `[cancelar]` en logs. Torre: `GET
+  /pagos/cancelaciones-web[?pendientes=1]` (X-Admin-Token) lista todo; las
+  `fallo`/`manual`/con deuda las atiende el operador (pendiente: pane en
+  `/admin`). El comprobante `/reserva/{ref}` muestra "Cancelar reserva" al
+  dueño de la reserva (modal `_MODAL_CANCELAR` + `JS_CANCELAR`, compartidos
+  con Mis reservas) y la política con las horas configuradas.
 - **FICHA DE RESERVA (sep-2026, pedidos del director):** "Cómo llegar" abre
   el mapa DENTRO de la ficha (Leaflet + OpenStreetMap en `#mapaFicha`, con
   enlaces "Abrir en Google Maps" e "Indicaciones paso a paso" debajo), no en
@@ -815,7 +848,12 @@ aporta. Eslogan: "Reserva, juega, repite." La co-marca con EBIM solo en el panel
 web admin; la app del jugador es 100% Pichangol.
 
 **Estándar de UI/UX: estilo Airbnb (siempre).** Toda pantalla/componente nuevo
-sigue el lenguaje Airbnb sobre la paleta EBIM:
+sigue el lenguaje Airbnb sobre la paleta EBIM. **REGLA del director (sep-2026):
+TODO el diseño, app y web, debe ser similar al de Airbnb** — antes de dibujar
+una pantalla nueva, buscar la pantalla equivalente en airbnb.com (Explorar =
+portada, Mis reservas = "Viajes", ficha = anuncio, filtros = modal Filtros,
+cabecera, menú ☰, calendario) y calcarla con la paleta y el logo de Pichangol;
+no inventar layouts propios. Rasgos Airbnb:
 - **Pastillas/chips:** blancas, borde gris muy suave (`#E4E4E4`), relieve leve
   (sombra `0x0F000000`), esquinas muy redondeadas. Seleccionado = relleno gris
   plomo (`#EBEBEB`) o tinte lima, **nunca borde negro**.

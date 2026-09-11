@@ -87,6 +87,11 @@ class FakeDB:
         return sorted([dict(self.reservas[i]) for i in ids if i in self.reservas],
                       key=lambda r: (r["fecha"], r["hora_inicio"]))
 
+    def eliminar_reservas(self, ids):
+        for i in ids:
+            self.reservas.pop(i, None)
+        return True
+
     def reservas_de_usuario(self, email, limite=200):
         return sorted([dict(r) for r in self.reservas.values()
                        if (r.get("usuario") or "").lower() == email.lower() and not (r["estado"] == "nueva" and not r.get("pagado"))],
@@ -102,7 +107,7 @@ def db(monkeypatch):
     fake = FakeDB()
     for fn in ("canchas_publicas", "canchas_verificadas", "cancha", "ocupados", "descuentos", "liberar_holds_vencidos",
                "insertar_reservas", "confirmar_reservas", "borrar_reservas", "reservas_de",
-               "reservas_por_grupo", "reservas_de_usuario"):
+               "reservas_por_grupo", "reservas_de_usuario", "eliminar_reservas"):
         monkeypatch.setattr(datos, fn, getattr(fake, fn))
     monkeypatch.setattr(config, "CULQI_PUBLIC_KEY", "pk_test_x")
     monkeypatch.setattr(config, "CULQI_SECRET_KEY", "sk_test_x")
@@ -574,16 +579,54 @@ def test_reservar_exige_login_con_google_como_el_app(db, monkeypatch):
     p = cli.post("/web/pagar", json={"ids": r["ids"], "firma": r["firma"], "token": "tkn", "medio": "yape",
                                      "email": "otra@x.com"}).json()
     assert p["ok"] and db.reservas[r["ids"][0]]["pagado"]
-    # "Mis reservas" en la web: las reservas del correo de Google (como en el app).
+    # "Mis reservas" en la web (layout "Viajes" de Airbnb): las reservas del correo de Google.
+    from datetime import timedelta
+    from db.store import stores
     mr = cli.get("/mis-reservas").text
+    ref1 = db.reservas[r['ids'][0]].get('grupo_reserva_id') or r['ids'][0]
     assert "Mis reservas" in mr and "ana@gmail.com" in mr and "Cancha Central" in mr and "Pagada" in mr
-    # Dos turnos seguidos de la misma reserva = una sola tarjeta 19:00–21:00 · 2 turnos.
+    assert f"/reserva/{ref1}" in mr and "id='mapaViajes'" in mr and "Reservaciones canceladas" in mr
+    assert "href='/mis-reservas'" in mr  # enlace del menú ☰
+    assert f"data-cancelar='{ref1}'" in mr and "data-reembolsable='1'" in mr
+    # Dos turnos seguidos de la misma reserva = una sola tarjeta 20:00–22:00 · 2 turnos.
     r2 = cli.post("/web/asegurar", json={**body, "horas": [{"fecha": f, "hora": "20:00"}, {"fecha": f, "hora": "21:00"}]}).json()
     cli.post("/web/pagar", json={"ids": r2["ids"], "firma": r2["firma"], "token": "tkn", "medio": "yape", "email": "x@x.com"})
     mr = cli.get("/mis-reservas").text
     assert "20:00–22:00 · 2 turnos" in mr
-    assert f"/reserva/{db.reservas[r['ids'][0]].get('grupo_reserva_id') or r['ids'][0]}" in mr and "Próximas" in mr
-    assert "href='/mis-reservas'" in mr  # enlace del menú ☰
+    # El cargo web quedó en el libro, ligado a la reserva (es lo que se reembolsa).
+    ref2 = db.reservas[r2["ids"][0]].get("grupo_reserva_id") or r2["ids"][0]
+    cobro = next(x for x in stores.pagos if x.tipo == "cobro_web" and x.concepto == f"web:{ref2}")
+    assert cobro.monto_centimos == 12000 and cobro.culqi_charge_id == "chr_g"
+    liq = stores.pago_por_charge(r2["ids"][0]); assert liq is not None and liq.estado == "aprobado"
+    # CANCELAR desde la web con más de 6 h: reembolso Culqi + reversa de la liquidación del dueño.
+    reembolsos = []
+    monkeypatch.setattr(culqi, "reembolsar", lambda **kw: (reembolsos.append(kw) or {"ok": True, "refund_id": "ref_1"}))
+    assert cli.post("/web/cancelar", json={"ref": "grp_nada"}).json()["error"] == "sin_reserva"
+    j = cli.post("/web/cancelar", json={"ref": ref2}).json()
+    assert j["ok"] and j["reembolso"] == "reembolsado" and j["monto"] == 120 and j["refund_id"] == "ref_1"
+    assert reembolsos == [{"charge_id": "chr_g", "monto_centimos": 12000}]
+    assert all(i not in db.reservas for i in r2["ids"])              # horario liberado (como el app)
+    assert liq.estado == "anulado" and cobro.estado == "reembolsado"  # el dueño ya no tiene ese "por recibir"
+    reg = stores.cancelaciones_web[-1]
+    assert reg["usuario"] == "ana@gmail.com" and reg["turnos"] == 2 and reg["reembolso"] == "reembolsado" and reg["deuda_dueno_centimos"] == 0
+    assert cli.post("/web/cancelar", json={"ref": ref2}).json()["error"] == "sin_reserva"  # ya no existe
+    mr = cli.get("/mis-reservas").text
+    assert "20:00–22:00" not in mr.split("Reservaciones canceladas")[0] and "Devolución en camino" in mr
+    # Menos de 6 h antes: se cancela pero SIN devolución y el dueño conserva su liquidación.
+    from web import horarios as _h
+    pronto = _h.ahora_local("PE") + timedelta(hours=2)
+    db.reservas["r_hoy"] = {**db.reservas[r["ids"][0]], "id": "r_hoy", "grupo_reserva_id": "", "fecha": pronto.date().isoformat(),
+                            "hora_inicio": f"{pronto.hour:02d}:00", "hora_fin": f"{(pronto.hour + 1) % 24:02d}:00", "medio_pago": "tarjeta"}
+    stores.registrar_pago(tipo="liquidacion_full", monto_centimos=6000, moneda="PEN", estado="aprobado", dueno_id="dueno@x.com", culqi_charge_id="r_hoy")
+    j = cli.post("/web/cancelar", json={"ref": "r_hoy"}).json()
+    assert j["ok"] and j["reembolso"] == "sin_reembolso" and "r_hoy" not in db.reservas
+    assert stores.pago_por_charge("r_hoy").estado == "aprobado" and len(reembolsos) == 1
+    # Reserva de OTRA persona: no se puede tocar.
+    db.reservas["r_ajena"] = {**db.reservas[r["ids"][0]], "id": "r_ajena", "grupo_reserva_id": "", "usuario": "otro@gmail.com"}
+    assert cli.post("/web/cancelar", json={"ref": "r_ajena"}).json()["error"] == "ajena"
+    # Torre: listado de cancelaciones web.
+    adm = cli.get("/pagos/cancelaciones-web", headers={"X-Admin-Token": "adm"}).json()
+    assert adm["total"] >= 2 and adm["cancelaciones"][0]["reembolso"] in ("sin_reembolso", "reembolsado")
     # Salir: sin cookie vuelve a exigir sesión.
     cli.post("/web/salir")
     assert cli.get("/mis-reservas", follow_redirects=False).status_code == 302

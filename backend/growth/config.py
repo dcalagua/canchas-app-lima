@@ -252,6 +252,8 @@ COINCIDENCIA_MAX_M = float(os.getenv("VERIF_COINCIDENCIA_MAX_M", "200"))
 CULQI_SECRET_KEY = os.getenv("CULQI_SECRET_KEY", "")
 CULQI_PUBLIC_KEY = os.getenv("CULQI_PUBLIC_KEY", "")
 CULQI_API_BASE = os.getenv("CULQI_API_BASE", "https://api.culqi.com/v2")
+# Cancelación desde la web: horas mínimas de anticipación para devolver el 100 %.
+WEB_CANCELACION_HORAS = float(os.getenv("WEB_CANCELACION_HORAS", "6"))
 # Token compartido opcional para el webhook de Culqi: se pasa como ?t=<token> en
 # la URL registrada en el panel de Culqi. Filtro ligero anti-ruido; la fuente de
 # verdad es re-consultar el cargo a Culqi con la sk. Vacío = no se exige.

@@ -433,6 +433,10 @@ class PagoRegistro:
     # MEDIO con el que pagó el JUGADOR (yape | tarjeta | sena): trazabilidad
     # del origen del cobro para el estado de cuenta del dueño.
     medio: str | None = None
+    # tipo=comision_reserva: cuánto de la comisión salió del saldo de REGALO
+    # (bienvenida). Al revertir una cancelación, esa parte vuelve al bolsillo
+    # promocional y no al saldo real (el regalo nunca se vuelve plata real).
+    promo_centimos: int = 0
 
 
 class Stores:
@@ -556,6 +560,8 @@ class Stores:
         # {id, numero, fecha, consumidor{...}, bien{...}, detalle{...},
         #  estado: pendiente|atendida, respuesta, respondida_en}
         self.reclamaciones: list[dict] = []
+        # Cancelaciones hechas desde la WEB (historial + estado del reembolso).
+        self.cancelaciones_web: list[dict] = []
         self._idem: dict[tuple[str, str], dict] = {}
         self._ids: dict[str, int] = {}
 
@@ -973,6 +979,7 @@ class Stores:
             "payphone_pagos": {
                 k: dict(v) for k, v in self.payphone_pagos.items()},
             "reclamaciones": [dict(r) for r in self.reclamaciones],
+            "cancelaciones_web": [dict(r) for r in self.cancelaciones_web],
             "jugadores_circuito": {
                 k: dict(v) for k, v in self.jugadores_circuito.items()},
             "ranking_snapshot": dict(self.ranking_snapshot),
@@ -1049,6 +1056,7 @@ class Stores:
             k: dict(v) for k, v in (data.get("payphone_pagos") or {}).items()
         }
         self.reclamaciones = [dict(r) for r in (data.get("reclamaciones") or [])]
+        self.cancelaciones_web = [dict(r) for r in (data.get("cancelaciones_web") or [])]
         self.jugadores_circuito = {
             k: dict(v) for k, v in (data.get("jugadores_circuito") or {}).items()
         }
@@ -1243,7 +1251,7 @@ def _pago_from(d: dict) -> PagoRegistro:
         liquidado_en=_dt(d.get("liquidado_en")),
         metodo_liquidacion=d.get("metodo_liquidacion"),
         referencia_liquidacion=d.get("referencia_liquidacion"),
-        medio=d.get("medio"))
+        medio=d.get("medio"), promo_centimos=int(d.get("promo_centimos", 0) or 0))
 
 
 def _insc_from(d: dict) -> Inscripcion:

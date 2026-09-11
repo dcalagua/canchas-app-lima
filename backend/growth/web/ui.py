@@ -64,7 +64,39 @@ h1{font-size:28px;line-height:1.15}h2{font-size:20px}h3{font-size:16px}
 .chip:hover{border-color:#C9D3E0}.chip.sel{background:var(--tinte);border-color:var(--esmeralda);color:var(--teal)}
 .chip.off{opacity:.38;cursor:not-allowed;text-decoration:line-through}.chip small{font-weight:600;color:var(--tenue)}
 .chip.sel small{color:var(--teal)}.chips{display:flex;flex-wrap:wrap;gap:10px}
-/* Mis reservas */
+/* Mis reservas = "Viajes" de Airbnb: lista a la izquierda, mapa a la derecha */
+.viajes{display:grid;grid-template-columns:minmax(0,520px) minmax(0,1fr);gap:40px;align-items:start;padding-top:8px}
+.viajes h1{font-size:26px;margin-top:6px}
+.viajes-lista{min-width:0}
+.viajes-mapa{position:sticky;top:98px}
+.viajes-mapa .mapa{height:calc(100vh - 122px);min-height:420px;border-radius:24px;border:1px solid var(--trazo);box-shadow:none}
+@media(max-width:900px){.viajes{grid-template-columns:minmax(0,1fr)}.viajes-mapa{display:none}}
+.viajes-cards{display:flex;flex-direction:column;gap:14px;margin-top:16px}
+.viaje{display:flex;gap:14px;align-items:stretch;background:var(--blanco);border:1px solid var(--trazo);border-radius:16px;padding:12px;text-decoration:none;color:inherit;box-shadow:0 2px 10px rgba(15,27,45,.06);transition:box-shadow .15s,transform .15s;min-width:0}
+.viaje:hover{box-shadow:0 8px 24px rgba(15,27,45,.12);transform:translateY(-1px)}
+.viaje.pasada{opacity:.85}
+.viaje .vfoto{flex:none;width:96px;height:96px;border-radius:12px;overflow:hidden;background:var(--gris)}
+.viaje .vfoto img{width:100%;height:100%;object-fit:cover;display:block}
+.viaje .vfoto .sinfoto{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:36px;background:var(--tinte)}
+.viaje .vtxt{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center}
+.viaje .vtxt b{font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.viaje .vcuando{font-size:13.5px;color:var(--tenue);font-weight:600;margin-top:4px}
+.viaje .vpie{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap}
+.viaje .av{width:26px;height:26px;border-radius:50%;object-fit:cover;border:2px solid #fff;box-shadow:0 0 0 1px var(--trazo);display:inline-flex;align-items:center;justify-content:center;background:var(--tinte);color:var(--teal);font-weight:800;font-size:12px}
+.viaje .vprecio{font-weight:800;font-size:13.5px;margin-left:auto}
+.viaje .vacc .lnk{border:0;background:transparent;color:var(--noche);font-family:inherit;font-weight:700;font-size:13px;text-decoration:underline;cursor:pointer;padding:0}
+.viaje-vacio{background:var(--gris);border-radius:16px;padding:22px;margin-top:16px}
+.viaje-vacio .btn{margin-top:10px;padding:10px 16px;font-size:14px}
+.viajes-det{margin-top:18px;border:1px solid var(--trazo);border-radius:14px;padding:4px 16px}
+.viajes-det summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;padding:12px 0;font-weight:700;font-size:15px}
+.viajes-det summary::-webkit-details-marker{display:none}
+.viajes-det summary:after{content:"›";margin-left:auto;font-size:22px;color:var(--tenue);transition:transform .15s}
+.viajes-det[open] summary:after{transform:rotate(90deg)}
+.viajes-det summary small{color:var(--tenue);font-weight:600}
+.viajes-det .viajes-cards{margin:4px 0 12px}
+.cancelada{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:12px 0;border-top:1px solid var(--trazo)}
+.aviso.ok{background:var(--ok-bg);color:var(--ok-fg);border-radius:14px;padding:12px 16px;font-weight:600;margin-top:8px}
+/* Mis reservas (tarjetas simples, se conservan para otras páginas) */
 .res{background:var(--blanco);border:1px solid var(--trazo);border-radius:var(--r);padding:16px 18px;margin-top:12px;box-shadow:var(--sombra)}
 .res.pasada{opacity:.85}
 .res-cab{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.res-cab b{font-size:16px}

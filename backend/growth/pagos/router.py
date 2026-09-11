@@ -1598,7 +1598,7 @@ def post_liquidacion_online(req: LiquidacionOnlineReq) -> dict:
         stores.registrar_pago(
             tipo="comision_reserva", monto_centimos=com_saldo, moneda=iso,
             estado="aprobado", dueno_id=req.dueno_id,
-            culqi_charge_id=f"{req.reserva_id}_com",
+            culqi_charge_id=f"{req.reserva_id}_com", promo_centimos=promo_usado,
             concepto=f"Comisión · {req.concepto or 'Reserva online'}{sufijo}")
         stores.registrar_pago(
             tipo="liquidacion_full", monto_centimos=bruto, moneda=iso,
@@ -1621,6 +1621,18 @@ def post_liquidacion_online(req: LiquidacionOnlineReq) -> dict:
     return {"ok": True, "duplicada": False, "fuente": "transaccion",
             "requiere_recarga": True, "bruto_centimos": bruto,
             "comision_centimos": comision, "neto_centimos": bruto - comision}
+
+
+@router.get("/cancelaciones-web", dependencies=_ADMIN)
+def get_cancelaciones_web(pendientes: bool = False) -> dict:
+    """Torre: cancelaciones hechas desde la web con el estado de su reembolso.
+    `reembolso` = reembolsado | fallo (Culqi rechazó, atender a mano) | manual
+    (pagó en el app: el operador devuelve) | sin_reembolso (<6 h) | no_aplica
+    (pago en la cancha). `deuda_dueno_centimos` > 0 = el dueño ya había
+    cobrado su liquidación y hay que descontárselo en la siguiente."""
+    lst = [c for c in stores.cancelaciones_web
+           if not pendientes or c.get("reembolso") in ("fallo", "manual") or c.get("deuda_dueno_centimos", 0) > 0]
+    return {"cancelaciones": sorted(lst, key=lambda c: c.get("creado_en", ""), reverse=True), "total": len(lst)}
 
 
 @router.post("/venta", dependencies=_APP)

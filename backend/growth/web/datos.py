@@ -312,6 +312,20 @@ _COLS_RES = ["id", "cancha_id", "jugador", "fecha", "dia", "hora_inicio", "hora_
              "telefono", "grupo_reserva_id", "medio_pago"]
 
 
+def eliminar_reservas(ids: list[str]) -> bool:
+    """Cancelación: borra las filas (como hace el app al cancelar) para liberar
+    el horario. El historial y la plata quedan en el backend growth."""
+    if not pg.habilitado or not ids:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("DELETE FROM pichangol_reservas WHERE id = ANY(%s)", (ids,))
+            conn.commit()
+            return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def reservas_de(ids: list[str]) -> list[dict]:
     if not pg.habilitado or not ids:
         return []

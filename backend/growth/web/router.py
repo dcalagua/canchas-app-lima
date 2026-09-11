@@ -1634,6 +1634,15 @@ def pagar(req: PagarReq, request: Request = None) -> dict:
                            "horario quedó libre para que lo intentes de nuevo." + (f" ({msg[:80]})" if msg else "")}
     medio = "yape" if req.medio == "yape" else "tarjeta"
     datos.confirmar_reservas(req.ids, medio)
+    try:
+        # El cargo queda en el libro (tipo cobro_web) ligado a la reserva/grupo:
+        # es lo que permite REEMBOLSAR desde la web al cancelar.
+        from db.store import stores as _st
+        _st.registrar_pago(tipo="cobro_web", monto_centimos=total * 100, moneda=iso, estado="aprobado",
+                           culqi_charge_id=str(cargo.get("charge_id") or ""), email=email, medio=medio,
+                           concepto=f"web:{_ref_de(filas)}")
+    except Exception:  # noqa: BLE001
+        pass
     dueno = (c.get("dueno") or "").strip().lower()
     if dueno:
         try:
@@ -1658,6 +1667,214 @@ def _total_de(filas: list[dict]) -> int:
     return total
 
 
+def _ref_de(filas: list[dict]) -> str:
+    g = (filas[0].get("grupo_reserva_id") or "").strip()
+    return g if g else str(filas[0]["id"])
+
+
+def _inicio_reserva(filas: list[dict], pais: str) -> datetime | None:
+    """Fecha-hora LOCAL (zona del país de la cancha) del primer turno."""
+    try:
+        f = min(filas, key=lambda x: (str(x.get("fecha")), str(x.get("hora_inicio"))))
+        d = date.fromisoformat(str(f["fecha"]))
+        m = horarios.hora_en_minutos(str(f["hora_inicio"])) or 0
+        return datetime(d.year, d.month, d.day, m // 60, m % 60, tzinfo=horarios.ahora_local(pais).tzinfo)
+    except (ValueError, TypeError, KeyError):
+        return None
+
+
+def _cobro_web(ref: str):
+    from db.store import stores as _st
+    for p in reversed(_st.pagos):
+        if p.tipo == "cobro_web" and p.concepto == f"web:{ref}":
+            return p
+    return None
+
+
+def estado_cancelacion(filas: list[dict], c: dict | None, email: str) -> dict:
+    """Qué pasa si el usuario cancela AHORA: si puede, cuántas horas faltan y
+    si le corresponde reembolso (regla: ≥ WEB_CANCELACION_HORAS → 100 %)."""
+    if not filas or not email:
+        return {"puede": False, "motivo": "sin_reserva"}
+    if any((f.get("usuario") or "").strip().lower() != email for f in filas):
+        return {"puede": False, "motivo": "ajena"}
+    if any(str(f.get("estado") or "") in ("cancelada", "noShow") for f in filas):
+        return {"puede": False, "motivo": "ya_cancelada"}
+    pais = _pais_de(c) if c else "PE"
+    inicio = _inicio_reserva(filas, pais)
+    if inicio is None:
+        return {"puede": False, "motivo": "sin_fecha"}
+    horas = (inicio - horarios.ahora_local(pais)).total_seconds() / 3600.0
+    if horas <= 0:
+        return {"puede": False, "motivo": "ya_empezo", "horas": horas}
+    pagado_online = all(f.get("pagado") for f in filas) and str(filas[0].get("medio_pago") or "") in ("yape", "tarjeta")
+    pagado = all(f.get("pagado") for f in filas)
+    reembolsable = pagado and horas >= config.WEB_CANCELACION_HORAS
+    return {"puede": True, "horas": round(horas, 1), "pagado": pagado, "pagado_online": pagado_online,
+            "reembolsable": reembolsable, "minimo_horas": config.WEB_CANCELACION_HORAS,
+            "monto": _total_de(filas), "moneda": filas[0].get("moneda") or "S/"}
+
+
+class CancelarReq(BaseModel):
+    ref: str
+
+
+@router.post("/web/cancelar")
+def cancelar(req: CancelarReq, request: Request = None) -> dict:
+    """Cancela una reserva del usuario con sesión (grupo o turno suelto),
+    libera el horario y, si corresponde (≥ WEB_CANCELACION_HORAS y pagada),
+    DEVUELVE el dinero: cargo web → reembolso Culqi al instante; pagada en el
+    app → queda `manual` para el operador. Revierte la liquidación del dueño
+    (y su comisión, regalo incluido) si aún no se le pagó; si ya cobró, deja
+    la deuda anotada para la torre. Todo queda en `stores.cancelaciones_web`."""
+    from db.store import stores as _st, ahora as _ahora
+    ses = sesion.de_request(request)
+    if not ses:
+        return {"ok": False, "error": "sesion_requerida", "mensaje": "Inicia sesión con Google para cancelar."}
+    email = ses["email"]
+    ref = (req.ref or "").strip()
+    filas = datos.reservas_por_grupo(ref) if ref.startswith("grp_") else datos.reservas_de([ref])
+    filas = sorted([f for f in filas if f.get("estado") != "nueva" or f.get("pagado")],
+                   key=lambda x: (str(x.get("fecha")), str(x.get("hora_inicio"))))
+    c = datos.cancha(filas[0]["cancha_id"]) if filas else None
+    est = estado_cancelacion(filas, c, email)
+    if not est.get("puede"):
+        msgs = {"sin_reserva": "No encontramos esa reserva.", "ajena": "Esa reserva no es de tu cuenta.",
+                "ya_cancelada": "Esa reserva ya estaba cancelada.", "ya_empezo": "El turno ya empezó o ya pasó: no se puede cancelar.",
+                "sin_fecha": "No pudimos leer la fecha de la reserva."}
+        return {"ok": False, "error": est.get("motivo"), "mensaje": msgs.get(est.get("motivo"), "No se pudo cancelar.")}
+    ids = [str(f["id"]) for f in filas]
+    monto = int(est["monto"]); sim = est["moneda"]; iso = _moneda_de(c)[1] if c else "PEN"
+    reembolso, refund_id, detalle = "no_aplica", None, ""
+    if est["pagado"] and est["reembolsable"]:
+        cobro = _cobro_web(ref)
+        if cobro is not None and cobro.culqi_charge_id and cobro.estado == "aprobado":
+            r = culqi.reembolsar(charge_id=cobro.culqi_charge_id, monto_centimos=cobro.monto_centimos)
+            if r.get("ok"):
+                reembolso, refund_id = "reembolsado", r.get("refund_id")
+                cobro.estado = "reembolsado"
+            else:
+                reembolso, detalle = "fallo", str(r.get("error") or "")[:160]
+        else:
+            reembolso = "manual"  # pagó desde el app: el operador devuelve
+    elif est["pagado"]:
+        reembolso = "sin_reembolso"  # menos de N horas: sin devolución (política publicada)
+    # Reversa contable del dueño solo si el cliente recupera su dinero.
+    deuda = 0
+    dueno = (c.get("dueno") or "").strip().lower() if c else ""
+    if reembolso in ("reembolsado", "fallo", "manual") and dueno:
+        liq = _st.pago_por_charge(ids[0])
+        if liq is not None and liq.tipo in ("liquidacion_online", "liquidacion_full") and liq.estado == "aprobado":
+            if liq.liquidado:
+                from pagos.router import comision_centimos as _com
+                deuda = liq.monto_centimos - (_com(liq.monto_centimos / 100.0, liq.moneda) if liq.tipo == "liquidacion_online" else 0)
+                _st.registrar_pago(tipo="ajuste_cancelacion", monto_centimos=deuda, moneda=liq.moneda, estado="pendiente",
+                                   dueno_id=dueno, culqi_charge_id=f"{ids[0]}_ajuste",
+                                   concepto=f"Descuento por cancelación web · {c.get('nombre', '')} · {filas[0]['fecha']} {filas[0]['hora_inicio']}")
+            else:
+                liq.estado = "anulado"
+                com = _st.pago_por_charge(f"{ids[0]}_com")
+                if com is not None and com.estado == "aprobado":
+                    com.estado = "anulado"
+                    promo = min(int(com.promo_centimos or 0), com.monto_centimos)
+                    if promo:
+                        _st.acreditar_promo(dueno, promo)
+                    if com.monto_centimos - promo > 0:
+                        _st.acreditar(dueno, com.monto_centimos - promo)
+    if not datos.eliminar_reservas(ids):
+        return {"ok": False, "error": "no_se_pudo", "mensaje": "No pudimos liberar el horario. Inténtalo de nuevo."}
+    reg = {"id": _st.next_id("cancelacion_web"), "ref": ref, "ids": ids, "usuario": email, "cancha_id": filas[0]["cancha_id"],
+           "cancha": (c or {}).get("nombre") or "", "club": (c or {}).get("club") or "", "fecha": str(filas[0]["fecha"]),
+           "hora_inicio": str(filas[0]["hora_inicio"]), "hora_fin": str(filas[-1]["hora_fin"]), "turnos": len(filas),
+           "monto": monto, "moneda": sim, "moneda_iso": iso, "pagado": bool(est["pagado"]), "horas_antes": est["horas"],
+           "reembolso": reembolso, "refund_id": refund_id, "detalle": detalle, "deuda_dueno_centimos": deuda,
+           "dueno": dueno, "creado_en": _ahora().isoformat()}
+    _st.cancelaciones_web.append(reg)
+    try:
+        from pagos.router import _aviso_push_usuario
+        rango = f"{filas[0]['hora_inicio']}–{filas[-1]['hora_fin']}"
+        if dueno:
+            _aviso_push_usuario(dueno, "Reserva cancelada 📅",
+                                f"{filas[0].get('jugador') or email} canceló {c.get('nombre', '')} · {horarios.fecha_larga(str(filas[0]['fecha']))} {rango}. El horario quedó libre.",
+                                tipo="reserva")
+        txt = {"reembolsado": f"Te devolvemos {sim} {monto:.2f} al mismo medio de pago (3 a 7 días hábiles).",
+               "manual": f"Te devolvemos {sim} {monto:.2f}; te escribimos para coordinar.",
+               "fallo": "Tu devolución está en proceso; te escribimos en breve.",
+               "sin_reembolso": "Cancelaste con menos de 6 horas: sin devolución.", "no_aplica": ""}[reembolso]
+        _aviso_push_usuario(email, "Reserva cancelada", f"{c.get('nombre', '')} · {horarios.fecha_larga(str(filas[0]['fecha']))} {rango}. {txt}".strip(), tipo="reserva")
+    except Exception:  # noqa: BLE001
+        pass
+    print(f"[cancelar] {ref} {email} {reembolso} monto={monto} horas={est['horas']} deuda={deuda} {detalle}", flush=True)
+    return {"ok": True, "reembolso": reembolso, "monto": monto, "moneda": sim, "horas": est["horas"], "refund_id": refund_id}
+
+
+_MODAL_CANCELAR = (
+    "<div class='modal' id='modalCancelar' role='dialog' aria-modal='true'><div class='modal-caja' style='max-width:520px'>"
+    "<div class='modal-cab'><button type='button' class='cerrar' id='cerrarCancelar' aria-label='Cerrar'>✕</button><h3>Cancelar reserva</h3></div>"
+    "<div class='modal-cuerpo' style='padding:20px 24px'>"
+    "<h4 id='cancTit' style='margin:0 0 6px'>¿Seguro que quieres cancelar?</h4>"
+    "<p class='sub' id='cancTxt' style='margin:0 0 14px'></p>"
+    "<div class='estado' id='cancPol' style='text-align:left'></div>"
+    "<div class='estado bad' id='cancErr' style='display:none'></div></div>"
+    "<div class='modal-pie'><button type='button' class='limpiar' id='cancNo'>Mantener reserva</button>"
+    "<button type='button' class='btn dark' id='cancSi'>Sí, cancelar</button></div></div></div>")
+
+JS_CANCELAR = r"""
+(function(){
+  var m = document.getElementById('modalCancelar'); if(!m) return;
+  var ref = '', datos = null;
+  function abrir(on){ m.classList.toggle('open', on); document.body.classList.toggle('sin-scroll', on); }
+  function fmt(mon, n){ return mon + ' ' + Number(n).toFixed(2); }
+  document.addEventListener('click', function(ev){
+    var b = ev.target.closest('[data-cancelar]'); if(!b) return;
+    ev.preventDefault(); ev.stopPropagation();
+    ref = b.dataset.cancelar; datos = b.dataset;
+    document.getElementById('cancTit').textContent = '¿Cancelar ' + (datos.nombre || 'la reserva') + '?';
+    document.getElementById('cancTxt').textContent = (datos.cuando || '') + (datos.monto ? ' · ' + fmt(datos.moneda || 'S/', datos.monto) : '');
+    var pol = document.getElementById('cancPol');
+    if(datos.pagado !== '1'){ pol.className = 'estado ok'; pol.textContent = 'Pagabas en la cancha: cancelar no tiene costo. El horario queda libre para otro jugador.'; }
+    else if(datos.reembolsable === '1'){ pol.className = 'estado ok'; pol.textContent = 'Faltan ' + datos.horas + ' h: te devolvemos el 100 % (' + fmt(datos.moneda || 'S/', datos.monto) + ') al mismo medio de pago, en 3 a 7 días hábiles.'; }
+    else { pol.className = 'estado bad'; pol.textContent = 'Faltan menos de ' + datos.minimo + ' h para el turno: la cancelación NO tiene devolución (política publicada). Puedes mantener la reserva y jugar.'; }
+    document.getElementById('cancErr').style.display = 'none';
+    var si = document.getElementById('cancSi'); si.disabled = false; si.textContent = datos.pagado === '1' && datos.reembolsable !== '1' ? 'Cancelar sin devolución' : 'Sí, cancelar';
+    abrir(true);
+  });
+  document.getElementById('cerrarCancelar').addEventListener('click', function(){ abrir(false); });
+  document.getElementById('cancNo').addEventListener('click', function(){ abrir(false); });
+  m.addEventListener('click', function(ev){ if(ev.target === m) abrir(false); });
+  document.getElementById('cancSi').addEventListener('click', function(){
+    var si = this; si.disabled = true; si.textContent = 'Cancelando…';
+    fetch('/web/cancelar', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ref: ref})})
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if(!j.ok){ var e = document.getElementById('cancErr'); e.textContent = j.mensaje || 'No pudimos cancelar.'; e.style.display = 'block'; si.disabled = false; si.textContent = 'Reintentar'; return; }
+        var msg = {reembolsado: 'Reserva cancelada. Te devolvemos ' + fmt(j.moneda, j.monto) + ' al mismo medio de pago en 3 a 7 días hábiles.',
+                   manual: 'Reserva cancelada. Te devolvemos ' + fmt(j.moneda, j.monto) + '; te escribimos para coordinar.',
+                   fallo: 'Reserva cancelada. Tu devolución está en proceso; te escribimos en breve.',
+                   sin_reembolso: 'Reserva cancelada sin devolución.', no_aplica: 'Reserva cancelada. El horario quedó libre.'}[j.reembolso] || 'Reserva cancelada.';
+        try { sessionStorage.setItem('pcg_aviso', msg); } catch(e){}
+        location.href = '/mis-reservas';
+      }).catch(function(){ var e = document.getElementById('cancErr'); e.textContent = 'Sin conexión. Inténtalo de nuevo.'; e.style.display = 'block'; si.disabled = false; si.textContent = 'Reintentar'; });
+  });
+})();
+"""
+
+
+def _boton_cancelar(filas: list[dict], c: dict | None, ses: dict | None, clase: str = "btn sec") -> str:
+    """Botón "Cancelar reserva" (solo si la reserva es del usuario con sesión
+    y aún no empieza); lleva los datos que el modal necesita explicar."""
+    if not ses:
+        return ""
+    filas = sorted(filas, key=lambda x: (str(x.get("fecha")), str(x.get("hora_inicio"))))
+    est = estado_cancelacion(filas, c, ses["email"])
+    if not est.get("puede"):
+        return ""
+    cuando = f"{horarios.fecha_larga(str(filas[0]['fecha']))} · {filas[0]['hora_inicio']}–{filas[-1]['hora_fin']}"
+    return (f"<button type='button' class='{clase}' data-cancelar='{e(_ref_de(filas))}' data-nombre='{e((c or {}).get('nombre') or 'la reserva')}' "
+            f"data-cuando='{e(cuando)}' data-monto='{est['monto']}' data-moneda='{e(est['moneda'])}' data-pagado='{1 if est['pagado'] else 0}' "
+            f"data-reembolsable='{1 if est['reembolsable'] else 0}' data-horas='{est['horas']}' data-minimo='{int(est['minimo_horas'])}'>Cancelar reserva</button>")
+
+
 def _url_comprobante(filas: list[dict]) -> str:
     g = (filas[0].get("grupo_reserva_id") or "").strip()
     return f"/reserva/{g if g else filas[0]['id']}"
@@ -1669,37 +1886,45 @@ ESTADO_RESERVA = {"confirmada": ("Confirmada", "ok"), "cancelada": ("Cancelada",
                   "nueva": ("Pendiente de pago", "warn"), "completada": ("Jugada", "ok")}
 
 
-def _tarjeta_reserva(r: dict, c: dict | None, hoy: str) -> str:
+def _tarjeta_viaje(r: dict, c: dict | None, hoy: str, ses: dict | None) -> str:
+    """Tarjeta tipo "Viajes" de Airbnb: foto cuadrada · cancha · fecha y hora ·
+    avatar del jugador · estado; clic = detalle/comprobante. Las próximas llevan
+    "Cancelar"."""
     sim = r.get("moneda") or (c and _moneda_de(c)[0]) or "S/"
     estado = str(r.get("estado") or "")
-    if estado == "cancelada" or estado == "noShow":
-        etiqueta, tono = ESTADO_RESERVA[estado]
+    if estado == "noShow":
+        pill = "<span class='pill bad'>No asististe</span>"
     elif r.get("pagado"):
-        etiqueta, tono = ("Pagada", "ok")
+        pill = "<span class='pill ok'>Pagada</span>"
     else:
-        etiqueta, tono = ("Pagas en la cancha", "warn")
+        pill = "<span class='pill warn'>Pagas en la cancha</span>"
     ref = r.get("grupo_reserva_id") or r.get("id")
-    con_comprobante = bool(r.get("pagado") or estado == "confirmada")
     pasada = str(r.get("fecha") or "") < hoy
     nombre = (c or {}).get("nombre") or "Cancha"
-    sub = " · ".join(x for x in ((c or {}).get("club"), _zona(c) if c else "") if x)
-    acciones = ""
-    if con_comprobante:
-        acciones += f"<a class='btn sec' href='/reserva/{e(ref)}'>Comprobante</a>"
-    if c:
-        acciones += f"<a class='btn sec' href='/reservar/{e(c['id'])}'>{'Reservar de nuevo' if pasada else 'Ver cancha'}</a>"
-        if not pasada:
-            acciones += f"<a class='btn sec' href='{_maps(c)}' target='_blank' rel='noopener'>📍 Cómo llegar</a>"
-    extras = ", ".join(EXTRAS_NOMBRE.get(str(x.get("clave")), str(x.get("clave")).capitalize()) for x in (r.get("extras") or []) if isinstance(x, dict))
-    return (f"<div class='res{' pasada' if pasada else ''}'>"
-            f"<div class='res-cab'><div><b>{e(nombre)}</b><div class='sub' style='margin:2px 0 0;font-size:13.5px'>{e(sub)}</div></div>"
-            f"<span class='pill {tono}'>{etiqueta}</span></div>"
-            f"<div class='res-cuando'>📅 {e(horarios.fecha_larga(str(r.get('fecha') or '')))} · 🕒 {e(r.get('hora_inicio'))}–{e(r.get('hora_fin'))}"
-            + (f" · {r['turnos']} turnos" if int(r.get('turnos') or 1) > 1 else "")
-            + (f" · {e(extras)}" if extras else "")
-            + f"<b style='margin-left:auto'>{e(sim)} {int(r.get('precio') or 0):.2f}</b></div>"
-            + (f"<div class='acciones' style='margin-top:10px'>{acciones}</div>" if acciones else "")
-            + "</div>")
+    con_comprobante = bool(r.get("pagado") or estado == "confirmada")
+    href = f"/reserva/{e(ref)}" if con_comprobante else (f"/reservar/{e(c['id'])}" if c else "#")
+    fs = _fotos(c) if c else []
+    if fs:
+        foto = f"<img src='{e(fs[0])}' alt='' loading='lazy'>"
+    elif c:
+        foto = (f"<div class='sinfoto' data-buscar='1' data-id='{e(c['id'])}' data-nombre='{e(c.get('nombre'))}' data-club='{e(c.get('club') or '')}' "
+                f"data-lat='{c.get('lat')}' data-lng='{c.get('lng')}'>{_deporte(c.get('deporte'))[1]}</div>")
+    else:
+        foto = "<div class='sinfoto'>🏟️</div>"
+    avatar = (f"<img class='av' src='{e(ses.get('foto'))}' alt=''>" if ses and ses.get("foto")
+              else f"<span class='av ini'>{e(((ses or {}).get('nombre') or (ses or {}).get('email') or '?')[:1].upper())}</span>")
+    cuando = f"{horarios.fecha_larga(str(r.get('fecha') or ''))} · {e(r.get('hora_inicio'))}–{e(r.get('hora_fin'))}"
+    if int(r.get("turnos") or 1) > 1:
+        cuando += f" · {r['turnos']} turnos"
+    filas_r = r.get("_filas") or [r]
+    cancelar = _boton_cancelar(filas_r, c, ses, "lnk") if not pasada else ""
+    return (f"<a class='viaje{' pasada' if pasada else ''}' href='{href}' data-lat='{(c or {}).get('lat') or ''}' data-lng='{(c or {}).get('lng') or ''}' "
+            f"data-nombre='{e(nombre)}' data-cuando='{e(cuando)}'>"
+            f"<div class='vfoto'>{foto}</div>"
+            f"<div class='vtxt'><b>{e(nombre)}</b><div class='sub' style='margin:2px 0 0;font-size:13.5px'>{e((c or {}).get('club') or '')}</div>"
+            f"<div class='vcuando'>{cuando}</div>"
+            f"<div class='vpie'>{avatar}{pill}<span class='vprecio'>{e(sim)} {int(r.get('precio') or 0):.2f}</span>"
+            + (f"<span class='vacc'>{cancelar}</span>" if cancelar else "") + "</div></div></a>")
 
 
 def _agrupar_reservas(filas: list[dict]) -> list[dict]:
@@ -1717,8 +1942,9 @@ def _agrupar_reservas(filas: list[dict]) -> list[dict]:
             a["precio"] = int(a.get("precio") or 0) + int(r.get("precio") or 0)
             a["turnos"] = a.get("turnos", 1) + 1
             a["extras"] = (a.get("extras") or []) + (r.get("extras") or [])
+            a["_filas"].append(r)
             continue
-        d = dict(r); d["turnos"] = 1
+        d = dict(r); d["turnos"] = 1; d["_filas"] = [r]
         out.append(d)
         if clave:
             grupos[clave] = d
@@ -1739,6 +1965,7 @@ def pagina_mis_reservas(request: Request) -> HTMLResponse:
                   f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a></div></div>")
         return ui.shell("Mis reservas", cuerpo, sesion=None)
     email = ses["email"]
+    from db.store import stores as _st
     filas = _agrupar_reservas(datos.reservas_de_usuario(email))
     canchas = {}
     for r in filas:
@@ -1748,17 +1975,62 @@ def pagina_mis_reservas(request: Request) -> HTMLResponse:
     hoy = horarios.ahora_local("PE").date().isoformat()
     proximas = sorted([r for r in filas if str(r.get("fecha") or "") >= hoy], key=lambda r: (r.get("fecha"), r.get("hora_inicio")))
     pasadas = [r for r in filas if str(r.get("fecha") or "") < hoy]
-    def _bloque(titulo: str, lst: list[dict], vacio: str) -> str:
-        cuerpo_b = "".join(_tarjeta_reserva(r, canchas.get(r.get("cancha_id")), hoy) for r in lst) if lst else f"<div class='vacio' style='padding:18px 0'>{vacio}</div>"
-        return f"<section style='margin-top:22px'><h2>{titulo} <small style='color:var(--tenue);font-weight:600;font-size:14px'>· {len(lst)}</small></h2>{cuerpo_b}</section>"
-    cuerpo = ("<div style='max-width:760px;margin:26px auto 0'>"
-              f"<h1>Mis reservas</h1><p class='sub'>De <b>{e(ses.get('nombre') or email)}</b> · {e(email)}. Son las mismas que ves en la app con esta cuenta.</p>"
-              + _bloque("Próximas", proximas, "No tienes reservas próximas. <a href='/canchas'>Explora canchas</a> y reserva en un minuto.")
-              + _bloque("Pasadas", pasadas, "Todavía no has jugado con Pichangol.")
-              + "<div class='estado ok' style='margin-top:22px'>Cancelación con más de 6 horas de anticipación: devolución del 100 %. "
-              "Escríbenos a <a href='mailto:contacto@ebim.pe'>contacto@ebim.pe</a> citando el número de comprobante.</div>"
-              "</div>")
-    return ui.shell("Mis reservas", cuerpo, sesion=ses, titulo_tab="Mis reservas · Pichangol")
+    canceladas = sorted([x for x in _st.cancelaciones_web if x.get("usuario") == email], key=lambda x: x.get("creado_en", ""), reverse=True)
+    lista = "".join(_tarjeta_viaje(r, canchas.get(r.get("cancha_id")), hoy, ses) for r in proximas) if proximas else (
+        "<div class='viaje-vacio'><b>Todavía no tienes reservas próximas</b>"
+        "<p class='sub'>Cuando reserves una cancha, aparecerá aquí con su mapa y su comprobante.</p>"
+        "<a class='btn' href='/canchas'>Explorar canchas</a></div>")
+    pasadas_html = "".join(_tarjeta_viaje(r, canchas.get(r.get("cancha_id")), hoy, ses) for r in pasadas)
+    def _fila_cancel(x: dict) -> str:
+        est = {"reembolsado": ("Devolución en camino", "ok"), "manual": ("Devolución en proceso", "warn"), "fallo": ("Devolución en proceso", "warn"),
+               "sin_reembolso": ("Sin devolución", "bad"), "no_aplica": ("Sin costo", "ok")}.get(x.get("reembolso"), ("", ""))
+        return (f"<div class='cancelada'><div><b>{e(x.get('cancha') or 'Cancha')}</b><div class='sub' style='font-size:13px;margin:0'>"
+                f"{e(horarios.fecha_larga(str(x.get('fecha') or '')))} · {e(x.get('hora_inicio'))}–{e(x.get('hora_fin'))}"
+                + (f" · {x.get('turnos')} turnos" if int(x.get('turnos') or 1) > 1 else "") + "</div></div>"
+                f"<div style='text-align:right'><span class='pill {est[1]}'>{est[0]}</span>"
+                + (f"<div class='sub' style='font-size:12.5px;margin:4px 0 0'>{e(x.get('moneda') or 'S/')} {float(x.get('monto') or 0):.2f}</div>" if x.get("pagado") else "")
+                + "</div></div>")
+    cuerpo = (
+        "<div class='viajes'><div class='viajes-lista'>"
+        "<div class='aviso ok' id='avisoCancel' style='display:none'></div>"
+        "<h1>Reservas</h1>"
+        f"<p class='sub' style='margin-top:2px'>{e(ses.get('nombre') or email)} · {e(email)} · las mismas que ves en la app.</p>"
+        f"<div class='viajes-cards' id='proximas'>{lista}</div>"
+        + (f"<details class='viajes-det'><summary>Dónde has jugado <small>· {len(pasadas)}</small></summary><div class='viajes-cards'>{pasadas_html}</div></details>" if pasadas else "")
+        + f"<details class='viajes-det'{' open' if canceladas else ''}><summary><span class='ico'>🗓️</span> Reservaciones canceladas <small>· {len(canceladas)}</small></summary>"
+        + ("".join(_fila_cancel(x) for x in canceladas) if canceladas else "<p class='sub' style='padding:8px 4px 2px'>No has cancelado ninguna reserva.</p>")
+        + "</details>"
+        f"<p class='sub' style='font-size:12.5px;margin-top:18px'>Cancelación con más de {int(config.WEB_CANCELACION_HORAS)} horas de anticipación: devolución del 100 % al mismo medio de pago. "
+        "Dudas: <a href='mailto:contacto@ebim.pe'>contacto@ebim.pe</a>.</p>"
+        "</div><aside class='viajes-mapa'><div class='mapa' id='mapaViajes' aria-label='Mapa de tus reservas'></div></aside></div>"
+        + _MODAL_CANCELAR
+        + "<script>" + JS_CANCELAR + r"""
+(function(){
+  try { var av = sessionStorage.getItem('pcg_aviso'); if(av){ var el = document.getElementById('avisoCancel'); el.textContent = av; el.style.display = 'block'; sessionStorage.removeItem('pcg_aviso'); } } catch(e){}
+  // Fotos que faltan (canchas sembradas): la primera foto, como en el explorador.
+  document.querySelectorAll('.viaje .sinfoto[data-buscar]').forEach(function(ph){
+    var q = '/web/foto?id=' + encodeURIComponent(ph.dataset.id) + '&nombre=' + encodeURIComponent(ph.dataset.nombre) + '&club=' + encodeURIComponent(ph.dataset.club) + '&lat=' + ph.dataset.lat + '&lng=' + ph.dataset.lng;
+    fetch(q).then(function(r){ return r.json(); }).then(function(j){ if(j && j.fotos && j.fotos.length){ var im = document.createElement('img'); im.src = j.fotos[0]; im.alt = ''; ph.replaceWith(im); } }).catch(function(){});
+  });
+  // Mapa con un pin por reserva próxima (Leaflet + OpenStreetMap, como el explorador).
+  var caja = document.getElementById('mapaViajes'); if(!caja || !window.L) return;
+  var pts = Array.prototype.slice.call(document.querySelectorAll('#proximas .viaje[data-lat]')).filter(function(a){ return a.dataset.lat && a.dataset.lng; });
+  var mapa = L.map('mapaViajes', {scrollWheelZoom: false});
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19, attribution: '© OpenStreetMap'}).addTo(mapa);
+  if(!pts.length){ mapa.setView([-12.05, -77.04], 11); return; }
+  var b = [];
+  pts.forEach(function(a){
+    var lat = parseFloat(a.dataset.lat), lng = parseFloat(a.dataset.lng); b.push([lat, lng]);
+    var mk = L.marker([lat, lng], {icon: L.divIcon({className: '', html: '<span class="pin-precio">' + a.dataset.nombre.replace(/</g, '&lt;') + '</span>', iconSize: null})}).addTo(mapa);
+    mk.bindPopup('<b>' + a.dataset.nombre.replace(/</g, '&lt;') + '</b><br>' + a.dataset.cuando.replace(/</g, '&lt;') + '<br><a class="btn" href="' + a.getAttribute('href') + '">Ver reserva</a>');
+    a.addEventListener('mouseenter', function(){ mk.openPopup(); });
+  });
+  if(b.length === 1) mapa.setView(b[0], 15); else mapa.fitBounds(L.latLngBounds(b).pad(0.3));
+})();
+</script>""")
+    head = ("<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' crossorigin=''>"
+            "<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' crossorigin=''></script>")
+    return ui.shell("Mis reservas", cuerpo, sesion=ses, titulo_tab="Mis reservas · Pichangol", extra_head=head, ancho=True)
 
 
 def _filas_comprobante(ref: str) -> list[dict]:
@@ -1808,10 +2080,11 @@ def _ics(s) -> str:
 
 
 @router.get("/reserva/{ref}", response_class=HTMLResponse)
-def pagina_comprobante(ref: str) -> HTMLResponse:
+def pagina_comprobante(ref: str, request: Request = None) -> HTMLResponse:
     filas = _filas_comprobante(ref)
     if not filas:
         return _no_encontrada("Reserva no encontrada")
+    ses = sesion.de_request(request)
     c = datos.cancha(filas[0]["cancha_id"]) or {}
     sim = filas[0].get("moneda") or "S/"
     total = _total_de(filas)
@@ -1844,8 +2117,9 @@ def pagina_comprobante(ref: str) -> HTMLResponse:
         + (f"<a class='btn sec' href='{_maps(c)}' target='_blank' rel='noopener'>📍 Cómo llegar</a>" if c else "")
         + f"<a class='btn sec' href='https://wa.me/?text={texto_wa}' target='_blank' rel='noopener'>💬 Compartir</a>"
         "</div>"
-        "<div class='estado ok' style='text-align:left'>Cancelación con más de 6 horas de anticipación: devolución del 100 %. "
-        "Escríbenos a <a href='mailto:contacto@ebim.pe'>contacto@ebim.pe</a> citando el número de comprobante.</div>"
+        + (f"<div class='acciones'>{_boton_cancelar(filas, c, ses, 'btn sec')}</div>" if _boton_cancelar(filas, c, ses) else "")
+        + f"<div class='estado ok' style='text-align:left'>Cancelación con más de {int(config.WEB_CANCELACION_HORAS)} horas de anticipación: devolución del 100 % al mismo medio de pago. "
+        "Puedes cancelar desde aquí o desde <a href='/mis-reservas'>Mis reservas</a>. Dudas: <a href='mailto:contacto@ebim.pe'>contacto@ebim.pe</a>.</div>"
         "</div>"
         "<div class='panel' style='margin-top:16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap'>"
         "<img src='/static/brand/logo_pin.png' alt='' style='width:56px;height:56px;border-radius:14px;border:1px solid var(--trazo)'>"
@@ -1853,5 +2127,5 @@ def pagina_comprobante(ref: str) -> HTMLResponse:
         "<div class='sub' style='font-size:13px'>Con la app ves tu agenda, acumulas puntos y reservas en dos toques.</div></div>"
         f"<a class='btn' href='{PLAY_URL}'>Descargar la app</a></div>"
         "<div style='text-align:center;margin-top:16px'><a href='/canchas'>Reservar otra cancha</a></div>"
-        "</div>")
-    return ui.shell("Reserva confirmada", cuerpo)
+        f"</div>{_MODAL_CANCELAR}<script>{JS_CANCELAR}</script>")
+    return ui.shell("Reserva confirmada", cuerpo, sesion=ses)
