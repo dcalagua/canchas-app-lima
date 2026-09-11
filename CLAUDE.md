@@ -321,11 +321,29 @@ para la API del APK.
   correo + Mis reservas + Cerrar sesión, Cómo funciona, Centro de ayuda, Pon
   tu cancha, Descarga la app, Libro de Reclamaciones; se cierra al hacer
   clic fuera o con Esc, `ui.JS_NAV`); fila 2 = buscador GRANDE centrado en
-  pastilla (Dónde · Deporte · Cuándo · botón verde "Buscar"). Bajo "Dónde"
-  se desglosa un panel (`#sugDonde`) con **Búsquedas recientes**
-  (`localStorage` `pcg_busq`, se guardan al Buscar/Enter/elegir) y **Zonas
-  sugeridas** ("Cerca de ti" → `ubicar(true)` + las zonas con más canchas,
-  `router._zonas_sugeridas`). Al hacer scroll la cabecera se COMPACTA
+  pastilla (Dónde · Cuándo · Hora · botón verde "Buscar"; el deporte va en
+  las pestañas). Bajo "Dónde" se desglosa un panel (`#sugDonde`) con
+  **Búsquedas recientes** (`localStorage` `pcg_busq`, se guardan al
+  Buscar/Enter/elegir) y **Zonas sugeridas** ("Cerca de ti" →
+  `ubicar(true)` + las zonas con más canchas, `router._zonas_sugeridas`).
+  **"Cuándo" abre un CALENDARIO tipo Airbnb** (`#panCuando`, dos meses en
+  escritorio / uno en móvil, flechas, días pasados y más allá de
+  `DIAS_ADELANTE` tachados, toggle "Fecha | Cualquier día", atajos Hoy /
+  Mañana / Sábado / Domingo; al elegir un día se abre solo el panel de
+  hora). **"Hora" abre un panel de chips** (`#panHora`: Cualquier hora +
+  Mañana/Tarde/Noche, 06:00-23:00). El filtro de hora es REAL, no
+  cosmético: en el navegador se ocultan las canchas cerradas a esa hora
+  (`data-ap`/`data-ci`/`data-paso` de cada tarjeta, `abiertaA`) y, con
+  fecha + hora, `GET /web/libres?fecha&hora` responde qué canchas
+  reservables tienen un turno LIBRE que cubra esa hora (`_hora_libre`:
+  inicio ≤ hora < fin, misma lógica de slots/madrugada/turnos pasados que
+  la ficha; `datos.ocupados_varias` = UNA consulta para todas). La fecha y
+  la hora viajan a la ficha (`/reservar/{id}?fecha=&hora=` → `cfg.hora`
+  preselecciona el turno libre que la cubre) y también se aceptan en la
+  URL de la portada (`/?fecha=&hora=`). Un solo desplegable abierto a la
+  vez (`abrirPanel`); OJO: al repintar el calendario el día clicado sale
+  del DOM, por eso el "clic fuera" ignora nodos `!isConnected`. Test
+  `test_buscador_por_fecha_y_hora_como_airbnb`. Al hacer scroll la cabecera se COMPACTA
   (`.cab.chica`): pestañas y buscador se esconden y al centro queda la
   pastilla chica "Cualquier zona · Cualquier deporte · Cuándo quieras"
   (`ui.busq_mini`); tocarla vuelve arriba y enfoca "Dónde". Las páginas

@@ -218,8 +218,10 @@ _JS_EXPLORAR = r"""
       if(filtro.q && c.dataset.t.indexOf(filtro.q) < 0) ok = false;
       if(filtro.soloOk && c.dataset.ok !== '1') ok = false;
       if(filtro.max && parseFloat(c.dataset.pnum || '0') > filtro.max) ok = false;
+      if(filtro.hora && !abiertaA(c, filtro.hora)) ok = false;
+      if(ok && filtro.hora && filtro.fecha && c.dataset.ok === '1'){ var lk = libres[filtro.fecha + '|' + filtro.hora]; if(lk && lk[c.dataset.id] === false) ok = false; }
       c.style.display = ok ? '' : 'none'; if(ok) n++;
-      if(c.dataset.base){ c.setAttribute('href', c.dataset.base + (filtro.fecha ? '?fecha=' + filtro.fecha : '')); }
+      if(c.dataset.base){ var qs = []; if(filtro.fecha) qs.push('fecha=' + filtro.fecha); if(filtro.hora) qs.push('hora=' + filtro.hora); c.setAttribute('href', c.dataset.base + (qs.length ? '?' + qs.join('&') : '')); }
     });
     document.querySelectorAll('.grupo-pais').forEach(function(g){
       var vis = Array.prototype.some.call(g.querySelectorAll('.lst'), function(c){ return c.style.display !== 'none'; });
@@ -228,11 +230,94 @@ _JS_EXPLORAR = r"""
     var v = $('vacio'); if(v) v.style.display = n ? 'none' : '';
     if(mapa) marcadores.forEach(function(m){ var ok = m._card.style.display !== 'none'; if(ok){ m.addTo(mapa); } else { m.remove(); } });
   }
-  // Deporte: lo filtra el SERVIDOR (?deporte=), las categorías son enlaces normales (SEO, sin JS).
-  var sQ = $('sQ'), sDep = $('sDep'), sF = $('sF');
+  // Deporte: lo filtra el SERVIDOR (?deporte=), las pestañas son enlaces normales (SEO, sin JS).
+  var sQ = $('sQ'), sF = $('sF'), sH = $('sH');
   if(sQ) sQ.addEventListener('input', function(){ filtro.q = sQ.value.trim().toLowerCase(); aplicar(); });
-  if(sDep) sDep.addEventListener('change', function(){ location.href = '/canchas' + (sDep.value ? '?deporte=' + sDep.value : '') + (sF && sF.value ? (sDep.value ? '&' : '?') + 'fecha=' + sF.value : ''); });
-  if(sF) sF.addEventListener('change', function(){ filtro.fecha = sF.value; aplicar(); });
+  // ── fecha + hora: calendario tipo Airbnb y panel de horas ──
+  var DIAS = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'], MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  var MESES_L = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  function iso(d){ return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+  function deIso(s){ var p = s.split('-'); return new Date(parseInt(p[0]), parseInt(p[1])-1, parseInt(p[2])); }
+  var hoy = new Date(); hoy.setHours(0,0,0,0); var hoyIso = iso(hoy);
+  var maxD = new Date(hoy); maxD.setDate(maxD.getDate() + (C.diasAdelante || 30)); var maxIso = iso(maxD);
+  var calBase = new Date(hoy.getFullYear(), hoy.getMonth(), 1), libres = {}, modoLibre = false;
+  function etiquetaFecha(s){ if(!s) return ''; if(s === hoyIso) return 'Hoy'; var d = deIso(s); var m = new Date(hoy); m.setDate(m.getDate()+1); if(s === iso(m)) return 'Mañana'; return DIAS[d.getDay()] + ' ' + d.getDate() + ' ' + MESES[d.getMonth()]; }
+  function hm(t){ if(!t) return null; var p = t.split(':'); return parseInt(p[0]) * 60 + parseInt(p[1]); }
+  function abiertaA(c, hora){
+    var ap = hm(c.dataset.ap || '07:00'), ci = hm(c.dataset.ci || '23:00'), h = hm(hora); if(h == null) return true;
+    if(ci <= ap) ci += 1440; if(h < ap && ci > 1440) h += 1440;
+    return ap <= h && h + Math.min(60, parseInt(c.dataset.paso || '60')) <= ci;
+  }
+  function mesHtml(y, m){
+    var primero = new Date(y, m, 1), n = new Date(y, m+1, 0).getDate(), off = (primero.getDay() + 6) % 7;
+    var h = '<div class="cal-mes"><div class="cal-tit">' + MESES_L[m] + ' ' + y + '</div><div class="cal-grid">';
+    ['L','Ma','Mi','J','V','S','D'].forEach(function(d){ h += '<span class="cal-dn">' + d + '</span>'; });
+    for(var i = 0; i < off; i++) h += '<span></span>';
+    for(var d = 1; d <= n; d++){ var s = iso(new Date(y, m, d)); var off2 = s < hoyIso || s > maxIso;
+      h += '<button type="button" class="cal-d' + (off2 ? ' off' : '') + (s === filtro.fecha ? ' sel' : '') + (s === hoyIso ? ' hoy' : '') + '" data-f="' + s + '"' + (off2 ? ' disabled' : '') + '>' + d + '</button>'; }
+    return h + '</div></div>';
+  }
+  function pintarCal(){
+    var box = $('calMeses'); if(!box) return;
+    var y = calBase.getFullYear(), m = calBase.getMonth();
+    var dos = window.innerWidth > 900;
+    box.innerHTML = mesHtml(y, m) + (dos ? mesHtml(y + (m === 11 ? 1 : 0), (m + 1) % 12) : '');
+    var ant = document.querySelector('#panCuando .cal-ant'), sig = document.querySelector('#panCuando .cal-sig');
+    if(ant) ant.disabled = calBase <= new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+    if(sig) sig.disabled = new Date(y, m + (dos ? 2 : 1), 1) > maxD;
+    var at = $('calAtajos'); if(at && !at.children.length){
+      var man = new Date(hoy); man.setDate(man.getDate()+1);
+      var sab = new Date(hoy); sab.setDate(sab.getDate() + ((6 - sab.getDay() + 7) % 7 || 7));
+      var dom = new Date(hoy); dom.setDate(dom.getDate() + ((7 - dom.getDay()) % 7 || 7));
+      at.innerHTML = [['Hoy', hoyIso], ['Mañana', iso(man)], ['Sábado ' + sab.getDate(), iso(sab)], ['Domingo ' + dom.getDate(), iso(dom)]]
+        .map(function(x){ return '<button type="button" class="chip" data-f="' + x[1] + '">' + x[0] + '</button>'; }).join('');
+    }
+    document.querySelectorAll('#calAtajos .chip').forEach(function(b){ b.classList.toggle('sel', b.dataset.f === filtro.fecha); });
+    document.querySelectorAll('#panCuando .cal-modo button').forEach(function(b){ b.classList.toggle('on', (b.dataset.modo === 'libre') === modoLibre); });
+  }
+  function ponerFecha(f, abrirHora){
+    filtro.fecha = f || ''; modoLibre = !filtro.fecha; if(sF){ sF.value = etiquetaFecha(filtro.fecha); sF.dataset.iso = filtro.fecha; }
+    pintarCal(); consultarLibres(); aplicar();
+    if(abrirHora){ abrirPanel('panHora'); } else { abrirPanel(null); }
+  }
+  function ponerHora(h){
+    filtro.hora = h || ''; if(sH){ sH.value = filtro.hora; sH.dataset.hora = filtro.hora; }
+    document.querySelectorAll('#panHora .hchip').forEach(function(b){ b.classList.toggle('sel', b.dataset.hora === filtro.hora); });
+    consultarLibres(); aplicar(); abrirPanel(null);
+  }
+  function consultarLibres(){
+    // Con fecha + hora, el servidor dice qué canchas tienen un turno LIBRE que cubra esa hora.
+    if(!filtro.fecha || !filtro.hora) return;
+    var k = filtro.fecha + '|' + filtro.hora; if(libres[k]) return;
+    fetch('/web/libres?fecha=' + filtro.fecha + '&hora=' + filtro.hora).then(function(r){ return r.json(); })
+      .then(function(j){ if(j && j.ok){ libres[k] = j.libres || {}; aplicar(); } }).catch(function(){});
+  }
+  var paneles = ['sugDonde', 'panCuando', 'panHora'];
+  function abrirPanel(id){ paneles.forEach(function(p){ var el = $(p); if(el) el.classList.toggle('open', p === id); }); if(id === 'panCuando') pintarCal(); }
+  document.addEventListener('click', function(ev){
+    // Un clic fuera del buscador cierra los desplegables (si el nodo clicado ya
+    // se repintó —día del calendario— no cuenta como "fuera").
+    if(!ev.target.isConnected) return;
+    if(!ev.target.closest('.busq')) abrirPanel(null);
+  });
+  if(sF){ sF.addEventListener('click', function(){ abrirPanel('panCuando'); }); sF.addEventListener('focus', function(){ abrirPanel('panCuando'); }); }
+  if(sH){ sH.addEventListener('click', function(){ abrirPanel('panHora'); }); sH.addEventListener('focus', function(){ abrirPanel('panHora'); }); }
+  var pc = $('panCuando');
+  if(pc){
+    pc.addEventListener('click', function(ev){
+      var d = ev.target.closest('.cal-d'); if(d && !d.disabled){ ponerFecha(d.dataset.f, true); return; }
+      var a = ev.target.closest('#calAtajos .chip'); if(a){ ponerFecha(a.dataset.f, true); return; }
+      if(ev.target.closest('.cal-ant')){ calBase = new Date(calBase.getFullYear(), calBase.getMonth() - 1, 1); pintarCal(); return; }
+      if(ev.target.closest('.cal-sig')){ calBase = new Date(calBase.getFullYear(), calBase.getMonth() + 1, 1); pintarCal(); return; }
+      var mo = ev.target.closest('.cal-modo button'); if(mo){ if(mo.dataset.modo === 'libre') ponerFecha('', false); else { modoLibre = false; pintarCal(); } }
+    });
+    window.addEventListener('resize', function(){ if(pc.classList.contains('open')) pintarCal(); });
+  }
+  var ph = $('panHora');
+  if(ph) ph.addEventListener('click', function(ev){ var b = ev.target.closest('[data-hora]'); if(b) ponerHora(b.dataset.hora); });
+  // Fecha/hora que vienen en la URL (?fecha=&hora=) arrancan seleccionadas.
+  if(C.fecha && C.fecha >= hoyIso && C.fecha <= maxIso){ filtro.fecha = C.fecha; if(sF){ sF.value = etiquetaFecha(C.fecha); sF.dataset.iso = C.fecha; } }
+  if(C.hora){ filtro.hora = C.hora; if(sH){ sH.value = C.hora; sH.dataset.hora = C.hora; } consultarLibres(); }
   // ── desplegable bajo "Dónde": búsquedas recientes (este navegador) + zonas sugeridas ──
   var sug = $('sugDonde'), recientes = [];
   try { recientes = JSON.parse(localStorage.getItem('pcg_busq') || '[]') || []; } catch(e){}
@@ -247,11 +332,11 @@ _JS_EXPLORAR = r"""
     try { localStorage.setItem('pcg_busq', JSON.stringify(recientes)); } catch(e){}
     pintarRecientes();
   }
-  function abrirSug(on){ if(sug) sug.classList.toggle('open', on); }
+  function abrirSug(on){ abrirPanel(on ? 'sugDonde' : null); }
   if(sQ && sug){
     sQ.addEventListener('focus', function(){ pintarRecientes(); abrirSug(true); });
+    sQ.addEventListener('click', function(){ pintarRecientes(); abrirSug(true); });
     sQ.addEventListener('keydown', function(ev){ if(ev.key === 'Enter'){ ev.preventDefault(); buscar(); } });
-    document.addEventListener('click', function(ev){ if(!sug.contains(ev.target) && ev.target !== sQ) abrirSug(false); });
     sug.addEventListener('click', function(ev){
       var it = ev.target.closest('.it'); if(!it) return;
       if(it.dataset.cerca){ abrirSug(false); ubicar(true); return; }
@@ -457,18 +542,38 @@ def _nav_explorar(dep: str, ses: dict | None = None, zonas: list[tuple[str, int]
         f"<button type='button' class='it' data-zona='{e(z)}'><span class='ic'>📍</span>"
         f"<div><b>{e(z)}</b><small>{n} cancha{'s' if n != 1 else ''}</small></div></button>"
         for z, n in (zonas or []))
+    horas = "".join(
+        f"<div class='hgrupo'><h5>{t}</h5><div class='hchips'>"
+        + "".join(f"<button type='button' class='chip hchip' data-hora='{h:02d}:00'>{h:02d}:00</button>" for h in rango)
+        + "</div></div>"
+        for t, rango in (("Mañana", range(6, 12)), ("Tarde", range(12, 18)), ("Noche", range(18, 24))))
     busq = (
         "<div class='busq' role='search'>"
         "<label class='seg donde'><small>Dónde</small><input id='sQ' placeholder='Explora zonas, clubes o canchas' autocomplete='off'></label>"
-        f"<label class='seg dep'><small>Deporte</small><select id='sDep'>{ops}</select></label>"
-        f"<label class='seg cuando'><small>Cuándo</small><input id='sF' type='date' min='{hoy}'></label>"
+        "<label class='seg cuando'><small>Cuándo</small><input id='sF' placeholder='Agrega fecha' readonly data-iso=''></label>"
+        "<label class='seg hora'><small>Hora</small><input id='sH' placeholder='¿A qué hora?' readonly data-hora=''></label>"
         f"<button class='lupa' id='btnBuscar' aria-label='Buscar'>{_LUPA}<span>Buscar</span></button>"
+        # Desplegable bajo "Dónde": recientes + zonas sugeridas
         "<div class='sug' id='sugDonde'>"
         "<div id='sugRecientes' style='display:none'><h5>Búsquedas recientes</h5><div id='sugRecientesLista'></div></div>"
         "<h5>Zonas sugeridas</h5>"
         "<button type='button' class='it cerca' data-cerca='1'><span class='ic'>🧭</span>"
         "<div><b>Cerca de ti</b><small>Descubre canchas a tu alrededor</small></div></button>"
-        f"{sug_zonas}</div></div>")
+        f"{sug_zonas}</div>"
+        # Calendario bajo "Cuándo" (dos meses, como Airbnb)
+        "<div class='sug centro cal-panel' id='panCuando'>"
+        "<div class='cal-modo'><button type='button' class='on' data-modo='fecha'>Fecha</button>"
+        "<button type='button' data-modo='libre'>Cualquier día</button></div>"
+        "<div class='cal-nav'><button type='button' class='cal-ant' aria-label='Mes anterior'>‹</button>"
+        "<button type='button' class='cal-sig' aria-label='Mes siguiente'>›</button></div>"
+        "<div class='cal-meses' id='calMeses'></div>"
+        "<div class='cal-atajos' id='calAtajos'></div></div>"
+        # Horas bajo "Hora"
+        "<div class='sug der hora-panel' id='panHora'>"
+        "<button type='button' class='it' data-hora=''><span class='ic'>🕐</span>"
+        "<div><b>Cualquier hora</b><small>Muestra todas las canchas abiertas</small></div></button>"
+        f"{horas}</div>"
+        "</div>")
     return ui.cabecera(tabs=tabs, busq=busq, ses=ses, volver="/")
 
 
@@ -500,6 +605,7 @@ def _tarjeta(c: dict, rating: tuple[float, int] | None, fecha: str = "") -> str:
           f"<div class='l3'><b>{e(sim)} {c['precio_hora']:.0f}</b> <span style='color:var(--tenue)'>por hora</span>"
           "<br><span class='app'>📲 Reservar en la app</span></div>")
     return (f"<a class='lst{'' if ok else ' pend'}' href='{e(href)}' data-base='{e(base)}' data-id='{e(c['id'])}' data-t='{e(texto)}' "
+            f"data-ap='{e(c.get('hora_apertura') or '07:00')}' data-ci='{e(c.get('hora_cierre') or '23:00')}' data-paso='{int(c.get('duracion_slot_min') or 60)}' "
             f"data-deps='{e(' '.join(deps))}' data-lat='{c.get('lat')}' data-lng='{c.get('lng')}' data-nombre='{e(c['nombre'])}' data-club='{e(c.get('club', ''))}' "
             f"data-sub='{e(sub)}' data-precio='{e(sim)} {c['precio_hora']:.0f}' data-pnum='{c['precio_hora']:.2f}' data-ok='{1 if ok else 0}'>"
             f"<div class='foto'><div class='fotos'>{fotos}</div>{badge}"
@@ -510,7 +616,7 @@ def _tarjeta(c: dict, rating: tuple[float, int] | None, fecha: str = "") -> str:
             f"{l3}</div></a>")
 
 
-def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None) -> HTMLResponse:
+def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None, hora: str = "") -> HTMLResponse:
     """RAÍZ del dominio, tipo Airbnb: buscador en pastilla, categorías por
     deporte, grilla de tarjetas con foto/corazón/★, "Mostrar mapa" (split
     view en escritorio), cercanía por ubicación y canchas descubiertas en
@@ -563,7 +669,9 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
     if lista:
         c0 = lista[0]
         centro = [c0.get("lat") or centro[0], c0.get("lng") or centro[1]]
-    cfg = json.dumps({"cajas": {k: list(v) for k, v in _CAJAS.items()}, "centro": centro, "play": PLAY_URL, "dep": dep})
+    hora = hora if horarios.hora_en_minutos(hora) is not None else ""
+    cfg = json.dumps({"cajas": {k: list(v) for k, v in _CAJAS.items()}, "centro": centro, "play": PLAY_URL, "dep": dep,
+                      "fecha": fecha, "hora": hora, "diasAdelante": DIAS_ADELANTE})
     head = ("<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' crossorigin=''>"
             "<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' crossorigin=''></script>"
             + (f"<style>{css_m}</style>" if css_m else ""))
@@ -578,14 +686,14 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
 
 
 @router.get("/", response_class=HTMLResponse, include_in_schema=False)
-def pagina_inicio(request: Request, deporte: str = "", fecha: str = "") -> HTMLResponse:
-    return _explorar(deporte, fecha, request)
+def pagina_inicio(request: Request, deporte: str = "", fecha: str = "", hora: str = "") -> HTMLResponse:
+    return _explorar(deporte, fecha, request, hora)
 
 
 @router.get("/canchas", response_class=HTMLResponse)
-def pagina_canchas(request: Request, deporte: str = "", fecha: str = "") -> HTMLResponse:
+def pagina_canchas(request: Request, deporte: str = "", fecha: str = "", hora: str = "") -> HTMLResponse:
     """Alias histórico del explorador (enlaces de la app, la home y el pie)."""
-    return _explorar(deporte, fecha, request)
+    return _explorar(deporte, fecha, request, hora)
 
 
 # ── descubrir (Google Places, como el APK) ────────────────────────────────────
@@ -738,6 +846,50 @@ def disponibilidad(cancha_id: str, fecha: str = "") -> dict:
             "slots": _slots_del_dia(c, fecha)}
 
 
+def _hora_libre(c: dict, fecha: str, hora: str, ocup: set[tuple[str, str]]) -> bool:
+    """¿Hay un turno LIBRE que cubra [hora] ese día? (inicio <= hora < fin,
+    misma lógica de slots, madrugada y turnos ya pasados que la ficha)."""
+    h = horarios.hora_en_minutos(hora)
+    if h is None:
+        return False
+    ap, ci = c["hora_apertura"], c["hora_cierre"]
+    ini = horarios.hora_en_minutos(ap)
+    if ini is not None and h < ini and horarios.slot_es_madrugada(ap, ci, hora):
+        h += 24 * 60  # 00:30 en una cancha 18:00→02:00 es la madrugada del día siguiente
+    ahora = horarios.ahora_local(_pais_de(c))
+    desde = ahora.hour * 60 + ahora.minute + 1 if fecha == ahora.date().isoformat() else None
+    paso = c["duracion_slot_min"]
+    for s_ in horarios.slots(ap, ci, paso, desde):
+        m = horarios.hora_en_minutos(s_)
+        if m is None:
+            continue
+        if m < (ini or 0):
+            m += 24 * 60
+        if m <= h < m + paso:
+            return (horarios.fecha_real(fecha, ap, ci, s_), s_) not in ocup
+    return False
+
+
+@router.get("/web/libres")
+def libres(fecha: str = "", hora: str = "") -> dict:
+    """Buscador de la portada: qué canchas reservables tienen un turno libre
+    que cubra [hora] el día [fecha] (una sola consulta de ocupados para todas)."""
+    if not fecha or not _es_iso(fecha) or horarios.hora_en_minutos(hora) is None:
+        return {"ok": False, "error": "parametros_invalidos"}
+    hoy = horarios.ahora_local("PE").date()
+    try:
+        d = date.fromisoformat(fecha)
+    except ValueError:
+        return {"ok": False, "error": "parametros_invalidos"}
+    if not (hoy - timedelta(days=1) <= d <= hoy + timedelta(days=DIAS_ADELANTE + 1)):
+        return {"ok": False, "error": "fecha_fuera_de_rango"}
+    canchas = [c for c in datos.canchas_publicas() if datos.reservable(c)]
+    fechas = [fecha, (d + timedelta(days=1)).isoformat()]
+    ocup = datos.ocupados_varias([c["id"] for c in canchas], fechas)
+    out = {c["id"]: _hora_libre(c, fecha, hora, ocup.get(c["id"], set())) for c in canchas}
+    return {"ok": True, "fecha": fecha, "hora": hora, "libres": out}
+
+
 def _es_iso(s: str) -> bool:
     try:
         date.fromisoformat(s)
@@ -817,6 +969,16 @@ _JS_RESERVA = r"""
             pintarResumen();
           });
         });
+        if(C.hora && !C._horaOk){
+          C._horaOk = true;
+          var hm = function(t){ var p = t.split(':'); return parseInt(p[0]) * 60 + parseInt(p[1]); };
+          var want = hm(C.hora);
+          for(var j = 0; j < slots.length; j++){
+            var a = hm(slots[j].hora), b = hm(slots[j].fin); if(b <= a) b += 1440;
+            var ww = want < a && b > 1440 ? want + 1440 : want;
+            if(!slots[j].ocupado && a <= ww && ww < b){ var chip = document.querySelector('#slots .chip[data-i="' + j + '"]'); if(chip){ chip.click(); chip.scrollIntoView({behavior: 'smooth', block: 'center'}); } break; }
+          }
+        }
       }).catch(function(){ $('slots').innerHTML = '<span class="sub">No pudimos cargar los horarios.</span>'; });
   }
   function mostrarError(m){ var el = $('err'); el.textContent = m; el.style.display = 'block'; el.scrollIntoView({behavior:'smooth', block:'center'}); }
@@ -961,7 +1123,7 @@ def _jsonld_cancha(c: dict, sim: str) -> str:
 
 
 @router.get("/reservar/{cancha_id}", response_class=HTMLResponse)
-def pagina_reservar(request: Request, cancha_id: str, fecha: str = "") -> HTMLResponse:
+def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str = "") -> HTMLResponse:
     c = datos.cancha(cancha_id)
     ses = sesion.de_request(request)
     if not c or c.get("eliminada") or not c.get("registrada", True):
@@ -1015,6 +1177,8 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "") -> HTMLRe
                       "logo": "", "hoy": dias[0]["iso"], "dias": dias, "etiquetas": etiquetas,
                       # Día preseleccionado desde el buscador de la portada (solo si cae en la tira).
                       "fecha": fecha if any(d["iso"] == fecha for d in dias) else "",
+                      # Hora buscada en la portada: se marca el turno libre que la cubre.
+                      "hora": hora if horarios.hora_en_minutos(hora) is not None else "",
                       # Login con Google (como el app): con client id configurado, reservar
                       # exige sesión; la reserva queda a nombre del correo de Google.
                       "login": sesion.activo(), "sesion": ses}, ensure_ascii=False)

@@ -201,7 +201,7 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 .busq .seg small{font-size:12px;font-weight:700;color:var(--noche);line-height:1.1;margin-bottom:2px}
 .busq .seg input,.busq .seg select{border:0;padding:0;margin:0;background:transparent;font-size:14px;font-weight:500;color:var(--noche);height:auto;width:100%;min-width:0;outline:none;box-shadow:none;font-family:inherit;line-height:1.2;-webkit-appearance:none;appearance:none}
 .busq .seg input::placeholder{color:var(--tenue);font-weight:500}
-.busq .seg.donde{flex:1.4;min-width:0}.busq .seg.dep{flex:1;min-width:0}.busq .seg.cuando{flex:1;min-width:0}
+.busq .seg.donde{flex:1.4;min-width:0}
 .busq .lupa{height:50px;border-radius:999px;background:var(--esmeralda);color:#fff;border:0;display:inline-flex;align-items:center;justify-content:center;gap:8px;margin:0 8px 0 4px;padding:0 18px 0 14px;cursor:pointer;flex:none;font-weight:700;font-size:15px;font-family:inherit;transition:transform .12s,background .15s}
 .busq .lupa:hover{background:var(--teal)}.busq .lupa svg{width:18px;height:18px;flex:none}
 /* desplegable bajo "Dónde": búsquedas recientes + zonas sugeridas */
@@ -215,6 +215,40 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 .sug .it b{display:block;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sug .it small{display:block;font-size:12.5px;color:var(--tenue)}
 .sug .it div{min-width:0}
+.sug.centro{left:0;right:0;width:auto}
+.sug.der{left:auto;right:0;width:min(560px,100%)}
+.busq .seg.cuando,.busq .seg.hora{flex:1;min-width:0}.busq .seg input[readonly]{cursor:pointer}
+/* calendario tipo Airbnb (dos meses) */
+.cal-panel{padding:18px 24px 20px}
+.cal-modo{display:flex;justify-content:center;margin-bottom:8px}
+.cal-modo button{border:0;background:var(--gris);color:var(--noche);font-family:inherit;font-weight:600;font-size:14px;padding:10px 26px;cursor:pointer}
+.cal-modo button:first-child{border-radius:999px 0 0 999px;padding-left:30px}.cal-modo button:last-child{border-radius:0 999px 999px 0;padding-right:30px}
+.cal-modo button.on{background:var(--blanco);border-radius:999px;box-shadow:0 2px 8px rgba(15,27,45,.16);border:1px solid var(--trazo)}
+.cal-nav{position:relative;height:0}
+.cal-nav button{position:absolute;top:8px;width:32px;height:32px;border-radius:50%;border:0;background:transparent;font-size:22px;line-height:1;cursor:pointer;color:var(--noche);font-family:inherit}
+.cal-nav button:hover{background:var(--gris)}.cal-nav button:disabled{opacity:.25;cursor:default;background:transparent}
+.cal-nav .cal-ant{left:0}.cal-nav .cal-sig{right:0}
+.cal-meses{display:grid;grid-template-columns:1fr 1fr;gap:0 40px;padding:0 24px}
+.cal-mes{min-width:0}
+.cal-tit{text-align:center;font-weight:700;font-size:15px;padding:12px 0 14px}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px 0;justify-items:center}
+.cal-dn{font-size:11.5px;color:var(--tenue);font-weight:600;padding:4px 0 8px}
+.cal-d{width:40px;height:40px;border-radius:50%;border:0;background:transparent;font-family:inherit;font-weight:600;font-size:13.5px;color:var(--noche);cursor:pointer}
+.cal-d:hover{box-shadow:inset 0 0 0 1.5px var(--noche)}
+.cal-d.off{color:#C4CBC7;text-decoration:line-through;cursor:default;box-shadow:none}
+.cal-d.hoy{font-weight:800}.cal-d.sel{background:var(--noche);color:#fff}
+.cal-atajos{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;padding:0 24px}
+.cal-atajos .chip{font-size:13px;padding:8px 14px}.cal-atajos .chip.sel{box-shadow:inset 0 0 0 1.5px var(--noche);background:var(--blanco);border-color:var(--noche);color:var(--noche)}
+/* panel de horas */
+.hora-panel{padding:14px 8px 12px}
+.hgrupo{padding:4px 12px 8px}.hgrupo h5{margin:6px 0 8px 4px}
+.hchips{display:flex;flex-wrap:wrap;gap:8px}
+.hchip{font-size:13px;padding:8px 12px}.hchip.sel{background:var(--noche);color:#fff;border-color:var(--noche)}
+@media(max-width:900px){
+  .cal-meses{grid-template-columns:1fr;padding:0 16px}.cal-panel{padding:14px 12px 16px}.cal-atajos{padding:0 12px}
+  .cal-d{width:36px;height:36px}
+  .sug.der{width:100%}
+}
 /* pastilla compacta (páginas interiores, como Airbnb al hacer scroll) */
 .busq-mini{display:inline-flex;align-items:center;height:48px;border:1px solid var(--trazo);border-radius:999px;box-shadow:0 1px 2px rgba(15,27,45,.08),0 4px 12px rgba(15,27,45,.05);padding:0 8px 0 20px;color:var(--noche);text-decoration:none;font-size:14px;font-weight:600;white-space:nowrap;min-width:0;transition:box-shadow .15s}
 .busq-mini:hover{box-shadow:0 2px 4px rgba(15,27,45,.12),0 6px 16px rgba(15,27,45,.1)}
@@ -240,12 +274,12 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 }
 @media(max-width:900px){
   .cab-der a.host{display:none}
-  .busq{height:56px}.busq .seg{padding:0 14px}.busq .seg.cuando{display:none}
+  .busq{height:56px}.busq .seg{padding:0 12px}.busq .seg input{text-overflow:ellipsis}
   .busq .lupa{width:44px;height:44px;padding:0;margin-right:6px}.busq .lupa span{display:none}
   .sug{top:64px;width:100%;border-radius:18px}
   .busq-mini span.tenue{display:none}
 }
-@media(max-width:560px){.busq .seg.dep{display:none}.cab-tabs{margin:0 -16px;padding:0 16px}.cat{padding:12px 8px 10px}}
+@media(max-width:560px){.busq .seg{padding:0 9px}.busq .seg small{font-size:11px}.busq .seg input{font-size:13px}.busq .seg.donde{flex:1.5}.busq .seg.hora{flex:.8}.cab-tabs{margin:0 -16px;padding:0 16px}.cat{padding:12px 8px 10px}}
 /* filtros del explorador (botón + chips) */
 .filtros{flex:none;display:inline-flex;align-items:center;gap:8px;border:1px solid var(--trazo);border-radius:12px;padding:10px 14px;font-weight:700;font-size:13px;background:var(--blanco);cursor:pointer;color:var(--noche);font-family:inherit;margin-left:auto}
 .filtros:hover{border-color:var(--noche)}.filtros.on{border-color:var(--noche);box-shadow:inset 0 0 0 1px var(--noche)}
@@ -484,7 +518,7 @@ JS_NAV = r"""
   if(b && p){
     b.addEventListener('click', function(ev){ ev.stopPropagation(); var on = !p.classList.contains('open'); p.classList.toggle('open', on); b.setAttribute('aria-expanded', on ? 'true' : 'false'); });
     document.addEventListener('click', function(ev){ if(!p.contains(ev.target)){ p.classList.remove('open'); b.setAttribute('aria-expanded', 'false'); } });
-    document.addEventListener('keydown', function(ev){ if(ev.key === 'Escape'){ p.classList.remove('open'); var s = document.getElementById('sugDonde'); if(s) s.classList.remove('open'); } });
+    document.addEventListener('keydown', function(ev){ if(ev.key === 'Escape'){ p.classList.remove('open'); document.querySelectorAll('.sug.open').forEach(function(s){ s.classList.remove('open'); }); } });
   }
   // Al hacer scroll la cabecera se compacta (pastilla chica al centro); al tocarla vuelve el buscador grande.
   var cab = document.querySelector('.cab:not(.simple)'), mini = document.getElementById('busqMini');

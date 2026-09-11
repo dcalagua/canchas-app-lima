@@ -186,6 +186,33 @@ def ocupados(cancha_id: str, fechas: list[str]) -> set[tuple[str, str]]:
     return out
 
 
+def ocupados_varias(ids: list[str], fechas: list[str]) -> dict[str, set[tuple[str, str]]]:
+    """Como `ocupados`, pero para MUCHAS canchas en una sola consulta (el
+    buscador de la portada pregunta por todas a la vez)."""
+    if not pg.habilitado or not ids or not fechas:
+        return {}
+    out: dict[str, set[tuple[str, str]]] = {}
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT cancha_id, fecha, hora_inicio FROM pichangol_reservas "
+                "WHERE cancha_id = ANY(%s) AND fecha = ANY(%s) "
+                "AND coalesce(estado,'') <> 'noShow'", (ids, fechas))
+            for cid, f, h in cur.fetchall():
+                out.setdefault(str(cid), set()).add((str(f), str(h)))
+            try:
+                cur.execute(
+                    "SELECT cancha_id, fecha, hora FROM pichangol_bloqueos "
+                    "WHERE cancha_id = ANY(%s) AND fecha = ANY(%s)", (ids, fechas))
+                for cid, f, h in cur.fetchall():
+                    out.setdefault(str(cid), set()).add((str(f), str(h)))
+            except Exception:  # noqa: BLE001 — tabla opcional
+                conn.rollback()
+    except Exception:  # noqa: BLE001
+        pass
+    return out
+
+
 def descuentos(cancha_id: str, fechas: list[str]) -> dict[tuple[str, str], int]:
     """Descuentos puntuales por slot que puso el dueño (%), por (fecha, hora)."""
     if not pg.habilitado or not fechas:

@@ -269,7 +269,7 @@ def test_raiz_es_el_explorador_tipo_airbnb(db):
     marca/comercio que revisan Culqi e INDECOPI (servicios con precio y
     botón, términos, cancelaciones, Libro de Reclamaciones integrado)."""
     home = client.get("/").text
-    for t in ("id='sQ'", "id='sDep'", "id='sF'", "class='cat sel'", "Cancha Central", "class='corazon'",
+    for t in ("id='sQ'", "id='sF'", "id='sH'", "id='panCuando'", "id='panHora'", "class='cat sel'", "Cancha Central", "class='corazon'",
               "Mostrar mapa", 'id="servicios"', "Servicios y precios", "/canchas?deporte=futbol",
               'id="terminos"', 'id="devoluciones"', 'id="reclamaciones"', "lr-form", "/reclamaciones",
               'href="/canchas"', 'href="/legal/terminos"', 'href="/legal/privacidad"',
@@ -287,6 +287,40 @@ def test_raiz_es_el_explorador_tipo_airbnb(db):
     ficha = client.get(f"/reservar/c_lima?fecha={f}").text
     assert f'"fecha": "{f}"' in ficha
     assert '"fecha": ""' in client.get("/reservar/c_lima?fecha=2020-01-01").text
+
+
+def test_buscador_por_fecha_y_hora_como_airbnb(db, monkeypatch):
+    fake = db
+    """"Cuándo" abre un calendario y "Hora" un panel de horas; con ambos, el
+    servidor dice qué canchas tienen un turno LIBRE que cubra esa hora
+    (`/web/libres`, una consulta para todas) y la ficha preselecciona el
+    turno (`?hora=`)."""
+    from web import datos as _d
+    f = _manana()
+    home = client.get(f"/?fecha={f}&hora=19:00").text
+    assert f'"fecha": "{f}"' in home and '"hora": "19:00"' in home
+    assert "data-ap='" in home and "data-paso='" in home and "data-hora='19:00'" in home
+    assert '"hora": ""' in client.get("/?hora=25:99").text
+    # Sin reservas: la 19:00 está libre en todas las reservables.
+    monkeypatch.setattr(_d, "ocupados_varias", lambda ids, fechas: {})
+    j = client.get(f"/web/libres?fecha={f}&hora=19:00").json()
+    assert j["ok"] and j["libres"]["c_lima"] is True and "c_gye" in j["libres"]
+    # Ocupada a las 19:00 → ya no está libre; a las 20:00 sí. La 03:00 no
+    # cae en ningún turno (cierra 23:00) → no libre.
+    monkeypatch.setattr(_d, "ocupados_varias", lambda ids, fechas: {"c_lima": {(f, "19:00")}})
+    j = client.get(f"/web/libres?fecha={f}&hora=19:00").json()
+    assert j["libres"]["c_lima"] is False
+    assert client.get(f"/web/libres?fecha={f}&hora=20:00").json()["libres"]["c_lima"] is True
+    assert client.get(f"/web/libres?fecha={f}&hora=03:00").json()["libres"]["c_lima"] is False
+    # Hora dentro de un turno de 90 min (19:30 cae en el turno 19:00-20:30).
+    fake.canchas["c_lima"]["duracion_slot_min"] = 90
+    assert client.get(f"/web/libres?fecha={f}&hora=19:30").json()["libres"]["c_lima"] is False
+    fake.canchas["c_lima"]["duracion_slot_min"] = 60
+    assert client.get("/web/libres?fecha=2020-01-01&hora=19:00").json()["ok"] is False
+    assert client.get(f"/web/libres?fecha={f}&hora=x").json()["ok"] is False
+    # La ficha recibe la hora buscada y la valida.
+    assert '"hora": "19:00"' in client.get(f"/reservar/c_lima?fecha={f}&hora=19:00").text
+    assert '"hora": ""' in client.get(f"/reservar/c_lima?fecha={f}&hora=99:00").text
 
 
 def test_calendario_ics_y_acciones_del_comprobante(db, monkeypatch):
