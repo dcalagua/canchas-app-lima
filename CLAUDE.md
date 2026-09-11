@@ -678,6 +678,23 @@ off → redeploy inmediato en cada push). URL pública:
     de `pg-backend` sin cambios); la de PRD se ajusta en el corte.
   - Cada torre muestra su ambiente en la barra lateral (`PICHANGOL_ENTORNO` +
     ref del proyecto Supabase; PRD sale en rojo). Ante la duda, mirar ahí.
+  - **PASE A PRD del 11-sep-2026 (autorizado por el director: "Pasar todo a
+    producción. El app y la parte web"):** `prd` = merge `eadf629` de la rama
+    de desarrollo (web anfitrión completa, reserva web, cabecera móvil, sync
+    APK). Procedimiento que se siguió y se repite en cada pase: (1) `git
+    checkout -B prd origin/prd && git merge --no-ff origin/<rama-dev> && git
+    push origin prd` (Railway `pg-backend-prd` redespliega solo); (2) SQL
+    pendientes en PCG-PRD vía el conector Supabase `apply_migration`
+    (aplicados: `pichangol_chat_prefs`, `pichangol_lugares_fotos`); (3)
+    variables nuevas en `pg-backend-prd` como REFERENCIAS al servicio QAS
+    cuando el valor es el mismo (`GOOGLE_WEB_CLIENT_ID=${{pg-backend.
+    GOOGLE_WEB_CLIENT_ID}}`, `PLACES_API_KEY` igual); (4) APK/AAB de PRD =
+    `workflow_dispatch` de `build.yml` con `ref=prd` e `inputs.entorno=prod`
+    (run 1277 → `pichangol-prod-1277.aab` como artifact + APK en el Release).
+    Pendiente manual del checklist `docs/prd_railway_checklist.md`: llaves
+    Culqi live y `DATABASE_URL` de PCG-PRD si aún no están. Aviso del
+    conector: las tablas `growth_*` de PCG-PRD siguen SIN RLS (las usa el
+    backend por Postgres directo; con la anon key son legibles) — endurecer.
 - **Panel web `/admin` = TORRE DE CONTROL del operador (SaaS).** Página HTML
   self-contained, co-marca **Pichangol + EBIM** (solo aquí), protegida por
   **`ADMIN_PANEL_TOKEN`** (header `X-Admin-Token`, no viaja en URL). Endpoints
