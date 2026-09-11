@@ -307,7 +307,17 @@ _JS_EXPLORAR = r"""
         b.classList.toggle('sel', !off && b.dataset.hora === pend.hora); if(!off) alguna = true; });
       g.classList.toggle('off', !alguna); if(alguna) todas = false;
     });
-    var av = $('horaAviso'); if(av){ av.style.display = todas ? '' : 'none'; av.textContent = pend.fecha === hoyIso ? 'Hoy ya no quedan turnos por delante. Elige otro día en “Cuándo”.' : 'Ninguna cancha de la lista tiene turnos a estas horas.'; }
+    var av = $('horaAviso'); if(av){
+      av.style.display = todas ? '' : 'none';
+      if(todas){
+        // Explica el motivo real: ¿ya pasaron todas las horas, o las canchas cierran antes de las horas que quedan?
+        var cierres = cards().map(function(c){ var ci = hm(c.dataset.ci || '23:00'), ap = hm(c.dataset.ap || '07:00'); return ci <= ap ? ci + 1440 : ci; });
+        var cierreMax = cierres.length ? Math.max.apply(null, cierres) : 0;
+        var ultimo = cierreMax ? cierreMax - 60 : 0, txtCierre = function(m){ m = m % 1440; return (m < 600 ? '0' : '') + Math.floor(m / 60) + ':' + (m % 60 < 10 ? '0' : '') + (m % 60); };
+        av.textContent = pend.fecha === hoyIso && cierreMax
+          ? 'Las canchas de esta lista cierran a las ' + txtCierre(cierreMax) + ' como máximo: su último turno de hoy (' + txtCierre(ultimo) + ') ya empezó. Elige otro día en “Cuándo”.'
+          : (pend.fecha === hoyIso ? 'Hoy ya no quedan turnos por delante. Elige otro día en “Cuándo”.' : 'Ninguna cancha de la lista tiene turnos a estas horas.');
+      } }
   }
   function ponerHora(h, sinCerrar){
     pend.hora = h || ''; if(sH){ sH.value = pend.hora; sH.dataset.hora = pend.hora; }
