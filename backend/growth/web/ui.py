@@ -323,7 +323,7 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 .busq-mini span+span{border-left:1px solid var(--trazo);padding-left:16px}
 .busq-mini span.tenue{color:var(--tenue);font-weight:500}
 .busq-mini i{width:32px;height:32px;border-radius:50%;background:var(--esmeralda);color:#fff;display:inline-flex;align-items:center;justify-content:center;flex:none;margin-left:4px}
-.busq-mini i svg{width:14px;height:14px}
+.busq-mini i svg{width:14px;height:14px}.busq-mini .mov,.busq-mini .lupa-mov{display:none}
 .cab-mini{grid-area:mini;display:none;justify-content:center;min-width:0}
 /* compacta (al hacer scroll) y simple (páginas interiores): logo · pastilla chica · derecha */
 .cab.chica,.cab.simple{grid-template-columns:1fr auto 1fr;grid-template-areas:"logo mini der";padding-bottom:8px}
@@ -445,7 +445,19 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
   .busq .lupa{width:44px;height:44px;padding:0;margin-right:6px}.busq .lupa span{display:none}
   .sug{top:64px;width:100%;border-radius:18px}
   .busq-mini span.tenue{display:none}
+  /* páginas interiores en móvil (como airbnb.com en el celular): logo + avatar arriba y la pastilla a TODO el ancho debajo;
+     al hacer scroll en la portada queda solo la pastilla. Antes las tres cosas iban en una fila y el logo se montaba sobre la pastilla. */
+  .cab.simple{grid-template-columns:1fr auto;grid-template-areas:"logo der" "mini mini";padding-bottom:10px}
+  .cab.chica{grid-template-columns:1fr;grid-template-areas:"mini";padding-top:8px;padding-bottom:8px}
+  .cab.chica .cab-logo,.cab.chica .cab-der{display:none}
+  .cab-mini{width:100%}.cab-mini .busq-mini{width:100%;height:54px;padding:0 16px;gap:12px}
+  .cab-mini .busq-mini span,.cab-mini .busq-mini>i:last-child{display:none}
+  .cab-mini .busq-mini .lupa-mov{display:inline-flex;width:auto;height:auto;background:transparent;color:var(--noche);margin:0}.cab-mini .busq-mini .lupa-mov svg{width:18px;height:18px}
+  .cab-mini .busq-mini .mov{display:flex;flex-direction:column;min-width:0;line-height:1.2}
+  .cab-mini .busq-mini .mov b{font-size:14px;font-weight:700}.cab-mini .busq-mini .mov small{font-size:12px;color:var(--tenue);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cab-logo .wm{white-space:nowrap}
 }
+@media(max-width:560px){.cab-logo .wm{font-size:20px!important}.cab-der .av{width:34px;height:34px}}
 @media(max-width:560px){.busq .seg{padding:0 9px}.busq .seg small{font-size:11px}.busq .seg input{font-size:13px}.busq .seg.donde{flex:1.5}.busq .seg.hora{flex:.8}.cab-tabs{margin:0 -16px;padding:0 16px}.cat{padding:12px 8px 10px}}
 /* filtros del explorador (botón + chips) */
 .filtros{flex:none;display:inline-flex;align-items:center;gap:8px;border:1px solid var(--trazo);border-radius:14px;padding:10px 14px;font-weight:700;font-size:13.5px;background:var(--blanco);cursor:pointer;color:var(--noche);font-family:inherit}
@@ -707,8 +719,11 @@ def menu_cuenta(ses: dict | None, volver: str = "/", modo: str = "") -> str:
 
 def busq_mini(href: str = "/canchas", id_: str = "") -> str:
     """Pastilla compacta de las páginas interiores (Airbnb al hacer scroll)."""
-    return (f"<a class='busq-mini' href='{href}'{(' id=' + chr(39) + id_ + chr(39)) if id_ else ''}><span>Cualquier zona</span><span>Cualquier deporte</span>"
-            f"<span class='tenue'>Cuándo quieras</span><i>{LUPA_SVG}</i></a>")
+    # En móvil (≤900 px) se muestra como la de airbnb.com en el celular: lupa a
+    # la izquierda + dos líneas ("¿Dónde juegas?" / "Cualquier zona · …").
+    return (f"<a class='busq-mini' href='{href}'{(' id=' + chr(39) + id_ + chr(39)) if id_ else ''}><i class='lupa-mov'>{LUPA_SVG}</i>"
+            "<div class='mov'><b>¿Dónde juegas?</b><small>Cualquier zona · Cualquier deporte · Cuándo quieras</small></div>"
+            f"<span>Cualquier zona</span><span>Cualquier deporte</span><span class='tenue'>Cuándo quieras</span><i>{LUPA_SVG}</i></a>")
 
 
 def cabecera(*, tabs: str = "", busq: str = "", ses: dict | None = None, volver: str = "/", modo: str = "") -> str:

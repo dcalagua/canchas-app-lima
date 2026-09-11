@@ -393,6 +393,15 @@ para la API del APK.
   `overflow-x:hidden` en `body` convierte al body en scroll container y
   mata el `position:sticky` de la cabecera → `html{overflow-x:hidden}` +
   `body{overflow-x:clip}`.
+  **MÓVIL (≤900 px, arreglado sep-2026 tras captura del director):** la
+  cabecera `simple` de las páginas interiores ponía logo · pastilla · avatar
+  en UNA fila y "Pichangol" se montaba sobre la pastilla. Ahora en móvil
+  va en dos filas como airbnb.com en el celular: logo + avatar + ☰ arriba y
+  la pastilla a TODO el ancho debajo, con lupa a la izquierda y dos líneas
+  ("¿Dónde juegas?" / "Cualquier zona · Cualquier deporte · Cuándo quieras",
+  `busq_mini` lleva el bloque `.mov` solo visible en móvil); la compacta
+  `.chica` en móvil deja solo la pastilla. Toda pantalla web nueva se prueba
+  también a 390 px (Playwright `isMobile`).
 - **MIS RESERVAS EN LA WEB (sep-2026, pedido del director):** `GET
   /mis-reservas` (router `pagina_mis_reservas`) lista las reservas del CORREO
   de Google con sesión — las mismas que "Mis reservas" del app —
