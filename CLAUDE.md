@@ -331,8 +331,16 @@ para la API del APK.
   `DIAS_ADELANTE` tachados, toggle "Fecha | Cualquier día", atajos Hoy /
   Mañana / Sábado / Domingo; al elegir un día se abre solo el panel de
   hora). **"Hora" abre un panel de chips** (`#panHora`: Cualquier hora +
-  Mañana/Tarde/Noche, 06:00-23:00). El filtro de hora es REAL, no
-  cosmético: en el navegador se ocultan las canchas cerradas a esa hora
+  Mañana/Tarde/Noche, 06:00-23:00). **Con "Hoy", las horas que ya pasaron
+  quedan DESHABILITADAS** (`horaPasada`: solo turnos que empiezan después
+  de este momento, reloj del navegador; grupos enteros en gris y aviso si
+  ya no queda ninguna); una hora elegida que pasa a ser inválida se
+  descarta. **NADA se filtra hasta pulsar "Buscar"** (regla del director,
+  sep-2026, como Airbnb): lo elegido vive en `pend` (zona, fecha, hora) y
+  `buscar()` lo copia a `filtro`, aplica, guarda la búsqueda reciente y
+  pinta el resumen "Buscando: … · Limpiar" (`#resBusq`) en la línea de
+  ubicación. Elegir una zona sugerida solo rellena "Dónde" y pasa a
+  "Cuándo". El filtro de hora es REAL, no cosmético: en el navegador se ocultan las canchas cerradas a esa hora
   (`data-ap`/`data-ci`/`data-paso` de cada tarjeta, `abiertaA`) y, con
   fecha + hora, `GET /web/libres?fecha&hora` responde qué canchas
   reservables tienen un turno LIBRE que cubra esa hora (`_hora_libre`:

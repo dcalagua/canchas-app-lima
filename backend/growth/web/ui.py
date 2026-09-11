@@ -244,6 +244,10 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 .hgrupo{padding:4px 12px 8px}.hgrupo h5{margin:6px 0 8px 4px}
 .hchips{display:flex;flex-wrap:wrap;gap:8px}
 .hchip{font-size:13px;padding:8px 12px}.hchip.sel{background:var(--noche);color:#fff;border-color:var(--noche)}
+.hchip.off{color:#C4CBC7;text-decoration:line-through;cursor:default;box-shadow:none;border-color:var(--gris)}
+.hgrupo.off h5{color:#C4CBC7}
+.hora-aviso{margin:4px 12px 8px;padding:10px 12px;border-radius:12px;background:var(--warn-bg);color:var(--warn-fg);font-size:13px;font-weight:600}
+.ubic-mini #resBusq b{color:var(--noche)}.ubic-mini #resBusq button{margin-left:6px}
 @media(max-width:900px){
   .cal-meses{grid-template-columns:1fr;padding:0 16px}.cal-panel{padding:14px 12px 16px}.cal-atajos{padding:0 12px}
   .cal-d{width:36px;height:36px}

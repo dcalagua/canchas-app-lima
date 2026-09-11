@@ -175,7 +175,8 @@ _JS_EXPLORAR = r"""
   var C = window.__explorar, $ = function(id){ return document.getElementById(id); };
   var cards = function(){ return Array.prototype.slice.call(document.querySelectorAll('.lst[data-lat]')); };
   var yo = null, mapa = null, marcadores = [], miPin = null, pinesDesc = [], descubiertas = {}, fotosConocidas = {};
-  var filtro = {q: '', dep: C.dep || '', fecha: '', soloOk: false, max: 0};
+  var filtro = {q: '', dep: C.dep || '', fecha: '', hora: '', soloOk: false, max: 0};
+  var pend = {q: '', fecha: '', hora: ''}; // lo elegido en el buscador; se aplica al pulsar Buscar (como Airbnb)
   var favs = {};
   try { favs = JSON.parse(localStorage.getItem('pcg_fav') || '{}') || {}; } catch(e){}
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -232,7 +233,7 @@ _JS_EXPLORAR = r"""
   }
   // Deporte: lo filtra el SERVIDOR (?deporte=), las pestañas son enlaces normales (SEO, sin JS).
   var sQ = $('sQ'), sF = $('sF'), sH = $('sH');
-  if(sQ) sQ.addEventListener('input', function(){ filtro.q = sQ.value.trim().toLowerCase(); aplicar(); });
+  if(sQ) sQ.addEventListener('input', function(){ pend.q = sQ.value.trim().toLowerCase(); });
   // ── fecha + hora: calendario tipo Airbnb y panel de horas ──
   var DIAS = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'], MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
   var MESES_L = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -254,7 +255,7 @@ _JS_EXPLORAR = r"""
     ['L','Ma','Mi','J','V','S','D'].forEach(function(d){ h += '<span class="cal-dn">' + d + '</span>'; });
     for(var i = 0; i < off; i++) h += '<span></span>';
     for(var d = 1; d <= n; d++){ var s = iso(new Date(y, m, d)); var off2 = s < hoyIso || s > maxIso;
-      h += '<button type="button" class="cal-d' + (off2 ? ' off' : '') + (s === filtro.fecha ? ' sel' : '') + (s === hoyIso ? ' hoy' : '') + '" data-f="' + s + '"' + (off2 ? ' disabled' : '') + '>' + d + '</button>'; }
+      h += '<button type="button" class="cal-d' + (off2 ? ' off' : '') + (s === pend.fecha ? ' sel' : '') + (s === hoyIso ? ' hoy' : '') + '" data-f="' + s + '"' + (off2 ? ' disabled' : '') + '>' + d + '</button>'; }
     return h + '</div></div>';
   }
   function pintarCal(){
@@ -272,18 +273,34 @@ _JS_EXPLORAR = r"""
       at.innerHTML = [['Hoy', hoyIso], ['Mañana', iso(man)], ['Sábado ' + sab.getDate(), iso(sab)], ['Domingo ' + dom.getDate(), iso(dom)]]
         .map(function(x){ return '<button type="button" class="chip" data-f="' + x[1] + '">' + x[0] + '</button>'; }).join('');
     }
-    document.querySelectorAll('#calAtajos .chip').forEach(function(b){ b.classList.toggle('sel', b.dataset.f === filtro.fecha); });
+    document.querySelectorAll('#calAtajos .chip').forEach(function(b){ b.classList.toggle('sel', b.dataset.f === pend.fecha); });
     document.querySelectorAll('#panCuando .cal-modo button').forEach(function(b){ b.classList.toggle('on', (b.dataset.modo === 'libre') === modoLibre); });
   }
   function ponerFecha(f, abrirHora){
-    filtro.fecha = f || ''; modoLibre = !filtro.fecha; if(sF){ sF.value = etiquetaFecha(filtro.fecha); sF.dataset.iso = filtro.fecha; }
-    pintarCal(); consultarLibres(); aplicar();
+    pend.fecha = f || ''; modoLibre = !pend.fecha; if(sF){ sF.value = etiquetaFecha(pend.fecha); sF.dataset.iso = pend.fecha; }
+    pintarCal();
+    // Si la hora elegida ya pasó para HOY, se descarta (no se alquila en el pasado).
+    if(pend.hora && horaPasada(pend.hora)) ponerHora('', true);
     if(abrirHora){ abrirPanel('panHora'); } else { abrirPanel(null); }
   }
-  function ponerHora(h){
-    filtro.hora = h || ''; if(sH){ sH.value = filtro.hora; sH.dataset.hora = filtro.hora; }
-    document.querySelectorAll('#panHora .hchip').forEach(function(b){ b.classList.toggle('sel', b.dataset.hora === filtro.hora); });
-    consultarLibres(); aplicar(); abrirPanel(null);
+  function horaPasada(h){
+    // Con "Hoy" solo valen los turnos que EMPIEZAN después de este momento (misma regla que la ficha).
+    if(pend.fecha !== hoyIso) return false;
+    var n = new Date(); return hm(h) <= n.getHours() * 60 + n.getMinutes();
+  }
+  function pintarHoras(){
+    var grupos = document.querySelectorAll('#panHora .hgrupo'), todas = true;
+    grupos.forEach(function(g){
+      var alguna = false;
+      g.querySelectorAll('.hchip').forEach(function(b){ var off = horaPasada(b.dataset.hora); b.classList.toggle('off', off); b.disabled = off; b.classList.toggle('sel', !off && b.dataset.hora === pend.hora); if(!off) alguna = true; });
+      g.classList.toggle('off', !alguna); if(alguna) todas = false;
+    });
+    var av = $('horaAviso'); if(av) av.style.display = todas ? '' : 'none';
+  }
+  function ponerHora(h, sinCerrar){
+    pend.hora = h || ''; if(sH){ sH.value = pend.hora; sH.dataset.hora = pend.hora; }
+    pintarHoras();
+    if(!sinCerrar) abrirPanel(null);
   }
   function consultarLibres(){
     // Con fecha + hora, el servidor dice qué canchas tienen un turno LIBRE que cubra esa hora.
@@ -293,7 +310,7 @@ _JS_EXPLORAR = r"""
       .then(function(j){ if(j && j.ok){ libres[k] = j.libres || {}; aplicar(); } }).catch(function(){});
   }
   var paneles = ['sugDonde', 'panCuando', 'panHora'];
-  function abrirPanel(id){ paneles.forEach(function(p){ var el = $(p); if(el) el.classList.toggle('open', p === id); }); if(id === 'panCuando') pintarCal(); }
+  function abrirPanel(id){ paneles.forEach(function(p){ var el = $(p); if(el) el.classList.toggle('open', p === id); }); if(id === 'panCuando') pintarCal(); if(id === 'panHora') pintarHoras(); }
   document.addEventListener('click', function(ev){
     // Un clic fuera del buscador cierra los desplegables (si el nodo clicado ya
     // se repintó —día del calendario— no cuenta como "fuera").
@@ -314,10 +331,16 @@ _JS_EXPLORAR = r"""
     window.addEventListener('resize', function(){ if(pc.classList.contains('open')) pintarCal(); });
   }
   var ph = $('panHora');
-  if(ph) ph.addEventListener('click', function(ev){ var b = ev.target.closest('[data-hora]'); if(b) ponerHora(b.dataset.hora); });
+  if(ph) ph.addEventListener('click', function(ev){ var b = ev.target.closest('[data-hora]'); if(b && !b.disabled) ponerHora(b.dataset.hora); });
   // Fecha/hora que vienen en la URL (?fecha=&hora=) arrancan seleccionadas.
-  if(C.fecha && C.fecha >= hoyIso && C.fecha <= maxIso){ filtro.fecha = C.fecha; if(sF){ sF.value = etiquetaFecha(C.fecha); sF.dataset.iso = C.fecha; } }
-  if(C.hora){ filtro.hora = C.hora; if(sH){ sH.value = C.hora; sH.dataset.hora = C.hora; } consultarLibres(); }
+  if(C.fecha && C.fecha >= hoyIso && C.fecha <= maxIso){ filtro.fecha = pend.fecha = C.fecha; if(sF){ sF.value = etiquetaFecha(C.fecha); sF.dataset.iso = C.fecha; } }
+  if(C.hora && !horaPasada(C.hora)){ filtro.hora = pend.hora = C.hora; if(sH){ sH.value = C.hora; sH.dataset.hora = C.hora; } consultarLibres(); }
+  function pintarResumenBusq(){
+    var r = $('resBusq'); if(!r) return;
+    var partes = []; if(filtro.q) partes.push('“' + filtro.q + '”'); if(filtro.fecha) partes.push(etiquetaFecha(filtro.fecha)); if(filtro.hora) partes.push(filtro.hora);
+    r.innerHTML = partes.length ? '· Buscando: <b>' + esc(partes.join(' · ')) + '</b> <button type="button" id="btnLimpiar">Limpiar</button>' : '';
+    var bl = $('btnLimpiar'); if(bl) bl.addEventListener('click', function(){ pend = {q: '', fecha: '', hora: ''}; if(sQ) sQ.value = ''; ponerFecha('', false); ponerHora('', true); buscar(); });
+  }
   // ── desplegable bajo "Dónde": búsquedas recientes (este navegador) + zonas sugeridas ──
   var sug = $('sugDonde'), recientes = [];
   try { recientes = JSON.parse(localStorage.getItem('pcg_busq') || '[]') || []; } catch(e){}
@@ -340,11 +363,18 @@ _JS_EXPLORAR = r"""
     sug.addEventListener('click', function(ev){
       var it = ev.target.closest('.it'); if(!it) return;
       if(it.dataset.cerca){ abrirSug(false); ubicar(true); return; }
-      sQ.value = it.dataset.zona || ''; filtro.q = sQ.value.trim().toLowerCase(); aplicar(); recordar(sQ.value); abrirSug(false);
-      var g = $('grupos'); if(g) g.scrollIntoView({behavior: 'smooth', block: 'start'});
+      sQ.value = it.dataset.zona || ''; pend.q = sQ.value.trim().toLowerCase(); abrirPanel('panCuando');
     });
   }
-  function buscar(){ abrirSug(false); if(sQ){ filtro.q = sQ.value.trim().toLowerCase(); recordar(sQ.value); } aplicar(); var g = $('grupos'); if(g) g.scrollIntoView({behavior: 'smooth', block: 'start'}); }
+  function buscar(){
+    // Aquí recién se APLICA lo elegido (zona, fecha, hora), como el botón de Airbnb.
+    abrirPanel(null);
+    if(sQ){ pend.q = sQ.value.trim().toLowerCase(); recordar(sQ.value); }
+    if(pend.hora && horaPasada(pend.hora)) ponerHora('', true);
+    filtro.q = pend.q; filtro.fecha = pend.fecha; filtro.hora = pend.hora;
+    consultarLibres(); aplicar(); pintarResumenBusq();
+    var g = $('grupos'); if(g) g.scrollIntoView({behavior: 'smooth', block: 'start'});
+  }
   var bF = $('btnBuscar'); if(bF) bF.addEventListener('click', buscar);
   var bFil = $('btnFiltros'), pFil = $('filtrosPanel');
   if(bFil) bFil.addEventListener('click', function(){ pFil.classList.toggle('open'); bFil.classList.toggle('on', pFil.classList.contains('open')); });
@@ -572,6 +602,7 @@ def _nav_explorar(dep: str, ses: dict | None = None, zonas: list[tuple[str, int]
         "<div class='sug der hora-panel' id='panHora'>"
         "<button type='button' class='it' data-hora=''><span class='ic'>🕐</span>"
         "<div><b>Cualquier hora</b><small>Muestra todas las canchas abiertas</small></div></button>"
+        "<div class='hora-aviso' id='horaAviso' style='display:none'>Hoy ya no quedan horas por delante. Elige otro día en “Cuándo”.</div>"
         f"{horas}</div>"
         "</div>")
     return ui.cabecera(tabs=tabs, busq=busq, ses=ses, volver="/")
@@ -632,7 +663,7 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
     for c in lista:
         por_pais.setdefault(_pais_de(c), []).append(c)
     cuerpo = ("<div class='ubic-mini'><span>📍</span><span id='ubicTxt'>Permite tu ubicación para ver primero las canchas más cercanas.</span>"
-              "<button id='btnUbic'>Usar mi ubicación</button>"
+              "<button id='btnUbic'>Usar mi ubicación</button><span id='resBusq'></span>"
               "<button class='filtros' id='btnFiltros'>⚙️ Filtros</button></div>"
               "<div class='filtros-panel' id='filtrosPanel'>"
               "<span class='chip' id='fOk'>✓ Solo verificadas</span>"
@@ -653,7 +684,7 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
                    "<p class='sub'>Estamos sumando locales. En la app ya puedes explorar el mapa completo.</p>"
                    f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a></div></div>")
     else:
-        cuerpo += "<div class='vacio' id='vacio' style='display:none'>No hay canchas con esos filtros. Prueba con otro deporte o zona.</div>"
+        cuerpo += "<div class='vacio' id='vacio' style='display:none'>No hay canchas libres con esa búsqueda. Prueba con otra zona, día u hora.</div>"
     if todas and not lista:
         cuerpo += ("<div class='vacio'>Todavía no hay canchas de este deporte. "
                    "<a href='/canchas'>Ver todas las canchas</a></div>")
