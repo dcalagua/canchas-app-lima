@@ -305,6 +305,19 @@ para la API del APK.
   (`ui.chip_sesion`). **Sin `GOOGLE_WEB_CLIENT_ID` la web sigue en modo
   invitado** (nombre + correo) para no romper antes de crear el client id.
   Test `test_reservar_exige_login_con_google_como_el_app`.
+- **Paleta = la del LOGO oficial (sep-2026):** `ui.py` TOKENS: verde
+  `#0B8A3E` (CTA), verde oscuro `#067A38`, lima `#7CB518`, naranja `#F28C28`
+  (corazón de favorito), azul noche `#0A1B3D` (texto), papel `#F5F8F6`. El
+  wordmark web es el logo real: `/static/brand/logo_pin.png` + "Pichangol"
+  cursiva 800 (`ui.wordmark`). Buscador con foco tipo Airbnb (pastilla gris,
+  segmento activo blanco con sombra, cursor visible, chevron en el select);
+  categorías centradas en escritorio.
+- **Pool de conexiones Postgres (`db/pg.py::conexion()`, sep-2026):** cada
+  `_conn()` abría una conexión nueva al pooler de Supabase (TLS ≈ 300-500 ms)
+  y la ficha hacía 4-5 seguidas → 2 s de espera. `web/datos.py` usa
+  `with pg.conexion() as conn` (hasta 4 conexiones reutilizadas, TTL 4 min,
+  commit al salir / rollback+descarte si falló). Los caminos del snapshot
+  siguen con `_conn()`.
 - El apex `pichangol.app` (sin `www`) sigue libre (podría redirigir al `www`).
 
 ## Estrategia de ambientes (piloto → prod)

@@ -22,8 +22,9 @@ from fastapi.responses import HTMLResponse
 
 TOKENS = """
 :root{
-  --blanco:#FFFFFF;--noche:#0F1B2D;--esmeralda:#0E8F67;--teal:#0B7A58;--dorado:#D9B45A;
-  --papel:#F4F7FA;--trazo:#DDE5EF;--tenue:#627080;--tinte:#E7F4EF;--gris:#E9EEF4;
+  /* Paleta del LOGO oficial (pin verde + pelota + arco naranja + "Pichangol" azul noche) */
+  --blanco:#FFFFFF;--noche:#0A1B3D;--esmeralda:#0B8A3E;--teal:#067A38;--lima:#7CB518;--naranja:#F28C28;--dorado:#D9B45A;
+  --papel:#F5F8F6;--trazo:#DDE5E0;--tenue:#5F6F7A;--tinte:#E6F4EA;--gris:#EDF1EE;
   --ok-bg:#E9F4EE;--ok-fg:#1F6E49;--warn-bg:#FDF2D6;--warn-fg:#946200;--bad-bg:#FBE7E7;--bad-fg:#C0392B;
   --rojo:#C13515;--sombra:0 2px 14px rgba(15,27,45,.06);--sombra2:0 10px 30px rgba(15,27,45,.10);
   --r:16px;--r-lg:20px;--r-btn:12px;
@@ -41,7 +42,8 @@ h1{font-size:28px;line-height:1.15}h2{font-size:20px}h3{font-size:16px}
 /* barra */
 .nav{background:var(--blanco);border-bottom:1px solid var(--trazo);position:sticky;top:0;z-index:20}
 .nav-in{height:64px;display:flex;align-items:center;justify-content:space-between;gap:12px}
-.wm{display:inline-flex;align-items:center;font-weight:800;font-size:22px;letter-spacing:-.5px;color:var(--noche);text-decoration:none;line-height:1}
+.wm{display:inline-flex;align-items:center;gap:6px;font-weight:800;font-style:italic;font-size:22px;letter-spacing:-.4px;color:var(--noche);text-decoration:none;line-height:1}
+.wm img{width:1.7em;height:1.7em;object-fit:contain;display:block}
 .wm svg{width:.92em;height:.92em;margin:0 .03em;vertical-align:middle}
 .links{display:flex;gap:6px;align-items:center}
 .links a{color:var(--noche);text-decoration:none;font-weight:700;font-size:14px;padding:9px 12px;border-radius:999px;white-space:nowrap}
@@ -160,11 +162,17 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 .busq .seg{display:flex;flex-direction:column;justify-content:center;padding:0 16px;min-width:0;height:100%;cursor:pointer;border-radius:999px;position:relative}
 .busq .seg+.seg:before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:1px;background:var(--trazo)}
 .busq .seg:hover{background:var(--gris)}
+.busq:focus-within{background:var(--gris)}
+.busq .seg:focus-within{background:var(--blanco);box-shadow:0 4px 18px rgba(10,27,61,.16);z-index:1}
+.busq .seg:focus-within+.seg:before{display:none}
+.busq .seg input{caret-color:var(--noche)}
+.busq .seg select{padding-right:18px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='%230A1B3D' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round' d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right center/14px;cursor:pointer}
 .busq .seg small{font-size:11px;font-weight:800;color:var(--noche);line-height:1.1}
 .busq .seg input,.busq .seg select{border:0;padding:0;margin:0;background:transparent;font-size:13.5px;font-weight:600;color:var(--noche);height:auto;width:100%;min-width:0;outline:none;box-shadow:none;font-family:inherit;line-height:1.2;-webkit-appearance:none;appearance:none}
 .busq .seg input::placeholder{color:var(--tenue);font-weight:600}
 .busq .seg.donde{min-width:190px}.busq .seg.dep{min-width:130px}.busq .seg.cuando{min-width:140px}
-.busq .lupa{width:40px;height:40px;border-radius:50%;background:var(--esmeralda);color:#fff;border:0;display:inline-flex;align-items:center;justify-content:center;margin:0 4px 0 6px;cursor:pointer;flex:none}
+.busq .lupa{width:40px;height:40px;border-radius:50%;background:var(--esmeralda);color:#fff;border:0;display:inline-flex;align-items:center;justify-content:center;margin:0 4px 0 6px;cursor:pointer;flex:none;transition:transform .12s}
+.busq .lupa:hover{transform:scale(1.06);background:var(--teal)}
 .busq .lupa svg{width:18px;height:18px}
 .nav.abnb .links{gap:4px}.links a.host{font-weight:700}
 @media(max-width:900px){
@@ -175,11 +183,13 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 @media(max-width:560px){.busq .seg.dep{display:none}}
 .cats{display:flex;align-items:center;gap:10px;padding:8px 0 0;position:relative}
 .cats .cat-strip{display:flex;gap:6px;overflow-x:auto;min-width:0;flex:1;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+@media(min-width:900px){.cats .cat-strip{justify-content:center;gap:14px}}
 .cats .cat-strip::-webkit-scrollbar{display:none}
 .cat{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 14px 10px;border-bottom:2px solid transparent;color:var(--tenue);font-size:12px;font-weight:700;white-space:nowrap;cursor:pointer;text-decoration:none;user-select:none;opacity:.8;transition:opacity .15s}
 .cat .ico{font-size:24px;line-height:1;filter:grayscale(.15)}
 .cat:hover{opacity:1;color:var(--noche);border-bottom-color:var(--trazo)}
-.cat.sel{opacity:1;color:var(--noche);border-bottom-color:var(--noche)}
+.cat.sel{opacity:1;color:var(--noche);border-bottom-color:var(--esmeralda)}
+.cat .ico{transition:transform .15s}.cat:hover .ico{transform:scale(1.08)}
 .cats .filtros{flex:none;display:inline-flex;align-items:center;gap:8px;border:1px solid var(--trazo);border-radius:12px;padding:10px 14px;font-weight:700;font-size:13px;background:var(--blanco);cursor:pointer;color:var(--noche);font-family:inherit}
 .cats .filtros:hover{border-color:var(--noche)}.cats .filtros.on{border-color:var(--noche);box-shadow:inset 0 0 0 1px var(--noche)}
 .filtros-panel{display:none;gap:10px;flex-wrap:wrap;align-items:center;padding:10px 0 4px}
@@ -217,7 +227,7 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 .lst .badge.pend{background:rgba(255,255,255,.92);color:var(--tenue)}
 .lst .corazon{position:absolute;top:10px;right:10px;width:32px;height:32px;border:0;background:transparent;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center}
 .lst .corazon svg{width:24px;height:24px;fill:rgba(15,27,45,.5);stroke:#fff;stroke-width:2;transition:transform .15s}
-.lst .corazon:hover svg{transform:scale(1.1)}.lst .corazon.on svg{fill:var(--rojo);stroke:var(--rojo)}
+.lst .corazon:hover svg{transform:scale(1.1)}.lst .corazon.on svg{fill:var(--naranja);stroke:var(--naranja)}
 .lst .dots{position:absolute;left:0;right:0;bottom:10px;display:flex;justify-content:center;gap:4px;pointer-events:none}
 .lst .dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.6)}.lst .dots i:first-child{background:#fff}
 .lst .flecha{position:absolute;top:50%;transform:translateY(-50%);width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,.92);border:0;display:none;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 1px 4px rgba(15,27,45,.25);font-size:14px;font-weight:800;color:var(--noche);padding:0}
@@ -266,9 +276,10 @@ PELOTA_SVG = (
 
 
 def wordmark(tam: int = 22, href: str = "/") -> str:
-    """Pichang[o]l con la pelota como 'o' (espejo de `PichangolWordmark`)."""
+    """Logo oficial: pin verde con la pelota (`/static/brand/logo_pin.png`) +
+    "Pichangol" en azul noche, cursiva y peso 800 como en el logo."""
     return (f"<a class='wm' href='{href}' style='font-size:{tam}px' aria-label='Pichangol'>"
-            f"Pichang{PELOTA_SVG}l</a>")
+            "<img src='/static/brand/logo_pin.png' alt=''><span>Pichangol</span></a>")
 
 
 def marcas_pago() -> str:

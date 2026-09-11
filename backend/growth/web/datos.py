@@ -74,7 +74,7 @@ def leer_fotos_lugar(clave: str) -> tuple[list[str], bool] | None:
     if not pg.habilitado or not clave:
         return None
     try:
-        with pg._conn() as conn, conn.cursor() as cur:
+        with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute("SELECT fotos, extract(epoch from (now() - actualizado)) "
                         "FROM pichangol_lugares_fotos WHERE clave = %s", (clave,))
             f = cur.fetchone()
@@ -90,7 +90,7 @@ def guardar_fotos_lugar(clave: str, nombre: str, lat: float, lng: float, fotos: 
     if not pg.habilitado or not clave:
         return False
     try:
-        with pg._conn() as conn, conn.cursor() as cur:
+        with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO pichangol_lugares_fotos (clave, nombre, lat, lng, fotos, actualizado) "
                 "VALUES (%s, %s, %s, %s, %s::jsonb, now()) "
@@ -111,7 +111,7 @@ def ratings(ids: list[str]) -> dict[str, tuple[float, int]]:
     if not pg.habilitado or not ids:
         return {}
     try:
-        with pg._conn() as conn, conn.cursor() as cur:
+        with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute(
                 "SELECT cancha_id, avg(estrellas)::float, count(*)::int FROM pichangol_resenas "
                 "WHERE cancha_id = ANY(%s) AND estrellas BETWEEN 1 AND 5 GROUP BY cancha_id", (ids,))
@@ -128,7 +128,7 @@ def canchas_publicas() -> list[dict]:
     if not pg.habilitado:
         return []
     try:
-        with pg._conn() as conn, conn.cursor() as cur:
+        with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute(
                 f"SELECT {COLS_CANCHA} FROM pichangol_canchas "
                 "WHERE coalesce(registrada,true) AND NOT coalesce(eliminada,false) "
@@ -152,7 +152,7 @@ def cancha(cancha_id: str) -> dict | None:
     if not pg.habilitado or not cancha_id:
         return None
     try:
-        with pg._conn() as conn, conn.cursor() as cur:
+        with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute(f"SELECT {COLS_CANCHA} FROM pichangol_canchas WHERE id = %s",
                         (cancha_id,))
             f = cur.fetchone()
@@ -168,7 +168,7 @@ def ocupados(cancha_id: str, fechas: list[str]) -> set[tuple[str, str]]:
         return set()
     out: set[tuple[str, str]] = set()
     try:
-        with pg._conn() as conn, conn.cursor() as cur:
+        with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute(
                 "SELECT fecha, hora_inicio FROM pichangol_reservas "
                 "WHERE cancha_id = %s AND fecha = ANY(%s) "
@@ -191,7 +191,7 @@ def descuentos(cancha_id: str, fechas: list[str]) -> dict[tuple[str, str], int]:
     if not pg.habilitado or not fechas:
         return {}
     try:
-        with pg._conn() as conn, conn.cursor() as cur:
+        with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute(
                 "SELECT fecha, hora, pct FROM pichangol_descuentos_slot "
                 "WHERE cancha_id = %s AND fecha = ANY(%s)", (cancha_id, fechas))
@@ -208,7 +208,7 @@ def liberar_holds_vencidos(cancha_id: str) -> int:
         return 0
     corte = int((time.time() - HOLD_SEGUNDOS) * 1000)
     try:
-        with pg._conn() as conn, conn.cursor() as cur:
+        with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute(
                 "DELETE FROM pichangol_reservas WHERE cancha_id = %s "
                 "AND estado = 'nueva' AND id LIKE %s "
@@ -234,7 +234,7 @@ def insertar_reservas(filas: list[dict]) -> str:
     sql = (f"INSERT INTO pichangol_reservas ({', '.join(cols)}) VALUES "
            f"({', '.join(['%s'] * len(cols))})")
     try:
-        with pg._conn() as conn:
+        with pg.conexion() as conn:
             try:
                 with conn.cursor() as cur:
                     for f in filas:
@@ -257,7 +257,7 @@ def confirmar_reservas(ids: list[str], medio_pago: str) -> bool:
     if not pg.habilitado or not ids:
         return False
     try:
-        with pg._conn() as conn, conn.cursor() as cur:
+        with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute(
                 "UPDATE pichangol_reservas SET estado = 'confirmada', pagado = true, "
                 "medio_pago = %s WHERE id = ANY(%s)", (medio_pago, ids))
@@ -271,7 +271,7 @@ def borrar_reservas(ids: list[str]) -> bool:
     if not pg.habilitado or not ids:
         return False
     try:
-        with pg._conn() as conn, conn.cursor() as cur:
+        with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute("DELETE FROM pichangol_reservas WHERE id = ANY(%s) "
                         "AND estado = 'nueva'", (ids,))
             conn.commit()
@@ -289,7 +289,7 @@ def reservas_de(ids: list[str]) -> list[dict]:
     if not pg.habilitado or not ids:
         return []
     try:
-        with pg._conn() as conn, conn.cursor() as cur:
+        with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute(
                 f"SELECT {', '.join(_COLS_RES)} FROM pichangol_reservas "
                 "WHERE id = ANY(%s) ORDER BY fecha, hora_inicio", (ids,))
@@ -308,7 +308,7 @@ def reservas_por_grupo(grupo: str) -> list[dict]:
     if not pg.habilitado or not grupo:
         return []
     try:
-        with pg._conn() as conn, conn.cursor() as cur:
+        with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute(
                 f"SELECT {', '.join(_COLS_RES)} FROM pichangol_reservas "
                 "WHERE grupo_reserva_id = %s ORDER BY fecha, hora_inicio", (grupo,))
