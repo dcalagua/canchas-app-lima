@@ -300,7 +300,7 @@ def test_calendario_ics_y_acciones_del_comprobante(db, monkeypatch):
     ref = p["url"].rsplit("/", 1)[-1]
     html = client.get(p["url"]).text
     assert f"/reserva/{ref}.ics" in html and "Cómo llegar" in html and "wa.me/?text=" in html
-    assert "Pichang" in html and "Montserrat" in html  # identidad del app
+    assert "Pichang" in html and "DM Sans" in html  # identidad del app
     ics = client.get(f"/reserva/{ref}.ics")
     assert ics.status_code == 200 and "text/calendar" in ics.headers["content-type"]
     assert "BEGIN:VEVENT" in ics.text and "Cancha Central" in ics.text

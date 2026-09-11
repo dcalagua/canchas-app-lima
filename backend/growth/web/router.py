@@ -233,7 +233,34 @@ _JS_EXPLORAR = r"""
   if(sQ) sQ.addEventListener('input', function(){ filtro.q = sQ.value.trim().toLowerCase(); aplicar(); });
   if(sDep) sDep.addEventListener('change', function(){ location.href = '/canchas' + (sDep.value ? '?deporte=' + sDep.value : '') + (sF && sF.value ? (sDep.value ? '&' : '?') + 'fecha=' + sF.value : ''); });
   if(sF) sF.addEventListener('change', function(){ filtro.fecha = sF.value; aplicar(); });
-  var bF = $('btnBuscar'); if(bF) bF.addEventListener('click', function(){ aplicar(); var g = $('grupos'); if(g) g.scrollIntoView({behavior: 'smooth', block: 'start'}); });
+  // ── desplegable bajo "Dónde": búsquedas recientes (este navegador) + zonas sugeridas ──
+  var sug = $('sugDonde'), recientes = [];
+  try { recientes = JSON.parse(localStorage.getItem('pcg_busq') || '[]') || []; } catch(e){}
+  function pintarRecientes(){
+    var box = $('sugRecientes'), lst = $('sugRecientesLista'); if(!box || !lst) return;
+    lst.innerHTML = recientes.map(function(q){ return '<button type="button" class="it" data-zona="' + esc(q) + '"><span class="ic">🕘</span><div><b>' + esc(q) + '</b><small>Búsqueda reciente</small></div></button>'; }).join('');
+    box.style.display = recientes.length ? '' : 'none';
+  }
+  function recordar(q){
+    q = (q || '').trim(); if(!q) return;
+    recientes = [q].concat(recientes.filter(function(x){ return x.toLowerCase() !== q.toLowerCase(); })).slice(0, 5);
+    try { localStorage.setItem('pcg_busq', JSON.stringify(recientes)); } catch(e){}
+    pintarRecientes();
+  }
+  function abrirSug(on){ if(sug) sug.classList.toggle('open', on); }
+  if(sQ && sug){
+    sQ.addEventListener('focus', function(){ pintarRecientes(); abrirSug(true); });
+    sQ.addEventListener('keydown', function(ev){ if(ev.key === 'Enter'){ ev.preventDefault(); buscar(); } });
+    document.addEventListener('click', function(ev){ if(!sug.contains(ev.target) && ev.target !== sQ) abrirSug(false); });
+    sug.addEventListener('click', function(ev){
+      var it = ev.target.closest('.it'); if(!it) return;
+      if(it.dataset.cerca){ abrirSug(false); ubicar(true); return; }
+      sQ.value = it.dataset.zona || ''; filtro.q = sQ.value.trim().toLowerCase(); aplicar(); recordar(sQ.value); abrirSug(false);
+      var g = $('grupos'); if(g) g.scrollIntoView({behavior: 'smooth', block: 'start'});
+    });
+  }
+  function buscar(){ abrirSug(false); if(sQ){ filtro.q = sQ.value.trim().toLowerCase(); recordar(sQ.value); } aplicar(); var g = $('grupos'); if(g) g.scrollIntoView({behavior: 'smooth', block: 'start'}); }
+  var bF = $('btnBuscar'); if(bF) bF.addEventListener('click', buscar);
   var bFil = $('btnFiltros'), pFil = $('filtrosPanel');
   if(bFil) bFil.addEventListener('click', function(){ pFil.classList.toggle('open'); bFil.classList.toggle('on', pFil.classList.contains('open')); });
   var fOk = $('fOk'); if(fOk) fOk.addEventListener('click', function(){ filtro.soloOk = !filtro.soloOk; fOk.classList.toggle('sel', filtro.soloOk); aplicar(); });
@@ -406,33 +433,43 @@ CATEGORIAS = [("", "Todas", "🏟️"), ("futbol", "Fútbol", "⚽"), ("tenis", 
               ("basquet", "Básquet", "🏀")]
 
 
-def _nav_explorar(dep: str, ses: dict | None = None) -> str:
-    """Cabecera tipo Airbnb: wordmark, buscador en pastilla (Dónde · Deporte ·
-    Cuándo · lupa), 'Pon tu cancha' y la app; debajo, categorías con ícono."""
+def _zonas_sugeridas(lista: list[dict], n: int = 6) -> list[tuple[str, int]]:
+    """Zonas (barrio, distrito) con más canchas, para el desplegable del
+    buscador (como "Destinos sugeridos" de Airbnb)."""
+    cuenta: dict[str, int] = {}
+    for c in lista:
+        z = _zona(c)
+        if z:
+            cuenta[z] = cuenta.get(z, 0) + 1
+    return sorted(cuenta.items(), key=lambda kv: (-kv[1], kv[0]))[:n]
+
+
+def _nav_explorar(dep: str, ses: dict | None = None, zonas: list[tuple[str, int]] | None = None) -> str:
+    """Cabecera tal cual airbnb.com: logo · pestañas por deporte con ícono
+    (centradas) · "Modo dueño" + avatar + ☰ · buscador grande centrado
+    (Dónde · Deporte · Cuándo · Buscar) con desplegable de búsquedas
+    recientes y zonas sugeridas bajo "Dónde"."""
     ops = "".join(f"<option value='{k}'{' selected' if k == dep else ''}>{n}</option>" for k, n, _ in CATEGORIAS)
     hoy = date.today().isoformat()
-    cats = "".join(f"<a class='cat{' sel' if k == dep else ''}' href='/canchas{('?deporte=' + k) if k else ''}' data-dep='{k}'>"
+    tabs = "".join(f"<a class='cat{' sel' if k == dep else ''}' href='/canchas{('?deporte=' + k) if k else ''}' data-dep='{k}'>"
                    f"<span class='ico'>{ico}</span>{n}</a>" for k, n, ico in CATEGORIAS)
-    return (
-        "<header class='nav abnb'><div class='wrap-xl nav-in'>"
-        f"{ui.wordmark(24)}"
+    sug_zonas = "".join(
+        f"<button type='button' class='it' data-zona='{e(z)}'><span class='ic'>📍</span>"
+        f"<div><b>{e(z)}</b><small>{n} cancha{'s' if n != 1 else ''}</small></div></button>"
+        for z, n in (zonas or []))
+    busq = (
         "<div class='busq' role='search'>"
-        "<label class='seg donde'><small>Dónde</small><input id='sQ' placeholder='Busca por zona, club o cancha' autocomplete='off'></label>"
+        "<label class='seg donde'><small>Dónde</small><input id='sQ' placeholder='Explora zonas, clubes o canchas' autocomplete='off'></label>"
         f"<label class='seg dep'><small>Deporte</small><select id='sDep'>{ops}</select></label>"
         f"<label class='seg cuando'><small>Cuándo</small><input id='sF' type='date' min='{hoy}'></label>"
-        f"<button class='lupa' id='btnBuscar' aria-label='Buscar'>{_LUPA}</button></div>"
-        f"<nav class='links'><a class='host' href='{PLAY_URL}' rel='noopener'>Pon tu cancha en Pichangol</a>"
-        f"{ui.chip_sesion(ses, '/')}"
-        f"<a class='cta' href='{PLAY_URL}' rel='noopener'>Descarga la app</a></nav>"
-        "</div>"
-        f"<div class='wrap-xl cats'><div class='cat-strip'>{cats}</div>"
-        "<button class='filtros' id='btnFiltros'>⚙️ Filtros</button></div>"
-        "<div class='wrap-xl filtros-panel' id='filtrosPanel'>"
-        "<span class='chip' id='fOk'>✓ Solo verificadas</span>"
-        "<span class='sub' style='margin:0 4px 0 8px'>Precio máx.:</span>"
-        "<span class='chip fMax' data-max='40'>40</span><span class='chip fMax' data-max='60'>60</span>"
-        "<span class='chip fMax' data-max='100'>100</span><span class='chip fMax' data-max='150'>150</span>"
-        "</div></header>")
+        f"<button class='lupa' id='btnBuscar' aria-label='Buscar'>{_LUPA}<span>Buscar</span></button>"
+        "<div class='sug' id='sugDonde'>"
+        "<div id='sugRecientes' style='display:none'><h5>Búsquedas recientes</h5><div id='sugRecientesLista'></div></div>"
+        "<h5>Zonas sugeridas</h5>"
+        "<button type='button' class='it cerca' data-cerca='1'><span class='ic'>🧭</span>"
+        "<div><b>Cerca de ti</b><small>Descubre canchas a tu alrededor</small></div></button>"
+        f"{sug_zonas}</div></div>")
+    return ui.cabecera(tabs=tabs, busq=busq, ses=ses, volver="/")
 
 
 def _tarjeta(c: dict, rating: tuple[float, int] | None, fecha: str = "") -> str:
@@ -489,7 +526,13 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
     for c in lista:
         por_pais.setdefault(_pais_de(c), []).append(c)
     cuerpo = ("<div class='ubic-mini'><span>📍</span><span id='ubicTxt'>Permite tu ubicación para ver primero las canchas más cercanas.</span>"
-              "<button id='btnUbic'>Usar mi ubicación</button></div>")
+              "<button id='btnUbic'>Usar mi ubicación</button>"
+              "<button class='filtros' id='btnFiltros'>⚙️ Filtros</button></div>"
+              "<div class='filtros-panel' id='filtrosPanel'>"
+              "<span class='chip' id='fOk'>✓ Solo verificadas</span>"
+              "<span class='sub' style='margin:0 4px 0 8px'>Precio máx.:</span>"
+              "<span class='chip fMax' data-max='40'>40</span><span class='chip fMax' data-max='60'>60</span>"
+              "<span class='chip fMax' data-max='100'>100</span><span class='chip fMax' data-max='150'>150</span></div>")
     cuerpo += "<div class='expl' id='expl'><div class='lista'><div id='grupos'>"
     for pais in ("PE", "EC", "BO"):
         lst = por_pais.get(pais) or []
@@ -529,7 +572,7 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
         cuerpo += f"<script>{js_m}</script>"
     canonical = f"{config.PUBLIC_BASE_URL.rstrip('/')}/" if getattr(config, "PUBLIC_BASE_URL", "") else ""
     ses = sesion.de_request(request)
-    return ui.shell("Pichangol", cuerpo, extra_head=head, nav=_nav_explorar(dep, ses), ancho=True, sesion=ses,
+    return ui.shell("Pichangol", cuerpo, extra_head=head, nav=_nav_explorar(dep, ses, _zonas_sugeridas(lista)), ancho=True, sesion=ses,
                     titulo_tab="Pichangol · Reserva canchas de fútbol, tenis y pádel", canonical=canonical,
                     desc="Reserva canchas de fútbol, tenis y pádel cerca de ti y paga con Yape o tarjeta. Perú, Ecuador y Bolivia.")
 

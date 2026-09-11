@@ -307,11 +307,40 @@ para la API del APK.
   Test `test_reservar_exige_login_con_google_como_el_app`.
 - **Paleta = la del LOGO oficial (sep-2026):** `ui.py` TOKENS: verde
   `#0B8A3E` (CTA), verde oscuro `#067A38`, lima `#7CB518`, naranja `#F28C28`
-  (corazón de favorito), azul noche `#0A1B3D` (texto), papel `#F5F8F6`. El
+  (corazón de favorito), azul noche `#0A1B3D` (texto), fondo blanco `#FFFFFF`. El
   wordmark web es el logo real: `/static/brand/logo_pin.png` + "Pichangol"
   cursiva 800 (`ui.wordmark`). Buscador con foco tipo Airbnb (pastilla gris,
   segmento activo blanco con sombra, cursor visible, chevron en el select);
   categorías centradas en escritorio.
+- **CABECERA TAL CUAL AIRBNB.COM (pedido del director, sep-2026):**
+  `ui.cabecera()` es la cabecera de TODAS las páginas web: fila 1 = logo a
+  la izquierda · pestañas por deporte con ícono al centro (`CATEGORIAS`,
+  subrayado negro en la activa) · a la derecha "Modo anfitrión" (→ Play), el
+  avatar (foto de Google si hay sesión, silueta si no) y el botón ☰ con menú
+  desplegable (`ui.menu_cuenta`: Iniciar sesión o registrarse / nombre +
+  correo + Mis reservas + Cerrar sesión, Cómo funciona, Centro de ayuda, Pon
+  tu cancha, Descarga la app, Libro de Reclamaciones; se cierra al hacer
+  clic fuera o con Esc, `ui.JS_NAV`); fila 2 = buscador GRANDE centrado en
+  pastilla (Dónde · Deporte · Cuándo · botón verde "Buscar"). Bajo "Dónde"
+  se desglosa un panel (`#sugDonde`) con **Búsquedas recientes**
+  (`localStorage` `pcg_busq`, se guardan al Buscar/Enter/elegir) y **Zonas
+  sugeridas** ("Cerca de ti" → `ubicar(true)` + las zonas con más canchas,
+  `router._zonas_sugeridas`). Al hacer scroll la cabecera se COMPACTA
+  (`.cab.chica`): pestañas y buscador se esconden y al centro queda la
+  pastilla chica "Cualquier zona · Cualquier deporte · Cuándo quieras"
+  (`ui.busq_mini`); tocarla vuelve arriba y enfoca "Dónde". Las páginas
+  interiores (`nav_simple`) llevan la misma cabecera en modo `simple` con la
+  pastilla chica enlazando a `/canchas`. Responsive: <1400 px las 8
+  pestañas pasan a su propia fila centrada bajo el buscador (no caben junto
+  al logo); <1060 px sin compactar, tira desplazable; <900 px se esconden
+  "Modo anfitrión", "Cuándo" y el texto de Buscar. Los filtros (Solo
+  verificadas, precio máx.) viven en el cuerpo, botón "⚙️ Filtros" a la
+  derecha de la línea de ubicación. **Fuente = DM Sans** (Airbnb Cereal es
+  propietaria y no se puede descargar; DM Sans es su equivalente libre) y
+  fondo BLANCO (`--papel:#FFFFFF`) como airbnb.com. **Trampa CSS:**
+  `overflow-x:hidden` en `body` convierte al body en scroll container y
+  mata el `position:sticky` de la cabecera → `html{overflow-x:hidden}` +
+  `body{overflow-x:clip}`.
 - **Pool de conexiones Postgres (`db/pg.py::conexion()`, sep-2026):** cada
   `_conn()` abría una conexión nueva al pooler de Supabase (TLS ≈ 300-500 ms)
   y la ficha hacía 4-5 seguidas → 2 s de espera. `web/datos.py` usa

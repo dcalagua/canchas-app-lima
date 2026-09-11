@@ -1,10 +1,14 @@
 """Sistema de diseño de la WEB de Pichangol — el MISMO look & feel del APK
 (`lib/theme.dart`, `lib/widgets/marca.dart`, estándar Airbnb del CLAUDE.md):
 
-- Tipografía **Montserrat** (la del app), pesos 600/700/800.
+- Tipografía **DM Sans** (la equivalente libre de Airbnb Cereal, que es
+  propietaria y no se puede descargar), pesos 500/600/700/800.
 - Paleta del logo nuevo: blanco, azul noche `#0F1B2D` (texto/oscuros),
   esmeralda `#0E8F67` (CTA/acento), dorado `#D9B45A`, papel `#F4F7FA`,
   trazo `#DDE5EF`, texto tenue `#627080`, tinte esmeralda `#E7F4EF`.
+- Cabecera tal cual airbnb.com (`cabecera()`): logo · pestañas con ícono ·
+  "Modo anfitrión" + avatar + ☰ (menú desplegable) · buscador grande centrado
+  con desplegable de recientes/zonas; se compacta al hacer scroll.
 - Wordmark **Pichang[o]l** con la 'o' = pelota (SVG esmeralda), pin oficial
   (`/static/brand/logo_pin.png`), sello "✓ Verificada", chips blancas con
   borde suave (seleccionada = tinte), tarjetas radio 16-20 con sombra sutil,
@@ -24,7 +28,7 @@ TOKENS = """
 :root{
   /* Paleta del LOGO oficial (pin verde + pelota + arco naranja + "Pichangol" azul noche) */
   --blanco:#FFFFFF;--noche:#0A1B3D;--esmeralda:#0B8A3E;--teal:#067A38;--lima:#7CB518;--naranja:#F28C28;--dorado:#D9B45A;
-  --papel:#F5F8F6;--trazo:#DDE5E0;--tenue:#5F6F7A;--tinte:#E6F4EA;--gris:#EDF1EE;
+  --papel:#FFFFFF;--trazo:#DDE5E0;--tenue:#5F6F7A;--tinte:#E6F4EA;--gris:#EDF1EE;
   --ok-bg:#E9F4EE;--ok-fg:#1F6E49;--warn-bg:#FDF2D6;--warn-fg:#946200;--bad-bg:#FBE7E7;--bad-fg:#C0392B;
   --rojo:#C13515;--sombra:0 2px 14px rgba(15,27,45,.06);--sombra2:0 10px 30px rgba(15,27,45,.10);
   --r:16px;--r-lg:20px;--r-btn:12px;
@@ -32,8 +36,8 @@ TOKENS = """
 """
 
 CSS = TOKENS + """
-*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}html,body{overflow-x:hidden;max-width:100%}
-body{margin:0;background:var(--papel);color:var(--noche);font-family:"Montserrat",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-weight:500;line-height:1.45}
+*{box-sizing:border-box}html{-webkit-text-size-adjust:100%;overflow-x:hidden}body{overflow-x:clip;max-width:100%}
+body{margin:0;background:var(--papel);color:var(--noche);font-family:"DM Sans","Airbnb Cereal VF","Circular",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-weight:500;line-height:1.45}
 a{color:var(--esmeralda)}img{max-width:100%}
 .wrap{max-width:1080px;margin:0 auto;padding:0 20px}
 h1,h2,h3{font-weight:800;letter-spacing:-.3px;color:var(--noche);margin:0}
@@ -122,11 +126,11 @@ ul.datos li{margin:6px 0;display:flex;gap:8px;align-items:flex-start}
 /* explorar: mapa + ubicación */
 .mapa{height:360px;border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--sombra);background:var(--gris);position:relative;z-index:0}
 @media(max-width:640px){.mapa{height:240px}}
-.pin-precio{background:var(--blanco);color:var(--noche);font-weight:800;font-size:12.5px;padding:5px 9px;border-radius:999px;box-shadow:0 2px 8px rgba(15,27,45,.25);border:1px solid var(--trazo);white-space:nowrap;font-family:"Montserrat",system-ui,sans-serif}
+.pin-precio{background:var(--blanco);color:var(--noche);font-weight:800;font-size:12.5px;padding:5px 9px;border-radius:999px;box-shadow:0 2px 8px rgba(15,27,45,.25);border:1px solid var(--trazo);white-space:nowrap;font-family:"DM Sans",system-ui,sans-serif}
 .pin-precio.yo{background:var(--esmeralda);color:#fff;border-color:var(--esmeralda)}
 .pin-precio.pend{background:var(--gris);color:var(--tenue)}
 .card.pend img,.card.pend .sinfoto{filter:saturate(.6)}
-.leaflet-popup-content-wrapper{border-radius:14px;font-family:"Montserrat",system-ui,sans-serif}
+.leaflet-popup-content-wrapper{border-radius:14px;font-family:"DM Sans",system-ui,sans-serif}
 .leaflet-popup-content{margin:12px 14px;font-size:13.5px}.leaflet-popup-content b{font-size:14px}
 .leaflet-popup-content .btn{padding:8px 12px;font-size:13px;margin-top:8px}
 .ubic{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--tinte);border-radius:var(--r);padding:12px 14px;margin-bottom:14px}
@@ -154,52 +158,105 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 /* ── explorador tipo Airbnb (raíz del dominio) ── */
 .wrap-xl{max-width:1440px;margin:0 auto;padding:0 40px}
 @media(max-width:900px){.wrap-xl{padding:0 20px}}@media(max-width:560px){.wrap-xl{padding:0 16px}}
-.nav.abnb{border-bottom:0;box-shadow:0 1px 0 var(--trazo)}
-.nav.abnb .nav-in{height:80px}
-@media(max-width:900px){.nav.abnb .nav-in{height:auto;padding:12px 0 10px;flex-wrap:wrap}}
-.busq{display:flex;align-items:center;background:var(--blanco);border:1px solid var(--trazo);border-radius:999px;box-shadow:0 3px 12px rgba(15,27,45,.08);height:48px;padding-left:8px;flex:0 1 auto;min-width:0;transition:box-shadow .15s}
+/* ── cabecera tal cual airbnb.com: logo · pestañas con ícono · Modo dueño + avatar + ☰ · buscador grande centrado ── */
+.nav.abnb{border-bottom:0;box-shadow:0 1px 0 var(--trazo);background:var(--blanco)}
+.cab{display:grid;grid-template-columns:minmax(max-content,1fr) minmax(0,auto) minmax(max-content,1fr);grid-template-areas:"logo tabs der" "busq busq busq";align-items:center;column-gap:16px;padding-top:8px;padding-bottom:14px}
+.cab-logo{grid-area:logo;display:flex;align-items:center;height:64px}
+.cab-tabs{grid-area:tabs;display:flex;justify-content:center;justify-content:safe center;align-items:flex-end;gap:4px;min-width:0;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.cab-tabs::-webkit-scrollbar{display:none}
+.cab-der{grid-area:der;display:flex;justify-content:flex-end;align-items:center;gap:6px;height:64px}
+.cab-busq{grid-area:busq;display:flex;justify-content:center;margin-top:2px}
+.cat{display:flex;align-items:center;gap:7px;padding:14px 10px 12px;border-bottom:2px solid transparent;color:var(--tenue);font-size:13.5px;font-weight:600;white-space:nowrap;cursor:pointer;text-decoration:none;user-select:none;transition:color .15s;position:relative}
+.cat .ico{font-size:24px;line-height:1;filter:grayscale(.15);transition:transform .15s}
+.cat:hover{color:var(--noche)}.cat:hover .ico{transform:scale(1.08)}
+.cat:hover:after{content:"";position:absolute;left:10px;right:10px;bottom:-2px;height:2px;background:var(--trazo)}
+.cat.sel{color:var(--noche);font-weight:700}.cat.sel:after{content:"";position:absolute;left:10px;right:10px;bottom:-2px;height:2px;background:var(--noche)}
+.cab-der a.host{color:var(--noche);text-decoration:none;font-weight:600;font-size:14px;padding:10px 14px;border-radius:999px;white-space:nowrap}
+.cab-der a.host:hover{background:var(--gris)}
+.redondo{width:40px;height:40px;border-radius:50%;border:0;background:var(--gris);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0;color:var(--noche);text-decoration:none;flex:none;overflow:hidden}
+.redondo:hover{background:#E3E8E4}.redondo svg{width:18px;height:18px}
+.redondo img,.redondo .ini{width:100%;height:100%;object-fit:cover;display:inline-flex;align-items:center;justify-content:center;background:var(--tinte);color:var(--teal);font-weight:800;font-size:15px}
+.menu{position:relative}
+.menu-panel{display:none;position:absolute;right:0;top:48px;width:264px;background:var(--blanco);border-radius:16px;box-shadow:0 8px 28px rgba(15,27,45,.18);border:1px solid var(--trazo);padding:8px 0;z-index:40;text-align:left}
+.menu-panel.open{display:block}
+.menu-panel a,.menu-panel button{display:flex;align-items:center;gap:10px;width:100%;padding:11px 16px;border:0;background:transparent;color:var(--noche);text-decoration:none;font-size:14px;font-weight:500;cursor:pointer;font-family:inherit;text-align:left}
+.menu-panel a:hover,.menu-panel button:hover{background:var(--gris)}
+.menu-panel a.b,.menu-panel button.b{font-weight:700}
+.menu-panel hr{border:0;border-top:1px solid var(--trazo);margin:6px 0}
+.menu-panel .yo{display:flex;align-items:center;gap:10px;padding:10px 16px 6px;min-width:0}
+.menu-panel .yo img,.menu-panel .yo .ini{width:36px;height:36px;border-radius:50%;object-fit:cover;flex:none;display:inline-flex;align-items:center;justify-content:center;background:var(--tinte);color:var(--teal);font-weight:800}
+.menu-panel .yo div{min-width:0}.menu-panel .yo b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.menu-panel .yo small{display:block;color:var(--tenue);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* buscador grande (pastilla) */
+.busq{display:flex;align-items:center;background:var(--blanco);border:1px solid var(--trazo);border-radius:999px;box-shadow:0 3px 12px rgba(15,27,45,.08);height:66px;padding-left:8px;width:100%;max-width:850px;min-width:0;position:relative;transition:box-shadow .15s}
 .busq:hover{box-shadow:0 6px 20px rgba(15,27,45,.14)}
-.busq .seg{display:flex;flex-direction:column;justify-content:center;padding:0 16px;min-width:0;height:100%;cursor:pointer;border-radius:999px;position:relative}
-.busq .seg+.seg:before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:1px;background:var(--trazo)}
+.busq .seg{display:flex;flex-direction:column;justify-content:center;padding:0 24px;min-width:0;height:100%;cursor:pointer;border-radius:999px;position:relative}
+.busq .seg+.seg:before{content:"";position:absolute;left:0;top:18px;bottom:18px;width:1px;background:var(--trazo)}
 .busq .seg:hover{background:var(--gris)}
 .busq:focus-within{background:var(--gris)}
-.busq .seg:focus-within{background:var(--blanco);box-shadow:0 4px 18px rgba(10,27,61,.16);z-index:1}
-.busq .seg:focus-within+.seg:before{display:none}
+.busq .seg:focus-within{background:var(--blanco);box-shadow:0 6px 20px rgba(10,27,61,.16);z-index:1}
+.busq .seg:focus-within+.seg:before,.busq .seg:hover+.seg:before{display:none}
 .busq .seg input{caret-color:var(--noche)}
 .busq .seg select{padding-right:18px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='%230A1B3D' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round' d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right center/14px;cursor:pointer}
-.busq .seg small{font-size:11px;font-weight:800;color:var(--noche);line-height:1.1}
-.busq .seg input,.busq .seg select{border:0;padding:0;margin:0;background:transparent;font-size:13.5px;font-weight:600;color:var(--noche);height:auto;width:100%;min-width:0;outline:none;box-shadow:none;font-family:inherit;line-height:1.2;-webkit-appearance:none;appearance:none}
-.busq .seg input::placeholder{color:var(--tenue);font-weight:600}
-.busq .seg.donde{min-width:190px}.busq .seg.dep{min-width:130px}.busq .seg.cuando{min-width:140px}
-.busq .lupa{width:40px;height:40px;border-radius:50%;background:var(--esmeralda);color:#fff;border:0;display:inline-flex;align-items:center;justify-content:center;margin:0 4px 0 6px;cursor:pointer;flex:none;transition:transform .12s}
-.busq .lupa:hover{transform:scale(1.06);background:var(--teal)}
-.busq .lupa svg{width:18px;height:18px}
-.nav.abnb .links{gap:4px}.links a.host{font-weight:700}
-@media(max-width:900px){
-  .nav.abnb .busq{order:3;width:100%;flex:1 0 100%;height:52px}
-  .busq .seg{padding:0 12px}.busq .seg.donde{min-width:0;flex:1}.busq .seg.dep,.busq .seg.cuando{min-width:0;flex:0 0 auto}
-  .busq .seg.cuando{display:none}.links a.host{display:none}
+.busq .seg small{font-size:12px;font-weight:700;color:var(--noche);line-height:1.1;margin-bottom:2px}
+.busq .seg input,.busq .seg select{border:0;padding:0;margin:0;background:transparent;font-size:14px;font-weight:500;color:var(--noche);height:auto;width:100%;min-width:0;outline:none;box-shadow:none;font-family:inherit;line-height:1.2;-webkit-appearance:none;appearance:none}
+.busq .seg input::placeholder{color:var(--tenue);font-weight:500}
+.busq .seg.donde{flex:1.4;min-width:0}.busq .seg.dep{flex:1;min-width:0}.busq .seg.cuando{flex:1;min-width:0}
+.busq .lupa{height:50px;border-radius:999px;background:var(--esmeralda);color:#fff;border:0;display:inline-flex;align-items:center;justify-content:center;gap:8px;margin:0 8px 0 4px;padding:0 18px 0 14px;cursor:pointer;flex:none;font-weight:700;font-size:15px;font-family:inherit;transition:transform .12s,background .15s}
+.busq .lupa:hover{background:var(--teal)}.busq .lupa svg{width:18px;height:18px;flex:none}
+/* desplegable bajo "Dónde": búsquedas recientes + zonas sugeridas */
+.sug{display:none;position:absolute;left:0;top:74px;width:min(460px,100%);background:var(--blanco);border-radius:24px;box-shadow:0 8px 32px rgba(15,27,45,.2);border:1px solid var(--trazo);padding:14px 8px 10px;z-index:41;cursor:default}
+.sug.open{display:block}
+.sug h5{margin:4px 16px 6px;font-size:12.5px;font-weight:700;color:var(--noche)}
+.sug .it{display:flex;align-items:center;gap:14px;width:100%;padding:8px 12px;border:0;background:transparent;border-radius:12px;cursor:pointer;font-family:inherit;text-align:left;color:var(--noche);min-width:0}
+.sug .it:hover{background:var(--gris)}
+.sug .it .ic{width:44px;height:44px;border-radius:12px;background:var(--gris);display:inline-flex;align-items:center;justify-content:center;font-size:22px;flex:none}
+.sug .it.cerca .ic{background:var(--tinte)}
+.sug .it b{display:block;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sug .it small{display:block;font-size:12.5px;color:var(--tenue)}
+.sug .it div{min-width:0}
+/* pastilla compacta (páginas interiores, como Airbnb al hacer scroll) */
+.busq-mini{display:inline-flex;align-items:center;height:48px;border:1px solid var(--trazo);border-radius:999px;box-shadow:0 1px 2px rgba(15,27,45,.08),0 4px 12px rgba(15,27,45,.05);padding:0 8px 0 20px;color:var(--noche);text-decoration:none;font-size:14px;font-weight:600;white-space:nowrap;min-width:0;transition:box-shadow .15s}
+.busq-mini:hover{box-shadow:0 2px 4px rgba(15,27,45,.12),0 6px 16px rgba(15,27,45,.1)}
+.busq-mini span{padding:0 16px 0 0;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.busq-mini span+span{border-left:1px solid var(--trazo);padding-left:16px}
+.busq-mini span.tenue{color:var(--tenue);font-weight:500}
+.busq-mini i{width:32px;height:32px;border-radius:50%;background:var(--esmeralda);color:#fff;display:inline-flex;align-items:center;justify-content:center;flex:none;margin-left:4px}
+.busq-mini i svg{width:14px;height:14px}
+.cab-mini{grid-area:mini;display:none;justify-content:center;min-width:0}
+/* compacta (al hacer scroll) y simple (páginas interiores): logo · pastilla chica · derecha */
+.cab.chica,.cab.simple{grid-template-columns:1fr auto 1fr;grid-template-areas:"logo mini der";padding-bottom:8px}
+.cab.chica .cab-tabs,.cab.chica .cab-busq{display:none}.cab.chica .cab-mini,.cab.simple .cab-mini{display:flex}
+@media(max-width:1400px){
+  /* las 8 pestañas ya no caben junto al logo: pasan a su propia fila, centradas bajo el buscador (como las categorías de Airbnb) */
+  .cab{grid-template-columns:1fr auto;grid-template-areas:"logo der" "busq busq" "tabs tabs";column-gap:8px;padding-top:4px;padding-bottom:0}
+  .cab-tabs{border-top:1px solid var(--trazo);margin-top:8px}
+  .cat{padding:12px 10px 10px}
 }
-@media(max-width:560px){.busq .seg.dep{display:none}}
-.cats{display:flex;align-items:center;gap:10px;padding:8px 0 0;position:relative}
-.cats .cat-strip{display:flex;gap:6px;overflow-x:auto;min-width:0;flex:1;scrollbar-width:none;-webkit-overflow-scrolling:touch}
-@media(min-width:900px){.cats .cat-strip{justify-content:center;gap:14px}}
-.cats .cat-strip::-webkit-scrollbar{display:none}
-.cat{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 14px 10px;border-bottom:2px solid transparent;color:var(--tenue);font-size:12px;font-weight:700;white-space:nowrap;cursor:pointer;text-decoration:none;user-select:none;opacity:.8;transition:opacity .15s}
-.cat .ico{font-size:24px;line-height:1;filter:grayscale(.15)}
-.cat:hover{opacity:1;color:var(--noche);border-bottom-color:var(--trazo)}
-.cat.sel{opacity:1;color:var(--noche);border-bottom-color:var(--esmeralda)}
-.cat .ico{transition:transform .15s}.cat:hover .ico{transform:scale(1.08)}
-.cats .filtros{flex:none;display:inline-flex;align-items:center;gap:8px;border:1px solid var(--trazo);border-radius:12px;padding:10px 14px;font-weight:700;font-size:13px;background:var(--blanco);cursor:pointer;color:var(--noche);font-family:inherit}
-.cats .filtros:hover{border-color:var(--noche)}.cats .filtros.on{border-color:var(--noche);box-shadow:inset 0 0 0 1px var(--noche)}
-.filtros-panel{display:none;gap:10px;flex-wrap:wrap;align-items:center;padding:10px 0 4px}
+@media(max-width:1060px){
+  .cab-logo,.cab-der{height:56px}
+  .cab-tabs{justify-content:flex-start;margin:8px -20px 0;padding:0 20px}
+  .cab-busq{margin:2px 0 6px}
+}
+@media(max-width:900px){
+  .cab-der a.host{display:none}
+  .busq{height:56px}.busq .seg{padding:0 14px}.busq .seg.cuando{display:none}
+  .busq .lupa{width:44px;height:44px;padding:0;margin-right:6px}.busq .lupa span{display:none}
+  .sug{top:64px;width:100%;border-radius:18px}
+  .busq-mini span.tenue{display:none}
+}
+@media(max-width:560px){.busq .seg.dep{display:none}.cab-tabs{margin:0 -16px;padding:0 16px}.cat{padding:12px 8px 10px}}
+/* filtros del explorador (botón + chips) */
+.filtros{flex:none;display:inline-flex;align-items:center;gap:8px;border:1px solid var(--trazo);border-radius:12px;padding:10px 14px;font-weight:700;font-size:13px;background:var(--blanco);cursor:pointer;color:var(--noche);font-family:inherit;margin-left:auto}
+.filtros:hover{border-color:var(--noche)}.filtros.on{border-color:var(--noche);box-shadow:inset 0 0 0 1px var(--noche)}
+.filtros-panel{display:none;gap:10px;flex-wrap:wrap;align-items:center;padding:12px 0 0}
 .filtros-panel.open{display:flex}
 .expl{display:grid;grid-template-columns:minmax(0,1fr);gap:0;align-items:start;padding-top:8px}
 .expl>*{min-width:0}
 .expl.con-mapa{grid-template-columns:minmax(0,1fr) minmax(0,42%);gap:24px}
 .expl .mapa-lado{display:none}
-.expl.con-mapa .mapa-lado{display:block;position:sticky;top:100px}
-.expl.con-mapa .mapa-lado .mapa{height:calc(100vh - 124px);min-height:420px;border-radius:14px;box-shadow:none;border:1px solid var(--trazo)}
+.expl.con-mapa .mapa-lado{display:block;position:sticky;top:98px}
+.expl.con-mapa .mapa-lado .mapa{height:calc(100vh - 122px);min-height:420px;border-radius:14px;box-shadow:none;border:1px solid var(--trazo)}
 @media(max-width:900px){
   .expl.con-mapa{grid-template-columns:minmax(0,1fr)}
   .expl.con-mapa .lista{display:none}
@@ -332,9 +389,26 @@ def footer() -> str:
         "</div></div></footer>")
 
 
+LUPA_SVG = ("<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3' stroke-linecap='round'>"
+            "<circle cx='11' cy='11' r='7'/><path d='M20 20l-3.5-3.5'/></svg>")
+_HAMB_SVG = ("<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.4' stroke-linecap='round'>"
+             "<path d='M4 7h16M4 12h16M4 17h16'/></svg>")
+_USER_SVG = ("<svg viewBox='0 0 24 24' fill='currentColor' style='width:22px;height:22px'>"
+             "<path d='M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0 2c-4.4 0-8 2.2-8 5v1h16v-1c0-2.8-3.6-5-8-5z'/></svg>")
+
+
+def _avatar(ses: dict | None) -> str:
+    if ses and ses.get("foto"):
+        return f"<img src='{e(ses.get('foto'))}' alt=''>"
+    if ses:
+        return f"<span class='ini'>{e((ses.get('nombre') or ses.get('email') or '?')[:1].upper())}</span>"
+    return _USER_SVG
+
+
 def chip_sesion(ses: dict | None, volver: str = "/") -> str:
     """Avatar + nombre si hay sesión de Google; si no, "Iniciar sesión" (solo
-    cuando el login web está configurado)."""
+    cuando el login web está configurado). Se usa en las páginas que no
+    llevan la cabecera Airbnb (p. ej. /entrar)."""
     from web import sesion as _s
     if ses:
         foto = (f"<img class='avatar' src='{e(ses.get('foto'))}' alt=''>" if ses.get("foto")
@@ -347,12 +421,86 @@ def chip_sesion(ses: dict | None, volver: str = "/") -> str:
     return f"<a class='entrar' href='/entrar?volver={_q(volver, safe='')}'>Iniciar sesión</a>"
 
 
-def nav_simple(ses: dict | None = None) -> str:
-    return ("<header class='nav'><div class='wrap nav-in'>"
-            f"{wordmark()}"
-            "<nav class='links'><a href='/canchas'>Canchas</a><a href='/#servicios'>Servicios</a>"
-            f"<a href='/#contacto'>Contacto</a>{chip_sesion(ses, '/canchas')}<a class='cta' href='/canchas'>Reservar</a></nav>"
-            "</div></header>")
+PLAY_URL = "https://play.google.com/store/apps/details?id=pe.ebim.pichangol"
+
+
+def menu_cuenta(ses: dict | None, volver: str = "/") -> str:
+    """Lado derecho de la cabecera, como Airbnb: "Modo anfitrión" · avatar (la
+    foto de Google si hay sesión) · botón ☰ con el menú desplegable."""
+    from web import sesion as _s
+    from urllib.parse import quote as _q
+    entrar = f"/entrar?volver={_q(volver, safe='')}"
+    if ses:
+        nombre = ses.get("nombre") or ses.get("email") or ""
+        cuenta = (f"<div class='yo'>{_avatar(ses)}<div><b>{e(nombre)}</b><small>{e(ses.get('email'))}</small></div></div>"
+                  "<hr><a class='b' href='https://play.google.com/store/apps/details?id=pe.ebim.pichangol' rel='noopener'>📅 Mis reservas (en la app)</a>"
+                  "<button type='button' onclick='window.pcgSalir&&pcgSalir()'>Cerrar sesión</button>")
+        avatar = f"<a class='redondo' href='#' onclick='return false' title='{e(ses.get('email'))}' aria-label='Tu cuenta'>{_avatar(ses)}</a>"
+    else:
+        if _s.activo():
+            cuenta = f"<a class='b' href='{entrar}'>Iniciar sesión o registrarse</a>"
+        else:
+            cuenta = f"<a class='b' href='{PLAY_URL}' rel='noopener'>Iniciar sesión en la app</a>"
+        avatar = f"<a class='redondo' href='{entrar if _s.activo() else PLAY_URL}' aria-label='Iniciar sesión'>{_USER_SVG}</a>"
+    return (
+        "<div class='cab-der'>"
+        f"<a class='host' href='{PLAY_URL}' rel='noopener'>Modo anfitrión</a>"
+        f"{avatar}"
+        "<div class='menu'><button type='button' class='redondo' id='btnMenu' aria-label='Menú' aria-expanded='false'>"
+        f"{_HAMB_SVG}</button>"
+        f"<div class='menu-panel' id='menuPanel' role='menu'>{cuenta}<hr>"
+        "<a href='/#como'>Cómo funciona</a><a href='/#contacto'>Centro de ayuda</a><hr>"
+        f"<a class='b' href='{PLAY_URL}' rel='noopener'>Pon tu cancha en Pichangol</a>"
+        f"<a href='{PLAY_URL}' rel='noopener'>Descarga la app</a>"
+        "<a href='/#reclamaciones'>Libro de Reclamaciones</a>"
+        "</div></div></div>")
+
+
+def busq_mini(href: str = "/canchas", id_: str = "") -> str:
+    """Pastilla compacta de las páginas interiores (Airbnb al hacer scroll)."""
+    return (f"<a class='busq-mini' href='{href}'{(' id=' + chr(39) + id_ + chr(39)) if id_ else ''}><span>Cualquier zona</span><span>Cualquier deporte</span>"
+            f"<span class='tenue'>Cuándo quieras</span><i>{LUPA_SVG}</i></a>")
+
+
+def cabecera(*, tabs: str = "", busq: str = "", ses: dict | None = None, volver: str = "/") -> str:
+    """Cabecera tipo airbnb.com: logo a la izquierda, pestañas con ícono al
+    centro, "Modo dueño" + avatar + ☰ a la derecha y, debajo, el buscador
+    grande centrado. Sin [busq] (páginas interiores) queda la fila simple."""
+    return ("<header class='nav abnb'>"
+            f"<div class='wrap-xl cab{'' if busq else ' simple'}'>"
+            f"<div class='cab-logo'>{wordmark(24)}</div>"
+            + (f"<nav class='cab-tabs' aria-label='Deportes'>{tabs}</nav>" if tabs else "")
+            + f"<div class='cab-mini'>{busq_mini('#', 'busqMini') if busq else busq_mini('/canchas')}</div>"
+            + f"{menu_cuenta(ses, volver)}"
+            + (f"<div class='cab-busq'>{busq}</div>" if busq else "")
+            + f"</div></header><script>{JS_NAV}</script>")
+
+
+# JS de la cabecera: menú ☰ (abre/cierra, se cierra al hacer clic fuera o con
+# Esc), desplegable del buscador y cerrar sesión.
+JS_NAV = r"""
+(function(){
+  var b = document.getElementById('btnMenu'), p = document.getElementById('menuPanel');
+  if(b && p){
+    b.addEventListener('click', function(ev){ ev.stopPropagation(); var on = !p.classList.contains('open'); p.classList.toggle('open', on); b.setAttribute('aria-expanded', on ? 'true' : 'false'); });
+    document.addEventListener('click', function(ev){ if(!p.contains(ev.target)){ p.classList.remove('open'); b.setAttribute('aria-expanded', 'false'); } });
+    document.addEventListener('keydown', function(ev){ if(ev.key === 'Escape'){ p.classList.remove('open'); var s = document.getElementById('sugDonde'); if(s) s.classList.remove('open'); } });
+  }
+  // Al hacer scroll la cabecera se compacta (pastilla chica al centro); al tocarla vuelve el buscador grande.
+  var cab = document.querySelector('.cab:not(.simple)'), mini = document.getElementById('busqMini');
+  if(cab && mini){
+    var compactar = function(){ cab.classList.toggle('chica', window.innerWidth > 1060 && window.scrollY > 90); };
+    window.addEventListener('scroll', compactar, {passive: true}); window.addEventListener('resize', compactar); compactar();
+    mini.addEventListener('click', function(ev){ ev.preventDefault(); window.scrollTo({top: 0, behavior: 'smooth'});
+      setTimeout(function(){ cab.classList.remove('chica'); var q = document.getElementById('sQ'); if(q) q.focus(); }, 350); });
+  }
+  window.pcgSalir = function(){ fetch('/web/salir', {method: 'POST'}).then(function(){ location.reload(); }); };
+})();
+"""
+
+
+def nav_simple(ses: dict | None = None, volver: str = "/canchas") -> str:
+    return cabecera(ses=ses, volver=volver)
 
 
 def shell(titulo: str, cuerpo: str, *, desc: str = "", extra_head: str = "",
@@ -374,7 +522,7 @@ def shell(titulo: str, cuerpo: str, *, desc: str = "", extra_head: str = "",
         "<link rel='icon' type='image/png' href='/static/brand/logo_pin.png'>"
         "<link rel='apple-touch-icon' href='/static/brand/logo_pin.png'>"
         "<link rel='preconnect' href='https://fonts.googleapis.com'><link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>"
-        "<link href='https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&display=swap' rel='stylesheet'>"
+        "<link href='https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,500;9..40,600;9..40,700;9..40,800&display=swap' rel='stylesheet'>"
         f"<style>{CSS}</style>{extra_head}"
         + (f"<script type='application/ld+json'>{jsonld}</script>" if jsonld else "")
         + f"</head><body{' class=con-barra' if con_barra else ''}>"
