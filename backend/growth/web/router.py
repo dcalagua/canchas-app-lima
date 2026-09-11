@@ -175,8 +175,8 @@ _JS_EXPLORAR = r"""
   var C = window.__explorar, $ = function(id){ return document.getElementById(id); };
   var cards = function(){ return Array.prototype.slice.call(document.querySelectorAll('.lst[data-lat]')); };
   var yo = null, mapa = null, marcadores = [], miPin = null, pinesDesc = [], descubiertas = {}, fotosConocidas = {};
-  var filtro = {q: '', dep: C.dep || '', fecha: '', hora: '', soloOk: false, max: 0};
-  var pend = {q: '', fecha: '', hora: ''}; // lo elegido en el buscador; se aplica al pulsar Buscar (como Airbnb)
+  var filtro = {q: '', dep: C.dep || '', fecha: '', hora: '', cerca: false};
+  var pend = {q: '', fecha: '', hora: '', cerca: false}; // lo elegido en el buscador; se aplica al pulsar Buscar (como Airbnb)
   var favs = {};
   try { favs = JSON.parse(localStorage.getItem('pcg_fav') || '{}') || {}; } catch(e){}
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -212,15 +212,17 @@ _JS_EXPLORAR = r"""
     var dots = box.parentNode.querySelectorAll('.dots i'); dots.forEach(function(d, j){ d.style.background = j === i ? '#fff' : 'rgba(255,255,255,.6)'; });
   }, true);
   // ── filtros (buscador, deporte, fecha, solo verificadas, precio máx) ──
+  function pasaBase(c){
+    if(filtro.q && c.dataset.t.indexOf(filtro.q) < 0) return false;
+    if(filtro.cerca && yo && c.dataset.d && parseFloat(c.dataset.d) > 30) return false;
+    if(filtro.hora && !abiertaA(c, filtro.hora)) return false;
+    if(filtro.hora && filtro.fecha && c.dataset.ok === '1'){ var lk = libres[filtro.fecha + '|' + filtro.hora]; if(lk && lk[c.dataset.id] === false) return false; }
+    return true;
+  }
   function aplicar(){
     var n = 0;
     cards().forEach(function(c){
-      var ok = true;
-      if(filtro.q && c.dataset.t.indexOf(filtro.q) < 0) ok = false;
-      if(filtro.soloOk && c.dataset.ok !== '1') ok = false;
-      if(filtro.max && parseFloat(c.dataset.pnum || '0') > filtro.max) ok = false;
-      if(filtro.hora && !abiertaA(c, filtro.hora)) ok = false;
-      if(ok && filtro.hora && filtro.fecha && c.dataset.ok === '1'){ var lk = libres[filtro.fecha + '|' + filtro.hora]; if(lk && lk[c.dataset.id] === false) ok = false; }
+      var ok = pasaBase(c) && pasaFil(c, fil);
       c.style.display = ok ? '' : 'none'; if(ok) n++;
       if(c.dataset.base){ var qs = []; if(filtro.fecha) qs.push('fecha=' + filtro.fecha); if(filtro.hora) qs.push('hora=' + filtro.hora); c.setAttribute('href', c.dataset.base + (qs.length ? '?' + qs.join('&') : '')); }
     });
@@ -233,7 +235,7 @@ _JS_EXPLORAR = r"""
   }
   // Deporte: lo filtra el SERVIDOR (?deporte=), las pestañas son enlaces normales (SEO, sin JS).
   var sQ = $('sQ'), sF = $('sF'), sH = $('sH');
-  if(sQ) sQ.addEventListener('input', function(){ pend.q = sQ.value.trim().toLowerCase(); });
+  if(sQ) sQ.addEventListener('input', function(){ pend.cerca = false; pend.q = sQ.value.trim().toLowerCase(); });
   // ── fecha + hora: calendario tipo Airbnb y panel de horas ──
   var DIAS = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'], MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
   var MESES_L = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -337,9 +339,9 @@ _JS_EXPLORAR = r"""
   if(C.hora && !horaPasada(C.hora)){ filtro.hora = pend.hora = C.hora; if(sH){ sH.value = C.hora; sH.dataset.hora = C.hora; } consultarLibres(); }
   function pintarResumenBusq(){
     var r = $('resBusq'); if(!r) return;
-    var partes = []; if(filtro.q) partes.push('“' + filtro.q + '”'); if(filtro.fecha) partes.push(etiquetaFecha(filtro.fecha)); if(filtro.hora) partes.push(filtro.hora);
+    var partes = []; if(filtro.cerca) partes.push('Cerca de ti'); if(filtro.q) partes.push('“' + filtro.q + '”'); if(filtro.fecha) partes.push(etiquetaFecha(filtro.fecha)); if(filtro.hora) partes.push(filtro.hora);
     r.innerHTML = partes.length ? '· Buscando: <b>' + esc(partes.join(' · ')) + '</b> <button type="button" id="btnLimpiar">Limpiar</button>' : '';
-    var bl = $('btnLimpiar'); if(bl) bl.addEventListener('click', function(){ pend = {q: '', fecha: '', hora: ''}; if(sQ) sQ.value = ''; ponerFecha('', false); ponerHora('', true); buscar(); });
+    var bl = $('btnLimpiar'); if(bl) bl.addEventListener('click', function(){ pend = {q: '', fecha: '', hora: '', cerca: false}; if(sQ) sQ.value = ''; ponerFecha('', false); ponerHora('', true); buscar(); });
   }
   // ── desplegable bajo "Dónde": búsquedas recientes (este navegador) + zonas sugeridas ──
   var sug = $('sugDonde'), recientes = [];
@@ -362,26 +364,101 @@ _JS_EXPLORAR = r"""
     sQ.addEventListener('keydown', function(ev){ if(ev.key === 'Enter'){ ev.preventDefault(); buscar(); } });
     sug.addEventListener('click', function(ev){
       var it = ev.target.closest('.it'); if(!it) return;
-      if(it.dataset.cerca){ abrirSug(false); ubicar(true); return; }
+      if(it.dataset.cerca){ pend.cerca = true; pend.q = ''; sQ.value = 'Cerca de ti'; abrirPanel('panCuando'); return; }
       sQ.value = it.dataset.zona || ''; pend.q = sQ.value.trim().toLowerCase(); abrirPanel('panCuando');
     });
   }
   function buscar(){
     // Aquí recién se APLICA lo elegido (zona, fecha, hora), como el botón de Airbnb.
     abrirPanel(null);
-    if(sQ){ pend.q = sQ.value.trim().toLowerCase(); recordar(sQ.value); }
+    if(sQ && !pend.cerca){ pend.q = sQ.value.trim().toLowerCase(); recordar(sQ.value); }
     if(pend.hora && horaPasada(pend.hora)) ponerHora('', true);
-    filtro.q = pend.q; filtro.fecha = pend.fecha; filtro.hora = pend.hora;
+    filtro.q = pend.cerca ? '' : pend.q; filtro.cerca = pend.cerca; filtro.fecha = pend.fecha; filtro.hora = pend.hora;
+    if(filtro.cerca){ if(yo) ordenar(); else ubicar(true); }
     consultarLibres(); aplicar(); pintarResumenBusq();
     var g = $('grupos'); if(g) g.scrollIntoView({behavior: 'smooth', block: 'start'});
   }
   var bF = $('btnBuscar'); if(bF) bF.addEventListener('click', buscar);
-  var bFil = $('btnFiltros'), pFil = $('filtrosPanel');
-  if(bFil) bFil.addEventListener('click', function(){ pFil.classList.toggle('open'); bFil.classList.toggle('on', pFil.classList.contains('open')); });
-  var fOk = $('fOk'); if(fOk) fOk.addEventListener('click', function(){ filtro.soloOk = !filtro.soloOk; fOk.classList.toggle('sel', filtro.soloOk); aplicar(); });
-  document.querySelectorAll('.fMax').forEach(function(b){ b.addEventListener('click', function(){
-    var v = parseFloat(b.dataset.max); filtro.max = (filtro.max === v) ? 0 : v;
-    document.querySelectorAll('.fMax').forEach(function(x){ x.classList.toggle('sel', parseFloat(x.dataset.max) === filtro.max); }); aplicar(); }); });
+  // ── Filtros tipo Airbnb (modal): amenidades, tipo, precio, superficie, duración ──
+  var fil = {am: {}, tipo: '', sup: '', dur: 0, min: 0, max: 0}, filTmp = null, precioMon = '', pRango = [0, 0];
+  var modal = $('modalFiltros'), bFil = $('btnFiltros');
+  function copiaFil(f){ return {am: Object.assign({}, f.am), tipo: f.tipo, sup: f.sup, dur: f.dur, min: f.min, max: f.max}; }
+  function pasaFil(c, f){
+    for(var a in f.am){ if(f.am[a] && (' ' + (c.dataset.am || '') + ' ').indexOf(' ' + a + ' ') < 0) return false; }
+    if(f.tipo === 'ok' && c.dataset.ok !== '1') return false;
+    if(f.tipo === 'pend' && c.dataset.ok === '1') return false;
+    if(f.sup && (c.dataset.sup || '') !== f.sup) return false;
+    if(f.dur && parseInt(c.dataset.paso || '60') !== f.dur) return false;
+    if((f.min || f.max) && c.dataset.mon === precioMon){ var p = parseFloat(c.dataset.pnum || '0'); if(f.min && p < f.min) return false; if(f.max && p > f.max) return false; }
+    return true;
+  }
+  function nFiltros(f){ var n = 0; for(var a in f.am){ if(f.am[a]) n++; } if(f.tipo) n++; if(f.sup) n++; if(f.dur) n++; if(f.min || f.max) n++; return n; }
+  function pintarBadge(){ var b = $('nFiltros'); if(!b) return; var n = nFiltros(fil); b.textContent = n; b.style.display = n ? '' : 'none'; if(bFil) bFil.classList.toggle('on', n > 0); }
+  function pintarQuick(){ document.querySelectorAll('.qam').forEach(function(b){ b.classList.toggle('sel', !!fil.am[b.dataset.am]); }); }
+  document.querySelectorAll('.qam').forEach(function(b){ b.addEventListener('click', function(){ fil.am[b.dataset.am] = !fil.am[b.dataset.am]; pintarQuick(); pintarBadge(); aplicar(); }); });
+  function cuentaModal(){
+    var n = cards().filter(function(c){ return pasaBase(c) && pasaFil(c, filTmp); }).length;
+    var m = $('mostrarFiltros'); if(m) m.textContent = n ? 'Mostrar ' + n + ' cancha' + (n === 1 ? '' : 's') : 'Sin canchas con estos filtros';
+  }
+  function pintarModal(){
+    document.querySelectorAll('#modalFiltros .tile, #modalFiltros .fam').forEach(function(b){ b.classList.toggle('sel', !!filTmp.am[b.dataset.am]); });
+    document.querySelectorAll('#fTipo button').forEach(function(b){ b.classList.toggle('on', b.dataset.tipo === filTmp.tipo); });
+    document.querySelectorAll('#modalFiltros .fsup').forEach(function(b){ b.classList.toggle('sel', b.dataset.sup === filTmp.sup); });
+    document.querySelectorAll('#modalFiltros .fdur').forEach(function(b){ b.classList.toggle('sel', parseInt(b.dataset.dur) === filTmp.dur); });
+    var rMin = $('rMin'), rMax = $('rMax'), pMin = $('pMin'), pMax = $('pMax');
+    if(rMin){ rMin.value = filTmp.min || pRango[0]; rMax.value = filTmp.max || pRango[1]; pMin.value = filTmp.min || pRango[0]; pMax.value = filTmp.max || pRango[1]; pintarHisto(); }
+    cuentaModal();
+  }
+  function pintarHisto(){
+    var h = $('histo'); if(!h) return;
+    var vals = cards().filter(function(c){ return c.dataset.mon === precioMon && c.dataset.pnum; }).map(function(c){ return parseFloat(c.dataset.pnum); });
+    var lo = pRango[0], hi = pRango[1], nb = 24, bins = []; for(var i = 0; i < nb; i++) bins.push(0);
+    vals.forEach(function(v){ var i = hi > lo ? Math.min(nb - 1, Math.floor((v - lo) / (hi - lo) * nb)) : 0; bins[i]++; });
+    var mx = Math.max.apply(null, bins.concat([1])), a = parseFloat($('rMin').value), b = parseFloat($('rMax').value);
+    h.innerHTML = bins.map(function(n, i){ var v = lo + (i + .5) / nb * (hi - lo); return '<i style="height:' + Math.max(5, Math.round(n / mx * 100)) + '%" class="' + (v >= a && v <= b ? 'on' : '') + '"></i>'; }).join('');
+    var mm = $('monMin'), mM = $('monMax'); if(mm) mm.textContent = precioMon; if(mM) mM.textContent = precioMon;
+    var ps = $('precioSub'); if(ps) ps.textContent = 'Precio por hora en ' + precioMon + (vals.length ? ' · ' + vals.length + ' canchas' : '');
+  }
+  function abrirModal(on){
+    if(!modal) return;
+    if(on){
+      var cs = cards().filter(function(c){ return c.dataset.pnum; });
+      var pais = yo ? paisDe(yo.lat, yo.lng) : null;
+      var grupo = pais ? document.querySelector('.grupo-pais[data-pais="' + pais + '"] .lst[data-mon]') : null;
+      precioMon = (grupo || cs[0] || {dataset: {}}).dataset.mon || 'S/';
+      var vals = cs.filter(function(c){ return c.dataset.mon === precioMon; }).map(function(c){ return parseFloat(c.dataset.pnum); });
+      pRango = vals.length ? [Math.floor(Math.min.apply(null, vals)), Math.ceil(Math.max.apply(null, vals))] : [0, 0];
+      ['rMin', 'rMax'].forEach(function(id){ var r = $(id); if(r){ r.min = pRango[0]; r.max = pRango[1]; } });
+      filTmp = copiaFil(fil); pintarModal();
+    }
+    modal.classList.toggle('open', on); document.body.classList.toggle('sin-scroll', on);
+  }
+  if(bFil) bFil.addEventListener('click', function(){ abrirModal(true); });
+  if(modal){
+    $('cerrarFiltros').addEventListener('click', function(){ abrirModal(false); });
+    modal.addEventListener('click', function(ev){ if(ev.target === modal) abrirModal(false); });
+    document.addEventListener('keydown', function(ev){ if(ev.key === 'Escape' && modal.classList.contains('open')) abrirModal(false); });
+    modal.addEventListener('click', function(ev){
+      var t = ev.target.closest('.tile, .fam'); if(t){ filTmp.am[t.dataset.am] = !filTmp.am[t.dataset.am]; pintarModal(); return; }
+      var ty = ev.target.closest('#fTipo button'); if(ty){ filTmp.tipo = ty.dataset.tipo; pintarModal(); return; }
+      var su = ev.target.closest('.fsup'); if(su){ filTmp.sup = filTmp.sup === su.dataset.sup ? '' : su.dataset.sup; pintarModal(); return; }
+      var du = ev.target.closest('.fdur'); if(du){ var d = parseInt(du.dataset.dur); filTmp.dur = filTmp.dur === d ? 0 : d; pintarModal(); return; }
+    });
+    function leerRango(desdeCaja){
+      var rMin = $('rMin'), rMax = $('rMax'), pMin = $('pMin'), pMax = $('pMax');
+      var a = parseFloat(desdeCaja ? pMin.value : rMin.value), b = parseFloat(desdeCaja ? pMax.value : rMax.value);
+      if(isNaN(a)) a = pRango[0]; if(isNaN(b)) b = pRango[1];
+      a = Math.max(pRango[0], Math.min(a, pRango[1])); b = Math.max(pRango[0], Math.min(b, pRango[1]));
+      if(a > b){ if(desdeCaja) b = a; else a = b; }
+      rMin.value = a; rMax.value = b; pMin.value = a; pMax.value = b;
+      filTmp.min = a > pRango[0] ? a : 0; filTmp.max = b < pRango[1] ? b : 0;
+      pintarHisto(); cuentaModal();
+    }
+    ['rMin', 'rMax'].forEach(function(id){ var r = $(id); if(r) r.addEventListener('input', function(){ leerRango(false); }); });
+    ['pMin', 'pMax'].forEach(function(id){ var r = $(id); if(r) r.addEventListener('change', function(){ leerRango(true); }); });
+    $('limpiarFiltros').addEventListener('click', function(){ filTmp = {am: {}, tipo: '', sup: '', dur: 0, min: 0, max: 0}; pintarModal(); });
+    $('mostrarFiltros').addEventListener('click', function(){ fil = copiaFil(filTmp); pintarQuick(); pintarBadge(); aplicar(); abrirModal(false); var g = $('grupos'); if(g) g.scrollIntoView({behavior: 'smooth', block: 'start'}); });
+  }
   // ── cercanía ──
   function ordenar(){
     if(!yo) return;
@@ -396,6 +473,7 @@ _JS_EXPLORAR = r"""
     var propio = document.querySelector('.grupo-pais[data-pais="' + pais + '"]');
     if(propio && propio.parentNode){ propio.parentNode.insertBefore(propio, $('grupos').firstChild); var t = propio.querySelector('.cerca'); if(t) t.textContent = '· las más cercanas a ti primero'; }
     var u = $('ubicTxt'); if(u) u.textContent = 'Mostrando las canchas más cercanas a ti.';
+    if(filtro.cerca) aplicar();
     var bu = $('btnUbic'); if(bu) bu.style.display = 'none';
     descubrir(yo.lat, yo.lng);
     if(mapa){ if(miPin) miPin.remove(); miPin = L.marker([yo.lat, yo.lng], {icon: L.divIcon({className: '', html: '<span class="pin-precio yo">Tú</span>', iconSize: null})}).addTo(mapa);
@@ -608,6 +686,75 @@ def _nav_explorar(dep: str, ses: dict | None = None, zonas: list[tuple[str, int]
     return ui.cabecera(tabs=tabs, busq=busq, ses=ses, volver="/")
 
 
+AMENIDAD_ICONO = {"estacionamiento": "🅿️", "vestuarios": "👕", "duchas": "🚿", "iluminacion": "💡", "techada": "🏠",
+                  "cafeteria": "☕", "wifi": "📶", "tribuna": "🪑", "seguridad": "🛡️"}
+_RECOMENDADAS = ("estacionamiento", "iluminacion", "vestuarios", "techada")
+
+
+def _amenidades_de(lista: list[dict]) -> list[tuple[str, int]]:
+    """Amenidades presentes en las canchas listadas, de más a menos común."""
+    cuenta: dict[str, int] = {}
+    for c in lista:
+        for a in c.get("amenidades") or []:
+            a = str(a).strip().lower()
+            if a:
+                cuenta[a] = cuenta.get(a, 0) + 1
+    return sorted(cuenta.items(), key=lambda kv: (-kv[1], kv[0]))
+
+
+def _barra_filtros(lista: list[dict]) -> str:
+    """Como la barra de Airbnb bajo el buscador: botón "Filtros" + chips
+    rápidos con las amenidades más comunes (aplican al instante)."""
+    chips = "".join(
+        f"<button type='button' class='chip qam' data-am='{e(a)}'>{AMENIDAD_ICONO.get(a, '✓')} {e(AMENIDAD_NOMBRE.get(a, a.capitalize()))}</button>"
+        for a, _n in _amenidades_de(lista)[:6])
+    return ("<div class='barra-filtros'>"
+            "<button type='button' class='filtros' id='btnFiltros'><span class='ico'>⚙️</span> Filtros<span class='n' id='nFiltros' style='display:none'></span></button>"
+            f"<div class='qchips'>{chips}</div></div>")
+
+
+def _modal_filtros(lista: list[dict]) -> str:
+    """Modal "Filtros" tal cual Airbnb: recomendados (tarjetas con ícono),
+    tipo de local, rango de precios con histograma y dos topes, servicios del
+    local, superficie y duración del turno; pie con "Limpiar filtros" y
+    "Mostrar N canchas". Todo se cuenta en vivo y se aplica al pulsar Mostrar."""
+    ams = _amenidades_de(lista)
+    presentes = {a for a, _ in ams}
+    recomendadas = [a for a in _RECOMENDADAS if a in presentes] or [a for a, _ in ams[:4]]
+    tiles = "".join(
+        f"<button type='button' class='tile' data-am='{e(a)}'><span class='ico'>{AMENIDAD_ICONO.get(a, '✓')}</span>"
+        f"<span>{e(AMENIDAD_NOMBRE.get(a, a.capitalize()))}</span></button>" for a in recomendadas)
+    servicios = "".join(
+        f"<button type='button' class='chip fam' data-am='{e(a)}'>{AMENIDAD_ICONO.get(a, '✓')} {e(AMENIDAD_NOMBRE.get(a, a.capitalize()))}"
+        f" <small>({n})</small></button>" for a, n in ams)
+    sups = sorted({(c.get("superficie") or "").strip().lower() for c in lista} - {""})
+    superficies = "".join(f"<button type='button' class='chip fsup' data-sup='{e(x)}'>{e(x.capitalize())}</button>" for x in sups)
+    durs = sorted({int(c.get("duracion_slot_min") or 60) for c in lista})
+    duraciones = "".join(f"<button type='button' class='chip fdur' data-dur='{d}'>{d} min</button>" for d in durs)
+    return (
+        "<div class='modal' id='modalFiltros' role='dialog' aria-modal='true' aria-labelledby='modalTit'>"
+        "<div class='modal-caja'>"
+        "<div class='modal-cab'><button type='button' class='cerrar' id='cerrarFiltros' aria-label='Cerrar'>✕</button><h3 id='modalTit'>Filtros</h3></div>"
+        "<div class='modal-cuerpo'>"
+        + (f"<section><h4>Recomendado para ti</h4><div class='tiles'>{tiles}</div></section>" if tiles else "")
+        + "<section><h4>Tipo de local</h4><div class='segm' id='fTipo'>"
+        "<button type='button' class='on' data-tipo=''>Cualquier tipo</button>"
+        "<button type='button' data-tipo='ok'>Verificadas</button>"
+        "<button type='button' data-tipo='pend'>Aún sin verificar</button></div></section>"
+        "<section><h4>Rango de precios</h4><p class='sub' id='precioSub'>Precio por hora</p>"
+        "<div class='histo' id='histo'></div>"
+        "<div class='rango'><input type='range' id='rMin' min='0' max='100' value='0'><input type='range' id='rMax' min='0' max='100' value='100'></div>"
+        "<div class='topes'><label>Mínimo<div class='tope'><span id='monMin'></span><input type='number' id='pMin' min='0'></div></label>"
+        "<label>Máximo<div class='tope'><span id='monMax'></span><input type='number' id='pMax' min='0'></div></label></div></section>"
+        + (f"<section><h4>Servicios del local</h4><div class='chips'>{servicios}</div></section>" if servicios else "")
+        + (f"<section><h4>Superficie</h4><div class='chips'>{superficies}</div></section>" if superficies else "")
+        + (f"<section><h4>Duración del turno</h4><div class='chips'>{duraciones}</div></section>" if len(durs) > 1 else "")
+        + "</div>"
+        "<div class='modal-pie'><button type='button' class='limpiar' id='limpiarFiltros'>Limpiar filtros</button>"
+        "<button type='button' class='btn dark' id='mostrarFiltros'>Mostrar canchas</button></div>"
+        "</div></div>")
+
+
 def _tarjeta(c: dict, rating: tuple[float, int] | None, fecha: str = "") -> str:
     sim, _iso = _moneda_de(c)
     deps = _deportes_de(c)
@@ -637,6 +784,7 @@ def _tarjeta(c: dict, rating: tuple[float, int] | None, fecha: str = "") -> str:
           "<br><span class='app'>📲 Reservar en la app</span></div>")
     return (f"<a class='lst{'' if ok else ' pend'}' href='{e(href)}' data-base='{e(base)}' data-id='{e(c['id'])}' data-t='{e(texto)}' "
             f"data-ap='{e(c.get('hora_apertura') or '07:00')}' data-ci='{e(c.get('hora_cierre') or '23:00')}' data-paso='{int(c.get('duracion_slot_min') or 60)}' "
+            f"data-am='{e(' '.join(str(a) for a in (c.get('amenidades') or [])))}' data-sup='{e((c.get('superficie') or '').strip().lower())}' data-mon='{e(sim)}' "
             f"data-deps='{e(' '.join(deps))}' data-lat='{c.get('lat')}' data-lng='{c.get('lng')}' data-nombre='{e(c['nombre'])}' data-club='{e(c.get('club', ''))}' "
             f"data-sub='{e(sub)}' data-precio='{e(sim)} {c['precio_hora']:.0f}' data-pnum='{c['precio_hora']:.2f}' data-ok='{1 if ok else 0}'>"
             f"<div class='foto'><div class='fotos'>{fotos}</div>{badge}"
@@ -663,13 +811,8 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
     for c in lista:
         por_pais.setdefault(_pais_de(c), []).append(c)
     cuerpo = ("<div class='ubic-mini'><span>📍</span><span id='ubicTxt'>Permite tu ubicación para ver primero las canchas más cercanas.</span>"
-              "<button id='btnUbic'>Usar mi ubicación</button><span id='resBusq'></span>"
-              "<button class='filtros' id='btnFiltros'>⚙️ Filtros</button></div>"
-              "<div class='filtros-panel' id='filtrosPanel'>"
-              "<span class='chip' id='fOk'>✓ Solo verificadas</span>"
-              "<span class='sub' style='margin:0 4px 0 8px'>Precio máx.:</span>"
-              "<span class='chip fMax' data-max='40'>40</span><span class='chip fMax' data-max='60'>60</span>"
-              "<span class='chip fMax' data-max='100'>100</span><span class='chip fMax' data-max='150'>150</span></div>")
+              "<button id='btnUbic'>Usar mi ubicación</button><span id='resBusq'></span></div>")
+    cuerpo += _barra_filtros(lista) + _modal_filtros(lista)
     cuerpo += "<div class='expl' id='expl'><div class='lista'><div id='grupos'>"
     for pais in ("PE", "EC", "BO"):
         lst = por_pais.get(pais) or []

@@ -340,7 +340,28 @@ para la API del APK.
   `buscar()` lo copia a `filtro`, aplica, guarda la búsqueda reciente y
   pinta el resumen "Buscando: … · Limpiar" (`#resBusq`) en la línea de
   ubicación. Elegir una zona sugerida solo rellena "Dónde" y pasa a
-  "Cuándo". El filtro de hora es REAL, no cosmético: en el navegador se ocultan las canchas cerradas a esa hora
+  "Cuándo"; **"Cerca de ti"** pone ese texto en "Dónde" y, al Buscar, pide
+  la ubicación, ordena por cercanía y deja solo las canchas a ≤30 km
+  (`filtro.cerca`). **FILTROS TAL CUAL AIRBNB (sep-2026):** bajo la línea
+  de ubicación va la barra `_barra_filtros` (botón "⚙️ Filtros" con badge
+  de filtros activos + chips rápidos con las amenidades más comunes, que
+  aplican al instante) y el MODAL `_modal_filtros` (`#modalFiltros`, 568
+  px, cuerpo con scroll, pie fijo): "Recomendado para ti" (tarjetas con
+  ícono: estacionamiento, iluminación, vestuarios, techada — las que
+  existan en los datos), "Tipo de local" (segmentado Cualquier tipo /
+  Verificadas / Aún sin verificar), "Rango de precios" (histograma de los
+  precios reales + doble slider + cajas Mínimo/Máximo; SOLO en la moneda
+  del país del usuario o del primer grupo, `data-mon`; las canchas en
+  otra moneda no se filtran por precio), "Servicios del local" (todas las
+  amenidades con conteo), "Superficie" y "Duración del turno" (si hay más
+  de una). Todo se cuenta en vivo ("Mostrar N canchas"), "Limpiar
+  filtros" y se aplica al pulsar Mostrar (`fil` vs `filTmp`; `pasaBase` =
+  buscador, `pasaFil` = modal). Datos por tarjeta: `data-am`, `data-sup`,
+  `data-paso`, `data-mon`, `data-pnum`. Los viejos chips "Solo verificadas
+  / precio máx." desaparecieron. **PANTALLA COMPLETA como Airbnb:**
+  `.wrap-xl` ya no tiene tope de 1440 px: márgenes 80 px (≥1128), 40 px,
+  24 px, 16 px; la grilla es `auto-fill minmax(250px)` (5-6 columnas en
+  1900 px). El filtro de hora es REAL, no cosmético: en el navegador se ocultan las canchas cerradas a esa hora
   (`data-ap`/`data-ci`/`data-paso` de cada tarjeta, `abiertaA`) y, con
   fecha + hora, `GET /web/libres?fecha&hora` responde qué canchas
   reservables tienen un turno LIBRE que cubra esa hora (`_hora_libre`:

@@ -297,9 +297,15 @@ def test_buscador_por_fecha_y_hora_como_airbnb(db, monkeypatch):
     turno (`?hora=`)."""
     from web import datos as _d
     f = _manana()
+    fake.canchas["c_lima"]["amenidades"] = ["estacionamiento", "vestuarios"]
     home = client.get(f"/?fecha={f}&hora=19:00").text
     assert f'"fecha": "{f}"' in home and '"hora": "19:00"' in home
     assert "data-ap='" in home and "data-paso='" in home and "data-hora='19:00'" in home
+    # Modal de filtros tipo Airbnb (amenidades reales de las canchas, tipo, precio) + chips rápidos.
+    for t in ("id='modalFiltros'", "id='btnFiltros'", "Recomendado para ti", "Rango de precios", "id='rMin'", "id='mostrarFiltros'",
+              "class='tile' data-am='estacionamiento'", "class='chip qam' data-am='estacionamiento'", "data-am='estacionamiento vestuarios'",
+              "data-mon='S/'", "Limpiar filtros"):
+        assert t in home, t
     assert '"hora": ""' in client.get("/?hora=25:99").text
     # Sin reservas: la 19:00 está libre en todas las reservables.
     monkeypatch.setattr(_d, "ocupados_varias", lambda ids, fechas: {})
