@@ -435,8 +435,13 @@ para la API del APK.
   (snapshot) + push al dueño ("Reserva cancelada 📅 … quedó libre") y al
   jugador (qué pasa con su plata) + línea `[cancelar]` en logs. Torre: `GET
   /pagos/cancelaciones-web[?pendientes=1]` (X-Admin-Token) lista todo; las
-  `fallo`/`manual`/con deuda las atiende el operador (pendiente: pane en
-  `/admin`). El comprobante `/reserva/{ref}` muestra "Cancelar reserva" al
+  `fallo`/`manual`/con deuda las atiende el operador en la torre `/admin` →
+  Cobros → **"↩️ Cancelaciones web"** (`cargarCancelacionesWeb` en
+  `propiedad/panel.py`; pendientes primero con borde ámbar): "✅ Marcar
+  devuelto" (`POST /pagos/cancelaciones-web/{id}/resolver {accion:
+  devuelto, referencia}` → `reembolsado_manual`) y "➖ Marcar deuda
+  descontada" (`accion: descontado` → `deuda_resuelta` y el pago
+  `ajuste_cancelacion` pasa a `aplicado`). El comprobante `/reserva/{ref}` muestra "Cancelar reserva" al
   dueño de la reserva (modal `_MODAL_CANCELAR` + `JS_CANCELAR`, compartidos
   con Mis reservas) y la política con las horas configuradas.
 - **FICHA DE RESERVA (sep-2026, pedidos del director):** "Cómo llegar" abre

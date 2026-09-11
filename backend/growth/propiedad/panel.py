@@ -1400,6 +1400,10 @@ _HTML = r"""<!DOCTYPE html>
             <span class="md-ico">📕</span>
             <span class="md-txt"><b>Libro de Reclamaciones</b><small>INDECOPI · responder en 15 días hábiles</small></span>
           </button>
+          <button class="md-item" data-pane="cancelacionesPanel" onclick="mostrarPane(this,'cancelacionesPanel');cargarCancelacionesWeb()">
+            <span class="md-ico">↩️</span>
+            <span class="md-txt"><b>Cancelaciones web</b><small>Reembolsos Culqi · devoluciones a mano · deudas de dueños</small></span>
+          </button>
         </aside>
         <div class="md-detail">
           <div class="md-pane" id="comision"></div>
@@ -1411,6 +1415,7 @@ _HTML = r"""<!DOCTYPE html>
           <div class="md-pane" id="recargasQr" style="display:none"></div>
           <div class="md-pane" id="promosPanel" style="display:none"></div>
           <div class="md-pane" id="reclamacionesPanel" style="display:none"></div>
+          <div class="md-pane" id="cancelacionesPanel" style="display:none"></div>
         </div>
       </div>
     </section>
@@ -2492,6 +2497,54 @@ async function atenderReclamacion(id){
   if(r.status===401){ salir(); return; }
   if(r.ok){ toast('Hoja atendida'); await cargarReclamaciones(); }
   else toast('No se pudo guardar');
+}
+async function cargarCancelacionesWeb(){
+  const box = document.getElementById('cancelacionesPanel');
+  if(!box) return;
+  box.innerHTML = '<div class="card">Cargando…</div>';
+  try{
+    const r = await fetch('/pagos/cancelaciones-web',{headers:headers()});
+    if(r.status===401){ salir(); return; }
+    if(!r.ok){ box.innerHTML='<div class="card">No se pudo cargar.</div>'; return; }
+    const j = await r.json();
+    const cs = j.cancelaciones||[];
+    const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    const ETQ = {reembolsado:['Reembolso Culqi hecho','#1F6E49'], reembolsado_manual:['Devuelto a mano','#1F6E49'], manual:['Devolver a mano (pagó en el app)','#946200'],
+                 fallo:['Culqi rechazó el reembolso: devolver a mano','#C0392B'], sin_reembolso:['Sin devolución (< 6 h)','#667'], no_aplica:['Pagaba en la cancha · sin costo','#667']};
+    const mon = c => (c.moneda||'S/')+' '+Number(c.monto||0).toFixed(2);
+    if(!cs.length){ box.innerHTML = '<div class="card">Sin cancelaciones desde la web todavía. Se registran cuando un jugador cancela en <code>/mis-reservas</code> o en su comprobante.</div>'; return; }
+    box.innerHTML = `<div class="row" style="margin-bottom:10px;color:var(--muted)">
+        ${j.pendientes||0} por atender de ${j.total||cs.length}. Regla: con 6 h o más y pagada, devolución del 100 %; el cargo web se reembolsa solo en Culqi; lo pagado en el app o lo que Culqi rechazó se devuelve a mano.</div>` +
+      cs.map(c=>{
+        const pendRe = c.reembolso==='manual'||c.reembolso==='fallo';
+        const pendDe = (c.deuda_dueno_centimos||0)>0 && !c.deuda_resuelta;
+        const et = ETQ[c.reembolso]||[c.reembolso,'#667'];
+        return `<div class="card" style="margin-bottom:12px;${(pendRe||pendDe)?'border-left:4px solid #e0a800':''}">
+        <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <div style="font-weight:800;font-size:15px">${esc(c.cancha||'Cancha')}${c.club?(' · '+esc(c.club)):''} · ${esc(c.fecha)} ${esc(c.hora_inicio)}–${esc(c.hora_fin)}${c.turnos>1?(' · '+c.turnos+' turnos'):''}</div>
+          <div style="color:#667;font-size:12.5px">${fmtFecha(c.creado_en)} · canceló ${Number(c.horas_antes||0).toFixed(1)} h antes</div>
+        </div>
+        <div style="font-size:13px;margin-top:6px"><b>Jugador:</b> <a href="mailto:${esc(c.usuario)}">${esc(c.usuario)}</a> · <b>Monto:</b> ${mon(c)}${c.pagado?'':' (no pagado)'}
+          · <b>Dueño:</b> ${esc(c.dueno||'—')} · <b>Ref:</b> <code>${esc(c.ref)}</code>${c.refund_id?(' · Culqi <code>'+esc(c.refund_id)+'</code>'):''}</div>
+        <div style="font-size:13px;margin-top:6px"><span style="font-weight:800;color:${et[1]}">● ${esc(et[0])}</span>${c.detalle?(' · <span style="color:#C0392B">'+esc(c.detalle)+'</span>'):''}
+          ${c.resuelto_en?(' · devuelto '+fmtFecha(c.resuelto_en)+(c.referencia?(' · '+esc(c.referencia)):'')):''}</div>
+        ${(c.deuda_dueno_centimos||0)>0 ? `<div style="font-size:13px;margin-top:6px;color:${c.deuda_resuelta?'#1F6E49':'#C0392B'}"><b>Deuda del dueño:</b> ${esc(c.moneda||'S/')} ${(c.deuda_dueno_centimos/100).toFixed(2)} — ya se le había liquidado esta reserva${c.deuda_resuelta?(' · descontada '+fmtFecha(c.deuda_resuelta_en)+(c.deuda_referencia?(' · '+esc(c.deuda_referencia)):'')):': descontar en su siguiente liquidación'}</div>`:''}
+        ${(pendRe||pendDe) ? `<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <input id="refc${c.id}" placeholder="Nº de operación / nota" style="flex:1;min-width:220px;padding:8px;border:1px solid var(--border);border-radius:8px">
+          ${pendRe?`<button class="btn-ap" onclick="resolverCancelacion(${c.id},'devuelto')">✅ Marcar devuelto (${mon(c)})</button>`:''}
+          ${pendDe?`<button class="btn-ap" onclick="resolverCancelacion(${c.id},'descontado')">➖ Marcar deuda descontada</button>`:''}
+        </div>`:''}
+      </div>`;}).join('');
+  }catch(e){ box.innerHTML='<div class="card">No se pudo cargar.</div>'; }
+}
+async function resolverCancelacion(id, accion){
+  const referencia = (document.getElementById('refc'+id)||{}).value||'';
+  const txt = accion==='devuelto' ? '¿Confirmas que YA devolviste el dinero al jugador (Yape/transferencia)?' : '¿Confirmas que ya descontaste la deuda en la liquidación del dueño?';
+  if(!confirm(txt)) return;
+  const r = await fetch('/pagos/cancelaciones-web/'+id+'/resolver',{method:'POST',headers:headers(),body:JSON.stringify({accion, referencia})});
+  if(r.status===401){ salir(); return; }
+  const j = r.ok ? await r.json() : {ok:false};
+  if(j.ok){ toast('Guardado'); await cargarCancelacionesWeb(); } else toast('No se pudo guardar');
 }
 async function cargarRecargasQr(){
   const box = document.getElementById('recargasQr');

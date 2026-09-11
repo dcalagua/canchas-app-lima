@@ -626,7 +626,28 @@ def test_reservar_exige_login_con_google_como_el_app(db, monkeypatch):
     assert cli.post("/web/cancelar", json={"ref": "r_ajena"}).json()["error"] == "ajena"
     # Torre: listado de cancelaciones web.
     adm = cli.get("/pagos/cancelaciones-web", headers={"X-Admin-Token": "adm"}).json()
-    assert adm["total"] >= 2 and adm["cancelaciones"][0]["reembolso"] in ("sin_reembolso", "reembolsado")
+    assert adm["total"] >= 2 and adm["cancelaciones"][0]["reembolso"] in ("sin_reembolso", "reembolsado") and adm["pendientes"] == 0
+    assert cli.get("/pagos/cancelaciones-web").status_code in (401, 503)
+    # Pagó en el APP (sin cargo web) y el dueño YA había cobrado: queda manual + deuda; la torre lo cierra.
+    db.reservas["r_app"] = {**db.reservas[r["ids"][0]], "id": "r_app", "grupo_reserva_id": "", "medio_pago": "tarjeta"}
+    stores.registrar_pago(tipo="liquidacion_online", monto_centimos=6000, moneda="PEN", estado="aprobado", dueno_id="dueno@x.com",
+                          culqi_charge_id="r_app", liquidado=True)
+    j = cli.post("/web/cancelar", json={"ref": "r_app"}).json()
+    assert j["ok"] and j["reembolso"] == "manual"
+    reg = stores.cancelaciones_web[-1]
+    assert reg["deuda_dueno_centimos"] == 6000 - 300 and stores.pago_por_charge("r_app_ajuste").estado == "pendiente"
+    adm = cli.get("/pagos/cancelaciones-web?pendientes=1", headers={"X-Admin-Token": "adm"}).json()
+    assert adm["pendientes"] == 1 and adm["cancelaciones"][0]["id"] == reg["id"]
+    hdr = {"X-Admin-Token": "adm"}
+    assert cli.post(f"/pagos/cancelaciones-web/{reg['id']}/resolver", json={"accion": "devuelto", "referencia": "Yape 123"}, headers=hdr).json()["ok"]
+    assert reg["reembolso"] == "reembolsado_manual" and reg["referencia"] == "Yape 123"
+    assert cli.post(f"/pagos/cancelaciones-web/{reg['id']}/resolver", json={"accion": "devuelto"}, headers=hdr).json()["error"] == "no_pendiente"
+    assert cli.post(f"/pagos/cancelaciones-web/{reg['id']}/resolver", json={"accion": "descontado"}, headers=hdr).json()["ok"]
+    assert reg["deuda_resuelta"] and stores.pago_por_charge("r_app_ajuste").estado == "aplicado"
+    assert cli.get("/pagos/cancelaciones-web?pendientes=1", headers=hdr).json()["pendientes"] == 0
+    # La torre trae el pane.
+    torre = cli.get("/admin", headers=hdr).text if cli.get("/admin", headers=hdr).status_code == 200 else cli.get("/admin").text
+    assert "cancelacionesPanel" in torre and "cargarCancelacionesWeb" in torre
     # Salir: sin cookie vuelve a exigir sesión.
     cli.post("/web/salir")
     assert cli.get("/mis-reservas", follow_redirects=False).status_code == 302
