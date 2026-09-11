@@ -447,10 +447,17 @@ para la API del APK.
 - **MODO ANFITRIÓN EN LA WEB (sep-2026, pedido del director: mismo flujo
   que airbnb.com/hosting):** `web/anfitrion.py` (router incluido en
   `main.py`). El enlace "Modo anfitrión" de la cabecera abre `/anfitrion`
-  (sin sesión → `/entrar?volver=`); dentro, la cabecera cambia a modo
-  anfitrión (`ui.cabecera(modo="anfitrion")`: logo → `/anfitrion`, pestañas
-  📅 Hoy · 🗓️ Calendario · 📋 Reservas · 💰 Ingresos · 🏟️ Canchas, y a la
-  derecha "Cambiar a modo jugador" → `/`, también en el menú ☰). Datos:
+  (sin sesión → `/entrar?volver=`) = **el MISMO MENÚ del app** (pedido del
+  director, sep-2026): cabecera verde "‹ Modo anfitrión · Publica tu cancha
+  o academia…" + tarjetas con ícono de color (`MENU`): 🏬 Mis canchas →
+  `/anfitrion/mis-canchas` (panel web completo), 📣 Mi academia, 🏆 Mis
+  campeonatos, 🏪 Mi tienda, 🛡️ Verificador → `/anfitrion/{modulo}`
+  (páginas "está en la app" con pill "En la app" y botón Abrir en la app;
+  la web de esos módulos es fase posterior). Dentro de Mis canchas la
+  cabecera cambia a modo anfitrión (`ui.cabecera(modo="anfitrion")`: logo →
+  `/anfitrion`, pestañas 📅 Hoy · 🗓️ Calendario · 📋 Reservas · 💰 Ingresos ·
+  🏟️ Canchas, y a la derecha "Cambiar a modo jugador" → `/`, también en el
+  menú ☰; enlace "‹ Modo anfitrión" vuelve al menú). Datos:
   `datos.canchas_de_dueno(email)` (`lower(dueno)=correo`, no eliminadas),
   `datos.reservas_de_canchas(ids, desde, hasta)` (sin holds ni canceladas),
   `datos.bloqueos_de`. Sin canchas a su nombre → onboarding "Hola 👋 …

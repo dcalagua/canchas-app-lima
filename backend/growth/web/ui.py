@@ -331,6 +331,20 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 .cab.anfitrion{grid-template-columns:1fr auto 1fr;grid-template-areas:"logo tabs der";padding-bottom:0}
 .cab.anfitrion .cat{padding:22px 12px 20px;font-size:14px}
 @media(max-width:900px){.cab.anfitrion{grid-template-columns:1fr auto;grid-template-areas:"logo der" "tabs tabs"}.cab.anfitrion .cab-tabs{justify-content:flex-start;margin:0 -20px;padding:0 20px}.cab.anfitrion .cat{padding:12px 10px 10px}}
+/* menú del modo anfitrión = el del app (cabecera verde + tarjetas con ícono de color) */
+.anf-hero{background:linear-gradient(135deg,var(--esmeralda),var(--teal));color:#fff;border-radius:0 0 28px 28px;margin:0 -80px;padding:22px 80px 30px;position:relative}
+@media(max-width:1128px){.anf-hero{margin:0 -40px;padding:20px 40px 26px}}@media(max-width:744px){.anf-hero{margin:0 -24px;padding:16px 24px 22px}}@media(max-width:560px){.anf-hero{margin:0 -16px;padding:14px 16px 20px}}
+.anf-hero h1{color:#fff;font-size:30px;display:inline-block;vertical-align:middle;margin:0}
+.anf-hero .volver{color:#fff;text-decoration:none;font-size:34px;line-height:1;margin-right:14px;vertical-align:middle;display:inline-block}
+.anf-hero p{margin:8px 0 0;font-size:17px;opacity:.92;max-width:640px}
+.anf-menu{display:flex;flex-direction:column;gap:14px;max-width:760px;margin:22px auto 0}
+.anf-item{display:flex;align-items:center;gap:16px;background:var(--blanco);border-radius:18px;padding:16px 18px;text-decoration:none;color:inherit;box-shadow:0 2px 12px rgba(15,27,45,.08);border:1px solid var(--trazo);transition:box-shadow .15s,transform .15s}
+.anf-item:hover{box-shadow:0 8px 24px rgba(15,27,45,.14);transform:translateY(-1px)}
+.anf-item .ico,.anf-item-ico{flex:none;width:56px;height:56px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:26px;color:#fff}
+.anf-item .txt{flex:1;min-width:0}.anf-item .txt b{display:block;font-size:19px}.anf-item .txt small{display:block;color:var(--tenue);font-size:14px;font-weight:600;margin-top:2px}
+.anf-item .chev{font-size:30px;color:var(--tenue);line-height:1}
+@media(max-width:560px){.anf-item .pill{display:none}.anf-item .txt b{font-size:17px}.anf-item .ico{width:48px;height:48px;font-size:22px}}
+.anf-back{display:inline-block;margin-top:18px;color:var(--tenue);font-weight:700;text-decoration:none;font-size:14px}.anf-back:hover{color:var(--noche)}
 /* panel del anfitrión */
 .anf-hola{font-size:28px;margin:26px 0 4px}
 .anf-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 12px}

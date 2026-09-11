@@ -681,8 +681,17 @@ def test_modo_anfitrion_en_la_web_como_airbnb(db, monkeypatch):
     # Jugadora sin canchas → onboarding.
     monkeypatch.setattr(sesion, "_tokeninfo", lambda t: {"email": "ana@gmail.com", "email_verified": "true", "aud": "cid-web", "name": "Ana Pérez", "exp": "9999999999"})
     cli.post("/web/sesion", json={"credential": "x"})
-    html = cli.get("/anfitrion").text
+    # /anfitrion = el MENÚ del app (cabecera verde + 5 tarjetas); "Mis canchas" sin canchas → onboarding.
+    menu = cli.get("/anfitrion").text
+    for t in ("Modo anfitrión", "Publica tu cancha o academia", "Mis canchas", "Mi academia", "Mis campeonatos", "Mi tienda", "Verificador",
+              "href='/anfitrion/mis-canchas'", "href='/anfitrion/academia'"):
+        assert t in menu, t
+    assert "Cambiar a modo jugador" in menu
+    html = cli.get("/anfitrion/mis-canchas").text
     assert "todavía no tienes canchas registradas" in html and "Registrar mi cancha en la app" in html
+    aca = cli.get("/anfitrion/academia").text
+    assert "Mi academia está en la app" in aca and "Abrir en la app" in aca
+    assert cli.get("/anfitrion/nada").status_code == 404
     # Una reserva web pagada en la cancha del dueño.
     f = _manana()
     r = cli.post("/web/asegurar", json={"cancha_id": "c_lima", "horas": [{"fecha": f, "hora": "19:00"}], "extras": [],
@@ -695,10 +704,10 @@ def test_modo_anfitrion_en_la_web_como_airbnb(db, monkeypatch):
     cli.post("/web/salir")
     monkeypatch.setattr(sesion, "_tokeninfo", lambda t: {"email": "dueno@x.com", "email_verified": "true", "aud": "cid-web", "name": "Don Dueño", "exp": "9999999999"})
     cli.post("/web/sesion", json={"credential": "x"})
-    hoy = cli.get("/anfitrion").text
-    assert "¡Hola, Don!" in hoy and "Cambiar a modo jugador" in hoy and "Modo anfitrión" not in hoy.split("cab-der")[1].split("</div>")[0]
+    hoy = cli.get("/anfitrion/mis-canchas").text
+    assert "¡Hola, Don!" in hoy and "href='/anfitrion'" in hoy and "Cambiar a modo jugador" in hoy and "Modo anfitrión" not in hoy.split("cab-der")[1].split("</div>")[0]
     assert "Próximos 7 días <small>(1)</small>" in hoy and "Ana" in hoy and "999888777" in hoy and "Pagada en línea · yape" in hoy
-    for k in ("/anfitrion/calendario", "/anfitrion/reservas", "/anfitrion/ingresos", "/anfitrion/canchas"):
+    for k in ("/anfitrion/mis-canchas", "/anfitrion/calendario", "/anfitrion/reservas", "/anfitrion/ingresos", "/anfitrion/canchas"):
         assert f"href='{k}'" in hoy
     cal = cli.get(f"/anfitrion/calendario?cancha=c_lima&desde={f}").text
     assert "Calendario" in cal and "pagada" in cal and "Semana siguiente" in cal and "23:00" in cal

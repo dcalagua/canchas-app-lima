@@ -26,33 +26,66 @@ from web.router import (PLAY_URL, _deporte, _deportes_de, _fotos, _maps, _moneda
 
 router = APIRouter(tags=["web-anfitrion"])
 
-SECCIONES = [("hoy", "Hoy", "/anfitrion", "📅"), ("calendario", "Calendario", "/anfitrion/calendario", "🗓️"),
+# Pestañas de la sección "Mis canchas" (como airbnb.com/hosting).
+SECCIONES = [("hoy", "Hoy", "/anfitrion/mis-canchas", "📅"), ("calendario", "Calendario", "/anfitrion/calendario", "🗓️"),
              ("reservas", "Reservas", "/anfitrion/reservas", "📋"), ("ingresos", "Ingresos", "/anfitrion/ingresos", "💰"),
              ("canchas", "Canchas", "/anfitrion/canchas", "🏟️")]
 
+# Menú del modo anfitrión: EL MISMO del app (explorar_home_screen → Modo
+# anfitrión): ícono en círculo de color, título, descripción y chevron.
+MENU = [
+    ("mis-canchas", "Mis canchas", "Registra y administra: canchas, agenda, reservas, cuenta", "#0B7A55", "🏬", "/anfitrion/mis-canchas", True),
+    ("academia", "Mi academia", "Soy profe: alumnos, cuotas y cobros", "#E07A3F", "📣", "/anfitrion/academia", False),
+    ("campeonatos", "Mis campeonatos", "Organiza torneos (fútbol, tenis…), invita y sortea", "#D4B048", "🏆", "/anfitrion/campeonatos", False),
+    ("tienda", "Mi tienda", "Vende en el Marketplace Pichangol: raquetas, pelotas y más", "#7B61FF", "🏪", "/anfitrion/tienda", False),
+    ("verificador", "Verificador", "Rol de campo: visitas con foto, GPS y firma", "#0E8F67", "🛡️", "/anfitrion/verificador", False),
+]
 
-def _cabecera(seccion: str, ses: dict | None) -> str:
+
+def _cabecera(seccion: str, ses: dict | None, tabs_visibles: bool = True) -> str:
     tabs = "".join(f"<a class='cat{' sel' if k == seccion else ''}' href='{href}'><span class='ico'>{ico}</span>{n}</a>"
-                   for k, n, href, ico in SECCIONES)
+                   for k, n, href, ico in SECCIONES) if tabs_visibles else ""
     return ui.cabecera(tabs=tabs, ses=ses, volver="/anfitrion", modo="anfitrion")
 
 
-def _entrar(volver: str) -> HTMLResponse:
-    from urllib.parse import quote
-    return HTMLResponse("", status_code=302, headers={"Location": f"/entrar?volver={quote(volver, safe='')}"})
+def _sesion_o_entrar(request: Request, volver: str):
+    ses = sesion.de_request(request)
+    if ses:
+        return ses, None
+    if sesion.activo():
+        return None, _entrar(volver)
+    cuerpo = ("<div class='panel' style='max-width:520px;margin:40px auto;text-align:center'>"
+              "<h1 style='font-size:22px'>Modo anfitrión</h1>"
+              "<p class='sub'>En esta web aún no está activo el inicio de sesión. Administra tus canchas desde la app.</p>"
+              f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a></div></div>")
+    return None, ui.shell("Modo anfitrión", cuerpo, sesion=None)
+
+
+@router.get("/anfitrion", response_class=HTMLResponse)
+def pagina_menu(request: Request) -> HTMLResponse:
+    """Menú del modo anfitrión, IGUAL al del app: cabecera verde con el
+    subtítulo y las cinco tarjetas (Mis canchas · Mi academia · Mis campeonatos
+    · Mi tienda · Verificador)."""
+    ses, resp = _sesion_o_entrar(request, "/anfitrion")
+    if resp is not None:
+        return resp
+    items = "".join(
+        f"<a class='anf-item' href='{href}'><span class='ico' style='background:{color}'>{ico}</span>"
+        f"<span class='txt'><b>{e(titulo)}</b><small>{e(desc)}</small></span>"
+        + ("" if web else "<span class='pill gris'>En la app</span>")
+        + "<span class='chev'>›</span></a>" for _k, titulo, desc, color, ico, href, web in MENU)
+    cuerpo = ("<div class='anf-hero'><a class='volver' href='/' aria-label='Volver'>‹</a><h1>Modo anfitrión</h1>"
+              "<p>Publica tu cancha o academia y recibe reservas y alumnos.</p></div>"
+              f"<div class='anf-menu'>{items}</div>")
+    return ui.shell("Modo anfitrión", cuerpo, nav=_cabecera("", ses, tabs_visibles=False), sesion=ses, ancho=True,
+                    titulo_tab="Modo anfitrión · Pichangol")
 
 
 def _contexto(request: Request, volver: str):
     """(sesión, canchas del dueño) o una respuesta de redirección/onboarding."""
-    ses = sesion.de_request(request)
-    if not ses:
-        if sesion.activo():
-            return None, None, _entrar(volver)
-        cuerpo = ("<div class='panel' style='max-width:520px;margin:40px auto;text-align:center'>"
-                  "<h1 style='font-size:22px'>Modo anfitrión</h1>"
-                  "<p class='sub'>En esta web aún no está activo el inicio de sesión. Administra tus canchas desde la app.</p>"
-                  f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a></div></div>")
-        return None, None, ui.shell("Modo anfitrión", cuerpo, sesion=None)
+    ses, resp = _sesion_o_entrar(request, volver)
+    if resp is not None:
+        return None, None, resp
     canchas = datos.canchas_de_dueno(ses["email"])
     if not canchas:
         return ses, [], _onboarding(ses)
@@ -112,11 +145,11 @@ def _tarjeta_res(r: dict, c: dict | None, hoy: date) -> str:
             + "</div></div>")
 
 
-@router.get("/anfitrion", response_class=HTMLResponse)
+@router.get("/anfitrion/mis-canchas", response_class=HTMLResponse)
 def pagina_hoy(request: Request) -> HTMLResponse:
-    """"Hoy" de Airbnb: las reservas que tocan hoy, mañana y en los próximos 7
-    días, más lo pendiente de cobrar en efectivo."""
-    ses, canchas, resp = _contexto(request, "/anfitrion")
+    """Mis canchas → "Hoy" de Airbnb: las reservas que tocan hoy, mañana y en
+    los próximos 7 días, más lo pendiente de cobrar en efectivo."""
+    ses, canchas, resp = _contexto(request, "/anfitrion/mis-canchas")
     if resp is not None:
         return resp
     hoy = _hoy(canchas)
@@ -143,7 +176,8 @@ def pagina_hoy(request: Request) -> HTMLResponse:
         + "</div>" for k, _ in etiquetas)
     n_ver = sum(1 for c in canchas if datos.reservable(c))
     cuerpo = (
-        f"<h1 class='anf-hola'>¡Hola, {e((ses.get('nombre') or ses.get('email') or '').split(' ')[0])}!</h1>"
+        "<a class='anf-back' href='/anfitrion'>‹ Modo anfitrión</a>"
+        f"<h1 class='anf-hola' style='margin-top:6px'>¡Hola, {e((ses.get('nombre') or ses.get('email') or '').split(' ')[0])}!</h1>"
         f"<p class='sub'>{len(canchas)} cancha{'s' if len(canchas) != 1 else ''} · {n_ver} verificada{'s' if n_ver != 1 else ''} · "
         f"{len(grupos['hoy'])} reserva{'s' if len(grupos['hoy']) != 1 else ''} hoy</p>"
         f"<h2 style='margin-top:22px'>Tus reservas</h2><div class='anf-tabs' id='anfTabs'>{tabs}</div>{paneles}"
@@ -308,3 +342,32 @@ def pagina_canchas(request: Request) -> HTMLResponse:
               f"<div class='anf-grid' style='grid-template-columns:repeat(auto-fill,minmax(360px,1fr));margin-top:16px'>{tarjetas}</div>"
               f"<p style='margin-top:20px'><a class='btn' href='{PLAY_URL}' rel='noopener'>Registrar otra cancha en la app</a></p>")
     return ui.shell("Canchas", cuerpo, nav=_cabecera("canchas", ses), sesion=ses, ancho=True, titulo_tab="Canchas · Modo anfitrión")
+
+
+@router.get("/anfitrion/{modulo}", response_class=HTMLResponse)
+def pagina_modulo_app(request: Request, modulo: str) -> HTMLResponse:
+    """Mi academia · Mis campeonatos · Mi tienda · Verificador: hoy viven en
+    el app (mismos datos que allí); la web muestra la sección y manda a la app."""
+    it = next((m for m in MENU if m[0] == modulo and not m[6]), None)
+    if it is None:
+        from web.router import _no_encontrada
+        r = _no_encontrada("Sección no encontrada"); r.status_code = 404
+        return r
+    ses, resp = _sesion_o_entrar(request, f"/anfitrion/{modulo}")
+    if resp is not None:
+        return resp
+    _k, titulo, desc, color, ico, _href, _web = it
+    cuerpo = (f"<div class='anf-hero'><a class='volver' href='/anfitrion' aria-label='Volver'>‹</a><h1>{e(titulo)}</h1><p>{e(desc)}</p></div>"
+              "<div class='panel' style='max-width:640px;margin:22px auto 0;text-align:center'>"
+              f"<span class='anf-item-ico' style='background:{color}'>{ico}</span>"
+              f"<h2 style='margin-top:12px'>{e(titulo)} está en la app</h2>"
+              "<p class='sub'>Esta sección se administra desde la app de Pichangol con la misma cuenta de Google. "
+              "La versión web llegará más adelante.</p>"
+              f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}' rel='noopener'>Abrir en la app</a>"
+              "<a class='btn sec' href='/anfitrion'>Volver al menú</a></div></div>")
+    return ui.shell(titulo, cuerpo, nav=_cabecera("", ses, tabs_visibles=False), sesion=ses, ancho=True, titulo_tab=f"{titulo} · Modo anfitrión")
+
+
+def _entrar(volver: str) -> HTMLResponse:
+    from urllib.parse import quote
+    return HTMLResponse("", status_code=302, headers={"Location": f"/entrar?volver={quote(volver, safe='')}"})
