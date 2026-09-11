@@ -92,6 +92,17 @@ class FakeDB:
             self.reservas.pop(i, None)
         return True
 
+    def canchas_de_dueno(self, email):
+        return [c for c in self.canchas.values() if (c.get("dueno") or "").lower() == email.lower() and not c.get("eliminada")]
+
+    def reservas_de_canchas(self, ids, desde, hasta):
+        return sorted([dict(r) for r in self.reservas.values() if r["cancha_id"] in ids and desde <= r["fecha"] <= hasta
+                       and not (r["estado"] == "nueva" and not r.get("pagado")) and r["estado"] != "cancelada"],
+                      key=lambda r: (r["fecha"], r["hora_inicio"]))
+
+    def bloqueos_de(self, ids, fechas):
+        return {(c, f, h) for (c, f, h) in self.bloqueos if c in ids and f in fechas}
+
     def reservas_de_usuario(self, email, limite=200):
         return sorted([dict(r) for r in self.reservas.values()
                        if (r.get("usuario") or "").lower() == email.lower() and not (r["estado"] == "nueva" and not r.get("pagado"))],
@@ -107,7 +118,7 @@ def db(monkeypatch):
     fake = FakeDB()
     for fn in ("canchas_publicas", "canchas_verificadas", "cancha", "ocupados", "descuentos", "liberar_holds_vencidos",
                "insertar_reservas", "confirmar_reservas", "borrar_reservas", "reservas_de",
-               "reservas_por_grupo", "reservas_de_usuario", "eliminar_reservas"):
+               "reservas_por_grupo", "reservas_de_usuario", "eliminar_reservas", "canchas_de_dueno", "reservas_de_canchas", "bloqueos_de"):
         monkeypatch.setattr(datos, fn, getattr(fake, fn))
     monkeypatch.setattr(config, "CULQI_PUBLIC_KEY", "pk_test_x")
     monkeypatch.setattr(config, "CULQI_SECRET_KEY", "sk_test_x")
@@ -655,3 +666,45 @@ def test_reservar_exige_login_con_google_como_el_app(db, monkeypatch):
     # Sin client id configurado, la web sigue con el formulario de invitado.
     monkeypatch.setattr(config, "GOOGLE_WEB_CLIENT_ID", "")
     assert "id='loginBox'" not in client.get("/reservar/c_lima").text and '"login": false' in client.get("/reservar/c_lima").text
+
+
+def test_modo_anfitrion_en_la_web_como_airbnb(db, monkeypatch):
+    """"Modo anfitrión" abre el panel del dueño en la web (como airbnb.com/
+    hosting): Hoy, Calendario, Reservas, Ingresos y Canchas con su sesión de
+    Google; sin canchas a su nombre → onboarding; sin sesión → login."""
+    from web import sesion
+    from db.store import stores
+    monkeypatch.setattr(config, "GOOGLE_WEB_CLIENT_ID", "cid-web")
+    cli = TestClient(app, base_url="https://testserver")
+    assert cli.get("/anfitrion", follow_redirects=False).status_code == 302
+    assert "href='/anfitrion'" in cli.get("/").text  # el enlace "Modo anfitrión" de la cabecera
+    # Jugadora sin canchas → onboarding.
+    monkeypatch.setattr(sesion, "_tokeninfo", lambda t: {"email": "ana@gmail.com", "email_verified": "true", "aud": "cid-web", "name": "Ana Pérez", "exp": "9999999999"})
+    cli.post("/web/sesion", json={"credential": "x"})
+    html = cli.get("/anfitrion").text
+    assert "todavía no tienes canchas registradas" in html and "Registrar mi cancha en la app" in html
+    # Una reserva web pagada en la cancha del dueño.
+    f = _manana()
+    r = cli.post("/web/asegurar", json={"cancha_id": "c_lima", "horas": [{"fecha": f, "hora": "19:00"}], "extras": [],
+                                        "nombre": "Ana", "celular": "999888777", "email": "ana@gmail.com"}).json()
+    monkeypatch.setattr(culqi, "crear_cargo", lambda **kw: {"ok": True, "charge_id": "chr_h"})
+    import pagos.router as pr
+    monkeypatch.setattr(pr, "_aviso_push_usuario", lambda *a, **k: None)
+    assert cli.post("/web/pagar", json={"ids": r["ids"], "firma": r["firma"], "token": "t", "medio": "yape"}).json()["ok"]
+    # El dueño entra: ve su panel.
+    cli.post("/web/salir")
+    monkeypatch.setattr(sesion, "_tokeninfo", lambda t: {"email": "dueno@x.com", "email_verified": "true", "aud": "cid-web", "name": "Don Dueño", "exp": "9999999999"})
+    cli.post("/web/sesion", json={"credential": "x"})
+    hoy = cli.get("/anfitrion").text
+    assert "¡Hola, Don!" in hoy and "Cambiar a modo jugador" in hoy and "Modo anfitrión" not in hoy.split("cab-der")[1].split("</div>")[0]
+    assert "Próximos 7 días <small>(1)</small>" in hoy and "Ana" in hoy and "999888777" in hoy and "Pagada en línea · yape" in hoy
+    for k in ("/anfitrion/calendario", "/anfitrion/reservas", "/anfitrion/ingresos", "/anfitrion/canchas"):
+        assert f"href='{k}'" in hoy
+    cal = cli.get(f"/anfitrion/calendario?cancha=c_lima&desde={f}").text
+    assert "Calendario" in cal and "pagada" in cal and "Semana siguiente" in cal and "23:00" in cal
+    res = cli.get("/anfitrion/reservas").text
+    assert "Próximas" in res and "19:00–20:00" in res
+    ing = cli.get("/anfitrion/ingresos").text
+    assert "Por recibir" in ing and "S/ 60.00" in ing and "Reserva web" in ing
+    can = cli.get("/anfitrion/canchas").text
+    assert "Cancha Central" in can and "✓ Verificada" in can and "/reservar/c_lima" in can and "Nocturna" in can

@@ -23,6 +23,7 @@ from entrenador.router import router as entrenador_router
 from db.store import seed_verificadores, stores
 from legal.router import router as legal_router
 from web.router import router as web_router
+from web.anfitrion import router as anfitrion_router
 from models import ConfigRequest, ConsentimientoRequest
 from marketing.router import router as marketing_router
 from pagos.router import (procesar_renovaciones, procesar_renovaciones_alumnos,
@@ -100,6 +101,7 @@ app.include_router(circuito_router)
 app.include_router(marketing_router)
 app.include_router(legal_router)
 app.include_router(web_router)
+app.include_router(anfitrion_router)
 # Assets de marca de la web pública (pin, logo para OG/favicon). Ruta fija
 # junto a este archivo para que Railway (root dir backend/growth) los sirva.
 app.mount("/static", StaticFiles(directory=os.path.join(

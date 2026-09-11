@@ -327,6 +327,43 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 /* compacta (al hacer scroll) y simple (páginas interiores): logo · pastilla chica · derecha */
 .cab.chica,.cab.simple{grid-template-columns:1fr auto 1fr;grid-template-areas:"logo mini der";padding-bottom:8px}
 .cab.chica .cab-tabs,.cab.chica .cab-busq{display:none}.cab.chica .cab-mini,.cab.simple .cab-mini{display:flex}
+/* modo anfitrión (airbnb.com/hosting): logo · Hoy/Calendario/Reservas/Ingresos/Canchas · derecha */
+.cab.anfitrion{grid-template-columns:1fr auto 1fr;grid-template-areas:"logo tabs der";padding-bottom:0}
+.cab.anfitrion .cat{padding:22px 12px 20px;font-size:14px}
+@media(max-width:900px){.cab.anfitrion{grid-template-columns:1fr auto;grid-template-areas:"logo der" "tabs tabs"}.cab.anfitrion .cab-tabs{justify-content:flex-start;margin:0 -20px;padding:0 20px}.cab.anfitrion .cat{padding:12px 10px 10px}}
+/* panel del anfitrión */
+.anf-hola{font-size:28px;margin:26px 0 4px}
+.anf-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 12px}
+.anf-tabs .chip.sel{background:var(--noche);color:#fff;border-color:var(--noche)}
+.anf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.anf-res{background:var(--blanco);border:1px solid var(--trazo);border-radius:16px;padding:14px 16px;box-shadow:var(--sombra);min-width:0}
+.anf-res .hora{font-size:20px;font-weight:800}
+.anf-res .quien{display:flex;align-items:center;gap:10px;margin-top:8px}
+.anf-res .quien .av{width:36px;height:36px;border-radius:50%;background:var(--tinte);color:var(--teal);display:inline-flex;align-items:center;justify-content:center;font-weight:800}
+.anf-res .acc{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.anf-res .acc .btn{padding:8px 12px;font-size:13px;flex:0 0 auto;min-width:0}
+.anf-vacio{background:var(--gris);border-radius:16px;padding:26px;text-align:center;color:var(--tenue);font-weight:600}
+.kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-top:16px}
+.kpi{background:var(--blanco);border:1px solid var(--trazo);border-radius:16px;padding:16px 18px;box-shadow:var(--sombra)}
+.kpi small{display:block;color:var(--tenue);font-weight:600;font-size:12.5px}.kpi b{font-size:24px;display:block;margin-top:4px}
+.cal-sem{overflow-x:auto;margin-top:12px;border:1px solid var(--trazo);border-radius:16px}
+.cal-sem table{border-collapse:collapse;min-width:760px;width:100%;font-size:12.5px}
+.cal-sem th{position:sticky;top:0;background:var(--blanco);padding:10px 6px;border-bottom:1px solid var(--trazo);font-weight:700;text-align:center}
+.cal-sem th.hoy{color:var(--esmeralda)}
+.cal-sem td{border-top:1px solid var(--trazo);border-left:1px solid var(--trazo);padding:4px;height:44px;vertical-align:top;min-width:96px}
+.cal-sem td:first-child{border-left:0;font-weight:700;white-space:nowrap;background:var(--papel);width:64px;vertical-align:middle;text-align:center}
+.cal-sem .oc{background:var(--tinte);border-radius:8px;padding:5px 7px;font-weight:700;color:var(--teal);line-height:1.2}
+.cal-sem .oc small{display:block;font-weight:600;color:var(--tenue)}
+.cal-sem .oc.ef{background:var(--warn-bg);color:var(--warn-fg)}.cal-sem .oc.ef small{color:#8a6d1f}
+.cal-sem .bl{background:var(--gris);border-radius:8px;padding:5px 7px;font-weight:700;color:var(--tenue)}
+.cal-sem td.pasado{background:#FAFBFA}
+.cal-nav2{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px}
+.cal-nav2 .btn{padding:8px 12px;font-size:13.5px}
+.anf-cancha{display:flex;gap:14px;background:var(--blanco);border:1px solid var(--trazo);border-radius:16px;padding:12px;box-shadow:var(--sombra);min-width:0}
+.anf-cancha .f{flex:none;width:110px;height:110px;border-radius:12px;overflow:hidden;background:var(--tinte);display:flex;align-items:center;justify-content:center;font-size:40px}
+.anf-cancha .f img{width:100%;height:100%;object-fit:cover}
+.anf-cancha .acciones .btn{flex:0 0 auto;min-width:0;padding:8px 12px;font-size:13px}
+.mov{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--trazo);font-size:14px}
+.mov small{display:block;color:var(--tenue);font-weight:600}
 @media(max-width:1400px){
   /* las 8 pestañas ya no caben junto al logo: pasan a su propia fila, centradas bajo el buscador (como las categorías de Airbnb) */
   .cab{grid-template-columns:1fr auto;grid-template-areas:"logo der" "busq busq" "tabs tabs";column-gap:8px;padding-top:4px;padding-bottom:0}
@@ -567,7 +604,7 @@ def chip_sesion(ses: dict | None, volver: str = "/") -> str:
 PLAY_URL = "https://play.google.com/store/apps/details?id=pe.ebim.pichangol"
 
 
-def menu_cuenta(ses: dict | None, volver: str = "/") -> str:
+def menu_cuenta(ses: dict | None, volver: str = "/", modo: str = "") -> str:
     """Lado derecho de la cabecera, como Airbnb: "Modo anfitrión" · avatar (la
     foto de Google si hay sesión) · botón ☰ con el menú desplegable."""
     from web import sesion as _s
@@ -585,15 +622,20 @@ def menu_cuenta(ses: dict | None, volver: str = "/") -> str:
         else:
             cuenta = f"<a class='b' href='{PLAY_URL}' rel='noopener'>Iniciar sesión en la app</a>"
         avatar = f"<a class='redondo' href='{entrar if _s.activo() else PLAY_URL}' aria-label='Iniciar sesión'>{_USER_SVG}</a>"
+    # "Modo anfitrión" abre el panel del dueño EN LA WEB (como airbnb.com/hosting);
+    # dentro del panel el enlace se vuelve "Cambiar a modo jugador".
+    host = ("<a class='host' href='/'>Cambiar a modo jugador</a>" if modo == "anfitrion"
+            else f"<a class='host' href='{'/anfitrion' if (ses or _s.activo()) else PLAY_URL}'>Modo anfitrión</a>")
     return (
         "<div class='cab-der'>"
-        f"<a class='host' href='{PLAY_URL}' rel='noopener'>Modo anfitrión</a>"
+        f"{host}"
         f"{avatar}"
         "<div class='menu'><button type='button' class='redondo' id='btnMenu' aria-label='Menú' aria-expanded='false'>"
         f"{_HAMB_SVG}</button>"
         f"<div class='menu-panel' id='menuPanel' role='menu'>{cuenta}<hr>"
         "<a href='/#como'>Cómo funciona</a><a href='/#contacto'>Centro de ayuda</a><hr>"
-        f"<a class='b' href='{PLAY_URL}' rel='noopener'>Pon tu cancha en Pichangol</a>"
+        + ("<a class='b' href='/'>Cambiar a modo jugador</a>" if modo == "anfitrion" else "<a class='b' href='/anfitrion'>Modo anfitrión</a>")
+        + f"<a href='{PLAY_URL}' rel='noopener'>Pon tu cancha en Pichangol</a>"
         f"<a href='{PLAY_URL}' rel='noopener'>Descarga la app</a>"
         "<a href='/#reclamaciones'>Libro de Reclamaciones</a>"
         "</div></div></div>")
@@ -605,16 +647,17 @@ def busq_mini(href: str = "/canchas", id_: str = "") -> str:
             f"<span class='tenue'>Cuándo quieras</span><i>{LUPA_SVG}</i></a>")
 
 
-def cabecera(*, tabs: str = "", busq: str = "", ses: dict | None = None, volver: str = "/") -> str:
+def cabecera(*, tabs: str = "", busq: str = "", ses: dict | None = None, volver: str = "/", modo: str = "") -> str:
     """Cabecera tipo airbnb.com: logo a la izquierda, pestañas con ícono al
     centro, "Modo dueño" + avatar + ☰ a la derecha y, debajo, el buscador
     grande centrado. Sin [busq] (páginas interiores) queda la fila simple."""
+    clase = "" if busq else (" anfitrion" if modo == "anfitrion" else " simple")
     return ("<header class='nav abnb'>"
-            f"<div class='wrap-xl cab{'' if busq else ' simple'}'>"
-            f"<div class='cab-logo'>{wordmark(24)}</div>"
-            + (f"<nav class='cab-tabs' aria-label='Deportes'>{tabs}</nav>" if tabs else "")
-            + f"<div class='cab-mini'>{busq_mini('#', 'busqMini') if busq else busq_mini('/canchas')}</div>"
-            + f"{menu_cuenta(ses, volver)}"
+            f"<div class='wrap-xl cab{clase}'>"
+            f"<div class='cab-logo'>{wordmark(24, '/anfitrion' if modo == 'anfitrion' else '/')}</div>"
+            + (f"<nav class='cab-tabs' aria-label='Secciones'>{tabs}</nav>" if tabs else "")
+            + ("" if modo == "anfitrion" else f"<div class='cab-mini'>{busq_mini('#', 'busqMini') if busq else busq_mini('/canchas')}</div>")
+            + f"{menu_cuenta(ses, volver, modo)}"
             + (f"<div class='cab-busq'>{busq}</div>" if busq else "")
             + f"</div></header><script>{JS_NAV}</script>")
 

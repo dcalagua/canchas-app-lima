@@ -148,6 +148,57 @@ def canchas_verificadas() -> list[dict]:
     return [c for c in canchas_publicas() if reservable(c)]
 
 
+def canchas_de_dueno(email: str) -> list[dict]:
+    """Canchas del DUEÑO (modo anfitrión web): registradas, no eliminadas,
+    `dueno` = correo de Google (mismo criterio que "Mis canchas" del app)."""
+    email = (email or "").strip().lower()
+    if not pg.habilitado or not email:
+        return []
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(f"SELECT {COLS_CANCHA} FROM pichangol_canchas WHERE lower(dueno) = %s "
+                        "AND coalesce(eliminada,false) = false ORDER BY verificada DESC, nombre", (email,))
+            return [_norm_cancha(pg._fila_a_dict(_COLS, f)) for f in cur.fetchall()]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def reservas_de_canchas(ids: list[str], desde: str, hasta: str) -> list[dict]:
+    """Agenda del dueño: reservas de sus canchas entre dos fechas (ISO,
+    inclusive), sin las retenciones web sin pagar ni las canceladas."""
+    if not pg.habilitado or not ids:
+        return []
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(
+                f"SELECT {', '.join(_COLS_RES)} FROM pichangol_reservas "
+                "WHERE cancha_id = ANY(%s) AND fecha BETWEEN %s AND %s "
+                "AND NOT (coalesce(estado,'') = 'nueva' AND NOT coalesce(pagado,false)) "
+                "AND coalesce(estado,'') <> 'cancelada' ORDER BY fecha, hora_inicio", (ids, desde, hasta))
+            out = []
+            for f in cur.fetchall():
+                d = pg._fila_a_dict(_COLS_RES, f)
+                d["extras"] = _json_list(d.get("extras"))
+                d["precio"] = int(round(float(d.get("precio") or 0)))
+                out.append(d)
+            return out
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def bloqueos_de(ids: list[str], fechas: list[str]) -> set[tuple[str, str, str]]:
+    """(cancha_id, fecha, hora) bloqueados por el dueño (tabla opcional)."""
+    if not pg.habilitado or not ids or not fechas:
+        return set()
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT cancha_id, fecha, hora FROM pichangol_bloqueos "
+                        "WHERE cancha_id = ANY(%s) AND fecha = ANY(%s)", (ids, fechas))
+            return {(str(c), str(f), str(h)) for c, f, h in cur.fetchall()}
+    except Exception:  # noqa: BLE001
+        return set()
+
+
 def cancha(cancha_id: str) -> dict | None:
     if not pg.habilitado or not cancha_id:
         return None

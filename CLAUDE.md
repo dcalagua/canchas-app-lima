@@ -444,6 +444,31 @@ para la API del APK.
   `ajuste_cancelacion` pasa a `aplicado`). El comprobante `/reserva/{ref}` muestra "Cancelar reserva" al
   dueño de la reserva (modal `_MODAL_CANCELAR` + `JS_CANCELAR`, compartidos
   con Mis reservas) y la política con las horas configuradas.
+- **MODO ANFITRIÓN EN LA WEB (sep-2026, pedido del director: mismo flujo
+  que airbnb.com/hosting):** `web/anfitrion.py` (router incluido en
+  `main.py`). El enlace "Modo anfitrión" de la cabecera abre `/anfitrion`
+  (sin sesión → `/entrar?volver=`); dentro, la cabecera cambia a modo
+  anfitrión (`ui.cabecera(modo="anfitrion")`: logo → `/anfitrion`, pestañas
+  📅 Hoy · 🗓️ Calendario · 📋 Reservas · 💰 Ingresos · 🏟️ Canchas, y a la
+  derecha "Cambiar a modo jugador" → `/`, también en el menú ☰). Datos:
+  `datos.canchas_de_dueno(email)` (`lower(dueno)=correo`, no eliminadas),
+  `datos.reservas_de_canchas(ids, desde, hasta)` (sin holds ni canceladas),
+  `datos.bloqueos_de`. Sin canchas a su nombre → onboarding "Hola 👋 …
+  Registrar mi cancha en la app" (el reclamo/verificación siguen en el
+  app). **Hoy** = chips Hoy / Mañana / Próximos 7 días / Por cobrar en
+  efectivo con tarjetas (hora, cancha, jugador + correo + celular + botón
+  WhatsApp, monto, pill Pagada en línea · yape|tarjeta / Cobrada / Cobrar en
+  la cancha) + atajos. **Calendario** = agenda SEMANAL de una cancha (chips
+  para cambiar, ‹ › Hoy): filas = turnos (regla "último turno empieza al
+  cierre"), celdas verde = pagada, ámbar = cobrar en cancha, gris =
+  bloqueado; solo lectura (bloquear/manual → app). **Reservas** = próximas y
+  pasadas 30 d agrupadas por día. **Ingresos** = billetera del backend
+  (`stores.saldo_centimos`, `saldo_promo_centimos`, `liquidaciones` +
+  `_liquidacion_dict`): KPIs Por recibir / Saldo / Regalo, liquidaciones
+  pendientes y pagadas, últimos movimientos. **Canchas** = sus locales con
+  foto, verificada, deportes, horario, precio y botones Ver ficha pública /
+  Calendario / Mapa / Editar en la app. Test
+  `test_modo_anfitrion_en_la_web_como_airbnb`.
 - **FICHA DE RESERVA (sep-2026, pedidos del director):** "Cómo llegar" abre
   el mapa DENTRO de la ficha (Leaflet + OpenStreetMap en `#mapaFicha`, con
   enlaces "Abrir en Google Maps" e "Indicaciones paso a paso" debajo), no en
