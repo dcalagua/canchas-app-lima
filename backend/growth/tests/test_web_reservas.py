@@ -103,6 +103,13 @@ class FakeDB:
     def bloqueos_de(self, ids, fechas):
         return {(c, f, h) for (c, f, h) in self.bloqueos if c in ids and f in fechas}
 
+    def actualizar_cancha(self, cancha_id, dueno, campos):
+        c = self.canchas.get(cancha_id)
+        if not c or (c.get("dueno") or "").lower() != dueno.lower() or c.get("eliminada"):
+            return False
+        c.update({k: v for k, v in campos.items() if k in datos.COLS_EDITABLES})
+        return True
+
     def reservas_de_usuario(self, email, limite=200):
         return sorted([dict(r) for r in self.reservas.values()
                        if (r.get("usuario") or "").lower() == email.lower() and not (r["estado"] == "nueva" and not r.get("pagado"))],
@@ -118,7 +125,8 @@ def db(monkeypatch):
     fake = FakeDB()
     for fn in ("canchas_publicas", "canchas_verificadas", "cancha", "ocupados", "descuentos", "liberar_holds_vencidos",
                "insertar_reservas", "confirmar_reservas", "borrar_reservas", "reservas_de",
-               "reservas_por_grupo", "reservas_de_usuario", "eliminar_reservas", "canchas_de_dueno", "reservas_de_canchas", "bloqueos_de"):
+               "reservas_por_grupo", "reservas_de_usuario", "eliminar_reservas", "canchas_de_dueno", "reservas_de_canchas", "bloqueos_de",
+               "actualizar_cancha"):
         monkeypatch.setattr(datos, fn, getattr(fake, fn))
     monkeypatch.setattr(config, "CULQI_PUBLIC_KEY", "pk_test_x")
     monkeypatch.setattr(config, "CULQI_SECRET_KEY", "sk_test_x")
@@ -717,3 +725,81 @@ def test_modo_anfitrion_en_la_web_como_airbnb(db, monkeypatch):
     assert "Por recibir" in ing and "S/ 60.00" in ing and "Reserva web" in ing
     can = cli.get("/anfitrion/canchas").text
     assert "Cancha Central" in can and "✓ Verificada" in can and "/reservar/c_lima" in can and "Nocturna" in can
+
+
+def test_editar_cancha_desde_la_web_como_el_app(db, monkeypatch):
+    """Modo anfitrión → Canchas → Editar: el dueño edita su cancha en la web
+    con el MISMO formulario y validaciones que el app (fotos, nombre, deportes
+    + piso, precio + hora feliz + seña, horario, servicios). Solo el dueño;
+    lo guardado lo lee el app tal cual."""
+    from web import almacen, anfitrion as anf, sesion
+    monkeypatch.setattr(config, "GOOGLE_WEB_CLIENT_ID", "cid-web")
+    monkeypatch.setattr(config, "SUPABASE_URL", "https://sb.test")
+    monkeypatch.setattr(config, "SUPABASE_ANON_KEY", "anon")
+    cli = TestClient(app, base_url="https://testserver")
+    url = "/anfitrion/cancha/c_lima/editar"
+    assert cli.get(url, follow_redirects=False).status_code == 302
+    assert cli.post(url, json={}).status_code == 401
+    # Otra persona con sesión: la cancha no está a su nombre → 404 (ni ve ni guarda).
+    monkeypatch.setattr(sesion, "_tokeninfo", lambda t: {"email": "ana@gmail.com", "email_verified": "true", "aud": "cid-web", "name": "Ana", "exp": "9999999999"})
+    cli.post("/web/sesion", json={"credential": "x"})
+    assert cli.get(url).status_code == 404
+    assert cli.post(url, json={"nombre": "Hackeada"}).status_code == 404
+    assert db.canchas["c_lima"]["nombre"] == "Cancha Central"
+    # El dueño: ve el formulario con los catálogos del app.
+    cli.post("/web/salir")
+    monkeypatch.setattr(sesion, "_tokeninfo", lambda t: {"email": "Dueno@x.com", "email_verified": "true", "aud": "cid-web", "name": "Don Dueño", "exp": "9999999999"})
+    cli.post("/web/sesion", json={"credential": "x"})
+    assert "href='/anfitrion/cancha/c_lima/editar'" in cli.get("/anfitrion/canchas").text
+    html = cli.get(url).text
+    for t in ("Editar cancha", "Fotos", "Nombre y local", "Deportes y tipo de piso", "Grass sintético", "Precio y promociones",
+              "Hora feliz", "Seña para reservar", "empieza el último turno", "Servicios del local", "Estacionamiento",
+              "Servicios extra", "Árbitro", "Guardar cambios", "data-v='pickleball'", "data-v='techado'", "−30 %", "1h 30min"):
+        assert t in html, t
+    # Validaciones = las del app.
+    base = {"nombre": "Cancha 1 · Grass", "club": "Complejo Central", "deportes": ["futbol", "voley"], "superficie": "Grass sintético",
+            "precio_hora": 75.5, "descuento_valle": 20, "valle_desde": "07:00", "valle_hasta": "12:00", "sena_pct": 30,
+            "hora_apertura": "06:00", "hora_cierre": "00:00", "duracion_slot_min": 90, "amenidades": ["parking", "luces", "invento"],
+            "servicios_extra": [{"clave": "arbitro", "precio": 40}, {"clave": "parrilla", "precio": 25}], "fotos": []}
+    r = cli.post(url, json={**base, "nombre": "  "}); assert r.status_code == 400 and r.json()["campo"] == "nombre"
+    r = cli.post(url, json={**base, "deportes": []}); assert r.status_code == 400 and r.json()["campo"] == "deportes"
+    r = cli.post(url, json={**base, "superficie": "Arcilla"}); assert r.status_code == 400 and "piso" in r.json()["error"]
+    r = cli.post(url, json={**base, "precio_hora": 0}); assert r.status_code == 400 and r.json()["campo"] == "precio"
+    r = cli.post(url, json={**base, "sena_pct": 45}); assert r.status_code == 400
+    r = cli.post(url, json={**base, "duracion_slot_min": 45}); assert r.status_code == 400 and r.json()["campo"] == "horario"
+    r = cli.post(url, json={**base, "hora_cierre": "23:30"}); assert r.status_code == 400
+    r = cli.post(url, json={**base, "servicios_extra": [{"clave": "arbitro", "precio": 0}]}); assert r.status_code == 400 and r.json()["campo"] == "extras"
+    # Foto: se sube al bucket `canchas` del app (carpeta de la cancha) y vuelve la URL.
+    subidas = []
+    monkeypatch.setattr(almacen, "subir_foto", lambda cid, b, ct="image/jpeg": subidas.append((cid, len(b), ct)) or f"https://sb.test/storage/v1/object/public/canchas/{cid}/web_1.jpg?v=1")
+    r = cli.post("/anfitrion/cancha/c_lima/foto", content=b"\xff\xd8\xff" * 100, headers={"Content-Type": "image/jpeg"})
+    assert r.status_code == 200 and r.json()["ok"] and subidas == [("c_lima", 300, "image/jpeg")]
+    nueva = r.json()["url"]
+    assert cli.post("/anfitrion/cancha/c_lima/foto", content=b"x", headers={"Content-Type": "text/plain"}).status_code == 415
+    assert cli.post("/anfitrion/cancha/c_gye/foto", content=b"x", headers={"Content-Type": "image/jpeg"}).status_code == 200  # también suya
+    assert cli.post("/anfitrion/cancha/c_pend/foto", content=b"x", headers={"Content-Type": "image/jpeg"}).status_code == 404  # sin dueño
+    # Guardar: entra al fake con las claves/columnas del app; la foto ajena se descarta y la vieja quitada se borra del bucket.
+    db.canchas["c_lima"]["fotos"] = ["https://sb.test/storage/v1/object/public/canchas/c_lima/vieja.jpg"]
+    borradas = []
+    monkeypatch.setattr(almacen, "borrar_foto", lambda u: borradas.append(u) or True)
+    class _Hilo:
+        def __init__(self, target=None, daemon=None): self.t = target
+        def start(self): self.t()
+    monkeypatch.setattr(anf.threading, "Thread", _Hilo)
+    r = cli.post(url, json={**base, "fotos": [nueva, "https://evil.example/x.jpg"]})
+    assert r.status_code == 200 and r.json()["ok"], r.text
+    c = db.canchas["c_lima"]
+    assert c["nombre"] == "Cancha 1 · Grass" and c["club"] == "Complejo Central" and c["precio_hora"] == 75.5
+    assert c["deporte"] == "futbol" and c["deportes"] == ["futbol", "voley"] and c["superficie"] == "Grass sintético"
+    assert c["descuento_valle"] == 20 and c["valle_desde"] == "07:00" and c["valle_hasta"] == "12:00" and c["sena_pct"] == 30
+    assert c["hora_apertura"] == "06:00" and c["hora_cierre"] == "00:00" and c["duracion_slot_min"] == 90
+    assert c["amenidades"] == ["parking", "luces"]  # "invento" no existe en el catálogo del app
+    assert c["servicios_extra"] == [{"clave": "arbitro", "precio": 40.0}, {"clave": "parrilla", "precio": 25.0}]
+    assert c["fotos"] == [nueva] and c["foto_url"] == nueva
+    assert borradas == ["https://sb.test/storage/v1/object/public/canchas/c_lima/vieja.jpg"]
+    # Vuelve a Canchas con el aviso; la ficha pública y el explorador ya muestran lo nuevo.
+    can = cli.get("/anfitrion/canchas?guardado=c_lima").text
+    assert "Guardamos los cambios de <b>Cancha 1 · Grass</b>" in can and "06:00–00:00 · 90 min" in can
+    ficha = cli.get("/reservar/c_lima").text
+    assert "Cancha 1 · Grass" in ficha and "Árbitro" in ficha and "Parrilla" in ficha
+    assert "🅿️ Estacionamiento" in cli.get("/").text  # el chip del explorador reconoce la clave del app

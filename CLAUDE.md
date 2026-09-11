@@ -474,8 +474,35 @@ para la API del APK.
   `_liquidacion_dict`): KPIs Por recibir / Saldo / Regalo, liquidaciones
   pendientes y pagadas, últimos movimientos. **Canchas** = sus locales con
   foto, verificada, deportes, horario, precio y botones Ver ficha pública /
-  Calendario / Mapa / Editar en la app. Test
+  Calendario / Mapa / Editar. Test
   `test_modo_anfitrion_en_la_web_como_airbnb`.
+- **EDITAR CANCHA DESDE LA WEB (sep-2026, decisión del director: "web =
+  vender y atender; app = operar", punto 1):** `GET/POST /anfitrion/cancha/
+  {id}/editar` (`web/anfitrion.py`, calcado del editor de anuncios de
+  Airbnb: nav lateral de secciones + tarjetas + barra inferior fija "Guardar
+  cambios"). MISMO formulario, catálogos y validaciones que
+  `editar_cancha_screen.dart`: fotos (hasta 8, portada = la primera, ★ para
+  hacer portada, ✕ quita), nombre y local (único texto libre), deportes
+  (chips ≥1, principal = 1.º de `deportesActivos`), tipo de piso
+  (obligatorio, por deporte principal), precio + hora feliz [0,10,15,20,30]
+  con rango + seña [0,20,30,50] con vista previa, horario (selects en punto,
+  regla "cierre = empieza el último turno") + duración 60/90/120,
+  amenidades (claves del APP: vestuario, duchas, parking, luces, techado,
+  cafeteria, wifi, alquiler) y servicios extra con precio. Catálogo espejo
+  en `web/catalogos.py` (**al cambiar un catálogo en el app, cambiarlo
+  ahí**). Fotos: el navegador comprime a 1600 px JPEG y hace `POST
+  /anfitrion/cancha/{id}/foto` (cuerpo crudo) → `web/almacen.py` sube al
+  MISMO bucket `canchas/<id>/web_<ms>.jpg` por la REST de Storage con la
+  llave anon (`SUPABASE_URL` + `SUPABASE_ANON_KEY` en Railway; sin ellas
+  la subida queda apagada y se avisa); al guardar solo se aceptan URLs que
+  ya tenía la cancha o de SU carpeta, y las quitadas se borran del bucket.
+  Guardado: `datos.actualizar_cancha(id, dueno, campos)` = UPDATE con
+  `lower(dueno)=correo de la sesión` en el WHERE (cancha ajena → 404) solo
+  sobre `COLS_EDITABLES`; el explorador (`AMENIDAD_NOMBRE/ICONO`) reconoce
+  las claves del app. **APK:** `_sincronizarConfigLocalDesdeNube` ahora
+  también trae deportes, fotos y servicios extra (si no, el siguiente upsert
+  del app pisaba la edición web). Test
+  `test_editar_cancha_desde_la_web_como_el_app`.
 - **FICHA DE RESERVA (sep-2026, pedidos del director):** "Cómo llegar" abre
   el mapa DENTRO de la ficha (Leaflet + OpenStreetMap en `#mapaFicha`, con
   enlaces "Abrir en Google Maps" e "Indicaciones paso a paso" debajo), no en

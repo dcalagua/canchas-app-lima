@@ -41,7 +41,7 @@ from pydantic import BaseModel
 import config
 from paises import _CAJAS, pais_de_coordenadas, moneda_de_pais, simbolo_de_moneda
 from pagos import culqi
-from web import datos, descubrir, horarios, marca, sesion, ui
+from web import catalogos, datos, descubrir, horarios, marca, sesion, ui
 from web.ui import e
 
 router = APIRouter()
@@ -58,9 +58,12 @@ NOMBRE_PAIS = {"PE": "Perú", "EC": "Ecuador", "BO": "Bolivia"}
 EXTRAS_NOMBRE = {"arbitro": "Árbitro", "pelotero": "Pelotero (recoge pelotas)",
                  "pelota": "Alquiler de pelota", "pecheras": "Petos / pecheras",
                  "hidratacion": "Hidratación"}
-AMENIDAD_NOMBRE = {"estacionamiento": "Estacionamiento", "vestuarios": "Vestuarios", "duchas": "Duchas",
-                   "iluminacion": "Iluminación", "techada": "Techada", "cafeteria": "Cafetería",
-                   "wifi": "Wi-Fi", "tribuna": "Tribuna", "seguridad": "Seguridad"}
+# Claves de amenidades = las del APP (`catalogos.AMENIDADES`; así los chips y
+# el modal de filtros reconocen lo que guardan los dueños). Se conservan las
+# claves viejas de la web para datos que las tuvieran.
+AMENIDAD_NOMBRE = {**{k: v[0] for k, v in catalogos.AMENIDADES.items()},
+                   "estacionamiento": "Estacionamiento", "vestuarios": "Vestuarios",
+                   "iluminacion": "Iluminación", "techada": "Techada", "tribuna": "Tribuna", "seguridad": "Seguridad"}
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -706,9 +709,10 @@ def _nav_explorar(dep: str, ses: dict | None = None, zonas: list[tuple[str, int]
     return ui.cabecera(tabs=tabs, busq=busq, ses=ses, volver="/")
 
 
-AMENIDAD_ICONO = {"estacionamiento": "🅿️", "vestuarios": "👕", "duchas": "🚿", "iluminacion": "💡", "techada": "🏠",
-                  "cafeteria": "☕", "wifi": "📶", "tribuna": "🪑", "seguridad": "🛡️"}
-_RECOMENDADAS = ("estacionamiento", "iluminacion", "vestuarios", "techada")
+AMENIDAD_ICONO = {**{k: v[1] for k, v in catalogos.AMENIDADES.items()},
+                  "estacionamiento": "🅿️", "vestuarios": "👕", "iluminacion": "💡", "techada": "🏠",
+                  "tribuna": "🪑", "seguridad": "🛡️"}
+_RECOMENDADAS = ("parking", "luces", "vestuario", "techado", "estacionamiento", "iluminacion", "vestuarios", "techada")
 
 
 def _amenidades_de(lista: list[dict]) -> list[tuple[str, int]]:

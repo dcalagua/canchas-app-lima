@@ -5377,6 +5377,14 @@ class AppState extends ChangeNotifier {
         valleHasta: r.valleHasta,
         amenidades: r.amenidades,
         superficie: r.superficie,
+        // También lo que se edita desde la WEB (Modo anfitrión → Editar):
+        // deportes, fotos y servicios extra. Sin esto, el siguiente upsert
+        // desde este equipo pisaría la edición web con la copia local vieja.
+        deporte: r.deporte,
+        deportes: r.deportes,
+        fotos: r.fotos,
+        fotoUrl: r.fotoUrl,
+        serviciosExtra: r.serviciosExtra,
       );
     }
   }

@@ -7,20 +7,23 @@ semanal por cancha: reservas, bloqueos y turnos libres), **Reservas** (todas,
 agrupadas por día), **Ingresos** (saldo, saldo de regalo, por recibir,
 liquidaciones y movimientos del backend) y **Canchas** (sus locales con su
 ficha pública). Sin canchas a su nombre → página "Pon tu cancha" (el registro
-y la verificación siguen en el app). Todo es LECTURA + enlaces a la app para
-lo operativo (reserva manual, bloqueos, editar): el app sigue siendo el
-panel completo; la web es el espejo cómodo desde la laptop.
+y la verificación siguen en el app). **Editar la cancha** (fotos, nombre,
+deportes, precio, horario, servicios) SÍ se hace aquí, con el mismo formulario
+que el app; reserva manual y bloqueos siguen en el app por ahora.
 """
 
 from __future__ import annotations
 
+import json
+import re
+import threading
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from db.store import stores
-from web import datos, horarios, sesion, ui
+from web import almacen, catalogos, datos, horarios, sesion, ui
 from web.router import (PLAY_URL, _deporte, _deportes_de, _fotos, _maps, _moneda_de, _pais_de,
                         _zona, e)
 
@@ -315,7 +318,7 @@ def pagina_ingresos(request: Request) -> HTMLResponse:
 
 
 @router.get("/anfitrion/canchas", response_class=HTMLResponse)
-def pagina_canchas(request: Request) -> HTMLResponse:
+def pagina_canchas(request: Request, guardado: str = "") -> HTMLResponse:
     ses, canchas, resp = _contexto(request, "/anfitrion/canchas")
     if resp is not None:
         return resp
@@ -336,12 +339,325 @@ def pagina_canchas(request: Request) -> HTMLResponse:
             f"<a class='btn sec' href='/reservar/{e(c['id'])}'>Ver ficha pública</a>"
             f"<a class='btn sec' href='/anfitrion/calendario?cancha={e(c['id'])}'>Calendario</a>"
             f"<a class='btn sec' href='{_maps(c)}' target='_blank' rel='noopener'>📍 Mapa</a>"
-            f"<a class='btn sec' href='{PLAY_URL}' rel='noopener'>Editar en la app</a>"
+            f"<a class='btn' href='/anfitrion/cancha/{e(c['id'])}/editar'>✏️ Editar</a>"
             "</div></div></div>")
-    cuerpo = ("<h1 class='anf-hola'>Canchas</h1><p class='sub'>Tus locales en Pichangol. Precio, horario y fotos se editan en la app y se ven aquí al instante.</p>"
+    guardada = next((c for c in canchas if c["id"] == guardado), None) if guardado else None
+    aviso = (f"<div class='aviso ok' style='margin:16px 0 0'>✅ Guardamos los cambios de <b>{e(guardada['nombre'])}</b>. "
+             "Ya se ven en la ficha pública y en la app.</div>") if guardada else ""
+    cuerpo = ("<h1 class='anf-hola'>Canchas</h1><p class='sub'>Tus locales en Pichangol. Edita precio, horario, fotos y servicios aquí o en la app: es la misma cancha.</p>"
+              f"{aviso}"
               f"<div class='anf-grid' style='grid-template-columns:repeat(auto-fill,minmax(360px,1fr));margin-top:16px'>{tarjetas}</div>"
               f"<p style='margin-top:20px'><a class='btn' href='{PLAY_URL}' rel='noopener'>Registrar otra cancha en la app</a></p>")
     return ui.shell("Canchas", cuerpo, nav=_cabecera("canchas", ses), sesion=ses, ancho=True, titulo_tab="Canchas · Modo anfitrión")
+
+
+
+# ── EDITAR CANCHA (como el editor de anuncios de Airbnb) ──────────────────────
+# Mismo formulario, catálogos y validaciones que `editar_cancha_screen.dart`:
+# fotos, nombre/local, deportes + tipo de piso, precio + hora feliz + seña,
+# horario + duración, servicios del local (gratis) y servicios extra (de pago).
+# Solo el DUEÑO (correo de la sesión = `dueno`) puede editar; el UPDATE lo
+# vuelve a exigir en el WHERE. Lo que se guarda lo lee el app tal cual (la
+# nube manda: `_sincronizarConfigLocalDesdeNube`).
+
+_HORA_RE = re.compile(r"^([01]\d|2[0-3]):00$")
+
+
+def _cancha_propia(ses: dict, cancha_id: str) -> dict | None:
+    return next((c for c in datos.canchas_de_dueno(ses["email"]) if c["id"] == cancha_id), None)
+
+
+def _chips(nombre: str, opciones, sel, *, multi: bool = False, fmt=None) -> str:
+    out = []
+    for o in opciones:
+        k, txt = (o if isinstance(o, tuple) else (o, fmt(o) if fmt else str(o)))
+        on = (k in sel) if multi else (k == sel)
+        out.append(f"<button type='button' class='chip{' sel' if on else ''}' data-g='{e(nombre)}' data-v='{e(str(k))}'>{txt}</button>")
+    return f"<div class='chips' data-grupo='{e(nombre)}' data-multi='{1 if multi else 0}'>{''.join(out)}</div>"
+
+
+def _select_hora(nombre: str, valor: str) -> str:
+    ops = "".join(f"<option value='{h}'{' selected' if h == valor else ''}>{h}</option>" for h in catalogos.HORAS)
+    return f"<select name='{nombre}' id='{nombre}'>{ops}</select>"
+
+
+@router.get("/anfitrion/cancha/{cancha_id}/editar", response_class=HTMLResponse)
+def pagina_editar_cancha(request: Request, cancha_id: str) -> HTMLResponse:
+    ses, resp = _sesion_o_entrar(request, f"/anfitrion/cancha/{cancha_id}/editar")
+    if resp is not None:
+        return resp
+    c = _cancha_propia(ses, cancha_id)
+    if c is None:
+        from web.router import _no_encontrada
+        r = _no_encontrada("Esta cancha no está a tu nombre"); r.status_code = 404
+        return r
+    sim, _iso = _moneda_de(c)
+    deps = [d for d in _deportes_de(c) if d in catalogos.DEPORTES_ACTIVOS or d in catalogos.DEPORTES_LEGADO]
+    if not deps:
+        deps = ["futbol"]
+    principal = catalogos.deporte_principal(deps)
+    dep_ops = [(d, f"{_deporte(d)[1]} {_deporte(d)[0]}") for d in catalogos.DEPORTES_ACTIVOS + [x for x in catalogos.DEPORTES_LEGADO if x in deps]]
+    superficies = catalogos.SUPERFICIES.get(principal, [])
+    fotos = _fotos(c)
+    servicios = {str(s.get("clave")): float(s.get("precio") or 0) for s in (c.get("servicios_extra") or [])}
+    filas_serv = ""
+    for k, (nombre, ico) in catalogos.SERVICIOS_EXTRA.items():
+        on = k in servicios
+        precio_txt = f"{servicios[k]:.2f}" if on else ""
+        filas_serv += (f"<div class='serv{' sel' if on else ''}' data-serv='{k}'>"
+                       f"<button type='button' class='chip{' sel' if on else ''}' data-g='servicios' data-v='{k}'>{ico} {e(nombre)}</button>"
+                       f"<label class='precio-serv'{'' if on else ' hidden'}><span>{e(sim)}</span>"
+                       f"<input type='number' name='serv_{k}' min='0.5' step='0.5' inputmode='decimal' value='{precio_txt}' placeholder='Precio'></label></div>")
+    fotos_html = "".join(
+        f"<div class='foto' data-url='{e(u)}'><img src='{e(u)}' alt=''>"
+        f"<span class='portada'{'' if i == 0 else ' hidden'}>Portada</span>"
+        "<div class='acc'><button type='button' class='mini' data-acc='portada' title='Usar como portada'>★</button>"
+        "<button type='button' class='mini' data-acc='quitar' title='Quitar'>✕</button></div></div>" for i, u in enumerate(fotos))
+    secciones = [("fotos", "Fotos"), ("nombre", "Nombre y local"), ("deportes", "Deportes y piso"), ("precio", "Precio y promociones"),
+                 ("horario", "Horario"), ("amenidades", "Servicios del local"), ("extras", "Servicios extra")]
+    nav = "".join(f"<a href='#sec-{k}' class='edit-nav-it'>{n}</a>" for k, n in secciones)
+    cfg = {"id": c["id"], "moneda": sim, "fotos": fotos, "deportes": deps, "superficie": c.get("superficie") or "",
+           "superficies": catalogos.SUPERFICIES, "activos": catalogos.DEPORTES_ACTIVOS, "maxFotos": catalogos.MAX_FOTOS,
+           "storage": almacen.disponible()}
+    cuerpo = f"""
+<div class='edit-top'><a class='volver-lnk' href='/anfitrion/canchas'>‹ Canchas</a>
+<h1 class='anf-hola' style='margin-top:8px'>Editar cancha</h1><p class='sub'>{e(c['nombre'])}{(' · ' + e(c.get('club'))) if c.get('club') else ''} · {e(_zona(c)) if _zona(c) else 'Pichangol'}</p></div>
+<div class='edit-grid'>
+<nav class='edit-nav'>{nav}</nav>
+<form id='fEdit' class='edit-form' autocomplete='off' novalidate>
+ <section class='panel edit-sec' id='sec-fotos'><h2>Fotos</h2><p class='sub'>La primera es la portada en Explorar y en la ficha. Hasta {catalogos.MAX_FOTOS} fotos.</p>
+  <div class='edit-fotos' id='fotos'>{fotos_html}</div>
+  <div class='acciones' style='margin-top:12px'><label class='btn sec' for='inFotos'>📷 Agregar fotos</label><input type='file' id='inFotos' accept='image/*' multiple hidden{' disabled' if not almacen.disponible() else ''}>
+  <span class='sub' id='fotosMsg' style='margin:0'>{'' if almacen.disponible() else 'La subida de fotos desde la web no está disponible en este ambiente; súbelas desde la app.'}</span></div>
+ </section>
+ <section class='panel edit-sec' id='sec-nombre'><h2>Nombre y local</h2>
+  <label for='nombre'>Nombre de la cancha</label><input id='nombre' name='nombre' maxlength='{catalogos.NOMBRE_MAX}' value='{e(c['nombre'])}' placeholder='Ej. Cancha 1 · Grass'>
+  <label for='club'>Local / club</label><input id='club' name='club' maxlength='{catalogos.NOMBRE_MAX}' value='{e(c.get('club') or '')}' placeholder='Ej. Complejo Los Olivos'>
+  <p class='sub' style='font-size:13px'>El local agrupa tus canchas en la ficha. Si lo cambias aquí, solo cambia en esta cancha.</p>
+ </section>
+ <section class='panel edit-sec' id='sec-deportes'><h2>Deportes y tipo de piso</h2><p class='sub'>Marca todo lo que se juega en esta misma superficie (la agenda es una sola).</p>
+  {_chips('deportes', dep_ops, set(deps), multi=True)}
+  <label style='margin-top:18px'>Tipo de piso <span class='req'>obligatorio</span></label>
+  <div id='supWrap'>{_chips('superficie', superficies, c.get('superficie') or '')}</div>
+ </section>
+ <section class='panel edit-sec' id='sec-precio'><h2>Precio y promociones</h2>
+  <label for='precio'>Precio por hora</label>
+  <div class='inp-moneda'><span>{e(sim)}</span><input id='precio' name='precio' type='number' min='1' step='0.01' inputmode='decimal' value='{c['precio_hora']:.2f}'></div>
+  <label style='margin-top:18px'>⚡ Hora feliz (descuento en horas valle)</label>
+  {_chips('descuento_valle', catalogos.DESCUENTOS_VALLE, int(c.get('descuento_valle') or 0), fmt=lambda v: 'Sin descuento' if v == 0 else f'−{v} %')}
+  <div id='valleWrap' class='row' style='margin-top:10px'{'' if int(c.get('descuento_valle') or 0) > 0 else ' hidden'}>
+   <div><label for='valle_desde'>Desde</label>{_select_hora('valle_desde', c.get('valle_desde') or '07:00')}</div>
+   <div><label for='valle_hasta'>Hasta</label>{_select_hora('valle_hasta', c.get('valle_hasta') or '12:00')}</div>
+   <p class='sub' id='vallePrev' style='grid-column:1/-1;margin:0'></p>
+  </div>
+  <label style='margin-top:18px'>Seña para reservar (anti no-show)</label>
+  {_chips('sena_pct', catalogos.SENAS, int(c.get('sena_pct') or 0), fmt=lambda v: 'Sin seña' if v == 0 else f'{v} %')}
+  <p class='sub' id='senaPrev' style='font-size:13px'></p>
+ </section>
+ <section class='panel edit-sec' id='sec-horario'><h2>Horario</h2>
+  <div class='row'><div><label for='hora_apertura'>Abre</label>{_select_hora('hora_apertura', c['hora_apertura'])}</div>
+  <div><label for='hora_cierre'>Cierra</label>{_select_hora('hora_cierre', c['hora_cierre'])}</div></div>
+  <p class='sub' style='font-size:13px'>La hora de cierre es la hora en que <b>empieza el último turno</b>: si cierras a las 23:00, el último turno es 23:00–00:00. Un cierre menor o igual a la apertura cae al día siguiente (00:00 = hasta medianoche, 00:00→00:00 = 24 h).</p>
+  <label style='margin-top:14px'>Duración del turno</label>
+  {_chips('duracion_slot_min', catalogos.DURACIONES, int(c.get('duracion_slot_min') or 60), fmt=catalogos.etiqueta_duracion)}
+ </section>
+ <section class='panel edit-sec' id='sec-amenidades'><h2>Servicios del local</h2><p class='sub'>Gratis para el jugador. Salen como filtros en Explorar.</p>
+  {_chips('amenidades', [(k, f'{ico} {e(n)}') for k, (n, ico) in catalogos.AMENIDADES.items()], set(str(a) for a in (c.get('amenidades') or [])), multi=True)}
+ </section>
+ <section class='panel edit-sec' id='sec-extras'><h2>Servicios extra</h2><p class='sub'>De pago: el jugador los agrega al reservar y suman al total.</p>
+  <div class='servs'>{filas_serv}</div>
+ </section>
+</form>
+</div>
+<div class='barra-guardar'><div class='wrap-xl'><span class='sub' id='msgGuardar' style='margin:0'>Los cambios se ven al instante en la ficha pública y en la app.</span>
+<button type='button' class='btn' id='btnGuardar'>Guardar cambios</button></div></div>
+<script>var CFG={json.dumps(cfg, ensure_ascii=False)};</script>
+<script>{_JS_EDITAR}</script>"""
+    return ui.shell("Editar cancha", cuerpo, nav=_cabecera("canchas", ses), sesion=ses, ancho=True,
+                    titulo_tab=f"Editar {c['nombre']} · Modo anfitrión")
+
+
+_JS_EDITAR = r"""
+(function(){
+var f=document.getElementById('fEdit'), fotos=CFG.fotos.slice(), dep=CFG.deportes.slice(), sup=CFG.superficie, subiendo=0;
+function $(id){return document.getElementById(id)}
+function sel(g){return Array.prototype.slice.call(document.querySelectorAll(".chip.sel[data-g='"+g+"']")).map(function(b){return b.dataset.v})}
+function principal(){for(var i=0;i<CFG.activos.length;i++){if(dep.indexOf(CFG.activos[i])>=0)return CFG.activos[i]}return dep[0]||'futbol'}
+function pintarSup(){var ops=CFG.superficies[principal()]||[];if(ops.indexOf(sup)<0)sup='';
+  $('supWrap').innerHTML="<div class='chips' data-grupo='superficie'>"+ops.map(function(o){return "<button type='button' class='chip"+(o===sup?' sel':'')+"' data-g='superficie' data-v='"+o.replace(/'/g,'&#39;')+"'>"+o+"</button>"}).join('')+"</div>"}
+function pintarFotos(){$('fotos').innerHTML=fotos.map(function(u,i){return "<div class='foto' data-url='"+u.replace(/'/g,'&#39;')+"'><img src='"+u.replace(/'/g,'&#39;')+"' alt=''><span class='portada'"+(i?' hidden':'')+">Portada</span><div class='acc'><button type='button' class='mini' data-acc='portada' title='Usar como portada'>★</button><button type='button' class='mini' data-acc='quitar' title='Quitar'>✕</button></div></div>"}).join('')}
+function prev(){var p=parseFloat($('precio').value)||0, m=CFG.moneda, d=parseInt(sel('descuento_valle')[0]||'0'), s=parseInt(sel('sena_pct')[0]||'0');
+  $('valleWrap').hidden=!(d>0);
+  if(d>0){var a=$('valle_desde').value,b=$('valle_hasta').value;$('vallePrev').textContent='De '+a+' a '+b+(b<=a?' (del día siguiente)':'')+' la hora sale a '+m+' '+(p*(100-d)/100).toFixed(2)+' en vez de '+m+' '+p.toFixed(2)+'.'}
+  $('senaPrev').textContent=s>0?'El jugador paga '+m+' '+(p*s/100).toFixed(2)+' al reservar y el resto en la cancha. Requiere pago en línea activo.':'Sin seña: el jugador puede reservar y pagar todo en la cancha.'}
+document.addEventListener('click',function(ev){
+  var b=ev.target.closest('.chip[data-g]'); if(b){var g=b.dataset.g, wrap=b.closest('.chips'), multi=wrap&&wrap.dataset.multi==='1';
+    if(g==='deportes'){var i=dep.indexOf(b.dataset.v);if(i>=0){if(dep.length>1){dep.splice(i,1);b.classList.remove('sel')}}else{dep.push(b.dataset.v);b.classList.add('sel')}pintarSup();return}
+    if(g==='superficie'){sup=(sup===b.dataset.v)?'':b.dataset.v;pintarSup();return}
+    if(g==='servicios'){var row=b.closest('.serv');row.classList.toggle('sel');b.classList.toggle('sel');row.querySelector('.precio-serv').hidden=!row.classList.contains('sel');if(row.classList.contains('sel'))row.querySelector('input').focus();return}
+    if(multi){b.classList.toggle('sel')}else{wrap.querySelectorAll('.chip').forEach(function(x){x.classList.remove('sel')});b.classList.add('sel')}
+    prev();return}
+  var a=ev.target.closest('.foto .mini'); if(a){var u=a.closest('.foto').dataset.url, i=fotos.indexOf(u);
+    if(a.dataset.acc==='quitar'&&i>=0)fotos.splice(i,1); if(a.dataset.acc==='portada'&&i>0){fotos.splice(i,1);fotos.unshift(u)} pintarFotos()}
+});
+['precio','valle_desde','valle_hasta'].forEach(function(id){$(id).addEventListener('input',prev);$(id).addEventListener('change',prev)});
+function comprimir(file){return new Promise(function(res,rej){var img=new Image(),url=URL.createObjectURL(file);img.onload=function(){var M=1600,w=img.width,h=img.height,k=Math.min(1,M/Math.max(w,h));var cv=document.createElement('canvas');cv.width=Math.round(w*k);cv.height=Math.round(h*k);cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);URL.revokeObjectURL(url);cv.toBlob(function(b){b?res(b):rej(new Error('img'))},'image/jpeg',0.85)};img.onerror=function(){URL.revokeObjectURL(url);rej(new Error('img'))};img.src=url})}
+$('inFotos').addEventListener('change',async function(){var files=Array.prototype.slice.call(this.files||[]);this.value='';var msg=$('fotosMsg');
+  for(var i=0;i<files.length;i++){if(fotos.length>=CFG.maxFotos){msg.textContent='Máximo '+CFG.maxFotos+' fotos.';break}
+    subiendo++;msg.textContent='Subiendo foto '+(i+1)+' de '+files.length+'…';
+    try{var blob=await comprimir(files[i]);var r=await fetch('/anfitrion/cancha/'+encodeURIComponent(CFG.id)+'/foto',{method:'POST',body:blob,headers:{'Content-Type':'image/jpeg'}});var j=await r.json();
+      if(j.ok&&j.url){fotos.push(j.url);pintarFotos();msg.textContent=''}else{msg.textContent=j.error||'No se pudo subir la foto.'}}
+    catch(e){msg.textContent='No se pudo subir la foto. Revisa tu conexión.'}
+    subiendo--}});
+$('btnGuardar').addEventListener('click',async function(){var btn=this,msg=$('msgGuardar');if(subiendo>0){msg.textContent='Espera a que terminen de subir las fotos.';return}
+  var serv=[];document.querySelectorAll('.serv.sel').forEach(function(r){serv.push({clave:r.dataset.serv,precio:parseFloat(r.querySelector('input').value)||0})});
+  var body={nombre:$('nombre').value,club:$('club').value,deportes:dep,superficie:sup,precio_hora:parseFloat($('precio').value),
+    descuento_valle:parseInt(sel('descuento_valle')[0]||'0'),valle_desde:$('valle_desde').value,valle_hasta:$('valle_hasta').value,
+    sena_pct:parseInt(sel('sena_pct')[0]||'0'),hora_apertura:$('hora_apertura').value,hora_cierre:$('hora_cierre').value,
+    duracion_slot_min:parseInt(sel('duracion_slot_min')[0]||'60'),amenidades:sel('amenidades'),servicios_extra:serv,fotos:fotos};
+  btn.disabled=true;msg.classList.remove('err');msg.textContent='Guardando…';
+  try{var r=await fetch('/anfitrion/cancha/'+encodeURIComponent(CFG.id)+'/editar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});var j=await r.json();
+    if(j.ok){location.href='/anfitrion/canchas?guardado='+encodeURIComponent(CFG.id);return}
+    msg.classList.add('err');msg.textContent=j.error||'No se pudo guardar.';if(j.campo){var el=document.getElementById('sec-'+j.campo);if(el)el.scrollIntoView({behavior:'smooth',block:'start'})}}
+  catch(e){msg.classList.add('err');msg.textContent='No se pudo guardar. Revisa tu conexión.'}
+  btn.disabled=false});
+prev();
+})();
+"""
+
+
+def _validar_edicion(c: dict, b: dict) -> tuple[dict | None, str, str]:
+    """Aplica las MISMAS reglas que `editar_cancha_screen._guardar`. Devuelve
+    (campos a guardar, error, sección del error)."""
+    if not isinstance(b, dict):
+        return None, "Datos inválidos.", ""
+    nombre = re.sub(r"\s+", " ", str(b.get("nombre") or "")).strip()[:catalogos.NOMBRE_MAX]
+    if not nombre:
+        return None, "Ponle un nombre a la cancha.", "nombre"
+    club = re.sub(r"\s+", " ", str(b.get("club") or "")).strip()[:catalogos.NOMBRE_MAX] or (c.get("club") or nombre)
+    deps_ok = catalogos.DEPORTES_ACTIVOS + catalogos.DEPORTES_LEGADO
+    deps = []
+    for d in (b.get("deportes") or []):
+        d = str(d).lower()
+        if d in deps_ok and d not in deps:
+            deps.append(d)
+    if not deps:
+        return None, "Marca al menos un deporte.", "deportes"
+    principal = catalogos.deporte_principal(deps)
+    superficie = str(b.get("superficie") or "").strip()
+    if superficie not in catalogos.SUPERFICIES.get(principal, []):
+        return None, "Marca el tipo de piso de la cancha (obligatorio).", "deportes"
+    try:
+        precio = round(float(b.get("precio_hora")), 2)
+    except (TypeError, ValueError):
+        return None, "Pon el precio por hora.", "precio"
+    if not (0 < precio <= 100000):
+        return None, "El precio por hora debe ser mayor a 0.", "precio"
+    try:
+        desc = int(b.get("descuento_valle") or 0)
+        sena = int(b.get("sena_pct") or 0)
+        dur = int(b.get("duracion_slot_min") or 60)
+    except (TypeError, ValueError):
+        return None, "Datos inválidos.", "precio"
+    if desc not in catalogos.DESCUENTOS_VALLE:
+        return None, "Descuento de hora feliz no válido.", "precio"
+    if sena not in catalogos.SENAS:
+        return None, "Seña no válida.", "precio"
+    if dur not in catalogos.DURACIONES:
+        return None, "Duración del turno no válida.", "horario"
+    horas = {}
+    for k, defecto in (("hora_apertura", "07:00"), ("hora_cierre", "23:00"), ("valle_desde", "07:00"), ("valle_hasta", "12:00")):
+        v = str(b.get(k) or c.get(k) or defecto)
+        if not _HORA_RE.match(v):
+            return None, "Hora no válida (usa horas en punto).", "horario" if k.startswith("hora") else "precio"
+        horas[k] = v
+    if desc > 0 and horas["valle_desde"] == horas["valle_hasta"]:
+        return None, "La hora feliz necesita un rango (desde y hasta distintos).", "precio"
+    amen = []
+    for a in (b.get("amenidades") or []):
+        a = str(a)
+        if a in catalogos.AMENIDADES and a not in amen:
+            amen.append(a)
+    servicios = []
+    vistos = set()
+    for s in (b.get("servicios_extra") or []):
+        if not isinstance(s, dict):
+            continue
+        k = str(s.get("clave") or "")
+        if k not in catalogos.SERVICIOS_EXTRA or k in vistos:
+            continue
+        try:
+            p = round(float(s.get("precio")), 2)
+        except (TypeError, ValueError):
+            p = 0
+        if p <= 0:
+            return None, f"Pon el precio de «{catalogos.SERVICIOS_EXTRA[k][0]}» o quítalo.", "extras"
+        vistos.add(k)
+        servicios.append({"clave": k, "precio": p})
+    # Fotos: solo las que ya tenía la cancha o las subidas a SU carpeta del
+    # bucket (nadie cuela una URL ajena en la galería).
+    actuales = set(_fotos(c))
+    prefijo = almacen.prefijo_cancha(c["id"]) if almacen.disponible() else None
+    fotos = []
+    for u in (b.get("fotos") or []):
+        u = str(u).strip()
+        if u and u not in fotos and (u in actuales or (prefijo and u.startswith(prefijo))):
+            fotos.append(u)
+    fotos = fotos[:catalogos.MAX_FOTOS]
+    return {
+        "nombre": nombre, "club": club, "deporte": principal, "deportes": deps, "superficie": superficie,
+        "precio_hora": precio, "descuento_valle": desc, "valle_desde": horas["valle_desde"], "valle_hasta": horas["valle_hasta"],
+        "sena_pct": sena, "hora_apertura": horas["hora_apertura"], "hora_cierre": horas["hora_cierre"], "duracion_slot_min": dur,
+        "amenidades": amen, "servicios_extra": servicios, "fotos": fotos, "foto_url": fotos[0] if fotos else "",
+    }, "", ""
+
+
+@router.post("/anfitrion/cancha/{cancha_id}/editar")
+async def guardar_edicion_cancha(request: Request, cancha_id: str) -> JSONResponse:
+    ses = sesion.de_request(request)
+    if not ses:
+        return JSONResponse({"ok": False, "error": "sesion_requerida"}, status_code=401)
+    c = _cancha_propia(ses, cancha_id)
+    if c is None:
+        return JSONResponse({"ok": False, "error": "Esta cancha no está a tu nombre."}, status_code=404)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": "Datos inválidos."}, status_code=400)
+    campos, err, seccion = _validar_edicion(c, body)
+    if campos is None:
+        return JSONResponse({"ok": False, "error": err, "campo": seccion}, status_code=400)
+    quitadas = [u for u in _fotos(c) if u not in campos["fotos"]]  # antes del UPDATE (c puede ser la misma fila)
+    if not datos.actualizar_cancha(cancha_id, ses["email"], campos):
+        return JSONResponse({"ok": False, "error": "No pudimos guardar en este momento. Inténtalo de nuevo."}, status_code=503)
+    if quitadas:
+        threading.Thread(target=lambda: [almacen.borrar_foto(u) for u in quitadas], daemon=True).start()
+    print(f"[editar-web] {ses['email']} guardó {cancha_id}: {campos['nombre']} · {campos['precio_hora']} · "
+          f"{campos['hora_apertura']}-{campos['hora_cierre']}/{campos['duracion_slot_min']}m · fotos={len(campos['fotos'])}", flush=True)
+    return JSONResponse({"ok": True})
+
+
+@router.post("/anfitrion/cancha/{cancha_id}/foto")
+async def subir_foto_cancha(request: Request, cancha_id: str) -> JSONResponse:
+    """Recibe la imagen (ya comprimida por el navegador) en el cuerpo y la sube
+    al bucket `canchas` del app. Devuelve la URL pública para la galería."""
+    ses = sesion.de_request(request)
+    if not ses:
+        return JSONResponse({"ok": False, "error": "sesion_requerida"}, status_code=401)
+    if _cancha_propia(ses, cancha_id) is None:
+        return JSONResponse({"ok": False, "error": "Esta cancha no está a tu nombre."}, status_code=404)
+    if not almacen.disponible():
+        return JSONResponse({"ok": False, "error": "La subida de fotos no está disponible en este ambiente."}, status_code=503)
+    ctype = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
+    if ctype not in ("image/jpeg", "image/png", "image/webp"):
+        return JSONResponse({"ok": False, "error": "Formato no admitido (usa JPG, PNG o WebP)."}, status_code=415)
+    cuerpo = await request.body()
+    if not cuerpo or len(cuerpo) > almacen.MAX_BYTES:
+        return JSONResponse({"ok": False, "error": "La foto pesa demasiado (máx. 6 MB)."}, status_code=413)
+    url = almacen.subir_foto(cancha_id, cuerpo, ctype)
+    if not url:
+        return JSONResponse({"ok": False, "error": "No se pudo subir la foto. Inténtalo de nuevo."}, status_code=502)
+    return JSONResponse({"ok": True, "url": url})
 
 
 @router.get("/anfitrion/{modulo}", response_class=HTMLResponse)

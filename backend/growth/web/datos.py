@@ -163,6 +163,40 @@ def canchas_de_dueno(email: str) -> list[dict]:
         return []
 
 
+# Columnas que el dueño puede EDITAR desde la web (espejo del formulario del
+# app `editar_cancha_screen`). Cualquier otra clave se ignora.
+COLS_EDITABLES = {
+    "nombre", "club", "deporte", "deportes", "precio_hora", "hora_apertura",
+    "hora_cierre", "duracion_slot_min", "descuento_valle", "valle_desde",
+    "valle_hasta", "sena_pct", "superficie", "amenidades", "servicios_extra",
+    "fotos", "foto_url",
+}
+_COLS_JSON = {"deportes", "amenidades", "servicios_extra", "fotos"}
+
+
+def actualizar_cancha(cancha_id: str, dueno: str, campos: dict) -> bool:
+    """UPDATE de la cancha del DUEÑO (modo anfitrión web). Solo toca la fila
+    si `lower(dueno)` = correo de la sesión y no está eliminada: nadie edita
+    una cancha ajena aunque conozca el id. Devuelve True si cambió 1 fila."""
+    dueno = (dueno or "").strip().lower()
+    sets = {k: v for k, v in (campos or {}).items() if k in COLS_EDITABLES}
+    if not pg.habilitado or not cancha_id or not dueno or not sets:
+        return False
+    cols = sorted(sets)
+    vals = [json.dumps(sets[c]) if c in _COLS_JSON else sets[c] for c in cols]
+    asig = ", ".join(f"{c} = %s::jsonb" if c in _COLS_JSON else f"{c} = %s" for c in cols)
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(f"UPDATE pichangol_canchas SET {asig} WHERE id = %s AND lower(dueno) = %s "
+                        "AND coalesce(eliminada,false) = false", vals + [cancha_id, dueno])
+            n = cur.rowcount
+            conn.commit()
+            return n == 1
+    except Exception as e:  # noqa: BLE001
+        print(f"[editar-web] no se pudo guardar {cancha_id}: {e}", flush=True)
+        return False
+
+
 def reservas_de_canchas(ids: list[str], desde: str, hasta: str) -> list[dict]:
     """Agenda del dueño: reservas de sus canchas entre dos fechas (ISO,
     inclusive), sin las retenciones web sin pagar ni las canceladas."""
