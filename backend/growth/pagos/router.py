@@ -1598,7 +1598,7 @@ def post_liquidacion_online(req: LiquidacionOnlineReq) -> dict:
         stores.registrar_pago(
             tipo="comision_reserva", monto_centimos=com_saldo, moneda=iso,
             estado="aprobado", dueno_id=req.dueno_id,
-            culqi_charge_id=f"{req.reserva_id}_com",
+            culqi_charge_id=f"{req.reserva_id}_com", promo_centimos=promo_usado,
             concepto=f"Comisión · {req.concepto or 'Reserva online'}{sufijo}")
         stores.registrar_pago(
             tipo="liquidacion_full", monto_centimos=bruto, moneda=iso,
@@ -1621,6 +1621,60 @@ def post_liquidacion_online(req: LiquidacionOnlineReq) -> dict:
     return {"ok": True, "duplicada": False, "fuente": "transaccion",
             "requiere_recarga": True, "bruto_centimos": bruto,
             "comision_centimos": comision, "neto_centimos": bruto - comision}
+
+
+@router.get("/cancelaciones-web", dependencies=_ADMIN)
+def get_cancelaciones_web(pendientes: bool = False) -> dict:
+    """Torre: cancelaciones hechas desde la web con el estado de su reembolso.
+    `reembolso` = reembolsado | fallo (Culqi rechazó, atender a mano) | manual
+    (pagó en el app: el operador devuelve) | sin_reembolso (<6 h) | no_aplica
+    (pago en la cancha). `deuda_dueno_centimos` > 0 = el dueño ya había
+    cobrado su liquidación y hay que descontárselo en la siguiente."""
+    def _pend(c: dict) -> bool:
+        return c.get("reembolso") in ("fallo", "manual") or (c.get("deuda_dueno_centimos", 0) > 0 and not c.get("deuda_resuelta"))
+    lst = [c for c in stores.cancelaciones_web if not pendientes or _pend(c)]
+    # Pendientes primero; dentro de cada grupo, las más recientes arriba.
+    lst = sorted(lst, key=lambda c: c.get("creado_en", ""), reverse=True)
+    lst = sorted(lst, key=lambda c: not _pend(c))
+    return {"cancelaciones": lst, "total": len(lst), "pendientes": sum(1 for c in stores.cancelaciones_web if _pend(c))}
+
+
+class ResolverCancelacionReq(BaseModel):
+    accion: str          # devuelto (reembolso manual/fallido hecho a mano) | descontado (deuda del dueño aplicada)
+    referencia: str = ""  # nº de operación / nota
+
+
+@router.post("/cancelaciones-web/{cid}/resolver", dependencies=_ADMIN)
+def post_resolver_cancelacion_web(cid: int, req: ResolverCancelacionReq) -> dict:
+    """Torre: cierra lo que quedó a mano en una cancelación web.
+    `devuelto` → el operador ya devolvió la plata (reembolso `manual` o
+    `fallo`) → `reembolsado_manual`. `descontado` → la deuda del dueño (ya se
+    le había liquidado) se descontó en su siguiente pago → `deuda_resuelta` y
+    el pago `ajuste_cancelacion` pasa a `aplicado`."""
+    from db.store import ahora as _ahora
+    for c in stores.cancelaciones_web:
+        if int(c.get("id", 0)) != cid:
+            continue
+        acc = (req.accion or "").strip()
+        if acc == "devuelto":
+            if c.get("reembolso") not in ("manual", "fallo"):
+                return {"ok": False, "error": "no_pendiente"}
+            c["reembolso"] = "reembolsado_manual"
+            c["resuelto_en"] = _ahora().isoformat()
+            c["referencia"] = (req.referencia or "").strip()[:200]
+            return {"ok": True, "reembolso": c["reembolso"]}
+        if acc == "descontado":
+            if not c.get("deuda_dueno_centimos") or c.get("deuda_resuelta"):
+                return {"ok": False, "error": "sin_deuda"}
+            c["deuda_resuelta"] = True
+            c["deuda_resuelta_en"] = _ahora().isoformat()
+            c["deuda_referencia"] = (req.referencia or "").strip()[:200]
+            aj = stores.pago_por_charge(f"{(c.get('ids') or [''])[0]}_ajuste")
+            if aj is not None and aj.tipo == "ajuste_cancelacion":
+                aj.estado = "aplicado"
+            return {"ok": True, "deuda_resuelta": True}
+        return {"ok": False, "error": "accion_invalida"}
+    return {"ok": False, "error": "no_encontrada"}
 
 
 @router.post("/venta", dependencies=_APP)

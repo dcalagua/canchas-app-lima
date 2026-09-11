@@ -7,9 +7,12 @@ Ejecutar (desde este directorio):
 
 from __future__ import annotations
 
+import os
+
 import asyncio
 
 from fastapi import Depends, FastAPI, Request
+from fastapi.staticfiles import StaticFiles
 
 import config
 from compliance.consent import consent_store
@@ -19,6 +22,10 @@ from db import pg
 from entrenador.router import router as entrenador_router
 from db.store import seed_verificadores, stores
 from legal.router import router as legal_router
+from web.router import router as web_router
+from web.anfitrion import router as anfitrion_router
+from web.anfitrion_academia import router as anfitrion_academia_router
+from web.anfitrion_tienda import router as anfitrion_tienda_router
 from models import ConfigRequest, ConsentimientoRequest
 from marketing.router import router as marketing_router
 from pagos.router import (procesar_renovaciones, procesar_renovaciones_alumnos,
@@ -95,6 +102,14 @@ app.include_router(ventas_router)
 app.include_router(circuito_router)
 app.include_router(marketing_router)
 app.include_router(legal_router)
+app.include_router(web_router)
+app.include_router(anfitrion_academia_router)  # antes del comodín /anfitrion/{modulo}
+app.include_router(anfitrion_tienda_router)
+app.include_router(anfitrion_router)
+# Assets de marca de la web pública (pin, logo para OG/favicon). Ruta fija
+# junto a este archivo para que Railway (root dir backend/growth) los sirva.
+app.mount("/static", StaticFiles(directory=os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "static")), name="static")
 app.include_router(concierge_router)
 
 

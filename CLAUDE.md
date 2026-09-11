@@ -177,6 +177,421 @@ para la API del APK.
   Culqi además exige que la app esté PUBLICADA en Play (o darles acceso de
   tester). La URL registrada en Culqi debe ser `www.pichangol.app`, NO
   `grupoebim.com` (observación de Culqi, sep-2026).
+- **RESERVA WEB (fase 1, hecho sep-2026, autorizado por el director):**
+  `backend/growth/web/` — `GET /canchas` (catálogo de canchas verificadas,
+  agrupado por país, filtro `?deporte=`), `GET /reservar/{id}` (fecha,
+  horarios libres con precio, datos del cliente, extras, **Culqi Checkout
+  v4** con Yape + tarjeta), `GET /web/disponibilidad/{id}?fecha=` (JSON),
+  `POST /web/asegurar` (INSERT `pichangol_reservas` estado `nueva` con
+  hold de 10 min, id `web_<epoch_ms>_n`, firma HMAC), `POST /web/pagar`
+  (cargo Culqi → `confirmada`+`pagado`+`medio_pago` → `/pagos/
+  liquidacion-online` billetera-first → push "Nueva reserva 📅" al dueño),
+  `POST /web/liberar`, `GET /reserva/{id|grupo}` (comprobante). Lee y
+  escribe las MISMAS tablas del APK por Postgres directo (`web/datos.py`,
+  `DATABASE_URL`, sin RLS) — el dueño ve la reserva web en su agenda como
+  una online más; el UNIQUE `(cancha_id, fecha, hora_inicio)` evita la
+  doble reserva. `web/horarios.py` es ESPEJO de `Cancha` (slots, cierre
+  que cruza medianoche, fecha real de madrugada, hora feliz, descuentos por
+  slot, bloqueos). **Multi-país:** cobro web sólo en soles (Culqi); canchas
+  en \$ o Bs muestran el detalle y mandan a la app. El checkout se muestra
+  con cualquier `CULQI_PUBLIC_KEY` (también `pk_test`, para que Culqi lo
+  revise en PRD antes de dar las llaves live); el APK sigue apagado hasta
+  `sk_live`. Tests `test_web_reservas.py` (base simulada). **Look & feel =
+  el del APK** (decisión del director, sep-2026): `web/ui.py` es el sistema
+  de diseño web (tokens de `lib/theme.dart`: Montserrat, azul noche
+  `#0F1B2D`, esmeralda `#0E8F67`, papel `#F4F7FA`; wordmark Pichang[o]l con
+  la pelota SVG; chips/tarjetas/botones Airbnb; marcas Yape/Visa/MC; sello
+  "✓ Verificada"); `ui.shell()` envuelve TODAS las páginas públicas y la home
+  usa los mismos tokens. Assets de marca en `backend/growth/static/brand/`
+  (`/static/...`, montado en `main.py`; favicon/OG). Reserva: tira de 14
+  días (Hoy/Mañana/…), selector de deporte si la loza es multiuso, resumen
+  fijo "Resumen de tu reserva" (barra inferior en móvil), skeleton al
+  cargar, comprobante con check animado + `.ics` + Cómo llegar + WhatsApp,
+  JSON-LD `SportsActivityLocation`, 404 propio. **`/canchas` es la pantalla
+  inicial "Explorar" de la web (sep-2026):** pide ubicación al cargar (y con
+  el botón "Usar mi ubicación"), ordena por cercanía con la distancia en cada
+  tarjeta, pone primero el país del usuario (cajas de `paises._CAJAS`
+  pasadas al JS) y muestra un mapa **Leaflet + OpenStreetMap** (sin API key)
+  con pines de precio y popup "Ver horarios"; la ubicación se recuerda en
+  `localStorage`. Banderas como SVG (`ui.bandera`): los emoji de bandera no
+  se ven en Windows. Regla anti scroll horizontal: `html,body{overflow-x:
+  hidden}` + `minmax(0,1fr)`/`min-width:0` en las columnas de la grilla.
+  **Canchas NO verificadas también salen en la web** (decisión del director,
+  sep-2026): `datos.canchas_publicas()` = registradas y no eliminadas;
+  `datos.reservable(c)` = verificada + con dueño (espejo de
+  `Cancha.reservable`). Las pendientes van después, con pill "Aún sin
+  verificar", pin gris y botón "Reservar en la app"; su ficha explica que
+  está en verificación y manda a Play; `/web/asegurar` responde
+  `no_verificada`. Sólo las reservables muestran el checkout.
+  **Canchas DESCUBIERTAS en Google también (sep-2026):** `web/descubrir.py`
+  llama a la MISMA Edge Function `places-cerca` que el APK (key de Places
+  como secret de Supabase; el backend usa `SUPABASE_URL` + `SUPABASE_ANON_KEY`)
+  y aplica la misma heurística de `places_service.dart` (`deporte_de`), con
+  caché en memoria por celda de ~2 km + país (6 h) y dedup contra las
+  registradas (nombre + <120 m). `GET /web/descubrir?lat&lng[&fotos=1]`; el
+  explorador las pinta en "Más canchas cerca de ti" con "Aún sin registrar",
+  "Reservar en la app", "Cómo llegar" y "¿Es tuya? Reclámala"; pines grises
+  en el mapa. Sin Supabase/key → lista vacía, la web sigue.
+- **PORTADA TIPO AIRBNB (`GET /`, hecho sep-2026, pedido del director):** la
+  raíz del dominio YA NO es la home de marketing sino el EXPLORADOR
+  (`web/router.py::_explorar`; `/canchas` es alias): cabecera con buscador en
+  pastilla (Dónde · Deporte · Cuándo · lupa), "Pon tu cancha" + "Descarga la
+  app", barra de categorías con ícono y subrayado (`CATEGORIAS`), grilla de
+  tarjetas Airbnb (`_tarjeta`: foto cuadrada con carrusel scroll-snap y
+  puntos, corazón = favorito en `localStorage`, badge Verificada / Aún sin
+  verificar, ★ promedio real de `pichangol_resenas` vía `datos.ratings()` o
+  "Nuevo", zona, deportes + turnos + distancia, precio por hora), botón
+  flotante "Mostrar mapa" (split view lista+mapa sticky en escritorio, mapa a
+  pantalla completa en móvil; Leaflet se dibuja al abrirlo; preferencia en
+  `localStorage`), "Filtros" (solo verificadas, precio máx.). El DEPORTE lo
+  filtra el servidor (`?deporte=`, categorías = enlaces, SEO); zona/texto,
+  verificadas y precio se filtran en el navegador; la FECHA del buscador
+  viaja a la ficha (`/reservar/{id}?fecha=` preselecciona el día de la tira).
+  Debajo de las canchas van las secciones de comercio que revisan Culqi e
+  INDECOPI (`web/marca.py` extrae de `legal/home.html` las secciones desde
+  "Qué ofrecemos" hasta el Libro de Reclamaciones y re-escribe su CSS bajo el
+  prefijo `.marca` para no pisar `ui.py`); el pie (`ui.footer()`, columnas
+  estilo Airbnb) lleva razón social, RUC, contacto y enlaces legales en TODAS
+  las páginas. `home.html` sigue siendo el texto legal/comercial editable, ya
+  no se sirve entero. Test `test_raiz_es_el_explorador_tipo_airbnb`.
+  **PRIMERA FOTO SIEMPRE (regla del director, sep-2026):** la web muestra la
+  primera foto como el app. Las canchas SEMBRADAS desde el app no guardan las
+  fotos de Google en la base; `GET /web/foto?id|nombre&club&lat&lng`
+  (`descubrir.fotos_de_lugar` → misma Edge Function `places-cerca` con radio
+  250 m y `fotos=true`; `_elegir_lugar` = mejor coincidencia de palabras con
+  nombre/club sin el sufijo de sede, a igual puntaje el más cercano; caché
+  12 h por lugar, 10 min si vino vacío) las resuelve en vivo. Las tarjetas y
+  la galería de la ficha nacen con placeholder `data-buscar` y el JS las
+  rellena (cola de 3 en paralelo); también las descubiertas más allá de las
+  16 con foto que devuelve la Edge. **Respaldo directo:** si la Edge no trae
+  fotos (en QAS pasó: las descubiertas salían sin foto aun con `fotos=1`) y
+  hay `PLACES_API_KEY` en Railway (llave SIN restricción Android, la misma
+  del secret de Supabase), el backend habla con Google Places (New)
+  (`_fotos_directo`: Place Details por `place_id` o Text Search por
+  nombre/club a 300 m; URLs públicas vía `skipHttpRedirect`). Cada
+  resolución imprime una línea `[foto] …` en los logs de Railway (lugares
+  que devolvió la Edge, cuántos con foto, `diag` de Google, origen) para
+  diagnosticar sin adivinar. Dedup de descubiertas también por CLUB
+  (`registradas` lleva `club`; "Fútbol 1" del club "Sabor Golazo" = el
+  lugar de Google). **CUOTA (trampa real, sep-2026):** la 1.ª versión pedía
+  la foto de cada tarjeta vía la Edge (12 Text Search por tarjeta) →
+  Google 429 "SearchTextRequest per minute" y NADA tenía foto. Regla:
+  con `PLACES_API_KEY` es UNA llamada a Google por lugar (Place Details por
+  id / un Text Search por club) y la Edge solo sin llave; semáforo de 3 en
+  el servidor; un 429 pausa 60 s sin cachear vacíos; el navegador pide
+  fotos solo de las tarjetas visibles (IntersectionObserver, 2 a la vez).
+  **COSECHA de fotos** (`pichangol_lugares_fotos`, SQL
+  `docs/piloto/supabase_lugares_fotos.sql`; `datos.leer/guardar_fotos_lugar`):
+  la primera foto resuelta se guarda por `place_id` (o `cancha:<id>`) y se
+  paga UNA vez; se refresca sola a los 30 días (tope de caché de los
+  términos de Google; nunca se descarga el archivo) y, si Google falla, vale
+  la guardada. Lugares que Google confirma SIN foto se reintentan cada 6 h.
+  Test `test_primera_foto_siempre_como_el_app`.
+- **LOGIN CON GOOGLE EN LA WEB (decisión del director, sep-2026: mismo
+  flujo que el app):** `web/sesion.py`. Botón oficial de Google Identity
+  Services (`GOOGLE_WEB_CLIENT_ID` = client id OAuth de tipo "Aplicación
+  web" del proyecto de Google de Pichangol, con orígenes autorizados
+  `https://pg.ebim.pe` y `https://www.pichangol.app`); `POST /web/sesion`
+  verifica el ID token contra Google (tokeninfo, audiencia = ese client id
+  o `GOOGLE_OAUTH_CLIENT_IDS`) y deja la cookie httpOnly FIRMADA
+  `pcg_sesion` (HMAC con el secreto del backend, 30 días); `POST /web/salir`,
+  `GET /web/sesion`, página `GET /entrar?volver=`. Con el client id
+  configurado, la ficha muestra en "Tus datos" la caja "Inicia sesión con
+  Google para reservar" (sin recargar: `alIniciarSesion`), luego "Reservando
+  como" + Cambiar cuenta; `/web/asegurar` y `/web/pagar` responden
+  `sesion_requerida` sin cookie y la reserva queda a nombre del CORREO de
+  Google (`usuario`), así aparece en "Mis reservas" del app con la misma
+  cuenta. La barra muestra avatar/nombre o "Iniciar sesión"
+  (`ui.chip_sesion`). **Sin `GOOGLE_WEB_CLIENT_ID` la web sigue en modo
+  invitado** (nombre + correo) para no romper antes de crear el client id.
+  Test `test_reservar_exige_login_con_google_como_el_app`.
+- **Paleta = la del LOGO oficial (sep-2026):** `ui.py` TOKENS: verde
+  `#0B8A3E` (CTA), verde oscuro `#067A38`, lima `#7CB518`, naranja `#F28C28`
+  (corazón de favorito), azul noche `#0A1B3D` (texto), fondo blanco `#FFFFFF`. El
+  wordmark web es el logo real: `/static/brand/logo_pin.png` + "Pichangol"
+  peso 800 SIN cursiva (`ui.wordmark`, pedido del director). Buscador con foco tipo Airbnb (pastilla gris,
+  segmento activo blanco con sombra, cursor visible, chevron en el select);
+  categorías centradas en escritorio.
+- **CABECERA TAL CUAL AIRBNB.COM (pedido del director, sep-2026):**
+  `ui.cabecera()` es la cabecera de TODAS las páginas web: fila 1 = logo a
+  la izquierda · pestañas por deporte con ícono al centro (`CATEGORIAS`,
+  subrayado negro en la activa) · a la derecha "Modo anfitrión" (→ Play), el
+  avatar (foto de Google si hay sesión, silueta si no) y el botón ☰ con menú
+  desplegable (`ui.menu_cuenta`: Iniciar sesión o registrarse / nombre +
+  correo + Mis reservas + Cerrar sesión, Cómo funciona, Centro de ayuda, Pon
+  tu cancha, Descarga la app, Libro de Reclamaciones; se cierra al hacer
+  clic fuera o con Esc, `ui.JS_NAV`); fila 2 = buscador GRANDE centrado en
+  pastilla (Dónde · Cuándo · Hora · botón verde "Buscar"; el deporte va en
+  las pestañas). Bajo "Dónde" se desglosa un panel (`#sugDonde`) con
+  **Búsquedas recientes** (`localStorage` `pcg_busq`, se guardan al
+  Buscar/Enter/elegir) y **Zonas sugeridas** ("Cerca de ti" →
+  `ubicar(true)` + las zonas con más canchas, `router._zonas_sugeridas`).
+  **"Cuándo" abre un CALENDARIO tipo Airbnb** (`#panCuando`, dos meses en
+  escritorio / uno en móvil, flechas, días pasados y más allá de
+  `DIAS_ADELANTE` tachados, toggle "Fecha | Cualquier día", atajos Hoy /
+  Mañana / Sábado / Domingo; al elegir un día se abre solo el panel de
+  hora). **"Hora" abre un panel de chips** (`#panHora`: Cualquier hora +
+  Mañana/Tarde/Noche, 06:00-23:00). **Con "Hoy", las horas que ya pasaron
+  quedan DESHABILITADAS** (`horaPasada`: solo turnos que empiezan después
+  de este momento, reloj del navegador; grupos enteros en gris y aviso si
+  ya no queda ninguna); una hora elegida que pasa a ser inválida se
+  descarta. **También se deshabilitan las horas en las que NINGUNA cancha
+  de la lista tiene turno** (tooltip "Ninguna cancha tiene turno a esta
+  hora"; con la regla "el último turno EMPIEZA a la hora de cierre", una
+  que cierra 23:00 sí ofrece las 23:00) y el vacío explica el motivo ("Ninguna cancha tiene
+  turno libre hoy a las 23:00…"). La tarjeta muestra el horario
+  (`07:00–23:00 · 60 min`) para que se entienda por qué sale o no. **NADA se filtra hasta pulsar "Buscar"** (regla del director,
+  sep-2026, como Airbnb): lo elegido vive en `pend` (zona, fecha, hora) y
+  `buscar()` lo copia a `filtro`, aplica, guarda la búsqueda reciente y
+  pinta el resumen "Buscando: … · Limpiar" (`#resBusq`) en la línea de
+  ubicación. Elegir una zona sugerida solo rellena "Dónde" y pasa a
+  "Cuándo"; **"Cerca de ti"** pone ese texto en "Dónde" y, al Buscar, pide
+  la ubicación, ordena por cercanía y deja solo las canchas a ≤30 km
+  (`filtro.cerca`). **FILTROS TAL CUAL AIRBNB (sep-2026):** bajo la línea
+  de ubicación va la barra `_barra_filtros` (botón "⚙️ Filtros" con badge
+  de filtros activos + chips rápidos con las amenidades más comunes, que
+  aplican al instante) y el MODAL `_modal_filtros` (`#modalFiltros`, 568
+  px, cuerpo con scroll, pie fijo): "Recomendado para ti" (tarjetas con
+  ícono: estacionamiento, iluminación, vestuarios, techada — las que
+  existan en los datos), "Tipo de local" (segmentado Cualquier tipo /
+  Verificadas / Aún sin verificar), "Rango de precios" (histograma de los
+  precios reales + doble slider + cajas Mínimo/Máximo; SOLO en la moneda
+  del país del usuario o del primer grupo, `data-mon`; las canchas en
+  otra moneda no se filtran por precio), "Servicios del local" (todas las
+  amenidades con conteo), "Superficie" y "Duración del turno" (si hay más
+  de una). Todo se cuenta en vivo ("Mostrar N canchas"), "Limpiar
+  filtros" y se aplica al pulsar Mostrar (`fil` vs `filTmp`; `pasaBase` =
+  buscador, `pasaFil` = modal). Datos por tarjeta: `data-am`, `data-sup`,
+  `data-paso`, `data-mon`, `data-pnum`. Los viejos chips "Solo verificadas
+  / precio máx." desaparecieron. **PANTALLA COMPLETA como Airbnb:**
+  `.wrap-xl` ya no tiene tope de 1440 px: márgenes 80 px (≥1128), 40 px,
+  24 px, 16 px; la grilla es `auto-fill minmax(250px)` (5-6 columnas en
+  1900 px). El filtro de hora es REAL, no cosmético: en el navegador se ocultan las canchas cerradas a esa hora
+  (`data-ap`/`data-ci`/`data-paso` de cada tarjeta, `abiertaA`) y, con
+  fecha + hora, `GET /web/libres?fecha&hora` responde qué canchas
+  reservables tienen un turno LIBRE que cubra esa hora (`_hora_libre`:
+  inicio ≤ hora < fin, misma lógica de slots/madrugada/turnos pasados que
+  la ficha; `datos.ocupados_varias` = UNA consulta para todas). La fecha y
+  la hora viajan a la ficha (`/reservar/{id}?fecha=&hora=` → `cfg.hora`
+  preselecciona el turno libre que la cubre) y también se aceptan en la
+  URL de la portada (`/?fecha=&hora=`). Un solo desplegable abierto a la
+  vez (`abrirPanel`); OJO: al repintar el calendario el día clicado sale
+  del DOM, por eso el "clic fuera" ignora nodos `!isConnected`. Test
+  `test_buscador_por_fecha_y_hora_como_airbnb`. Al hacer scroll la cabecera se COMPACTA
+  (`.cab.chica`): pestañas y buscador se esconden y al centro queda la
+  pastilla chica "Cualquier zona · Cualquier deporte · Cuándo quieras"
+  (`ui.busq_mini`); tocarla vuelve arriba y enfoca "Dónde". Las páginas
+  interiores (`nav_simple`) llevan la misma cabecera en modo `simple` con la
+  pastilla chica enlazando a `/canchas`. Responsive: <1400 px las 8
+  pestañas pasan a su propia fila centrada bajo el buscador (no caben junto
+  al logo); <1060 px sin compactar, tira desplazable; <900 px se esconden
+  "Modo anfitrión", "Cuándo" y el texto de Buscar. Los filtros (Solo
+  verificadas, precio máx.) viven en el cuerpo, botón "⚙️ Filtros" a la
+  derecha de la línea de ubicación. **Fuente = DM Sans** (Airbnb Cereal es
+  propietaria y no se puede descargar; DM Sans es su equivalente libre) y
+  fondo BLANCO (`--papel:#FFFFFF`) como airbnb.com. **Trampa CSS:**
+  `overflow-x:hidden` en `body` convierte al body en scroll container y
+  mata el `position:sticky` de la cabecera → `html{overflow-x:hidden}` +
+  `body{overflow-x:clip}`.
+  **MÓVIL (≤900 px, arreglado sep-2026 tras captura del director):** la
+  cabecera `simple` de las páginas interiores ponía logo · pastilla · avatar
+  en UNA fila y "Pichangol" se montaba sobre la pastilla. Ahora en móvil
+  va en dos filas como airbnb.com en el celular: logo + avatar + ☰ arriba y
+  la pastilla a TODO el ancho debajo, con lupa a la izquierda y dos líneas
+  ("¿Dónde juegas?" / "Cualquier zona · Cualquier deporte · Cuándo quieras",
+  `busq_mini` lleva el bloque `.mov` solo visible en móvil); la compacta
+  `.chica` en móvil deja solo la pastilla. Toda pantalla web nueva se prueba
+  también a 390 px (Playwright `isMobile`).
+- **MIS RESERVAS EN LA WEB (sep-2026, pedido del director):** `GET
+  /mis-reservas` (router `pagina_mis_reservas`) lista las reservas del CORREO
+  de Google con sesión — las mismas que "Mis reservas" del app —
+  (`datos.reservas_de_usuario`: `lower(usuario)=email`, sin retenciones
+  web sin pagar), separadas en Próximas y Pasadas, con estado (Pagada /
+  Pagas en la cancha / Cancelada / No asististe), precio, Comprobante
+  (`/reserva/{grupo|id}`), Ver cancha / Reservar de nuevo y Cómo llegar; los
+  turnos de una misma reserva se agrupan en UNA tarjeta
+  (`_agrupar_reservas`: 19:00–21:00 · 2 turnos, precio sumado). Sin cookie →
+  302 a `/entrar?volver=/mis-reservas`; sin `GOOGLE_WEB_CLIENT_ID` explica
+  que están en la app. Enlace "📅 Mis reservas" en el menú ☰ (solo con
+  sesión). **Layout = "Viajes" de Airbnb (sep-2026):** columna izquierda
+  (≤520 px) con tarjetas `.viaje` (foto cuadrada — propia o resuelta con
+  `/web/foto` —, cancha, club, fecha · hora · turnos, avatar del jugador,
+  pill de estado, precio y "Cancelar reserva"); clic = comprobante. Derecha:
+  mapa Leaflet sticky con un pin por reserva próxima (popup "Ver reserva").
+  Debajo: `<details>` "Dónde has jugado" (pasadas) y "🗓️ Reservaciones
+  canceladas" (historial de `stores.cancelaciones_web` con el estado de la
+  devolución). Aviso verde tras cancelar (`sessionStorage` `pcg_aviso`).
+  **CANCELACIÓN CON REEMBOLSO DESDE LA WEB (hecho sep-2026, autorizado por
+  el director):** `POST /web/cancelar {ref}` (grupo o turno; solo con sesión
+  y solo reservas del propio correo; `estado_cancelacion()` decide: no se
+  cancela lo que ya empezó; con ≥ `WEB_CANCELACION_HORAS` (6, env) y pagada
+  → devolución del 100 %). Flujo: (1) si el cargo fue WEB (`stores` tipo
+  `cobro_web`, registrado en `/web/pagar` con el `charge_id` de Culqi y
+  `concepto=web:<ref>`) → `culqi.reembolsar` (`POST /v2/refunds`, funciona
+  en test y live) → `reembolsado` (o `fallo` si Culqi rechazó); si pagó en el
+  APP no tenemos su cargo → `manual` (el operador devuelve); < 6 h →
+  `sin_reembolso`; pago en la cancha → `no_aplica`. (2) Reversa contable del
+  dueño SOLO si el cliente recupera su plata: liquidación
+  (`liquidacion_full|online` por `reserva_id`) → `anulado` si aún no se le
+  pagó, y la comisión `<id>_com` → `anulado` devolviendo al dueño la parte
+  real a su saldo y la parte regalo (`PagoRegistro.promo_centimos`, nuevo
+  campo que guarda `post_liquidacion_online`) a su bolsillo promo; si YA se
+  le liquidó → pago `ajuste_cancelacion` (estado `pendiente`) +
+  `deuda_dueno_centimos` en el registro para descontar en la siguiente
+  liquidación. (3) Se BORRAN las filas de `pichangol_reservas` (igual que el
+  app al cancelar: libera el horario y el app deja de mostrarla; los puntos
+  derivados desaparecen solos). (4) Registro en `stores.cancelaciones_web`
+  (snapshot) + push al dueño ("Reserva cancelada 📅 … quedó libre") y al
+  jugador (qué pasa con su plata) + línea `[cancelar]` en logs. Torre: `GET
+  /pagos/cancelaciones-web[?pendientes=1]` (X-Admin-Token) lista todo; las
+  `fallo`/`manual`/con deuda las atiende el operador en la torre `/admin` →
+  Cobros → **"↩️ Cancelaciones web"** (`cargarCancelacionesWeb` en
+  `propiedad/panel.py`; pendientes primero con borde ámbar): "✅ Marcar
+  devuelto" (`POST /pagos/cancelaciones-web/{id}/resolver {accion:
+  devuelto, referencia}` → `reembolsado_manual`) y "➖ Marcar deuda
+  descontada" (`accion: descontado` → `deuda_resuelta` y el pago
+  `ajuste_cancelacion` pasa a `aplicado`). El comprobante `/reserva/{ref}` muestra "Cancelar reserva" al
+  dueño de la reserva (modal `_MODAL_CANCELAR` + `JS_CANCELAR`, compartidos
+  con Mis reservas) y la política con las horas configuradas.
+- **MODO ANFITRIÓN EN LA WEB (sep-2026, pedido del director: mismo flujo
+  que airbnb.com/hosting):** `web/anfitrion.py` (router incluido en
+  `main.py`). El enlace "Modo anfitrión" de la cabecera abre `/anfitrion`
+  (sin sesión → `/entrar?volver=`) = **el MISMO MENÚ del app** (pedido del
+  director, sep-2026): cabecera verde "‹ Modo anfitrión · Publica tu cancha
+  o academia…" + tarjetas con ícono de color (`MENU`): 🏬 Mis canchas →
+  `/anfitrion/mis-canchas` (panel web completo), 📣 Mi academia y 🏪 Mi
+  tienda (web, ver abajo), 🏆 Mis campeonatos y 🛡️ Verificador →
+  `/anfitrion/{modulo}` (páginas "está en la app" con pill "En la app" y
+  botón Abrir en la app). Dentro de Mis canchas la
+  cabecera cambia a modo anfitrión (`ui.cabecera(modo="anfitrion")`: logo →
+  `/anfitrion`, pestañas 📅 Hoy · 🗓️ Calendario · 📋 Reservas · 💰 Ingresos ·
+  🏟️ Canchas, y a la derecha "Cambiar a modo jugador" → `/`, también en el
+  menú ☰; enlace "‹ Modo anfitrión" vuelve al menú). Datos:
+  `datos.canchas_de_dueno(email)` (`lower(dueno)=correo`, no eliminadas),
+  `datos.reservas_de_canchas(ids, desde, hasta)` (sin holds ni canceladas),
+  `datos.bloqueos_de`. Sin canchas a su nombre → onboarding "Hola 👋 …
+  Registrar mi cancha en la app" (el reclamo/verificación siguen en el
+  app). **Hoy** = chips Hoy / Mañana / Próximos 7 días / Por cobrar en
+  efectivo con tarjetas (hora, cancha, jugador + correo + celular + botón
+  WhatsApp, monto, pill Pagada en línea · yape|tarjeta / Cobrada / Cobrar en
+  la cancha) + atajos. **Calendario** = agenda SEMANAL de una cancha (chips
+  para cambiar, ‹ › Hoy): filas = turnos (regla "último turno empieza al
+  cierre"), celdas verde = pagada, ámbar = cobrar en cancha, gris =
+  bloqueado; solo lectura (bloquear/manual → app). **Reservas** = próximas y
+  pasadas 30 d agrupadas por día. **Ingresos** = billetera del backend
+  (`stores.saldo_centimos`, `saldo_promo_centimos`, `liquidaciones` +
+  `_liquidacion_dict`): KPIs Por recibir / Saldo / Regalo, liquidaciones
+  pendientes y pagadas, últimos movimientos. **Canchas** = sus locales con
+  foto, verificada, deportes, horario, precio y botones Ver ficha pública /
+  Calendario / Mapa / Editar. Test
+  `test_modo_anfitrion_en_la_web_como_airbnb`.
+- **EDITAR CANCHA DESDE LA WEB (sep-2026, decisión del director: "web =
+  vender y atender; app = operar", punto 1):** `GET/POST /anfitrion/cancha/
+  {id}/editar` (`web/anfitrion.py`, calcado del editor de anuncios de
+  Airbnb: nav lateral de secciones + tarjetas + barra inferior fija "Guardar
+  cambios"). MISMO formulario, catálogos y validaciones que
+  `editar_cancha_screen.dart`: fotos (hasta 8, portada = la primera, ★ para
+  hacer portada, ✕ quita), nombre y local (único texto libre), deportes
+  (chips ≥1, principal = 1.º de `deportesActivos`), tipo de piso
+  (obligatorio, por deporte principal), precio + hora feliz [0,10,15,20,30]
+  con rango + seña [0,20,30,50] con vista previa, horario (selects en punto,
+  regla "cierre = empieza el último turno") + duración 60/90/120,
+  amenidades (claves del APP: vestuario, duchas, parking, luces, techado,
+  cafeteria, wifi, alquiler) y servicios extra con precio. Catálogo espejo
+  en `web/catalogos.py` (**al cambiar un catálogo en el app, cambiarlo
+  ahí**). Fotos: el navegador comprime a 1600 px JPEG y hace `POST
+  /anfitrion/cancha/{id}/foto` (cuerpo crudo) → `web/almacen.py` sube al
+  MISMO bucket `canchas/<id>/web_<ms>.jpg` por la REST de Storage con la
+  llave anon (`SUPABASE_URL` + `SUPABASE_ANON_KEY` en Railway; sin ellas
+  la subida queda apagada y se avisa); al guardar solo se aceptan URLs que
+  ya tenía la cancha o de SU carpeta, y las quitadas se borran del bucket.
+  Guardado: `datos.actualizar_cancha(id, dueno, campos)` = UPDATE con
+  `lower(dueno)=correo de la sesión` en el WHERE (cancha ajena → 404) solo
+  sobre `COLS_EDITABLES`; el explorador (`AMENIDAD_NOMBRE/ICONO`) reconoce
+  las claves del app. **APK:** `_sincronizarConfigLocalDesdeNube` ahora
+  también trae deportes, fotos y servicios extra (si no, el siguiente upsert
+  del app pisaba la edición web). Test
+  `test_editar_cancha_desde_la_web_como_el_app`.
+- **CALENDARIO WEB OPERATIVO (sep-2026, puntos 2 y 3 del plan aprobado):**
+  en `/anfitrion/calendario` cada turno es clicable (como el calendario de
+  Airbnb, modal `#modalCal`): LIBRE → "📝 Reserva manual" (cliente reciente
+  de sus propias reservas de 180 d, nombre, teléfono, correo opcional para
+  que la vea en su app, precio sugerido = `precio_slot` con hora feliz y
+  descuento del slot, "Ya pagó") o "⛔ Bloquear turno"; BLOQUEADO →
+  Desbloquear; RESERVA → detalle + WhatsApp + "✅ Marcar pagada" / "↩
+  Marcar por cobrar" (no en pagadas en línea) + "🗑 Quitar reserva" (SOLO
+  manuales). Endpoints JSON (sesión + cancha del dueño, si no 401/404):
+  `POST /anfitrion/bloqueo {cancha_id, fecha, hora, bloquear}`
+  (`datos.bloquear`, tabla `pichangol_bloqueos` = la del app, 409 si hay
+  reserva), `POST /anfitrion/reserva-manual` (misma fila que
+  `agregarReservaManual`: id `man_<ms>_w`, `confirmada`,
+  `traida_por_app=false` → sin comisión ni billetera, `medio_pago='manual'`,
+  fecha REAL del slot de madrugada, rechaza pasado/bloqueado/ocupado; push
+  "Reserva confirmada 🎾" al correo del cliente), `POST
+  /anfitrion/reserva/{id}/pagado {pagado}` (`datos.marcar_pagado`, = 
+  `marcarPago` del app; en la transición a pagado de reservas traídas por
+  la app manda el push "¡Te llegaron puntos! ⭐"; también botón en la
+  tarjeta de "Hoy", `JS_PAGAR`) y `POST /anfitrion/reserva/{id}/quitar`
+  (`datos.borrar_reserva_manual`, solo `medio_pago='manual'`; push
+  "Reserva cancelada 📅"). **Candado Pro:** `WEB_MANUAL_REQUIERE_PRO=1`
+  (env, fail-open como `CM_REQUIERE_PRO`) exige `stores.pro_activo` para
+  reserva manual y bloqueos (402 `requiere_pro` + aviso en el calendario);
+  marcar pagado nunca es Pro. Apagado hasta que el APK también lo exija
+  (backlog "Candado PRO"). Test
+  `test_calendario_web_reserva_manual_bloqueo_y_marcar_pagado`. OJO tests:
+  `FakeDB` copia las fixtures (`dict(c)`) — antes un test mutaba `LIMA`
+  para los siguientes.
+- **MI ACADEMIA Y MI TIENDA EN LA WEB (sep-2026, pedido del director):**
+  `web/anfitrion_academia.py` y `web/anfitrion_tienda.py` (routers incluidos
+  en `main.py` ANTES de `anfitrion_router`, porque `/anfitrion/{modulo}` es
+  comodín; en `MENU` ambos van con `True` = web). **Mi tienda**
+  (`/anfitrion/tienda`): candado = `puedeVender` del app
+  (`datos.esta_verificado` en `pichangol_verificaciones` O dueño de canchas);
+  lista con Publicado/Pausado, "＋ Publicar producto" (`/anfitrion/tienda/
+  nuevo`, id `prod_<µs>_w`), editor tipo Airbnb (foto → bucket
+  `productos/<id>.jpg` como el app, nombre, categoría chips
+  `catalogos.CATEGORIAS_PRODUCTO`, descripción, moneda chips S/ $ Bs FIJA al
+  crear —por defecto la del país de su 1.ª cancha—, precio, stock vacío =
+  ilimitado, Publicado), `POST /anfitrion/tienda/guardar` (UPSERT
+  `pichangol_productos` con `WHERE lower(vendedor_email)=yo`: id ajeno →
+  404), `/{id}/activo`, `/{id}/eliminar` (borra fila + foto), y VENTAS
+  desde `stores.ventas` por `vendedor_email`. **Mi academia**
+  (`/anfitrion/academia`): lista de `pichangol_academias` del dueño
+  (`data` jsonb = `Academia.toJson`), onboarding "Crear mi academia", editor
+  (`/anfitrion/academia/nueva` id `ac_<µs>`, `/{id}/editar`): logo →
+  `canchas/academia_<id>/logo_web.jpg`, deporte chips `DEPORTES_ACADEMIA`,
+  nombre, descripción, sede (nombre + MAPA Leaflet clic / "Usar mi
+  ubicación": del punto salen país → prefijo de WhatsApp, moneda —fija al
+  crear— y zona), **zona en cascada** por país (`GET /web/geo/{iso}` sirve
+  `web/geo/{pe,bo,ec}_geo.json` = COPIA de `assets/geo` del app; se guarda
+  el nivel 3 como el app), WhatsApp (largo por país `TEL_LONGITUD`), fotos
+  (hasta 8), redes chips + handle, planes (nombre, tipo mensual/prepago/por
+  clase, precio, meses del paquete, programa, veces por semana, etapa/edad,
+  duración de clase, horario), reglas de cobro (recargo invitado, descuentos
+  2.º/3.º hermano y prepago, meses mínimos, retribución al club). `POST
+  /anfitrion/academia/guardar` valida como `crear_academia_screen._validar`
+  y hace MERGE sobre la fila actual: `sedes`, `horarios`, `preciosSede`,
+  `partidos`, `categorias`, `landingUrl` se CONSERVAN (se editan en la app).
+  `/{id}/foto?tipo=logo|foto`, `/{id}/eliminar` (borrado lógico). **Alumnos**
+  (`/anfitrion/academia/alumnos?academia=`): `pichangol_matriculas` con KPIs
+  (alumnos, cobrado este mes, por cobrar, vencido) y tabla por alumno
+  (apoderado, WhatsApp, cuotas pagadas, deuda, estado); los COBROS siguen en
+  la app. Catálogos espejo en `web/catalogos.py`. Tests
+  `test_mi_tienda_en_la_web_como_el_app`, `test_mi_academia_en_la_web_como_el_app`.
+- **FICHA DE RESERVA (sep-2026, pedidos del director):** "Cómo llegar" abre
+  el mapa DENTRO de la ficha (Leaflet + OpenStreetMap en `#mapaFicha`, con
+  enlaces "Abrir en Google Maps" e "Indicaciones paso a paso" debajo), no en
+  otra pestaña. Los turnos van ORDENADOS por franja (🌅 Mañana <12 · ☀️ Tarde
+  12-18 · 🌙 Noche + madrugada del día siguiente) en tarjetas `.slot` con
+  hora, fin, PRECIO del turno y etiqueta "⚡ hora feliz" / "−N % promo";
+  ocupado = gris tachado; seleccionado = azul noche; nota "El precio varía
+  según la hora: desde … hasta …" cuando hay diferencias.
+- **Pool de conexiones Postgres (`db/pg.py::conexion()`, sep-2026):** cada
+  `_conn()` abría una conexión nueva al pooler de Supabase (TLS ≈ 300-500 ms)
+  y la ficha hacía 4-5 seguidas → 2 s de espera. `web/datos.py` usa
+  `with pg.conexion() as conn` (hasta 4 conexiones reutilizadas, TTL 4 min,
+  commit al salir / rollback+descarte si falló). Los caminos del snapshot
+  siguen con `_conn()`.
 - El apex `pichangol.app` (sin `www`) sigue libre (podría redirigir al `www`).
 
 ## Estrategia de ambientes (piloto → prod)
@@ -533,6 +948,31 @@ Piezas ya implementadas (reusar, no reinventar):
 - **Perfiles** (nombre/foto) persistidos en `SharedPreferences`
   (`AppState._perfiles`) para no re-bajarlos cada vez.
 
+- **UNA PERSONA = UN CHAT (hecho sep-2026):** con la misma persona podían
+  existir varios hilos (`cancha_<dueño>|<jugador>` desde la ficha,
+  `directo_a|b` desde contactos, `<academiaId>|<alumno>`) y salían como filas
+  DUPLICADAS. `mensajes_screen._fusionarPorPersona` agrupa por
+  `_personaDe(conv)` (correo de la contraparte) y deja UNA fila: el hilo
+  principal es el más reciente (ahí se envía lo nuevo), `_Conv.hilos` lleva
+  todos, no leídos sumados, título = nombre del local/academia si soy el
+  jugador/alumno, si no el nombre de perfil. `ChatScreen(hilosExtra:)` muestra
+  el historial de todos los hilos (`MensajesRepo.streamHilos`, `inFilter`) y
+  decide "mío" por correo en los mensajes de otros hilos. Fijar/archivar/
+  silenciar/eliminar aplican a TODOS los hilos de la fila. `hiloCancha`
+  ahora pasa el correo del dueño a minúsculas (evita hilos gemelos por
+  mayúsculas).
+- **BANDEJA EN LA NUBE (hecho sep-2026):** eliminar/fijar/archivar/silenciar
+  vivían SOLO en `SharedPreferences` → al reinstalar o volver a entrar, los
+  chats eliminados reaparecían. Ahora se espejan en Supabase
+  `pichangol_chat_prefs` (email, hilo, oculto_en, fijado, archivado,
+  silenciado; SQL `docs/piloto/supabase_chat_prefs.sql`) vía
+  `ChatPrefsRepo`: cada acción sube su fila (`AppState._subirPrefChat`) y
+  `sincronizarBandejaChats` (al login forzado + al abrir Mensajes, cada 10
+  min) baja y fusiona (la nube manda sobre los hilos que conoce; lo solo-local
+  se sube). Regla "reaparece si llega algo más nuevo" intacta (`chatOculto`
+  también limpia la nube). "Eliminar mi cuenta" y "Dejar en virgen" borran
+  las filas.
+
 **Al agregar cualquier cosa nueva a mensajería:** primero pregúntate "¿esto cómo
 lo cachea WhatsApp?" y hazlo cache-first (disco + pre-warm) antes de mostrar
 spinners. Un spinner de pantalla completa al reabrir un chat/inbox/estado se
@@ -547,7 +987,12 @@ aporta. Eslogan: "Reserva, juega, repite." La co-marca con EBIM solo en el panel
 web admin; la app del jugador es 100% Pichangol.
 
 **Estándar de UI/UX: estilo Airbnb (siempre).** Toda pantalla/componente nuevo
-sigue el lenguaje Airbnb sobre la paleta EBIM:
+sigue el lenguaje Airbnb sobre la paleta EBIM. **REGLA del director (sep-2026):
+TODO el diseño, app y web, debe ser similar al de Airbnb** — antes de dibujar
+una pantalla nueva, buscar la pantalla equivalente en airbnb.com (Explorar =
+portada, Mis reservas = "Viajes", ficha = anuncio, filtros = modal Filtros,
+cabecera, menú ☰, calendario) y calcarla con la paleta y el logo de Pichangol;
+no inventar layouts propios. Rasgos Airbnb:
 - **Pastillas/chips:** blancas, borde gris muy suave (`#E4E4E4`), relieve leve
   (sombra `0x0F000000`), esquinas muy redondeadas. Seleccionado = relleno gris
   plomo (`#EBEBEB`) o tinte lima, **nunca borde negro**.
@@ -849,8 +1294,15 @@ auth por usuario en `/pagos/movimientos` (PROD).
 
 ### Horarios de cancha (apertura/cierre) y cruce de medianoche
 - `Cancha.horariosSlots()` genera los INICIOS reservables de apertura a cierre en
-  pasos de `duracionSlotMin`; un slot solo entra si cabe COMPLETO antes del cierre
-  (cierre 23:00 + 1h → último turno 22:00–23:00).
+  pasos de `duracionSlotMin`. **REGLA (decisión del director, sep-2026): la hora
+  de CIERRE es la hora en que EMPIEZA el último turno** — cierra 23:00 → último
+  turno 23:00–00:00; cierra 00:00 → 00:00–01:00 (madrugada del día siguiente);
+  con turnos de 90 min el último es el mayor inicio ≤ cierre (07:00→23:00:
+  22:00–23:30). Excepción: 24 h (00:00→00:00) = 24 turnos sin repetir el de
+  medianoche. Antes el turno debía caber COMPLETO antes del cierre (último
+  22:00–23:00) y los dueños decían "sí atiendo a las 23:00". `web/horarios.py::
+  slots` y `abiertaA` del explorador web son ESPEJO de esta regla; el texto de
+  ayuda del selector de horario del APK lo explica al dueño.
 - **Cierre que CRUZA MEDIANOCHE:** si `cierre <= apertura`, el cierre cae al día
   siguiente (`fin += 24h`). Cubre "hasta medianoche" (07:00→00:00, último turno
   23:00–00:00), cancha nocturna (18:00→02:00) y **24 h** (00:00→00:00).

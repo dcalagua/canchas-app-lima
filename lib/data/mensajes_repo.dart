@@ -31,6 +31,26 @@ class MensajesRepo {
             rows.map((r) => Mensaje.fromRow(r)).toList().reversed.toList());
   }
 
+  /// Igual que [streamHilo] pero para VARIOS hilos a la vez: se usa cuando la
+  /// bandeja fusionó en una sola conversación los hilos que existían con la
+  /// misma persona (cancha + directo + academia). Ventana de [limite] mensajes
+  /// sobre el conjunto, en orden cronológico.
+  static Stream<List<Mensaje>> streamHilos(List<String> hilos,
+      {int limite = 50}) {
+    final hs = hilos.where((h) => h.isNotEmpty).toSet().toList();
+    if (hs.isEmpty) return const Stream<List<Mensaje>>.empty();
+    if (hs.length == 1) return streamHilo(hs.first, limite: limite);
+    if (!SupabaseService.disponible) return const Stream<List<Mensaje>>.empty();
+    return SupabaseService.client
+        .from(_tabla)
+        .stream(primaryKey: ['id'])
+        .inFilter('hilo', hs)
+        .order('creado', ascending: false)
+        .limit(limite)
+        .map((rows) =>
+            rows.map((r) => Mensaje.fromRow(r)).toList().reversed.toList());
+  }
+
   /// Todos los mensajes de una academia, en vivo (para la bandeja del profe:
   /// se agrupan por hilo en la pantalla).
   static Stream<List<Mensaje>> streamAcademia(String academiaId) {

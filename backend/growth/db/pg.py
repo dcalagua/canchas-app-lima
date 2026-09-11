@@ -104,6 +104,77 @@ def _conn():
     return conn
 
 
+# ── Pool pequeño de conexiones (web pública, sep-2026) ───────────────────────
+# Cada `_conn()` abre una conexión NUEVA al pooler de Supabase (TLS + handshake
+# ≈ 300-500 ms). La ficha de reserva hacía 4-5 consultas seguidas → 2 s solo
+# en conectar. `conexion()` reutiliza hasta POOL_MAX conexiones abiertas
+# (transacción por uso: commit al salir bien, rollback + descartar si falló;
+# las inactivas > POOL_TTL_SEG se cierran, el pooler las corta igual).
+import threading as _th
+import time as _time
+from contextlib import contextmanager as _cm
+
+POOL_MAX = 4
+POOL_TTL_SEG = 240
+_pool: list = []  # [(conn, devuelta_en)]
+_pool_lock = _th.Lock()
+
+
+def _tomar():
+    with _pool_lock:
+        while _pool:
+            conn, ts = _pool.pop()
+            if conn.closed or _time.time() - ts > POOL_TTL_SEG:
+                try:
+                    conn.close()
+                except Exception:  # noqa: BLE001
+                    pass
+                continue
+            return conn
+    return _conn()
+
+
+def _devolver(conn) -> None:
+    with _pool_lock:
+        if not conn.closed and len(_pool) < POOL_MAX:
+            _pool.append((conn, _time.time()))
+            return
+    try:
+        conn.close()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+@_cm
+def conexion():
+    """`with pg.conexion() as conn:` — conexión del pool; commit al salir,
+    rollback y descarte si hubo error. Reemplaza a `with _conn() as conn`
+    (que cierra la conexión) en los caminos calientes de la web."""
+    conn = _tomar()
+    try:
+        yield conn
+    except BaseException:
+        try:
+            conn.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            conn.close()
+        except Exception:  # noqa: BLE001
+            pass
+        raise
+    else:
+        try:
+            conn.commit()
+        except Exception:  # noqa: BLE001
+            try:
+                conn.close()
+            except Exception:  # noqa: BLE001
+                pass
+            raise
+        _devolver(conn)
+
+
 def _iso(v):
     """Normaliza fechas/horas de la BD a ISO (str), para reusar los parsers del
     store (`_pago_from`/`_reclamo_from`) que esperan strings ISO como el snapshot."""

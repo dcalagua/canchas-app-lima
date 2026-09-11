@@ -169,6 +169,17 @@ LANDING_BASE_URL = os.getenv("LANDING_BASE_URL", "")
 # pública (la misma que lleva el APK). Vacías = la página avisa "no disponible".
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "").strip()
+# Llave de Google Places para que el BACKEND resuelva fotos de lugares cuando
+# la Edge Function `places-cerca` no las trae (respaldo de "primera foto
+# siempre" en la web). Debe ser una llave SIN restricción de app Android (la
+# misma que usa la Edge como secret). Vacía = solo se usa la Edge.
+PLACES_API_KEY = os.getenv("PLACES_API_KEY", "").strip()
+# LOGIN CON GOOGLE EN LA WEB (mismo flujo que el APK): client id OAuth de tipo
+# "Aplicación web" del proyecto de Google de Pichangol, con los orígenes
+# autorizados del dominio (https://pg.ebim.pe, https://www.pichangol.app).
+# Con valor → reservar en la web EXIGE iniciar sesión con Google; vacío → la
+# web sigue con el formulario de invitado (nombre + correo) hasta configurarlo.
+GOOGLE_WEB_CLIENT_ID = os.getenv("GOOGLE_WEB_CLIENT_ID", "").strip()
 
 # Huella SHA-256 del certificado de firma del APK (para verificar los Android
 # App Links en /.well-known/assetlinks.json). Sacarla con:
@@ -216,6 +227,10 @@ IMG_MAX_RETENIDAS = int(os.getenv("IMG_MAX_RETENIDAS", "80"))
 # Pichangol Pro vigente pueden generar (post del día, reel, activar el CM). Por
 # defecto APAGADO para no bloquear el piloto; se prende cuando cobremos el servicio.
 CM_REQUIERE_PRO = os.getenv("CM_REQUIERE_PRO", "0") == "1"
+# Candado Pro del DUEÑO en la web (reserva manual + bloquear horas desde el
+# calendario de Modo anfitrión). Fail-open como los otros: "1" = solo Pro. El
+# APK aún no lo exige (backlog "Candado PRO"); se prende junto con el app.
+WEB_MANUAL_REQUIERE_PRO = os.getenv("WEB_MANUAL_REQUIERE_PRO", "0") == "1"
 # Si true, la validación en sitio del motorizado activa la cancha automáticamente
 # (y se avisa al admin). Si false, queda lista y el admin la activa a mano.
 VALIDADOR_ACTIVA_AUTOMATICO = os.getenv("VALIDADOR_ACTIVA_AUTOMATICO", "1") == "1"
@@ -241,6 +256,8 @@ COINCIDENCIA_MAX_M = float(os.getenv("VERIF_COINCIDENCIA_MAX_M", "200"))
 CULQI_SECRET_KEY = os.getenv("CULQI_SECRET_KEY", "")
 CULQI_PUBLIC_KEY = os.getenv("CULQI_PUBLIC_KEY", "")
 CULQI_API_BASE = os.getenv("CULQI_API_BASE", "https://api.culqi.com/v2")
+# Cancelación desde la web: horas mínimas de anticipación para devolver el 100 %.
+WEB_CANCELACION_HORAS = float(os.getenv("WEB_CANCELACION_HORAS", "6"))
 # Token compartido opcional para el webhook de Culqi: se pasa como ?t=<token> en
 # la URL registrada en el panel de Culqi. Filtro ligero anti-ruido; la fuente de
 # verdad es re-consultar el cargo a Culqi con la sk. Vacío = no se exige.

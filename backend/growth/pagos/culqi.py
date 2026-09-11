@@ -110,6 +110,23 @@ def crear_cargo(
     }
 
 
+def reembolsar(*, charge_id: str, monto_centimos: int,
+               motivo: str = "solicitud_comprador") -> dict:
+    """Devuelve [monto_centimos] de un cargo (total o parcial). Culqi acepta
+    reembolsos sobre cargos capturados, en test y en live. Devuelve
+    {ok, refund_id, raw} o {ok: False, error}."""
+    if not disponible():
+        return {"ok": False, "error": "culqi_no_configurado"}
+    if not charge_id or monto_centimos <= 0:
+        return {"ok": False, "error": "reembolso_invalido"}
+    r = _request("POST", "/refunds", {
+        "amount": int(monto_centimos), "charge_id": charge_id, "reason": motivo})
+    if not r["ok"]:
+        return r
+    data = r["data"]
+    return {"ok": True, "refund_id": data.get("id"), "raw": data}
+
+
 def crear_customer(*, email: str, nombre: str = "", apellido: str = "",
                    telefono: str = "") -> dict:
     """Crea un cliente Culqi (necesario para guardar tarjetas / One Click).

@@ -160,8 +160,11 @@ class Mensaje {
       '$academiaId|${cuentaEmail.trim().toLowerCase()}';
 
   /// Clave de una conversación de CANCHA (dueño ↔ jugador).
+  /// Hoy el primer parámetro es el CORREO DEL DUEÑO (una sola conversación
+  /// dueño ↔ jugador para todas sus canchas); va en minúsculas para que el
+  /// mismo par no genere dos hilos según cómo venga escrito el correo.
   static String hiloCancha(String canchaId, String jugadorEmail) =>
-      'cancha_$canchaId|${jugadorEmail.trim().toLowerCase()}';
+      'cancha_${canchaId.trim().toLowerCase()}|${jugadorEmail.trim().toLowerCase()}';
 
   /// Clave de una conversación de GRUPO.
   static String hiloGrupo(String grupoId) => 'grupo_$grupoId';

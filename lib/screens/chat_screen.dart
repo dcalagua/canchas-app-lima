@@ -83,6 +83,7 @@ class ChatScreen extends StatefulWidget {
     this.embebido = false,
     this.fotoInicial,
     this.borradorInicial,
+    this.hilosExtra = const [],
   });
 
   final String academiaId;
@@ -102,6 +103,13 @@ class ChatScreen extends StatefulWidget {
   /// Texto pre-cargado en el campo de mensaje (p. ej. al "Compartir en
   /// Pichangol" una ficha/link): el usuario lo revisa y toca enviar.
   final String? borradorInicial;
+
+  /// Otros hilos que existían con la MISMA persona (p. ej. el chat de cancha y
+  /// el directo, o dos academias del mismo profe). La bandeja los fusiona en
+  /// una sola conversación (una persona = un chat, como WhatsApp): aquí se
+  /// muestra su historial junto al del hilo principal; lo NUEVO se envía
+  /// siempre al hilo principal ([tipo]/[refId]/[cuentaEmail]).
+  final List<String> hilosExtra;
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -164,13 +172,39 @@ class _ChatScreenState extends State<ChatScreen> {
   // recrea al cambiar [_limite]. Por eso guardamos la referencia.
   late Stream<List<Mensaje>> _stream = _streamConCache(_limite);
 
+  /// Todos los hilos que se muestran en este chat: el principal + los
+  /// fusionados de la misma persona (sin repetidos).
+  List<String> get _hilos => [
+        _hilo,
+        for (final h in widget.hilosExtra)
+          if (h.isNotEmpty && h != _hilo) h,
+      ];
+
   /// Caché device-first: emite PRIMERO los mensajes guardados en el teléfono
   /// (pinta al instante, aunque Android haya matado la app) y LUEGO el stream en
   /// vivo de Supabase. Así no hay spinner de red al volver.
   Stream<List<Mensaje>> _streamConCache(int limite) async* {
-    final cache = await DbLocal.leerMensajes(_hilo, limite: limite);
-    if (cache.isNotEmpty) yield cache;
-    yield* MensajesRepo.streamHilo(_hilo, limite: limite);
+    final hilos = _hilos;
+    if (hilos.length == 1) {
+      final cache = await DbLocal.leerMensajes(_hilo, limite: limite);
+      if (cache.isNotEmpty) yield cache;
+      yield* MensajesRepo.streamHilo(_hilo, limite: limite);
+      return;
+    }
+    // Conversación fusionada: caché de cada hilo, mezclada en orden
+    // cronológico y recortada a la ventana; luego el stream en vivo conjunto.
+    final porId = <String, Mensaje>{};
+    for (final h in hilos) {
+      for (final m in await DbLocal.leerMensajes(h, limite: limite)) {
+        porId[m.id] = m;
+      }
+    }
+    if (porId.isNotEmpty) {
+      final l = porId.values.toList()
+        ..sort((a, b) => a.creado.compareTo(b.creado));
+      yield l.length > limite ? l.sublist(l.length - limite) : l;
+    }
+    yield* MensajesRepo.streamHilos(hilos, limite: limite);
   }
 
   void _cargarAnteriores() {
@@ -1634,10 +1668,17 @@ class _ChatScreenState extends State<ChatScreen> {
                           // WhatsApp): así los mensajes que me envían salen a la
                           // izquierda. La lógica por rol (esProfe) solo aplica a
                           // los chats de academia/cancha (profe/dueño ↔ alumno).
-                          final mio = (esGrupo || widget.tipo == 'directo')
-                              ? m.autorEmail.toLowerCase() ==
-                                  (appState.usuario?.email ?? '').toLowerCase()
-                              : m.esProfe == widget.soyProfe;
+                          // Un mensaje de otro hilo fusionado (p. ej. el
+                          // directo dentro del chat de cancha) también se
+                          // decide por correo: su esProfe pertenece a otro
+                          // tipo de conversación.
+                          final deOtroHilo = m.hilo != _hilo;
+                          final mio =
+                              (esGrupo || widget.tipo == 'directo' || deOtroHilo)
+                                  ? m.autorEmail.toLowerCase() ==
+                                      (appState.usuario?.email ?? '')
+                                          .toLowerCase()
+                                  : m.esProfe == widget.soyProfe;
                           return _Burbuja(
                               mensaje: m,
                               mio: mio,
