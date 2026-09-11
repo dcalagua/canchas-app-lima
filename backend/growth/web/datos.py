@@ -197,6 +197,77 @@ def actualizar_cancha(cancha_id: str, dueno: str, campos: dict) -> bool:
         return False
 
 
+def bloquear(cancha_id: str, fecha: str, hora: str, bloquear: bool = True) -> bool:
+    """Bloqueo de un turno por el dueño (misma tabla y clave que
+    `BloqueosRepo` del app: PK (cancha_id, fecha, hora)). Idempotente."""
+    if not pg.habilitado or not cancha_id or not fecha or not hora:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            if bloquear:
+                cur.execute("INSERT INTO pichangol_bloqueos (cancha_id, fecha, hora) VALUES (%s, %s, %s) "
+                            "ON CONFLICT DO NOTHING", (cancha_id, fecha, hora))
+            else:
+                cur.execute("DELETE FROM pichangol_bloqueos WHERE cancha_id = %s AND fecha = %s AND hora = %s",
+                            (cancha_id, fecha, hora))
+            conn.commit()
+            return True
+    except Exception as e:  # noqa: BLE001
+        print(f"[bloqueo-web] falló {cancha_id} {fecha} {hora}: {e}", flush=True)
+        return False
+
+
+def reserva_de_dueno(res_id: str, cancha_ids: list[str]) -> dict | None:
+    """Una reserva SOLO si es de una cancha del dueño (candado del WHERE)."""
+    if not pg.habilitado or not res_id or not cancha_ids:
+        return None
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(f"SELECT {', '.join(_COLS_RES)} FROM pichangol_reservas WHERE id = %s AND cancha_id = ANY(%s)",
+                        (res_id, cancha_ids))
+            f = cur.fetchone()
+            if not f:
+                return None
+            d = pg._fila_a_dict(_COLS_RES, f)
+            d["extras"] = _json_list(d.get("extras"))
+            d["precio"] = int(round(float(d.get("precio") or 0)))
+            return d
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def marcar_pagado(res_id: str, cancha_ids: list[str], pagado: bool) -> bool:
+    """Marca cobrada (o vuelve a "por cobrar") una reserva de una cancha del
+    dueño: lo mismo que `marcarPago` del app (`pagado`)."""
+    if not pg.habilitado or not res_id or not cancha_ids:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("UPDATE pichangol_reservas SET pagado = %s WHERE id = %s AND cancha_id = ANY(%s)",
+                        (pagado, res_id, cancha_ids))
+            n = cur.rowcount
+            conn.commit()
+            return n == 1
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def borrar_reserva_manual(res_id: str, cancha_ids: list[str]) -> bool:
+    """Quita una reserva MANUAL (la registró el dueño) de una cancha suya.
+    Las reservas pagadas por la app/web se cancelan con reembolso, no aquí."""
+    if not pg.habilitado or not res_id or not cancha_ids:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("DELETE FROM pichangol_reservas WHERE id = %s AND cancha_id = ANY(%s) "
+                        "AND coalesce(medio_pago,'') = 'manual'", (res_id, cancha_ids))
+            n = cur.rowcount
+            conn.commit()
+            return n == 1
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def reservas_de_canchas(ids: list[str], desde: str, hasta: str) -> list[dict]:
     """Agenda del dueño: reservas de sus canchas entre dos fechas (ISO,
     inclusive), sin las retenciones web sin pagar ni las canceladas."""

@@ -17,8 +17,10 @@ from __future__ import annotations
 import json
 import re
 import threading
+import time
 from datetime import date, timedelta
 
+import config
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
@@ -145,6 +147,8 @@ def _tarjeta_res(r: dict, c: dict | None, hoy: date) -> str:
             f"<b style='margin-left:auto;white-space:nowrap'>{e(sim)} {int(r.get('precio') or 0):.2f}</b></div>"
             f"<div class='acc'>{pill}"
             + (f"<a class='btn sec' href='https://wa.me/{e(''.join(ch for ch in tel if ch.isdigit()))}' target='_blank' rel='noopener'>💬 WhatsApp</a>" if tel else "")
+            + (f"<button type='button' class='btn' data-pagar='{e(r.get('id'))}' data-v='1'>✅ Marcar pagada</button>" if not pagado
+               else (f"<button type='button' class='btn sec' data-pagar='{e(r.get('id'))}' data-v='0'>↩ Marcar por cobrar</button>" if medio not in ("yape", "tarjeta") else ""))
             + "</div></div>")
 
 
@@ -187,8 +191,9 @@ def pagina_hoy(request: Request) -> HTMLResponse:
         "<h2 style='margin-top:30px'>Atajos</h2><div class='kpis'>"
         "<a class='kpi' href='/anfitrion/calendario' style='text-decoration:none'><small>Agenda</small><b style='font-size:16px'>Ver el calendario semanal</b></a>"
         "<a class='kpi' href='/anfitrion/ingresos' style='text-decoration:none'><small>Plata</small><b style='font-size:16px'>Saldo y por recibir</b></a>"
-        f"<a class='kpi' href='{PLAY_URL}' rel='noopener' style='text-decoration:none'><small>En la app</small><b style='font-size:16px'>Reserva manual · bloquear horas · marcar pagado</b></a>"
+        "<a class='kpi' href='/anfitrion/calendario' style='text-decoration:none'><small>Operar</small><b style='font-size:16px'>Reserva manual · bloquear horas · marcar pagado</b></a>"
         "</div>"
+        f"<script>{JS_PAGAR}</script>"
         "<script>(function(){var t=document.getElementById('anfTabs');if(!t)return;t.addEventListener('click',function(ev){var b=ev.target.closest('[data-tab]');if(!b)return;"
         "t.querySelectorAll('.chip').forEach(function(x){x.classList.toggle('sel',x===b);});document.querySelectorAll('[data-panel]').forEach(function(p){p.style.display=p.dataset.panel===b.dataset.tab?'':'none';});});})();</script>")
     return ui.shell("Hoy", cuerpo, nav=_cabecera("hoy", ses), sesion=ses, ancho=True, titulo_tab="Modo anfitrión · Pichangol")
@@ -220,58 +225,358 @@ def pagina_reservas(request: Request) -> HTMLResponse:
     return ui.shell("Reservas", cuerpo, nav=_cabecera("reservas", ses), sesion=ses, ancho=True, titulo_tab="Reservas · Modo anfitrión")
 
 
+JS_PAGAR = r"""
+document.addEventListener('click',async function(ev){var b=ev.target.closest('[data-pagar]');if(!b)return;b.disabled=true;
+  try{var r=await fetch('/anfitrion/reserva/'+encodeURIComponent(b.dataset.pagar)+'/pagado',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pagado:b.dataset.v==='1'})});var j=await r.json();
+    if(j.ok){location.reload();return} alert(j.error||'No se pudo guardar.')}catch(e){alert('No se pudo guardar. Revisa tu conexión.')} b.disabled=false});
+"""
+
+
+def _pro_ok(email: str) -> bool:
+    """Candado Pro de reserva manual / bloqueos (fail-open: solo si la env
+    `WEB_MANUAL_REQUIERE_PRO=1`, igual que CM_REQUIERE_PRO)."""
+    return (not config.WEB_MANUAL_REQUIERE_PRO) or stores.pro_activo(email)
+
+
+_RESP_PRO = {"ok": False, "error": "requiere_pro",
+             "mensaje": "La reserva manual y el bloqueo de horas son parte de Pichangol Pro. Actívalo en la app (Perfil → Hazte Pro)."}
+
+
 @router.get("/anfitrion/calendario", response_class=HTMLResponse)
 def pagina_calendario(request: Request, cancha: str = "", desde: str = "") -> HTMLResponse:
     """Agenda semanal de UNA cancha (chips para cambiar): reservas, bloqueos y
-    turnos libres, con la misma regla de turnos que el app."""
+    turnos libres, con la misma regla de turnos que el app. Al tocar un turno
+    (como el calendario de Airbnb): libre → reserva manual o bloquear;
+    bloqueado → desbloquear; reservado → detalle, marcar pagada / por cobrar
+    y quitar (solo las manuales)."""
     ses, canchas, resp = _contexto(request, "/anfitrion/calendario")
     if resp is not None:
         return resp
     hoy = _hoy(canchas)
     c = next((x for x in canchas if x["id"] == cancha), canchas[0])
+    sim, _iso = _moneda_de(c)
     try:
         ini = date.fromisoformat(desde) if desde else hoy
     except ValueError:
         ini = hoy
     dias = [ini + timedelta(days=i) for i in range(7)]
     isos = [d.isoformat() for d in dias]
-    filas = datos.reservas_de_canchas([c["id"]], isos[0], (dias[-1] + timedelta(days=1)).isoformat())
-    bloq = datos.bloqueos_de([c["id"]], isos + [(dias[-1] + timedelta(days=1)).isoformat()])
+    sig_dia = (dias[-1] + timedelta(days=1)).isoformat()
+    filas = datos.reservas_de_canchas([c["id"]], isos[0], sig_dia)
+    bloq = datos.bloqueos_de([c["id"]], isos + [sig_dia])
+    desc = datos.descuentos(c["id"], isos + [sig_dia])
     slots = horarios.slots(c["hora_apertura"], c["hora_cierre"], c["duracion_slot_min"])
+    paso = c["duracion_slot_min"]
     ocup = {(str(r.get("fecha")), str(r.get("hora_inicio"))): r for r in filas}
     ahora = horarios.ahora_local(_pais_de(c))
     chips = "".join(f"<a class='chip{' sel' if x['id'] == c['id'] else ''}' href='/anfitrion/calendario?cancha={e(x['id'])}&desde={isos[0]}'>{e(x['nombre'])}</a>" for x in canchas)
     cab = "".join(f"<th class='{'hoy' if d == hoy else ''}'>{horarios.DIAS[d.weekday()]}<br>{d.day} {horarios.MESES[d.month - 1]}</th>" for d in dias)
+    res_json: dict[str, dict] = {}
     filas_html = ""
     for h in slots:
         filas_html += f"<tr><td>{e(h)}</td>"
+        fin = horarios.hora_fin(h, paso)
         for d in dias:
             fr = horarios.fecha_real(d.isoformat(), c["hora_apertura"], c["hora_cierre"], h)
             r = ocup.get((fr, h))
             m = horarios.hora_en_minutos(h) or 0
             pasado = fr < hoy.isoformat() or (fr == hoy.isoformat() and m < ahora.hour * 60 + ahora.minute)
-            cls = " class='pasado'" if pasado else ""
+            ph = horarios.precio_hora_en(c["precio_hora"], h, c["descuento_valle"], c.get("valle_desde"), c.get("valle_hasta"))
+            precio = horarios.precio_slot(ph, paso, desc.get((fr, h), 0))
+            base = f" data-b='{d.isoformat()}' data-f='{fr}' data-h='{h}' data-fin='{fin}' data-p='{precio}'"
             if r is not None:
                 pag = bool(r.get("pagado"))
-                filas_html += (f"<td{cls}><div class='oc{'' if pag else ' ef'}' title='{e(r.get('usuario') or '')}'>{e((r.get('jugador') or r.get('usuario') or 'Reserva').split(' ')[0])}"
+                rid = str(r.get("id") or "")
+                res_json[rid] = {"id": rid, "jugador": r.get("jugador") or "", "usuario": r.get("usuario") or "", "telefono": str(r.get("telefono") or ""),
+                                 "precio": int(r.get("precio") or 0), "pagado": pag, "medio": str(r.get("medio_pago") or ""), "fecha": fr, "ini": h,
+                                 "fin": str(r.get("hora_fin") or fin), "web": rid.startswith("web_")}
+                filas_html += (f"<td class='res{' pasado' if pasado else ''}' data-t='res' data-rid='{e(rid)}'{base}><div class='oc{'' if pag else ' ef'}' title='{e(r.get('usuario') or '')}'>{e((r.get('jugador') or r.get('usuario') or 'Reserva').split(' ')[0])}"
                                f"<small>{'pagada' if pag else 'cobrar en cancha'}</small></div></td>")
             elif (c["id"], fr, h) in bloq:
-                filas_html += f"<td{cls}><div class='bl'>Bloqueado</div></td>"
+                filas_html += f"<td class='bloq{' pasado' if pasado else ''}' data-t='bloq'{base}><div class='bl'>Bloqueado</div></td>"
+            elif pasado:
+                filas_html += "<td class='pasado'></td>"
             else:
-                filas_html += f"<td{cls}></td>"
+                filas_html += f"<td class='libre' data-t='libre'{base}><div class='li'><small>{e(sim)} {precio}</small></div></td>"
         filas_html += "</tr>"
+    # Clientes recientes (para no tipear: mismo criterio que el selector del app).
+    hist = datos.reservas_de_canchas([x["id"] for x in canchas], (hoy - timedelta(days=180)).isoformat(), (hoy + timedelta(days=60)).isoformat())
+    clientes: dict[str, dict] = {}
+    for r in hist:
+        nom = str(r.get("jugador") or "").strip()
+        em = str(r.get("usuario") or "").strip().lower()
+        tel = str(r.get("telefono") or "").strip()
+        k = em or (nom.lower() + "|" + tel)
+        if not (nom or em) or k in clientes:
+            continue
+        clientes[k] = {"nombre": nom or em, "email": em, "telefono": tel}
     ant, sig = (ini - timedelta(days=7)).isoformat(), (ini + timedelta(days=7)).isoformat()
+    ops_cli = "".join(f"<option value='{e(k)}'>{e(v['nombre'])}{(' · ' + e(v['email'])) if v['email'] else ''}</option>" for k, v in list(clientes.items())[:80])
+    cfg = {"cancha": c["id"], "nombre": c["nombre"], "moneda": sim, "clientes": clientes, "pro": _pro_ok(ses["email"])}
+    modal = f"""
+<div class='modal' id='modalCal' role='dialog' aria-modal='true'><div class='modal-caja' style='max-width:520px'>
+ <div class='modal-cab'><button type='button' class='cerrar' id='calCerrar' aria-label='Cerrar'>✕</button><h3 id='calTit'>Turno</h3></div>
+ <div class='modal-cuerpo' style='padding:18px 24px'>
+  <p class='sub' id='calSub' style='margin:0 0 14px'></p>
+  <div id='calLibre' hidden>
+   <div class='chips' id='calAcc'><button type='button' class='chip sel' data-acc='manual'>📝 Reserva manual</button><button type='button' class='chip' data-acc='bloq'>⛔ Bloquear turno</button></div>
+   <div id='calManual' style='margin-top:14px'>
+    <label for='mCli' style='margin-top:0'>Cliente reciente <span class='req'>opcional</span></label><select id='mCli'><option value=''>Elegir de tus clientes…</option>{ops_cli}</select>
+    <label for='mNom'>Nombre del cliente</label><input id='mNom' maxlength='80' placeholder='Ej. Juan Pérez'>
+    <div class='row'><div><label for='mTel'>Teléfono <span class='req'>opcional</span></label><input id='mTel' inputmode='tel' maxlength='20' placeholder='999 888 777'></div>
+    <div><label for='mEm'>Correo de su cuenta <span class='req'>opcional</span></label><input id='mEm' type='email' maxlength='120' placeholder='para que la vea en su app'></div></div>
+    <label for='mPre'>Precio</label><div class='inp-moneda'><span>{e(sim)}</span><input id='mPre' type='number' min='0' step='0.5' inputmode='decimal'></div>
+    <label class='chk' style='margin-top:14px'><input type='checkbox' id='mPag'> Ya pagó <small>(si no, queda "por cobrar" en tu caja)</small></label>
+    <p class='sub' style='font-size:12.5px;margin-top:10px'>Cliente propio: sin comisión. No entra a tu billetera Pichangol, sí a tu caja del día.</p>
+   </div>
+   <div id='calBloq' hidden style='margin-top:14px'><p class='sub' style='margin:0'>El turno deja de aparecer libre en la app y en la web (mantenimiento, uso propio, clases…). Puedes desbloquearlo cuando quieras.</p></div>
+  </div>
+  <div id='calBloqueado' hidden><p class='sub' style='margin:0'>Este turno está bloqueado: nadie puede reservarlo.</p></div>
+  <div id='calRes' hidden>
+   <div class='quien' style='margin-top:0'><span class='av' id='rAv'>?</span><div style='min-width:0'><b id='rNom'></b><div class='sub' id='rDet' style='margin:0;font-size:12.5px'></div></div><b id='rPre' style='margin-left:auto;white-space:nowrap'></b></div>
+   <div id='rEstado' style='margin-top:12px'></div>
+   <div class='acciones' id='rAcc' style='margin-top:12px'></div>
+  </div>
+  <div class='estado bad' id='calErr' style='display:none;margin-top:12px'></div>
+ </div>
+ <div class='modal-pie'><button type='button' class='limpiar' id='calNo'>Cerrar</button><button type='button' class='btn' id='calSi'>Guardar</button></div>
+</div></div>"""
     cuerpo = (
-        "<h1 class='anf-hola'>Calendario</h1><p class='sub'>Semana por cancha: verde = reserva pagada, ámbar = cobrar en la cancha, gris = bloqueado.</p>"
+        "<h1 class='anf-hola'>Calendario</h1><p class='sub'>Semana por cancha: verde = reserva pagada, ámbar = cobrar en la cancha, gris = bloqueado. "
+        "<b>Toca un turno</b> para registrar una reserva manual, bloquearlo o marcar el pago.</p>"
         f"<div class='chips' style='margin-top:12px'>{chips}</div>"
         f"<div class='cal-nav2'><a class='btn sec' href='/anfitrion/calendario?cancha={e(c['id'])}&desde={ant}'>‹ Semana anterior</a>"
         f"<a class='btn sec' href='/anfitrion/calendario?cancha={e(c['id'])}&desde={hoy.isoformat()}'>Hoy</a>"
         f"<a class='btn sec' href='/anfitrion/calendario?cancha={e(c['id'])}&desde={sig}'>Semana siguiente ›</a>"
         f"<span class='sub' style='margin:0 0 0 auto'>{e(c['nombre'])} · {e(c['hora_apertura'])}–{e(c['hora_cierre'])} · turnos de {c['duracion_slot_min']} min</span></div>"
-        f"<div class='cal-sem'><table><thead><tr><th></th>{cab}</tr></thead><tbody>{filas_html}</tbody></table></div>"
-        f"<p class='sub' style='margin-top:12px;font-size:13px'>Para bloquear horas o registrar una reserva manual usa la app (Modo anfitrión → tu cancha). "
-        f"<a href='{PLAY_URL}' rel='noopener'>Abrir la app</a>.</p>")
+        f"<div class='cal-sem cal-act'><table><thead><tr><th></th>{cab}</tr></thead><tbody>{filas_html}</tbody></table></div>"
+        + ("" if cfg["pro"] else "<p class='aviso warn' style='margin-top:12px'>📝 La reserva manual y el bloqueo de horas son parte de <b>Pichangol Pro</b>. Actívalo en la app (Perfil → Hazte Pro).</p>")
+        + modal
+        + f"<script>var CAL={json.dumps(cfg, ensure_ascii=False)};var RES={json.dumps(res_json, ensure_ascii=False)};</script><script>{_JS_CAL}</script>")
     return ui.shell("Calendario", cuerpo, nav=_cabecera("calendario", ses), sesion=ses, ancho=True, titulo_tab="Calendario · Modo anfitrión")
+
+
+_JS_CAL = r"""
+(function(){
+var M=document.getElementById('modalCal'), cel=null, modo='', acc='manual';
+function $(id){return document.getElementById(id)}
+function err(t){var el=$('calErr');el.style.display=t?'block':'none';el.textContent=t||''}
+function fechaTxt(iso){var d=new Date(iso+'T12:00:00');return d.toLocaleDateString('es-PE',{weekday:'short',day:'numeric',month:'short'})}
+function abrir(td){cel=td;modo=td.dataset.t;err('');['calLibre','calBloqueado','calRes'].forEach(function(k){$(k).hidden=true});
+  $('calSub').textContent=CAL.nombre+' · '+fechaTxt(td.dataset.f)+' · '+td.dataset.h+'–'+td.dataset.fin;
+  var si=$('calSi');si.hidden=false;si.disabled=false;
+  if(modo==='libre'){$('calTit').textContent='Turno libre';$('calLibre').hidden=false;setAcc('manual');$('mCli').value='';$('mNom').value='';$('mTel').value='';$('mEm').value='';$('mPre').value=td.dataset.p;$('mPag').checked=false;
+    if(!CAL.pro){$('calLibre').hidden=true;si.hidden=true;err('La reserva manual y el bloqueo de horas son parte de Pichangol Pro. Actívalo en la app.')}}
+  else if(modo==='bloq'){$('calTit').textContent='Turno bloqueado';$('calBloqueado').hidden=false;si.textContent='Desbloquear'}
+  else{var r=RES[td.dataset.rid];$('calTit').textContent='Reserva';$('calRes').hidden=false;si.hidden=true;
+    $('rAv').textContent=(r.jugador||r.usuario||'?').charAt(0).toUpperCase();$('rNom').textContent=r.jugador||r.usuario||'Reserva';
+    $('rDet').textContent=[r.usuario,r.telefono,r.web?'reserva web':(r.medio==='manual'?'reserva manual':'')].filter(Boolean).join(' · ');
+    $('rPre').textContent=CAL.moneda+' '+r.precio.toFixed(2);
+    var online=r.pagado&&(r.medio==='yape'||r.medio==='tarjeta');
+    $('rEstado').innerHTML=online?"<span class='pill ok'>Pagada en línea · "+r.medio+"</span>":(r.pagado?"<span class='pill ok'>Cobrada</span>":"<span class='pill warn'>Cobrar en la cancha</span>");
+    var a='';if(r.telefono)a+="<a class='btn sec' href='https://wa.me/"+r.telefono.replace(/\D/g,'')+"' target='_blank' rel='noopener'>💬 WhatsApp</a>";
+    if(!r.pagado)a+="<button type='button' class='btn' data-pagar='"+r.id+"' data-v='1'>✅ Marcar pagada</button>";else if(!online)a+="<button type='button' class='btn sec' data-pagar='"+r.id+"' data-v='0'>↩ Marcar por cobrar</button>";
+    if(r.medio==='manual'&&!td.classList.contains('pasado'))a+="<button type='button' class='btn sec' id='rQuitar' style='color:var(--rojo)'>🗑 Quitar reserva</button>";
+    $('rAcc').innerHTML=a}
+  M.classList.add('open')}
+function cerrar(){M.classList.remove('open');cel=null}
+function setAcc(k){acc=k;document.querySelectorAll('#calAcc .chip').forEach(function(b){b.classList.toggle('sel',b.dataset.acc===k)});$('calManual').hidden=k!=='manual';$('calBloq').hidden=k!=='bloq';$('calSi').textContent=k==='manual'?'Registrar reserva':'Bloquear turno'}
+document.querySelector('.cal-act').addEventListener('click',function(ev){var td=ev.target.closest('td[data-t]');if(!td||(td.dataset.t!=='res'&&td.classList.contains('pasado')))return;abrir(td)});
+$('calAcc').addEventListener('click',function(ev){var b=ev.target.closest('[data-acc]');if(b)setAcc(b.dataset.acc)});
+$('mCli').addEventListener('change',function(){var c=CAL.clientes[this.value];if(!c)return;$('mNom').value=c.nombre;$('mTel').value=c.telefono||'';$('mEm').value=c.email||''});
+$('calCerrar').addEventListener('click',cerrar);$('calNo').addEventListener('click',cerrar);M.addEventListener('click',function(ev){if(ev.target===M)cerrar()});
+document.addEventListener('keydown',function(ev){if(ev.key==='Escape')cerrar()});
+async function post(url,body){var r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return r.json()}
+$('calSi').addEventListener('click',async function(){if(!cel)return;var b=this;b.disabled=true;err('');
+  try{var j;
+    if(modo==='bloq')j=await post('/anfitrion/bloqueo',{cancha_id:CAL.cancha,fecha:cel.dataset.f,hora:cel.dataset.h,bloquear:false});
+    else if(acc==='bloq')j=await post('/anfitrion/bloqueo',{cancha_id:CAL.cancha,fecha:cel.dataset.f,hora:cel.dataset.h,bloquear:true});
+    else j=await post('/anfitrion/reserva-manual',{cancha_id:CAL.cancha,fecha:cel.dataset.b,hora:cel.dataset.h,nombre:$('mNom').value,telefono:$('mTel').value,email:$('mEm').value,precio:parseFloat($('mPre').value),pagado:$('mPag').checked});
+    if(j.ok){location.reload();return} err(j.mensaje||j.error||'No se pudo guardar.')}
+  catch(e){err('No se pudo guardar. Revisa tu conexión.')} b.disabled=false});
+document.addEventListener('click',async function(ev){var q=ev.target.closest('#rQuitar');if(!q||!cel)return;if(!confirm('¿Quitar esta reserva manual? El turno vuelve a quedar libre.'))return;q.disabled=true;
+  try{var j=await post('/anfitrion/reserva/'+encodeURIComponent(cel.dataset.rid)+'/quitar',{});if(j.ok){location.reload();return}err(j.error||'No se pudo quitar.')}catch(e){err('No se pudo quitar.')}q.disabled=false});
+})();
+""" + JS_PAGAR
+
+
+def _canchas_sesion(request: Request):
+    """(sesión, canchas del dueño) para los endpoints JSON del calendario; None
+    en ses = sin sesión."""
+    ses = sesion.de_request(request)
+    if not ses:
+        return None, []
+    return ses, datos.canchas_de_dueno(ses["email"])
+
+
+@router.post("/anfitrion/bloqueo")
+async def bloquear_turno(request: Request) -> JSONResponse:
+    ses, canchas = _canchas_sesion(request)
+    if not ses:
+        return JSONResponse({"ok": False, "error": "sesion_requerida"}, status_code=401)
+    if not _pro_ok(ses["email"]):
+        return JSONResponse(_RESP_PRO, status_code=402)
+    try:
+        b = await request.json()
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": "Datos inválidos."}, status_code=400)
+    c = next((x for x in canchas if x["id"] == str(b.get("cancha_id") or "")), None)
+    if c is None:
+        return JSONResponse({"ok": False, "error": "Esta cancha no está a tu nombre."}, status_code=404)
+    fecha, hora = str(b.get("fecha") or ""), str(b.get("hora") or "")
+    try:
+        date.fromisoformat(fecha)
+    except ValueError:
+        return JSONResponse({"ok": False, "error": "Fecha inválida."}, status_code=400)
+    if hora not in horarios.slots(c["hora_apertura"], c["hora_cierre"], c["duracion_slot_min"]):
+        return JSONResponse({"ok": False, "error": "Ese turno no existe en el horario de la cancha."}, status_code=400)
+    bloquear = bool(b.get("bloquear", True))
+    if bloquear and (fecha, hora) in datos.ocupados(c["id"], [fecha]):
+        return JSONResponse({"ok": False, "error": "Ese turno ya tiene una reserva."}, status_code=409)
+    if not datos.bloquear(c["id"], fecha, hora, bloquear):
+        return JSONResponse({"ok": False, "error": "No pudimos guardar en este momento."}, status_code=503)
+    print(f"[bloqueo-web] {ses['email']} {'bloqueó' if bloquear else 'desbloqueó'} {c['id']} {fecha} {hora}", flush=True)
+    return JSONResponse({"ok": True})
+
+
+@router.post("/anfitrion/reserva-manual")
+async def reserva_manual(request: Request) -> JSONResponse:
+    """Reserva MANUAL del dueño desde la web = la misma fila que crea el app
+    (`agregarReservaManual`): confirmada, `traida_por_app=false` (cliente
+    propio, sin comisión), `medio_pago='manual'`, fecha REAL del slot."""
+    ses, canchas = _canchas_sesion(request)
+    if not ses:
+        return JSONResponse({"ok": False, "error": "sesion_requerida"}, status_code=401)
+    if not _pro_ok(ses["email"]):
+        return JSONResponse(_RESP_PRO, status_code=402)
+    try:
+        b = await request.json()
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": "Datos inválidos."}, status_code=400)
+    c = next((x for x in canchas if x["id"] == str(b.get("cancha_id") or "")), None)
+    if c is None:
+        return JSONResponse({"ok": False, "error": "Esta cancha no está a tu nombre."}, status_code=404)
+    base, hora = str(b.get("fecha") or ""), str(b.get("hora") or "")
+    try:
+        date.fromisoformat(base)
+    except ValueError:
+        return JSONResponse({"ok": False, "error": "Fecha inválida."}, status_code=400)
+    paso = c["duracion_slot_min"]
+    if hora not in horarios.slots(c["hora_apertura"], c["hora_cierre"], paso):
+        return JSONResponse({"ok": False, "error": "Ese turno no existe en el horario de la cancha."}, status_code=400)
+    fr = horarios.fecha_real(base, c["hora_apertura"], c["hora_cierre"], hora)
+    ahora = horarios.ahora_local(_pais_de(c))
+    hoy = ahora.date().isoformat()
+    m = horarios.hora_en_minutos(hora) or 0
+    if fr < hoy or (fr == hoy and m < ahora.hour * 60 + ahora.minute):
+        return JSONResponse({"ok": False, "error": "Ese turno ya pasó."}, status_code=400)
+    nombre = re.sub(r"\s+", " ", str(b.get("nombre") or "")).strip()[:80] or "Cliente"
+    telefono = re.sub(r"[^\d+ ]", "", str(b.get("telefono") or "")).strip()[:20]
+    email = str(b.get("email") or "").strip().lower()[:120]
+    if email and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        return JSONResponse({"ok": False, "error": "El correo del cliente no es válido."}, status_code=400)
+    sim, _iso = _moneda_de(c)
+    desc = datos.descuentos(c["id"], [fr])
+    ph = horarios.precio_hora_en(c["precio_hora"], hora, c["descuento_valle"], c.get("valle_desde"), c.get("valle_hasta"))
+    sugerido = horarios.precio_slot(ph, paso, desc.get((fr, hora), 0))
+    try:
+        precio = int(round(float(b.get("precio")))) if b.get("precio") not in (None, "") else sugerido
+    except (TypeError, ValueError):
+        return JSONResponse({"ok": False, "error": "Precio inválido."}, status_code=400)
+    if precio < 0 or precio > 100000:
+        return JSONResponse({"ok": False, "error": "Precio inválido."}, status_code=400)
+    if (c["id"], fr, hora) in datos.bloqueos_de([c["id"]], [fr]):
+        return JSONResponse({"ok": False, "error": "Ese turno está bloqueado. Desbloquéalo primero."}, status_code=409)
+    fila = {"id": f"man_{int(time.time() * 1000)}_w", "cancha_id": c["id"], "jugador": nombre, "nivel": "",
+            "fecha": fr, "dia": horarios.etiqueta_dia(fr, ahora.date()), "hora_inicio": hora, "hora_fin": horarios.hora_fin(hora, paso),
+            "estado": "confirmada", "traida_por_app": False, "precio": precio, "sena": 0, "pagado": bool(b.get("pagado")),
+            "usuario": email, "deporte": c.get("deporte") or "", "moneda": sim, "extras": [], "telefono": telefono,
+            "grupo_reserva_id": "", "medio_pago": "manual"}
+    r = datos.insertar_reservas([fila])
+    if r == "ocupado":
+        return JSONResponse({"ok": False, "error": "Ese turno ya tiene una reserva."}, status_code=409)
+    if r:
+        return JSONResponse({"ok": False, "error": "No pudimos guardar en este momento."}, status_code=503)
+    if email:
+        # Push al JUGADOR "te reservaron" (mismo aviso que manda el app).
+        from pagos import router as pr
+        lugar = (c.get("club") or "").strip() or c["nombre"]
+        try:
+            pr._aviso_push_usuario(email, "Reserva confirmada 🎾",
+                                   f"{lugar} · {horarios.fecha_larga(fr)} {hora}–{fila['hora_fin']}. El local te registró esta reserva. ¡Te esperamos!",
+                                   tipo="reserva_manual")
+        except Exception:  # noqa: BLE001
+            pass
+    print(f"[manual-web] {ses['email']} registró {fila['id']} en {c['id']} {fr} {hora} · {sim} {precio} · pagado={fila['pagado']}", flush=True)
+    return JSONResponse({"ok": True, "id": fila["id"], "precio": precio})
+
+
+@router.post("/anfitrion/reserva/{res_id}/pagado")
+async def marcar_pagado_web(request: Request, res_id: str) -> JSONResponse:
+    """Marcar cobrada (efectivo) / volver a "por cobrar": igual que `marcarPago`
+    del app, con el push "¡Te llegaron puntos! ⭐" al jugador en la
+    transición no pagado → pagado de reservas traídas por la app."""
+    ses, canchas = _canchas_sesion(request)
+    if not ses:
+        return JSONResponse({"ok": False, "error": "sesion_requerida"}, status_code=401)
+    ids = [x["id"] for x in canchas]
+    try:
+        b = await request.json()
+    except Exception:  # noqa: BLE001
+        b = {}
+    pagado = bool((b or {}).get("pagado", True))
+    r = datos.reserva_de_dueno(res_id, ids)
+    if r is None:
+        return JSONResponse({"ok": False, "error": "Reserva no encontrada."}, status_code=404)
+    medio = str(r.get("medio_pago") or "")
+    if not pagado and r.get("pagado") and medio in ("yape", "tarjeta"):
+        return JSONResponse({"ok": False, "error": "Esta reserva se pagó en línea: no se puede marcar por cobrar."}, status_code=400)
+    if bool(r.get("pagado")) == pagado:
+        return JSONResponse({"ok": True, "sin_cambio": True})
+    if not datos.marcar_pagado(res_id, ids, pagado):
+        return JSONResponse({"ok": False, "error": "No pudimos guardar en este momento."}, status_code=503)
+    usuario = str(r.get("usuario") or "").strip().lower()
+    if pagado and r.get("traida_por_app") in (True, 1, "true") and usuario and medio not in ("manual", "bono"):
+        pts = int(round(float(r.get("precio") or 0) + sum(float(x.get("precio") or 0) for x in (r.get("extras") or []) if isinstance(x, dict))))
+        c = next((x for x in canchas if x["id"] == r.get("cancha_id")), None)
+        lugar = ((c or {}).get("club") or "").strip() or (c or {}).get("nombre") or "tu reserva"
+        from pagos import router as pr
+        try:
+            pr._aviso_push_usuario(usuario, "¡Te llegaron puntos! ⭐",
+                                   f"El local confirmó tu pago: +{pts} puntos Pichangol por tu reserva en {lugar}. Canjéalos como descuento en tu próxima reserva online.",
+                                   tipo="puntos")
+        except Exception:  # noqa: BLE001
+            pass
+    print(f"[pago-web] {ses['email']} marcó {res_id} pagado={pagado}", flush=True)
+    return JSONResponse({"ok": True})
+
+
+@router.post("/anfitrion/reserva/{res_id}/quitar")
+async def quitar_reserva_manual(request: Request, res_id: str) -> JSONResponse:
+    ses, canchas = _canchas_sesion(request)
+    if not ses:
+        return JSONResponse({"ok": False, "error": "sesion_requerida"}, status_code=401)
+    ids = [x["id"] for x in canchas]
+    r = datos.reserva_de_dueno(res_id, ids)
+    if r is None:
+        return JSONResponse({"ok": False, "error": "Reserva no encontrada."}, status_code=404)
+    if str(r.get("medio_pago") or "") != "manual":
+        return JSONResponse({"ok": False, "error": "Solo se quitan reservas manuales. Las pagadas por la app se cancelan con reembolso."}, status_code=400)
+    if not datos.borrar_reserva_manual(res_id, ids):
+        return JSONResponse({"ok": False, "error": "No pudimos quitarla en este momento."}, status_code=503)
+    usuario = str(r.get("usuario") or "").strip().lower()
+    if usuario:
+        from pagos import router as pr
+        c = next((x for x in canchas if x["id"] == r.get("cancha_id")), None)
+        lugar = ((c or {}).get("club") or "").strip() or (c or {}).get("nombre") or "la cancha"
+        try:
+            pr._aviso_push_usuario(usuario, "Reserva cancelada 📅",
+                                   f"El local quitó tu reserva en {lugar} del {horarios.fecha_larga(str(r.get('fecha')))} {r.get('hora_inicio')}. Si tienes dudas, escríbele.",
+                                   tipo="reserva_manual")
+        except Exception:  # noqa: BLE001
+            pass
+    print(f"[manual-web] {ses['email']} quitó {res_id}", flush=True)
+    return JSONResponse({"ok": True})
 
 
 @router.get("/anfitrion/ingresos", response_class=HTMLResponse)

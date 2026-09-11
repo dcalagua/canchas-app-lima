@@ -377,6 +377,12 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 .anf-cancha .f{flex:none;width:110px;height:110px;border-radius:12px;overflow:hidden;background:var(--tinte);display:flex;align-items:center;justify-content:center;font-size:40px}
 .anf-cancha .f img{width:100%;height:100%;object-fit:cover}
 .anf-cancha .acciones .btn{flex:0 0 auto;min-width:0;padding:8px 12px;font-size:13px}
+/* calendario interactivo del anfitrión */
+.cal-act td[data-t]{cursor:pointer}.cal-act td.libre:hover{background:var(--tinte)}.cal-act td .li{opacity:0;font-size:11px;color:var(--teal);font-weight:800;text-align:center}
+.cal-act td.libre:hover .li{opacity:1}.cal-act td.res:hover .oc,.cal-act td.bloq:hover .bl{filter:brightness(.95)}
+.modal .quien .av{width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:var(--tinte);color:var(--teal);font-weight:800;flex:none}
+.chk{display:flex;align-items:center;gap:10px;font-weight:700;font-size:14px;cursor:pointer}.chk input{width:18px;height:18px;padding:0;margin:0;accent-color:var(--esmeralda)}.chk small{font-weight:500;color:var(--tenue)}
+.aviso.warn{background:var(--warn-bg);color:var(--warn-fg);border-radius:14px;padding:12px 16px;font-weight:600}
 /* editor de cancha (como el editor de anuncios de Airbnb) */
 .edit-top{margin-top:22px}.volver-lnk{font-weight:700;color:var(--noche);text-decoration:none;font-size:14px}.volver-lnk:hover{text-decoration:underline}
 .edit-grid{display:grid;grid-template-columns:240px minmax(0,1fr);gap:28px;align-items:start;margin-top:18px}

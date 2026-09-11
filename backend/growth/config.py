@@ -227,6 +227,10 @@ IMG_MAX_RETENIDAS = int(os.getenv("IMG_MAX_RETENIDAS", "80"))
 # Pichangol Pro vigente pueden generar (post del día, reel, activar el CM). Por
 # defecto APAGADO para no bloquear el piloto; se prende cuando cobremos el servicio.
 CM_REQUIERE_PRO = os.getenv("CM_REQUIERE_PRO", "0") == "1"
+# Candado Pro del DUEÑO en la web (reserva manual + bloquear horas desde el
+# calendario de Modo anfitrión). Fail-open como los otros: "1" = solo Pro. El
+# APK aún no lo exige (backlog "Candado PRO"); se prende junto con el app.
+WEB_MANUAL_REQUIERE_PRO = os.getenv("WEB_MANUAL_REQUIERE_PRO", "0") == "1"
 # Si true, la validación en sitio del motorizado activa la cancha automáticamente
 # (y se avisa al admin). Si false, queda lista y el admin la activa a mano.
 VALIDADOR_ACTIVA_AUTOMATICO = os.getenv("VALIDADOR_ACTIVA_AUTOMATICO", "1") == "1"

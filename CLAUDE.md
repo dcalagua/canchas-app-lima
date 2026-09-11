@@ -503,6 +503,35 @@ para la API del APK.
   también trae deportes, fotos y servicios extra (si no, el siguiente upsert
   del app pisaba la edición web). Test
   `test_editar_cancha_desde_la_web_como_el_app`.
+- **CALENDARIO WEB OPERATIVO (sep-2026, puntos 2 y 3 del plan aprobado):**
+  en `/anfitrion/calendario` cada turno es clicable (como el calendario de
+  Airbnb, modal `#modalCal`): LIBRE → "📝 Reserva manual" (cliente reciente
+  de sus propias reservas de 180 d, nombre, teléfono, correo opcional para
+  que la vea en su app, precio sugerido = `precio_slot` con hora feliz y
+  descuento del slot, "Ya pagó") o "⛔ Bloquear turno"; BLOQUEADO →
+  Desbloquear; RESERVA → detalle + WhatsApp + "✅ Marcar pagada" / "↩
+  Marcar por cobrar" (no en pagadas en línea) + "🗑 Quitar reserva" (SOLO
+  manuales). Endpoints JSON (sesión + cancha del dueño, si no 401/404):
+  `POST /anfitrion/bloqueo {cancha_id, fecha, hora, bloquear}`
+  (`datos.bloquear`, tabla `pichangol_bloqueos` = la del app, 409 si hay
+  reserva), `POST /anfitrion/reserva-manual` (misma fila que
+  `agregarReservaManual`: id `man_<ms>_w`, `confirmada`,
+  `traida_por_app=false` → sin comisión ni billetera, `medio_pago='manual'`,
+  fecha REAL del slot de madrugada, rechaza pasado/bloqueado/ocupado; push
+  "Reserva confirmada 🎾" al correo del cliente), `POST
+  /anfitrion/reserva/{id}/pagado {pagado}` (`datos.marcar_pagado`, = 
+  `marcarPago` del app; en la transición a pagado de reservas traídas por
+  la app manda el push "¡Te llegaron puntos! ⭐"; también botón en la
+  tarjeta de "Hoy", `JS_PAGAR`) y `POST /anfitrion/reserva/{id}/quitar`
+  (`datos.borrar_reserva_manual`, solo `medio_pago='manual'`; push
+  "Reserva cancelada 📅"). **Candado Pro:** `WEB_MANUAL_REQUIERE_PRO=1`
+  (env, fail-open como `CM_REQUIERE_PRO`) exige `stores.pro_activo` para
+  reserva manual y bloqueos (402 `requiere_pro` + aviso en el calendario);
+  marcar pagado nunca es Pro. Apagado hasta que el APK también lo exija
+  (backlog "Candado PRO"). Test
+  `test_calendario_web_reserva_manual_bloqueo_y_marcar_pagado`. OJO tests:
+  `FakeDB` copia las fixtures (`dict(c)`) — antes un test mutaba `LIMA`
+  para los siguientes.
 - **FICHA DE RESERVA (sep-2026, pedidos del director):** "Cómo llegar" abre
   el mapa DENTRO de la ficha (Leaflet + OpenStreetMap en `#mapaFicha`, con
   enlaces "Abrir en Google Maps" e "Indicaciones paso a paso" debajo), no en

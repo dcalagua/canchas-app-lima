@@ -36,7 +36,7 @@ PEND = {**LIMA, "id": "c_pend", "nombre": "Loza Pendiente", "verificada": False,
 
 class FakeDB:
     def __init__(self):
-        self.canchas = {c["id"]: c for c in (LIMA, GYE, NOCHE, PEND)}
+        self.canchas = {c["id"]: dict(c) for c in (LIMA, GYE, NOCHE, PEND)}  # copias: un test no debe mutar las fixtures de otro
         self.reservas: dict[str, dict] = {}
         self.bloqueos: set = set()
         self.desc: dict = {}
@@ -103,6 +103,31 @@ class FakeDB:
     def bloqueos_de(self, ids, fechas):
         return {(c, f, h) for (c, f, h) in self.bloqueos if c in ids and f in fechas}
 
+    def bloquear(self, cid, fecha, hora, bloquear=True):
+        if bloquear:
+            self.bloqueos.add((cid, fecha, hora))
+        else:
+            self.bloqueos.discard((cid, fecha, hora))
+        return True
+
+    def reserva_de_dueno(self, rid, ids):
+        r = self.reservas.get(rid)
+        return dict(r) if r and r["cancha_id"] in ids else None
+
+    def marcar_pagado(self, rid, ids, pagado):
+        r = self.reservas.get(rid)
+        if not r or r["cancha_id"] not in ids:
+            return False
+        r["pagado"] = pagado
+        return True
+
+    def borrar_reserva_manual(self, rid, ids):
+        r = self.reservas.get(rid)
+        if not r or r["cancha_id"] not in ids or r.get("medio_pago") != "manual":
+            return False
+        del self.reservas[rid]
+        return True
+
     def actualizar_cancha(self, cancha_id, dueno, campos):
         c = self.canchas.get(cancha_id)
         if not c or (c.get("dueno") or "").lower() != dueno.lower() or c.get("eliminada"):
@@ -126,13 +151,17 @@ def db(monkeypatch):
     for fn in ("canchas_publicas", "canchas_verificadas", "cancha", "ocupados", "descuentos", "liberar_holds_vencidos",
                "insertar_reservas", "confirmar_reservas", "borrar_reservas", "reservas_de",
                "reservas_por_grupo", "reservas_de_usuario", "eliminar_reservas", "canchas_de_dueno", "reservas_de_canchas", "bloqueos_de",
-               "actualizar_cancha"):
+               "actualizar_cancha", "bloquear", "reserva_de_dueno", "marcar_pagado", "borrar_reserva_manual"):
         monkeypatch.setattr(datos, fn, getattr(fake, fn))
     monkeypatch.setattr(config, "CULQI_PUBLIC_KEY", "pk_test_x")
     monkeypatch.setattr(config, "CULQI_SECRET_KEY", "sk_test_x")
     monkeypatch.setattr(config, "ADMIN_PANEL_TOKEN", "adm")
     monkeypatch.setattr(config, "APP_API_KEY", "")
     return fake
+
+
+def _hoy_iso(cancha=LIMA):
+    return horarios.ahora_local(web._pais_de(cancha)).date().isoformat()
 
 
 def _manana(cancha=LIMA):
@@ -803,3 +832,91 @@ def test_editar_cancha_desde_la_web_como_el_app(db, monkeypatch):
     ficha = cli.get("/reservar/c_lima").text
     assert "Cancha 1 · Grass" in ficha and "Árbitro" in ficha and "Parrilla" in ficha
     assert "🅿️ Estacionamiento" in cli.get("/").text  # el chip del explorador reconoce la clave del app
+
+
+def test_calendario_web_reserva_manual_bloqueo_y_marcar_pagado(db, monkeypatch):
+    """Calendario del anfitrión (como el de Airbnb): al tocar un turno el dueño
+    registra una reserva MANUAL (misma fila que el app: confirmada, sin
+    comisión, medio 'manual', push al jugador), BLOQUEA/desbloquea horas y
+    MARCA PAGADA una reserva en efectivo (push de puntos como el app). Solo
+    sobre sus canchas; candado Pro por env (fail-open)."""
+    from web import sesion
+    import pagos.router as pr
+    monkeypatch.setattr(config, "GOOGLE_WEB_CLIENT_ID", "cid-web")
+    pushes = []
+    monkeypatch.setattr(pr, "_aviso_push_usuario", lambda email, titulo, cuerpo, tipo="aviso": pushes.append((email, titulo, tipo)))
+    cli = TestClient(app, base_url="https://testserver")
+    f = _manana()
+    assert cli.post("/anfitrion/bloqueo", json={"cancha_id": "c_lima", "fecha": f, "hora": "10:00"}).status_code == 401
+    # Una jugadora reserva y paga en la cancha (efectivo) → el dueño la verá "por cobrar".
+    monkeypatch.setattr(sesion, "_tokeninfo", lambda t: {"email": "ana@gmail.com", "email_verified": "true", "aud": "cid-web", "name": "Ana", "exp": "9999999999"})
+    cli.post("/web/sesion", json={"credential": "x"})
+    r = cli.post("/web/asegurar", json={"cancha_id": "c_lima", "horas": [{"fecha": f, "hora": "19:00"}], "extras": [],
+                                        "nombre": "Ana", "celular": "999888777", "email": "ana@gmail.com"}).json()
+    assert r.get("ok"), r
+    rid = r["ids"][0]
+    db.reservas[rid].update({"estado": "confirmada", "medio_pago": "efectivo", "pagado": False})
+    # Ana NO es dueña: 404 en todo.
+    assert cli.post("/anfitrion/bloqueo", json={"cancha_id": "c_lima", "fecha": f, "hora": "10:00"}).status_code == 404
+    assert cli.post(f"/anfitrion/reserva/{rid}/pagado", json={"pagado": True}).status_code == 404
+    assert cli.post("/anfitrion/reserva-manual", json={"cancha_id": "c_lima", "fecha": f, "hora": "10:00", "nombre": "X"}).status_code == 404
+    cli.post("/web/salir")
+    monkeypatch.setattr(sesion, "_tokeninfo", lambda t: {"email": "dueno@x.com", "email_verified": "true", "aud": "cid-web", "name": "Don Dueño", "exp": "9999999999"})
+    cli.post("/web/sesion", json={"credential": "x"})
+    cal = cli.get(f"/anfitrion/calendario?cancha=c_lima&desde={f}").text
+    assert "data-t='libre'" in cal and f"data-rid='{rid}'" in cal and "Reserva manual" in cal and "Bloquear turno" in cal and "Marcar pagada" in cal
+    assert "parte de <b>Pichangol Pro</b>" not in cal  # candado apagado por defecto (fail-open)
+    # Bloquear / desbloquear.
+    assert cli.post("/anfitrion/bloqueo", json={"cancha_id": "c_lima", "fecha": f, "hora": "10:00"}).json()["ok"]
+    assert ("c_lima", f, "10:00") in db.bloqueos
+    assert cli.post("/anfitrion/bloqueo", json={"cancha_id": "c_lima", "fecha": f, "hora": "19:00"}).status_code == 409  # ya reservado
+    assert cli.post("/anfitrion/bloqueo", json={"cancha_id": "c_lima", "fecha": f, "hora": "10:30"}).status_code == 400  # no es turno
+    assert "Bloqueado" in cli.get(f"/anfitrion/calendario?cancha=c_lima&desde={f}").text
+    assert "ocupado" == cli.post("/web/asegurar", json={"cancha_id": "c_lima", "horas": [{"fecha": f, "hora": "10:00"}], "extras": [],
+                                                        "nombre": "Beto", "celular": "999000111", "email": "b@x.com"}).json()["error"]
+    assert cli.post("/anfitrion/bloqueo", json={"cancha_id": "c_lima", "fecha": f, "hora": "10:00", "bloquear": False}).json()["ok"]
+    assert ("c_lima", f, "10:00") not in db.bloqueos
+    # Reserva manual: misma fila que el app; precio sugerido (hora feliz 50 % antes de las 12) si no mandan monto; push al cliente con cuenta.
+    r = cli.post("/anfitrion/reserva-manual", json={"cancha_id": "c_lima", "fecha": f, "hora": "10:00", "nombre": "  Juan  Pérez ", "telefono": "988 777 666",
+                                                    "email": "Juan@Gmail.com", "pagado": False}).json()
+    assert r["ok"] and r["precio"] == 30, r
+    fila = db.reservas[r["id"]]
+    assert fila["estado"] == "confirmada" and fila["traida_por_app"] is False and fila["medio_pago"] == "manual" and fila["pagado"] is False
+    assert fila["jugador"] == "Juan Pérez" and fila["usuario"] == "juan@gmail.com" and fila["telefono"] == "988 777 666" and fila["hora_fin"] == "11:00"
+    assert pushes[-1] == ("juan@gmail.com", "Reserva confirmada 🎾", "reserva_manual")
+    assert cli.post("/anfitrion/reserva-manual", json={"cancha_id": "c_lima", "fecha": f, "hora": "10:00", "nombre": "Otro"}).status_code == 409
+    assert cli.post("/anfitrion/reserva-manual", json={"cancha_id": "c_lima", "fecha": "2020-01-01", "hora": "10:00", "nombre": "Otro"}).status_code == 400
+    assert cli.post("/anfitrion/reserva-manual", json={"cancha_id": "c_lima", "fecha": f, "hora": "11:00", "email": "no-es-correo"}).status_code == 400
+    r2 = cli.post("/anfitrion/reserva-manual", json={"cancha_id": "c_lima", "fecha": f, "hora": "11:00", "precio": 45.4, "pagado": True}).json()
+    assert r2["ok"] and db.reservas[r2["id"]]["precio"] == 45 and db.reservas[r2["id"]]["jugador"] == "Cliente" and db.reservas[r2["id"]]["pagado"] is True
+    # Madrugada: la cancha nocturna (18:00→02:00) liga el turno de 01:00 al día siguiente.
+    r3 = cli.post("/anfitrion/reserva-manual", json={"cancha_id": "c_noche", "fecha": f, "hora": "01:00", "nombre": "N"}).json()
+    from datetime import date, timedelta
+    assert r3["ok"] and db.reservas[r3["id"]]["fecha"] == (date.fromisoformat(f) + timedelta(days=1)).isoformat()
+    # Marcar pagada la reserva en efectivo de Ana → push de puntos; volver a "por cobrar"; una pagada en línea no se revierte.
+    assert cli.post(f"/anfitrion/reserva/{rid}/pagado", json={"pagado": True}).json()["ok"]
+    assert db.reservas[rid]["pagado"] is True and pushes[-1] == ("ana@gmail.com", "¡Te llegaron puntos! ⭐", "puntos")
+    n = len(pushes)
+    assert cli.post(f"/anfitrion/reserva/{rid}/pagado", json={"pagado": True}).json().get("sin_cambio")
+    assert cli.post(f"/anfitrion/reserva/{rid}/pagado", json={"pagado": False}).json()["ok"] and db.reservas[rid]["pagado"] is False and len(pushes) == n
+    db.reservas[rid].update({"pagado": True, "medio_pago": "yape"})
+    assert cli.post(f"/anfitrion/reserva/{rid}/pagado", json={"pagado": False}).status_code == 400
+    assert cli.post("/anfitrion/reserva/no_existe/pagado", json={}).status_code == 404
+    # Quitar: solo manuales (la de Ana, pagada por la web, no).
+    assert cli.post(f"/anfitrion/reserva/{rid}/quitar").status_code == 400
+    assert cli.post(f"/anfitrion/reserva/{r['id']}/quitar").json()["ok"] and r["id"] not in db.reservas
+    assert pushes[-1] == ("juan@gmail.com", "Reserva cancelada 📅", "reserva_manual")
+    # "Hoy" muestra el botón para cobrar en efectivo.
+    db.reservas[rid].update({"pagado": False, "medio_pago": "efectivo", "fecha": _hoy_iso()})
+    hoy = cli.get("/anfitrion/mis-canchas").text
+    assert f"data-pagar='{rid}'" in hoy and "Marcar pagada" in hoy
+    # Candado Pro (env): sin Pro → 402 y aviso en el calendario; con Pro → pasa.
+    monkeypatch.setattr(config, "WEB_MANUAL_REQUIERE_PRO", True)
+    assert cli.post("/anfitrion/bloqueo", json={"cancha_id": "c_lima", "fecha": f, "hora": "12:00"}).status_code == 402
+    assert cli.post("/anfitrion/reserva-manual", json={"cancha_id": "c_lima", "fecha": f, "hora": "12:00"}).json()["error"] == "requiere_pro"
+    assert "parte de <b>Pichangol Pro</b>" in cli.get(f"/anfitrion/calendario?cancha=c_lima&desde={f}").text
+    assert cli.post(f"/anfitrion/reserva/{rid}/pagado", json={"pagado": True}).json()["ok"]  # marcar pagado NO es Pro
+    from datetime import datetime, timezone
+    stores.membresias_pro["dueno@x.com"] = {"hasta": (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()}
+    assert cli.post("/anfitrion/bloqueo", json={"cancha_id": "c_lima", "fecha": f, "hora": "12:00"}).json()["ok"]
+    stores.membresias_pro.pop("dueno@x.com", None)
