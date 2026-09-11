@@ -331,6 +331,30 @@ def reservas_de(ids: list[str]) -> list[dict]:
         return []
 
 
+def reservas_de_usuario(email: str, limite: int = 200) -> list[dict]:
+    """Reservas del CORREO de Google (`usuario`), las mismas que ve "Mis
+    reservas" del app: pagadas o confirmadas (incluye efectivo), canceladas y
+    no-show; se omiten las retenciones web sin pagar (estado `nueva`)."""
+    email = (email or "").strip().lower()
+    if not pg.habilitado or not email:
+        return []
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(
+                f"SELECT {', '.join(_COLS_RES)} FROM pichangol_reservas "
+                "WHERE lower(usuario) = %s AND NOT (coalesce(estado,'') = 'nueva' AND NOT coalesce(pagado,false)) "
+                "ORDER BY fecha DESC, hora_inicio DESC LIMIT %s", (email, limite))
+            out = []
+            for f in cur.fetchall():
+                d = pg._fila_a_dict(_COLS_RES, f)
+                d["extras"] = _json_list(d.get("extras"))
+                d["precio"] = int(round(float(d.get("precio") or 0)))
+                out.append(d)
+            return out
+    except Exception:  # noqa: BLE001
+        return []
+
+
 def reservas_por_grupo(grupo: str) -> list[dict]:
     if not pg.habilitado or not grupo:
         return []

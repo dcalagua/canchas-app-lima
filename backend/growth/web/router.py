@@ -1665,6 +1665,102 @@ def _url_comprobante(filas: list[dict]) -> str:
 
 # ── comprobante ───────────────────────────────────────────────────────────────
 
+ESTADO_RESERVA = {"confirmada": ("Confirmada", "ok"), "cancelada": ("Cancelada", "bad"), "noShow": ("No asististe", "bad"),
+                  "nueva": ("Pendiente de pago", "warn"), "completada": ("Jugada", "ok")}
+
+
+def _tarjeta_reserva(r: dict, c: dict | None, hoy: str) -> str:
+    sim = r.get("moneda") or (c and _moneda_de(c)[0]) or "S/"
+    estado = str(r.get("estado") or "")
+    if estado == "cancelada" or estado == "noShow":
+        etiqueta, tono = ESTADO_RESERVA[estado]
+    elif r.get("pagado"):
+        etiqueta, tono = ("Pagada", "ok")
+    else:
+        etiqueta, tono = ("Pagas en la cancha", "warn")
+    ref = r.get("grupo_reserva_id") or r.get("id")
+    con_comprobante = bool(r.get("pagado") or estado == "confirmada")
+    pasada = str(r.get("fecha") or "") < hoy
+    nombre = (c or {}).get("nombre") or "Cancha"
+    sub = " · ".join(x for x in ((c or {}).get("club"), _zona(c) if c else "") if x)
+    acciones = ""
+    if con_comprobante:
+        acciones += f"<a class='btn sec' href='/reserva/{e(ref)}'>Comprobante</a>"
+    if c:
+        acciones += f"<a class='btn sec' href='/reservar/{e(c['id'])}'>{'Reservar de nuevo' if pasada else 'Ver cancha'}</a>"
+        if not pasada:
+            acciones += f"<a class='btn sec' href='{_maps(c)}' target='_blank' rel='noopener'>📍 Cómo llegar</a>"
+    extras = ", ".join(EXTRAS_NOMBRE.get(str(x.get("clave")), str(x.get("clave")).capitalize()) for x in (r.get("extras") or []) if isinstance(x, dict))
+    return (f"<div class='res{' pasada' if pasada else ''}'>"
+            f"<div class='res-cab'><div><b>{e(nombre)}</b><div class='sub' style='margin:2px 0 0;font-size:13.5px'>{e(sub)}</div></div>"
+            f"<span class='pill {tono}'>{etiqueta}</span></div>"
+            f"<div class='res-cuando'>📅 {e(horarios.fecha_larga(str(r.get('fecha') or '')))} · 🕒 {e(r.get('hora_inicio'))}–{e(r.get('hora_fin'))}"
+            + (f" · {r['turnos']} turnos" if int(r.get('turnos') or 1) > 1 else "")
+            + (f" · {e(extras)}" if extras else "")
+            + f"<b style='margin-left:auto'>{e(sim)} {int(r.get('precio') or 0):.2f}</b></div>"
+            + (f"<div class='acciones' style='margin-top:10px'>{acciones}</div>" if acciones else "")
+            + "</div>")
+
+
+def _agrupar_reservas(filas: list[dict]) -> list[dict]:
+    """Los turnos de UNA misma reserva (mismo `grupo_reserva_id`, mismo día)
+    se muestran como una sola tarjeta: 19:00–21:00 · 2 turnos, precio sumado."""
+    grupos: dict[str, dict] = {}
+    out: list[dict] = []
+    for r in filas:
+        g = r.get("grupo_reserva_id")
+        clave = f"{g}|{r.get('fecha')}" if g else ""
+        if clave and clave in grupos:
+            a = grupos[clave]
+            a["hora_inicio"] = min(a["hora_inicio"], r["hora_inicio"]) if a["hora_inicio"] and r.get("hora_inicio") else a["hora_inicio"]
+            a["hora_fin"] = max(a["hora_fin"], r["hora_fin"]) if a["hora_fin"] and r.get("hora_fin") else a["hora_fin"]
+            a["precio"] = int(a.get("precio") or 0) + int(r.get("precio") or 0)
+            a["turnos"] = a.get("turnos", 1) + 1
+            a["extras"] = (a.get("extras") or []) + (r.get("extras") or [])
+            continue
+        d = dict(r); d["turnos"] = 1
+        out.append(d)
+        if clave:
+            grupos[clave] = d
+    return out
+
+
+@router.get("/mis-reservas", response_class=HTMLResponse)
+def pagina_mis_reservas(request: Request) -> HTMLResponse:
+    """"Mis reservas" en la web: las reservas del correo de Google con sesión
+    (las mismas que el app), próximas y pasadas, con comprobante y cancha."""
+    ses = sesion.de_request(request)
+    if not ses:
+        if sesion.activo():
+            return HTMLResponse("", status_code=302, headers={"Location": "/entrar?volver=%2Fmis-reservas"})
+        cuerpo = ("<div class='panel' style='max-width:520px;margin:40px auto;text-align:center'>"
+                  "<h1 style='font-size:22px'>Mis reservas</h1>"
+                  "<p class='sub'>En esta web aún no está activo el inicio de sesión. Tus reservas están en la app.</p>"
+                  f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a></div></div>")
+        return ui.shell("Mis reservas", cuerpo, sesion=None)
+    email = ses["email"]
+    filas = _agrupar_reservas(datos.reservas_de_usuario(email))
+    canchas = {}
+    for r in filas:
+        cid = r.get("cancha_id")
+        if cid and cid not in canchas:
+            canchas[cid] = datos.cancha(cid)
+    hoy = horarios.ahora_local("PE").date().isoformat()
+    proximas = sorted([r for r in filas if str(r.get("fecha") or "") >= hoy], key=lambda r: (r.get("fecha"), r.get("hora_inicio")))
+    pasadas = [r for r in filas if str(r.get("fecha") or "") < hoy]
+    def _bloque(titulo: str, lst: list[dict], vacio: str) -> str:
+        cuerpo_b = "".join(_tarjeta_reserva(r, canchas.get(r.get("cancha_id")), hoy) for r in lst) if lst else f"<div class='vacio' style='padding:18px 0'>{vacio}</div>"
+        return f"<section style='margin-top:22px'><h2>{titulo} <small style='color:var(--tenue);font-weight:600;font-size:14px'>· {len(lst)}</small></h2>{cuerpo_b}</section>"
+    cuerpo = ("<div style='max-width:760px;margin:26px auto 0'>"
+              f"<h1>Mis reservas</h1><p class='sub'>De <b>{e(ses.get('nombre') or email)}</b> · {e(email)}. Son las mismas que ves en la app con esta cuenta.</p>"
+              + _bloque("Próximas", proximas, "No tienes reservas próximas. <a href='/canchas'>Explora canchas</a> y reserva en un minuto.")
+              + _bloque("Pasadas", pasadas, "Todavía no has jugado con Pichangol.")
+              + "<div class='estado ok' style='margin-top:22px'>Cancelación con más de 6 horas de anticipación: devolución del 100 %. "
+              "Escríbenos a <a href='mailto:contacto@ebim.pe'>contacto@ebim.pe</a> citando el número de comprobante.</div>"
+              "</div>")
+    return ui.shell("Mis reservas", cuerpo, sesion=ses, titulo_tab="Mis reservas · Pichangol")
+
+
 def _filas_comprobante(ref: str) -> list[dict]:
     filas = datos.reservas_por_grupo(ref) if ref.startswith("grp_") else datos.reservas_de([ref])
     return [f for f in filas if f.get("pagado") or f.get("estado") == "confirmada"]

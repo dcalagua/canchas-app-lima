@@ -64,6 +64,13 @@ h1{font-size:28px;line-height:1.15}h2{font-size:20px}h3{font-size:16px}
 .chip:hover{border-color:#C9D3E0}.chip.sel{background:var(--tinte);border-color:var(--esmeralda);color:var(--teal)}
 .chip.off{opacity:.38;cursor:not-allowed;text-decoration:line-through}.chip small{font-weight:600;color:var(--tenue)}
 .chip.sel small{color:var(--teal)}.chips{display:flex;flex-wrap:wrap;gap:10px}
+/* Mis reservas */
+.res{background:var(--blanco);border:1px solid var(--trazo);border-radius:var(--r);padding:16px 18px;margin-top:12px;box-shadow:var(--sombra)}
+.res.pasada{opacity:.85}
+.res-cab{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.res-cab b{font-size:16px}
+.res-cuando{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px;font-size:14px;font-weight:600;color:var(--noche)}
+.res .acciones{margin-top:10px}.res .acciones .btn{flex:0 0 auto;min-width:0;padding:9px 14px;font-size:13.5px}
+.pill.warn{background:var(--warn-bg);color:var(--warn-fg)}.pill.bad{background:var(--bad-bg);color:var(--bad-fg)}.pill.ok{background:var(--ok-bg);color:var(--ok-fg)}
 /* mapa de "Cómo llegar" dentro de la ficha */
 .mapa-ficha{display:none;margin:10px 0 4px}
 .mapa-ficha.open{display:block}
@@ -537,7 +544,7 @@ def menu_cuenta(ses: dict | None, volver: str = "/") -> str:
     if ses:
         nombre = ses.get("nombre") or ses.get("email") or ""
         cuenta = (f"<div class='yo'>{_avatar(ses)}<div><b>{e(nombre)}</b><small>{e(ses.get('email'))}</small></div></div>"
-                  "<hr><a class='b' href='https://play.google.com/store/apps/details?id=pe.ebim.pichangol' rel='noopener'>📅 Mis reservas (en la app)</a>"
+                  "<hr><a class='b' href='/mis-reservas'>📅 Mis reservas</a>"
                   "<button type='button' onclick='window.pcgSalir&&pcgSalir()'>Cerrar sesión</button>")
         avatar = f"<a class='redondo' href='#' onclick='return false' title='{e(ses.get('email'))}' aria-label='Tu cuenta'>{_avatar(ses)}</a>"
     else:

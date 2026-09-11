@@ -87,6 +87,11 @@ class FakeDB:
         return sorted([dict(self.reservas[i]) for i in ids if i in self.reservas],
                       key=lambda r: (r["fecha"], r["hora_inicio"]))
 
+    def reservas_de_usuario(self, email, limite=200):
+        return sorted([dict(r) for r in self.reservas.values()
+                       if (r.get("usuario") or "").lower() == email.lower() and not (r["estado"] == "nueva" and not r.get("pagado"))],
+                      key=lambda r: (r["fecha"], r["hora_inicio"]), reverse=True)
+
     def reservas_por_grupo(self, g):
         return sorted([dict(r) for r in self.reservas.values() if r["grupo_reserva_id"] == g],
                       key=lambda r: (r["fecha"], r["hora_inicio"]))
@@ -97,7 +102,7 @@ def db(monkeypatch):
     fake = FakeDB()
     for fn in ("canchas_publicas", "canchas_verificadas", "cancha", "ocupados", "descuentos", "liberar_holds_vencidos",
                "insertar_reservas", "confirmar_reservas", "borrar_reservas", "reservas_de",
-               "reservas_por_grupo"):
+               "reservas_por_grupo", "reservas_de_usuario"):
         monkeypatch.setattr(datos, fn, getattr(fake, fn))
     monkeypatch.setattr(config, "CULQI_PUBLIC_KEY", "pk_test_x")
     monkeypatch.setattr(config, "CULQI_SECRET_KEY", "sk_test_x")
@@ -569,8 +574,19 @@ def test_reservar_exige_login_con_google_como_el_app(db, monkeypatch):
     p = cli.post("/web/pagar", json={"ids": r["ids"], "firma": r["firma"], "token": "tkn", "medio": "yape",
                                      "email": "otra@x.com"}).json()
     assert p["ok"] and db.reservas[r["ids"][0]]["pagado"]
+    # "Mis reservas" en la web: las reservas del correo de Google (como en el app).
+    mr = cli.get("/mis-reservas").text
+    assert "Mis reservas" in mr and "ana@gmail.com" in mr and "Cancha Central" in mr and "Pagada" in mr
+    # Dos turnos seguidos de la misma reserva = una sola tarjeta 19:00–21:00 · 2 turnos.
+    r2 = cli.post("/web/asegurar", json={**body, "horas": [{"fecha": f, "hora": "20:00"}, {"fecha": f, "hora": "21:00"}]}).json()
+    cli.post("/web/pagar", json={"ids": r2["ids"], "firma": r2["firma"], "token": "tkn", "medio": "yape", "email": "x@x.com"})
+    mr = cli.get("/mis-reservas").text
+    assert "20:00–22:00 · 2 turnos" in mr
+    assert f"/reserva/{db.reservas[r['ids'][0]].get('grupo_reserva_id') or r['ids'][0]}" in mr and "Próximas" in mr
+    assert "href='/mis-reservas'" in mr  # enlace del menú ☰
     # Salir: sin cookie vuelve a exigir sesión.
     cli.post("/web/salir")
+    assert cli.get("/mis-reservas", follow_redirects=False).status_code == 302
     assert cli.post("/web/asegurar", json=body).json()["error"] == "sesion_requerida"
     # Sin client id configurado, la web sigue con el formulario de invitado.
     monkeypatch.setattr(config, "GOOGLE_WEB_CLIENT_ID", "")

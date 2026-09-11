@@ -393,6 +393,19 @@ para la API del APK.
   `overflow-x:hidden` en `body` convierte al body en scroll container y
   mata el `position:sticky` de la cabecera → `html{overflow-x:hidden}` +
   `body{overflow-x:clip}`.
+- **MIS RESERVAS EN LA WEB (sep-2026, pedido del director):** `GET
+  /mis-reservas` (router `pagina_mis_reservas`) lista las reservas del CORREO
+  de Google con sesión — las mismas que "Mis reservas" del app —
+  (`datos.reservas_de_usuario`: `lower(usuario)=email`, sin retenciones
+  web sin pagar), separadas en Próximas y Pasadas, con estado (Pagada /
+  Pagas en la cancha / Cancelada / No asististe), precio, Comprobante
+  (`/reserva/{grupo|id}`), Ver cancha / Reservar de nuevo y Cómo llegar; los
+  turnos de una misma reserva se agrupan en UNA tarjeta
+  (`_agrupar_reservas`: 19:00–21:00 · 2 turnos, precio sumado). Sin cookie →
+  302 a `/entrar?volver=/mis-reservas`; sin `GOOGLE_WEB_CLIENT_ID` explica
+  que están en la app. Enlace "📅 Mis reservas" en el menú ☰ (solo con
+  sesión). Cancelar desde la web NO está (se pide por correo citando el
+  comprobante, como dice el aviso); el reembolso web es fase 2.
 - **FICHA DE RESERVA (sep-2026, pedidos del director):** "Cómo llegar" abre
   el mapa DENTRO de la ficha (Leaflet + OpenStreetMap en `#mapaFicha`, con
   enlaces "Abrir en Google Maps" e "Indicaciones paso a paso" debajo), no en
