@@ -116,11 +116,13 @@ def _manana(cancha=LIMA):
 
 def test_horarios_espejo_del_apk():
     assert horarios.slots("07:00", "23:00", 60)[:2] == ["07:00", "08:00"]
-    assert horarios.slots("07:00", "23:00", 60)[-1] == "22:00"
-    assert horarios.slots("07:00", "23:00", 90)[-1] == "20:30"     # cabe completo antes del cierre
-    assert horarios.slots("07:00", "00:00", 60)[-1] == "23:00"     # hasta medianoche
-    assert horarios.slots("18:00", "02:00", 60) == ["18:00", "19:00", "20:00", "21:00", "22:00", "23:00", "00:00", "01:00"]
-    assert len(horarios.slots("00:00", "00:00", 60)) == 24         # 24 h
+    # El último turno EMPIEZA a la hora de cierre (decisión del director, sep-2026).
+    assert horarios.slots("07:00", "23:00", 60)[-1] == "23:00"     # 23:00–00:00
+    assert horarios.slots("07:00", "23:00", 90)[-1] == "22:00"     # 22:00–23:30 (23:30 ya pasa del cierre)
+    assert horarios.slots("07:00", "00:00", 60)[-1] == "00:00"     # hasta medianoche → 00:00–01:00 (madrugada)
+    assert horarios.slots("18:00", "02:00", 60) == ["18:00", "19:00", "20:00", "21:00", "22:00", "23:00", "00:00", "01:00", "02:00"]
+    assert len(horarios.slots("00:00", "00:00", 60)) == 24         # 24 h, sin repetir medianoche
+    assert horarios.fecha_real("2026-09-11", "07:00", "00:00", "00:00") == "2026-09-12"  # el turno de las 00:00 es del día siguiente
     assert horarios.hora_fin("23:00", 60) == "00:00"
     assert horarios.fecha_real("2026-09-10", "18:00", "02:00", "01:00") == "2026-09-11"
     assert horarios.fecha_real("2026-09-10", "18:00", "02:00", "22:00") == "2026-09-10"
@@ -312,12 +314,14 @@ def test_buscador_por_fecha_y_hora_como_airbnb(db, monkeypatch):
     j = client.get(f"/web/libres?fecha={f}&hora=19:00").json()
     assert j["ok"] and j["libres"]["c_lima"] is True and "c_gye" in j["libres"]
     # Ocupada a las 19:00 → ya no está libre; a las 20:00 sí. La 03:00 no
-    # cae en ningún turno (cierra 23:00) → no libre.
+    # cae en ningún turno (cierra 23:00) → no libre. La 23:00 SÍ (último turno 23:00–00:00).
     monkeypatch.setattr(_d, "ocupados_varias", lambda ids, fechas: {"c_lima": {(f, "19:00")}})
     j = client.get(f"/web/libres?fecha={f}&hora=19:00").json()
     assert j["libres"]["c_lima"] is False
     assert client.get(f"/web/libres?fecha={f}&hora=20:00").json()["libres"]["c_lima"] is True
     assert client.get(f"/web/libres?fecha={f}&hora=03:00").json()["libres"]["c_lima"] is False
+    assert client.get(f"/web/libres?fecha={f}&hora=23:00").json()["libres"]["c_lima"] is True
+    assert client.get(f"/web/libres?fecha={f}&hora=23:30").json()["libres"]["c_lima"] is True
     # Hora dentro de un turno de 90 min (19:30 cae en el turno 19:00-20:30).
     fake.canchas["c_lima"]["duracion_slot_min"] = 90
     assert client.get(f"/web/libres?fecha={f}&hora=19:30").json()["libres"]["c_lima"] is False

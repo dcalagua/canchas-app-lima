@@ -336,9 +336,9 @@ para la API del APK.
   de este momento, reloj del navegador; grupos enteros en gris y aviso si
   ya no queda ninguna); una hora elegida que pasa a ser inválida se
   descarta. **También se deshabilitan las horas en las que NINGUNA cancha
-  de la lista tiene turno** (una que cierra 23:00 termina su último turno
-  a las 23:00, así que "23:00" no se ofrece; tooltip "Ninguna cancha tiene
-  turno a esta hora") y el vacío explica el motivo ("Ninguna cancha tiene
+  de la lista tiene turno** (tooltip "Ninguna cancha tiene turno a esta
+  hora"; con la regla "el último turno EMPIEZA a la hora de cierre", una
+  que cierra 23:00 sí ofrece las 23:00) y el vacío explica el motivo ("Ninguna cancha tiene
   turno libre hoy a las 23:00…"). La tarjeta muestra el horario
   (`07:00–23:00 · 60 min`) para que se entienda por qué sale o no. **NADA se filtra hasta pulsar "Buscar"** (regla del director,
   sep-2026, como Airbnb): lo elegido vive en `pend` (zona, fecha, hora) y
@@ -1096,8 +1096,15 @@ auth por usuario en `/pagos/movimientos` (PROD).
 
 ### Horarios de cancha (apertura/cierre) y cruce de medianoche
 - `Cancha.horariosSlots()` genera los INICIOS reservables de apertura a cierre en
-  pasos de `duracionSlotMin`; un slot solo entra si cabe COMPLETO antes del cierre
-  (cierre 23:00 + 1h → último turno 22:00–23:00).
+  pasos de `duracionSlotMin`. **REGLA (decisión del director, sep-2026): la hora
+  de CIERRE es la hora en que EMPIEZA el último turno** — cierra 23:00 → último
+  turno 23:00–00:00; cierra 00:00 → 00:00–01:00 (madrugada del día siguiente);
+  con turnos de 90 min el último es el mayor inicio ≤ cierre (07:00→23:00:
+  22:00–23:30). Excepción: 24 h (00:00→00:00) = 24 turnos sin repetir el de
+  medianoche. Antes el turno debía caber COMPLETO antes del cierre (último
+  22:00–23:00) y los dueños decían "sí atiendo a las 23:00". `web/horarios.py::
+  slots` y `abiertaA` del explorador web son ESPEJO de esta regla; el texto de
+  ayuda del selector de horario del APK lo explica al dueño.
 - **Cierre que CRUZA MEDIANOCHE:** si `cierre <= apertura`, el cierre cae al día
   siguiente (`fin += 24h`). Cubre "hasta medianoche" (07:00→00:00, último turno
   23:00–00:00), cancha nocturna (18:00→02:00) y **24 h** (00:00→00:00).

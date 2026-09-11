@@ -301,9 +301,13 @@ class Cancha {
   }
 
   /// Horas de INICIO reservables entre apertura y cierre, en pasos de
-  /// [duracionSlotMin]. Ej. apertura 07:00, cierre 23:00, slot 90 min →
-  /// 07:00, 08:30, 10:00, … Solo se incluye un slot si cabe completo antes
-  /// del cierre. Fuente de la grilla que ve el jugador (reemplaza el array fijo).
+  /// [duracionSlotMin]. REGLA (decisión del director, sep-2026): la hora de
+  /// cierre es la hora en que EMPIEZA el último turno — cierra 23:00 → último
+  /// turno 23:00–00:00; cierra 00:00 → último turno 00:00–01:00 (madrugada del
+  /// día siguiente). Con turnos de 90 min el último es el mayor inicio que no
+  /// pase del cierre (07:00→23:00: 22:00–23:30). Excepción: cancha de 24 h
+  /// (abre y cierra 00:00) = 24 turnos, sin repetir el de medianoche.
+  /// Fuente de la grilla que ve el jugador (reemplaza el array fijo).
   ///
   /// Si se pasa [desdeMinutos] (minutos desde medianoche), se omiten los slots
   /// cuyo inicio ya pasó — se usa para el día de HOY, para no ofrecer horas
@@ -317,8 +321,11 @@ class Cancha {
     // siguiente. Cubre los 3 casos: "hasta medianoche" (07:00→00:00), cancha
     // nocturna (18:00→02:00) y 24 horas (00:00→00:00). Se le suma un día.
     if (fin <= ini) fin += 24 * 60;
+    // El último turno EMPIEZA a la hora de cierre (m <= fin); en 24 h no se
+    // repite el turno de medianoche (m < fin).
+    final tope = fin - ini >= 24 * 60 ? fin - 1 : fin;
     final slots = <String>[];
-    for (var m = ini; m + paso <= fin; m += paso) {
+    for (var m = ini; m <= tope; m += paso) {
       if (desdeMinutos != null && m < desdeMinutos) continue; // ya pasó
       slots.add(minutosEnHora(m));
     }

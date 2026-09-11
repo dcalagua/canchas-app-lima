@@ -34,7 +34,11 @@ def minutos_en_hora(m: int) -> str:
 
 def slots(apertura: str, cierre: str, paso: int, desde_minutos: int | None = None) -> list[str]:
     """Horas de INICIO reservables (paso = duración del slot). Cierre <=
-    apertura → cruza medianoche (07:00→00:00, 18:00→02:00, 00:00→00:00)."""
+    apertura → cruza medianoche (07:00→00:00, 18:00→02:00, 00:00→00:00).
+    REGLA (director, sep-2026, espejo de `Cancha.horariosSlots`): la hora de
+    cierre es la hora en que EMPIEZA el último turno (cierra 23:00 → último
+    turno 23:00–00:00; cierra 00:00 → 00:00–01:00 de la madrugada). 24 h =
+    24 turnos sin repetir el de medianoche."""
     ini = hora_en_minutos(apertura)
     fin = hora_en_minutos(cierre)
     paso = paso if paso and paso > 0 else 60
@@ -42,9 +46,10 @@ def slots(apertura: str, cierre: str, paso: int, desde_minutos: int | None = Non
         return []
     if fin <= ini:
         fin += 24 * 60
+    tope = fin - 1 if fin - ini >= 24 * 60 else fin
     out = []
     m = ini
-    while m + paso <= fin:
+    while m <= tope:
         if desde_minutos is None or m >= desde_minutos:
             out.append(minutos_en_hora(m))
         m += paso

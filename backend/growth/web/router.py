@@ -252,8 +252,8 @@ _JS_EXPLORAR = r"""
   function hm(t){ if(!t) return null; var p = t.split(':'); return parseInt(p[0]) * 60 + parseInt(p[1]); }
   function abiertaA(c, hora){
     var ap = hm(c.dataset.ap || '07:00'), ci = hm(c.dataset.ci || '23:00'), h = hm(hora); if(h == null) return true;
-    if(ci <= ap) ci += 1440; if(h < ap && ci > 1440) h += 1440;
-    return ap <= h && h + Math.min(60, parseInt(c.dataset.paso || '60')) <= ci;
+    if(ci <= ap) ci += 1440; if(h < ap && ci >= 1440) h += 1440;
+    return ap <= h && h <= ci; // el último turno EMPIEZA a la hora de cierre (cierra 23:00 → 23:00–00:00)
   }
   function mesHtml(y, m){
     var primero = new Date(y, m, 1), n = new Date(y, m+1, 0).getDate(), off = (primero.getDay() + 6) % 7;
@@ -313,9 +313,9 @@ _JS_EXPLORAR = r"""
         // Explica el motivo real: ¿ya pasaron todas las horas, o las canchas cierran antes de las horas que quedan?
         var cierres = cards().map(function(c){ var ci = hm(c.dataset.ci || '23:00'), ap = hm(c.dataset.ap || '07:00'); return ci <= ap ? ci + 1440 : ci; });
         var cierreMax = cierres.length ? Math.max.apply(null, cierres) : 0;
-        var ultimo = cierreMax ? cierreMax - 60 : 0, txtCierre = function(m){ m = m % 1440; return (m < 600 ? '0' : '') + Math.floor(m / 60) + ':' + (m % 60 < 10 ? '0' : '') + (m % 60); };
+        var txtCierre = function(m){ m = m % 1440; return (m < 600 ? '0' : '') + Math.floor(m / 60) + ':' + (m % 60 < 10 ? '0' : '') + (m % 60); };
         av.textContent = pend.fecha === hoyIso && cierreMax
-          ? 'Las canchas de esta lista cierran a las ' + txtCierre(cierreMax) + ' como máximo: su último turno de hoy (' + txtCierre(ultimo) + ') ya empezó. Elige otro día en “Cuándo”.'
+          ? 'El último turno de hoy en estas canchas empieza a las ' + txtCierre(cierreMax) + ' y ya pasó. Elige otro día en “Cuándo”.'
           : (pend.fecha === hoyIso ? 'Hoy ya no quedan turnos por delante. Elige otro día en “Cuándo”.' : 'Ninguna cancha de la lista tiene turnos a estas horas.');
       } }
   }
@@ -1306,7 +1306,7 @@ def _ficha(c: dict, sim: str, pais: str, verificada: bool = True) -> str:
             f"<div class='precio' style='font-size:22px;white-space:nowrap'>{e(sim)} {c['precio_hora']:.2f} <small>por hora</small></div></div>"
             "<ul class='datos'>"
             f"<li>📍 <span>{e(lugar or 'Dirección en la app')} · <a href='{_maps(c)}' target='_blank' rel='noopener'>Cómo llegar</a></span></li>"
-            f"<li>🕒 <span>{e(c['hora_apertura'])} a {e(c['hora_cierre'])} · turnos de {c['duracion_slot_min']} min</span></li>"
+            f"<li>🕒 <span>{e(c['hora_apertura'])} a {e(c['hora_cierre'])} · turnos de {c['duracion_slot_min']} min · último turno {e(c['hora_cierre'])}</span></li>"
             + (f"<li>⚡ <span>Hora feliz −{c['descuento_valle']} % de {e(c['valle_desde'] or '00:00')} a {e(c['valle_hasta'] or '12:00')}</span></li>" if c['descuento_valle'] > 0 else "")
             + (f"<li>🏟️ <span>{e(c['superficie'])}</span></li>" if c.get("superficie") else "")
             + "</ul>" + (f"<div class='amen'>{amen}</div>" if amen else ""))
