@@ -811,10 +811,7 @@ def test_editar_cancha_desde_la_web_como_el_app(db, monkeypatch):
     db.canchas["c_lima"]["fotos"] = ["https://sb.test/storage/v1/object/public/canchas/c_lima/vieja.jpg"]
     borradas = []
     monkeypatch.setattr(almacen, "borrar_foto", lambda u: borradas.append(u) or True)
-    class _Hilo:
-        def __init__(self, target=None, daemon=None): self.t = target
-        def start(self): self.t()
-    monkeypatch.setattr(anf.threading, "Thread", _Hilo)
+    monkeypatch.setattr(anf, "_en_segundo_plano", lambda fn, *a: fn(*a))
     r = cli.post(url, json={**base, "fotos": [nueva, "https://evil.example/x.jpg"]})
     assert r.status_code == 200 and r.json()["ok"], r.text
     c = db.canchas["c_lima"]
@@ -843,8 +840,10 @@ def test_calendario_web_reserva_manual_bloqueo_y_marcar_pagado(db, monkeypatch):
     from web import sesion
     import pagos.router as pr
     monkeypatch.setattr(config, "GOOGLE_WEB_CLIENT_ID", "cid-web")
+    from web import anfitrion as anf
     pushes = []
     monkeypatch.setattr(pr, "_aviso_push_usuario", lambda email, titulo, cuerpo, tipo="aviso": pushes.append((email, titulo, tipo)))
+    monkeypatch.setattr(anf, "_en_segundo_plano", lambda fn, *a: fn(*a))  # en el server va en hilo; aquí síncrono
     cli = TestClient(app, base_url="https://testserver")
     f = _manana()
     assert cli.post("/anfitrion/bloqueo", json={"cancha_id": "c_lima", "fecha": f, "hora": "10:00"}).status_code == 401

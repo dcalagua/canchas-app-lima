@@ -194,6 +194,9 @@ def pagina_hoy(request: Request) -> HTMLResponse:
         "<a class='kpi' href='/anfitrion/calendario' style='text-decoration:none'><small>Operar</small><b style='font-size:16px'>Reserva manual · bloquear horas · marcar pagado</b></a>"
         "</div>"
         f"<script>{JS_PAGAR}</script>"
+        "<script>window.alPagar=function(id,v){var b=document.querySelector(\"[data-pagar='\"+id+\"']\");if(!b)return;var card=b.closest('.anf-res');card.dataset.pagado=v?'1':'0';"
+        "var pill=card.querySelector('.pill');if(pill){pill.className='pill '+(v?'ok':'warn');pill.textContent=v?'Cobrada':'Cobrar en la cancha'}"
+        "b.disabled=false;b.dataset.v=v?'0':'1';b.className='btn'+(v?' sec':'');b.innerHTML=v?'↩ Marcar por cobrar':'✅ Marcar pagada'};</script>"
         "<script>(function(){var t=document.getElementById('anfTabs');if(!t)return;t.addEventListener('click',function(ev){var b=ev.target.closest('[data-tab]');if(!b)return;"
         "t.querySelectorAll('.chip').forEach(function(x){x.classList.toggle('sel',x===b);});document.querySelectorAll('[data-panel]').forEach(function(p){p.style.display=p.dataset.panel===b.dataset.tab?'':'none';});});})();</script>")
     return ui.shell("Hoy", cuerpo, nav=_cabecera("hoy", ses), sesion=ses, ancho=True, titulo_tab="Modo anfitrión · Pichangol")
@@ -226,10 +229,18 @@ def pagina_reservas(request: Request) -> HTMLResponse:
 
 
 JS_PAGAR = r"""
-document.addEventListener('click',async function(ev){var b=ev.target.closest('[data-pagar]');if(!b)return;b.disabled=true;
-  try{var r=await fetch('/anfitrion/reserva/'+encodeURIComponent(b.dataset.pagar)+'/pagado',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pagado:b.dataset.v==='1'})});var j=await r.json();
-    if(j.ok){location.reload();return} alert(j.error||'No se pudo guardar.')}catch(e){alert('No se pudo guardar. Revisa tu conexión.')} b.disabled=false});
+function pcgToast(t){var el=document.createElement('div');el.className='toast';el.textContent=t;document.body.appendChild(el);setTimeout(function(){el.classList.add('on')},10);setTimeout(function(){el.classList.remove('on');setTimeout(function(){el.remove()},300)},2600)}
+document.addEventListener('click',async function(ev){var b=ev.target.closest('[data-pagar]');if(!b||b.disabled)return;var id=b.dataset.pagar,v=b.dataset.v==='1',txt=b.innerHTML;b.disabled=true;b.innerHTML='Guardando…';
+  try{var r=await fetch('/anfitrion/reserva/'+encodeURIComponent(id)+'/pagado',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pagado:v})});var j=await r.json();
+    if(j.ok){pcgToast(v?'✅ Pago registrado':'↩ Marcada por cobrar');if(window.alPagar){window.alPagar(id,v);return}location.reload();return}
+    pcgToast(j.error||'No se pudo guardar.')}catch(e){pcgToast('No se pudo guardar. Revisa tu conexión.')} b.disabled=false;b.innerHTML=txt});
 """
+
+
+def _en_segundo_plano(fn, *args) -> None:
+    """Push y otras llamadas de red a terceros NO retrasan la respuesta al
+    dueño (un clic debe responder al instante). Los tests lo vuelven síncrono."""
+    threading.Thread(target=fn, args=args, daemon=True).start()
 
 
 def _pro_ok(email: str) -> bool:
@@ -381,6 +392,7 @@ function abrir(td){cel=td;modo=td.dataset.t;err('');['calLibre','calBloqueado','
   M.classList.add('open')}
 function cerrar(){M.classList.remove('open');cel=null}
 function setAcc(k){acc=k;document.querySelectorAll('#calAcc .chip').forEach(function(b){b.classList.toggle('sel',b.dataset.acc===k)});$('calManual').hidden=k!=='manual';$('calBloq').hidden=k!=='bloq';$('calSi').textContent=k==='manual'?'Registrar reserva':'Bloquear turno'}
+window.alPagar=function(id,v){var r=RES[id];if(!r)return;r.pagado=v;var td=document.querySelector("td[data-rid='"+id+"']");if(td){var oc=td.querySelector('.oc');if(oc){oc.classList.toggle('ef',!v);oc.querySelector('small').textContent=v?'pagada':'cobrar en cancha'}}if(cel&&cel.dataset.rid===id)abrir(cel)};
 document.querySelector('.cal-act').addEventListener('click',function(ev){var td=ev.target.closest('td[data-t]');if(!td||(td.dataset.t!=='res'&&td.classList.contains('pasado')))return;abrir(td)});
 $('calAcc').addEventListener('click',function(ev){var b=ev.target.closest('[data-acc]');if(b)setAcc(b.dataset.acc)});
 $('mCli').addEventListener('change',function(){var c=CAL.clientes[this.value];if(!c)return;$('mNom').value=c.nombre;$('mTel').value=c.telefono||'';$('mEm').value=c.email||''});
@@ -501,12 +513,9 @@ async def reserva_manual(request: Request) -> JSONResponse:
         # Push al JUGADOR "te reservaron" (mismo aviso que manda el app).
         from pagos import router as pr
         lugar = (c.get("club") or "").strip() or c["nombre"]
-        try:
-            pr._aviso_push_usuario(email, "Reserva confirmada 🎾",
-                                   f"{lugar} · {horarios.fecha_larga(fr)} {hora}–{fila['hora_fin']}. El local te registró esta reserva. ¡Te esperamos!",
-                                   tipo="reserva_manual")
-        except Exception:  # noqa: BLE001
-            pass
+        _en_segundo_plano(pr._aviso_push_usuario, email, "Reserva confirmada 🎾",
+                          f"{lugar} · {horarios.fecha_larga(fr)} {hora}–{fila['hora_fin']}. El local te registró esta reserva. ¡Te esperamos!",
+                          "reserva_manual")
     print(f"[manual-web] {ses['email']} registró {fila['id']} en {c['id']} {fr} {hora} · {sim} {precio} · pagado={fila['pagado']}", flush=True)
     return JSONResponse({"ok": True, "id": fila["id"], "precio": precio})
 
@@ -541,14 +550,11 @@ async def marcar_pagado_web(request: Request, res_id: str) -> JSONResponse:
         c = next((x for x in canchas if x["id"] == r.get("cancha_id")), None)
         lugar = ((c or {}).get("club") or "").strip() or (c or {}).get("nombre") or "tu reserva"
         from pagos import router as pr
-        try:
-            pr._aviso_push_usuario(usuario, "¡Te llegaron puntos! ⭐",
-                                   f"El local confirmó tu pago: +{pts} puntos Pichangol por tu reserva en {lugar}. Canjéalos como descuento en tu próxima reserva online.",
-                                   tipo="puntos")
-        except Exception:  # noqa: BLE001
-            pass
+        _en_segundo_plano(pr._aviso_push_usuario, usuario, "¡Te llegaron puntos! ⭐",
+                          f"El local confirmó tu pago: +{pts} puntos Pichangol por tu reserva en {lugar}. Canjéalos como descuento en tu próxima reserva online.",
+                          "puntos")
     print(f"[pago-web] {ses['email']} marcó {res_id} pagado={pagado}", flush=True)
-    return JSONResponse({"ok": True})
+    return JSONResponse({"ok": True, "pagado": pagado})
 
 
 @router.post("/anfitrion/reserva/{res_id}/quitar")
@@ -569,12 +575,9 @@ async def quitar_reserva_manual(request: Request, res_id: str) -> JSONResponse:
         from pagos import router as pr
         c = next((x for x in canchas if x["id"] == r.get("cancha_id")), None)
         lugar = ((c or {}).get("club") or "").strip() or (c or {}).get("nombre") or "la cancha"
-        try:
-            pr._aviso_push_usuario(usuario, "Reserva cancelada 📅",
-                                   f"El local quitó tu reserva en {lugar} del {horarios.fecha_larga(str(r.get('fecha')))} {r.get('hora_inicio')}. Si tienes dudas, escríbele.",
-                                   tipo="reserva_manual")
-        except Exception:  # noqa: BLE001
-            pass
+        _en_segundo_plano(pr._aviso_push_usuario, usuario, "Reserva cancelada 📅",
+                          f"El local quitó tu reserva en {lugar} del {horarios.fecha_larga(str(r.get('fecha')))} {r.get('hora_inicio')}. Si tienes dudas, escríbele.",
+                          "reserva_manual")
     print(f"[manual-web] {ses['email']} quitó {res_id}", flush=True)
     return JSONResponse({"ok": True})
 
@@ -936,7 +939,7 @@ async def guardar_edicion_cancha(request: Request, cancha_id: str) -> JSONRespon
     if not datos.actualizar_cancha(cancha_id, ses["email"], campos):
         return JSONResponse({"ok": False, "error": "No pudimos guardar en este momento. Inténtalo de nuevo."}, status_code=503)
     if quitadas:
-        threading.Thread(target=lambda: [almacen.borrar_foto(u) for u in quitadas], daemon=True).start()
+        _en_segundo_plano(lambda: [almacen.borrar_foto(u) for u in quitadas])
     print(f"[editar-web] {ses['email']} guardó {cancha_id}: {campos['nombre']} · {campos['precio_hora']} · "
           f"{campos['hora_apertura']}-{campos['hora_cierre']}/{campos['duracion_slot_min']}m · fotos={len(campos['fotos'])}", flush=True)
     return JSONResponse({"ok": True})

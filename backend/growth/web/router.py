@@ -99,7 +99,11 @@ def _deportes_de(c: dict) -> list[str]:
 
 
 def _zona(c: dict) -> str:
-    return ", ".join(x for x in (c.get("barrio"), (c.get("distrito") or "").replace("_", " ").title()) if x)
+    """Zona visible = el BARRIO real (reverse-geocode), espejo de
+    `Cancha.zonaMostrable` del app. El `distrito` es un enum legado de Lima
+    (sanBorja/surco/laMolina, referencial) que NO se muestra: salía "Sanborja"
+    en canchas de cualquier ciudad (pedido del director, sep-2026)."""
+    return (c.get("barrio") or "").strip()
 
 
 def _secreto() -> bytes:
