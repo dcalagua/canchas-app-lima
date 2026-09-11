@@ -542,3 +542,194 @@ def reservas_por_grupo(grupo: str) -> list[dict]:
             return out
     except Exception:  # noqa: BLE001
         return []
+
+
+# ── MODO ANFITRIÓN: academias, alumnos, tienda (mismas tablas del app) ─────────
+# `pichangol_academias` (id, dueno, data jsonb, eliminada), `pichangol_matriculas`
+# (id, academia_id, email, data jsonb, eliminada), `pichangol_productos` (columnas
+# planas, ver `Producto.toRow`), `pichangol_verificaciones` (email, estado).
+
+def _json_dict(v) -> dict:
+    if isinstance(v, dict):
+        return v
+    try:
+        j = json.loads(v) if v else {}
+        return j if isinstance(j, dict) else {}
+    except (TypeError, ValueError):
+        return {}
+
+
+def academias_de_dueno(email: str) -> list[dict]:
+    email = (email or "").strip().lower()
+    if not pg.habilitado or not email:
+        return []
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT id, data FROM pichangol_academias WHERE lower(dueno) = %s "
+                        "AND coalesce(eliminada,false) = false ORDER BY updated_at DESC", (email,))
+            out = []
+            for aid, data in cur.fetchall():
+                d = _json_dict(data)
+                d["id"] = aid
+                out.append(d)
+            return out
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def guardar_academia(academia_id: str, dueno: str, data: dict) -> bool:
+    """UPSERT por id (como `AcademiasRepo.guardar`). Si el id ya existe a nombre
+    de OTRO correo, no se toca (el WHERE del ON CONFLICT lo impide)."""
+    dueno = (dueno or "").strip().lower()
+    if not pg.habilitado or not academia_id or not dueno:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO pichangol_academias (id, dueno, data, eliminada, updated_at) VALUES (%s, %s, %s::jsonb, false, now()) "
+                "ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, eliminada = false, updated_at = now() "
+                "WHERE lower(pichangol_academias.dueno) = %s", (academia_id, dueno, json.dumps(data), dueno))
+            n = cur.rowcount
+            conn.commit()
+            return n == 1
+    except Exception as e:  # noqa: BLE001
+        print(f"[academia-web] no se pudo guardar {academia_id}: {e}", flush=True)
+        return False
+
+
+def eliminar_academia(academia_id: str, dueno: str) -> bool:
+    """Borrado lógico (como el app)."""
+    dueno = (dueno or "").strip().lower()
+    if not pg.habilitado or not academia_id or not dueno:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("UPDATE pichangol_academias SET eliminada = true, updated_at = now() "
+                        "WHERE id = %s AND lower(dueno) = %s", (academia_id, dueno))
+            n = cur.rowcount
+            conn.commit()
+            return n == 1
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def matriculas_de_academias(ids: list[str]) -> list[dict]:
+    """Alumnos (con sus cuotas dentro de `data`) de las academias dadas."""
+    if not pg.habilitado or not ids:
+        return []
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT id, academia_id, email, data FROM pichangol_matriculas "
+                        "WHERE academia_id = ANY(%s) AND coalesce(eliminada,false) = false", (ids,))
+            out = []
+            for mid, aid, em, data in cur.fetchall():
+                d = _json_dict(data)
+                d.setdefault("id", mid)
+                d["academiaId"] = aid
+                d.setdefault("email", em or "")
+                out.append(d)
+            return out
+    except Exception:  # noqa: BLE001
+        return []
+
+
+_COLS_PROD = ["id", "vendedor_email", "vendedor_nombre", "nombre", "descripcion", "precio", "moneda",
+              "categoria", "foto_url", "stock", "activo", "creado_en"]
+
+
+def _norm_producto(d: dict) -> dict:
+    d["precio"] = float(d.get("precio") or 0)
+    d["stock"] = int(d["stock"]) if d.get("stock") is not None else None
+    d["activo"] = bool(d.get("activo"))
+    for k in ("nombre", "descripcion", "moneda", "categoria", "foto_url", "vendedor_nombre", "vendedor_email"):
+        d[k] = d.get(k) or ""
+    return d
+
+
+def productos_de_vendedor(email: str) -> list[dict]:
+    email = (email or "").strip().lower()
+    if not pg.habilitado or not email:
+        return []
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(f"SELECT {', '.join(_COLS_PROD)} FROM pichangol_productos WHERE lower(vendedor_email) = %s "
+                        "ORDER BY creado_en DESC", (email,))
+            return [_norm_producto(pg._fila_a_dict(_COLS_PROD, f)) for f in cur.fetchall()]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def guardar_producto(fila: dict) -> bool:
+    """UPSERT por id (como `ProductosRepo.guardar`); si el id es de otro
+    vendedor no se toca."""
+    if not pg.habilitado or not fila.get("id") or not fila.get("vendedor_email"):
+        return False
+    cols = [c for c in _COLS_PROD if c in fila]
+    upd = ", ".join(f"{c} = EXCLUDED.{c}" for c in cols if c not in ("id", "vendedor_email", "creado_en"))
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(
+                f"INSERT INTO pichangol_productos ({', '.join(cols)}) VALUES ({', '.join(['%s'] * len(cols))}) "
+                f"ON CONFLICT (id) DO UPDATE SET {upd} WHERE lower(pichangol_productos.vendedor_email) = %s",
+                [fila[c] for c in cols] + [fila["vendedor_email"].lower()])
+            n = cur.rowcount
+            conn.commit()
+            return n == 1
+    except Exception as e:  # noqa: BLE001
+        print(f"[tienda-web] no se pudo guardar {fila.get('id')}: {e}", flush=True)
+        return False
+
+
+def eliminar_producto(producto_id: str, email: str) -> bool:
+    email = (email or "").strip().lower()
+    if not pg.habilitado or not producto_id or not email:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("DELETE FROM pichangol_productos WHERE id = %s AND lower(vendedor_email) = %s", (producto_id, email))
+            n = cur.rowcount
+            conn.commit()
+            return n == 1
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def esta_verificado(email: str) -> bool:
+    """¿Jugador con identidad verificada? (`pichangol_verificaciones`, espejo de
+    `appState.jugadorVerificado`)."""
+    email = (email or "").strip().lower()
+    if not pg.habilitado or not email:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM pichangol_verificaciones WHERE lower(email) = %s AND estado = 'verificado' LIMIT 1", (email,))
+            return cur.fetchone() is not None
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def producto_por_id(producto_id: str) -> dict | None:
+    """Fila del producto sin filtrar por vendedor (para saber si un id ya es
+    de otro antes de subirle una foto)."""
+    if not pg.habilitado or not producto_id:
+        return None
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(f"SELECT {', '.join(_COLS_PROD)} FROM pichangol_productos WHERE id = %s", (producto_id,))
+            f = cur.fetchone()
+            return _norm_producto(pg._fila_a_dict(_COLS_PROD, f)) if f else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def academia_existe(academia_id: str) -> bool:
+    """¿Hay una fila con ese id (de quien sea)? Para no subir imágenes a la
+    carpeta de una academia ajena."""
+    if not pg.habilitado or not academia_id:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM pichangol_academias WHERE id = %s LIMIT 1", (academia_id,))
+            return cur.fetchone() is not None
+    except Exception:  # noqa: BLE001
+        return False

@@ -67,3 +67,26 @@ def deporte_principal(deportes: list[str]) -> str:
 
 def etiqueta_duracion(minutos: int) -> str:
     return {60: "1 hora", 90: "1h 30min", 120: "2 horas"}.get(minutos, f"{minutos} min")
+
+
+# ── Marketplace (`Producto.categorias`) ──
+CATEGORIAS_PRODUCTO = {
+    "raquetas": ("Raquetas", "🎾"), "pelotas": ("Pelotas", "⚽"), "indumentaria": ("Indumentaria", "👕"),
+    "calzado": ("Calzado", "👟"), "accesorios": ("Accesorios", "🎒"), "nutricion": ("Nutrición", "🥤"),
+    "otros": ("Otros", "📦"),
+}
+MONEDAS = ["S/", "$", "Bs"]
+
+# ── Academias (`deportesAcademia`, `TipoPlan`, redes de `crear_academia_screen`) ──
+DEPORTES_ACADEMIA = ["futbol", "tenis", "pickleball", "voley", "basquet", "natacion"]
+TIPOS_PLAN = {"mensual": "Mensualidad", "prepago": "Paquete de meses", "porClase": "Por clase"}
+MESES_PREPAGO = [2, 3, 6, 12]
+FRECUENCIAS = [0, 1, 2, 3, 4, 5]          # veces por semana (0 = plan simple)
+DURACIONES_CLASE = ["45 min", "1 h", "1 h 30 min", "2 h"]
+REDES = {"instagram": "Instagram", "facebook": "Facebook", "tiktok": "TikTok", "youtube": "YouTube", "web": "Web"}
+DESCUENTOS_ACADEMIA = [0, 5, 10, 15, 20, 25]   # % hermanos / prepago
+MESES_MIN_PREPAGO = [1, 2, 3, 6]
+TEL_LONGITUD = {"PE": 9, "BO": 8, "EC": 9}      # `PaisConfig.telLongitud`
+TEL_PREFIJO = {"PE": "51", "BO": "591", "EC": "593"}
+GEO_LABELS = {"PE": ["Departamento", "Provincia", "Distrito"], "BO": ["Departamento", "Provincia", "Municipio"],
+              "EC": ["Provincia", "Cantón", "Parroquia"]}

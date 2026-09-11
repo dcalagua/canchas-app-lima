@@ -6,6 +6,7 @@ import os
 import sys
 
 import pytest
+from datetime import datetime, timezone
 from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -37,6 +38,7 @@ PEND = {**LIMA, "id": "c_pend", "nombre": "Loza Pendiente", "verificada": False,
 class FakeDB:
     def __init__(self):
         self.canchas = {c["id"]: dict(c) for c in (LIMA, GYE, NOCHE, PEND)}  # copias: un test no debe mutar las fixtures de otro
+        self.academias, self.matriculas, self.productos, self.verificados = {}, [], {}, set()
         self.reservas: dict[str, dict] = {}
         self.bloqueos: set = set()
         self.desc: dict = {}
@@ -128,6 +130,59 @@ class FakeDB:
         del self.reservas[rid]
         return True
 
+    # ── academias / matrículas / tienda / verificación ──
+    academias: dict = {}
+    matriculas: list = []
+    productos: dict = {}
+    verificados: set = set()
+
+    def academias_de_dueno(self, email):
+        return [dict(a, id=k) for k, a in self.academias.items() if (a.get("dueno") or "").lower() == email.lower() and not a.get("_eliminada")]
+
+    def academia_existe(self, aid):
+        return aid in self.academias
+
+    def guardar_academia(self, aid, dueno, data):
+        a = self.academias.get(aid)
+        if a is not None and (a.get("dueno") or "").lower() != dueno.lower():
+            return False
+        self.academias[aid] = dict(data, dueno=dueno)
+        return True
+
+    def eliminar_academia(self, aid, dueno):
+        a = self.academias.get(aid)
+        if a is None or (a.get("dueno") or "").lower() != dueno.lower():
+            return False
+        a["_eliminada"] = True
+        return True
+
+    def matriculas_de_academias(self, ids):
+        return [dict(m) for m in self.matriculas if m.get("academiaId") in ids]
+
+    def productos_de_vendedor(self, email):
+        return [dict(p) for p in self.productos.values() if p["vendedor_email"].lower() == email.lower()]
+
+    def producto_por_id(self, pid):
+        p = self.productos.get(pid)
+        return dict(p) if p else None
+
+    def guardar_producto(self, fila):
+        p = self.productos.get(fila["id"])
+        if p is not None and p["vendedor_email"].lower() != fila["vendedor_email"].lower():
+            return False
+        self.productos[fila["id"]] = dict(fila)
+        return True
+
+    def eliminar_producto(self, pid, email):
+        p = self.productos.get(pid)
+        if p is None or p["vendedor_email"].lower() != email.lower():
+            return False
+        del self.productos[pid]
+        return True
+
+    def esta_verificado(self, email):
+        return email.lower() in self.verificados
+
     def actualizar_cancha(self, cancha_id, dueno, campos):
         c = self.canchas.get(cancha_id)
         if not c or (c.get("dueno") or "").lower() != dueno.lower() or c.get("eliminada"):
@@ -151,7 +206,9 @@ def db(monkeypatch):
     for fn in ("canchas_publicas", "canchas_verificadas", "cancha", "ocupados", "descuentos", "liberar_holds_vencidos",
                "insertar_reservas", "confirmar_reservas", "borrar_reservas", "reservas_de",
                "reservas_por_grupo", "reservas_de_usuario", "eliminar_reservas", "canchas_de_dueno", "reservas_de_canchas", "bloqueos_de",
-               "actualizar_cancha", "bloquear", "reserva_de_dueno", "marcar_pagado", "borrar_reserva_manual"):
+               "actualizar_cancha", "bloquear", "reserva_de_dueno", "marcar_pagado", "borrar_reserva_manual",
+               "academias_de_dueno", "academia_existe", "guardar_academia", "eliminar_academia", "matriculas_de_academias",
+               "productos_de_vendedor", "producto_por_id", "guardar_producto", "eliminar_producto", "esta_verificado"):
         monkeypatch.setattr(datos, fn, getattr(fake, fn))
     monkeypatch.setattr(config, "CULQI_PUBLIC_KEY", "pk_test_x")
     monkeypatch.setattr(config, "CULQI_SECRET_KEY", "sk_test_x")
@@ -726,8 +783,8 @@ def test_modo_anfitrion_en_la_web_como_airbnb(db, monkeypatch):
     assert "Cambiar a modo jugador" in menu
     html = cli.get("/anfitrion/mis-canchas").text
     assert "todavía no tienes canchas registradas" in html and "Registrar mi cancha en la app" in html
-    aca = cli.get("/anfitrion/academia").text
-    assert "Mi academia está en la app" in aca and "Abrir en la app" in aca
+    aca = cli.get("/anfitrion/campeonatos").text  # campeonatos y verificador siguen en la app; academia y tienda ya son web
+    assert "Mis campeonatos está en la app" in aca and "Abrir en la app" in aca
     assert cli.get("/anfitrion/nada").status_code == 404
     # Una reserva web pagada en la cancha del dueño.
     f = _manana()
@@ -919,3 +976,152 @@ def test_calendario_web_reserva_manual_bloqueo_y_marcar_pagado(db, monkeypatch):
     stores.membresias_pro["dueno@x.com"] = {"hasta": (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()}
     assert cli.post("/anfitrion/bloqueo", json={"cancha_id": "c_lima", "fecha": f, "hora": "12:00"}).json()["ok"]
     stores.membresias_pro.pop("dueno@x.com", None)
+
+
+def _entrar_como(cli, monkeypatch, email, nombre="Alguien"):
+    from web import sesion
+    cli.post("/web/salir")
+    monkeypatch.setattr(sesion, "_tokeninfo", lambda t: {"email": email, "email_verified": "true", "aud": "cid-web", "name": nombre, "exp": "9999999999"})
+    cli.post("/web/sesion", json={"credential": "x"})
+
+
+def test_mi_tienda_en_la_web_como_el_app(db, monkeypatch):
+    """Modo anfitrión → Mi tienda: publicar/editar/pausar/eliminar productos del
+    Marketplace desde la web con el candado del app (verificado o dueño),
+    misma tabla `pichangol_productos` y bucket `productos`; ventas del backend."""
+    from web import almacen, anfitrion as anf
+    from db.store import Venta, stores
+    monkeypatch.setattr(config, "GOOGLE_WEB_CLIENT_ID", "cid-web")
+    monkeypatch.setattr(config, "SUPABASE_URL", "https://sb.test")
+    monkeypatch.setattr(config, "SUPABASE_ANON_KEY", "anon")
+    monkeypatch.setattr(anf, "_en_segundo_plano", lambda fn, *a: fn(*a))
+    cli = TestClient(app, base_url="https://testserver")
+    assert cli.get("/anfitrion/tienda", follow_redirects=False).status_code == 302
+    # El menú del anfitrión ya lleva a la web (no a "está en la app").
+    _entrar_como(cli, monkeypatch, "nadie@gmail.com", "Nadie")
+    assert "href='/anfitrion/tienda'" in cli.get("/anfitrion").text
+    # Sin verificación ni canchas → candado (igual que `puedeVender`).
+    html = cli.get("/anfitrion/tienda").text
+    assert "Verifica tu identidad para vender" in html
+    assert cli.post("/anfitrion/tienda/guardar", json={"id": "prod_123456_w", "nombre": "X"}).status_code == 403
+    # Verificado → puede vender.
+    db.verificados.add("nadie@gmail.com")
+    html = cli.get("/anfitrion/tienda").text
+    assert "Publicar producto" in html and "Aún no publicas productos" in html
+    nuevo = cli.get("/anfitrion/tienda/nuevo").text
+    assert "Publicar producto" in nuevo and "data-v='raquetas'" in nuevo and "data-v='S/'" in nuevo and "Publicado" in nuevo
+    pid = nuevo.split('"id": "')[1].split('"')[0]
+    assert pid.startswith("prod_") and pid.endswith("_w")
+    # Foto → bucket `productos/<id>.jpg` (misma ruta que el app).
+    subidas = []
+    monkeypatch.setattr(almacen, "subir", lambda bucket, ruta, b, ct="image/jpeg": subidas.append((bucket, ruta)) or f"https://sb.test/storage/v1/object/public/{bucket}/{ruta}?v=1")
+    r = cli.post(f"/anfitrion/tienda/{pid}/foto", content=b"\xff\xd8" * 10, headers={"Content-Type": "image/jpeg"}).json()
+    assert r["ok"] and subidas == [("productos", f"{pid}.jpg")]
+    base = {"id": pid, "nombre": "Raqueta Wilson Pro Staff", "categoria": "raquetas", "descripcion": "Usada, buen estado", "moneda": "S/",
+            "precio": 350, "stock": 1, "activo": True, "foto_url": r["url"]}
+    assert cli.post("/anfitrion/tienda/guardar", json={**base, "nombre": "x"}).json()["campo"] == "datos"
+    assert cli.post("/anfitrion/tienda/guardar", json={**base, "precio": 0}).status_code == 400
+    assert cli.post("/anfitrion/tienda/guardar", json={**base, "categoria": "drones"}).status_code == 400
+    assert cli.post("/anfitrion/tienda/guardar", json={**base, "id": "hack"}).status_code == 400
+    ok = cli.post("/anfitrion/tienda/guardar", json={**base, "foto_url": "https://evil/x.jpg"}).json()
+    assert ok["ok"]
+    p = db.productos[pid]
+    assert p["vendedor_email"] == "nadie@gmail.com" and p["vendedor_nombre"] == "Nadie" and p["precio"] == 350.0 and p["stock"] == 1
+    assert p["foto_url"] == "" and p["activo"] is True and p["categoria"] == "raquetas" and p["creado_en"]
+    assert cli.post("/anfitrion/tienda/guardar", json=base).json()["ok"] and db.productos[pid]["foto_url"] == r["url"]
+    lista = cli.get("/anfitrion/tienda?guardado=1").text
+    assert "Raqueta Wilson Pro Staff" in lista and "Publicado" in lista and "S/ 350.00" in lista and "Producto guardado" in lista
+    # Editar: la moneda queda fija; pausar; otra persona no lo ve ni lo toca.
+    assert "Editar producto" in cli.get(f"/anfitrion/tienda/{pid}/editar").text
+    assert cli.post("/anfitrion/tienda/guardar", json={**base, "moneda": "$", "precio": 99}).json()["ok"] and db.productos[pid]["moneda"] == "S/"
+    assert cli.post(f"/anfitrion/tienda/{pid}/activo", json={"activo": False}).json()["ok"] and db.productos[pid]["activo"] is False
+    assert "Pausado" in cli.get("/anfitrion/tienda").text
+    stores.ventas.append(Venta(id=1, producto_id=pid, producto_nombre="Raqueta Wilson Pro Staff", comprador_email="ana@gmail.com", comprador_nombre="Ana",
+                               vendedor_email="nadie@gmail.com", vendedor_nombre="Nadie", monto_soles=99.0, creado_en=datetime.now(timezone.utc), estado="pagado"))
+    v = cli.get("/anfitrion/tienda").text
+    assert "1 venta" in v and "ana@gmail.com" in v and "S/ 99.00" in v
+    stores.ventas.clear()
+    _entrar_como(cli, monkeypatch, "otro@gmail.com", "Otro")
+    db.verificados.add("otro@gmail.com")
+    assert cli.get(f"/anfitrion/tienda/{pid}/editar").status_code == 404
+    assert cli.post("/anfitrion/tienda/guardar", json=base).status_code == 404
+    assert cli.post(f"/anfitrion/tienda/{pid}/foto", content=b"x", headers={"Content-Type": "image/jpeg"}).status_code == 404
+    assert cli.post(f"/anfitrion/tienda/{pid}/eliminar").status_code == 404
+    # Dueño de canchas (sin verificación) también vende; eliminar borra fila y foto.
+    _entrar_como(cli, monkeypatch, "dueno@x.com", "Don Dueño")
+    assert "Publicar producto" in cli.get("/anfitrion/tienda").text
+    _entrar_como(cli, monkeypatch, "nadie@gmail.com", "Nadie")
+    borradas = []
+    monkeypatch.setattr(almacen, "borrar_foto", lambda u: borradas.append(u) or True)
+    assert cli.post(f"/anfitrion/tienda/{pid}/eliminar").json()["ok"] and pid not in db.productos and borradas == [r["url"]]
+
+
+def test_mi_academia_en_la_web_como_el_app(db, monkeypatch):
+    """Modo anfitrión → Mi academia: crear/editar la academia (misma fila
+    `pichangol_academias.data` = `Academia.toJson`), zona por país, planes y
+    reglas de cobro; alumnos y cuotas de `pichangol_matriculas`."""
+    from web import almacen, anfitrion as anf
+    monkeypatch.setattr(config, "GOOGLE_WEB_CLIENT_ID", "cid-web")
+    monkeypatch.setattr(config, "SUPABASE_URL", "https://sb.test")
+    monkeypatch.setattr(config, "SUPABASE_ANON_KEY", "anon")
+    monkeypatch.setattr(anf, "_en_segundo_plano", lambda fn, *a: fn(*a))
+    cli = TestClient(app, base_url="https://testserver")
+    assert cli.get("/anfitrion/academia", follow_redirects=False).status_code == 302
+    # Árbol geo por país = el del app.
+    g = cli.get("/web/geo/pe").json()
+    assert g["ok"] and g["labels"] == ["Departamento", "Provincia", "Distrito"] and "San Borja" in g["arbol"]["Lima"]["Lima"]
+    assert cli.get("/web/geo/ar").status_code == 404
+    _entrar_como(cli, monkeypatch, "profe@gmail.com", "Profe Luis")
+    html = cli.get("/anfitrion/academia").text
+    assert "todavía no tienes una academia" in html and "href='/anfitrion/academia/nueva'" in html
+    nueva = cli.get("/anfitrion/academia/nueva").text
+    assert "Crear academia" in nueva and "data-v='natacion'" in nueva and "mapaSede" in nueva and "Planes y tarifario" in nueva and "Reglas de cobro" in nueva
+    aid = nueva.split('"id": "')[1].split('"')[0]
+    assert aid.startswith("ac_")
+    subidas = []
+    monkeypatch.setattr(almacen, "subir", lambda bucket, ruta, b, ct="image/jpeg": subidas.append((bucket, ruta)) or f"https://sb.test/storage/v1/object/public/{bucket}/{ruta}?v=1")
+    logo = cli.post(f"/anfitrion/academia/{aid}/foto?tipo=logo", content=b"\xff\xd8" * 10, headers={"Content-Type": "image/jpeg"}).json()["url"]
+    foto = cli.post(f"/anfitrion/academia/{aid}/foto", content=b"\xff\xd8" * 10, headers={"Content-Type": "image/jpeg"}).json()["url"]
+    assert subidas[0] == ("canchas", f"academia_{aid}/logo_web.jpg") and subidas[1][1].startswith(f"academia_{aid}/web_")
+    base = {"id": aid, "nombre": "Academia Baseline", "deporte": "tenis", "descripcion": "Tenis para niños y adultos", "sedeClub": "Club Lawn Tennis",
+            "lat": -12.09, "lng": -77.03, "zona": "San Borja", "whatsapp": "999 888 777", "logoUrl": logo, "fotos": [foto, "https://evil/x.jpg"],
+            "redes": {"instagram": "@baseline", "otra": "x"},
+            "planes": [{"id": "pl_1", "nombre": "Mensualidad", "tipo": "mensual", "precioMes": 250, "programa": "Iniciación", "frecuenciaSemana": 2, "duracionClase": "1 h", "horario": "Lun y Mié 5pm"},
+                       {"id": "pl_2", "nombre": "Paquete", "tipo": "prepago", "precioMes": 230, "meses": 3}],
+            "recargoInvitado": 50, "descuentoHermano2": 10, "descuentoHermano3": 20, "descuentoPrepago": 5, "mesesMinPrepago": 3, "retribucionClubPct": 11}
+    assert cli.post("/anfitrion/academia/guardar", json={**base, "nombre": ""}).json()["campo"] == "identidad"
+    assert cli.post("/anfitrion/academia/guardar", json={**base, "sedeClub": ""}).json()["campo"] == "sede"
+    assert cli.post("/anfitrion/academia/guardar", json={**base, "whatsapp": "1234"}).json()["campo"] == "sede"
+    assert cli.post("/anfitrion/academia/guardar", json={**base, "planes": [{"nombre": "", "precioMes": 0}]}).json()["campo"] == "planes"
+    assert cli.post("/anfitrion/academia/guardar", json={**base, "id": "x"}).status_code == 400
+    assert cli.post("/anfitrion/academia/guardar", json=base).json()["ok"]
+    a = db.academias[aid]
+    assert a["dueno"] == "profe@gmail.com" and a["whatsapp"] == "999888777" and a["moneda"] == "S/" and a["zona"] == "San Borja"
+    assert a["logoUrl"] == logo and a["fotos"] == [foto] and a["redes"] == {"instagram": "@baseline"}
+    assert a["planes"][0]["meses"] == 1 and a["planes"][0]["frecuenciaSemana"] == 2 and a["planes"][1]["meses"] == 3
+    assert a["descuentoHermano2"] == 10 and a["retribucionClubPct"] == 11 and a["sedes"] == [] and a["horarios"] == {}
+    lista = cli.get("/anfitrion/academia?guardado=1").text
+    assert "Academia Baseline" in lista and "Club Lawn Tennis" in lista and f"/anfitrion/academia/{aid}/editar" in lista and f"/l/{aid}" in lista and "Academia guardada" in lista
+    # Editar conserva lo que la web no toca (sedes, ranking); la moneda queda fija.
+    db.academias[aid]["partidos"] = [{"id": "p1"}]
+    db.academias[aid]["sedes"] = [{"id": "s1", "nombre": "Sede 2", "direccion": ""}]
+    ed = cli.get(f"/anfitrion/academia/{aid}/editar").text
+    assert "Editar academia" in ed and "Academia Baseline" in ed and "Mensualidad" in ed
+    assert cli.post("/anfitrion/academia/guardar", json={**base, "nombre": "Baseline Tenis", "lat": -2.17, "lng": -79.92, "whatsapp": "0999888777"}).json()["ok"]
+    a = db.academias[aid]
+    assert a["nombre"] == "Baseline Tenis" and a["partidos"] == [{"id": "p1"}] and a["sedes"][0]["id"] == "s1" and a["moneda"] == "S/"
+    # Alumnos y cuotas (misma tabla del app).
+    db.matriculas.append({"id": "m1", "academiaId": aid, "nombre": "Juanito", "edad": 9, "apoderadoNombre": "Rosa", "apoderadoWhatsapp": "988777666", "email": "",
+                          "cuotas": [{"id": "c1", "concepto": "Marzo", "monto": 250, "vencimiento": "2020-03-05", "pagada": True, "fechaPago": "2020-03-01"},
+                                     {"id": "c2", "concepto": "Abril", "monto": 250, "vencimiento": "2020-04-05", "pagada": False}]})
+    al = cli.get(f"/anfitrion/academia/alumnos?academia={aid}").text
+    assert "Juanito" in al and "Apoderado: Rosa" in al and "Vencida" in al and "S/ 250.00" in al and "1/2" in al
+    assert "1 alumno" in cli.get("/anfitrion/academia").text
+    # Otra persona: ni ve ni edita ni sube imágenes a su carpeta.
+    _entrar_como(cli, monkeypatch, "otro@gmail.com", "Otro")
+    assert cli.get(f"/anfitrion/academia/{aid}/editar").status_code == 404
+    assert cli.post("/anfitrion/academia/guardar", json=base).status_code == 400 or db.academias[aid]["dueno"] == "profe@gmail.com"
+    assert cli.post(f"/anfitrion/academia/{aid}/foto", content=b"x", headers={"Content-Type": "image/jpeg"}).status_code == 404
+    assert cli.post(f"/anfitrion/academia/{aid}/eliminar").status_code == 404
+    _entrar_como(cli, monkeypatch, "profe@gmail.com", "Profe Luis")
+    assert cli.post(f"/anfitrion/academia/{aid}/eliminar").json()["ok"] and db.academias[aid]["_eliminada"]

@@ -450,10 +450,10 @@ para la API del APK.
   (sin sesión → `/entrar?volver=`) = **el MISMO MENÚ del app** (pedido del
   director, sep-2026): cabecera verde "‹ Modo anfitrión · Publica tu cancha
   o academia…" + tarjetas con ícono de color (`MENU`): 🏬 Mis canchas →
-  `/anfitrion/mis-canchas` (panel web completo), 📣 Mi academia, 🏆 Mis
-  campeonatos, 🏪 Mi tienda, 🛡️ Verificador → `/anfitrion/{modulo}`
-  (páginas "está en la app" con pill "En la app" y botón Abrir en la app;
-  la web de esos módulos es fase posterior). Dentro de Mis canchas la
+  `/anfitrion/mis-canchas` (panel web completo), 📣 Mi academia y 🏪 Mi
+  tienda (web, ver abajo), 🏆 Mis campeonatos y 🛡️ Verificador →
+  `/anfitrion/{modulo}` (páginas "está en la app" con pill "En la app" y
+  botón Abrir en la app). Dentro de Mis canchas la
   cabecera cambia a modo anfitrión (`ui.cabecera(modo="anfitrion")`: logo →
   `/anfitrion`, pestañas 📅 Hoy · 🗓️ Calendario · 📋 Reservas · 💰 Ingresos ·
   🏟️ Canchas, y a la derecha "Cambiar a modo jugador" → `/`, también en el
@@ -532,6 +532,43 @@ para la API del APK.
   `test_calendario_web_reserva_manual_bloqueo_y_marcar_pagado`. OJO tests:
   `FakeDB` copia las fixtures (`dict(c)`) — antes un test mutaba `LIMA`
   para los siguientes.
+- **MI ACADEMIA Y MI TIENDA EN LA WEB (sep-2026, pedido del director):**
+  `web/anfitrion_academia.py` y `web/anfitrion_tienda.py` (routers incluidos
+  en `main.py` ANTES de `anfitrion_router`, porque `/anfitrion/{modulo}` es
+  comodín; en `MENU` ambos van con `True` = web). **Mi tienda**
+  (`/anfitrion/tienda`): candado = `puedeVender` del app
+  (`datos.esta_verificado` en `pichangol_verificaciones` O dueño de canchas);
+  lista con Publicado/Pausado, "＋ Publicar producto" (`/anfitrion/tienda/
+  nuevo`, id `prod_<µs>_w`), editor tipo Airbnb (foto → bucket
+  `productos/<id>.jpg` como el app, nombre, categoría chips
+  `catalogos.CATEGORIAS_PRODUCTO`, descripción, moneda chips S/ $ Bs FIJA al
+  crear —por defecto la del país de su 1.ª cancha—, precio, stock vacío =
+  ilimitado, Publicado), `POST /anfitrion/tienda/guardar` (UPSERT
+  `pichangol_productos` con `WHERE lower(vendedor_email)=yo`: id ajeno →
+  404), `/{id}/activo`, `/{id}/eliminar` (borra fila + foto), y VENTAS
+  desde `stores.ventas` por `vendedor_email`. **Mi academia**
+  (`/anfitrion/academia`): lista de `pichangol_academias` del dueño
+  (`data` jsonb = `Academia.toJson`), onboarding "Crear mi academia", editor
+  (`/anfitrion/academia/nueva` id `ac_<µs>`, `/{id}/editar`): logo →
+  `canchas/academia_<id>/logo_web.jpg`, deporte chips `DEPORTES_ACADEMIA`,
+  nombre, descripción, sede (nombre + MAPA Leaflet clic / "Usar mi
+  ubicación": del punto salen país → prefijo de WhatsApp, moneda —fija al
+  crear— y zona), **zona en cascada** por país (`GET /web/geo/{iso}` sirve
+  `web/geo/{pe,bo,ec}_geo.json` = COPIA de `assets/geo` del app; se guarda
+  el nivel 3 como el app), WhatsApp (largo por país `TEL_LONGITUD`), fotos
+  (hasta 8), redes chips + handle, planes (nombre, tipo mensual/prepago/por
+  clase, precio, meses del paquete, programa, veces por semana, etapa/edad,
+  duración de clase, horario), reglas de cobro (recargo invitado, descuentos
+  2.º/3.º hermano y prepago, meses mínimos, retribución al club). `POST
+  /anfitrion/academia/guardar` valida como `crear_academia_screen._validar`
+  y hace MERGE sobre la fila actual: `sedes`, `horarios`, `preciosSede`,
+  `partidos`, `categorias`, `landingUrl` se CONSERVAN (se editan en la app).
+  `/{id}/foto?tipo=logo|foto`, `/{id}/eliminar` (borrado lógico). **Alumnos**
+  (`/anfitrion/academia/alumnos?academia=`): `pichangol_matriculas` con KPIs
+  (alumnos, cobrado este mes, por cobrar, vencido) y tabla por alumno
+  (apoderado, WhatsApp, cuotas pagadas, deuda, estado); los COBROS siguen en
+  la app. Catálogos espejo en `web/catalogos.py`. Tests
+  `test_mi_tienda_en_la_web_como_el_app`, `test_mi_academia_en_la_web_como_el_app`.
 - **FICHA DE RESERVA (sep-2026, pedidos del director):** "Cómo llegar" abre
   el mapa DENTRO de la ficha (Leaflet + OpenStreetMap en `#mapaFicha`, con
   enlaces "Abrir en Google Maps" e "Indicaciones paso a paso" debajo), no en

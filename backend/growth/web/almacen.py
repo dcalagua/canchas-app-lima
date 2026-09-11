@@ -23,9 +23,9 @@ def disponible() -> bool:
     return bool(config.SUPABASE_URL and config.SUPABASE_ANON_KEY)
 
 
-def url_publica(ruta: str) -> str:
+def url_publica(ruta: str, bucket: str = BUCKET) -> str:
     base = (config.SUPABASE_URL or "").rstrip("/")
-    return f"{base}/storage/v1/object/public/{BUCKET}/{ruta}"
+    return f"{base}/storage/v1/object/public/{bucket}/{ruta}"
 
 
 def prefijo_cancha(cancha_id: str) -> str:
@@ -34,15 +34,18 @@ def prefijo_cancha(cancha_id: str) -> str:
     return url_publica(f"{urllib.parse.quote(cancha_id, safe='')}/")
 
 
-def subir_foto(cancha_id: str, datos: bytes, content_type: str = "image/jpeg") -> str | None:
-    """Sube la foto a `canchas/<id>/web_<epoch_ms>.jpg` y devuelve su URL
-    pública (con `?v=` para saltar cachés, como el app). None si falló."""
+def prefijo_carpeta(carpeta: str, bucket: str = BUCKET) -> str:
+    return url_publica(f"{urllib.parse.quote(carpeta, safe='')}/", bucket)
+
+
+def subir(bucket: str, ruta: str, datos: bytes, content_type: str = "image/jpeg") -> str | None:
+    """Sube (upsert) `datos` a `bucket/ruta` por la REST de Storage y devuelve
+    la URL pública con `?v=` para saltar cachés (como el app). None si falló."""
     if not disponible() or not datos or len(datos) > MAX_BYTES:
         return None
-    sufijo = f"web_{int(time.time() * 1000)}"
-    ruta = f"{urllib.parse.quote(cancha_id, safe='')}/{sufijo}.jpg"
+    ruta_q = "/".join(urllib.parse.quote(p, safe="") for p in ruta.split("/"))
     req = urllib.request.Request(
-        f"{config.SUPABASE_URL.rstrip('/')}/storage/v1/object/{BUCKET}/{ruta}",
+        f"{config.SUPABASE_URL.rstrip('/')}/storage/v1/object/{bucket}/{ruta_q}",
         data=datos, method="POST",
         headers={"apikey": config.SUPABASE_ANON_KEY,
                  "Authorization": f"Bearer {config.SUPABASE_ANON_KEY}",
@@ -52,12 +55,17 @@ def subir_foto(cancha_id: str, datos: bytes, content_type: str = "image/jpeg") -
         with urllib.request.urlopen(req, timeout=30) as r:  # noqa: S310
             r.read()
     except urllib.error.HTTPError as e:
-        print(f"[foto-web] subida rechazada {e.code} cancha={cancha_id}", flush=True)
+        print(f"[foto-web] subida rechazada {e.code} {bucket}/{ruta}", flush=True)
         return None
     except Exception as e:  # noqa: BLE001
-        print(f"[foto-web] subida falló: {e}", flush=True)
+        print(f"[foto-web] subida falló {bucket}/{ruta}: {e}", flush=True)
         return None
-    return f"{url_publica(ruta)}?v={int(time.time() * 1000)}"
+    return f"{url_publica(ruta_q, bucket)}?v={int(time.time() * 1000)}"
+
+
+def subir_foto(cancha_id: str, datos: bytes, content_type: str = "image/jpeg") -> str | None:
+    """Foto de cancha: `canchas/<id>/web_<epoch_ms>.jpg` (misma carpeta que el app)."""
+    return subir(BUCKET, f"{cancha_id}/web_{int(time.time() * 1000)}.jpg", datos, content_type) if cancha_id else None
 
 
 def borrar_foto(url: str) -> bool:
@@ -65,14 +73,15 @@ def borrar_foto(url: str) -> bool:
     de la galería). URLs ajenas (Google, otro bucket) se ignoran."""
     if not disponible():
         return False
-    base = url_publica("")
-    if not url.startswith(base):
+    raiz = f"{config.SUPABASE_URL.rstrip('/')}/storage/v1/object/public/"
+    if not url.startswith(raiz):
         return False
-    ruta = url[len(base):].split("?", 1)[0]
-    if not ruta or ".." in ruta:
+    resto = url[len(raiz):].split("?", 1)[0]
+    bucket, _, ruta = resto.partition("/")
+    if bucket not in ("canchas", "productos") or not ruta or ".." in ruta:
         return False
     req = urllib.request.Request(
-        f"{config.SUPABASE_URL.rstrip('/')}/storage/v1/object/{BUCKET}/{ruta}",
+        f"{config.SUPABASE_URL.rstrip('/')}/storage/v1/object/{bucket}/{ruta}",
         method="DELETE",
         headers={"apikey": config.SUPABASE_ANON_KEY,
                  "Authorization": f"Bearer {config.SUPABASE_ANON_KEY}"})

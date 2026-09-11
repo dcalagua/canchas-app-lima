@@ -385,6 +385,20 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 .aviso.warn{background:var(--warn-bg);color:var(--warn-fg);border-radius:14px;padding:12px 16px;font-weight:600}
 .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);background:var(--noche);color:#fff;padding:12px 20px;border-radius:12px;font-weight:700;font-size:14.5px;z-index:90;box-shadow:0 8px 24px rgba(10,27,61,.3);opacity:0;transition:opacity .25s,transform .25s;max-width:calc(100vw - 32px)}
 .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+/* tienda y academia (modo anfitrión) */
+.prods{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin-top:18px}
+.prod{display:flex;gap:12px;background:var(--blanco);border:1px solid var(--trazo);border-radius:16px;padding:12px;box-shadow:var(--sombra);min-width:0}
+.prod .pf{flex:none;width:96px;height:96px;border-radius:12px;overflow:hidden;background:var(--tinte);display:flex;align-items:center;justify-content:center;font-size:36px}
+.prod .pf img{width:100%;height:100%;object-fit:cover}.prod .pb{flex:1;min-width:0}.prod .acciones .btn{flex:0 0 auto;min-width:0;padding:8px 12px;font-size:13px}
+.foto-una{width:220px;height:220px;border-radius:16px;overflow:hidden;background:var(--tinte);display:flex;align-items:center;justify-content:center;margin-top:12px;border:1px solid var(--trazo)}
+.foto-una img{width:100%;height:100%;object-fit:cover}.foto-una .ph{font-size:48px}
+.logo-pick{width:96px;height:96px;border-radius:50%;overflow:hidden;background:var(--tinte);display:flex;align-items:center;justify-content:center;font-size:40px;border:1px solid var(--trazo);flex:none}
+.logo-pick img{width:100%;height:100%;object-fit:cover}
+.tabla{overflow-x:auto;border:1px solid var(--trazo);border-radius:14px}.tabla table{width:100%;border-collapse:collapse;font-size:14px}
+.tabla th{text-align:left;font-size:12.5px;color:var(--tenue);padding:10px 12px;border-bottom:1px solid var(--trazo);white-space:nowrap}.tabla td{padding:10px 12px;border-bottom:1px solid var(--trazo);vertical-align:top}
+.tabla tr:last-child td{border-bottom:0}
+.planes{display:flex;flex-direction:column;gap:12px;margin-top:12px}.plan-card{border:1px solid var(--trazo);border-radius:14px;padding:14px 16px}
+.plan-card label{margin-top:10px}.plan-card .mini{width:30px;height:30px;border-radius:50%;border:1px solid var(--trazo);background:#fff;cursor:pointer;font-family:inherit;font-weight:800}
 /* editor de cancha (como el editor de anuncios de Airbnb) */
 .edit-top{margin-top:22px}.volver-lnk{font-weight:700;color:var(--noche);text-decoration:none;font-size:14px}.volver-lnk:hover{text-decoration:underline}
 .edit-grid{display:grid;grid-template-columns:240px minmax(0,1fr);gap:28px;align-items:start;margin-top:18px}
