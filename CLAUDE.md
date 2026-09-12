@@ -692,9 +692,13 @@ off → redeploy inmediato en cada push). URL pública:
     `workflow_dispatch` de `build.yml` con `ref=prd` e `inputs.entorno=prod`
     (run 1277 → `pichangol-prod-1277.aab` como artifact + APK en el Release).
     Pendiente manual del checklist `docs/prd_railway_checklist.md`: llaves
-    Culqi live y `DATABASE_URL` de PCG-PRD si aún no están. Aviso del
-    conector: las tablas `growth_*` de PCG-PRD siguen SIN RLS (las usa el
-    backend por Postgres directo; con la anon key son legibles) — endurecer.
+    Culqi live y `DATABASE_URL` de PCG-PRD si aún no están. **RLS en
+    `growth_*` de PCG-PRD: ACTIVADO el 12-sep-2026** (sin políticas ni
+    FORCE: el backend entra como `postgres`, dueño de las tablas, y no lo
+    afecta; la anon key ya no puede leerlas). Advertencias menores que
+    quedan en el linter de Supabase: las funciones trigger de push
+    `notificar_push_*` son SECURITY DEFINER ejecutables por anon vía RPC —
+    no tocar sin probar el push, porque las disparan los triggers.
 - **Panel web `/admin` = TORRE DE CONTROL del operador (SaaS).** Página HTML
   self-contained, co-marca **Pichangol + EBIM** (solo aquí), protegida por
   **`ADMIN_PANEL_TOKEN`** (header `X-Admin-Token`, no viaja en URL). Endpoints
