@@ -695,10 +695,13 @@ off → redeploy inmediato en cada push). URL pública:
     Culqi live y `DATABASE_URL` de PCG-PRD si aún no están. **RLS en
     `growth_*` de PCG-PRD: ACTIVADO el 12-sep-2026** (sin políticas ni
     FORCE: el backend entra como `postgres`, dueño de las tablas, y no lo
-    afecta; la anon key ya no puede leerlas). Advertencias menores que
-    quedan en el linter de Supabase: las funciones trigger de push
-    `notificar_push_*` son SECURITY DEFINER ejecutables por anon vía RPC —
-    no tocar sin probar el push, porque las disparan los triggers.
+    afecta; la anon key ya no puede leerlas). **Funciones trigger de push
+    `notificar_push_*` (SECURITY DEFINER): `EXECUTE` revocado a
+    PUBLIC/anon/authenticated el 12-sep-2026 en QAS (probado push real) y
+    en PRD** (`docs/piloto/supabase_push_funciones_privilegios.sql`). Los
+    triggers siguen disparando: Postgres pide EXECUTE al CREAR el trigger,
+    no al dispararlo (probado con tabla desechable: INSERT como anon →
+    dispara; llamada directa como anon → permission denied).
 - **Panel web `/admin` = TORRE DE CONTROL del operador (SaaS).** Página HTML
   self-contained, co-marca **Pichangol + EBIM** (solo aquí), protegida por
   **`ADMIN_PANEL_TOKEN`** (header `X-Admin-Token`, no viaja en URL). Endpoints
