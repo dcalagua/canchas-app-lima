@@ -697,8 +697,10 @@ off → redeploy inmediato en cada push). URL pública:
     FORCE: el backend entra como `postgres`, dueño de las tablas, y no lo
     afecta; la anon key ya no puede leerlas). **Funciones trigger de push
     `notificar_push_*` (SECURITY DEFINER): `EXECUTE` revocado a
-    PUBLIC/anon/authenticated el 12-sep-2026 en QAS (probado push real) y
-    en PRD** (`docs/piloto/supabase_push_funciones_privilegios.sql`). Los
+    PUBLIC/anon/authenticated el 12-sep-2026 en PRD y el 13-sep en QAS
+    (push real verificado por el director)** (script tolerante a funciones
+    inexistentes: en QAS no hay `notificar_push_aviso()`, ahí el aviso va
+    por Database Webhook; `docs/piloto/supabase_push_funciones_privilegios.sql`). Los
     triggers siguen disparando: Postgres pide EXECUTE al CREAR el trigger,
     no al dispararlo (probado con tabla desechable: INSERT como anon →
     dispara; llamada directa como anon → permission denied).
@@ -1179,6 +1181,11 @@ antes del corte.
   dueño** (`docs/conexiones-sociales.md`).
 - Política **RLS de DELETE** en `pichangol_canchas` (para que el borrado también
   sea en la nube / sobreviva reinstalación).
+- **`search_path` fijo en las funciones trigger de push** (`notificar_push_*`,
+  aviso "function_search_path_mutable" del linter de Supabase, PENDIENTE
+  por decisión del director, sep-2026): `ALTER FUNCTION public.notificar_push_X()
+  SET search_path = public, net`. Bajo riesgo, pero probar primero en QAS con
+  un push real (las funciones llaman a `net.http_post`) y recién luego en PRD.
 - Validación en sitio (motorizado) como fase de endurecimiento.
 - Apelación a Meta (cuenta bloqueada) + Twilio Sandbox como respaldo OTP.
 - Idea biométrica para validación de dueño (madurar).
