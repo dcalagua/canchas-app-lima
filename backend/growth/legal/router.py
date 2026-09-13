@@ -28,12 +28,31 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
 import config
+import empresa
 from db.store import stores
 from marketing import redes as redes_svc
 
 router = APIRouter(tags=["legal"])
 
-CONTACTO = "dcalagua@ebim.pe"
+
+
+def _em() -> dict[str, str]:
+    """Datos de la empresa configurados en la torre (`empresa.py`)."""
+    return empresa.datos()
+
+
+class _Contacto:
+    """Correo de privacidad/legal VIGENTE: se lee en cada request para que un
+    cambio en la torre salga al instante (antes era la constante CONTACTO)."""
+
+    def __str__(self) -> str:
+        return _em()["correo_privacidad"]
+
+    def __format__(self, spec: str) -> str:
+        return format(str(self), spec)
+
+
+CONTACTO = _Contacto()
 VIGENCIA = "29 de agosto de 2026"
 
 _ESTILO = """
@@ -59,15 +78,16 @@ _ESTILO = """
 
 
 def _doc(titulo: str, cuerpo: str) -> str:
+    em = _em()
     return (
         "<!doctype html><html lang='es'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
         f"<title>{titulo} · Pichangol</title>{_ESTILO}</head><body>"
         f"<header><div class='wrap'><h1>{titulo}</h1>"
-        "<div class='sub'>Pichangol · un producto de Grupo EBIM SAC</div></div></header>"
+        f"<div class='sub'>Pichangol · un producto de {em['razon_social']}</div></div></header>"
         f"<div class='wrap'>{cuerpo}"
-        "<footer><p class='mut'>Pichangol es un producto de <b>Grupo EBIM SAC</b> "
-        f"(Lima, Perú). Contacto: <a href='mailto:{CONTACTO}'>{CONTACTO}</a>.</p>"
+        f"<footer><p class='mut'>Pichangol es un producto de <b>{em['razon_social']}</b> "
+        f"({em['doc_etiqueta']} {em['ruc']} · {em['direccion']}). Contacto: <a href='mailto:{CONTACTO}'>{CONTACTO}</a>.</p>"
         f"<p class='mut'>Vigente desde el {VIGENCIA}.</p></footer>"
         "</div></body></html>")
 
@@ -134,19 +154,19 @@ def post_reclamacion(req: ReclamacionReq) -> dict:
     }
     stores.reclamaciones.append(hoja)
     return {"ok": True, "numero": numero, "fecha": hoja["fecha"],
-            "plazo": "15 días hábiles", "contacto": CONTACTO}
+            "plazo": "15 días hábiles", "contacto": _em()["correo"]}
 
 
 @router.get("/legal/privacidad", response_class=HTMLResponse)
 def privacidad() -> str:
     cuerpo = f"""
-    <p>En <b>Pichangol</b> (Grupo EBIM SAC) tratamos tus datos conforme a la
+    <p>En <b>Pichangol</b> ({_em()["razon_social"]}) tratamos tus datos conforme a la
     <b>Ley N.° 29733</b> de Protección de Datos Personales del Perú y su
     reglamento. Esta política explica <b>qué recogemos, para qué, con quién se
     comparte y cómo lo borras</b>.</p>
 
     <h2>1. Responsable</h2>
-    <p><b>Grupo EBIM SAC</b> (Lima, Perú), responsable del tratamiento.
+    <p><b>{_em()["razon_social"]}</b> ({_em()["doc_etiqueta"]} {_em()["ruc"]}, {_em()["direccion"]}), responsable del tratamiento.
     Contacto para privacidad: <a href="mailto:{CONTACTO}">{CONTACTO}</a>.</p>
 
     <h2>2. Qué datos tratamos</h2>
@@ -310,7 +330,7 @@ def eliminar_cuenta() -> str:
 def terminos() -> str:
     cuerpo = f"""
     <p>Estos Términos y Condiciones regulan el uso de <b>Pichangol</b>, plataforma
-    operada por <b>Grupo EBIM SAC</b> (Lima, Perú). Al crear una cuenta o usar la
+    operada por <b>{_em()["razon_social"]}</b> ({_em()["doc_etiqueta"]} {_em()["ruc"]}, {_em()["direccion"]}). Al crear una cuenta o usar la
     app aceptas estos términos.</p>
 
     <h2>1. Qué es Pichangol</h2>

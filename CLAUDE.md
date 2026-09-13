@@ -678,6 +678,51 @@ off → redeploy inmediato en cada push). URL pública:
     de `pg-backend` sin cambios); la de PRD se ajusta en el corte.
   - Cada torre muestra su ambiente en la barra lateral (`PICHANGOL_ENTORNO` +
     ref del proyecto Supabase; PRD sale en rojo). Ante la duda, mirar ahí.
+  - **PASE A PRD del 11-sep-2026 (autorizado por el director: "Pasar todo a
+    producción. El app y la parte web"):** `prd` = merge `eadf629` de la rama
+    de desarrollo (web anfitrión completa, reserva web, cabecera móvil, sync
+    APK). Procedimiento que se siguió y se repite en cada pase: (1) `git
+    checkout -B prd origin/prd && git merge --no-ff origin/<rama-dev> && git
+    push origin prd` (Railway `pg-backend-prd` redespliega solo); (2) SQL
+    pendientes en PCG-PRD vía el conector Supabase `apply_migration`
+    (aplicados: `pichangol_chat_prefs`, `pichangol_lugares_fotos`); (3)
+    variables nuevas en `pg-backend-prd` como REFERENCIAS al servicio QAS
+    cuando el valor es el mismo (`GOOGLE_WEB_CLIENT_ID=${{pg-backend.
+    GOOGLE_WEB_CLIENT_ID}}`, `PLACES_API_KEY` igual); (4) APK/AAB de PRD =
+    `workflow_dispatch` de `build.yml` con `ref=prd` e `inputs.entorno=prod`
+    (run 1277 → `pichangol-prod-1277.aab` como artifact + APK en el Release).
+    Pendiente manual del checklist `docs/prd_railway_checklist.md`: llaves
+    Culqi live y `DATABASE_URL` de PCG-PRD si aún no están. **RLS en
+    `growth_*` de PCG-PRD: ACTIVADO el 12-sep-2026** (sin políticas ni
+    FORCE: el backend entra como `postgres`, dueño de las tablas, y no lo
+    afecta; la anon key ya no puede leerlas). **Funciones trigger de push
+    `notificar_push_*` (SECURITY DEFINER): `EXECUTE` revocado a
+    PUBLIC/anon/authenticated el 12-sep-2026 en PRD y el 13-sep en QAS
+    (push real verificado por el director)** (script tolerante a funciones
+    inexistentes: en QAS no hay `notificar_push_aviso()`, ahí el aviso va
+    por Database Webhook; `docs/piloto/supabase_push_funciones_privilegios.sql`). Los
+    triggers siguen disparando: Postgres pide EXECUTE al CREAR el trigger,
+    no al dispararlo (probado con tabla desechable: INSERT como anon →
+    dispara; llamada directa como anon → permission denied).
+- **DATOS DE LA EMPRESA CONFIGURABLES DESDE LA TORRE (pedido del director,
+  sep-2026):** razón social, tipo y número de documento fiscal (RUC/NIT),
+  dirección, ciudad corta, WhatsApp, correo de contacto, correo de privacidad
+  (opcional; vacío = el de contacto) y horario viven en `stores.config`
+  (claves `empresa_*`, defaults en `CONFIG_DEFAULT`) y se editan en la torre
+  `/admin` → Comunicación → **"🏢 Datos de la empresa"** (`GET/POST
+  /admin/api/empresa`, valida correo/WhatsApp/obligatorios). Fuente única:
+  `backend/growth/empresa.py` (`datos()` ya escapado + derivados `wa_url`,
+  `whatsapp_bonito`, `anio`; `rellenar(html)` sustituye los marcadores
+  `{{EMPRESA}} {{DOC_ETIQUETA}} {{RUC}} {{DIRECCION}} {{CIUDAD}} {{WA_URL}}
+  {{WHATSAPP}} {{CORREO}} {{CORREO_PRIVACIDAD}} {{HORARIO}} {{ANIO}}`). Lo
+  consumen: `legal/home.html` (secciones Contacto/Términos/Privacidad/Libro
+  que la portada anida vía `web/marca.py`), el pie de TODAS las páginas web
+  (`ui.footer`), `/legal/*` (`legal/router.py`, `CONTACTO` ahora es dinámico),
+  la respuesta de `POST /reclamaciones` y los textos "Dudas:" del checkout,
+  Mis reservas y el comprobante. **Nunca volver a escribir RUC/correo/
+  teléfono a mano en HTML**: cada ambiente (QAS y PRD) tiene los suyos en su
+  snapshot y el director los cambia sin publicar código. Test
+  `test_datos_de_la_empresa_configurables_desde_la_torre`.
 - **Panel web `/admin` = TORRE DE CONTROL del operador (SaaS).** Página HTML
   self-contained, co-marca **Pichangol + EBIM** (solo aquí), protegida por
   **`ADMIN_PANEL_TOKEN`** (header `X-Admin-Token`, no viaja en URL). Endpoints
@@ -1155,6 +1200,11 @@ antes del corte.
   dueño** (`docs/conexiones-sociales.md`).
 - Política **RLS de DELETE** en `pichangol_canchas` (para que el borrado también
   sea en la nube / sobreviva reinstalación).
+- **`search_path` fijo en las funciones trigger de push** (`notificar_push_*`,
+  aviso "function_search_path_mutable" del linter de Supabase, PENDIENTE
+  por decisión del director, sep-2026): `ALTER FUNCTION public.notificar_push_X()
+  SET search_path = public, net`. Bajo riesgo, pero probar primero en QAS con
+  un push real (las funciones llaman a `net.http_post`) y recién luego en PRD.
 - Validación en sitio (motorizado) como fase de endurecimiento.
 - Apelación a Meta (cuenta bloqueada) + Twilio Sandbox como respaldo OTP.
 - Idea biométrica para validación de dueño (madurar).

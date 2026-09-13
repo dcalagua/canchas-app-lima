@@ -2,7 +2,9 @@
 dominio (`GET /`): qué ofrecemos, servicios y precios, cómo funciona, pagos,
 contacto, términos, cancelaciones, privacidad y el Libro de Reclamaciones.
 
-Viven en `legal/home.html` (texto legal que edita el equipo sin tocar Python)
+Viven en `legal/home.html` (texto legal que edita el equipo sin tocar Python;
+los datos de la empresa van como marcadores `{{EMPRESA}}`, `{{RUC}}`, `{{CORREO}}`…
+que `empresa.rellenar` sustituye con lo configurado en la torre)
 y aquí se EXTRAEN y se ANIDAN dentro de la página tipo Airbnb: el CSS de esa
 página se re-escribe con el prefijo `.marca` para que no pise el sistema de
 diseño de `web/ui.py` (`.card`, `.grid`, `label`, `input`, …).
@@ -17,6 +19,8 @@ from __future__ import annotations
 
 import os
 import re
+
+import empresa
 
 _HOME = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "legal", "home.html")
 
@@ -83,7 +87,7 @@ def scope_css(css: str, prefijo: str = ".marca") -> str:
 
 def secciones() -> tuple[str, str, str]:
     """(css_scoped, html_secciones, js) de la home de marca; vacíos si falta."""
-    doc = _leer()
+    doc = empresa.rellenar(_leer())
     if not doc:
         return "", "", ""
     css = ""

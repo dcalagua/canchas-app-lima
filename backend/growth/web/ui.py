@@ -625,6 +625,8 @@ def check_svg() -> str:
 def footer() -> str:
     """Pie de página con columnas (estilo Airbnb) + datos del comercio que
     exigen Culqi/INDECOPI (razón social, RUC, contacto) en TODAS las páginas."""
+    import empresa
+    em = empresa.datos()
     return (
         "<footer class='pie'><div class='wrap-xl'><div class='pie-cols'>"
         f"<div>{wordmark(20)}<div>Reserva, juega, repite.</div>"
@@ -639,8 +641,8 @@ def footer() -> str:
         "<a href='https://play.google.com/store/apps/details?id=pe.ebim.pichangol' rel='noopener'>Pon tu cancha en Pichangol</a>"
         "<a href=\"/legal/terminos\">Términos y condiciones</a><a href=\"/legal/privacidad\">Política de privacidad</a>"
         "<a href=\"/legal/eliminar-cuenta\">Eliminar mi cuenta</a></div>"
-        "</div><div class='pie-bajo'><div>© 2026 Pichangol · GRUPO EBIM S.A.C. · RUC 20602517986 · San Isidro, Lima, Perú · "
-        "<a href='mailto:contacto@ebim.pe'>contacto@ebim.pe</a></div>"
+        f"</div><div class='pie-bajo'><div>© {em['anio']} Pichangol · {em['razon_social']} · {em['doc_etiqueta']} {em['ruc']} · {em['ciudad']} · "
+        f"<a href='mailto:{em['correo']}'>{em['correo']}</a></div>"
         "<div><a href='/#terminos'>Términos</a><a href='/#privacidad'>Privacidad</a><a href='/#reclamaciones'>Libro de Reclamaciones</a></div>"
         "</div></div></footer>")
 

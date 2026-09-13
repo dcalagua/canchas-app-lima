@@ -39,6 +39,7 @@ from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
 
 import config
+import empresa
 from paises import _CAJAS, pais_de_coordenadas, moneda_de_pais, simbolo_de_moneda
 from pagos import culqi
 from web import catalogos, datos, descubrir, horarios, marca, sesion, ui
@@ -1286,7 +1287,7 @@ _JS_RESERVA = r"""
               .then(function(p){
                 if(p.ok){ window.location.href = p.url; }
                 else { hold = null; mostrarError(p.mensaje || 'El pago no se pudo procesar. No se te cobró nada.'); pintarResumen(); cargar(); }
-              }).catch(function(){ mostrarError('No pudimos confirmar el pago. Escríbenos a contacto@ebim.pe con tu correo y horario.'); pintarResumen(); });
+              }).catch(function(){ mostrarError('No pudimos confirmar el pago. Escríbenos a ' + CORREO_SOPORTE + ' con tu correo y horario.'); pintarResumen(); });
           } else if(Culqi.order){
             mostrarError('Este medio de pago no está habilitado. Usa Yape o tarjeta.');
           } else {
@@ -1471,7 +1472,7 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
         "</div></aside></div>"
         "<div class='barra-fija'><div><div class='sub' style='font-size:12px;margin:0'>Total</div><div class='t' id='totBarra'></div></div>"
         "<button class='btn' id='btnPagarBarra' disabled>Elige un horario</button></div>"
-        f"<script>window.__cancha={cfg};</script>"
+        f"<script>window.__cancha={cfg};var CORREO_SOPORTE={json.dumps(empresa.valores()['empresa_correo'])};</script>"
         "<script src='https://checkout.culqi.com/js/v4'></script>"
         f"<script>{sesion.JS_SESION if sesion.activo() else ''}{_JS_RESERVA}</script>")
     return ui.shell(f"Reservar {c['nombre']}", cuerpo, con_barra=True, canonical=canonical, og_image=og,
@@ -2009,7 +2010,7 @@ def pagina_mis_reservas(request: Request) -> HTMLResponse:
         + ("".join(_fila_cancel(x) for x in canceladas) if canceladas else "<p class='sub' style='padding:8px 4px 2px'>No has cancelado ninguna reserva.</p>")
         + "</details>"
         f"<p class='sub' style='font-size:12.5px;margin-top:18px'>Cancelación con más de {int(config.WEB_CANCELACION_HORAS)} horas de anticipación: devolución del 100 % al mismo medio de pago. "
-        "Dudas: <a href='mailto:contacto@ebim.pe'>contacto@ebim.pe</a>.</p>"
+        f"Dudas: <a href='mailto:{empresa.datos()['correo']}'>{empresa.datos()['correo']}</a>.</p>"
         "</div><aside class='viajes-mapa'><div class='mapa' id='mapaViajes' aria-label='Mapa de tus reservas'></div></aside></div>"
         + _MODAL_CANCELAR
         + "<script>" + JS_CANCELAR + r"""
@@ -2127,7 +2128,7 @@ def pagina_comprobante(ref: str, request: Request = None) -> HTMLResponse:
         "</div>"
         + (f"<div class='acciones'>{_boton_cancelar(filas, c, ses, 'btn sec')}</div>" if _boton_cancelar(filas, c, ses) else "")
         + f"<div class='estado ok' style='text-align:left'>Cancelación con más de {int(config.WEB_CANCELACION_HORAS)} horas de anticipación: devolución del 100 % al mismo medio de pago. "
-        "Puedes cancelar desde aquí o desde <a href='/mis-reservas'>Mis reservas</a>. Dudas: <a href='mailto:contacto@ebim.pe'>contacto@ebim.pe</a>.</div>"
+        f"Puedes cancelar desde aquí o desde <a href='/mis-reservas'>Mis reservas</a>. Dudas: <a href='mailto:{empresa.datos()['correo']}'>{empresa.datos()['correo']}</a>.</div>"
         "</div>"
         "<div class='panel' style='margin-top:16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap'>"
         "<img src='/static/brand/logo_pin.png' alt='' style='width:56px;height:56px;border-radius:14px;border:1px solid var(--trazo)'>"
