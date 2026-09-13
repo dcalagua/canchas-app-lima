@@ -23,6 +23,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 import config
+import empresa
 from convocatorias import service as convocatorias_service
 from db import pg
 from db.store import stores
@@ -106,6 +107,10 @@ class ContactoRequest(BaseModel):
 
 class CanalRequest(BaseModel):
     canal: str
+
+
+class EmpresaRequest(BaseModel):
+    datos: dict[str, str]
 
 
 class BancoRequest(BaseModel):
@@ -254,6 +259,30 @@ def set_canal_admin(req: CanalRequest,
     """Cambia el canal GLOBAL (pcg_primero | solo_pcg | whatsapp_libre)."""
     _check(x_admin_token)
     return reclamos.set_canal_comunicacion(req.canal)
+
+
+@router.get("/admin/api/empresa")
+def get_empresa_admin(x_admin_token: str | None = Header(default=None)) -> dict:
+    """Datos de la EMPRESA (razón social, RUC, dirección, WhatsApp, correo,
+    horario) que salen en la web, las páginas legales y el Libro de
+    Reclamaciones. `datos` = valores crudos para el formulario; `vista` =
+    cómo se pintan (WhatsApp bonito, wa.me, correo de privacidad efectivo)."""
+    _check(x_admin_token)
+    return {"datos": empresa.valores(), "vista": empresa.datos(),
+            "campos": [{"clave": k, "etiqueta": et, "ayuda": ay} for k, (et, ay) in empresa.CAMPOS.items()]}
+
+
+@router.post("/admin/api/empresa")
+def set_empresa_admin(req: EmpresaRequest,
+                      x_admin_token: str | None = Header(default=None)) -> dict:
+    """Guarda los datos de la empresa (torre de control). Valida correo,
+    WhatsApp y obligatorios; el snapshot los persiste por ambiente."""
+    _check(x_admin_token)
+    try:
+        empresa.guardar(req.datos)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"ok": True, **get_empresa_admin(x_admin_token)}
 
 
 @router.get("/admin/api/marketing")
@@ -1470,8 +1499,9 @@ _HTML = r"""<!DOCTYPE html>
       <div class="page-head">
         <div class="page-eyebrow">Sistema</div>
         <h1 class="page-h">Comunicación con la app</h1>
-        <p class="page-sub">Canal de avisos que ve el APK y números de contacto del
-          operador para WhatsApp.</p>
+        <p class="page-sub">Canal de avisos que ve el APK, números de contacto del
+          operador para WhatsApp y los datos de la empresa que salen en la web y
+          las páginas legales.</p>
       </div>
       <div class="md">
         <aside class="md-list">
@@ -1483,10 +1513,15 @@ _HTML = r"""<!DOCTYPE html>
             <span class="md-ico">💬</span>
             <span class="md-txt"><b>Contacto WhatsApp</b><small>Números del operador</small></span>
           </button>
+          <button class="md-item" onclick="mostrarPane(this,'empresaPanel');cargarEmpresa()">
+            <span class="md-ico">🏢</span>
+            <span class="md-txt"><b>Datos de la empresa</b><small>Razón social · RUC · dirección · correo · horario</small></span>
+          </button>
         </aside>
         <div class="md-detail">
           <div class="md-pane" id="canal"></div>
           <div class="md-pane" id="contacto" style="display:none"></div>
+          <div class="md-pane" id="empresaPanel" style="display:none"></div>
         </div>
       </div>
     </section>
@@ -2386,6 +2421,62 @@ async function guardarContacto(){
   const j = await r.json();
   if(j.ok){ contactos = j.contactos; renderContacto(); toast('Números de contacto guardados'); }
   else toast('No se pudo guardar');
+}
+// --- Datos de la EMPRESA (web, legales, Libro de Reclamaciones) ----------------
+// Razón social, RUC, dirección, WhatsApp, correo y horario que pinta TODO lo
+// público (portada, pie, /legal/*, comprobantes). Se guardan en el snapshot de
+// ESTE ambiente: QAS y PRD tienen cada uno los suyos.
+let empresaCampos = [];
+async function cargarEmpresa(){
+  const box = document.getElementById('empresaPanel');
+  if(!box) return;
+  box.innerHTML = '<div class="card">Cargando…</div>';
+  try{
+    const r = await fetch('/admin/api/empresa',{headers:headers()});
+    if(r.status===401){ salir(); return; }
+    if(!r.ok){ box.innerHTML='<div class="card">No se pudo cargar.</div>'; return; }
+    const j = await r.json();
+    empresaCampos = j.campos||[];
+    renderEmpresa(j.datos||{}, j.vista||{});
+  }catch(e){ box.innerHTML='<div class="card">Error de red.</div>'; }
+}
+function renderEmpresa(d, v){
+  const filas = empresaCampos.map(c=>`
+    <label style="display:block;margin-top:12px;font-size:12.5px;font-weight:700">${esc(c.etiqueta)}
+      <input id="emp_${c.clave}" value="${esc(d[c.clave]||'')}" ${c.clave==='empresa_whatsapp'?'inputmode="numeric"':''}
+        ${c.clave.includes('correo')?'type="email"':''}
+        style="display:block;width:100%;margin-top:4px;padding:10px 12px;border:1px solid var(--border);
+        border-radius:10px;font-family:inherit;font-size:14px;font-weight:400">
+      <small style="display:block;color:var(--muted);font-weight:400;margin-top:3px">${esc(c.ayuda)}</small>
+    </label>`).join('');
+  document.getElementById('empresaPanel').innerHTML =
+    `<div class="card"><div class="top"><h3>Datos de la empresa</h3></div>
+      <div class="row">Salen en la portada (Contacto, Términos, Privacidad), en el pie de
+        TODAS las páginas web, en <code>/legal/*</code> y en el Libro de Reclamaciones.
+        Culqi, INDECOPI y Play revisan que sean los reales. Los cambios se ven al instante,
+        sin publicar código, y son de <b>este ambiente</b>.</div>
+      ${filas}
+      <div class="actions">
+        <button class="btn-ap" onclick="guardarEmpresa()">Guardar datos</button>
+        <a class="btn-sec" href="/#contacto" target="_blank" rel="noopener" style="text-decoration:none">Ver en la web ↗</a>
+      </div>
+      <div class="row" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+        <b>Así se ve hoy:</b><br>
+        ${v.razon_social||''} · ${v.doc_etiqueta||'RUC'} ${v.ruc||''}<br>
+        ${v.direccion||''}<br>
+        WhatsApp <a href="${v.wa_url||'#'}" target="_blank" rel="noopener">${v.whatsapp_bonito||'—'}</a> ·
+        <a href="mailto:${v.correo||''}">${v.correo||'—'}</a> · ${v.horario||''}<br>
+        <span style="color:var(--muted)">Privacidad / eliminar cuenta: ${v.correo_privacidad||v.correo||'—'}</span>
+      </div></div>`;
+}
+async function guardarEmpresa(){
+  const datos = {};
+  for(const c of empresaCampos){ datos[c.clave] = document.getElementById('emp_'+c.clave).value||''; }
+  const r = await fetch('/admin/api/empresa',{method:'POST',headers:headers(),body:JSON.stringify({datos})});
+  if(r.status===401){ salir(); return; }
+  const j = await r.json().catch(()=>({}));
+  if(r.ok && j.ok){ renderEmpresa(j.datos||{}, j.vista||{}); toast('Datos de la empresa guardados'); }
+  else alert(j.detail || 'No se pudo guardar');
 }
 // Navegación de la barra lateral: muestra una sección y marca su ítem activo.
 // Maestro–detalle genérico (Cobros, Operación, Comunicación…): muestra el

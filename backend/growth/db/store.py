@@ -32,6 +32,19 @@ CONFIG_DEFAULT: dict[str, str] = {
     "bienvenida_saldo_soles": "0",   # regalo para dueños de PERÚ (S/)
     "bienvenida_saldo_usd": "0",     # ECUADOR ($)
     "bienvenida_saldo_bob": "0",     # BOLIVIA (Bs)
+    # DATOS DE LA EMPRESA (razón social, RUC, dirección, WhatsApp, correo,
+    # horario) que salen en la portada, el pie de la web, las páginas legales y
+    # el Libro de Reclamaciones. Editables desde la torre (Comunicación →
+    # "Datos de la empresa"); ver `empresa.py`. Cada ambiente guarda los suyos.
+    "empresa_razon_social": "GRUPO EBIM S.A.C.",
+    "empresa_doc_etiqueta": "RUC",
+    "empresa_ruc": "20602517986",
+    "empresa_direccion": "Centro Empresarial Basadre, Torre 8, Of. 1601, San Isidro, Lima, Perú",
+    "empresa_ciudad": "San Isidro, Lima, Perú",
+    "empresa_whatsapp": "51967923419",
+    "empresa_correo": "contacto@ebim.pe",
+    "empresa_correo_privacidad": "dcalagua@ebim.pe",
+    "empresa_horario": "Lun a Sáb, 9:00 a 19:00",
     "contacto_whatsapp_pe": "",
     "contacto_whatsapp_ec": "998706994",
     "contacto_whatsapp_bo": "",

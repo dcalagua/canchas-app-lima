@@ -108,3 +108,74 @@ def test_libro_de_reclamaciones_integrado():
     from db.store import Stores
     s2 = Stores(); s2.load_state(stores.to_state())
     assert any(h["numero"] == r["numero"] for h in s2.reclamaciones)
+
+
+def test_datos_de_la_empresa_configurables_desde_la_torre():
+    """Pedido del director (sep-2026): razón social, RUC, dirección, WhatsApp,
+    correo y horario se cambian desde la torre (`/admin/api/empresa`) y salen
+    al instante en la portada, el pie de TODA la web, las páginas legales y el
+    Libro de Reclamaciones — sin publicar código y por ambiente (snapshot)."""
+    import config
+    import empresa
+    from db.store import CONFIG_DEFAULT, Stores, stores
+
+    prev_tok, prev_cfg = config.ADMIN_PANEL_TOKEN, dict(stores.config)
+    tok = prev_tok or "x"
+    config.ADMIN_PANEL_TOKEN = tok
+    h = {"X-Admin-Token": tok}
+    try:
+        # Sin token, nada.
+        assert cli.get("/admin/api/empresa").status_code == 401
+        assert cli.post("/admin/api/empresa", json={"datos": {}}).status_code == 401
+        j = cli.get("/admin/api/empresa", headers=h).json()
+        assert j["datos"]["empresa_ruc"] == CONFIG_DEFAULT["empresa_ruc"]
+        assert {c["clave"] for c in j["campos"]} == set(empresa.CAMPOS)
+
+        nuevos = {"empresa_razon_social": "PICHANGOL LATAM S.A.C.", "empresa_ruc": "20999999991",
+                  "empresa_direccion": "Av. Javier Prado 123, Of. 4, Surco, Lima, Perú",
+                  "empresa_ciudad": "Surco, Lima, Perú", "empresa_whatsapp": "+51 911 222 333",
+                  "empresa_correo": "Hola@Pichangol.app", "empresa_correo_privacidad": "",
+                  "empresa_horario": "Lun a Dom, 8:00 a 22:00", "empresa_doc_etiqueta": "RUC"}
+        r = cli.post("/admin/api/empresa", headers=h, json={"datos": nuevos})
+        assert r.status_code == 200 and r.json()["ok"], r.text
+        d = r.json()["datos"]
+        assert d["empresa_whatsapp"] == "51911222333"        # se normaliza a dígitos
+        assert d["empresa_correo"] == "hola@pichangol.app"   # minúsculas
+        assert r.json()["vista"]["whatsapp_bonito"] == "+51 911 222 333"
+        assert r.json()["vista"]["correo_privacidad"] == "hola@pichangol.app"  # vacío → el de contacto
+
+        # Portada (Contacto + Términos + pie) y una página interior (pie).
+        home = cli.get("/").text
+        for t in ("PICHANGOL LATAM S.A.C.", "20999999991", "Av. Javier Prado 123", "https://wa.me/51911222333",
+                  "+51 911 222 333", "hola@pichangol.app", "Lun a Dom, 8:00 a 22:00", "Surco, Lima, Perú"):
+            assert t in home, t
+        for viejo in ("GRUPO EBIM", "20602517986", "contacto@ebim.pe", "967923419", "Basadre"):
+            assert viejo not in home, viejo
+        assert "PICHANGOL LATAM S.A.C." in cli.get("/canchas").text  # pie de todas las páginas
+        # Páginas legales (Play) y Libro de Reclamaciones.
+        for ruta in ("/legal/privacidad", "/legal/terminos", "/legal/eliminar-cuenta"):
+            html = cli.get(ruta).text
+            assert "PICHANGOL LATAM S.A.C." in html and "20999999991" in html and "hola@pichangol.app" in html, ruta
+            assert "EBIM" not in html, ruta
+        hoja = cli.post("/reclamaciones", json={"c_nombre": "Ana", "c_doc": "1", "c_tel": "9", "c_email": "a@x.com",
+                                                "b_tipo": "Servicio", "d_tipo": "Reclamo", "d_detalle": "x", "d_pedido": "y"}).json()
+        assert hoja["contacto"] == "hola@pichangol.app"
+
+        # Validaciones: correo inválido, WhatsApp corto, razón social vacía → 400 con motivo.
+        for malo, motivo in (({"empresa_correo": "no-es-correo"}, "correo inválido"),
+                             ({"empresa_whatsapp": "123"}, "WhatsApp"),
+                             ({"empresa_razon_social": "  "}, "obligatorio")):
+            r = cli.post("/admin/api/empresa", headers=h, json={"datos": malo})
+            assert r.status_code == 400 and motivo in r.json()["detail"], (malo, r.text)
+        assert stores.config["empresa_correo"] == "hola@pichangol.app"  # lo inválido no pisó nada
+
+        # El HTML que escribe el operador se escapa (no se inyecta en la web).
+        cli.post("/admin/api/empresa", headers=h, json={"datos": {"empresa_horario": "<script>x</script>"}})
+        assert "<script>x</script>" not in cli.get("/").text and "&lt;script&gt;x" in cli.get("/").text
+
+        # Sobrevive al snapshot (así viaja a Postgres y vuelve tras un reinicio).
+        s2 = Stores(); s2.load_state(stores.to_state())
+        assert s2.config["empresa_razon_social"] == "PICHANGOL LATAM S.A.C."
+    finally:
+        config.ADMIN_PANEL_TOKEN = prev_tok
+        stores.config.clear(); stores.config.update(prev_cfg)

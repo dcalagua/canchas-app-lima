@@ -704,6 +704,25 @@ off → redeploy inmediato en cada push). URL pública:
     triggers siguen disparando: Postgres pide EXECUTE al CREAR el trigger,
     no al dispararlo (probado con tabla desechable: INSERT como anon →
     dispara; llamada directa como anon → permission denied).
+- **DATOS DE LA EMPRESA CONFIGURABLES DESDE LA TORRE (pedido del director,
+  sep-2026):** razón social, tipo y número de documento fiscal (RUC/NIT),
+  dirección, ciudad corta, WhatsApp, correo de contacto, correo de privacidad
+  (opcional; vacío = el de contacto) y horario viven en `stores.config`
+  (claves `empresa_*`, defaults en `CONFIG_DEFAULT`) y se editan en la torre
+  `/admin` → Comunicación → **"🏢 Datos de la empresa"** (`GET/POST
+  /admin/api/empresa`, valida correo/WhatsApp/obligatorios). Fuente única:
+  `backend/growth/empresa.py` (`datos()` ya escapado + derivados `wa_url`,
+  `whatsapp_bonito`, `anio`; `rellenar(html)` sustituye los marcadores
+  `{{EMPRESA}} {{DOC_ETIQUETA}} {{RUC}} {{DIRECCION}} {{CIUDAD}} {{WA_URL}}
+  {{WHATSAPP}} {{CORREO}} {{CORREO_PRIVACIDAD}} {{HORARIO}} {{ANIO}}`). Lo
+  consumen: `legal/home.html` (secciones Contacto/Términos/Privacidad/Libro
+  que la portada anida vía `web/marca.py`), el pie de TODAS las páginas web
+  (`ui.footer`), `/legal/*` (`legal/router.py`, `CONTACTO` ahora es dinámico),
+  la respuesta de `POST /reclamaciones` y los textos "Dudas:" del checkout,
+  Mis reservas y el comprobante. **Nunca volver a escribir RUC/correo/
+  teléfono a mano en HTML**: cada ambiente (QAS y PRD) tiene los suyos en su
+  snapshot y el director los cambia sin publicar código. Test
+  `test_datos_de_la_empresa_configurables_desde_la_torre`.
 - **Panel web `/admin` = TORRE DE CONTROL del operador (SaaS).** Página HTML
   self-contained, co-marca **Pichangol + EBIM** (solo aquí), protegida por
   **`ADMIN_PANEL_TOKEN`** (header `X-Admin-Token`, no viaja en URL). Endpoints
