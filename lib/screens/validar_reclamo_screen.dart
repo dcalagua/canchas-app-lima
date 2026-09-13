@@ -8,6 +8,7 @@ import '../services/location_service.dart';
 import '../services/propiedad_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
 
 /// Validación EN SITIO de un reclamo por el motorizado: ingresa el CÓDIGO que le
 /// dieron y, estando en el local, manda su GPS (y fotos del sitio). El servidor
@@ -54,34 +55,46 @@ class _ValidarReclamoScreenState extends State<ValidarReclamoScreen> {
       _ok = false;
     });
 
-    final pos = await LocationService.ubicacionActual();
-    if (pos == null) {
-      setState(() {
-        _enviando = false;
-        _msg = 'No pude obtener tu ubicación. Activa el GPS y reintenta.';
-      });
+    // Regla: la validación (GPS + sube fotos + valida en el servidor) demora →
+    // preload de marca en vez de un spinner en el botón.
+    String? errorLocal;
+    Map<String, dynamic>? res;
+    try {
+      res = await conPreload<Map<String, dynamic>?>(context, () async {
+        final pos = await LocationService.ubicacionActual();
+        if (pos == null) {
+          errorLocal =
+              'No pude obtener tu ubicación. Activa el GPS y reintenta.';
+          return null;
+        }
+        // Sube las fotos del sitio (si hay) y manda sus URLs.
+        final ts = DateTime.now().millisecondsSinceEpoch;
+        final urls = <String>[];
+        for (var i = 0; i < _fotos.length; i++) {
+          final url = await CanchasRepo.subirFoto('validacion', _fotos[i],
+              sufijo: '${cod}_${i}_$ts');
+          if (url != null) urls.add(url);
+        }
+        return PropiedadService.validarReclamo(
+          codigo: cod,
+          lat: pos.latitude,
+          lng: pos.longitude,
+          validador: appState.usuario?.email ?? 'motorizado',
+          fotosUrls: urls,
+        );
+      }, texto: 'Validando…');
+    } finally {
+      if (mounted) setState(() => _enviando = false);
+    }
+    if (!mounted) return;
+    // Copia a un final: Dart no promueve una variable asignada dentro de `try`,
+    // por eso r['ok'] fallaba el analyze. Sobre el final la promoción sí aplica.
+    final r = res;
+
+    if (errorLocal != null) {
+      setState(() => _msg = errorLocal);
       return;
     }
-
-    // Sube las fotos del sitio (si hay) y manda sus URLs.
-    final ts = DateTime.now().millisecondsSinceEpoch;
-    final urls = <String>[];
-    for (var i = 0; i < _fotos.length; i++) {
-      final url = await CanchasRepo.subirFoto('validacion', _fotos[i],
-          sufijo: '${cod}_${i}_$ts');
-      if (url != null) urls.add(url);
-    }
-
-    final r = await PropiedadService.validarReclamo(
-      codigo: cod,
-      lat: pos.latitude,
-      lng: pos.longitude,
-      validador: appState.usuario?.email ?? 'motorizado',
-      fotosUrls: urls,
-    );
-    if (!mounted) return;
-    setState(() => _enviando = false);
-
     if (r == null) {
       setState(() => _msg = 'No se pudo enviar. Revisa tu conexión.');
       return;
@@ -110,8 +123,8 @@ class _ValidarReclamoScreenState extends State<ValidarReclamoScreen> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: papel,
       appBar: AppBar(title: const Text('Validar por código')),
       body: ListView(
         padding: const EdgeInsets.all(18),
@@ -122,7 +135,7 @@ class _ValidarReclamoScreenState extends State<ValidarReclamoScreen> {
           Text(
               'Ingresa el código del reclamo estando EN el local. Tu GPS debe '
               'coincidir con la ubicación de la cancha.',
-              style: t.bodyMedium?.copyWith(color: textoTenue)),
+              style: t.bodyMedium?.copyWith(color: textoTenueDe(context))),
           const SizedBox(height: 18),
           TextField(
             controller: _codigo,
@@ -159,7 +172,7 @@ class _ValidarReclamoScreenState extends State<ValidarReclamoScreen> {
             const SizedBox(height: 16),
             Text(_msg!,
                 style: TextStyle(
-                    color: _ok ? bosque : clayOscuro,
+                    color: _ok ? cs.primary : clayOscuro,
                     fontWeight: FontWeight.w700)),
           ],
           const SizedBox(height: 20),
@@ -169,14 +182,8 @@ class _ValidarReclamoScreenState extends State<ValidarReclamoScreen> {
               style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 15)),
               onPressed: _enviando || _ok ? null : _validar,
-              icon: _enviando
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: lima))
-                  : const Icon(Icons.where_to_vote),
-              label: Text(_enviando ? 'Validando…' : 'Validar aquí'),
+              icon: const Icon(Icons.where_to_vote),
+              label: const Text('Validar aquí'),
             ),
           ),
         ],

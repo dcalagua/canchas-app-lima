@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' show FileOptions;
 
 import '../models/models.dart';
 import '../services/supabase_service.dart';
+import 'storage_limpieza.dart';
 
 /// Acceso a canchas en Supabase (tabla `pichangol_canchas`). Todo es fail-safe:
 /// si Supabase no está disponible o falla, devuelve vacío / no hace nada y la
@@ -31,18 +32,90 @@ class CanchasRepo {
       // upsert: si la cancha ya existía (p. ej. se re-registra una que estaba
       // borrada) la revive en vez de fallar por id duplicado.
       await SupabaseService.client.from(_tabla).upsert(_toRow(c));
-    } catch (_) {}
+    } catch (_) {
+      // Reintento sin columnas nuevas (p. ej. `amenidades`/`superficie` aún no
+      // migradas en la BD): así el guardado del resto no se pierde por una
+      // columna faltante.
+      try {
+        await SupabaseService.client
+            .from(_tabla)
+            .upsert(_toRow(c, conAmenidades: false));
+      } catch (_) {}
+    }
   }
 
-  /// Actualiza una cancha existente (edición del dueño). Fail-safe.
+  /// Guarda la edición del dueño. Usa UPSERT (no UPDATE): si la fila ya existe
+  /// la actualiza; si NO existe (p. ej. una cancha DESCUBIERTA por Google que
+  /// nunca se insertó en Supabase, solo vivía local), la INSERTA. Antes hacía
+  /// `update().eq(id)`, que en ese caso no tocaba ninguna fila y la edición
+  /// (duración, precio, horario…) nunca llegaba a la nube: otro equipo seguía
+  /// viendo el valor por defecto. Fail-safe.
+  /// Motivo del último fallo al subir el paquete COMPLETO de columnas (aunque
+  /// el reintento parcial haya pasado): lo muestra la verificación de guardado
+  /// para diagnosticar sin adivinar (columna faltante vs RLS). null = todo OK.
+  static String? ultimoErrorGuardado;
+
   static Future<void> actualizar(Cancha c) async {
     if (!SupabaseService.disponible) return;
+    ultimoErrorGuardado = null;
     try {
-      await SupabaseService.client
+      await SupabaseService.client.from(_tabla).upsert(_toRow(c));
+    } catch (e) {
+      ultimoErrorGuardado = e.toString();
+      try {
+        await SupabaseService.client
+            .from(_tabla)
+            .upsert(_toRow(c, conAmenidades: false));
+      } catch (e2) {
+        ultimoErrorGuardado = e2.toString();
+      }
+    }
+  }
+
+  /// Lee de Supabase la `duracion_slot_min` GUARDADA de una cancha (para
+  /// verificar, tras editar, que el cambio SÍ persistió en la nube). Devuelve
+  /// el valor en minutos, o null si no se pudo leer (sin red / fila inexistente
+  /// / columna faltante). Fail-safe.
+  static Future<int?> leerDuracion(String id) async {
+    if (!SupabaseService.disponible) return null;
+    try {
+      final rows = await SupabaseService.client
           .from(_tabla)
-          .update(_toRow(c))
-          .eq('id', c.id);
+          .select('duracion_slot_min')
+          .eq('id', id)
+          .limit(1);
+      if (rows is List && rows.isNotEmpty) {
+        final v = (rows.first as Map)['duracion_slot_min'];
+        if (v is num) return v.toInt();
+      }
     } catch (_) {}
+    return null;
+  }
+
+  /// Lee de la nube la config guardada de una cancha (duración, seña, piso)
+  /// para VERIFICAR tras editar que el cambio SÍ persistió. Lee la fila entera
+  /// (select *): si una columna aún no existe en la BD, simplemente no viene en
+  /// el mapa (null) — así se detecta "columna faltante" sin romper la lectura.
+  /// Devuelve null si no se pudo leer (sin red / fila inexistente). Fail-safe.
+  static Future<({int? duracion, int? senaPct, String? superficie})?>
+      leerConfigNube(String id) async {
+    if (!SupabaseService.disponible) return null;
+    try {
+      final rows = await SupabaseService.client
+          .from(_tabla)
+          .select()
+          .eq('id', id)
+          .limit(1);
+      if (rows is List && rows.isNotEmpty) {
+        final m = rows.first as Map;
+        return (
+          duracion: (m['duracion_slot_min'] as num?)?.toInt(),
+          senaPct: (m['sena_pct'] as num?)?.toInt(),
+          superficie: m['superficie'] as String?,
+        );
+      }
+    } catch (_) {}
+    return null;
   }
 
   /// Borra una cancha de forma DURABLE en la nube. Usa borrado lógico
@@ -56,14 +129,27 @@ class CanchasRepo {
           .from(_tabla)
           .update({'eliminada': true}).eq('id', id);
     } catch (_) {}
+    // Limpia sus fotos del bucket (portada + galería): una cancha eliminada
+    // no debe dejar archivos huérfanos ocupando storage.
+    await StorageLimpieza.borrar('canchas', ['$id.jpg']);
+    await StorageLimpieza.borrarCarpeta('canchas', id);
   }
+
+  /// Motivo del último fallo de [subirFoto], en texto legible para el dueño.
+  /// Lo usa la UI para distinguir "sin red" de "bucket no configurado" en vez
+  /// de mostrar siempre "revise su conexión".
+  static String? ultimoErrorFoto;
 
   /// Sube una foto al bucket `canchas` y devuelve su URL pública. Si [sufijo]
   /// es null usa una ruta fija (portada, se sobreescribe); con [sufijo] crea
   /// rutas únicas para una galería. Requiere un bucket público `canchas`.
+  /// En caso de fallo devuelve null y deja el motivo en [ultimoErrorFoto].
   static Future<String?> subirFoto(String canchaId, Uint8List bytes,
       {String? sufijo}) async {
-    if (!SupabaseService.disponible) return null;
+    if (!SupabaseService.disponible) {
+      ultimoErrorFoto = 'Supabase no está configurado en esta app.';
+      return null;
+    }
     try {
       final ruta = sufijo == null ? '$canchaId.jpg' : '$canchaId/$sufijo.jpg';
       final storage = SupabaseService.client.storage.from('canchas');
@@ -73,13 +159,37 @@ class CanchasRepo {
         fileOptions: const FileOptions(upsert: true),
       );
       final base = storage.getPublicUrl(ruta);
+      ultimoErrorFoto = null;
       return '$base?v=${DateTime.now().millisecondsSinceEpoch}';
-    } catch (_) {
+    } catch (e) {
+      ultimoErrorFoto = _motivoFoto(e);
       return null;
     }
   }
 
-  static Map<String, dynamic> _toRow(Cancha c) => {
+  /// Traduce el error de Storage a una pista accionable para el dueño.
+  static String _motivoFoto(Object e) {
+    final s = e.toString().toLowerCase();
+    if (s.contains('not found') || s.contains('bucket')) {
+      return 'Falta el bucket "canchas" en Supabase Storage (créalo público).';
+    }
+    if (s.contains('row-level') ||
+        s.contains('policy') ||
+        s.contains('unauthorized') ||
+        s.contains('403') ||
+        s.contains('permission')) {
+      return 'El bucket "canchas" no permite subir fotos (falta la política de subida).';
+    }
+    if (s.contains('socket') ||
+        s.contains('timeout') ||
+        s.contains('connection') ||
+        s.contains('failed host')) {
+      return 'Sin conexión: revisa tu internet e inténtalo de nuevo.';
+    }
+    return 'No se pudo subir la foto. Detalle: $e';
+  }
+
+  static Map<String, dynamic> _toRow(Cancha c, {bool conAmenidades = true}) => {
         'id': c.id,
         'nombre': c.nombre,
         'club': c.club,
@@ -100,6 +210,21 @@ class CanchasRepo {
         'hora_cierre': c.horaCierre,
         'duracion_slot_min': c.duracionSlotMin,
         'eliminada': c.eliminada,
+        if (conAmenidades) 'amenidades': c.amenidades,
+        if (conAmenidades) 'superficie': c.superficie,
+        // Columnas nuevas. Van bajo el mismo flag de retry: si la BD aún no las
+        // tiene, el reintento las omite (la app conserva el valor local).
+        if (conAmenidades)
+          'deportes': c.deportesJugables.map((e) => e.name).toList(),
+        if (conAmenidades) 'moneda': c.moneda,
+        if (conAmenidades)
+          'servicios_extra':
+              c.serviciosExtra.map((s) => s.toJson()).toList(),
+        if (conAmenidades) 'descuento_valle': c.descuentoValle,
+        if (conAmenidades) 'valle_desde': c.valleDesde,
+        if (conAmenidades) 'valle_hasta': c.valleHasta,
+        if (conAmenidades) 'sena_pct': c.senaPct,
+        if (conAmenidades) 'barrio': c.barrio,
       };
 
   static Cancha _fromRow(Map<String, dynamic> r) => Cancha(
@@ -107,7 +232,13 @@ class CanchasRepo {
         nombre: (r['nombre'] ?? 'Cancha') as String,
         club: (r['club'] ?? '') as String,
         distrito: _enumDistrito(r['distrito'] as String?),
+        barrio: (r['barrio'] ?? '') as String,
         deporte: _enumDeporte(r['deporte'] as String?),
+        deportes: (r['deportes'] as List?)
+                ?.map((e) => deportePorNombre(e.toString()))
+                .whereType<Deporte>()
+                .toList() ??
+            const [],
         precioHora: ((r['precio_hora'] ?? 100) as num).toDouble(),
         ubicacion: LatLng(
           ((r['lat'] ?? -12.108) as num).toDouble(),
@@ -126,6 +257,16 @@ class CanchasRepo {
         horaCierre: (r['hora_cierre'] ?? '23:00') as String,
         duracionSlotMin: ((r['duracion_slot_min'] ?? 60) as num).toInt(),
         eliminada: (r['eliminada'] ?? false) as bool,
+        amenidades:
+            (r['amenidades'] as List?)?.map((e) => e.toString()).toList() ??
+                const [],
+        superficie: (r['superficie'] ?? '') as String,
+        moneda: (r['moneda'] ?? '') as String,
+        serviciosExtra: ServicioExtra.listaDe(r['servicios_extra']),
+        descuentoValle: ((r['descuento_valle'] ?? 0) as num).toInt(),
+        valleDesde: (r['valle_desde'] ?? '') as String,
+        valleHasta: (r['valle_hasta'] ?? '') as String,
+        senaPct: ((r['sena_pct'] ?? 0) as num).toInt(),
       );
 
   static Distrito _enumDistrito(String? s) {

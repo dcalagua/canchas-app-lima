@@ -4,6 +4,8 @@ import '../models/convocatoria.dart';
 import '../services/convocatorias_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/responsive.dart';
+import '../widgets/cargando_pichangol.dart';
 import 'convocatoria_detalle_screen.dart';
 import 'crear_convocatoria_screen.dart';
 import 'ranking_socios_screen.dart';
@@ -90,14 +92,17 @@ class _ConvocatoriasScreenState extends State<ConvocatoriasScreen> {
                 future: _futuro,
                 builder: (context, snap) {
                   if (snap.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
+                    return const CargandoPichangol();
                   }
                   final lista = snap.data ?? const [];
                   if (lista.isEmpty) {
                     return _VacioLista(esAdmin: _esAdmin, onCrear: _crear);
                   }
                   return ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+                    // Regla app: contenido centrado en pantallas anchas.
+                    padding: EdgeInsets.fromLTRB(
+                        ladoTablet(context, 16, 760), 16,
+                        ladoTablet(context, 16, 760), 96),
                     itemCount: lista.length + 1,
                     separatorBuilder: (_, __) => const SizedBox(height: 12),
                     itemBuilder: (context, i) {

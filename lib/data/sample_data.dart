@@ -1,5 +1,6 @@
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../models/academia.dart';
 import '../models/models.dart';
 
 /// Datos de demostración en memoria (sin backend todavía).
@@ -9,6 +10,114 @@ import '../models/models.dart';
 /// canchas. El resto pueblan el mapa del explorador.
 class SampleData {
   static const String clubActivo = 'Club Raqueta San Borja';
+
+  /// Clubes SEMBRADOS del piloto: lugares reales que Google no siempre devuelve
+  /// en la búsqueda de texto (indexación pobre en la zona). Se inyectan como
+  /// "descubiertos" (reclamables) para que aparezcan siempre en el corredor de
+  /// Chosica, sin depender de Places. Al reclamarlos, la versión registrada los
+  /// reemplaza (dedup por ubicación).
+  static const List<Cancha> sembradas = [
+    Cancha(
+      id: 'seed_regatas_chosica',
+      nombre: 'Club de Regatas Lima – Chosica',
+      club: 'Club de Regatas Lima – Chosica',
+      distrito: Distrito.laMolina, // referencial (Chosica no está en el enum)
+      deporte: Deporte.futbol, // genérico; el dueño precisa al reclamar
+      precioHora: 0,
+      ubicacion: LatLng(-11.950372837472894, -76.7055048427175),
+      clubFundador: false,
+      digitalizada: false,
+      direccion: 'Carretera Central, Lurigancho-Chosica',
+      registrada: false, // reclamable, como un lugar descubierto
+      verificada: false, // aún no reclamada → no verificada
+    ),
+    Cancha(
+      id: 'seed_esmon',
+      nombre: 'ESMON',
+      club: 'ESMON',
+      distrito: Distrito.laMolina,
+      deporte: Deporte.tenis, // clubes que alquilan a academias (tenis/fútbol)
+      precioHora: 0,
+      ubicacion: LatLng(-11.943985233021179, -76.71577897498123),
+      clubFundador: false,
+      digitalizada: false,
+      direccion: 'Lurigancho-Chosica',
+      registrada: false,
+      verificada: false,
+    ),
+    Cancha(
+      id: 'seed_ceande',
+      nombre: 'CEANDE',
+      club: 'CEANDE',
+      distrito: Distrito.laMolina,
+      deporte: Deporte.tenis,
+      precioHora: 0,
+      ubicacion: LatLng(-11.959962965453006, -76.72790551915534),
+      clubFundador: false,
+      digitalizada: false,
+      direccion: 'Lurigancho-Chosica',
+      registrada: false,
+      verificada: false,
+    ),
+    Cancha(
+      id: 'seed_el_remanso',
+      nombre: 'El Remanso',
+      club: 'El Remanso',
+      distrito: Distrito.laMolina,
+      deporte: Deporte.tenis,
+      precioHora: 0,
+      ubicacion: LatLng(-11.948134131457815, -76.7137219464255),
+      clubFundador: false,
+      digitalizada: false,
+      direccion: 'Lurigancho-Chosica',
+      registrada: false,
+      verificada: false,
+    ),
+    Cancha(
+      id: 'seed_club_contadores',
+      nombre: 'Club de Contadores',
+      club: 'Club de Contadores',
+      distrito: Distrito.laMolina,
+      deporte: Deporte.tenis,
+      precioHora: 0,
+      ubicacion: LatLng(-11.94749481860074, -76.71179526213257),
+      clubFundador: false,
+      digitalizada: false,
+      direccion: 'Lurigancho-Chosica',
+      registrada: false,
+      verificada: false,
+    ),
+    Cancha(
+      id: 'seed_club_ingenieros',
+      nombre: 'Club del Colegio de Ingenieros',
+      club: 'Club del Colegio de Ingenieros',
+      distrito: Distrito.laMolina,
+      deporte: Deporte.tenis,
+      precioHora: 0,
+      ubicacion: LatLng(-11.96107904573088, -76.7385260326506),
+      clubFundador: false,
+      digitalizada: false,
+      direccion: 'Lurigancho-Chosica',
+      registrada: false,
+      verificada: false,
+    ),
+    // Complejo municipal de Ñaña: alquila canchas sintéticas (fútbol). Google
+    // no siempre lo devuelve, por eso se siembra. Coordenadas del usuario.
+    Cancha(
+      id: 'seed_mariscal_castilla',
+      nombre: 'Complejo Deportivo Mariscal Castilla',
+      club: 'Complejo Deportivo Mariscal Castilla',
+      distrito: Distrito.laMolina, // referencial (Ñaña no está en el enum)
+      deporte: Deporte.futbol,
+      precioHora: 0,
+      ubicacion: LatLng(-11.987139254760843, -76.81921864614549),
+      clubFundador: false,
+      digitalizada: false,
+      direccion: 'Ñaña, Lurigancho-Chosica',
+      registrada: false,
+      verificada: false,
+    ),
+  ];
 
   static const List<Cancha> canchas = [
     // --- Canchas del club que inicia sesión (panel del dueño) ---
@@ -22,11 +131,6 @@ class SampleData {
       distrito: Distrito.sanBorja, deporte: Deporte.tenis, precioHora: 65,
       ubicacion: LatLng(-12.1090, -76.9985), clubFundador: true, digitalizada: true,
     ),
-    Cancha(
-      id: 'c3', nombre: 'Pádel 1', club: clubActivo,
-      distrito: Distrito.sanBorja, deporte: Deporte.padel, precioHora: 90,
-      ubicacion: LatLng(-12.1082, -76.9994), clubFundador: true, digitalizada: true,
-    ),
 
     // --- Otras canchas de la zona piloto (pipeline / mapa del explorador) ---
     Cancha(
@@ -35,29 +139,14 @@ class SampleData {
       ubicacion: LatLng(-12.1110, -77.0020), clubFundador: false, digitalizada: false,
     ),
     Cancha(
-      id: 'c5', nombre: 'Pádel Surco Park', club: 'Surco Pádel Park',
-      distrito: Distrito.surco, deporte: Deporte.padel, precioHora: 95,
-      ubicacion: LatLng(-12.1355, -76.9925), clubFundador: false, digitalizada: false,
-    ),
-    Cancha(
       id: 'c6', nombre: 'Cancha 1 - Los Cedros', club: 'Club Los Cedros',
       distrito: Distrito.surco, deporte: Deporte.tenis, precioHora: 68,
       ubicacion: LatLng(-12.1402, -76.9880), clubFundador: false, digitalizada: false,
     ),
     Cancha(
-      id: 'c7', nombre: 'Pádel Molina Indoor', club: 'Molina Indoor',
-      distrito: Distrito.laMolina, deporte: Deporte.padel, precioHora: 100,
-      ubicacion: LatLng(-12.0795, -76.9480), clubFundador: false, digitalizada: false,
-    ),
-    Cancha(
       id: 'c8', nombre: 'Tenis La Planicie', club: 'La Planicie Tenis',
       distrito: Distrito.laMolina, deporte: Deporte.tenis, precioHora: 75,
       ubicacion: LatLng(-12.0760, -76.9410), clubFundador: false, digitalizada: false,
-    ),
-    Cancha(
-      id: 'c9', nombre: 'Pádel Camino Real', club: 'Camino Real Club',
-      distrito: Distrito.laMolina, deporte: Deporte.padel, precioHora: 92,
-      ubicacion: LatLng(-12.0820, -76.9445), clubFundador: false, digitalizada: false,
     ),
 
     // --- Fútbol sintético (nuevo deporte) ---
@@ -169,5 +258,53 @@ class SampleData {
       }
     }
     return bloques;
+  }
+
+  /// Academia PILOTO sembrada: "J. Arthur Baldeón" en el Country Club El Bosque.
+  /// Tarifario real por programa × frecuencia (precio SOCIO) + recargo invitado
+  /// fijo de S/50 (socio del club vs. invitado). La administra dcalagua@ebim.pe.
+  static Academia academiaJartur() {
+    const roja = 'Bola Roja y Naranja';
+    const verde = 'Bola Verde y Amarilla';
+    const adultos = 'Adultos';
+    // Etapa/edad y duración de clase por programa (según tarifario Jartur).
+    const etapa = {
+      roja: 'Iniciación e intermedio · 5 a 10 años',
+      verde: 'Intermedio-avanzado y avanzados · 8 a 16 años',
+      adultos: 'Turno mañana',
+    };
+    const duracion = {roja: '1 h 30 min', verde: '2 h', adultos: '2 h'};
+    Plan plan(String prog, int frec, double socio) => Plan(
+          id: '$prog | ${frec}x', // "clave (no editar)" del tarifario
+          nombre: '$prog · ${frec}x/sem',
+          tipo: TipoPlan.mensual,
+          precioMes: socio, // tarifa SOCIO; invitado = + recargoInvitado
+          meses: 1,
+          programa: prog,
+          frecuenciaSemana: frec,
+          etapaEdad: etapa[prog] ?? '',
+          duracionClase: duracion[prog] ?? '',
+        );
+    return Academia(
+      id: 'seed_jartur_elbosque',
+      nombre: 'Academia de Tenis J. Arthur Baldeón',
+      deporte: Deporte.tenis,
+      dueno: 'dcalagua@ebim.pe',
+      descripcion: 'Actitud, disciplina, técnica y más · Country Club El Bosque',
+      sedeClub: 'Country Club El Bosque',
+      sedeUbicacion: centroPiloto, // referencial (Lima); el profe la ajusta
+      moneda: 'S/',
+      recargoInvitado: 50, // invitado (no socio del club) = socio + S/50
+      descuentoHermano2: 10, // 2º hermano −10%
+      descuentoHermano3: 20, // 3º hermano en adelante −20%
+      descuentoPrepago: 5, // pago trimestral/paquete adelantado −5%
+      retribucionClubPct: 11, // liquidación al Country Club El Bosque
+      redes: const {'instagram': 'academiadetenisjarthurbaldeon'},
+      planes: [
+        plan(roja, 2, 250), plan(roja, 3, 300), plan(roja, 4, 400), plan(roja, 5, 450),
+        plan(verde, 2, 250), plan(verde, 3, 350), plan(verde, 4, 450), plan(verde, 5, 600),
+        plan(adultos, 2, 250), plan(adultos, 3, 350), plan(adultos, 4, 450), plan(adultos, 5, 600),
+      ],
+    );
   }
 }

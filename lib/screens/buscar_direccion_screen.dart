@@ -2,8 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../config/pais.dart';
+import '../models/models.dart';
 import '../services/location_service.dart';
+import '../state/app_state.dart';
 import '../theme.dart';
+import '../utils/geo.dart';
 
 /// Resultado de la búsqueda: centro geográfico + etiqueta para mostrar.
 class ResultadoBusqueda {
@@ -25,8 +29,17 @@ class _BuscarDireccionScreenState extends State<BuscarDireccionScreen> {
   final _ctrl = TextEditingController();
   bool _buscando = false;
   String? _error;
+  late double _radioKm = appState.radioBusquedaKm; // radio de búsqueda (km)
 
-  static const _distritos = <String, LatLng>{
+  // Zonas cercanas al usuario (dinámicas, por GPS). Si no hay ubicación, se
+  // usa la lista fija de abajo como respaldo.
+  List<_Zona> _zonas = const [];
+  bool _cargandoZonas = true;
+
+  // Respaldo (sin GPS) SOLO para Perú: distritos populares de Lima central. En
+  // otros países no se muestra una lista clavada (sería geografía ajena); se
+  // invita a activar el GPS. Ver `_distritosRespaldo`.
+  static const _distritosLima = <String, LatLng>{
     'San Borja': LatLng(-12.108, -76.999),
     'Surco': LatLng(-12.135, -76.992),
     'La Molina': LatLng(-12.079, -76.948),
@@ -34,10 +47,76 @@ class _BuscarDireccionScreenState extends State<BuscarDireccionScreen> {
     'San Isidro': LatLng(-12.097, -77.036),
   };
 
+  /// Lista de respaldo según el país activo: en Perú, los distritos de Lima; en
+  /// Bolivia/Ecuador, vacía (no inventar zonas ajenas).
+  Map<String, LatLng> get _distritosRespaldo =>
+      paisActual.iso == 'PE' ? _distritosLima : const {};
+
+  @override
+  void initState() {
+    super.initState();
+    _cargarZonasCercanas();
+  }
+
+  /// Deriva zonas cercanas geocodificando la ubicación del usuario y unos
+  /// puntos a su alrededor (N/S/E/O ~4 km). Fail-safe: si falla, deja la lista
+  /// de respaldo.
+  Future<void> _cargarZonasCercanas() async {
+    final centro = await LocationService.ultimaConocida() ??
+        await LocationService.ubicacionActual();
+    if (centro == null) {
+      if (mounted) setState(() => _cargandoZonas = false);
+      return;
+    }
+    const off = 0.035; // ~3.9 km
+    final puntos = <LatLng>[
+      centro,
+      LatLng(centro.latitude + off, centro.longitude),
+      LatLng(centro.latitude - off, centro.longitude),
+      LatLng(centro.latitude, centro.longitude + off),
+      LatLng(centro.latitude, centro.longitude - off),
+    ];
+    final encontradas = <String, LatLng>{};
+    for (final p in puntos) {
+      try {
+        final marks = await placemarkFromCoordinates(p.latitude, p.longitude);
+        if (marks.isEmpty) continue;
+        final m = marks.first;
+        final nombre = (m.subLocality?.trim().isNotEmpty == true
+                ? m.subLocality
+                : (m.locality?.trim().isNotEmpty == true
+                    ? m.locality
+                    : m.subAdministrativeArea)) ??
+            '';
+        if (nombre.trim().isEmpty) continue;
+        encontradas.putIfAbsent(nombre.trim(), () => p);
+      } catch (_) {
+        // ignora este punto
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _zonas =
+          encontradas.entries.map((e) => _Zona(e.key, e.value)).toList();
+      _cargandoZonas = false;
+    });
+  }
+
   @override
   void dispose() {
     _ctrl.dispose();
     super.dispose();
+  }
+
+  /// Normaliza para comparar sin acentos ni mayúsculas.
+  static String _norm(String s) {
+    var r = s.toLowerCase();
+    const from = 'áàäâãéèëêíìïîóòöôõúùüûñ';
+    const to = 'aaaaaeeeeiiiiooooouuuun';
+    for (var i = 0; i < from.length; i++) {
+      r = r.replaceAll(from[i], to[i]);
+    }
+    return r;
   }
 
   Future<void> _buscar() async {
@@ -47,23 +126,64 @@ class _BuscarDireccionScreenState extends State<BuscarDireccionScreen> {
       _buscando = true;
       _error = null;
     });
+
+    // Ubicación del usuario (para elegir el match MÁS CERCANO, no un homónimo
+    // lejano).
+    final yo = await LocationService.ultimaConocida() ??
+        await LocationService.ubicacionActual();
+
+    // 1) ¿Coincide con el NOMBRE de una cancha/club/sembrada conocida? Elige la
+    //    más cercana a ti y salta a ella. (Así "mariscal castilla" te lleva a la
+    //    cancha, no a una avenida homónima al otro lado de Lima.)
+    final nq = _norm(q);
+    Cancha? mejorCancha;
+    double mejorKm = double.infinity;
+    for (final c in appState.todasLasCanchas()) {
+      final texto = _norm('${c.nombre} ${c.club} ${c.direccion ?? ''}');
+      if (!texto.contains(nq)) continue;
+      final km = yo == null ? 0.0 : distanciaKm(yo, c.ubicacion);
+      if (km < mejorKm) {
+        mejorKm = km;
+        mejorCancha = c;
+      }
+    }
+    if (mejorCancha != null) {
+      if (!mounted) return;
+      Navigator.of(context).pop(
+          ResultadoBusqueda(mejorCancha.ubicacion, mejorCancha.nombre));
+      return;
+    }
+
+    // 2) Fallback: geocodifica la dirección. El geocoder puede devolver VARIOS
+    //    homónimos en Lima; elige el MÁS CERCANO al usuario (no el primero).
     try {
-      final locs = await locationFromAddress('$q, Lima, Perú');
+      final locs = await locationFromAddress('$q, ${paisActual.geocodeHint}');
       if (locs.isEmpty) {
         setState(() {
           _buscando = false;
-          _error = 'No encontré esa dirección. Prueba con otra o elige un distrito.';
+          _error =
+              'No encontré esa dirección. Prueba con otra o elige una zona.';
         });
         return;
       }
-      final l = locs.first;
+      var elegido = locs.first;
+      if (yo != null && locs.length > 1) {
+        var best = double.infinity;
+        for (final l in locs) {
+          final km = distanciaKm(yo, LatLng(l.latitude, l.longitude));
+          if (km < best) {
+            best = km;
+            elegido = l;
+          }
+        }
+      }
       if (!mounted) return;
-      Navigator.of(context)
-          .pop(ResultadoBusqueda(LatLng(l.latitude, l.longitude), q));
+      Navigator.of(context).pop(
+          ResultadoBusqueda(LatLng(elegido.latitude, elegido.longitude), q));
     } catch (_) {
       setState(() {
         _buscando = false;
-        _error = 'No pude buscar esa dirección. Prueba con un distrito.';
+        _error = 'No pude buscar esa dirección. Prueba con una zona.';
       });
     }
   }
@@ -89,7 +209,7 @@ class _BuscarDireccionScreenState extends State<BuscarDireccionScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('¿Dónde quieres jugar?')),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -142,28 +262,110 @@ class _BuscarDireccionScreenState extends State<BuscarDireccionScreen> {
               ),
             ),
             const SizedBox(height: 22),
-            Text('Distritos populares',
+            Text('¿Hasta qué distancia?',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleSmall
+                    ?.copyWith(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 2),
+            const Text('Muestra canchas dentro de este radio de tu ubicación.',
+                style: TextStyle(color: textoTenue, fontSize: 12)),
+            Row(
+              children: [
+                const Icon(Icons.social_distance, size: 20, color: verdeCancha),
+                const SizedBox(width: 8),
+                Text('${_radioKm.round()} km',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800, fontSize: 20)),
+              ],
+            ),
+            Slider(
+              value: _radioKm,
+              min: AppState.radioMinKm,
+              max: AppState.radioMaxKm,
+              divisions: (AppState.radioMaxKm - AppState.radioMinKm).round(),
+              label: '${_radioKm.round()} km',
+              activeColor: verdeCancha,
+              onChanged: (v) => setState(() {
+                _radioKm = v;
+                appState.setRadioBusqueda(v);
+              }),
+            ),
+            Wrap(
+              spacing: 8,
+              children: [
+                for (final p in const [5.0, 10.0, 20.0, 30.0])
+                  ChoiceChip(
+                    label: Text('${p.round()} km'),
+                    selected: _radioKm.round() == p.round(),
+                    selectedColor: lima,
+                    onSelected: (_) => setState(() {
+                      _radioKm = p;
+                      appState.setRadioBusqueda(p);
+                    }),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 22),
+            Text(_zonas.isNotEmpty ? 'Zonas cerca de ti' : 'Zonas populares',
                 style: Theme.of(context)
                     .textTheme
                     .titleSmall
                     ?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                for (final e in _distritos.entries)
-                  ActionChip(
-                    avatar: const Icon(Icons.place, size: 18, color: verdeCancha),
-                    label: Text(e.key),
-                    onPressed: () => Navigator.of(context)
-                        .pop(ResultadoBusqueda(e.value, e.key)),
-                  ),
-              ],
-            ),
+            if (_cargandoZonas)
+              Row(
+                children: const [
+                  SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2)),
+                  SizedBox(width: 10),
+                  Text('Buscando zonas cerca de ti…',
+                      style: TextStyle(color: textoTenue)),
+                ],
+              )
+            else
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  // Dinámicas (GPS) si hay; si no, la lista de respaldo.
+                  if (_zonas.isNotEmpty)
+                    for (final z in _zonas)
+                      ActionChip(
+                        avatar: const Icon(Icons.place,
+                            size: 18, color: verdeCancha),
+                        label: Text(z.nombre),
+                        onPressed: () => Navigator.of(context)
+                            .pop(ResultadoBusqueda(z.centro, z.nombre)),
+                      )
+                  else
+                    for (final e in _distritosRespaldo.entries)
+                      ActionChip(
+                        avatar: const Icon(Icons.place,
+                            size: 18, color: verdeCancha),
+                        label: Text(e.key),
+                        onPressed: () => Navigator.of(context)
+                            .pop(ResultadoBusqueda(e.value, e.key)),
+                      ),
+                  // Sin GPS y sin lista de respaldo (fuera de Perú): guía al
+                  // usuario a activar la ubicación en vez de mostrar zonas ajenas.
+                  if (_zonas.isEmpty && _distritosRespaldo.isEmpty)
+                    Text('Activa el GPS o escribe tu dirección arriba.',
+                        style: const TextStyle(color: textoTenue)),
+                ],
+              ),
           ],
         ),
       ),
     );
   }
+}
+
+/// Una zona cercana derivada por GPS: nombre (distrito/localidad) + su punto.
+class _Zona {
+  final String nombre;
+  final LatLng centro;
+  const _Zona(this.nombre, this.centro);
 }

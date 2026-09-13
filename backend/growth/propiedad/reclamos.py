@@ -24,7 +24,14 @@ import math
 import secrets
 
 import config
-from db.store import MODOS_APROBACION, ReclamoPropiedad, ahora, como_dict, stores
+from db.store import (
+    CANALES_COMUNICACION,
+    MODOS_APROBACION,
+    ReclamoPropiedad,
+    ahora,
+    como_dict,
+    stores,
+)
 from propiedad import identidad, twilio_adapter, whatsapp_adapter
 
 
@@ -45,6 +52,26 @@ def set_modo_global(modo: str) -> dict:
     return {"ok": True, "global": modo}
 
 
+def canal_comunicacion() -> str:
+    """Canal que el APK muestra para contactar al profe: 'pcg_primero' |
+    'solo_pcg' | 'whatsapp_libre'. Editable desde la torre de control."""
+    valor = stores.cfg("canal_comunicacion")
+    return valor if valor in CANALES_COMUNICACION else "pcg_primero"
+
+
+def config_canal() -> dict:
+    """Config del canal de comunicación (global + valores válidos)."""
+    return {"canal": canal_comunicacion(), "canales": list(CANALES_COMUNICACION)}
+
+
+def set_canal_comunicacion(canal: str) -> dict:
+    if canal not in CANALES_COMUNICACION:
+        return {"ok": False, "error": "canal_invalido",
+                "canales": list(CANALES_COMUNICACION)}
+    stores.config["canal_comunicacion"] = canal
+    return {"ok": True, "canal": canal}
+
+
 def exigir_ubicacion() -> bool:
     """¿El admin exige que el reclamante esté en la cancha (GPS coincidente)
     para poder aprobar?"""
@@ -56,6 +83,49 @@ def set_exigir_ubicacion(activo: bool) -> dict:
     stores.config["exigir_ubicacion_reclamo"] = "1" if activo else "0"
     return {"ok": True, "exigir_ubicacion_reclamo": exigir_ubicacion(),
             "max_m": config.RECLAMO_UBICACION_MAX_M}
+
+
+# Código telefónico internacional por país (para armar el número completo).
+COD_PAIS_CONTACTO = {"pe": "51", "ec": "593", "bo": "591"}
+
+
+def _solo_digitos(v: str) -> str:
+    return "".join(ch for ch in (v or "") if ch.isdigit())
+
+
+def contacto_local(pais: str) -> str:
+    """Número LOCAL guardado para un país (pe|ec|bo), sin el código de país."""
+    p = (pais or "").lower()
+    return stores.cfg("contacto_whatsapp_" + p) if p in COD_PAIS_CONTACTO else ""
+
+
+def contactos_whatsapp() -> dict:
+    """Números LOCALES por país (para la torre de control)."""
+    return {p: contacto_local(p) for p in COD_PAIS_CONTACTO}
+
+
+def contacto_whatsapp(pais: str | None = None) -> str:
+    """WhatsApp COMPLETO (código + local) del país indicado. Si ese país no
+    tiene número, cae al primero configurado (orden ec, pe, bo). Editable desde
+    la torre de control."""
+    p = (pais or "").lower()
+    local = contacto_local(p)
+    if local:
+        return COD_PAIS_CONTACTO[p] + local
+    for q in ("ec", "pe", "bo"):
+        lq = contacto_local(q)
+        if lq:
+            return COD_PAIS_CONTACTO[q] + lq
+    return stores.cfg("contacto_whatsapp")  # respaldo legado (global)
+
+
+def set_contactos_whatsapp(contactos: dict) -> dict:
+    """Fija los números LOCALES por país. Ignora países desconocidos."""
+    for p, v in (contactos or {}).items():
+        pk = str(p).lower()
+        if pk in COD_PAIS_CONTACTO:
+            stores.config["contacto_whatsapp_" + pk] = _solo_digitos(str(v))
+    return {"ok": True, "contactos": contactos_whatsapp()}
 
 
 def set_modo_cancha(cancha_id: str, modo: str | None) -> dict:
@@ -82,6 +152,47 @@ def _notificar_admin(texto: str) -> None:
             # Meta requiere plantilla para iniciar; reusa el envío de OTP como
             # mejor esfuerzo (el texto va como parámetro). Si falla, se ignora.
             whatsapp_adapter.enviar_otp(destino, texto[:32])
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _bienvenida_al_activar(r: "ReclamoPropiedad") -> None:
+    """MARCHA BLANCA: al ACTIVARSE la cancha, el dueño nuevo recibe su regalo
+    de bienvenida (Pro de cortesía y/o saldo de regalo, config de la torre).
+    Import diferido para no acoplar propiedad↔pagos al cargar. Fail-safe."""
+    try:
+        from pagos.router import otorgar_bienvenida
+        from paises import pais_de_coordenadas
+        # El regalo va en la MONEDA del país de la cancha (sus coordenadas):
+        # S/ en Lima, $ en Guayaquil, Bs en La Paz. Sin coordenadas → Perú.
+        otorgar_bienvenida(r.solicitante_id or "",
+                           pais=pais_de_coordenadas(r.lat, r.lng))
+    except Exception:  # noqa: BLE001 — el regalo jamás rompe una activación
+        pass
+
+
+def _notificar_reclamante_aprobado(r: "ReclamoPropiedad") -> None:
+    """Push "¡Tu cancha fue aprobada!" al reclamante, vía la Edge Function de
+    Supabase (push-aprobacion). El backend growth NO hace FCM; delega en Supabase.
+    Fail-safe: nunca lanza (si no hay URL configurada o falla la red, se ignora)."""
+    url = config.PUSH_APROBACION_URL
+    email = (r.solicitante_id or "").strip()
+    if not url or not email:
+        return
+    try:
+        import json as _json
+        import urllib.request as _url
+        cuerpo = _json.dumps({
+            "email": email,
+            "cancha_nombre": r.nombre_local or "tu cancha",
+            "cancha_id": r.cancha_id or "",
+        }).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+        if config.PUSH_APROBACION_SECRET:
+            headers["X-Push-Secret"] = config.PUSH_APROBACION_SECRET
+        req = _url.Request(url, data=cuerpo, headers=headers, method="POST")
+        with _url.urlopen(req, timeout=10):
+            pass
     except Exception:  # noqa: BLE001
         pass
 
@@ -145,7 +256,10 @@ def crear_reclamo(cancha_id: str, solicitante_id: str, nombre_local: str,
                   relacion: str | None = None,
                   lat: float | None = None, lng: float | None = None,
                   solicitante_lat: float | None = None,
-                  solicitante_lng: float | None = None) -> dict:
+                  solicitante_lng: float | None = None,
+                  solicitante_nombre: str = "",
+                  foto_evidencia_url: str = "",
+                  nota_reclamante: str = "") -> dict:
     # Anti doble-reclamo. Si esta cancha (por id) o el MISMO lugar (ubicación
     # cercana) ya tiene un reclamo ACTIVO:
     #  - de OTRO usuario → se rechaza ("ya_reclamada").
@@ -166,6 +280,8 @@ def crear_reclamo(cancha_id: str, solicitante_id: str, nombre_local: str,
             solicitante_lat if solicitante_lat is not None else activo.solicitante_lat)
         activo.solicitante_lng = (
             solicitante_lng if solicitante_lng is not None else activo.solicitante_lng)
+        activo.foto_evidencia_url = foto_evidencia_url or activo.foto_evidencia_url
+        activo.nota_reclamante = nota_reclamante or activo.nota_reclamante
         if activo.estado == "pendiente_triage":
             _notificar_admin(
                 f"🔁 Recordatorio de reclamo pendiente\n"
@@ -195,6 +311,9 @@ def crear_reclamo(cancha_id: str, solicitante_id: str, nombre_local: str,
         codigo=codigo,
         estado="pendiente_triage",
         creado_en=ahora(),
+        solicitante_nombre=solicitante_nombre or "",
+        foto_evidencia_url=foto_evidencia_url or "",
+        nota_reclamante=nota_reclamante or "",
         telefono_contacto=telefono_contacto,
         dni=dni,
         nombre_titular=nombre_titular,
@@ -213,9 +332,12 @@ def crear_reclamo(cancha_id: str, solicitante_id: str, nombre_local: str,
         f"Relación: {relacion or 's/d'}\n"
         f"Titular (DNI {dni or 's/n'}): {nombre_titular or 's/d'}\n"
         + (f"RUC {ruc}: {razon_social or 's/d'}\n" if ruc else "")
-        + f"Cuenta: {solicitante_id}\n"
+        + f"Cuenta: {solicitante_id}"
+        + (f" ({solicitante_nombre})" if solicitante_nombre else "") + "\n"
         f"WhatsApp del dueño: {telefono_contacto or '⚠️ no dejó número'}\n"
-        f"Código: {codigo}\n"
+        + (f"Nota: {nota_reclamante}\n" if nota_reclamante else "")
+        + (f"Foto de evidencia: {foto_evidencia_url}\n" if foto_evidencia_url else "")
+        + f"Código: {codigo}\n"
         f"Verifícalo y, para activarla, responde aquí: APROBAR {codigo}  "
         f"(o RECHAZAR {codigo}). También puedes usar el panel de Reclamos.")
     return {"ok": True, "reclamo_id": r.id, "codigo": codigo, "estado": r.estado}
@@ -271,6 +393,39 @@ def _cerrar_duplicados(r: ReclamoPropiedad) -> None:
             otro.nota = f"Duplicado: la cancha ya fue activada por el reclamo #{r.id}."
 
 
+def _rechazar_hermanos_lugar(r: ReclamoPropiedad, nota: str) -> int:
+    """Al RECHAZAR/LIBERAR un lugar, rechaza también los OTROS reclamos NO
+    terminales del MISMO lugar (mismo cancha_id o ≤ _MISMO_LUGAR_M metros). Así un
+    rechazo deja el lugar REALMENTE libre para reclamar de nuevo, sin stragglers
+    que quedaron pendientes por reintentos o por carreras al reiniciar el backend.
+    Devuelve cuántos reclamos hermanos cerró."""
+    n = 0
+    for otro in _reclamos_del_lugar(r.cancha_id):
+        if otro.id != r.id and otro.estado not in _ESTADOS_TERMINALES:
+            otro.estado = "rechazada"
+            otro.decidido_en = ahora()
+            otro.nota = nota
+            n += 1
+    return n
+
+
+def liberar_lugar(reclamo_id: int, revisor: str | None = None) -> dict:
+    """Admin: LIBERA un lugar. Rechaza el reclamo dado y TODOS los reclamos NO
+    terminales del mismo lugar, y revoca la cancha si estaba sostenida por él. Deja
+    la ficha reclamable de nuevo de un toque (para resolver lugares que quedaron
+    'atascados' en revisión)."""
+    r = _por_id(reclamo_id)
+    if r is None:
+        return {"ok": False, "error": "reclamo_no_existe"}
+    nota = f"Lugar liberado por {revisor or 'admin'}."
+    r.estado = "rechazada"
+    r.decidido_en = ahora()
+    r.nota = nota
+    hermanos = _rechazar_hermanos_lugar(r, nota)
+    _revocar_cancha_al_rechazar(r)
+    return {"ok": True, "estado": "rechazada", "liberados": hermanos + 1}
+
+
 def _por_id(reclamo_id: int) -> ReclamoPropiedad | None:
     return next((r for r in stores.reclamos if r.id == reclamo_id), None)
 
@@ -303,28 +458,86 @@ def rechazar_por_codigo(codigo: str, revisor: str | None = None) -> dict:
     r.estado = "rechazada"
     r.decidido_en = ahora()
     r.nota = f"Rechazado por WhatsApp ({revisor or 'admin'}).".strip()
+    _rechazar_hermanos_lugar(r, r.nota)
     _revocar_cancha_al_rechazar(r)
     return {"ok": True, "estado": "rechazada", "nombre_local": r.nombre_local}
 
 
-def estado(cancha_id: str, solicitante: str | None = None) -> dict:
-    rs = [r for r in stores.reclamos if r.cancha_id == cancha_id]
-    if not rs:
-        return {"existe": False}
-    r = rs[-1]
+def _reclamos_del_lugar(cancha_id: str) -> list[ReclamoPropiedad]:
+    """Reclamos que corresponden a ESTA cancha: por mismo cancha_id, o por
+    ubicación muy cercana (mismo lugar físico con distinto id, p. ej. tras
+    re-descubrir/duplicar la misma cancha de Google). Evita que un reclamo VIEJO
+    con distinto id 'secuestre' la ficha cuando ya hay uno nuevo del mismo lugar."""
+    directos = [r for r in stores.reclamos if r.cancha_id == cancha_id]
+    # Coordenadas de referencia del lugar: las de la cancha registrada y las de
+    # sus propios reclamos directos.
+    refs: list[tuple[float, float]] = []
     c = stores.canchas.get(cancha_id)
-    verificada = bool(c and c.verificada)
-    # REPORTE coherente (sin efectos secundarios: es un GET idempotente). Si el
-    # último reclamo quedó RECHAZADO y no hay otro reclamo activo, la cancha no
-    # debe reportarse verificada aunque el flag quedara colgado (datos previos al
-    # revoque-en-rechazo). La corrección durable del flag ocurre en la transición
-    # de rechazo (_revocar_cancha_al_rechazar), que sí persiste.
-    if r.estado == "rechazada" and verificada:
-        otro_activo = any(
-            o.cancha_id == cancha_id and o.estado in _ESTADOS_BLOQUEANTES
-            for o in stores.reclamos)
-        if not otro_activo:
-            verificada = False
+    if c is not None and c.lat_declarada is not None and c.lng_declarada is not None:
+        refs.append((c.lat_declarada, c.lng_declarada))
+    for r in directos:
+        if r.lat is not None and r.lng is not None:
+            refs.append((r.lat, r.lng))
+    if not refs:
+        return directos
+    vistos = {id(r) for r in directos}
+    pool = list(directos)
+    for r in stores.reclamos:
+        if id(r) in vistos or r.lat is None or r.lng is None:
+            continue
+        if any(_distancia_m(la, lo, r.lat, r.lng) <= _MISMO_LUGAR_M for la, lo in refs):
+            pool.append(r)
+    return pool
+
+
+def estado(cancha_id: str, solicitante: str | None = None) -> dict:
+    pool = _reclamos_del_lugar(cancha_id)
+    if not pool:
+        return {"existe": False}
+    # Elegimos el reclamo REPRESENTATIVO del lugar (los ids crecen monótonos, así
+    # que id mayor = más reciente):
+    #  1. SEGURIDAD: si quien pregunta se identifica ([solicitante]) y tiene
+    #     reclamo propio en el lugar, SIEMPRE ve el SUYO más reciente — nunca el
+    #     de un tercero. Sin esto, reclamar un lugar que YA tenía un reclamo
+    #     APROBADO ajeno devolvía "activada" y la app del nuevo reclamante
+    #     activaba su copia al instante (apropiación sin pasar por la torre).
+    #  2. el reclamo VIGENTE (activo/bloqueante) más reciente — un reclamo vivo
+    #     nunca debe quedar oculto tras un rechazo viejo del mismo lugar;
+    #  3. en última instancia, el más reciente.
+    mios = ([x for x in pool if x.solicitante_id == solicitante]
+            if solicitante else [])
+    activos = [r for r in pool if r.estado in _ESTADOS_BLOQUEANTES]
+    if mios:
+        r = max(mios, key=lambda x: x.id)
+    elif activos:
+        r = max(activos, key=lambda x: x.id)
+    else:
+        r = max(pool, key=lambda x: x.id)
+    c = stores.canchas.get(r.cancha_id)
+    es_mio = bool(solicitante) and r.solicitante_id == solicitante
+    # SEGURIDAD (protege también a APKs viejos, que activaban con solo ver
+    # "activada"): si quien pregunta SE IDENTIFICA y la aprobación vigente es de
+    # OTRA persona, NO se le expone como "activada"/verificada — se le responde
+    # "reclamada_por_otro". Las consultas SIN solicitante (vista pública de la
+    # ficha) siguen viendo el estado representativo real del lugar.
+    if solicitante and not es_mio and r.estado == "activada":
+        return {
+            "existe": True,
+            "reclamo_id": r.id,
+            "estado": "reclamada_por_otro",
+            "panel_desbloqueado": False,
+            "verificada": False,
+            "verificada_en_persona": False,
+            "es_mio": False,
+        }
+    # 'verificada' para la APP = HABILITAR RESERVAS = PROPIEDAD aprobada, es decir
+    # el reclamo llegó a "activada". NO se deriva de la bandera CanchaEstado.
+    # verificada cruda, porque el subsistema de VERIFICACIÓN DE EXISTENCIA (IA)
+    # también la escribe cuando el lugar existe — y existir ≠ ser dueño. Si se
+    # leyera esa bandera, un reclamo recién creado (pendiente) aparecería como
+    # verificado solo porque la cancha existe en Google. La propiedad se confiere
+    # únicamente al aprobar/validar el reclamo (que deja estado="activada").
+    verificada = (r.estado == "activada")
     return {
         "existe": True,
         "reclamo_id": r.id,
@@ -335,7 +548,7 @@ def estado(cancha_id: str, solicitante: str | None = None) -> dict:
         "verificada_en_persona": bool(c and c.verificada_en_persona),
         # ¿el reclamo es del que pregunta? (para que la app asigne dueño sin que
         # un tercero se apropie de una cancha de "legado" al sincronizar).
-        "es_mio": bool(solicitante) and r.solicitante_id == solicitante,
+        "es_mio": es_mio,
     }
 
 
@@ -355,6 +568,9 @@ def triage(reclamo_id: int, aprobado: bool, revisor: str | None = None,
     r.decidido_en = ahora()
     r.nota = f"Triage por {revisor or 'admin'}. {nota or ''}".strip()
     if not aprobado:
+        # Un rechazo libera el lugar: cierra también los hermanos NO terminales del
+        # mismo lugar (evita que quede uno pendiente "secuestrando" la ficha).
+        _rechazar_hermanos_lugar(r, r.nota)
         _revocar_cancha_al_rechazar(r)
     return {"ok": True, "estado": r.estado}
 
@@ -407,6 +623,8 @@ def validar_en_sitio(codigo: str, lat: float, lng: float,
             f"✅ Cancha validada en sitio y ACTIVADA\n"
             f"Local: {r.nombre_local}\nValidador: {validador or 's/n'}\n"
             f"Distancia GPS: {round(dist) if dist is not None else 's/d'} m")
+        _notificar_reclamante_aprobado(r)  # push "¡tu cancha fue aprobada!"
+        _bienvenida_al_activar(r)  # regalo de bienvenida (marcha blanca)
         return {"ok": True, "estado": "activada", "verificada": True,
                 "distancia_m": round(dist) if dist is not None else None}
 
@@ -480,6 +698,8 @@ def aprobar_directo(reclamo_id: int, revisor: str | None = None) -> dict:
     _notificar_admin(
         f"✅ Cancha ACTIVADA por aprobación directa (panel)\n"
         f"Local: {r.nombre_local}\nAdmin: {revisor or 's/n'}")
+    _notificar_reclamante_aprobado(r)  # push "¡tu cancha fue aprobada!"
+    _bienvenida_al_activar(r)  # regalo de bienvenida (marcha blanca)
     return {"ok": True, "estado": "activada", "verificada": True, "modo": modo}
 
 
@@ -499,6 +719,8 @@ def activar_admin(reclamo_id: int) -> dict:
     c.verificada = True
     c.verificada_en_persona = True
     c.metodo_verificacion = "en_sitio"
+    _notificar_reclamante_aprobado(r)  # push "¡tu cancha fue aprobada!"
+    _bienvenida_al_activar(r)  # regalo de bienvenida (marcha blanca)
     return {"ok": True, "estado": "activada", "verificada": True}
 
 

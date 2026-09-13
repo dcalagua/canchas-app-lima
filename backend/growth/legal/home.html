@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pichangol — Reserva canchas de fútbol, tenis y pádel en Lima</title>
+<meta name="description" content="Pichangol es la plataforma para reservar y pagar canchas de fútbol, tenis y pádel en Lima. Una solución de {{EMPRESA}}." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="icon" type="image/png" href="/static/brand/logo_pin.png" />
+<link rel="apple-touch-icon" href="/static/brand/logo_pin.png" />
+<meta name="theme-color" content="#0F1B2D" />
+<style>
+  /* Paleta del app (lib/theme.dart): lima = esmeralda (CTA), bosque/tinta =
+     azul noche, papel/trazo/tenue como en el APK. Mismos nombres de token. */
+  :root{
+    --lima:#0E8F67; --lima-suave:#E7F4EF; --bosque:#0F1B2D; --tinta:#0F1B2D;
+    --papel:#F4F7FA; --trazo:#DDE5EF; --tenue:#627080; --amarillo:#D9B45A;
+    --blanco:#ffffff; --esmeralda:#0E8F67; --teal:#0B7A58;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;font-family:"Montserrat",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-weight:500;
+    color:var(--tinta);background:var(--papel);line-height:1.55;
+  }
+  a{color:var(--esmeralda)}
+  .wrap{max-width:960px;margin:0 auto;padding:0 20px}
+  /* Nav */
+  header.nav{position:sticky;top:0;z-index:50;background:var(--blanco);border-bottom:1px solid var(--trazo)}
+  .nav-in{display:flex;align-items:center;justify-content:space-between;gap:12px;height:64px}
+  .wm{display:inline-flex;align-items:center;font-weight:800;font-size:22px;letter-spacing:-.5px;color:var(--bosque);text-decoration:none;line-height:1}
+  .wm svg{width:.92em;height:.92em;margin:0 .03em;vertical-align:middle}
+  nav.links{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
+  nav.links a{font-size:14px;font-weight:700;color:var(--tinta);text-decoration:none;padding:9px 12px;border-radius:999px}
+  nav.links a:hover{background:#E9EEF4}
+  nav.links a.ctan{background:var(--esmeralda);color:#fff;padding:10px 16px}
+  @media(max-width:720px){nav.links a:not(.ctan){display:none}}
+  /* Hero */
+  .hero{background:linear-gradient(160deg,#0F1B2D 0%,#1B2A40 55%,#0B7A58 140%);padding:68px 0 60px;color:#fff}
+  .hero .pill{background:rgba(255,255,255,.14);color:#fff}
+  .hero h1{font-size:clamp(30px,6vw,48px);line-height:1.1;margin:0 0 14px;color:#fff;font-weight:800;letter-spacing:-.5px}
+  .hero p.lead{font-size:clamp(17px,2.5vw,20px);max-width:640px;margin:0 0 26px;color:#DCE6F0}
+  .cta{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:var(--esmeralda);color:#fff;
+    padding:14px 22px;border-radius:12px;font-weight:700;text-decoration:none;border:none;cursor:pointer;font-size:16px;font-family:inherit}
+  .cta:hover{filter:brightness(1.05)}
+  .cta.sec{background:var(--blanco);color:var(--bosque);border:1px solid var(--trazo)}
+  .hero .cta.sec{background:transparent;color:#fff;border:1.5px solid rgba(255,255,255,.55)}
+  .cta-row{display:flex;gap:12px;flex-wrap:wrap}
+  /* Sections */
+  section{padding:52px 0;border-top:1px solid var(--trazo)}
+  section h2{font-size:clamp(24px,4vw,32px);color:var(--bosque);margin:0 0 8px;font-weight:800}
+  section .sub{color:var(--tenue);margin:0 0 28px;font-size:16px}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+  @media(max-width:720px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--blanco);border-radius:18px;padding:22px;box-shadow:0 2px 14px rgba(15,27,45,.06)}
+  .card .ic{width:44px;height:44px;border-radius:12px;background:var(--lima-suave);display:flex;align-items:center;justify-content:center;font-size:22px;margin-bottom:12px}
+  .card h3{margin:0 0 6px;font-size:18px;color:var(--bosque)}
+  .card p{margin:0;color:var(--tinta);font-size:15px}
+  /* Steps */
+  .steps{counter-reset:s;display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+  @media(max-width:720px){.steps{grid-template-columns:1fr 1fr}}
+  .step{position:relative;padding:22px 16px 16px;background:var(--blanco);border-radius:16px;box-shadow:0 2px 14px rgba(15,27,45,.06)}
+  .step:before{counter-increment:s;content:counter(s);position:absolute;top:-14px;left:16px;width:30px;height:30px;border-radius:50%;background:var(--bosque);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800}
+  .step h4{margin:8px 0 4px;color:var(--bosque);font-size:16px}
+  .step p{margin:0;font-size:14px;color:var(--tinta)}
+  /* Contact */
+  .contact-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:720px){.contact-grid{grid-template-columns:1fr}}
+  .info li{margin:0 0 10px;list-style:none;display:flex;gap:10px;align-items:flex-start}
+  .info ul{padding:0;margin:0}
+  .info .k{font-weight:700;color:var(--bosque);min-width:96px;display:inline-block}
+  .socials{display:flex;gap:12px;margin-top:8px}
+  .socials a{display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border:1px solid var(--trazo);border-radius:999px;text-decoration:none;font-size:14px;font-weight:600}
+  /* Legal blocks */
+  .legal h3{color:var(--bosque);margin:26px 0 6px;font-size:19px}
+  .legal h4{color:var(--tinta);margin:16px 0 4px;font-size:16px}
+  .legal p, .legal li{font-size:15px;color:#2C3A4B}
+  .legal ul{padding-left:20px}
+  details.acc{background:var(--blanco);border:1px solid var(--trazo);border-radius:14px;padding:6px 18px;margin-bottom:12px}
+  details.acc>summary{cursor:pointer;font-weight:700;color:var(--bosque);padding:14px 0;font-size:17px;list-style:none}
+  details.acc>summary::-webkit-details-marker{display:none}
+  details.acc>summary:before{content:"+ ";color:var(--esmeralda);font-weight:800}
+  details.acc[open]>summary:before{content:"– "}
+  /* Form */
+  form .row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:720px){form .row{grid-template-columns:1fr}}
+  label{display:block;font-size:13px;font-weight:700;color:var(--bosque);margin:12px 0 4px}
+  input,select,textarea{width:100%;padding:11px 12px;border:1px solid var(--trazo);border-radius:10px;font:inherit;background:var(--blanco);color:var(--tinta)}
+  textarea{min-height:96px;resize:vertical}
+  .hint{font-size:12px;color:var(--tenue);margin-top:4px}
+  .radio-row{display:flex;gap:18px;margin-top:6px}
+  .radio-row label{display:flex;align-items:center;gap:6px;font-weight:500;margin:0}
+  .radio-row input{width:auto}
+  .ok{background:var(--lima-suave);border:1px solid var(--lima);border-radius:12px;padding:16px;margin-top:16px;display:none}
+  .ok.show{display:block}
+  .ok b{color:var(--bosque)}
+  /* Footer */
+  footer{background:var(--bosque);color:#C9D3E0;padding:34px 0;margin-top:0}
+  footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:center}
+  footer a{color:#fff}
+  .ebim{font-size:13px;opacity:.85}
+  .pill{display:inline-block;background:var(--lima-suave);color:var(--bosque);font-weight:700;font-size:13px;padding:5px 12px;border-radius:999px;margin-bottom:14px}
+
+  /* Servicios y precios (catálogo con foto, descripción, precio y botón) */
+  .prods{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+  @media(max-width:900px){.prods{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:560px){.prods{grid-template-columns:1fr}}
+  .prod{background:#fff;border-radius:18px;box-shadow:0 2px 12px rgba(0,0,0,.06);overflow:hidden;display:flex;flex-direction:column}
+  .prod svg{display:block;width:100%;height:150px}
+  .prod .pb{padding:16px 18px 18px;display:flex;flex-direction:column;gap:6px;flex:1}
+  .prod h3{margin:0;font-size:17px;color:var(--bosque)}
+  .prod p{margin:0;font-size:14px;color:var(--tinta);flex:1}
+  .prod .precio{font-weight:800;font-size:18px;color:#222;margin-top:6px}
+  .prod .precio small{font-weight:600;color:#667;font-size:12.5px}
+  .prod .cta{margin-top:8px;text-align:center;justify-content:center}
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-in">
+    <a class="wm" href="#inicio" aria-label="Pichangol">Pichang<svg viewBox='0 0 24 24' aria-hidden='true'><circle cx='12' cy='12' r='10' fill='#0E8F67'/><path fill='#fff' d='M12 6.2l3.3 2.4-1.3 3.9H10l-1.3-3.9L12 6.2z'/><path fill='none' stroke='#fff' stroke-width='1.4' d='M12 6.2V3.5M15.3 8.6l2.6-.9M14 12.5l1.9 2.3M10 12.5l-1.9 2.3M8.7 8.6l-2.6-.9'/><path fill='#fff' opacity='.9' d='M6.2 8.5l2.5-.8.9 2.6-2.3 1.8-1.7-1.3zM17.8 8.5l-2.5-.8-.9 2.6 2.3 1.8 1.7-1.3zM9.1 15.6h5.8l.8 2.6-3.7 1.9-3.7-1.9z'/></svg>l</a>
+    <nav class="links">
+      <a href="#servicios">Servicios</a>
+      <a href="#como">Cómo funciona</a>
+      <a href="#pagos">Pagos</a>
+      <a href="#contacto">Contacto</a>
+      <a href="#reclamaciones">Reclamaciones</a>
+      <a class="ctan" href="/canchas">Reservar</a>
+    </nav>
+  </div>
+</header>
+
+<!-- HERO -->
+<div class="hero" id="inicio">
+  <div class="wrap">
+    <span class="pill">Una solución de {{EMPRESA}}</span>
+    <h1>Reserva tu cancha en Lima. Rápido y seguro.</h1>
+    <p class="lead">Pichangol es la plataforma donde encuentras, reservas y pagas canchas de
+      <b>fútbol, tenis, pádel y pickleball</b> cerca de ti. Reserva, juega, repite.</p>
+    <div class="cta-row">
+      <a class="cta" href="/canchas">Reservar ahora</a>
+      <a class="cta sec" href="#como">Cómo funciona</a>
+    </div>
+  </div>
+</div>
+
+<!-- QUÉ OFRECEMOS -->
+<section id="servicio">
+  <div class="wrap">
+    <h2>Qué ofrecemos</h2>
+    <p class="sub">Un marketplace de reserva de canchas deportivas en Perú, Ecuador y Bolivia, desde la web y la app.</p>
+    <div class="grid">
+      <div class="card">
+        <div class="ic">📍</div>
+        <h3>Encuentra canchas cerca</h3>
+        <p>Busca por deporte y zona, mira fotos, precios por hora y disponibilidad en tiempo real.</p>
+      </div>
+      <div class="card">
+        <div class="ic">📅</div>
+        <h3>Reserva tu horario</h3>
+        <p>Eliges día y hora, ves el precio con signo S/ y confirmas tu reserva en segundos.</p>
+      </div>
+      <div class="card">
+        <div class="ic">🎓</div>
+        <h3>Academias y clases</h3>
+        <p>Descubre academias de tenis, fútbol y más; conoce sus planes y matricúlate desde la app.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SERVICIOS Y PRECIOS -->
+<section id="servicios">
+  <div class="wrap">
+    <h2>Servicios y precios</h2>
+    <p class="sub">Esto es lo que puedes reservar y comprar en Pichangol. Los precios por hora los fija cada
+      establecimiento y se muestran en la app antes de confirmar; aquí ves los precios de referencia en Lima.
+      Pagas con Yape o tarjeta, y el comprobante queda en tu cuenta.</p>
+    <div class="prods">
+      <div class="prod">
+        <svg viewBox="0 0 300 150" role="img" aria-hidden="true"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#E7F4EF"/><stop offset="1" stop-color="#8FD1B4"/></linearGradient></defs><rect width="300" height="150" fill="url(#g)"/><circle cx="150" cy="78" r="46" fill="#fff"/><polygon points="150,55 170,70 162,94 138,94 130,70" fill="#0F1B2D"/><path d="M150 55 L150 36 M170 70 L188 62 M162 94 L176 110 M138 94 L124 110 M130 70 L112 62" stroke="#0F1B2D" stroke-width="5" fill="none"/><rect x="0" y="126" width="300" height="24" fill="#0F1B2D" opacity=".18"/></svg>
+        <div class="pb">
+          <h3>Reserva de cancha de fútbol</h3>
+          <p>Fútbol 5, 7 y 11 en grass sintético o natural. Elige día y hora, confirma y juega. Incluye iluminación en horario nocturno según el local.</p>
+          <div class="precio">Desde S/ 60 <small>por hora</small></div>
+          <a class="cta" href="/canchas?deporte=futbol">Reservar ahora</a>
+        </div>
+      </div>
+      <div class="prod">
+        <svg viewBox="0 0 300 150" role="img" aria-hidden="true"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#E7F4EF"/><stop offset="1" stop-color="#8FD1B4"/></linearGradient></defs><rect width="300" height="150" fill="url(#g)"/><rect x="0" y="120" width="300" height="30" fill="#c96b3c" opacity=".55"/><line x1="150" y1="20" x2="150" y2="120" stroke="#fff" stroke-width="4"/><circle cx="110" cy="80" r="22" fill="#DFF542" stroke="#0F1B2D" stroke-width="3"/><path d="M92 70 q18 10 36 0 M92 90 q18 -10 36 0" stroke="#fff" stroke-width="3" fill="none"/><ellipse cx="205" cy="60" rx="28" ry="36" fill="#0F1B2D"/><ellipse cx="205" cy="60" rx="18" ry="26" fill="#fff" opacity=".85"/><rect x="200" y="94" width="10" height="40" rx="4" fill="#0F1B2D"/></svg>
+        <div class="pb">
+          <h3>Reserva de cancha de tenis</h3>
+          <p>Canchas de arcilla, cemento y grass sintético en clubes y academias. Reserva turnos de 1 hora o 1.5 horas según la cancha.</p>
+          <div class="precio">Desde S/ 40 <small>por hora</small></div>
+          <a class="cta" href="/canchas?deporte=tenis">Reservar ahora</a>
+        </div>
+      </div>
+      <div class="prod">
+        <svg viewBox="0 0 300 150" role="img" aria-hidden="true"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#E7F4EF"/><stop offset="1" stop-color="#8FD1B4"/></linearGradient></defs><rect width="300" height="150" fill="url(#g)"/><rect x="40" y="30" width="220" height="90" rx="14" fill="none" stroke="#0F1B2D" stroke-width="5"/><line x1="150" y1="30" x2="150" y2="120" stroke="#fff" stroke-width="5"/><rect x="180" y="45" width="44" height="60" rx="18" fill="#0F1B2D"/><circle cx="195" cy="65" r="3" fill="#0E8F67"/><circle cx="209" cy="65" r="3" fill="#0E8F67"/><circle cx="202" cy="78" r="3" fill="#0E8F67"/><circle cx="195" cy="91" r="3" fill="#0E8F67"/><circle cx="209" cy="91" r="3" fill="#0E8F67"/><rect x="197" y="104" width="10" height="24" rx="4" fill="#0F1B2D"/><circle cx="100" cy="85" r="14" fill="#DFF542" stroke="#0F1B2D" stroke-width="3"/></svg>
+        <div class="pb">
+          <h3>Reserva de cancha de pádel</h3>
+          <p>Canchas de pádel techadas y al aire libre, con vidrio panorámico. Turnos de 1 hora o 1.5 horas; ideal para dobles.</p>
+          <div class="precio">Desde S/ 90 <small>por hora</small></div>
+          <a class="cta" href="/canchas?deporte=padel">Reservar ahora</a>
+        </div>
+      </div>
+      <div class="prod">
+        <svg viewBox="0 0 300 150" role="img" aria-hidden="true"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#E7F4EF"/><stop offset="1" stop-color="#8FD1B4"/></linearGradient></defs><rect width="300" height="150" fill="url(#g)"/><circle cx="150" cy="75" r="42" fill="#F2C94C" stroke="#0F1B2D" stroke-width="4"/><circle cx="135" cy="60" r="5" fill="#0F1B2D"/><circle cx="160" cy="55" r="5" fill="#0F1B2D"/><circle cx="175" cy="78" r="5" fill="#0F1B2D"/><circle cx="150" cy="80" r="5" fill="#0F1B2D"/><circle cx="128" cy="88" r="5" fill="#0F1B2D"/><circle cx="158" cy="100" r="5" fill="#0F1B2D"/><circle cx="140" cy="110" r="5" fill="#0F1B2D"/></svg>
+        <div class="pb">
+          <h3>Reserva de cancha de pickleball</h3>
+          <p>Canchas de pickleball con red y líneas reglamentarias. Reserva individual o en dobles desde la app.</p>
+          <div class="precio">Desde S/ 40 <small>por hora</small></div>
+          <a class="cta" href="/canchas?deporte=pickleball">Reservar ahora</a>
+        </div>
+      </div>
+      <div class="prod">
+        <svg viewBox="0 0 300 150" role="img" aria-hidden="true"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#E7F4EF"/><stop offset="1" stop-color="#8FD1B4"/></linearGradient></defs><rect width="300" height="150" fill="url(#g)"/><polygon points="150,22 166,62 210,64 176,90 188,132 150,108 112,132 124,90 90,64 134,62" fill="#F2C94C" stroke="#0F1B2D" stroke-width="4" stroke-linejoin="round"/><text x="150" y="86" text-anchor="middle" font-family="DM Sans,Arial" font-weight="800" font-size="26" fill="#0F1B2D">PRO</text></svg>
+        <div class="pb">
+          <h3>Pichangol Pro (membresía mensual)</h3>
+          <p>Para jugadores y dueños: reserva manual y bloqueo de horas para tu cancha, herramientas del panel y beneficios exclusivos. Se renueva cada mes y puedes cancelarla cuando quieras.</p>
+          <div class="precio">S/ 12 <small>por mes</small></div>
+          <a class="cta" href="https://play.google.com/store/apps/details?id=pe.ebim.pichangol" rel="noopener">Comprar en la app</a>
+        </div>
+      </div>
+      <div class="prod">
+        <svg viewBox="0 0 300 150" role="img" aria-hidden="true"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#E7F4EF"/><stop offset="1" stop-color="#8FD1B4"/></linearGradient></defs><rect width="300" height="150" fill="url(#g)"/><path d="M50 45 h200 a12 12 0 0 0 12 12 v36 a12 12 0 0 0 -12 12 h-200 a12 12 0 0 0 -12 -12 v-36 a12 12 0 0 0 12 -12z" fill="#fff" stroke="#0F1B2D" stroke-width="4"/><line x1="190" y1="45" x2="190" y2="105" stroke="#0F1B2D" stroke-width="4" stroke-dasharray="6 6"/><text x="118" y="84" text-anchor="middle" font-family="DM Sans,Arial" font-weight="800" font-size="22" fill="#0F1B2D">10 h</text><text x="225" y="84" text-anchor="middle" font-family="DM Sans,Arial" font-weight="800" font-size="16" fill="#0F1B2D">BONO</text></svg>
+        <div class="pb">
+          <h3>Bono de horas</h3>
+          <p>Paquetes de horas prepagadas en tu cancha favorita a precio preferencial. El establecimiento define las horas y el descuento; lo compras y lo usas desde la app.</p>
+          <div class="precio">Desde S/ 200 <small>por bono de 10 horas</small></div>
+          <a class="cta" href="https://play.google.com/store/apps/details?id=pe.ebim.pichangol" rel="noopener">Comprar en la app</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CÓMO FUNCIONA -->
+<section id="como">
+  <div class="wrap">
+    <h2>Cómo funciona</h2>
+    <p class="sub">Reservar en Pichangol toma menos de un minuto.</p>
+    <div class="steps">
+      <div class="step"><h4>Busca</h4><p>Elige el deporte y la zona donde quieres jugar.</p></div>
+      <div class="step"><h4>Elige</h4><p>Compara canchas, precios y horarios disponibles.</p></div>
+      <div class="step"><h4>Reserva</h4><p>Confirma tu día y hora en la web o en la app.</p></div>
+      <div class="step"><h4>Paga y juega</h4><p>Pagas de forma segura por Yape o tarjeta. Reserva, juega, repite.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- PAGOS Y SEGURIDAD -->
+<section id="pagos">
+  <div class="wrap">
+    <h2>Pagos y seguridad</h2>
+    <p class="sub">Tus pagos se procesan con una pasarela certificada.</p>
+    <div class="grid">
+      <div class="card">
+        <div class="ic">📱</div>
+        <h3>Yape y tarjetas</h3>
+        <p>Aceptamos Yape y tarjetas Visa / Mastercard. Los cobros se procesan mediante Culqi,
+          pasarela de pagos autorizada; Pichangol no almacena los datos de tu tarjeta.</p>
+      </div>
+      <div class="card">
+        <div class="ic">🔒</div>
+        <h3>Datos protegidos</h3>
+        <p>Cumplimos la Ley N.° 29733 de Protección de Datos Personales. Usamos tus datos solo
+          para operar el servicio de reservas.</p>
+      </div>
+      <div class="card">
+        <div class="ic">🧾</div>
+        <h3>Comprobante</h3>
+        <p>Cada operación genera una referencia de pago y el detalle de tu reserva en la app.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CONTACTO -->
+<section id="contacto">
+  <div class="wrap">
+    <h2>Contacto</h2>
+    <p class="sub">Estamos para ayudarte con tus reservas y pagos.</p>
+    <div class="contact-grid">
+      <div class="card info">
+        <ul>
+          <li><span class="k">Empresa</span> <span>{{EMPRESA}} (marca <b>Pichangol</b>)</span></li>
+          <li><span class="k">{{DOC_ETIQUETA}}</span> <span>{{RUC}}</span></li>
+          <li><span class="k">Dirección</span> <span>{{DIRECCION}}</span></li>
+          <li><span class="k">WhatsApp</span> <span style="line-height:1.9">{{WHATSAPP_LISTA}}</span></li>
+          <li><span class="k">Correo</span> <span><a href="mailto:{{CORREO}}">{{CORREO}}</a></span></li>
+          <li><span class="k">Horario</span> <span>{{HORARIO}}</span></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0;color:var(--bosque)">¿Tienes una cancha?</h3>
+        <p style="color:var(--tinta)">Publícala en Pichangol y recibe reservas. Escríbenos por WhatsApp
+          y te ayudamos a registrarla.</p>
+        <p style="margin-top:14px">{{WA_BOTONES}}</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TÉRMINOS Y CONDICIONES -->
+<section id="terminos" class="legal">
+  <div class="wrap">
+    <h2>Términos y Condiciones</h2>
+    <p class="sub">Última actualización: julio 2026.</p>
+
+    <details class="acc" open>
+      <summary>1. Quiénes somos</summary>
+      <p>Pichangol es una plataforma operada por <b>{{EMPRESA}}</b>, {{DOC_ETIQUETA}} {{RUC}}, con domicilio en
+        {{DIRECCION}} ("Pichangol", "nosotros"). Pichangol
+        pone en contacto a jugadores con establecimientos que ofrecen canchas deportivas ("Canchas") y permite
+        reservar y pagar horarios.</p>
+    </details>
+
+    <details class="acc">
+      <summary>2. El servicio</summary>
+      <p>Pichangol facilita la búsqueda, reserva y pago de horarios de Canchas de terceros. La prestación del
+        servicio deportivo (uso de la cancha) es responsabilidad del establecimiento. Pichangol actúa como
+        intermediario tecnológico y medio de pago de la reserva.</p>
+    </details>
+
+    <details class="acc">
+      <summary>3. Cuenta y uso</summary>
+      <ul>
+        <li>Debes brindar información veraz para reservar.</li>
+        <li>Eres responsable del uso de tu cuenta y de las reservas que realices.</li>
+        <li>No puedes usar la plataforma para fines ilícitos ni suplantar a terceros.</li>
+      </ul>
+    </details>
+
+    <details class="acc">
+      <summary>4. Reservas y precios</summary>
+      <p>Los precios se muestran en Soles (S/) e incluyen los tributos aplicables. Una reserva se confirma cuando
+        el pago es aprobado por la pasarela. Los horarios están sujetos a disponibilidad; si un establecimiento no
+        pudiera honrar una reserva pagada, se procederá a la devolución conforme a la sección de Cancelaciones y
+        Devoluciones.</p>
+    </details>
+
+    <details class="acc">
+      <summary>5. Pagos</summary>
+      <p>Los pagos se procesan a través de <b>Culqi</b>, pasarela de pagos autorizada, mediante Yape o tarjeta.
+        Pichangol no almacena los datos completos de tu tarjeta. La referencia de la operación queda registrada en
+        la app.</p>
+    </details>
+
+    <details class="acc">
+      <summary>6. Responsabilidad</summary>
+      <p>Pichangol no es propietario de las Canchas ni presta el servicio deportivo. No respondemos por daños
+        derivados del uso de las instalaciones. Nuestra responsabilidad se limita al correcto procesamiento de la
+        reserva y su pago.</p>
+    </details>
+
+    <details class="acc">
+      <summary>7. Propiedad intelectual</summary>
+      <p>La marca Pichangol, el logotipo y el software son de titularidad de {{EMPRESA}}. No pueden usarse sin
+        autorización.</p>
+    </details>
+
+    <details class="acc">
+      <summary>8. Ley aplicable</summary>
+      <p>Estos términos se rigen por las leyes de la República del Perú. Cualquier controversia se somete a la
+        jurisdicción de Lima Cercado.</p>
+    </details>
+  </div>
+</section>
+
+<!-- CANCELACIONES Y DEVOLUCIONES -->
+<section id="devoluciones" class="legal">
+  <div class="wrap">
+    <h2>Política de cancelaciones y devoluciones</h2>
+    <p class="sub">Reglas claras para reservas y reembolsos.</p>
+
+    <h3>Cancelación por el jugador</h3>
+    <ul>
+      <li><b>Con más de 6 horas de anticipación</b> al inicio de la reserva: puedes cancelar y se procede a la
+        <b>devolución del 100%</b> del monto pagado por la reserva.</li>
+      <li><b>Con menos de 6 horas de anticipación</b>: la reserva no es reembolsable, ya que el horario se bloqueó
+        para ti y el establecimiento reservó el espacio.</li>
+    </ul>
+
+    <h3>Cancelación por el establecimiento</h3>
+    <p>Si el establecimiento no puede honrar una reserva pagada (por fuerza mayor, clima u otro), tienes derecho a
+      <b>reprogramar sin costo</b> o a la <b>devolución del 100%</b>.</p>
+
+    <h3>Cómo solicitar una devolución</h3>
+    <p>Escríbenos a <a href="mailto:{{CORREO}}">{{CORREO}}</a> o por WhatsApp al
+      {{WHATSAPP}} indicando tu nombre, la fecha/hora de la reserva y el
+      motivo. Las devoluciones aprobadas se realizan por el <b>mismo medio de pago</b> (Yape o tarjeta) en un plazo
+      de <b>hasta 7 días hábiles</b>, según los tiempos de la pasarela y el banco emisor.</p>
+
+    <h3>Derecho a información</h3>
+    <p>Para cualquier disconformidad puedes usar nuestro <a href="#reclamaciones">Libro de Reclamaciones</a>.</p>
+  </div>
+</section>
+
+<!-- PRIVACIDAD -->
+<section id="privacidad" class="legal">
+  <div class="wrap">
+    <h2>Política de Privacidad</h2>
+    <p class="sub">Tratamiento de datos personales — Ley N.° 29733.</p>
+    <p>{{EMPRESA}} trata tus datos personales (nombre, correo, teléfono y datos de la reserva) con la
+      finalidad de operar el servicio de reservas y pagos, brindarte soporte y cumplir obligaciones legales. Los
+      datos de pago son procesados por la pasarela Culqi; no almacenamos los datos completos de tu tarjeta.</p>
+    <p>Puedes ejercer tus derechos de acceso, rectificación, cancelación y oposición (ARCO) escribiendo a
+      <a href="mailto:{{CORREO_PRIVACIDAD}}">{{CORREO_PRIVACIDAD}}</a>. Conservamos tus datos mientras dure la relación y por
+      los plazos que exija la ley. No vendemos tus datos a terceros.</p>
+  </div>
+</section>
+
+<!-- LIBRO DE RECLAMACIONES -->
+<section id="reclamaciones" class="legal">
+  <div class="wrap">
+    <h2>📕 Libro de Reclamaciones</h2>
+    <p class="sub">Conforme al Código de Protección y Defensa del Consumidor (Ley N.° 29571) y el D.S. 011-2011-PCM.
+      Registra aquí tu reclamo o queja; recibirás un número de registro y te responderemos en un plazo máximo de
+      <b>15 días hábiles</b>.</p>
+
+    <form id="lr-form" novalidate>
+      <h3>1. Identificación del consumidor reclamante</h3>
+      <div class="row">
+        <div><label for="c_nombre">Nombre completo *</label><input id="c_nombre" name="c_nombre" required /></div>
+        <div><label for="c_doc">DNI / CE *</label><input id="c_doc" name="c_doc" required /></div>
+      </div>
+      <div class="row">
+        <div><label for="c_tel">Teléfono *</label><input id="c_tel" name="c_tel" required /></div>
+        <div><label for="c_email">Correo electrónico *</label><input id="c_email" name="c_email" type="email" required /></div>
+      </div>
+      <label for="c_dir">Domicilio</label><input id="c_dir" name="c_dir" />
+      <div class="radio-row" style="margin-top:12px">
+        <span style="font-size:13px;font-weight:700;color:var(--bosque)">¿Eres menor de edad?</span>
+        <label><input type="radio" name="c_menor" value="No" checked /> No</label>
+        <label><input type="radio" name="c_menor" value="Sí" /> Sí (un padre/madre/tutor presenta el reclamo)</label>
+      </div>
+
+      <h3>2. Identificación del bien contratado</h3>
+      <div class="row">
+        <div>
+          <label for="b_tipo">Tipo *</label>
+          <select id="b_tipo" name="b_tipo">
+            <option value="Servicio">Servicio</option>
+            <option value="Producto">Producto</option>
+          </select>
+        </div>
+        <div><label for="b_monto">Monto reclamado (S/)</label><input id="b_monto" name="b_monto" inputmode="decimal" placeholder="Ej.: 60.00" /></div>
+      </div>
+      <label for="b_desc">Descripción del bien o servicio</label>
+      <input id="b_desc" name="b_desc" placeholder="Ej.: Reserva de cancha de fútbol — 12/07 8:00 p. m." />
+
+      <h3>3. Detalle</h3>
+      <div class="radio-row" style="margin-bottom:6px">
+        <label><input type="radio" name="d_tipo" value="Reclamo" checked /> <b>Reclamo</b> (disconformidad con el servicio)</label>
+        <label><input type="radio" name="d_tipo" value="Queja" /> <b>Queja</b> (malestar por la atención)</label>
+      </div>
+      <label for="d_detalle">Detalle del reclamo o queja *</label>
+      <textarea id="d_detalle" name="d_detalle" required></textarea>
+      <label for="d_pedido">Pedido del consumidor *</label>
+      <textarea id="d_pedido" name="d_pedido" required placeholder="¿Qué solución solicitas?"></textarea>
+
+      <div style="margin-top:18px">
+        <button type="submit" class="cta">Enviar reclamo</button>
+        <span class="hint">Los campos con * son obligatorios.</span>
+      </div>
+
+      <div class="ok" id="lr-ok">
+        <p><b>✅ Reclamo registrado.</b> Tu número de registro es <b id="lr-num"></b>.</p>
+        <p>Guarda este número. Tu hoja quedó registrada en nuestro Libro de Reclamaciones y te responderemos
+          en un máximo de 15 días hábiles al correo indicado. Si necesitas una copia, escríbenos a
+          <b>{{CORREO}}</b> citando el número.</p>
+      </div>
+      <div class="ok" id="lr-err" style="border-color:#d9534f">
+        <p><b>No pudimos registrar tu reclamo.</b> Inténtalo de nuevo en unos minutos o escríbenos a
+          <a href="mailto:{{CORREO}}">{{CORREO}}</a> y lo registramos por ti.</p>
+      </div>
+    </form>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div>
+      <div class="wm" style="color:#fff;font-size:20px">Pichang<svg viewBox='0 0 24 24' aria-hidden='true'><circle cx='12' cy='12' r='10' fill='#0E8F67'/><path fill='#fff' d='M12 6.2l3.3 2.4-1.3 3.9H10l-1.3-3.9L12 6.2z'/><path fill='none' stroke='#fff' stroke-width='1.4' d='M12 6.2V3.5M15.3 8.6l2.6-.9M14 12.5l1.9 2.3M10 12.5l-1.9 2.3M8.7 8.6l-2.6-.9'/><path fill='#fff' opacity='.9' d='M6.2 8.5l2.5-.8.9 2.6-2.3 1.8-1.7-1.3zM17.8 8.5l-2.5-.8-.9 2.6 2.3 1.8 1.7-1.3zM9.1 15.6h5.8l.8 2.6-3.7 1.9-3.7-1.9z'/></svg>l</div>
+      <div class="ebim">Reserva, juega, repite. · Una solución de {{EMPRESA}}</div>
+    </div>
+    <div class="ebim">
+      {{DOC_ETIQUETA}} {{RUC}} · {{CIUDAD}} ·
+      <a href="mailto:{{CORREO}}">{{CORREO}}</a> ·
+      <a href="#terminos">Términos</a> · <a href="#devoluciones">Cancelaciones</a> ·
+      <a href="#reclamaciones">Libro de Reclamaciones</a> ·
+      <a href="/legal/terminos">Términos y condiciones</a> ·
+      <a href="/legal/privacidad">Política de privacidad</a> ·
+      <a href="/legal/eliminar-cuenta">Eliminar mi cuenta</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+  // Libro de Reclamaciones INTEGRADO: la hoja se registra en el servidor de
+  // Pichangol (POST /reclamaciones), que asigna el número correlativo. Sin
+  // correo ni formularios de terceros (requisito de INDECOPI y de la pasarela).
+  (function(){
+    var form = document.getElementById('lr-form');
+    if(!form) return;
+    var ok = document.getElementById('lr-ok'), err = document.getElementById('lr-err');
+    form.addEventListener('submit', function(e){
+      e.preventDefault();
+      var req = form.querySelectorAll('[required]');
+      for(var i=0;i<req.length;i++){
+        if(!req[i].value.trim()){ req[i].focus(); req[i].style.borderColor='#d9534f'; return; }
+      }
+      var f = new FormData(form), body = {};
+      f.forEach(function(v,k){ body[k] = v; });
+      var btn = form.querySelector('button[type=submit]');
+      btn.disabled = true; btn.textContent = 'Enviando…';
+      ok.classList.remove('show'); err.classList.remove('show');
+      fetch('/reclamaciones', {method:'POST', headers:{'Content-Type':'application/json'},
+                               body: JSON.stringify(body)})
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+          if(!j || !j.ok) throw new Error(j && j.error || 'error');
+          document.getElementById('lr-num').textContent = j.numero;
+          ok.classList.add('show');
+          form.reset();
+          ok.scrollIntoView({behavior:'smooth'});
+        })
+        .catch(function(){ err.classList.add('show'); err.scrollIntoView({behavior:'smooth'}); })
+        .then(function(){ btn.disabled = false; btn.textContent = 'Enviar reclamo'; });
+    });
+  })();
+</script>
+</body>
+</html>

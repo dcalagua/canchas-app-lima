@@ -14,6 +14,7 @@ cargará hasta poner una key real.
 import base64
 import os
 import re
+import shutil
 import sys
 
 KEY = os.environ.get("MAPS_API_KEY", "").strip() or "YOUR_MAPS_API_KEY_HERE"
@@ -34,16 +35,48 @@ def patch(path, fn):
         print(f"  sin cambios {path}")
 
 
-APP_LABEL = "Pichangol"
+# Entorno de build: dev | qas | prod (viene de la env ENTORNO en el CI).
+# QAS usa un applicationId/label DISTINTO (sufijo .qas) para convivir con
+# prod/dev en el mismo teléfono y apuntar a la base de datos de pruebas.
+ENTORNO = os.environ.get("ENTORNO", "dev").strip().lower()
+_ES_QAS = ENTORNO == "qas"
+
+APP_LABEL = "Pichangol QAS" if _ES_QAS else "Pichangol"
 # Identidad PERMANENTE de la app en Google Play / App Store. NO cambiar una vez
 # publicada la primera versión (el applicationId es inmutable en la tienda).
 # El paquete de código Dart sigue siendo `canchas_lima`; esto sólo fija el
 # applicationId (Android) y el bundle id (iOS) que ve la tienda.
-APPLICATION_ID = "pe.ebim.pichangol"
+APPLICATION_ID = "pe.ebim.pichangol.qas" if _ES_QAS else "pe.ebim.pichangol"
 
 
 def android_manifest(text):
-    text = text.replace('android:label="canchas_lima"', f'android:label="{APP_LABEL}"')
+    # El SDK de Jitsi trae su propio android:label (@string/app_name) → el merger
+    # choca con el nuestro. Declaramos el namespace tools y forzamos que gane el
+    # label de Pichangol con tools:replace.
+    if "xmlns:tools" not in text:
+        text = re.sub(
+            r'(<manifest\s+xmlns:android="[^"]*")',
+            r'\1\n    xmlns:tools="http://schemas.android.com/tools"',
+            text,
+            count=1,
+        )
+    text = text.replace(
+        'android:label="canchas_lima"',
+        f'android:label="{APP_LABEL}" tools:replace="android:label"')
+    # Desactiva ANDROID AUTO BACKUP. Sin esto, al REINSTALAR el APK Android
+    # restaura los datos del app (SharedPreferences/SQLite) desde el respaldo en
+    # Google Drive → las canchas/academias/reservas "reaparecen" aunque hayas
+    # dejado el app en virgen. Con allowBackup=false, cada instalación limpia
+    # arranca sin datos viejos. `tools:replace` fuerza que gane sobre el de las
+    # librerías (evita conflicto del manifest merger).
+    if "android:allowBackup" not in text:
+        text = text.replace(
+            "<application",
+            '<application android:allowBackup="false" '
+            'android:fullBackupContent="false"', 1)
+        text = text.replace(
+            'tools:replace="android:label"',
+            'tools:replace="android:label,android:allowBackup,android:fullBackupContent"')
     if "android.permission.INTERNET" not in text:
         text = re.sub(
             r"(<manifest[^>]*>)",
@@ -59,6 +92,110 @@ def android_manifest(text):
             text,
             count=1,
         )
+    # Cámara: para adjuntar/tomar fotos en el chat (image_picker source camera).
+    if "android.permission.CAMERA" not in text:
+        text = re.sub(
+            r"(<manifest[^>]*>)",
+            r'\1\n    <uses-permission android:name="android.permission.CAMERA"/>'
+            r'\n    <uses-feature android:name="android.hardware.camera" android:required="false"/>',
+            text,
+            count=1,
+        )
+    # Micrófono: notas de voz en el chat (plugin record).
+    if "android.permission.RECORD_AUDIO" not in text:
+        text = re.sub(
+            r"(<manifest[^>]*>)",
+            r'\1\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>',
+            text,
+            count=1,
+        )
+    # Audio de llamada por Bluetooth (manos-libres del carro/audífonos): sin
+    # MODIFY_AUDIO_SETTINGS no se puede cambiar la ruta, y en Android 12+ enrutar
+    # al SCO del Bluetooth (y listar su nombre) exige BLUETOOTH_CONNECT.
+    if "android.permission.MODIFY_AUDIO_SETTINGS" not in text:
+        text = re.sub(
+            r"(<manifest[^>]*>)",
+            r'\1\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>'
+            r'\n    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>',
+            text,
+            count=1,
+        )
+    # Llamada entrante a pantalla completa (CallKit): Android 14+ exige declarar
+    # USE_FULL_SCREEN_INTENT para mostrar la pantalla de "te están llamando" con
+    # el teléfono bloqueado.
+    if "USE_FULL_SCREEN_INTENT" not in text:
+        text = re.sub(
+            r"(<manifest[^>]*>)",
+            r'\1\n    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>',
+            text,
+            count=1,
+        )
+    # CallKit recomienda que MainActivity sea singleTask, para que al aceptar la
+    # llamada (o abrir la pantalla completa) se reuse la misma tarea/actividad.
+    text = text.replace(
+        'android:launchMode="singleTop"', 'android:launchMode="singleTask"')
+    # DEEP LINKS del campeonato: el enlace compartido https://…/c/{id} (App
+    # Link, autoVerify contra /.well-known/assetlinks.json del backend) y el
+    # esquema propio pichangol:// (botón "Unirme en la app" de la página web)
+    # abren la app directo en la ficha del campeonato (EnlacesService).
+    if 'android:scheme="pichangol"' not in text:
+        filtros = (
+            '\n            <intent-filter android:autoVerify="true">\n'
+            '                <action android:name="android.intent.action.VIEW"/>\n'
+            '                <category android:name="android.intent.category.DEFAULT"/>\n'
+            '                <category android:name="android.intent.category.BROWSABLE"/>\n'
+            '                <data android:scheme="https" android:host="www.pichangol.app" android:pathPrefix="/c/"/>\n'
+            '                <data android:scheme="https" android:host="pichangol.app" android:pathPrefix="/c/"/>\n'
+            '                <data android:scheme="https" android:host="pg.ebim.pe" android:pathPrefix="/c/"/>\n'
+            '            </intent-filter>\n'
+            '            <intent-filter>\n'
+            '                <action android:name="android.intent.action.VIEW"/>\n'
+            '                <category android:name="android.intent.category.DEFAULT"/>\n'
+            '                <category android:name="android.intent.category.BROWSABLE"/>\n'
+            '                <data android:scheme="pichangol"/>\n'
+            '            </intent-filter>\n        ')
+        text = text.replace("</activity>", filtros + "</activity>", 1)
+    # Compartir historia DIRECTO a IG/FB (intent "Add to Story"): Android 11+
+    # exige declarar los paquetes que consultamos (package visibility).
+    if "com.instagram.android" not in text:
+        text = re.sub(
+            r"(<manifest[^>]*>)",
+            r'\1\n    <queries>\n'
+            r'        <package android:name="com.instagram.android"/>\n'
+            r'        <package android:name="com.facebook.katana"/>\n'
+            r'    </queries>',
+            text,
+            count=1,
+        )
+    # FileProvider: para pasar la foto/video de la historia como content:// URI a
+    # Instagram/Facebook (con permiso de lectura temporal).
+    if ".provider" not in text:
+        prov = (
+            '        <provider\n'
+            '            android:name="androidx.core.content.FileProvider"\n'
+            '            android:authorities="${applicationId}.provider"\n'
+            '            android:exported="false"\n'
+            '            android:grantUriPermissions="true">\n'
+            '            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" '
+            'android:resource="@xml/provider_paths_app"/>\n'
+            '        </provider>\n    </application>'
+        )
+        text = text.replace("</application>", prov, 1)
+    # Ícono + color por defecto de las notificaciones push (FCM). Sin esto,
+    # Android pinta un ícono genérico (cuadrito) en vez del pin de Pichangol.
+    if "default_notification_icon" not in text:
+        notif = (
+            '        <meta-data android:name="com.google.firebase.messaging.default_notification_icon" '
+            'android:resource="@drawable/ic_stat_pichangol"/>\n'
+            '        <meta-data android:name="com.google.firebase.messaging.default_notification_color" '
+            'android:resource="@color/pichangol_notif"/>\n'
+            # Canal por defecto de FCM: el "pichan_msgs_v2" que crea MainActivity
+            # con el sonido custom (v2: el sonido cambió y los canales son
+            # inmutables — Android 8+ toma el sonido del CANAL).
+            '        <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" '
+            'android:value="pichan_msgs_v2"/>\n    </application>'
+        )
+        text = text.replace("</application>", notif, 1)
     if "com.google.android.geo.API_KEY" not in text:
         meta = (
             '        <meta-data android:name="com.google.android.geo.API_KEY" '
@@ -116,28 +253,38 @@ def ios_infoplist(text):
             "</dict>\n</plist>"
         )
         text = text.replace("</dict>\n</plist>", block, 1)
+    # Permiso de micrófono (notas de voz en el chat).
+    if "NSMicrophoneUsageDescription" not in text:
+        block = (
+            "\t<key>NSMicrophoneUsageDescription</key>\n"
+            "\t<string>Pichangol usa el micrófono para enviar notas de voz en el chat.</string>\n"
+            "</dict>\n</plist>"
+        )
+        text = text.replace("</dict>\n</plist>", block, 1)
     return text
 
 
 def ios_podfile(text):
+    # iOS 15.5: lo exige el pod de ML Kit (google_mlkit_text_recognition). Es
+    # compatible hacia atrás con Google Maps/Supabase (sus mínimos son menores).
     if re.search(r"^\s*#?\s*platform :ios", text, re.MULTILINE):
         text = re.sub(
             r"^\s*#?\s*platform :ios.*$",
-            "platform :ios, '14.0'",
+            "platform :ios, '15.5'",
             text,
             count=1,
             flags=re.MULTILINE,
         )
     else:
-        text = "platform :ios, '14.0'\n" + text
+        text = "platform :ios, '15.5'\n" + text
 
-    # Asegura que cada pod use iOS 14 (lo exige el SDK de Google Maps).
-    if "IPHONEOS_DEPLOYMENT_TARGET'] = '14.0'" not in text:
+    # Fuerza el deployment target de cada pod a 15.5 (mínimo de ML Kit).
+    if "IPHONEOS_DEPLOYMENT_TARGET'] = '15.5'" not in text:
         text = text.replace(
             "flutter_additional_ios_build_settings(target)",
             "flutter_additional_ios_build_settings(target)\n"
             "    target.build_configurations.each do |config|\n"
-            "      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '14.0'\n"
+            "      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.5'\n"
             "    end",
             1,
         )
@@ -256,7 +403,7 @@ def configurar_compile_sdk_global():
         "                    if (namespace == null) {\n"
         "                        namespace p.group\n"
         "                    }\n"
-        "                    compileSdkVersion 34\n"
+        "                    compileSdkVersion " + str(SDK_OBJETIVO) + "\n"
         "                }\n"
         "            }\n"
         "        }\n"
@@ -312,8 +459,71 @@ def configurar_bundle_id_ios():
         print(f"  bundle id iOS → {APPLICATION_ID}")
 
 
+# Nivel de API al que se compila y apunta la app. Google Play EXIGE que las
+# versiones nuevas apunten al menos a API 35 (Android 15); con 34 el bundle se
+# rechaza al subirlo. Se centraliza aquí para que app y plugins vayan juntos.
+SDK_OBJETIVO = 36
+
+
+def configurar_target_sdk():
+    """Sube compileSdk y targetSdk a SDK_OBJETIVO (requisito de Play Store).
+
+    Flutter 3.24.5 genera `flutter.compileSdkVersion` / `flutter.targetSdkVersion`
+    (= 34), y Play rechaza el App Bundle por quedarse corto. El mínimo que exige
+    Play SUBE con el tiempo: primero fue 34, luego 35 y desde ago-2026 pide 36.
+    Por eso el nivel vive en una sola constante: cuando Play lo vuelva a subir,
+    se cambia SDK_OBJETIVO y nada más.
+
+    Además, el AGP que trae esta versión de Flutter no "conoce" ese SDK y aborta
+    con un error de compatibilidad; `android.suppressUnsupportedCompileSdk` es la
+    vía oficial de Google para compilar igual mientras no se sube el AGP
+    (compilar contra un SDK más nuevo no cambia el comportamiento del código,
+    solo el nivel declarado).
+
+    OJO al probar en teléfono: apuntar a 35+ activa el modo borde a borde, así
+    que conviene revisar que ninguna pantalla quede tapada por la barra de
+    estado o la de navegación."""
+    path = "android/app/build.gradle"
+    if not os.path.exists(path):
+        return
+    with open(path, "r", encoding="utf-8") as f:
+        text = f.read()
+    nuevo = re.sub(
+        r"compileSdk(?:Version)?\s*=?\s*flutter\.compileSdkVersion",
+        f"compileSdk = {SDK_OBJETIVO}",
+        text,
+    )
+    nuevo = re.sub(
+        r"targetSdk(?:Version)?\s*=?\s*flutter\.targetSdkVersion",
+        f"targetSdk = {SDK_OBJETIVO}",
+        nuevo,
+    )
+    if nuevo != text:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(nuevo)
+        print(f"  compileSdk/targetSdk → {SDK_OBJETIVO} (requisito de Play)")
+
+    # Sin esto, el AGP de Flutter 3.24.5 corta el build al ver un SDK que no
+    # tiene en su tabla de compatibilidad.
+    gp = "android/gradle.properties"
+    if os.path.exists(gp):
+        with open(gp, "r", encoding="utf-8") as f:
+            props = f.read()
+        linea = f"android.suppressUnsupportedCompileSdk={SDK_OBJETIVO}"
+        if "suppressUnsupportedCompileSdk" in props:
+            # Puede venir con un nivel viejo (35) de una corrida anterior.
+            props = re.sub(r"android\.suppressUnsupportedCompileSdk=\d+", linea, props)
+            with open(gp, "w", encoding="utf-8") as f:
+                f.write(props)
+        else:
+            with open(gp, "a", encoding="utf-8") as f:
+                f.write(f"\n{linea}\n")
+        print("  aviso de compileSdk no soportado silenciado (AGP viejo)")
+
+
 def configurar_min_sdk():
-    """Sube minSdk a 23 (lo exige passkeys_android de supabase_flutter)."""
+    """Sube minSdk a 26 (Android 8.0): lo exige jitsi-meet-sdk 11.6.0. Cubre de
+    sobra el 23 que pedía passkeys_android de supabase_flutter."""
     path = "android/app/build.gradle"
     if not os.path.exists(path):
         return
@@ -321,18 +531,369 @@ def configurar_min_sdk():
         text = f.read()
     nuevo = re.sub(
         r"minSdk(?:Version)?\s*=?\s*flutter\.minSdkVersion",
-        "minSdk = 23",
+        "minSdk = 26",
         text,
     )
     if nuevo != text:
         with open(path, "w", encoding="utf-8") as f:
             f.write(nuevo)
-        print("  minSdk forzado a 23")
+        print("  minSdk forzado a 26")
+
+
+def configurar_r8_release():
+    """Desactiva la minificación R8 en el buildType release.
+
+    Un plugin nativo (google_mlkit_text_recognition) referencia reconocedores
+    opcionales (chino/japonés/coreano/devanagari) que no incluimos; R8 los marca
+    como "missing class" y rompe `minifyReleaseWithR8`. Para el piloto no
+    necesitamos shrink/obfuscation, así que apagamos R8 en release (elimina toda
+    esa clase de fallos). El APK pesa un poco más, nada crítico. El DSL del
+    buildType es la fuente de verdad de `minifyEnabled`, así que esto gana."""
+    path = "android/app/build.gradle"
+    if not os.path.exists(path):
+        return
+    with open(path, "r", encoding="utf-8") as f:
+        g = f.read()
+    # Inyecta minify/shrink OFF dentro del buildType release (no en signingConfigs).
+    nuevo, n = re.subn(
+        r"(buildTypes\s*\{\s*release\s*\{)",
+        r"\1\n            minifyEnabled false\n            shrinkResources false",
+        g,
+        count=1,
+    )
+    # Si ya hubiera un minifyEnabled true explícito, lo forzamos a false también.
+    nuevo = re.sub(r"minifyEnabled\s+true", "minifyEnabled false", nuevo)
+    nuevo = re.sub(r"shrinkResources\s+true", "shrinkResources false", nuevo)
+    if nuevo != g:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(nuevo)
+        print(f"  R8/minify: desactivado en release ({n} bloque)")
+    else:
+        print("  R8/minify: no se encontró buildTypes release (sin cambios)")
+
+
+def excluir_duplicados_media3():
+    """El SDK de Jitsi empaqueta su propio react-native-video con clases de
+    androidx.media3 (rtsp, etc.); video_player trae esos mismos módulos de
+    streaming como dependencia → `checkReleaseDuplicateClasses` falla. No usamos
+    RTSP/HLS/DASH/SmoothStreaming (solo reproducimos mp4 progresivo), así que
+    excluimos esos módulos standalone y dejamos que resuelva la copia de Jitsi."""
+    path = "android/app/build.gradle"
+    if not os.path.exists(path):
+        return
+    with open(path, "r", encoding="utf-8") as f:
+        g = f.read()
+    if "media3-exoplayer-rtsp" in g:
+        print("  media3: exclusiones ya presentes")
+        return
+    bloque = (
+        "\n// pichangol_media3_dedup: evita choque de clases media3 entre Jitsi\n"
+        "// (react-native-video-jitsi) y video_player. No usamos streaming.\n"
+        "configurations.all {\n"
+        "    exclude group: 'androidx.media3', module: 'media3-exoplayer-rtsp'\n"
+        "    exclude group: 'androidx.media3', module: 'media3-exoplayer-hls'\n"
+        "    exclude group: 'androidx.media3', module: 'media3-exoplayer-dash'\n"
+        "    exclude group: 'androidx.media3', module: 'media3-exoplayer-smoothstreaming'\n"
+        "}\n"
+    )
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(bloque)
+    print("  media3: exclusiones de streaming agregadas (dedup Jitsi)")
+
+
+def configurar_desugaring():
+    """flutter_local_notifications (recordatorio de cobro en efectivo) usa APIs de
+    java.time → EXIGE 'core library desugaring' en el módulo app, o el build de
+    release falla. Como el CI regenera android/ con `flutter create`, lo
+    inyectamos aquí: (1) el flag dentro de compileOptions y (2) la dependencia
+    desugar_jdk_libs. Idempotente."""
+    path = "android/app/build.gradle"
+    if not os.path.exists(path):
+        return
+    with open(path, "r", encoding="utf-8") as f:
+        g = f.read()
+    cambios = False
+    if "coreLibraryDesugaringEnabled" not in g:
+        nuevo, n = re.subn(
+            r"(compileOptions\s*\{)",
+            r"\1\n        coreLibraryDesugaringEnabled true",
+            g,
+            count=1,
+        )
+        if n:
+            g = nuevo
+            cambios = True
+    if "desugar_jdk_libs" not in g:
+        g += (
+            "\n// pichangol_desugaring: requerido por flutter_local_notifications\n"
+            "dependencies {\n"
+            "    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'\n"
+            "}\n"
+        )
+        cambios = True
+    if cambios:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(g)
+        print("  desugaring: activado (flutter_local_notifications)")
+    else:
+        print("  desugaring: ya presente")
+
+
+def configurar_firebase_android():
+    """Habilita FCM (notificaciones push del chat) en Android SOLO si hay config.
+
+    Requiere el `google-services.json` del proyecto Firebase (para el
+    applicationId `pe.ebim.pichangol`), pasado como secret base64
+    `GOOGLE_SERVICES_JSON_B64`. Si NO está, no se toca nada: el APK compila igual
+    y el push queda desactivado en runtime (PushService es fail-safe). Así el CI
+    sigue verde sin Firebase hasta que se configure."""
+    if _ES_QAS:
+        # El google-services.json es para pe.ebim.pichangol; con el sufijo .qas
+        # el plugin fallaría ("no matching client"). En QAS el push va desactivado.
+        print("  Firebase/FCM: omitido en QAS (applicationId .qas)")
+        return
+    b64 = os.environ.get("GOOGLE_SERVICES_JSON_B64", "").strip()
+    if not b64:
+        print("  Firebase/FCM: desactivado (sin GOOGLE_SERVICES_JSON_B64)")
+        return
+    app_gradle = "android/app/build.gradle"
+    settings_gradle = "android/settings.gradle"
+    if not os.path.exists(app_gradle):
+        print("  Firebase/FCM: omitido (no hay android/app/build.gradle)")
+        return
+
+    # 1) Escribe el google-services.json donde el plugin lo busca.
+    try:
+        with open("android/app/google-services.json", "wb") as f:
+            f.write(base64.b64decode(b64))
+    except Exception as e:  # noqa: BLE001
+        print(f"  Firebase/FCM: no se pudo escribir google-services.json ({e})")
+        return
+
+    # 2) Declara el plugin en settings.gradle (apply false) si usa el bloque plugins.
+    if os.path.exists(settings_gradle):
+        with open(settings_gradle, "r", encoding="utf-8") as f:
+            s = f.read()
+        if "com.google.gms.google-services" not in s and "plugins {" in s:
+            s = s.replace(
+                "plugins {",
+                'plugins {\n    id "com.google.gms.google-services" version "4.4.2" apply false',
+                1,
+            )
+            with open(settings_gradle, "w", encoding="utf-8") as f:
+                f.write(s)
+
+    # 3) Aplica el plugin en el módulo app.
+    with open(app_gradle, "r", encoding="utf-8") as f:
+        g = f.read()
+    if "com.google.gms.google-services" not in g:
+        if 'id "dev.flutter.flutter-gradle-plugin"' in g:
+            g = g.replace(
+                'id "dev.flutter.flutter-gradle-plugin"',
+                'id "dev.flutter.flutter-gradle-plugin"\n'
+                '    id "com.google.gms.google-services"',
+                1,
+            )
+        else:  # fallback estilo apply plugin
+            g = g + '\napply plugin: "com.google.gms.google-services"\n'
+        with open(app_gradle, "w", encoding="utf-8") as f:
+            f.write(g)
+    print("  Firebase/FCM: ACTIVADO (google-services.json + plugin)")
+
+
+def configurar_notificacion_android():
+    """Ícono pequeño (monocromo) + color de las notificaciones push. El small
+    icon de Android DEBE ser una silueta blanca sobre transparente (el sistema lo
+    tiñe); si no se declara, sale un ícono genérico. Usamos el pin de Pichangol."""
+    raiz = "android/app/src/main"
+    if not os.path.isdir(raiz):
+        print("  Notif icon: omitido (no hay android/app/src/main)")
+        return
+    draw = os.path.join(raiz, "res", "drawable")
+    vals = os.path.join(raiz, "res", "values")
+    os.makedirs(draw, exist_ok=True)
+    os.makedirs(vals, exist_ok=True)
+
+    # Pin de ubicación (estilo del logo Pichangol), silueta blanca.
+    icono = (
+        '<vector xmlns:android="http://schemas.android.com/apk/res/android"\n'
+        '    android:width="24dp"\n'
+        '    android:height="24dp"\n'
+        '    android:viewportWidth="24"\n'
+        '    android:viewportHeight="24">\n'
+        '    <path\n'
+        '        android:fillColor="#FFFFFFFF"\n'
+        '        android:pathData="M12,2C8.13,2 5,5.13 5,9c0,5.25 7,13 7,13s7,-7.75 '
+        '7,-13c0,-3.87 -3.13,-7 -7,-7zM12,11.5c-1.38,0 -2.5,-1.12 -2.5,-2.5s1.12,-2.5 '
+        '2.5,-2.5 2.5,1.12 2.5,2.5 -1.12,2.5 -2.5,2.5z"/>\n'
+        '</vector>\n'
+    )
+    with open(os.path.join(draw, "ic_stat_pichangol.xml"), "w", encoding="utf-8") as f:
+        f.write(icono)
+
+    # Color de acento del ícono en la notificación (verde bosque de la marca).
+    colors_path = os.path.join(vals, "colors.xml")
+    color_line = '    <color name="pichangol_notif">#14463A</color>'
+    if os.path.exists(colors_path):
+        with open(colors_path, "r", encoding="utf-8") as f:
+            c = f.read()
+        if "pichangol_notif" not in c:
+            c = c.replace("</resources>", color_line + "\n</resources>", 1)
+            with open(colors_path, "w", encoding="utf-8") as f:
+                f.write(c)
+    else:
+        with open(colors_path, "w", encoding="utf-8") as f:
+            f.write(
+                '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n'
+                + color_line + "\n</resources>\n"
+            )
+    print("  Notif icon: ic_stat_pichangol + color pichangol_notif configurados")
+
+
+def configurar_sonido_notificacion():
+    """Sonido de notificación custom "Pichan" (estilo Yape). Copia el mp3 a
+    res/raw/pichan.mp3 y reescribe MainActivity.kt para CREAR el canal de
+    notificación `pichan_msgs_v2` con ese sonido (Android 8+ toma el sonido del
+    canal, no del payload). El manifest apunta a ese canal como el por defecto de
+    FCM, así el push en segundo plano suena "Pichan" sin cambios en el backend."""
+    raiz = "android/app/src/main"
+    if not os.path.isdir(raiz):
+        print("  Sonido notif: omitido (no hay android/app/src/main)")
+        return
+    # 1) Copiar el sonido a res/raw (nombre en minúsculas, sin extensión al usarlo).
+    origen = "assets/sonidos/pichan.mp3"
+    if not os.path.exists(origen):
+        print("  Sonido notif: omitido (falta assets/sonidos/pichan.mp3)")
+        return
+    raw = os.path.join(raiz, "res", "raw")
+    os.makedirs(raw, exist_ok=True)
+    shutil.copyfile(origen, os.path.join(raw, "pichan.mp3"))
+    # Timbre SILENCIOSO para la llamada entrante de CallKit: el timbre real lo
+    # reproduce la app (LlamadaService), que suena continuo en Xiaomi/HyperOS
+    # (donde el de CallKit se corta) y evita doble tono en equipos normales.
+    silencio = "assets/sonidos/silencio.wav"
+    if os.path.exists(silencio):
+        shutil.copyfile(silencio, os.path.join(raw, "silencio.wav"))
+
+    # 2) provider_paths_app.xml para el FileProvider (temp/cache del app).
+    xmldir = os.path.join(raiz, "res", "xml")
+    os.makedirs(xmldir, exist_ok=True)
+    with open(os.path.join(xmldir, "provider_paths_app.xml"), "w", encoding="utf-8") as f:
+        f.write(
+            '<?xml version="1.0" encoding="utf-8"?>\n<paths>\n'
+            '    <cache-path name="cache" path="."/>\n'
+            '    <external-cache-path name="ext_cache" path="."/>\n'
+            '    <external-path name="ext" path="."/>\n'
+            '    <files-path name="files" path="."/>\n'
+            "</paths>\n"
+        )
+
+    # 3) Reescribir MainActivity.kt: canal de sonido + MethodChannel para
+    #    compartir la historia DIRECTO a IG/FB (intent "Add to Story").
+    kt_dir = os.path.join(raiz, "kotlin", "pe", "ebim", "canchas_lima")
+    kt = os.path.join(kt_dir, "MainActivity.kt")
+    if not os.path.isdir(kt_dir):
+        print("  Sonido notif: omitido (no está MainActivity.kt)")
+        return
+    contenido = (
+        "package pe.ebim.canchas_lima\n\n"
+        "import android.app.NotificationChannel\n"
+        "import android.app.NotificationManager\n"
+        "import android.content.Context\n"
+        "import android.content.Intent\n"
+        "import android.media.AudioAttributes\n"
+        "import android.net.Uri\n"
+        "import android.os.Build\n"
+        "import android.os.Bundle\n"
+        "import androidx.core.content.FileProvider\n"
+        "import io.flutter.embedding.android.FlutterActivity\n"
+        "import io.flutter.embedding.engine.FlutterEngine\n"
+        "import io.flutter.plugin.common.MethodChannel\n"
+        "import java.io.File\n\n"
+        "class MainActivity : FlutterActivity() {\n"
+        "    private val canalShare = \"pichangol/share_story\"\n\n"
+        "    override fun onCreate(savedInstanceState: Bundle?) {\n"
+        "        super.onCreate(savedInstanceState)\n"
+        "        crearCanalNotif()\n"
+        "    }\n\n"
+        "    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {\n"
+        "        super.configureFlutterEngine(flutterEngine)\n"
+        "        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, canalShare)\n"
+        "            .setMethodCallHandler { call, result ->\n"
+        "                when (call.method) {\n"
+        "                    \"instagram\", \"facebook\" -> {\n"
+        "                        val path = call.argument<String>(\"path\")\n"
+        "                        val isVideo = call.argument<Boolean>(\"video\") ?: false\n"
+        "                        val appId = call.argument<String>(\"appId\") ?: \"\"\n"
+        "                        result.success(compartirHistoria(call.method, path, isVideo, appId))\n"
+        "                    }\n"
+        "                    else -> result.notImplemented()\n"
+        "                }\n"
+        "            }\n"
+        "    }\n\n"
+        "    private fun compartirHistoria(red: String, path: String?, isVideo: Boolean, appId: String): Boolean {\n"
+        "        if (path == null) return false\n"
+        "        return try {\n"
+        "            val uri = FileProvider.getUriForFile(this, \"$packageName.provider\", File(path))\n"
+        "            val mime = if (isVideo) \"video/*\" else \"image/jpeg\"\n"
+        "            val intent = if (red == \"instagram\") {\n"
+        "                Intent(\"com.instagram.share.ADD_TO_STORY\").apply {\n"
+        "                    putExtra(\"source_application\", appId)\n"
+        "                    setDataAndType(uri, mime)\n"
+        "                }\n"
+        "            } else {\n"
+        "                Intent(\"com.facebook.stories.ADD_TO_STORY\").apply {\n"
+        "                    putExtra(\"com.facebook.platform.extra.APPLICATION_ID\", appId)\n"
+        "                    setDataAndType(uri, mime)\n"
+        "                }\n"
+        "            }\n"
+        "            intent.flags = Intent.FLAG_GRANT_READ_URI_PERMISSION\n"
+        "            val pkg = if (red == \"instagram\") \"com.instagram.android\" else \"com.facebook.katana\"\n"
+        "            grantUriPermission(pkg, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)\n"
+        "            if (intent.resolveActivity(packageManager) != null) {\n"
+        "                startActivity(intent)\n"
+        "                true\n"
+        "            } else {\n"
+        "                false\n"
+        "            }\n"
+        "        } catch (e: Exception) {\n"
+        "            false\n"
+        "        }\n"
+        "    }\n\n"
+        "    private fun crearCanalNotif() {\n"
+        "        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {\n"
+        "            val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager\n"
+        "            // v2: los canales de Android son INMUTABLES una vez creados en el\n"
+        "            // equipo — al cambiar el sonido (ago-2026) hay que crear un canal\n"
+        "            // NUEVO y borrar el viejo para que los teléfonos ya instalados\n"
+        "            // tomen el audio nuevo.\n"
+        "            mgr.deleteNotificationChannel(\"pichan_msgs\")\n"
+        "            if (mgr.getNotificationChannel(\"pichan_msgs_v2\") == null) {\n"
+        "                val sonido = Uri.parse(\"android.resource://\" + packageName + \"/raw/pichan\")\n"
+        "                val attrs = AudioAttributes.Builder()\n"
+        "                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)\n"
+        "                    .setUsage(AudioAttributes.USAGE_NOTIFICATION)\n"
+        "                    .build()\n"
+        "                val canal = NotificationChannel(\n"
+        "                    \"pichan_msgs_v2\", \"Mensajes Pichangol\", NotificationManager.IMPORTANCE_HIGH)\n"
+        "                canal.description = \"Notificaciones de mensajes y retos\"\n"
+        "                canal.setSound(sonido, attrs)\n"
+        "                canal.enableVibration(true)\n"
+        "                mgr.createNotificationChannel(canal)\n"
+        "            }\n"
+        "        }\n"
+        "    }\n"
+        "}\n"
+    )
+    with open(kt, "w", encoding="utf-8") as f:
+        f.write(contenido)
+    print("  MainActivity: canal pichan_msgs_v2 + MethodChannel share_story; provider_paths_app.xml")
 
 
 def main():
     print(f"Configurando plataformas (MAPS_API_KEY {'definida' if KEY != 'YOUR_MAPS_API_KEY_HERE' else 'placeholder'})")
     configurar_min_sdk()
+    configurar_target_sdk()
     configurar_application_id()
     configurar_bundle_id_ios()
     patch("android/app/src/main/AndroidManifest.xml", android_manifest)
@@ -340,6 +901,12 @@ def main():
     patch("ios/Runner/Info.plist", ios_infoplist)
     patch("ios/Podfile", ios_podfile)
     configurar_firma_android()
+    configurar_r8_release()
+    excluir_duplicados_media3()
+    configurar_desugaring()
+    configurar_firebase_android()
+    configurar_notificacion_android()
+    configurar_sonido_notificacion()
     configurar_google_signin_ios()
 
 
