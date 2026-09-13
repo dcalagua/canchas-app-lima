@@ -133,21 +133,28 @@ def test_datos_de_la_empresa_configurables_desde_la_torre():
 
         nuevos = {"empresa_razon_social": "PICHANGOL LATAM S.A.C.", "empresa_ruc": "20999999991",
                   "empresa_direccion": "Av. Javier Prado 123, Of. 4, Surco, Lima, Perú",
-                  "empresa_ciudad": "Surco, Lima, Perú", "empresa_whatsapp": "+51 911 222 333",
+                  "empresa_ciudad": "Surco, Lima, Perú", "contacto_whatsapp_pe": "+51 911 222 333",
+                  "contacto_whatsapp_ec": "0991234567", "contacto_whatsapp_bo": "",
                   "empresa_correo": "Hola@Pichangol.app", "empresa_correo_privacidad": "",
                   "empresa_horario": "Lun a Dom, 8:00 a 22:00", "empresa_doc_etiqueta": "RUC"}
         r = cli.post("/admin/api/empresa", headers=h, json={"datos": nuevos})
         assert r.status_code == 200 and r.json()["ok"], r.text
         d = r.json()["datos"]
-        assert d["empresa_whatsapp"] == "51911222333"        # se normaliza a dígitos
+        assert d["contacto_whatsapp_pe"] == "911222333"      # se normaliza: solo el local, sin +51
+        assert d["contacto_whatsapp_ec"] == "0991234567"
         assert d["empresa_correo"] == "hola@pichangol.app"   # minúsculas
-        assert r.json()["vista"]["whatsapp_bonito"] == "+51 911 222 333"
+        assert r.json()["vista"]["whatsapp_bonito"] == "+51 911 222 333 (Perú) · +593 0991 234 567 (Ecuador)"
+        assert [w["iso"] for w in r.json()["vista"]["whatsapps"]] == ["pe", "ec"]  # Bolivia sin número no sale
+        # Una sola fuente con el APK: el endpoint del app lee las mismas claves.
+        from propiedad import reclamos
+        assert reclamos.contacto_whatsapp("pe") == "51911222333" and reclamos.contacto_whatsapp("ec") == "5930991234567"
         assert r.json()["vista"]["correo_privacidad"] == "hola@pichangol.app"  # vacío → el de contacto
 
         # Portada (Contacto + Términos + pie) y una página interior (pie).
         home = cli.get("/").text
         for t in ("PICHANGOL LATAM S.A.C.", "20999999991", "Av. Javier Prado 123", "https://wa.me/51911222333",
-                  "+51 911 222 333", "hola@pichangol.app", "Lun a Dom, 8:00 a 22:00", "Surco, Lima, Perú"):
+                  "+51 911 222 333", "https://wa.me/5930991234567", "WhatsApp Ecuador", "WhatsApp Perú",
+                  "hola@pichangol.app", "Lun a Dom, 8:00 a 22:00", "Surco, Lima, Perú"):
             assert t in home, t
         for viejo in ("GRUPO EBIM", "20602517986", "contacto@ebim.pe", "967923419", "Basadre"):
             assert viejo not in home, viejo
@@ -163,7 +170,7 @@ def test_datos_de_la_empresa_configurables_desde_la_torre():
 
         # Validaciones: correo inválido, WhatsApp corto, razón social vacía → 400 con motivo.
         for malo, motivo in (({"empresa_correo": "no-es-correo"}, "correo inválido"),
-                             ({"empresa_whatsapp": "123"}, "WhatsApp"),
+                             ({"contacto_whatsapp_pe": "123"}, "WhatsApp Perú"),
                              ({"empresa_razon_social": "  "}, "obligatorio")):
             r = cli.post("/admin/api/empresa", headers=h, json={"datos": malo})
             assert r.status_code == 400 and motivo in r.json()["detail"], (malo, r.text)
@@ -176,6 +183,12 @@ def test_datos_de_la_empresa_configurables_desde_la_torre():
         # Sobrevive al snapshot (así viaja a Postgres y vuelve tras un reinicio).
         s2 = Stores(); s2.load_state(stores.to_state())
         assert s2.config["empresa_razon_social"] == "PICHANGOL LATAM S.A.C."
+        # Migración única: un snapshot VIEJO con Perú vacío recibe el número que ya
+        # estaba publicado en la web; uno ya migrado y vaciado a propósito se respeta.
+        viejo = Stores(); viejo.load_state({"config": {"contacto_whatsapp_pe": ""}})
+        assert viejo.config["contacto_whatsapp_pe"] == CONFIG_DEFAULT["contacto_whatsapp_pe"] == "967923419"
+        vaciado = Stores(); vaciado.load_state({"config": {"contacto_whatsapp_pe": "", "empresa_wa_migrado": "1"}})
+        assert vaciado.config["contacto_whatsapp_pe"] == ""
     finally:
         config.ADMIN_PANEL_TOKEN = prev_tok
         stores.config.clear(); stores.config.update(prev_cfg)

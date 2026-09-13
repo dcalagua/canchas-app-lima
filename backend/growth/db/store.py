@@ -32,20 +32,21 @@ CONFIG_DEFAULT: dict[str, str] = {
     "bienvenida_saldo_soles": "0",   # regalo para dueños de PERÚ (S/)
     "bienvenida_saldo_usd": "0",     # ECUADOR ($)
     "bienvenida_saldo_bob": "0",     # BOLIVIA (Bs)
-    # DATOS DE LA EMPRESA (razón social, RUC, dirección, WhatsApp, correo,
-    # horario) que salen en la portada, el pie de la web, las páginas legales y
-    # el Libro de Reclamaciones. Editables desde la torre (Comunicación →
-    # "Datos de la empresa"); ver `empresa.py`. Cada ambiente guarda los suyos.
+    # DATOS DE LA EMPRESA (razón social, RUC, dirección, correo, horario) que
+    # salen en la portada, el pie de la web, las páginas legales y el Libro de
+    # Reclamaciones. Editables desde la torre (Comunicación → "Datos de la
+    # empresa"); ver `empresa.py`. Cada ambiente guarda los suyos. El WhatsApp
+    # es POR PAÍS: las claves `contacto_whatsapp_pe|ec|bo` de abajo (las mismas
+    # que usa el APK), una sola fuente para app y web.
     "empresa_razon_social": "GRUPO EBIM S.A.C.",
     "empresa_doc_etiqueta": "RUC",
     "empresa_ruc": "20602517986",
     "empresa_direccion": "Centro Empresarial Basadre, Torre 8, Of. 1601, San Isidro, Lima, Perú",
     "empresa_ciudad": "San Isidro, Lima, Perú",
-    "empresa_whatsapp": "51967923419",
     "empresa_correo": "contacto@ebim.pe",
     "empresa_correo_privacidad": "dcalagua@ebim.pe",
     "empresa_horario": "Lun a Sáb, 9:00 a 19:00",
-    "contacto_whatsapp_pe": "",
+    "contacto_whatsapp_pe": "967923419",
     "contacto_whatsapp_ec": "998706994",
     "contacto_whatsapp_bo": "",
     # Respaldo global (legado) si ningún país tiene número.
@@ -1005,6 +1006,14 @@ class Stores:
         self.reset()
         self._ids = {k: int(v) for k, v in (data.get("ids") or {}).items()}
         self.config = {**CONFIG_DEFAULT, **(data.get("config") or {})}
+        # Migración única (sep-2026): el WhatsApp de Perú pasó a ser el de la
+        # web/legales (antes fijo en el HTML). Los snapshots viejos lo tenían
+        # vacío; se siembra UNA vez con el número que ya estaba publicado y se
+        # marca, así un vaciado posterior a propósito desde la torre se respeta.
+        if not self.config.get("empresa_wa_migrado"):
+            if not self.config.get("contacto_whatsapp_pe"):
+                self.config["contacto_whatsapp_pe"] = CONFIG_DEFAULT["contacto_whatsapp_pe"]
+            self.config["empresa_wa_migrado"] = "1"
         self.movimientos = [_mov_from(d) for d in data.get("movimientos", [])]
         self.canjes = [_canje_from(d) for d in data.get("canjes", [])]
         self.solicitudes = [_sol_from(d) for d in data.get("solicitudes", [])]

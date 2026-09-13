@@ -261,6 +261,14 @@ def set_canal_admin(req: CanalRequest,
     return reclamos.set_canal_comunicacion(req.canal)
 
 
+def _meta_wa(clave: str) -> dict:
+    """Prefijo (+51…) y bandera para los campos de WhatsApp por país."""
+    for iso, _nom, cod, bandera in empresa.PAISES:
+        if clave == f"contacto_whatsapp_{iso}":
+            return {"prefijo": cod, "bandera": bandera}
+    return {}
+
+
 @router.get("/admin/api/empresa")
 def get_empresa_admin(x_admin_token: str | None = Header(default=None)) -> dict:
     """Datos de la EMPRESA (razón social, RUC, dirección, WhatsApp, correo,
@@ -269,7 +277,7 @@ def get_empresa_admin(x_admin_token: str | None = Header(default=None)) -> dict:
     cómo se pintan (WhatsApp bonito, wa.me, correo de privacidad efectivo)."""
     _check(x_admin_token)
     return {"datos": empresa.valores(), "vista": empresa.datos(),
-            "campos": [{"clave": k, "etiqueta": et, "ayuda": ay} for k, (et, ay) in empresa.CAMPOS.items()]}
+            "campos": [{"clave": k, "etiqueta": et, "ayuda": ay, **_meta_wa(k)} for k, (et, ay) in empresa.CAMPOS.items()]}
 
 
 @router.post("/admin/api/empresa")
@@ -1499,8 +1507,8 @@ _HTML = r"""<!DOCTYPE html>
       <div class="page-head">
         <div class="page-eyebrow">Sistema</div>
         <h1 class="page-h">Comunicación con la app</h1>
-        <p class="page-sub">Canal de avisos que ve el APK, números de contacto del
-          operador para WhatsApp y los datos de la empresa que salen en la web y
+        <p class="page-sub">Canal de avisos que ve el APK y los datos de la empresa
+          (WhatsApp por país, correo, razón social…) que usan el app, la web y
           las páginas legales.</p>
       </div>
       <div class="md">
@@ -1509,18 +1517,13 @@ _HTML = r"""<!DOCTYPE html>
             <span class="md-ico">📢</span>
             <span class="md-txt"><b>Canal de avisos</b><small>Mensajes que ve el APK</small></span>
           </button>
-          <button class="md-item" onclick="mostrarPane(this,'contacto')">
-            <span class="md-ico">💬</span>
-            <span class="md-txt"><b>Contacto WhatsApp</b><small>Números del operador</small></span>
-          </button>
           <button class="md-item" onclick="mostrarPane(this,'empresaPanel');cargarEmpresa()">
             <span class="md-ico">🏢</span>
-            <span class="md-txt"><b>Datos de la empresa</b><small>Razón social · RUC · dirección · correo · horario</small></span>
+            <span class="md-txt"><b>Datos de la empresa</b><small>Razón social · RUC · dirección · WhatsApp por país · correo · horario</small></span>
           </button>
         </aside>
         <div class="md-detail">
           <div class="md-pane" id="canal"></div>
-          <div class="md-pane" id="contacto" style="display:none"></div>
           <div class="md-pane" id="empresaPanel" style="display:none"></div>
         </div>
       </div>
@@ -1638,7 +1641,6 @@ function mostrarApp(){
   cargarCanal();
   cargarPichangaModo();
   cargarUbicacion();
-  cargarContacto();
   cargarMarketing();
   cargarComision();
   cargarMargenes();
@@ -2375,57 +2377,11 @@ async function revocarCortesia(email){
   else toast('No se pudo revocar');
 }
 
-// --- WhatsApp de contacto por PAÍS (servicios: landing, redes) -------------
-const PAISES_CONTACTO = [
-  ['pe','🇵🇪','Perú','51'],
-  ['ec','🇪🇨','Ecuador','593'],
-  ['bo','🇧🇴','Bolivia','591'],
-];
-let contactos = {pe:'',ec:'',bo:''};
-async function cargarContacto(){
-  try{
-    const r = await fetch('/admin/api/contacto',{headers:headers()});
-    if(!r.ok) return;
-    const j = await r.json();
-    contactos = j.contactos || contactos;
-    renderContacto();
-  }catch(e){}
-}
-function renderContacto(){
-  const filas = PAISES_CONTACTO.map(([k,fl,nom,cod])=>`
-    <div style="display:flex;align-items:center;gap:8px;margin-top:10px">
-      <span style="font-size:20px">${fl}</span>
-      <span style="min-width:66px;font-weight:700;font-size:13px">${nom}</span>
-      <span style="color:var(--muted);font-weight:700;font-size:13px">+${cod}</span>
-      <input id="wa_${k}" value="${esc(contactos[k]||'')}" placeholder="número local"
-        inputmode="numeric" style="flex:1;padding:10px 12px;border:1px solid var(--border);
-        border-radius:10px;font-family:inherit;font-size:14px">
-    </div>`).join('');
-  document.getElementById('contacto').innerHTML =
-    `<div class="card"><div class="top"><h3>WhatsApp de contacto por país</h3></div>
-      <div class="row">La app detecta el país del usuario y le propone el número
-        local (más confianza). Escribe solo el número, sin el código de país.</div>
-      ${filas}
-      <div class="actions">
-        <button class="btn-ap" onclick="guardarContacto()">Guardar números</button>
-      </div></div>`;
-}
-async function guardarContacto(){
-  const nuevos = {};
-  for(const [k] of PAISES_CONTACTO){
-    nuevos[k] = (document.getElementById('wa_'+k).value||'').replace(/[^0-9]/g,'');
-  }
-  const r = await fetch('/admin/api/contacto',{method:'POST',headers:headers(),
-    body:JSON.stringify({contactos:nuevos})});
-  if(r.status===401){ salir(); return; }
-  const j = await r.json();
-  if(j.ok){ contactos = j.contactos; renderContacto(); toast('Números de contacto guardados'); }
-  else toast('No se pudo guardar');
-}
 // --- Datos de la EMPRESA (web, legales, Libro de Reclamaciones) ----------------
-// Razón social, RUC, dirección, WhatsApp, correo y horario que pinta TODO lo
-// público (portada, pie, /legal/*, comprobantes). Se guardan en el snapshot de
-// ESTE ambiente: QAS y PRD tienen cada uno los suyos.
+// Razón social, RUC, dirección, WhatsApp POR PAÍS (las mismas claves que usa
+// el APK), correo y horario que pinta TODO lo público (portada, pie, /legal/*,
+// comprobantes). Se guardan en el snapshot de ESTE ambiente: QAS y PRD tienen
+// cada uno los suyos.
 let empresaCampos = [];
 async function cargarEmpresa(){
   const box = document.getElementById('empresaPanel');
@@ -2441,12 +2397,13 @@ async function cargarEmpresa(){
   }catch(e){ box.innerHTML='<div class="card">Error de red.</div>'; }
 }
 function renderEmpresa(d, v){
+  const inp = 'style="display:block;width:100%;margin-top:4px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;font-family:inherit;font-size:14px;font-weight:400"';
   const filas = empresaCampos.map(c=>`
-    <label style="display:block;margin-top:12px;font-size:12.5px;font-weight:700">${esc(c.etiqueta)}
-      <input id="emp_${c.clave}" value="${esc(d[c.clave]||'')}" ${c.clave==='empresa_whatsapp'?'inputmode="numeric"':''}
-        ${c.clave.includes('correo')?'type="email"':''}
-        style="display:block;width:100%;margin-top:4px;padding:10px 12px;border:1px solid var(--border);
-        border-radius:10px;font-family:inherit;font-size:14px;font-weight:400">
+    <label style="display:block;margin-top:12px;font-size:12.5px;font-weight:700">${c.bandera?c.bandera+' ':''}${esc(c.etiqueta)}
+      ${c.prefijo ? `<span style="display:flex;gap:8px;align-items:center;margin-top:4px">
+          <span style="color:var(--muted);font-weight:700;font-size:14px;white-space:nowrap">+${esc(c.prefijo)}</span>
+          <input id="emp_${c.clave}" value="${esc(d[c.clave]||'')}" inputmode="numeric" placeholder="número local" ${inp.replace('margin-top:4px;','')}></span>`
+        : `<input id="emp_${c.clave}" value="${esc(d[c.clave]||'')}" ${c.clave.includes('correo')?'type="email"':''} ${inp}>`}
       <small style="display:block;color:var(--muted);font-weight:400;margin-top:3px">${esc(c.ayuda)}</small>
     </label>`).join('');
   document.getElementById('empresaPanel').innerHTML =
@@ -2454,7 +2411,9 @@ function renderEmpresa(d, v){
       <div class="row">Salen en la portada (Contacto, Términos, Privacidad), en el pie de
         TODAS las páginas web, en <code>/legal/*</code> y en el Libro de Reclamaciones.
         Culqi, INDECOPI y Play revisan que sean los reales. Los cambios se ven al instante,
-        sin publicar código, y son de <b>este ambiente</b>.</div>
+        sin publicar código, y son de <b>este ambiente</b>. <b>WhatsApp por país:</b> el app
+        propone al usuario el número de su país y la web lista todos los configurados
+        (un país sin número no se muestra).</div>
       ${filas}
       <div class="actions">
         <button class="btn-ap" onclick="guardarEmpresa()">Guardar datos</button>
@@ -2464,7 +2423,7 @@ function renderEmpresa(d, v){
         <b>Así se ve hoy:</b><br>
         ${v.razon_social||''} · ${v.doc_etiqueta||'RUC'} ${v.ruc||''}<br>
         ${v.direccion||''}<br>
-        WhatsApp <a href="${v.wa_url||'#'}" target="_blank" rel="noopener">${v.whatsapp_bonito||'—'}</a> ·
+        WhatsApp: ${(v.whatsapps||[]).length ? v.whatsapps.map(w=>`${w.bandera} <a href="${w.url}" target="_blank" rel="noopener">${w.bonito}</a> ${w.pais}`).join(' · ') : '<span style="color:var(--rojo)">ninguno configurado</span>'}<br>
         <a href="mailto:${v.correo||''}">${v.correo||'—'}</a> · ${v.horario||''}<br>
         <span style="color:var(--muted)">Privacidad / eliminar cuenta: ${v.correo_privacidad||v.correo||'—'}</span>
       </div></div>`;

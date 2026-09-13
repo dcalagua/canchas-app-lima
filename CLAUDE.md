@@ -706,15 +706,24 @@ off → redeploy inmediato en cada push). URL pública:
     dispara; llamada directa como anon → permission denied).
 - **DATOS DE LA EMPRESA CONFIGURABLES DESDE LA TORRE (pedido del director,
   sep-2026):** razón social, tipo y número de documento fiscal (RUC/NIT),
-  dirección, ciudad corta, WhatsApp, correo de contacto, correo de privacidad
-  (opcional; vacío = el de contacto) y horario viven en `stores.config`
-  (claves `empresa_*`, defaults en `CONFIG_DEFAULT`) y se editan en la torre
-  `/admin` → Comunicación → **"🏢 Datos de la empresa"** (`GET/POST
-  /admin/api/empresa`, valida correo/WhatsApp/obligatorios). Fuente única:
-  `backend/growth/empresa.py` (`datos()` ya escapado + derivados `wa_url`,
-  `whatsapp_bonito`, `anio`; `rellenar(html)` sustituye los marcadores
-  `{{EMPRESA}} {{DOC_ETIQUETA}} {{RUC}} {{DIRECCION}} {{CIUDAD}} {{WA_URL}}
-  {{WHATSAPP}} {{CORREO}} {{CORREO_PRIVACIDAD}} {{HORARIO}} {{ANIO}}`). Lo
+  dirección, ciudad corta, **WhatsApp POR PAÍS** (Perú, Ecuador, Bolivia:
+  claves `contacto_whatsapp_pe|ec|bo`, las MISMAS que ya usaba el APK vía
+  `reclamos.contacto_whatsapp(pais)` → una sola fuente app+web; el pane viejo
+  "Contacto WhatsApp" se fusionó aquí), correo de contacto, correo de
+  privacidad (opcional; vacío = el de contacto) y horario viven en
+  `stores.config` (claves `empresa_*`, defaults en `CONFIG_DEFAULT`) y se
+  editan en la torre `/admin` → Comunicación → **"🏢 Datos de la empresa"**
+  (`GET/POST /admin/api/empresa`, valida correo/WhatsApp local 7-10 dígitos/
+  obligatorios). Un país sin número NO se muestra en la web; con varios, la
+  tarjeta Contacto lista uno por línea con bandera SVG y hay un botón
+  "WhatsApp Perú / Ecuador / Bolivia" por país. Migración única en
+  `Stores.load_state` (`empresa_wa_migrado`): los snapshots viejos tenían
+  Perú vacío y se siembra con el número que ya estaba publicado. Fuente
+  única: `backend/growth/empresa.py` (`datos()` ya escapado + derivados
+  `whatsapps`, `wa_url`, `whatsapp_bonito`, `anio`; `rellenar(html)`
+  sustituye los marcadores `{{EMPRESA}} {{DOC_ETIQUETA}} {{RUC}} {{DIRECCION}}
+  {{CIUDAD}} {{WA_URL}} {{WHATSAPP}} {{WHATSAPP_LISTA}} {{WA_BOTONES}}
+  {{CORREO}} {{CORREO_PRIVACIDAD}} {{HORARIO}} {{ANIO}}`). Lo
   consumen: `legal/home.html` (secciones Contacto/Términos/Privacidad/Libro
   que la portada anida vía `web/marca.py`), el pie de TODAS las páginas web
   (`ui.footer`), `/legal/*` (`legal/router.py`, `CONTACTO` ahora es dinámico),
