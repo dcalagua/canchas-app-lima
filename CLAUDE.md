@@ -506,7 +506,19 @@ para la API del APK.
   anfitrión ("Registrar mi cancha"), "＋ Registrar otra cancha" en Canchas,
   "Pon tu cancha en Pichangol" (pie y menú ☰) y el botón **"🏷️ ¿Es tuya?
   Reclámala"** de cada cancha DESCUBIERTA del explorador (prellena nombre,
-  dirección, punto y `place`). El panel muestra el estado real del reclamo
+  dirección, punto, deporte y `place`). **Al tocar una cancha descubierta se
+  abre su FICHA WEB `GET /lugar/{gp_id}?nombre&direccion&lat&lng&deporte`**
+  (`router.pagina_lugar`: foto vía `/web/foto`, Cómo llegar, "Aún sin
+  registrar", panel "¿Es tuya? Reclámala y recibe reservas" y "Abrir en la
+  app"); antes la tarjeta entera mandaba a Play (queja del director). **Canchas
+  REGISTRADAS sin dueño (legado reclamable):** su ficha `/reservar/{id}`
+  muestra "¿Es tuya esta cancha? → Reclamar" → `/anfitrion/nueva?cancha=<id>`
+  PRELLENA todo (`_legado_reclamable`: existe, no verificada, `dueno` vacío)
+  y el envío ADOPTA la misma fila (`datos.adoptar_cancha`: UPDATE con
+  `dueno`=correo + campos `COLS_ADOPCION`, solo si sigue sin dueño; si el
+  reclamo falla, `desadoptar_cancha`). `marcar_verificada` también cubre las
+  hermanas del mismo dueño a ≈150 m del reclamo (legado sin prefijo `u<ts>`).
+  El panel muestra el estado real del reclamo
   (`_aviso_verificacion` en Hoy y Canchas: En verificación / falta validar /
   No aprobada…). **ESPEJO EN LA NUBE (bug que esto destapó):** la torre
   marcaba `verificada` solo en `stores.canchas` y era el APK quien escribía

@@ -110,13 +110,27 @@ class FakeDB:
                 self.canchas.pop(i); n += 1
         return n
 
-    def marcar_verificada(self, cancha_id, dueno, verificada):
+    def marcar_verificada(self, cancha_id, dueno, verificada, lat=None, lng=None):
         base = cancha_id.split("_")[0]
         n = 0
         for c in self.canchas.values():
-            if (c.get("dueno") or "").lower() == dueno.lower() and (c["id"] == cancha_id or c["id"].startswith(base + "_")):
+            cerca = lat is not None and abs(c["lat"] - lat) < 0.0014 and abs(c["lng"] - lng) < 0.0014
+            if (c.get("dueno") or "").lower() == dueno.lower() and (c["id"] == cancha_id or c["id"].startswith(base + "_") or cerca):
                 c["verificada"] = bool(verificada); n += 1
         return n
+
+    def adoptar_cancha(self, cancha_id, dueno, campos):
+        c = self.canchas.get(cancha_id)
+        if not c or c.get("dueno") or c.get("verificada"):
+            return False
+        c.update({k: v for k, v in campos.items() if k in datos.COLS_ADOPCION}); c["dueno"] = dueno.lower()
+        return True
+
+    def desadoptar_cancha(self, cancha_id, dueno):
+        c = self.canchas.get(cancha_id)
+        if c and (c.get("dueno") or "").lower() == dueno.lower() and not c.get("verificada"):
+            c["dueno"] = ""; return True
+        return False
 
     def reservas_de_canchas(self, ids, desde, hasta):
         return sorted([dict(r) for r in self.reservas.values() if r["cancha_id"] in ids and desde <= r["fecha"] <= hasta
@@ -230,7 +244,7 @@ def db(monkeypatch):
                "actualizar_cancha", "bloquear", "reserva_de_dueno", "marcar_pagado", "borrar_reserva_manual",
                "academias_de_dueno", "academia_existe", "guardar_academia", "eliminar_academia", "matriculas_de_academias",
                "productos_de_vendedor", "producto_por_id", "guardar_producto", "eliminar_producto", "esta_verificado",
-               "insertar_canchas", "borrar_canchas", "marcar_verificada"):
+               "insertar_canchas", "borrar_canchas", "marcar_verificada", "adoptar_cancha", "desadoptar_cancha"):
         monkeypatch.setattr(datos, fn, getattr(fake, fn))
     monkeypatch.setattr(config, "CULQI_PUBLIC_KEY", "pk_test_x")
     monkeypatch.setattr(config, "CULQI_SECRET_KEY", "sk_test_x")
@@ -1223,4 +1237,27 @@ def test_registrar_y_reclamar_cancha_desde_la_web_como_el_app(db, monkeypatch):
     # Rechazar revoca en la nube (mismo espejo).
     reclamos._revocar_cancha_al_rechazar(rec[0])
     assert db.canchas[ids[0]]["verificada"] is False
+    stores.reclamos.clear()
+    # ── Cancha DESCUBIERTA: la tarjeta abre una ficha web propia (no Play) con "Reclámala" prellenado. ──
+    lugar = cli.get("/lugar/gp_xyz?nombre=Loza%20Norte&direccion=Jr.%20Lima%2012&lat=-12.05&lng=-77.04&deporte=futbol").text
+    for t in ("Loza Norte", "Aún sin registrar", "¿Es tuya esta cancha?", "href='/anfitrion/nueva?place=gp_xyz&nombre=Loza%20Norte",
+              "/web/foto?id=gp_xyz", "Abrir en Google Maps", "Abrir en la app"):
+        assert t in lugar, t
+    assert cli.get("/lugar/c_lima?nombre=x&lat=1&lng=1").status_code == 404
+    assert "hrefLugar" in cli.get("/").text and "'/lugar/' + encodeURIComponent(c.id)" in cli.get("/").text
+    # ── Cancha REGISTRADA sin dueño (legado): la ficha ofrece reclamarla y el registro ADOPTA la misma fila. ──
+    ficha = cli.get("/reservar/c_pend").text
+    assert "¿Es tuya esta cancha?" in ficha and "href='/anfitrion/nueva?cancha=c_pend'" in ficha
+    assert "¿Es tuya esta cancha?" not in cli.get("/reservar/c_lima").text  # con dueño: no
+    html3 = cli.get("/anfitrion/nueva?cancha=c_pend").text
+    assert "Reclama tu cancha" in html3 and "value='Club Raqueta'" in html3 and "value='60.00'" in html3 and '"existente": true' in html3
+    r3 = cli.post("/anfitrion/nueva", json={**base, "id": "c_pend", "existente": True, "deportes": ["futbol"], "modo": "unica", "superficie": "Loza",
+                                             "nombre_local": "Club Raqueta", "lat": -12.09, "lng": -77.0, "nombre_cancha": "Loza Pendiente"})
+    assert r3.status_code == 200 and r3.json()["ids"] == ["c_pend"], r3.text
+    assert db.canchas["c_pend"]["dueno"] == "nuevo@gmail.com" and db.canchas["c_pend"]["superficie"] == "Loza" and "c_pend" in db.canchas
+    rec2 = [x for x in stores.reclamos if x.cancha_id == "c_pend"]
+    assert len(rec2) == 1 and rec2[0].solicitante_id == "nuevo@gmail.com"
+    assert "¿Es tuya esta cancha?" not in cli.get("/reservar/c_pend").text  # ya tiene dueño (en verificación)
+    reclamos.aprobar_directo(rec2[0].id, "admin")
+    assert db.canchas["c_pend"]["verificada"] is True
     stores.reclamos.clear()

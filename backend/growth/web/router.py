@@ -30,6 +30,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import re
 import time
 from datetime import date, datetime, timedelta, timezone
 from urllib.parse import quote
@@ -529,18 +530,19 @@ _JS_EXPLORAR = r"""
     if(fs.length) fotosConocidas[c.id] = fs;
     var foto = fs.length ? fs.slice(0, 3).map(function(u){ return '<img src="' + esc(u) + '" alt="" loading="lazy">'; }).join('') : '<div class="sinfoto" data-buscar="1">' + (c.emoji || '🏟️') + '</div>';
     var extra = fs.length > 1 ? '<button class="flecha izq" aria-label="Anterior">‹</button><button class="flecha der" aria-label="Siguiente">›</button><div class="dots">' + fs.slice(0, 3).map(function(){ return '<i></i>'; }).join('') + '</div>' : '';
-    return '<a class="lst pend" href="' + C.play + '" rel="noopener" data-id="' + esc(c.id) + '" data-lat="' + c.lat + '" data-lng="' + c.lng + '" data-ok="0" data-deps="' + esc(c.deporte) + '" data-nombre="' + esc(c.nombre) + '" data-sub="' + esc(c.direccion) + '" data-precio="' + esc(c.deporte_nombre) + '" data-t="' + esc((c.nombre + ' ' + c.direccion).toLowerCase()) + '">' +
+    var hrefLugar = '/lugar/' + encodeURIComponent(c.id) + '?nombre=' + encodeURIComponent(c.nombre) + '&direccion=' + encodeURIComponent(c.direccion) + '&lat=' + c.lat + '&lng=' + c.lng + '&deporte=' + encodeURIComponent(c.deporte);
+    return '<a class="lst pend" href="' + hrefLugar + '" data-id="' + esc(c.id) + '" data-lat="' + c.lat + '" data-lng="' + c.lng + '" data-ok="0" data-deps="' + esc(c.deporte) + '" data-nombre="' + esc(c.nombre) + '" data-sub="' + esc(c.direccion) + '" data-precio="' + esc(c.deporte_nombre) + '" data-t="' + esc((c.nombre + ' ' + c.direccion).toLowerCase()) + '">' +
       '<div class="foto"><div class="fotos">' + foto + '</div><span class="badge pend">Aún sin registrar</span>' + extra + '</div>' +
       '<div class="lb"><div class="l1"><b>' + esc(c.nombre) + '</b><span class="rate">' + esc(c.deporte_nombre) + '</span></div>' +
       '<div class="l2">' + esc(c.direccion) + '</div><div class="l2"><span class="dist">' + (c.km != null ? 'a ' + fmtKm(c.km) : '') + '</span></div>' +
       '<div class="l3"><span class="app">📲 Reservar en la app</span> <span class="app">📍 <span class="ir" data-lat="' + c.lat + '" data-lng="' + c.lng + '">Cómo llegar</span></span> ' +
-      '<span class="app reclamar" data-id="' + esc(c.id) + '" data-nombre="' + esc(c.nombre) + '" data-dir="' + esc(c.direccion) + '" data-lat="' + c.lat + '" data-lng="' + c.lng + '">🏷️ ¿Es tuya? Reclámala</span></div></div></a>';
+      '<span class="app reclamar" data-id="' + esc(c.id) + '" data-nombre="' + esc(c.nombre) + '" data-dir="' + esc(c.direccion) + '" data-lat="' + c.lat + '" data-lng="' + c.lng + '" data-dep="' + esc(c.deporte) + '">🏷️ ¿Es tuya? Reclámala</span></div></div></a>';
   }
   document.addEventListener('click', function(ev){ var g = ev.target.closest('.ir'); if(!g) return; ev.preventDefault(); ev.stopPropagation();
     window.open('https://www.google.com/maps/search/?api=1&query=' + g.dataset.lat + ',' + g.dataset.lng, '_blank'); });
   // "¿Es tuya? Reclámala": registro desde la web prellenado con el lugar de Google (mismo flujo que el app).
   document.addEventListener('click', function(ev){ var g = ev.target.closest('.reclamar'); if(!g) return; ev.preventDefault(); ev.stopPropagation();
-    location.href = '/anfitrion/nueva?place=' + encodeURIComponent(g.dataset.id) + '&nombre=' + encodeURIComponent(g.dataset.nombre) + '&direccion=' + encodeURIComponent(g.dataset.dir) + '&lat=' + g.dataset.lat + '&lng=' + g.dataset.lng; });
+    location.href = '/anfitrion/nueva?place=' + encodeURIComponent(g.dataset.id) + '&nombre=' + encodeURIComponent(g.dataset.nombre) + '&direccion=' + encodeURIComponent(g.dataset.dir) + '&lat=' + g.dataset.lat + '&lng=' + g.dataset.lng + '&deporte=' + encodeURIComponent(g.dataset.dep || ''); });
   function pintarDescubiertas(lista, conFotos){
     var sec = $('descubiertas'), grid = $('gridDesc');
     if(!sec || !grid) return;
@@ -552,7 +554,7 @@ _JS_EXPLORAR = r"""
       pinesDesc.forEach(function(m){ m.remove(); }); pinesDesc = [];
       lista.forEach(function(c){
         var m = L.marker([c.lat, c.lng], {icon: L.divIcon({className: '', html: '<span class="pin-precio pend">' + esc(c.emoji || '') + ' ' + esc(c.deporte_nombre) + '</span>', iconSize: null})}).addTo(mapa);
-        m.bindPopup('<b>' + esc(c.nombre) + '</b><br>' + esc(c.direccion) + '<br><a class="btn sec" href="' + C.play + '">Reservar en la app</a>');
+        m.bindPopup('<b>' + esc(c.nombre) + '</b><br>' + esc(c.direccion) + '<br><a class="btn sec" href="/lugar/' + encodeURIComponent(c.id) + '?nombre=' + encodeURIComponent(c.nombre) + '&direccion=' + encodeURIComponent(c.direccion) + '&lat=' + c.lat + '&lng=' + c.lng + '&deporte=' + encodeURIComponent(c.deporte) + '">Ver lugar</a>');
         pinesDesc.push(m);
       });
     }
@@ -590,7 +592,7 @@ _JS_EXPLORAR = r"""
     // Las descubiertas ya pintadas también van al mapa.
     var desc = Array.prototype.slice.call(document.querySelectorAll('#gridDesc .lst'));
     desc.forEach(function(c){ var m = L.marker([parseFloat(c.dataset.lat), parseFloat(c.dataset.lng)], {icon: L.divIcon({className: '', html: '<span class="pin-precio pend">' + esc(c.dataset.precio) + '</span>', iconSize: null})}).addTo(mapa);
-      m.bindPopup('<b>' + esc(c.dataset.nombre) + '</b><br>' + esc(c.dataset.sub) + '<br><a class="btn sec" href="' + C.play + '">Reservar en la app</a>'); pinesDesc.push(m); });
+      m.bindPopup('<b>' + esc(c.dataset.nombre) + '</b><br>' + esc(c.dataset.sub) + '<br><a class="btn sec" href="' + c.getAttribute('href') + '">Ver lugar</a>'); pinesDesc.push(m); });
     aplicar();
   }
   // ── PRIMERA FOTO siempre (como el app): las tarjetas sin foto propia piden
@@ -1369,6 +1371,42 @@ def _jsonld_cancha(c: dict, sim: str) -> str:
     }, ensure_ascii=False)
 
 
+@router.get("/lugar/{lugar_id}", response_class=HTMLResponse)
+def pagina_lugar(request: Request, lugar_id: str, nombre: str = "", direccion: str = "", lat: float = 0.0, lng: float = 0.0, deporte: str = "") -> HTMLResponse:
+    """Ficha de un lugar DESCUBIERTO en Google que aún no está en Pichangol
+    (antes la tarjeta mandaba a Play y no había dónde reclamarlo): fotos del
+    lugar, cómo llegar, "Reservar en la app" y, en grande, "¿Es tuya?
+    Reclámala" → registro web prellenado. Si el lugar ya fue registrado, va a
+    su ficha real."""
+    if not lugar_id.startswith("gp_") or not nombre.strip() or not (lat or lng):
+        r = _no_encontrada("Lugar no disponible"); r.status_code = 404
+        return r
+    ses = sesion.de_request(request)
+    nombre = re.sub(r"\s+", " ", nombre).strip()[:120]
+    direccion = re.sub(r"\s+", " ", direccion).strip()[:200]
+    dep = deporte if deporte in DEPORTES else ""
+    c = {"id": lugar_id, "nombre": nombre, "club": "", "direccion": direccion, "lat": lat, "lng": lng, "deporte": dep or "futbol", "fotos": [], "foto_url": ""}
+    pais = _pais_de(c)
+    q = f"place={quote(lugar_id, safe='')}&nombre={quote(nombre)}&direccion={quote(direccion)}&lat={lat}&lng={lng}&deporte={quote(dep)}"
+    cuerpo = (
+        f"<div style='padding-top:22px'>{_galeria(c)}"
+        "<div style='display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-top:16px'>"
+        f"<div><div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><span class='pill gris'>{ui.bandera(pais)} {e(_deporte(dep)[0]) if dep else 'Cancha'}</span>"
+        "<span class='pill gris'>Aún sin registrar</span></div>"
+        f"<h1 style='margin-top:8px'>{e(nombre)}</h1><p class='sub'>{e(direccion) or 'Lugar encontrado en Google Maps'}</p></div></div>"
+        "<ul class='datos'>"
+        f"<li>📍 <span>{e(direccion or nombre)} · <a href='{_maps(c)}' target='_blank' rel='noopener'>Abrir en Google Maps</a> · "
+        f"<a href='https://www.google.com/maps/dir/?api=1&destination={lat},{lng}' target='_blank' rel='noopener'>Indicaciones</a></span></li>"
+        "<li>🕒 <span>Horarios y precios aún no publicados: este local todavía no está en Pichangol.</span></li></ul></div>"
+        "<div class='panel' style='margin-top:20px;border:1px solid var(--verde)'><h2>¿Es tuya esta cancha?</h2>"
+        "<p class='sub'>Publícala en Pichangol en 5 minutos: horarios, precios y fotos. Confirmamos que eres el dueño y empiezas a recibir reservas y pagos en línea.</p>"
+        f"<div class='acciones'><a class='btn' href='/anfitrion/nueva?{q}'>🏷️ Reclámala y recibe reservas</a></div></div>"
+        "<div class='panel' style='margin-top:16px'><h2>¿Quieres jugar aquí?</h2>"
+        "<p class='sub'>Este local aún no acepta reservas en Pichangol. Desde la app puedes guardarlo, ver cómo llegar y avisarle al local que lo estás buscando.</p>"
+        f"<div class='acciones'><a class='btn sec' href='{PLAY_URL}' rel='noopener'>📲 Abrir en la app</a><a class='btn sec' href='/canchas'>Ver canchas disponibles</a></div></div>")
+    return ui.shell(nombre, cuerpo, desc=f"{nombre} · {direccion}", sesion=ses, titulo_tab=f"{nombre} · Pichangol")
+
+
 @router.get("/reservar/{cancha_id}", response_class=HTMLResponse)
 def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str = "") -> HTMLResponse:
     c = datos.cancha(cancha_id)
@@ -1389,11 +1427,16 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
         else:
             motivo = (f"Esta cancha cobra en {e(sim)} y el pago en línea desde la web está disponible por "
                       "ahora solo en soles." if iso != "PEN" else "El pago en línea desde la web se está habilitando.")
+        reclamar = ""
+        if not datos.reservable(c) and not (c.get("dueno") or "").strip():
+            reclamar = ("<div class='panel' style='margin-top:16px;border:1px solid var(--verde)'><h2>¿Es tuya esta cancha?</h2>"
+                        "<p class='sub'>Nadie la administra todavía. Reclámala, confirmamos que eres el dueño y empiezas a recibir reservas y pagos en línea.</p>"
+                        f"<div class='acciones'><a class='btn' href='/anfitrion/nueva?cancha={quote(c['id'], safe='')}'>🏷️ Reclamar esta cancha</a></div></div>")
         cuerpo = (f"<div style='padding-top:22px'>{ficha}</div>"
                   f"<div class='panel' style='margin-top:20px'><h2>Reserva desde la app</h2>"
                   f"<p class='sub'>{motivo} En la app Pichangol reservas y pagas con los medios de tu país.</p>"
                   f"<div class='acciones'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a>"
-                  "<a class='btn sec' href='/canchas'>Ver otras canchas</a></div></div>")
+                  f"<a class='btn sec' href='/canchas'>Ver otras canchas</a></div></div>{reclamar}")
         return ui.shell(c["nombre"], cuerpo, desc=f"{c['nombre']} · {c.get('club', '')}", canonical=canonical,
                         og_image=og, jsonld=_jsonld_cancha(c, sim), sesion=ses)
 

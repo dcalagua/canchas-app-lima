@@ -996,8 +996,20 @@ def _tel_completo(iso: str, local: str) -> str:
     return catalogos.TEL_PREFIJO.get(iso, "51") + re.sub(r"\D", "", local or "")
 
 
+def _legado_reclamable(cancha_id: str) -> dict | None:
+    """Cancha ya registrada SIN dueño y sin verificar (mismo criterio que el
+    "legado reclamable" de `AppState.misCanchas`): cualquiera puede reclamarla."""
+    if not cancha_id or cancha_id.startswith("gp_"):
+        return None
+    c = datos.cancha(cancha_id)
+    if not c or c.get("eliminada") or c.get("verificada") or (c.get("dueno") or "").strip():
+        return None
+    return c
+
+
 @router.get("/anfitrion/nueva", response_class=HTMLResponse)
-def pagina_nueva_cancha(request: Request, nombre: str = "", direccion: str = "", lat: str = "", lng: str = "", place: str = "") -> HTMLResponse:
+def pagina_nueva_cancha(request: Request, nombre: str = "", direccion: str = "", lat: str = "", lng: str = "", place: str = "",
+                        deporte: str = "", cancha: str = "") -> HTMLResponse:
     """Formulario "Pon tu cancha" (calcado del alta de anuncio de Airbnb, en una
     sola página con secciones). Llega vacío o PRELLENADO desde una cancha
     descubierta en Google ("¿Es tuya? Reclámala": nombre, dirección, punto)."""
@@ -1008,10 +1020,24 @@ def pagina_nueva_cancha(request: Request, nombre: str = "", direccion: str = "",
         la, ln = (float(lat), float(lng)) if lat and lng else (None, None)
     except ValueError:
         la, ln = None, None
+    # Cancha de LEGADO (registrada, sin dueño): se prellena todo y el envío la
+    # ADOPTA (misma fila) en vez de crear otra.
+    existente = _legado_reclamable(cancha)
+    pre = {"deportes": [], "superficie": "", "precio": "", "apertura": "07:00", "cierre": "23:00", "dur": 60, "nombre_cancha": "", "zona": ""}
+    if existente:
+        nombre = existente.get("club") or existente.get("nombre") or nombre
+        direccion = existente.get("direccion") or direccion
+        la, ln = (existente.get("lat"), existente.get("lng")) if existente.get("lat") or existente.get("lng") else (la, ln)
+        pre = {"deportes": [d for d in _deportes_de(existente) if d in catalogos.DEPORTES_ACTIVOS], "superficie": existente.get("superficie") or "",
+               "precio": f"{existente['precio_hora']:.2f}" if existente.get("precio_hora") else "", "apertura": existente.get("hora_apertura") or "07:00",
+               "cierre": existente.get("hora_cierre") or "23:00", "dur": int(existente.get("duracion_slot_min") or 60),
+               "nombre_cancha": existente.get("nombre") or "", "zona": existente.get("barrio") or ""}
+    elif deporte in catalogos.DEPORTES_ACTIVOS:
+        pre["deportes"] = [deporte]
     iso = paises.pais_de_coordenadas(la, ln) if la is not None else "PE"
-    nuevo_id = f"u{int(time.time() * 1000)}"
+    nuevo_id = existente["id"] if existente else f"u{int(time.time() * 1000)}"
     dep_ops = [(d, f"{_deporte(d)[1]} {_deporte(d)[0]}") for d in catalogos.DEPORTES_ACTIVOS]
-    cfg = {"id": nuevo_id, "lat": la, "lng": ln, "iso": iso, "place": place[:120], "superficies": catalogos.SUPERFICIES,
+    cfg = {"id": nuevo_id, "existente": bool(existente), "pre": pre, "lat": la, "lng": ln, "iso": iso, "place": place[:120], "superficies": catalogos.SUPERFICIES,
            "activos": catalogos.DEPORTES_ACTIVOS, "nombres": {d: _deporte(d)[0] for d in catalogos.DEPORTES_ACTIVOS},
            "maxFotos": catalogos.MAX_FOTOS, "storage": almacen.disponible(), "tel": catalogos.TEL_PREFIJO,
            "telLen": catalogos.TEL_LONGITUD, "labels": catalogos.GEO_LABELS, "doc": DOC_NOMBRE, "docLen": DOC_LONGITUD,
@@ -1020,7 +1046,7 @@ def pagina_nueva_cancha(request: Request, nombre: str = "", direccion: str = "",
     nav = "".join(f"<a href='#sec-{k}' class='edit-nav-it'>{n}</a>" for k, n in secciones)
     cuerpo = f"""
 <div class='edit-top'><a class='volver-lnk' href='/anfitrion'>‹ Modo anfitrión</a>
-<h1 class='anf-hola' style='margin-top:8px'>Pon tu cancha en Pichangol</h1><p class='sub'>Publícala y empieza a recibir reservas. Confirmamos que eres el dueño antes de activarla (WhatsApp o visita), igual que en la app.</p></div>
+<h1 class='anf-hola' style='margin-top:8px'>{'Reclama tu cancha' if existente else 'Pon tu cancha en Pichangol'}</h1><p class='sub'>{'Esta cancha ya está en Pichangol pero nadie la administra. Completa los datos y confirmamos que es tuya antes de activarla.' if existente else 'Publícala y empieza a recibir reservas. Confirmamos que eres el dueño antes de activarla (WhatsApp o visita), igual que en la app.'}</p></div>
 <div class='edit-grid'><nav class='edit-nav'>{nav}</nav>
 <form id='fNueva' class='edit-form' autocomplete='off' novalidate>
  <section class='panel edit-sec' id='sec-local'><h2>Tu local</h2>
@@ -1033,21 +1059,21 @@ def pagina_nueva_cancha(request: Request, nombre: str = "", direccion: str = "",
   <div class='row' id='geoRow' style='grid-template-columns:1fr 1fr 1fr'><select id='g1'><option value=''>—</option></select><select id='g2'><option value=''>—</option></select><select id='g3'><option value=''>—</option></select></div>
  </section>
  <section class='panel edit-sec' id='sec-deportes'><h2>Deportes y tipo de piso</h2><p class='sub'>Marca todo lo que se juega en tu local.</p>
-  {_chips('deportes', dep_ops, set(), multi=True)}
+  {_chips('deportes', dep_ops, set(pre['deportes']), multi=True)}
   <div id='modoWrap' hidden><label style='margin-top:18px'>¿Cómo son tus canchas?</label>
    {_chips('modo', [('unica', '🏟️ Una sola loza multiuso (una agenda)'), ('separadas', '🏟️🏟️ Canchas separadas (una por deporte)')], 'separadas')}</div>
   <label style='margin-top:18px'>Tipo de piso <span class='req'>obligatorio</span></label>
   <div id='supWrap'><p class='sub'>Marca primero un deporte.</p></div>
-  <label for='nombreCancha' style='margin-top:18px'>Nombre de la cancha <span class='req'>opcional</span></label><input id='nombreCancha' maxlength='{catalogos.NOMBRE_MAX}' placeholder='Ej. Cancha 1 · Grass'>
+  <label for='nombreCancha' style='margin-top:18px'>Nombre de la cancha <span class='req'>opcional</span></label><input id='nombreCancha' maxlength='{catalogos.NOMBRE_MAX}' value='{e(pre['nombre_cancha'])}' placeholder='Ej. Cancha 1 · Grass'>
  </section>
  <section class='panel edit-sec' id='sec-precio'><h2>Precio y horario</h2>
   <label for='precio'>Precio por hora</label>
-  <div class='inp-moneda'><span id='monSpan'>{e(paises.simbolo_de_moneda(paises.moneda_de_pais(iso)))}</span><input id='precio' type='number' min='1' step='0.01' inputmode='decimal' value='' placeholder='120.00'></div>
-  <div class='row' style='margin-top:14px'><div><label for='hora_apertura'>Abre</label>{_select_hora('hora_apertura', '07:00')}</div>
-  <div><label for='hora_cierre'>Cierra</label>{_select_hora('hora_cierre', '23:00')}</div></div>
+  <div class='inp-moneda'><span id='monSpan'>{e(paises.simbolo_de_moneda(paises.moneda_de_pais(iso)))}</span><input id='precio' type='number' min='1' step='0.01' inputmode='decimal' value='{pre['precio']}' placeholder='120.00'></div>
+  <div class='row' style='margin-top:14px'><div><label for='hora_apertura'>Abre</label>{_select_hora('hora_apertura', pre['apertura'])}</div>
+  <div><label for='hora_cierre'>Cierra</label>{_select_hora('hora_cierre', pre['cierre'])}</div></div>
   <p class='sub' style='font-size:13px'>La hora de cierre es la hora en que <b>empieza el último turno</b>: si cierras a las 23:00, el último turno es 23:00–00:00. Un cierre menor o igual a la apertura cae al día siguiente.</p>
   <label style='margin-top:14px'>Duración del turno</label>
-  {_chips('duracion_slot_min', catalogos.DURACIONES, 60, fmt=catalogos.etiqueta_duracion)}
+  {_chips('duracion_slot_min', catalogos.DURACIONES, pre['dur'] if pre['dur'] in catalogos.DURACIONES else 60, fmt=catalogos.etiqueta_duracion)}
   <p class='sub' style='font-size:12.5px'>Hora feliz, seña, servicios del local y servicios extra los configuras después en Editar cancha.</p>
  </section>
  <section class='panel edit-sec' id='sec-fotos'><h2>Fotos</h2><p class='sub'>La primera es la portada. Hasta {catalogos.MAX_FOTOS}. Puedes agregarlas después.</p>
@@ -1065,7 +1091,7 @@ def pagina_nueva_cancha(request: Request, nombre: str = "", direccion: str = "",
  </section>
 </form></div>
 <div class='barra-guardar'><div class='wrap-xl'><span class='sub' id='msgGuardar' style='margin:0'>Al enviar, tu cancha queda <b>en verificación</b> y te avisamos por WhatsApp y en la app cuando esté activa.</span>
-<button type='button' class='btn' id='btnGuardar'>Registrar mi cancha</button></div></div>
+<button type='button' class='btn' id='btnGuardar'>{'Reclamar mi cancha' if existente else 'Registrar mi cancha'}</button></div></div>
 <script>var CFG={json.dumps(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{_JS_NUEVA}</script>"""
     return ui.shell("Pon tu cancha", cuerpo, nav=_cabecera("canchas", ses, tabs_visibles=False), sesion=ses, ancho=True,
                     extra_head=_LEAFLET, titulo_tab="Pon tu cancha · Pichangol")
@@ -1073,7 +1099,8 @@ def pagina_nueva_cancha(request: Request, nombre: str = "", direccion: str = "",
 
 _JS_NUEVA = r"""
 (function(){
-var fotos=[], evid='', dep=[], sups={}, sup='', lat=CFG.lat, lng=CFG.lng, iso=CFG.iso, arbol=null, subiendo=0, mapa, marker, solLat=null, solLng=null;
+var fotos=[], evid='', dep=(CFG.pre.deportes||[]).slice(), sups={}, sup=CFG.pre.superficie||'', lat=CFG.lat, lng=CFG.lng, iso=CFG.iso, arbol=null, subiendo=0, mapa, marker, solLat=null, solLng=null;
+dep.forEach(function(d){sups[d]=sup});
 function $(id){return document.getElementById(id)}
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;')}
 function sel(g){var b=document.querySelector(".chip.sel[data-g='"+g+"']");return b?b.dataset.v:''}
@@ -1096,7 +1123,10 @@ if(window.L){var c0=lat!=null?[lat,lng]:{PE:[-12.05,-77.04],EC:[-2.17,-79.92],BO
   if(lat!=null)marker=L.marker([lat,lng]).addTo(mapa);mapa.on('click',function(ev){ponerPunto(ev.latlng.lat,ev.latlng.lng,false)});
   $('btnUbic').addEventListener('click',function(){if(!navigator.geolocation){pcgToast('Tu navegador no permite ubicación.');return}navigator.geolocation.getCurrentPosition(function(p){solLat=p.coords.latitude;solLng=p.coords.longitude;ponerPunto(p.coords.latitude,p.coords.longitude,true)},function(){pcgToast('No pudimos leer tu ubicación.')})})}
 function opts(s,lista,val,ph){s.innerHTML="<option value=''>"+ph+"</option>"+lista.map(function(o){return "<option value='"+esc(o)+"'"+(o===val?' selected':'')+">"+esc(o)+"</option>"}).join('')}
-function cargarGeo(){fetch('/web/geo/'+iso).then(function(r){return r.json()}).then(function(j){if(!j.ok)return;arbol=j.arbol;var lb=j.labels;opts($('g1'),Object.keys(arbol),'',lb[0]);opts($('g2'),[],'',lb[1]);opts($('g3'),[],'',lb[2])}).catch(function(){})}
+function cargarGeo(){fetch('/web/geo/'+iso).then(function(r){return r.json()}).then(function(j){if(!j.ok)return;arbol=j.arbol;var lb=j.labels,pre=['','',''];
+  if(CFG.pre.zona){for(var a in arbol){for(var b in arbol[a]){if(arbol[a][b].indexOf(CFG.pre.zona)>=0){pre=[a,b,CFG.pre.zona]}}}}
+  opts($('g1'),Object.keys(arbol),pre[0],lb[0]);opts($('g2'),pre[0]?Object.keys(arbol[pre[0]]):[],pre[1],lb[1]);opts($('g3'),pre[1]?arbol[pre[0]][pre[1]]:[],pre[2],lb[2])}).catch(function(){})}
+$('modoWrap').hidden=dep.length<2;pintarSup();
 $('g1').addEventListener('change',function(){opts($('g2'),this.value?Object.keys(arbol[this.value]):[],'',CFG.labels[iso][1]);opts($('g3'),[],'',CFG.labels[iso][2])});
 $('g2').addEventListener('change',function(){opts($('g3'),this.value?arbol[$('g1').value][this.value]:[],'',CFG.labels[iso][2])});
 cargarGeo();
@@ -1114,7 +1144,7 @@ $('inEvid').addEventListener('change',async function(){var f=this.files&&this.fi
   try{var j=await subir(f,'evidencia');if(j.ok){evid=j.url;$('evidMsg').textContent='✅ Prueba adjunta.'}else $('evidMsg').textContent=j.error||'No se pudo subir.'}catch(e){$('evidMsg').textContent='No se pudo subir.'}subiendo--});
 // ── enviar ──
 $('btnGuardar').addEventListener('click',async function(){var btn=this,msg=$('msgGuardar');if(subiendo>0){msg.textContent='Espera a que terminen de subir las fotos.';return}
-  var body={id:CFG.id,place:CFG.place,nombre_local:$('local').value,direccion:$('direccion').value,lat:lat,lng:lng,zona:$('g3').value,deportes:dep,modo:modo(),superficie:sup,superficies:sups,
+  var body={id:CFG.id,existente:CFG.existente,place:CFG.place,nombre_local:$('local').value,direccion:$('direccion').value,lat:lat,lng:lng,zona:$('g3').value,deportes:dep,modo:modo(),superficie:sup,superficies:sups,
     nombre_cancha:$('nombreCancha').value,precio_hora:parseFloat($('precio').value)||0,hora_apertura:$('hora_apertura').value,hora_cierre:$('hora_cierre').value,duracion_slot_min:+sel('duracion_slot_min')||60,
     fotos:fotos,whatsapp:$('wa').value,relacion:sel('relacion'),documento:$('doc').value,nota:$('nota').value,evidencia:evid,sol_lat:solLat,sol_lng:solLng};
   btn.disabled=true;msg.classList.remove('err');msg.textContent='Registrando…';
@@ -1131,7 +1161,8 @@ def _validar_registro(b: dict, email: str) -> tuple[list[dict] | None, dict, str
     if not isinstance(b, dict):
         return None, {}, "Datos inválidos.", ""
     nuevo_id = str(b.get("id") or "")
-    if not _ID_NUEVA_RE.match(nuevo_id):
+    existente = _legado_reclamable(nuevo_id) if b.get("existente") else None
+    if not existente and not _ID_NUEVA_RE.match(nuevo_id):
         return None, {}, "Recarga la página e inténtalo de nuevo.", "local"
     local = re.sub(r"\s+", " ", str(b.get("nombre_local") or "")).strip()[:catalogos.NOMBRE_MAX]
     if len(local) < 3:
@@ -1183,11 +1214,14 @@ def _validar_registro(b: dict, email: str) -> tuple[list[dict] | None, dict, str
     if dur not in catalogos.DURACIONES:
         return None, {}, "Duración del turno no válida.", "precio"
     prefijo = almacen.prefijo_cancha(nuevo_id) if almacen.disponible() else None
+    previas = set(_fotos(existente)) if existente else set()
     fotos = []
     for u in (b.get("fotos") or []):
         u = str(u).strip()
-        if u and u not in fotos and prefijo and u.startswith(prefijo):
+        if u and u not in fotos and (u in previas or (prefijo and u.startswith(prefijo))):
             fotos.append(u)
+    if existente and not fotos:
+        fotos = _fotos(existente)
     fotos = fotos[:catalogos.MAX_FOTOS]
     wa_local = re.sub(r"\D", "", str(b.get("whatsapp") or ""))
     cod = catalogos.TEL_PREFIJO[iso]
@@ -1218,7 +1252,13 @@ def _validar_registro(b: dict, email: str) -> tuple[list[dict] | None, dict, str
             "eliminada": False, "amenidades": [], "moneda": moneda, "servicios_extra": [], "descuento_valle": 0,
             "valle_desde": "07:00", "valle_hasta": "12:00", "sena_pct": 0}
     filas = []
-    if modo == "unica":
+    if existente:
+        # Adopción: UNA fila (la existente); si marcó varios deportes, van en
+        # la misma loza (agenda compartida), como el editor del app.
+        principal = catalogos.deporte_principal(deps)
+        nombre = nombre_cancha or existente.get("nombre") or f"{_deporte(principal)[0]} 1"
+        filas.append({**base, "id": nuevo_id, "nombre": nombre, "deporte": principal, "deportes": deps, "superficie": sups_por_dep[principal], "_adoptar": True})
+    elif modo == "unica":
         principal = catalogos.deporte_principal(deps)
         nombre = nombre_cancha or (f"{_deporte(principal)[0]} 1" if len(deps) == 1 else "Cancha 1")
         filas.append({**base, "id": nuevo_id, "nombre": nombre, "deporte": principal, "deportes": deps, "superficie": sups_por_dep[principal]})
@@ -1250,7 +1290,13 @@ async def registrar_cancha_web(request: Request) -> JSONResponse:
     activo = reclamos.lugar_reclamado(rec["lat"], rec["lng"], rec["cancha_id"], ses["email"])
     if activo.get("reclamada") and not activo.get("por_mi"):
         return JSONResponse({"ok": False, "error": "Este lugar ya tiene un reclamo en curso de otra persona. Si es tu cancha, escríbenos por WhatsApp.", "campo": "local"}, status_code=409)
-    if not datos.insertar_canchas(filas):
+    adoptar = bool(filas[0].get("_adoptar"))
+    if adoptar:
+        campos = {k: v for k, v in filas[0].items() if k in datos.COLS_ADOPCION}
+        ok = datos.adoptar_cancha(filas[0]["id"], ses["email"], campos)
+    else:
+        ok = datos.insertar_canchas(filas)
+    if not ok:
         return JSONResponse({"ok": False, "error": "No pudimos guardar tu cancha en este momento. Inténtalo de nuevo."}, status_code=503)
     r = reclamos.crear_reclamo(
         rec["cancha_id"], ses["email"], rec["nombre_local"], rec["telefono_contacto"], rec["dni"], None, rec["relacion"],
@@ -1258,7 +1304,10 @@ async def registrar_cancha_web(request: Request) -> JSONResponse:
         solicitante_nombre=ses.get("nombre") or "", foto_evidencia_url=rec["foto_evidencia_url"],
         nota_reclamante=(rec["nota_reclamante"] + (f" [web · place {rec['place']}]" if rec["place"] else " [web]")).strip())
     if not r.get("ok"):
-        datos.borrar_canchas([f["id"] for f in filas], ses["email"])
+        if adoptar:
+            datos.desadoptar_cancha(filas[0]["id"], ses["email"])
+        else:
+            datos.borrar_canchas([f["id"] for f in filas], ses["email"])
         msg = ("Este lugar ya tiene un reclamo en curso de otra persona. Si es tu cancha, escríbenos por WhatsApp."
                if r.get("error") == "ya_reclamada" else "No pudimos registrar el reclamo. Inténtalo de nuevo.")
         return JSONResponse({"ok": False, "error": msg, "campo": "local"}, status_code=409)
@@ -1273,7 +1322,7 @@ async def subir_foto_nueva(request: Request, id: str = "", tipo: str = "foto") -
     ses = sesion.de_request(request)
     if not ses:
         return JSONResponse({"ok": False, "error": "sesion_requerida"}, status_code=401)
-    if not _ID_NUEVA_RE.match(id or ""):
+    if not _ID_NUEVA_RE.match(id or "") and _legado_reclamable(id) is None:
         return JSONResponse({"ok": False, "error": "Recarga la página e inténtalo de nuevo."}, status_code=400)
     if not almacen.disponible():
         return JSONResponse({"ok": False, "error": "La subida de fotos no está disponible en este ambiente."}, status_code=503)

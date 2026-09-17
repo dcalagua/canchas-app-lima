@@ -246,21 +246,68 @@ def borrar_canchas(ids: list[str], dueno: str) -> int:
         return 0
 
 
-def marcar_verificada(cancha_id: str, dueno: str, verificada: bool) -> int:
+COLS_ADOPCION = {"nombre", "club", "deporte", "deportes", "superficie", "precio_hora", "hora_apertura", "hora_cierre",
+                 "duracion_slot_min", "barrio", "direccion", "fotos", "foto_url", "moneda"}
+
+
+def adoptar_cancha(cancha_id: str, dueno: str, campos: dict) -> bool:
+    """RECLAMO de una cancha ya registrada SIN dueño (legado reclamable, mismo
+    criterio que `AppState.misCanchas`): la pone a nombre del correo y actualiza
+    lo que el dueño completó. Solo si sigue sin dueño y sin verificar."""
+    dueno = (dueno or "").strip().lower()
+    sets = {k: v for k, v in (campos or {}).items() if k in COLS_ADOPCION}
+    if not pg.habilitado or not cancha_id or not dueno:
+        return False
+    cols = sorted(sets)
+    vals = [json.dumps(sets[c]) if c in _COLS_JSON else sets[c] for c in cols]
+    asig = ", ".join([f"{c} = %s::jsonb" if c in _COLS_JSON else f"{c} = %s" for c in cols] + ["dueno = %s"])
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(f"UPDATE pichangol_canchas SET {asig} WHERE id = %s AND coalesce(dueno,'') = '' "
+                        "AND coalesce(verificada,false) = false AND coalesce(eliminada,false) = false",
+                        vals + [dueno, cancha_id])
+            n = cur.rowcount
+            conn.commit()
+            return n == 1
+    except Exception as e:  # noqa: BLE001
+        print(f"[reclamo-web] no se pudo adoptar {cancha_id}: {e}", flush=True)
+        return False
+
+
+def desadoptar_cancha(cancha_id: str, dueno: str) -> bool:
+    """Revierte `adoptar_cancha` (el reclamo no se pudo crear)."""
+    dueno = (dueno or "").strip().lower()
+    if not pg.habilitado or not cancha_id or not dueno:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("UPDATE pichangol_canchas SET dueno = '' WHERE id = %s AND lower(dueno) = %s "
+                        "AND coalesce(verificada,false) = false", (cancha_id, dueno))
+            n = cur.rowcount
+            conn.commit()
+            return n == 1
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def marcar_verificada(cancha_id: str, dueno: str, verificada: bool, lat: float | None = None, lng: float | None = None) -> int:
     """La torre aprobó (o rechazó) el reclamo: refleja `verificada` en la
-    NUBE para la cancha reclamada y sus HERMANAS del mismo registro (el app
-    crea `u<ts>` o `u<ts>_<deporte>` por deporte y reclama solo la primera).
+    NUBE para la cancha reclamada y sus HERMANAS: mismo registro (`u<ts>` /
+    `u<ts>_<deporte>`, el app reclama solo la primera) o, para canchas de
+    legado reclamadas, las del mismo dueño en el MISMO lugar (≈150 m).
     Antes solo el APK escribía esto al sincronizar; un dueño que registró
     desde la web no abría el app y su cancha nunca quedaba reservable."""
     dueno = (dueno or "").strip().lower()
     if not pg.habilitado or not cancha_id or not dueno:
         return 0
     base = cancha_id.split("_")[0]
+    cerca = "OR (abs(lat - %s) < 0.0014 AND abs(lng - %s) < 0.0014)" if lat is not None and lng is not None else ""
+    extra = [lat, lng] if cerca else []
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute("UPDATE pichangol_canchas SET verificada = %s WHERE lower(dueno) = %s "
-                        "AND (id = %s OR id LIKE %s) AND coalesce(eliminada,false) = false",
-                                                (bool(verificada), dueno, cancha_id, base + "\\_%"))  # hermanas u<ts>_<deporte>
+                        f"AND (id = %s OR id LIKE %s {cerca}) AND coalesce(eliminada,false) = false",
+                        [bool(verificada), dueno, cancha_id, base + "\\_%"] + extra)  # hermanas u<ts>_<deporte>
             n = cur.rowcount
             conn.commit()
             return n

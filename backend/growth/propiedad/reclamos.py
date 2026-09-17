@@ -368,7 +368,7 @@ def _nube_verificada(r: "ReclamoPropiedad", verificada: bool) -> None:
     (el APK lo hacía al sincronizar; ahora lo hace el backend, fail-safe)."""
     try:
         from web import datos as _datos
-        n = _datos.marcar_verificada(r.cancha_id, r.solicitante_id, verificada)
+        n = _datos.marcar_verificada(r.cancha_id, r.solicitante_id, verificada, r.lat, r.lng)
         print(f"[reclamo] nube verificada={verificada} {r.cancha_id} ({r.solicitante_id}): {n} fila(s)", flush=True)
     except Exception as e:  # noqa: BLE001
         print(f"[reclamo] no se pudo reflejar en la nube {r.cancha_id}: {e}", flush=True)
