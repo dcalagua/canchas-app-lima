@@ -638,7 +638,7 @@ def footer() -> str:
         "<a href='/#pagos'>Pagos y seguridad</a><a href='/#devoluciones'>Cancelaciones y devoluciones</a>"
         "<a href='/#reclamaciones'>📕 Libro de Reclamaciones</a></div>"
         "<div><h4>Pichangol</h4><a href='https://play.google.com/store/apps/details?id=pe.ebim.pichangol' rel='noopener'>Descarga la app</a>"
-        "<a href='https://play.google.com/store/apps/details?id=pe.ebim.pichangol' rel='noopener'>Pon tu cancha en Pichangol</a>"
+        "<a href='/anfitrion/nueva'>Pon tu cancha en Pichangol</a>"
         "<a href=\"/legal/terminos\">Términos y condiciones</a><a href=\"/legal/privacidad\">Política de privacidad</a>"
         "<a href=\"/legal/eliminar-cuenta\">Eliminar mi cuenta</a></div>"
         f"</div><div class='pie-bajo'><div>© {em['anio']} Pichangol · {em['razon_social']} · {em['doc_etiqueta']} {em['ruc']} · {em['ciudad']} · "
@@ -713,7 +713,7 @@ def menu_cuenta(ses: dict | None, volver: str = "/", modo: str = "") -> str:
         f"<div class='menu-panel' id='menuPanel' role='menu'>{cuenta}<hr>"
         "<a href='/#como'>Cómo funciona</a><a href='/#contacto'>Centro de ayuda</a><hr>"
         + ("<a class='b' href='/'>Cambiar a modo jugador</a>" if modo == "anfitrion" else "<a class='b' href='/anfitrion'>Modo anfitrión</a>")
-        + f"<a href='{PLAY_URL}' rel='noopener'>Pon tu cancha en Pichangol</a>"
+        + "<a href='/anfitrion/nueva'>Pon tu cancha en Pichangol</a>"
         f"<a href='{PLAY_URL}' rel='noopener'>Descarga la app</a>"
         "<a href='/#reclamaciones'>Libro de Reclamaciones</a>"
         "</div></div></div>")

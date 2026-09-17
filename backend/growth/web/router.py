@@ -533,10 +533,14 @@ _JS_EXPLORAR = r"""
       '<div class="foto"><div class="fotos">' + foto + '</div><span class="badge pend">Aún sin registrar</span>' + extra + '</div>' +
       '<div class="lb"><div class="l1"><b>' + esc(c.nombre) + '</b><span class="rate">' + esc(c.deporte_nombre) + '</span></div>' +
       '<div class="l2">' + esc(c.direccion) + '</div><div class="l2"><span class="dist">' + (c.km != null ? 'a ' + fmtKm(c.km) : '') + '</span></div>' +
-      '<div class="l3"><span class="app">📲 Reservar en la app</span> <span class="app">📍 <span class="ir" data-lat="' + c.lat + '" data-lng="' + c.lng + '">Cómo llegar</span></span></div></div></a>';
+      '<div class="l3"><span class="app">📲 Reservar en la app</span> <span class="app">📍 <span class="ir" data-lat="' + c.lat + '" data-lng="' + c.lng + '">Cómo llegar</span></span> ' +
+      '<span class="app reclamar" data-id="' + esc(c.id) + '" data-nombre="' + esc(c.nombre) + '" data-dir="' + esc(c.direccion) + '" data-lat="' + c.lat + '" data-lng="' + c.lng + '">🏷️ ¿Es tuya? Reclámala</span></div></div></a>';
   }
   document.addEventListener('click', function(ev){ var g = ev.target.closest('.ir'); if(!g) return; ev.preventDefault(); ev.stopPropagation();
     window.open('https://www.google.com/maps/search/?api=1&query=' + g.dataset.lat + ',' + g.dataset.lng, '_blank'); });
+  // "¿Es tuya? Reclámala": registro desde la web prellenado con el lugar de Google (mismo flujo que el app).
+  document.addEventListener('click', function(ev){ var g = ev.target.closest('.reclamar'); if(!g) return; ev.preventDefault(); ev.stopPropagation();
+    location.href = '/anfitrion/nueva?place=' + encodeURIComponent(g.dataset.id) + '&nombre=' + encodeURIComponent(g.dataset.nombre) + '&direccion=' + encodeURIComponent(g.dataset.dir) + '&lat=' + g.dataset.lat + '&lng=' + g.dataset.lng; });
   function pintarDescubiertas(lista, conFotos){
     var sec = $('descubiertas'), grid = $('gridDesc');
     if(!sec || !grid) return;

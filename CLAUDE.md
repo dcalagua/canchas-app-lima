@@ -485,6 +485,38 @@ para la API del APK.
   foto, verificada, deportes, horario, precio y botones Ver ficha pública /
   Calendario / Mapa / Editar. Test
   `test_modo_anfitrion_en_la_web_como_airbnb`.
+- **PON TU CANCHA / RECLÁMALA DESDE LA WEB (sep-2026, autorizado por el
+  director: "web = vender y atender"):** `GET/POST /anfitrion/nueva`
+  (`web/anfitrion.py::pagina_nueva_cancha`, `_validar_registro`,
+  `registrar_cancha_web`; fotos previas al alta `POST /anfitrion/nueva/foto?id=
+  u<ms>&tipo=foto|evidencia` → `canchas/<id>/` y `canchas/ev<id>/`). MISMO
+  flujo que `registrar_cancha_screen.dart`: local + dirección + punto en mapa
+  Leaflet (obligatorio, dentro de las cajas PE/EC/BO: de ahí salen país,
+  moneda, prefijo de WhatsApp y documento) + zona en cascada (`barrio`),
+  deportes (chips) con "loza multiuso (una agenda)" vs "canchas separadas
+  (una por deporte)" y piso por deporte, precio + horario + duración, fotos,
+  y VERIFICACIÓN (WhatsApp local con largo por país, relación
+  dueño/administrador/encargado, documento opcional con largo por país, nota,
+  foto de evidencia, GPS del navegador en silencio). Al enviar: INSERT en
+  `pichangol_canchas` (`datos.insertar_canchas`, ids `u<ms>` o
+  `u<ms>_<deporte>`, `verificada=false`, `dueno`=correo de Google, moneda por
+  coordenadas, `distrito=''`) + `reclamos.crear_reclamo` EN PROCESO (nota con
+  sufijo `[web · place gp_…]`); si el lugar ya tiene reclamo activo ajeno →
+  409 y `datos.borrar_canchas` revierte. Entradas: onboarding de Modo
+  anfitrión ("Registrar mi cancha"), "＋ Registrar otra cancha" en Canchas,
+  "Pon tu cancha en Pichangol" (pie y menú ☰) y el botón **"🏷️ ¿Es tuya?
+  Reclámala"** de cada cancha DESCUBIERTA del explorador (prellena nombre,
+  dirección, punto y `place`). El panel muestra el estado real del reclamo
+  (`_aviso_verificacion` en Hoy y Canchas: En verificación / falta validar /
+  No aprobada…). **ESPEJO EN LA NUBE (bug que esto destapó):** la torre
+  marcaba `verificada` solo en `stores.canchas` y era el APK quien escribía
+  `pichangol_canchas.verificada=true` al sincronizar → un dueño solo-web
+  nunca quedaba reservable. Ahora `reclamos._nube_verificada` (llamado en
+  `aprobar_directo`, `activar_admin`, `validar_en_sitio` y
+  `_revocar_cancha_al_rechazar`) hace `datos.marcar_verificada(cancha_id,
+  dueno, bool)` sobre la reclamada y sus hermanas `u<ts>_*` (fail-safe). OTP
+  por WhatsApp y verificación de existencia (IA) siguen solo en el app. Test
+  `test_registrar_y_reclamar_cancha_desde_la_web_como_el_app`.
 - **EDITAR CANCHA DESDE LA WEB (sep-2026, decisión del director: "web =
   vender y atender; app = operar", punto 1):** `GET/POST /anfitrion/cancha/
   {id}/editar` (`web/anfitrion.py`, calcado del editor de anuncios de

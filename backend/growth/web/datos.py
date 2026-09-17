@@ -197,6 +197,78 @@ def actualizar_cancha(cancha_id: str, dueno: str, campos: dict) -> bool:
         return False
 
 
+# Columnas que escribe el REGISTRO desde la web (espejo de `CanchasRepo._toRow`
+# del app al registrar: la fila nace `registrada`, `verificada=false` y con
+# `dueno` = correo de Google; la torre la activa al aprobar el reclamo).
+COLS_REGISTRO = [
+    "id", "nombre", "club", "distrito", "barrio", "deporte", "deportes", "precio_hora", "lat", "lng",
+    "club_fundador", "digitalizada", "direccion", "registrada", "foto_url", "fotos", "dueno", "verificada",
+    "hora_apertura", "hora_cierre", "duracion_slot_min", "eliminada", "amenidades", "superficie", "moneda",
+    "servicios_extra", "descuento_valle", "valle_desde", "valle_hasta", "sena_pct",
+]
+
+
+def insertar_canchas(filas: list[dict]) -> bool:
+    """INSERT de las canchas recién REGISTRADAS desde la web (una por deporte
+    si son canchas separadas). Todo o nada: si una falla, ninguna queda."""
+    if not pg.habilitado or not filas:
+        return False
+    cols = COLS_REGISTRO
+    marcas = ", ".join("%s::jsonb" if c in _COLS_JSON else "%s" for c in cols)
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            for f in filas:
+                vals = [json.dumps(f.get(c) if f.get(c) is not None else []) if c in _COLS_JSON else f.get(c) for c in cols]
+                cur.execute(f"INSERT INTO pichangol_canchas ({', '.join(cols)}) VALUES ({marcas})", vals)
+            conn.commit()
+            return True
+    except Exception as e:  # noqa: BLE001
+        print(f"[registro-web] no se pudo insertar: {e}", flush=True)
+        return False
+
+
+def borrar_canchas(ids: list[str], dueno: str) -> int:
+    """DELETE físico de canchas del dueño recién registradas (se revierte un
+    registro que la torre no aceptó, p. ej. el lugar ya tenía reclamo ajeno).
+    Solo borra filas del propio correo y aún NO verificadas."""
+    dueno = (dueno or "").strip().lower()
+    if not pg.habilitado or not ids or not dueno:
+        return 0
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("DELETE FROM pichangol_canchas WHERE id = ANY(%s) AND lower(dueno) = %s "
+                        "AND coalesce(verificada,false) = false", (list(ids), dueno))
+            n = cur.rowcount
+            conn.commit()
+            return n
+    except Exception as e:  # noqa: BLE001
+        print(f"[registro-web] no se pudo revertir: {e}", flush=True)
+        return 0
+
+
+def marcar_verificada(cancha_id: str, dueno: str, verificada: bool) -> int:
+    """La torre aprobó (o rechazó) el reclamo: refleja `verificada` en la
+    NUBE para la cancha reclamada y sus HERMANAS del mismo registro (el app
+    crea `u<ts>` o `u<ts>_<deporte>` por deporte y reclama solo la primera).
+    Antes solo el APK escribía esto al sincronizar; un dueño que registró
+    desde la web no abría el app y su cancha nunca quedaba reservable."""
+    dueno = (dueno or "").strip().lower()
+    if not pg.habilitado or not cancha_id or not dueno:
+        return 0
+    base = cancha_id.split("_")[0]
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("UPDATE pichangol_canchas SET verificada = %s WHERE lower(dueno) = %s "
+                        "AND (id = %s OR id LIKE %s) AND coalesce(eliminada,false) = false",
+                                                (bool(verificada), dueno, cancha_id, base + "\\_%"))  # hermanas u<ts>_<deporte>
+            n = cur.rowcount
+            conn.commit()
+            return n
+    except Exception as e:  # noqa: BLE001
+        print(f"[reclamo-web] no se pudo marcar verificada={verificada} {cancha_id}: {e}", flush=True)
+        return 0
+
+
 def bloquear(cancha_id: str, fecha: str, hora: str, bloquear: bool = True) -> bool:
     """Bloqueo de un turno por el dueño (misma tabla y clave que
     `BloqueosRepo` del app: PK (cancha_id, fecha, hora)). Idempotente."""
