@@ -1261,3 +1261,40 @@ def test_registrar_y_reclamar_cancha_desde_la_web_como_el_app(db, monkeypatch):
     reclamos.aprobar_directo(rec2[0].id, "admin")
     assert db.canchas["c_pend"]["verificada"] is True
     stores.reclamos.clear()
+
+
+def test_buscar_mi_local_en_google_por_nombre(db, monkeypatch):
+    """Caso "Campo deportivo Edu Jr." (sep-2026): el descubrimiento por celda
+    solo trae los ~20 lugares más cercanos por consulta y un local a 3 km no
+    salía. El dueño ahora BUSCA su local por nombre en "Pon tu cancha"
+    (`/web/lugares`, Text Search de Google con PLACES_API_KEY) y el
+    resultado rellena nombre, dirección, punto y place."""
+    from web import descubrir
+    monkeypatch.setattr(config, "GOOGLE_WEB_CLIENT_ID", "cid-web")
+    cli = TestClient(app, base_url="https://testserver")
+    # Sin llave: el endpoint lo dice y el formulario no muestra la caja.
+    monkeypatch.setattr(config, "PLACES_API_KEY", "")
+    assert cli.get("/web/lugares?q=edu").json() == {"ok": True, "disponible": False, "lugares": []}
+    _entrar_como(cli, monkeypatch, "nuevo@gmail.com")
+    assert "id='busca'" not in cli.get("/anfitrion/nueva").text
+    # Con llave: una llamada a Google por consulta (sesgada al punto), sin filtrar por deporte.
+    monkeypatch.setattr(config, "PLACES_API_KEY", "k")
+    llamadas = []
+    def fake_http(url, headers, body=None, timeout=12):
+        llamadas.append(body)
+        return {"places": [{"id": "ChIJedu", "displayName": {"text": "Campo deportivo Edu Jr."}, "formattedAddress": "Av. Los Frutales 100, Ate",
+                            "location": {"latitude": -12.0735152, "longitude": -76.991131}, "types": ["sports_complex"]},
+                           {"id": "ChIJx", "displayName": {"text": "Edu Jr. Restobar"}, "formattedAddress": "Jr. X 1", "location": {"latitude": -12.07, "longitude": -76.99}, "types": ["restaurant"]}]}
+    monkeypatch.setattr(descubrir, "_http_json", fake_http)
+    descubrir._busq_cache.clear()
+    j = cli.get("/web/lugares?q=Campo%20deportivo%20Edu&lat=-12.09&lng=-77.0").json()
+    assert j["disponible"] and [x["id"] for x in j["lugares"]] == ["gp_ChIJedu", "gp_ChIJx"]  # no se filtra por heurística
+    assert j["lugares"][0]["deporte"] == "futbol" and j["lugares"][0]["km"] == 2.1 and j["lugares"][1]["deporte"] == ""
+    assert llamadas[0]["textQuery"] == "Campo deportivo Edu" and llamadas[0]["locationBias"]["circle"]["radius"] == 30000
+    assert len(cli.get("/web/lugares?q=Campo%20deportivo%20Edu&lat=-12.09&lng=-77.0").json()["lugares"]) == 2 and len(llamadas) == 1  # caché
+    assert cli.get("/web/lugares?q=ed").json()["lugares"] == []  # consulta muy corta: sin llamada
+    html = cli.get("/anfitrion/nueva").text
+    assert "id='busca'" in html and "Busca tu local en Google" in html and "/web/lugares?q=" in html
+    # El explorador vuelve a descubrir al mover el mapa y acumula por id.
+    home = cli.get("/").text
+    assert "mapa.on('moveend'" in home and "descAcum" in home

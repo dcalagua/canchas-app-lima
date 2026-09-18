@@ -518,6 +518,24 @@ para la API del APK.
   `dueno`=correo + campos `COLS_ADOPCION`, solo si sigue sin dueño; si el
   reclamo falla, `desadoptar_cancha`). `marcar_verificada` también cubre las
   hermanas del mismo dueño a ≈150 m del reclamo (legado sin prefijo `u<ts>`).
+  **BUSCAR MI LOCAL POR NOMBRE (caso "Campo deportivo Edu Jr.", sep-2026):** el
+  descubrimiento por celda solo trae los ~20 lugares MÁS CERCANOS por consulta
+  (Text Search `rankPreference: DISTANCE`, `maxResultCount` 20) → en zonas
+  densas un local a 2-4 km no entra en ninguna lista aunque la heurística lo
+  acepte. Tres arreglos: (1) `GET /web/lugares?q&lat&lng`
+  (`descubrir.buscar_lugares`: Text Search con la consulta LIBRE del dueño,
+  sesgo 30 km, sin filtro de deporte, caché 10 min; exige `PLACES_API_KEY`,
+  sin ella `disponible:false`) y en "Pon tu cancha" la caja "🔎 Busca tu
+  local en Google Maps" (`#busca`, debounce 400 ms) cuyo resultado rellena
+  nombre, dirección, punto, `place` y sugiere el deporte; (2) el explorador
+  web RE-DESCUBRE al mover el mapa (`moveend`, zoom ≥ 12, 1 llamada por celda
+  de ~1 km) y ACUMULA las descubiertas por id (`descAcum`) recalculando la
+  distancia desde el usuario o el centro del mapa; (3) la Edge `places-cerca`
+  sigue `nextPageToken` (hasta 3 páginas en "canchas de fútbol" y "campo
+  deportivo", 2 en "complejo deportivo" y "grass sintético") → **hay que
+  redesplegarla** (`supabase functions deploy places-cerca`, laptop) en QAS y
+  PRD; también beneficia al APK, que usa la misma Edge. Test
+  `test_buscar_mi_local_en_google_por_nombre`.
   El panel muestra el estado real del reclamo
   (`_aviso_verificacion` en Hoy y Canchas: En verificación / falta validar /
   No aprobada…). **ESPEJO EN LA NUBE (bug que esto destapó):** la torre

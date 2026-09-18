@@ -1050,6 +1050,7 @@ def pagina_nueva_cancha(request: Request, nombre: str = "", direccion: str = "",
 <div class='edit-grid'><nav class='edit-nav'>{nav}</nav>
 <form id='fNueva' class='edit-form' autocomplete='off' novalidate>
  <section class='panel edit-sec' id='sec-local'><h2>Tu local</h2>
+  {"" if existente or not config.PLACES_API_KEY else "<label for='busca'>🔎 Busca tu local en Google Maps <span class='req'>rellena nombre, dirección y ubicación</span></label><input id='busca' maxlength='80' placeholder='Ej. Campo deportivo Edu Jr.' autocomplete='off'><div id='resBusca' class='res-busca' hidden></div>"}
   <label for='local'>Nombre del local / club</label><input id='local' maxlength='{catalogos.NOMBRE_MAX}' value='{e(nombre[:catalogos.NOMBRE_MAX])}' placeholder='Ej. Complejo Deportivo Los Olivos'>
   <label for='direccion'>Dirección <span class='req'>opcional</span></label><input id='direccion' maxlength='160' value='{e(direccion[:160])}' placeholder='Av. Aviación 1234, San Borja'>
   <label>Ubicación exacta <span class='req'>obligatoria: de aquí salen el país, la moneda y la distancia para los jugadores</span></label>
@@ -1114,9 +1115,22 @@ document.addEventListener('click',function(ev){var b=ev.target.closest('.chip[da
   if(g==='deportes'){b.classList.toggle('sel');var i=dep.indexOf(v);if(i>=0)dep.splice(i,1);else dep.push(v);$('modoWrap').hidden=dep.length<2;pintarSup();return}
   b.closest('.chips').querySelectorAll('.chip').forEach(function(x){x.classList.remove('sel')});b.classList.add('sel');
   if(g==='modo'){pintarSup();return}if(g==='sup'){sup=v;return}if(g.indexOf('sup_')===0){sups[g.slice(4)]=v}});
+// ── buscar el local en Google por nombre (rellena nombre, dirección, punto y place) ──
+var place = CFG.place || '', tBusca = null, inBusca = $('busca');
+if(inBusca){
+  inBusca.addEventListener('input', function(){ clearTimeout(tBusca); var q = this.value.trim(), box = $('resBusca'); if(q.length < 3){ box.hidden = true; box.innerHTML = ''; return; }
+    tBusca = setTimeout(function(){ var c = mapa ? mapa.getCenter() : null; var qs = '/web/lugares?q=' + encodeURIComponent(q) + (c ? '&lat=' + c.lat + '&lng=' + c.lng : '');
+      fetch(qs).then(function(r){ return r.json(); }).then(function(j){ var l = j.lugares || []; box.hidden = false;
+        box.innerHTML = l.length ? l.map(function(x){ return "<button type='button' class='res-it' data-id='" + esc(x.id) + "' data-nombre='" + esc(x.nombre) + "' data-dir='" + esc(x.direccion) + "' data-lat='" + x.lat + "' data-lng='" + x.lng + "' data-dep='" + esc(x.deporte) + "'><b>" + esc(x.nombre) + "</b><small>" + esc(x.direccion) + (x.km != null ? ' · a ' + x.km + ' km' : '') + "</small></button>"; }).join('')
+          : "<div class='sub' style='padding:8px 12px'>No encontramos ese local en Google. Escribe el nombre abajo y marca el punto en el mapa.</div>"; }).catch(function(){ box.hidden = true; }); }, 400); });
+  $('resBusca').addEventListener('click', function(ev){ var b = ev.target.closest('.res-it'); if(!b) return;
+    $('local').value = b.dataset.nombre; $('direccion').value = b.dataset.dir; place = b.dataset.id; inBusca.value = b.dataset.nombre; $('resBusca').hidden = true;
+    ponerPunto(parseFloat(b.dataset.lat), parseFloat(b.dataset.lng), true);
+    if(!dep.length && b.dataset.dep && CFG.superficies[b.dataset.dep]){ var ch = document.querySelector(".chip[data-g='deportes'][data-v='" + b.dataset.dep + "']"); if(ch) ch.click(); } });
+}
 // ── mapa + país + zona (mismo patrón que Mi academia) ──
 function paisDe(la,ln){var C={PE:[-18.4,-0.03,-81.4,-68.6],EC:[-5.1,1.7,-81.1,-75.1],BO:[-22.95,-9.6,-69.7,-57.4]};for(var k in C){var c=C[k];if(la>=c[0]&&la<=c[1]&&ln>=c[2]&&ln<=c[3])return k}return 'PE'}
-function ponerPunto(la,ln,centrar){lat=la;lng=ln;$('ubicTxt').textContent=la.toFixed(5)+', '+ln.toFixed(5);if(marker)marker.setLatLng([la,ln]);else marker=L.marker([la,ln]).addTo(mapa);if(centrar)mapa.setView([la,ln],16);
+function ponerPunto(la,ln,centrar){lat=la;lng=ln;$('ubicTxt').textContent=la.toFixed(5)+', '+ln.toFixed(5);if(mapa){if(marker)marker.setLatLng([la,ln]);else marker=L.marker([la,ln]).addTo(mapa);if(centrar)mapa.setView([la,ln],16)}
   var p=paisDe(la,ln);if(p!==iso||!arbol){iso=p;$('telPre').textContent='+'+CFG.tel[iso];$('monSpan').textContent=CFG.monedas[iso]||'S/';$('docNombre').textContent=CFG.doc[iso]||'Documento';cargarGeo()}}
 if(window.L){var c0=lat!=null?[lat,lng]:{PE:[-12.05,-77.04],EC:[-2.17,-79.92],BO:[-16.5,-68.15]}[iso];mapa=L.map('mapaSede').setView(c0,lat!=null?16:11);
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(mapa);
@@ -1144,7 +1158,7 @@ $('inEvid').addEventListener('change',async function(){var f=this.files&&this.fi
   try{var j=await subir(f,'evidencia');if(j.ok){evid=j.url;$('evidMsg').textContent='✅ Prueba adjunta.'}else $('evidMsg').textContent=j.error||'No se pudo subir.'}catch(e){$('evidMsg').textContent='No se pudo subir.'}subiendo--});
 // ── enviar ──
 $('btnGuardar').addEventListener('click',async function(){var btn=this,msg=$('msgGuardar');if(subiendo>0){msg.textContent='Espera a que terminen de subir las fotos.';return}
-  var body={id:CFG.id,existente:CFG.existente,place:CFG.place,nombre_local:$('local').value,direccion:$('direccion').value,lat:lat,lng:lng,zona:$('g3').value,deportes:dep,modo:modo(),superficie:sup,superficies:sups,
+  var body={id:CFG.id,existente:CFG.existente,place:place,nombre_local:$('local').value,direccion:$('direccion').value,lat:lat,lng:lng,zona:$('g3').value,deportes:dep,modo:modo(),superficie:sup,superficies:sups,
     nombre_cancha:$('nombreCancha').value,precio_hora:parseFloat($('precio').value)||0,hora_apertura:$('hora_apertura').value,hora_cierre:$('hora_cierre').value,duracion_slot_min:+sel('duracion_slot_min')||60,
     fotos:fotos,whatsapp:$('wa').value,relacion:sel('relacion'),documento:$('doc').value,nota:$('nota').value,evidencia:evid,sol_lat:solLat,sol_lng:solLng};
   btn.disabled=true;msg.classList.remove('err');msg.textContent='Registrando…';

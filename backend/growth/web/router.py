@@ -543,9 +543,17 @@ _JS_EXPLORAR = r"""
   // "¿Es tuya? Reclámala": registro desde la web prellenado con el lugar de Google (mismo flujo que el app).
   document.addEventListener('click', function(ev){ var g = ev.target.closest('.reclamar'); if(!g) return; ev.preventDefault(); ev.stopPropagation();
     location.href = '/anfitrion/nueva?place=' + encodeURIComponent(g.dataset.id) + '&nombre=' + encodeURIComponent(g.dataset.nombre) + '&direccion=' + encodeURIComponent(g.dataset.dir) + '&lat=' + g.dataset.lat + '&lng=' + g.dataset.lng + '&deporte=' + encodeURIComponent(g.dataset.dep || ''); });
+  // Las descubiertas se ACUMULAN por id entre búsquedas (cada celda que se
+  // explora suma; la distancia se recalcula desde el usuario o el centro del mapa).
+  var descAcum = {};
+  function kmEntre(a, b, c, d){ var R = 6371, x = (c - a) * Math.PI / 180, y = (d - b) * Math.PI / 180; var h = Math.sin(x/2)*Math.sin(x/2) + Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)*Math.sin(y/2); return 2 * R * Math.asin(Math.sqrt(h)); }
   function pintarDescubiertas(lista, conFotos){
     var sec = $('descubiertas'), grid = $('gridDesc');
     if(!sec || !grid) return;
+    (lista || []).forEach(function(c){ var prev = descAcum[c.id]; if(prev && !(c.fotos && c.fotos.length) && prev.fotos && prev.fotos.length) c.fotos = prev.fotos; descAcum[c.id] = c; });
+    var ref = yo ? yo : (mapa ? {lat: mapa.getCenter().lat, lng: mapa.getCenter().lng} : null);
+    lista = Object.keys(descAcum).map(function(k){ var c = descAcum[k]; if(ref) c.km = Math.round(kmEntre(ref.lat, ref.lng, c.lat, c.lng) * 100) / 100; return c; })
+      .sort(function(a, b){ return (a.km == null ? 1e9 : a.km) - (b.km == null ? 1e9 : b.km); });
     if(!lista.length){ if(!conFotos) sec.style.display = 'none'; return; }
     sec.style.display = '';
     grid.innerHTML = lista.map(tarjetaDesc).join('');
@@ -563,16 +571,20 @@ _JS_EXPLORAR = r"""
   function descubrir(lat, lng){
     var k = lat.toFixed(2) + ',' + lng.toFixed(2);
     if(descubiertas[k]) return; descubiertas[k] = true;
-    var sec = $('descubiertas'); if(sec){ sec.style.display = ''; $('gridDesc').innerHTML = '<span class="skel"></span><span class="skel"></span><span class="skel"></span>'; }
+    var sec = $('descubiertas'); if(sec){ sec.style.display = ''; if(!Object.keys(descAcum).length) $('gridDesc').innerHTML = '<span class="skel"></span><span class="skel"></span><span class="skel"></span>'; }
     fetch('/web/descubrir?lat=' + lat + '&lng=' + lng).then(function(r){ return r.json(); })
       .then(function(j){ pintarDescubiertas(j.canchas || [], false);
         if((j.canchas || []).length) fetch('/web/descubrir?lat=' + lat + '&lng=' + lng + '&fotos=1').then(function(r){ return r.json(); }).then(function(j2){ if((j2.canchas || []).length) pintarDescubiertas(j2.canchas, true); }).catch(function(){}); })
-      .catch(function(){ if(sec) sec.style.display = 'none'; });
+      .catch(function(){ if(sec && !Object.keys(descAcum).length) sec.style.display = 'none'; });
   }
   // ── mapa (se dibuja al mostrarlo; split view en escritorio, pantalla completa en móvil) ──
   function pintarMapa(){
     if(mapa || !window.L || !$('mapa')) return;
     mapa = L.map('mapa', {scrollWheelZoom: true}).setView(C.centro, 12);
+    // Al mover el mapa a otra zona se descubren también las canchas de AHÍ
+    // (antes solo se buscaba alrededor del usuario: un local a 3 km no salía).
+    var tMove = null;
+    mapa.on('moveend', function(){ if(mapa.getZoom() < 12) return; clearTimeout(tMove); tMove = setTimeout(function(){ var c = mapa.getCenter(); descubrir(c.lat, c.lng); }, 500); });
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19, attribution: '&copy; OpenStreetMap'}).addTo(mapa);
     var pts = [];
     cards().forEach(function(c){
@@ -981,6 +993,16 @@ def pagina_entrar(request: Request, volver: str = "/") -> HTMLResponse:
               "<a href='/legal/privacidad'>política de privacidad</a>.</p></div>"
               f"<script>window.alIniciarSesion=function(){{location.href={json.dumps(v)};}};{sesion.JS_SESION}</script>")
     return ui.shell("Iniciar sesión", cuerpo, extra_head=sesion.GIS_SCRIPT, sesion=None)
+
+
+@router.get("/web/lugares")
+def lugares_web(q: str = "", lat: float | None = None, lng: float | None = None) -> dict:
+    """Busca un local en Google por NOMBRE (para "Pon tu cancha"). Sin
+    `PLACES_API_KEY` responde `disponible:false` y el formulario esconde la caja."""
+    if not config.PLACES_API_KEY:
+        return {"ok": True, "disponible": False, "lugares": []}
+    region = pais_de_coordenadas(lat, lng) if lat is not None else "PE"
+    return {"ok": True, "disponible": True, "lugares": descubrir.buscar_lugares(q, lat, lng, region=region)}
 
 
 @router.get("/web/foto")
