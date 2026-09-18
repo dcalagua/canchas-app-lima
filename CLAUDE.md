@@ -534,8 +534,14 @@ para la API del APK.
   sigue `nextPageToken` (hasta 3 páginas en "canchas de fútbol" y "campo
   deportivo", 2 en "complejo deportivo" y "grass sintético") → **hay que
   redesplegarla** (`supabase functions deploy places-cerca`, laptop) en QAS y
-  PRD; también beneficia al APK, que usa la misma Edge. Test
-  `test_buscar_mi_local_en_google_por_nombre`.
+  PRD; también beneficia al APK, que usa la misma Edge. **(4) El EXPLORADOR
+  también busca por nombre:** lo escrito en "Dónde" + Buscar llama a
+  `/web/lugares` (`buscarEnGoogle`, una vez por consulta) y los lugares que
+  la heurística reconoce entran a "Más canchas cerca de ti" como descubiertas
+  (`data-q` = consulta que los trajo, así pasan el filtro de texto aunque el
+  nombre no contenga lo escrito); el vacío dice "Buscando … también en
+  Google Maps…" / "No encontramos … ni en Google Maps". Flag `C.lugares`
+  (= hay `PLACES_API_KEY`). Test `test_buscar_mi_local_en_google_por_nombre`.
   El panel muestra el estado real del reclamo
   (`_aviso_verificacion` en Hoy y Canchas: En verificación / falta validar /
   No aprobada…). **ESPEJO EN LA NUBE (bug que esto destapó):** la torre

@@ -1298,3 +1298,9 @@ def test_buscar_mi_local_en_google_por_nombre(db, monkeypatch):
     # El explorador vuelve a descubrir al mover el mapa y acumula por id.
     home = cli.get("/").text
     assert "mapa.on('moveend'" in home and "descAcum" in home
+    # El explorador también busca por NOMBRE en Google al pulsar Buscar: los
+    # resultados que la heurística reconoce entran como descubiertas (con
+    # etiqueta y emoji para la tarjeta) y pasan el filtro de texto por `data-q`.
+    assert j["lugares"][0]["deporte_nombre"] == "Fútbol" and j["lugares"][0]["emoji"]
+    assert "buscarEnGoogle(filtro.q)" in home and "data-q=" in home and '"lugares": true' in home
+    assert "c.dataset.q !== filtro.q" in home and "ni en Google Maps" in home

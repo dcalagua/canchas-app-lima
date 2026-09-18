@@ -222,7 +222,7 @@ _JS_EXPLORAR = r"""
   }, true);
   // ── filtros (buscador, deporte, fecha, solo verificadas, precio máx) ──
   function pasaBase(c){
-    if(filtro.q && c.dataset.t.indexOf(filtro.q) < 0) return false;
+    if(filtro.q && c.dataset.q !== filtro.q && c.dataset.t.indexOf(filtro.q) < 0) return false;
     if(filtro.cerca && yo && c.dataset.d && parseFloat(c.dataset.d) > 30) return false;
     if(filtro.hora && !abiertaA(c, filtro.hora)) return false;
     if(filtro.hora && filtro.fecha && c.dataset.ok === '1'){ var lk = libres[filtro.fecha + '|' + filtro.hora]; if(lk && lk[c.dataset.id] === false) return false; }
@@ -242,7 +242,8 @@ _JS_EXPLORAR = r"""
     var v = $('vacio'); if(v){ v.style.display = n ? 'none' : '';
       if(!n && v.dataset.base !== undefined){
         var why = filtro.hora ? 'Ninguna cancha' + (filtro.cerca ? ' cerca de ti' : '') + ' tiene turno libre ' + (filtro.fecha ? etiquetaFecha(filtro.fecha).toLowerCase() : '') + ' a las ' + filtro.hora + '. Prueba con otra hora u otro día.'
-                              : 'No hay canchas libres con esa búsqueda. Prueba con otra zona, día u hora.';
+                              : (filtro.q && C.lugares ? (busqGoogle[filtro.q] === 'pendiente' ? 'Buscando “' + filtro.q + '” también en Google Maps…' : 'No encontramos “' + filtro.q + '” en Pichangol ni en Google Maps. Prueba con otro nombre o zona.')
+                              : 'No hay canchas libres con esa búsqueda. Prueba con otra zona, día u hora.');
         v.textContent = why; } }
     if(mapa) marcadores.forEach(function(m){ var ok = m._card.style.display !== 'none'; if(ok){ m.addTo(mapa); } else { m.remove(); } });
   }
@@ -404,10 +405,30 @@ _JS_EXPLORAR = r"""
     if(pend.hora && horaPasada(pend.hora)) ponerHora('', true);
     filtro.q = pend.cerca ? '' : pend.q; filtro.cerca = pend.cerca; filtro.fecha = pend.fecha; filtro.hora = pend.hora;
     if(filtro.cerca){ if(yo) ordenar(); else ubicar(true); }
+    if(filtro.q) buscarEnGoogle(filtro.q);
     consultarLibres(); aplicar(); pintarResumenBusq();
     var g = $('grupos'); if(g) g.scrollIntoView({behavior: 'smooth', block: 'start'});
   }
   var bF = $('btnBuscar'); if(bF) bF.addEventListener('click', buscar);
+  // ── buscar por NOMBRE también en Google Maps (caso "Campo deportivo Edu Jr.") ──
+  // Lo escrito en "Dónde" no solo filtra las tarjetas cargadas: se busca en
+  // Google (`/web/lugares`, la misma búsqueda de "Pon tu cancha") y los locales
+  // que la heurística reconoce como cancha entran a "Más canchas cerca de ti"
+  // como descubiertas (ficha /lugar, Cómo llegar, ¿Es tuya? Reclámala).
+  var busqGoogle = {};
+  function buscarEnGoogle(q){
+    if(!C.lugares || !q || q.length < 3 || busqGoogle[q]) return;
+    busqGoogle[q] = 'pendiente';
+    var ref = yo || (mapa ? mapa.getCenter() : {lat: C.centro[0], lng: C.centro[1]});
+    fetch('/web/lugares?q=' + encodeURIComponent(q) + '&lat=' + ref.lat + '&lng=' + ref.lng).then(function(r){ return r.json(); })
+      .then(function(j){
+        busqGoogle[q] = 'listo';
+        var lst = (j.lugares || []).filter(function(l){ return l.deporte; });
+        lst.forEach(function(l){ l.q = q; if(!l.fotos) l.fotos = []; });
+        if(lst.length) pintarDescubiertas(lst, false); else aplicar();
+      })
+      .catch(function(){ busqGoogle[q] = 'listo'; aplicar(); });
+  }
   // ── Filtros tipo Airbnb (modal): amenidades, tipo, precio, superficie, duración ──
   var fil = {am: {}, tipo: '', sup: '', dur: 0, min: 0, max: 0}, filTmp = null, precioMon = '', pRango = [0, 0];
   var modal = $('modalFiltros'), bFil = $('btnFiltros');
@@ -531,7 +552,7 @@ _JS_EXPLORAR = r"""
     var foto = fs.length ? fs.slice(0, 3).map(function(u){ return '<img src="' + esc(u) + '" alt="" loading="lazy">'; }).join('') : '<div class="sinfoto" data-buscar="1">' + (c.emoji || '🏟️') + '</div>';
     var extra = fs.length > 1 ? '<button class="flecha izq" aria-label="Anterior">‹</button><button class="flecha der" aria-label="Siguiente">›</button><div class="dots">' + fs.slice(0, 3).map(function(){ return '<i></i>'; }).join('') + '</div>' : '';
     var hrefLugar = '/lugar/' + encodeURIComponent(c.id) + '?nombre=' + encodeURIComponent(c.nombre) + '&direccion=' + encodeURIComponent(c.direccion) + '&lat=' + c.lat + '&lng=' + c.lng + '&deporte=' + encodeURIComponent(c.deporte);
-    return '<a class="lst pend" href="' + hrefLugar + '" data-id="' + esc(c.id) + '" data-lat="' + c.lat + '" data-lng="' + c.lng + '" data-ok="0" data-deps="' + esc(c.deporte) + '" data-nombre="' + esc(c.nombre) + '" data-sub="' + esc(c.direccion) + '" data-precio="' + esc(c.deporte_nombre) + '" data-t="' + esc((c.nombre + ' ' + c.direccion).toLowerCase()) + '">' +
+    return '<a class="lst pend" href="' + hrefLugar + '" data-id="' + esc(c.id) + '" data-lat="' + c.lat + '" data-lng="' + c.lng + '" data-ok="0" data-deps="' + esc(c.deporte) + '" data-nombre="' + esc(c.nombre) + '" data-sub="' + esc(c.direccion) + '" data-precio="' + esc(c.deporte_nombre) + '" data-t="' + esc((c.nombre + ' ' + c.direccion).toLowerCase()) + '" data-q="' + esc(c.q || '') + '">' +
       '<div class="foto"><div class="fotos">' + foto + '</div><span class="badge pend">Aún sin registrar</span>' + extra + '</div>' +
       '<div class="lb"><div class="l1"><b>' + esc(c.nombre) + '</b><span class="rate">' + esc(c.deporte_nombre) + '</span></div>' +
       '<div class="l2">' + esc(c.direccion) + '</div><div class="l2"><span class="dist">' + (c.km != null ? 'a ' + fmtKm(c.km) : '') + '</span></div>' +
@@ -895,7 +916,7 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
         centro = [c0.get("lat") or centro[0], c0.get("lng") or centro[1]]
     hora = hora if horarios.hora_en_minutos(hora) is not None else ""
     cfg = json.dumps({"cajas": {k: list(v) for k, v in _CAJAS.items()}, "centro": centro, "play": PLAY_URL, "dep": dep,
-                      "fecha": fecha, "hora": hora, "diasAdelante": DIAS_ADELANTE})
+                      "fecha": fecha, "hora": hora, "diasAdelante": DIAS_ADELANTE, "lugares": bool(config.PLACES_API_KEY)})
     head = ("<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' crossorigin=''>"
             "<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' crossorigin=''></script>"
             + (f"<style>{css_m}</style>" if css_m else ""))
@@ -1002,7 +1023,10 @@ def lugares_web(q: str = "", lat: float | None = None, lng: float | None = None)
     if not config.PLACES_API_KEY:
         return {"ok": True, "disponible": False, "lugares": []}
     region = pais_de_coordenadas(lat, lng) if lat is not None else "PE"
-    return {"ok": True, "disponible": True, "lugares": descubrir.buscar_lugares(q, lat, lng, region=region)}
+    lugares = descubrir.buscar_lugares(q, lat, lng, region=region)
+    for l in lugares:  # etiqueta + emoji como las descubiertas (el explorador reusa la tarjeta)
+        l["deporte_nombre"], l["emoji"] = _deporte(l["deporte"]) if l.get("deporte") else ("Cancha", "🏟️")
+    return {"ok": True, "disponible": True, "lugares": lugares}
 
 
 @router.get("/web/foto")
