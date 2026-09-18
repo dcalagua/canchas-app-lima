@@ -3,11 +3,19 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../brand.dart';
 import '../state/app_state.dart';
-import '../theme.dart';
-import 'explorar_home_screen.dart';
+import '../widgets/logo_vivo.dart';
+import 'app_shell.dart';
 import 'onboarding_screen.dart';
 
-/// Splash de marca: gancho visual de 1.8s antes de entrar al mapa.
+const _indigo = Color(0xFFFFFFFF); // fondo del splash (blanco, look Airbnb)
+
+// Paleta del LOGO nuevo (muestreada de docs/marca/logo_original.jpg) — SOLO
+// para el splash/preload; la paleta interna del app no cambia (opción A).
+const _navyLogo = Color(0xFF0A1F3C); // azul marino del wordmark/pelota
+
+/// Splash de marca: el LOGO "en vivo" (pin quieto, la pelota de adentro
+/// cambiando de deporte como un gif) + eslogan + "Cargando…". Gancho visual
+/// de ~1.8s la primera vez; corto en arranques siguientes.
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -23,24 +31,45 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _arrancar() async {
-    // Carga la sesión guardada y decide la primera pantalla.
     await appState.cargarSesion();
+    appState.sincronizarSaldo(); // saldo real del backend (sobrevive reinstalar)
+    appState.sincronizarPro(); // membresía Pichangol Pro del jugador
+    appState.cargarPuntosCanjeados(); // canjes de puntos (disponibles reales)
+    appState.cargarPuntosBodega(); // puntos de bodega (pagados con saldo)
+    appState.cargarRetosResultados(); // retos jugados → ranking global
+    appState.cargarRetosPendientes(); // retos por responder/reportar → badge
+    appState.cargarMiembrosPro(); // insignia PRO en el ranking
+    appState.cargarMiPerfilCircuito(); // ¿ya me uní al circuito?
+    appState.cargarDestacados(); // dueños destacados (saldo>0) para resaltar canchas
     appState.cargarCanchasRemotas() // canchas compartidas (best-effort)
         .then((_) => appState.sincronizarPropiedades()); // ¿el admin ya aprobó?
-    appState.cargarReservasRemotas(); // reservas compartidas (best-effort)
+    appState.cargarDescuentosSlot(); // hora feliz por-slot (precio real al reservar)
+    appState
+        .cargarReservasRemotas() // reservas compartidas (best-effort)
+        .then((_) => appState.generarReservasFijas()); // pensionados de la semana
+    appState
+        .cargarAcademiasRemotas() // academias (sobreviven reinstalación)
+        .then((_) => appState.cargarMatriculasRemotas()) // alumnos-app vinculados
+        .then((_) => appState.cargarInvitacionesRemotas()) // invitaciones por correo
+        .then((_) => appState.cargarCampeonatosRemotos()); // torneos de academias
+    appState.enriquecerSembradas(); // fotos reales de los clubes sembrados
     bool onboardingVisto = true;
     try {
       final prefs = await SharedPreferences.getInstance();
       onboardingVisto = prefs.getBool(kPrefOnboardingVisto) ?? false;
     } catch (_) {}
 
-    await Future.delayed(const Duration(milliseconds: 1600));
+    // Gancho visual COMPLETO (1.8s) solo la 1ª vez (antes del onboarding). En los
+    // arranques siguientes —incluye cuando Android mató la app en segundo plano y
+    // vuelves— el splash va CORTO para que volver sea casi instantáneo.
+    await Future.delayed(
+        Duration(milliseconds: onboardingVisto ? 450 : 1800));
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 500),
         pageBuilder: (_, __, ___) =>
-            onboardingVisto ? const ExplorarHomeScreen() : const OnboardingScreen(),
+            onboardingVisto ? const AppShell() : const OnboardingScreen(),
         transitionsBuilder: (_, anim, __, child) =>
             FadeTransition(opacity: anim, child: child),
       ),
@@ -50,51 +79,31 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        width: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [verdeClaro, verdeOscuro],
-          ),
-        ),
-        child: Center(
-          child: TweenAnimationBuilder<double>(
-            tween: Tween(begin: 0, end: 1),
-            duration: const Duration(milliseconds: 700),
-            curve: Curves.easeOutBack,
-            builder: (context, t, child) => Opacity(
-              opacity: t.clamp(0, 1),
-              child: Transform.scale(scale: 0.85 + 0.15 * t, child: child),
+      backgroundColor: _indigo,
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // LOGO "EN VIVO" (widget compartido con el loader de marca): el
+            // pin quieto y la pelota de adentro cambiando de deporte.
+            const LogoPichangolVivo(ancho: 250),
+            const SizedBox(height: 6),
+            Text(
+              kBrandTagline,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: _navyLogo,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Image.asset('assets/splash/logo.png', width: 132, height: 132),
-                const SizedBox(height: 18),
-                Text(
-                  kBrandName,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 40,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.5,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  kBrandTagline,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.92),
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
+            const SizedBox(height: 18),
+            Text('Cargando…',
+                style: TextStyle(
+                    color: _navyLogo.withOpacity(0.6),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13)),
+          ],
         ),
       ),
     );

@@ -25,6 +25,49 @@ class GrowthService {
 
   static bool get disponible => _baseUrl.isNotEmpty;
 
+  /// WhatsApp de contacto de Pichangol/EBIM para servicios (landing, redes),
+  /// configurable POR PAÍS desde la torre de control. [pais] = ISO ('PE'|'EC'|
+  /// 'BO'); el backend devuelve el número local del país con su código. Devuelve
+  /// solo dígitos, o null si no se pudo (la pantalla cae a la constante marca).
+  static Future<String?> contactoWhatsApp(String pais) async {
+    if (!disponible) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/config/contacto?pais=$pais');
+      final resp = await http.get(uri).timeout(const Duration(seconds: 6));
+      if (resp.statusCode != 200) return null;
+      final j = jsonDecode(resp.body) as Map<String, dynamic>;
+      final w = (j['whatsapp'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), '');
+      return w.isNotEmpty ? w : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Canal de comunicación GLOBAL configurado en la torre de control: decide qué
+  /// muestra el APK para contactar al profe. Valores: 'pcg_primero' (chat interno
+  /// + WhatsApp de respaldo) | 'solo_pcg' (oculta WhatsApp) | 'whatsapp_libre'
+  /// (ambos por igual). Devuelve null si no se pudo (la app cae a 'pcg_primero').
+  static Future<String?> canalComunicacion() async {
+    final j = await configPublica();
+    final c = (j?['canal'] ?? '').toString();
+    return c.isNotEmpty ? c : null;
+  }
+
+  /// Configuración pública del ambiente: canal de comunicación y si el PAGO
+  /// ONLINE está habilitado. Null si no se pudo consultar (la app conserva sus
+  /// valores actuales, sin bloquear nada).
+  static Future<Map<String, dynamic>?> configPublica() async {
+    if (!disponible) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/config/canal');
+      final resp = await http.get(uri).timeout(const Duration(seconds: 6));
+      if (resp.statusCode != 200) return null;
+      return jsonDecode(resp.body) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Carril informal: corre la IA primero (reusa el módulo de existencia en el
   /// servidor) y, si no concluye, agenda una visita. Devuelve null si el servicio
   /// no está configurado / no respondió.
@@ -68,10 +111,23 @@ class GrowthService {
 
   /// Cola de visitas del verificador (agendada/en_sitio), priorizada por demanda
   /// (las canchas más pedidas primero).
-  static Future<List<Map<String, dynamic>>> visitas({String? zona}) async {
+  static Future<List<Map<String, dynamic>>> visitas({
+    String? zona,
+    double? lat,
+    double? lng,
+    double? radioKm,
+  }) async {
     if (!disponible) return [];
     try {
-      final q = zona != null && zona.isNotEmpty ? '?zona=$zona' : '';
+      final params = <String, String>{
+        if (zona != null && zona.isNotEmpty) 'zona': zona,
+        if (lat != null) 'lat': '$lat',
+        if (lng != null) 'lng': '$lng',
+        if (radioKm != null) 'radio_km': '$radioKm',
+      };
+      final q = params.isEmpty
+          ? ''
+          : '?${params.entries.map((e) => '${e.key}=${e.value}').join('&')}';
       final uri = Uri.parse('$_baseUrl/verificacion-fisica/visitas$q');
       final resp = await http.get(uri).timeout(const Duration(seconds: 10));
       if (resp.statusCode != 200) return [];

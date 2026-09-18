@@ -111,9 +111,19 @@ def evaluar(cancha_id: str, direccion: str, ruc: str | None,
 
 
 def visitas(zona: str | None = None,
-            verificador_id: int | None = None) -> list[dict]:
-    """Lista de visitas pendientes (agendada/en_sitio) ORDENADAS por prioridad:
-    las canchas más pedidas (mayor demanda) salen primero."""
+            verificador_id: int | None = None,
+            lat: float | None = None,
+            lng: float | None = None,
+            radio_km: float | None = None) -> list[dict]:
+    """Lista de visitas pendientes (agendada/en_sitio).
+
+    Cada visita expone las coordenadas declaradas de la cancha (lat/lng) para
+    que la app pueda ubicarla. Si el verificador manda su propia posición
+    (lat/lng), se agrega `distancia_m` a cada visita y —si se pasa `radio_km`—
+    se filtran las que quedan dentro de ese radio: así la cola es por CERCANÍA
+    al verificador (Juliaca ve Juliaca, La Paz ve La Paz) y no por zonas fijas.
+    Dentro del conjunto resultante siguen priorizadas por demanda (más pedidas
+    primero)."""
     items = []
     for vf in stores.verificaciones_fisicas:
         if vf.estado not in ("agendada", "en_sitio"):
@@ -125,8 +135,22 @@ def visitas(zona: str | None = None,
             continue
         d = como_dict(vf)
         d["zona"] = c.zona
+        d["lat"] = c.lat_declarada
+        d["lng"] = c.lng_declarada
         d["demanda"] = solicitudes.demanda_de_cancha(vf.cancha_id)
+        if (lat is not None and lng is not None
+                and c.lat_declarada is not None and c.lng_declarada is not None):
+            d["distancia_m"] = round(
+                _haversine_m(lat, lng, c.lat_declarada, c.lng_declarada))
         items.append(d)
+    # Filtro por cercanía: solo cuando el verificador mandó su GPS y un radio.
+    # Las visitas sin coordenadas declaradas no pueden ubicarse → se excluyen
+    # del filtro por radio (reaparecen si se consulta sin radio).
+    if lat is not None and lng is not None and radio_km is not None:
+        tope_m = radio_km * 1000
+        items = [x for x in items
+                 if x.get("distancia_m") is not None
+                 and x["distancia_m"] <= tope_m]
     items.sort(key=lambda x: x["demanda"], reverse=True)
     return items
 

@@ -13,6 +13,7 @@ Reglas/valores: SIEMPRE desde config_incentivos (nada hardcodeado).
 from __future__ import annotations
 
 import uuid
+from datetime import timedelta
 
 from db.store import (PremioCanje, PuntosMovimiento, ahora, como_dict, mes_de,
                       stores)
@@ -76,27 +77,111 @@ def intentar_liberar_traer_cancha(cancha_id: str) -> int:
     return liberar_por_ref("cancha", cancha_id, accion="traer_cancha")
 
 
-def _saldo_disponible(usuario_id: str) -> int:
-    liberados = sum(m.puntos for m in stores.movimientos
-                    if m.usuario_id == usuario_id and m.estado == "liberado")
+def _caducidad_dias() -> int:
+    return stores.cfg_int("fidelidad_caducidad_dias")
+
+
+def _fecha_lote(m: PuntosMovimiento):
+    return m.liberado_en or m.creado_en
+
+
+def _vencido(m: PuntosMovimiento) -> bool:
+    dias = _caducidad_dias()
+    if dias <= 0:
+        return False
+    return (ahora() - _fecha_lote(m)).days >= dias
+
+
+def _lotes_restantes(usuario_id: str) -> list[tuple[PuntosMovimiento, int]]:
+    """Lotes LIBERADOS con su restante tras consumir los canjes en FIFO (los
+    canjes gastan primero los puntos más viejos — así la caducidad castiga
+    solo lo que de verdad quedó sin usar)."""
+    lotes = sorted(
+        [m for m in stores.movimientos
+         if m.usuario_id == usuario_id and m.estado == "liberado"],
+        key=_fecha_lote)
     usados = sum(cj.puntos_usados for cj in stores.canjes
                  if cj.usuario_id == usuario_id and cj.estado != "anulado")
-    return liberados - usados
+    out: list[tuple[PuntosMovimiento, int]] = []
+    for m in lotes:
+        consumo = min(m.puntos, usados)
+        usados -= consumo
+        restante = m.puntos - consumo
+        if restante > 0:
+            out.append((m, restante))
+    return out
+
+
+def _saldo_disponible(usuario_id: str) -> int:
+    """Puntos canjeables: liberados, no consumidos y NO vencidos."""
+    return sum(r for m, r in _lotes_restantes(usuario_id) if not _vencido(m))
 
 
 def saldo(usuario_id: str) -> dict:
     pendientes = sum(m.puntos for m in stores.movimientos
                      if m.usuario_id == usuario_id and m.estado == "pendiente")
+    vivos = [(m, r) for m, r in _lotes_restantes(usuario_id)
+             if not _vencido(m)]
+    dias = _caducidad_dias()
+    por_vencer = 0
+    vence_proximo = None
+    if dias > 0:
+        for m, r in vivos:
+            vence = _fecha_lote(m) + timedelta(days=dias)
+            if vence_proximo is None or vence < vence_proximo:
+                vence_proximo = vence
+            if (vence - ahora()).days <= 30:
+                por_vencer += r
+    try:
+        valor_100 = float(stores.cfg("fidelidad_valor_100_puntos"))
+    except (TypeError, ValueError):
+        valor_100 = 3.0
     return {
         "usuario_id": usuario_id,
-        "disponible": _saldo_disponible(usuario_id),
+        "disponible": sum(r for _, r in vivos),
         "pendiente": pendientes,
+        "por_vencer_30d": por_vencer,
+        "vence_proximo":
+            vence_proximo.isoformat() if vence_proximo else None,
+        "valor_100_puntos": valor_100,
     }
 
 
 def movimientos(usuario_id: str) -> list[dict]:
     return [como_dict(m) for m in stores.movimientos
             if m.usuario_id == usuario_id]
+
+
+# --- FIDELIDAD del jugador: puntos por reservas PAGADAS ----------------------
+def acreditar_reserva(usuario_id: str, monto: float, moneda: str = "S/",
+                      reserva_id: str = "") -> dict:
+    """Acredita puntos por una reserva efectivamente PAGADA (online al pagar;
+    efectivo cuando el dueño la marca pagada). LIBERADOS al instante (el pago
+    ya está verificado). Idempotente por reserva: una reserva = un lote.
+    Regla (torre): 1 punto por S/ 1 o Bs 1; $1 (Ecuador) = 3 puntos."""
+    usuario_id = (usuario_id or "").strip().lower()
+    ref = str(reserva_id or "").strip()
+    if not usuario_id or not ref or monto <= 0:
+        return {"ok": False, "error": "datos_invalidos"}
+    for m in stores.movimientos:
+        if (m.accion == "reserva_pagada" and m.ref_tipo == "reserva"
+                and str(m.ref_id) == ref):
+            return {"ok": True, "duplicada": True, "puntos": m.puntos,
+                    "saldo_disponible": _saldo_disponible(usuario_id)}
+    es_usd = str(moneda or "").strip().upper() in ("$", "USD", "US$")
+    factor = stores.cfg_int(
+        "fidelidad_puntos_por_usd" if es_usd else "fidelidad_puntos_por_unidad")
+    puntos = int(round(monto * max(0, factor)))
+    if puntos <= 0:
+        return {"ok": False, "error": "monto_muy_chico"}
+    mov = PuntosMovimiento(
+        id=stores.next_id("movimiento"), usuario_id=usuario_id,
+        accion="reserva_pagada", puntos=puntos, estado="liberado",
+        ref_tipo="reserva", ref_id=ref, creado_en=ahora(),
+        liberado_en=ahora())
+    stores.movimientos.append(mov)
+    return {"ok": True, "duplicada": False, "puntos": puntos,
+            "saldo_disponible": _saldo_disponible(usuario_id)}
 
 
 def _financiado_pichangol_mes(mes: str) -> float:
@@ -124,8 +209,17 @@ def canjear(usuario_id: str, puntos_usados: int, tipo_premio: str,
     if _saldo_disponible(usuario_id) < puntos_usados:
         return {"ok": False, "error": "saldo insuficiente"}
 
-    equivalencia = max(1, stores.cfg_int("equivalencia_puntos_por_sol"))
-    valor_soles = round(puntos_usados / equivalencia, 2)
+    # Regla vigente (fidelidad, ago-2026): 100 puntos = 3 unidades de moneda
+    # local (editable en torre). Fallback a la equivalencia histórica.
+    try:
+        valor_100 = float(stores.cfg("fidelidad_valor_100_puntos"))
+    except (TypeError, ValueError):
+        valor_100 = 0.0
+    if valor_100 > 0:
+        valor_soles = round(puntos_usados * valor_100 / 100, 2)
+    else:
+        equivalencia = max(1, stores.cfg_int("equivalencia_puntos_por_sol"))
+        valor_soles = round(puntos_usados / equivalencia, 2)
 
     if fuente_financiamiento == "pichangol":
         tope = stores.cfg_int("tope_mensual_premios_pichangol_soles")
