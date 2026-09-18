@@ -106,47 +106,65 @@ serve(async (req) => {
       statuses: {},
       primerError: "",
     };
+    // Cada consulta devuelve como máximo 20 lugares (los MÁS cercanos). En
+    // zonas densas eso deja fuera locales a 2-4 km ("Campo deportivo Edu Jr.",
+    // sep-2026): las consultas AMPLIAS siguen `nextPageToken` hasta 3 páginas.
+    const PAGINAS_EXTRA: Record<string, number> = {
+      "canchas de fútbol": 2, "campo deportivo": 2, "complejo deportivo": 1, "grass sintético": 1,
+    };
     const respuestas = await Promise.all(
       CONSULTAS.map(async (q) => {
-        try {
-          const r = await fetch(
-            "https://places.googleapis.com/v1/places:searchText",
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-Goog-Api-Key": KEY,
-                "X-Goog-FieldMask":
-                  "places.id,places.displayName,places.location,places.formattedAddress,places.types,places.photos",
-              },
-              body: JSON.stringify({
-                textQuery: q,
-                languageCode: "es",
-                regionCode: region,
-                maxResultCount: 20,
-                // Rankear por DISTANCIA: devuelve las canchas MÁS CERCANAS
-                // primero (no las más "populares").
-                rankPreference: "DISTANCE",
-                locationBias: {
-                  circle: {
-                    center: { latitude: lat, longitude: lng },
-                    radius: radius ?? 4000,
-                  },
+        const places: unknown[] = [];
+        let pageToken: string | undefined;
+        const paginas = 1 + (PAGINAS_EXTRA[q] ?? 0);
+        for (let i = 0; i < paginas; i++) {
+          try {
+            const r = await fetch(
+              "https://places.googleapis.com/v1/places:searchText",
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "X-Goog-Api-Key": KEY,
+                  "X-Goog-FieldMask":
+                    "places.id,places.displayName,places.location,places.formattedAddress,places.types,places.photos,nextPageToken",
                 },
-              }),
-            },
-          );
-          diag.statuses[String(r.status)] =
-            (diag.statuses[String(r.status)] ?? 0) + 1;
-          if (r.ok) return await r.json();
-          if (!diag.primerError) {
-            diag.primerError = (await r.text()).slice(0, 500);
+                body: JSON.stringify({
+                  textQuery: q,
+                  languageCode: "es",
+                  regionCode: region,
+                  pageSize: 20,
+                  ...(pageToken ? { pageToken } : {}),
+                  // Rankear por DISTANCIA: devuelve las canchas MÁS CERCANAS
+                  // primero (no las más "populares").
+                  rankPreference: "DISTANCE",
+                  locationBias: {
+                    circle: {
+                      center: { latitude: lat, longitude: lng },
+                      radius: radius ?? 4000,
+                    },
+                  },
+                }),
+              },
+            );
+            diag.statuses[String(r.status)] =
+              (diag.statuses[String(r.status)] ?? 0) + 1;
+            if (!r.ok) {
+              if (!diag.primerError) {
+                diag.primerError = (await r.text()).slice(0, 500);
+              }
+              break;
+            }
+            const body = await r.json();
+            places.push(...(body.places ?? []));
+            pageToken = body.nextPageToken;
+            if (!pageToken) break;
+          } catch (e) {
+            if (!diag.primerError) diag.primerError = `fetch: ${e}`;
+            break;
           }
-          return { places: [] };
-        } catch (e) {
-          if (!diag.primerError) diag.primerError = `fetch: ${e}`;
-          return { places: [] };
         }
+        return { places };
       }),
     );
 

@@ -485,6 +485,74 @@ para la API del APK.
   foto, verificada, deportes, horario, precio y botones Ver ficha pública /
   Calendario / Mapa / Editar. Test
   `test_modo_anfitrion_en_la_web_como_airbnb`.
+- **PON TU CANCHA / RECLÁMALA DESDE LA WEB (sep-2026, autorizado por el
+  director: "web = vender y atender"):** `GET/POST /anfitrion/nueva`
+  (`web/anfitrion.py::pagina_nueva_cancha`, `_validar_registro`,
+  `registrar_cancha_web`; fotos previas al alta `POST /anfitrion/nueva/foto?id=
+  u<ms>&tipo=foto|evidencia` → `canchas/<id>/` y `canchas/ev<id>/`). MISMO
+  flujo que `registrar_cancha_screen.dart`: local + dirección + punto en mapa
+  Leaflet (obligatorio, dentro de las cajas PE/EC/BO: de ahí salen país,
+  moneda, prefijo de WhatsApp y documento) + zona en cascada (`barrio`),
+  deportes (chips) con "loza multiuso (una agenda)" vs "canchas separadas
+  (una por deporte)" y piso por deporte, precio + horario + duración, fotos,
+  y VERIFICACIÓN (WhatsApp local con largo por país, relación
+  dueño/administrador/encargado, documento opcional con largo por país, nota,
+  foto de evidencia, GPS del navegador en silencio). Al enviar: INSERT en
+  `pichangol_canchas` (`datos.insertar_canchas`, ids `u<ms>` o
+  `u<ms>_<deporte>`, `verificada=false`, `dueno`=correo de Google, moneda por
+  coordenadas, `distrito=''`) + `reclamos.crear_reclamo` EN PROCESO (nota con
+  sufijo `[web · place gp_…]`); si el lugar ya tiene reclamo activo ajeno →
+  409 y `datos.borrar_canchas` revierte. Entradas: onboarding de Modo
+  anfitrión ("Registrar mi cancha"), "＋ Registrar otra cancha" en Canchas,
+  "Pon tu cancha en Pichangol" (pie y menú ☰) y el botón **"🏷️ ¿Es tuya?
+  Reclámala"** de cada cancha DESCUBIERTA del explorador (prellena nombre,
+  dirección, punto, deporte y `place`). **Al tocar una cancha descubierta se
+  abre su FICHA WEB `GET /lugar/{gp_id}?nombre&direccion&lat&lng&deporte`**
+  (`router.pagina_lugar`: foto vía `/web/foto`, Cómo llegar, "Aún sin
+  registrar", panel "¿Es tuya? Reclámala y recibe reservas" y "Abrir en la
+  app"); antes la tarjeta entera mandaba a Play (queja del director). **Canchas
+  REGISTRADAS sin dueño (legado reclamable):** su ficha `/reservar/{id}`
+  muestra "¿Es tuya esta cancha? → Reclamar" → `/anfitrion/nueva?cancha=<id>`
+  PRELLENA todo (`_legado_reclamable`: existe, no verificada, `dueno` vacío)
+  y el envío ADOPTA la misma fila (`datos.adoptar_cancha`: UPDATE con
+  `dueno`=correo + campos `COLS_ADOPCION`, solo si sigue sin dueño; si el
+  reclamo falla, `desadoptar_cancha`). `marcar_verificada` también cubre las
+  hermanas del mismo dueño a ≈150 m del reclamo (legado sin prefijo `u<ts>`).
+  **BUSCAR MI LOCAL POR NOMBRE (caso "Campo deportivo Edu Jr.", sep-2026):** el
+  descubrimiento por celda solo trae los ~20 lugares MÁS CERCANOS por consulta
+  (Text Search `rankPreference: DISTANCE`, `maxResultCount` 20) → en zonas
+  densas un local a 2-4 km no entra en ninguna lista aunque la heurística lo
+  acepte. Tres arreglos: (1) `GET /web/lugares?q&lat&lng`
+  (`descubrir.buscar_lugares`: Text Search con la consulta LIBRE del dueño,
+  sesgo 30 km, sin filtro de deporte, caché 10 min; exige `PLACES_API_KEY`,
+  sin ella `disponible:false`) y en "Pon tu cancha" la caja "🔎 Busca tu
+  local en Google Maps" (`#busca`, debounce 400 ms) cuyo resultado rellena
+  nombre, dirección, punto, `place` y sugiere el deporte; (2) el explorador
+  web RE-DESCUBRE al mover el mapa (`moveend`, zoom ≥ 12, 1 llamada por celda
+  de ~1 km) y ACUMULA las descubiertas por id (`descAcum`) recalculando la
+  distancia desde el usuario o el centro del mapa; (3) la Edge `places-cerca`
+  sigue `nextPageToken` (hasta 3 páginas en "canchas de fútbol" y "campo
+  deportivo", 2 en "complejo deportivo" y "grass sintético") → **hay que
+  redesplegarla** (`supabase functions deploy places-cerca`, laptop) en QAS y
+  PRD; también beneficia al APK, que usa la misma Edge. **(4) El EXPLORADOR
+  también busca por nombre:** lo escrito en "Dónde" + Buscar llama a
+  `/web/lugares` (`buscarEnGoogle`, una vez por consulta) y los lugares que
+  la heurística reconoce entran a "Más canchas cerca de ti" como descubiertas
+  (`data-q` = consulta que los trajo, así pasan el filtro de texto aunque el
+  nombre no contenga lo escrito); el vacío dice "Buscando … también en
+  Google Maps…" / "No encontramos … ni en Google Maps". Flag `C.lugares`
+  (= hay `PLACES_API_KEY`). Test `test_buscar_mi_local_en_google_por_nombre`.
+  El panel muestra el estado real del reclamo
+  (`_aviso_verificacion` en Hoy y Canchas: En verificación / falta validar /
+  No aprobada…). **ESPEJO EN LA NUBE (bug que esto destapó):** la torre
+  marcaba `verificada` solo en `stores.canchas` y era el APK quien escribía
+  `pichangol_canchas.verificada=true` al sincronizar → un dueño solo-web
+  nunca quedaba reservable. Ahora `reclamos._nube_verificada` (llamado en
+  `aprobar_directo`, `activar_admin`, `validar_en_sitio` y
+  `_revocar_cancha_al_rechazar`) hace `datos.marcar_verificada(cancha_id,
+  dueno, bool)` sobre la reclamada y sus hermanas `u<ts>_*` (fail-safe). OTP
+  por WhatsApp y verificación de existencia (IA) siguen solo en el app. Test
+  `test_registrar_y_reclamar_cancha_desde_la_web_como_el_app`.
 - **EDITAR CANCHA DESDE LA WEB (sep-2026, decisión del director: "web =
   vender y atender; app = operar", punto 1):** `GET/POST /anfitrion/cancha/
   {id}/editar` (`web/anfitrion.py`, calcado del editor de anuncios de

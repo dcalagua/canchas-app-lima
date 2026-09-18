@@ -24,7 +24,9 @@ import config
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
+import paises
 from db.store import stores
+from propiedad import reclamos
 from web import almacen, catalogos, datos, horarios, sesion, ui
 from web.router import (PLAY_URL, _deporte, _deportes_de, _fotos, _maps, _moneda_de, _pais_de,
                         _zona, e)
@@ -106,12 +108,12 @@ def _onboarding(ses: dict) -> HTMLResponse:
         "<p class='sub' style='font-size:16px'>Con esta cuenta todavía no tienes canchas registradas. En Pichangol tu cancha "
         "recibe reservas y pagos en línea, y tú la administras desde la app y desde aquí.</p>"
         "<div class='kpis' style='margin-top:22px'>"
-        "<div class='kpi'><small>1 · Regístrala</small><b style='font-size:16px'>Desde la app: Modo anfitrión → Pon tu cancha</b></div>"
+        "<div class='kpi'><small>1 · Regístrala</small><b style='font-size:16px'>Aquí mismo o desde la app: Pon tu cancha</b></div>"
         "<div class='kpi'><small>2 · Verifícala</small><b style='font-size:16px'>Confirmamos que eres el dueño (WhatsApp / visita)</b></div>"
         "<div class='kpi'><small>3 · Recibe reservas</small><b style='font-size:16px'>Pagos en línea, agenda y cobros aquí y en la app</b></div>"
         "</div>"
-        f"<div class='acciones' style='margin-top:24px'><a class='btn' href='{PLAY_URL}' rel='noopener'>Registrar mi cancha en la app</a>"
-        "<a class='btn sec' href='/#como'>Cómo funciona</a></div>"
+        "<div class='acciones' style='margin-top:24px'><a class='btn' href='/anfitrion/nueva'>Registrar mi cancha</a>"
+        f"<a class='btn sec' href='{PLAY_URL}' rel='noopener'>O desde la app</a><a class='btn sec' href='/#como'>Cómo funciona</a></div>"
         "<p class='sub' style='margin-top:18px;font-size:13px'>¿Ya registraste tu cancha con otro correo? Inicia sesión aquí con ese mismo correo de Google.</p>"
         "</div>")
     return ui.shell("Modo anfitrión", cuerpo, nav=_cabecera("hoy", ses), sesion=ses, ancho=True, titulo_tab="Modo anfitrión · Pichangol")
@@ -187,6 +189,7 @@ def pagina_hoy(request: Request) -> HTMLResponse:
         f"<h1 class='anf-hola' style='margin-top:6px'>¡Hola, {e((ses.get('nombre') or ses.get('email') or '').split(' ')[0])}!</h1>"
         f"<p class='sub'>{len(canchas)} cancha{'s' if len(canchas) != 1 else ''} · {n_ver} verificada{'s' if n_ver != 1 else ''} · "
         f"{len(grupos['hoy'])} reserva{'s' if len(grupos['hoy']) != 1 else ''} hoy</p>"
+        f"{_aviso_verificacion(canchas, ses['email'])}"
         f"<h2 style='margin-top:22px'>Tus reservas</h2><div class='anf-tabs' id='anfTabs'>{tabs}</div>{paneles}"
         "<h2 style='margin-top:30px'>Atajos</h2><div class='kpis'>"
         "<a class='kpi' href='/anfitrion/calendario' style='text-decoration:none'><small>Agenda</small><b style='font-size:16px'>Ver el calendario semanal</b></a>"
@@ -652,10 +655,14 @@ def pagina_canchas(request: Request, guardado: str = "") -> HTMLResponse:
     guardada = next((c for c in canchas if c["id"] == guardado), None) if guardado else None
     aviso = (f"<div class='aviso ok' style='margin:16px 0 0'>✅ Guardamos los cambios de <b>{e(guardada['nombre'])}</b>. "
              "Ya se ven en la ficha pública y en la app.</div>") if guardada else ""
+    registrada = next((c for c in canchas if c["id"] == request.query_params.get("registrada")), None)
+    if registrada:
+        aviso = (f"<div class='aviso ok' style='margin:16px 0 0'>✅ Registramos <b>{e(registrada.get('club') or registrada['nombre'])}</b>. "
+                 "Queda en verificación: te avisamos por WhatsApp y en la app cuando esté activa. Mientras tanto puedes completar fotos, hora feliz y servicios.</div>")
     cuerpo = ("<h1 class='anf-hola'>Canchas</h1><p class='sub'>Tus locales en Pichangol. Edita precio, horario, fotos y servicios aquí o en la app: es la misma cancha.</p>"
-              f"{aviso}"
+              f"{aviso}{_aviso_verificacion(canchas, ses['email'])}"
               f"<div class='anf-grid' style='grid-template-columns:repeat(auto-fill,minmax(360px,1fr));margin-top:16px'>{tarjetas}</div>"
-              f"<p style='margin-top:20px'><a class='btn' href='{PLAY_URL}' rel='noopener'>Registrar otra cancha en la app</a></p>")
+              "<p style='margin-top:20px'><a class='btn' href='/anfitrion/nueva'>＋ Registrar otra cancha</a></p>")
     return ui.shell("Canchas", cuerpo, nav=_cabecera("canchas", ses), sesion=ses, ancho=True, titulo_tab="Canchas · Modo anfitrión")
 
 
@@ -966,6 +973,414 @@ async def subir_foto_cancha(request: Request, cancha_id: str) -> JSONResponse:
     if not url:
         return JSONResponse({"ok": False, "error": "No se pudo subir la foto. Inténtalo de nuevo."}, status_code=502)
     return JSONResponse({"ok": True, "url": url})
+
+
+# ── REGISTRAR / RECLAMAR CANCHA DESDE LA WEB (decisión del director, sep-2026:
+# "web = vender y atender") ───────────────────────────────────────────────────
+# Mismo flujo que `registrar_cancha_screen.dart`: la cancha nace en
+# `pichangol_canchas` con `verificada=false` y `dueno` = correo de Google, y se
+# crea un RECLAMO en el backend (`reclamos.crear_reclamo`, en proceso) que el
+# operador aprueba en la torre. Nada queda activo sin esa aprobación; al
+# aprobar, `reclamos._nube_verificada` marca `verificada=true` en la nube (el
+# dueño web no necesita abrir el app). Catálogos y validaciones = las del app.
+
+_LEAFLET = ("<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' crossorigin=''>"
+            "<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' crossorigin=''></script>")
+_ID_NUEVA_RE = re.compile(r"^u\d{12,14}$")
+RELACIONES = [("dueno", "Dueño / propietario"), ("administrador", "Administrador"), ("encargado", "Encargado / socio")]
+DOC_NOMBRE = {"PE": "DNI", "EC": "Cédula", "BO": "CI"}
+DOC_LONGITUD = {"PE": 8, "EC": 10}  # BO: sin longitud fija (espejo de PaisConfig.docLongitud)
+
+
+def _tel_completo(iso: str, local: str) -> str:
+    return catalogos.TEL_PREFIJO.get(iso, "51") + re.sub(r"\D", "", local or "")
+
+
+def _legado_reclamable(cancha_id: str) -> dict | None:
+    """Cancha ya registrada SIN dueño y sin verificar (mismo criterio que el
+    "legado reclamable" de `AppState.misCanchas`): cualquiera puede reclamarla."""
+    if not cancha_id or cancha_id.startswith("gp_"):
+        return None
+    c = datos.cancha(cancha_id)
+    if not c or c.get("eliminada") or c.get("verificada") or (c.get("dueno") or "").strip():
+        return None
+    return c
+
+
+@router.get("/anfitrion/nueva", response_class=HTMLResponse)
+def pagina_nueva_cancha(request: Request, nombre: str = "", direccion: str = "", lat: str = "", lng: str = "", place: str = "",
+                        deporte: str = "", cancha: str = "") -> HTMLResponse:
+    """Formulario "Pon tu cancha" (calcado del alta de anuncio de Airbnb, en una
+    sola página con secciones). Llega vacío o PRELLENADO desde una cancha
+    descubierta en Google ("¿Es tuya? Reclámala": nombre, dirección, punto)."""
+    ses, resp = _sesion_o_entrar(request, "/anfitrion/nueva" + (("?" + request.url.query) if request.url.query else ""))
+    if resp is not None:
+        return resp
+    try:
+        la, ln = (float(lat), float(lng)) if lat and lng else (None, None)
+    except ValueError:
+        la, ln = None, None
+    # Cancha de LEGADO (registrada, sin dueño): se prellena todo y el envío la
+    # ADOPTA (misma fila) en vez de crear otra.
+    existente = _legado_reclamable(cancha)
+    pre = {"deportes": [], "superficie": "", "precio": "", "apertura": "07:00", "cierre": "23:00", "dur": 60, "nombre_cancha": "", "zona": ""}
+    if existente:
+        nombre = existente.get("club") or existente.get("nombre") or nombre
+        direccion = existente.get("direccion") or direccion
+        la, ln = (existente.get("lat"), existente.get("lng")) if existente.get("lat") or existente.get("lng") else (la, ln)
+        pre = {"deportes": [d for d in _deportes_de(existente) if d in catalogos.DEPORTES_ACTIVOS], "superficie": existente.get("superficie") or "",
+               "precio": f"{existente['precio_hora']:.2f}" if existente.get("precio_hora") else "", "apertura": existente.get("hora_apertura") or "07:00",
+               "cierre": existente.get("hora_cierre") or "23:00", "dur": int(existente.get("duracion_slot_min") or 60),
+               "nombre_cancha": existente.get("nombre") or "", "zona": existente.get("barrio") or ""}
+    elif deporte in catalogos.DEPORTES_ACTIVOS:
+        pre["deportes"] = [deporte]
+    iso = paises.pais_de_coordenadas(la, ln) if la is not None else "PE"
+    nuevo_id = existente["id"] if existente else f"u{int(time.time() * 1000)}"
+    dep_ops = [(d, f"{_deporte(d)[1]} {_deporte(d)[0]}") for d in catalogos.DEPORTES_ACTIVOS]
+    cfg = {"id": nuevo_id, "existente": bool(existente), "pre": pre, "lat": la, "lng": ln, "iso": iso, "place": place[:120], "superficies": catalogos.SUPERFICIES,
+           "activos": catalogos.DEPORTES_ACTIVOS, "nombres": {d: _deporte(d)[0] for d in catalogos.DEPORTES_ACTIVOS},
+           "maxFotos": catalogos.MAX_FOTOS, "storage": almacen.disponible(), "tel": catalogos.TEL_PREFIJO,
+           "telLen": catalogos.TEL_LONGITUD, "labels": catalogos.GEO_LABELS, "doc": DOC_NOMBRE, "docLen": DOC_LONGITUD,
+           "monedas": {k: paises.simbolo_de_moneda(v) for k, v in paises.MONEDA_POR_PAIS.items()}}
+    secciones = [("local", "Tu local"), ("deportes", "Deportes y piso"), ("precio", "Precio y horario"), ("fotos", "Fotos"), ("dueno", "Verificación")]
+    nav = "".join(f"<a href='#sec-{k}' class='edit-nav-it'>{n}</a>" for k, n in secciones)
+    cuerpo = f"""
+<div class='edit-top'><a class='volver-lnk' href='/anfitrion'>‹ Modo anfitrión</a>
+<h1 class='anf-hola' style='margin-top:8px'>{'Reclama tu cancha' if existente else 'Pon tu cancha en Pichangol'}</h1><p class='sub'>{'Esta cancha ya está en Pichangol pero nadie la administra. Completa los datos y confirmamos que es tuya antes de activarla.' if existente else 'Publícala y empieza a recibir reservas. Confirmamos que eres el dueño antes de activarla (WhatsApp o visita), igual que en la app.'}</p></div>
+<div class='edit-grid'><nav class='edit-nav'>{nav}</nav>
+<form id='fNueva' class='edit-form' autocomplete='off' novalidate>
+ <section class='panel edit-sec' id='sec-local'><h2>Tu local</h2>
+  {"" if existente or not config.PLACES_API_KEY else "<label for='busca'>🔎 Busca tu local en Google Maps <span class='req'>rellena nombre, dirección y ubicación</span></label><input id='busca' maxlength='80' placeholder='Ej. Campo deportivo Edu Jr.' autocomplete='off'><div id='resBusca' class='res-busca' hidden></div>"}
+  <label for='local'>Nombre del local / club</label><input id='local' maxlength='{catalogos.NOMBRE_MAX}' value='{e(nombre[:catalogos.NOMBRE_MAX])}' placeholder='Ej. Complejo Deportivo Los Olivos'>
+  <label for='direccion'>Dirección <span class='req'>opcional</span></label><input id='direccion' maxlength='160' value='{e(direccion[:160])}' placeholder='Av. Aviación 1234, San Borja'>
+  <label>Ubicación exacta <span class='req'>obligatoria: de aquí salen el país, la moneda y la distancia para los jugadores</span></label>
+  <div id='mapaSede' class='mapa-ficha' style='height:300px;margin-top:6px'></div>
+  <div class='acciones' style='margin-top:8px'><button type='button' class='btn sec' id='btnUbic'>📍 Usar mi ubicación</button><span class='sub' id='ubicTxt' style='margin:0'>{'Toca el mapa para fijar tu cancha.' if la is None else f'{la:.5f}, {ln:.5f}'}</span></div>
+  <label>Zona</label>
+  <div class='row' id='geoRow' style='grid-template-columns:1fr 1fr 1fr'><select id='g1'><option value=''>—</option></select><select id='g2'><option value=''>—</option></select><select id='g3'><option value=''>—</option></select></div>
+ </section>
+ <section class='panel edit-sec' id='sec-deportes'><h2>Deportes y tipo de piso</h2><p class='sub'>Marca todo lo que se juega en tu local.</p>
+  {_chips('deportes', dep_ops, set(pre['deportes']), multi=True)}
+  <div id='modoWrap' hidden><label style='margin-top:18px'>¿Cómo son tus canchas?</label>
+   {_chips('modo', [('unica', '🏟️ Una sola loza multiuso (una agenda)'), ('separadas', '🏟️🏟️ Canchas separadas (una por deporte)')], 'separadas')}</div>
+  <label style='margin-top:18px'>Tipo de piso <span class='req'>obligatorio</span></label>
+  <div id='supWrap'><p class='sub'>Marca primero un deporte.</p></div>
+  <label for='nombreCancha' style='margin-top:18px'>Nombre de la cancha <span class='req'>opcional</span></label><input id='nombreCancha' maxlength='{catalogos.NOMBRE_MAX}' value='{e(pre['nombre_cancha'])}' placeholder='Ej. Cancha 1 · Grass'>
+ </section>
+ <section class='panel edit-sec' id='sec-precio'><h2>Precio y horario</h2>
+  <label for='precio'>Precio por hora</label>
+  <div class='inp-moneda'><span id='monSpan'>{e(paises.simbolo_de_moneda(paises.moneda_de_pais(iso)))}</span><input id='precio' type='number' min='1' step='0.01' inputmode='decimal' value='{pre['precio']}' placeholder='120.00'></div>
+  <div class='row' style='margin-top:14px'><div><label for='hora_apertura'>Abre</label>{_select_hora('hora_apertura', pre['apertura'])}</div>
+  <div><label for='hora_cierre'>Cierra</label>{_select_hora('hora_cierre', pre['cierre'])}</div></div>
+  <p class='sub' style='font-size:13px'>La hora de cierre es la hora en que <b>empieza el último turno</b>: si cierras a las 23:00, el último turno es 23:00–00:00. Un cierre menor o igual a la apertura cae al día siguiente.</p>
+  <label style='margin-top:14px'>Duración del turno</label>
+  {_chips('duracion_slot_min', catalogos.DURACIONES, pre['dur'] if pre['dur'] in catalogos.DURACIONES else 60, fmt=catalogos.etiqueta_duracion)}
+  <p class='sub' style='font-size:12.5px'>Hora feliz, seña, servicios del local y servicios extra los configuras después en Editar cancha.</p>
+ </section>
+ <section class='panel edit-sec' id='sec-fotos'><h2>Fotos</h2><p class='sub'>La primera es la portada. Hasta {catalogos.MAX_FOTOS}. Puedes agregarlas después.</p>
+  <div class='edit-fotos' id='fotos'></div>
+  <div class='acciones' style='margin-top:12px'><label class='btn sec' for='inFotos'>📷 Agregar fotos</label><input type='file' id='inFotos' accept='image/*' multiple hidden{'' if almacen.disponible() else ' disabled'}>
+  <span class='sub' id='fotosMsg' style='margin:0'>{'' if almacen.disponible() else 'La subida de fotos no está disponible en este ambiente; súbelas desde la app.'}</span></div>
+ </section>
+ <section class='panel edit-sec' id='sec-dueno'><h2>Verificación de propiedad</h2><p class='sub'>Existir no es ser dueño: con estos datos el equipo de Pichangol confirma que la cancha es tuya antes de activarla. No se publican.</p>
+  <label for='wa'>WhatsApp del local o del dueño <span class='req'>obligatorio</span></label><div class='inp-moneda' style='max-width:300px'><span id='telPre'>+{catalogos.TEL_PREFIJO.get(iso, '51')}</span><input id='wa' inputmode='tel' maxlength='15' placeholder='999 888 777'></div>
+  <label style='margin-top:14px'>Tu relación con el local</label>{_chips('relacion', RELACIONES, 'dueno')}
+  <label for='doc' style='margin-top:14px'><span id='docNombre'>{DOC_NOMBRE.get(iso, 'Documento')}</span> del titular <span class='req'>opcional, ayuda a aprobar más rápido</span></label><input id='doc' inputmode='numeric' maxlength='12' style='max-width:220px' placeholder='Solo números'>
+  <label for='nota' style='margin-top:14px'>Algo que debamos saber <span class='req'>opcional</span></label><input id='nota' maxlength='200' placeholder='Ej. El local está a nombre de mi socio, yo lo administro.'>
+  <label style='margin-top:14px'>Prueba de propiedad <span class='req'>opcional: recibo de luz, licencia, contrato</span></label>
+  <div class='acciones'><label class='btn sec' for='inEvid'>📎 Subir foto</label><input type='file' id='inEvid' accept='image/*' hidden{'' if almacen.disponible() else ' disabled'}><span class='sub' id='evidMsg' style='margin:0'></span></div>
+ </section>
+</form></div>
+<div class='barra-guardar'><div class='wrap-xl'><span class='sub' id='msgGuardar' style='margin:0'>Al enviar, tu cancha queda <b>en verificación</b> y te avisamos por WhatsApp y en la app cuando esté activa.</span>
+<button type='button' class='btn' id='btnGuardar'>{'Reclamar mi cancha' if existente else 'Registrar mi cancha'}</button></div></div>
+<script>var CFG={json.dumps(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{_JS_NUEVA}</script>"""
+    return ui.shell("Pon tu cancha", cuerpo, nav=_cabecera("canchas", ses, tabs_visibles=False), sesion=ses, ancho=True,
+                    extra_head=_LEAFLET, titulo_tab="Pon tu cancha · Pichangol")
+
+
+_JS_NUEVA = r"""
+(function(){
+var fotos=[], evid='', dep=(CFG.pre.deportes||[]).slice(), sups={}, sup=CFG.pre.superficie||'', lat=CFG.lat, lng=CFG.lng, iso=CFG.iso, arbol=null, subiendo=0, mapa, marker, solLat=null, solLng=null;
+dep.forEach(function(d){sups[d]=sup});
+function $(id){return document.getElementById(id)}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;')}
+function sel(g){var b=document.querySelector(".chip.sel[data-g='"+g+"']");return b?b.dataset.v:''}
+function modo(){return dep.length>1?sel('modo'):'unica'}
+function union(){var out=[];dep.forEach(function(d){(CFG.superficies[d]||[]).forEach(function(s){if(out.indexOf(s)<0)out.push(s)})});return out}
+function chips(g,lista,val){return "<div class='chips' style='margin-top:6px'>"+lista.map(function(s){return "<button type='button' class='chip"+(s===val?' sel':'')+"' data-g='"+g+"' data-v='"+esc(s)+"'>"+esc(s)+"</button>"}).join('')+"</div>"}
+function pintarSup(){var w=$('supWrap');if(!dep.length){w.innerHTML="<p class='sub'>Marca primero un deporte.</p>";return}
+  if(modo()==='separadas'){w.innerHTML=dep.map(function(d){return "<div style='margin-top:8px'><b style='font-size:13px'>"+esc(CFG.nombres[d]||d)+"</b>"+chips('sup_'+d,CFG.superficies[d]||[],sups[d]||'')+"</div>"}).join('')}
+  else{var u=union();if(u.indexOf(sup)<0)sup='';w.innerHTML=chips('sup',u,sup)}}
+document.addEventListener('click',function(ev){var b=ev.target.closest('.chip[data-g]');if(!b)return;var g=b.dataset.g,v=b.dataset.v;
+  if(g==='deportes'){b.classList.toggle('sel');var i=dep.indexOf(v);if(i>=0)dep.splice(i,1);else dep.push(v);$('modoWrap').hidden=dep.length<2;pintarSup();return}
+  b.closest('.chips').querySelectorAll('.chip').forEach(function(x){x.classList.remove('sel')});b.classList.add('sel');
+  if(g==='modo'){pintarSup();return}if(g==='sup'){sup=v;return}if(g.indexOf('sup_')===0){sups[g.slice(4)]=v}});
+// ── buscar el local en Google por nombre (rellena nombre, dirección, punto y place) ──
+var place = CFG.place || '', tBusca = null, inBusca = $('busca');
+if(inBusca){
+  inBusca.addEventListener('input', function(){ clearTimeout(tBusca); var q = this.value.trim(), box = $('resBusca'); if(q.length < 3){ box.hidden = true; box.innerHTML = ''; return; }
+    tBusca = setTimeout(function(){ var c = mapa ? mapa.getCenter() : null; var qs = '/web/lugares?q=' + encodeURIComponent(q) + (c ? '&lat=' + c.lat + '&lng=' + c.lng : '');
+      fetch(qs).then(function(r){ return r.json(); }).then(function(j){ var l = j.lugares || []; box.hidden = false;
+        box.innerHTML = l.length ? l.map(function(x){ return "<button type='button' class='res-it' data-id='" + esc(x.id) + "' data-nombre='" + esc(x.nombre) + "' data-dir='" + esc(x.direccion) + "' data-lat='" + x.lat + "' data-lng='" + x.lng + "' data-dep='" + esc(x.deporte) + "'><b>" + esc(x.nombre) + "</b><small>" + esc(x.direccion) + (x.km != null ? ' · a ' + x.km + ' km' : '') + "</small></button>"; }).join('')
+          : "<div class='sub' style='padding:8px 12px'>No encontramos ese local en Google. Escribe el nombre abajo y marca el punto en el mapa.</div>"; }).catch(function(){ box.hidden = true; }); }, 400); });
+  $('resBusca').addEventListener('click', function(ev){ var b = ev.target.closest('.res-it'); if(!b) return;
+    $('local').value = b.dataset.nombre; $('direccion').value = b.dataset.dir; place = b.dataset.id; inBusca.value = b.dataset.nombre; $('resBusca').hidden = true;
+    ponerPunto(parseFloat(b.dataset.lat), parseFloat(b.dataset.lng), true);
+    if(!dep.length && b.dataset.dep && CFG.superficies[b.dataset.dep]){ var ch = document.querySelector(".chip[data-g='deportes'][data-v='" + b.dataset.dep + "']"); if(ch) ch.click(); } });
+}
+// ── mapa + país + zona (mismo patrón que Mi academia) ──
+function paisDe(la,ln){var C={PE:[-18.4,-0.03,-81.4,-68.6],EC:[-5.1,1.7,-81.1,-75.1],BO:[-22.95,-9.6,-69.7,-57.4]};for(var k in C){var c=C[k];if(la>=c[0]&&la<=c[1]&&ln>=c[2]&&ln<=c[3])return k}return 'PE'}
+function ponerPunto(la,ln,centrar){lat=la;lng=ln;$('ubicTxt').textContent=la.toFixed(5)+', '+ln.toFixed(5);if(mapa){if(marker)marker.setLatLng([la,ln]);else marker=L.marker([la,ln]).addTo(mapa);if(centrar)mapa.setView([la,ln],16)}
+  var p=paisDe(la,ln);if(p!==iso||!arbol){iso=p;$('telPre').textContent='+'+CFG.tel[iso];$('monSpan').textContent=CFG.monedas[iso]||'S/';$('docNombre').textContent=CFG.doc[iso]||'Documento';cargarGeo()}}
+if(window.L){var c0=lat!=null?[lat,lng]:{PE:[-12.05,-77.04],EC:[-2.17,-79.92],BO:[-16.5,-68.15]}[iso];mapa=L.map('mapaSede').setView(c0,lat!=null?16:11);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(mapa);
+  if(lat!=null)marker=L.marker([lat,lng]).addTo(mapa);mapa.on('click',function(ev){ponerPunto(ev.latlng.lat,ev.latlng.lng,false)});
+  $('btnUbic').addEventListener('click',function(){if(!navigator.geolocation){pcgToast('Tu navegador no permite ubicación.');return}navigator.geolocation.getCurrentPosition(function(p){solLat=p.coords.latitude;solLng=p.coords.longitude;ponerPunto(p.coords.latitude,p.coords.longitude,true)},function(){pcgToast('No pudimos leer tu ubicación.')})})}
+function opts(s,lista,val,ph){s.innerHTML="<option value=''>"+ph+"</option>"+lista.map(function(o){return "<option value='"+esc(o)+"'"+(o===val?' selected':'')+">"+esc(o)+"</option>"}).join('')}
+function cargarGeo(){fetch('/web/geo/'+iso).then(function(r){return r.json()}).then(function(j){if(!j.ok)return;arbol=j.arbol;var lb=j.labels,pre=['','',''];
+  if(CFG.pre.zona){for(var a in arbol){for(var b in arbol[a]){if(arbol[a][b].indexOf(CFG.pre.zona)>=0){pre=[a,b,CFG.pre.zona]}}}}
+  opts($('g1'),Object.keys(arbol),pre[0],lb[0]);opts($('g2'),pre[0]?Object.keys(arbol[pre[0]]):[],pre[1],lb[1]);opts($('g3'),pre[1]?arbol[pre[0]][pre[1]]:[],pre[2],lb[2])}).catch(function(){})}
+$('modoWrap').hidden=dep.length<2;pintarSup();
+$('g1').addEventListener('change',function(){opts($('g2'),this.value?Object.keys(arbol[this.value]):[],'',CFG.labels[iso][1]);opts($('g3'),[],'',CFG.labels[iso][2])});
+$('g2').addEventListener('change',function(){opts($('g3'),this.value?arbol[$('g1').value][this.value]:[],'',CFG.labels[iso][2])});
+cargarGeo();
+// GPS del que reclama (anti-fraude de la torre): se intenta en silencio, sin bloquear.
+if(navigator.geolocation){try{navigator.geolocation.getCurrentPosition(function(p){solLat=p.coords.latitude;solLng=p.coords.longitude},function(){},{timeout:6000,maximumAge:300000})}catch(e){}}
+// ── fotos y evidencia ──
+function comprimir(file,M){return new Promise(function(res,rej){var img=new Image(),url=URL.createObjectURL(file);img.onload=function(){var w=img.width,h=img.height,k=Math.min(1,M/Math.max(w,h));var cv=document.createElement('canvas');cv.width=Math.round(w*k);cv.height=Math.round(h*k);cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);URL.revokeObjectURL(url);cv.toBlob(function(b){b?res(b):rej(new Error('img'))},'image/jpeg',0.85)};img.onerror=function(){URL.revokeObjectURL(url);rej(new Error('img'))};img.src=url})}
+async function subir(file,tipo){var blob=await comprimir(file,1600);var r=await fetch('/anfitrion/nueva/foto?id='+encodeURIComponent(CFG.id)+'&tipo='+tipo,{method:'POST',body:blob,headers:{'Content-Type':'image/jpeg'}});return r.json()}
+function pintarFotos(){$('fotos').innerHTML=fotos.map(function(u,i){return "<div class='foto' data-url='"+esc(u)+"'><img src='"+esc(u)+"' alt=''><span class='portada'"+(i?' hidden':'')+">Portada</span><div class='acc'><button type='button' class='mini' data-acc='portada' title='Usar como portada'>★</button><button type='button' class='mini' data-acc='quitar' title='Quitar'>✕</button></div></div>"}).join('')}
+document.addEventListener('click',function(ev){var a=ev.target.closest('.foto .mini');if(!a)return;var u=a.closest('.foto').dataset.url,i=fotos.indexOf(u);if(a.dataset.acc==='quitar'&&i>=0)fotos.splice(i,1);if(a.dataset.acc==='portada'&&i>0){fotos.splice(i,1);fotos.unshift(u)}pintarFotos()});
+$('inFotos').addEventListener('change',async function(){var files=Array.prototype.slice.call(this.files||[]);this.value='';var msg=$('fotosMsg');
+  for(var i=0;i<files.length;i++){if(fotos.length>=CFG.maxFotos){msg.textContent='Máximo '+CFG.maxFotos+' fotos.';break}subiendo++;msg.textContent='Subiendo foto '+(i+1)+' de '+files.length+'…';
+    try{var j=await subir(files[i],'foto');if(j.ok){fotos.push(j.url);pintarFotos();msg.textContent=''}else msg.textContent=j.error||'No se pudo subir.'}catch(e){msg.textContent='No se pudo subir la foto.'}subiendo--}});
+$('inEvid').addEventListener('change',async function(){var f=this.files&&this.files[0];this.value='';if(!f)return;subiendo++;$('evidMsg').textContent='Subiendo…';
+  try{var j=await subir(f,'evidencia');if(j.ok){evid=j.url;$('evidMsg').textContent='✅ Prueba adjunta.'}else $('evidMsg').textContent=j.error||'No se pudo subir.'}catch(e){$('evidMsg').textContent='No se pudo subir.'}subiendo--});
+// ── enviar ──
+$('btnGuardar').addEventListener('click',async function(){var btn=this,msg=$('msgGuardar');if(subiendo>0){msg.textContent='Espera a que terminen de subir las fotos.';return}
+  var body={id:CFG.id,existente:CFG.existente,place:place,nombre_local:$('local').value,direccion:$('direccion').value,lat:lat,lng:lng,zona:$('g3').value,deportes:dep,modo:modo(),superficie:sup,superficies:sups,
+    nombre_cancha:$('nombreCancha').value,precio_hora:parseFloat($('precio').value)||0,hora_apertura:$('hora_apertura').value,hora_cierre:$('hora_cierre').value,duracion_slot_min:+sel('duracion_slot_min')||60,
+    fotos:fotos,whatsapp:$('wa').value,relacion:sel('relacion'),documento:$('doc').value,nota:$('nota').value,evidencia:evid,sol_lat:solLat,sol_lng:solLng};
+  btn.disabled=true;msg.classList.remove('err');msg.textContent='Registrando…';
+  try{var r=await fetch('/anfitrion/nueva',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});var j=await r.json();
+    if(j.ok){location.href=j.url||'/anfitrion/canchas';return}msg.classList.add('err');msg.textContent=j.error||'No se pudo registrar.';if(j.campo){var el=document.getElementById('sec-'+j.campo);if(el)el.scrollIntoView({behavior:'smooth'})}}
+  catch(e){msg.classList.add('err');msg.textContent='No se pudo registrar. Revisa tu conexión.'}btn.disabled=false});
+})();
+"""
+
+
+def _validar_registro(b: dict, email: str) -> tuple[list[dict] | None, dict, str, str]:
+    """Aplica las MISMAS reglas que `registrar_cancha_screen._publicar`.
+    Devuelve (filas para `pichangol_canchas`, datos del reclamo, error, sección)."""
+    if not isinstance(b, dict):
+        return None, {}, "Datos inválidos.", ""
+    nuevo_id = str(b.get("id") or "")
+    existente = _legado_reclamable(nuevo_id) if b.get("existente") else None
+    if not existente and not _ID_NUEVA_RE.match(nuevo_id):
+        return None, {}, "Recarga la página e inténtalo de nuevo.", "local"
+    local = re.sub(r"\s+", " ", str(b.get("nombre_local") or "")).strip()[:catalogos.NOMBRE_MAX]
+    if len(local) < 3:
+        return None, {}, "Pon el nombre de tu local.", "local"
+    direccion = re.sub(r"\s+", " ", str(b.get("direccion") or "")).strip()[:160]
+    try:
+        la, ln = float(b.get("lat")), float(b.get("lng"))
+    except (TypeError, ValueError):
+        return None, {}, "Ubica tu cancha en el mapa (toca el punto exacto o usa tu ubicación).", "local"
+    if not any(c[0] <= la <= c[1] and c[2] <= ln <= c[3] for c in paises._CAJAS.values()):
+        return None, {}, "El punto debe estar en Perú, Ecuador o Bolivia.", "local"
+    iso = paises.pais_de_coordenadas(la, ln)
+    zona = re.sub(r"\s+", " ", str(b.get("zona") or "")).strip()[:80]
+    deps = []
+    for d in (b.get("deportes") or []):
+        d = str(d).lower()
+        if d in catalogos.DEPORTES_ACTIVOS and d not in deps:
+            deps.append(d)
+    if not deps:
+        return None, {}, "Marca al menos un deporte.", "deportes"
+    modo = "separadas" if (len(deps) > 1 and str(b.get("modo")) == "separadas") else "unica"
+    sups_por_dep: dict[str, str] = {}
+    if modo == "separadas":
+        raw = b.get("superficies") if isinstance(b.get("superficies"), dict) else {}
+        for d in deps:
+            s = str(raw.get(d) or "").strip()
+            if s not in catalogos.SUPERFICIES.get(d, []):
+                return None, {}, f"Marca el tipo de piso de {_deporte(d)[0]}.", "deportes"
+            sups_por_dep[d] = s
+    else:
+        union = [s for d in deps for s in catalogos.SUPERFICIES.get(d, [])]
+        s = str(b.get("superficie") or "").strip()
+        if s not in union:
+            return None, {}, "Marca el tipo de piso de la cancha (obligatorio).", "deportes"
+        sups_por_dep = {d: s for d in deps}
+    try:
+        precio = round(float(b.get("precio_hora")), 2)
+    except (TypeError, ValueError):
+        precio = 0
+    if not (0 < precio <= 100000):
+        return None, {}, "Pon el precio por hora.", "precio"
+    ap, ci = str(b.get("hora_apertura") or "07:00"), str(b.get("hora_cierre") or "23:00")
+    if not (_HORA_RE.match(ap) and _HORA_RE.match(ci)):
+        return None, {}, "Hora no válida (usa horas en punto).", "precio"
+    try:
+        dur = int(b.get("duracion_slot_min") or 60)
+    except (TypeError, ValueError):
+        dur = 0
+    if dur not in catalogos.DURACIONES:
+        return None, {}, "Duración del turno no válida.", "precio"
+    prefijo = almacen.prefijo_cancha(nuevo_id) if almacen.disponible() else None
+    previas = set(_fotos(existente)) if existente else set()
+    fotos = []
+    for u in (b.get("fotos") or []):
+        u = str(u).strip()
+        if u and u not in fotos and (u in previas or (prefijo and u.startswith(prefijo))):
+            fotos.append(u)
+    if existente and not fotos:
+        fotos = _fotos(existente)
+    fotos = fotos[:catalogos.MAX_FOTOS]
+    wa_local = re.sub(r"\D", "", str(b.get("whatsapp") or ""))
+    cod = catalogos.TEL_PREFIJO[iso]
+    if wa_local.startswith(cod) and len(wa_local) > catalogos.TEL_LONGITUD[iso]:
+        wa_local = wa_local[len(cod):]
+    if len(wa_local) != catalogos.TEL_LONGITUD[iso]:
+        return None, {}, f"El WhatsApp debe tener {catalogos.TEL_LONGITUD[iso]} dígitos (sin el +{cod}).", "dueno"
+    relacion = str(b.get("relacion") or "dueno")
+    if relacion not in {k for k, _ in RELACIONES}:
+        relacion = "dueno"
+    doc = re.sub(r"\D", "", str(b.get("documento") or ""))
+    if doc and iso in DOC_LONGITUD and len(doc) != DOC_LONGITUD[iso]:
+        return None, {}, f"Si pones tu {DOC_NOMBRE[iso]}, debe tener {DOC_LONGITUD[iso]} dígitos (o déjalo vacío).", "dueno"
+    nota = re.sub(r"\s+", " ", str(b.get("nota") or "")).strip()[:200]
+    evid = str(b.get("evidencia") or "").strip()
+    pref_ev = almacen.prefijo_cancha(f"ev{nuevo_id}") if almacen.disponible() else None
+    if evid and not (pref_ev and evid.startswith(pref_ev)):
+        evid = ""
+    try:
+        sol = (float(b.get("sol_lat")), float(b.get("sol_lng"))) if b.get("sol_lat") is not None and b.get("sol_lng") is not None else (None, None)
+    except (TypeError, ValueError):
+        sol = (None, None)
+    moneda = paises.simbolo_de_moneda(paises.moneda_de_pais(iso))
+    nombre_cancha = re.sub(r"\s+", " ", str(b.get("nombre_cancha") or "")).strip()[:catalogos.NOMBRE_MAX]
+    base = {"club": local, "distrito": "", "barrio": zona, "precio_hora": precio, "lat": la, "lng": ln, "club_fundador": False,
+            "digitalizada": True, "direccion": direccion or None, "registrada": True, "foto_url": fotos[0] if fotos else None,
+            "fotos": fotos, "dueno": email, "verificada": False, "hora_apertura": ap, "hora_cierre": ci, "duracion_slot_min": dur,
+            "eliminada": False, "amenidades": [], "moneda": moneda, "servicios_extra": [], "descuento_valle": 0,
+            "valle_desde": "07:00", "valle_hasta": "12:00", "sena_pct": 0}
+    filas = []
+    if existente:
+        # Adopción: UNA fila (la existente); si marcó varios deportes, van en
+        # la misma loza (agenda compartida), como el editor del app.
+        principal = catalogos.deporte_principal(deps)
+        nombre = nombre_cancha or existente.get("nombre") or f"{_deporte(principal)[0]} 1"
+        filas.append({**base, "id": nuevo_id, "nombre": nombre, "deporte": principal, "deportes": deps, "superficie": sups_por_dep[principal], "_adoptar": True})
+    elif modo == "unica":
+        principal = catalogos.deporte_principal(deps)
+        nombre = nombre_cancha or (f"{_deporte(principal)[0]} 1" if len(deps) == 1 else "Cancha 1")
+        filas.append({**base, "id": nuevo_id, "nombre": nombre, "deporte": principal, "deportes": deps, "superficie": sups_por_dep[principal]})
+    else:
+        for d in deps:
+            filas.append({**base, "id": f"{nuevo_id}_{d}", "nombre": f"{_deporte(d)[0]} 1", "deporte": d, "deportes": [d], "superficie": sups_por_dep[d]})
+    reclamo = {"cancha_id": filas[0]["id"], "nombre_local": local, "telefono_contacto": cod + wa_local, "dni": doc or None,
+               "relacion": relacion, "lat": la, "lng": ln, "solicitante_lat": sol[0], "solicitante_lng": sol[1],
+               "foto_evidencia_url": evid, "nota_reclamante": nota, "place": str(b.get("place") or "")[:120]}
+    return filas, reclamo, "", ""
+
+
+@router.post("/anfitrion/nueva")
+async def registrar_cancha_web(request: Request) -> JSONResponse:
+    """Crea la(s) cancha(s) en `pichangol_canchas` (sin verificar, a nombre
+    del correo de la sesión) y el RECLAMO en el backend; la torre lo aprueba.
+    Si el lugar ya tiene un reclamo ACTIVO de otra persona, no se registra."""
+    ses = sesion.de_request(request)
+    if not ses:
+        return JSONResponse({"ok": False, "error": "sesion_requerida"}, status_code=401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": "Datos inválidos."}, status_code=400)
+    filas, rec, err, seccion = _validar_registro(body, ses["email"])
+    if filas is None:
+        return JSONResponse({"ok": False, "error": err, "campo": seccion}, status_code=400)
+    # Anti doble-reclamo ANTES de escribir: mismo criterio que crear_reclamo.
+    activo = reclamos.lugar_reclamado(rec["lat"], rec["lng"], rec["cancha_id"], ses["email"])
+    if activo.get("reclamada") and not activo.get("por_mi"):
+        return JSONResponse({"ok": False, "error": "Este lugar ya tiene un reclamo en curso de otra persona. Si es tu cancha, escríbenos por WhatsApp.", "campo": "local"}, status_code=409)
+    adoptar = bool(filas[0].get("_adoptar"))
+    if adoptar:
+        campos = {k: v for k, v in filas[0].items() if k in datos.COLS_ADOPCION}
+        ok = datos.adoptar_cancha(filas[0]["id"], ses["email"], campos)
+    else:
+        ok = datos.insertar_canchas(filas)
+    if not ok:
+        return JSONResponse({"ok": False, "error": "No pudimos guardar tu cancha en este momento. Inténtalo de nuevo."}, status_code=503)
+    r = reclamos.crear_reclamo(
+        rec["cancha_id"], ses["email"], rec["nombre_local"], rec["telefono_contacto"], rec["dni"], None, rec["relacion"],
+        rec["lat"], rec["lng"], rec["solicitante_lat"], rec["solicitante_lng"],
+        solicitante_nombre=ses.get("nombre") or "", foto_evidencia_url=rec["foto_evidencia_url"],
+        nota_reclamante=(rec["nota_reclamante"] + (f" [web · place {rec['place']}]" if rec["place"] else " [web]")).strip())
+    if not r.get("ok"):
+        if adoptar:
+            datos.desadoptar_cancha(filas[0]["id"], ses["email"])
+        else:
+            datos.borrar_canchas([f["id"] for f in filas], ses["email"])
+        msg = ("Este lugar ya tiene un reclamo en curso de otra persona. Si es tu cancha, escríbenos por WhatsApp."
+               if r.get("error") == "ya_reclamada" else "No pudimos registrar el reclamo. Inténtalo de nuevo.")
+        return JSONResponse({"ok": False, "error": msg, "campo": "local"}, status_code=409)
+    print(f"[registro-web] {ses['email']} registró {rec['nombre_local']!r}: {[f['id'] for f in filas]} · reclamo #{r.get('reclamo_id')}", flush=True)
+    return JSONResponse({"ok": True, "url": f"/anfitrion/canchas?registrada={filas[0]['id']}", "reclamo_id": r.get("reclamo_id"), "ids": [f["id"] for f in filas]})
+
+
+@router.post("/anfitrion/nueva/foto")
+async def subir_foto_nueva(request: Request, id: str = "", tipo: str = "foto") -> JSONResponse:
+    """Fotos del registro ANTES de que exista la fila: van a `canchas/<id>/`
+    (misma carpeta que tendrá la cancha) o `canchas/ev<id>/` (evidencia)."""
+    ses = sesion.de_request(request)
+    if not ses:
+        return JSONResponse({"ok": False, "error": "sesion_requerida"}, status_code=401)
+    if not _ID_NUEVA_RE.match(id or "") and _legado_reclamable(id) is None:
+        return JSONResponse({"ok": False, "error": "Recarga la página e inténtalo de nuevo."}, status_code=400)
+    if not almacen.disponible():
+        return JSONResponse({"ok": False, "error": "La subida de fotos no está disponible en este ambiente."}, status_code=503)
+    ctype = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
+    if ctype not in ("image/jpeg", "image/png", "image/webp"):
+        return JSONResponse({"ok": False, "error": "Formato no admitido (usa JPG, PNG o WebP)."}, status_code=415)
+    cuerpo = await request.body()
+    if not cuerpo or len(cuerpo) > almacen.MAX_BYTES:
+        return JSONResponse({"ok": False, "error": "La foto pesa demasiado (máx. 6 MB)."}, status_code=413)
+    url = almacen.subir_foto(f"ev{id}" if tipo == "evidencia" else id, cuerpo, ctype)
+    if not url:
+        return JSONResponse({"ok": False, "error": "No se pudo subir la foto. Inténtalo de nuevo."}, status_code=502)
+    return JSONResponse({"ok": True, "url": url})
+
+
+_ESTADO_RECLAMO = {
+    "pendiente_triage": ("warn", "En verificación", "Estamos confirmando que eres el dueño. Te avisamos por WhatsApp y en la app cuando esté activa."),
+    "aprobado_triage": ("warn", "Aprobada, falta validar", "Falta la validación en sitio (código + ubicación) para activarla."),
+    "pendiente_validacion": ("warn", "Aprobada, falta validar", "Falta la validación en sitio (código + ubicación) para activarla."),
+    "validada_pendiente_admin": ("warn", "Validada, activación pendiente", "El equipo la activa en breve."),
+    "rechazada": ("err", "No aprobada", "No pudimos confirmar la propiedad. Escríbenos por WhatsApp o vuelve a enviar la solicitud desde la app."),
+    "reclamada_por_otro": ("err", "Reclamada por otra cuenta", "Otra persona ya tiene este local a su nombre. Si es tuyo, escríbenos."),
+}
+
+
+def _aviso_verificacion(canchas: list[dict], email: str) -> str:
+    """Banner del panel para las canchas del dueño AÚN sin verificar (espejo
+    del cartel "pendiente" de la ficha del app): estado real del reclamo."""
+    pend = [c for c in canchas if not datos.reservable(c)]
+    if not pend:
+        return ""
+    vistos, filas = set(), []
+    for c in pend:
+        base = c["id"].split("_")[0]
+        if base in vistos:
+            continue
+        vistos.add(base)
+        try:
+            est = reclamos.estado(c["id"], email)
+        except Exception:  # noqa: BLE001
+            est = {}
+        clase, tit, txt = _ESTADO_RECLAMO.get(str(est.get("estado") or ""), ("warn", "Sin solicitud de verificación", "No encontramos tu solicitud. Vuelve a enviarla desde la app (ficha de la cancha → Reenviar solicitud)."))
+        filas.append(f"<div class='aviso {clase}' style='margin:12px 0 0'><b>{e(c.get('club') or c['nombre'])}</b> · {tit}. <span class='sub' style='margin:0'>{txt}</span></div>")
+    return "".join(filas)
 
 
 @router.get("/anfitrion/{modulo}", response_class=HTMLResponse)

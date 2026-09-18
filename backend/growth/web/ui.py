@@ -147,6 +147,9 @@ label{display:block;font-size:13px;font-weight:700;color:var(--noche);margin:14p
 input,select,textarea{width:100%;padding:13px 14px;border:1px solid var(--trazo);border-radius:var(--r-btn);font-size:15px;font-family:inherit;font-weight:500;background:var(--blanco);color:var(--noche)}
 input:focus,select:focus{outline:2px solid var(--esmeralda);outline-offset:0;border-color:transparent}
 [hidden]{display:none!important}
+.res-busca{border:1px solid var(--borde,#E4E4E4);border-radius:14px;margin-top:6px;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.08);background:#fff}
+.res-it{display:block;width:100%;text-align:left;border:0;background:#fff;padding:10px 12px;cursor:pointer;font:inherit;border-top:1px solid #f0f0f0}
+.res-it:first-child{border-top:0}.res-it:hover{background:#f6f7f8}.res-it b{display:block}.res-it small{color:#717171}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:560px){.row{grid-template-columns:1fr}}
 .paso{display:flex;align-items:center;gap:10px;font-weight:800;font-size:16px;margin:22px 0 10px}
 .paso span{background:var(--noche);color:#fff;border-radius:50%;width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;font-size:13px}
@@ -638,7 +641,7 @@ def footer() -> str:
         "<a href='/#pagos'>Pagos y seguridad</a><a href='/#devoluciones'>Cancelaciones y devoluciones</a>"
         "<a href='/#reclamaciones'>📕 Libro de Reclamaciones</a></div>"
         "<div><h4>Pichangol</h4><a href='https://play.google.com/store/apps/details?id=pe.ebim.pichangol' rel='noopener'>Descarga la app</a>"
-        "<a href='https://play.google.com/store/apps/details?id=pe.ebim.pichangol' rel='noopener'>Pon tu cancha en Pichangol</a>"
+        "<a href='/anfitrion/nueva'>Pon tu cancha en Pichangol</a>"
         "<a href=\"/legal/terminos\">Términos y condiciones</a><a href=\"/legal/privacidad\">Política de privacidad</a>"
         "<a href=\"/legal/eliminar-cuenta\">Eliminar mi cuenta</a></div>"
         f"</div><div class='pie-bajo'><div>© {em['anio']} Pichangol · {em['razon_social']} · {em['doc_etiqueta']} {em['ruc']} · {em['ciudad']} · "
@@ -713,7 +716,7 @@ def menu_cuenta(ses: dict | None, volver: str = "/", modo: str = "") -> str:
         f"<div class='menu-panel' id='menuPanel' role='menu'>{cuenta}<hr>"
         "<a href='/#como'>Cómo funciona</a><a href='/#contacto'>Centro de ayuda</a><hr>"
         + ("<a class='b' href='/'>Cambiar a modo jugador</a>" if modo == "anfitrion" else "<a class='b' href='/anfitrion'>Modo anfitrión</a>")
-        + f"<a href='{PLAY_URL}' rel='noopener'>Pon tu cancha en Pichangol</a>"
+        + "<a href='/anfitrion/nueva'>Pon tu cancha en Pichangol</a>"
         f"<a href='{PLAY_URL}' rel='noopener'>Descarga la app</a>"
         "<a href='/#reclamaciones'>Libro de Reclamaciones</a>"
         "</div></div></div>")

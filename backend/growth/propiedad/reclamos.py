@@ -362,6 +362,18 @@ def _enriquecer(r: ReclamoPropiedad) -> dict:
     return d
 
 
+def _nube_verificada(r: "ReclamoPropiedad", verificada: bool) -> None:
+    """Espejo en Supabase (`pichangol_canchas.verificada`) de la decisión de la
+    torre, para el dueño que registró/reclamó desde la WEB y no abre el app
+    (el APK lo hacía al sincronizar; ahora lo hace el backend, fail-safe)."""
+    try:
+        from web import datos as _datos
+        n = _datos.marcar_verificada(r.cancha_id, r.solicitante_id, verificada, r.lat, r.lng)
+        print(f"[reclamo] nube verificada={verificada} {r.cancha_id} ({r.solicitante_id}): {n} fila(s)", flush=True)
+    except Exception as e:  # noqa: BLE001
+        print(f"[reclamo] no se pudo reflejar en la nube {r.cancha_id}: {e}", flush=True)
+
+
 def _revocar_cancha_al_rechazar(r: ReclamoPropiedad) -> None:
     """Al RECHAZAR un reclamo, la cancha deja de estar verificada/activa (si ese
     reclamo era el que la sostenía). Así el rechazo se refleja en la app: se quita
@@ -379,6 +391,7 @@ def _revocar_cancha_al_rechazar(r: ReclamoPropiedad) -> None:
         c.verificada = False
         c.verificada_en_persona = False
         c.metodo_verificacion = None
+    _nube_verificada(r, False)
 
 
 def _cerrar_duplicados(r: ReclamoPropiedad) -> None:
@@ -619,6 +632,7 @@ def validar_en_sitio(codigo: str, lat: float, lng: float,
         c.verificada = True
         c.verificada_en_persona = True
         c.metodo_verificacion = "en_sitio"
+        _nube_verificada(r, True)
         _notificar_admin(
             f"✅ Cancha validada en sitio y ACTIVADA\n"
             f"Local: {r.nombre_local}\nValidador: {validador or 's/n'}\n"
@@ -695,6 +709,7 @@ def aprobar_directo(reclamo_id: int, revisor: str | None = None) -> dict:
     c = stores.cancha(r.cancha_id)
     c.verificada = True
     c.metodo_verificacion = "panel_admin"
+    _nube_verificada(r, True)
     _notificar_admin(
         f"✅ Cancha ACTIVADA por aprobación directa (panel)\n"
         f"Local: {r.nombre_local}\nAdmin: {revisor or 's/n'}")
@@ -719,6 +734,7 @@ def activar_admin(reclamo_id: int) -> dict:
     c.verificada = True
     c.verificada_en_persona = True
     c.metodo_verificacion = "en_sitio"
+    _nube_verificada(r, True)
     _notificar_reclamante_aprobado(r)  # push "¡tu cancha fue aprobada!"
     _bienvenida_al_activar(r)  # regalo de bienvenida (marcha blanca)
     return {"ok": True, "estado": "activada", "verificada": True}

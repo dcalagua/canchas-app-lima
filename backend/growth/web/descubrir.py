@@ -293,6 +293,62 @@ def descubrir_cerca(lat: float, lng: float, region: str = "PE", fotos: bool = Fa
     return out[:MAX_RESULTADOS]
 
 
+# ── Buscar un lugar POR NOMBRE (para "Pon tu cancha": el dueño escribe el
+# nombre de su local y lo elige de Google) ─────────────────────────────────────
+# Motivo: el descubrimiento por celda solo trae los ~20 lugares MÁS CERCANOS por
+# consulta; en zonas densas un local a 3 km no entra en ninguna lista y el
+# dueño no tenía cómo encontrarlo (caso "Campo deportivo Edu Jr.", sep-2026).
+_busq_cache: dict[tuple, tuple[float, list]] = {}
+BUSQ_TTL_SEG = 10 * 60
+
+
+def buscar_lugares(q: str, lat: float | None, lng: float | None, region: str = "PE", n: int = 8) -> list[dict]:
+    """Text Search de Google (New) con la consulta LIBRE del dueño, sesgada a
+    30 km del punto dado. Sin `PLACES_API_KEY` → []. NO filtra por la
+    heurística de deporte (el dueño sabe cuál es su local); `deporte` va como
+    sugerencia. Caché 10 min por consulta+celda."""
+    q = re.sub(r"\s+", " ", (q or "")).strip()[:80]
+    key_api = config.PLACES_API_KEY
+    if len(q) < 3 or not key_api:
+        return []
+    try:
+        la, ln = (float(lat), float(lng)) if lat is not None and lng is not None else (None, None)
+    except (TypeError, ValueError):
+        la, ln = None, None
+    key = (q.lower(), _celda(la, ln) if la is not None else None, region)
+    ahora = time.time()
+    hit = _busq_cache.get(key)
+    if hit and ahora - hit[0] < BUSQ_TTL_SEG:
+        return hit[1]
+    body = {"textQuery": q, "languageCode": "es", "regionCode": region or "PE", "maxResultCount": max(1, min(int(n), 10))}
+    if la is not None:
+        body["locationBias"] = {"circle": {"center": {"latitude": la, "longitude": ln}, "radius": 30000}}
+    try:
+        j = _http_json("https://places.googleapis.com/v1/places:searchText",
+                       {"X-Goog-Api-Key": key_api,
+                        "X-Goog-FieldMask": "places.id,places.displayName,places.location,places.formattedAddress,places.types"},
+                       body)
+    except Exception as e:  # noqa: BLE001
+        print(f"[lugares] búsqueda {q!r} falló: {e}", flush=True)
+        return []
+    out = []
+    for p in j.get("places") or []:
+        pid = p.get("id")
+        nombre = ((p.get("displayName") or {}).get("text")) if isinstance(p.get("displayName"), dict) else p.get("displayName")
+        loc = p.get("location") or {}
+        try:
+            plat, plng = float(loc.get("latitude")), float(loc.get("longitude"))
+        except (TypeError, ValueError):
+            continue
+        if not pid or not nombre:
+            continue
+        out.append({"id": f"gp_{pid}", "nombre": str(nombre), "direccion": p.get("formattedAddress") or "",
+                    "lat": plat, "lng": plng, "deporte": deporte_de(str(nombre), p.get("types") or []) or "",
+                    "km": round(_km(la, ln, plat, plng), 1) if la is not None else None})
+    _busq_cache[key] = (ahora, out)
+    return out
+
+
 # ── Primera foto de un lugar (como `enriquecerSembradas` del APK) ─────────────
 #
 # Las canchas SEMBRADAS desde el app (registradas a partir de un lugar de

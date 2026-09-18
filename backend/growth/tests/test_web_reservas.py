@@ -97,6 +97,41 @@ class FakeDB:
     def canchas_de_dueno(self, email):
         return [c for c in self.canchas.values() if (c.get("dueno") or "").lower() == email.lower() and not c.get("eliminada")]
 
+    def insertar_canchas(self, filas):
+        for f in filas:
+            self.canchas[f["id"]] = {**LIMA, **dict(f)}
+        return True
+
+    def borrar_canchas(self, ids, dueno):
+        n = 0
+        for i in list(ids):
+            c = self.canchas.get(i)
+            if c and (c.get("dueno") or "").lower() == dueno.lower() and not c.get("verificada"):
+                self.canchas.pop(i); n += 1
+        return n
+
+    def marcar_verificada(self, cancha_id, dueno, verificada, lat=None, lng=None):
+        base = cancha_id.split("_")[0]
+        n = 0
+        for c in self.canchas.values():
+            cerca = lat is not None and abs(c["lat"] - lat) < 0.0014 and abs(c["lng"] - lng) < 0.0014
+            if (c.get("dueno") or "").lower() == dueno.lower() and (c["id"] == cancha_id or c["id"].startswith(base + "_") or cerca):
+                c["verificada"] = bool(verificada); n += 1
+        return n
+
+    def adoptar_cancha(self, cancha_id, dueno, campos):
+        c = self.canchas.get(cancha_id)
+        if not c or c.get("dueno") or c.get("verificada"):
+            return False
+        c.update({k: v for k, v in campos.items() if k in datos.COLS_ADOPCION}); c["dueno"] = dueno.lower()
+        return True
+
+    def desadoptar_cancha(self, cancha_id, dueno):
+        c = self.canchas.get(cancha_id)
+        if c and (c.get("dueno") or "").lower() == dueno.lower() and not c.get("verificada"):
+            c["dueno"] = ""; return True
+        return False
+
     def reservas_de_canchas(self, ids, desde, hasta):
         return sorted([dict(r) for r in self.reservas.values() if r["cancha_id"] in ids and desde <= r["fecha"] <= hasta
                        and not (r["estado"] == "nueva" and not r.get("pagado")) and r["estado"] != "cancelada"],
@@ -208,7 +243,8 @@ def db(monkeypatch):
                "reservas_por_grupo", "reservas_de_usuario", "eliminar_reservas", "canchas_de_dueno", "reservas_de_canchas", "bloqueos_de",
                "actualizar_cancha", "bloquear", "reserva_de_dueno", "marcar_pagado", "borrar_reserva_manual",
                "academias_de_dueno", "academia_existe", "guardar_academia", "eliminar_academia", "matriculas_de_academias",
-               "productos_de_vendedor", "producto_por_id", "guardar_producto", "eliminar_producto", "esta_verificado"):
+               "productos_de_vendedor", "producto_por_id", "guardar_producto", "eliminar_producto", "esta_verificado",
+               "insertar_canchas", "borrar_canchas", "marcar_verificada", "adoptar_cancha", "desadoptar_cancha"):
         monkeypatch.setattr(datos, fn, getattr(fake, fn))
     monkeypatch.setattr(config, "CULQI_PUBLIC_KEY", "pk_test_x")
     monkeypatch.setattr(config, "CULQI_SECRET_KEY", "sk_test_x")
@@ -782,7 +818,7 @@ def test_modo_anfitrion_en_la_web_como_airbnb(db, monkeypatch):
         assert t in menu, t
     assert "Cambiar a modo jugador" in menu
     html = cli.get("/anfitrion/mis-canchas").text
-    assert "todavía no tienes canchas registradas" in html and "Registrar mi cancha en la app" in html
+    assert "todavía no tienes canchas registradas" in html and "href='/anfitrion/nueva'" in html
     aca = cli.get("/anfitrion/campeonatos").text  # campeonatos y verificador siguen en la app; academia y tienda ya son web
     assert "Mis campeonatos está en la app" in aca and "Abrir en la app" in aca
     assert cli.get("/anfitrion/nada").status_code == 404
@@ -1125,3 +1161,146 @@ def test_mi_academia_en_la_web_como_el_app(db, monkeypatch):
     assert cli.post(f"/anfitrion/academia/{aid}/eliminar").status_code == 404
     _entrar_como(cli, monkeypatch, "profe@gmail.com", "Profe Luis")
     assert cli.post(f"/anfitrion/academia/{aid}/eliminar").json()["ok"] and db.academias[aid]["_eliminada"]
+
+
+def test_registrar_y_reclamar_cancha_desde_la_web_como_el_app(db, monkeypatch):
+    """Pedido del director (sep-2026): "Pon tu cancha" desde la web con el MISMO
+    flujo que `registrar_cancha_screen`: la cancha nace en `pichangol_canchas`
+    sin verificar y a nombre del correo de Google, se crea el RECLAMO en el
+    backend y la torre lo aprueba; al aprobar, la nube queda `verificada` sin
+    abrir el app. Lugar ya reclamado por otro → no se registra."""
+    from db.store import stores
+    from propiedad import reclamos
+    import web.anfitrion as anf
+    monkeypatch.setattr(config, "GOOGLE_WEB_CLIENT_ID", "cid-web")
+    monkeypatch.setattr(reclamos, "_notificar_admin", lambda *a, **k: None)
+    monkeypatch.setattr(reclamos, "_notificar_reclamante_aprobado", lambda *a, **k: None)
+    monkeypatch.setattr(reclamos, "_bienvenida_al_activar", lambda *a, **k: None)
+    stores.reclamos.clear()
+    cli = TestClient(app, base_url="https://testserver")
+    # Sin sesión → login; con sesión → formulario prellenado desde una descubierta.
+    assert cli.get("/anfitrion/nueva", follow_redirects=False).status_code == 302
+    assert cli.post("/anfitrion/nueva", json={}).status_code == 401
+    _entrar_como(cli, monkeypatch, "nuevo@gmail.com", "Nuevo Dueño")
+    html = cli.get("/anfitrion/nueva?place=gp_abc&nombre=Complejo%20Sol&direccion=Av.%20Sol%201&lat=-12.1&lng=-77.03").text
+    for t in ("Pon tu cancha en Pichangol", "value='Complejo Sol'", "value='Av. Sol 1'", "Verificación de propiedad", "id='mapaSede'",
+              "data-g='deportes'", "data-g='relacion'", "Registrar mi cancha", "+51", "DNI"):
+        assert t in html, t
+    assert "href='/anfitrion/nueva'>Pon tu cancha en Pichangol" in cli.get("/").text  # entrada desde la portada/menú
+    assert "¿Es tuya? Reclámala" in cli.get("/").text
+    # El id lo emite el servidor (u<ms>); el navegador lo devuelve.
+    import re as _re
+    nid = _re.search(r'"id": "(u\d+)"', html).group(1)
+    base = {"id": nid, "place": "gp_abc", "nombre_local": "Complejo Sol", "direccion": "Av. Sol 1", "lat": -12.1, "lng": -77.03, "zona": "Miraflores",
+            "deportes": ["futbol", "tenis"], "modo": "separadas", "superficies": {"futbol": "Grass sintético", "tenis": "Arcilla"},
+            "precio_hora": 80, "hora_apertura": "07:00", "hora_cierre": "23:00", "duracion_slot_min": 60, "fotos": [],
+            "whatsapp": "+51 987 654 321", "relacion": "administrador", "documento": "", "nota": "Lo administro yo", "sol_lat": -12.1001, "sol_lng": -77.0301}
+    # Validaciones (mismas reglas que el app).
+    for malo, campo in (({**base, "deportes": []}, "deportes"), ({**base, "superficies": {"futbol": "Grass sintético"}}, "deportes"),
+                        ({**base, "lat": 40.4, "lng": -3.7}, "local"), ({**base, "precio_hora": 0}, "precio"),
+                        ({**base, "whatsapp": "123"}, "dueno"), ({**base, "documento": "123"}, "dueno"), ({**base, "id": "hack"}, "local")):
+        r = cli.post("/anfitrion/nueva", json=malo)
+        assert r.status_code == 400 and r.json()["campo"] == campo, (malo, r.text)
+    # Registro correcto: 2 canchas separadas (u<ts>_futbol, u<ts>_tenis) + reclamo de la primera.
+    r = cli.post("/anfitrion/nueva", json=base)
+    assert r.status_code == 200 and r.json()["ok"], r.text
+    ids = r.json()["ids"]
+    assert ids == [f"{nid}_futbol", f"{nid}_tenis"]
+    fila = db.canchas[ids[0]]
+    assert fila["dueno"] == "nuevo@gmail.com" and fila["verificada"] is False and fila["registrada"] is True
+    assert fila["club"] == "Complejo Sol" and fila["barrio"] == "Miraflores" and fila["moneda"] == "S/" and fila["superficie"] == "Grass sintético"
+    assert db.canchas[ids[1]]["deporte"] == "tenis" and db.canchas[ids[1]]["superficie"] == "Arcilla"
+    rec = [x for x in stores.reclamos if x.solicitante_id == "nuevo@gmail.com"]
+    assert len(rec) == 1 and rec[0].cancha_id == ids[0] and rec[0].estado == "pendiente_triage"
+    assert rec[0].telefono_contacto == "51987654321" and rec[0].relacion == "administrador" and "[web · place gp_abc]" in rec[0].nota_reclamante
+    assert rec[0].solicitante_lat == -12.1001 and rec[0].nombre_local == "Complejo Sol"
+    # Panel del dueño: la cancha aparece "En verificación" (sin reservas en línea todavía).
+    panel = cli.get(f"/anfitrion/canchas?registrada={ids[0]}").text
+    assert "Registramos <b>Complejo Sol</b>" in panel and "En verificación" in panel and "Aún sin verificar" in panel
+    assert "En verificación" in cli.get("/anfitrion/mis-canchas").text
+    assert cli.post("/web/asegurar", json={"cancha_id": ids[0], "horas": [{"fecha": _manana(), "hora": "19:00"}], "extras": [],
+                                           "nombre": "Ana", "celular": "999", "email": "ana@x.com"}).json()["error"] == "no_verificada"
+    # Otra persona intenta reclamar el MISMO lugar → no se registra nada.
+    _entrar_como(cli, monkeypatch, "otro@gmail.com", "Otro")
+    html2 = cli.get("/anfitrion/nueva").text
+    nid2 = _re.search(r'"id": "(u\d+)"', html2).group(1)
+    r2 = cli.post("/anfitrion/nueva", json={**base, "id": nid2, "modo": "unica", "superficie": "Loza", "deportes": ["futbol"]})
+    assert r2.status_code == 409 and "otra persona" in r2.json()["error"]
+    assert nid2 not in db.canchas and not any(x.solicitante_id == "otro@gmail.com" for x in stores.reclamos)
+    # La torre aprueba (marcha blanca) → la NUBE queda verificada para la reclamada y su hermana.
+    res = reclamos.aprobar_directo(rec[0].id, "admin")
+    assert res["ok"] and res["estado"] == "activada"
+    assert db.canchas[ids[0]]["verificada"] is True and db.canchas[ids[1]]["verificada"] is True
+    _entrar_como(cli, monkeypatch, "nuevo@gmail.com", "Nuevo Dueño")
+    panel = cli.get("/anfitrion/canchas").text
+    assert "En verificación" not in panel and "✓ Verificada" in panel
+    # Rechazar revoca en la nube (mismo espejo).
+    reclamos._revocar_cancha_al_rechazar(rec[0])
+    assert db.canchas[ids[0]]["verificada"] is False
+    stores.reclamos.clear()
+    # ── Cancha DESCUBIERTA: la tarjeta abre una ficha web propia (no Play) con "Reclámala" prellenado. ──
+    lugar = cli.get("/lugar/gp_xyz?nombre=Loza%20Norte&direccion=Jr.%20Lima%2012&lat=-12.05&lng=-77.04&deporte=futbol").text
+    for t in ("Loza Norte", "Aún sin registrar", "¿Es tuya esta cancha?", "href='/anfitrion/nueva?place=gp_xyz&nombre=Loza%20Norte",
+              "/web/foto?id=gp_xyz", "Abrir en Google Maps", "Abrir en la app"):
+        assert t in lugar, t
+    assert cli.get("/lugar/c_lima?nombre=x&lat=1&lng=1").status_code == 404
+    assert "hrefLugar" in cli.get("/").text and "'/lugar/' + encodeURIComponent(c.id)" in cli.get("/").text
+    # ── Cancha REGISTRADA sin dueño (legado): la ficha ofrece reclamarla y el registro ADOPTA la misma fila. ──
+    ficha = cli.get("/reservar/c_pend").text
+    assert "¿Es tuya esta cancha?" in ficha and "href='/anfitrion/nueva?cancha=c_pend'" in ficha
+    assert "¿Es tuya esta cancha?" not in cli.get("/reservar/c_lima").text  # con dueño: no
+    html3 = cli.get("/anfitrion/nueva?cancha=c_pend").text
+    assert "Reclama tu cancha" in html3 and "value='Club Raqueta'" in html3 and "value='60.00'" in html3 and '"existente": true' in html3
+    r3 = cli.post("/anfitrion/nueva", json={**base, "id": "c_pend", "existente": True, "deportes": ["futbol"], "modo": "unica", "superficie": "Loza",
+                                             "nombre_local": "Club Raqueta", "lat": -12.09, "lng": -77.0, "nombre_cancha": "Loza Pendiente"})
+    assert r3.status_code == 200 and r3.json()["ids"] == ["c_pend"], r3.text
+    assert db.canchas["c_pend"]["dueno"] == "nuevo@gmail.com" and db.canchas["c_pend"]["superficie"] == "Loza" and "c_pend" in db.canchas
+    rec2 = [x for x in stores.reclamos if x.cancha_id == "c_pend"]
+    assert len(rec2) == 1 and rec2[0].solicitante_id == "nuevo@gmail.com"
+    assert "¿Es tuya esta cancha?" not in cli.get("/reservar/c_pend").text  # ya tiene dueño (en verificación)
+    reclamos.aprobar_directo(rec2[0].id, "admin")
+    assert db.canchas["c_pend"]["verificada"] is True
+    stores.reclamos.clear()
+
+
+def test_buscar_mi_local_en_google_por_nombre(db, monkeypatch):
+    """Caso "Campo deportivo Edu Jr." (sep-2026): el descubrimiento por celda
+    solo trae los ~20 lugares más cercanos por consulta y un local a 3 km no
+    salía. El dueño ahora BUSCA su local por nombre en "Pon tu cancha"
+    (`/web/lugares`, Text Search de Google con PLACES_API_KEY) y el
+    resultado rellena nombre, dirección, punto y place."""
+    from web import descubrir
+    monkeypatch.setattr(config, "GOOGLE_WEB_CLIENT_ID", "cid-web")
+    cli = TestClient(app, base_url="https://testserver")
+    # Sin llave: el endpoint lo dice y el formulario no muestra la caja.
+    monkeypatch.setattr(config, "PLACES_API_KEY", "")
+    assert cli.get("/web/lugares?q=edu").json() == {"ok": True, "disponible": False, "lugares": []}
+    _entrar_como(cli, monkeypatch, "nuevo@gmail.com")
+    assert "id='busca'" not in cli.get("/anfitrion/nueva").text
+    # Con llave: una llamada a Google por consulta (sesgada al punto), sin filtrar por deporte.
+    monkeypatch.setattr(config, "PLACES_API_KEY", "k")
+    llamadas = []
+    def fake_http(url, headers, body=None, timeout=12):
+        llamadas.append(body)
+        return {"places": [{"id": "ChIJedu", "displayName": {"text": "Campo deportivo Edu Jr."}, "formattedAddress": "Av. Los Frutales 100, Ate",
+                            "location": {"latitude": -12.0735152, "longitude": -76.991131}, "types": ["sports_complex"]},
+                           {"id": "ChIJx", "displayName": {"text": "Edu Jr. Restobar"}, "formattedAddress": "Jr. X 1", "location": {"latitude": -12.07, "longitude": -76.99}, "types": ["restaurant"]}]}
+    monkeypatch.setattr(descubrir, "_http_json", fake_http)
+    descubrir._busq_cache.clear()
+    j = cli.get("/web/lugares?q=Campo%20deportivo%20Edu&lat=-12.09&lng=-77.0").json()
+    assert j["disponible"] and [x["id"] for x in j["lugares"]] == ["gp_ChIJedu", "gp_ChIJx"]  # no se filtra por heurística
+    assert j["lugares"][0]["deporte"] == "futbol" and j["lugares"][0]["km"] == 2.1 and j["lugares"][1]["deporte"] == ""
+    assert llamadas[0]["textQuery"] == "Campo deportivo Edu" and llamadas[0]["locationBias"]["circle"]["radius"] == 30000
+    assert len(cli.get("/web/lugares?q=Campo%20deportivo%20Edu&lat=-12.09&lng=-77.0").json()["lugares"]) == 2 and len(llamadas) == 1  # caché
+    assert cli.get("/web/lugares?q=ed").json()["lugares"] == []  # consulta muy corta: sin llamada
+    html = cli.get("/anfitrion/nueva").text
+    assert "id='busca'" in html and "Busca tu local en Google" in html and "/web/lugares?q=" in html
+    # El explorador vuelve a descubrir al mover el mapa y acumula por id.
+    home = cli.get("/").text
+    assert "mapa.on('moveend'" in home and "descAcum" in home
+    # El explorador también busca por NOMBRE en Google al pulsar Buscar: los
+    # resultados que la heurística reconoce entran como descubiertas (con
+    # etiqueta y emoji para la tarjeta) y pasan el filtro de texto por `data-q`.
+    assert j["lugares"][0]["deporte_nombre"] == "Fútbol" and j["lugares"][0]["emoji"]
+    assert "buscarEnGoogle(filtro.q)" in home and "data-q=" in home and '"lugares": true' in home
+    assert "c.dataset.q !== filtro.q" in home and "ni en Google Maps" in home
