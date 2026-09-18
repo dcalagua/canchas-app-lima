@@ -760,7 +760,14 @@ off → redeploy inmediato en cada push). URL pública:
     `workflow_dispatch` de `build.yml` con `ref=prd` e `inputs.entorno=prod`
     (run 1277 → `pichangol-prod-1277.aab` como artifact + APK en el Release).
     Pendiente manual del checklist `docs/prd_railway_checklist.md`: llaves
-    Culqi live y `DATABASE_URL` de PCG-PRD si aún no están. **RLS en
+    Culqi live y `DATABASE_URL` de PCG-PRD si aún no están. **Pase del
+    18-sep-2026 (autorizado: "pasa todo a PRD"):** `prd` = merge `2b9b027`
+    (reclamo/registro de canchas desde la web, ficha `/lugar`, búsqueda por
+    nombre en Google, redescubrir al mover el mapa); Edge `places-cerca`
+    v6 (paginación) desplegada en PCG-PRD vía el conector Supabase
+    `deploy_edge_function` (`verify_jwt=false`, como estaba). Sin cambios
+    en `lib/` → no hizo falta APK nuevo. SQL `search_path` NO aplicado en
+    PRD (sigue pendiente de probar el push completo en QAS). **RLS en
     `growth_*` de PCG-PRD: ACTIVADO el 12-sep-2026** (sin políticas ni
     FORCE: el backend entra como `postgres`, dueño de las tablas, y no lo
     afecta; la anon key ya no puede leerlas). **Funciones trigger de push
