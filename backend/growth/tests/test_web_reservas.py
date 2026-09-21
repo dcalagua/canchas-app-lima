@@ -1100,6 +1100,7 @@ def test_mi_academia_en_la_web_como_el_app(db, monkeypatch):
     monkeypatch.setattr(config, "GOOGLE_WEB_CLIENT_ID", "cid-web")
     monkeypatch.setattr(config, "SUPABASE_URL", "https://sb.test")
     monkeypatch.setattr(config, "SUPABASE_ANON_KEY", "anon")
+    monkeypatch.setattr(config, "PLACES_API_KEY", "k")
     monkeypatch.setattr(anf, "_en_segundo_plano", lambda fn, *a: fn(*a))
     cli = TestClient(app, base_url="https://testserver")
     assert cli.get("/anfitrion/academia", follow_redirects=False).status_code == 302
@@ -1116,6 +1117,13 @@ def test_mi_academia_en_la_web_como_el_app(db, monkeypatch):
     # reserva arranca en display:none (se abre con "Cómo llegar") y ocultaba
     # el mapa del formulario (bug reportado por el director, sep-2026).
     assert "id='mapaSede' class='mapa-sede'" in nueva and ".mapa-sede{display:block" in nueva
+    # "Club / local donde entrenas" AUTOCOMPLETA con Google Maps (pedido del
+    # director: escribir "esmon" y que el pin se ponga solo): misma búsqueda
+    # /web/lugares de "Pon tu cancha"; sin PLACES_API_KEY el campo es texto simple.
+    assert "id='resSede'" in nueva and "/web/lugares?q=" in nueva and '"buscar": true' in nueva
+    monkeypatch.setattr(config, "PLACES_API_KEY", "")
+    assert '"buscar": false' in cli.get("/anfitrion/academia/nueva").text
+    monkeypatch.setattr(config, "PLACES_API_KEY", "k")
     aid = nueva.split('"id": "')[1].split('"')[0]
     assert aid.startswith("ac_")
     subidas = []

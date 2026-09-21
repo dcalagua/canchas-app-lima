@@ -628,9 +628,13 @@ para la API del APK.
   (`data` jsonb = `Academia.toJson`), onboarding "Crear mi academia", editor
   (`/anfitrion/academia/nueva` id `ac_<µs>`, `/{id}/editar`): logo →
   `canchas/academia_<id>/logo_web.jpg`, deporte chips `DEPORTES_ACADEMIA`,
-  nombre, descripción, sede (nombre + MAPA Leaflet clic / "Usar mi
-  ubicación": del punto salen país → prefijo de WhatsApp, moneda —fija al
-  crear— y zona), **zona en cascada** por país (`GET /web/geo/{iso}` sirve
+  nombre, descripción, sede (el campo "Club / local" AUTOCOMPLETA con
+  Google Maps vía `/web/lugares` —pedido del director, sep-2026: escribir
+  "esmon" y que el pin se ponga solo; `#resSede`, `CFG.buscar` = hay
+  `PLACES_API_KEY`, sin llave es texto simple— + MAPA Leaflet clic / "Usar
+  mi ubicación": del punto salen país → prefijo de WhatsApp, moneda —fija al
+  crear— y zona; OJO: el div del mapa lleva la clase `.mapa-sede`, NO
+  `.mapa-ficha`, que arranca en `display:none` y lo ocultaba), **zona en cascada** por país (`GET /web/geo/{iso}` sirve
   `web/geo/{pe,bo,ec}_geo.json` = COPIA de `assets/geo` del app; se guarda
   el nivel 3 como el app), WhatsApp (largo por país `TEL_LONGITUD`), fotos
   (hasta 8), redes chips + handle, planes (nombre, tipo mensual/prepago/por
