@@ -1054,7 +1054,7 @@ def pagina_nueva_cancha(request: Request, nombre: str = "", direccion: str = "",
   <label for='local'>Nombre del local / club</label><input id='local' maxlength='{catalogos.NOMBRE_MAX}' value='{e(nombre[:catalogos.NOMBRE_MAX])}' placeholder='Ej. Complejo Deportivo Los Olivos'>
   <label for='direccion'>Dirección <span class='req'>opcional</span></label><input id='direccion' maxlength='160' value='{e(direccion[:160])}' placeholder='Av. Aviación 1234, San Borja'>
   <label>Ubicación exacta <span class='req'>obligatoria: de aquí salen el país, la moneda y la distancia para los jugadores</span></label>
-  <div id='mapaSede' class='mapa-ficha' style='height:300px;margin-top:6px'></div>
+  <div id='mapaSede' class='mapa-sede' style='margin-top:6px'></div>
   <div class='acciones' style='margin-top:8px'><button type='button' class='btn sec' id='btnUbic'>📍 Usar mi ubicación</button><span class='sub' id='ubicTxt' style='margin:0'>{'Toca el mapa para fijar tu cancha.' if la is None else f'{la:.5f}, {ln:.5f}'}</span></div>
   <label>Zona</label>
   <div class='row' id='geoRow' style='grid-template-columns:1fr 1fr 1fr'><select id='g1'><option value=''>—</option></select><select id='g2'><option value=''>—</option></select><select id='g3'><option value=''>—</option></select></div>

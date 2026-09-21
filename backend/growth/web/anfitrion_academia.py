@@ -246,7 +246,7 @@ def _editor(ses: dict, a: dict, *, nueva: bool) -> HTMLResponse:
  </section>
  <section class='panel edit-sec' id='sec-sede'><h2>Sede y contacto</h2><p class='sub'>Dónde entrenas ahora. Del punto en el mapa salen el país, la moneda y la zona del ranking.</p>
   <label for='sede'>Club / local donde entrenas</label><input id='sede' maxlength='80' value='{e(a.get('sedeClub') or '')}' placeholder='Ej. Club Lawn Tennis de la Exposición'>
-  <label>Ubicación de la sede</label><div id='mapaSede' class='mapa-ficha' style='height:280px;margin-top:6px'></div>
+  <label>Ubicación de la sede</label><div id='mapaSede' class='mapa-sede' style='margin-top:6px'></div>
   <div class='acciones' style='margin-top:8px'><button type='button' class='btn sec' id='btnUbic'>📍 Usar mi ubicación</button><span class='sub' id='ubicTxt' style='margin:0'>{'Toca el mapa para fijar la sede.' if a.get('lat') is None else f"{float(a['lat']):.5f}, {float(a['lng']):.5f}"}</span></div>
   <label>Zona <span class='req'>para el ranking por ciudad</span></label>
   <div class='row' id='geoRow' style='grid-template-columns:1fr 1fr 1fr'><select id='g1'><option value=''>—</option></select><select id='g2'><option value=''>—</option></select><select id='g3'><option value=''>—</option></select></div>

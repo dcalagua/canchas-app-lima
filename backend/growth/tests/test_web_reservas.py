@@ -1112,6 +1112,10 @@ def test_mi_academia_en_la_web_como_el_app(db, monkeypatch):
     assert "todavía no tienes una academia" in html and "href='/anfitrion/academia/nueva'" in html
     nueva = cli.get("/anfitrion/academia/nueva").text
     assert "Crear academia" in nueva and "data-v='natacion'" in nueva and "mapaSede" in nueva and "Planes y tarifario" in nueva and "Reglas de cobro" in nueva
+    # El mapa de la sede debe VERSE: la clase `.mapa-ficha` de la ficha de
+    # reserva arranca en display:none (se abre con "Cómo llegar") y ocultaba
+    # el mapa del formulario (bug reportado por el director, sep-2026).
+    assert "id='mapaSede' class='mapa-sede'" in nueva and ".mapa-sede{display:block" in nueva
     aid = nueva.split('"id": "')[1].split('"')[0]
     assert aid.startswith("ac_")
     subidas = []
