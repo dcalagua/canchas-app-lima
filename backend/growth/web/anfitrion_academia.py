@@ -22,6 +22,7 @@ from pathlib import Path
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
+import config
 import paises
 from web import almacen, catalogos, datos, sesion, ui
 from web.anfitrion import JS_PAGAR, _en_segundo_plano, _sesion_o_entrar
@@ -222,7 +223,7 @@ def _editor(ses: dict, a: dict, *, nueva: bool) -> HTMLResponse:
         f"<div class='serv{' sel' if k in redes else ''}' data-red='{k}'><button type='button' class='chip{' sel' if k in redes else ''}' data-g='redes' data-v='{k}'>{e(n)}</button>"
         f"<label class='precio-serv'{'' if k in redes else ' hidden'}><input type='text' name='red_{k}' maxlength='120' value='{e(redes.get(k, ''))}' placeholder='{'https://…' if k == 'web' else '@usuario o enlace'}' style='width:260px'></label></div>"
         for k, n in catalogos.REDES.items())
-    cfg = {"id": a["id"], "nueva": nueva, "lat": a.get("lat"), "lng": a.get("lng"), "iso": iso, "zona": a.get("zona") or "",
+    cfg = {"id": a["id"], "nueva": nueva, "lat": a.get("lat"), "lng": a.get("lng"), "iso": iso, "zona": a.get("zona") or "", "buscar": bool(config.PLACES_API_KEY),
            "planes": [p for p in (a.get("planes") or []) if isinstance(p, dict)], "fotos": fotos, "logo": a.get("logoUrl") or "",
            "moneda": _moneda(a), "storage": almacen.disponible(), "tipos": catalogos.TIPOS_PLAN, "meses": catalogos.MESES_PREPAGO,
            "frec": catalogos.FRECUENCIAS, "durs": catalogos.DURACIONES_CLASE, "tel": catalogos.TEL_PREFIJO, "telLen": catalogos.TEL_LONGITUD,
@@ -245,8 +246,8 @@ def _editor(ses: dict, a: dict, *, nueva: bool) -> HTMLResponse:
   <label for='desc'>Descripción <span class='req'>opcional</span></label><textarea id='desc' rows='3' maxlength='600' placeholder='Niveles, horarios, para quién es…'>{e(a.get('descripcion') or '')}</textarea>
  </section>
  <section class='panel edit-sec' id='sec-sede'><h2>Sede y contacto</h2><p class='sub'>Dónde entrenas ahora. Del punto en el mapa salen el país, la moneda y la zona del ranking.</p>
-  <label for='sede'>Club / local donde entrenas</label><input id='sede' maxlength='80' value='{e(a.get('sedeClub') or '')}' placeholder='Ej. Club Lawn Tennis de la Exposición'>
-  <label>Ubicación de la sede</label><div id='mapaSede' class='mapa-ficha' style='height:280px;margin-top:6px'></div>
+  <label for='sede'>Club / local donde entrenas{" <span class='req'>🔎 escribe y elige tu club de Google Maps: el pin se pone solo</span>" if config.PLACES_API_KEY else ''}</label><input id='sede' maxlength='80' value='{e(a.get('sedeClub') or '')}' placeholder='Ej. ESMON, Club Lawn Tennis de la Exposición' autocomplete='off'><div id='resSede' class='res-busca' hidden></div>
+  <label>Ubicación de la sede</label><div id='mapaSede' class='mapa-sede' style='margin-top:6px'></div>
   <div class='acciones' style='margin-top:8px'><button type='button' class='btn sec' id='btnUbic'>📍 Usar mi ubicación</button><span class='sub' id='ubicTxt' style='margin:0'>{'Toca el mapa para fijar la sede.' if a.get('lat') is None else f"{float(a['lat']):.5f}, {float(a['lng']):.5f}"}</span></div>
   <label>Zona <span class='req'>para el ranking por ciudad</span></label>
   <div class='row' id='geoRow' style='grid-template-columns:1fr 1fr 1fr'><select id='g1'><option value=''>—</option></select><select id='g2'><option value=''>—</option></select><select id='g3'><option value=''>—</option></select></div>
@@ -291,12 +292,26 @@ document.addEventListener('click',function(ev){var b=ev.target.closest('.chip[da
   b.closest('.chips').querySelectorAll('.chip').forEach(function(x){x.classList.remove('sel')});b.classList.add('sel')});
 // ── mapa de la sede ──
 function paisDe(la,ln){var C={PE:[-18.4,-0.03,-81.4,-68.6],EC:[-5.1,1.7,-81.1,-75.1],BO:[-22.95,-9.6,-69.7,-57.4]};for(var k in C){var c=C[k];if(la>=c[0]&&la<=c[1]&&ln>=c[2]&&ln<=c[3])return k}return 'PE'}
-function ponerPunto(la,ln,centrar){lat=la;lng=ln;$('ubicTxt').textContent=la.toFixed(5)+', '+ln.toFixed(5);if(marker)marker.setLatLng([la,ln]);else marker=L.marker([la,ln]).addTo(mapa);if(centrar)mapa.setView([la,ln],15);
+function ponerPunto(la,ln,centrar){lat=la;lng=ln;$('ubicTxt').textContent=la.toFixed(5)+', '+ln.toFixed(5);if(mapa){if(marker)marker.setLatLng([la,ln]);else marker=L.marker([la,ln]).addTo(mapa);if(centrar)mapa.setView([la,ln],15)}
   var p=paisDe(la,ln);if(p!==iso){iso=p;$('telPre').textContent='+'+CFG.tel[iso];if(CFG.nueva)$('monSpan').textContent=CFG.monedas[iso]||'S/';cargarGeo()}}
 if(window.L){var c0=lat!=null?[lat,lng]:{PE:[-12.05,-77.04],EC:[-2.17,-79.92],BO:[-16.5,-68.15]}[iso];mapa=L.map('mapaSede').setView(c0,lat!=null?15:11);
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(mapa);
   if(lat!=null)marker=L.marker([lat,lng]).addTo(mapa);mapa.on('click',function(ev){ponerPunto(ev.latlng.lat,ev.latlng.lng,false)});
   $('btnUbic').addEventListener('click',function(){if(!navigator.geolocation){pcgToast('Tu navegador no permite ubicación.');return}navigator.geolocation.getCurrentPosition(function(p){ponerPunto(p.coords.latitude,p.coords.longitude,true)},function(){pcgToast('No pudimos leer tu ubicación.')})})}
+// ── buscador de la sede (Google Maps vía /web/lugares, el mismo de "Pon tu cancha") ──
+// El campo "Club / local" AUTOCOMPLETA: al elegir un resultado se pone el nombre y el pin.
+var tSede=null, inSede=$('sede'), resSede=$('resSede');
+if(CFG.buscar&&inSede&&resSede){
+  inSede.addEventListener('input',function(){clearTimeout(tSede);var q=this.value.trim();if(q.length<3){resSede.hidden=true;resSede.innerHTML='';return}
+    tSede=setTimeout(function(){var c=mapa?mapa.getCenter():null;var qs='/web/lugares?q='+encodeURIComponent(q)+(c?'&lat='+c.lat+'&lng='+c.lng:'');
+      fetch(qs).then(function(r){return r.json()}).then(function(j){if(inSede.value.trim()!==q)return;var l=j.lugares||[];resSede.hidden=false;
+        resSede.innerHTML=l.length?l.map(function(x){return "<button type='button' class='res-it' data-nombre='"+esc(x.nombre)+"' data-lat='"+x.lat+"' data-lng='"+x.lng+"'><b>"+esc(x.nombre)+"</b><small>"+esc(x.direccion)+(x.km!=null?' · a '+x.km+' km':'')+"</small></button>"}).join('')
+          :"<div class='sub' style='padding:8px 12px'>No encontramos ese local en Google. Deja el nombre escrito y marca el punto en el mapa.</div>"}).catch(function(){resSede.hidden=true})},400)});
+  resSede.addEventListener('click',function(ev){var b=ev.target.closest('.res-it');if(!b)return;inSede.value=b.dataset.nombre;resSede.hidden=true;resSede.innerHTML='';
+    ponerPunto(parseFloat(b.dataset.lat),parseFloat(b.dataset.lng),true)});
+  document.addEventListener('click',function(ev){if(!ev.target.closest('#resSede')&&ev.target!==inSede)resSede.hidden=true});
+  inSede.addEventListener('keydown',function(ev){if(ev.key==='Escape')resSede.hidden=true});
+}
 // ── zona en cascada (mismo árbol que el app) ──
 function opts(sel,lista,val,ph){sel.innerHTML="<option value=''>"+ph+"</option>"+lista.map(function(o){return "<option value='"+esc(o)+"'"+(o===val?' selected':'')+">"+esc(o)+"</option>"}).join('')}
 function cargarGeo(){fetch('/web/geo/'+iso).then(function(r){return r.json()}).then(function(j){if(!j.ok)return;arbol=j.arbol;var lb=j.labels,n1=Object.keys(arbol),pre=['','',''];

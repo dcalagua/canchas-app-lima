@@ -109,6 +109,9 @@ h1{font-size:28px;line-height:1.15}h2{font-size:20px}h3{font-size:16px}
 .mapa-ficha .mapa{height:300px;border-radius:14px;border:1px solid var(--trazo);box-shadow:none}
 .mapa-ficha .pie-mapa{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:8px;font-size:13px;color:var(--tenue);font-weight:600}
 .mapa-ficha .pie-mapa a{font-weight:700}
+/* Mapa de FORMULARIO (sede de academia, Pon tu cancha): siempre visible, a
+   diferencia de .mapa-ficha que arranca oculto hasta "Cómo llegar". */
+.mapa-sede{display:block;height:300px;border-radius:14px;border:1px solid var(--trazo);overflow:hidden;background:#EEF2F5}
 /* turnos por franja (Mañana / Tarde / Noche) con precio visible */
 .slots-grupo{margin:14px 0 4px}
 .slots-grupo h5{margin:0 0 8px;font-size:13px;font-weight:700;color:var(--noche);display:flex;align-items:center;gap:8px}

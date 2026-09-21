@@ -628,9 +628,13 @@ para la API del APK.
   (`data` jsonb = `Academia.toJson`), onboarding "Crear mi academia", editor
   (`/anfitrion/academia/nueva` id `ac_<µs>`, `/{id}/editar`): logo →
   `canchas/academia_<id>/logo_web.jpg`, deporte chips `DEPORTES_ACADEMIA`,
-  nombre, descripción, sede (nombre + MAPA Leaflet clic / "Usar mi
-  ubicación": del punto salen país → prefijo de WhatsApp, moneda —fija al
-  crear— y zona), **zona en cascada** por país (`GET /web/geo/{iso}` sirve
+  nombre, descripción, sede (el campo "Club / local" AUTOCOMPLETA con
+  Google Maps vía `/web/lugares` —pedido del director, sep-2026: escribir
+  "esmon" y que el pin se ponga solo; `#resSede`, `CFG.buscar` = hay
+  `PLACES_API_KEY`, sin llave es texto simple— + MAPA Leaflet clic / "Usar
+  mi ubicación": del punto salen país → prefijo de WhatsApp, moneda —fija al
+  crear— y zona; OJO: el div del mapa lleva la clase `.mapa-sede`, NO
+  `.mapa-ficha`, que arranca en `display:none` y lo ocultaba), **zona en cascada** por país (`GET /web/geo/{iso}` sirve
   `web/geo/{pe,bo,ec}_geo.json` = COPIA de `assets/geo` del app; se guarda
   el nivel 3 como el app), WhatsApp (largo por país `TEL_LONGITUD`), fotos
   (hasta 8), redes chips + handle, planes (nombre, tipo mensual/prepago/por
@@ -760,7 +764,18 @@ off → redeploy inmediato en cada push). URL pública:
     `workflow_dispatch` de `build.yml` con `ref=prd` e `inputs.entorno=prod`
     (run 1277 → `pichangol-prod-1277.aab` como artifact + APK en el Release).
     Pendiente manual del checklist `docs/prd_railway_checklist.md`: llaves
-    Culqi live y `DATABASE_URL` de PCG-PRD si aún no están. **RLS en
+    Culqi live y `DATABASE_URL` de PCG-PRD si aún no están. **Pase del
+    18-sep-2026 (autorizado: "pasa todo a PRD"):** `prd` = merge `2b9b027`
+    (reclamo/registro de canchas desde la web, ficha `/lugar`, búsqueda por
+    nombre en Google, redescubrir al mover el mapa); Edge `places-cerca`
+    v6 (paginación) desplegada en PCG-PRD vía el conector Supabase
+    `deploy_edge_function` (`verify_jwt=false`, como estaba). Sin cambios
+    en `lib/` → no hizo falta APK nuevo. **`search_path` de las funciones
+    de push: aplicado en QAS (13-sep, push real verificado por el director)
+    y en PRD el 18-sep-2026** vía `apply_migration`
+    (`push_funciones_search_path`): las 3 funciones (`notificar_push_aviso`,
+    `_matricula`, `_mensaje`) con `proconfig = {search_path=public, net}`,
+    SECURITY DEFINER y su trigger activo. **RLS en
     `growth_*` de PCG-PRD: ACTIVADO el 12-sep-2026** (sin políticas ni
     FORCE: el backend entra como `postgres`, dueño de las tablas, y no lo
     afecta; la anon key ya no puede leerlas). **Funciones trigger de push
@@ -1277,11 +1292,10 @@ antes del corte.
   dueño** (`docs/conexiones-sociales.md`).
 - Política **RLS de DELETE** en `pichangol_canchas` (para que el borrado también
   sea en la nube / sobreviva reinstalación).
-- **`search_path` fijo en las funciones trigger de push** (`notificar_push_*`,
-  aviso "function_search_path_mutable" del linter de Supabase, PENDIENTE
-  por decisión del director, sep-2026): `ALTER FUNCTION public.notificar_push_X()
-  SET search_path = public, net`. Bajo riesgo, pero probar primero en QAS con
-  un push real (las funciones llaman a `net.http_post`) y recién luego en PRD.
+- ~~`search_path` fijo en las funciones trigger de push~~ HECHO en QAS y PRD
+  (sep-2026, `docs/piloto/supabase_push_funciones_search_path.sql`). Si se
+  crea una función `notificar_push_*` nueva, agregarla a la lista del script
+  y correrlo en ambos ambientes.
 - Validación en sitio (motorizado) como fase de endurecimiento.
 - Apelación a Meta (cuenta bloqueada) + Twilio Sandbox como respaldo OTP.
 - Idea biométrica para validación de dueño (madurar).
