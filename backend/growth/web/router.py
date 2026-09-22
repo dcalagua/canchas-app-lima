@@ -564,7 +564,6 @@ _JS_EXPLORAR = r"""
   document.addEventListener('click', function(ev){ var g = ev.target.closest('.ir'); if(!g) return; ev.preventDefault(); ev.stopPropagation();
     window.open('https://www.google.com/maps/search/?api=1&query=' + g.dataset.lat + ',' + g.dataset.lng, '_blank'); });
   document.addEventListener('click', function(ev){ var g = ev.target.closest('.wa'); if(!g) return; ev.preventDefault(); ev.stopPropagation(); window.open(g.dataset.wa, '_blank', 'noopener'); });
-  document.addEventListener('click', function(ev){ var c = ev.target.closest('.lst.aca'); if(!c || c.dataset.sinpagina !== '1') return; ev.preventDefault(); var b = c.querySelector('.wa'); if(b) window.open(b.dataset.wa, '_blank', 'noopener'); });
   // "¿Es tuya? Reclámala": registro desde la web prellenado con el lugar de Google (mismo flujo que el app).
   document.addEventListener('click', function(ev){ var g = ev.target.closest('.reclamar'); if(!g) return; ev.preventDefault(); ev.stopPropagation();
     location.href = '/anfitrion/nueva?place=' + encodeURIComponent(g.dataset.id) + '&nombre=' + encodeURIComponent(g.dataset.nombre) + '&direccion=' + encodeURIComponent(g.dataset.dir) + '&lat=' + g.dataset.lat + '&lng=' + g.dataset.lng + '&deporte=' + encodeURIComponent(g.dataset.dep || ''); });
@@ -620,7 +619,7 @@ _JS_EXPLORAR = r"""
       var ok = c.dataset.ok === '1', esAca = c.classList.contains('aca');
       var m = L.marker([lat, lng], {icon: L.divIcon({className: '', html: '<span class="pin-precio' + (ok ? '' : ' pend') + (esAca ? ' aca' : '') + '">' + c.dataset.precio + '</span>', iconSize: null})});
       m._card = c;
-      m.bindPopup('<b>' + esc(c.dataset.nombre) + '</b><br>' + esc(c.dataset.sub) + '<br>' + (esAca ? '' : '<span style="font-weight:800">' + esc(c.dataset.precio) + ' por hora</span><br>') + (esAca && c.dataset.sinpagina === '1' ? (c.querySelector('.wa') ? '<a class="btn sec" href="' + esc(c.querySelector('.wa').dataset.wa) + '" target="_blank" rel="noopener">' + esc(c.querySelector('.wa').textContent.trim()) + '</a>' : '') : '<a class="btn' + (ok ? '' : ' sec') + '" href="' + c.getAttribute('href') + '">' + (esAca ? 'Ver academia' : (ok ? 'Ver horarios' : 'Reservar en la app')) + '</a>'));
+      m.bindPopup('<b>' + esc(c.dataset.nombre) + '</b><br>' + esc(c.dataset.sub) + '<br>' + (esAca ? '' : '<span style="font-weight:800">' + esc(c.dataset.precio) + ' por hora</span><br>') + '<a class="btn' + (ok ? '' : ' sec') + '" href="' + c.getAttribute('href') + '">' + (esAca ? 'Ver academia' : (ok ? 'Ver horarios' : 'Reservar en la app')) + '</a>');
       m.on('mouseover', function(){ c.style.outline = '2px solid #0E8F67'; c.style.outlineOffset = '4px'; c.style.borderRadius = '14px'; });
       m.on('mouseout', function(){ c.style.outline = ''; });
       marcadores.push(m); m.addTo(mapa);
@@ -946,11 +945,12 @@ def _tarjeta_academia(a: dict) -> str:
     sub = " · ".join(x for x in (a.get("sedeClub"), a.get("zona")) if x)
     n_prog = len([x for x in programas if x])
     texto = f"{a.get('nombre', '')} {a.get('sedeClub', '')} {a.get('zona', '')} {dep_nombre} academia clases".lower()
-    con_landing = _landing_lista(str(a["id"]))
+    # La tarjeta abre la FICHA WEB /academia/{id} (programas, tarifario y
+    # matrícula), que existe siempre; la landing /l/{id} (marketing, la genera
+    # el dueño desde el app) se enlaza desde la ficha si existe.
     redes_html = _botones_redes(a)
-    ver = "<span class='app'>Ver academia</span>" if con_landing else ""
-    href = f"/l/{e(a['id'])}" if con_landing else ""
-    return (f"<a class='lst aca' href='{href or '#'}' data-id='ac:{e(a['id'])}' data-t='{e(texto)}' data-deps='{e(dep)}' data-sinpagina='{0 if con_landing else 1}' "
+    ver = "<span class='app'>Ver academia</span>"
+    return (f"<a class='lst aca' href='/academia/{e(a['id'])}' data-id='ac:{e(a['id'])}' data-t='{e(texto)}' data-deps='{e(dep)}' "
             f"data-lat='{a.get('lat') or ''}' data-lng='{a.get('lng') or ''}' data-nombre='{e(a.get('nombre', ''))}' data-sub='{e(sub)}' "
             f"data-precio='🎓 {e(dep_nombre)}' data-ok='1'>"
             f"<div class='foto'><div class='fotos'>{foto}</div><span class='badge aca'>🎓 Academia</span>{extra}</div>"

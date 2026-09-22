@@ -412,7 +412,14 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 .tarifas{display:flex;flex-direction:column;gap:10px;margin-top:6px}.tarifa{background:#F5F7FA;border:1px solid var(--trazo);border-radius:12px;padding:10px 12px 12px}
 .tarifa-top{display:flex;justify-content:space-between;align-items:center;gap:8px}.tarifa .tnombre{font-weight:800;color:var(--noche)}.tarifa label{margin-top:8px}
 .btn.chico{padding:9px 14px;font-size:13.5px}
-.lst .badge.aca{background:var(--tinte);color:var(--teal)}.lst .app svg{vertical-align:-3px}.lst .red-instagram{color:#C13584}.lst .red-facebook{color:#1877F2}.lst .red-tiktok{color:#111}.lst .red-youtube{color:#E62117}.pin-precio.aca{background:var(--tinte);color:var(--teal);border-color:var(--esmeralda)}.grupo-aca{margin-top:28px}
+.lst .badge.aca{background:var(--tinte);color:var(--teal)}
+/* Ficha de academia: tarifario por programa + comprobante de matrícula */
+.prog{border:1px solid var(--trazo);border-radius:14px;padding:12px 14px;margin-top:12px}.prog-h{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline;margin-bottom:6px}.prog-h b{font-size:16px}.prog-h .sub{margin:0;font-size:13px}
+.tarifa-fila{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid #f0f0f0}.tarifa-fila:first-of-type{border-top:0}.tarifa-fila>div:first-child{flex:1;min-width:0}.tarifa-fila .tp{text-align:right;white-space:nowrap}.tarifa-fila .tp b{font-size:16px}.tarifa-fila .tp small{display:block;color:var(--tenue);font-weight:600;font-size:12px}
+.tarifa-fila.sel{background:var(--tinte);border-radius:12px;padding:10px 12px;margin:0 -12px}.tarifa-fila .btn.chico{padding:9px 14px;font-size:13.5px;white-space:nowrap}
+@media(max-width:640px){.tarifa-fila{flex-wrap:wrap}.tarifa-fila .btn.chico{width:100%}}
+.check-ok{width:64px;height:64px;border-radius:50%;background:var(--tinte);color:var(--teal);font-size:34px;font-weight:800;display:flex;align-items:center;justify-content:center;margin:0 auto 10px}
+.btn.red-instagram{color:#C13584}.btn.red-facebook{color:#1877F2}.btn.red-youtube{color:#E62117}.btn svg{vertical-align:-3px}.lst .app svg{vertical-align:-3px}.lst .red-instagram{color:#C13584}.lst .red-facebook{color:#1877F2}.lst .red-tiktok{color:#111}.lst .red-youtube{color:#E62117}.pin-precio.aca{background:var(--tinte);color:var(--teal);border-color:var(--esmeralda)}.grupo-aca{margin-top:28px}
 .frecs{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-top:6px}.frec{display:flex;align-items:center;gap:10px}.frec b{min-width:58px}.frec .inp-moneda{flex:1}
 .sueltos{margin-top:14px}.suelto{display:flex;justify-content:space-between;align-items:center;gap:8px;border:1px dashed var(--trazo);border-radius:12px;padding:8px 12px;margin-top:6px}
 .suelto .mini{width:30px;height:30px;border-radius:50%;border:1px solid var(--trazo);background:#fff;cursor:pointer;font-family:inherit;font-weight:800;flex:none}

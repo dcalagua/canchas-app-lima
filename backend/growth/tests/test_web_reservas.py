@@ -174,6 +174,20 @@ class FakeDB:
     def academias_publicas(self):
         return [dict(a, id=k) for k, a in self.academias.items() if not a.get("_eliminada")]
 
+    def academia(self, aid):
+        a = self.academias.get(aid)
+        return None if (a is None or a.get("_eliminada")) else dict(a, id=aid)
+
+    def insertar_matricula(self, alumno_id, academia_id, email, data):
+        if any(m.get("id") == alumno_id for m in self.matriculas):
+            return False
+        self.matriculas.append(dict(data, id=alumno_id, academiaId=academia_id, email=email))
+        return True
+
+    def matricula(self, alumno_id):
+        m = next((m for m in self.matriculas if m.get("id") == alumno_id), None)
+        return dict(m) if m else None
+
     def academias_de_dueno(self, email):
         return [dict(a, id=k) for k, a in self.academias.items() if (a.get("dueno") or "").lower() == email.lower() and not a.get("_eliminada")]
 
@@ -245,7 +259,7 @@ def db(monkeypatch):
                "insertar_reservas", "confirmar_reservas", "borrar_reservas", "reservas_de",
                "reservas_por_grupo", "reservas_de_usuario", "eliminar_reservas", "canchas_de_dueno", "reservas_de_canchas", "bloqueos_de",
                "actualizar_cancha", "bloquear", "reserva_de_dueno", "marcar_pagado", "borrar_reserva_manual",
-               "academias_publicas", "academias_de_dueno", "academia_existe", "guardar_academia", "eliminar_academia", "matriculas_de_academias",
+               "academias_publicas", "academia", "insertar_matricula", "matricula", "academias_de_dueno", "academia_existe", "guardar_academia", "eliminar_academia", "matriculas_de_academias",
                "productos_de_vendedor", "producto_por_id", "guardar_producto", "eliminar_producto", "esta_verificado",
                "insertar_canchas", "borrar_canchas", "marcar_verificada", "adoptar_cancha", "desadoptar_cancha"):
         monkeypatch.setattr(datos, fn, getattr(fake, fn))
@@ -1360,11 +1374,10 @@ def test_academias_en_el_explorador_por_deporte_y_cercania(db, monkeypatch):
     # tarjeta no navega a una página inexistente (data-sinpagina).
     t1 = home[home.index("data-id='ac:ac_t1'"):home.index("data-id='ac:ac_f1'")]
     f1 = home[home.index("data-id='ac:ac_f1'"):home.index("id='descubiertas'")]
-    assert "href='#' data-id='ac:ac_t1'" in home and "Ver academia" not in t1 and "data-sinpagina='1'" in t1
+    assert "href='/academia/ac_t1' data-id='ac:ac_t1'" in home and "Ver academia" in t1
     assert "data-wa='https://www.tiktok.com/@baselinetenis'" in t1 and "TikTok" in t1 and "data-wa='https://facebook.com/baseline'" in t1 and "Facebook" in t1
     assert "red-instagram" not in t1 and "Web</span>" not in t1 and "otra" not in t1
-    assert "href='/l/ac_f1' data-id='ac:ac_f1'" in home and "Ver academia" in f1 and "data-sinpagina='0'" in f1 and "red-" not in f1
-    assert "c.dataset.sinpagina !== '1'" in home
+    assert "href='/academia/ac_f1' data-id='ac:ac_f1'" in home and "Ver academia" in f1 and "red-" not in f1
     assert "data-wa='https://wa.me/51999888777" in home and "data-wa='https://wa.me/51988877766" in home and "<a class='app' href='https://wa.me" not in home and "1 programa · " in home and "Consulta precios" in home
     assert "data-lat='-12.09'" in home and "class='ir' data-lat='-12.09'" in home
     # JS: las academias se ordenan por cercanía con las canchas, no entran en filtros de hora/precio y tienen pin propio.
@@ -1378,3 +1391,86 @@ def test_academias_en_el_explorador_por_deporte_y_cercania(db, monkeypatch):
     assert [c["id"] for c in cli.get("/web/descubrir?lat=-12&lng=-77").json()["canchas"]] == ["gp_1", "gp_2"]
     assert [c["id"] for c in cli.get("/web/descubrir?lat=-12&lng=-77&deporte=tenis").json()["canchas"]] == ["gp_2"]
     assert "'&deporte=' + encodeURIComponent(C.dep || '')" in home
+
+
+def test_ficha_de_academia_y_matricula_web_como_el_app(db, monkeypatch):
+    """Pedido del director (sep-2026): al tocar la academia se abre su FICHA
+    web con programas y tarifario y uno puede MATRICULARSE. Mismo flujo que
+    `academia_detalle_screen._matricular`: login con Google → para mí / mi
+    hijo(a) → nombre + celular → mes a mes o adelantado (descuento prepago) →
+    Culqi. La fila en `pichangol_matriculas` es la que escribe
+    `AppState.matricular` (Alumno.toJson + cuotas, ids al_/cu_) y el profe
+    recibe el push "Nuevo alumno 🎓"."""
+    from web import academia as acad, sesion as ses_mod
+    from pagos import culqi
+    import pagos.router as pr
+    monkeypatch.setattr(config, "GOOGLE_WEB_CLIENT_ID", "cid-web")
+    monkeypatch.setattr(config, "CULQI_PUBLIC_KEY", "pk_test_x")
+    db.academias["ac_t1"] = {"nombre": "Academia Baseline", "deporte": "tenis", "dueno": "profe@gmail.com", "sedeClub": "Club Lawn Tennis",
+                             "zona": "San Borja", "lat": -12.09, "lng": -77.03, "whatsapp": "999888777", "descripcion": "Tenis para todos",
+                             "redes": {"tiktok": "@baseline"}, "recargoInvitado": 50, "descuentoPrepago": 10, "mesesMinPrepago": 3, "descuentoHermano2": 10,
+                             "planes": [{"id": "Bola Roja | 2x", "nombre": "Bola Roja · 2x/sem", "programa": "Bola Roja", "precioMes": 250, "frecuenciaSemana": 2, "etapaEdad": "5 a 10 años", "duracionClase": "1 h"},
+                                        {"id": "Bola Roja | 3x", "nombre": "Bola Roja · 3x/sem", "programa": "Bola Roja", "precioMes": 330, "frecuenciaSemana": 3},
+                                        {"id": "pl_clase", "nombre": "Clase particular", "tipo": "porClase", "precioMes": 80, "meses": 0}]}
+    db.academias["ac_bo"] = {"nombre": "Escuela La Paz", "deporte": "futbol", "dueno": "dt@gmail.com", "lat": -16.5, "lng": -68.15, "moneda": "Bs",
+                             "planes": [{"id": "p1", "nombre": "Mensual", "precioMes": 200}]}
+    cli = TestClient(app, base_url="https://testserver")
+    assert cli.get("/academia/no_existe").status_code == 200 and "Academia no disponible" in cli.get("/academia/no_existe").text
+    # Ficha: galería, sede, redes, tarifario por programa con socio/invitado y botones Matricularme.
+    html = cli.get("/academia/ac_t1").text
+    for t in ("Academia Baseline", "Club Lawn Tennis · San Borja", "Tenis para todos", "Programas y tarifario", "Bola Roja", "5 a 10 años · 1 h",
+              "2x por semana", "S/ 250</b>", "invitado S/ 300", "Otros planes", "Por clase", "data-plan='Bola Roja | 2x'", "class='btn chico elegir'",
+              "https://www.tiktok.com/@baseline", "wa.me/51999888777", "id='mapaFicha'", "Inicia sesión con Google para matricularte",
+              "Para mi hijo(a)", "Mes a mes", "Adelantado", "checkout.culqi.com", "pago adelantado de 3+ meses −10 %", "2.º hermano −10 %"):
+        assert t in html, t
+    # Multi-país: en Bs el tarifario se ve pero la matrícula va a la app.
+    bo = cli.get("/academia/ac_bo").text
+    assert "Matricúlate desde la app" in bo and "cobra en Bs" in bo and "elegir" not in bo
+    # Matricular exige sesión (como reservar).
+    r = cli.post("/web/matricular", json={"academia_id": "ac_t1", "plan_id": "Bola Roja | 2x", "nombre": "Ana", "celular": "999888777", "token": "tkn"}).json()
+    assert r["error"] == "sesion_requerida"
+    _entrar_como(cli, monkeypatch, "ana@gmail.com", nombre="Ana Pérez")
+    cargos, pushes, conta, susc = [], [], [], []
+    monkeypatch.setattr(culqi, "crear_cargo", lambda **kw: (cargos.append(kw) or {"ok": True, "charge_id": "chr_mat_1"}))
+    monkeypatch.setattr(pr, "_aviso_push_usuario", lambda *a, **k: pushes.append((a, k)))
+    monkeypatch.setattr(pr, "post_matricula", lambda req: conta.append(req) or {"ok": True})
+    monkeypatch.setattr(pr, "post_suscripcion_alumno", lambda req: susc.append(req) or {"ok": True})
+    # Validaciones antes de cobrar.
+    assert cli.post("/web/matricular", json={"academia_id": "ac_t1", "plan_id": "nope", "nombre": "Ana", "celular": "999888777", "token": "t"}).json()["error"] == "plan"
+    assert cli.post("/web/matricular", json={"academia_id": "ac_t1", "plan_id": "Bola Roja | 2x", "nombre": "A", "celular": "999888777", "token": "t"}).json()["error"] == "nombre"
+    assert cli.post("/web/matricular", json={"academia_id": "ac_t1", "plan_id": "Bola Roja | 2x", "nombre": "Lucas", "celular": "999888777", "es_hijo": True, "token": "t"}).json()["error"] == "edad"
+    assert cli.post("/web/matricular", json={"academia_id": "ac_bo", "plan_id": "p1", "nombre": "Ana", "celular": "77788899", "token": "t"}).json()["error"] == "moneda"
+    assert not cargos
+    # Adelantado 3 meses con descuento prepago (10 %): 250×3 − 75 = 675; 3 cuotas pagadas.
+    r = cli.post("/web/matricular", json={"academia_id": "ac_t1", "plan_id": "Bola Roja | 2x", "nombre": "Lucas Pérez", "celular": "999 888 777",
+                                          "es_hijo": True, "edad": 8, "cantidad": 3, "mes_a_mes": False, "token": "tkn_1", "medio": "yape"}).json()
+    assert r["ok"] and r["url"].startswith("/academia/ac_t1/matricula/al_") and cargos[0]["monto_centimos"] == 67500 and cargos[0]["email"] == "ana@gmail.com"
+    m = db.matriculas[-1]
+    assert m["id"].startswith("al_") and m["academiaId"] == "ac_t1" and m["email"] == "ana@gmail.com" and m["canal"] == "web"
+    assert m["nombre"] == "Lucas Pérez" and m["apoderadoNombre"] == "Ana Pérez" and m["apoderadoWhatsapp"] == "999888777" and m["whatsapp"] == "" and m["edad"] == 8
+    assert m["esSocioSede"] is True and m["ordenHermano"] == 1 and m["sedeId"] == ""
+    cu = m["cuotas"]
+    assert len(cu) == 3 and all(c["pagada"] and c["operacionId"] == "chr_mat_1" and c["monto"] == 250 and "autoDebito" not in c for c in cu)
+    assert cu[0]["concepto"].startswith("Bola Roja · 2x/sem · ") and cu[0]["id"].endswith("_0") and cu[2]["id"].endswith("_2")
+    assert m["pagoWeb"]["monto"] == 675 and m["pagoWeb"]["ahorro"] == 75 and m["pagoWeb"]["operacion"] == "chr_mat_1" and m["pagoWeb"]["medio"] == "yape"
+    comp1 = cli.get(r["url"]).text
+    assert "S/ 675.00" in comp1 and "Descuento por pago adelantado: −S/ 75.00" in comp1
+    assert conta[0].academia_id == "ac_t1" and conta[0].monto_soles == 675 and conta[0].matricula_id == "chr_mat_1" and conta[0].pais == "pe"
+    assert pushes[0][0][0] == "profe@gmail.com" and "Nuevo alumno" in pushes[0][0][1] and "Lucas Pérez" in pushes[0][0][2] and not susc
+    # Mes a mes, 6 meses: hoy 1 cuota; 5 pendientes con autoDebito; suscripción con 5 cobros restantes.
+    r = cli.post("/web/matricular", json={"academia_id": "ac_t1", "plan_id": "Bola Roja | 3x", "nombre": "Ana Pérez", "celular": "999888777",
+                                          "cantidad": 6, "mes_a_mes": True, "token": "tkn_2"}).json()
+    assert r["ok"] and cargos[-1]["monto_centimos"] == 33000
+    m = db.matriculas[-1]; cu = m["cuotas"]
+    assert m["apoderadoNombre"] == "" and m["whatsapp"] == "999888777" and len(cu) == 6 and cu[0]["pagada"] and not cu[1]["pagada"] and all(c.get("autoDebito") for c in cu)
+    assert "fechaPago" not in cu[1] and susc[0].alumno_id == m["id"] and susc[0].cobros_restantes == 5 and susc[0].monto_soles == 330
+    # Cargo rechazado → no se guarda nada.
+    monkeypatch.setattr(culqi, "crear_cargo", lambda **kw: {"ok": False, "error": "tarjeta_rechazada"})
+    n = len(db.matriculas)
+    assert cli.post("/web/matricular", json={"academia_id": "ac_t1", "plan_id": "pl_clase", "nombre": "Ana Pérez", "celular": "999888777", "token": "t"}).json()["error"] == "cargo_rechazado"
+    assert len(db.matriculas) == n
+    # Comprobante: solo el titular; muestra cuotas y N.º de operación.
+    comp = cli.get(r["url"]).text
+    assert "¡Matrícula registrada!" in comp and "Ana Pérez" in comp and "S/ 330.00" in comp and "chr_mat_1" in comp and "⏳" in comp and "wa.me/51999888777" in comp
+    _entrar_como(cli, monkeypatch, "otro@gmail.com")
+    assert "Esta matrícula es privada" in cli.get(r["url"]).text
