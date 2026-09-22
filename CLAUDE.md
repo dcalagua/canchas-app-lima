@@ -855,7 +855,10 @@ off → redeploy inmediato en cada push). URL pública:
     22-sep-2026 (autorizado):** `prd` = merge de "Programas y tarifario en
     Mi academia igual que el app" (solo web). **Pase del 22-sep-2026 (2.º,
     autorizado):** `prd` = merge de "academias en el explorador web +
-    descubiertas por pestaña" (solo web). **RLS en
+    descubiertas por pestaña" (solo web). **Pase del 22-sep-2026 (3.º,
+    autorizado):** `prd` = merge `3688132` (ficha web de academia
+    `/academia/{id}` con programas, tarifario y matrícula en línea + redes
+    con logo en la tarjeta). Solo web: sin SQL, sin Edge, sin APK. **RLS en
     `growth_*` de PCG-PRD: ACTIVADO el 12-sep-2026** (sin políticas ni
     FORCE: el backend entra como `postgres`, dueño de las tablas, y no lo
     afecta; la anon key ya no puede leerlas). **Funciones trigger de push
