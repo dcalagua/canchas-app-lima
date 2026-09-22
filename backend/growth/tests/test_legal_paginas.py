@@ -192,3 +192,62 @@ def test_datos_de_la_empresa_configurables_desde_la_torre():
     finally:
         config.ADMIN_PANEL_TOKEN = prev_tok
         stores.config.clear(); stores.config.update(prev_cfg)
+
+
+def test_requisitos_culqi_libro_devoluciones_terminos_y_redes():
+    """Observaciones de Culqi al afiliar www.pichangol.app (sep-2026): Libro de
+    Reclamaciones nativo en página propia con hoja imprimible, política de
+    cambios y devoluciones con la razón social explícita, términos con las
+    reglas de compra web y redes sociales que lleven SOLO a perfiles oficiales
+    (configurables en la torre; sin configurar no sale ningún ícono)."""
+    import empresa
+    from db.store import stores
+
+    em = empresa.datos()
+    # Libro de Reclamaciones: URL propia, datos del proveedor, hoja completa e imprimible.
+    for url in ("/libro-de-reclamaciones", "/legal/libro-de-reclamaciones"):
+        r = cli.get(url)
+        assert r.status_code == 200, url
+        t = r.text
+        for s in ("LIBRO DE RECLAMACIONES", "Hoja de reclamación", em["razon_social"], em["ruc"], em["direccion"],
+                  "id='lr-form'", "name='c_apoderado'", "name='d_pedido'", "fetch('/reclamaciones'", "15 días hábiles",
+                  "Imprimir / guardar copia", "Observaciones y acciones adoptadas por el proveedor", "window.print()",
+                  "D.S. 011-2011-PCM", "denuncia ante INDECOPI"):
+            assert s in t, s
+    hoja = cli.post("/reclamaciones", json={"c_nombre": "Luis", "c_doc": "12345678", "c_tel": "999", "c_email": "l@x.com",
+                                              "c_menor": "Sí", "c_apoderado": "Marta", "d_detalle": "x", "d_pedido": "y"}).json()
+    assert hoja["ok"] and hoja["numero"].startswith("PICH-")
+    assert [h for h in stores.reclamaciones if h["numero"] == hoja["numero"]][0]["consumidor"]["apoderado"] == "Marta"
+    # Política de cambios y devoluciones con razón social explícita.
+    d = cli.get("/legal/devoluciones").text
+    for s in (em["razon_social"], em["ruc"], "Reservas de canchas", "Matrículas en academias", "Productos del marketplace",
+              "100 %", "7 días hábiles", "mismo medio de pago", "/libro-de-reclamaciones", "cambio o la devolución"):
+        assert s in d, s
+    # Términos: reglas de compra en la web + enlaces.
+    tc = cli.get("/legal/terminos").text
+    for s in ("Compras en la web", "Culqi", "comprobante", "/legal/devoluciones", "/libro-de-reclamaciones", em["razon_social"]):
+        assert s in tc, s
+    # Pie de TODAS las páginas y menú ☰: enlaces a las páginas propias (no a anclas).
+    home = cli.get("/").text
+    for s in ("href='/libro-de-reclamaciones'", "href='/legal/devoluciones'", "href=\"/legal/terminos\"", "class='libro'",
+              "Cambios, cancelaciones y devoluciones"):
+        assert s in home, s
+    assert "href='/#reclamaciones'>Libro" not in home
+    # Redes sociales: sin configurar NO hay íconos (Culqi rechaza íconos vacíos o por defecto).
+    assert "class='pie-redes'" not in home and "Síguenos" not in home
+    prev = dict(stores.config)
+    try:
+        stores.config.update(empresa.validar({"empresa_instagram": "@pichangol", "empresa_tiktok": "https://www.tiktok.com/@pichangol.app",
+                                              "empresa_facebook": "", "empresa_youtube": ""}))
+        assert [r["url"] for r in empresa.redes()] == ["https://www.instagram.com/pichangol", "https://www.tiktok.com/@pichangol.app"]
+        h2 = cli.get("/canchas").text
+        assert "Síguenos" in h2 and "href='https://www.instagram.com/pichangol' target='_blank'" in h2 and "class='red-tiktok' href='https://www.tiktok.com/@pichangol.app'" in h2 and "class='red-facebook' href=" not in h2
+        # URL de otro dominio o basura → rechazada.
+        for malo in ("https://google.com/pichangol", "pichangol pe", "javascript:alert(1)"):
+            try:
+                empresa.validar({"empresa_instagram": malo})
+                assert False, malo
+            except ValueError:
+                pass
+    finally:
+        stores.config.clear(); stores.config.update(prev)

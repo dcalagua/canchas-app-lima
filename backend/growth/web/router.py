@@ -871,13 +871,7 @@ def _tarjeta(c: dict, rating: tuple[float, int] | None, fecha: str = "") -> str:
 
 # Redes de la academia (`Academia.redes`: red → @usuario o enlace). Íconos SVG
 # inline (currentColor) para no depender de fuentes ni emojis.
-_RED_SVG = {
-    "instagram": "<svg viewBox='0 0 24 24' width='15' height='15' fill='none' stroke='currentColor' stroke-width='2'><rect x='3' y='3' width='18' height='18' rx='5'/><circle cx='12' cy='12' r='4'/><circle cx='17.5' cy='6.5' r='1' fill='currentColor'/></svg>",
-    "facebook": "<svg viewBox='0 0 24 24' width='15' height='15' fill='currentColor'><path d='M13.5 22v-8h2.7l.4-3.2h-3.1V8.8c0-.9.3-1.6 1.6-1.6h1.7V4.4c-.3 0-1.3-.1-2.5-.1-2.5 0-4.1 1.5-4.1 4.2v2.3H7.4V14h2.8v8h3.3z'/></svg>",
-    "tiktok": "<svg viewBox='0 0 24 24' width='15' height='15' fill='currentColor'><path d='M16.5 2h-3v13.2a2.8 2.8 0 1 1-2.8-2.8c.3 0 .6 0 .8.1V9.4a5.9 5.9 0 1 0 5 5.8V8.6a7 7 0 0 0 4 1.3V6.8a4 4 0 0 1-4-4.8z'/></svg>",
-    "youtube": "<svg viewBox='0 0 24 24' width='15' height='15' fill='currentColor'><path d='M22.5 7.2a2.8 2.8 0 0 0-2-2C18.8 4.8 12 4.8 12 4.8s-6.8 0-8.5.4a2.8 2.8 0 0 0-2 2C1 8.9 1 12 1 12s0 3.1.5 4.8a2.8 2.8 0 0 0 2 2c1.7.4 8.5.4 8.5.4s6.8 0 8.5-.4a2.8 2.8 0 0 0 2-2c.5-1.7.5-4.8.5-4.8s0-3.1-.5-4.8zM9.8 15.1V8.9l5.7 3.1-5.7 3.1z'/></svg>",
-    "web": "<svg viewBox='0 0 24 24' width='15' height='15' fill='none' stroke='currentColor' stroke-width='2'><circle cx='12' cy='12' r='9'/><path d='M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18'/></svg>",
-}
+_RED_SVG = ui.RED_SVG  # logos compartidos con el pie (redes oficiales) y la ficha de academia
 
 
 def _url_red(red: str, valor: str) -> str:

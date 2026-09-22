@@ -915,6 +915,39 @@ off → redeploy inmediato en cada push). URL pública:
   teléfono a mano en HTML**: cada ambiente (QAS y PRD) tiene los suyos en su
   snapshot y el director los cambia sin publicar código. Test
   `test_datos_de_la_empresa_configurables_desde_la_torre`.
+- **OBSERVACIONES DE CULQI AL AFILIAR www.pichangol.app (22-sep-2026) y cómo
+  se cubrieron:** (1) **Libro de Reclamaciones "no implementado de forma
+  correcta"** → antes solo era una sección anclada (`/#reclamaciones`) al
+  fondo del explorador; ahora tiene PÁGINA PROPIA `GET /libro-de-reclamaciones`
+  (alias `/legal/libro-de-reclamaciones`, `legal/router.py::
+  libro_de_reclamaciones`, `ui.shell` con cabecera y pie) con el formato de
+  hoja del D.S. 011-2011-PCM: distintivo rojo `ui.LIBRO_SVG`, datos del
+  proveedor (razón social, RUC, domicilio, correo de la torre), consumidor
+  (+ `c_apoderado` si es menor), bien contratado, detalle/pedido, texto legal
+  (no impide denunciar ante INDECOPI; 15 días hábiles prorrogables), y tras
+  registrar (`POST /reclamaciones`, mismo endpoint) muestra la HOJA completa
+  con número y fecha, "Observaciones del proveedor: pendiente" y botón
+  "Imprimir / guardar copia" (`window.print`, CSS `@media print` oculta
+  cabecera/pie/formulario). La sección de la portada sigue y enlaza a la
+  página. (2) **Política de cambios y devoluciones con razón social
+  explícita** → `GET /legal/devoluciones` (reservas con `WEB_CANCELACION_
+  HORAS`, matrículas, marketplace 7 días, saldo/Pro, cómo pedirla, mismo
+  medio ≤7 días hábiles); la sección `#devoluciones` de `home.html` nombra a
+  `{{EMPRESA}}` y enlaza. (3) **Términos visibles** → `/legal/terminos` suma
+  "3-bis. Compras en la web" (precio visible, Culqi, comprobante, Libro) y
+  el pie + menú ☰ enlazan Términos / Devoluciones / Libro (páginas propias,
+  ya no anclas). (4) **Redes sociales** → la web NO tenía íconos; ahora
+  `empresa.REDES` (instagram/facebook/tiktok/youtube) son campos de la
+  torre → Comunicación → Datos de la empresa (`empresa_instagram|facebook|
+  tiktok|youtube`, URL oficial o @usuario, `_url_red` valida el dominio) y
+  el pie muestra "Síguenos" + ícono SOLO de las configuradas
+  (`ui.redes_pie`, `empresa.redes()`); sin configurar, ningún ícono (Culqi
+  rechaza íconos vacíos). Los SVG viven en `ui.RED_SVG` (router/academia los
+  reusan). (5) **Botón de compra funcional** → la causa real era que PCG-PRD
+  tenía 0 canchas públicas y `CULQI_PUBLIC_KEY` vacía (ver "Culqi en PRD"):
+  sin canchas reservables ni llave, el revisor no ve ningún checkout. Hay que
+  tener al menos una cancha VERIFICADA con dueño en PRD (y la academia con
+  matrícula). Test `test_requisitos_culqi_libro_devoluciones_terminos_y_redes`.
 - **Panel web `/admin` = TORRE DE CONTROL del operador (SaaS).** Página HTML
   self-contained, co-marca **Pichangol + EBIM** (solo aquí), protegida por
   **`ADMIN_PANEL_TOKEN`** (header `X-Admin-Token`, no viaja en URL). Endpoints

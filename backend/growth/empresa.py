@@ -40,12 +40,53 @@ CAMPOS: dict[str, tuple[str, str]] = {
     "empresa_correo": ("Correo de contacto", "Soporte, devoluciones y Libro de Reclamaciones."),
     "empresa_correo_privacidad": ("Correo de privacidad (opcional)", "Derechos ARCO y eliminar cuenta. Vacío = el de contacto."),
     "empresa_horario": ("Horario de atención", "Texto libre corto: «Lun a Sáb, 9:00 a 19:00»."),
+    # Redes sociales OFICIALES de la marca (Culqi exige que los íconos de la web
+    # lleven a perfiles reales y activos; vacío = el ícono NO se muestra).
+    "empresa_instagram": ("Instagram oficial", "URL del perfil (https://www.instagram.com/…) o @usuario. Vacío = sin ícono."),
+    "empresa_facebook": ("Facebook oficial", "URL de la página (https://www.facebook.com/…) o nombre de la página. Vacío = sin ícono."),
+    "empresa_tiktok": ("TikTok oficial", "URL del perfil (https://www.tiktok.com/@…) o @usuario. Vacío = sin ícono."),
+    "empresa_youtube": ("YouTube oficial", "URL del canal (https://www.youtube.com/@…) o @canal. Vacío = sin ícono."),
 }
+
+# (clave, nombre, dominios aceptados, cómo armar la URL desde un @usuario)
+REDES: tuple[tuple[str, str, tuple[str, ...], str], ...] = (
+    ("instagram", "Instagram", ("instagram.com",), "https://www.instagram.com/{u}"),
+    ("facebook", "Facebook", ("facebook.com", "fb.com", "fb.me"), "https://www.facebook.com/{u}"),
+    ("tiktok", "TikTok", ("tiktok.com",), "https://www.tiktok.com/@{u}"),
+    ("youtube", "YouTube", ("youtube.com", "youtu.be"), "https://www.youtube.com/@{u}"),
+)
 
 _EMAIL = re.compile(r"^[^@\s<>\"']+@[^@\s<>\"']+\.[^@\s<>\"']+$")
 _MAX = {"empresa_razon_social": 120, "empresa_doc_etiqueta": 12, "empresa_ruc": 20, "empresa_direccion": 200,
         "empresa_ciudad": 80, "contacto_whatsapp_pe": 12, "contacto_whatsapp_ec": 12, "contacto_whatsapp_bo": 12, "empresa_correo": 120, "empresa_correo_privacidad": 120,
-        "empresa_horario": 80}
+        "empresa_horario": 80, "empresa_instagram": 200, "empresa_facebook": 200, "empresa_tiktok": 200,
+        "empresa_youtube": 200}
+
+
+def _url_red(red: str, valor: str) -> str:
+    """URL del perfil oficial: acepta la URL completa o un @usuario. Devuelve
+    "" si no se puede armar (y entonces el ícono no se muestra)."""
+    v = (valor or "").strip()
+    if not v:
+        return ""
+    nombre, dominios, plantilla = next((n, d, t) for r, n, d, t in REDES if r == red)
+    if re.match(r"^https?://", v, re.I):
+        host = re.sub(r"^https?://", "", v, flags=re.I).split("/")[0].lower()
+        return v if any(host == d or host.endswith("." + d) for d in dominios) else ""
+    usuario = v.lstrip("@").strip("/")
+    if not re.match(r"^[A-Za-z0-9._-]{1,60}$", usuario):
+        return ""
+    return plantilla.format(u=usuario)
+
+
+def redes() -> list[dict[str, str]]:
+    """Redes oficiales configuradas, en orden, listas para el pie: [{red, nombre, url}]."""
+    out = []
+    for red, nombre, _d, _t in REDES:
+        url = _url_red(red, _cfg(f"empresa_{red}"))
+        if url:
+            out.append({"red": red, "nombre": nombre, "url": escape(url)})
+    return out
 
 
 def _cfg(clave: str) -> str:
@@ -104,6 +145,7 @@ def datos() -> dict[str, str]:
         "correo_privacidad": escape(v["empresa_correo_privacidad"] or correo),
         "horario": escape(v["empresa_horario"]),
         "anio": str(datetime.now(timezone.utc).year),
+        "redes": redes(),
     }
 
 
@@ -187,6 +229,9 @@ def validar(cambios: dict[str, str]) -> dict[str, str]:
             val = val.lower()
             if val and not _EMAIL.match(val):
                 raise ValueError(f"{etiqueta}: correo inválido")
+        elif clave.startswith("empresa_") and clave[8:] in {r for r, *_ in REDES}:
+            if val and not _url_red(clave[8:], val):   # con espacios adentro no es URL ni @usuario
+                raise ValueError(f"{etiqueta}: pega la URL del perfil oficial (https://…) o el @usuario")
         if clave in ("empresa_razon_social", "empresa_correo", "empresa_ruc", "empresa_direccion") and not val:
             raise ValueError(f"{etiqueta}: es obligatorio (lo revisan Culqi e INDECOPI)")
         limpio[clave] = val
