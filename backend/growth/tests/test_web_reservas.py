@@ -1348,10 +1348,23 @@ def test_academias_en_el_explorador_por_deporte_y_cercania(db, monkeypatch):
     db.academias["ac_f1"] = {"nombre": "Escuela Golazo", "deporte": "futbol", "dueno": "dt@gmail.com", "sedeClub": "Sabor Golazo", "lat": -12.1, "lng": -77.0,
                              "whatsapp": "51988877766", "planes": []}
     db.academias["ac_x"] = {"nombre": "Borrada", "deporte": "tenis", "_eliminada": True}
+    db.academias["ac_t1"]["redes"] = {"tiktok": "@baselinetenis", "facebook": "https://facebook.com/baseline", "otra": "x", "web": ""}
+    from db.store import stores as _st
+    monkeypatch.setattr(_st, "landings", {"ac_f1": {"nombre": "Escuela Golazo"}})
     cli = TestClient(app, base_url="https://testserver")
     home = cli.get("/").text
     assert "id='academias'" in home and "🎓 Academias<" in home and "Academia Baseline" in home and "Escuela Golazo" in home and "Borrada" not in home
-    assert "href='/l/ac_t1'" in home and "data-id='ac:ac_t1'" in home and "class='lst aca'" in home and "S/ 250</b>" in home and "al mes desde" in home
+    assert "data-id='ac:ac_t1'" in home and "class='lst aca'" in home and "S/ 250</b>" in home and "al mes desde" in home
+    # "Ver academia" SOLO si el dueño generó su página (/l/{id} responde 404 si no);
+    # si no, salen sus REDES con logo y enlace directo (pedido del director) y la
+    # tarjeta no navega a una página inexistente (data-sinpagina).
+    t1 = home[home.index("data-id='ac:ac_t1'"):home.index("data-id='ac:ac_f1'")]
+    f1 = home[home.index("data-id='ac:ac_f1'"):home.index("id='descubiertas'")]
+    assert "href='#' data-id='ac:ac_t1'" in home and "Ver academia" not in t1 and "data-sinpagina='1'" in t1
+    assert "data-wa='https://www.tiktok.com/@baselinetenis'" in t1 and "TikTok" in t1 and "data-wa='https://facebook.com/baseline'" in t1 and "Facebook" in t1
+    assert "red-instagram" not in t1 and "Web</span>" not in t1 and "otra" not in t1
+    assert "href='/l/ac_f1' data-id='ac:ac_f1'" in home and "Ver academia" in f1 and "data-sinpagina='0'" in f1 and "red-" not in f1
+    assert "c.dataset.sinpagina !== '1'" in home
     assert "data-wa='https://wa.me/51999888777" in home and "data-wa='https://wa.me/51988877766" in home and "<a class='app' href='https://wa.me" not in home and "1 programa · " in home and "Consulta precios" in home
     assert "data-lat='-12.09'" in home and "class='ir' data-lat='-12.09'" in home
     # JS: las academias se ordenan por cercanía con las canchas, no entran en filtros de hora/precio y tienen pin propio.

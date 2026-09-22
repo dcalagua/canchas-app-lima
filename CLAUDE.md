@@ -253,7 +253,16 @@ para la API del APK.
   tres.** En el JS las academias pasan solo por texto/cercanía (`pasaBase`
   devuelve true para `.aca`, se saltan `pasaFil`), la sección se oculta si
   ninguna pasa, y en el mapa llevan pin `🎓 Deporte` con popup "Ver
-  academia". Test `test_academias_en_el_explorador_por_deporte_y_cercania`.
+  academia". **Botones (pedido del director, sep-2026):** "Ver academia"
+  SOLO si el dueño generó su página (`/l/{id}` existe en `stores.landings`;
+  si no, esa ruta responde 404 "Landing no disponible"); en su lugar salen
+  las REDES registradas (`Academia.redes`: instagram/facebook/tiktok/youtube/
+  web, `_botones_redes` + `_url_red` acepta @usuario o URL completa) con
+  logo SVG inline y color de marca (`.red-<red>`), enlace directo en pestaña
+  nueva (`span.wa[data-wa]`). Sin redes → ningún botón. Una tarjeta sin
+  página (`data-sinpagina='1'`, `href='#'`) no navega: el clic abre su
+  primera red/WhatsApp; el popup del mapa hace lo mismo. Test
+  `test_academias_en_el_explorador_por_deporte_y_cercania`.
 - **PORTADA TIPO AIRBNB (`GET /`, hecho sep-2026, pedido del director):** la
   raíz del dominio YA NO es la home de marketing sino el EXPLORADOR
   (`web/router.py::_explorar`; `/canchas` es alias): cabecera con buscador en

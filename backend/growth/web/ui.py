@@ -412,7 +412,7 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 .tarifas{display:flex;flex-direction:column;gap:10px;margin-top:6px}.tarifa{background:#F5F7FA;border:1px solid var(--trazo);border-radius:12px;padding:10px 12px 12px}
 .tarifa-top{display:flex;justify-content:space-between;align-items:center;gap:8px}.tarifa .tnombre{font-weight:800;color:var(--noche)}.tarifa label{margin-top:8px}
 .btn.chico{padding:9px 14px;font-size:13.5px}
-.lst .badge.aca{background:var(--tinte);color:var(--teal)}.pin-precio.aca{background:var(--tinte);color:var(--teal);border-color:var(--esmeralda)}.grupo-aca{margin-top:28px}
+.lst .badge.aca{background:var(--tinte);color:var(--teal)}.lst .app svg{vertical-align:-3px}.lst .red-instagram{color:#C13584}.lst .red-facebook{color:#1877F2}.lst .red-tiktok{color:#111}.lst .red-youtube{color:#E62117}.pin-precio.aca{background:var(--tinte);color:var(--teal);border-color:var(--esmeralda)}.grupo-aca{margin-top:28px}
 .frecs{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-top:6px}.frec{display:flex;align-items:center;gap:10px}.frec b{min-width:58px}.frec .inp-moneda{flex:1}
 .sueltos{margin-top:14px}.suelto{display:flex;justify-content:space-between;align-items:center;gap:8px;border:1px dashed var(--trazo);border-radius:12px;padding:8px 12px;margin-top:6px}
 .suelto .mini{width:30px;height:30px;border-radius:50%;border:1px solid var(--trazo);background:#fff;cursor:pointer;font-family:inherit;font-weight:800;flex:none}
