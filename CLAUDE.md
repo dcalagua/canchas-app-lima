@@ -253,7 +253,49 @@ para la API del APK.
   tres.** En el JS las academias pasan solo por texto/cercanía (`pasaBase`
   devuelve true para `.aca`, se saltan `pasaFil`), la sección se oculta si
   ninguna pasa, y en el mapa llevan pin `🎓 Deporte` con popup "Ver
-  academia". Test `test_academias_en_el_explorador_por_deporte_y_cercania`.
+  academia". **Botones (pedido del director, sep-2026):** "Ver academia"
+  abre la FICHA WEB `/academia/{id}` (ver abajo; existe siempre). ~~SOLO si el dueño generó su página~~ (versión anterior: (`/l/{id}` existe en `stores.landings`;
+  si no, esa ruta responde 404 "Landing no disponible"); en su lugar salen
+  las REDES registradas (`Academia.redes`: instagram/facebook/tiktok/youtube/
+  web, `_botones_redes` + `_url_red` acepta @usuario o URL completa) con
+  logo SVG inline y color de marca (`.red-<red>`), enlace directo en pestaña
+  nueva (`span.wa[data-wa]`). Sin redes → ningún botón. Una tarjeta sin
+  página (`data-sinpagina='1'`, `href='#'`) no navega: el clic abre su
+  primera red/WhatsApp; el popup del mapa hace lo mismo. Test
+  `test_academias_en_el_explorador_por_deporte_y_cercania`.
+- **FICHA DE ACADEMIA + MATRÍCULA WEB (`web/academia.py`, pedido del
+  director, sep-2026: "si hago clic en la academia debería ir a la academia,
+  ver los planes y poder matricularme"):** `GET /academia/{id}` = ficha
+  tipo anuncio (galería logo+fotos, deporte, sede · zona, descripción,
+  `ul.datos` con Cómo llegar → mapa Leaflet inline y WhatsApp, botones de
+  redes con logo, enlace a `/l/{id}` si la landing existe), "Programas y
+  tarifario" (`_tarifario`: tarjeta `.prog` por programa con etapa ·
+  duración · horario, filas `.tarifa-fila` por frecuencia/modalidad con
+  precio socio e invitado si hay `recargoInvitado`, "Otros planes" para los
+  sin programa, descuentos hermanos/prepago) y el panel de matrícula = el
+  MISMO flujo que `academia_detalle_screen._matricular` del app: sesión
+  Google obligatoria (login-box como la reserva), Para mí / Para mi hijo(a)
+  (+ edad 2-17; el titular queda como `apoderadoNombre`), nombre + celular,
+  Mes a mes (solo mensuales) o Adelantado con cantidad 1/2/3/6/12 y
+  descuento prepago si `cantidad ≥ mesesMinPrepago`, Culqi Checkout v4 (solo
+  PEN; en $/Bs el tarifario se ve y "Matricúlate desde la app"). `POST
+  /web/matricular` recalcula el total en el servidor (`_total` =
+  `_HojaDatosAlumno._total`), cobra (`culqi.crear_cargo`) y escribe en
+  `pichangol_matriculas` (`datos.insertar_matricula`) EXACTAMENTE la fila de
+  `AppState.matricular`: `Alumno.toJson` (`al_<µs>`, `email` = cuenta
+  Google, `esSocioSede` true, `sedeId` '') + `cuotas` (`cu_<µs>_i`,
+  concepto "Plan · Mes", `vencimiento` = mismo día i meses después, mes a
+  mes = 1 pagada + resto pendientes con `autoDebito`, `operacionId` =
+  charge) + extras que el app ignora (`canal: web`, `pagoWeb {monto,
+  ahorro, operacion, medio}` = lo cobrado con descuento, que el comprobante
+  muestra). Luego: `pagos.router.post_matricula` (comisión del país, neto
+  "por recibir"), `stores.registrar_pago(cobro_web, concepto
+  matricula:<id>)`, mes a mes → `post_suscripcion_alumno` best-effort
+  (débito automático de los meses restantes) y push al dueño "Nuevo alumno
+  🎓" (`_aviso_push_usuario`). `GET /academia/{id}/matricula/{alumno_id}` =
+  comprobante solo para el titular (cuotas ✅/⏳, N.º de operación, WhatsApp
+  a la academia). `datos.academia(id)`, `insertar_matricula`, `matricula`.
+  Test `test_ficha_de_academia_y_matricula_web_como_el_app`.
 - **PORTADA TIPO AIRBNB (`GET /`, hecho sep-2026, pedido del director):** la
   raíz del dominio YA NO es la home de marketing sino el EXPLORADOR
   (`web/router.py::_explorar`; `/canchas` es alias): cabecera con buscador en
@@ -811,7 +853,9 @@ off → redeploy inmediato en cada push). URL pública:
     sede visible con `.mapa-sede` + buscador de club con Google Maps en Mi
     academia). Solo backend/web: sin SQL, sin Edge, sin APK. **Pase del
     22-sep-2026 (autorizado):** `prd` = merge de "Programas y tarifario en
-    Mi academia igual que el app" (solo web). **RLS en
+    Mi academia igual que el app" (solo web). **Pase del 22-sep-2026 (2.º,
+    autorizado):** `prd` = merge de "academias en el explorador web +
+    descubiertas por pestaña" (solo web). **RLS en
     `growth_*` de PCG-PRD: ACTIVADO el 12-sep-2026** (sin políticas ni
     FORCE: el backend entra como `postgres`, dueño de las tablas, y no lo
     afecta; la anon key ya no puede leerlas). **Funciones trigger de push

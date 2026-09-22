@@ -867,6 +867,55 @@ def _tarjeta(c: dict, rating: tuple[float, int] | None, fecha: str = "") -> str:
             f"{l3}</div></a>")
 
 
+# Redes de la academia (`Academia.redes`: red → @usuario o enlace). Íconos SVG
+# inline (currentColor) para no depender de fuentes ni emojis.
+_RED_SVG = {
+    "instagram": "<svg viewBox='0 0 24 24' width='15' height='15' fill='none' stroke='currentColor' stroke-width='2'><rect x='3' y='3' width='18' height='18' rx='5'/><circle cx='12' cy='12' r='4'/><circle cx='17.5' cy='6.5' r='1' fill='currentColor'/></svg>",
+    "facebook": "<svg viewBox='0 0 24 24' width='15' height='15' fill='currentColor'><path d='M13.5 22v-8h2.7l.4-3.2h-3.1V8.8c0-.9.3-1.6 1.6-1.6h1.7V4.4c-.3 0-1.3-.1-2.5-.1-2.5 0-4.1 1.5-4.1 4.2v2.3H7.4V14h2.8v8h3.3z'/></svg>",
+    "tiktok": "<svg viewBox='0 0 24 24' width='15' height='15' fill='currentColor'><path d='M16.5 2h-3v13.2a2.8 2.8 0 1 1-2.8-2.8c.3 0 .6 0 .8.1V9.4a5.9 5.9 0 1 0 5 5.8V8.6a7 7 0 0 0 4 1.3V6.8a4 4 0 0 1-4-4.8z'/></svg>",
+    "youtube": "<svg viewBox='0 0 24 24' width='15' height='15' fill='currentColor'><path d='M22.5 7.2a2.8 2.8 0 0 0-2-2C18.8 4.8 12 4.8 12 4.8s-6.8 0-8.5.4a2.8 2.8 0 0 0-2 2C1 8.9 1 12 1 12s0 3.1.5 4.8a2.8 2.8 0 0 0 2 2c1.7.4 8.5.4 8.5.4s6.8 0 8.5-.4a2.8 2.8 0 0 0 2-2c.5-1.7.5-4.8.5-4.8s0-3.1-.5-4.8zM9.8 15.1V8.9l5.7 3.1-5.7 3.1z'/></svg>",
+    "web": "<svg viewBox='0 0 24 24' width='15' height='15' fill='none' stroke='currentColor' stroke-width='2'><circle cx='12' cy='12' r='9'/><path d='M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18'/></svg>",
+}
+
+
+def _url_red(red: str, valor: str) -> str:
+    """Enlace directo a la red: acepta URL completa o @usuario (como lo guarda
+    el app). Vacío si no se puede armar."""
+    v = (valor or "").strip()
+    if not v:
+        return ""
+    if v.startswith("http://") or v.startswith("https://"):
+        return v
+    h = v.lstrip("@").strip("/ ")
+    if not h:
+        return ""
+    base = {"instagram": "https://instagram.com/{h}", "facebook": "https://facebook.com/{h}", "tiktok": "https://www.tiktok.com/@{h}",
+            "youtube": "https://youtube.com/@{h}", "web": "https://{h}"}.get(red)
+    return base.format(h=h) if base else ""
+
+
+def _botones_redes(a: dict) -> str:
+    """Un botón por red registrada, con su logo y enlace directo (pedido del
+    director, sep-2026). Sin redes → nada."""
+    redes = a.get("redes") if isinstance(a.get("redes"), dict) else {}
+    out = []
+    for red, nombre in catalogos.REDES.items():
+        url = _url_red(red, str(redes.get(red) or ""))
+        if url:
+            out.append(f" <span class='app red-{red}'><span class='wa' data-wa='{e(url)}'>{_RED_SVG.get(red, '')} {e(nombre)}</span></span>")
+    return "".join(out)
+
+
+def _landing_lista(academia_id: str) -> bool:
+    """La página pública `/l/{id}` solo existe si el dueño la GENERÓ desde el
+    app (`stores.landings`); si no, `/l/{id}` responde "Landing no disponible"."""
+    try:
+        from db.store import stores as _st
+        return academia_id in (_st.landings or {})
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _tarjeta_academia(a: dict) -> str:
     """Tarjeta de ACADEMIA en el explorador (pedido del director, sep-2026:
     las academias también se ven por deporte y por cercanía). Enlaza a su
@@ -896,14 +945,19 @@ def _tarjeta_academia(a: dict) -> str:
     sub = " · ".join(x for x in (a.get("sedeClub"), a.get("zona")) if x)
     n_prog = len([x for x in programas if x])
     texto = f"{a.get('nombre', '')} {a.get('sedeClub', '')} {a.get('zona', '')} {dep_nombre} academia clases".lower()
-    return (f"<a class='lst aca' href='/l/{e(a['id'])}' data-id='ac:{e(a['id'])}' data-t='{e(texto)}' data-deps='{e(dep)}' "
+    # La tarjeta abre la FICHA WEB /academia/{id} (programas, tarifario y
+    # matrícula), que existe siempre; la landing /l/{id} (marketing, la genera
+    # el dueño desde el app) se enlaza desde la ficha si existe.
+    redes_html = _botones_redes(a)
+    ver = "<span class='app'>Ver academia</span>"
+    return (f"<a class='lst aca' href='/academia/{e(a['id'])}' data-id='ac:{e(a['id'])}' data-t='{e(texto)}' data-deps='{e(dep)}' "
             f"data-lat='{a.get('lat') or ''}' data-lng='{a.get('lng') or ''}' data-nombre='{e(a.get('nombre', ''))}' data-sub='{e(sub)}' "
             f"data-precio='🎓 {e(dep_nombre)}' data-ok='1'>"
             f"<div class='foto'><div class='fotos'>{foto}</div><span class='badge aca'>🎓 Academia</span>{extra}</div>"
             f"<div class='lb'><div class='l1'><b>{e(a.get('nombre', ''))}</b><span class='rate'>{emoji} {e(dep_nombre)}</span></div>"
             f"<div class='l2'>{e(sub) or e(a.get('descripcion', '')[:60])}</div>"
             f"<div class='l2'>{(str(n_prog) + ' programa' + ('s' if n_prog != 1 else '') + ' · ') if n_prog else ''}<span class='dist'></span></div>"
-            f"<div class='l3'>{desde}<br><span class='app'>Ver academia</span>{wa}{ir}</div></div></a>")
+            f"<div class='l3'>{desde}<br>{ver}{redes_html}{wa}{ir}</div></div></a>")
 
 
 def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None, hora: str = "") -> HTMLResponse:

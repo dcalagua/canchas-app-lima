@@ -697,6 +697,61 @@ def academias_publicas() -> list[dict]:
         return []
 
 
+def academia(academia_id: str) -> dict | None:
+    """Una academia por id (no eliminada), con `id` y `dueno` dentro del dict."""
+    if not pg.habilitado or not academia_id:
+        return None
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT id, dueno, data FROM pichangol_academias WHERE id = %s AND coalesce(eliminada,false) = false", (academia_id,))
+            row = cur.fetchone()
+            if not row:
+                return None
+            d = _json_dict(row[2])
+            d["id"] = row[0]
+            d["dueno"] = row[1] or d.get("dueno") or ""
+            return d
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def insertar_matricula(alumno_id: str, academia_id: str, email: str, data: dict) -> bool:
+    """Fila de `pichangol_matriculas` con la MISMA forma que `MatriculasRepo.guardar`
+    del app (`data` = `Alumno.toJson` + `cuotas`). Solo inserta (id nuevo)."""
+    if not pg.habilitado or not alumno_id or not academia_id:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("INSERT INTO pichangol_matriculas (id, academia_id, email, data, eliminada, updated_at) "
+                        "VALUES (%s, %s, %s, %s::jsonb, false, now()) ON CONFLICT (id) DO NOTHING",
+                        (alumno_id, academia_id, (email or "").strip().lower(), json.dumps(data)))
+            n = cur.rowcount
+            conn.commit()
+            return n == 1
+    except Exception as e:  # noqa: BLE001
+        print(f"[matricula-web] no se pudo guardar {alumno_id}: {e}", flush=True)
+        return False
+
+
+def matricula(alumno_id: str) -> dict | None:
+    """Una matrícula por id (no eliminada): `data` + `id`, `academiaId`, `email`."""
+    if not pg.habilitado or not alumno_id:
+        return None
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT id, academia_id, email, data FROM pichangol_matriculas WHERE id = %s AND coalesce(eliminada,false) = false", (alumno_id,))
+            row = cur.fetchone()
+            if not row:
+                return None
+            d = _json_dict(row[3])
+            d.setdefault("id", row[0])
+            d["academiaId"] = row[1]
+            d.setdefault("email", row[2] or "")
+            return d
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def academias_de_dueno(email: str) -> list[dict]:
     email = (email or "").strip().lower()
     if not pg.habilitado or not email:
