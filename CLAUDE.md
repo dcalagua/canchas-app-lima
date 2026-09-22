@@ -637,9 +637,18 @@ para la API del APK.
   `.mapa-ficha`, que arranca en `display:none` y lo ocultaba), **zona en cascada** por país (`GET /web/geo/{iso}` sirve
   `web/geo/{pe,bo,ec}_geo.json` = COPIA de `assets/geo` del app; se guarda
   el nivel 3 como el app), WhatsApp (largo por país `TEL_LONGITUD`), fotos
-  (hasta 8), redes chips + handle, planes (nombre, tipo mensual/prepago/por
-  clase, precio, meses del paquete, programa, veces por semana, etapa/edad,
-  duración de clase, horario), reglas de cobro (recargo invitado, descuentos
+  (hasta 8), redes chips + handle, **PROGRAMAS Y TARIFARIO = el MISMO
+  editor del app `_EditorPrograma` (pedido del director, sep-2026: "en el
+  app está perfecto, debería ser como en el app")**: tarjeta por PROGRAMA
+  (Bola Roja y Naranja, Avanzados…) con etapa/edad, duración de clase, días y
+  horario y el PRECIO SOCIO por frecuencia 2x…5x/sem (vacío = no se ofrece);
+  al guardar se aplanan a los mismos `planes` mensuales que genera el app
+  (id `prog | 2x`, nombre `prog · 2x/sem`, `programa` compartido). El editor
+  web anterior ("Plan N" + programa escondido en un desplegable) hacía crear
+  un plan por programa. Los planes viejos que no encajan (sin programa, sin
+  frecuencia 2-5 o no mensuales) salen como "planes sueltos" solo para
+  quitarlos; si no se tocan se conservan. `POST /guardar` deriva el nombre
+  del plan si viene vacío con `programa`; reglas de cobro (recargo invitado, descuentos
   2.º/3.º hermano y prepago, meses mínimos, retribución al club). `POST
   /anfitrion/academia/guardar` valida como `crear_academia_screen._validar`
   y hace MERGE sobre la fila actual: `sedes`, `horarios`, `preciosSede`,
@@ -775,7 +784,10 @@ off → redeploy inmediato en cada push). URL pública:
     y en PRD el 18-sep-2026** vía `apply_migration`
     (`push_funciones_search_path`): las 3 funciones (`notificar_push_aviso`,
     `_matricula`, `_mensaje`) con `proconfig = {search_path=public, net}`,
-    SECURITY DEFINER y su trigger activo. **RLS en
+    SECURITY DEFINER y su trigger activo. **Pase del 21-sep-2026
+    (autorizado: "pasa todo a PRD"):** `prd` = merge `670f631` (mapa de la
+    sede visible con `.mapa-sede` + buscador de club con Google Maps en Mi
+    academia). Solo backend/web: sin SQL, sin Edge, sin APK. **RLS en
     `growth_*` de PCG-PRD: ACTIVADO el 12-sep-2026** (sin políticas ni
     FORCE: el backend entra como `postgres`, dueño de las tablas, y no lo
     afecta; la anon key ya no puede leerlas). **Funciones trigger de push

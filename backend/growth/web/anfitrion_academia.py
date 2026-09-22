@@ -223,12 +223,12 @@ def _editor(ses: dict, a: dict, *, nueva: bool) -> HTMLResponse:
         f"<div class='serv{' sel' if k in redes else ''}' data-red='{k}'><button type='button' class='chip{' sel' if k in redes else ''}' data-g='redes' data-v='{k}'>{e(n)}</button>"
         f"<label class='precio-serv'{'' if k in redes else ' hidden'}><input type='text' name='red_{k}' maxlength='120' value='{e(redes.get(k, ''))}' placeholder='{'https://…' if k == 'web' else '@usuario o enlace'}' style='width:260px'></label></div>"
         for k, n in catalogos.REDES.items())
-    cfg = {"id": a["id"], "nueva": nueva, "lat": a.get("lat"), "lng": a.get("lng"), "iso": iso, "zona": a.get("zona") or "", "buscar": bool(config.PLACES_API_KEY),
+    cfg = {"id": a["id"], "nueva": nueva, "lat": a.get("lat"), "lng": a.get("lng"), "iso": iso, "zona": a.get("zona") or "", "buscar": bool(config.PLACES_API_KEY), "recargo": float(a.get("recargoInvitado") or 0),
            "planes": [p for p in (a.get("planes") or []) if isinstance(p, dict)], "fotos": fotos, "logo": a.get("logoUrl") or "",
            "moneda": _moneda(a), "storage": almacen.disponible(), "tipos": catalogos.TIPOS_PLAN, "meses": catalogos.MESES_PREPAGO,
            "frec": catalogos.FRECUENCIAS, "durs": catalogos.DURACIONES_CLASE, "tel": catalogos.TEL_PREFIJO, "telLen": catalogos.TEL_LONGITUD,
            "monedas": {k: paises.simbolo_de_moneda(v) for k, v in paises.MONEDA_POR_PAIS.items()}, "labels": catalogos.GEO_LABELS}
-    secciones = [("identidad", "Identidad"), ("sede", "Sede y contacto"), ("fotos", "Fotos"), ("redes", "Redes"), ("planes", "Planes y tarifario"), ("reglas", "Reglas de cobro")]
+    secciones = [("identidad", "Identidad"), ("sede", "Sede y contacto"), ("fotos", "Fotos"), ("redes", "Redes"), ("planes", "Programas y tarifario"), ("reglas", "Reglas de cobro")]
     nav = "".join(f"<a href='#sec-{k}' class='edit-nav-it'>{n}</a>" for k, n in secciones)
     dep_ops = [(d, f"{_EMOJI.get(d, '')} {_NOMBRE.get(d, d.capitalize())}") for d in catalogos.DEPORTES_ACADEMIA]
     pct = lambda v: "Sin descuento" if v == 0 else f"{v} %"  # noqa: E731
@@ -258,9 +258,10 @@ def _editor(ses: dict, a: dict, *, nueva: bool) -> HTMLResponse:
   <div class='acciones' style='margin-top:12px'><label class='btn sec' for='inFotos'>📷 Agregar fotos</label><input type='file' id='inFotos' accept='image/*' multiple hidden{'' if almacen.disponible() else ' disabled'}><span class='sub' id='fotosMsg' style='margin:0'></span></div>
  </section>
  <section class='panel edit-sec' id='sec-redes'><h2>Redes sociales</h2><p class='sub'>Elige las que usas y pon tu usuario o enlace.</p><div class='servs'>{redes_html}</div></section>
- <section class='panel edit-sec' id='sec-planes'><h2>Planes y tarifario</h2><p class='sub'>Mensualidad, paquetes de meses o por clase. Si manejas programas por frecuencia (2x, 3x por semana), ponlo en cada plan.</p>
-  <div id='planes' class='planes'></div>
-  <div class='acciones' style='margin-top:12px'><button type='button' class='btn sec' id='btnPlan'>＋ Agregar plan</button></div>
+ <section class='panel edit-sec' id='sec-planes'><h2>Programas y tarifario</h2><p class='sub'>Igual que en la app: un <b>programa</b> agrupa a los alumnos de un mismo nivel o etapa (Bola Roja y Naranja, Avanzados…) y dentro va el <b>precio socio por frecuencia</b> (2x, 3x, 4x o 5x por semana). Cada frecuencia con precio es un plan que el alumno elige al matricularse; el invitado se calcula con el recargo de la academia.</p>
+  <div id='programas' class='planes'></div>
+  <div class='acciones' style='margin-top:12px'><button type='button' class='btn sec' id='btnPrograma'>＋ Agregar programa</button></div>
+  <div id='sueltos' class='sueltos' hidden></div>
  </section>
  <section class='panel edit-sec' id='sec-reglas'><h2>Reglas de cobro</h2>
   <label for='recargo'>Recargo para invitados (no socios de la sede) <span class='req'>0 = un solo precio</span></label><div class='inp-moneda' style='max-width:220px'><span id='monSpan'>{e(_moneda(a))}</span><input id='recargo' type='number' min='0' step='1' value='{float(a.get('recargoInvitado') or 0):.0f}'></div>
@@ -331,29 +332,48 @@ $('inFotos').addEventListener('change',async function(){var files=Array.prototyp
     try{var j=await subir(files[i],'foto',1600);if(j.ok){fotos.push(j.url);pintarFotos();msg.textContent=''}else msg.textContent=j.error||'No se pudo subir.'}catch(e){msg.textContent='No se pudo subir la foto.'}subiendo--}});
 // ── planes ──
 function chips(g,ops,val,fmt){return "<div class='chips' style='margin-top:6px'>"+ops.map(function(o){var k=typeof o==='object'?o[0]:o,t=typeof o==='object'?o[1]:(fmt?fmt(o):o);return "<button type='button' class='chip"+(String(k)===String(val)?' sel':'')+"' data-g='"+g+"' data-v='"+esc(k)+"'>"+esc(t)+"</button>"}).join('')+"</div>"}
-function pintarPlanes(){var tipos=Object.keys(CFG.tipos).map(function(k){return [k,CFG.tipos[k]]});
-  $('planes').innerHTML=planes.length?planes.map(function(p,i){return "<div class='plan-card' data-i='"+i+"'>"+
-    "<div style='display:flex;justify-content:space-between;gap:8px;align-items:center'><b>Plan "+(i+1)+"</b><button type='button' class='mini' data-quitar='"+i+"' title='Quitar'>✕</button></div>"+
-    "<label>Nombre</label><input data-k='nombre' maxlength='60' value='"+esc(p.nombre)+"' placeholder='Ej. Mensualidad · Sub-10'>"+
-    "<label>Tipo</label>"+chips('plan_tipo_'+i,tipos,p.tipo||'mensual')+
-    "<div class='row' style='margin-top:6px'><div><label>"+(p.tipo==='porClase'?'Precio por clase':'Precio por mes')+"</label><div class='inp-moneda'><span>"+esc(CFG.moneda)+"</span><input data-k='precioMes' type='number' min='0' step='1' value='"+esc(p.precioMes||'')+"'></div></div>"+
-    "<div"+(p.tipo==='prepago'?'':' hidden')+"><label>Meses del paquete</label>"+chips('plan_meses_'+i,CFG.meses,p.meses||3)+"</div></div>"+
-    "<details style='margin-top:10px'><summary class='sub' style='cursor:pointer;font-weight:700'>Programa, frecuencia y horario (opcional)</summary>"+
-    "<label>Programa</label><input data-k='programa' maxlength='60' value='"+esc(p.programa)+"' placeholder='Ej. Bola Roja y Naranja'>"+
-    "<label>Veces por semana</label>"+chips('plan_frec_'+i,CFG.frec,p.frecuenciaSemana||0,function(v){return v?v+'x/sem':'Plan simple'})+
-    "<label>Etapa / edad</label><input data-k='etapaEdad' maxlength='80' value='"+esc(p.etapaEdad)+"' placeholder='Ej. Iniciación · 5 a 10 años'>"+
-    "<label>Duración de la clase</label>"+chips('plan_dur_'+i,[''].concat(CFG.durs),p.duracionClase||'',function(v){return v||'—'})+
-    "<label>Días y horario</label><input data-k='horario' maxlength='80' value='"+esc(p.horario)+"' placeholder='Ej. Lun, Mié y Vie · 5:00–6:30 pm'></details></div>"}).join('')
-  :"<div class='anf-vacio'>Aún no agregas planes (mensualidad, paquetes, por clase).</div>"}
-function leerPlanes(){document.querySelectorAll('.plan-card').forEach(function(c){var i=+c.dataset.i,p=planes[i];c.querySelectorAll('[data-k]').forEach(function(inp){p[inp.dataset.k]=inp.dataset.k==='precioMes'?(parseFloat(inp.value)||0):inp.value});
-  var t=c.querySelector(".chip.sel[data-g='plan_tipo_"+i+"']");p.tipo=t?t.dataset.v:'mensual';var m=c.querySelector(".chip.sel[data-g='plan_meses_"+i+"']");p.meses=p.tipo==='prepago'?(m?+m.dataset.v:3):(p.tipo==='porClase'?0:1);
-  var f=c.querySelector(".chip.sel[data-g='plan_frec_"+i+"']");p.frecuenciaSemana=f?+f.dataset.v:0;var d=c.querySelector(".chip.sel[data-g='plan_dur_"+i+"']");p.duracionClase=d?d.dataset.v:''})}
-$('planes').addEventListener('click',function(ev){var q=ev.target.closest('[data-quitar]');if(q){leerPlanes();planes.splice(+q.dataset.quitar,1);pintarPlanes();return}
-  var b=ev.target.closest('.chip[data-g]');if(!b)return;var wrap=b.closest('.chips');wrap.querySelectorAll('.chip').forEach(function(x){x.classList.remove('sel')});b.classList.add('sel');if(b.dataset.g.indexOf('plan_tipo_')===0){leerPlanes();pintarPlanes()}});
-$('btnPlan').addEventListener('click',function(){leerPlanes();planes.push({id:'pl_'+Date.now(),nombre:'',tipo:'mensual',precioMes:0,meses:1,programa:'',frecuenciaSemana:0,etapaEdad:'',duracionClase:'',horario:''});pintarPlanes();var last=$('planes').lastElementChild;if(last)last.querySelector('input').focus()});
-pintarPlanes();
+// PROGRAMAS DEL TARIFARIO = el MISMO editor del app (`_EditorPrograma`): un
+// programa (Bola Roja y Naranja, Avanzados…) con etapa/edad, duración de clase,
+// días y horario, y el PRECIO SOCIO por frecuencia (2x…5x por semana; vacío = no
+// se ofrece). Cada frecuencia con precio se guarda como un plan mensual con el
+// mismo id/nombre que genera el app (`prog | 2x`, `prog · 2x/sem`). Los planes
+// que no encajan (sin programa, sin frecuencia 2-5 o no mensuales, creados con
+// el editor web anterior) se listan aparte como "planes sueltos" para verlos y
+// poder quitarlos; se conservan tal cual si no se tocan.
+var FRECS=[2,3,4,5];
+function agrupar(pl){var out=[],idx={},sueltos=[];pl.forEach(function(p){var prog=(p.programa||'').trim(),f=+p.frecuenciaSemana||0;
+  if(!prog||FRECS.indexOf(f)<0||(p.tipo||'mensual')!=='mensual'){sueltos.push(p);return}
+  if(!(prog in idx)){idx[prog]=out.length;out.push({nombre:prog,etapaEdad:p.etapaEdad||'',duracionClase:p.duracionClase||'',horario:p.horario||'',precios:{}})}
+  var g=out[idx[prog]];if(!g.etapaEdad)g.etapaEdad=p.etapaEdad||'';if(!g.duracionClase)g.duracionClase=p.duracionClase||'';if(!g.horario)g.horario=p.horario||'';g.precios[f]=+p.precioMes||0});return {programas:out,sueltos:sueltos}}
+var agr=agrupar(planes), programas=agr.programas, sueltos=agr.sueltos;
+function pintarProgramas(){
+  $('programas').innerHTML=programas.length?programas.map(function(g,i){return "<div class='prog-card' data-i='"+i+"'>"+
+    "<div class='prog-head'><b class='prog-tit'>"+(g.nombre?esc(g.nombre):'Programa '+(i+1))+"</b><button type='button' class='mini' data-quitar-prog='"+i+"' title='Quitar programa'>✕</button></div>"+
+    "<label>Programa</label><input data-k='nombre' maxlength='60' value='"+esc(g.nombre)+"' placeholder='Ej. Bola Roja y Naranja'>"+
+    "<label>Etapa / edad</label><input data-k='etapaEdad' maxlength='80' value='"+esc(g.etapaEdad)+"' placeholder='Ej. Iniciación e intermedio · 5 a 10 años'>"+
+    "<label>Duración de clase</label>"+chips('prog_dur_'+i,[''].concat(CFG.durs),g.duracionClase||'',function(v){return v||'—'})+
+    "<label>Días y horario <span class='req'>opcional · cuándo son las clases de este programa</span></label><input data-k='horario' maxlength='80' value='"+esc(g.horario)+"' placeholder='Ej. Lun, Mié y Vie · 5:00–6:30 pm'>"+
+    "<label style='margin-top:14px'>Precio socio por frecuencia <span class='req'>veces por semana · deja en blanco las que no ofreces</span></label>"+
+    "<div class='frecs'>"+FRECS.map(function(f){return "<div class='frec'><b>"+f+"x/sem</b><div class='inp-moneda'><span>"+esc(CFG.moneda)+"</span><input data-f='"+f+"' type='number' min='0' step='1' inputmode='numeric' placeholder='socio / mes' value='"+(g.precios[f]>0?esc(g.precios[f]):'')+"'></div></div>"}).join('')+"</div>"+
+    (CFG.recargo>0?"<p class='sub' style='margin:8px 0 0;font-size:12.5px'>El precio de invitado se calcula sumando el recargo de la academia ("+esc(CFG.moneda)+" "+esc(CFG.recargo)+").</p>":"")+"</div>"}).join('')
+  :"<div class='anf-vacio'>Aún no agregas programas. Ejemplo: «Bola Roja y Naranja» con precio para 2x y 3x por semana.</div>";
+  var sb=$('sueltos');if(sb){sb.hidden=!sueltos.length;sb.innerHTML=sueltos.length?"<label>Planes sueltos <span class='req'>creados con el editor anterior; vuelve a armarlos como programa y quítalos</span></label>"+sueltos.map(function(p,i){return "<div class='suelto'><span><b>"+esc(p.nombre||'Plan')+"</b> · "+esc(CFG.moneda)+" "+esc(p.precioMes||0)+(p.programa?" · "+esc(p.programa):"")+"</span><button type='button' class='mini' data-quitar-suelto='"+i+"' title='Quitar'>✕</button></div>"}).join(''):''}}
+function leerProgramas(){document.querySelectorAll('.prog-card').forEach(function(c){var i=+c.dataset.i,g=programas[i];
+  c.querySelectorAll('input[data-k]').forEach(function(inp){g[inp.dataset.k]=inp.value.trim()});
+  var d=c.querySelector(".chip.sel[data-g='prog_dur_"+i+"']");g.duracionClase=d?d.dataset.v:'';
+  g.precios={};c.querySelectorAll('input[data-f]').forEach(function(inp){var v=parseFloat(inp.value);if(v>0)g.precios[+inp.dataset.f]=v})})}
+function aplanar(){var out=[];programas.forEach(function(g){FRECS.forEach(function(f){var v=g.precios[f];if(!(v>0))return;
+  out.push({id:g.nombre+' | '+f+'x',nombre:g.nombre+' · '+f+'x/sem',tipo:'mensual',precioMes:v,meses:1,programa:g.nombre,frecuenciaSemana:f,etapaEdad:g.etapaEdad,duracionClase:g.duracionClase,horario:g.horario})})});return out.concat(sueltos)}
+$('programas').addEventListener('input',function(ev){var inp=ev.target;if(inp.dataset.k!=='nombre')return;var c=inp.closest('.prog-card');c.querySelector('.prog-tit').textContent=inp.value.trim()||('Programa '+(+c.dataset.i+1))});
+$('programas').addEventListener('click',function(ev){
+  var q=ev.target.closest('[data-quitar-prog]');if(q){leerProgramas();var g=programas[+q.dataset.quitarProg];if(Object.keys(g.precios).length&&!confirm('¿Quitar el programa «'+(g.nombre||'')+'» y sus tarifas?'))return;programas.splice(+q.dataset.quitarProg,1);pintarProgramas();return}
+  var b=ev.target.closest('.chip[data-g]');if(!b)return;var wrap=b.closest('.chips');wrap.querySelectorAll('.chip').forEach(function(x){x.classList.remove('sel')});b.classList.add('sel')});
+var sbox=$('sueltos');if(sbox)sbox.addEventListener('click',function(ev){var q=ev.target.closest('[data-quitar-suelto]');if(!q)return;leerProgramas();sueltos.splice(+q.dataset.quitarSuelto,1);pintarProgramas()});
+$('btnPrograma').addEventListener('click',function(){leerProgramas();programas.push({nombre:'',etapaEdad:'',duracionClase:'',horario:'',precios:{}});pintarProgramas();var last=$('programas').lastElementChild;if(last)last.querySelector('input').focus()});
+function validarProgramas(){for(var i=0;i<programas.length;i++){var g=programas[i];if(!g.nombre)return 'Ponle nombre al programa '+(i+1)+'.';if(!Object.keys(g.precios).length)return 'Pon al menos un precio por frecuencia en «'+g.nombre+'».'}return ''}
+pintarProgramas();
 // ── guardar / eliminar ──
-$('btnGuardar').addEventListener('click',async function(){var btn=this,msg=$('msgGuardar');if(subiendo>0){msg.textContent='Espera a que terminen de subir las imágenes.';return}leerPlanes();
+$('btnGuardar').addEventListener('click',async function(){var btn=this,msg=$('msgGuardar');if(subiendo>0){msg.textContent='Espera a que terminen de subir las imágenes.';return}leerProgramas();var errP=validarProgramas();if(errP){msg.textContent=errP;var sp=$('sec-planes');if(sp)sp.scrollIntoView({behavior:'smooth',block:'start'});return}planes=aplanar();
   var redes={};document.querySelectorAll('.serv.sel[data-red]').forEach(function(r){var v=r.querySelector('input').value.trim();if(v)redes[r.dataset.red]=v});
   var body={id:CFG.id,nombre:$('nombre').value,deporte:sel('deporte'),descripcion:$('desc').value,sedeClub:$('sede').value,lat:lat,lng:lng,zona:$('g3').value,whatsapp:$('wa').value,
     logoUrl:logo,fotos:fotos,redes:redes,planes:planes,recargoInvitado:parseFloat($('recargo').value)||0,descuentoHermano2:+sel('descuentoHermano2'),descuentoHermano3:+sel('descuentoHermano3'),
@@ -399,13 +419,20 @@ def _validar(b: dict, actual: dict | None, email: str) -> tuple[dict | None, str
         if not isinstance(p, dict):
             continue
         pn = re.sub(r"\s+", " ", str(p.get("nombre") or "")).strip()[:60]
+        prog = re.sub(r"\s+", " ", str(p.get("programa") or "")).strip()[:60]
         tipo = str(p.get("tipo") or "mensual")
         try:
             precio = round(float(p.get("precioMes") or 0), 2)
         except (TypeError, ValueError):
             precio = 0
+        try:
+            frec = int(p.get("frecuenciaSemana") or 0)
+        except (TypeError, ValueError):
+            frec = 0
+        if not pn and prog:  # tarifa de un programa: el nombre del plan se deriva
+            pn = (prog + (f" · {frec}x/sem" if frec else "") + (" · por clase" if tipo == "porClase" else ""))[:60]
         if not pn or precio <= 0:
-            return None, f"El plan {i + 1} necesita nombre y precio válido.", "planes"
+            return None, (f"La tarifa {i + 1} de «{prog}» necesita un precio." if prog else f"El plan {i + 1} necesita nombre y precio válido."), "planes"
         if tipo not in catalogos.TIPOS_PLAN:
             tipo = "mensual"
         try:
@@ -413,12 +440,8 @@ def _validar(b: dict, actual: dict | None, email: str) -> tuple[dict | None, str
         except (TypeError, ValueError):
             meses = 1
         meses = 0 if tipo == "porClase" else (meses if tipo == "prepago" and meses in catalogos.MESES_PREPAGO else 1)
-        try:
-            frec = int(p.get("frecuenciaSemana") or 0)
-        except (TypeError, ValueError):
-            frec = 0
         planes.append({"id": str(p.get("id") or f"pl_{int(time.time() * 1000)}_{i}")[:40], "nombre": pn, "tipo": tipo, "precioMes": precio, "meses": meses,
-                       "programa": str(p.get("programa") or "").strip()[:60], "frecuenciaSemana": frec if frec in catalogos.FRECUENCIAS else 0,
+                       "programa": prog, "frecuenciaSemana": frec if frec in catalogos.FRECUENCIAS else 0,
                        "etapaEdad": str(p.get("etapaEdad") or "").strip()[:80],
                        "duracionClase": str(p.get("duracionClase") or "") if str(p.get("duracionClase") or "") in catalogos.DURACIONES_CLASE else "",
                        "horario": str(p.get("horario") or "").strip()[:80]})

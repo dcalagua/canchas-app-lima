@@ -405,6 +405,15 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 .tabla tr:last-child td{border-bottom:0}
 .planes{display:flex;flex-direction:column;gap:12px;margin-top:12px}.plan-card{border:1px solid var(--trazo);border-radius:14px;padding:14px 16px}
 .plan-card label{margin-top:10px}.plan-card .mini{width:30px;height:30px;border-radius:50%;border:1px solid var(--trazo);background:#fff;cursor:pointer;font-family:inherit;font-weight:800}
+/* Programas y tarifario (Mi academia): programa = tarjeta, tarifas = filas adentro */
+.prog-card{border:1px solid var(--trazo);border-radius:14px;padding:14px 16px}.prog-card label{margin-top:10px}
+.prog-head{display:flex;justify-content:space-between;align-items:center;gap:8px}.prog-head b{font-size:16px}
+.prog-card .mini{width:30px;height:30px;border-radius:50%;border:1px solid var(--trazo);background:#fff;cursor:pointer;font-family:inherit;font-weight:800;flex:none}
+.tarifas{display:flex;flex-direction:column;gap:10px;margin-top:6px}.tarifa{background:#F5F7FA;border:1px solid var(--trazo);border-radius:12px;padding:10px 12px 12px}
+.tarifa-top{display:flex;justify-content:space-between;align-items:center;gap:8px}.tarifa .tnombre{font-weight:800;color:var(--noche)}.tarifa label{margin-top:8px}
+.frecs{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-top:6px}.frec{display:flex;align-items:center;gap:10px}.frec b{min-width:58px}.frec .inp-moneda{flex:1}
+.sueltos{margin-top:14px}.suelto{display:flex;justify-content:space-between;align-items:center;gap:8px;border:1px dashed var(--trazo);border-radius:12px;padding:8px 12px;margin-top:6px}
+.suelto .mini{width:30px;height:30px;border-radius:50%;border:1px solid var(--trazo);background:#fff;cursor:pointer;font-family:inherit;font-weight:800;flex:none}
 /* editor de cancha (como el editor de anuncios de Airbnb) */
 .edit-top{margin-top:22px}.volver-lnk{font-weight:700;color:var(--noche);text-decoration:none;font-size:14px}.volver-lnk:hover{text-decoration:underline}
 .edit-grid{display:grid;grid-template-columns:240px minmax(0,1fr);gap:28px;align-items:start;margin-top:18px}
