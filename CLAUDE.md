@@ -261,7 +261,15 @@ para la API del APK.
   logo SVG inline y color de marca (`.red-<red>`), enlace directo en pestaña
   nueva (`span.wa[data-wa]`). Sin redes → ningún botón. Una tarjeta sin
   página (`data-sinpagina='1'`, `href='#'`) no navega: el clic abre su
-  primera red/WhatsApp; el popup del mapa hace lo mismo. Test
+  primera red/WhatsApp; el popup del mapa hace lo mismo. **PESTAÑA "🎓
+  Academias" en la cabecera (pedido del director, sep-2026: "¿dónde busco
+  academias?"):** última de `CATEGORIAS` (`?deporte=academias`,
+  `solo_aca` en `_explorar`): solo academias de TODOS los deportes,
+  ordenadas por cercanía; sin canchas registradas, sin descubiertas
+  (`descubrir()`/`buscarEnGoogle()` se saltan con `C.dep==='academias'`),
+  sin barra/modal de Filtros (amenidades y precio por hora no aplican), el
+  "Dónde" dice "Busca academias por nombre o zona" y filtra por texto;
+  vacío propio y, sin academias, CTA "Publicar mi academia". Test
   `test_academias_en_el_explorador_por_deporte_y_cercania`.
 - **FICHA DE ACADEMIA + MATRÍCULA WEB (`web/academia.py`, pedido del
   director, sep-2026: "si hago clic en la academia debería ir a la academia,
