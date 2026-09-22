@@ -1391,6 +1391,17 @@ def test_academias_en_el_explorador_por_deporte_y_cercania(db, monkeypatch):
     assert [c["id"] for c in cli.get("/web/descubrir?lat=-12&lng=-77").json()["canchas"]] == ["gp_1", "gp_2"]
     assert [c["id"] for c in cli.get("/web/descubrir?lat=-12&lng=-77&deporte=tenis").json()["canchas"]] == ["gp_2"]
     assert "'&deporte=' + encodeURIComponent(C.dep || '')" in home
+    # Pestaña "🎓 Academias" en la cabecera (pedido del director, sep-2026:
+    # "¿dónde busco academias?"): solo academias de TODOS los deportes, sin
+    # canchas ni descubiertas; el buscador "Dónde" filtra por nombre.
+    assert "href='/canchas?deporte=academias' data-dep='academias'" in home and "🎓</span>Academias" in home
+    aca = cli.get("/?deporte=academias").text
+    assert "class='cat sel' href='/canchas?deporte=academias'" in aca
+    assert "id='academias'" in aca and "🎓 Academias<" in aca and "Academia Baseline" in aca and "Escuela Golazo" in aca
+    assert "class='grupo-pais'" not in aca and "id='descubiertas'" not in aca and "Todavía no hay canchas" not in aca
+    assert "No encontramos academias con" in aca and "if(C.dep === 'academias' || !$('descubiertas')) return;" in aca
+    assert '"dep": "academias"' in aca and "Academias deportivas cerca de ti" in aca
+    assert "id='btnFiltros'" not in aca and "Busca academias por nombre o zona" in aca and "id='btnFiltros'" in home
 
 
 def test_ficha_de_academia_y_matricula_web_como_el_app(db, monkeypatch):

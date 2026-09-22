@@ -261,7 +261,15 @@ para la API del APK.
   logo SVG inline y color de marca (`.red-<red>`), enlace directo en pestaña
   nueva (`span.wa[data-wa]`). Sin redes → ningún botón. Una tarjeta sin
   página (`data-sinpagina='1'`, `href='#'`) no navega: el clic abre su
-  primera red/WhatsApp; el popup del mapa hace lo mismo. Test
+  primera red/WhatsApp; el popup del mapa hace lo mismo. **PESTAÑA "🎓
+  Academias" en la cabecera (pedido del director, sep-2026: "¿dónde busco
+  academias?"):** última de `CATEGORIAS` (`?deporte=academias`,
+  `solo_aca` en `_explorar`): solo academias de TODOS los deportes,
+  ordenadas por cercanía; sin canchas registradas, sin descubiertas
+  (`descubrir()`/`buscarEnGoogle()` se saltan con `C.dep==='academias'`),
+  sin barra/modal de Filtros (amenidades y precio por hora no aplican), el
+  "Dónde" dice "Busca academias por nombre o zona" y filtra por texto;
+  vacío propio y, sin academias, CTA "Publicar mi academia". Test
   `test_academias_en_el_explorador_por_deporte_y_cercania`.
 - **FICHA DE ACADEMIA + MATRÍCULA WEB (`web/academia.py`, pedido del
   director, sep-2026: "si hago clic en la academia debería ir a la academia,
@@ -855,7 +863,17 @@ off → redeploy inmediato en cada push). URL pública:
     22-sep-2026 (autorizado):** `prd` = merge de "Programas y tarifario en
     Mi academia igual que el app" (solo web). **Pase del 22-sep-2026 (2.º,
     autorizado):** `prd` = merge de "academias en el explorador web +
-    descubiertas por pestaña" (solo web). **RLS en
+    descubiertas por pestaña" (solo web). **Pase del 22-sep-2026 (3.º,
+    autorizado):** `prd` = merge `3688132` (ficha web de academia
+    `/academia/{id}` con programas, tarifario y matrícula en línea + redes
+    con logo en la tarjeta). Solo web: sin SQL, sin Edge, sin APK.
+    **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
+    entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
+    `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
+    llaves `pk_test`/`sk_test`) para que la reserva y la matrícula web se
+    vean en producción (Culqi lo revisa ahí). El director las sobrescribe A
+    MANO con las live cuando lleguen; ojo: hasta entonces una tarjeta de
+    prueba deja matrículas/reservas "pagadas" sin plata real en PRD. **RLS en
     `growth_*` de PCG-PRD: ACTIVADO el 12-sep-2026** (sin políticas ni
     FORCE: el backend entra como `postgres`, dueño de las tablas, y no lo
     afecta; la anon key ya no puede leerlas). **Funciones trigger de push

@@ -243,6 +243,7 @@ _JS_EXPLORAR = r"""
     var v = $('vacio'); if(v){ v.style.display = n ? 'none' : '';
       if(!n && v.dataset.base !== undefined){
         var why = filtro.hora ? 'Ninguna cancha' + (filtro.cerca ? ' cerca de ti' : '') + ' tiene turno libre ' + (filtro.fecha ? etiquetaFecha(filtro.fecha).toLowerCase() : '') + ' a las ' + filtro.hora + '. Prueba con otra hora u otro día.'
+                              : C.dep === 'academias' ? (filtro.q ? 'No encontramos academias con “' + filtro.q + '”. Prueba con otro nombre o zona.' : 'No hay academias con esa búsqueda. Prueba con otra zona.')
                               : (filtro.q && C.lugares ? (busqGoogle[filtro.q] === 'pendiente' ? 'Buscando “' + filtro.q + '” también en Google Maps…' : 'No encontramos “' + filtro.q + '” en Pichangol ni en Google Maps. Prueba con otro nombre o zona.')
                               : 'No hay canchas libres con esa búsqueda. Prueba con otra zona, día u hora.');
         v.textContent = why; } }
@@ -418,7 +419,7 @@ _JS_EXPLORAR = r"""
   // como descubiertas (ficha /lugar, Cómo llegar, ¿Es tuya? Reclámala).
   var busqGoogle = {};
   function buscarEnGoogle(q){
-    if(!C.lugares || !q || q.length < 3 || busqGoogle[q]) return;
+    if(!C.lugares || C.dep === 'academias' || !q || q.length < 3 || busqGoogle[q]) return;
     busqGoogle[q] = 'pendiente';
     var ref = yo || (mapa ? mapa.getCenter() : {lat: C.centro[0], lng: C.centro[1]});
     fetch('/web/lugares?q=' + encodeURIComponent(q) + '&lat=' + ref.lat + '&lng=' + ref.lng).then(function(r){ return r.json(); })
@@ -593,6 +594,7 @@ _JS_EXPLORAR = r"""
     aplicar();
   }
   function descubrir(lat, lng){
+    if(C.dep === 'academias' || !$('descubiertas')) return;  // pestaña Academias: sin canchas de Google
     var k = lat.toFixed(2) + ',' + lng.toFixed(2);
     if(descubiertas[k]) return; descubiertas[k] = true;
     var sec = $('descubiertas'); if(sec){ sec.style.display = ''; if(!Object.keys(descAcum).length) $('gridDesc').innerHTML = '<span class="skel"></span><span class="skel"></span><span class="skel"></span>'; }
@@ -694,7 +696,7 @@ _LUPA = ("<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-widt
 _CORAZON = "<svg viewBox='0 0 24 24'><path d='M12 21s-7.5-4.6-9.5-9.2C1.2 8.6 3.2 5 6.8 5c2 0 3.4 1.1 5.2 3 1.8-1.9 3.2-3 5.2-3 3.6 0 5.6 3.6 4.3 6.8C19.5 16.4 12 21 12 21z'/></svg>"
 CATEGORIAS = [("", "Todas", "🏟️"), ("futbol", "Fútbol", "⚽"), ("tenis", "Tenis", "🎾"), ("padel", "Pádel", "🏓"),
               ("futsal", "Futsal", "🥅"), ("pickleball", "Pickleball", "🥒"), ("voley", "Vóley", "🏐"),
-              ("basquet", "Básquet", "🏀")]
+              ("basquet", "Básquet", "🏀"), ("academias", "Academias", "🎓")]
 
 
 def _zonas_sugeridas(lista: list[dict], n: int = 6) -> list[tuple[str, int]]:
@@ -728,7 +730,7 @@ def _nav_explorar(dep: str, ses: dict | None = None, zonas: list[tuple[str, int]
         for t, rango in (("Mañana", range(6, 12)), ("Tarde", range(12, 18)), ("Noche", range(18, 24))))
     busq = (
         "<div class='busq' role='search'>"
-        "<label class='seg donde'><small>Dónde</small><input id='sQ' placeholder='Explora zonas, clubes o canchas' autocomplete='off'></label>"
+        f"<label class='seg donde'><small>Dónde</small><input id='sQ' placeholder='{'Busca academias por nombre o zona' if dep == 'academias' else 'Explora zonas, clubes o canchas'}' autocomplete='off'></label>"
         "<label class='seg cuando'><small>Cuándo</small><input id='sF' placeholder='Agrega fecha' readonly data-iso=''></label>"
         "<label class='seg hora'><small>Hora</small><input id='sH' placeholder='¿A qué hora?' readonly data-hora=''></label>"
         f"<button class='lupa' id='btnBuscar' aria-label='Buscar'>{_LUPA}<span>Buscar</span></button>"
@@ -969,7 +971,10 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
     INDECOPI."""
     todas = datos.canchas_publicas()
     dep = (deporte or "").strip().lower()
-    lista = [c for c in todas if not dep or dep in _deportes_de(c)]
+    # Pestaña "🎓 Academias" (pedido del director, sep-2026): solo academias,
+    # de todos los deportes; sin canchas registradas ni descubiertas.
+    solo_aca = dep == "academias"
+    lista = [] if solo_aca else [c for c in todas if not dep or dep in _deportes_de(c)]
     fecha = fecha if _es_iso(fecha) else ""
     ratings = datos.ratings([c["id"] for c in lista])
     print(f"[explorar] dep={dep or '*'} {len(lista)} canchas: " + " | ".join(
@@ -980,7 +985,8 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
         por_pais.setdefault(_pais_de(c), []).append(c)
     cuerpo = ("<div class='ubic-mini'><span>📍</span><span id='ubicTxt'>Permite tu ubicación para ver primero las canchas más cercanas.</span>"
               "<button id='btnUbic'>Usar mi ubicación</button><span id='resBusq'></span></div>")
-    cuerpo += _barra_filtros(lista) + _modal_filtros(lista)
+    if not solo_aca:  # amenidades / precio por hora no aplican a academias
+        cuerpo += _barra_filtros(lista) + _modal_filtros(lista)
     cuerpo += "<div class='expl' id='expl'><div class='lista'><div id='grupos'>"
     for pais in ("PE", "EC", "BO"):
         lst = por_pais.get(pais) or []
@@ -990,32 +996,41 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
         cuerpo += (f"<section class='grupo-pais' data-pais='{pais}'><div class='tit'><h2>{ui.bandera(pais)} Canchas en {NOMBRE_PAIS[pais]}"
                    f"<span class='cerca'></span></h2></div><div class='lst-grid'>{cards}</div></section>")
     cuerpo += "</div>"
-    if not lista:
+    if solo_aca:
+        cuerpo += "<div class='vacio' id='vacio' data-base='' style='display:none'>No encontramos academias con esa búsqueda. Prueba con otro nombre o zona.</div>"
+    elif not lista:
         cuerpo += ("<div class='vacio' id='vacio'><h3>Todavía no hay canchas publicadas aquí</h3>"
                    "<p class='sub'>Estamos sumando locales. En la app ya puedes explorar el mapa completo.</p>"
                    f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a></div></div>")
     else:
         cuerpo += "<div class='vacio' id='vacio' data-base='' style='display:none'>No hay canchas libres con esa búsqueda. Prueba con otra zona, día u hora.</div>"
-    if todas and not lista:
+    if todas and not lista and not solo_aca:
         cuerpo += ("<div class='vacio'>Todavía no hay canchas de este deporte. "
                    "<a href='/canchas'>Ver todas las canchas</a></div>")
-    acads = [a for a in datos.academias_publicas() if isinstance(a, dict) and a.get("nombre") and (not dep or (a.get("deporte") or "").lower() == dep)]
+    dep_aca = "" if solo_aca else dep
+    acads = [a for a in datos.academias_publicas() if isinstance(a, dict) and a.get("nombre") and (not dep_aca or (a.get("deporte") or "").lower() == dep_aca)]
     if acads:
-        titulo_aca = "Academias" + (f" de {_deporte(dep)[0].lower()}" if dep else "")
+        titulo_aca = "Academias" + (f" de {_deporte(dep_aca)[0].lower()}" if dep_aca else "")
         cuerpo += (f"<section id='academias' class='grupo-aca'><div class='tit'><h2>🎓 {e(titulo_aca)}<span class='cerca'></span></h2></div>"
-                   "<p class='sub' style='margin:-4px 0 12px'>Clases y programas por nivel. Entra a su página, escribe por WhatsApp o matricúlate desde la app.</p>"
+                   "<p class='sub' style='margin:-4px 0 12px'>Clases y programas por nivel. Entra a su página, escribe por WhatsApp o matricúlate en línea.</p>"
                    f"<div class='lst-grid' id='gridAca'>{''.join(_tarjeta_academia(a) for a in acads)}</div></section>")
-    cuerpo += ("<section id='descubiertas' style='display:none'><div class='tit'><h2>Más canchas cerca de ti</h2></div>"
-               "<p class='sub' style='margin:-4px 0 12px'>Locales que aún no están en Pichangol. Reserva desde la app o, si es tu "
-               "cancha, ¡Reclámala! y empieza a recibir reservas.</p><div class='lst-grid' id='gridDesc'></div></section>")
+    elif solo_aca:
+        cuerpo += ("<div class='vacio'><h3>Todavía no hay academias publicadas</h3>"
+                   "<p class='sub'>Si tienes una academia, publícala desde Modo anfitrión → Mi academia.</p>"
+                   "<div class='acciones' style='justify-content:center'><a class='btn' href='/anfitrion/academia'>Publicar mi academia</a>"
+                   "<a class='btn sec' href='/canchas'>Ver canchas</a></div></div>")
+    if not solo_aca:
+        cuerpo += ("<section id='descubiertas' style='display:none'><div class='tit'><h2>Más canchas cerca de ti</h2></div>"
+                   "<p class='sub' style='margin:-4px 0 12px'>Locales que aún no están en Pichangol. Reserva desde la app o, si es tu "
+                   "cancha, ¡Reclámala! y empieza a recibir reservas.</p><div class='lst-grid' id='gridDesc'></div></section>")
     cuerpo += "</div><aside class='mapa-lado'><div class='mapa' id='mapa' aria-label='Mapa de canchas'></div></aside></div>"
     cuerpo += "<button class='btn-mapa' id='btnMapa'><span>Mostrar mapa</span> 🗺️</button>"
     css_m, html_m, js_m = marca.secciones()
     if html_m:
         cuerpo += f"<div class='marca'>{html_m}</div>"
     centro = list(CIUDAD_DEFECTO["PE"])
-    if lista:
-        c0 = lista[0]
+    c0 = lista[0] if lista else next((a for a in acads if a.get("lat") and a.get("lng")), None)
+    if c0:
         centro = [c0.get("lat") or centro[0], c0.get("lng") or centro[1]]
     hora = hora if horarios.hora_en_minutos(hora) is not None else ""
     cfg = json.dumps({"cajas": {k: list(v) for k, v in _CAJAS.items()}, "centro": centro, "play": PLAY_URL, "dep": dep,
@@ -1028,9 +1043,12 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
         cuerpo += f"<script>{js_m}</script>"
     canonical = f"{config.PUBLIC_BASE_URL.rstrip('/')}/" if getattr(config, "PUBLIC_BASE_URL", "") else ""
     ses = sesion.de_request(request)
+    titulo_tab = ("Pichangol · Academias deportivas cerca de ti" if solo_aca
+                  else "Pichangol · Reserva canchas de fútbol, tenis y pádel")
+    desc = ("Academias de tenis, fútbol, pádel y más cerca de ti: programas, tarifario y matrícula en línea." if solo_aca
+            else "Reserva canchas de fútbol, tenis y pádel cerca de ti y paga con Yape o tarjeta. Perú, Ecuador y Bolivia.")
     return ui.shell("Pichangol", cuerpo, extra_head=head, nav=_nav_explorar(dep, ses, _zonas_sugeridas(lista)), ancho=True, sesion=ses,
-                    titulo_tab="Pichangol · Reserva canchas de fútbol, tenis y pádel", canonical=canonical,
-                    desc="Reserva canchas de fútbol, tenis y pádel cerca de ti y paga con Yape o tarjeta. Perú, Ecuador y Bolivia.")
+                    titulo_tab=titulo_tab, canonical=canonical, desc=desc)
 
 
 @router.get("/", response_class=HTMLResponse, include_in_schema=False)
