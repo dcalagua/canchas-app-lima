@@ -678,6 +678,25 @@ def _json_dict(v) -> dict:
         return {}
 
 
+def academias_publicas() -> list[dict]:
+    """Todas las academias no eliminadas (para el explorador web: salen por
+    deporte y por cercanía como las canchas). `data` = `Academia.toJson`."""
+    if not pg.habilitado:
+        return []
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT id, data FROM pichangol_academias WHERE coalesce(eliminada,false) = false "
+                        "ORDER BY updated_at DESC LIMIT 500")
+            out = []
+            for aid, data in cur.fetchall():
+                d = _json_dict(data)
+                d["id"] = aid
+                out.append(d)
+            return out
+    except Exception:  # noqa: BLE001
+        return []
+
+
 def academias_de_dueno(email: str) -> list[dict]:
     email = (email or "").strip().lower()
     if not pg.habilitado or not email:

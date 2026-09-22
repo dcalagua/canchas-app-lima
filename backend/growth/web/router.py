@@ -224,6 +224,7 @@ _JS_EXPLORAR = r"""
   function pasaBase(c){
     if(filtro.q && c.dataset.q !== filtro.q && c.dataset.t.indexOf(filtro.q) < 0) return false;
     if(filtro.cerca && yo && c.dataset.d && parseFloat(c.dataset.d) > 30) return false;
+    if(c.classList.contains('aca')) return true; // academias: solo zona/texto y cercanía
     if(filtro.hora && !abiertaA(c, filtro.hora)) return false;
     if(filtro.hora && filtro.fecha && c.dataset.ok === '1'){ var lk = libres[filtro.fecha + '|' + filtro.hora]; if(lk && lk[c.dataset.id] === false) return false; }
     return true;
@@ -231,11 +232,11 @@ _JS_EXPLORAR = r"""
   function aplicar(){
     var n = 0;
     cards().forEach(function(c){
-      var ok = pasaBase(c) && pasaFil(c, fil);
+      var ok = pasaBase(c) && (c.classList.contains('aca') || pasaFil(c, fil));
       c.style.display = ok ? '' : 'none'; if(ok) n++;
       if(c.dataset.base){ var qs = []; if(filtro.fecha) qs.push('fecha=' + filtro.fecha); if(filtro.hora) qs.push('hora=' + filtro.hora); c.setAttribute('href', c.dataset.base + (qs.length ? '?' + qs.join('&') : '')); }
     });
-    document.querySelectorAll('.grupo-pais').forEach(function(g){
+    document.querySelectorAll('.grupo-pais, .grupo-aca').forEach(function(g){
       var vis = Array.prototype.some.call(g.querySelectorAll('.lst'), function(c){ return c.style.display !== 'none'; });
       g.style.display = vis ? '' : 'none';
     });
@@ -423,7 +424,7 @@ _JS_EXPLORAR = r"""
     fetch('/web/lugares?q=' + encodeURIComponent(q) + '&lat=' + ref.lat + '&lng=' + ref.lng).then(function(r){ return r.json(); })
       .then(function(j){
         busqGoogle[q] = 'listo';
-        var lst = (j.lugares || []).filter(function(l){ return l.deporte; });
+        var lst = (j.lugares || []).filter(function(l){ return l.deporte && (!C.dep || l.deporte === C.dep); });
         lst.forEach(function(l){ l.q = q; if(!l.fotos) l.fotos = []; });
         if(lst.length) pintarDescubiertas(lst, false); else aplicar();
       })
@@ -515,11 +516,12 @@ _JS_EXPLORAR = r"""
     var pais = paisDe(yo.lat, yo.lng);
     cards().forEach(function(c){ var d = km(yo.lat, yo.lng, parseFloat(c.dataset.lat), parseFloat(c.dataset.lng)); c.dataset.d = d;
       var el = c.querySelector('.dist'); if(el) el.textContent = 'a ' + fmtKm(d); });
-    document.querySelectorAll('.grupo-pais').forEach(function(g){
+    document.querySelectorAll('.grupo-pais, .grupo-aca').forEach(function(g){
       var grid = g.querySelector('.lst-grid'); if(!grid) return;
       var hijos = Array.prototype.slice.call(grid.children).sort(function(a, b){ return parseFloat(a.dataset.d) - parseFloat(b.dataset.d); });
       hijos.forEach(function(h){ grid.appendChild(h); });
     });
+    var ta = document.querySelector('.grupo-aca .cerca'); if(ta) ta.textContent = '· las más cercanas a ti primero';
     var propio = document.querySelector('.grupo-pais[data-pais="' + pais + '"]');
     if(propio && propio.parentNode){ propio.parentNode.insertBefore(propio, $('grupos').firstChild); var t = propio.querySelector('.cerca'); if(t) t.textContent = '· las más cercanas a ti primero'; }
     var u = $('ubicTxt'); if(u) u.textContent = 'Mostrando las canchas más cercanas a ti.';
@@ -561,6 +563,7 @@ _JS_EXPLORAR = r"""
   }
   document.addEventListener('click', function(ev){ var g = ev.target.closest('.ir'); if(!g) return; ev.preventDefault(); ev.stopPropagation();
     window.open('https://www.google.com/maps/search/?api=1&query=' + g.dataset.lat + ',' + g.dataset.lng, '_blank'); });
+  document.addEventListener('click', function(ev){ var g = ev.target.closest('.wa'); if(!g) return; ev.preventDefault(); ev.stopPropagation(); window.open(g.dataset.wa, '_blank', 'noopener'); });
   // "¿Es tuya? Reclámala": registro desde la web prellenado con el lugar de Google (mismo flujo que el app).
   document.addEventListener('click', function(ev){ var g = ev.target.closest('.reclamar'); if(!g) return; ev.preventDefault(); ev.stopPropagation();
     location.href = '/anfitrion/nueva?place=' + encodeURIComponent(g.dataset.id) + '&nombre=' + encodeURIComponent(g.dataset.nombre) + '&direccion=' + encodeURIComponent(g.dataset.dir) + '&lat=' + g.dataset.lat + '&lng=' + g.dataset.lng + '&deporte=' + encodeURIComponent(g.dataset.dep || ''); });
@@ -593,9 +596,10 @@ _JS_EXPLORAR = r"""
     var k = lat.toFixed(2) + ',' + lng.toFixed(2);
     if(descubiertas[k]) return; descubiertas[k] = true;
     var sec = $('descubiertas'); if(sec){ sec.style.display = ''; if(!Object.keys(descAcum).length) $('gridDesc').innerHTML = '<span class="skel"></span><span class="skel"></span><span class="skel"></span>'; }
-    fetch('/web/descubrir?lat=' + lat + '&lng=' + lng).then(function(r){ return r.json(); })
+    var qd = '&deporte=' + encodeURIComponent(C.dep || '');
+    fetch('/web/descubrir?lat=' + lat + '&lng=' + lng + qd).then(function(r){ return r.json(); })
       .then(function(j){ pintarDescubiertas(j.canchas || [], false);
-        if((j.canchas || []).length) fetch('/web/descubrir?lat=' + lat + '&lng=' + lng + '&fotos=1').then(function(r){ return r.json(); }).then(function(j2){ if((j2.canchas || []).length) pintarDescubiertas(j2.canchas, true); }).catch(function(){}); })
+        if((j.canchas || []).length) fetch('/web/descubrir?lat=' + lat + '&lng=' + lng + qd + '&fotos=1').then(function(r){ return r.json(); }).then(function(j2){ if((j2.canchas || []).length) pintarDescubiertas(j2.canchas, true); }).catch(function(){}); })
       .catch(function(){ if(sec && !Object.keys(descAcum).length) sec.style.display = 'none'; });
   }
   // ── mapa (se dibuja al mostrarlo; split view en escritorio, pantalla completa en móvil) ──
@@ -612,10 +616,10 @@ _JS_EXPLORAR = r"""
       var lat = parseFloat(c.dataset.lat), lng = parseFloat(c.dataset.lng); if(!lat && !lng) return;
       if(c.classList.contains('pend') && c.dataset.id.indexOf('gp_') === 0) return;
       pts.push([lat, lng]);
-      var ok = c.dataset.ok === '1';
-      var m = L.marker([lat, lng], {icon: L.divIcon({className: '', html: '<span class="pin-precio' + (ok ? '' : ' pend') + '">' + c.dataset.precio + '</span>', iconSize: null})});
+      var ok = c.dataset.ok === '1', esAca = c.classList.contains('aca');
+      var m = L.marker([lat, lng], {icon: L.divIcon({className: '', html: '<span class="pin-precio' + (ok ? '' : ' pend') + (esAca ? ' aca' : '') + '">' + c.dataset.precio + '</span>', iconSize: null})});
       m._card = c;
-      m.bindPopup('<b>' + esc(c.dataset.nombre) + '</b><br>' + esc(c.dataset.sub) + '<br><span style="font-weight:800">' + esc(c.dataset.precio) + ' por hora</span><br><a class="btn' + (ok ? '' : ' sec') + '" href="' + c.getAttribute('href') + '">' + (ok ? 'Ver horarios' : 'Reservar en la app') + '</a>');
+      m.bindPopup('<b>' + esc(c.dataset.nombre) + '</b><br>' + esc(c.dataset.sub) + '<br>' + (esAca ? '' : '<span style="font-weight:800">' + esc(c.dataset.precio) + ' por hora</span><br>') + '<a class="btn' + (ok ? '' : ' sec') + '" href="' + c.getAttribute('href') + '">' + (esAca ? 'Ver academia' : (ok ? 'Ver horarios' : 'Reservar en la app')) + '</a>');
       m.on('mouseover', function(){ c.style.outline = '2px solid #0E8F67'; c.style.outlineOffset = '4px'; c.style.borderRadius = '14px'; });
       m.on('mouseout', function(){ c.style.outline = ''; });
       marcadores.push(m); m.addTo(mapa);
@@ -863,6 +867,45 @@ def _tarjeta(c: dict, rating: tuple[float, int] | None, fecha: str = "") -> str:
             f"{l3}</div></a>")
 
 
+def _tarjeta_academia(a: dict) -> str:
+    """Tarjeta de ACADEMIA en el explorador (pedido del director, sep-2026:
+    las academias también se ven por deporte y por cercanía). Enlaza a su
+    página pública `/l/{id}`; WhatsApp y Cómo llegar como las descubiertas.
+    Comparte la grilla y el orden por distancia de las canchas (`.lst.aca`,
+    `data-lat/lng`) pero NO entra en los filtros de hora, precio ni amenidades."""
+    dep = (a.get("deporte") or "").lower()
+    dep_nombre, emoji = _deporte(dep) if dep else ("Academia", "🎓")
+    iso = _pais_de(a) if (a.get("lat") or a.get("lng")) else ""
+    sim = (a.get("moneda") or "").strip() or (simbolo_de_moneda(moneda_de_pais(iso)) if iso else "S/")
+    precios = [float(p.get("precioMes") or 0) for p in (a.get("planes") or []) if isinstance(p, dict) and float(p.get("precioMes") or 0) > 0]
+    programas = {str(p.get("programa") or p.get("nombre") or "") for p in (a.get("planes") or []) if isinstance(p, dict)}
+    desde = f"<b>{e(sim)} {min(precios):.0f}</b> <span style='color:var(--tenue)'>al mes desde</span>" if precios else "<span style='color:var(--tenue)'>Consulta precios</span>"
+    fs = [u for u in ([a.get("logoUrl")] + list(a.get("fotos") or [])) if isinstance(u, str) and u.startswith("http")]
+    foto = "".join(f"<img src='{e(u)}' alt='' loading='lazy'>" for u in fs[:3]) if fs else f"<div class='sinfoto'>{emoji}</div>"
+    extra = ""
+    if len(fs) > 1:
+        extra = ("<button class='flecha izq' aria-label='Anterior'>‹</button><button class='flecha der' aria-label='Siguiente'>›</button>"
+                 f"<div class='dots'>{''.join('<i></i>' for _ in fs[:3])}</div>")
+    tel = re.sub(r"\D", "", str(a.get("whatsapp") or ""))
+    pref = catalogos.TEL_PREFIJO.get(iso or "PE", "51")
+    if tel and not tel.startswith(pref) and len(tel) <= 10:
+        tel = pref + tel
+    # OJO: la tarjeta ya es un <a>; un <a> anidado rompe el HTML (el navegador parte la tarjeta). Va como <span> con manejador, igual que "Cómo llegar".
+    wa = (f" <span class='app'>💬 <span class='wa' data-wa='https://wa.me/{tel}?text=Hola,%20vi%20tu%20academia%20en%20Pichangol'>WhatsApp</span></span>" if tel else "")
+    ir = (f" <span class='app'>📍 <span class='ir' data-lat='{a.get('lat')}' data-lng='{a.get('lng')}'>Cómo llegar</span></span>" if a.get("lat") or a.get("lng") else "")
+    sub = " · ".join(x for x in (a.get("sedeClub"), a.get("zona")) if x)
+    n_prog = len([x for x in programas if x])
+    texto = f"{a.get('nombre', '')} {a.get('sedeClub', '')} {a.get('zona', '')} {dep_nombre} academia clases".lower()
+    return (f"<a class='lst aca' href='/l/{e(a['id'])}' data-id='ac:{e(a['id'])}' data-t='{e(texto)}' data-deps='{e(dep)}' "
+            f"data-lat='{a.get('lat') or ''}' data-lng='{a.get('lng') or ''}' data-nombre='{e(a.get('nombre', ''))}' data-sub='{e(sub)}' "
+            f"data-precio='🎓 {e(dep_nombre)}' data-ok='1'>"
+            f"<div class='foto'><div class='fotos'>{foto}</div><span class='badge aca'>🎓 Academia</span>{extra}</div>"
+            f"<div class='lb'><div class='l1'><b>{e(a.get('nombre', ''))}</b><span class='rate'>{emoji} {e(dep_nombre)}</span></div>"
+            f"<div class='l2'>{e(sub) or e(a.get('descripcion', '')[:60])}</div>"
+            f"<div class='l2'>{(str(n_prog) + ' programa' + ('s' if n_prog != 1 else '') + ' · ') if n_prog else ''}<span class='dist'></span></div>"
+            f"<div class='l3'>{desde}<br><span class='app'>Ver academia</span>{wa}{ir}</div></div></a>")
+
+
 def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None, hora: str = "") -> HTMLResponse:
     """RAÍZ del dominio, tipo Airbnb: buscador en pastilla, categorías por
     deporte, grilla de tarjetas con foto/corazón/★, "Mostrar mapa" (split
@@ -902,6 +945,12 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
     if todas and not lista:
         cuerpo += ("<div class='vacio'>Todavía no hay canchas de este deporte. "
                    "<a href='/canchas'>Ver todas las canchas</a></div>")
+    acads = [a for a in datos.academias_publicas() if isinstance(a, dict) and a.get("nombre") and (not dep or (a.get("deporte") or "").lower() == dep)]
+    if acads:
+        titulo_aca = "Academias" + (f" de {_deporte(dep)[0].lower()}" if dep else "")
+        cuerpo += (f"<section id='academias' class='grupo-aca'><div class='tit'><h2>🎓 {e(titulo_aca)}<span class='cerca'></span></h2></div>"
+                   "<p class='sub' style='margin:-4px 0 12px'>Clases y programas por nivel. Entra a su página, escribe por WhatsApp o matricúlate desde la app.</p>"
+                   f"<div class='lst-grid' id='gridAca'>{''.join(_tarjeta_academia(a) for a in acads)}</div></section>")
     cuerpo += ("<section id='descubiertas' style='display:none'><div class='tit'><h2>Más canchas cerca de ti</h2></div>"
                "<p class='sub' style='margin:-4px 0 12px'>Locales que aún no están en Pichangol. Reserva desde la app o, si es tu "
                "cancha, ¡Reclámala! y empieza a recibir reservas.</p><div class='lst-grid' id='gridDesc'></div></section>")
@@ -944,14 +993,18 @@ def pagina_canchas(request: Request, deporte: str = "", fecha: str = "", hora: s
 # ── descubrir (Google Places, como el APK) ────────────────────────────────────
 
 @router.get("/web/descubrir")
-def descubrir_web(lat: float, lng: float, fotos: int = 0) -> dict:
+def descubrir_web(lat: float, lng: float, fotos: int = 0, deporte: str = "") -> dict:
     """Canchas que Google conoce cerca del usuario y aún no están en Pichangol:
     salen en el explorador con "Reservar en la app". Misma Edge Function y
-    heurística que el APK; caché por zona."""
+    heurística que el APK; caché por zona. `deporte` = la pestaña activa (en
+    Tenis no salen canchas de fútbol; queja del director, sep-2026)."""
     region = pais_de_coordenadas(lat, lng)
     reg = [{"nombre": c.get("nombre"), "club": c.get("club"), "lat": c.get("lat"), "lng": c.get("lng")}
            for c in datos.canchas_publicas()]
     lista = descubrir.descubrir_cerca(lat, lng, region=region, fotos=bool(fotos), registradas=reg)
+    dep = (deporte or "").strip().lower()
+    if dep:
+        lista = [c for c in lista if (c.get("deporte") or "").lower() == dep]
     for c in lista:
         c["deporte_nombre"], c["emoji"] = _deporte(c["deporte"])
         if c.get("fotos"):

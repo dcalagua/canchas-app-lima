@@ -171,6 +171,9 @@ class FakeDB:
     productos: dict = {}
     verificados: set = set()
 
+    def academias_publicas(self):
+        return [dict(a, id=k) for k, a in self.academias.items() if not a.get("_eliminada")]
+
     def academias_de_dueno(self, email):
         return [dict(a, id=k) for k, a in self.academias.items() if (a.get("dueno") or "").lower() == email.lower() and not a.get("_eliminada")]
 
@@ -242,7 +245,7 @@ def db(monkeypatch):
                "insertar_reservas", "confirmar_reservas", "borrar_reservas", "reservas_de",
                "reservas_por_grupo", "reservas_de_usuario", "eliminar_reservas", "canchas_de_dueno", "reservas_de_canchas", "bloqueos_de",
                "actualizar_cancha", "bloquear", "reserva_de_dueno", "marcar_pagado", "borrar_reserva_manual",
-               "academias_de_dueno", "academia_existe", "guardar_academia", "eliminar_academia", "matriculas_de_academias",
+               "academias_publicas", "academias_de_dueno", "academia_existe", "guardar_academia", "eliminar_academia", "matriculas_de_academias",
                "productos_de_vendedor", "producto_por_id", "guardar_producto", "eliminar_producto", "esta_verificado",
                "insertar_canchas", "borrar_canchas", "marcar_verificada", "adoptar_cancha", "desadoptar_cancha"):
         monkeypatch.setattr(datos, fn, getattr(fake, fn))
@@ -1328,3 +1331,37 @@ def test_buscar_mi_local_en_google_por_nombre(db, monkeypatch):
     assert j["lugares"][0]["deporte_nombre"] == "Fútbol" and j["lugares"][0]["emoji"]
     assert "buscarEnGoogle(filtro.q)" in home and "data-q=" in home and '"lugares": true' in home
     assert "c.dataset.q !== filtro.q" in home and "ni en Google Maps" in home
+
+
+def test_academias_en_el_explorador_por_deporte_y_cercania(db, monkeypatch):
+    """Pedido del director (sep-2026): "he creado una academia, ¿cómo la busco
+    por acá?" Las academias salen en el explorador web por deporte (pestaña)
+    y ordenadas por cercanía como las canchas: tarjeta con logo/foto, sede,
+    "al mes desde", WhatsApp, Cómo llegar y enlace a su página /l/{id}. Las
+    canchas DESCUBIERTAS también respetan la pestaña (en Tenis no salen las
+    de fútbol)."""
+    from web import descubrir
+    db.academias["ac_t1"] = {"nombre": "Academia Baseline", "deporte": "tenis", "dueno": "profe@gmail.com", "sedeClub": "Club Lawn Tennis",
+                             "zona": "San Borja", "lat": -12.09, "lng": -77.03, "whatsapp": "999888777", "logoUrl": "https://sb.test/logo.jpg",
+                             "planes": [{"id": "Bola Roja | 2x", "nombre": "Bola Roja · 2x/sem", "programa": "Bola Roja", "precioMes": 250, "frecuenciaSemana": 2},
+                                        {"id": "Bola Roja | 3x", "nombre": "Bola Roja · 3x/sem", "programa": "Bola Roja", "precioMes": 330, "frecuenciaSemana": 3}]}
+    db.academias["ac_f1"] = {"nombre": "Escuela Golazo", "deporte": "futbol", "dueno": "dt@gmail.com", "sedeClub": "Sabor Golazo", "lat": -12.1, "lng": -77.0,
+                             "whatsapp": "51988877766", "planes": []}
+    db.academias["ac_x"] = {"nombre": "Borrada", "deporte": "tenis", "_eliminada": True}
+    cli = TestClient(app, base_url="https://testserver")
+    home = cli.get("/").text
+    assert "id='academias'" in home and "🎓 Academias<" in home and "Academia Baseline" in home and "Escuela Golazo" in home and "Borrada" not in home
+    assert "href='/l/ac_t1'" in home and "data-id='ac:ac_t1'" in home and "class='lst aca'" in home and "S/ 250</b>" in home and "al mes desde" in home
+    assert "data-wa='https://wa.me/51999888777" in home and "data-wa='https://wa.me/51988877766" in home and "<a class='app' href='https://wa.me" not in home and "1 programa · " in home and "Consulta precios" in home
+    assert "data-lat='-12.09'" in home and "class='ir' data-lat='-12.09'" in home
+    # JS: las academias se ordenan por cercanía con las canchas, no entran en filtros de hora/precio y tienen pin propio.
+    assert "'.grupo-pais, .grupo-aca'" in home and "c.classList.contains('aca')) return true" in home and "esAca ? 'Ver academia'" in home
+    tenis = cli.get("/?deporte=tenis").text
+    assert "🎓 Academias de tenis" in tenis and "Academia Baseline" in tenis and "Escuela Golazo" not in tenis
+    assert "id='academias'" not in cli.get("/?deporte=padel").text
+    # Descubiertas por deporte: la pestaña viaja al servidor y filtra.
+    monkeypatch.setattr(descubrir, "descubrir_cerca", lambda *a, **k: [{"id": "gp_1", "nombre": "Cancha F", "deporte": "futbol", "lat": -12.0, "lng": -77.0, "direccion": ""},
+                                                                        {"id": "gp_2", "nombre": "Club T", "deporte": "tenis", "lat": -12.0, "lng": -77.0, "direccion": ""}])
+    assert [c["id"] for c in cli.get("/web/descubrir?lat=-12&lng=-77").json()["canchas"]] == ["gp_1", "gp_2"]
+    assert [c["id"] for c in cli.get("/web/descubrir?lat=-12&lng=-77&deporte=tenis").json()["canchas"]] == ["gp_2"]
+    assert "'&deporte=' + encodeURIComponent(C.dep || '')" in home
