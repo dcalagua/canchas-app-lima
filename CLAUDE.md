@@ -637,9 +637,18 @@ para la API del APK.
   `.mapa-ficha`, que arranca en `display:none` y lo ocultaba), **zona en cascada** por país (`GET /web/geo/{iso}` sirve
   `web/geo/{pe,bo,ec}_geo.json` = COPIA de `assets/geo` del app; se guarda
   el nivel 3 como el app), WhatsApp (largo por país `TEL_LONGITUD`), fotos
-  (hasta 8), redes chips + handle, planes (nombre, tipo mensual/prepago/por
-  clase, precio, meses del paquete, programa, veces por semana, etapa/edad,
-  duración de clase, horario), reglas de cobro (recargo invitado, descuentos
+  (hasta 8), redes chips + handle, **PROGRAMAS Y TARIFARIO = el MISMO
+  editor del app `_EditorPrograma` (pedido del director, sep-2026: "en el
+  app está perfecto, debería ser como en el app")**: tarjeta por PROGRAMA
+  (Bola Roja y Naranja, Avanzados…) con etapa/edad, duración de clase, días y
+  horario y el PRECIO SOCIO por frecuencia 2x…5x/sem (vacío = no se ofrece);
+  al guardar se aplanan a los mismos `planes` mensuales que genera el app
+  (id `prog | 2x`, nombre `prog · 2x/sem`, `programa` compartido). El editor
+  web anterior ("Plan N" + programa escondido en un desplegable) hacía crear
+  un plan por programa. Los planes viejos que no encajan (sin programa, sin
+  frecuencia 2-5 o no mensuales) salen como "planes sueltos" solo para
+  quitarlos; si no se tocan se conservan. `POST /guardar` deriva el nombre
+  del plan si viene vacío con `programa`; reglas de cobro (recargo invitado, descuentos
   2.º/3.º hermano y prepago, meses mínimos, retribución al club). `POST
   /anfitrion/academia/guardar` valida como `crear_academia_screen._validar`
   y hace MERGE sobre la fila actual: `sedes`, `horarios`, `preciosSede`,

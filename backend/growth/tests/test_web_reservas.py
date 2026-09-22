@@ -1124,6 +1124,12 @@ def test_mi_academia_en_la_web_como_el_app(db, monkeypatch):
     monkeypatch.setattr(config, "PLACES_API_KEY", "")
     assert '"buscar": false' in cli.get("/anfitrion/academia/nueva").text
     monkeypatch.setattr(config, "PLACES_API_KEY", "k")
+    # Tarifario = el MISMO editor del app (pedido del director, sep-2026):
+    # PROGRAMAS (Bola Roja…) con precio socio por frecuencia 2x…5x; nada de
+    # "Plan 8" con el programa escondido. Los planes viejos que no encajan
+    # salen como "planes sueltos" para quitarlos.
+    assert "Programas y tarifario" in nueva and "id='programas'" in nueva and "btnPrograma" in nueva and "id='sueltos'" in nueva
+    assert "FRECS=[2,3,4,5]" in nueva and "g.nombre+' | '+f+'x'" in nueva and "Plan 1" not in nueva
     aid = nueva.split('"id": "')[1].split('"')[0]
     assert aid.startswith("ac_")
     subidas = []
@@ -1142,6 +1148,12 @@ def test_mi_academia_en_la_web_como_el_app(db, monkeypatch):
     assert cli.post("/anfitrion/academia/guardar", json={**base, "whatsapp": "1234"}).json()["campo"] == "sede"
     assert cli.post("/anfitrion/academia/guardar", json={**base, "planes": [{"nombre": "", "precioMes": 0}]}).json()["campo"] == "planes"
     assert cli.post("/anfitrion/academia/guardar", json={**base, "id": "x"}).status_code == 400
+    # Una tarifa de programa sin `nombre` (como la manda el editor web nuevo) toma
+    # el nombre que genera el app; sin precio, el error nombra al programa.
+    r = cli.post("/anfitrion/academia/guardar", json={**base, "planes": [{"id": "Bola Roja | 3x", "programa": "Bola Roja", "frecuenciaSemana": 3, "precioMes": 0}]}).json()
+    assert r["campo"] == "planes" and "Bola Roja" in r["error"]
+    r = cli.post("/anfitrion/academia/guardar", json={**base, "planes": [{"id": "Bola Roja | 3x", "programa": "Bola Roja", "frecuenciaSemana": 3, "precioMes": 330}]}).json()
+    assert r["ok"] and db.academias[aid]["planes"][0]["nombre"] == "Bola Roja · 3x/sem" and db.academias[aid]["planes"][0]["id"] == "Bola Roja | 3x"
     assert cli.post("/anfitrion/academia/guardar", json=base).json()["ok"]
     a = db.academias[aid]
     assert a["dueno"] == "profe@gmail.com" and a["whatsapp"] == "999888777" and a["moneda"] == "S/" and a["zona"] == "San Borja"
