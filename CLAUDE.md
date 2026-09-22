@@ -858,7 +858,14 @@ off → redeploy inmediato en cada push). URL pública:
     descubiertas por pestaña" (solo web). **Pase del 22-sep-2026 (3.º,
     autorizado):** `prd` = merge `3688132` (ficha web de academia
     `/academia/{id}` con programas, tarifario y matrícula en línea + redes
-    con logo en la tarjeta). Solo web: sin SQL, sin Edge, sin APK. **RLS en
+    con logo en la tarjeta). Solo web: sin SQL, sin Edge, sin APK.
+    **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
+    entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
+    `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
+    llaves `pk_test`/`sk_test`) para que la reserva y la matrícula web se
+    vean en producción (Culqi lo revisa ahí). El director las sobrescribe A
+    MANO con las live cuando lleguen; ojo: hasta entonces una tarjeta de
+    prueba deja matrículas/reservas "pagadas" sin plata real en PRD. **RLS en
     `growth_*` de PCG-PRD: ACTIVADO el 12-sep-2026** (sin políticas ni
     FORCE: el backend entra como `postgres`, dueño de las tablas, y no lo
     afecta; la anon key ya no puede leerlas). **Funciones trigger de push
