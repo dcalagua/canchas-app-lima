@@ -866,7 +866,9 @@ off → redeploy inmediato en cada push). URL pública:
     descubiertas por pestaña" (solo web). **Pase del 22-sep-2026 (3.º,
     autorizado):** `prd` = merge `3688132` (ficha web de academia
     `/academia/{id}` con programas, tarifario y matrícula en línea + redes
-    con logo en la tarjeta). Solo web: sin SQL, sin Edge, sin APK.
+    con logo en la tarjeta). Solo web: sin SQL, sin Edge, sin APK. **Pase
+    del 22-sep-2026 (4.º, autorizado):** `prd` = merge `b498b24` (pestaña
+    "🎓 Academias" en el explorador web). Solo web.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
