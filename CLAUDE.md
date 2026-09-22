@@ -787,7 +787,9 @@ off → redeploy inmediato en cada push). URL pública:
     SECURITY DEFINER y su trigger activo. **Pase del 21-sep-2026
     (autorizado: "pasa todo a PRD"):** `prd` = merge `670f631` (mapa de la
     sede visible con `.mapa-sede` + buscador de club con Google Maps en Mi
-    academia). Solo backend/web: sin SQL, sin Edge, sin APK. **RLS en
+    academia). Solo backend/web: sin SQL, sin Edge, sin APK. **Pase del
+    22-sep-2026 (autorizado):** `prd` = merge de "Programas y tarifario en
+    Mi academia igual que el app" (solo web). **RLS en
     `growth_*` de PCG-PRD: ACTIVADO el 12-sep-2026** (sin políticas ni
     FORCE: el backend entra como `postgres`, dueño de las tablas, y no lo
     afecta; la anon key ya no puede leerlas). **Funciones trigger de push
