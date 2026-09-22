@@ -228,10 +228,32 @@ para la API del APK.
   como secret de Supabase; el backend usa `SUPABASE_URL` + `SUPABASE_ANON_KEY`)
   y aplica la misma heurística de `places_service.dart` (`deporte_de`), con
   caché en memoria por celda de ~2 km + país (6 h) y dedup contra las
-  registradas (nombre + <120 m). `GET /web/descubrir?lat&lng[&fotos=1]`; el
+  registradas (nombre + <120 m). `GET /web/descubrir?lat&lng[&fotos=1][&deporte=]`
+  (la pestaña activa viaja al servidor y filtra: en Tenis no salen canchas de
+  fútbol descubiertas, queja del director sep-2026; `buscarEnGoogle` también
+  filtra por `C.dep`); el
   explorador las pinta en "Más canchas cerca de ti" con "Aún sin registrar",
   "Reservar en la app", "Cómo llegar" y "¿Es tuya? Reclámala"; pines grises
   en el mapa. Sin Supabase/key → lista vacía, la web sigue.
+- **ACADEMIAS EN EL EXPLORADOR (pedido del director, sep-2026: "he creado
+  una academia, ¿cómo la busco por acá?"):** `datos.academias_publicas()`
+  (`pichangol_academias` no eliminadas, `data` = `Academia.toJson`) →
+  sección `#academias` (`.grupo-aca`, título "🎓 Academias [de tenis]") entre
+  las canchas registradas y las descubiertas, filtrada por la pestaña de
+  deporte (`academia.deporte == dep`; natación solo en "Todas") y ORDENADA
+  POR CERCANÍA con las canchas (`ordenar()` también recorre `.grupo-aca`).
+  `router._tarjeta_academia`: `<a class='lst aca'>` a su página `/l/{id}`,
+  logo/fotos o emoji del deporte, badge "🎓 Academia", sede · zona, "N
+  programas · a X km", "S/ 250 al mes desde" (mínimo `precioMes` de sus
+  planes, moneda congelada o la del país de la sede) o "Consulta precios",
+  botones Ver academia / 💬 WhatsApp (`span.wa[data-wa]` + handler;
+  prefijo del país de la sede si el número es local) / 📍 Cómo llegar
+  (`.ir`). **OJO: la tarjeta es un `<a>`; un `<a>` anidado (el WhatsApp
+  fue así en la 1.ª versión) hace que el navegador parta la tarjeta en
+  tres.** En el JS las academias pasan solo por texto/cercanía (`pasaBase`
+  devuelve true para `.aca`, se saltan `pasaFil`), la sección se oculta si
+  ninguna pasa, y en el mapa llevan pin `🎓 Deporte` con popup "Ver
+  academia". Test `test_academias_en_el_explorador_por_deporte_y_cercania`.
 - **PORTADA TIPO AIRBNB (`GET /`, hecho sep-2026, pedido del director):** la
   raíz del dominio YA NO es la home de marketing sino el EXPLORADOR
   (`web/router.py::_explorar`; `/canchas` es alias): cabecera con buscador en
