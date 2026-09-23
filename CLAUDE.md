@@ -236,6 +236,16 @@ para la API del APK.
   aprobadas + las del dueño que mira), chips para cambiar de cancha;
   `<title>`, descripción, JSON-LD y "Cómo llegar" usan el local. Test
   `test_no_verificadas_no_salen_hasta_ser_aprobadas`.
+  **TARJETA DEL EXPLORADOR = UN LOCAL (queja del director, 23-sep-2026:
+  "sigue saliendo el nombre de la cancha como nombre del local"):**
+  `_agrupar_locales` junta las canchas aprobadas por `club` (como
+  `Club.agrupar`/`ClubCard` del app) y `_tarjeta(grupo, ratings, fecha)`
+  pinta título = local, zona, "N canchas · deportes · horario (el más
+  temprano–el último cierre) · duración", precio "desde" el más barato y ★
+  ponderado de todas. `data-ids` lleva todas las canchas: el filtro de
+  fecha+hora oculta el local solo si NINGUNA tiene turno libre y el enlace
+  apunta a la cancha que SÍ lo tiene (`idsDe` en el JS); `data-pasos` y
+  `data-sup` con varios valores para Duración/Superficie del modal.
   **Canchas DESCUBIERTAS en Google también (sep-2026):** `web/descubrir.py`
   llama a la MISMA Edge Function `places-cerca` que el APK (key de Places
   como secret de Supabase; el backend usa `SUPABASE_URL` + `SUPABASE_ANON_KEY`)

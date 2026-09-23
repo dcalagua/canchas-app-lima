@@ -200,6 +200,8 @@ _JS_EXPLORAR = r"""
     return best;
   }
   // ── corazones (favoritos en este navegador) ──
+  // Un local puede tener varias canchas (data-ids); sin él, la tarjeta es una sola cancha.
+  function idsDe(c){ return (c.dataset.ids || c.dataset.id || '').split(' ').filter(Boolean); }
   function pintarFavs(){ cards().forEach(function(c){ var b = c.querySelector('.corazon'); if(b) b.classList.toggle('on', !!favs[c.dataset.id]); }); }
   document.addEventListener('click', function(ev){
     var b = ev.target.closest('.corazon'); if(!b) return;
@@ -226,7 +228,7 @@ _JS_EXPLORAR = r"""
     if(filtro.cerca && yo && c.dataset.d && parseFloat(c.dataset.d) > 30) return false;
     if(c.classList.contains('aca')) return true; // academias: solo zona/texto y cercanía
     if(filtro.hora && !abiertaA(c, filtro.hora)) return false;
-    if(filtro.hora && filtro.fecha && c.dataset.ok === '1'){ var lk = libres[filtro.fecha + '|' + filtro.hora]; if(lk && lk[c.dataset.id] === false) return false; }
+    if(filtro.hora && filtro.fecha && c.dataset.ok === '1'){ var lk = libres[filtro.fecha + '|' + filtro.hora]; if(lk && idsDe(c).every(function(i){ return lk[i] === false; })) return false; }
     return true;
   }
   function aplicar(){
@@ -234,7 +236,9 @@ _JS_EXPLORAR = r"""
     cards().forEach(function(c){
       var ok = pasaBase(c) && (c.classList.contains('aca') || pasaFil(c, fil));
       c.style.display = ok ? '' : 'none'; if(ok) n++;
-      if(c.dataset.base){ var qs = []; if(filtro.fecha) qs.push('fecha=' + filtro.fecha); if(filtro.hora) qs.push('hora=' + filtro.hora); c.setAttribute('href', c.dataset.base + (qs.length ? '?' + qs.join('&') : '')); }
+      if(c.dataset.base){ var qs = []; if(filtro.fecha) qs.push('fecha=' + filtro.fecha); if(filtro.hora) qs.push('hora=' + filtro.hora);
+        var base = c.dataset.base; if(filtro.hora && filtro.fecha && c.dataset.ids){ var lk2 = libres[filtro.fecha + '|' + filtro.hora] || {}; var libre = idsDe(c).filter(function(i){ return lk2[i] !== false; })[0]; if(libre) base = '/reservar/' + libre; }
+        c.setAttribute('href', base + (qs.length ? '?' + qs.join('&') : '')); }
     });
     document.querySelectorAll('.grupo-pais, .grupo-aca').forEach(function(g){
       var vis = Array.prototype.some.call(g.querySelectorAll('.lst'), function(c){ return c.style.display !== 'none'; });
@@ -439,8 +443,8 @@ _JS_EXPLORAR = r"""
     for(var a in f.am){ if(f.am[a] && (' ' + (c.dataset.am || '') + ' ').indexOf(' ' + a + ' ') < 0) return false; }
     if(f.tipo === 'ok' && c.dataset.ok !== '1') return false;
     if(f.tipo === 'pend' && c.dataset.ok === '1') return false;
-    if(f.sup && (c.dataset.sup || '') !== f.sup) return false;
-    if(f.dur && parseInt(c.dataset.paso || '60') !== f.dur) return false;
+    if(f.sup && (' ' + (c.dataset.sup || '') + ' ').indexOf(' ' + f.sup + ' ') < 0) return false;
+    if(f.dur && (' ' + (c.dataset.pasos || c.dataset.paso || '60') + ' ').indexOf(' ' + f.dur + ' ') < 0) return false;
     if((f.min || f.max) && c.dataset.mon === precioMon){ var p = parseFloat(c.dataset.pnum || '0'); if(f.min && p < f.min) return false; if(f.max && p > f.max) return false; }
     return true;
   }
@@ -825,14 +829,63 @@ def _modal_filtros(lista: list[dict]) -> str:
         "</div></div>")
 
 
-def _tarjeta(c: dict, rating: tuple[float, int] | None, fecha: str = "") -> str:
+def _hm_min(h: str, default: str) -> int:
+    """'HH:MM' → minutos del día (tolerante)."""
+    try:
+        hh, mm = (h or default).split(":")[:2]
+        return int(hh) * 60 + int(mm)
+    except Exception:  # noqa: BLE001
+        hh, mm = default.split(":")
+        return int(hh) * 60 + int(mm)
+
+
+def _agrupar_locales(lista: list[dict]) -> list[list[dict]]:
+    """Agrupa las canchas por LOCAL (`club`, sin distinguir mayúsculas), como
+    `Club.agrupar` del app: una tarjeta por local en el explorador. Una cancha
+    sin `club` es su propio local. Conserva el orden de llegada."""
+    orden: list[str] = []
+    mapa: dict[str, list[dict]] = {}
+    for c in lista:
+        club = (c.get("club") or "").strip().lower()
+        k = f"club:{club}" if club else f"id:{c['id']}"
+        if k not in mapa:
+            orden.append(k)
+            mapa[k] = []
+        mapa[k].append(c)
+    return [mapa[k] for k in orden]
+
+
+def _tarjeta(canchas: list[dict] | dict, ratings: dict | tuple | None = None, fecha: str = "") -> str:
+    """Tarjeta del explorador = UN LOCAL con sus canchas (queja del director,
+    sep-2026: "sigue saliendo el nombre de la cancha como nombre del local").
+    Igual que `ClubCard` del app: título = local, debajo zona, "N canchas ·
+    deportes · horario", precio "desde" el más barato y ★ promedio de todas
+    sus canchas. Enlaza a la ficha de la primera cancha (la ficha ya tiene
+    chips para cambiar de cancha dentro del local). Los `data-*` que usa el
+    JS (hora libre, precio, duración, superficie, amenidades, mapa, fotos)
+    reúnen los valores de TODAS las canchas del local (`data-ids`,
+    `data-pasos`, `data-sup` con varias superficies)."""
+    cs = [canchas] if isinstance(canchas, dict) else list(canchas)
+    if isinstance(ratings, tuple) or ratings is None:
+        ratings = {cs[0]["id"]: ratings} if ratings else {}
+    c = cs[0]
     sim, _iso = _moneda_de(c)
-    deps = _deportes_de(c)
+    local = _titulo_local(c)
+    deps: list[str] = []
+    for x in cs:
+        for d in _deportes_de(x):
+            if d not in deps:
+                deps.append(d)
     deps_txt = " · ".join(_deporte(d)[0] for d in deps[:3])
-    texto = f"{c['nombre']} {c.get('club', '')} {_zona(c)} {deps_txt} {c.get('direccion', '')}".lower()
-    sub = " · ".join(x for x in (c.get("club"), _zona(c)) if x)
-    ok = datos.reservable(c)
-    fs = _fotos(c)
+    nombres = " ".join(x["nombre"] for x in cs)
+    texto = f"{local} {nombres} {_zona(c)} {deps_txt} {c.get('direccion', '')}".lower()
+    sub = _zona(c) or (c.get("direccion") or "")
+    ok = all(datos.reservable(x) for x in cs)
+    fs: list[str] = []
+    for x in cs:
+        for u in _fotos(x):
+            if u not in fs:
+                fs.append(u)
     if fs:
         fotos = "".join(f"<img src='{e(u)}' alt='' loading='lazy'>" for u in fs[:5])
     else:
@@ -842,26 +895,67 @@ def _tarjeta(c: dict, rating: tuple[float, int] | None, fecha: str = "") -> str:
         extra = ("<button class='flecha izq' aria-label='Anterior'>‹</button><button class='flecha der' aria-label='Siguiente'>›</button>"
                  f"<div class='dots'>{''.join('<i></i>' for _ in fs[:5])}</div>")
     badge = "<span class='badge'>✓ Verificada</span>" if ok else "<span class='badge pend'>Aún sin verificar</span>"
-    if rating and rating[1] > 0:
-        rate = f"<span class='rate'>★ {rating[0]:.1f}".replace(".", ",") + f" <span style='color:var(--tenue);font-weight:600'>({rating[1]})</span></span>"
+    # ★ del local = promedio ponderado de las reseñas de todas sus canchas.
+    suma = 0.0
+    n_res = 0
+    for x in cs:
+        r = ratings.get(x["id"]) if isinstance(ratings, dict) else None
+        if r and r[1] > 0:
+            suma += float(r[0]) * int(r[1])
+            n_res += int(r[1])
+    if n_res:
+        rate = f"<span class='rate'>★ {suma / n_res:.1f}".replace(".", ",") + f" <span style='color:var(--tenue);font-weight:600'>({n_res})</span></span>"
     else:
         rate = "<span class='rate' style='color:var(--tenue);font-weight:600'>Nuevo</span>"
+    # Horario del local: el más temprano en abrir y el último en cerrar (el
+    # cierre que cruza medianoche cuenta como día siguiente).
+    aps = [(_hm_min(x.get("hora_apertura"), "07:00"), x.get("hora_apertura") or "07:00") for x in cs]
+    ap_txt = min(aps)[1]
+    cis = []
+    for x in cs:
+        a = _hm_min(x.get("hora_apertura"), "07:00")
+        ci = _hm_min(x.get("hora_cierre"), "23:00")
+        cis.append((ci + 1440 if ci <= a else ci, x.get("hora_cierre") or "23:00"))
+    ci_txt = max(cis)[1]
+    pasos: list[int] = []
+    for x in cs:
+        pv = int(x.get("duracion_slot_min") or 60)
+        if pv not in pasos:
+            pasos.append(pv)
+    paso_txt = "/".join(str(pv) for pv in sorted(pasos))
+    ams: list[str] = []
+    sups: list[str] = []
+    for x in cs:
+        for a in (x.get("amenidades") or []):
+            if str(a) not in ams:
+                ams.append(str(a))
+        sp = (x.get("superficie") or "").strip().lower()
+        if sp and sp not in sups:
+            sups.append(sp)
+    precios = [float(x.get("precio_hora") or 0) for x in cs if float(x.get("precio_hora") or 0) > 0]
+    pmin = min(precios) if precios else float(c.get("precio_hora") or 0)
+    desde = "desde " if len(cs) > 1 and len(set(precios)) > 1 else ""
+    n = len(cs)
+    n_txt = f"{n} cancha{'s' if n != 1 else ''}"
     base = f"/reservar/{c['id']}"
     href = base + (f"?fecha={fecha}" if fecha else "")
-    l3 = (f"<div class='l3'><b>{e(sim)} {c['precio_hora']:.0f}</b> <span style='color:var(--tenue)'>por hora</span></div>"
-          if ok else
-          f"<div class='l3'><b>{e(sim)} {c['precio_hora']:.0f}</b> <span style='color:var(--tenue)'>por hora</span>"
-          "<br><span class='app'>📲 Reservar en la app</span></div>")
-    return (f"<a class='lst{'' if ok else ' pend'}' href='{e(href)}' data-base='{e(base)}' data-id='{e(c['id'])}' data-t='{e(texto)}' "
-            f"data-ap='{e(c.get('hora_apertura') or '07:00')}' data-ci='{e(c.get('hora_cierre') or '23:00')}' data-paso='{int(c.get('duracion_slot_min') or 60)}' "
-            f"data-am='{e(' '.join(str(a) for a in (c.get('amenidades') or [])))}' data-sup='{e((c.get('superficie') or '').strip().lower())}' data-mon='{e(sim)}' "
-            f"data-deps='{e(' '.join(deps))}' data-lat='{c.get('lat')}' data-lng='{c.get('lng')}' data-nombre='{e(c['nombre'])}' data-club='{e(c.get('club', ''))}' "
-            f"data-sub='{e(sub)}' data-precio='{e(sim)} {c['precio_hora']:.0f}' data-pnum='{c['precio_hora']:.2f}' data-ok='{1 if ok else 0}'>"
+    precio_html = f"<b>{e(sim)} {pmin:.0f}</b> <span style='color:var(--tenue)'>por hora</span>"
+    if desde:
+        precio_html = f"<span style='color:var(--tenue)'>desde</span> " + precio_html
+    l3 = (f"<div class='l3'>{precio_html}</div>" if ok else
+          f"<div class='l3'>{precio_html}<br><span class='app'>📲 Reservar en la app</span></div>")
+    # Debajo del local, la(s) cancha(s): una sola → su nombre; varias → "N canchas".
+    canchas_txt = cs[0]["nombre"] if n == 1 and cs[0]["nombre"].strip().lower() != local.strip().lower() else n_txt
+    return (f"<a class='lst{'' if ok else ' pend'}' href='{e(href)}' data-base='{e(base)}' data-id='{e(c['id'])}' data-ids='{e(' '.join(x['id'] for x in cs))}' data-t='{e(texto)}' "
+            f"data-ap='{e(ap_txt)}' data-ci='{e(ci_txt)}' data-paso='{int(c.get('duracion_slot_min') or 60)}' data-pasos='{e(' '.join(str(pv) for pv in pasos))}' "
+            f"data-am='{e(' '.join(ams))}' data-sup='{e(' '.join(sups))}' data-mon='{e(sim)}' "
+            f"data-deps='{e(' '.join(deps))}' data-lat='{c.get('lat')}' data-lng='{c.get('lng')}' data-nombre='{e(local)}' data-club='{e(c.get('club', ''))}' "
+            f"data-sub='{e(sub)}' data-precio='{e(desde)}{e(sim)} {pmin:.0f}' data-pnum='{pmin:.2f}' data-ok='{1 if ok else 0}'>"
             f"<div class='foto'><div class='fotos'>{fotos}</div>{badge}"
             f"<button class='corazon' aria-label='Guardar'>{_CORAZON}</button>{extra}</div>"
-            f"<div class='lb'><div class='l1'><b>{e(c['nombre'])}</b>{rate}</div>"
-            f"<div class='l2'>{e(sub) or e(c.get('direccion', ''))}</div>"
-            f"<div class='l2'>{e(deps_txt)} · {e(c.get('hora_apertura') or '07:00')}–{e(c.get('hora_cierre') or '23:00')} · {c['duracion_slot_min']} min <span class='dist'></span></div>"
+            f"<div class='lb'><div class='l1'><b>{e(local)}</b>{rate}</div>"
+            f"<div class='l2'>{e(sub)}</div>"
+            f"<div class='l2'>{e(canchas_txt)} · {e(deps_txt)} · {e(ap_txt)}–{e(ci_txt)} · {e(paso_txt)} min <span class='dist'></span></div>"
             f"{l3}</div></a>")
 
 
@@ -985,7 +1079,7 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
         lst = por_pais.get(pais) or []
         if not lst:
             continue
-        cards = "".join(_tarjeta(c, ratings.get(c["id"]), fecha) for c in lst)
+        cards = "".join(_tarjeta(grupo, ratings, fecha) for grupo in _agrupar_locales(lst))  # una tarjeta por LOCAL, como el app
         cuerpo += (f"<section class='grupo-pais' data-pais='{pais}'><div class='tit'><h2>{ui.bandera(pais)} Canchas en {NOMBRE_PAIS[pais]}"
                    f"<span class='cerca'></span></h2></div><div class='lst-grid'>{cards}</div></section>")
     cuerpo += "</div>"
