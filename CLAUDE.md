@@ -656,6 +656,22 @@ para la API del APK.
   dueno, bool)` sobre la reclamada y sus hermanas `u<ts>_*` (fail-safe). OTP
   por WhatsApp y verificación de existencia (IA) siguen solo en el app. Test
   `test_registrar_y_reclamar_cancha_desde_la_web_como_el_app`.
+  **AGREGAR CANCHA A UN LOCAL EXISTENTE (pedido del director, 23-sep-2026:
+  "¿cómo registro otra cancha, y de otro deporte?"):** `GET/POST
+  /anfitrion/cancha/{id}/agregar` (`web/anfitrion.py::pagina_agregar_cancha`,
+  `_validar_agregada`, `agregar_cancha_web`) = `AgregarCanchaScreen` del app:
+  la cancha nueva HEREDA club, dirección, punto, zona, fotos, servicios del
+  local, moneda, dueño y ESTADO DE VERIFICACIÓN (local activo → activa al
+  instante; en verificación → se activa con el local vía las hermanas de
+  `marcar_verificada`); NO crea otro reclamo. Solo pide deporte (uno), piso,
+  nombre opcional (auto "Fútbol 2" = siguiente número del deporte en el
+  local, `_nombre_auto`), precio, horario y duración (defaults del local).
+  Entradas: "＋ Agregar cancha a este local" en Mis canchas y "Pon tu
+  cancha" prellenado con un local que ya es del dueño (mismo nombre o ≤120 m,
+  `_local_propio`) → 303 al flujo corto (antes creaba otro local + otro
+  reclamo y la 2.ª cancha quedaba "Aún sin verificar" para siempre). Aviso
+  `?agregada=` en Mis canchas. Test
+  `test_agregar_cancha_a_local_desde_la_web_como_el_app`.
 - **EDITAR CANCHA DESDE LA WEB (sep-2026, decisión del director: "web =
   vender y atender; app = operar", punto 1):** `GET/POST /anfitrion/cancha/
   {id}/editar` (`web/anfitrion.py`, calcado del editor de anuncios de

@@ -16,14 +16,13 @@ from __future__ import annotations
 
 import json
 import re
-import urllib.parse
 import threading
 import time
 from datetime import date, timedelta
 
 import config
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 import paises
 from db.store import stores
@@ -665,8 +664,6 @@ def pagina_canchas(request: Request, guardado: str = "") -> HTMLResponse:
                 f"<a class='btn sec' href='/anfitrion/calendario?cancha={e(c['id'])}'>Calendario</a>"
                 f"<a class='btn' href='/anfitrion/cancha/{e(c['id'])}/editar'>✏️ Editar</a>"
                 "</div></div></div>")
-        q_nueva = urllib.parse.urlencode({k: v for k, v in (("nombre", local), ("direccion", c0.get("direccion") or ""),
-                                                            ("lat", c0.get("lat") or ""), ("lng", c0.get("lng") or "")) if v != ""})
         tarjetas += (
             f"<div class='anf-local'><div class='cab'><div class='f'>{foto}</div><div style='flex:1;min-width:0'>"
             f"<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><span class='tit'><span class='ico'>{ui.LOCAL_SVG}</span><b style='font-size:17px'>{e(local)}</b></span>{pill}</div>"
@@ -674,7 +671,7 @@ def pagina_canchas(request: Request, guardado: str = "") -> HTMLResponse:
             f"<div class='sub' style='margin:2px 0 0'>{n} {'cancha' if n == 1 else 'canchas'}</div></div></div>"
             f"<div class='filas'>{filas}</div>"
             "<div class='acciones' style='margin-top:10px'>"
-            f"<a class='btn sec' href='/anfitrion/nueva?{q_nueva}'>＋ Agregar cancha a este local</a>"
+            f"<a class='btn sec' href='/anfitrion/cancha/{e(c0['id'])}/agregar'>＋ Agregar cancha a este local</a>"
             f"<a class='btn sec' href='{_maps(c0)}' target='_blank' rel='noopener'>📍 Mapa</a>"
             "</div></div>")
     guardada = next((c for c in canchas if c["id"] == guardado), None) if guardado else None
@@ -684,6 +681,11 @@ def pagina_canchas(request: Request, guardado: str = "") -> HTMLResponse:
     if registrada:
         aviso = (f"<div class='aviso ok' style='margin:16px 0 0'>✅ Registramos <b>{e(registrada.get('club') or registrada['nombre'])}</b>. "
                  "Queda en verificación: te avisamos por WhatsApp y en la app cuando esté activa. Mientras tanto puedes completar fotos, hora feliz y servicios.</div>")
+    agregada = next((c for c in canchas if c["id"] == request.query_params.get("agregada")), None)
+    if agregada:
+        aviso = (f"<div class='aviso ok' style='margin:16px 0 0'>✅ Agregamos <b>{e(agregada['nombre'])}</b> a <b>{e(agregada.get('club') or '')}</b>. "
+                 + ("Ya está activa y recibe reservas: el local ya estaba verificado." if datos.reservable(agregada)
+                    else "Se activará junto con el local cuando aprobemos la verificación.") + "</div>")
     cuerpo = ("<h1 class='anf-hola'>Mis canchas</h1><p class='sub'>Tus locales en Pichangol, con sus canchas. Edita precio, horario, fotos y servicios aquí o en la app: es la misma cancha.</p>"
               f"{aviso}{_aviso_verificacion(canchas, ses['email'])}"
               f"<div class='anf-grid' style='grid-template-columns:repeat(auto-fill,minmax(420px,1fr));margin-top:16px'>{tarjetas}</div>"
@@ -1068,6 +1070,15 @@ def pagina_nueva_cancha(request: Request, nombre: str = "", direccion: str = "",
         la, ln = None, None
     # Cancha de LEGADO (registrada, sin dueño): se prellena todo y el envío la
     # ADOPTA (misma fila) en vez de crear otra.
+    # Si el dueño YA tiene ese local en Pichangol (mismo nombre o a ≤120 m del
+    # punto), la cancha nueva se AGREGA al local (hereda dirección, fotos,
+    # servicios y verificación, como `AgregarCanchaScreen` del app) en vez de
+    # registrar otro local con otro reclamo. Va ANTES del legado cercano: su
+    # propio local manda sobre una fila huérfana vecina.
+    if not cancha:
+        propio = _local_propio(ses["email"], nombre, la, ln)
+        if propio:
+            return RedirectResponse(f"/anfitrion/cancha/{propio['id']}/agregar" + (f"?deporte={deporte}" if deporte in catalogos.DEPORTES_ACTIVOS else ""), status_code=303)
     existente = _legado_reclamable(cancha) or (_legado_cerca(nombre, la, ln) if (la is not None and ln is not None and not cancha) else None)
     pre = {"deportes": [], "superficie": "", "precio": "", "apertura": "07:00", "cierre": "23:00", "dur": 60, "nombre_cancha": "", "zona": ""}
     if existente:
@@ -1406,6 +1417,198 @@ _ESTADO_RECLAMO = {
     "rechazada": ("err", "No aprobada", "No pudimos confirmar la propiedad. Escríbenos por WhatsApp o vuelve a enviar la solicitud desde la app."),
     "reclamada_por_otro": ("err", "Reclamada por otra cuenta", "Otra persona ya tiene este local a su nombre. Si es tuyo, escríbenos."),
 }
+
+
+# ── AGREGAR CANCHA A UN LOCAL EXISTENTE (= `AgregarCanchaScreen` del app) ────
+# El dueño ya tiene el local: la cancha nueva HEREDA club, dirección, punto,
+# zona, fotos, servicios del local, moneda, dueño y ESTADO DE VERIFICACIÓN (si
+# el local ya está activo, la cancha entra activa al instante; no se vuelve a
+# validar la propiedad ni se crea otro reclamo). Solo se pide lo propio de la
+# cancha: deporte, tipo de piso, nombre (opcional), precio, horario y duración.
+# Permite varias canchas del mismo deporte y de deportes distintos.
+
+def _local_propio(email: str, nombre: str, lat, lng) -> dict | None:
+    """Cancha del propio dueño cuyo local coincide con `nombre` (sin
+    mayúsculas) o está a ≤120 m del punto: plantilla para agregar."""
+    mias = datos.canchas_de_dueno(email)
+    if not mias:
+        return None
+    n = re.sub(r"\s+", " ", (nombre or "")).strip().lower()
+    if n:
+        for c in mias:
+            if (c.get("club") or "").strip().lower() == n:
+                return c
+    try:
+        la, ln = float(lat), float(lng)
+    except (TypeError, ValueError):
+        return None
+    from web import descubrir as _d
+    mejor, dist = None, 0.12
+    for c in mias:
+        if not (c.get("lat") and c.get("lng")):
+            continue
+        d = _d._km(la, ln, float(c["lat"]), float(c["lng"]))
+        if d <= dist:
+            mejor, dist = c, d
+    return mejor
+
+
+def _hermanas_local(email: str, plantilla: dict) -> list[dict]:
+    club = (plantilla.get("club") or "").strip().lower()
+    return [c for c in datos.canchas_de_dueno(email) if (c.get("club") or "").strip().lower() == club] or [plantilla]
+
+
+def _nombre_auto(email: str, plantilla: dict, deporte: str) -> str:
+    """Como el app: "Fútbol 2" = siguiente número del deporte dentro del local."""
+    n = sum(1 for c in _hermanas_local(email, plantilla) if (c.get("deporte") or "").lower() == deporte) + 1
+    return f"{_deporte(deporte)[0]} {n}"
+
+
+@router.get("/anfitrion/cancha/{cancha_id}/agregar", response_class=HTMLResponse)
+def pagina_agregar_cancha(request: Request, cancha_id: str, deporte: str = "") -> HTMLResponse:
+    ses, resp = _sesion_o_entrar(request, f"/anfitrion/cancha/{cancha_id}/agregar")
+    if resp is not None:
+        return resp
+    l = _cancha_propia(ses, cancha_id)
+    if not l:
+        from web.router import _no_encontrada
+        r = _no_encontrada("Esta cancha no está a tu nombre"); r.status_code = 404
+        return r
+    local = (l.get("club") or "").strip() or l["nombre"]
+    hermanas = _hermanas_local(ses["email"], l)
+    activo = datos.reservable(l)
+    sim, _ = _moneda_de(l)
+    dep_ini = deporte if deporte in catalogos.DEPORTES_ACTIVOS else ""
+    dep_ops = [(d, f"{_deporte(d)[1]} {_deporte(d)[0]}") for d in catalogos.DEPORTES_ACTIVOS]
+    auto = {d: _nombre_auto(ses["email"], l, d) for d in catalogos.DEPORTES_ACTIVOS}
+    cfg = {"id": l["id"], "superficies": catalogos.SUPERFICIES, "auto": auto, "dep": dep_ini}
+    lista = "".join(f"<li>{_deporte(c.get('deporte'))[1]} {e(c['nombre'])} · {e(_deporte(c.get('deporte'))[0])}"
+                    + ("" if datos.reservable(c) else " <span class='pill warn' style='font-size:11px'>Aún sin verificar</span>") + "</li>" for c in hermanas)
+    estado = ("<div class='aviso ok'>✓ El local ya está verificado: la cancha nueva queda <b>activa al instante</b> y recibe reservas.</div>" if activo else
+              "<div class='aviso'>⏳ El local está en verificación: la cancha nueva se <b>activará junto con él</b> cuando lo aprobemos. No hace falta otro reclamo.</div>")
+    cuerpo = f"""
+<div class='edit-top'><a class='volver-lnk' href='/anfitrion/canchas'>‹ Mis canchas</a>
+<h1 class='anf-hola' style='margin-top:8px'>Agrega una cancha a {e(local)}</h1>
+<p class='sub'>Se suma al local (misma dirección, fotos, servicios y dueño). Solo dinos qué cancha es. Puedes agregar varias del mismo deporte o de otro deporte.</p></div>
+<div class='edit-grid'><nav class='edit-nav'><a href='#sec-cancha' class='edit-nav-it'>¿Qué cancha agregas?</a><a href='#sec-precio' class='edit-nav-it'>Precio y horario</a></nav>
+<form id='fAgregar' class='edit-form' autocomplete='off' novalidate>
+ <section class='panel edit-sec' id='sec-local'><h2>{e(local)}</h2>
+  <p class='sub' style='margin:0'>{e(l.get('direccion') or '')}{(' · ' if l.get('direccion') and _zona(l) else '')}{e(_zona(l))}</p>
+  <p class='sub' style='margin:8px 0 4px'>Canchas que ya tiene este local:</p><ul class='sub' style='margin:0 0 0 18px'>{lista}</ul>
+  {estado}
+ </section>
+ <section class='panel edit-sec' id='sec-cancha'><h2>¿Qué cancha agregas?</h2>
+  <label>Deporte <span class='req'>una cancha = un deporte</span></label>
+  {_chips('deporte', dep_ops, dep_ini)}
+  <label style='margin-top:18px'>Tipo de piso <span class='req'>obligatorio</span></label>
+  <div id='supWrap'><p class='sub'>Marca primero el deporte.</p></div>
+  <label for='nombreCancha' style='margin-top:18px'>Nombre de la cancha <span class='req'>opcional</span></label>
+  <input id='nombreCancha' maxlength='{catalogos.NOMBRE_MAX}' placeholder='{e(auto.get(dep_ini) or "Ej. Fútbol 2")}'>
+  <p class='sub' style='font-size:12.5px'>Si lo dejas vacío, la nombramos sola por deporte con el siguiente número del local.</p>
+ </section>
+ <section class='panel edit-sec' id='sec-precio'><h2>Precio y horario</h2><p class='sub'>Vienen del local; cámbialos si esta cancha es distinta.</p>
+  <label for='precio'>Precio por hora</label>
+  <div class='inp-moneda'><span>{e(sim)}</span><input id='precio' type='number' min='1' step='0.01' inputmode='decimal' value='{float(l.get("precio_hora") or 0):.2f}'></div>
+  <div class='row' style='margin-top:14px'><div><label for='hora_apertura'>Abre</label>{_select_hora('hora_apertura', l.get('hora_apertura') or '07:00')}</div>
+  <div><label for='hora_cierre'>Cierra</label>{_select_hora('hora_cierre', l.get('hora_cierre') or '23:00')}</div></div>
+  <p class='sub' style='font-size:13px'>La hora de cierre es la hora en que <b>empieza el último turno</b>.</p>
+  <label style='margin-top:14px'>Duración del turno</label>
+  {_chips('duracion_slot_min', catalogos.DURACIONES, int(l.get('duracion_slot_min') or 60) if int(l.get('duracion_slot_min') or 60) in catalogos.DURACIONES else 60, fmt=catalogos.etiqueta_duracion)}
+  <p class='sub' style='font-size:12.5px'>Hora feliz, seña, fotos propias y servicios extra los ajustas después en Editar cancha.</p>
+ </section>
+</form></div>
+<div class='barra-guardar'><div class='wrap-xl'><span class='sub' id='msgGuardar' style='margin:0'>{'Queda activa al instante.' if activo else 'Se activa junto con el local.'}</span>
+<button type='button' class='btn' id='btnGuardar'>Agregar cancha</button></div></div>
+<script>var CFG={json.dumps(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{_JS_AGREGAR}</script>"""
+    return ui.shell("Agregar cancha", cuerpo, nav=_cabecera("canchas", ses, tabs_visibles=False), sesion=ses, ancho=True,
+                    titulo_tab=f"Agregar cancha · {local}")
+
+
+_JS_AGREGAR = r"""
+(function(){
+var dep=CFG.dep||'', sup='';
+function $(id){return document.getElementById(id)}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;')}
+function sel(g){var b=document.querySelector(".chip.sel[data-g='"+g+"']");return b?b.dataset.v:''}
+function pintarSup(){var w=$('supWrap');if(!dep){w.innerHTML="<p class='sub'>Marca primero el deporte.</p>";return}
+  var l=CFG.superficies[dep]||[];if(l.indexOf(sup)<0)sup='';
+  w.innerHTML="<div class='chips' style='margin-top:6px'>"+l.map(function(s){return "<button type='button' class='chip"+(s===sup?' sel':'')+"' data-g='sup' data-v='"+esc(s)+"'>"+esc(s)+"</button>"}).join('')+"</div>";
+  $('nombreCancha').placeholder=CFG.auto[dep]||'Ej. Fútbol 2'}
+document.addEventListener('click',function(ev){var b=ev.target.closest('.chip[data-g]');if(!b)return;var g=b.dataset.g,v=b.dataset.v;
+  b.closest('.chips').querySelectorAll('.chip').forEach(function(x){x.classList.remove('sel')});b.classList.add('sel');
+  if(g==='deporte'){dep=v;pintarSup()}else if(g==='sup'){sup=v}});
+pintarSup();
+$('btnGuardar').addEventListener('click',async function(){var btn=this,msg=$('msgGuardar');
+  var body={deporte:dep,superficie:sup,nombre:$('nombreCancha').value,precio_hora:parseFloat($('precio').value)||0,hora_apertura:$('hora_apertura').value,hora_cierre:$('hora_cierre').value,duracion_slot_min:+sel('duracion_slot_min')||60};
+  btn.disabled=true;msg.classList.remove('err');msg.textContent='Agregando…';
+  try{var r=await fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});var j=await r.json();
+    if(j.ok){location.href=j.url||'/anfitrion/canchas';return}msg.classList.add('err');msg.textContent=j.error||'No se pudo agregar.';if(j.campo){var el=document.getElementById('sec-'+j.campo);if(el)el.scrollIntoView({behavior:'smooth'})}}
+  catch(e){msg.classList.add('err');msg.textContent='No se pudo agregar. Revisa tu conexión.'}btn.disabled=false});
+})();
+"""
+
+
+def _validar_agregada(b: dict, l: dict, email: str) -> tuple[dict | None, str, str]:
+    """Reglas de `AgregarCanchaScreen._guardar`: piso obligatorio, precio > 0,
+    horario válido, duración del catálogo. Devuelve (fila, error, sección)."""
+    if not isinstance(b, dict):
+        return None, "Datos inválidos.", ""
+    dep = str(b.get("deporte") or "").lower()
+    if dep not in catalogos.DEPORTES_ACTIVOS:
+        return None, "Marca el deporte de la cancha.", "cancha"
+    sup = str(b.get("superficie") or "").strip()
+    if sup not in catalogos.SUPERFICIES.get(dep, []):
+        return None, "Marca el tipo de piso de la cancha (obligatorio).", "cancha"
+    nombre = re.sub(r"\s+", " ", str(b.get("nombre") or "")).strip()[:catalogos.NOMBRE_MAX] or _nombre_auto(email, l, dep)
+    try:
+        precio = round(float(b.get("precio_hora")), 2)
+    except (TypeError, ValueError):
+        precio = 0
+    if not (0 < precio <= 100000):
+        return None, "Pon un precio por hora válido.", "precio"
+    ap, ci = str(b.get("hora_apertura") or "07:00"), str(b.get("hora_cierre") or "23:00")
+    if not (_HORA_RE.match(ap) and _HORA_RE.match(ci)):
+        return None, "Hora no válida (usa horas en punto).", "precio"
+    try:
+        dur = int(b.get("duracion_slot_min") or 60)
+    except (TypeError, ValueError):
+        dur = 0
+    if dur not in catalogos.DURACIONES:
+        return None, "Duración del turno no válida.", "precio"
+    fotos = list(_fotos(l))
+    fila = {"id": f"u{int(time.time() * 1000)}", "nombre": nombre, "club": (l.get("club") or "").strip() or l["nombre"],
+            "distrito": l.get("distrito") or "", "barrio": l.get("barrio") or "", "deporte": dep, "deportes": [dep], "superficie": sup,
+            "precio_hora": precio, "lat": l.get("lat"), "lng": l.get("lng"), "club_fundador": bool(l.get("club_fundador")),
+            "digitalizada": True, "direccion": l.get("direccion") or None, "registrada": True,
+            "foto_url": fotos[0] if fotos else None, "fotos": fotos, "dueno": email,
+            "verificada": bool(l.get("verificada")),  # hereda: si el local ya está activo, esta también
+            "hora_apertura": ap, "hora_cierre": ci, "duracion_slot_min": dur, "eliminada": False,
+            "amenidades": list(l.get("amenidades") or []),  # los servicios son del local
+            "moneda": l.get("moneda") or _moneda_de(l)[0], "servicios_extra": [], "descuento_valle": 0,
+            "valle_desde": "07:00", "valle_hasta": "12:00", "sena_pct": 0}
+    return fila, "", ""
+
+
+@router.post("/anfitrion/cancha/{cancha_id}/agregar")
+async def agregar_cancha_web(request: Request, cancha_id: str) -> JSONResponse:
+    """INSERT de la cancha nueva heredando del local; sin reclamo nuevo."""
+    ses = sesion.de_request(request)
+    if not ses:
+        return JSONResponse({"ok": False, "error": "sesion_requerida"}, status_code=401)
+    l = _cancha_propia(ses, cancha_id)
+    if not l:
+        return JSONResponse({"ok": False, "error": "no_encontrada"}, status_code=404)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": "Datos inválidos."}, status_code=400)
+    fila, err, seccion = _validar_agregada(body, l, ses["email"])
+    if fila is None:
+        return JSONResponse({"ok": False, "error": err, "campo": seccion}, status_code=400)
+    if not datos.insertar_canchas([fila]):
+        return JSONResponse({"ok": False, "error": "No pudimos guardar la cancha en este momento. Inténtalo de nuevo."}, status_code=503)
+    print(f"[agregar-web] {ses['email']} agregó {fila['nombre']!r} ({fila['deporte']}) a {fila['club']!r}: {fila['id']} · verificada={fila['verificada']}", flush=True)
+    return JSONResponse({"ok": True, "url": f"/anfitrion/canchas?agregada={fila['id']}", "id": fila["id"], "verificada": fila["verificada"]})
 
 
 def _aviso_verificacion(canchas: list[dict], email: str) -> str:

@@ -1513,3 +1513,60 @@ def test_ficha_de_academia_y_matricula_web_como_el_app(db, monkeypatch):
     assert "¡Matrícula registrada!" in comp and "Ana Pérez" in comp and "S/ 330.00" in comp and "chr_mat_1" in comp and "⏳" in comp and "wa.me/51999888777" in comp
     _entrar_como(cli, monkeypatch, "otro@gmail.com")
     assert "Esta matrícula es privada" in cli.get(r["url"]).text
+
+
+def test_agregar_cancha_a_local_desde_la_web_como_el_app(db, monkeypatch):
+    """Pedido del director (sep-2026): "¿cómo registro otra cancha en el mismo
+    local, y de otro deporte?". Como `AgregarCanchaScreen` del app: la cancha
+    nueva HEREDA local, dirección, punto, fotos, servicios, dueño y estado de
+    verificación (local activo → activa al instante, sin otro reclamo); solo
+    se pide deporte, piso, nombre, precio, horario y duración."""
+    from web import catalogos
+    monkeypatch.setattr(config, "GOOGLE_WEB_CLIENT_ID", "cid-web")
+    cli = TestClient(app, base_url="https://testserver")
+    # Sin sesión → a entrar. Cancha ajena → 404.
+    assert cli.get("/anfitrion/cancha/c_lima/agregar", follow_redirects=False).status_code in (302, 303, 307)
+    _entrar_como(cli, monkeypatch, "otro@x.com", "Otro")
+    assert cli.get("/anfitrion/cancha/c_lima/agregar").status_code == 404
+    assert cli.post("/anfitrion/cancha/c_lima/agregar", json={"deporte": "tenis"}).status_code == 404
+    # El dueño: la página es del LOCAL, lista sus canchas y avisa que queda activa al instante.
+    _entrar_como(cli, monkeypatch, "dueno@x.com", "Dueño")
+    pag = cli.get("/anfitrion/cancha/c_lima/agregar?deporte=tenis").text
+    assert "Agrega una cancha a Club Raqueta" in pag and "Cancha Central" in pag and "Nocturna" in pag
+    assert "activa al instante" in pag and "data-g='deporte' data-v='tenis'" in pag and "Agregar cancha" in pag
+    # "Mis canchas" lleva al flujo corto, no a "Pon tu cancha".
+    mc = cli.get("/anfitrion/canchas").text
+    assert "href='/anfitrion/cancha/c_lima/agregar'" in mc and "Agregar cancha a este local" in mc
+    # "Pon tu cancha" prellenado con un local que ya es mío → redirige a agregar.
+    r = cli.get("/anfitrion/nueva?nombre=club%20raqueta&lat=-12.09&lng=-77.0&deporte=tenis", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/anfitrion/cancha/c_lima/agregar?deporte=tenis"
+    # Validaciones del app: piso obligatorio, precio válido.
+    r = cli.post("/anfitrion/cancha/c_lima/agregar", json={"deporte": "tenis", "precio_hora": 40}).json()
+    assert r["ok"] is False and "piso" in r["error"] and r["campo"] == "cancha"
+    r = cli.post("/anfitrion/cancha/c_lima/agregar", json={"deporte": "tenis", "superficie": catalogos.SUPERFICIES["tenis"][0], "precio_hora": 0}).json()
+    assert r["ok"] is False and r["campo"] == "precio"
+    # Otra cancha de OTRO deporte: hereda todo y nace verificada (el local ya está activo).
+    r = cli.post("/anfitrion/cancha/c_lima/agregar", json={"deporte": "tenis", "superficie": catalogos.SUPERFICIES["tenis"][0], "precio_hora": 40,
+                                                            "hora_apertura": "08:00", "hora_cierre": "22:00", "duracion_slot_min": 90}).json()
+    assert r["ok"] is True and r["verificada"] is True
+    nueva = db.canchas[r["id"]]
+    assert nueva["nombre"] == "Tenis 1" and nueva["club"] == "Club Raqueta" and nueva["deporte"] == "tenis" and nueva["deportes"] == ["tenis"]
+    assert nueva["dueno"] == "dueno@x.com" and nueva["verificada"] is True and nueva["direccion"] == "Av. Aviación 123"
+    assert nueva["lat"] == -12.09 and nueva["moneda"] == "S/" and nueva["precio_hora"] == 40 and nueva["duracion_slot_min"] == 90
+    assert nueva["hora_apertura"] == "08:00" and nueva["hora_cierre"] == "22:00" and nueva["servicios_extra"] == []
+    # Sin reclamo nuevo: la propiedad ya se validó con el local.
+    from db.store import stores
+    assert not any(getattr(x, "cancha_id", None) == r["id"] for x in stores.reclamos)
+    # Segunda del MISMO deporte: numera sola ("Fútbol 3": ya había Cancha Central y Nocturna de fútbol).
+    r2 = cli.post("/anfitrion/cancha/c_lima/agregar", json={"deporte": "futbol", "superficie": catalogos.SUPERFICIES["futbol"][0], "precio_hora": 55}).json()
+    assert r2["ok"] is True and db.canchas[r2["id"]]["nombre"] == "Fútbol 3"
+    # Aviso en Mis canchas y el explorador ya la cuenta en la tarjeta del local.
+    mc = cli.get(f"/anfitrion/canchas?agregada={r['id']}").text
+    assert "Agregamos <b>Tenis 1</b>" in mc and "Ya está activa" in mc
+    home = client.get("/canchas").text
+    assert "<b>Club Raqueta</b>" in home and "4 canchas" in home and "Fútbol · Tenis" in home
+    # Local aún en verificación → la nueva hereda "pendiente" (se activa con el local).
+    db.canchas["c_gye"]["verificada"] = False
+    r3 = cli.post("/anfitrion/cancha/c_gye/agregar", json={"deporte": "voley", "superficie": catalogos.SUPERFICIES["voley"][0], "precio_hora": 8}).json()
+    assert r3["ok"] is True and r3["verificada"] is False and db.canchas[r3["id"]]["club"] == "Club Sur" and db.canchas[r3["id"]]["moneda"] == "$"
+    assert "activará junto con el local" in cli.get(f"/anfitrion/canchas?agregada={r3['id']}").text
