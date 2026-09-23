@@ -1021,6 +1021,27 @@ def _tel_completo(iso: str, local: str) -> str:
     return catalogos.TEL_PREFIJO.get(iso, "51") + re.sub(r"\D", "", local or "")
 
 
+def _legado_cerca(nombre: str, lat, lng) -> dict | None:
+    """Legado reclamable (registrada, sin dueño, sin verificar) a ≤120 m del
+    punto que trae "Reclámala" desde una cancha DESCUBIERTA en Google: se
+    ADOPTA esa fila en vez de crear otra (el explorador ya no lista las
+    pendientes, así que el camino natural para reclamar el legado es el pin
+    de Google → /lugar → Reclámala)."""
+    try:
+        la, ln = float(lat), float(lng)
+    except (TypeError, ValueError):
+        return None
+    from web import descubrir as _d
+    mejor, dist = None, 0.12
+    for c in datos.canchas_publicas():
+        if c.get("verificada") or (c.get("dueno") or "").strip() or not (c.get("lat") and c.get("lng")):
+            continue
+        d = _d._km(la, ln, float(c["lat"]), float(c["lng"]))
+        if d <= dist:
+            mejor, dist = c, d
+    return mejor
+
+
 def _legado_reclamable(cancha_id: str) -> dict | None:
     """Cancha ya registrada SIN dueño y sin verificar (mismo criterio que el
     "legado reclamable" de `AppState.misCanchas`): cualquiera puede reclamarla."""
@@ -1047,7 +1068,7 @@ def pagina_nueva_cancha(request: Request, nombre: str = "", direccion: str = "",
         la, ln = None, None
     # Cancha de LEGADO (registrada, sin dueño): se prellena todo y el envío la
     # ADOPTA (misma fila) en vez de crear otra.
-    existente = _legado_reclamable(cancha)
+    existente = _legado_reclamable(cancha) or (_legado_cerca(nombre, la, ln) if (la is not None and ln is not None and not cancha) else None)
     pre = {"deportes": [], "superficie": "", "precio": "", "apertura": "07:00", "cierre": "23:00", "dur": 60, "nombre_cancha": "", "zona": ""}
     if existente:
         nombre = existente.get("club") or existente.get("nombre") or nombre

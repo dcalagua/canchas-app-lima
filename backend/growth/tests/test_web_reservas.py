@@ -528,15 +528,39 @@ def test_pagina_reservar_trae_tira_de_dias_y_resumen(db):
     assert "/static/brand/logo_pin.png" in html
 
 
-def test_no_verificadas_salen_con_reservar_en_la_app(db):
+def test_no_verificadas_no_salen_hasta_ser_aprobadas(db, monkeypatch):
+    """Como el app (regla del director, sep-2026): una cancha en verificación
+    NO sale en el explorador ni la ve el público; solo su dueño la abre como
+    vista previa. El legado sin dueño sigue accesible por enlace para
+    reclamarlo. Y la ficha lleva el LOCAL de título, no el nombre de la cancha."""
     html = client.get("/canchas").text
-    assert "Loza Pendiente" in html and "Reservar en la app" in html and "Aún sin verificar" in html
-    # Las reservables van primero; la pendiente no tiene sello.
-    assert html.index("Cancha Central") < html.index("Loza Pendiente")
+    assert "Loza Pendiente" not in html and "Aún sin verificar" not in html and "Cancha Central" in html
+    assert "Tipo de local" not in html and "data-tipo='pend'" not in html
+    # Legado sin dueño: ficha visible (para reclamar), sin checkout.
     ficha = client.get("/reservar/c_pend").text
     assert "proceso de verificación" in ficha and "checkout.culqi.com" not in ficha and "play.google.com" in ficha
     r = _asegurar(_manana(), horas=("15:00",), extras=(), cancha="c_pend")
     assert r["ok"] is False and r["error"] == "no_verificada"
+    # Pendiente CON dueño: 404 para el público, vista previa para el dueño.
+    db.canchas["c_pend"]["dueno"] = "dueno2@x.com"
+    assert client.get("/reservar/c_pend").status_code == 404
+    monkeypatch.setattr(config, "GOOGLE_WEB_CLIENT_ID", "cid-web")
+    cli = TestClient(app, base_url="https://testserver")
+    _entrar_como(cli, monkeypatch, "dueno2@x.com", "Dueño Dos")
+    prev = cli.get("/reservar/c_pend").text
+    assert "proceso de verificación" in prev and "Loza Pendiente" in prev
+    db.canchas["c_pend"]["dueno"] = ""
+    # Título = LOCAL; la cancha debajo; chips con las canchas del local (solo aprobadas).
+    f = client.get("/reservar/c_lima").text
+    assert "<h1 style='margin-top:8px'>Club Raqueta</h1>" in f and "Cancha Central" in f
+    assert "canchas en este local" in f and "href='/reservar/c_noche'" in f and "href='/reservar/c_pend'" not in f
+    assert "<title>Reservar en Club Raqueta" in f
+    # Descubiertas: el legado sin dueño NO se descuenta (su pin sigue para reclamarlo); las con dueño sí.
+    from web import descubrir
+    vistos = {}
+    monkeypatch.setattr(descubrir, "descubrir_cerca", lambda *a, **k: vistos.update(k) or [])
+    client.get("/web/descubrir?lat=-12&lng=-77")
+    assert "Loza Pendiente" not in [r["nombre"] for r in vistos["registradas"]] and "Cancha Central" in [r["nombre"] for r in vistos["registradas"]]
 
 
 def test_primera_foto_siempre_como_el_app(db, monkeypatch):
