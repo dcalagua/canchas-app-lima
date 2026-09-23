@@ -927,6 +927,8 @@ off → redeploy inmediato en cada push). URL pública:
     en verificación ocultas hasta aprobarse" (solo web).
     **Pase del 23-sep-2026 (4.º, autorizado):** `prd` = merge `701ae4b`
     (explorador web con una tarjeta por LOCAL, como el app). Solo web.
+    **Pase del 23-sep-2026 (5.º, autorizado):** `prd` = merge `6d9a97e`
+    (agregar otra cancha a un local existente desde la web). Solo web.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
