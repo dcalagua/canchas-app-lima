@@ -881,7 +881,9 @@ off → redeploy inmediato en cada push). URL pública:
     Reclamaciones en página propia, /legal/devoluciones, términos de
     compra web, redes oficiales configurables; Mis canchas del anfitrión
     agrupado por local). Solo web. Pendiente del director en PRD: cargar
-    las redes oficiales en la torre y tener ≥1 cancha verificada.
+    las redes oficiales en la torre y tener ≥1 cancha verificada. **Pase del
+    23-sep-2026 (2.º, autorizado):** `prd` = merge del ícono SVG de local
+    (`ui.LOCAL_SVG`) en Mis canchas. Solo web.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
