@@ -307,7 +307,9 @@ def test_catalogo_agrupa_por_pais_y_filtra(db):
     assert r.status_code == 200
     assert "Perú" in r.text and "Ecuador" in r.text and "data-pais='PE'" in r.text
     assert "leaflet" in r.text and "Usar mi ubicación" in r.text and "data-lat=" in r.text
-    assert "Cancha Central" in r.text and "Cancha Guayaquil" in r.text
+    # Una tarjeta por LOCAL (como el app): "Club Raqueta" agrupa Cancha Central + Nocturna.
+    assert "<b>Club Raqueta</b>" in r.text and "2 canchas" in r.text and "data-ids='c_lima c_noche'" in r.text
+    assert "<b>Cancha Central</b>" not in r.text and "Cancha Guayaquil" in r.text
     assert "S/ 60" in r.text and "$ 10" in r.text and "Mostrar mapa" in r.text
     assert "/reservar/c_lima" in r.text
     r = client.get("/canchas?deporte=tenis")
@@ -439,7 +441,7 @@ def test_raiz_es_el_explorador_tipo_airbnb(db):
     marca/comercio que revisan Culqi e INDECOPI (servicios con precio y
     botón, términos, cancelaciones, Libro de Reclamaciones integrado)."""
     home = client.get("/").text
-    for t in ("id='sQ'", "id='sF'", "id='sH'", "id='panCuando'", "id='panHora'", "class='cat sel'", "Cancha Central", "class='corazon'",
+    for t in ("id='sQ'", "id='sF'", "id='sH'", "id='panCuando'", "id='panHora'", "class='cat sel'", "<b>Club Raqueta</b>", "class='corazon'",
               "Mostrar mapa", 'id="servicios"', "Servicios y precios", "/canchas?deporte=futbol",
               'id="terminos"', 'id="devoluciones"', 'id="reclamaciones"', "lr-form", "/reclamaciones",
               'href="/canchas"', 'href="/legal/terminos"', 'href="/legal/privacidad"',
@@ -534,7 +536,9 @@ def test_no_verificadas_no_salen_hasta_ser_aprobadas(db, monkeypatch):
     vista previa. El legado sin dueño sigue accesible por enlace para
     reclamarlo. Y la ficha lleva el LOCAL de título, no el nombre de la cancha."""
     html = client.get("/canchas").text
-    assert "Loza Pendiente" not in html and "Aún sin verificar" not in html and "Cancha Central" in html
+    assert "Loza Pendiente" not in html and "Aún sin verificar" not in html
+    # La tarjeta es el LOCAL: título "Club Raqueta" con sus 2 canchas aprobadas (la pendiente no cuenta).
+    assert "<b>Club Raqueta</b>" in html and "2 canchas" in html and "data-ids='c_lima c_noche'" in html
     assert "Tipo de local" not in html and "data-tipo='pend'" not in html
     # Legado sin dueño: ficha visible (para reclamar), sin checkout.
     ficha = client.get("/reservar/c_pend").text
