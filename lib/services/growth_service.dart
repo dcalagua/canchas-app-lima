@@ -68,6 +68,21 @@ class GrowthService {
     }
   }
 
+  /// Catálogo GLOBAL de servicios extra (torre → `GET /config/servicios-extra`):
+  /// {version, servicios:[{clave, nombre, emoji, tipo, ambito, deportes}]}.
+  /// Null si no se pudo consultar (la app conserva su caché o la lista local).
+  static Future<Map<String, dynamic>?> serviciosExtraCatalogo() async {
+    if (!disponible) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/config/servicios-extra');
+      final resp = await http.get(uri).timeout(const Duration(seconds: 6));
+      if (resp.statusCode != 200) return null;
+      return jsonDecode(resp.body) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Carril informal: corre la IA primero (reusa el módulo de existencia en el
   /// servidor) y, si no concluye, agenda una visita. Devuelve null si el servicio
   /// no está configurado / no respondió.

@@ -576,6 +576,13 @@ class Stores:
         self.reclamaciones: list[dict] = []
         # Cancelaciones hechas desde la WEB (historial + estado del reembolso).
         self.cancelaciones_web: list[dict] = []
+        # CATÁLOGO GLOBAL de servicios extra (add-ons de pago de la reserva),
+        # administrado desde la torre (`servicios_extra.py`): clave → fila.
+        # `version` sube en cada cambio (el APK lo cachea por versión).
+        self.servicios_extra: dict[str, dict] = {}
+        self.servicios_extra_version: int = 1
+        # Sugerencias de dueños ("mi local ofrece X"): las atiende el operador.
+        self.sugerencias_servicios: list[dict] = []
         self._idem: dict[tuple[str, str], dict] = {}
         self._ids: dict[str, int] = {}
 
@@ -994,6 +1001,9 @@ class Stores:
                 k: dict(v) for k, v in self.payphone_pagos.items()},
             "reclamaciones": [dict(r) for r in self.reclamaciones],
             "cancelaciones_web": [dict(r) for r in self.cancelaciones_web],
+            "servicios_extra": {k: dict(v) for k, v in self.servicios_extra.items()},
+            "servicios_extra_version": int(self.servicios_extra_version),
+            "sugerencias_servicios": [dict(r) for r in self.sugerencias_servicios],
             "jugadores_circuito": {
                 k: dict(v) for k, v in self.jugadores_circuito.items()},
             "ranking_snapshot": dict(self.ranking_snapshot),
@@ -1079,6 +1089,9 @@ class Stores:
         }
         self.reclamaciones = [dict(r) for r in (data.get("reclamaciones") or [])]
         self.cancelaciones_web = [dict(r) for r in (data.get("cancelaciones_web") or [])]
+        self.servicios_extra = {k: dict(v) for k, v in (data.get("servicios_extra") or {}).items()}
+        self.servicios_extra_version = int(data.get("servicios_extra_version") or 1)
+        self.sugerencias_servicios = [dict(r) for r in (data.get("sugerencias_servicios") or [])]
         self.jugadores_circuito = {
             k: dict(v) for k, v in (data.get("jugadores_circuito") or {}).items()
         }

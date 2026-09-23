@@ -77,17 +77,88 @@ const List<Deporte> deportesAcademia = [
   Deporte.natacion,
 ];
 
+/// Entrada del CATÁLOGO GLOBAL de servicios extra (lo administra el operador
+/// en la torre; el app lo baja de `GET /config/servicios-extra` y lo cachea).
+/// Espejo de `servicios_extra.py` del backend.
+class ServicioCatalogo {
+  final String clave;
+  final String nombre;
+  final String emoji;
+  /// Cómo se cobra: 'reserva' (una vez), 'persona' (× cantidad de personas) o
+  /// 'turno' (× turnos reservados).
+  final String tipo;
+  /// 'local' (del recinto: piscina, sauna; se aplica a todas las canchas del
+  /// local) o 'cancha' (solo de esa cancha: árbitro, petos).
+  final String ambito;
+  final List<String> deportes; // vacío = todos
+
+  const ServicioCatalogo({
+    required this.clave,
+    required this.nombre,
+    this.emoji = '➕',
+    this.tipo = 'reserva',
+    this.ambito = 'cancha',
+    this.deportes = const [],
+  });
+
+  bool get esDelLocal => ambito == 'local';
+
+  String get etiquetaTipo => ServicioExtra.etiquetaDeTipo(tipo);
+
+  factory ServicioCatalogo.fromJson(Map<String, dynamic> j) => ServicioCatalogo(
+        clave: (j['clave'] ?? '').toString(),
+        nombre: (j['nombre'] ?? '').toString(),
+        emoji: (j['emoji'] ?? '➕').toString(),
+        tipo: (j['tipo'] ?? 'reserva').toString(),
+        ambito: (j['ambito'] ?? 'cancha').toString(),
+        deportes: [
+          for (final d in (j['deportes'] is List ? j['deportes'] as List : const []))
+            d.toString()
+        ],
+      );
+
+  Map<String, dynamic> toJson() => {
+        'clave': clave,
+        'nombre': nombre,
+        'emoji': emoji,
+        'tipo': tipo,
+        'ambito': ambito,
+        'deportes': deportes,
+      };
+}
+
 /// Un servicio EXTRA de pago que una cancha ofrece como add-on de la reserva
-/// (árbitro, pelotero, alquiler de pelota, pecheras…). El jugador los elige al
+/// (árbitro, pelotero, piscina, entrada general…). El jugador los elige al
 /// reservar y suman al total; el dueño los ve en sus cobros. Distinto de
 /// `amenidades` (servicios GRATIS del local, sin precio).
+///
+/// En la CANCHA, `precio` es el unitario configurado por el dueño. En una
+/// RESERVA, `precio` es el TOTAL de la línea (unitario × [cantidad]) — así los
+/// APKs que solo suman `precio` siguen cuadrando — y `unitario`/`cantidad`
+/// permiten mostrar "Piscina × 3". `nombre/emoji/tipo/ambito` viajan
+/// congelados en el JSON para mostrarse aunque el catálogo cambie.
 class ServicioExtra {
   final String clave;
   final double precio;
-  const ServicioExtra({required this.clave, required this.precio});
+  final String? nombreJson;
+  final String emoji;
+  final String tipo;
+  final String ambito;
+  final int cantidad;
+  final double? unitario;
 
-  /// Catálogo de servicios ofrecibles: clave → nombre visible. El ícono se
-  /// resuelve en la UI (el modelo no depende de Flutter/material).
+  const ServicioExtra({
+    required this.clave,
+    required this.precio,
+    String? nombre,
+    this.emoji = '',
+    this.tipo = '',
+    this.ambito = '',
+    this.cantidad = 1,
+    this.unitario,
+  }) : nombreJson = nombre;
+
+  /// Catálogo EMPAQUETADO (respaldo sin red): clave → nombre visible.
   static const catalogo = <String, String>{
     'arbitro': 'Árbitro',
     'pelotero': 'Pelotero (recoge pelotas)',
@@ -96,17 +167,131 @@ class ServicioExtra {
     'hidratacion': 'Hidratación',
     'parrilla': 'Parrilla / grill',
   };
+  static const _emojiLegado = <String, String>{
+    'arbitro': '🧑‍⚖️',
+    'pelotero': '🏃',
+    'pelota': '🎾',
+    'pecheras': '🦺',
+    'hidratacion': '💧',
+    'parrilla': '🔥',
+  };
 
-  String get nombre => catalogo[clave] ?? clave;
+  /// Catálogo VIVO bajado de la torre (`AppState.cargarCatalogoServicios`).
+  /// Vacío hasta que cargue: entonces manda el empaquetado.
+  static List<ServicioCatalogo> catalogoRemoto = const [];
 
-  ServicioExtra copyWith({double? precio}) =>
-      ServicioExtra(clave: clave, precio: precio ?? this.precio);
+  /// Catálogo a usar en el editor del dueño (remoto si llegó, si no el local).
+  static List<ServicioCatalogo> get catalogoActual => catalogoRemoto.isNotEmpty
+      ? catalogoRemoto
+      : [
+          for (final e in catalogo.entries)
+            ServicioCatalogo(
+              clave: e.key,
+              nombre: e.value,
+              emoji: _emojiLegado[e.key] ?? '➕',
+              ambito: e.key == 'parrilla' ? 'local' : 'cancha',
+            ),
+        ];
 
-  Map<String, dynamic> toJson() => {'clave': clave, 'precio': precio};
+  static ServicioCatalogo? deCatalogo(String clave) {
+    for (final s in catalogoActual) {
+      if (s.clave == clave) return s;
+    }
+    return null;
+  }
+
+  static List<ServicioCatalogo> parsearCatalogo(dynamic raw) {
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((e) => ServicioCatalogo.fromJson(Map<String, dynamic>.from(e)))
+        .where((s) => s.clave.isNotEmpty && s.nombre.isNotEmpty)
+        .toList();
+  }
+
+  static String etiquetaDeTipo(String tipo) {
+    switch (tipo) {
+      case 'persona':
+        return 'por persona';
+      case 'turno':
+        return 'por turno';
+      default:
+        return 'por reserva';
+    }
+  }
+
+  String get nombre {
+    final n = nombreJson;
+    if (n != null && n.isNotEmpty) return n;
+    return deCatalogo(clave)?.nombre ?? catalogo[clave] ?? clave;
+  }
+
+  String get emojiVisible =>
+      emoji.isNotEmpty ? emoji : (deCatalogo(clave)?.emoji ?? '');
+  String get tipoEfectivo =>
+      tipo.isNotEmpty ? tipo : (deCatalogo(clave)?.tipo ?? 'reserva');
+  String get ambitoEfectivo =>
+      ambito.isNotEmpty ? ambito : (deCatalogo(clave)?.ambito ?? 'cancha');
+  bool get esDelLocal => ambitoEfectivo == 'local';
+  bool get porPersona => tipoEfectivo == 'persona';
+  bool get porTurno => tipoEfectivo == 'turno';
+  String get etiquetaTipo => etiquetaDeTipo(tipoEfectivo);
+
+  /// " × 3" cuando la línea de una reserva cobró más de una unidad.
+  String get detalleCantidad => cantidad > 1 ? ' × $cantidad' : '';
+
+  /// Línea para la RESERVA a partir del servicio configurado en la cancha:
+  /// total = unitario × (personas | turnos | 1) según el tipo de cobro.
+  ServicioExtra linea({required int personas, required int turnos}) {
+    var n = 1;
+    if (porPersona) {
+      n = personas < 1 ? 1 : (personas > 50 ? 50 : personas);
+    } else if (porTurno) {
+      n = turnos < 1 ? 1 : turnos;
+    }
+    return ServicioExtra(
+      clave: clave,
+      precio: precio * n,
+      nombre: nombre,
+      emoji: emojiVisible,
+      tipo: tipoEfectivo,
+      ambito: ambitoEfectivo,
+      cantidad: n,
+      unitario: precio,
+    );
+  }
+
+  ServicioExtra copyWith({double? precio}) => ServicioExtra(
+        clave: clave,
+        precio: precio ?? this.precio,
+        nombre: nombreJson,
+        emoji: emoji,
+        tipo: tipo,
+        ambito: ambito,
+        cantidad: cantidad,
+        unitario: unitario,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'clave': clave,
+        'precio': precio,
+        if (nombreJson != null && nombreJson!.isNotEmpty) 'nombre': nombreJson,
+        if (emoji.isNotEmpty) 'emoji': emoji,
+        if (tipo.isNotEmpty) 'tipo': tipo,
+        if (ambito.isNotEmpty) 'ambito': ambito,
+        if (cantidad != 1) 'cantidad': cantidad,
+        if (unitario != null) 'unitario': unitario,
+      };
 
   factory ServicioExtra.fromJson(Map<String, dynamic> j) => ServicioExtra(
         clave: (j['clave'] ?? '').toString(),
         precio: ((j['precio'] ?? 0) as num).toDouble(),
+        nombre: j['nombre']?.toString(),
+        emoji: (j['emoji'] ?? '').toString(),
+        tipo: (j['tipo'] ?? '').toString(),
+        ambito: (j['ambito'] ?? '').toString(),
+        cantidad: ((j['cantidad'] ?? 1) as num).toInt(),
+        unitario: j['unitario'] == null ? null : (j['unitario'] as num).toDouble(),
       );
 
   static List<ServicioExtra> listaDe(dynamic raw) {

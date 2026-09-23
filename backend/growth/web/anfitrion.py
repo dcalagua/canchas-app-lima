@@ -25,6 +25,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 import paises
+import servicios_extra as _se
 from db.store import stores
 from propiedad import reclamos
 from web import almacen, catalogos, datos, horarios, sesion, ui
@@ -741,15 +742,28 @@ def pagina_editar_cancha(request: Request, cancha_id: str) -> HTMLResponse:
     dep_ops = [(d, f"{_deporte(d)[1]} {_deporte(d)[0]}") for d in catalogos.DEPORTES_ACTIVOS + [x for x in catalogos.DEPORTES_LEGADO if x in deps]]
     superficies = catalogos.SUPERFICIES.get(principal, [])
     fotos = _fotos(c)
-    servicios = {str(s.get("clave")): float(s.get("precio") or 0) for s in (c.get("servicios_extra") or [])}
+    # Servicios extra = CATÁLOGO GLOBAL de la torre (`servicios_extra.py`),
+    # agrupado en "Del local" (se propaga a todas las canchas del local) y
+    # "De esta cancha". Los que la cancha ya tiene pero salieron del catálogo
+    # se muestran igual, para poder quitarlos o mantener su precio.
+    actuales = {str(s.get("clave")): _se.completar(s) for s in (c.get("servicios_extra") or []) if s.get("clave")}
+    cat = _se.catalogo()
+    conocidas = {x["clave"] for x in cat}
+    fuera = [v for k, v in actuales.items() if k not in conocidas]
     filas_serv = ""
-    for k, (nombre, ico) in catalogos.SERVICIOS_EXTRA.items():
-        on = k in servicios
-        precio_txt = f"{servicios[k]:.2f}" if on else ""
-        filas_serv += (f"<div class='serv{' sel' if on else ''}' data-serv='{k}'>"
-                       f"<button type='button' class='chip{' sel' if on else ''}' data-g='servicios' data-v='{k}'>{ico} {e(nombre)}</button>"
-                       f"<label class='precio-serv'{'' if on else ' hidden'}><span>{e(sim)}</span>"
-                       f"<input type='number' name='serv_{k}' min='0.5' step='0.5' inputmode='decimal' value='{precio_txt}' placeholder='Precio'></label></div>")
+    for amb, tit, ayuda in (("local", "Del local", "Se aplican a TODAS las canchas de este local (piscina, sauna, entrada general…). Al guardar se copian a las demás canchas del local."),
+                            ("cancha", "De esta cancha", "Solo de esta cancha (árbitro, petos, clase con entrenador…).")):
+        items = [x for x in cat if x["ambito"] == amb] + [x for x in fuera if x.get("ambito") == amb]
+        filas_serv += f"<h3 style='font-size:14px;margin:14px 0 2px'>{tit}</h3><p class='sub' style='margin:0 0 6px;font-size:12.5px'>{ayuda}</p>"
+        for x in items:
+            k = x["clave"]
+            on = k in actuales
+            precio_txt = f"{float(actuales[k]['precio']):.2f}" if on else ""
+            filas_serv += (f"<div class='serv{' sel' if on else ''}' data-serv='{e(k)}' data-ambito='{amb}'>"
+                           f"<button type='button' class='chip{' sel' if on else ''}' data-g='servicios' data-v='{e(k)}'>{x['emoji']} {e(x['nombre'])}</button>"
+                           f"<span class='sub' style='margin:0;font-size:12px'>{_se.etiqueta_tipo(x['tipo'])}</span>"
+                           f"<label class='precio-serv'{'' if on else ' hidden'}><span>{e(sim)}</span>"
+                           f"<input type='number' name='serv_{e(k)}' min='0.5' step='0.5' inputmode='decimal' value='{precio_txt}' placeholder='Precio'></label></div>")
     fotos_html = "".join(
         f"<div class='foto' data-url='{e(u)}'><img src='{e(u)}' alt=''>"
         f"<span class='portada'{'' if i == 0 else ' hidden'}>Portada</span>"
@@ -806,8 +820,13 @@ def pagina_editar_cancha(request: Request, cancha_id: str) -> HTMLResponse:
  <section class='panel edit-sec' id='sec-amenidades'><h2>Servicios del local</h2><p class='sub'>Gratis para el jugador. Salen como filtros en Explorar.</p>
   {_chips('amenidades', [(k, f'{ico} {e(n)}') for k, (n, ico) in catalogos.AMENIDADES.items()], set(str(a) for a in (c.get('amenidades') or [])), multi=True)}
  </section>
- <section class='panel edit-sec' id='sec-extras'><h2>Servicios extra</h2><p class='sub'>De pago: el jugador los agrega al reservar y suman al total.</p>
+ <section class='panel edit-sec' id='sec-extras'><h2>Servicios extra</h2><p class='sub'>De pago: el jugador los agrega al reservar y suman al total. Por reserva, por persona (el jugador elige cuántas) o por turno.</p>
   <div class='servs'>{filas_serv}</div>
+  <div style='margin-top:18px;padding-top:14px;border-top:1px solid var(--linea,#E4E4E4)'>
+   <label for='sugTxt'>¿Tu local ofrece algo que no está en la lista? <span class='req'>lo revisa el equipo de Pichangol y lo agrega al catálogo</span></label>
+   <div class='acciones' style='align-items:center'><input id='sugTxt' maxlength='120' placeholder='Ej. Frontón, clases de natación, cochera techada' style='flex:1;min-width:220px'><button type='button' class='btn sec' id='btnSug'>💡 Sugerir</button></div>
+   <span class='sub' id='sugMsg' style='margin:4px 0 0'></span>
+  </div>
  </section>
 </form>
 </div>
@@ -851,6 +870,8 @@ $('inFotos').addEventListener('change',async function(){var files=Array.prototyp
       if(j.ok&&j.url){fotos.push(j.url);pintarFotos();msg.textContent=''}else{msg.textContent=j.error||'No se pudo subir la foto.'}}
     catch(e){msg.textContent='No se pudo subir la foto. Revisa tu conexión.'}
     subiendo--}});
+$('btnSug').addEventListener('click',async function(){var t=$('sugTxt').value.trim(),m=$('sugMsg');if(t.length<3){m.textContent='Cuéntanos qué servicio ofrece tu local.';return}
+  try{var r=await fetch('/anfitrion/servicios/sugerir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texto:t,cancha_id:CFG.id})});var j=await r.json();m.textContent=j.ok?'✅ ¡Gracias! Lo revisamos y te avisamos cuando esté disponible.':(j.error||'No se pudo enviar.');if(j.ok)$('sugTxt').value=''}catch(e){m.textContent='No se pudo enviar. Revisa tu conexión.'}});
 $('btnGuardar').addEventListener('click',async function(){var btn=this,msg=$('msgGuardar');if(subiendo>0){msg.textContent='Espera a que terminen de subir las fotos.';return}
   var serv=[];document.querySelectorAll('.serv.sel').forEach(function(r){serv.push({clave:r.dataset.serv,precio:parseFloat(r.querySelector('input').value)||0})});
   var body={nombre:$('nombre').value,club:$('club').value,deportes:dep,superficie:sup,precio_hora:parseFloat($('precio').value),
@@ -926,16 +947,18 @@ def _validar_edicion(c: dict, b: dict) -> tuple[dict | None, str, str]:
         if not isinstance(s, dict):
             continue
         k = str(s.get("clave") or "")
-        if k not in catalogos.SERVICIOS_EXTRA or k in vistos:
-            continue
+        fila = _se.congelar(k, 0) if (k and k not in vistos) else None
+        if fila is None:
+            continue  # clave desconocida o repetida
         try:
             p = round(float(s.get("precio")), 2)
         except (TypeError, ValueError):
             p = 0
         if p <= 0:
-            return None, f"Pon el precio de «{catalogos.SERVICIOS_EXTRA[k][0]}» o quítalo.", "extras"
+            return None, f"Pon el precio de «{fila['nombre']}» o quítalo.", "extras"
         vistos.add(k)
-        servicios.append({"clave": k, "precio": p})
+        fila["precio"] = p
+        servicios.append(fila)  # {clave, precio, nombre, emoji, tipo, ambito} congelados
     # Fotos: solo las que ya tenía la cancha o las subidas a SU carpeta del
     # bucket (nadie cuela una URL ajena en la galería).
     actuales = set(_fotos(c))
@@ -952,6 +975,50 @@ def _validar_edicion(c: dict, b: dict) -> tuple[dict | None, str, str]:
         "sena_pct": sena, "hora_apertura": horas["hora_apertura"], "hora_cierre": horas["hora_cierre"], "duracion_slot_min": dur,
         "amenidades": amen, "servicios_extra": servicios, "fotos": fotos, "foto_url": fotos[0] if fotos else "",
     }, "", ""
+
+
+def _propagar_servicios_local(email: str, cancha_id: str, club: str, servicios: list[dict]) -> int:
+    """Los servicios de ÁMBITO LOCAL (piscina, sauna, entrada general…) son del
+    recinto: al guardarlos en una cancha se copian a las demás canchas del
+    mismo local (mismo `club`, mismo dueño), conservando en cada hermana sus
+    servicios propios de cancha (árbitro, petos…). Devuelve cuántas se tocaron."""
+    club = (club or "").strip().lower()
+    if not club:
+        return 0
+    locales = [x for x in servicios if x.get("ambito") == "local"]
+    n = 0
+    for h in datos.canchas_de_dueno(email):
+        if h["id"] == cancha_id or (h.get("club") or "").strip().lower() != club:
+            continue
+        propios = [_se.completar(x) for x in (h.get("servicios_extra") or []) if x.get("clave")]
+        nuevos = [x for x in propios if x.get("ambito") != "local"] + [dict(x) for x in locales]
+        if [(x["clave"], round(float(x["precio"]), 2)) for x in nuevos] == [(x["clave"], round(float(x["precio"]), 2)) for x in propios]:
+            continue
+        if datos.actualizar_cancha(h["id"], email, {"servicios_extra": nuevos}):
+            n += 1
+    return n
+
+
+@router.post("/anfitrion/servicios/sugerir")
+async def sugerir_servicio(request: Request) -> JSONResponse:
+    """El dueño sugiere un servicio que no está en el catálogo; lo atiende el
+    operador en la torre (Comunicación → Servicios extra). Texto libre SOLO
+    hacia el equipo: nunca se publica."""
+    ses = sesion.de_request(request)
+    if not ses:
+        return JSONResponse({"ok": False, "error": "sesion_requerida"}, status_code=401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": "Datos inválidos."}, status_code=400)
+    c = _cancha_propia(ses, str(body.get("cancha_id") or "")) if isinstance(body, dict) else None
+    try:
+        sug = _se.sugerir(ses["email"], str((body or {}).get("texto") or ""), cancha_id=c["id"] if c else "",
+                          local=((c or {}).get("club") or (c or {}).get("nombre") or ""))
+    except ValueError as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+    print(f"[sugerencia-servicio] {ses['email']}: {sug['texto']!r} ({sug['local']})", flush=True)
+    return JSONResponse({"ok": True, "id": sug["id"]})
 
 
 @router.post("/anfitrion/cancha/{cancha_id}/editar")
@@ -974,6 +1041,7 @@ async def guardar_edicion_cancha(request: Request, cancha_id: str) -> JSONRespon
         return JSONResponse({"ok": False, "error": "No pudimos guardar en este momento. Inténtalo de nuevo."}, status_code=503)
     if quitadas:
         _en_segundo_plano(lambda: [almacen.borrar_foto(u) for u in quitadas])
+    _propagar_servicios_local(ses["email"], cancha_id, campos.get("club") or c.get("club") or "", campos.get("servicios_extra") or [])
     print(f"[editar-web] {ses['email']} guardó {cancha_id}: {campos['nombre']} · {campos['precio_hora']} · "
           f"{campos['hora_apertura']}-{campos['hora_cierre']}/{campos['duracion_slot_min']}m · fotos={len(campos['fotos'])}", flush=True)
     return JSONResponse({"ok": True})
@@ -1584,8 +1652,10 @@ def _validar_agregada(b: dict, l: dict, email: str) -> tuple[dict | None, str, s
             "verificada": bool(l.get("verificada")),  # hereda: si el local ya está activo, esta también
             "hora_apertura": ap, "hora_cierre": ci, "duracion_slot_min": dur, "eliminada": False,
             "amenidades": list(l.get("amenidades") or []),  # los servicios son del local
-            "moneda": l.get("moneda") or _moneda_de(l)[0], "servicios_extra": [], "descuento_valle": 0,
-            "valle_desde": "07:00", "valle_hasta": "12:00", "sena_pct": 0}
+            "moneda": l.get("moneda") or _moneda_de(l)[0],
+            # Los servicios extra DEL LOCAL (piscina, sauna…) también se heredan; los de la cancha no.
+            "servicios_extra": [x for x in (_se.completar(y) for y in (l.get("servicios_extra") or []) if y.get("clave")) if x.get("ambito") == "local"],
+            "descuento_valle": 0, "valle_desde": "07:00", "valle_hasta": "12:00", "sena_pct": 0}
     return fila, "", ""
 
 

@@ -38,14 +38,8 @@ AMENIDADES = {
 }
 
 # Servicios EXTRA de pago (`ServicioExtra.catalogo`): clave → (nombre, ícono).
-SERVICIOS_EXTRA = {
-    "arbitro": ("Árbitro", "🧑‍⚖️"),
-    "pelotero": ("Pelotero (recoge pelotas)", "🏃"),
-    "pelota": ("Alquiler de pelota", "🎾"),
-    "pecheras": ("Petos / pecheras", "🦺"),
-    "hidratacion": ("Hidratación", "💧"),
-    "parrilla": ("Parrilla / grill", "🔥"),
-}
+# Los SERVICIOS EXTRA ya no son un catálogo fijo: viven en `servicios_extra.py`
+# (catálogo global editable desde la torre, `GET /config/servicios-extra`).
 
 # Chips del formulario del app.
 DESCUENTOS_VALLE = [0, 10, 15, 20, 30]   # "hora feliz" (% de descuento)

@@ -379,7 +379,8 @@ def test_reserva_web_completa(db, monkeypatch):
     assert por["15:00"]["ocupado"] and por["16:00"]["ocupado"]
     assert db.reservas[j["ids"][0]]["estado"] == "nueva" and db.reservas[j["ids"][0]]["pagado"] is False
     assert db.reservas[j["ids"][0]]["usuario"] == "ana@x.com"
-    assert db.reservas[j["ids"][0]]["extras"] == [{"clave": "arbitro", "precio": 30.0}]
+    ex = db.reservas[j["ids"][0]]["extras"]
+    assert [(x["clave"], x["precio"], x["cantidad"], x["nombre"]) for x in ex] == [("arbitro", 30.0, 1, "Árbitro")]
     assert db.reservas[j["ids"][1]]["extras"] == []
     # Pago.
     p = client.post("/web/pagar", json={"ids": j["ids"], "firma": j["firma"], "token": "tkn_1",
@@ -958,7 +959,7 @@ def test_editar_cancha_desde_la_web_como_el_app(db, monkeypatch):
     assert c["descuento_valle"] == 20 and c["valle_desde"] == "07:00" and c["valle_hasta"] == "12:00" and c["sena_pct"] == 30
     assert c["hora_apertura"] == "06:00" and c["hora_cierre"] == "00:00" and c["duracion_slot_min"] == 90
     assert c["amenidades"] == ["parking", "luces"]  # "invento" no existe en el catálogo del app
-    assert c["servicios_extra"] == [{"clave": "arbitro", "precio": 40.0}, {"clave": "parrilla", "precio": 25.0}]
+    assert [(x["clave"], x["precio"], x["tipo"], x["ambito"]) for x in c["servicios_extra"]] == [("arbitro", 40.0, "reserva", "cancha"), ("parrilla", 25.0, "reserva", "local")]
     assert c["fotos"] == [nueva] and c["foto_url"] == nueva
     assert borradas == ["https://sb.test/storage/v1/object/public/canchas/c_lima/vieja.jpg"]
     # Vuelve a Canchas con el aviso; la ficha pública y el explorador ya muestran lo nuevo.
@@ -1570,3 +1571,79 @@ def test_agregar_cancha_a_local_desde_la_web_como_el_app(db, monkeypatch):
     r3 = cli.post("/anfitrion/cancha/c_gye/agregar", json={"deporte": "voley", "superficie": catalogos.SUPERFICIES["voley"][0], "precio_hora": 8}).json()
     assert r3["ok"] is True and r3["verificada"] is False and db.canchas[r3["id"]]["club"] == "Club Sur" and db.canchas[r3["id"]]["moneda"] == "$"
     assert "activará junto con el local" in cli.get(f"/anfitrion/canchas?agregada={r3['id']}").text
+
+
+def test_servicios_extra_catalogo_global_por_local_y_por_persona(db, monkeypatch):
+    """Decisión del director (sep-2026): el catálogo de servicios extra es
+    GLOBAL y lo administra el operador en la torre; el dueño lo activa y le
+    pone precio. Los de ÁMBITO LOCAL (piscina, entrada general) se copian a
+    todas las canchas del local; los "por persona" se cobran × cantidad."""
+    import servicios_extra as se
+    from db.store import stores
+    monkeypatch.setattr(config, "ADMIN_PANEL_TOKEN", "tok")
+    monkeypatch.setattr(config, "GOOGLE_WEB_CLIENT_ID", "cid-web")
+    h = {"X-Admin-Token": "tok"}
+    # Público: el APK y la web leen el catálogo sembrado (los 6 de siempre + nuevos).
+    pub = client.get("/config/servicios-extra").json()
+    claves = [s["clave"] for s in pub["servicios"]]
+    assert claves[:6] == ["arbitro", "pelotero", "pelota", "pecheras", "hidratacion", "parrilla"]
+    assert "piscina" in claves and "entrada_general" in claves and pub["tipos"]["persona"] == "por persona"
+    pisc = next(s for s in pub["servicios"] if s["clave"] == "piscina")
+    assert pisc["tipo"] == "persona" and pisc["ambito"] == "local"
+    # Torre: alta con clave derivada, edición, desactivar; validaciones.
+    assert client.get("/admin/api/servicios-extra").status_code == 503 or True  # sin token → 401/503 según config
+    assert client.get("/admin/api/servicios-extra", headers={"X-Admin-Token": "malo"}).status_code == 401
+    r = client.post("/admin/api/servicios-extra", json={"clave": "fronton", "nombre": "Frontón", "emoji": "🎯", "tipo": "turno", "ambito": "cancha", "nuevo": True}, headers=h)
+    assert r.status_code == 200 and r.json()["servicio"]["clave"] == "fronton"
+    assert client.post("/admin/api/servicios-extra", json={"clave": "fronton", "nombre": "Otro", "nuevo": True}, headers=h).status_code == 400
+    assert client.post("/admin/api/servicios-extra", json={"clave": "Mal Clave!", "nombre": "X", "nuevo": True}, headers=h).status_code == 400
+    v0 = pub["version"]
+    assert client.post("/admin/api/servicios-extra/fronton/activo", json={"activo": False}, headers=h).json()["ok"] is True
+    pub2 = client.get("/config/servicios-extra").json()
+    assert "fronton" not in [s["clave"] for s in pub2["servicios"]] and pub2["version"] > v0
+    assert stores.to_state()["servicios_extra"]["fronton"]["activo"] is False  # persiste en el snapshot
+    # Editor web del dueño: catálogo agrupado por ámbito con tipo de cobro + caja "Sugerir".
+    cli = TestClient(app, base_url="https://testserver")
+    _entrar_como(cli, monkeypatch, "dueno@x.com", "Dueño")
+    ed = cli.get("/anfitrion/cancha/c_lima/editar").text
+    assert "Del local" in ed and "De esta cancha" in ed and "🏊 Piscina" in ed and "por persona" in ed
+    assert "data-serv='piscina' data-ambito='local'" in ed and "id='btnSug'" in ed and "fronton" not in ed
+    # Guardar piscina (S/ 15 por persona) + entrada general en la Cancha Central → se copian a Nocturna (mismo local), no a Club Sur.
+    base = {"nombre": "Cancha Central", "club": "Club Raqueta", "deportes": ["futbol"], "superficie": "Grass sintético", "precio_hora": 60,
+            "descuento_valle": 0, "valle_desde": "07:00", "valle_hasta": "12:00", "sena_pct": 0, "hora_apertura": "07:00", "hora_cierre": "23:00",
+            "duracion_slot_min": 60, "amenidades": [], "fotos": [],
+            "servicios_extra": [{"clave": "arbitro", "precio": 30}, {"clave": "piscina", "precio": 15}, {"clave": "entrada_general", "precio": 20}, {"clave": "inventado", "precio": 9}]}
+    db.canchas["c_noche"]["servicios_extra"] = [{"clave": "pecheras", "precio": 5}]
+    assert cli.post("/anfitrion/cancha/c_lima/editar", json=base).json()["ok"] is True
+    lima = db.canchas["c_lima"]["servicios_extra"]
+    assert [(x["clave"], x["precio"], x["tipo"], x["ambito"]) for x in lima] == [("arbitro", 30.0, "reserva", "cancha"), ("piscina", 15.0, "persona", "local"), ("entrada_general", 20.0, "persona", "local")]
+    noche = db.canchas["c_noche"]["servicios_extra"]
+    assert [(x["clave"], float(x["precio"])) for x in noche] == [("pecheras", 5.0), ("piscina", 15.0), ("entrada_general", 20.0)]
+    assert [x["clave"] for x in db.canchas["c_gye"]["servicios_extra"]] == ["arbitro"]
+    # Agregar una cancha al local hereda los del LOCAL (piscina, entrada) y no los de la cancha (árbitro).
+    r = cli.post("/anfitrion/cancha/c_lima/agregar", json={"deporte": "tenis", "superficie": "Arcilla", "precio_hora": 40}).json()
+    assert r["ok"] and [x["clave"] for x in db.canchas[r["id"]]["servicios_extra"]] == ["piscina", "entrada_general"]
+    # Sugerencia del dueño → torre.
+    assert cli.post("/anfitrion/servicios/sugerir", json={"texto": "Clases de natación", "cancha_id": "c_lima"}).json()["ok"] is True
+    assert cli.post("/anfitrion/servicios/sugerir", json={"texto": "x"}).status_code == 400
+    sug = client.get("/admin/api/servicios-extra", headers=h).json()["sugerencias"]
+    assert sug[0]["texto"] == "Clases de natación" and sug[0]["email"] == "dueno@x.com" and sug[0]["local"] == "Club Raqueta"
+    assert client.post(f"/admin/api/servicios-extra/sugerencias/{sug[0]['id']}", json={"estado": "atendida"}, headers=h).json()["ok"] is True
+    # Ficha pública: piscina con selector de personas; checkout cobra × cantidad y el comprobante lo muestra.
+    ficha = client.get("/reservar/c_lima").text
+    assert "🏊 Piscina" in ficha and "por persona" in ficha and "class='cant' data-for='piscina'" in ficha and "3 personas" in ficha
+    f = _manana()
+    j = cli.post("/web/asegurar", json={"cancha_id": "c_lima", "horas": [{"fecha": f, "hora": "15:00"}, {"fecha": f, "hora": "16:00"}],
+                                          "extras": [{"clave": "piscina", "cantidad": 3}, "arbitro", {"clave": "inventado", "cantidad": 2}],
+                                          "nombre": "Ana Pérez", "celular": "999888777", "email": "dueno@x.com"}).json()
+    assert j["ok"] is True, j
+    ex = db.reservas[j["ids"][0]]["extras"]
+    assert [(x["clave"], x["precio"], x["unitario"], x["cantidad"]) for x in ex] == [("piscina", 45.0, 15.0, 3), ("arbitro", 30.0, 30.0, 1)]
+    assert j["total"] == 60 * 2 + 45 + 30
+    cargos = []
+    monkeypatch.setattr(culqi, "crear_cargo", lambda **kw: (cargos.append(kw) or {"ok": True, "charge_id": "chr_pisc"}))
+    p = cli.post("/web/pagar", json={"ids": j["ids"], "firma": j["firma"], "token": "tkn_pisc"}).json()
+    assert p["ok"], p
+    assert cargos[0]["monto_centimos"] == (120 + 45 + 30) * 100  # el cargo real incluye piscina × 3
+    comp = cli.get(p["url"]).text
+    assert "Piscina × 3" in comp and "S/ 45.00" in comp

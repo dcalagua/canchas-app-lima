@@ -293,6 +293,68 @@ def set_empresa_admin(req: EmpresaRequest,
     return {"ok": True, **get_empresa_admin(x_admin_token)}
 
 
+class ServicioExtraRequest(BaseModel):
+    clave: str = ""
+    nombre: str = ""
+    emoji: str = ""
+    tipo: str = "reserva"
+    ambito: str = "cancha"
+    deportes: list[str] = []
+    activo: bool = True
+    nuevo: bool = False
+
+
+class ActivoRequest(BaseModel):
+    activo: bool
+
+
+class EstadoSugerenciaRequest(BaseModel):
+    estado: str = "atendida"
+
+
+@router.get("/admin/api/servicios-extra")
+def get_servicios_extra_admin(x_admin_token: str | None = Header(default=None)) -> dict:
+    """Catálogo GLOBAL de servicios extra (torre → Comunicación → Servicios
+    extra) + sugerencias de dueños pendientes."""
+    _check(x_admin_token)
+    import servicios_extra as _se
+    return {"servicios": _se.catalogo(solo_activos=False), "tipos": _se.TIPOS, "ambitos": _se.AMBITOS,
+            "sugerencias": _se.sugerencias(), "version": stores.servicios_extra_version}
+
+
+@router.post("/admin/api/servicios-extra")
+def set_servicio_extra_admin(req: ServicioExtraRequest,
+                             x_admin_token: str | None = Header(default=None)) -> dict:
+    """Alta (`nuevo=true`) o edición de un servicio del catálogo."""
+    _check(x_admin_token)
+    import servicios_extra as _se
+    try:
+        fila = _se.guardar(req.model_dump(exclude={"nuevo"}), nuevo=req.nuevo)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"ok": True, "servicio": fila, **get_servicios_extra_admin(x_admin_token)}
+
+
+@router.post("/admin/api/servicios-extra/{clave}/activo")
+def set_servicio_extra_activo(clave: str, req: ActivoRequest,
+                              x_admin_token: str | None = Header(default=None)) -> dict:
+    _check(x_admin_token)
+    import servicios_extra as _se
+    if _se.activar(clave, req.activo) is None:
+        raise HTTPException(status_code=404, detail="servicio_no_existe")
+    return {"ok": True, **get_servicios_extra_admin(x_admin_token)}
+
+
+@router.post("/admin/api/servicios-extra/sugerencias/{sug_id}")
+def set_sugerencia_servicio(sug_id: str, req: EstadoSugerenciaRequest,
+                            x_admin_token: str | None = Header(default=None)) -> dict:
+    _check(x_admin_token)
+    import servicios_extra as _se
+    if _se.atender_sugerencia(sug_id, req.estado) is None:
+        raise HTTPException(status_code=404, detail="sugerencia_no_existe")
+    return {"ok": True, **get_servicios_extra_admin(x_admin_token)}
+
+
 @router.get("/admin/api/marketing")
 def get_marketing_admin(x_admin_token: str | None = Header(default=None)) -> dict:
     """Precios de los servicios de marketing + tope mensual de posts IA."""
@@ -887,6 +949,15 @@ def get_contacto_publico(pais: str | None = None) -> dict:
     """PÚBLICO: el APK lee el WhatsApp de contacto COMPLETO del país detectado
     (?pais=PE|EC|BO). Sin país, devuelve el primero configurado."""
     return {"whatsapp": reclamos.contacto_whatsapp(pais)}
+
+
+@router.get("/config/servicios-extra")
+def get_servicios_extra_publico() -> dict:
+    """PÚBLICO: catálogo GLOBAL de servicios extra que el APK y la web usan en
+    el editor del dueño y en el checkout (nombre, emoji, tipo de cobro,
+    ámbito). El APK lo cachea por `version`; sin red usa su lista empaquetada."""
+    import servicios_extra as _se
+    return _se.publico()
 
 
 @router.get("/config/canal")
@@ -1521,10 +1592,15 @@ _HTML = r"""<!DOCTYPE html>
             <span class="md-ico">🏢</span>
             <span class="md-txt"><b>Datos de la empresa</b><small>Razón social · RUC · dirección · WhatsApp por país · correo · horario</small></span>
           </button>
+          <button class="md-item" onclick="mostrarPane(this,'serviciosPanel');cargarServicios()">
+            <span class="md-ico">🧩</span>
+            <span class="md-txt"><b>Servicios extra</b><small>Catálogo global de add-ons (piscina, árbitro, entrada general…) · sugerencias de dueños</small></span>
+          </button>
         </aside>
         <div class="md-detail">
           <div class="md-pane" id="canal"></div>
           <div class="md-pane" id="empresaPanel" style="display:none"></div>
+          <div class="md-pane" id="serviciosPanel" style="display:none"></div>
         </div>
       </div>
     </section>
@@ -2436,6 +2512,95 @@ async function guardarEmpresa(){
   const j = await r.json().catch(()=>({}));
   if(r.ok && j.ok){ renderEmpresa(j.datos||{}, j.vista||{}); toast('Datos de la empresa guardados'); }
   else alert(j.detail || 'No se pudo guardar');
+}
+// ── Servicios extra: catálogo global + sugerencias de dueños ──
+let servCat = {servicios:[], tipos:{}, ambitos:{}, sugerencias:[]};
+async function cargarServicios(){
+  const box = document.getElementById('serviciosPanel'); if(!box) return;
+  box.innerHTML = '<div class="card">Cargando…</div>';
+  try{
+    const r = await fetch('/admin/api/servicios-extra',{headers:headers()});
+    if(r.status===401){ salir(); return; }
+    if(!r.ok){ box.innerHTML='<div class="card">No se pudo cargar.</div>'; return; }
+    servCat = await r.json(); renderServicios();
+  }catch(e){ box.innerHTML='<div class="card">Error de red.</div>'; }
+}
+function renderServicios(){
+  const inp = 'style="padding:8px 10px;border:1px solid var(--border);border-radius:10px;font-family:inherit;font-size:13.5px"';
+  const selTipo = (v,id)=>`<select id="${id}" ${inp}>${Object.entries(servCat.tipos).map(([k,n])=>`<option value="${k}"${k===v?' selected':''}>${esc(n)}</option>`).join('')}</select>`;
+  const selAmb = (v,id)=>`<select id="${id}" ${inp}>${Object.entries(servCat.ambitos).map(([k,n])=>`<option value="${k}"${k===v?' selected':''}>${esc(n)}</option>`).join('')}</select>`;
+  const filas = (servCat.servicios||[]).map(s=>`
+    <tr style="${s.activo?'':'opacity:.55'}">
+      <td style="font-size:20px">${esc(s.emoji||'')}</td>
+      <td><b>${esc(s.nombre)}</b><br><code style="font-size:11px;color:var(--muted)">${esc(s.clave)}</code></td>
+      <td>${selTipo(s.tipo,'st_'+s.clave)}</td>
+      <td>${selAmb(s.ambito,'sa_'+s.clave)}</td>
+      <td><input id="sn_${s.clave}" value="${esc(s.nombre)}" style="width:100%;min-width:160px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;font-family:inherit;font-size:13.5px"></td>
+      <td style="white-space:nowrap">
+        <button class="btn-sec" title="Guardar cambios" onclick="guardarServicio('${esc(s.clave)}')">💾</button>
+        <button class="btn-sec" title="${s.activo?'Ocultar a dueños nuevos':'Volver a ofrecer'}" onclick="activarServicio('${esc(s.clave)}',${s.activo?'false':'true'})">${s.activo?'⏸':'▶'}</button>
+      </td>
+    </tr>`).join('');
+  const pend = (servCat.sugerencias||[]).filter(x=>x.estado==='pendiente');
+  const sug = pend.length ? pend.map(x=>`
+    <div class="row" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;border:1px solid #F2C94C;background:#FFFBEA;border-radius:12px;padding:10px 12px;margin-top:8px">
+      <div style="flex:1;min-width:220px"><b>${esc(x.texto)}</b><br><small style="color:var(--muted)">${esc(x.email)}${x.local?' · '+esc(x.local):''} · ${new Date((x.creado_en||0)*1000).toLocaleString('es-PE')}</small></div>
+      <button class="btn-ap" onclick="usarSugerencia('${esc(x.id)}','${esc(x.texto).replace(/'/g,'&#39;')}')">➕ Agregar al catálogo</button>
+      <button class="btn-sec" onclick="atenderSugerencia('${esc(x.id)}','descartada')">Descartar</button>
+    </div>`).join('') : '<div class="row" style="color:var(--muted)">Sin sugerencias pendientes.</div>';
+  document.getElementById('serviciosPanel').innerHTML =
+    `<div class="card"><div class="top"><h3>Servicios extra (catálogo global)</h3></div>
+      <div class="row">Add-ons de pago que el jugador suma a su reserva. El catálogo es ÚNICO para los 3 países
+        y lo ve el app y la web al instante (sin publicar código). El dueño solo elige de esta lista y pone su precio:
+        <b>Del local</b> (piscina, sauna, entrada general…) se aplica a todas las canchas del local;
+        <b>De la cancha</b> (árbitro, petos…) solo a esa cancha. <b>Cobro:</b> por reserva, por persona (el jugador
+        elige cuántas) o por turno (× turnos reservados). Desactivar oculta el servicio a dueños nuevos; lo ya
+        configurado sigue vigente.</div>
+      <div style="overflow:auto;margin-top:10px"><table style="width:100%;border-collapse:collapse;font-size:13.5px">
+        <thead><tr style="text-align:left;color:var(--muted);font-size:12px"><th></th><th>Servicio</th><th>Cobro</th><th>Ámbito</th><th>Nombre visible</th><th></th></tr></thead>
+        <tbody>${filas}</tbody></table></div>
+      <div class="row" style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)"><b>➕ Nuevo servicio</b>
+        <div style="display:grid;grid-template-columns:70px 1fr 1fr 1fr 1fr auto;gap:8px;margin-top:8px;align-items:center">
+          <input id="ns_emoji" placeholder="🏊" maxlength="4" ${inp}>
+          <input id="ns_nombre" placeholder="Nombre visible (ej. Piscina)" ${inp}>
+          <input id="ns_clave" placeholder="clave (ej. piscina)" ${inp}>
+          ${selTipo('reserva','ns_tipo')}${selAmb('local','ns_ambito')}
+          <button class="btn-ap" onclick="nuevoServicio()">Agregar</button>
+        </div></div>
+      <div class="row" style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)"><b>💡 Sugerencias de dueños</b> <small style="color:var(--muted)">("mi local ofrece X y no está en la lista", desde Editar cancha en la web)</small>${sug}</div>
+    </div>`;
+}
+async function postServicio(body){
+  const r = await fetch('/admin/api/servicios-extra',{method:'POST',headers:headers(),body:JSON.stringify(body)});
+  if(r.status===401){ salir(); return false; }
+  const j = await r.json().catch(()=>({}));
+  if(r.ok && j.ok){ servCat = j; renderServicios(); toast('Catálogo guardado'); return true; }
+  alert(j.detail || 'No se pudo guardar'); return false;
+}
+function guardarServicio(clave){
+  const s = (servCat.servicios||[]).find(x=>x.clave===clave); if(!s) return;
+  postServicio({...s, nombre: document.getElementById('sn_'+clave).value, tipo: document.getElementById('st_'+clave).value, ambito: document.getElementById('sa_'+clave).value, nuevo:false});
+}
+function nuevoServicio(){
+  const nombre = document.getElementById('ns_nombre').value.trim();
+  let clave = document.getElementById('ns_clave').value.trim().toLowerCase();
+  if(!clave) clave = nombre.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'').slice(0,40);
+  postServicio({clave, nombre, emoji: document.getElementById('ns_emoji').value.trim(), tipo: document.getElementById('ns_tipo').value, ambito: document.getElementById('ns_ambito').value, activo:true, nuevo:true});
+}
+async function activarServicio(clave, activo){
+  const r = await fetch('/admin/api/servicios-extra/'+encodeURIComponent(clave)+'/activo',{method:'POST',headers:headers(),body:JSON.stringify({activo})});
+  if(r.status===401){ salir(); return; }
+  const j = await r.json().catch(()=>({})); if(r.ok && j.ok){ servCat = j; renderServicios(); } else alert(j.detail||'No se pudo');
+}
+async function atenderSugerencia(id, estado){
+  const r = await fetch('/admin/api/servicios-extra/sugerencias/'+encodeURIComponent(id),{method:'POST',headers:headers(),body:JSON.stringify({estado})});
+  if(r.status===401){ salir(); return; }
+  const j = await r.json().catch(()=>({})); if(r.ok && j.ok){ servCat = j; renderServicios(); } else alert(j.detail||'No se pudo');
+}
+function usarSugerencia(id, texto){
+  document.getElementById('ns_nombre').value = texto; document.getElementById('ns_clave').value = '';
+  document.getElementById('ns_nombre').scrollIntoView({behavior:'smooth', block:'center'}); document.getElementById('ns_nombre').focus();
+  atenderSugerencia(id, 'atendida');
 }
 // Navegación de la barra lateral: muestra una sección y marca su ítem activo.
 // Maestro–detalle genérico (Cobros, Operación, Comunicación…): muestra el

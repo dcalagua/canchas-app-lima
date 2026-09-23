@@ -5731,6 +5731,38 @@ class AppState extends ChangeNotifier {
     _persistirDatos();
   }
 
+  /// Los servicios extra de ÁMBITO LOCAL (piscina, sauna, entrada general…)
+  /// son del recinto: se copian a TODAS las canchas del local (mismo `club`),
+  /// conservando en cada una sus servicios propios de cancha (árbitro, petos…).
+  /// Espejo de `_propagar_servicios_local` de la web. Best-effort en la nube.
+  void actualizarServiciosExtraLocal(String club, List<ServicioExtra> delLocal,
+      {String? exceptoId}) {
+    if (club.trim().isEmpty) return;
+    final locales = [for (final s in delLocal) if (s.esDelLocal) s];
+    void aplicar(List<Cancha> canchas) {
+      for (var i = 0; i < canchas.length; i++) {
+        final x = canchas[i];
+        if (x.club != club || x.id == exceptoId) continue;
+        final nuevos = <ServicioExtra>[
+          for (final s in x.serviciosExtra)
+            if (!s.esDelLocal) s,
+          ...locales,
+        ];
+        final antes = [for (final s in x.serviciosExtra) '${s.clave}:${s.precio}'];
+        final despues = [for (final s in nuevos) '${s.clave}:${s.precio}'];
+        if (antes.join('|') == despues.join('|')) continue;
+        final f = x.copyWith(serviciosExtra: nuevos);
+        canchas[i] = f;
+        CanchasRepo.actualizar(f);
+      }
+    }
+
+    aplicar(canchasExtra);
+    aplicar(canchasRemotas);
+    notifyListeners();
+    _persistirDatos();
+  }
+
   /// Verifica la EXISTENCIA de una cancha contra el backend. **Importante:**
   /// existencia ≠ propiedad. Que un RUC sea válido en SUNAT (o que la IA confirme
   /// que el local existe) sólo prueba que el establecimiento es real, **no** que
@@ -6970,7 +7002,30 @@ class AppState extends ChangeNotifier {
   /// pago que no puede completarse (y menos una que simule haber cobrado).
   bool pagoOnlineDisponible = false;
 
+  /// Catálogo GLOBAL de servicios extra (lo administra el operador en la
+  /// torre; `GET /config/servicios-extra`). Cache-first en SharedPreferences
+  /// y refresco en silencio; sin red, el editor usa la lista empaquetada.
+  Future<void> cargarCatalogoServicios() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('servicios_extra_catalogo');
+      if (raw != null && ServicioExtra.catalogoRemoto.isEmpty) {
+        ServicioExtra.catalogoRemoto =
+            ServicioExtra.parsearCatalogo(jsonDecode(raw));
+      }
+      final j = await GrowthService.serviciosExtraCatalogo();
+      if (j == null) return;
+      final lista = ServicioExtra.parsearCatalogo(j['servicios']);
+      if (lista.isEmpty) return;
+      ServicioExtra.catalogoRemoto = lista;
+      await prefs.setString(
+          'servicios_extra_catalogo', jsonEncode(j['servicios']));
+      notifyListeners();
+    } catch (_) {}
+  }
+
   Future<void> cargarCanalComunicacion() async {
+    cargarCatalogoServicios(); // best-effort, en paralelo
     final j = await GrowthService.configPublica();
     if (j == null) return;
     var cambio = false;

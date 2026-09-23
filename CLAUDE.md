@@ -672,6 +672,47 @@ para la API del APK.
   reclamo y la 2.ª cancha quedaba "Aún sin verificar" para siempre). Aviso
   `?agregada=` en Mis canchas. Test
   `test_agregar_cancha_a_local_desde_la_web_como_el_app`.
+  **SERVICIOS EXTRA = CATÁLOGO GLOBAL EN LA TORRE (decisión del director,
+  23-sep-2026: "el admin debe poder registrar más servicios extra, p. ej.
+  piscina y entrada general"):** `backend/growth/servicios_extra.py`.
+  Antes eran 6 claves fijas duplicadas en el app (`ServicioExtra.catalogo`) y
+  la web (`catalogos.SERVICIOS_EXTRA`, retirado). Ahora: (1) el OPERADOR
+  administra el catálogo en `/admin` → Comunicación → **"🧩 Servicios
+  extra"** (`GET/POST /admin/api/servicios-extra`, `/{clave}/activo`,
+  sugerencias `/sugerencias/{id}`): clave (slug estable), nombre, emoji,
+  **tipo de cobro** `reserva` (una vez) · `persona` (× cantidad que elige el
+  jugador) · `turno` (× turnos reservados), **ámbito** `local` (piscina,
+  sauna, entrada general: se copia a TODAS las canchas del local) · `cancha`
+  (árbitro, petos: solo esa cancha), deportes ([] = todos), activo. Semilla
+  `DEFAULTS` = los 6 de siempre (misma clave y cobro, no cambia data) +
+  piscina, entrada_general, sauna, gimnasio, toallas, locker,
+  estacionamiento_pago, clase, iluminacion, grabacion; vive en
+  `stores.servicios_extra` (+ `servicios_extra_version`,
+  `sugerencias_servicios`) en el snapshot. (2) **Público** `GET
+  /config/servicios-extra` (APK + web). (3) El DUEÑO solo elige de la lista
+  y pone precio: editor web agrupado "Del local / De esta cancha" con la
+  etiqueta del cobro; al guardar, `_validar_edicion` CONGELA `{clave, precio,
+  nombre, emoji, tipo, ambito}` (`_se.congelar`) y `_propagar_servicios_local`
+  copia los de ámbito local a las hermanas (mismo `club`, mismo dueño)
+  conservando los propios de cada cancha; "Agregar cancha a este local"
+  hereda los del local. **Sin texto libre** para el dueño: caja "💡 Sugerir"
+  (`POST /anfitrion/servicios/sugerir`, solo hacia el equipo) que la torre
+  lista con "➕ Agregar al catálogo". (4) **Checkout web**: los "por persona"
+  llevan `<select class='cant'>` (1-12); `/web/asegurar` acepta `extras` como
+  claves o `{clave, cantidad}` y guarda la LÍNEA `{clave, precio=TOTAL,
+  unitario, cantidad, nombre, emoji, tipo}` (`_se.linea_reserva`; `precio`
+  total = compatible con APKs que solo suman `precio`); comprobante y
+  resumen muestran "Piscina × 3". (5) **APK** (`lib/models/models.dart`):
+  `ServicioCatalogo` + `ServicioExtra` con `nombre/emoji/tipo/ambito/
+  cantidad/unitario`, `catalogoRemoto` (cache-first en SharedPreferences
+  `servicios_extra_catalogo`, `AppState.cargarCatalogoServicios` al
+  arrancar junto a `cargarCanalComunicacion`; sin red, `catalogo`
+  empaquetado), `linea(personas:, turnos:)`; editor del app agrupado por
+  ámbito con `_ctrlServicio` bajo demanda y `AppState.
+  actualizarServiciosExtraLocal` (espejo de la propagación web); resumen de
+  reserva con contador − n + de personas (`_FilaServicio`/`_BotonCantidad`);
+  `AgregarCanchaScreen` hereda los del local; Reservas del dueño muestran
+  "× n". Test `test_servicios_extra_catalogo_global_por_local_y_por_persona`.
 - **EDITAR CANCHA DESDE LA WEB (sep-2026, decisión del director: "web =
   vender y atender; app = operar", punto 1):** `GET/POST /anfitrion/cancha/
   {id}/editar` (`web/anfitrion.py`, calcado del editor de anuncios de
