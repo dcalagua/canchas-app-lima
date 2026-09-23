@@ -555,7 +555,15 @@ para la API del APK.
   `_liquidacion_dict`): KPIs Por recibir / Saldo / Regalo, liquidaciones
   pendientes y pagadas, últimos movimientos. **Canchas** = sus locales con
   foto, verificada, deportes, horario, precio y botones Ver ficha pública /
-  Calendario / Mapa / Editar. Test
+  Calendario / Mapa / Editar. **Agrupado por LOCAL como el app (sep-2026,
+  queja del director: "el nombre del local me sale el de la cancha"):**
+  `pagina_canchas` arma UNA tarjeta `.anf-local` por `club` (título = local,
+  dirección · zona, N canchas, pill "✓ Verificado" si todas lo están) y
+  dentro una fila `.anf-fila` por cancha (emoji del deporte, nombre, pill
+  ✓ Verificada / Aún sin verificar, deporte · horario · duración · precio,
+  Ficha / Calendario / Editar) + "＋ Agregar cancha a este local" (abre
+  `/anfitrion/nueva` prellenado con nombre, dirección y punto del local) y
+  Mapa; el botón de abajo dice "Registrar otro local". Test
   `test_modo_anfitrion_en_la_web_como_airbnb`.
 - **PON TU CANCHA / RECLÁMALA DESDE LA WEB (sep-2026, autorizado por el
   director: "web = vender y atender"):** `GET/POST /anfitrion/nueva`
