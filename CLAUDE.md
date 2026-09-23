@@ -896,7 +896,9 @@ off → redeploy inmediato en cada push). URL pública:
     agrupado por local). Solo web. Pendiente del director en PRD: cargar
     las redes oficiales en la torre y tener ≥1 cancha verificada. **Pase del
     23-sep-2026 (2.º, autorizado):** `prd` = merge del ícono SVG de local
-    (`ui.LOCAL_SVG`) en Mis canchas. Solo web.
+    (`ui.LOCAL_SVG`) en Mis canchas. Solo web. **Pase del 23-sep-2026 (3.º,
+    autorizado):** `prd` = merge de "ficha con el LOCAL de título + canchas
+    en verificación ocultas hasta aprobarse" (solo web).
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
