@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import re
+import urllib.parse
 import threading
 import time
 from datetime import date, timedelta
@@ -633,25 +634,49 @@ def pagina_canchas(request: Request, guardado: str = "") -> HTMLResponse:
     ses, canchas, resp = _contexto(request, "/anfitrion/canchas")
     if resp is not None:
         return resp
-    tarjetas = ""
+    # Como "Mis canchas" del app (`_LocalCard`): UNA tarjeta por LOCAL (club)
+    # con el nombre del local de título y sus canchas como filas. Antes salía
+    # una tarjeta por cancha con el nombre de la cancha grande y el local
+    # chico, y el director leyó "Cancha-01" como si fuera el nombre del local.
+    locales: dict[str, list[dict]] = {}
     for c in canchas:
-        sim, _ = _moneda_de(c)
-        fs = _fotos(c)
-        foto = f"<img src='{e(fs[0])}' alt=''>" if fs else _deporte(c.get("deporte"))[1]
-        ok = datos.reservable(c)
-        deps = " · ".join(_deporte(d)[0] for d in _deportes_de(c)[:3])
-        pill = "<span class='pill ok'>✓ Verificada</span>" if ok else "<span class='pill warn'>Aún sin verificar</span>"
+        locales.setdefault((c.get("club") or "").strip() or c["nombre"], []).append(c)
+    tarjetas = ""
+    for local, lst in locales.items():
+        c0 = lst[0]
+        fs = next((f for c in lst for f in _fotos(c)), None)
+        foto = f"<img src='{e(fs)}' alt=''>" if fs else _deporte(c0.get("deporte"))[1]
+        zona = _zona(c0)
+        n = len(lst)
+        todas_ok = all(datos.reservable(c) for c in lst)
+        pill = "<span class='pill ok'>✓ Verificado</span>" if todas_ok else ""
+        filas = ""
+        for c in lst:
+            sim, _ = _moneda_de(c)
+            ok = datos.reservable(c)
+            deps = " · ".join(_deporte(d)[0] for d in _deportes_de(c)[:3])
+            filas += (
+                f"<div class='anf-fila'><span class='ico'>{_deporte(c.get('deporte'))[1]}</span><div style='flex:1;min-width:0'>"
+                f"<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><b>{e(c['nombre'])}</b>"
+                + ("<span class='pill ok' style='font-size:11px'>✓ Verificada</span>" if ok else "<span class='pill warn' style='font-size:11px'>Aún sin verificar</span>") + "</div>"
+                f"<div class='sub' style='margin:2px 0 0'>{e(deps)} · {e(c['hora_apertura'])}–{e(c['hora_cierre'])} · {c['duracion_slot_min']} min · <b>{e(sim)} {c['precio_hora']:.2f}</b>/h</div>"
+                "<div class='acciones' style='margin-top:8px'>"
+                f"<a class='btn sec' href='/reservar/{e(c['id'])}'>Ver ficha pública</a>"
+                f"<a class='btn sec' href='/anfitrion/calendario?cancha={e(c['id'])}'>Calendario</a>"
+                f"<a class='btn' href='/anfitrion/cancha/{e(c['id'])}/editar'>✏️ Editar</a>"
+                "</div></div></div>")
+        q_nueva = urllib.parse.urlencode({k: v for k, v in (("nombre", local), ("direccion", c0.get("direccion") or ""),
+                                                            ("lat", c0.get("lat") or ""), ("lng", c0.get("lng") or "")) if v != ""})
         tarjetas += (
-            f"<div class='anf-cancha'><div class='f'>{foto}</div><div style='flex:1;min-width:0'>"
-            f"<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><b style='font-size:16px'>{e(c['nombre'])}</b>{pill}</div>"
-            f"<div class='sub' style='margin:2px 0 0'>{e(c.get('club') or '')}{(' · ' + e(_zona(c))) if _zona(c) else ''}</div>"
-            f"<div class='sub' style='margin:6px 0 0;color:var(--noche);font-weight:600'>{e(deps)} · {e(c['hora_apertura'])}–{e(c['hora_cierre'])} · {c['duracion_slot_min']} min · <b>{e(sim)} {c['precio_hora']:.2f}</b>/h</div>"
+            f"<div class='anf-local'><div class='cab'><div class='f'>{foto}</div><div style='flex:1;min-width:0'>"
+            f"<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><span class='ico'>🏬</span><b style='font-size:17px'>{e(local)}</b>{pill}</div>"
+            f"<div class='sub' style='margin:2px 0 0'>{e(c0.get('direccion') or '')}{(' · ' if c0.get('direccion') and zona else '')}{e(zona)}</div>"
+            f"<div class='sub' style='margin:2px 0 0'>{n} {'cancha' if n == 1 else 'canchas'}</div></div></div>"
+            f"<div class='filas'>{filas}</div>"
             "<div class='acciones' style='margin-top:10px'>"
-            f"<a class='btn sec' href='/reservar/{e(c['id'])}'>Ver ficha pública</a>"
-            f"<a class='btn sec' href='/anfitrion/calendario?cancha={e(c['id'])}'>Calendario</a>"
-            f"<a class='btn sec' href='{_maps(c)}' target='_blank' rel='noopener'>📍 Mapa</a>"
-            f"<a class='btn' href='/anfitrion/cancha/{e(c['id'])}/editar'>✏️ Editar</a>"
-            "</div></div></div>")
+            f"<a class='btn sec' href='/anfitrion/nueva?{q_nueva}'>＋ Agregar cancha a este local</a>"
+            f"<a class='btn sec' href='{_maps(c0)}' target='_blank' rel='noopener'>📍 Mapa</a>"
+            "</div></div>")
     guardada = next((c for c in canchas if c["id"] == guardado), None) if guardado else None
     aviso = (f"<div class='aviso ok' style='margin:16px 0 0'>✅ Guardamos los cambios de <b>{e(guardada['nombre'])}</b>. "
              "Ya se ven en la ficha pública y en la app.</div>") if guardada else ""
@@ -659,10 +684,10 @@ def pagina_canchas(request: Request, guardado: str = "") -> HTMLResponse:
     if registrada:
         aviso = (f"<div class='aviso ok' style='margin:16px 0 0'>✅ Registramos <b>{e(registrada.get('club') or registrada['nombre'])}</b>. "
                  "Queda en verificación: te avisamos por WhatsApp y en la app cuando esté activa. Mientras tanto puedes completar fotos, hora feliz y servicios.</div>")
-    cuerpo = ("<h1 class='anf-hola'>Canchas</h1><p class='sub'>Tus locales en Pichangol. Edita precio, horario, fotos y servicios aquí o en la app: es la misma cancha.</p>"
+    cuerpo = ("<h1 class='anf-hola'>Mis canchas</h1><p class='sub'>Tus locales en Pichangol, con sus canchas. Edita precio, horario, fotos y servicios aquí o en la app: es la misma cancha.</p>"
               f"{aviso}{_aviso_verificacion(canchas, ses['email'])}"
-              f"<div class='anf-grid' style='grid-template-columns:repeat(auto-fill,minmax(360px,1fr));margin-top:16px'>{tarjetas}</div>"
-              "<p style='margin-top:20px'><a class='btn' href='/anfitrion/nueva'>＋ Registrar otra cancha</a></p>")
+              f"<div class='anf-grid' style='grid-template-columns:repeat(auto-fill,minmax(420px,1fr));margin-top:16px'>{tarjetas}</div>"
+              "<p style='margin-top:20px'><a class='btn' href='/anfitrion/nueva'>＋ Registrar otro local</a></p>")
     return ui.shell("Canchas", cuerpo, nav=_cabecera("canchas", ses), sesion=ses, ancho=True, titulo_tab="Canchas · Modo anfitrión")
 
 

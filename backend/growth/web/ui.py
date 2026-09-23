@@ -221,7 +221,7 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 @media(max-width:900px){.pie-cols{grid-template-columns:1fr 1fr}}@media(max-width:560px){.pie-cols{grid-template-columns:1fr}}
 .pie-cols h4{margin:0 0 10px;font-size:14px;color:var(--noche);font-weight:800}
 .pie-cols a{display:block;color:var(--tenue);text-decoration:none;margin:7px 0}.pie-cols a:hover{color:var(--noche);text-decoration:underline}
-.pie-cols .wm{font-size:20px;margin-bottom:8px}
+.pie-cols .wm{font-size:20px;margin-bottom:8px}.pie-redes{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:12.5px}.pie-redes a{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;border:1px solid var(--trazo);background:var(--blanco);color:var(--noche);margin:0}.pie-redes a:hover{background:var(--noche);color:#fff;border-color:var(--noche)}.pie-redes svg{width:16px;height:16px}.pie-cols a.libro{display:inline-flex;align-items:center;gap:8px;padding:6px 12px 6px 8px;border:1.5px solid #C8102E;border-radius:10px;color:#C8102E;font-weight:800;margin-top:10px}.pie-cols a.libro:hover{background:#C8102E;color:#fff;text-decoration:none}
 .pie-bajo{border-top:1px solid var(--trazo);padding:16px 0 22px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:12.5px}
 .pie-bajo a{color:var(--tenue);text-decoration:none;margin-right:12px}.pie-bajo a:hover{text-decoration:underline}
 /* ── explorador tipo Airbnb (raíz del dominio) ── */
@@ -382,7 +382,7 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 .anf-cancha{display:flex;gap:14px;background:var(--blanco);border:1px solid var(--trazo);border-radius:16px;padding:12px;box-shadow:var(--sombra);min-width:0}
 .anf-cancha .f{flex:none;width:110px;height:110px;border-radius:12px;overflow:hidden;background:var(--tinte);display:flex;align-items:center;justify-content:center;font-size:40px}
 .anf-cancha .f img{width:100%;height:100%;object-fit:cover}
-.anf-cancha .acciones .btn{flex:0 0 auto;min-width:0;padding:8px 12px;font-size:13px}
+.anf-cancha .acciones .btn{flex:0 0 auto;min-width:0;padding:8px 12px;font-size:13px}.anf-local{background:var(--blanco);border:1px solid var(--trazo);border-radius:18px;padding:14px;box-shadow:var(--sombra);min-width:0}.anf-local .cab{display:flex;gap:14px;align-items:flex-start}.anf-local .cab .f{flex:none;width:84px;height:84px;border-radius:12px;overflow:hidden;background:var(--tinte);display:flex;align-items:center;justify-content:center;font-size:34px}.anf-local .cab .f img{width:100%;height:100%;object-fit:cover}.anf-local .cab .ico{font-size:18px}.anf-local .filas{margin-top:12px;border-top:1px solid var(--trazo)}.anf-fila{display:flex;gap:10px;padding:12px 0;border-bottom:1px solid var(--trazo)}.anf-fila .ico{flex:none;width:32px;height:32px;border-radius:50%;background:var(--tinte);display:flex;align-items:center;justify-content:center;font-size:16px}.anf-local .acciones .btn{flex:0 0 auto;min-width:0;padding:8px 12px;font-size:13px}
 /* calendario interactivo del anfitrión */
 .cal-act td[data-t]{cursor:pointer}.cal-act td.libre:hover{background:var(--tinte)}.cal-act td .li{opacity:0;font-size:11px;color:var(--teal);font-weight:800;text-align:center}
 .cal-act td.libre:hover .li{opacity:1}.cal-act td.res:hover .oc,.cal-act td.bloq:hover .bl{filter:brightness(.95)}
@@ -646,28 +646,58 @@ def check_svg() -> str:
             "stroke-linecap='round' stroke-linejoin='round' d='M5 12.5l4.5 4.5L19 7'/></svg></div>")
 
 
+# Logos de redes sociales (inline, sin dependencias). Los usan las tarjetas y
+# fichas de academia (`web/router.py`, `web/academia.py`) y el pie (redes
+# OFICIALES de Pichangol configuradas en la torre → `empresa.redes()`).
+RED_SVG = {
+    "instagram": "<svg viewBox='0 0 24 24' width='15' height='15' fill='none' stroke='currentColor' stroke-width='2'><rect x='3' y='3' width='18' height='18' rx='5'/><circle cx='12' cy='12' r='4'/><circle cx='17.5' cy='6.5' r='1' fill='currentColor'/></svg>",
+    "facebook": "<svg viewBox='0 0 24 24' width='15' height='15' fill='currentColor'><path d='M13.5 22v-8h2.7l.4-3.2h-3.1V8.8c0-.9.3-1.6 1.6-1.6h1.7V4.4c-.3 0-1.3-.1-2.5-.1-2.5 0-4.1 1.5-4.1 4.2v2.3H7.4V14h2.8v8h3.3z'/></svg>",
+    "tiktok": "<svg viewBox='0 0 24 24' width='15' height='15' fill='currentColor'><path d='M16.5 2h-3v13.2a2.8 2.8 0 1 1-2.8-2.8c.3 0 .6 0 .8.1V9.4a5.9 5.9 0 1 0 5 5.8V8.6a7 7 0 0 0 4 1.3V6.8a4 4 0 0 1-4-4.8z'/></svg>",
+    "youtube": "<svg viewBox='0 0 24 24' width='15' height='15' fill='currentColor'><path d='M22.5 7.2a2.8 2.8 0 0 0-2-2C18.8 4.8 12 4.8 12 4.8s-6.8 0-8.5.4a2.8 2.8 0 0 0-2 2C1 8.9 1 12 1 12s0 3.1.5 4.8a2.8 2.8 0 0 0 2 2c1.7.4 8.5.4 8.5.4s6.8 0 8.5-.4a2.8 2.8 0 0 0 2-2c.5-1.7.5-4.8.5-4.8s0-3.1-.5-4.8zM9.8 15.1V8.9l5.7 3.1-5.7 3.1z'/></svg>",
+    "web": "<svg viewBox='0 0 24 24' width='15' height='15' fill='none' stroke='currentColor' stroke-width='2'><circle cx='12' cy='12' r='9'/><path d='M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18'/></svg>",
+}
+
+# Distintivo "Libro de Reclamaciones" (libro rojo, como el que INDECOPI pide
+# exhibir de forma visible): enlaza a la hoja de reclamación en página propia.
+LIBRO_SVG = ("<svg viewBox='0 0 24 24' width='22' height='22' aria-hidden='true'><path fill='#C8102E' d='M4 3h13a2 2 0 0 1 2 2v14.5a1.5 1.5 0 0 1-1.5 1.5H6a2 2 0 0 1-2-2V3z'/>"
+             "<path fill='#fff' d='M6 5h11v12H6z' opacity='.15'/><path fill='#fff' d='M8 7h7v1.4H8zM8 10h7v1.4H8zM8 13h5v1.4H8z'/></svg>")
+
+
+def redes_pie(em: dict) -> str:
+    """Íconos de las redes OFICIALES (solo las configuradas en la torre)."""
+    rs = em.get("redes") or []
+    if not rs:
+        return ""
+    return ("<div class='pie-redes'><span>Síguenos</span>"
+            + "".join(f"<a class='red-{r['red']}' href='{r['url']}' target='_blank' rel='noopener' aria-label='{r['nombre']} de Pichangol' title='{r['nombre']}'>{RED_SVG[r['red']]}</a>"
+                      for r in rs) + "</div>")
+
+
 def footer() -> str:
     """Pie de página con columnas (estilo Airbnb) + datos del comercio que
-    exigen Culqi/INDECOPI (razón social, RUC, contacto) en TODAS las páginas."""
+    exigen Culqi/INDECOPI (razón social, RUC, contacto, Libro de Reclamaciones,
+    políticas de devolución y términos, redes oficiales) en TODAS las páginas."""
     import empresa
     em = empresa.datos()
     return (
         "<footer class='pie'><div class='wrap-xl'><div class='pie-cols'>"
         f"<div>{wordmark(20)}<div>Reserva, juega, repite.</div>"
-        "<div style='margin-top:10px;font-size:12.5px'>Fútbol · Tenis · Pádel · Pickleball<br>Perú · Ecuador · Bolivia</div></div>"
+        "<div style='margin-top:10px;font-size:12.5px'>Fútbol · Tenis · Pádel · Pickleball<br>Perú · Ecuador · Bolivia</div>"
+        f"{redes_pie(em)}</div>"
         "<div><h4>Reservar</h4><a href=\"/canchas\">Todas las canchas</a><a href='/canchas?deporte=futbol'>Canchas de fútbol</a>"
         "<a href='/canchas?deporte=tenis'>Canchas de tenis</a><a href='/canchas?deporte=padel'>Canchas de pádel</a>"
-        "<a href='/#servicios'>Servicios y precios</a></div>"
+        "<a href='/canchas?deporte=academias'>Academias</a><a href='/#servicios'>Servicios y precios</a></div>"
         "<div><h4>Soporte</h4><a href='/#contacto'>Contacto</a><a href='/#como'>Cómo funciona</a>"
-        "<a href='/#pagos'>Pagos y seguridad</a><a href='/#devoluciones'>Cancelaciones y devoluciones</a>"
-        "<a href='/#reclamaciones'>📕 Libro de Reclamaciones</a></div>"
+        "<a href='/#pagos'>Pagos y seguridad</a><a href='/legal/devoluciones'>Cambios, cancelaciones y devoluciones</a>"
+        f"<a class='libro' href='/libro-de-reclamaciones'>{LIBRO_SVG}<span>Libro de Reclamaciones</span></a></div>"
         "<div><h4>Pichangol</h4><a href='https://play.google.com/store/apps/details?id=pe.ebim.pichangol' rel='noopener'>Descarga la app</a>"
         "<a href='/anfitrion/nueva'>Pon tu cancha en Pichangol</a>"
         "<a href=\"/legal/terminos\">Términos y condiciones</a><a href=\"/legal/privacidad\">Política de privacidad</a>"
         "<a href=\"/legal/eliminar-cuenta\">Eliminar mi cuenta</a></div>"
         f"</div><div class='pie-bajo'><div>© {em['anio']} Pichangol · {em['razon_social']} · {em['doc_etiqueta']} {em['ruc']} · {em['ciudad']} · "
         f"<a href='mailto:{em['correo']}'>{em['correo']}</a></div>"
-        "<div><a href='/#terminos'>Términos</a><a href='/#privacidad'>Privacidad</a><a href='/#reclamaciones'>Libro de Reclamaciones</a></div>"
+        "<div><a href='/legal/terminos'>Términos</a><a href='/legal/privacidad'>Privacidad</a><a href='/legal/devoluciones'>Devoluciones</a>"
+        "<a href='/libro-de-reclamaciones'>Libro de Reclamaciones</a></div>"
         "</div></div></footer>")
 
 
@@ -738,8 +768,9 @@ def menu_cuenta(ses: dict | None, volver: str = "/", modo: str = "") -> str:
         "<a href='/#como'>Cómo funciona</a><a href='/#contacto'>Centro de ayuda</a><hr>"
         + ("<a class='b' href='/'>Cambiar a modo jugador</a>" if modo == "anfitrion" else "<a class='b' href='/anfitrion'>Modo anfitrión</a>")
         + "<a href='/anfitrion/nueva'>Pon tu cancha en Pichangol</a>"
-        f"<a href='{PLAY_URL}' rel='noopener'>Descarga la app</a>"
-        "<a href='/#reclamaciones'>Libro de Reclamaciones</a>"
+        f"<a href='{PLAY_URL}' rel='noopener'>Descarga la app</a><hr>"
+        "<a href='/legal/terminos'>Términos y condiciones</a><a href='/legal/devoluciones'>Cambios y devoluciones</a>"
+        "<a href='/libro-de-reclamaciones'>📕 Libro de Reclamaciones</a>"
         "</div></div></div>")
 
 
