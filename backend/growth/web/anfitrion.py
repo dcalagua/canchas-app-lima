@@ -669,7 +669,7 @@ def pagina_canchas(request: Request, guardado: str = "") -> HTMLResponse:
                                                             ("lat", c0.get("lat") or ""), ("lng", c0.get("lng") or "")) if v != ""})
         tarjetas += (
             f"<div class='anf-local'><div class='cab'><div class='f'>{foto}</div><div style='flex:1;min-width:0'>"
-            f"<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><span class='ico'>🏬</span><b style='font-size:17px'>{e(local)}</b>{pill}</div>"
+            f"<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><span class='tit'><span class='ico'>{ui.LOCAL_SVG}</span><b style='font-size:17px'>{e(local)}</b></span>{pill}</div>"
             f"<div class='sub' style='margin:2px 0 0'>{e(c0.get('direccion') or '')}{(' · ' if c0.get('direccion') and zona else '')}{e(zona)}</div>"
             f"<div class='sub' style='margin:2px 0 0'>{n} {'cancha' if n == 1 else 'canchas'}</div></div></div>"
             f"<div class='filas'>{filas}</div>"
