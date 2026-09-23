@@ -811,11 +811,7 @@ def _modal_filtros(lista: list[dict]) -> str:
         "<div class='modal-cab'><button type='button' class='cerrar' id='cerrarFiltros' aria-label='Cerrar'>✕</button><h3 id='modalTit'>Filtros</h3></div>"
         "<div class='modal-cuerpo'>"
         + (f"<section><h4>Recomendado para ti</h4><div class='tiles'>{tiles}</div></section>" if tiles else "")
-        + "<section><h4>Tipo de local</h4><div class='segm' id='fTipo'>"
-        "<button type='button' class='on' data-tipo=''>Cualquier tipo</button>"
-        "<button type='button' data-tipo='ok'>Verificadas</button>"
-        "<button type='button' data-tipo='pend'>Aún sin verificar</button></div></section>"
-        "<section><h4>Rango de precios</h4><p class='sub' id='precioSub'>Precio por hora</p>"
+        + "<section><h4>Rango de precios</h4><p class='sub' id='precioSub'>Precio por hora</p>"
         "<div class='histo' id='histo'></div>"
         "<div class='rango'><input type='range' id='rMin' min='0' max='100' value='0'><input type='range' id='rMax' min='0' max='100' value='100'></div>"
         "<div class='topes'><label>Mínimo<div class='tope'><span id='monMin'></span><input type='number' id='pMin' min='0'></div></label>"
@@ -963,7 +959,10 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
     Google; debajo, las secciones de marca/comercio (servicios y precios,
     términos, cancelaciones, Libro de Reclamaciones) que revisan Culqi e
     INDECOPI."""
-    todas = datos.canchas_publicas()
+    # Solo canchas APROBADAS (verificada + dueño), como el explorador del app:
+    # una cancha en verificación no sale al público hasta que la torre la
+    # apruebe (regla del director, sep-2026; antes salían con "Aún sin verificar").
+    todas = [c for c in datos.canchas_publicas() if datos.reservable(c)]
     dep = (deporte or "").strip().lower()
     # Pestaña "🎓 Academias" (pedido del director, sep-2026): solo academias,
     # de todos los deportes; sin canchas registradas ni descubiertas.
@@ -1066,7 +1065,7 @@ def descubrir_web(lat: float, lng: float, fotos: int = 0, deporte: str = "") -> 
     Tenis no salen canchas de fútbol; queja del director, sep-2026)."""
     region = pais_de_coordenadas(lat, lng)
     reg = [{"nombre": c.get("nombre"), "club": c.get("club"), "lat": c.get("lat"), "lng": c.get("lng")}
-           for c in datos.canchas_publicas()]
+           for c in datos.canchas_publicas() if datos.reservable(c) or (c.get("dueno") or "").strip()]
     lista = descubrir.descubrir_cerca(lat, lng, region=region, fotos=bool(fotos), registradas=reg)
     dep = (deporte or "").strip().lower()
     if dep:
@@ -1499,27 +1498,57 @@ def _tira_dias(pais: str) -> tuple[list[dict], dict]:
     return dias, etiquetas
 
 
-def _ficha(c: dict, sim: str, pais: str, verificada: bool = True) -> str:
+def _titulo_local(c: dict) -> str:
+    """Nombre del LOCAL (club); si la cancha no tiene local, su propio nombre."""
+    return (c.get("club") or "").strip() or c["nombre"]
+
+
+def _hermanas(c: dict, ses: dict | None = None) -> list[dict]:
+    """Canchas del MISMO local (mismo `club`), para los chips de la ficha: las
+    aprobadas y, si quien mira es el dueño, también las suyas en verificación."""
+    club = (c.get("club") or "").strip().lower()
+    if not club:
+        return [c]
+    yo = ((ses or {}).get("email") or "").lower()
+    out = [x for x in datos.canchas_publicas()
+           if (x.get("club") or "").strip().lower() == club
+           and (datos.reservable(x) or x["id"] == c["id"] or (yo and (x.get("dueno") or "").lower() == yo))]
+    return out or [c]
+
+
+def _ficha(c: dict, sim: str, pais: str, verificada: bool = True, hermanas: list[dict] | None = None) -> str:
+    """Cabecera de la ficha pública: como `club_detalle_screen` del app, el
+    TÍTULO es el LOCAL y la cancha va debajo (antes salía "Cancha-01" grande
+    y el local chico; queja del director, sep-2026). Con varias canchas en el
+    local, chips para cambiar de cancha."""
     sello = ui.sello_verificada() if verificada else "<span class='pill gris'>Aún sin verificar</span>"
     lugar = ", ".join(x for x in (c.get("direccion"), _zona(c)) if x)
     deps = " · ".join(_deporte(d)[0] for d in _deportes_de(c))
     amen = "".join(f"<span>{e(AMENIDAD_NOMBRE.get(str(a).lower(), str(a).replace('_', ' ').capitalize()))}</span>"
                    for a in (c.get("amenidades") or [])[:8])
+    local = _titulo_local(c)
+    hs = hermanas or [c]
+    if len(hs) > 1:
+        chips = "".join(f"<a class='chip{' sel' if x['id'] == c['id'] else ''}' href='/reservar/{quote(str(x['id']), safe='')}'>"
+                        f"{_deporte(x.get('deporte'))[1]} {e(x['nombre'])}</a>" for x in hs)
+        cancha_linea = (f"<div class='sub' style='margin-top:6px'>{len(hs)} canchas en este local · elige una:</div>"
+                        f"<div class='chips' style='margin-top:6px'>{chips}</div>")
+    else:
+        cancha_linea = f"<p class='sub' style='margin-top:4px'>{_deporte(c.get('deporte'))[1]} {e(c['nombre'])}</p>"
     return (f"{_galeria(c)}"
             "<div style='display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-top:16px'>"
-            f"<div><div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'>"
+            f"<div style='min-width:0'><div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'>"
             f"<span class='pill gris'>{ui.bandera(pais)} {e(deps)}</span>{sello}</div>"
-            f"<h1 style='margin-top:8px'>{e(c['nombre'])}</h1>"
-            f"<p class='sub'>{e(c.get('club'))}</p></div>"
+            f"<h1 style='margin-top:8px'>{e(local)}</h1>{cancha_linea}</div>"
             f"<div class='precio' style='font-size:22px;white-space:nowrap'>{e(sim)} {c['precio_hora']:.2f} <small>por hora</small></div></div>"
             "<ul class='datos'>"
-            f"<li>📍 <span>{e(lugar or 'Dirección en la app')} · <a href='#mapaFicha' id='btnLlegar' data-lat='{c.get('lat')}' data-lng='{c.get('lng')}' data-nombre='{e(c['nombre'])}'>Cómo llegar</a></span></li>"
+            f"<li>📍 <span>{e(lugar or 'Dirección en la app')} · <a href='#mapaFicha' id='btnLlegar' data-lat='{c.get('lat')}' data-lng='{c.get('lng')}' data-nombre='{e(local)}'>Cómo llegar</a></span></li>"
             f"<li>🕒 <span>{e(c['hora_apertura'])} a {e(c['hora_cierre'])} · turnos de {c['duracion_slot_min']} min · último turno {e(c['hora_cierre'])}</span></li>"
             + (f"<li>⚡ <span>Hora feliz −{c['descuento_valle']} % de {e(c['valle_desde'] or '00:00')} a {e(c['valle_hasta'] or '12:00')}</span></li>" if c['descuento_valle'] > 0 else "")
             + (f"<li>🏟️ <span>{e(c['superficie'])}</span></li>" if c.get("superficie") else "")
             + "</ul>"
             "<div class='mapa-ficha' id='mapaFicha'><div class='mapa' id='mapaFichaMapa' aria-label='Mapa de la cancha'></div>"
-            f"<div class='pie-mapa'><span>📍 {e(lugar or c['nombre'])}</span><a href='{_maps(c)}' target='_blank' rel='noopener'>Abrir en Google Maps</a>"
+            f"<div class='pie-mapa'><span>📍 {e(lugar or local)}</span><a href='{_maps(c)}' target='_blank' rel='noopener'>Abrir en Google Maps</a>"
             f"<a href='https://www.google.com/maps/dir/?api=1&destination={c.get('lat')},{c.get('lng')}' target='_blank' rel='noopener'>Indicaciones paso a paso</a></div></div>"
             + (f"<div class='amen'>{amen}</div>" if amen else ""))
 
@@ -1527,7 +1556,7 @@ def _ficha(c: dict, sim: str, pais: str, verificada: bool = True) -> str:
 def _jsonld_cancha(c: dict, sim: str) -> str:
     return json.dumps({
         "@context": "https://schema.org", "@type": "SportsActivityLocation",
-        "name": c["nombre"], "image": _fotos(c)[:1],
+        "name": (f"{c['club']} · {c['nombre']}" if (c.get("club") or "").strip() else c["nombre"]), "image": _fotos(c)[:1],
         "address": {"@type": "PostalAddress", "streetAddress": c.get("direccion") or "",
                     "addressLocality": _zona(c), "addressCountry": _pais_de(c)},
         "geo": {"@type": "GeoCoordinates", "latitude": c.get("lat"), "longitude": c.get("lng")},
@@ -1578,9 +1607,18 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
     ses = sesion.de_request(request)
     if not c or c.get("eliminada") or not c.get("registrada", True):
         return _no_encontrada()
+    # Como el app: una cancha EN VERIFICACIÓN (con dueño, aún no aprobada) solo
+    # la ve su dueño (vista previa); el público no la encuentra hasta que la
+    # torre la apruebe. El legado sin dueño sí se muestra, para poder reclamarlo.
+    dueno = (c.get("dueno") or "").strip().lower()
+    if not datos.reservable(c) and dueno and dueno != ((ses or {}).get("email") or "").lower():
+        r = _no_encontrada("Esta cancha aún está en verificación"); r.status_code = 404
+        return r
     sim, iso = _moneda_de(c)
     pais = _pais_de(c)
-    ficha = _ficha(c, sim, pais, verificada=datos.reservable(c))
+    hermanas = _hermanas(c, ses)
+    ficha = _ficha(c, sim, pais, verificada=datos.reservable(c), hermanas=hermanas)
+    titulo = _titulo_local(c)
     canonical = (f"{config.PUBLIC_BASE_URL.rstrip('/')}/reservar/{c['id']}"
                  if getattr(config, "PUBLIC_BASE_URL", "") else "")
     og = _fotos(c)[0] if _fotos(c) else "/static/brand/logo_pichangol.png"
@@ -1602,7 +1640,7 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
                   f"<p class='sub'>{motivo} En la app Pichangol reservas y pagas con los medios de tu país.</p>"
                   f"<div class='acciones'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a>"
                   f"<a class='btn sec' href='/canchas'>Ver otras canchas</a></div></div>{reclamar}")
-        return ui.shell(c["nombre"], cuerpo, desc=f"{c['nombre']} · {c.get('club', '')}", canonical=canonical,
+        return ui.shell(titulo, cuerpo, desc=f"{titulo} · {c['nombre']}", canonical=canonical,
                         og_image=og, jsonld=_jsonld_cancha(c, sim), sesion=ses)
 
     dias, etiquetas = _tira_dias(pais)
@@ -1687,7 +1725,7 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
         f"<script>window.__cancha={cfg};var CORREO_SOPORTE={json.dumps(empresa.valores()['empresa_correo'])};</script>"
         "<script src='https://checkout.culqi.com/js/v4'></script>"
         f"<script>{sesion.JS_SESION if sesion.activo() else ''}{_JS_RESERVA}</script>")
-    return ui.shell(f"Reservar {c['nombre']}", cuerpo, con_barra=True, canonical=canonical, og_image=og,
+    return ui.shell(f"Reservar en {titulo}", cuerpo, con_barra=True, canonical=canonical, og_image=og,
                     desc=f"Reserva {c['nombre']} y paga en línea con Yape o tarjeta.", jsonld=_jsonld_cancha(c, sim),
                     extra_head=("<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' crossorigin=''>"
                                 "<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' crossorigin=''></script>"

@@ -216,13 +216,26 @@ para la API del APK.
   `localStorage`. Banderas como SVG (`ui.bandera`): los emoji de bandera no
   se ven en Windows. Regla anti scroll horizontal: `html,body{overflow-x:
   hidden}` + `minmax(0,1fr)`/`min-width:0` en las columnas de la grilla.
-  **Canchas NO verificadas también salen en la web** (decisión del director,
-  sep-2026): `datos.canchas_publicas()` = registradas y no eliminadas;
-  `datos.reservable(c)` = verificada + con dueño (espejo de
-  `Cancha.reservable`). Las pendientes van después, con pill "Aún sin
-  verificar", pin gris y botón "Reservar en la app"; su ficha explica que
-  está en verificación y manda a Play; `/web/asegurar` responde
-  `no_verificada`. Sólo las reservables muestran el checkout.
+  **Canchas NO verificadas NO salen en la web hasta ser aprobadas (regla
+  del director, 23-sep-2026, "sigue el flujo como en el app"; REVIERTE la
+  decisión anterior de mostrarlas con "Aún sin verificar"):** el explorador
+  lista solo `datos.reservable(c)` (verificada + con dueño, espejo de
+  `Cancha.reservable`); `datos.canchas_publicas()` sigue trayendo todas las
+  registradas para otros usos. La ficha `/reservar/{id}` de una cancha en
+  verificación CON dueño responde 404 ("Esta cancha aún está en
+  verificación") salvo al propio dueño (vista previa con "Reserva desde la
+  app"); el LEGADO sin dueño sí se abre por enlace para reclamarlo.
+  `/web/asegurar` responde `no_verificada`. El modal de filtros ya no tiene
+  "Tipo de local". Dedup de descubiertas: contra las registradas CON dueño;
+  el legado sin dueño no se descuenta (su pin de Google sigue) y "Reclámala"
+  → `/anfitrion/nueva?place&lat&lng` ADOPTA la fila legado a ≤120 m
+  (`anfitrion._legado_cerca`) en vez de duplicarla. **FICHA = LOCAL (queja
+  del director: "sale el nombre de la cancha en vez del local"):** `_ficha`
+  pone de título `_titulo_local(c)` (= `club`, como `club_detalle` del app),
+  la cancha debajo y, si el local tiene varias (`_hermanas`: mismo `club`,
+  aprobadas + las del dueño que mira), chips para cambiar de cancha;
+  `<title>`, descripción, JSON-LD y "Cómo llegar" usan el local. Test
+  `test_no_verificadas_no_salen_hasta_ser_aprobadas`.
   **Canchas DESCUBIERTAS en Google también (sep-2026):** `web/descubrir.py`
   llama a la MISMA Edge Function `places-cerca` que el APK (key de Places
   como secret de Supabase; el backend usa `SUPABASE_URL` + `SUPABASE_ANON_KEY`)
@@ -881,7 +894,9 @@ off → redeploy inmediato en cada push). URL pública:
     Reclamaciones en página propia, /legal/devoluciones, términos de
     compra web, redes oficiales configurables; Mis canchas del anfitrión
     agrupado por local). Solo web. Pendiente del director en PRD: cargar
-    las redes oficiales en la torre y tener ≥1 cancha verificada.
+    las redes oficiales en la torre y tener ≥1 cancha verificada. **Pase del
+    23-sep-2026 (2.º, autorizado):** `prd` = merge del ícono SVG de local
+    (`ui.LOCAL_SVG`) en Mis canchas. Solo web.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
