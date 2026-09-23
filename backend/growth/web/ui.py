@@ -382,7 +382,7 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 .anf-cancha{display:flex;gap:14px;background:var(--blanco);border:1px solid var(--trazo);border-radius:16px;padding:12px;box-shadow:var(--sombra);min-width:0}
 .anf-cancha .f{flex:none;width:110px;height:110px;border-radius:12px;overflow:hidden;background:var(--tinte);display:flex;align-items:center;justify-content:center;font-size:40px}
 .anf-cancha .f img{width:100%;height:100%;object-fit:cover}
-.anf-cancha .acciones .btn{flex:0 0 auto;min-width:0;padding:8px 12px;font-size:13px}.anf-local{background:var(--blanco);border:1px solid var(--trazo);border-radius:18px;padding:14px;box-shadow:var(--sombra);min-width:0}.anf-local .cab{display:flex;gap:14px;align-items:flex-start}.anf-local .cab .f{flex:none;width:84px;height:84px;border-radius:12px;overflow:hidden;background:var(--tinte);display:flex;align-items:center;justify-content:center;font-size:34px}.anf-local .cab .f img{width:100%;height:100%;object-fit:cover}.anf-local .cab .ico{font-size:18px}.anf-local .filas{margin-top:12px;border-top:1px solid var(--trazo)}.anf-fila{display:flex;gap:10px;padding:12px 0;border-bottom:1px solid var(--trazo)}.anf-fila .ico{flex:none;width:32px;height:32px;border-radius:50%;background:var(--tinte);display:flex;align-items:center;justify-content:center;font-size:16px}.anf-local .acciones .btn{flex:0 0 auto;min-width:0;padding:8px 12px;font-size:13px}
+.anf-cancha .acciones .btn{flex:0 0 auto;min-width:0;padding:8px 12px;font-size:13px}.anf-local{background:var(--blanco);border:1px solid var(--trazo);border-radius:18px;padding:14px;box-shadow:var(--sombra);min-width:0}.anf-local .cab{display:flex;gap:14px;align-items:flex-start}.anf-local .cab .f{flex:none;width:84px;height:84px;border-radius:12px;overflow:hidden;background:var(--tinte);display:flex;align-items:center;justify-content:center;font-size:34px}.anf-local .cab .f img{width:100%;height:100%;object-fit:cover}.anf-local .cab .ico{display:inline-flex;color:var(--verde);flex:none;vertical-align:-3px}.anf-local .cab .tit{display:flex;gap:8px;align-items:center;min-width:0}.anf-local .filas{margin-top:12px;border-top:1px solid var(--trazo)}.anf-fila{display:flex;gap:10px;padding:12px 0;border-bottom:1px solid var(--trazo)}.anf-fila .ico{flex:none;width:32px;height:32px;border-radius:50%;background:var(--tinte);display:flex;align-items:center;justify-content:center;font-size:16px}.anf-local .acciones .btn{flex:0 0 auto;min-width:0;padding:8px 12px;font-size:13px}
 /* calendario interactivo del anfitrión */
 .cal-act td[data-t]{cursor:pointer}.cal-act td.libre:hover{background:var(--tinte)}.cal-act td .li{opacity:0;font-size:11px;color:var(--teal);font-weight:800;text-align:center}
 .cal-act td.libre:hover .li{opacity:1}.cal-act td.res:hover .oc,.cal-act td.bloq:hover .bl{filter:brightness(.95)}
@@ -659,6 +659,10 @@ RED_SVG = {
 
 # Distintivo "Libro de Reclamaciones" (libro rojo, como el que INDECOPI pide
 # exhibir de forma visible): enlaza a la hoja de reclamación en página propia.
+# Ícono "local / tienda" del app (Icons.storefront) para la tarjeta de local de Mis canchas.
+LOCAL_SVG = ("<svg viewBox='0 0 24 24' width='20' height='20' fill='currentColor' aria-hidden='true'>"
+             "<path d='M20 4H4v2h16V4zm1 10v-2l-1-5H4l-1 5v2h1v6h10v-6h4v6h2v-6h1zm-9 4H6v-4h6v4z'/></svg>")
+
 LIBRO_SVG = ("<svg viewBox='0 0 24 24' width='22' height='22' aria-hidden='true'><path fill='#C8102E' d='M4 3h13a2 2 0 0 1 2 2v14.5a1.5 1.5 0 0 1-1.5 1.5H6a2 2 0 0 1-2-2V3z'/>"
              "<path fill='#fff' d='M6 5h11v12H6z' opacity='.15'/><path fill='#fff' d='M8 7h7v1.4H8zM8 10h7v1.4H8zM8 13h5v1.4H8z'/></svg>")
 

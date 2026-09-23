@@ -876,7 +876,12 @@ off → redeploy inmediato en cada push). URL pública:
     `/academia/{id}` con programas, tarifario y matrícula en línea + redes
     con logo en la tarjeta). Solo web: sin SQL, sin Edge, sin APK. **Pase
     del 22-sep-2026 (4.º, autorizado):** `prd` = merge `b498b24` (pestaña
-    "🎓 Academias" en el explorador web). Solo web.
+    "🎓 Academias" en el explorador web). Solo web. **Pase del 23-sep-2026
+    (autorizado):** `prd` = merge `6922720` (requisitos de Culqi: Libro de
+    Reclamaciones en página propia, /legal/devoluciones, términos de
+    compra web, redes oficiales configurables; Mis canchas del anfitrión
+    agrupado por local). Solo web. Pendiente del director en PRD: cargar
+    las redes oficiales en la torre y tener ≥1 cancha verificada.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
