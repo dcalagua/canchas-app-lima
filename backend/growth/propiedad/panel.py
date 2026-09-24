@@ -1311,6 +1311,18 @@ _HTML = r"""<!DOCTYPE html>
   .content:has(#redesPanel[style*="block"]){max-width:none}
   #redesPanel .rd-grid{display:grid;grid-template-columns:minmax(380px,520px) minmax(0,1fr);gap:22px;margin-top:10px}
   @media(max-width:1100px){#redesPanel .rd-grid{grid-template-columns:1fr}}
+  /* Preloader del pane de Facebook (pedido del director: "agrega un preload siempre"). */
+  @keyframes rdgira{to{transform:rotate(360deg)}}
+  .rd-spin{display:inline-block;width:18px;height:18px;border:3px solid rgba(0,0,0,.12);border-top-color:var(--green);border-radius:50%;animation:rdgira .8s linear infinite;vertical-align:-4px}
+  .rd-spin.chico{width:14px;height:14px;border-width:2px;vertical-align:-3px}
+  .rd-spin.blanco{border-color:rgba(255,255,255,.35);border-top-color:#fff}
+  #rd_prev{position:relative}
+  #rd_prev .rd-velo{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(255,255,255,.82);color:var(--text);font-weight:700;font-size:14px;z-index:2;border-radius:14px;backdrop-filter:blur(1.5px)}
+  #rd_prev .rd-velo .rd-spin{width:40px;height:40px;border-width:4px}
+  #rd_prev .rd-velo small{font-weight:400;color:var(--muted)}
+  #rd_prev img.opaca{opacity:.35;filter:grayscale(.3)}
+  #redesPanel button[disabled]{opacity:.6;cursor:progress}
+  .rd-cargando{display:flex;align-items:center;gap:10px;color:var(--muted);padding:14px 4px}
   @media(max-width:640px){
     .topbar{padding:10px 14px}
     .content{padding:18px 14px 50px}
@@ -2707,7 +2719,7 @@ function usarSugerencia(id, texto){
 let redes = {facebook:{}, locales:[], plantillas:{}, historial:[]}, redesSel = {fotos:[], cancha:'', plantilla:'lanzamiento', formato:'cuadrado', img:''};
 async function cargarRedes(){
   const box = document.getElementById('redesPanel'); if(!box) return;
-  box.innerHTML = '<div class="card">Cargando…</div>';
+  box.innerHTML = '<div class="card"><div class="rd-cargando"><span class="rd-spin"></span> Cargando locales, fotos y estado de la página…</div></div>';
   try{
     const r = await fetch('/admin/api/redes/pichangol',{headers:headers()});
     if(r.status===401){ salir(); return; }
@@ -2760,9 +2772,9 @@ function renderRedes(){
           </div>
           <label style="display:block;margin-top:12px;font-size:12.5px;font-weight:700">3 · Texto de la publicación<textarea id="rd_texto" rows="7" ${inp}></textarea></label>
           <div class="actions" style="margin-top:12px">
-            <button class="btn-sec" onclick="previsualizarRedes()">👁️ Previsualizar</button>
-            <button class="btn-sec" id="rd_descargar" onclick="descargarRedes()" disabled>⬇️ Descargar PNG</button>
-            <button class="btn-ap" id="rd_publicar" onclick="publicarRedes()" ${fb.configurado?'':'disabled title="Configura FB_PAGE_ID y FB_PAGE_TOKEN en Railway"'}>📣 Publicar en Facebook</button>
+            <button class="btn-sec" id="rd_prev_btn" onclick="previsualizarRedes()">👁️ Previsualizar</button>
+            <button class="btn-sec" id="rd_descargar" onclick="descargarRedes()" ${redesSel.img?'':'disabled'}>⬇️ Descargar imagen</button>
+            <button class="btn-ap" id="rd_publicar" onclick="publicarRedes()" ${fb.configurado?(redesSel.img?'':'disabled title="Primero arma la vista previa"'):'disabled data-bloqueado="1" title="Configura FB_PAGE_ID y FB_PAGE_TOKEN en Railway"'}>📣 Publicar en Facebook</button>
           </div>
           <div id="rd_msg" class="row" style="margin-top:8px"></div>
         </div>
@@ -2804,38 +2816,60 @@ function subirFotosRedes(inp){
   const max = redes.max_fotos||4, libres = max - redesSel.fotos.length;
   if(libres <= 0){ alert('Ya tienes '+max+' fotos elegidas. Quita alguna para subir otra.'); return; }
   if(files.length > libres) alert('Solo entran '+libres+' foto(s) más (máximo '+max+' por publicación). Se toman las primeras.');
+  const msgUp = document.getElementById('rd_msg'); if(msgUp) msgUp.innerHTML = '<span class="rd-spin chico"></span> Preparando '+Math.min(files.length, libres)+' foto(s)…';
   files.slice(0, libres).forEach(f=>{ const img = new Image(), url = URL.createObjectURL(f); img.onload = ()=>{ const M=1600,k=Math.min(1,M/Math.max(img.width,img.height)); const cv=document.createElement('canvas'); cv.width=Math.round(img.width*k); cv.height=Math.round(img.height*k); cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height); URL.revokeObjectURL(url); toggleFotoRedes(cv.toDataURL('image/jpeg',0.86), true); }; img.onerror = ()=>{ URL.revokeObjectURL(url); alert('No se pudo leer "'+f.name+'".'); }; img.src=url; });
 }
 async function aplicarPlantilla(){
+  const estP = document.getElementById('rd_prev_estado'); if(estP) estP.innerHTML = '<span class="rd-spin chico"></span> aplicando plantilla…';
   const r = await fetch('/admin/api/redes/pichangol/plantilla',{method:'POST',headers:headers(),body:JSON.stringify({plantilla:redesSel.plantilla,cancha_id:redesSel.cancha})});
   const j = await r.json().catch(()=>({}));
   if(j.ok){ const t=document.getElementById('rd_titulo'); if(t){ t.value=j.titulo; document.getElementById('rd_sub').value=j.subtitulo; document.getElementById('rd_texto').value=j.texto; } }
   renderRedes(); autoPrevRedes();
 }
 let rdTimer = null;
-function autoPrevRedes(){ clearTimeout(rdTimer); if(!redesSel.fotos.length) return; rdTimer = setTimeout(()=>previsualizarRedes(true), 700); }
+function veloPrev(on, texto){
+  const prev = document.getElementById('rd_prev'); if(!prev) return;
+  prev.querySelectorAll('.rd-velo').forEach(v=>v.remove());
+  prev.querySelectorAll('img').forEach(i=>i.classList.toggle('opaca', !!on));
+  if(on){ const v=document.createElement('div'); v.className='rd-velo'; v.innerHTML='<span class="rd-spin"></span><div>'+esc(texto||'Componiendo la pieza…')+'</div><small>Fotos reales + logo + texto · unos segundos</small>'; prev.appendChild(v); if(!prev.querySelector('img')) prev.style.minHeight='360px'; }
+}
+function botonesRedes(ocupado){
+  const b = id => document.getElementById(id);
+  const pub = b('rd_publicar'), des = b('rd_descargar'), pre = b('rd_prev_btn');
+  if(pub){ if(ocupado) pub.dataset.txt = pub.dataset.txt || pub.innerHTML; if(!pub.dataset.bloqueado){ pub.disabled = !!ocupado || !redesSel.img; pub.title = pub.disabled ? (ocupado ? 'Espera a que termine…' : 'Primero arma la vista previa') : ''; } pub.innerHTML = ocupado==='publicando' ? '<span class="rd-spin blanco"></span> Publicando…' : (pub.dataset.txt || pub.innerHTML); }
+  if(des) des.disabled = !!ocupado || !redesSel.img;
+  if(pre) pre.disabled = !!ocupado;
+}
+function autoPrevRedes(){ clearTimeout(rdTimer); if(!redesSel.fotos.length) return; veloPrev(true, 'Preparando la vista previa…'); botonesRedes('componiendo'); rdTimer = setTimeout(()=>previsualizarRedes(true), 700); }
 function cuerpoRedes(){ return {fotos:redesSel.fotos, titulo:document.getElementById('rd_titulo').value, subtitulo:document.getElementById('rd_sub').value, pie:document.getElementById('rd_pie').value, etiqueta:document.getElementById('rd_etq').value, formato:document.getElementById('rd_formato').value, texto:document.getElementById('rd_texto').value, plantilla:redesSel.plantilla, cancha_id:redesSel.cancha}; }
 let rdSeq = 0;
 async function previsualizarRedes(auto){
   const msg = document.getElementById('rd_msg'), est = document.getElementById('rd_prev_estado');
   if(!redesSel.fotos.length){ if(!auto) msg.innerHTML = '<span style="color:var(--rojo)">Elige o sube al menos una foto.</span>'; return; }
-  const seq = ++rdSeq; if(est) est.textContent = '· componiendo…'; if(!auto) msg.textContent = 'Componiendo…';
+  const seq = ++rdSeq; const t0 = Date.now();
+  veloPrev(true, 'Componiendo la pieza…'); botonesRedes('componiendo');
+  if(est) est.innerHTML = '<span class="rd-spin chico"></span> componiendo…'; if(!auto) msg.innerHTML = '<span class="rd-spin chico"></span> Componiendo…';
   try{
     const r = await fetch('/admin/api/redes/pichangol/previsualizar',{method:'POST',headers:headers(),body:JSON.stringify(cuerpoRedes())});
     const j = await r.json().catch(()=>({}));
-    if(seq !== rdSeq) return; // llegó otra más nueva
-    if(r.ok && j.ok){ redesSel.img = j.imagen; redesSel.ext = j.extension||'jpg'; document.getElementById('rd_prev').innerHTML = `<img src="${j.imagen}" style="max-width:100%;max-height:78vh;display:block">`; document.getElementById('rd_descargar').disabled=false; if(est) est.textContent = '· '+Math.round(j.bytes/1024)+' KB'; if(!auto) msg.textContent = 'Lista. Revisa y publica o descarga.'; }
+    if(seq !== rdSeq) return; // llegó otra más nueva: esa pintará y quitará el velo
+    veloPrev(false); botonesRedes(false);
+    if(r.ok && j.ok){ redesSel.img = j.imagen; redesSel.ext = j.extension||'jpg'; document.getElementById('rd_prev').innerHTML = `<img src="${j.imagen}" style="max-width:100%;max-height:78vh;display:block">`; botonesRedes(false); if(est) est.textContent = '· '+Math.round(j.bytes/1024)+' KB · '+((Date.now()-t0)/1000).toFixed(1)+' s'; if(!auto) msg.textContent = 'Lista. Revisa y publica o descarga.'; }
     else { if(est) est.textContent = ''; msg.innerHTML = `<span style="color:var(--rojo)">${esc(j.detail||'No se pudo componer')}</span>`; }
-  }catch(e){ if(est) est.textContent = ''; msg.innerHTML = '<span style="color:var(--rojo)">No se pudo componer (red). Inténtalo de nuevo.</span>'; }
+  }catch(e){ if(seq !== rdSeq) return; veloPrev(false); botonesRedes(false); if(est) est.textContent = ''; msg.innerHTML = '<span style="color:var(--rojo)">No se pudo componer (red). Inténtalo de nuevo.</span>'; }
 }
 function descargarRedes(){ if(!redesSel.img) return; const a=document.createElement('a'); a.href=redesSel.img; a.download='pichangol-post-'+Date.now()+'.'+(redesSel.ext||'jpg'); a.click(); }
 async function publicarRedes(){
   if(!confirm('¿Publicar ahora en la página de Facebook de Pichangol?')) return;
-  const msg = document.getElementById('rd_msg'); msg.textContent = 'Publicando…';
-  const r = await fetch('/admin/api/redes/pichangol/publicar',{method:'POST',headers:headers(),body:JSON.stringify(cuerpoRedes())});
-  const j = await r.json().catch(()=>({}));
-  if(r.ok && j.ok){ toast('Publicado en Facebook'); msg.innerHTML = `✅ Publicado. ${j.url?`<a href="${esc(j.url)}" target="_blank" rel="noopener">Ver la publicación ↗</a>`:''}`; cargarRedes(); }
-  else msg.innerHTML = `<span style="color:var(--rojo)">${esc(j.detail||'No se pudo publicar')}</span>`;
+  const msg = document.getElementById('rd_msg'); msg.innerHTML = '<span class="rd-spin chico"></span> Publicando en la página… (componiendo la pieza final y subiéndola a Facebook)';
+  botonesRedes('publicando'); veloPrev(true, 'Publicando en Facebook…');
+  try{
+    const r = await fetch('/admin/api/redes/pichangol/publicar',{method:'POST',headers:headers(),body:JSON.stringify(cuerpoRedes())});
+    const j = await r.json().catch(()=>({}));
+    if(r.ok && j.ok){ toast('Publicado en Facebook'); msg.innerHTML = `✅ Publicado. ${j.url?`<a href="${esc(j.url)}" target="_blank" rel="noopener">Ver la publicación ↗</a>`:''}`; await cargarRedes(); return; }
+    msg.innerHTML = `<span style="color:var(--rojo)">${esc(j.detail||'No se pudo publicar')}</span>`;
+  }catch(e){ msg.innerHTML = '<span style="color:var(--rojo)">No se pudo publicar (red). Revisa el historial antes de reintentar.</span>'; }
+  veloPrev(false); botonesRedes(false);
 }
 // Navegación de la barra lateral: muestra una sección y marca su ítem activo.
 // Maestro–detalle genérico (Cobros, Operación, Comunicación…): muestra el
