@@ -1018,3 +1018,80 @@ def test_mi_musica_desde_google_drive_en_videos_y_agente(monkeypatch, tmp_path):
     assert r["quitados"] == 2 and md.items() == []
     pr.descartar_video(vid)
     _limpio()
+
+
+def test_fotos_a_video_con_movimiento_y_pista_desde_el_segundo(monkeypatch, tmp_path):
+    """Pedidos del director (24-sep-2026): (1) "yo debo seleccionar desde qué segundo inicia la
+    música, a veces tarda 2 o 3 segundos en sonar" → la torre detecta dónde empieza a sonar
+    (silencedetect) al sincronizar y el operador puede fijar el segundo a mano o con el
+    reproductor; (2) "hacer videos con fotos para que salgan estilos con movimiento (CapCut)"
+    → las fotos elegidas se vuelven un clip Ken Burns + fundidos que entra al pulido."""
+    import re as _re
+    import subprocess
+    import time as _t
+    from marketing import foto_video as fv
+    from marketing import musica_drive as md
+    from marketing import video_pulido as vp
+    from db.store import stores
+    ff = vp.ffmpeg_exe()
+    monkeypatch.setattr(pr, "_VIDEO_DIR", str(tmp_path / "videos")); pr._videos.clear(); vp._trabajos.clear()
+    monkeypatch.setattr(config, "OPENAI_API_KEY", "")
+    # ── Pista con 2 s de silencio y luego un tono: la torre detecta que empieza a sonar a los ~2 s.
+    pista = str(tmp_path / "intro-lenta.wav")
+    subprocess.run([ff, "-y", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "aevalsrc=0:d=2", "-f", "lavfi", "-i", "sine=frequency=440:duration=3",
+                    "-filter_complex", "[0:a][1:a]concat=n=2:v=0:a=1[a]", "-map", "[a]", pista], check=True)
+    ini = vp.detectar_inicio(pista)
+    assert 1.8 <= ini <= 2.3, ini
+    assert vp.detectar_inicio(str(tmp_path / "no-existe.wav")) == 0.0
+    recorte = vp.recortar_pista(pista, ini, str(tmp_path / "desde.wav"))
+    assert recorte and abs(vp.sondear(recorte)["duracion"] - (5.0 - ini)) < 0.3   # el recorte arranca donde empieza a sonar
+    # Al sincronizar, `inicio_sugerido` queda guardado con la pista (la torre lo muestra y el agente lo usa).
+    assert md._inicio_sugerido(open(pista, "rb").read(), "wav") == ini
+    stores.musica_marca[:] = [{"id": "mm_lenta", "drive_id": "d1", "tipo": "audio", "nombre": "intro-lenta.wav", "mime": "audio/wav", "ext": "wav", "url": "https://x/intro.wav",
+                               "bytes": 1, "carpeta": "", "inicio_sugerido": ini, "md5": "x", "modificado": "", "creado_en": 1.0, "usos": 0, "ultimo_uso": 0.0, "origen": "google_drive"}]
+    monkeypatch.setattr(md, "descargar_a_temporal", lambda iid: pista)
+    # ── Fotos → video con movimiento: 3 fotos, vertical, ~3 s por foto → clip mudo listo para pulir.
+    fotos = ["data:image/jpeg;base64," + base64.b64encode(_jpeg(c, w, h)).decode()
+             for c, w, h in (((200, 60, 40), 1200, 800), ((40, 160, 90), 800, 1200), ((30, 60, 200), 1400, 900))]
+    assert client.post("/admin/api/redes/pichangol/video/desde-fotos", json={"fotos": [], "formato": "vertical"}, headers=H).status_code == 400
+    assert client.post("/admin/api/redes/pichangol/video/desde-fotos", json={"fotos": fotos, "formato": "cine"}, headers=H).status_code == 400
+    t0 = _t.time()
+    r = client.post("/admin/api/redes/pichangol/video/desde-fotos", json={"fotos": fotos, "formato": "vertical", "segundos": 2.0}, headers=H)
+    assert r.status_code == 200, r.text
+    j = r.json()
+    assert j["ok"] and j["ancho"] == 1080 and j["alto"] == 1920 and 6.5 <= j["duracion"] <= 9.0 and _t.time() - t0 < 60
+    v = pr.video(j["video_id"])
+    assert v and v["desde_fotos"] == 3 and os.path.getsize(v["ruta"]) == j["bytes"]
+    info = vp.sondear(v["ruta"])
+    assert info["ancho"] == 1080 and info["alto"] == 1920 and not info["audio"] and abs(info["duracion"] - j["duracion"]) < 0.3
+    assert client.get(f"/admin/api/redes/pichangol/video/{j['video_id']}/archivo?cual=original", headers=H).status_code == 200
+    # ── Pulido del clip con la pista DESDE el segundo elegido (a mano: 2.5 s) → sale con música desde el arranque.
+    assert client.post(f"/admin/api/redes/pichangol/video/{j['video_id']}/pulir", json={"subtitulos": False, "musica_pista": "mm_lenta", "musica_desde": 900}, headers=H).status_code == 400
+    r = client.post(f"/admin/api/redes/pichangol/video/{j['video_id']}/pulir", json={"subtitulos": False, "formato": "original", "intro": False, "cierre": False,
+                    "musica_modo": "protagonista", "musica_pista": "mm_lenta", "musica_desde": 2.5}, headers=H)
+    assert r.status_code == 200, r.text
+    fin = _t.time() + 120
+    while _t.time() < fin:
+        e = client.get(f"/admin/api/redes/pichangol/video/{j['video_id']}/estado", headers=H).json()
+        if e["estado"] in ("listo", "error"):
+            break
+        _t.sleep(0.5)
+    assert e["estado"] == "listo", e
+    # El primer segundo del pulido YA suena (sin el recorte, serían los 2 s de silencio de la pista).
+    p = subprocess.run([ff, "-hide_banner", "-t", "1.0", "-i", pr.video(j["video_id"])["pulido"], "-af", "volumedetect", "-f", "null", "-"], capture_output=True, text=True, errors="ignore")
+    assert float(_re.search(r"mean_volume:\s*(-?[\d.]+) dB", p.stderr).group(1)) > -45
+    # Sin `musica_desde` explícito se usa el inicio sugerido de la pista.
+    r = client.post(f"/admin/api/redes/pichangol/video/{j['video_id']}/pulir", json={"subtitulos": False, "formato": "original", "intro": False, "cierre": False,
+                    "musica_modo": "protagonista", "musica_pista": "mm_lenta"}, headers=H)
+    assert r.status_code == 200
+    fin = _t.time() + 120
+    while _t.time() < fin:
+        e = client.get(f"/admin/api/redes/pichangol/video/{j['video_id']}/estado", headers=H).json()
+        if e["estado"] in ("listo", "error"):
+            break
+        _t.sleep(0.5)
+    assert e["estado"] == "listo"
+    p = subprocess.run([ff, "-hide_banner", "-t", "1.0", "-i", pr.video(j["video_id"])["pulido"], "-af", "volumedetect", "-f", "null", "-"], capture_output=True, text=True, errors="ignore")
+    assert float(_re.search(r"mean_volume:\s*(-?[\d.]+) dB", p.stderr).group(1)) > -45
+    pr.descartar_video(j["video_id"])
+    stores.musica_marca.clear()

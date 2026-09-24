@@ -418,6 +418,32 @@ def mezcla_musica(tiene_audio: bool, opciones: dict) -> dict:
     return {"usar": True, "modo": "fondo", "mood": mood, "vol_musica": 0.16 if tiene_audio else 0.55, "vol_original": 1.0}
 
 
+def recortar_pista(ruta: str, desde: float, salida: str) -> str | None:
+    """Copia de la pista que empieza en el segundo `desde` (WAV estéreo 48 kHz). None si falla."""
+    ff = ffmpeg_exe()
+    if not ff:
+        return None
+    p = subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{max(0.0, desde):.3f}", "-i", ruta, "-vn", "-ac", "2", "-ar", "48000", salida],
+                       capture_output=True)
+    return salida if p.returncode == 0 and os.path.exists(salida) and os.path.getsize(salida) > 1000 else None
+
+
+def detectar_inicio(ruta: str, umbral_db: int = -35, max_seg: float = 15.0) -> float:
+    """Segundo en que la pista EMPIEZA A SONAR (muchas canciones traen 1-3 s de silencio o
+    entrada muy baja): `silencedetect` sobre los primeros `max_seg` s; 0.0 si suena desde el
+    inicio o si no se pudo analizar."""
+    ff = ffmpeg_exe()
+    if not ff:
+        return 0.0
+    p = subprocess.run([ff, "-hide_banner", "-t", f"{max_seg}", "-i", ruta, "-vn", "-af", f"silencedetect=n={umbral_db}dB:d=0.25", "-f", "null", "-"],
+                       capture_output=True, text=True, errors="ignore")
+    ini = re.search(r"silence_start:\s*(-?[\d.]+)", p.stderr or "")
+    fin = re.search(r"silence_end:\s*([\d.]+)", p.stderr or "")
+    if ini and float(ini.group(1)) <= 0.05:
+        return round(float(fin.group(1)), 2) if fin else 0.0
+    return 0.0
+
+
 def pulir(ruta: str, salida: str, opciones: dict, *, progreso=None) -> dict:
     """Renderiza la versión pulida. `opciones`: formato, logo, intro, cierre, rotulo,
     titulo, segmentos (subtítulos ya partidos o crudos), resaltar, musica_modo
@@ -490,6 +516,9 @@ def pulir(ruta: str, salida: str, opciones: dict, *, progreso=None) -> dict:
         pista = str(opciones.get("musica_ruta") or "")          # pista propia (Mi música, Google Drive): reemplaza a la sintetizada
         wav = None
         if pista and os.path.exists(pista) and os.path.getsize(pista) > 0:
+            desde = float(opciones.get("musica_desde") or 0)
+            if desde > 0.05:                                       # arranca desde el segundo elegido (evita la intro silenciosa)
+                pista = recortar_pista(pista, desde, os.path.join(tmp, "pista_desde.wav")) or pista
             entradas += ["-stream_loop", "-1", "-i", pista]      # en bucle si es más corta que el video; amix la corta al largo del video
             wav = b"pista"
         else:

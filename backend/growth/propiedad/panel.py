@@ -386,6 +386,7 @@ class PulirVideoRequest(BaseModel):
     musica_modo: str = ""                 # auto | fondo | protagonista | no
     mood: str = ""                        # chill | energetico | epico
     musica_pista: str = ""                # id de "Mi música" (Google Drive); vacío = música original sintetizada
+    musica_desde: float | None = None     # segundo desde el que arranca la pista (None = el inicio sugerido, donde empieza a sonar)
 
 
 class RedactarRedesRequest(BaseModel):
@@ -594,6 +595,38 @@ def post_redes_musica_quitar(item_id: str, x_admin_token: str | None = Header(de
     if not _md.quitar(item_id):
         raise HTTPException(status_code=404, detail="Esa pista ya no está en Mi música.")
     return {"ok": True, "items": _md.items()}
+
+
+class VideoDesdeFotosRequest(BaseModel):
+    fotos: list[str] = []
+    formato: str = "vertical"
+    segundos: float = 2.8
+
+
+@router.post("/admin/api/redes/pichangol/video/desde-fotos")
+def post_redes_video_desde_fotos(req: VideoDesdeFotosRequest, x_admin_token: str | None = Header(default=None)) -> dict:
+    """Fotos elegidas → clip con movimiento (Ken Burns + fundidos), que entra al flujo de pulido con música."""
+    _check(x_admin_token)
+    from marketing import foto_video as _fv
+    from marketing import post_redes as _pr
+    if not req.fotos:
+        raise HTTPException(status_code=400, detail="Elige al menos una foto.")
+    if req.formato not in _fv.FORMATOS:
+        raise HTTPException(status_code=400, detail="Formato no válido.")
+    try:
+        datos = [_pr._abrir_url(u) for u in req.fotos[:_fv.MAX_FOTOS]]
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"No se pudo leer una foto: {str(exc)[:160]}")
+    v = _pr.iniciar_video("fotos-con-movimiento.mp4")
+    try:
+        info = _fv.generar(datos, v["ruta"], formato=req.formato, segundos=req.segundos)
+    except Exception as exc:  # noqa: BLE001
+        _pr.descartar_video(v["id"])
+        raise HTTPException(status_code=502, detail=f"No se pudo armar el video: {str(exc)[:200]}")
+    v = _pr.confirmar_video(v["id"], os.path.getsize(v["ruta"]))
+    _pr.anotar_video(v["id"], desde_fotos=len(datos))
+    print(f"[fotos-video] {v['id']} · {len(datos)} fotos · {info['duracion']} s · {req.formato}", flush=True)
+    return {"ok": True, "video_id": v["id"], "nombre": v["nombre"], "bytes": v["bytes"], "duracion": info["duracion"], "ancho": info["ancho"], "alto": info["alto"]}
 
 
 @router.post("/admin/api/redes/pichangol/video/desde-biblioteca/{item_id}")
@@ -838,6 +871,10 @@ def post_redes_video_pulir(video_id: str, req: PulirVideoRequest, x_admin_token:
             raise HTTPException(status_code=502, detail=f"No se pudo traer la pista: {str(exc)[:200]}")
         opciones["musica_pista"] = pista["id"]
         opciones["musica_nombre"] = pista.get("nombre", "")
+        desde = float(req.musica_desde) if req.musica_desde is not None else float(pista.get("inicio_sugerido") or 0)
+        if desde < 0 or desde > 600:
+            raise HTTPException(status_code=400, detail="El segundo de inicio de la pista debe estar entre 0 y 600.")
+        opciones["musica_desde"] = desde
     salida = os.path.splitext(v["ruta"])[0] + "_pulido.mp4"
 
     def _al_terminar(vid, res, transcripcion):
@@ -3326,7 +3363,11 @@ function renderRedes(){
     : `<div id="rd_biblioteca"></div>`;
   const elegidas = redesSel.fotos.length ? `<div style="margin-top:12px;padding:10px 12px;border-radius:12px;background:#F2F8F3"><small style="font-weight:700">Elegidas para esta publicación · ${redesSel.fotos.length}/${redes.max_fotos||4}</small>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${redesSel.fotos.map(u=>`<span style="position:relative;display:inline-block"><img src="${esc(u)}" style="width:72px;height:72px;object-fit:cover;border-radius:10px;display:block"><button type="button" title="Quitar" onclick="toggleFotoRedes('${esc(u)}',false)" style="position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;border:0;background:#0A1B3D;color:#fff;font-weight:700;cursor:pointer;line-height:1">✕</button></span>`).join('')}</div>
-      <small style="color:var(--muted)">1 foto = imagen completa · 2 a 4 = collage. La primera es la principal.</small></div>` : '';
+      <small style="color:var(--muted)">1 foto = imagen completa · 2 a 4 = collage. La primera es la principal.</small>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid #DDE8E0"><button type="button" class="btn-sec" onclick="fotosAVideo()" ${fvOcupado?'disabled':''}>${fvOcupado?'<span class="rd-spin chico"></span> Armando el video…':'🎬 Convertir estas fotos en un video con movimiento'}</button>
+        <select id="rd_fv_formato" style="padding:6px 10px;border:1px solid var(--border);border-radius:10px;font-family:inherit;font-size:12.5px"><option value="vertical">Vertical 9:16 · Reels</option><option value="cuadrado">Cuadrado 1:1</option></select>
+        <select id="rd_fv_seg" style="padding:6px 10px;border:1px solid var(--border);border-radius:10px;font-family:inherit;font-size:12.5px"><option value="2">2 s por foto</option><option value="2.8" selected>3 s por foto</option><option value="4">4 s por foto</option></select>
+        <small style="color:var(--muted)">Zoom y paneo lentos con fundidos (estilo CapCut); luego le pones intro, rótulo, cierre y música en el paso 2.</small></div></div>` : '';
   const fuenteVBtn = (k, txt) => `<button type="button" class="rd-sub${redesUI.fuenteVideo===k?' on':''}" onclick="rdUI('fuenteVideo','${k}')">${txt}</button>`;
   const videoEstado = !esVideo ? '' : `<div style="margin-top:10px;padding:10px 12px;border-radius:12px;background:#F2F8F3;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>🎞️ ${esc(vd.nombre||'video')}</b><small style="color:var(--muted)">${mb(vd.bytes||0)}${vd.dur?' · '+Math.round(vd.dur)+' s':''}</small>
         <span id="rd_video_estado" style="flex:1;min-width:160px">${vd.estado==='subiendo'?'<span class="rd-spin chico"></span> Subiendo a la torre… <b id="rd_video_pct">'+(vd.pct||0)+'%</b>':vd.estado==='listo'?'<span style="color:var(--green);font-weight:700">✓ Video listo</span>':'<span style="color:var(--rojo)">'+esc(vd.error||'No se pudo subir')+'</span>'}</span>
@@ -3359,7 +3400,7 @@ function renderRedes(){
   const pl = vd.pulido || {}, po = pl.opciones || {};
   const MUS = {auto:'música automática', fondo:'música de fondo', protagonista:'música protagonista', no:'sin música'};
   const res2 = tipo==='foto' ? `${{cuadrado:'Cuadrado 1080×1080',horizontal:'Horizontal 1200×630',historia:'Historia 1080×1920'}[prev.f||redesSel.formato]||'Cuadrado'}${prev.e?' · etiqueta "'+esc(prev.e)+'"':''}`
-    : !esVideo ? '—' : (pl.estado==='listo' && pl.url ? `${pl.usar?'Versión pulida':'Original'} · ${po.formato||'vertical'} · ${MUS[po.musica_modo||'auto']}${po.musica_pista&&mus?' · 🎵 '+esc(po.musica_pista==='cualquiera'?'cualquiera':po.musica_pista.startsWith('carpeta:')?po.musica_pista.slice(8):(((mus.items||[]).find(t=>t.id===po.musica_pista)||{}).nombre||'')):''}` : (pl.estado==='transcribiendo'||pl.estado==='renderizando') ? 'Puliendo… '+(pl.progreso||0)+'%' : 'Sin pulir (se publica el original)');
+    : !esVideo ? '—' : (pl.estado==='listo' && pl.url ? `${pl.usar?'Versión pulida':'Original'} · ${po.formato||'vertical'} · ${MUS[po.musica_modo||'auto']}${po.musica_pista&&mus?' · 🎵 '+esc(po.musica_pista==='cualquiera'?'cualquiera':po.musica_pista.startsWith('carpeta:')?po.musica_pista.slice(8):(((mus.items||[]).find(t=>t.id===po.musica_pista)||{}).nombre||''))+(po.musica_desde!==''&&po.musica_desde!=null&&Number(po.musica_desde)>0?' desde '+po.musica_desde+' s':''):''}` : (pl.estado==='transcribiendo'||pl.estado==='renderizando') ? 'Puliendo… '+(pl.progreso||0)+'%' : 'Sin pulir (se publica el original)');
   const ok2 = redesUI.paso > 2;
 
   // ── PASO 3 · Texto ───────────────────────────────────────────────────────
@@ -3636,6 +3677,29 @@ async function cargarMusica(){
   if(primera && mus && document.getElementById('redesPanel')) renderRedes(); else renderMusica();   // la 1.ª carga pinta la píldora y el selector de pista
 }
 function musMsg(h){ const m=document.getElementById('rd_mus_msg'); if(m) m.innerHTML=h; }
+function musInicioSugerido(id){ const t = (mus&&mus.items||[]).find(x=>x.id===id); return t ? (Number(t.inicio_sugerido)||0) : 0; }
+function pulDesdeReproductor(){
+  const a = document.querySelector('.rd-paso[data-paso="2"] audio'); const pl = redesSel.video && redesSel.video.pulido; if(!pl) return;
+  if(!a){ alert('Elige una pista concreta (no "cualquiera") para usar el reproductor.'); return; }
+  pl.opciones.musica_desde = Math.round((a.currentTime||0)*2)/2; renderRedes(); toast('La pista arrancará en el segundo '+pl.opciones.musica_desde);
+}
+let fvOcupado = false;
+async function fotosAVideo(){
+  if(!redesSel.fotos.length){ alert('Elige al menos una foto.'); return; }
+  const formato = (document.getElementById('rd_fv_formato')||{}).value||'vertical', segundos = Number((document.getElementById('rd_fv_seg')||{}).value||2.8);
+  fvOcupado = true; renderRedes();
+  try{
+    const r = await fetch('/admin/api/redes/pichangol/video/desde-fotos',{method:'POST',headers:headers(),body:JSON.stringify({fotos:redesSel.fotos, formato, segundos})});
+    const j = await r.json().catch(()=>({}));
+    if(r.status===401){ salir(); return; }
+    if(!(r.ok && j.ok)){ fvOcupado=false; renderRedes(); alert(j.detail||'No se pudo armar el video'); return; }
+    const ra = await fetch('/admin/api/redes/pichangol/video/'+encodeURIComponent(j.video_id)+'/archivo?cual=original',{headers:headers()});
+    const url = ra.ok ? URL.createObjectURL(await ra.blob()) : '';
+    if(redesSel.video && redesSel.video.url && redesSel.video.url.startsWith('blob:')) URL.revokeObjectURL(redesSel.video.url);
+    redesSel.video = {nombre:j.nombre, bytes:j.bytes, url, estado:'listo', pct:100, id:j.video_id, dur:j.duracion, pulido:null};
+    redesUI.tipo='video'; redesUI.paso=2; fvOcupado=false; toast('Video armado: '+j.duracion+' s · elige la música y púlelo'); renderRedes(); botonesRedes(false);
+  }catch(e){ fvOcupado=false; renderRedes(); alert('Error de red'); }
+}
 function musOpciones(sel){
   // Pistas agrupadas por subcarpeta de Drive (= género) + "cualquiera de ese género" (la torre rota la menos usada).
   const items = (mus&&mus.items)||[]; if(!items.length) return '';
@@ -3805,7 +3869,7 @@ async function agAccion(bid, accion){
   agOcupado=''; renderAgente();
 }
 // ── Pulido con estilo Pichangol (FFmpeg en el backend) + subtítulos Whisper ──
-const PUL_DEF = {formato:'vertical', logo:true, intro:true, rotulo:true, cierre:true, subtitulos:true, musica:true, musica_modo:'auto', mood:'chill', musica_pista:''};
+const PUL_DEF = {formato:'vertical', logo:true, intro:true, rotulo:true, cierre:true, subtitulos:true, musica:true, musica_modo:'auto', mood:'chill', musica_pista:'', musica_desde:''};
 function pulidoHtml(vd){
   const cap = redes.pulido || {};
   if(cap.disponible===false) return '<small style="display:block;margin-top:8px;color:var(--muted)">Este servidor no tiene FFmpeg: el video se publica tal cual.</small>';
@@ -3844,17 +3908,17 @@ function pulidoHtml(vd){
           <select id="rd_pista" style="padding:6px 10px;border:1px solid var(--border);border-radius:10px;font-family:inherit;font-size:12.5px;max-width:320px" onchange="pulOpt('musica_pista',this.value)" ${ocupado?'disabled':''}><option value="">🎼 Original de Pichangol (sintetizada)</option>${musOpciones(o.musica_pista)}</select>
           ${(mus&&mus.items&&mus.items.length)?'':`<small style="color:var(--muted)">Sin pistas propias: conéctalas en <a href="#" onclick="rdUI('tab','conexiones');return false">Conexiones → Mi música</a>.</small>`}
           ${o.musica_pista&&mus&&(mus.items||[]).some(t=>t.id===o.musica_pista)?`<audio controls preload="none" src="${esc((mus.items.find(t=>t.id===o.musica_pista)||{}).url||'')}" style="height:30px;max-width:260px"></audio>`:(o.musica_pista?'<small style="color:var(--muted)">la torre elige la menos usada de ese género</small>':'')}</div>
-        ${o.musica_pista?'<small style="display:block;margin-top:4px;color:var(--muted)">La pista se pone en bucle si es más corta que el video y se corta al terminar, con fundido.</small>':`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center"><small style="color:var(--muted);font-weight:700;margin-right:4px">Estilo</small>${chip('mood','chill','Chill')} ${chip('mood','energetico','Enérgica')} ${chip('mood','epico','Épica')}</div>`}`:''}
+        ${o.musica_pista?`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px"><small style="color:var(--muted);font-weight:700;margin-right:4px">Empieza en el segundo</small><input id="rd_pista_desde" type="number" min="0" max="600" step="0.5" value="${esc(o.musica_desde===''||o.musica_desde==null?musInicioSugerido(o.musica_pista):o.musica_desde)}" onchange="pulOpt('musica_desde',this.value)" style="width:80px;padding:6px 8px;border:1px solid var(--border);border-radius:10px;font-family:inherit;font-size:12.5px" ${ocupado?'disabled':''}><button type="button" class="btn-sec" style="padding:5px 10px;font-size:12px" onclick="pulDesdeReproductor()" title="Pausa el reproductor donde quieras que arranque y pulsa aquí">📍 Usar donde está el reproductor</button><small style="color:var(--muted)">${musInicioSugerido(o.musica_pista)>0?'La torre detectó que empieza a sonar a los '+musInicioSugerido(o.musica_pista)+' s.':'Empieza a sonar desde el inicio.'}</small></div><small style="display:block;margin-top:4px;color:var(--muted)">La pista se pone en bucle si es más corta que el video y se corta al terminar, con fundido.</small>`:`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center"><small style="color:var(--muted);font-weight:700;margin-right:4px">Estilo</small>${chip('mood','chill','Chill')} ${chip('mood','energetico','Enérgica')} ${chip('mood','epico','Épica')}</div>`}`:''}
       ${subsOff?'<small style="color:#8a5a00">Subtítulos automáticos apagados: falta OPENAI_API_KEY en este ambiente.</small>':''}
       <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <button type="button" class="btn-ap" id="rd_pulir" onclick="pulirVideo()" ${ocupado?'disabled':''}>${ocupado?'<span class="rd-spin blanco"></span> Procesando…':(listo?'🎬 Volver a generar':'🎬 Generar versión pulida')}</button>
-        <small style="color:var(--muted)">Usa el título de arriba para el rótulo y el cierre. La música es original de Pichangol (libre de regalías), sin problemas de derechos en Facebook.</small>
+        <small style="color:var(--muted)">Usa el título de arriba para el rótulo y el cierre. ${o.musica_pista?'Vas a usar tu propia pista: asegúrate de tener licencia para publicarla en Facebook (una canción comercial puede silenciarse o bloquear el post).':'La música es original de Pichangol (libre de regalías), sin problemas de derechos en Facebook.'}</small>
       </div>
       ${estado}${usar}${editor}
     </div>`;
 }
 function fmtT(s){ s=Math.max(0,Number(s)||0); const m=Math.floor(s/60), r=s-m*60; return m+':'+(r<10?'0':'')+r.toFixed(1); }
-function pulOpt(k, v){ const pl = redesSel.video && redesSel.video.pulido; if(!pl) return; if(k==='formato'||k==='musica_modo'||k==='mood'||k==='musica_pista') pl.opciones[k]=v; else pl.opciones[k]=!!v; renderRedes(); }
+function pulOpt(k, v){ const pl = redesSel.video && redesSel.video.pulido; if(!pl) return; if(k==='musica_pista'){ pl.opciones.musica_pista=v; pl.opciones.musica_desde=''; } else if(k==='formato'||k==='musica_modo'||k==='mood'||k==='musica_desde') pl.opciones[k]=v; else pl.opciones[k]=!!v; renderRedes(); }
 function pulUsar(u){ const pl = redesSel.video && redesSel.video.pulido; if(!pl) return; pl.usar=!!u; renderRedes(); mostrarVideoPreview(); }
 function mostrarVideoPreview(){
   const v = document.querySelector('#rd_prev video'); const vd = redesSel.video; if(!v || !vd) return;
@@ -3868,7 +3932,7 @@ async function pulirVideo(segmentos){
   const titulo = (document.getElementById('rd_titulo')||{}).value || '';
   pl.estado = (o.subtitulos && !segmentos && !(pl.transcripcion && pl.transcripcion.segmentos)) ? 'transcribiendo' : 'renderizando'; pl.progreso = 0; pl.mensaje = 'Preparando…'; pl.error='';
   renderRedes(); botonesRedes('componiendo');
-  const cuerpo = {formato:o.formato, logo:!!o.logo, intro:!!o.intro, cierre:!!o.cierre, rotulo:!!o.rotulo, titulo:titulo, subtitulos:!!o.subtitulos, segmentos: segmentos||null, musica:o.musica_modo!=='no', musica_modo:o.musica_modo||'auto', mood:o.mood||'chill', musica_pista:o.musica_modo!=='no'?(o.musica_pista||''):''};
+  const cuerpo = {formato:o.formato, logo:!!o.logo, intro:!!o.intro, cierre:!!o.cierre, rotulo:!!o.rotulo, titulo:titulo, subtitulos:!!o.subtitulos, segmentos: segmentos||null, musica:o.musica_modo!=='no', musica_modo:o.musica_modo||'auto', mood:o.mood||'chill', musica_pista:o.musica_modo!=='no'?(o.musica_pista||''):'', musica_desde:(o.musica_pista&&o.musica_desde!==''&&o.musica_desde!=null)?Number(o.musica_desde):null};
   try{
     const r = await fetch('/admin/api/redes/pichangol/video/'+encodeURIComponent(vd.id)+'/pulir',{method:'POST',headers:headers(),body:JSON.stringify(cuerpo)});
     const j = await r.json().catch(()=>({}));

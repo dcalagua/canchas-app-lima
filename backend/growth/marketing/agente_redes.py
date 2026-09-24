@@ -359,6 +359,7 @@ def render_video(receta: dict) -> str:
         try:
             from marketing import musica_drive
             opciones["musica_ruta"] = musica_drive.descargar_a_temporal(receta["musica_id"])
+            opciones["musica_desde"] = float((musica_drive.item(receta["musica_id"]) or {}).get("inicio_sugerido") or 0)
         except Exception as e:  # noqa: BLE001
             print(f"[agente] pista propia no disponible, va con música original: {str(e)[:120]}", flush=True)
     vp.pulir(ruta, salida, opciones)

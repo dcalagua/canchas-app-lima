@@ -1322,6 +1322,38 @@ off → redeploy inmediato en cada push). URL pública:
   agente` (Drive simulado; FFmpeg real mezcla un WAV en bucle sobre un video
   mudo y se verifica con volumedetect). Backlog: música con licencia por API
   (Mubert / ElevenLabs Music) como catálogo de estilos.
+  **DESDE QUÉ SEGUNDO ARRANCA LA PISTA + FOTOS → VIDEO CON MOVIMIENTO
+  (pedido del director, 24-sep-2026: "hay veces que la música tarda 2 o 3
+  segundos en sonar… y me gustaría trabajar con fotos para que salgan
+  estilos con movimiento, CapCut o similar"):** (1) `PulirVideoRequest.
+  musica_desde` (segundos, 0-600): `video_pulido.recortar_pista` corta la
+  pista ANTES del bucle (`-ss`), así el video arranca ya con música. La
+  torre SUGIERE el valor: al sincronizar Drive, `musica_drive._inicio_
+  sugerido` corre `video_pulido.detectar_inicio` (FFmpeg `silencedetect`,
+  umbral −35 dB, hasta 15 s) y guarda `inicio_sugerido` por pista; el paso 2
+  del video muestra "Empieza en el segundo [n]" (`#rd_pista_desde`,
+  `musInicioSugerido`) con "📍 Usar donde está el reproductor"
+  (`pulDesdeReproductor` toma `currentTime` del `<audio>` de la vista
+  previa). El agente 24×7 manda `musica_desde = inicio_sugerido` de la
+  pista elegida. (2) `marketing/foto_video.py::generar(fotos, salida,
+  formato, segundos)`: Ken Burns (zoom/paneo lentos con ease in-out, 5
+  movimientos rotando), fundido desde negro, cruces de 0,5 s entre fotos y
+  cierre a negro; frames de Pillow enviados por pipe a FFmpeg (rawvideo →
+  H.264 CRF 22, 30 fps, sin audio); formatos `vertical` 1080×1920 (Reels),
+  `cuadrado` 1080², `horizontal` 1280×720; hasta 10 fotos, 1,5-6 s por
+  foto. `POST /admin/api/redes/pichangol/video/desde-fotos {fotos (URLs o
+  data URLs), formato, segundos}` deja el clip como VIDEO TEMPORAL
+  (`anotar_video(desde_fotos=n)`) y entra al mismo flujo de pulido (logo,
+  intro, rótulo, cierre, música). En el paso 1 del asistente, con fotos
+  elegidas, botón "🎬 Convertir estas fotos en un video con movimiento" +
+  selects formato / s por foto (`fotosAVideo`, `fvOcupado`); al terminar
+  salta solo al paso 2 con `redesUI.tipo='video'`. Con pista propia el pie
+  del pulido recuerda tener licencia para Facebook. Test
+  `test_fotos_a_video_con_movimiento_y_pista_desde_el_segundo` (3 fotos →
+  clip real de ~8 s; pulido con `musica_desde=1.0` → la pista de prueba
+  con 1 s de silencio ya suena desde el arranque, volumedetect). Backlog:
+  transiciones vistosas (Shotstack/Creatomate), plantillas de texto
+  animado, voz en off.
 - **DATOS DE LA EMPRESA CONFIGURABLES DESDE LA TORRE (pedido del director,
   sep-2026):** razón social, tipo y número de documento fiscal (RUC/NIT),
   dirección, ciudad corta, **WhatsApp POR PAÍS** (Perú, Ecuador, Bolivia:

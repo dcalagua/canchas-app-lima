@@ -180,8 +180,9 @@ def sincronizar() -> dict:
             datos = _bib._descargar(f"{DRIVE}/files/{urllib.parse.quote(f['drive_id'])}?alt=media&supportsAllDrives=true", tok, PISTA_MAX_BYTES)
             iid = prev["id"] if prev else "mm_" + uuid.uuid4().hex[:12]
             url = _bib._subir(f"{CARPETA_STORAGE}/{iid}.{f['ext']}", datos, f["mime"])
+            inicio = _inicio_sugerido(datos, f["ext"])
             fila = {"id": iid, "drive_id": f["drive_id"], "nombre": f["nombre"], "mime": f["mime"], "ext": f["ext"], "url": url, "bytes": len(datos),
-                    "carpeta": f.get("carpeta", ""), "md5": f["md5"], "modificado": f["modificado"], "creado_en": prev["creado_en"] if prev else time.time(),
+                    "carpeta": f.get("carpeta", ""), "inicio_sugerido": inicio, "md5": f["md5"], "modificado": f["modificado"], "creado_en": prev["creado_en"] if prev else time.time(),
                     "usos": int(prev.get("usos") or 0) if prev else 0, "ultimo_uso": float(prev.get("ultimo_uso") or 0) if prev else 0.0, "origen": "google_drive"}
             if prev:
                 stores.musica_marca[:] = [fila if x.get("id") == iid else x for x in stores.musica_marca]
@@ -203,6 +204,25 @@ def sincronizar() -> dict:
     _persistir()
     print(f"[musica] Drive sincronizado: {nuevos} nuevas · {actualizados} actualizadas · {quitados} quitadas · {omitidos} omitidas", flush=True)
     return {"nuevos": nuevos, "actualizados": actualizados, "quitados": quitados, "omitidos": omitidos, "detalle": detalle[:20], "total": len(stores.musica_marca)}
+
+
+def _inicio_sugerido(datos: bytes, ext: str) -> float:
+    """Segundo en que la pista empieza a sonar de verdad (queja del director: "a veces la
+    música tarda 2 o 3 segundos en sonar"). Se calcula UNA vez al sincronizar."""
+    try:
+        from marketing import video_pulido as vp
+        with tempfile.NamedTemporaryFile(suffix="." + ext, delete=False) as f:
+            f.write(datos)
+            ruta = f.name
+        try:
+            return vp.detectar_inicio(ruta)
+        finally:
+            try:
+                os.remove(ruta)
+            except OSError:
+                pass
+    except Exception:  # noqa: BLE001
+        return 0.0
 
 
 # ── catálogo ─────────────────────────────────────────────────────────────────
