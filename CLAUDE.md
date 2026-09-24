@@ -1017,6 +1017,32 @@ off → redeploy inmediato en cada push). URL pública:
     triggers siguen disparando: Postgres pide EXECUTE al CREAR el trigger,
     no al dispararlo (probado con tabla desechable: INSERT como anon →
     dispara; llamada directa como anon → permission denied).
+- **PUBLICAR EN FACEBOOK DESDE LA TORRE (pedido del director, 24-sep-2026:
+  "una variante con fotos reales de canchas para mi primera publicación… y
+  que en el admin haya un agente que mueva las redes"):** fase 1 en
+  `backend/growth/marketing/post_redes.py` + pane `/admin` → Comunicación →
+  **"📣 Publicar en Facebook"** (`GET /admin/api/redes/pichangol`, `POST
+  …/plantilla|previsualizar|publicar`). El operador elige un LOCAL (fotos
+  reales del bucket `canchas/` que subió el dueño, `_redes_canchas` agrupa
+  por `club`) o sube fotos desde su computadora (data URL, comprimidas a
+  1600 px en el navegador), hasta 4; plantilla (`PLANTILLAS`: lanzamiento,
+  nuevo_local, promo, libre; `rellenar()` con {local} {zona} {deportes}
+  {precio} {url}); `componer()` arma la pieza con Pillow (collage 1-4 fotos,
+  degradado inferior, logo en disco, etiqueta naranja, título/subtítulo/pie;
+  formatos `cuadrado` 1080², `horizontal` 1200×630, `historia` 1080×1920; DM
+  Sans en `marketing/assets/`, sin emojis en la imagen). Vista previa en
+  base64, "Descargar PNG" y **"Publicar en Facebook"** = Graph
+  `/{FB_PAGE_ID}/photos` con el archivo en multipart (`_graph_multipart`, no
+  necesita URL pública) + `message`. Credenciales `FB_PAGE_ID` +
+  `FB_PAGE_TOKEN` (Page Access Token de larga duración, app propia en modo
+  desarrollo: los administradores publican en sus páginas SIN App Review;
+  guía en el propio pane); sin ellas el botón queda deshabilitado y la torre
+  solo compone. Historial en `stores.publicaciones_redes` (snapshot, últimas
+  50). **El entorno de Claude NO alcanza Storage de Supabase ni bancos de
+  fotos (proxy 403): las piezas con fotos reales se componen en el backend.**
+  Fase 2 (backlog): calendario + copy con IA reutilizando `marketing/cm.py`.
+  Portada de la página: `tool/portada_facebook.py` →
+  `static/brand/portada_facebook.png` (1640×720). Test `test_redes_pichangol.py`.
 - **DATOS DE LA EMPRESA CONFIGURABLES DESDE LA TORRE (pedido del director,
   sep-2026):** razón social, tipo y número de documento fiscal (RUC/NIT),
   dirección, ciudad corta, **WhatsApp POR PAÍS** (Perú, Ecuador, Bolivia:

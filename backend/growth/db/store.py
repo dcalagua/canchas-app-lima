@@ -583,6 +583,8 @@ class Stores:
         self.servicios_extra_version: int = 1
         # Sugerencias de dueños ("mi local ofrece X"): las atiende el operador.
         self.sugerencias_servicios: list[dict] = []
+        # Publicaciones hechas en la PÁGINA de Facebook de Pichangol desde la torre.
+        self.publicaciones_redes: list[dict] = []
         self._idem: dict[tuple[str, str], dict] = {}
         self._ids: dict[str, int] = {}
 
@@ -1001,6 +1003,7 @@ class Stores:
                 k: dict(v) for k, v in self.payphone_pagos.items()},
             "reclamaciones": [dict(r) for r in self.reclamaciones],
             "cancelaciones_web": [dict(r) for r in self.cancelaciones_web],
+            "publicaciones_redes": [dict(r) for r in self.publicaciones_redes],
             "servicios_extra": {k: dict(v) for k, v in self.servicios_extra.items()},
             "servicios_extra_version": int(self.servicios_extra_version),
             "sugerencias_servicios": [dict(r) for r in self.sugerencias_servicios],
@@ -1089,6 +1092,7 @@ class Stores:
         }
         self.reclamaciones = [dict(r) for r in (data.get("reclamaciones") or [])]
         self.cancelaciones_web = [dict(r) for r in (data.get("cancelaciones_web") or [])]
+        self.publicaciones_redes = [dict(r) for r in (data.get("publicaciones_redes") or [])]
         self.servicios_extra = {k: dict(v) for k, v in (data.get("servicios_extra") or {}).items()}
         self.servicios_extra_version = int(data.get("servicios_extra_version") or 1)
         self.sugerencias_servicios = [dict(r) for r in (data.get("sugerencias_servicios") or [])]

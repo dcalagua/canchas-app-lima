@@ -1,13 +1,13 @@
 """Portada de Facebook/redes de Pichangol (1640×720 = 2× de 820×360: escritorio
 recorta 24 px arriba/abajo, móvil muestra el centro 640×360). Se corre desde la
 raíz del repo con Pillow: `python tool/portada_facebook.py`. Fuente DM Sans (OFL)
-en `tool/fonts/`; logos de `backend/growth/static/brand/`."""
+en `backend/growth/marketing/assets/` (las mismas del compositor de posts); logos de `backend/growth/static/brand/`."""
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 import os
-S = os.path.join(os.path.dirname(os.path.abspath(__file__)))  # tool/
+S = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "backend", "growth", "marketing")  # fuentes DM Sans en marketing/assets
 W, H = 1640, 720  # 2× de 820×360: escritorio recorta 24 px arriba/abajo, móvil muestra el centro 640×360
 VERDE, VERDE_OSC, LIMA, NARANJA, NOCHE = (11, 138, 62), (6, 122, 56), (124, 181, 24), (242, 140, 40), (10, 27, 61)
-def F(peso, tam): return ImageFont.truetype(os.path.join(S, "fonts", f"DMSans-{peso}.ttf"), tam)
+def F(peso, tam): return ImageFont.truetype(os.path.join(S, "assets", f"DMSans-{peso}.ttf"), tam)
 
 # Fondo: degradado diagonal verde oscuro → verde con brillo lima a la derecha
 img = Image.new("RGB", (W, H), VERDE)

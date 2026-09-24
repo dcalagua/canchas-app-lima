@@ -355,6 +355,99 @@ def set_sugerencia_servicio(sug_id: str, req: EstadoSugerenciaRequest,
     return {"ok": True, **get_servicios_extra_admin(x_admin_token)}
 
 
+class PostRedesRequest(BaseModel):
+    fotos: list[str] = []          # URLs https del bucket o data:image (adjuntas)
+    titulo: str = ""
+    subtitulo: str = ""
+    pie: str = "www.pichangol.app"
+    etiqueta: str = ""
+    formato: str = "cuadrado"
+    texto: str = ""                # texto del post (solo al publicar)
+    plantilla: str = ""
+    cancha_id: str = ""
+
+
+def _redes_canchas() -> list[dict]:
+    """Locales con fotos reales para el compositor (agrupados por local)."""
+    from web import datos as _wd
+    out: dict[str, dict] = {}
+    for c in _wd.canchas_publicas():
+        fotos = [u for u in ([c.get("foto_url")] + list(c.get("fotos") or [])) if isinstance(u, str) and u.startswith("https://")]
+        fotos = list(dict.fromkeys(fotos))
+        if not fotos:
+            continue
+        local = (c.get("club") or c.get("nombre") or "").strip()
+        k = local.lower()
+        if k not in out:
+            out[k] = {"local": local, "zona": c.get("barrio") or c.get("distrito") or "", "canchas": [], "fotos": [],
+                      "verificada": bool(c.get("verificada")), "muestra": {"id": c["id"], "club": c.get("club"), "nombre": c.get("nombre"),
+                      "barrio": c.get("barrio"), "distrito": c.get("distrito"), "deporte": c.get("deporte"), "deportes": c.get("deportes"),
+                      "precio_hora": c.get("precio_hora"), "moneda": c.get("moneda")}}
+        out[k]["canchas"].append({"id": c["id"], "nombre": c.get("nombre"), "deporte": c.get("deporte")})
+        for u in fotos:
+            if u not in out[k]["fotos"]:
+                out[k]["fotos"].append(u)
+    return sorted(out.values(), key=lambda x: (not x["verificada"], x["local"]))
+
+
+@router.get("/admin/api/redes/pichangol")
+def get_redes_pichangol(x_admin_token: str | None = Header(default=None)) -> dict:
+    """Publicar en la PÁGINA de Facebook de Pichangol: estado de credenciales,
+    plantillas, locales con fotos reales e historial."""
+    _check(x_admin_token)
+    from marketing import post_redes as _pr
+    return {"facebook": _pr.estado_pagina(), "plantillas": {k: {"nombre": v["nombre"]} for k, v in _pr.PLANTILLAS.items()},
+            "formatos": list(_pr.FORMATOS), "locales": _redes_canchas(), "historial": _pr.historial(), "max_fotos": _pr.MAX_FOTOS}
+
+
+@router.post("/admin/api/redes/pichangol/plantilla")
+def post_redes_plantilla(req: PostRedesRequest, x_admin_token: str | None = Header(default=None)) -> dict:
+    """Rellena título/subtítulo/texto de una plantilla con los datos del local elegido."""
+    _check(x_admin_token)
+    from marketing import post_redes as _pr
+    c = next((l["muestra"] for l in _redes_canchas() if any(x["id"] == req.cancha_id for x in l["canchas"])), None) if req.cancha_id else None
+    return {"ok": True, "titulo": _pr.rellenar(req.plantilla, c, "titulo"), "subtitulo": _pr.rellenar(req.plantilla, c, "subtitulo"),
+            "texto": _pr.rellenar(req.plantilla, c, "texto")}
+
+
+@router.post("/admin/api/redes/pichangol/previsualizar")
+def post_redes_previsualizar(req: PostRedesRequest, x_admin_token: str | None = Header(default=None)) -> dict:
+    _check(x_admin_token)
+    from marketing import post_redes as _pr
+    try:
+        png = _pr.componer(req.fotos, req.titulo, req.subtitulo, req.pie, req.formato, req.etiqueta)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"No se pudo componer la imagen: {str(exc)[:160]}")
+    import base64 as _b64
+    return {"ok": True, "imagen": "data:image/png;base64," + _b64.b64encode(png).decode(), "bytes": len(png)}
+
+
+@router.post("/admin/api/redes/pichangol/publicar")
+def post_redes_publicar(req: PostRedesRequest, x_admin_token: str | None = Header(default=None)) -> dict:
+    """Compone y PUBLICA en la página de Facebook (foto + texto). Sin
+    credenciales responde 409 `sin_credenciales` con la guía."""
+    _check(x_admin_token)
+    from marketing import post_redes as _pr
+    if not _pr.configurado():
+        raise HTTPException(status_code=409, detail="sin_credenciales")
+    if not (req.texto or "").strip():
+        raise HTTPException(status_code=400, detail="Escribe el texto de la publicación.")
+    try:
+        png = _pr.componer(req.fotos, req.titulo, req.subtitulo, req.pie, req.formato, req.etiqueta)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    r = _pr.publicar_facebook(req.texto.strip(), png)
+    fila = _pr.registrar({"red": "facebook", "plantilla": req.plantilla, "titulo": req.titulo, "texto": req.texto.strip()[:600],
+                          "fotos": len(req.fotos), "formato": req.formato, "ok": bool(r.get("ok")),
+                          "post_id": r.get("post_id", ""), "url": r.get("url", ""), "error": r.get("error", "")})
+    if not r.get("ok"):
+        raise HTTPException(status_code=502, detail=f"Facebook rechazó la publicación: {r.get('error')}")
+    print(f"[redes] publicado en Facebook {r.get('post_id')} · {req.titulo!r}", flush=True)
+    return {"ok": True, "publicacion": fila, "url": r.get("url", "")}
+
+
 @router.get("/admin/api/marketing")
 def get_marketing_admin(x_admin_token: str | None = Header(default=None)) -> dict:
     """Precios de los servicios de marketing + tope mensual de posts IA."""
@@ -1596,11 +1689,16 @@ _HTML = r"""<!DOCTYPE html>
             <span class="md-ico">🧩</span>
             <span class="md-txt"><b>Servicios extra</b><small>Catálogo global de add-ons (piscina, árbitro, entrada general…) · sugerencias de dueños</small></span>
           </button>
+          <button class="md-item" onclick="mostrarPane(this,'redesPanel');cargarRedes()">
+            <span class="md-ico">📣</span>
+            <span class="md-txt"><b>Publicar en Facebook</b><small>Piezas con fotos reales de las canchas · publicación directa en la página de Pichangol</small></span>
+          </button>
         </aside>
         <div class="md-detail">
           <div class="md-pane" id="canal"></div>
           <div class="md-pane" id="empresaPanel" style="display:none"></div>
           <div class="md-pane" id="serviciosPanel" style="display:none"></div>
+          <div class="md-pane" id="redesPanel" style="display:none"></div>
         </div>
       </div>
     </section>
@@ -2601,6 +2699,107 @@ function usarSugerencia(id, texto){
   document.getElementById('ns_nombre').value = texto; document.getElementById('ns_clave').value = '';
   document.getElementById('ns_nombre').scrollIntoView({behavior:'smooth', block:'center'}); document.getElementById('ns_nombre').focus();
   atenderSugerencia(id, 'atendida');
+}
+// ── Publicar en Facebook (página de Pichangol): fotos reales + plantilla + vista previa ──
+let redes = {facebook:{}, locales:[], plantillas:{}, historial:[]}, redesSel = {fotos:[], cancha:'', plantilla:'lanzamiento', formato:'cuadrado', img:''};
+async function cargarRedes(){
+  const box = document.getElementById('redesPanel'); if(!box) return;
+  box.innerHTML = '<div class="card">Cargando…</div>';
+  try{
+    const r = await fetch('/admin/api/redes/pichangol',{headers:headers()});
+    if(r.status===401){ salir(); return; }
+    if(!r.ok){ box.innerHTML='<div class="card">No se pudo cargar.</div>'; return; }
+    redes = await r.json(); renderRedes();
+    if(redesSel.cancha || redes.locales.length){ if(!redesSel.cancha) redesSel.cancha = redes.locales[0].canchas[0].id; aplicarPlantilla(); }
+  }catch(e){ box.innerHTML='<div class="card">Error de red.</div>'; }
+}
+function renderRedes(){
+  const fb = redes.facebook || {};
+  const inp = 'style="display:block;width:100%;margin-top:4px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;font-family:inherit;font-size:14px"';
+  const estado = fb.configurado
+    ? (fb.nombre ? `<span style="color:var(--green);font-weight:700">● Conectado a la página <b>${esc(fb.nombre)}</b></span> ${fb.link?`<a href="${esc(fb.link)}" target="_blank" rel="noopener">abrir ↗</a>`:''}`
+                 : `<span style="color:var(--rojo);font-weight:700">● Credenciales configuradas pero Facebook respondió: ${esc(fb.error||'error')}</span>`)
+    : `<span style="color:var(--muted);font-weight:700">○ Sin credenciales de Facebook</span>: la torre compone y descarga la pieza; para publicar directo, pon <code>FB_PAGE_ID</code> y <code>FB_PAGE_TOKEN</code> en Railway (guía abajo).`;
+  const locales = (redes.locales||[]).map(l=>`<option value="${esc(l.canchas[0].id)}"${redesSel.cancha===l.canchas[0].id?' selected':''}>${esc(l.local)}${l.zona?' · '+esc(l.zona):''} (${l.fotos.length} fotos)</option>`).join('');
+  const loc = (redes.locales||[]).find(l=>l.canchas.some(c=>c.id===redesSel.cancha));
+  const fotos = loc ? loc.fotos.map(u=>`<label style="position:relative;cursor:pointer"><img src="${esc(u)}" style="width:118px;height:118px;object-fit:cover;border-radius:12px;border:3px solid ${redesSel.fotos.includes(u)?'var(--green)':'transparent'};display:block"><input type="checkbox" ${redesSel.fotos.includes(u)?'checked':''} onchange="toggleFotoRedes('${esc(u)}',this.checked)" style="position:absolute;top:8px;left:8px;width:18px;height:18px"></label>`).join('') : '<span style="color:var(--muted)">Este ambiente aún no tiene locales con fotos. Sube fotos desde tu computadora ↓</span>';
+  const plantillas = Object.entries(redes.plantillas||{}).map(([k,v])=>`<button class="btn-sec" style="${redesSel.plantilla===k?'border-color:var(--green);background:#F2F8F3':''}" onclick="redesSel.plantilla='${k}';aplicarPlantilla()">${esc(v.nombre)}</button>`).join(' ');
+  const hist = (redes.historial||[]).slice(0,8).map(h=>`<div class="row" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--border);padding:8px 0"><span>${h.ok?'✅':'⚠️'}</span><div style="flex:1;min-width:200px"><b>${esc(h.titulo||'(sin título)')}</b> <small style="color:var(--muted)">· ${esc(h.plantilla||'')} · ${h.fotos} foto(s) · ${new Date((h.creado_en||0)*1000).toLocaleString('es-PE')}</small>${h.error?`<br><small style="color:var(--rojo)">${esc(h.error)}</small>`:''}</div>${h.url?`<a class="btn-sec" href="${esc(h.url)}" target="_blank" rel="noopener">Ver en Facebook ↗</a>`:''}</div>`).join('') || '<div class="row" style="color:var(--muted)">Todavía no hay publicaciones.</div>';
+  document.getElementById('redesPanel').innerHTML = `
+    <div class="card"><div class="top"><h3>Publicar en Facebook</h3></div>
+      <div class="row">${estado}</div>
+      <div class="row" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:10px">
+        <div>
+          <label style="font-size:12.5px;font-weight:700">1 · Local (fotos reales que subió el dueño)
+            <select id="rd_local" ${inp} onchange="redesSel.cancha=this.value;redesSel.fotos=[];renderRedes();aplicarPlantilla()"><option value="">— elige un local —</option>${locales}</select></label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px" id="rd_fotos">${fotos}</div>
+          <div style="margin-top:8px"><label class="btn-sec" for="rd_subir" style="cursor:pointer">📷 Subir fotos desde tu computadora</label><input type="file" id="rd_subir" accept="image/*" multiple hidden onchange="subirFotosRedes(this)"><small style="color:var(--muted);margin-left:8px">hasta ${redes.max_fotos||4} fotos en total · ${redesSel.fotos.length} elegida(s)</small></div>
+          <label style="display:block;margin-top:14px;font-size:12.5px;font-weight:700">2 · Plantilla</label>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">${plantillas}</div>
+          <label style="display:block;margin-top:12px;font-size:12.5px;font-weight:700">Título en la imagen<input id="rd_titulo" ${inp} maxlength="60"></label>
+          <label style="display:block;margin-top:8px;font-size:12.5px;font-weight:700">Subtítulo<input id="rd_sub" ${inp} maxlength="90"></label>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px">
+            <label style="font-size:12.5px;font-weight:700">Etiqueta<input id="rd_etq" ${inp} maxlength="16" placeholder="Nuevo"></label>
+            <label style="font-size:12.5px;font-weight:700">Pie<input id="rd_pie" ${inp} value="www.pichangol.app" maxlength="40"></label>
+            <label style="font-size:12.5px;font-weight:700">Formato<select id="rd_formato" ${inp} onchange="redesSel.formato=this.value"><option value="cuadrado">Cuadrado 1080×1080 (feed)</option><option value="horizontal">Horizontal 1200×630</option><option value="historia">Historia 1080×1920</option></select></label>
+          </div>
+          <label style="display:block;margin-top:12px;font-size:12.5px;font-weight:700">3 · Texto de la publicación<textarea id="rd_texto" rows="7" ${inp}></textarea></label>
+          <div class="actions" style="margin-top:12px">
+            <button class="btn-sec" onclick="previsualizarRedes()">👁️ Previsualizar</button>
+            <button class="btn-sec" id="rd_descargar" onclick="descargarRedes()" disabled>⬇️ Descargar PNG</button>
+            <button class="btn-ap" id="rd_publicar" onclick="publicarRedes()" ${fb.configurado?'':'disabled title="Configura FB_PAGE_ID y FB_PAGE_TOKEN en Railway"'}>📣 Publicar en Facebook</button>
+          </div>
+          <div id="rd_msg" class="row" style="margin-top:8px"></div>
+        </div>
+        <div><label style="font-size:12.5px;font-weight:700">Vista previa</label>
+          <div id="rd_prev" style="margin-top:4px;border:1px dashed var(--border);border-radius:14px;min-height:320px;display:flex;align-items:center;justify-content:center;color:var(--muted);background:#fafafa;overflow:hidden">${redesSel.img?`<img src="${redesSel.img}" style="max-width:100%;max-height:560px;display:block">`:'Elige fotos y pulsa Previsualizar'}</div>
+        </div>
+      </div>
+      <details class="row" style="margin-top:14px"><summary style="cursor:pointer;font-weight:700">🔑 Cómo conectar la página (una sola vez)</summary>
+        <ol style="margin:8px 0 0 18px;line-height:1.6">
+          <li>Entra a <b>developers.facebook.com</b> con la cuenta que administra la página Pichangol → <b>Mis apps → Crear app</b> (tipo Empresa). Puede quedarse en <b>modo desarrollo</b>: los administradores de la app pueden publicar en sus propias páginas sin revisión de Meta.</li>
+          <li>En la app: <b>Herramientas → Explorador de la API Graph</b>. Elige la app, en "Usuario o página" selecciona <b>Obtener token de acceso a la página</b> → marca la página Pichangol y los permisos <code>pages_manage_posts</code>, <code>pages_read_engagement</code>, <code>pages_show_list</code> → Generar.</li>
+          <li>Convierte ese token en uno de LARGA duración: <b>Herramientas → Depurador de tokens de acceso</b> → pega el token → "Extender token de acceso". Un token de PÁGINA obtenido desde un token de usuario extendido no caduca.</li>
+          <li>Copia el <b>ID de la página</b> (Configuración de la página → Información de la página) y el token, y ponlos en Railway como <code>FB_PAGE_ID</code> y <code>FB_PAGE_TOKEN</code> en el servicio de este ambiente. <b>No los pegues en el chat ni en el repo.</b> Al redesplegar, arriba aparecerá "Conectado a la página …".</li>
+        </ol></details>
+      <div class="row" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)"><b>Historial</b>${hist}</div>
+    </div>`;
+  if(loc){ document.getElementById('rd_formato').value = redesSel.formato; }
+}
+function toggleFotoRedes(u, on){
+  const i = redesSel.fotos.indexOf(u);
+  if(on && i<0){ if(redesSel.fotos.length >= (redes.max_fotos||4)){ alert('Máximo '+(redes.max_fotos||4)+' fotos.'); renderRedes(); return; } redesSel.fotos.push(u); }
+  if(!on && i>=0) redesSel.fotos.splice(i,1);
+  const t=document.getElementById('rd_titulo').value, s=document.getElementById('rd_sub').value, x=document.getElementById('rd_texto').value, e=document.getElementById('rd_etq').value;
+  renderRedes(); document.getElementById('rd_titulo').value=t; document.getElementById('rd_sub').value=s; document.getElementById('rd_texto').value=x; document.getElementById('rd_etq').value=e;
+}
+function subirFotosRedes(inp){
+  const files = Array.from(inp.files||[]); inp.value='';
+  files.forEach(f=>{ const img = new Image(), url = URL.createObjectURL(f); img.onload = ()=>{ const M=1600,k=Math.min(1,M/Math.max(img.width,img.height)); const cv=document.createElement('canvas'); cv.width=Math.round(img.width*k); cv.height=Math.round(img.height*k); cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height); URL.revokeObjectURL(url); toggleFotoRedes(cv.toDataURL('image/jpeg',0.86), true); }; img.src=url; });
+}
+async function aplicarPlantilla(){
+  const r = await fetch('/admin/api/redes/pichangol/plantilla',{method:'POST',headers:headers(),body:JSON.stringify({plantilla:redesSel.plantilla,cancha_id:redesSel.cancha})});
+  const j = await r.json().catch(()=>({}));
+  if(j.ok){ document.getElementById('rd_titulo').value=j.titulo; document.getElementById('rd_sub').value=j.subtitulo; document.getElementById('rd_texto').value=j.texto; }
+  renderRedesBotones();
+}
+function renderRedesBotones(){ document.querySelectorAll('#redesPanel .btn-sec').forEach(b=>{}); }
+function cuerpoRedes(){ return {fotos:redesSel.fotos, titulo:document.getElementById('rd_titulo').value, subtitulo:document.getElementById('rd_sub').value, pie:document.getElementById('rd_pie').value, etiqueta:document.getElementById('rd_etq').value, formato:document.getElementById('rd_formato').value, texto:document.getElementById('rd_texto').value, plantilla:redesSel.plantilla, cancha_id:redesSel.cancha}; }
+async function previsualizarRedes(){
+  const msg = document.getElementById('rd_msg'); msg.textContent = 'Componiendo…';
+  const r = await fetch('/admin/api/redes/pichangol/previsualizar',{method:'POST',headers:headers(),body:JSON.stringify(cuerpoRedes())});
+  const j = await r.json().catch(()=>({}));
+  if(r.ok && j.ok){ redesSel.img = j.imagen; document.getElementById('rd_prev').innerHTML = `<img src="${j.imagen}" style="max-width:100%;max-height:560px;display:block">`; document.getElementById('rd_descargar').disabled=false; msg.textContent = 'Lista ('+Math.round(j.bytes/1024)+' KB). Revisa y publica o descarga.'; }
+  else msg.innerHTML = `<span style="color:var(--rojo)">${esc(j.detail||'No se pudo componer')}</span>`;
+}
+function descargarRedes(){ if(!redesSel.img) return; const a=document.createElement('a'); a.href=redesSel.img; a.download='pichangol-post-'+Date.now()+'.png'; a.click(); }
+async function publicarRedes(){
+  if(!confirm('¿Publicar ahora en la página de Facebook de Pichangol?')) return;
+  const msg = document.getElementById('rd_msg'); msg.textContent = 'Publicando…';
+  const r = await fetch('/admin/api/redes/pichangol/publicar',{method:'POST',headers:headers(),body:JSON.stringify(cuerpoRedes())});
+  const j = await r.json().catch(()=>({}));
+  if(r.ok && j.ok){ toast('Publicado en Facebook'); msg.innerHTML = `✅ Publicado. ${j.url?`<a href="${esc(j.url)}" target="_blank" rel="noopener">Ver la publicación ↗</a>`:''}`; cargarRedes(); }
+  else msg.innerHTML = `<span style="color:var(--rojo)">${esc(j.detail||'No se pudo publicar')}</span>`;
 }
 // Navegación de la barra lateral: muestra una sección y marca su ítem activo.
 // Maestro–detalle genérico (Cobros, Operación, Comunicación…): muestra el
