@@ -57,6 +57,17 @@ def test_componer_con_fotos_reales_y_plantillas(monkeypatch):
     for n, (w, h) in ((1, (1080, 1080)), (2, (1080, 1080)), (3, (1080, 1080)), (4, (1080, 1080))):
         png = pr.componer(["https://x.supabase.co/storage/v1/object/public/canchas/u1/a.jpg"] * n, "¡Llegó Pichangol!", "CEANDE · Lurigancho", etiqueta="Nuevo")
         im = Image.open(io.BytesIO(png)); assert im.size == (w, h) and im.format == "JPEG"
+    # Título de DOS líneas + subtítulo: la pastilla del pie NO tapa el subtítulo (queja del director,
+    # sep-2026: "lo de abajo donde dice pichangol.app tapa el mensaje"): el bloque se arma de abajo
+    # hacia arriba y el degradado crece si hace falta; en horizontal el título cabe en el lienzo.
+    from PIL import ImageDraw as _ID
+    for fmt, (W, Hh) in pr.FORMATOS.items():
+        lay = pr._layout_texto(_ID.Draw(Image.new("RGB", (W, Hh))), W, Hh, int(W * 0.04), "5 minutos que evitan lesiones",
+                               "Calienta antes de entrar a la cancha y juega tranquilo", "www.pichangol.app", fmt)
+        assert len(lay["titulo"]) == 2 and lay["subtitulo"] and lay["pie"], fmt
+        fondo_sub = lay["subtitulo"][-1][1] + lay["subtitulo"][-1][3].size
+        assert fondo_sub < lay["pie"]["caja"][1], (fmt, fondo_sub, lay["pie"]["caja"])          # subtítulo termina ANTES de la pastilla
+        assert lay["titulo"][0][1] > Hh - lay["alto_txt"] and lay["titulo"][0][1] > int(Hh * 0.3), fmt   # título dentro del degradado y del lienzo
     im = Image.open(io.BytesIO(pr.componer([_data_url((200, 80, 40))], "Juega esta semana", formato="horizontal")))
     assert im.size == (1200, 630)
     assert Image.open(io.BytesIO(pr.componer([_data_url((10, 10, 10))], "x", formato="historia"))).size == (1080, 1920)

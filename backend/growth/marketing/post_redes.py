@@ -172,8 +172,14 @@ def componer(fotos_urls: list[str], titulo: str, subtitulo: str = "", pie: str =
         for k, f in enumerate(fotos[:4]):
             img.paste(_recortar(f, W - w1 - gap if k % 2 else w1, H - h1 - gap if k >= 2 else h1), pos[k])
     img = img.convert("RGBA")
-    # Degradado inferior para legibilidad (más alto cuanto más texto).
-    alto_txt = int(H * (0.40 if formato != "historia" else 0.30))
+    d = ImageDraw.Draw(img)
+    m = int(W * 0.04)
+    # El bloque de texto se ARMA DE ABAJO HACIA ARRIBA: primero el pie (pastilla blanca),
+    # encima el subtítulo y encima el título. Antes el título/subtítulo bajaban desde una
+    # altura fija y, con título de dos líneas, la pastilla del pie tapaba el subtítulo
+    # (queja del director, sep-2026). El degradado se agranda si el texto lo pide.
+    lay = _layout_texto(d, W, H, m, titulo, subtitulo, pie, formato)
+    alto_txt = lay["alto_txt"]
     # Degradado como columna de 1 px escalada (sin bucle por píxel: en el CPU
     # compartido de Railway el bucle + PNG optimizado tardaban ~1 minuto).
     col = Image.new("L", (1, alto_txt))
@@ -181,9 +187,7 @@ def componer(fotos_urls: list[str], titulo: str, subtitulo: str = "", pie: str =
     grad = Image.new("RGBA", (W, alto_txt), (6, 60, 30, 255))
     grad.putalpha(col.resize((W, alto_txt)))
     img.alpha_composite(grad, (0, H - alto_txt))
-    d = ImageDraw.Draw(img)
     # Marca arriba a la izquierda.
-    m = int(W * 0.04)
     disco = _logo_disco(int(W * 0.085))
     img.paste(disco, (m, m), disco)
     d.text((m + disco.width + int(W * 0.015), m + disco.height * 0.16), "Pichangol", font=_font("Bold", int(W * 0.05)), fill=(255, 255, 255),
@@ -197,32 +201,59 @@ def componer(fotos_urls: list[str], titulo: str, subtitulo: str = "", pie: str =
         x1 = W - m
         d.rounded_rectangle([x1 - tw - 2 * px, m, x1, m + f.size + 2 * py], radius=(f.size + 2 * py) // 2, fill=NARANJA)
         d.text((x1 - tw - px, m + py - 1), et, font=f, fill=(255, 255, 255))
-    # Texto inferior.
-    y = H - alto_txt + int(alto_txt * 0.30)
-    tit = _limpiar(titulo)
-    if tit:
-        f = _font("Bold", int(W * 0.078))
-        for linea in _envolver(d, tit, f, W - 2 * m)[:2]:
-            d.text((m, y), linea, font=f, fill=(255, 255, 255))
-            y += int(f.size * 1.12)
-    sub = _limpiar(subtitulo)
-    if sub:
-        f = _font("Medium", int(W * 0.034))
-        for linea in _envolver(d, sub, f, W - 2 * m)[:2]:
-            d.text((m, y + 6), linea, font=f, fill=(255, 255, 255, 235))
-            y += int(f.size * 1.35)
-    pie_t = _limpiar(pie)
-    if pie_t:
-        f = _font("Bold", int(W * 0.03))
-        tw = d.textlength(pie_t, font=f)
-        px, py = int(W * 0.024), int(W * 0.012)
-        d.rounded_rectangle([m, H - m - f.size - 2 * py, m + tw + 2 * px, H - m], radius=(f.size + 2 * py) // 2, fill=(255, 255, 255))
-        d.text((m + px, H - m - f.size - py - 1), pie_t, font=f, fill=NOCHE)
+    # Texto inferior (posiciones ya calculadas por _layout_texto).
+    for x, y, linea, f in lay["titulo"]:
+        d.text((x, y), linea, font=f, fill=(255, 255, 255))
+    for x, y, linea, f in lay["subtitulo"]:
+        d.text((x, y), linea, font=f, fill=(255, 255, 255, 235))
+    if lay["pie"]:
+        pz = lay["pie"]
+        d.rounded_rectangle(pz["caja"], radius=pz["radio"], fill=(255, 255, 255))
+        d.text(pz["xy"], pz["texto"], font=pz["font"], fill=NOCHE)
     out = io.BytesIO()
     # JPEG (no PNG): con fotos reales el PNG pesaba 1,5-2 MB y tardaba decenas
     # de segundos en codificarse y viajar; Facebook publica JPEG igual.
     img.convert("RGB").save(out, "JPEG", quality=88, optimize=True, progressive=True)
     return out.getvalue()
+
+
+def _layout_texto(d, W: int, H: int, m: int, titulo: str, subtitulo: str, pie: str, formato: str = "cuadrado") -> dict:
+    """Posiciones del bloque inferior: pie pegado al margen de abajo, subtítulo encima,
+    título encima; nada se superpone. Devuelve también la altura del degradado."""
+    lineas_t, lineas_s = [], []
+    tit, sub, pie_t = _limpiar(titulo), _limpiar(subtitulo), _limpiar(pie)
+    f_t, f_s, f_p = _font("Bold", min(int(W * 0.078), int(H * 0.135))), _font("Medium", int(W * 0.034)), _font("Bold", int(W * 0.03))
+    salto_t, salto_s = int(f_t.size * 1.12), int(f_s.size * 1.35)
+    if tit:
+        lineas_t = _envolver(d, tit, f_t, W - 2 * m)[:2]
+    if sub:
+        lineas_s = _envolver(d, sub, f_s, W - 2 * m)[:2]
+    # Pie: pastilla blanca en la esquina inferior izquierda.
+    pie_z = None
+    pie_alto = 0
+    if pie_t:
+        tw = d.textlength(pie_t, font=f_p)
+        px, py = int(W * 0.024), int(W * 0.012)
+        alto = f_p.size + 2 * py
+        pie_z = {"texto": pie_t, "font": f_p, "caja": [m, H - m - alto, m + tw + 2 * px, H - m], "radio": alto // 2,
+                 "xy": (m + px, H - m - f_p.size - py - 1)}
+        pie_alto = alto + int(W * 0.022)          # + aire entre el subtítulo y la pastilla
+    # Alturas del bloque de texto (título y subtítulo) y su borde inferior.
+    alto_bloque = len(lineas_t) * salto_t + (len(lineas_s) * salto_s + 6 if lineas_s else 0)
+    y_fin = H - m - pie_alto
+    y = y_fin - alto_bloque
+    pos_t, pos_s = [], []
+    for linea in lineas_t:
+        pos_t.append((m, y, linea, f_t))
+        y += salto_t
+    for k, linea in enumerate(lineas_s):
+        pos_s.append((m, y + (6 if k == 0 else 0), linea, f_s))
+        y += salto_s + (6 if k == 0 else 0)
+    # Degradado: el de siempre, o más alto si el texto sube más (título largo + subtítulo).
+    alto_txt = int(H * (0.40 if formato != "historia" else 0.30))
+    if pos_t or pos_s:
+        alto_txt = max(alto_txt, H - (y_fin - alto_bloque) + int(H * 0.12))
+    return {"titulo": pos_t, "subtitulo": pos_s, "pie": pie_z, "alto_txt": min(alto_txt, H), "y_inicio": y_fin - alto_bloque, "y_fin": y_fin}
 
 
 def _envolver(d, texto: str, f, ancho: int) -> list[str]:
