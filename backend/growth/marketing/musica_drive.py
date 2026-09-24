@@ -119,20 +119,37 @@ def _ext_de(nombre: str, mime: str) -> str:
     return "mp3" if (mime or "").startswith("audio/") else ""
 
 
-def listar_audio(carpeta_id: str) -> list[dict]:
-    out, page = [], ""
+MAX_SUBCARPETAS = 60
+MAX_PROFUNDIDAD = 3
+
+
+def listar_audio(carpeta_id: str, _ruta: str = "", _prof: int = 0, _vistas: set | None = None) -> list[dict]:
+    """Audios de la carpeta Y de sus subcarpetas (el director organiza por género:
+    Musica/Cumbia, Musica/Rock en español…): cada pista lleva `carpeta` = subcarpeta."""
+    vistas = _vistas if _vistas is not None else set()
+    vistas.add(carpeta_id)
+    out, page, subcarpetas = [], "", []
     while True:
         r = _get("files", q=f"'{carpeta_id}' in parents and trashed=false", fields="nextPageToken,files(id,name,mimeType,size,md5Checksum,modifiedTime)",
                  pageSize=200, pageToken=page or None, includeItemsFromAllDrives="true", orderBy="name")
         for f in r.get("files") or []:
+            if f.get("mimeType") == "application/vnd.google-apps.folder":
+                subcarpetas.append(f)
+                continue
             ext = _ext_de(str(f.get("name") or ""), str(f.get("mimeType") or ""))
             if ext:
                 out.append({"drive_id": f["id"], "nombre": f.get("name", ""), "mime": EXT_AUDIO[ext], "ext": ext, "bytes": int(f.get("size") or 0),
-                            "md5": f.get("md5Checksum", ""), "modificado": f.get("modifiedTime", "")})
+                            "md5": f.get("md5Checksum", ""), "modificado": f.get("modifiedTime", ""), "carpeta": _ruta})
         page = str(r.get("nextPageToken") or "")
         if not page or len(out) >= MAX_PISTAS:
             break
-    return out
+    if _prof < MAX_PROFUNDIDAD:
+        for sc in subcarpetas:
+            if sc["id"] in vistas or len(vistas) > MAX_SUBCARPETAS or len(out) >= MAX_PISTAS:
+                continue
+            nombre = str(sc.get("name") or "").strip()
+            out.extend(listar_audio(sc["id"], f"{_ruta}/{nombre}" if _ruta else nombre, _prof + 1, vistas))
+    return out[:MAX_PISTAS]
 
 
 def sincronizar() -> dict:
@@ -151,6 +168,9 @@ def sincronizar() -> dict:
         vistos.add(f["drive_id"])
         prev = actuales.get(f["drive_id"])
         if prev and prev.get("md5") == f["md5"] and prev.get("md5"):
+            if prev.get("carpeta") != f.get("carpeta", ""):     # lo movieron de subcarpeta: solo se actualiza la etiqueta
+                prev["carpeta"] = f.get("carpeta", "")
+                actualizados += 1
             continue                                        # sin cambios
         if f["bytes"] > PISTA_MAX_BYTES:
             omitidos += 1
@@ -161,7 +181,7 @@ def sincronizar() -> dict:
             iid = prev["id"] if prev else "mm_" + uuid.uuid4().hex[:12]
             url = _bib._subir(f"{CARPETA_STORAGE}/{iid}.{f['ext']}", datos, f["mime"])
             fila = {"id": iid, "drive_id": f["drive_id"], "nombre": f["nombre"], "mime": f["mime"], "ext": f["ext"], "url": url, "bytes": len(datos),
-                    "md5": f["md5"], "modificado": f["modificado"], "creado_en": prev["creado_en"] if prev else time.time(),
+                    "carpeta": f.get("carpeta", ""), "md5": f["md5"], "modificado": f["modificado"], "creado_en": prev["creado_en"] if prev else time.time(),
                     "usos": int(prev.get("usos") or 0) if prev else 0, "ultimo_uso": float(prev.get("ultimo_uso") or 0) if prev else 0.0, "origen": "google_drive"}
             if prev:
                 stores.musica_marca[:] = [fila if x.get("id") == iid else x for x in stores.musica_marca]
@@ -177,7 +197,7 @@ def sincronizar() -> dict:
         if x.get("origen") == "google_drive" and x.get("drive_id") not in vistos:
             quitar(x["id"], persistir=False)
             quitados += 1
-    stores.musica_marca.sort(key=lambda x: (x.get("nombre") or "").lower())
+    stores.musica_marca.sort(key=lambda x: ((x.get("carpeta") or "").lower(), (x.get("nombre") or "").lower()))
     del stores.musica_marca[MAX_PISTAS:]
     stores.config[CFG_SYNC] = str(time.time())
     _persistir()
@@ -217,10 +237,33 @@ def marcar_uso(iid: str) -> None:
             y["ultimo_uso"] = time.time()
 
 
-def elegir_pista() -> dict | None:
-    """La pista MENOS usada (y con el último uso más antiguo): rotación justa para el agente."""
-    pistas = sorted(items(), key=lambda x: (int(x.get("usos") or 0), float(x.get("ultimo_uso") or 0)))
+def carpetas() -> list[str]:
+    """Subcarpetas (géneros) con pistas, en orden."""
+    vistas, out = set(), []
+    for x in stores.musica_marca:
+        c = x.get("carpeta") or ""
+        if c not in vistas:
+            vistas.add(c)
+            out.append(c)
+    return out
+
+
+def elegir_pista(carpeta: str | None = None) -> dict | None:
+    """La pista MENOS usada (y con el último uso más antiguo): rotación justa. Con
+    `carpeta` (género) solo entre las de esa subcarpeta."""
+    pistas = [x for x in items() if carpeta is None or (x.get("carpeta") or "") == carpeta]
+    pistas.sort(key=lambda x: (int(x.get("usos") or 0), float(x.get("ultimo_uso") or 0)))
     return pistas[0] if pistas else None
+
+
+def resolver_pista(valor: str) -> dict | None:
+    """`mm_<id>` = esa pista; `carpeta:<género>` = la menos usada de ese género; `cualquiera` = de todas."""
+    v = (valor or "").strip()
+    if v == "cualquiera":
+        return elegir_pista()
+    if v.startswith("carpeta:"):
+        return elegir_pista(v[len("carpeta:"):])
+    return item(v)
 
 
 def _ruta_temporal(iid: str, ext: str) -> str:

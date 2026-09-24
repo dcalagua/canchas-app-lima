@@ -532,7 +532,7 @@ def get_redes_musica(x_admin_token: str | None = Header(default=None)) -> dict:
     """Mi música: pistas propias sincronizadas desde una carpeta de Google Drive + estado de la conexión."""
     _check(x_admin_token)
     from marketing import musica_drive as _md
-    return {"ok": True, **_md.estado(), "items": _md.items()}
+    return {"ok": True, **_md.estado(), "items": _md.items(), "carpetas": _md.carpetas()}
 
 
 @router.get("/admin/api/redes/musica/google/autorizar")
@@ -584,7 +584,7 @@ def post_redes_musica_sincronizar(x_admin_token: str | None = Header(default=Non
         r = _md.sincronizar()
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=409 if "primero" in str(exc) else 502, detail=str(exc)[:300])
-    return {"ok": True, **r, "items": _md.items(), **_md.estado()}
+    return {"ok": True, **r, "items": _md.items(), "carpetas": _md.carpetas(), **_md.estado()}
 
 
 @router.post("/admin/api/redes/musica/{item_id}/quitar")
@@ -829,13 +829,15 @@ def post_redes_video_pulir(video_id: str, req: PulirVideoRequest, x_admin_token:
         opciones["mood"] = req.mood
     if req.musica_pista:
         from marketing import musica_drive as _md
-        if not _md.item(req.musica_pista):
+        pista = _md.resolver_pista(req.musica_pista)        # id, "carpeta:<género>" o "cualquiera"
+        if not pista:
             raise HTTPException(status_code=404, detail="Esa pista ya no está en Mi música. Sincroniza la carpeta de Drive.")
         try:
-            opciones["musica_ruta"] = _md.descargar_a_temporal(req.musica_pista)
+            opciones["musica_ruta"] = _md.descargar_a_temporal(pista["id"])
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=502, detail=f"No se pudo traer la pista: {str(exc)[:200]}")
-        opciones["musica_pista"] = req.musica_pista
+        opciones["musica_pista"] = pista["id"]
+        opciones["musica_nombre"] = pista.get("nombre", "")
     salida = os.path.splitext(v["ruta"])[0] + "_pulido.mp4"
 
     def _al_terminar(vid, res, transcripcion):
@@ -3357,7 +3359,7 @@ function renderRedes(){
   const pl = vd.pulido || {}, po = pl.opciones || {};
   const MUS = {auto:'música automática', fondo:'música de fondo', protagonista:'música protagonista', no:'sin música'};
   const res2 = tipo==='foto' ? `${{cuadrado:'Cuadrado 1080×1080',horizontal:'Horizontal 1200×630',historia:'Historia 1080×1920'}[prev.f||redesSel.formato]||'Cuadrado'}${prev.e?' · etiqueta "'+esc(prev.e)+'"':''}`
-    : !esVideo ? '—' : (pl.estado==='listo' && pl.url ? `${pl.usar?'Versión pulida':'Original'} · ${po.formato||'vertical'} · ${MUS[po.musica_modo||'auto']}${po.musica_pista&&mus?' · 🎵 '+esc(((mus.items||[]).find(t=>t.id===po.musica_pista)||{}).nombre||''):''}` : (pl.estado==='transcribiendo'||pl.estado==='renderizando') ? 'Puliendo… '+(pl.progreso||0)+'%' : 'Sin pulir (se publica el original)');
+    : !esVideo ? '—' : (pl.estado==='listo' && pl.url ? `${pl.usar?'Versión pulida':'Original'} · ${po.formato||'vertical'} · ${MUS[po.musica_modo||'auto']}${po.musica_pista&&mus?' · 🎵 '+esc(po.musica_pista==='cualquiera'?'cualquiera':po.musica_pista.startsWith('carpeta:')?po.musica_pista.slice(8):(((mus.items||[]).find(t=>t.id===po.musica_pista)||{}).nombre||'')):''}` : (pl.estado==='transcribiendo'||pl.estado==='renderizando') ? 'Puliendo… '+(pl.progreso||0)+'%' : 'Sin pulir (se publica el original)');
   const ok2 = redesUI.paso > 2;
 
   // ── PASO 3 · Texto ───────────────────────────────────────────────────────
@@ -3634,6 +3636,16 @@ async function cargarMusica(){
   if(primera && mus && document.getElementById('redesPanel')) renderRedes(); else renderMusica();   // la 1.ª carga pinta la píldora y el selector de pista
 }
 function musMsg(h){ const m=document.getElementById('rd_mus_msg'); if(m) m.innerHTML=h; }
+function musOpciones(sel){
+  // Pistas agrupadas por subcarpeta de Drive (= género) + "cualquiera de ese género" (la torre rota la menos usada).
+  const items = (mus&&mus.items)||[]; if(!items.length) return '';
+  const grupos = {}; items.forEach(t=>{ const c=t.carpeta||''; (grupos[c]=grupos[c]||[]).push(t); });
+  const opt = (v,txt)=>`<option value="${esc(v)}"${sel===v?' selected':''}>${txt}</option>`;
+  let h = Object.keys(grupos).length>1 ? opt('cualquiera','🎲 Cualquiera de mis pistas (rota la menos usada)') : '';
+  Object.keys(grupos).sort((a,b)=>a.localeCompare(b)).forEach(c=>{ const lista = grupos[c].map(t=>opt(t.id,'🎵 '+esc(t.nombre))).join('');
+    h += c ? `<optgroup label="📁 ${esc(c)}">${opt('carpeta:'+c,'🎲 Cualquiera de '+esc(c))}${lista}</optgroup>` : `<optgroup label="📁 (raíz de la carpeta)">${lista}</optgroup>`; });
+  return h;
+}
 function renderMusica(){
   const box = document.getElementById('rd_musica_con'); if(!box) return;
   if(!mus){ box.innerHTML = '<div class="rd-cargando" style="padding:8px 4px"><span class="rd-spin chico"></span> Cargando Mi música…</div>'; return; }
@@ -3652,9 +3664,11 @@ function renderMusica(){
         <input id="rd_mus_q" placeholder="buscar carpeta por nombre" style="min-width:180px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;font-family:inherit;font-size:13px" onkeydown="if(event.key==='Enter') musBuscar()">
         <button type="button" class="btn-sec" onclick="musBuscar()" ${musOcupado?'disabled':''}>🔎 Buscar</button></div>
       ${musCarpetas?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${musCarpetas.length?musCarpetas.map(f=>`<button type="button" class="rd-sub${c.id===f.id?' on':''}" onclick="musCarpeta('${f.id}')">📁 ${esc(f.nombre)}</button>`).join(''):'<small style="color:var(--muted)">No se encontraron carpetas con ese nombre.</small>'}</div>`:''}
-      <small style="display:block;margin-top:6px;color:var(--muted)">Sube ahí MP3, M4A, WAV, OGG, AAC o FLAC con derechos de uso (hasta ${mus.max_mb||30} MB cada uno) y pulsa Sincronizar. La torre copia las pistas a Storage; lo que borres de la carpeta desaparece al sincronizar.</small></div>`;
+      <small style="display:block;margin-top:6px;color:var(--muted)">Sube ahí MP3, M4A, WAV, OGG, AAC o FLAC con derechos de uso (hasta ${mus.max_mb||30} MB cada uno) y pulsa Sincronizar. Se leen también las SUBCARPETAS (Cumbia, Rock…) y quedan como género para elegir. La torre copia las pistas a Storage; lo que borres de la carpeta desaparece al sincronizar.</small></div>`;
   const sync = !(mus.conectado && c.id) ? '' : `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px"><button type="button" class="btn-ap" onclick="musSincronizar()" ${musOcupado?'disabled':''}>${musOcupado==='sync'?'<span class="rd-spin blanco"></span> Sincronizando…':'🔄 Sincronizar con Drive'}</button><small style="color:var(--muted)">${mus.sync_en?'última sincronización '+new Date(mus.sync_en*1000).toLocaleString('es-PE'):'aún no se ha sincronizado'} · ${items.length} pista(s)</small></div>`;
-  const lista = items.length ? `<div style="margin-top:8px;border:1px solid var(--border);border-radius:12px;overflow:hidden">${items.map(t=>`<div style="display:flex;gap:10px;align-items:center;padding:8px 10px;border-bottom:1px solid #F0F2F4"><audio controls preload="none" src="${esc(t.url)}" style="height:30px;width:230px"></audio><div style="flex:1;min-width:160px"><b style="font-size:13px">${esc(t.nombre)}</b><br><small style="color:var(--muted)">${mb(t.bytes||0)} · ${t.usos?t.usos+' uso(s)':'sin usar'}</small></div><button type="button" class="btn-sec" title="Quitar de Mi música (no toca tu Drive)" onclick="musQuitar('${t.id}')">✕</button></div>`).join('')}</div>` : (mus.conectado && c.id ? '<small style="display:block;margin-top:8px;color:var(--muted)">Todavía no hay pistas: sube audios a la carpeta y sincroniza.</small>' : '');
+  const fila = t => `<div style="display:flex;gap:10px;align-items:center;padding:8px 10px;border-bottom:1px solid #F0F2F4"><audio controls preload="none" src="${esc(t.url)}" style="height:30px;width:230px"></audio><div style="flex:1;min-width:160px"><b style="font-size:13px">${esc(t.nombre)}</b><br><small style="color:var(--muted)">${mb(t.bytes||0)} · ${t.usos?t.usos+' uso(s)':'sin usar'}</small></div><button type="button" class="btn-sec" title="Quitar de Mi música (no toca tu Drive)" onclick="musQuitar('${t.id}')">✕</button></div>`;
+  const grupos = {}; items.forEach(t=>{ const k=t.carpeta||''; (grupos[k]=grupos[k]||[]).push(t); });
+  const lista = items.length ? `<div style="margin-top:8px;border:1px solid var(--border);border-radius:12px;overflow:hidden">${Object.keys(grupos).sort((a,b)=>a.localeCompare(b)).map(k=>`<div style="padding:6px 10px;background:#FAFBFC;font-size:12.5px;font-weight:700;border-bottom:1px solid #F0F2F4">📁 ${k?esc(k):'(raíz de la carpeta)'} <small style="color:var(--muted);font-weight:400">· ${grupos[k].length} pista(s)</small></div>${grupos[k].map(fila).join('')}`).join('')}</div>` : (mus.conectado && c.id ? '<small style="display:block;margin-top:8px;color:var(--muted)">Todavía no hay pistas: sube audios a la carpeta (o a sus subcarpetas) y sincroniza.</small>' : '');
   box.innerHTML = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${cab}</div><div id="rd_mus_msg" style="margin-top:6px;font-size:12.5px"></div>${carpeta}${sync}${lista}
     <small style="display:block;margin-top:8px;color:var(--muted)">Las pistas aparecen en el paso Estilo de cada video ("Pista") y el agente 24×7 rota la menos usada. Spotify no sirve: su API no entrega el audio y Facebook silencia la música comercial.</small>`;
 }
@@ -3827,9 +3841,9 @@ function pulidoHtml(vd){
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center"><small style="color:var(--muted);font-weight:700;margin-right:4px">🎵 Música</small>${chip('musica_modo','auto','Automática')} ${chip('musica_modo','fondo','De fondo')} ${chip('musica_modo','protagonista','Protagonista')} ${chip('musica_modo','no','Sin música')}
         <small style="color:var(--muted);margin-left:4px">${o.musica_modo==='fondo'?'Suave bajo la voz del video (sola si el video es mudo).':o.musica_modo==='protagonista'?'La música manda; el audio original queda de ambiente, bajito.':o.musica_modo==='no'?'Se conserva solo el audio original.':'De fondo si el video trae voz; protagonista si es mudo.'}</small></div>
       ${o.musica_modo!=='no'?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center"><small style="color:var(--muted);font-weight:700;margin-right:4px">Pista</small>
-          <select id="rd_pista" style="padding:6px 10px;border:1px solid var(--border);border-radius:10px;font-family:inherit;font-size:12.5px;max-width:320px" onchange="pulOpt('musica_pista',this.value)" ${ocupado?'disabled':''}><option value="">🎼 Original de Pichangol (sintetizada)</option>${(mus&&mus.items||[]).map(t=>`<option value="${t.id}"${o.musica_pista===t.id?' selected':''}>🎵 ${esc(t.nombre)}</option>`).join('')}</select>
+          <select id="rd_pista" style="padding:6px 10px;border:1px solid var(--border);border-radius:10px;font-family:inherit;font-size:12.5px;max-width:320px" onchange="pulOpt('musica_pista',this.value)" ${ocupado?'disabled':''}><option value="">🎼 Original de Pichangol (sintetizada)</option>${musOpciones(o.musica_pista)}</select>
           ${(mus&&mus.items&&mus.items.length)?'':`<small style="color:var(--muted)">Sin pistas propias: conéctalas en <a href="#" onclick="rdUI('tab','conexiones');return false">Conexiones → Mi música</a>.</small>`}
-          ${o.musica_pista&&mus&&(mus.items||[]).some(t=>t.id===o.musica_pista)?`<audio controls preload="none" src="${esc((mus.items.find(t=>t.id===o.musica_pista)||{}).url||'')}" style="height:30px;max-width:260px"></audio>`:''}</div>
+          ${o.musica_pista&&mus&&(mus.items||[]).some(t=>t.id===o.musica_pista)?`<audio controls preload="none" src="${esc((mus.items.find(t=>t.id===o.musica_pista)||{}).url||'')}" style="height:30px;max-width:260px"></audio>`:(o.musica_pista?'<small style="color:var(--muted)">la torre elige la menos usada de ese género</small>':'')}</div>
         ${o.musica_pista?'<small style="display:block;margin-top:4px;color:var(--muted)">La pista se pone en bucle si es más corta que el video y se corta al terminar, con fundido.</small>':`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center"><small style="color:var(--muted);font-weight:700;margin-right:4px">Estilo</small>${chip('mood','chill','Chill')} ${chip('mood','energetico','Enérgica')} ${chip('mood','epico','Épica')}</div>`}`:''}
       ${subsOff?'<small style="color:#8a5a00">Subtítulos automáticos apagados: falta OPENAI_API_KEY en este ambiente.</small>':''}
       <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">

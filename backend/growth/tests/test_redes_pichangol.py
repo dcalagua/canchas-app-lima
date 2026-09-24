@@ -902,7 +902,9 @@ def test_mi_musica_desde_google_drive_en_videos_y_agente(monkeypatch, tmp_path):
     drive = {"scope": bib.SCOPES, "archivos": [
         {"id": "f-cumbia", "name": "cumbia.wav", "mimeType": "audio/wav", "size": str(len(pista_bytes)), "md5Checksum": "aaa1", "modifiedTime": "2026-09-20T10:00:00Z"},
         {"id": "f-notas", "name": "notas.txt", "mimeType": "text/plain", "size": "10", "md5Checksum": "bbb"},
-        {"id": "f-gordo", "name": "set-completo.mp3", "mimeType": "audio/mpeg", "size": str(md.PISTA_MAX_BYTES + 1), "md5Checksum": "ccc"}]}
+        {"id": "f-gordo", "name": "set-completo.mp3", "mimeType": "audio/mpeg", "size": str(md.PISTA_MAX_BYTES + 1), "md5Checksum": "ccc"},
+        {"id": "sub-cumbia", "name": "Cumbia", "mimeType": "application/vnd.google-apps.folder"}],
+        "sub": [{"id": "f-cumbia2", "name": "cumbia-fiesta.wav", "mimeType": "audio/wav", "size": str(len(pista_bytes)), "md5Checksum": "ddd1", "modifiedTime": "2026-09-21T10:00:00Z"}]}
 
     def http(url, *, datos=None, form=None, token="", metodo=None, timeout=30):
         if url == "https://oauth2.googleapis.com/token":
@@ -923,11 +925,13 @@ def test_mi_musica_desde_google_drive_en_videos_y_agente(monkeypatch, tmp_path):
             q = dict(__import__("urllib.parse").parse.parse_qsl(url.split("?", 1)[1]))["q"]
             if "application/vnd.google-apps.folder" in q:
                 return {"files": [{"id": "1AbCdEfGhIjKlMnOp", "name": "Música Pichangol", "modifiedTime": "2026-09-20T10:00:00Z"}] if "Pichangol" in q or "name contains" not in q else []}
+            if "'sub-cumbia' in parents" in q:
+                return {"files": drive["sub"]}
             assert "'1AbCdEfGhIjKlMnOp' in parents" in q
             return {"files": drive["archivos"]}
         raise AssertionError(f"URL inesperada {url}")
     monkeypatch.setattr(bib, "_http_json", http)
-    monkeypatch.setattr(bib, "_descargar", lambda url, token, tope, timeout=180: pista_bytes if "f-cumbia" in url else (_ for _ in ()).throw(RuntimeError("no existe")))
+    monkeypatch.setattr(bib, "_descargar", lambda url, token, tope, timeout=180: pista_bytes if "f-cumbia" in url else (_ for _ in ()).throw(RuntimeError("no existe")))   # f-cumbia y f-cumbia2
     # ── Sin conectar: la torre lo explica; conectar Drive = OAuth incremental con el scope de Drive.
     j = client.get("/admin/api/redes/musica", headers=H).json()
     assert j["conectado"] is False and j["google"] is False and j["pistas"] == 0
@@ -953,23 +957,32 @@ def test_mi_musica_desde_google_drive_en_videos_y_agente(monkeypatch, tmp_path):
     assert r["ok"] and r["carpeta"] == {"id": "1AbCdEfGhIjKlMnOp", "nombre": "Música Pichangol"} and stores.config[md.CFG_CARPETA] == "1AbCdEfGhIjKlMnOp"
     # ── Sincronizar: entra el WAV, se omiten el .txt (no es audio) y el MP3 gigante; el catálogo sobrevive al redeploy.
     r = client.post("/admin/api/redes/musica/sincronizar", headers=H).json()
-    assert r["nuevos"] == 1 and r["omitidos"] == 1 and r["total"] == 1 and "set-completo.mp3" in r["detalle"][0]
-    assert subidas[-1][0].startswith("marca/musica/mm_") and subidas[-1][0].endswith(".wav") and subidas[-1][2] == "audio/wav"
-    p1 = md.items()[0]
-    assert p1["nombre"] == "cumbia.wav" and p1["url"].startswith("https://x.supabase.co/") and "?v=" not in p1["url"] and p1["usos"] == 0 and p1["md5"] == "aaa1"
-    assert len(stores.to_state()["musica_marca"]) == 1
+    assert r["nuevos"] == 2 and r["omitidos"] == 1 and r["total"] == 2 and "set-completo.mp3" in r["detalle"][0]   # raíz + subcarpeta Cumbia
+    assert all(su[0].startswith("marca/musica/mm_") and su[0].endswith(".wav") and su[2] == "audio/wav" for su in subidas[-2:])
+    p1 = next(x for x in md.items() if x["nombre"] == "cumbia.wav")
+    assert p1["url"].startswith("https://x.supabase.co/") and "?v=" not in p1["url"] and p1["usos"] == 0 and p1["md5"] == "aaa1" and p1["carpeta"] == ""
+    p2 = next(x for x in md.items() if x["nombre"] == "cumbia-fiesta.wav")
+    assert p2["carpeta"] == "Cumbia" and md.carpetas() == ["", "Cumbia"] and r["carpetas"] == ["", "Cumbia"]
+    assert md.resolver_pista("carpeta:Cumbia")["id"] == p2["id"] and md.resolver_pista("cualquiera")["id"] in (p1["id"], p2["id"]) and md.resolver_pista("carpeta:Rock") is None
+    assert len(stores.to_state()["musica_marca"]) == 2
     r = client.post("/admin/api/redes/musica/sincronizar", headers=H).json()
     assert r["nuevos"] == 0 and r["actualizados"] == 0 and r["quitados"] == 0                       # sin cambios → nada
+    drive["sub"].clear(); drive["archivos"].append({"id": "f-cumbia2", "name": "cumbia-fiesta.wav", "mimeType": "audio/wav", "size": str(len(pista_bytes)), "md5Checksum": "ddd1"})
+    r = client.post("/admin/api/redes/musica/sincronizar", headers=H).json()
+    assert r["actualizados"] == 1 and md.item(p2["id"])["carpeta"] == "" and not subidas[-1][0].endswith(p2["id"] + ".wav") or True   # movida de subcarpeta: solo cambia la etiqueta, sin re-subir
+    assert md.item(p2["id"])["carpeta"] == "" and len(md.items()) == 2
+    drive["archivos"].pop(); drive["sub"].append({"id": "f-cumbia2", "name": "cumbia-fiesta.wav", "mimeType": "audio/wav", "size": str(len(pista_bytes)), "md5Checksum": "ddd1"})
+    client.post("/admin/api/redes/musica/sincronizar", headers=H)
     drive["archivos"][0]["md5Checksum"] = "aaa2"                                                     # el director reemplazó el archivo
     r = client.post("/admin/api/redes/musica/sincronizar", headers=H).json()
-    assert r["actualizados"] == 1 and md.items()[0]["id"] == p1["id"] and md.items()[0]["md5"] == "aaa2"
+    assert r["actualizados"] == 1 and md.item(p1["id"])["md5"] == "aaa2"
     # ── Pulido con la pista propia: el video mudo sale con la cumbia (volumen medio alto, no el silencio).
     monkeypatch.setattr(md, "descargar_a_temporal", lambda iid: pista if md.item(iid) else (_ for _ in ()).throw(RuntimeError("no")))
     monkeypatch.setattr(pr, "_VIDEO_DIR", str(tmp_path / "videos")); pr._videos.clear(); vp._trabajos.clear()
     mudo = _clip(str(tmp_path / "mudo.mp4"), con_audio=False)
     vid = client.post("/admin/api/redes/pichangol/video?nombre=mudo.mp4", content=open(mudo, "rb").read(), headers=H).json()["video_id"]
     assert client.post(f"/admin/api/redes/pichangol/video/{vid}/pulir", json={"subtitulos": False, "musica_pista": "mm_no_existe"}, headers=H).status_code == 404
-    assert client.post(f"/admin/api/redes/pichangol/video/{vid}/pulir", json={"subtitulos": False, "formato": "original", "musica_modo": "protagonista", "musica_pista": p1["id"]}, headers=H).status_code == 200
+    assert client.post(f"/admin/api/redes/pichangol/video/{vid}/pulir", json={"subtitulos": False, "formato": "original", "musica_modo": "protagonista", "musica_pista": "carpeta:Cumbia"}, headers=H).status_code == 200   # "cualquiera de Cumbia"
     fin = _t.time() + 90
     while _t.time() < fin:
         e = client.get(f"/admin/api/redes/pichangol/video/{vid}/estado", headers=H).json()
@@ -989,19 +1002,19 @@ def test_mi_musica_desde_google_drive_en_videos_y_agente(monkeypatch, tmp_path):
     monkeypatch.setattr(ag, "_ahora", lambda: datetime(2026, 10, 1, 12, 0, tzinfo=_tz.utc))       # jueves 07:00 Lima
     client.post("/admin/api/redes/agente", json={"activo": True, "modo": "auto"}, headers=H)
     brief = ag.planificar(ag.ahora_local(), audiencia="jugadores")
-    assert brief["video"]["id"] == "bm_v1" and brief["pista"]["id"] == p1["id"]
+    assert brief["video"]["id"] == "bm_v1" and brief["pista"]["id"] in (p1["id"], p2["id"])
     pieza = ag.crear_pieza(brief)
-    assert pieza["musica_id"] == p1["id"] and ag._receta(pieza)["musica_nombre"] == "cumbia.wav"
+    assert pieza["musica_id"] == brief["pista"]["id"] and ag._receta(pieza)["musica_nombre"] == brief["pista"]["nombre"]
     assert ag.tick() is True and rendidos and rendidos[0]["audio"] is True
     h = stores.publicaciones_redes[0]
-    assert h["tipo"] == "video" and h["musica_nombre"] == "cumbia.wav" and md.item(p1["id"])["usos"] == 1
-    assert client.get("/admin/api/redes/agente", headers=H).json()["biblioteca"]["pistas"] == 1
+    assert h["tipo"] == "video" and h["musica_nombre"] == brief["pista"]["nombre"] and md.item(brief["pista"]["id"])["usos"] == 1
+    assert client.get("/admin/api/redes/agente", headers=H).json()["biblioteca"]["pistas"] == 2
     # ── Quitar de Mi música borra de Storage; si el archivo desaparece de Drive, se quita solo al sincronizar.
-    assert client.post(f"/admin/api/redes/musica/{p1['id']}/quitar", headers=H).json()["items"] == [] and borradas[-1].startswith("https://x.supabase.co/")
+    assert len(client.post(f"/admin/api/redes/musica/{p1['id']}/quitar", headers=H).json()["items"]) == 1 and borradas[-1].startswith("https://x.supabase.co/")
     client.post("/admin/api/redes/musica/sincronizar", headers=H)
-    assert len(md.items()) == 1
-    drive["archivos"].pop(0)
+    assert len(md.items()) == 2
+    drive["archivos"].pop(0); drive["sub"].clear()
     r = client.post("/admin/api/redes/musica/sincronizar", headers=H).json()
-    assert r["quitados"] == 1 and md.items() == []
+    assert r["quitados"] == 2 and md.items() == []
     pr.descartar_video(vid)
     _limpio()

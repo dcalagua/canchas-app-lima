@@ -1292,8 +1292,11 @@ off → redeploy inmediato en cada push). URL pública:
   `…/folders/<id>` o búsqueda por nombre (`buscar_carpetas`, Drive `files.list`
   de carpetas); `elegir_carpeta` valida `mimeType` de carpeta y guarda
   `gdrive_musica_carpeta[_nombre]`. (3) **Sincronizar** (`sincronizar`): lista
-  los audios de la carpeta (mp3/m4a/wav/ogg/aac/flac por mime o extensión,
-  tope `MUSICA_PISTA_MAX_MB`=30), descarga con `files/{id}?alt=media` los
+  los audios de la carpeta Y SUS SUBCARPETAS (el director organiza por
+  género: Musica/Cumbia, Musica/Rock en español…; `listar_audio` recursivo,
+  ≤3 niveles, cada pista con `carpeta` = subcarpeta; mp3/m4a/wav/ogg/aac/flac
+  por mime o extensión, tope `MUSICA_PISTA_MAX_MB`=30), descarga con
+  `files/{id}?alt=media` los
   nuevos o con `md5Checksum` distinto, los sube a Storage
   `canchas/marca/musica/mm_<id>.<ext>` y QUITA del catálogo (y de Storage)
   los que ya no están en Drive; catálogo `stores.musica_marca` (snapshot,
@@ -1308,7 +1311,10 @@ off → redeploy inmediato en cada push). URL pública:
   Conexiones → "🎵 Mi música · carpeta de Google Drive" (`renderMusica`,
   conectar, enlace/buscar carpeta, Sincronizar, lista con `<audio controls>` y
   ✕ que no toca Drive), paso 2 del video → "Pista" (`#rd_pista`: Original
-  sintetizada o cada pista, con reproductor; con pista se oculta "Estilo"),
+  sintetizada, `optgroup` por subcarpeta con "🎲 Cualquiera de <género>" =
+  `carpeta:<nombre>` y "🎲 Cualquiera de mis pistas" = `cualquiera`, que
+  `musica_drive.resolver_pista` convierte en la menos usada; con pista se
+  oculta "Estilo"),
   píldora "● Mi música · N pistas". Endpoints `GET /admin/api/redes/musica`,
   `GET …/musica/google/autorizar`, `GET …/musica/carpetas?q=`, `POST
   …/musica/carpeta {enlace}`, `POST …/musica/sincronizar`, `POST
