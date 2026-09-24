@@ -2721,8 +2721,15 @@ function renderRedes(){
   const fb = redes.facebook || {};
   const g = id => (document.getElementById(id)||{}).value; const prev = {t:g('rd_titulo'), s:g('rd_sub'), x:g('rd_texto'), e:g('rd_etq'), p:g('rd_pie'), f:g('rd_formato')};
   const inp = 'style="display:block;width:100%;margin-top:4px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;font-family:inherit;font-size:14px"';
+  // Tipo de token: de PÁGINA (lo correcto), de USUARIO (la torre saca sola el de página) o con permisos faltantes.
+  const faltaPublicar = (fb.faltan||[]).includes('pages_manage_posts');
+  const tokenInfo = !fb.configurado || !fb.nombre ? '' :
+    (fb.advertencia && (faltaPublicar || !fb.token_tipo || (fb.advertencia.indexOf('no entregó')>=0))
+      ? `<div style="margin-top:6px;padding:8px 10px;border-radius:10px;background:#FDECEC;color:var(--rojo);font-weight:600">⚠️ ${esc(fb.advertencia)} <small>(sección "Cómo conectar la página", paso 2)</small></div>`
+      : fb.advertencia ? `<div style="margin-top:6px;padding:8px 10px;border-radius:10px;background:#FFF6E5;color:#8a5a00">ℹ️ ${esc(fb.advertencia)}</div>`
+      : fb.token_tipo==='pagina' ? `<small style="color:var(--muted);margin-left:8px">token de página ✓${(fb.faltan||[]).length?' · sin '+esc(fb.faltan.join(', ')):''}</small>` : '');
   const estado = fb.configurado
-    ? (fb.nombre ? `<span style="color:var(--green);font-weight:700">● Conectado a la página <b>${esc(fb.nombre)}</b></span> ${fb.link?`<a href="${esc(fb.link)}" target="_blank" rel="noopener">abrir ↗</a>`:''}`
+    ? (fb.nombre ? `<span style="color:var(--green);font-weight:700">● Conectado a la página <b>${esc(fb.nombre)}</b></span> ${fb.link?`<a href="${esc(fb.link)}" target="_blank" rel="noopener">abrir ↗</a>`:''}${tokenInfo}`
                  : `<span style="color:var(--rojo);font-weight:700">● Credenciales configuradas pero Facebook respondió: ${esc(fb.error||'error')}</span>`)
     : `<span style="color:var(--muted);font-weight:700">○ Sin credenciales de Facebook</span>: la torre compone y descarga la pieza; para publicar directo, pon <code>FB_PAGE_ID</code> y <code>FB_PAGE_TOKEN</code> en Railway (guía abajo).`;
   const locales = (redes.locales||[]).map(l=>`<option value="${esc(l.canchas[0].id)}"${redesSel.cancha===l.canchas[0].id?' selected':''}>${esc(l.local)}${l.zona?' · '+esc(l.zona):''} (${l.fotos.length} fotos)</option>`).join('');
@@ -2766,7 +2773,7 @@ function renderRedes(){
       <details class="row" style="margin-top:14px"><summary style="cursor:pointer;font-weight:700">🔑 Cómo conectar la página (una sola vez)</summary>
         <ol style="margin:8px 0 0 18px;line-height:1.6">
           <li>Entra a <b>developers.facebook.com</b> con la cuenta que administra la página Pichangol → <b>Mis apps → Crear app</b> (tipo Empresa). Puede quedarse en <b>modo desarrollo</b>: los administradores de la app pueden publicar en sus propias páginas sin revisión de Meta.</li>
-          <li>En la app: <b>Herramientas → Explorador de la API Graph</b>. Elige la app, en "Usuario o página" selecciona <b>Obtener token de acceso a la página</b> → marca la página Pichangol y los permisos <code>pages_manage_posts</code>, <code>pages_read_engagement</code>, <code>pages_show_list</code> → Generar.</li>
+          <li>En la app: <b>Herramientas → Explorador de la API Graph</b>. Elige la app, en "Usuario o página" selecciona <b>Obtener token de acceso a la página</b> → marca la página Pichangol y los permisos <code>pages_manage_posts</code>, <code>pages_read_engagement</code>, <code>pages_show_list</code> → Generar. <b>Tiene que ser el token de la PÁGINA</b> (en el desplegable debe quedar elegida "Pichangol", no tu nombre): con un token de usuario Facebook responde <i>"(#200) publish_actions… deprecated"</i>. Si pegas uno de usuario, la torre intenta obtener el de página sola, pero igual necesita que hayas marcado <code>pages_manage_posts</code>.</li>
           <li>Convierte ese token en uno de LARGA duración: <b>Herramientas → Depurador de tokens de acceso</b> → pega el token → "Extender token de acceso". Un token de PÁGINA obtenido desde un token de usuario extendido no caduca.</li>
           <li>Copia el <b>ID de la página</b> (Configuración de la página → Información de la página) y el token, y ponlos en Railway como <code>FB_PAGE_ID</code> y <code>FB_PAGE_TOKEN</code> en el servicio de este ambiente. <b>No los pegues en el chat ni en el repo.</b> Al redesplegar, arriba aparecerá "Conectado a la página …".</li>
         </ol></details>

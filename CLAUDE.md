@@ -1038,7 +1038,19 @@ off → redeploy inmediato en cada push). URL pública:
   desarrollo: los administradores publican en sus páginas SIN App Review;
   guía en el propio pane); sin ellas el botón queda deshabilitado y la torre
   solo compone. Historial en `stores.publicaciones_redes` (snapshot, últimas
-  50). **El entorno de Claude NO alcanza Storage de Supabase ni bancos de
+  50). **TOKEN DE PÁGINA vs DE USUARIO (trampa real, 24-sep-2026):** el
+  director pegó en Railway el token de USUARIO extendido y Meta respondió
+  `(#200) The permission(s) publish_actions are not available… deprecated`
+  (ese mensaje NO habla de la página: sale cuando `/{page}/photos` recibe un
+  token de usuario o uno sin `pages_manage_posts`). Ahora
+  `post_redes._resolver_token()` pregunta `/me` con el token: si el id es la
+  página → token de página (scopes vía `debug_token`); si es una persona →
+  lee `/me/permissions`, pide `/{page}?fields=access_token` y publica con ESE
+  token de página (caché 10 min); `estado_pagina()` devuelve `token_tipo`,
+  `usuario`, `faltan`, `advertencia` y el pane lo pinta (rojo si falta
+  `pages_manage_posts` o el usuario no administra la página, ámbar si es de
+  usuario y se derivó solo). `_pista_error` traduce los #200/#190 a qué
+  hacer. Lo correcto sigue siendo pegar el token de PÁGINA. **El entorno de Claude NO alcanza Storage de Supabase ni bancos de
   fotos (proxy 403): las piezas con fotos reales se componen en el backend.**
   Fase 2 (backlog): calendario + copy con IA reutilizando `marketing/cm.py`.
   Portada de la página: `tool/portada_facebook.py` →

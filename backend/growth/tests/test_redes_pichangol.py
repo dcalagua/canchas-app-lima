@@ -88,8 +88,17 @@ def test_torre_previsualiza_publica_y_registra(monkeypatch):
     monkeypatch.setattr(config, "FB_PAGE_TOKEN", "EAAB")
     llamadas = []
     monkeypatch.setattr(pr, "_graph_multipart", lambda path, campos, archivo: (llamadas.append((path, campos, archivo)) or {"ok": True, "data": {"id": "999", "post_id": "123_999"}}))
-    monkeypatch.setattr(pr, "_graph_get", lambda path, params: {"ok": True, "data": {"name": "Pichangol", "link": "https://facebook.com/pichangol"}})
-    assert client.get("/admin/api/redes/pichangol", headers=H).json()["facebook"] == {"configurado": True, "page_id": "123", "nombre": "Pichangol", "link": "https://facebook.com/pichangol"}
+    def graph_get(path, params):
+        if path == "me":
+            return {"ok": True, "data": {"id": "123", "name": "Pichangol"}}   # token de PÁGINA
+        if path == "debug_token":
+            return {"ok": True, "data": {"data": {"scopes": ["pages_manage_posts", "pages_read_engagement", "pages_show_list"]}}}
+        return {"ok": True, "data": {"name": "Pichangol", "link": "https://facebook.com/pichangol"}}
+    monkeypatch.setattr(pr, "_graph_get", graph_get)
+    pr._token_cache.update(clave="", hasta=0.0)
+    fb = client.get("/admin/api/redes/pichangol", headers=H).json()["facebook"]
+    assert fb == {"configurado": True, "page_id": "123", "nombre": "Pichangol", "link": "https://facebook.com/pichangol",
+                  "token_tipo": "pagina", "usuario": "", "faltan": [], "advertencia": ""}
     assert client.post("/admin/api/redes/pichangol/publicar", json={**cuerpo, "texto": " "}, headers=H).status_code == 400
     r = client.post("/admin/api/redes/pichangol/publicar", json=cuerpo, headers=H).json()
     assert r["ok"] and r["url"] == "https://www.facebook.com/123_999"
@@ -102,7 +111,64 @@ def test_torre_previsualiza_publica_y_registra(monkeypatch):
     monkeypatch.setattr(pr, "_graph_multipart", lambda *a, **k: {"ok": False, "error": "(#200) Permissions error"})
     assert client.post("/admin/api/redes/pichangol/publicar", json=cuerpo, headers=H).status_code == 502
     h = client.get("/admin/api/redes/pichangol", headers=H).json()["historial"]
-    assert h[0]["ok"] is False and "Permissions" in h[0]["error"]
+    assert h[0]["ok"] is False and "Permissions" in h[0]["error"] and "token de PÁGINA" in h[0]["error"]
     # El snapshot persiste el historial.
     from db.store import stores
     assert len(stores.to_state()["publicaciones_redes"]) == 2
+
+
+def test_token_de_usuario_se_convierte_en_token_de_pagina_y_avisa_permisos(monkeypatch):
+    """Caso real (sep-2026): el director pegó en Railway el token de USUARIO extendido y
+    Facebook respondió "(#200) publish_actions … deprecated". La torre detecta el tipo de
+    token, consigue sola el de la página y avisa si falta `pages_manage_posts`."""
+    monkeypatch.setattr(config, "FB_PAGE_ID", "1257")
+    monkeypatch.setattr(config, "FB_PAGE_TOKEN", "EAAUSER")
+    monkeypatch.setattr(pr, "_abrir_url", lambda u: base64.b64decode(u.split(",", 1)[1]))
+    permisos = ["pages_manage_posts", "pages_read_engagement", "pages_show_list"]
+    llamadas = []
+
+    def graph_get(path, params):
+        llamadas.append((path, params.get("access_token")))
+        if path == "1257" and params.get("fields") == "name,link":
+            return {"ok": True, "data": {"name": "Pichangol", "link": "https://facebook.com/pichangol"}}
+        if path == "me":
+            return {"ok": True, "data": {"id": "77", "name": "Dennis"}}       # token de USUARIO
+        if path == "me/permissions":
+            return {"ok": True, "data": {"data": [{"permission": p, "status": "granted"} for p in permisos] + [{"permission": "email", "status": "declined"}]}}
+        if path == "1257" and params.get("fields") == "access_token":
+            return {"ok": True, "data": {"access_token": "EAAPAGE"}}
+        return {"ok": False, "error": "ruta inesperada " + path}
+    monkeypatch.setattr(pr, "_graph_get", graph_get)
+    pr._token_cache.update(clave="", hasta=0.0)
+    fb = client.get("/admin/api/redes/pichangol", headers=H).json()["facebook"]
+    assert fb["token_tipo"] == "usuario" and fb["usuario"] == "Dennis" and fb["faltan"] == [] and "obtiene sola" in fb["advertencia"]
+    # Publicar usa el token de PÁGINA derivado, no el de usuario.
+    posts = []
+    monkeypatch.setattr(pr, "_graph_multipart", lambda path, campos, archivo: (posts.append(campos) or {"ok": True, "data": {"post_id": "1257_1"}}))
+    cuerpo = {"fotos": [_data_url((90, 30, 30))], "titulo": "Hola", "subtitulo": "", "etiqueta": "", "formato": "cuadrado", "texto": "Primera publicación", "plantilla": "libre", "cancha_id": ""}
+    r = client.post("/admin/api/redes/pichangol/publicar", json=cuerpo, headers=H).json()
+    assert r["ok"] and r["url"] == "https://www.facebook.com/1257_1" and posts[0]["access_token"] == "EAAPAGE"
+    # La resolución se cachea: no vuelve a preguntar /me en cada publicación.
+    n = len([l for l in llamadas if l[0] == "me"])
+    client.post("/admin/api/redes/pichangol/publicar", json=cuerpo, headers=H)
+    assert len([l for l in llamadas if l[0] == "me"]) == n
+    # Sin pages_manage_posts → advertencia roja y la torre NO llama a Graph (error claro en vez del #200 de Meta).
+    permisos.remove("pages_manage_posts"); pr._token_cache.update(clave="", hasta=0.0); posts.clear()
+    fb = client.get("/admin/api/redes/pichangol", headers=H).json()["facebook"]
+    assert fb["faltan"] == ["pages_manage_posts"] and "pages_manage_posts" in fb["advertencia"]
+    r = client.post("/admin/api/redes/pichangol/publicar", json=cuerpo, headers=H)
+    assert r.status_code == 502 and "pages_manage_posts" in r.json()["detail"] and posts == []
+    # Facebook responde el (#200) de publish_actions → la pista dice qué hacer.
+    permisos.append("pages_manage_posts"); pr._token_cache.update(clave="", hasta=0.0)
+    monkeypatch.setattr(pr, "_graph_multipart", lambda *a, **k: {"ok": False, "error": "HTTP 403: (#200) The permission(s) publish_actions are not available. It has been deprecated."})
+    r = client.post("/admin/api/redes/pichangol/publicar", json=cuerpo, headers=H)
+    assert r.status_code == 502 and "token de PÁGINA" in r.json()["detail"] and "FB_PAGE_TOKEN" in r.json()["detail"]
+    # Usuario que no administra la página → error explícito, sin publicar.
+    def graph_get2(path, params):
+        if path == "1257" and params.get("fields") == "access_token":
+            return {"ok": False, "error": "(#100) Unsupported get request"}
+        return graph_get(path, params)
+    monkeypatch.setattr(pr, "_graph_get", graph_get2); pr._token_cache.update(clave="", hasta=0.0)
+    fb = client.get("/admin/api/redes/pichangol", headers=H).json()["facebook"]
+    assert "no entregó" in fb["advertencia"] and "pages_show_list" in fb["advertencia"]
+    assert client.post("/admin/api/redes/pichangol/publicar", json=cuerpo, headers=H).status_code == 502

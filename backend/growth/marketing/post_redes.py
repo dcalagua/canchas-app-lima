@@ -305,25 +305,112 @@ def _graph_get(path: str, params: dict) -> dict:
     return redes._graph(path, params)
 
 
+PERMISO_PUBLICAR = "pages_manage_posts"
+_PERMISOS_PAGINA = ("pages_manage_posts", "pages_read_engagement", "pages_show_list")
+_token_cache: dict = {"clave": "", "hasta": 0.0, "res": {}}
+_TOKEN_TTL = 600
+
+
+def _resolver_token() -> dict:
+    """Averigua QUÉ token puso el operador y consigue el de PÁGINA.
+
+    Trampa real (sep-2026): Meta responde ``(#200) publish_actions … deprecated``
+    cuando ``/{page}/photos`` recibe un token de USUARIO en vez del de la página,
+    o uno de página sin ``pages_manage_posts``. Para no adivinar, la torre:
+    (1) pregunta ``/me`` con el token: si el id es la página → token de página;
+    (2) si es una persona → lee sus permisos (``/me/permissions``) y pide el token
+    de página con ``/{page}?fields=access_token`` (funciona si administra la
+    página y dio ``pages_show_list``); (3) avisa si falta ``pages_manage_posts``.
+    Devuelve ``{token, tipo, usuario, permisos, faltan, error}``; caché 10 min.
+    """
+    clave = f"{config.FB_PAGE_ID}:{config.FB_PAGE_TOKEN[-12:]}:{len(config.FB_PAGE_TOKEN)}"
+    if _token_cache["clave"] == clave and _token_cache["hasta"] > time.time():
+        return dict(_token_cache["res"])
+    tok = config.FB_PAGE_TOKEN
+    res: dict = {"token": "", "tipo": "", "usuario": "", "permisos": None, "faltan": [], "error": ""}
+    yo = _graph_get("me", {"fields": "id,name", "access_token": tok})
+    if not yo.get("ok"):
+        res["error"] = f"Facebook no reconoce el token: {yo.get('error', 'error')}"
+    else:
+        d = yo.get("data") or {}
+        if str(d.get("id", "")) == str(config.FB_PAGE_ID):
+            res.update(tipo="pagina", token=tok)
+            # Con un token de página, `debug_token` (mismo token) devuelve los scopes; si no, quedan desconocidos.
+            dbg = _graph_get("debug_token", {"input_token": tok, "access_token": tok})
+            scopes = ((dbg.get("data") or {}).get("data") or {}).get("scopes") if dbg.get("ok") else None
+            if isinstance(scopes, list):
+                res["permisos"] = [str(x) for x in scopes]
+        else:
+            res.update(tipo="usuario", usuario=str(d.get("name", "")))
+            perm = _graph_get("me/permissions", {"access_token": tok})
+            if perm.get("ok"):
+                filas = (perm.get("data") or {}).get("data") or []
+                res["permisos"] = [str(f.get("permission")) for f in filas if f.get("status") == "granted"]
+            pag = _graph_get(config.FB_PAGE_ID, {"fields": "access_token", "access_token": tok})
+            token_pag = ((pag.get("data") or {}).get("access_token") or "") if pag.get("ok") else ""
+            if token_pag:
+                res["token"] = token_pag
+            else:
+                res["error"] = (f"El token es de la cuenta de {res['usuario'] or 'un usuario'}, no de la página, y Facebook no "
+                                f"entregó el de la página {config.FB_PAGE_ID} ({pag.get('error', 'sin acceso')}). Verifica que esa "
+                                f"cuenta administre la página y que el token tenga pages_show_list.")
+        if isinstance(res["permisos"], list):
+            res["faltan"] = [p for p in _PERMISOS_PAGINA if p not in res["permisos"]]
+    _token_cache.update(clave=clave, hasta=time.time() + _TOKEN_TTL, res=dict(res))
+    return dict(res)
+
+
+def _pista_error(err: str) -> str:
+    """Traduce los rechazos típicos de Graph a qué hacer."""
+    e = (err or "").lower()
+    if "publish_actions" in e or "(#200)" in e or "permission" in e:
+        return (" → El token no puede publicar en la página. Genera en el Explorador de la API Graph un token de PÁGINA "
+                f"(no de usuario) con {', '.join(_PERMISOS_PAGINA)}, extiéndelo y reemplaza FB_PAGE_TOKEN en Railway.")
+    if "(#190)" in e or "expired" in e or "session has been invalidated" in e:
+        return " → El token caducó o fue invalidado (cambio de contraseña / cierre de sesión). Genera uno nuevo de larga duración."
+    return ""
+
+
 def estado_pagina() -> dict:
-    """¿Hay credenciales? ¿A qué página apuntan? (nombre y enlace, sin exponer el token)."""
+    """¿Hay credenciales? ¿A qué página apuntan? ¿Sirve el token para publicar? (sin exponer el token)."""
+    base = {"configurado": False, "page_id": "", "nombre": "", "link": "", "token_tipo": "", "usuario": "", "faltan": [], "advertencia": ""}
     if not configurado():
-        return {"configurado": False, "page_id": "", "nombre": "", "link": ""}
+        return base
+    base.update(configurado=True, page_id=config.FB_PAGE_ID)
     r = _graph_get(config.FB_PAGE_ID, {"fields": "name,link", "access_token": config.FB_PAGE_TOKEN})
     if not r.get("ok"):
-        return {"configurado": True, "page_id": config.FB_PAGE_ID, "nombre": "", "link": "", "error": r.get("error")}
+        return {**base, "error": r.get("error")}
     d = r.get("data") or {}
-    return {"configurado": True, "page_id": config.FB_PAGE_ID, "nombre": d.get("name", ""), "link": d.get("link", "")}
+    base.update(nombre=d.get("name", ""), link=d.get("link", ""))
+    t = _resolver_token()
+    base.update(token_tipo=t.get("tipo", ""), usuario=t.get("usuario", ""), faltan=list(t.get("faltan") or []))
+    if t.get("error"):
+        base["advertencia"] = t["error"]
+    elif PERMISO_PUBLICAR in base["faltan"]:
+        base["advertencia"] = (f"Al token le falta el permiso {PERMISO_PUBLICAR}: Facebook rechazará la publicación. "
+                               "Vuelve a generarlo marcando ese permiso.")
+    elif t.get("tipo") == "usuario":
+        base["advertencia"] = (f"El token es de la cuenta de {t.get('usuario') or 'usuario'}; la torre obtiene sola el de la "
+                               "página para publicar.")
+    return base
 
 
 def publicar_facebook(texto: str, imagen: bytes) -> dict:
     """Publica la foto con su texto en la página. Registra en el historial."""
     if not configurado():
         return {"ok": False, "error": "sin_credenciales"}
-    r = _graph_multipart(f"{config.FB_PAGE_ID}/photos", {"message": texto or "", "access_token": config.FB_PAGE_TOKEN, "published": "true"},
+    t = _resolver_token()
+    if t.get("error") or not t.get("token"):
+        return {"ok": False, "error": t.get("error") or "No se pudo obtener el token de la página."}
+    if PERMISO_PUBLICAR in (t.get("faltan") or []):
+        return {"ok": False, "error": f"Al token le falta el permiso {PERMISO_PUBLICAR}." + _pista_error("permission")}
+    r = _graph_multipart(f"{config.FB_PAGE_ID}/photos", {"message": texto or "", "access_token": t["token"], "published": "true"},
                          (f"pichangol.{EXTENSION}", imagen, MIME))
     if not r.get("ok"):
-        return {"ok": False, "error": r.get("error", "error")}
+        err = str(r.get("error", "error"))
+        if "(#190)" in err or "expired" in err.lower():
+            _token_cache["hasta"] = 0.0
+        return {"ok": False, "error": err + _pista_error(err)}
     d = r.get("data") or {}
     post_id = str(d.get("post_id") or d.get("id") or "")
     url = f"https://www.facebook.com/{post_id}" if post_id else ""
