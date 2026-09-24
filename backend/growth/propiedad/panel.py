@@ -366,6 +366,7 @@ class PostRedesRequest(BaseModel):
     plantilla: str = ""
     cancha_id: str = ""
     video_id: str = ""             # video subido antes a /admin/api/redes/pichangol/video (publica video en vez de foto)
+    imagen: str = ""               # data URL de la VISTA PREVIA que el operador vio: se publica tal cual (sin recomponer)
 
 
 def _redes_canchas() -> list[dict]:
@@ -497,8 +498,16 @@ def post_redes_publicar(req: PostRedesRequest, x_admin_token: str | None = Heade
         _pr.descartar_video(req.video_id)
         print(f"[redes] video publicado en Facebook {r.get('post_id')} · {v['nombre']!r} · {r.get('trozos')} trozo(s)", flush=True)
         return {"ok": True, "publicacion": fila, "url": r.get("url", ""), "video": True}
+    # Se publica LO QUE EL OPERADOR VIO: la vista previa. Solo si no llegó se recompone
+    # desde las fotos (clientes viejos). Antes, al cambiar de local se vaciaban las fotos
+    # pero la vista previa seguía en pantalla y publicar fallaba con "Elige al menos una foto".
     try:
-        png = _pr.componer(req.fotos, req.titulo, req.subtitulo, req.pie, req.formato, req.etiqueta)
+        if (req.imagen or "").startswith("data:image/"):
+            png = _pr.pieza_desde_vista_previa(req.imagen)
+        elif req.fotos:
+            png = _pr.componer(req.fotos, req.titulo, req.subtitulo, req.pie, req.formato, req.etiqueta)
+        else:
+            raise ValueError("Elige o sube al menos una foto y espera la vista previa antes de publicar.")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     r = _pr.publicar_facebook(req.texto.strip(), png)
@@ -2830,7 +2839,7 @@ function renderRedes(){
       <div class="row rd-grid">
         <div>
           <label style="font-size:12.5px;font-weight:700">1 · Local (fotos reales que subió el dueño)
-            <select id="rd_local" ${inp} onchange="redesSel.cancha=this.value;redesSel.fotos=[];renderRedes();aplicarPlantilla()"><option value="">— elige un local —</option>${locales}</select></label>
+            <select id="rd_local" ${inp} onchange="cambiarLocalRedes(this.value)"><option value="">— elige un local —</option>${locales}</select></label>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px" id="rd_fotos">${fotos}</div>${subidasHtml}
           <div style="margin-top:8px"><label class="btn-sec" for="rd_subir" style="cursor:pointer">📷 Subir fotos desde tu computadora</label><input type="file" id="rd_subir" accept="image/*" multiple hidden onchange="subirFotosRedes(this)"><small style="color:var(--muted);margin-left:8px">hasta ${redes.max_fotos||4} fotos en total · ${redesSel.fotos.length} elegida(s)</small></div>
           <div class="rd-video" style="margin-top:12px;padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:#FAFBFC">
@@ -2875,10 +2884,20 @@ function renderRedes(){
   ['rd_titulo','rd_sub','rd_etq','rd_pie'].forEach(id=>{ const el=document.getElementById(id); if(el) el.addEventListener('input', autoPrevRedes); });
   const fm=document.getElementById('rd_formato'); if(fm) fm.addEventListener('change', ()=>{ redesSel.formato=fm.value; autoPrevRedes(); });
 }
+function cambiarLocalRedes(id){
+  // Cambiar de local suelta las fotos del bucket del local anterior, pero CONSERVA las subidas
+  // desde la computadora; si no queda ninguna, la vista previa se limpia (antes quedaba una
+  // imagen vieja en pantalla y publicar fallaba con "Elige al menos una foto").
+  redesSel.cancha = id || '';
+  redesSel.fotos = redesSel.fotos.filter(u=>u.startsWith('data:'));
+  if(!redesSel.fotos.length){ redesSel.img = ''; redesSel.ext = ''; }
+  renderRedes(); aplicarPlantilla();
+}
 function toggleFotoRedes(u, on){
   const i = redesSel.fotos.indexOf(u);
   if(on && i<0){ if(redesSel.fotos.length >= (redes.max_fotos||4)){ alert('Máximo '+(redes.max_fotos||4)+' fotos.'); renderRedes(); return; } redesSel.fotos.push(u); }
   if(!on && i>=0) redesSel.fotos.splice(i,1);
+  if(!redesSel.fotos.length){ redesSel.img = ''; redesSel.ext = ''; }
   const g = id => (document.getElementById(id)||{}).value || '';
   const t=g('rd_titulo'), s=g('rd_sub'), x=g('rd_texto'), e=g('rd_etq'), pie=g('rd_pie'); redesSel.formato = g('rd_formato') || redesSel.formato;
   renderRedes();
@@ -2921,7 +2940,7 @@ function botonesRedes(ocupado){
   if(pre) pre.disabled = !!ocupado;
 }
 function autoPrevRedes(){ clearTimeout(rdTimer); if(redesSel.video){ botonesRedes(false); return; } if(!redesSel.fotos.length) return; veloPrev(true, 'Preparando la vista previa…'); botonesRedes('componiendo'); rdTimer = setTimeout(()=>previsualizarRedes(true), 700); }
-function cuerpoRedes(){ const g=id=>(document.getElementById(id)||{}).value||''; return {fotos:redesSel.fotos, titulo:g('rd_titulo'), subtitulo:g('rd_sub'), pie:g('rd_pie'), etiqueta:g('rd_etq'), formato:g('rd_formato')||redesSel.formato, texto:g('rd_texto'), plantilla:redesSel.plantilla, cancha_id:redesSel.cancha, video_id:(redesSel.video&&redesSel.video.id)||''}; }
+function cuerpoRedes(conImagen){ const g=id=>(document.getElementById(id)||{}).value||''; const c = {fotos:redesSel.fotos, titulo:g('rd_titulo'), subtitulo:g('rd_sub'), pie:g('rd_pie'), etiqueta:g('rd_etq'), formato:g('rd_formato')||redesSel.formato, texto:g('rd_texto'), plantilla:redesSel.plantilla, cancha_id:redesSel.cancha, video_id:(redesSel.video&&redesSel.video.id)||''}; if(conImagen && !c.video_id && redesSel.img) c.imagen = redesSel.img; return c; }
 // ── Video: se sube a la torre con barra de progreso; al publicar, la torre lo manda a la página por trozos.
 function subirVideoRedes(inp){
   const f = (inp.files||[])[0]; inp.value=''; if(!f) return;
@@ -2973,7 +2992,7 @@ async function publicarRedes(){
   const msg = document.getElementById('rd_msg'); msg.innerHTML = '<span class="rd-spin chico"></span> ' + (esVideo ? 'Subiendo el video a Facebook por partes… puede tardar según su peso.' : 'Publicando en la página… (componiendo la pieza final y subiéndola a Facebook)');
   botonesRedes('publicando'); veloPrev(true, esVideo ? 'Subiendo el video a Facebook…' : 'Publicando en Facebook…');
   try{
-    const r = await fetch('/admin/api/redes/pichangol/publicar',{method:'POST',headers:headers(),body:JSON.stringify(cuerpoRedes())});
+    const r = await fetch('/admin/api/redes/pichangol/publicar',{method:'POST',headers:headers(),body:JSON.stringify(cuerpoRedes(true))});
     const j = await r.json().catch(()=>({}));
     if(r.ok && j.ok){ toast(esVideo ? 'Video enviado a Facebook' : 'Publicado en Facebook'); if(esVideo){ if(redesSel.video.url) URL.revokeObjectURL(redesSel.video.url); redesSel.video=null; } await cargarRedes(); const m2=document.getElementById('rd_msg'); if(m2) m2.innerHTML = esVideo ? `✅ Video enviado. Facebook lo procesa unos minutos y luego aparece en la página. ${j.url?`<a href="${esc(j.url)}" target="_blank" rel="noopener">Ver el video ↗</a>`:''}` : `✅ Publicado. ${j.url?`<a href="${esc(j.url)}" target="_blank" rel="noopener">Ver la publicación ↗</a>`:''}`; return; }
     msg.innerHTML = `<span style="color:var(--rojo)">${esc(j.detail||'No se pudo publicar')}</span>`;

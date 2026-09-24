@@ -239,6 +239,31 @@ def _envolver(d, texto: str, f, ancho: int) -> list[str]:
 
 
 # ── datos para la torre ──────────────────────────────────────────────────────
+def pieza_desde_vista_previa(data_url: str) -> bytes:
+    """La pieza que el operador YA VIO en la torre (data URL JPEG/PNG que devolvió
+    `/previsualizar`). Se valida como imagen real y se recodifica a JPEG para publicar
+    exactamente lo mismo aunque las fotos elegidas ya no estén (cambió de local, etc.)."""
+    from PIL import Image
+    u = (data_url or "").strip()
+    if not u.startswith("data:image/"):
+        raise ValueError("La vista previa no es una imagen válida.")
+    datos = _abrir_url(u)
+    if len(datos) > MAX_BYTES:
+        raise ValueError("La vista previa pesa demasiado.")
+    try:
+        im = Image.open(io.BytesIO(datos))
+        im.load()
+    except Exception as e:  # noqa: BLE001
+        raise ValueError("La vista previa está dañada; vuelve a generarla.") from e
+    if im.size[0] < 400 or im.size[1] < 400:
+        raise ValueError("La vista previa es demasiado pequeña; vuelve a generarla.")
+    if im.format == "JPEG":
+        return datos
+    salida = io.BytesIO()
+    im.convert("RGB").save(salida, "JPEG", quality=90, progressive=True)
+    return salida.getvalue()
+
+
 def rellenar(plantilla: str, cancha: dict | None, campo: str) -> str:
     base = PLANTILLAS.get(plantilla, PLANTILLAS["libre"]).get(campo, "")
     c = cancha or {}

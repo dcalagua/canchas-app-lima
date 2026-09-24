@@ -108,6 +108,16 @@ def test_torre_previsualiza_publica_y_registra(monkeypatch):
     assert Image.open(io.BytesIO(archivo[1])).size == (1080, 1080)
     h = client.get("/admin/api/redes/pichangol", headers=H).json()["historial"]
     assert len(h) == 1 and h[0]["ok"] and h[0]["post_id"] == "123_999" and h[0]["fotos"] == 2
+    # Se publica LA VISTA PREVIA tal cual aunque ya no queden fotos elegidas (caso real: cambió
+    # de local y salía "Elige al menos una foto"); una imagen inválida → 400; sin nada → 400.
+    vista = client.post("/admin/api/redes/pichangol/previsualizar", json=cuerpo, headers=H).json()["imagen"]
+    llamadas.clear()
+    r = client.post("/admin/api/redes/pichangol/publicar", json={**cuerpo, "fotos": [], "imagen": vista}, headers=H)
+    assert r.status_code == 200, r.text
+    assert llamadas[0][2][1] == base64.b64decode(vista.split(",", 1)[1]) and Image.open(io.BytesIO(llamadas[0][2][1])).size == (1080, 1080)
+    assert client.post("/admin/api/redes/pichangol/publicar", json={**cuerpo, "fotos": [], "imagen": "data:image/png;base64,AAAA"}, headers=H).status_code == 400
+    r = client.post("/admin/api/redes/pichangol/publicar", json={**cuerpo, "fotos": []}, headers=H)
+    assert r.status_code == 400 and "vista previa" in r.json()["detail"]
     # Facebook rechaza → 502 y queda en el historial con el error.
     monkeypatch.setattr(pr, "_graph_multipart", lambda *a, **k: {"ok": False, "error": "(#200) Permissions error"})
     assert client.post("/admin/api/redes/pichangol/publicar", json=cuerpo, headers=H).status_code == 502
@@ -115,7 +125,7 @@ def test_torre_previsualiza_publica_y_registra(monkeypatch):
     assert h[0]["ok"] is False and "Permissions" in h[0]["error"] and "token de PÁGINA" in h[0]["error"]
     # El snapshot persiste el historial.
     from db.store import stores
-    assert len(stores.to_state()["publicaciones_redes"]) == 2
+    assert len(stores.to_state()["publicaciones_redes"]) == 3
 
 
 def test_token_de_usuario_se_convierte_en_token_de_pagina_y_avisa_permisos(monkeypatch):
