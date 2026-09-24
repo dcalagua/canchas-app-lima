@@ -1014,6 +1014,11 @@ off → redeploy inmediato en cada push). URL pública:
     Railway QAS puede estar vencido → pegar un token en la torre de PRD
     (Conexiones → 🔑 Token de Facebook); (c) el agente 24×7 arranca PAUSADO
     en PRD: encenderlo en la torre cuando se quiera.
+    **Pase del 24-sep-2026 (4.º, autorizado: "a PRD lo mismo"):**  =
+    merge  (verificación en dos pasos de la torre + pie con la
+    página oficial de Facebook). Solo backend/web. En PRD cada operador
+    enrola su app autenticadora en su primer ingreso (secreto propio de PRD,
+    distinto al de QAS). Emergencia:  en .
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
