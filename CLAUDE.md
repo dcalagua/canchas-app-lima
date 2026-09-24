@@ -1154,16 +1154,29 @@ off → redeploy inmediato en cada push). URL pública:
   comercial, que publiquen todos los días a las 7:00 am promocionando
   Pichangol —descargar la app / reservar en la web— e incitando a los dueños
   a administrar sus canchas"):** `marketing/agente_redes.py` + tarjeta
-  "🤖 Agente de marketing 24×7" arriba del pane de Facebook. **Estratega**
-  (`planificar`): plan editorial SEMANAL editable en la torre (`PLAN_DEFAULT`:
-  lun beneficio · mar DUEÑOS · mié local · jue tip · vie finde · sáb comunidad
-  · dom DUEÑOS; audiencia `jugadores|duenos`, enfoque o "auto"), objetivo
-  comercial por audiencia (`AUDIENCIAS[..]["objetivo"]` viaja como `tema`
-  al redactor), rotación de locales verificados con foto
-  (`agente_fb_ultimo_local`) y datos reales (n.º de locales). **Creativo**
-  (`crear_pieza`): fotos del local del día (o `brand:portada` =
-  `static/brand/portada_facebook.png` si no hay locales con foto) +
-  `post_redes.redactar` (IA, sin repetir) + `componer` 1080². **Community
+  "🤖 Agente de marketing 24×7" arriba del pane de Facebook. **REGLA del
+  director (24-sep-2026, tras ver un borrador con la primera academia): la
+  publicidad es de la MARCA Pichangol (la app y la web), NUNCA de un local
+  por defecto; más adelante solo los locales PRO que paguen suscripción
+  tendrán publicidad aquí.** Por eso: el plan base no lleva el enfoque
+  "local" (`PLAN_DEFAULT`: lun beneficio · mar DUEÑOS · mié historia · jue
+  tip · vie finde · sáb comunidad · dom DUEÑOS), el `tema` que viaja al
+  redactor dice "no menciones ningún local", la IMAGEN es arte de marca
+  (`_arte_marca`: `arte_ia.fondo_para(deporte_del_día, semana_ISO, tema)`,
+  fotorrealista sin texto ni logos, cacheado en Storage por clave; sin
+  proveedor → `static/brand/portada_facebook.png`; en la receta queda
+  `brand:arte` y se recompone con la fecha del borrador) y `_locales()`
+  devuelve SOLO locales verificados con foto cuyo dueño tiene
+  `stores.pro_activo(dueno)` (la `muestra` de `_redes_canchas` ahora trae
+  `dueno`). Un local Pro entra únicamente con la casilla "Destacar locales
+  Pro" (`agente_fb_destacar_pro`, apagada por defecto) y en el enfoque
+  "local"; sin eso, "local" cae a "beneficio". **Estratega**
+  (`planificar`): plan editorial SEMANAL editable en la torre (audiencia
+  `jugadores|duenos`, enfoque o "auto"), objetivo comercial por audiencia
+  (`AUDIENCIAS[..]["objetivo"]`), rotación de locales Pro
+  (`agente_fb_ultimo_local`). **Creativo** (`crear_pieza`): arte de marca
+  (o fotos del local Pro destacado) + `post_redes.redactar` (IA, sin
+  repetir) + `componer` 1080². **Community
   manager** (`tick` cada 60 s desde el cron de `main.py`
   `_iniciar_cron_agente_redes`): si `agente_fb_activo=1`, hora local ≥
   `agente_fb_hora` (zona `agente_fb_zona`: Lima/La_Paz/Guayaquil, ZoneInfo

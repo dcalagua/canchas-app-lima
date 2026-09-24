@@ -409,7 +409,8 @@ def _redes_canchas() -> list[dict]:
                       "verificada": bool(c.get("verificada")), "muestra": {"id": c["id"], "club": c.get("club"), "nombre": c.get("nombre"),
                       "barrio": c.get("barrio"), "distrito": c.get("distrito"), "deporte": c.get("deporte"), "deportes": c.get("deportes"),
                       "precio_hora": c.get("precio_hora"), "moneda": c.get("moneda"), "lat": c.get("lat"), "lng": c.get("lng"),
-                      "hora_apertura": c.get("hora_apertura"), "hora_cierre": c.get("hora_cierre"), "verificada": bool(c.get("verificada"))}}
+                      "hora_apertura": c.get("hora_apertura"), "hora_cierre": c.get("hora_cierre"), "verificada": bool(c.get("verificada")),
+                      "dueno": (c.get("dueno") or "").strip().lower()}}
         out[k]["canchas"].append({"id": c["id"], "nombre": c.get("nombre"), "deporte": c.get("deporte")})
         for u in fotos:
             if u not in out[k]["fotos"]:
@@ -443,6 +444,7 @@ class AgenteConfigRequest(BaseModel):
     modo: str | None = None
     tono: str | None = None
     plan: dict | None = None
+    destacar_pro: bool | None = None
 
 
 class AgenteCorrerRequest(BaseModel):
@@ -3285,9 +3287,10 @@ function renderAgente(){
     </div>`; }).join('') || '<small style="color:var(--muted)">No hay borradores pendientes.</small>';
   const log = (agente.corridas||[]).map(k=>`<div style="display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid #F0F2F4;font-size:12.5px"><span>${k.resultado==='publicado'?'✅':k.resultado==='borrador'?'📝':'⚠️'}</span><span style="color:var(--muted);min-width:120px">${new Date((k.en||0)*1000).toLocaleString('es-PE',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</span><span style="flex:1">${esc(k.resultado)}${k.audiencia?' · '+esc((agente.audiencias||{})[k.audiencia]||k.audiencia):''}${k.titulo?' · '+esc(k.titulo):''}${k.detalle?' · <span style="color:var(--rojo)">'+esc(k.detalle)+'</span>':''}</span>${k.url?`<a href="${esc(k.url)}" target="_blank" rel="noopener">ver ↗</a>`:''}</div>`).join('') || '<small style="color:var(--muted)">Todavía no corrió.</small>';
   box.innerHTML = `<div class="top"><h3>🤖 Agente de marketing 24×7</h3>${c.activo?`<span style="color:var(--green);font-weight:700">● Activo · publica a las ${esc(c.hora)} (${esc(c.zona.replace('America/',''))})</span>`:'<span style="color:var(--muted);font-weight:700">○ Pausado</span>'}</div>
-    <div class="row" style="color:var(--muted);font-size:13px">Estratega + creativo + community manager de la página: cada día arma una pieza con fotos reales, copy con IA que no se repite y un objetivo comercial (jugadores → descargar la app o reservar en la web; dueños → administrar su cancha con Pichangol) y la publica solo a la hora fijada, o te la deja para aprobar. Próxima: ${cuando} → ${esc((agente.audiencias||{})[px.audiencia]||'')} · ${esc(ENFOQUE_NOMBRE[px.enfoque]||px.enfoque||'')}. Hora local del agente: ${esc(agente.hora_local||'')}.${!agente.credenciales?' <b style="color:var(--rojo)">Falta el token de Facebook: el agente no puede publicar.</b>':''}${agente.ia===false?' <span style="color:#8a5a00">Sin ANTHROPIC_API_KEY: usa el banco de variantes.</span>':''}${agente.locales===0?' <span style="color:#8a5a00">Aún no hay locales con fotos: usa la portada de marca.</span>':''}</div>
+    <div class="row" style="color:var(--muted);font-size:13px">Estratega + creativo + community manager de la página: cada día arma una pieza de <b>la MARCA Pichangol</b> (arte de marca por deporte, copy con IA que no se repite y un objetivo comercial: jugadores → descargar la app o reservar en la web; dueños → administrar su cancha con Pichangol) y la publica solo a la hora fijada, o te la deja para aprobar. Ningún local sale en la publicidad salvo que sea <b>Pro</b> y actives "Destacar locales Pro". Próxima: ${cuando} → ${esc((agente.audiencias||{})[px.audiencia]||'')} · ${esc(ENFOQUE_NOMBRE[px.enfoque]||px.enfoque||'')}. Hora local del agente: ${esc(agente.hora_local||'')}.${!agente.credenciales?' <b style="color:var(--rojo)">Falta el token de Facebook: el agente no puede publicar.</b>':''}${agente.ia===false?' <span style="color:#8a5a00">Sin ANTHROPIC_API_KEY: usa el banco de variantes.</span>':''}${agente.arte_ia===false?' <span style="color:#8a5a00">Sin proveedor de imágenes IA (OPENAI_API_KEY): usa la portada de marca.</span>':''}</div>
     <div class="row" style="display:flex;gap:14px;flex-wrap:wrap;align-items:end">
       <label style="display:flex;align-items:center;gap:8px;font-weight:700"><input type="checkbox" id="ag_activo" ${c.activo?'checked':''} style="width:18px;height:18px"> Activo</label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12.5px" title="Solo locales verificados cuyo dueño tiene Pichangol Pro vigente entran en la rotación (enfoque 'El local protagonista')"><input type="checkbox" id="ag_pro" ${c.destacar_pro?'checked':''} style="width:16px;height:16px"> Destacar locales Pro <small style="color:var(--muted)">(${agente.locales_pro||0} disponibles)</small></label>
       <label style="font-size:12.5px;font-weight:700">Hora<br><select id="ag_hora" ${inp}>${horas.join('')}</select></label>
       <label style="font-size:12.5px;font-weight:700">Zona<br><select id="ag_zona" ${inp}>${zonas}</select></label>
       <div style="font-size:12.5px;font-weight:700">Modo<br><label style="font-weight:400;margin-right:8px"><input type="radio" name="ag_modo" value="auto" ${c.modo==='auto'?'checked':''}> Publicar solo</label><label style="font-weight:400"><input type="radio" name="ag_modo" value="aprobar" ${c.modo==='aprobar'?'checked':''}> Dejarme aprobar</label></div>
@@ -3296,7 +3299,7 @@ function renderAgente(){
     </div>
     <details class="row" ${agente._planAbierto?'open':''} ontoggle="agente._planAbierto=this.open"><summary style="cursor:pointer;font-weight:700">📅 Plan semanal (audiencia y enfoque por día)</summary>
       <table style="margin-top:6px;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:4px 6px;font-size:12px;color:var(--muted)">Día</th><th style="text-align:left;padding:4px 6px;font-size:12px;color:var(--muted)">Audiencia</th><th style="text-align:left;padding:4px 6px;font-size:12px;color:var(--muted)">Enfoque</th></tr></thead><tbody>${filas}</tbody></table>
-      <small style="color:var(--muted)">"Que varíe solo" deja que la IA elija el ángulo evitando los últimos publicados. Los días de dueños siempre invitan a registrar y administrar la cancha. Se guarda con el botón Guardar.</small></details>
+      <small style="color:var(--muted)">"Que varíe solo" deja que la IA elija el ángulo evitando los últimos publicados. Los días de dueños siempre invitan a registrar y administrar la cancha. "El local protagonista" solo aplica con "Destacar locales Pro" activo; si no, cae a "Beneficio de reservar". Se guarda con el botón Guardar.</small></details>
     <div class="row actions" style="flex-wrap:wrap">
       <button type="button" class="btn-sec" onclick="agCorrer(false)" ${agOcupado?'disabled':''}>${agOcupado==='correr'?'<span class="rd-spin chico"></span> Creando…':'📝 Generar borrador ahora'}</button>
       <button type="button" class="btn-ap" onclick="agCorrer(true)" ${agOcupado||!agente.credenciales?'disabled':''}>${agOcupado==='publicar'?'<span class="rd-spin blanco"></span> Publicando…':'📣 Publicar ahora'}</button>
@@ -3309,7 +3312,7 @@ function renderAgentePlan(){ const plan = {}; (agente.dias||[]).forEach((d,i)=>{
 function agLeerForm(){
   const plan = {}; (agente.dias||[]).forEach((d,i)=>{ const a=document.querySelector(`[data-plan-aud="${i}"]`), e=document.querySelector(`[data-plan-enf="${i}"]`); plan[String(i)] = {audiencia: a?a.value:'jugadores', enfoque: e?e.value:'auto'}; });
   const modo = (document.querySelector('input[name="ag_modo"]:checked')||{}).value || 'auto';
-  return {activo: document.getElementById('ag_activo').checked, hora: document.getElementById('ag_hora').value, zona: document.getElementById('ag_zona').value, modo: modo, tono: document.getElementById('ag_tono').value, plan: plan};
+  return {activo: document.getElementById('ag_activo').checked, destacar_pro: document.getElementById('ag_pro').checked, hora: document.getElementById('ag_hora').value, zona: document.getElementById('ag_zona').value, modo: modo, tono: document.getElementById('ag_tono').value, plan: plan};
 }
 async function agGuardar(){
   const cuerpo = agLeerForm(); agOcupado='guardar'; renderAgente();

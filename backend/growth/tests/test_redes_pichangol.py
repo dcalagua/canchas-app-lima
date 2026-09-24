@@ -522,9 +522,10 @@ def test_agente_marketing_24x7_publica_a_las_7_y_alterna_audiencias(monkeypatch)
     from web import datos
     monkeypatch.setattr(datos, "canchas_publicas", lambda: [
         {"id": "u1", "nombre": "Cancha 1", "club": "CEANDE Tennis Club", "barrio": "Lurigancho", "deporte": "tenis", "deportes": ["tenis"], "precio_hora": 15,
-         "moneda": "S/", "verificada": True, "fotos": ["https://x.supabase.co/a.jpg"], "lat": -11.98, "lng": -76.9},
+         "moneda": "S/", "verificada": True, "fotos": ["https://x.supabase.co/a.jpg"], "lat": -11.98, "lng": -76.9, "dueno": "ceande@gmail.com"},
         {"id": "u2", "nombre": "Fútbol 1", "club": "Sabor Golazo", "barrio": "Ate", "deporte": "futbol", "deportes": ["futbol"], "precio_hora": 60,
-         "moneda": "S/", "verificada": True, "fotos": ["https://x.supabase.co/b.jpg"], "lat": -12.0, "lng": -76.9}])
+         "moneda": "S/", "verificada": True, "fotos": ["https://x.supabase.co/b.jpg"], "lat": -12.0, "lng": -76.9, "dueno": "golazo@gmail.com"}])
+    monkeypatch.setattr(ag, "_arte_disponible", lambda: False)   # sin proveedor de imágenes: portada de marca
     monkeypatch.setattr(pr, "_abrir_url", lambda u: _jpeg((40, 120, 60)) if u.startswith("https://") else base64.b64decode(u.split(",", 1)[1]))
     monkeypatch.setattr(config, "ANTHROPIC_API_KEY", "")
     monkeypatch.setattr(config, "FB_PAGE_ID", "1257"); monkeypatch.setattr(config, "FB_PAGE_TOKEN", "EAAPAGE")
@@ -540,7 +541,8 @@ def test_agente_marketing_24x7_publica_a_las_7_y_alterna_audiencias(monkeypatch)
     j = client.get("/admin/api/redes/agente", headers=H).json()
     assert j["config"]["activo"] is False and j["config"]["hora"] == "07:00" and j["config"]["zona"] == "America/Lima"
     assert j["config"]["plan"]["1"]["audiencia"] == "duenos" and j["config"]["plan"]["0"] == {"audiencia": "jugadores", "enfoque": "beneficio"}
-    assert j["proxima"]["dia"] == "martes" and j["proxima"]["audiencia"] == "duenos" and j["locales"] == 2
+    assert j["proxima"]["dia"] == "martes" and j["proxima"]["audiencia"] == "duenos"
+    assert j["locales_pro"] == 0 and j["config"]["destacar_pro"] is False   # ningún local es Pro → nadie sale en la publicidad
     # Pausado → el tick no hace nada aunque sea la hora.
     reloj["utc"] = datetime(2026, 9, 29, 12, 1, tzinfo=_tz.utc)
     assert ag.tick() is False and publicados == []
@@ -560,18 +562,35 @@ def test_agente_marketing_24x7_publica_a_las_7_y_alterna_audiencias(monkeypatch)
     h = stores.publicaciones_redes[0]
     assert h["fuente"] == "agente" and h["audiencia"] == "duenos" and h["enfoque"] == "duenos" and h["origen"] == "agente_auto" and h["ok"]
     assert "cancha" in texto.lower() and ("anfitrión" in texto.lower() or "pichangol.app" in texto.lower())
+    assert h["local"] == "" and "CEANDE" not in texto and "Golazo" not in texto   # publicidad de la MARCA, no de un local
     for utc in ((2026, 9, 29, 12, 1), (2026, 9, 29, 14, 0), (2026, 9, 30, 11, 0)):
         reloj["utc"] = datetime(*utc, tzinfo=_tz.utc)
         assert ag.tick() is False
     assert len(publicados) == 1 and stores.config["agente_fb_ultimo_dia"] == "2026-09-29"
     j = client.get("/admin/api/redes/agente", headers=H).json()
     assert j["proxima"]["hoy_publicado"] is False and j["proxima"]["dia"] == "miércoles" and j["proxima"]["audiencia"] == "jugadores" and j["corridas"][0]["resultado"] == "publicado"
-    # Miércoles 07:00 → jugadores, enfoque "local", rota al OTRO local y el texto empuja app/web.
+    # Miércoles 07:00 → jugadores, pieza de MARCA (historia de Pichangol): sin local, imagen de marca, empuja app/web.
     reloj["utc"] = datetime(2026, 9, 30, 12, 0, tzinfo=_tz.utc)
     assert ag.tick() is True and len(publicados) == 2
     h2 = stores.publicaciones_redes[0]
-    assert h2["audiencia"] == "jugadores" and h2["enfoque"] == "local" and h2["local"] in ("CEANDE Tennis Club", "Sabor Golazo")
-    assert "pichangol.app" in publicados[1][0].lower() or "app" in publicados[1][0].lower()
+    assert h2["audiencia"] == "jugadores" and h2["enfoque"] == "historia" and h2["local"] == ""
+    assert "pichangol" in publicados[1][0].lower() and "CEANDE" not in publicados[1][0] and "Golazo" not in publicados[1][0]
+    # Aunque el plan pida "local", sin locales Pro cae a "beneficio"; con un dueño PRO + "destacar Pro" activo, sí se destaca ESE local.
+    brief = ag.planificar(ag.ahora_local(), audiencia="jugadores", enfoque="local")
+    assert brief["enfoque"] == "beneficio" and brief["local"] is None and "no menciones ningún local" in brief["tema"]
+    stores.membresias_pro["golazo@gmail.com"] = {"hasta": "2099-01-01T00:00:00+00:00", "plan": "pro"}
+    assert client.get("/admin/api/redes/agente", headers=H).json()["locales_pro"] == 1
+    brief = ag.planificar(ag.ahora_local(), audiencia="jugadores", enfoque="local")
+    assert brief["local"] is None                       # destacar_pro sigue apagado
+    client.post("/admin/api/redes/agente", json={"destacar_pro": True}, headers=H)
+    brief = ag.planificar(ag.ahora_local(), audiencia="jugadores", enfoque="local")
+    assert brief["local"]["local"] == "Sabor Golazo" and "Local Pro destacado" in brief["tema"]
+    pieza = ag.crear_pieza(brief)
+    assert pieza["fotos"] == ["https://x.supabase.co/b.jpg"] and pieza["local"] == "Sabor Golazo"
+    brief = ag.planificar(ag.ahora_local(), audiencia="jugadores", enfoque="tip")
+    assert brief["local"] is None and pieza["local"]    # con "destacar Pro" el local solo entra en el enfoque "local"
+    client.post("/admin/api/redes/agente", json={"destacar_pro": False}, headers=H)
+    stores.membresias_pro.pop("golazo@gmail.com", None)
     # Si el backend estuvo caído a las 07:00, publica al volver (misma fecha): jueves 10:15 → humor.
     reloj["utc"] = datetime(2026, 10, 1, 15, 15, tzinfo=_tz.utc)
     assert client.get("/admin/api/redes/agente", headers=H).json()["proxima"]["pendiente_hoy"] is True
@@ -607,11 +626,21 @@ def test_agente_marketing_24x7_publica_a_las_7_y_alterna_audiencias(monkeypatch)
     j = client.get("/admin/api/redes/agente", headers=H).json()
     assert j["corridas"][0]["resultado"] == "error_facebook" and len(j["borradores"]) == 1 and "rechazó" in j["borradores"][0]["motivo"]
     assert stores.config["agente_fb_ultimo_dia"] == "2026-10-02"   # no cuenta como publicado: lo reintenta si el operador aprueba
-    # Sin locales con fotos → usa la portada de marca.
+    # Sin proveedor de imágenes IA → portada de marca; la receta guarda "brand:arte" y se recompone.
     monkeypatch.setattr(datos, "canchas_publicas", lambda: [])
     brief = ag.planificar(ag.ahora_local(), audiencia="jugadores")
     pieza = ag.crear_pieza(brief)
-    assert pieza["fotos"] and pieza["fotos"][0].startswith("data:image/png") and ag._receta(pieza)["fotos"] == ["brand:portada"] and len(pieza["png"]) > 10000
+    assert pieza["fotos"] and pieza["fotos"][0].startswith("data:image/png") and ag._receta(pieza)["fotos"] == ["brand:arte"] and len(pieza["png"]) > 10000
+    assert len(ag.componer_receta({**ag._receta(pieza), "fecha": "2026-10-03"})) > 10000
+    # Con proveedor de imágenes IA → arte fotorrealista del deporte del día (simulado), JPEG.
+    from PIL import Image as _Im
+    from marketing import arte_ia
+    monkeypatch.setattr(ag, "_arte_disponible", lambda: True)
+    monkeypatch.setattr(arte_ia, "disponible", lambda: True)
+    pedidos = []
+    monkeypatch.setattr(arte_ia, "fondo_para", lambda deporte, variante=0, tema="": (pedidos.append((deporte, variante, tema)) or _Im.new("RGB", (1024, 1280), (30, 120, 60))))
+    pieza = ag.crear_pieza(ag.planificar(ag.ahora_local(), audiencia="jugadores"))
+    assert pieza["fotos"][0].startswith("data:image/jpeg") and pedidos and pedidos[0][0] in ("futbol", "tenis", "padel", "pickleball")
     for k in ag.CFG.values():
         stores.config.pop(k, None)
     stores.agente_fb = {"borradores": [], "corridas": []}

@@ -30,6 +30,7 @@ al día siguiente (o el operador aprueba a mano).
 from __future__ import annotations
 
 import base64
+import io
 import json
 import os
 import time
@@ -58,20 +59,27 @@ AUDIENCIAS = {
     },
 }
 # Calendario editorial por defecto (índice = weekday(): 0 = lunes). 5 días a jugadores, 2 a dueños.
+# REGLA del director (24-sep-2026): la publicidad es de la MARCA (la app y la web de
+# Pichangol), NO de un local. Un local solo se destaca si su dueño paga Pichangol
+# Pro y el operador activa "destacar_pro"; por eso el plan base no trae el enfoque
+# "local" y las imágenes son arte de marca (`arte_ia`), no fotos de una academia.
 PLAN_DEFAULT = {
     "0": {"audiencia": "jugadores", "enfoque": "beneficio"},
     "1": {"audiencia": "duenos", "enfoque": "duenos"},
-    "2": {"audiencia": "jugadores", "enfoque": "local"},
+    "2": {"audiencia": "jugadores", "enfoque": "historia"},
     "3": {"audiencia": "jugadores", "enfoque": "tip"},
     "4": {"audiencia": "jugadores", "enfoque": "finde"},
     "5": {"audiencia": "jugadores", "enfoque": "comunidad"},
     "6": {"audiencia": "duenos", "enfoque": "duenos"},
 }
-ENFOQUES_JUGADORES = ["beneficio", "local", "comunidad", "tip", "finde", "promo", "humor", "historia", "academia"]
+ENFOQUES_JUGADORES = ["beneficio", "comunidad", "tip", "finde", "humor", "historia", "academia", "local"]
 ENFOQUES_DUENOS = ["duenos"]
+DEPORTES_MARCA = ["futbol", "tenis", "padel", "futbol", "pickleball", "tenis", "futbol"]   # deporte del arte de marca por día de la semana
 CFG = {"activo": "agente_fb_activo", "hora": "agente_fb_hora", "zona": "agente_fb_zona", "modo": "agente_fb_modo",
-       "tono": "agente_fb_tono", "plan": "agente_fb_plan", "ultimo_dia": "agente_fb_ultimo_dia", "ultimo_local": "agente_fb_ultimo_local"}
-DEFAULTS = {"activo": "0", "hora": "07:00", "zona": "America/Lima", "modo": "auto", "tono": "cercano", "plan": "", "ultimo_dia": "", "ultimo_local": ""}
+       "tono": "agente_fb_tono", "plan": "agente_fb_plan", "ultimo_dia": "agente_fb_ultimo_dia", "ultimo_local": "agente_fb_ultimo_local",
+       "destacar_pro": "agente_fb_destacar_pro"}
+DEFAULTS = {"activo": "0", "hora": "07:00", "zona": "America/Lima", "modo": "auto", "tono": "cercano", "plan": "", "ultimo_dia": "", "ultimo_local": "",
+            "destacar_pro": "0"}
 ZONAS = {"America/Lima": -5, "America/La_Paz": -4, "America/Guayaquil": -5}
 MAX_BORRADORES = 14
 MAX_CORRIDAS = 60
@@ -84,7 +92,7 @@ def _cfg(k: str) -> str:
 
 def configuracion() -> dict:
     return {"activo": _cfg("activo") == "1", "hora": _cfg("hora"), "zona": _cfg("zona"), "modo": _cfg("modo") if _cfg("modo") in ("auto", "aprobar") else "auto",
-            "tono": _cfg("tono"), "plan": plan(), "ultimo_dia": _cfg("ultimo_dia")}
+            "tono": _cfg("tono"), "plan": plan(), "ultimo_dia": _cfg("ultimo_dia"), "destacar_pro": _cfg("destacar_pro") == "1"}
 
 
 def plan() -> dict:
@@ -109,6 +117,8 @@ def guardar_configuracion(datos: dict) -> dict:
     """Valida y guarda lo que el operador cambió en la torre. Devuelve la config vigente."""
     if "activo" in datos:
         stores.config[CFG["activo"]] = "1" if datos.get("activo") else "0"
+    if "destacar_pro" in datos:
+        stores.config[CFG["destacar_pro"]] = "1" if datos.get("destacar_pro") else "0"
     if "hora" in datos:
         h = str(datos.get("hora") or "07:00")
         try:
@@ -179,12 +189,33 @@ def proxima_corrida() -> dict:
 
 # ── estratega ────────────────────────────────────────────────────────────────
 def _locales() -> list[dict]:
-    """Locales verificados con fotos reales (los que la torre ya lista), para destacar por rotación."""
+    """Locales que la torre PUEDE destacar: verificados, con fotos reales y cuyo dueño
+    tiene Pichangol PRO vigente (la publicidad de un local es un beneficio pagado)."""
     try:
         from propiedad.panel import _redes_canchas
-        return [l for l in _redes_canchas() if l.get("fotos")]
+        return [l for l in _redes_canchas() if l.get("fotos") and l.get("verificada")
+                and stores.pro_activo(str((l.get("muestra") or {}).get("dueno") or ""))]
     except Exception:  # noqa: BLE001
         return []
+
+
+def _arte_marca(loc: datetime) -> str:
+    """Imagen de MARCA para la pieza del día: arte IA fotorrealista del deporte que toca
+    (cacheado en Storage por `arte_ia`, se paga una vez por clave), como data URL. Si no hay
+    proveedor de imágenes, la portada de marca."""
+    try:
+        from marketing import arte_ia
+        if arte_ia.disponible():
+            deporte = DEPORTES_MARCA[loc.weekday() % len(DEPORTES_MARCA)]
+            semana = int(loc.strftime("%V"))
+            img = arte_ia.fondo_para(deporte, semana, "cancha" if semana % 2 else "")
+            if img is not None:
+                buf = io.BytesIO()
+                img.convert("RGB").save(buf, "JPEG", quality=88)
+                return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+    except Exception as e:  # noqa: BLE001
+        print(f"[agente] arte de marca no disponible: {str(e)[:120]}", flush=True)
+    return _foto_marca()
 
 
 def _foto_marca() -> str:
@@ -205,21 +236,29 @@ def planificar(fecha_local: datetime | None = None, *, audiencia: str | None = N
     enf = enfoque or p["enfoque"]
     if aud == "duenos":
         enf = "duenos"
-    locales = _locales()
+    # Un LOCAL solo se destaca si el operador activó "destacar Pro" y hay locales Pro; si no, la
+    # pieza es de MARCA (Pichangol: la app y la web) y el enfoque "local" cae a "beneficio".
     local = None
-    if locales:
-        ultimo = _cfg("ultimo_local")
-        ids = [l["canchas"][0]["id"] for l in locales]
-        idx = (ids.index(ultimo) + 1) % len(ids) if ultimo in ids else 0
-        local = locales[idx]
-    verificados = len(locales)
+    if aud == "jugadores" and _cfg("destacar_pro") == "1":
+        locales = _locales()
+        if locales and (enf in ("local", "auto") or enf == p["enfoque"] == "local"):
+            ultimo = _cfg("ultimo_local")
+            ids = [l["canchas"][0]["id"] for l in locales]
+            idx = (ids.index(ultimo) + 1) % len(ids) if ultimo in ids else 0
+            local = locales[idx]
+            if enf == "auto":
+                enf = "local"
+    if enf == "local" and not local:
+        enf = "beneficio"
     tema = AUDIENCIAS[aud]["objetivo"]
+    if aud == "jugadores" and not local:
+        tema += " La publicación es de la MARCA Pichangol: no menciones ningún local ni academia en particular."
     if aud == "jugadores" and local:
-        tema += f" Si encaja, menciona que {local['local']} ({local.get('zona') or 'la zona'}) ya se reserva ahí."
-    if aud == "duenos" and verificados:
-        tema += f" Dato real que puedes usar: ya hay {verificados} local{'es' if verificados != 1 else ''} con fotos publicando sus horarios."
+        tema += f" Local Pro destacado del día: {local['local']} ({local.get('zona') or 'la zona'}) ya se reserva en Pichangol; menciónalo con naturalidad."
+    if aud == "duenos":
+        tema += " No menciones locales ni academias por nombre; habla de la solución y de lo que gana el dueño."
     return {"fecha": loc.strftime("%Y-%m-%d"), "dia": DIAS[loc.weekday()], "audiencia": aud, "enfoque": enf, "tono": _cfg("tono"),
-            "local": local, "tema": tema, "formato": "cuadrado"}
+            "local": local, "tema": tema, "formato": "cuadrado", "loc": loc}
 
 
 # ── creativo ─────────────────────────────────────────────────────────────────
@@ -230,7 +269,7 @@ def crear_pieza(brief: dict, *, evitar: list[str] | None = None) -> dict:
     cancha = local.get("muestra") if local else None
     fotos = list((local.get("fotos") or [])[:3]) if local else []
     if not fotos:
-        marca = _foto_marca()
+        marca = _arte_marca(brief.get("loc") or ahora_local())
         fotos = [marca] if marca else []
     copy = _pr.redactar(cancha, brief.get("tono") or "cercano", brief.get("enfoque") or "auto", brief.get("tema") or "", evitar or [])
     etiqueta = copy.get("etiqueta") or ("Para dueños" if brief.get("audiencia") == "duenos" else "")
@@ -243,13 +282,17 @@ def crear_pieza(brief: dict, *, evitar: list[str] | None = None) -> dict:
 
 def _receta(pieza: dict) -> dict:
     # las fotos data: (portada de marca) no se guardan en el snapshot: se marcan y se regeneran
-    fotos = ["brand:portada" if u.startswith("data:") else u for u in pieza.get("fotos") or []]
+    fotos = ["brand:arte" if u.startswith("data:") else u for u in pieza.get("fotos") or []]
     return {k: pieza[k] for k in ("titulo", "subtitulo", "etiqueta", "texto", "enfoque", "fuente", "tono", "audiencia", "local", "local_id", "formato") if k in pieza} | {"fotos": fotos}
 
 
 def componer_receta(receta: dict) -> bytes:
     from marketing import post_redes as _pr
-    fotos = [(_foto_marca() if u == "brand:portada" else u) for u in receta.get("fotos") or []]
+    try:
+        loc = datetime.strptime(str(receta.get("fecha") or ""), "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except ValueError:
+        loc = ahora_local()
+    fotos = [(_arte_marca(loc) if u in ("brand:arte", "brand:portada") else u) for u in receta.get("fotos") or []]
     fotos = [u for u in fotos if u]
     return _pr.componer(fotos, receta.get("titulo") or "Pichangol", receta.get("subtitulo") or "", "www.pichangol.app", receta.get("formato") or "cuadrado", receta.get("etiqueta") or "")
 
@@ -388,7 +431,7 @@ def regenerar_borrador(bid: str) -> dict | None:
         return None
     loc = ahora_local()
     brief = planificar(loc, audiencia=b.get("audiencia"), enfoque=None if b.get("audiencia") == "duenos" else "auto")
-    if b.get("local_id"):
+    if b.get("local_id") and _cfg("destacar_pro") == "1":
         brief["local"] = next((l for l in _locales() if l["canchas"][0]["id"] == b["local_id"]), brief.get("local"))
     pieza = crear_pieza(brief, evitar=[b.get("texto", "")] + [x.get("texto", "") for x in _estado()["borradores"]])
     receta = _receta(pieza)
@@ -415,10 +458,19 @@ def tick() -> bool:
     return bool(r.get("ok") or r.get("motivo") not in ("ya_publicado_hoy",))
 
 
+def _arte_disponible() -> bool:
+    try:
+        from marketing import arte_ia
+        return bool(arte_ia.disponible())
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def resumen() -> dict:
     """Todo lo que la torre muestra del agente."""
     from marketing import post_redes as _pr
     return {"config": configuracion(), "proxima": proxima_corrida(), "borradores": borradores(), "corridas": [dict(c) for c in _estado()["corridas"][:12]],
-            "credenciales": _pr.configurado(), "ia": bool(config.ANTHROPIC_API_KEY), "locales": len(_locales()), "zonas": list(ZONAS),
+            "credenciales": _pr.configurado(), "ia": bool(config.ANTHROPIC_API_KEY), "locales_pro": len(_locales()), "zonas": list(ZONAS),
+            "arte_ia": _arte_disponible(),
             "audiencias": {k: v["nombre"] for k, v in AUDIENCIAS.items()}, "enfoques_jugadores": ["auto"] + ENFOQUES_JUGADORES, "dias": DIAS,
             "hora_local": ahora_local().strftime("%Y-%m-%d %H:%M")}
