@@ -37,7 +37,7 @@ import time
 from datetime import date, datetime, timedelta, timezone
 from urllib.parse import quote
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Header, Request, Response
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
 
@@ -1245,7 +1245,7 @@ def lugares_web(q: str = "", lat: float | None = None, lng: float | None = None)
 
 @router.get("/web/foto")
 def foto_web(id: str = "", nombre: str = "", club: str = "", lat: float = 0.0, lng: float = 0.0,
-             refrescar: int = 0, token: str = "") -> dict:
+             refrescar: int = 0, x_admin_token: str | None = Header(default=None)) -> dict:
     """PRIMERA FOTO de una cancha sin fotos propias (regla del director: la web
     muestra siempre la primera foto, como el app). Para una cancha registrada
     (`id`) usa sus fotos si las tiene; si no, resuelve las de Google en su
@@ -1263,7 +1263,10 @@ def foto_web(id: str = "", nombre: str = "", club: str = "", lat: float = 0.0, l
     region = pais_de_coordenadas(lat, lng)
     place_id = id[3:] if id.startswith("gp_") else ""
     # `refrescar=1` + token de admin: salta cachés y cosecha (diagnóstico).
-    forzar = bool(refrescar) and bool(config.ADMIN_PANEL_TOKEN) and hmac.compare_digest(token or "", config.ADMIN_PANEL_TOKEN)
+    # Solo con la CABECERA X-Admin-Token (sesión de la torre o token clásico); el
+    # token ya no se acepta en la URL, donde queda en logs y en el historial.
+    from propiedad import admin_auth as _aa
+    forzar = bool(refrescar) and _aa.token_admin_valido(x_admin_token)
     fotos = descubrir.fotos_de_lugar(nombre, club, lat, lng, region=region, place_id=place_id,
                                      cancha_id="" if place_id else id, forzar=forzar)
     return {"ok": True, "fotos": fotos, "origen": "google" if fotos else ""}

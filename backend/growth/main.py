@@ -77,8 +77,21 @@ if _cambios and pg.habilitado:
 @app.middleware("http")
 async def _persistir(request: Request, call_next):
     """Tras cada request que muta estado, guarda el snapshot completo (respaldo)
-    y vuelca lo crítico a sus tablas normalizadas. Todo fail-safe."""
+    y vuelca lo crítico a sus tablas normalizadas. Todo fail-safe. Además pone
+    las CABECERAS DE SEGURIDAD: HSTS (todo el dominio va por HTTPS), nosniff,
+    Referrer-Policy y, en la torre /admin, anti-iframe (clickjacking),
+    sin caché de respuestas de la API y sin permisos de cámara/micro/GPS."""
     response = await call_next(request)
+    h = response.headers
+    h.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    h.setdefault("X-Content-Type-Options", "nosniff")
+    h.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    ruta = request.url.path
+    if ruta == "/admin" or ruta.startswith("/admin/"):
+        h.setdefault("X-Frame-Options", "DENY")
+        h.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        if ruta.startswith("/admin/api/"):
+            h.setdefault("Cache-Control", "no-store")
     if pg.habilitado and request.method in ("POST", "PUT", "DELETE"):
         try:
             pg.guardar(stores.to_state())

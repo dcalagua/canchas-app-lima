@@ -14,6 +14,7 @@ en la cabecera X-Admin-Token. Sin `ADMIN_PANEL_TOKEN`, el panel responde 503.
 from __future__ import annotations
 
 import os
+import base64
 import time
 
 from datetime import datetime, timezone
@@ -40,43 +41,240 @@ def _check(token: str | None) -> None:
         raise HTTPException(status_code=401, detail="token_invalido")
 
 
-# ── Login usuario+contraseña ──────────────────────────────────────────────────
-# Anti fuerza bruta simple por IP: tras MAX_INTENTOS fallos seguidos, bloquea
-# BLOQUEO_S segundos. En memoria (una instancia en Railway; se reinicia con el
-# proceso, suficiente para frenar un ataque en línea).
-_intentos: dict[str, tuple[int, float]] = {}  # ip -> (fallos, bloqueado_hasta)
+# ── Login usuario+contraseña (+ segundo paso) ───────────────────────────────
+# Anti fuerza bruta por IP REAL (X-Forwarded-For: Railway termina TLS en su
+# proxy y `request.client.host` es siempre el proxy) y también POR USUARIO
+# (rotar IPs no ayuda). Tras MAX_INTENTOS fallos seguidos bloquea BLOQUEO_S y
+# el bloqueo se DUPLICA en cada racha (hasta BLOQUEO_MAX_S). En memoria (una
+# instancia en Railway; se reinicia con el proceso, suficiente para frenar un
+# ataque en línea).
+_intentos: dict[str, tuple[int, float, float]] = {}  # clave -> (fallos, bloqueado_hasta, bloqueo_actual)
 MAX_INTENTOS = 5
 BLOQUEO_S = 60.0
+BLOQUEO_MAX_S = 15 * 60.0
+ACCESOS_MAX = 200
+
+
+def _ip_de(request: Request) -> str:
+    xff = request.headers.get("x-forwarded-for", "")
+    if xff:
+        return xff.split(",")[0].strip()[:64] or "?"
+    return (request.client.host if request.client else "?")[:64]
+
+
+def _bloqueado(*claves: str) -> bool:
+    ahora = time.time()
+    return any(ahora < _intentos.get(k, (0, 0.0, 0.0))[1] for k in claves if k)
+
+
+def _fallo(*claves: str) -> None:
+    ahora = time.time()
+    for k in claves:
+        if not k:
+            continue
+        fallos, _hasta, bloqueo = _intentos.get(k, (0, 0.0, 0.0))
+        fallos += 1
+        if fallos >= MAX_INTENTOS:
+            bloqueo = min(BLOQUEO_MAX_S, (bloqueo * 2) if bloqueo else BLOQUEO_S)
+            _intentos[k] = (0, ahora + bloqueo, bloqueo)
+        else:
+            _intentos[k] = (fallos, 0.0, bloqueo)
+
+
+def _exito(*claves: str) -> None:
+    for k in claves:
+        _intentos.pop(k, None)
+
+
+def _acceso(evento: str, usuario: str, ip: str, detalle: str = "") -> None:
+    """Bitácora de accesos (la ve el operador en Mantenimiento → Seguridad)."""
+    stores.admin_accesos.append({"ts": int(time.time()), "evento": evento, "usuario": (usuario or "")[:120],
+                                 "ip": ip, "detalle": detalle[:160]})
+    del stores.admin_accesos[:-ACCESOS_MAX]
+    print(f"[admin] {evento} usuario={usuario or '-'} ip={ip} {detalle}", flush=True)
+
+
+def _qr_data_url(texto: str) -> str:
+    """QR del otpauth:// como data URL PNG (lib qrcode ya empaquetada)."""
+    try:
+        import io
+        import qrcode
+        img = qrcode.make(texto, box_size=6, border=2)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 class LoginRequest(BaseModel):
     usuario: str
     clave: str
+    dispositivo: str | None = None   # token "confío en este dispositivo" (d1.) si lo hay
+
+
+class Login2faRequest(BaseModel):
+    pre: str
+    codigo: str
+    recordar: bool = False
+
+
+@router.get("/admin/api/gate")
+def gate_info() -> dict:
+    """Lo que la pantalla de login necesita saber (público, sin datos sensibles):
+    si hay usuarios (entonces NO se ofrece "Entrar con token") y si hay 2.º paso."""
+    return {"configurado": bool(config.ADMIN_PANEL_TOKEN), "usuarios": bool(admin_auth.usuarios_configurados()),
+            "dos_pasos": admin_auth.dos_pasos_activo()}
+
+
+def _respuesta_sesion(usuario: str, recordar: bool = False) -> dict:
+    out = {"ok": True, "paso": "ok", "token": admin_auth.crear_sesion(usuario), "usuario": usuario}
+    if recordar:
+        out["dispositivo"] = admin_auth.crear_dispositivo(usuario)
+    return out
 
 
 @router.post("/admin/api/login")
 def login(body: LoginRequest, request: Request) -> dict:
-    """Valida usuario+contraseña y devuelve una sesión firmada (12 h) que la
-    página manda en X-Admin-Token. 503 si el panel/usuarios no están
-    configurados; 429 si la IP está bloqueada por intentos fallidos."""
+    """Paso 1: usuario+contraseña. Con 2FA activo devuelve un PRE-token y el
+    paso que sigue (`codigo` si ya enroló su app, `enrolar` con el QR si no);
+    si el navegador trae un dispositivo de confianza vigente, entra directo.
+    503 si el panel/usuarios no están configurados; 429 si la IP o el usuario
+    están bloqueados por intentos fallidos."""
     if not config.ADMIN_PANEL_TOKEN:
         raise HTTPException(status_code=503, detail="panel_no_configurado")
     if not admin_auth.usuarios_configurados():
         raise HTTPException(status_code=503, detail="usuarios_no_configurados")
-    ip = request.client.host if request.client else "?"
-    fallos, bloqueado_hasta = _intentos.get(ip, (0, 0.0))
-    ahora = time.time()
-    if ahora < bloqueado_hasta:
+    ip = _ip_de(request)
+    usuario = (body.usuario or "").strip().lower()
+    k_ip, k_usr = f"ip:{ip}", f"usr:{usuario}"
+    if _bloqueado(k_ip, k_usr):
+        _acceso("bloqueado", usuario, ip)
         raise HTTPException(status_code=429, detail="demasiados_intentos")
-    if admin_auth.credenciales_validas(body.usuario, body.clave):
-        _intentos.pop(ip, None)
-        usuario = body.usuario.strip().lower()
-        return {"ok": True, "token": admin_auth.crear_sesion(usuario),
-                "usuario": usuario}
-    fallos += 1
-    _intentos[ip] = (
-        fallos, ahora + BLOQUEO_S if fallos >= MAX_INTENTOS else 0.0)
-    raise HTTPException(status_code=401, detail="credenciales_invalidas")
+    if not admin_auth.credenciales_validas(body.usuario, body.clave):
+        _fallo(k_ip, k_usr)
+        _acceso("clave_mala", usuario, ip)
+        raise HTTPException(status_code=401, detail="credenciales_invalidas")
+    _exito(k_ip, k_usr)
+    if not admin_auth.dos_pasos_activo():
+        _acceso("login_ok", usuario, ip, "sin 2FA (ADMIN_2FA=0)")
+        return _respuesta_sesion(usuario)
+    if admin_auth.enrolado(usuario):
+        if body.dispositivo and admin_auth.dispositivo_valido(body.dispositivo, usuario):
+            _acceso("login_ok", usuario, ip, "dispositivo de confianza")
+            return _respuesta_sesion(usuario)
+        _acceso("clave_ok", usuario, ip, "espera código")
+        return {"ok": True, "paso": "codigo", "pre": admin_auth.crear_pre_sesion(usuario), "usuario": usuario}
+    sec = admin_auth.iniciar_enrolamiento(usuario)
+    uri = admin_auth.otpauth_uri(usuario, sec)
+    _acceso("clave_ok", usuario, ip, "debe enrolar 2FA")
+    return {"ok": True, "paso": "enrolar", "pre": admin_auth.crear_pre_sesion(usuario), "usuario": usuario,
+            "secreto": sec, "otpauth": uri, "qr": _qr_data_url(uri)}
+
+
+@router.post("/admin/api/login/2fa")
+def login_2fa(body: Login2faRequest, request: Request) -> dict:
+    """Paso 2: código de la app (o código de recuperación XXXX-XXXX). Si el
+    operador estaba enrolando, guarda su secreto y devuelve los códigos de
+    recuperación UNA sola vez. `recordar` = dispositivo de confianza 30 días."""
+    ip = _ip_de(request)
+    usuario = admin_auth.usuario_de_pre_sesion(body.pre)
+    if not usuario:
+        raise HTTPException(status_code=401, detail="pre_invalido")
+    k_ip, k_usr = f"ip:{ip}", f"2fa:{usuario}"
+    if _bloqueado(k_ip, k_usr):
+        _acceso("bloqueado", usuario, ip, "2FA")
+        raise HTTPException(status_code=429, detail="demasiados_intentos")
+    codigo = (body.codigo or "").strip()
+    if admin_auth.enrolado(usuario):
+        if admin_auth.totp_valido(usuario, admin_auth.secreto_de(usuario), codigo):
+            _exito(k_ip, k_usr)
+            _acceso("login_ok", usuario, ip, "2FA app")
+            return _respuesta_sesion(usuario, body.recordar)
+        if "-" in codigo and admin_auth.usar_recuperacion(usuario, codigo):
+            _exito(k_ip, k_usr)
+            _acceso("login_ok", usuario, ip, f"código de recuperación (quedan {admin_auth.recuperacion_restantes(usuario)})")
+            return {**_respuesta_sesion(usuario, body.recordar), "recuperacion_usada": True,
+                    "recuperacion_restantes": admin_auth.recuperacion_restantes(usuario)}
+        _fallo(k_ip, k_usr)
+        _acceso("2fa_mal", usuario, ip)
+        raise HTTPException(status_code=401, detail="codigo_invalido")
+    rec = admin_auth.confirmar_enrolamiento(usuario, codigo)
+    if rec is None:
+        _fallo(k_ip, k_usr)
+        _acceso("2fa_mal", usuario, ip, "enrolando")
+        raise HTTPException(status_code=401, detail="codigo_invalido")
+    _exito(k_ip, k_usr)
+    _acceso("enrolado", usuario, ip)
+    return {**_respuesta_sesion(usuario, body.recordar), "recuperacion": rec}
+
+
+# ── Seguridad (Mantenimiento → Seguridad) ────────────────────────────────────
+class CorreoRequest(BaseModel):
+    correo: str
+
+
+class CodigoRequest(BaseModel):
+    codigo: str
+
+
+def _operador(x_admin_token: str | None) -> str:
+    _check(x_admin_token)
+    return admin_auth.usuario_de_sesion(x_admin_token)
+
+
+@router.get("/admin/api/seguridad")
+def get_seguridad(x_admin_token: str | None = Header(default=None)) -> dict:
+    yo = _operador(x_admin_token)
+    usuarios = []
+    for correo in admin_auth.usuarios_configurados():
+        usuarios.append({"correo": correo, "enrolado": admin_auth.enrolado(correo),
+                         "desde": admin_auth.enrolado_desde(correo),
+                         "recuperacion_restantes": admin_auth.recuperacion_restantes(correo)})
+    return {"dos_pasos": admin_auth.dos_pasos_activo(), "yo": yo, "token_clasico": yo == "token",
+            "usuarios": usuarios, "accesos": list(reversed(stores.admin_accesos[-60:])),
+            "sesion_horas": admin_auth.SESION_HORAS, "dispositivo_dias": admin_auth.DISPOSITIVO_DIAS}
+
+
+@router.post("/admin/api/seguridad/2fa/restablecer")
+def post_seguridad_restablecer(body: CorreoRequest, request: Request,
+                               x_admin_token: str | None = Header(default=None)) -> dict:
+    """Quita el 2.º paso de un operador (perdió el teléfono): vuelve a enrolar
+    en su próximo login. Lo hace otro operador con sesión, o el token clásico
+    de ADMIN_PANEL_TOKEN (último recurso, desde Railway)."""
+    yo = _operador(x_admin_token)
+    correo = (body.correo or "").strip().lower()
+    if correo not in admin_auth.usuarios_configurados():
+        raise HTTPException(status_code=404, detail="usuario_desconocido")
+    admin_auth.restablecer(correo)
+    _acceso("2fa_restablecido", correo, _ip_de(request), f"por {yo}")
+    return {"ok": True}
+
+
+@router.post("/admin/api/seguridad/2fa/recuperacion")
+def post_seguridad_recuperacion(body: CodigoRequest, request: Request,
+                                x_admin_token: str | None = Header(default=None)) -> dict:
+    """Códigos de recuperación nuevos para MÍ (invalida los anteriores). Exige
+    un código vigente de la app para confirmar que soy yo."""
+    yo = _operador(x_admin_token)
+    if yo in ("", "token") or not admin_auth.enrolado(yo):
+        raise HTTPException(status_code=400, detail="sin_2fa")
+    if not admin_auth.totp_valido(yo, admin_auth.secreto_de(yo), body.codigo):
+        raise HTTPException(status_code=401, detail="codigo_invalido")
+    rec = admin_auth.generar_recuperacion(yo)
+    _acceso("recuperacion_nueva", yo, _ip_de(request))
+    return {"ok": True, "recuperacion": rec}
+
+
+@router.post("/admin/api/seguridad/dispositivos/olvidar")
+def post_seguridad_olvidar(request: Request, x_admin_token: str | None = Header(default=None)) -> dict:
+    """Invalida todos mis "dispositivos de confianza": el próximo login vuelve a pedir el código."""
+    yo = _operador(x_admin_token)
+    if yo in ("", "token"):
+        raise HTTPException(status_code=400, detail="sin_usuario")
+    admin_auth.olvidar_dispositivos(yo)
+    _acceso("dispositivos_olvidados", yo, _ip_de(request))
+    return {"ok": True}
 
 
 class DecidirRequest(BaseModel):
@@ -2006,7 +2204,7 @@ _HTML = r"""<!DOCTYPE html>
   .gate .lado .foot{margin-top:auto;color:#9DB8AA;font-size:12px}
   .gate .form{flex:1;padding:46px 42px;display:flex;flex-direction:column;justify-content:center;
     max-width:520px;margin:0 auto;width:100%}
-  .gate .form h2{margin:0 0 4px;font-family:var(--serif);font-weight:700;font-size:26px;
+  .gate .form h2,.gate .form>div>h2{margin:0 0 4px;font-family:var(--serif);font-weight:700;font-size:26px;
     letter-spacing:-.01em;color:var(--ink)}
   .gate .form .sub{margin:0 0 24px;color:var(--muted);font-size:14px}
   .gate .campo{position:relative;margin-bottom:14px}
@@ -2019,10 +2217,10 @@ _HTML = r"""<!DOCTYPE html>
     color:var(--muted);font-size:16px}
   .gate .campo .ojo{position:absolute;right:10px;top:50%;transform:translateY(-50%);
     background:none;border:0;cursor:pointer;color:var(--muted);font-size:17px;padding:4px;width:auto}
-  .gate .form>button.cta{width:100%;background:var(--bosque);color:#fff;border:0;
+  .gate .form button.cta{width:100%;background:var(--bosque);color:#fff;border:0;
     border-radius:12px;padding:14px;font-family:inherit;font-weight:800;font-size:15px;
     cursor:pointer;margin-top:6px}
-  .gate .form>button.cta:hover{filter:brightness(1.08)}
+  .gate .form button.cta:hover{filter:brightness(1.08)}
   .gate .err{color:var(--rojo);font-size:13px;font-weight:700;min-height:18px;margin-bottom:8px}
   .gate .alt{margin-top:18px;text-align:center;font-size:12.5px;color:var(--muted)}
   .gate .alt a{color:#128C7E;font-weight:700;cursor:pointer;text-decoration:none}
@@ -2050,10 +2248,11 @@ _HTML = r"""<!DOCTYPE html>
         <span>Cobros online, comisiones y "por recibir" de cada dueño, cuadrados
         con la billetera de la app.</span></div></div>
       <div class="feat"><div class="fi">🛡️</div><div><b>Sesión protegida</b>
-        <span>Acceso por usuario y contraseña con sesión que expira sola.</span></div></div>
+        <span>Usuario, contraseña y código de tu app autenticadora (verificación en dos pasos); la sesión expira sola.</span></div></div>
       <div class="foot">Conexión cifrada · Pichangol · una solución de <span class="ebim" style="color:#AEEA94">EBIM</span></div>
     </div>
     <div class="form">
+      <div id="paso1">
       <h2>Entrar</h2>
       <p class="sub">Con tu cuenta de operador de la torre de control.</p>
       <div class="err" id="gateErr"></div>
@@ -2069,7 +2268,48 @@ _HTML = r"""<!DOCTYPE html>
         <button type="button" class="ojo" onclick="verPwd()" title="Mostrar/ocultar">👁</button>
       </div>
       <button class="cta" onclick="entrar()">Iniciar sesión</button>
-      <div class="alt" id="altModo">¿Sin usuario? <a onclick="modoToken(true)">Entrar con token de administrador</a></div>
+      <div class="alt" id="altModo" style="display:none">¿Sin usuario? <a onclick="modoToken(true)">Entrar con token de administrador</a></div>
+      </div>
+      <div id="paso2" style="display:none">
+        <h2>Verificación en dos pasos</h2>
+        <p class="sub" id="p2sub">Escribe el código de 6 dígitos de tu app autenticadora.</p>
+        <div class="err" id="gateErr2"></div>
+        <div class="campo">
+          <label id="lblCod">Código</label>
+          <span class="ic">🔐</span>
+          <input id="cod" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123 456" maxlength="12">
+        </div>
+        <label class="chk" style="display:flex;gap:8px;align-items:center;font-size:13px;margin:-4px 0 12px"><input type="checkbox" id="recordar"> Confiar en este dispositivo por 30 días</label>
+        <button class="cta" onclick="verificar2fa()">Verificar y entrar</button>
+        <div class="alt"><a onclick="usarRecuperacion()" id="altRec">¿Sin tu teléfono? Usa un código de recuperación</a> · <a onclick="volverPaso1()">Volver</a></div>
+      </div>
+      <div id="pasoEnrolar" style="display:none">
+        <h2>Activa la verificación en dos pasos</h2>
+        <p class="sub">Es tu primer ingreso con el nuevo esquema. Escanea este QR con <b>Google Authenticator</b>, <b>Microsoft Authenticator</b> o <b>Authy</b> y escribe el código que te muestra.</p>
+        <div class="err" id="gateErr3"></div>
+        <div style="display:flex;gap:14px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+          <img id="qr2fa" alt="QR para la app autenticadora" style="width:168px;height:168px;border:1px solid var(--border);border-radius:12px;background:#fff">
+          <div style="font-size:12.5px;color:var(--muted);flex:1;min-width:180px">Si no puedes escanear, agrega la cuenta a mano con esta clave:<br><code id="sec2fa" style="font-size:12px;word-break:break-all;user-select:all"></code></div>
+        </div>
+        <div class="campo">
+          <label>Código de la app</label>
+          <span class="ic">🔐</span>
+          <input id="codEnrolar" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123 456" maxlength="8">
+        </div>
+        <label class="chk" style="display:flex;gap:8px;align-items:center;font-size:13px;margin:-4px 0 12px"><input type="checkbox" id="recordarEnrolar"> Confiar en este dispositivo por 30 días</label>
+        <button class="cta" onclick="verificar2fa(true)">Activar y entrar</button>
+        <div class="alt"><a onclick="volverPaso1()">Volver</a></div>
+      </div>
+      <div id="pasoRec" style="display:none">
+        <h2>Guarda tus códigos de recuperación</h2>
+        <p class="sub">Si pierdes el teléfono, cada uno de estos códigos te deja entrar UNA vez. Guárdalos en un lugar seguro: no se vuelven a mostrar.</p>
+        <div id="recLista" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-family:ui-monospace,Menlo,monospace;font-size:14px;font-weight:700;background:#F4F7FA;border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:12px"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+          <button type="button" class="btn-sec" onclick="copiarRec()">📋 Copiar</button>
+          <button type="button" class="btn-sec" onclick="descargarRec()">⬇️ Descargar .txt</button>
+        </div>
+        <button class="cta" onclick="mostrarApp()">Ya los guardé, entrar</button>
+      </div>
       <div class="foot">Pichang<span style="letter-spacing:0">o</span>l · una solución de <span class="ebim">EBIM</span></div>
     </div>
   </div>
@@ -2296,6 +2536,7 @@ _HTML = r"""<!DOCTYPE html>
           Acciones sensibles — úsalas con cuidado.</p>
       </div>
       <div class="cfg-grid">
+        <div id="seguridad"></div>
         <div id="mantenimiento"></div>
       </div>
     </section>
@@ -2339,6 +2580,25 @@ function verPwd(){
   p.type = p.type === 'password' ? 'text' : 'password';
 }
 
+let pre2fa = '', recCodigos = [];
+function mostrarPaso(id){
+  ['paso1','paso2','pasoEnrolar','pasoRec'].forEach(x=>{ const el=document.getElementById(x); if(el) el.style.display = (x===id)?'':'none'; });
+  const foco = {paso2:'cod', pasoEnrolar:'codEnrolar', paso1:'usr'}[id];
+  if(foco){ const f=document.getElementById(foco); if(f) setTimeout(()=>f.focus(),50); }
+}
+function volverPaso1(){ pre2fa=''; document.getElementById('cod').value=''; document.getElementById('codEnrolar').value=''; mostrarPaso('paso1'); }
+function usarRecuperacion(){
+  document.getElementById('lblCod').textContent='Código de recuperación';
+  document.getElementById('cod').placeholder='XXXX-XXXX'; document.getElementById('cod').inputMode='text';
+  document.getElementById('p2sub').textContent='Escribe uno de los códigos de recuperación que guardaste al activar la verificación. Cada uno vale una sola vez.';
+  document.getElementById('altRec').style.display='none';
+  document.getElementById('cod').focus();
+}
+function guardarSesion(j){
+  localStorage.setItem('pichangol_admin_tok', j.token);
+  localStorage.setItem('pichangol_admin_usr', j.usuario || '');
+  if(j.dispositivo) localStorage.setItem('pichangol_admin_dev', j.dispositivo);
+}
 async function entrar(){
   const err = document.getElementById('gateErr');
   err.textContent='';
@@ -2353,25 +2613,66 @@ async function entrar(){
   }
   const usuario = document.getElementById('usr').value.trim();
   if(!usuario || !clave){ err.textContent='Ingresa tu correo y contraseña.'; return; }
+  const dispositivo = localStorage.getItem('pichangol_admin_dev') || '';
   const r = await fetch('/admin/api/login',{method:'POST',
     headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({usuario, clave})});
+    body: JSON.stringify({usuario, clave, dispositivo})});
   if(r.ok){
     const j = await r.json();
-    localStorage.setItem('pichangol_admin_tok', j.token);
-    localStorage.setItem('pichangol_admin_usr', j.usuario || usuario);
+    if(j.paso==='codigo'){ pre2fa=j.pre; mostrarPaso('paso2'); return; }
+    if(j.paso==='enrolar'){
+      pre2fa=j.pre;
+      document.getElementById('qr2fa').src = j.qr || '';
+      document.getElementById('sec2fa').textContent = j.secreto || '';
+      mostrarPaso('pasoEnrolar'); return;
+    }
+    guardarSesion(j);
     mostrarApp();
   } else if(r.status===429){
-    err.textContent='Demasiados intentos. Espera un minuto y vuelve a probar.';
+    err.textContent='Demasiados intentos. Espera unos minutos y vuelve a probar.';
   } else if(r.status===503){
     const j = await r.json().catch(()=>({}));
     err.textContent = (j.detail==='usuarios_no_configurados')
       ? 'Aún no hay usuarios configurados (ADMIN_PANEL_USUARIOS). Usa "Entrar con token".'
       : 'El panel no está configurado en el servidor (ADMIN_PANEL_TOKEN).';
+    if(j.detail==='usuarios_no_configurados') document.getElementById('altModo').style.display='';
   } else {
     err.textContent='Correo o contraseña incorrectos.';
   }
 }
+async function verificar2fa(enrolando){
+  const err = document.getElementById(enrolando?'gateErr3':'gateErr2');
+  err.textContent='';
+  const codigo = document.getElementById(enrolando?'codEnrolar':'cod').value.trim();
+  const recordar = !!document.getElementById(enrolando?'recordarEnrolar':'recordar').checked;
+  if(!codigo){ err.textContent='Escribe el código.'; return; }
+  const r = await fetch('/admin/api/login/2fa',{method:'POST',headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({pre:pre2fa, codigo, recordar})});
+  if(r.ok){
+    const j = await r.json();
+    guardarSesion(j);
+    if(j.recuperacion && j.recuperacion.length){
+      recCodigos = j.recuperacion;
+      document.getElementById('recLista').innerHTML = recCodigos.map(c=>`<span>${esc(c)}</span>`).join('');
+      mostrarPaso('pasoRec'); return;
+    }
+    if(j.recuperacion_usada) toast('Entraste con un código de recuperación · te quedan '+j.recuperacion_restantes+'. Genera nuevos en Mantenimiento → Seguridad.');
+    mostrarApp();
+  } else if(r.status===429){ err.textContent='Demasiados intentos. Espera unos minutos.'; }
+  else if(r.status===401){
+    const j = await r.json().catch(()=>({}));
+    if(j.detail==='pre_invalido'){ err.textContent='Se venció el tiempo. Vuelve a ingresar tu contraseña.'; setTimeout(volverPaso1, 1500); }
+    else err.textContent = enrolando ? 'Ese código no coincide. Revisa la hora del teléfono y vuelve a intentar.' : 'Código incorrecto.';
+  } else err.textContent='No se pudo verificar. Intenta de nuevo.';
+}
+function copiarRec(){ navigator.clipboard && navigator.clipboard.writeText(recCodigos.join('\n')).then(()=>toast('Códigos copiados')); }
+function descargarRec(){
+  const usr = localStorage.getItem('pichangol_admin_usr')||'';
+  const blob = new Blob([`Pichangol · Torre de control · códigos de recuperación de ${usr}\nCada código vale UNA vez. Guárdalos en un lugar seguro.\n\n`+recCodigos.join('\n')+'\n'],{type:'text/plain'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'pichangol-torre-recuperacion.txt'; a.click();
+}
+['cod','codEnrolar'].forEach(id=>{ document.addEventListener('DOMContentLoaded',()=>{ const el=document.getElementById(id); if(el) el.addEventListener('keydown',e=>{ if(e.key==='Enter') verificar2fa(id==='codEnrolar'); }); }); });
+fetch('/admin/api/gate').then(r=>r.ok?r.json():null).then(g=>{ if(g && !g.usuarios){ const a=document.getElementById('altModo'); if(a) a.style.display=''; } }).catch(()=>{});
 function salir(){
   localStorage.removeItem('pichangol_admin_tok');
   localStorage.removeItem('pichangol_admin_usr');
@@ -2452,7 +2753,7 @@ function renderMantenimiento(){
         <button class="btn-rc" style="font-weight:800;background:#9A1722;color:#fff;border-color:#9A1722" onclick="resetTotal()">🧨 Borrar TODO (virgen total)</button>
       </div>
       <div class="row" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
-        <b>\U0001F9F9 Limpiar almacenamiento (archivos huérfanos)</b><br/>
+        <b>🧹 Limpiar almacenamiento (archivos huérfanos)</b><br/>
         Borra del Storage los archivos cuyo dueño ya no existe: fotos de canchas
         eliminadas, historias vencidas, fotos de productos borrados, afiches de
         campeonatos, avatares viejos y documentos de identidad sin referencia.
@@ -2461,7 +2762,7 @@ function renderMantenimiento(){
       </div>
       <div class="actions" style="flex-wrap:wrap;gap:8px">
         <button class="btn-ap" onclick="revisarStorage()">\U0001F50D Revisar archivos huérfanos</button>
-        <button class="btn-rc" onclick="limpiarStorage()">\U0001F9F9 Borrar huérfanos</button>
+        <button class="btn-rc" onclick="limpiarStorage()">🧹 Borrar huérfanos</button>
       </div>
       <div id="stg_res" class="row" style="margin-top:8px;color:var(--muted)"></div>
       <div id="mant_res" class="row" style="margin-top:10px;color:var(--muted)"></div>
@@ -4090,6 +4391,71 @@ function mostrarSeccion(sec){
   window.scrollTo({top:0,behavior:'smooth'});
   if(sec==='disputas') cargarDisputas();
   if(sec==='identidad') cargarDni();
+  if(sec==='pruebas') cargarSeguridad();
+}
+
+// ── Seguridad de la torre (2.º paso, dispositivos, bitácora de accesos) ────
+async function cargarSeguridad(){
+  const box = document.getElementById('seguridad'); if(!box) return;
+  const r = await fetch('/admin/api/seguridad',{headers:headers()});
+  if(r.status===401){ salir(); return; }
+  if(!r.ok){ box.innerHTML=''; return; }
+  const g = await r.json();
+  const yo = g.usuarios.find(u=>u.correo===g.yo);
+  const fecha = ts => ts ? new Date(ts*1000).toLocaleString('es-PE',{dateStyle:'short',timeStyle:'short'}) : '—';
+  const EV = {login_ok:'✅ Ingreso', clave_ok:'🔑 Contraseña OK', clave_mala:'❌ Contraseña incorrecta', '2fa_mal':'❌ Código incorrecto',
+    bloqueado:'⛔ Bloqueado por intentos', enrolado:'📲 Activó 2 pasos', '2fa_restablecido':'♻️ 2 pasos restablecido',
+    recuperacion_nueva:'🧾 Códigos nuevos', dispositivos_olvidados:'📵 Dispositivos olvidados'};
+  const estado = !g.dos_pasos
+    ? `<div class="row" style="color:#8a5a00"><b>⚠️ Verificación en dos pasos APAGADA</b> (ADMIN_2FA=0 en Railway). Solo se pide contraseña.</div>`
+    : g.token_clasico
+      ? `<div class="row" style="color:#8a5a00">Entraste con el <b>token de administrador</b> (sin 2.º paso). Úsalo solo para emergencias; para operar, entra con tu usuario.</div>`
+      : yo && yo.enrolado
+        ? `<div class="row">✅ Tu cuenta <b>${esc(g.yo)}</b> tiene la verificación en dos pasos activa desde ${fecha(yo.desde)} · códigos de recuperación disponibles: <b>${yo.recuperacion_restantes}</b>.</div>
+           <div class="actions" style="flex-wrap:wrap;gap:8px">
+             <button class="btn-sec" onclick="segRecuperacion()">🧾 Generar códigos de recuperación nuevos</button>
+             <button class="btn-sec" onclick="segOlvidar()">📵 Olvidar mis dispositivos de confianza</button>
+           </div>`
+        : `<div class="row">Tu cuenta <b>${esc(g.yo)}</b> aún no activó el 2.º paso: se te pedirá en tu próximo ingreso.</div>`;
+  const filas = g.usuarios.map(u=>`<tr><td style="padding:6px 8px;border-top:1px solid var(--border)">${esc(u.correo)}</td>
+      <td style="padding:6px 8px;border-top:1px solid var(--border)">${u.enrolado?'✅ activo desde '+fecha(u.desde):'⏳ pendiente'}</td>
+      <td style="padding:6px 8px;border-top:1px solid var(--border);text-align:right">${u.enrolado?`<button class="btn-rc" style="padding:4px 10px;font-size:12px" onclick="segRestablecer('${esc(u.correo)}')">Restablecer 2 pasos</button>`:''}</td></tr>`).join('');
+  const accesos = (g.accesos||[]).slice(0,25).map(a=>`<tr><td style="padding:4px 8px;border-top:1px solid var(--border);white-space:nowrap">${fecha(a.ts)}</td>
+      <td style="padding:4px 8px;border-top:1px solid var(--border)">${EV[a.evento]||esc(a.evento)}</td>
+      <td style="padding:4px 8px;border-top:1px solid var(--border)">${esc(a.usuario||'—')}</td>
+      <td style="padding:4px 8px;border-top:1px solid var(--border);color:var(--muted)">${esc(a.ip)} ${esc(a.detalle||'')}</td></tr>`).join('');
+  box.innerHTML = `<div class="card"><div class="top"><h3>🔐 Seguridad de la torre</h3></div>
+    <div class="row" style="color:var(--muted)">Ingreso con usuario + contraseña + código de app autenticadora (Google/Microsoft Authenticator, Authy). Sesión de ${g.sesion_horas} h; "confiar en este dispositivo" evita el código por ${g.dispositivo_dias} días. Los usuarios se administran en Railway (<code>ADMIN_PANEL_USUARIOS</code>).</div>
+    ${estado}
+    <div class="row" style="margin-top:12px"><b>Operadores</b></div>
+    <table style="width:100%;border-collapse:collapse;font-size:13px"><tbody>${filas||'<tr><td style="padding:6px 8px;color:var(--muted)">Sin usuarios configurados.</td></tr>'}</tbody></table>
+    <div class="row" style="margin-top:12px"><b>Últimos accesos</b> <small style="color:var(--muted)">(los 25 más recientes)</small></div>
+    <div style="max-height:280px;overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px"><tbody>${accesos||'<tr><td style="padding:6px 8px;color:var(--muted)">Aún no hay accesos registrados.</td></tr>'}</tbody></table></div>
+  </div>`;
+}
+async function segRestablecer(correo){
+  if(!confirm('¿Restablecer la verificación en dos pasos de '+correo+'? En su próximo ingreso tendrá que volver a escanear el QR; sus códigos de recuperación y dispositivos de confianza dejan de valer.')) return;
+  const r = await fetch('/admin/api/seguridad/2fa/restablecer',{method:'POST',headers:headers(),body:JSON.stringify({correo})});
+  toast(r.ok ? 'Listo: '+correo+' volverá a enrolar su app.' : 'No se pudo restablecer.');
+  cargarSeguridad();
+}
+async function segRecuperacion(){
+  const codigo = prompt('Para generar códigos nuevos, escribe el código actual de tu app autenticadora:');
+  if(!codigo) return;
+  const r = await fetch('/admin/api/seguridad/2fa/recuperacion',{method:'POST',headers:headers(),body:JSON.stringify({codigo})});
+  const j = await r.json().catch(()=>({}));
+  if(!r.ok){ toast(r.status===401?'Código incorrecto.':'No se pudo generar.'); return; }
+  recCodigos = j.recuperacion||[];
+  alert('Tus códigos de recuperación NUEVOS (los anteriores ya no valen). Guárdalos ahora, no se vuelven a mostrar:\n\n'+recCodigos.join('\n'));
+  descargarRec();
+  cargarSeguridad();
+}
+async function segOlvidar(){
+  if(!confirm('¿Olvidar todos tus dispositivos de confianza? La próxima vez, en cada navegador, se pedirá el código otra vez.')) return;
+  const r = await fetch('/admin/api/seguridad/dispositivos/olvidar',{method:'POST',headers:headers()});
+  if(r.ok) localStorage.removeItem('pichangol_admin_dev');
+  toast(r.ok?'Dispositivos olvidados.':'No se pudo.');
+  cargarSeguridad();
 }
 
 // --- Recargas por QR (Yape directo): el operador verifica y aprueba -------------

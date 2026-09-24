@@ -84,6 +84,11 @@ ADMIN_PANEL_TOKEN = os.getenv("ADMIN_PANEL_TOKEN", "")
 # ADMIN_PANEL_TOKEN que expira sola. Sin esta env, el panel sigue aceptando el
 # token clásico ("Entrar con token").
 ADMIN_PANEL_USUARIOS = os.getenv("ADMIN_PANEL_USUARIOS", "")
+# Verificación en dos pasos de la torre (código de app autenticadora tras la
+# contraseña). "1" (default) = obligatoria para todo operador con usuario;
+# "0" = corte de emergencia (solo contraseña). El secreto de cada operador se
+# guarda cifrado con META_TOKEN_KEY en el snapshot.
+ADMIN_2FA = os.getenv("ADMIN_2FA", "1")
 # Clave compartida APP↔BACKEND para que SOLO el APK oficial pueda llamar a los
 # endpoints públicos del dueño (crear reclamo, estado, OTP, identidad…). El APK la
 # envía en la cabecera X-App-Key (viene de un --dart-define en el build). Si está
