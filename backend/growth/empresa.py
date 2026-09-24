@@ -43,7 +43,7 @@ CAMPOS: dict[str, tuple[str, str]] = {
     # Redes sociales OFICIALES de la marca (Culqi exige que los íconos de la web
     # lleven a perfiles reales y activos; vacío = el ícono NO se muestra).
     "empresa_instagram": ("Instagram oficial", "URL del perfil (https://www.instagram.com/…) o @usuario. Vacío = sin ícono."),
-    "empresa_facebook": ("Facebook oficial", "URL de la página (https://www.facebook.com/…) o nombre de la página. Vacío = sin ícono."),
+    "empresa_facebook": ("Facebook oficial", "URL de la página (https://www.facebook.com/…) o nombre de la página. Vacío = la página desde la que publica la torre (si hay una conectada); si no, sin ícono. Un enlace de búsqueda no vale."),
     "empresa_tiktok": ("TikTok oficial", "URL del perfil (https://www.tiktok.com/@…) o @usuario. Vacío = sin ícono."),
     "empresa_youtube": ("YouTube oficial", "URL del canal (https://www.youtube.com/@…) o @canal. Vacío = sin ícono."),
 }
@@ -71,8 +71,16 @@ def _url_red(red: str, valor: str) -> str:
         return ""
     nombre, dominios, plantilla = next((n, d, t) for r, n, d, t in REDES if r == red)
     if re.match(r"^https?://", v, re.I):
-        host = re.sub(r"^https?://", "", v, flags=re.I).split("/")[0].lower()
-        return v if any(host == d or host.endswith("." + d) for d in dominios) else ""
+        sin_esquema = re.sub(r"^https?://", "", v, flags=re.I)
+        host = sin_esquema.split("/")[0].lower()
+        if not any(host == d or host.endswith("." + d) for d in dominios):
+            return ""
+        # Un enlace de BÚSQUEDA, login o "compartir" no es la página oficial (caso
+        # real: el director pegó facebook.com/search/top?q=pichangol).
+        ruta = sin_esquema.split("/", 1)[1].lower() if "/" in sin_esquema else ""
+        if re.match(r"^(search|login|sharer|share|hashtag|explore|results|watch\?|dialog)\b", ruta) or ruta.startswith("search"):
+            return ""
+        return v
     usuario = v.lstrip("@").strip("/")
     if not re.match(r"^[A-Za-z0-9._-]{1,60}$", usuario):
         return ""
@@ -84,9 +92,27 @@ def redes() -> list[dict[str, str]]:
     out = []
     for red, nombre, _d, _t in REDES:
         url = _url_red(red, _cfg(f"empresa_{red}"))
+        if not url and red == "facebook":
+            url = facebook_conectada()
         if url:
             out.append({"red": red, "nombre": nombre, "url": escape(url)})
     return out
+
+
+def facebook_conectada() -> str:
+    """URL de la página de Facebook desde la que PUBLICA la torre (`FB_PAGE_ID`):
+    es la página oficial de Pichangol, así que sirve de respaldo cuando el
+    operador no pegó una URL en Datos de la empresa. Usa el enlace real que
+    devolvió Graph (`fb_page_link`, lo guarda `post_redes.estado_pagina`) y, si
+    aún no se consultó, `facebook.com/<id>`, que Facebook siempre resuelve."""
+    import config
+    pid = (getattr(config, "FB_PAGE_ID", "") or "").strip()
+    if not pid:
+        return ""
+    link = (stores.config.get("fb_page_link") or "").strip()
+    if link and _url_red("facebook", link):
+        return link
+    return f"https://www.facebook.com/{pid}" if re.match(r"^[0-9]{5,}$", pid) else ""
 
 
 def _cfg(clave: str) -> str:

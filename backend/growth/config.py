@@ -144,6 +144,17 @@ META_MODO = os.getenv("META_MODO", "sandbox")
 #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 META_TOKEN_KEY = os.getenv("META_TOKEN_KEY", "")
 
+# PÁGINA DE FACEBOOK DE PICHANGOL (la propia, no la de un dueño): la torre
+# compone publicaciones con fotos reales de las canchas y las publica con un
+# Page Access Token de larga duración (Meta for Developers → app propia en modo
+# desarrollo → Graph API Explorer → permisos pages_manage_posts +
+# pages_read_engagement → /me/accounts). Un token de PÁGINA derivado de un
+# token de usuario de larga duración no caduca. Sin ambos, la torre solo
+# compone y deja descargar la imagen. NUNCA pegar el token en el chat ni en el
+# repo: va como variable de Railway.
+FB_PAGE_ID = os.getenv("FB_PAGE_ID", "")
+FB_PAGE_TOKEN = os.getenv("FB_PAGE_TOKEN", "")
+
 
 def meta_modo() -> str:
     """Modo EFECTIVO de la Gestión de redes. Sin credenciales → siempre sandbox
@@ -180,6 +191,9 @@ PLACES_API_KEY = os.getenv("PLACES_API_KEY", "").strip()
 # Con valor → reservar en la web EXIGE iniciar sesión con Google; vacío → la
 # web sigue con el formulario de invitado (nombre + correo) hasta configurarlo.
 GOOGLE_WEB_CLIENT_ID = os.getenv("GOOGLE_WEB_CLIENT_ID", "").strip()
+# Secreto del MISMO cliente OAuth "Aplicación web": lo usa la torre para conectar
+# Google Fotos (Picker API) con refresh token. Sin él, la sección explica qué falta.
+GOOGLE_WEB_CLIENT_SECRET = os.getenv("GOOGLE_WEB_CLIENT_SECRET", "").strip()
 
 # Huella SHA-256 del certificado de firma del APK (para verificar los Android
 # App Links en /.well-known/assetlinks.json). Sacarla con:

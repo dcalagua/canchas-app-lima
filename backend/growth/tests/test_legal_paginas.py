@@ -242,6 +242,27 @@ def test_requisitos_culqi_libro_devoluciones_terminos_y_redes():
         assert [r["url"] for r in empresa.redes()] == ["https://www.instagram.com/pichangol", "https://www.tiktok.com/@pichangol.app"]
         h2 = cli.get("/canchas").text
         assert "Síguenos" in h2 and "href='https://www.instagram.com/pichangol' target='_blank'" in h2 and "class='red-tiktok' href='https://www.tiktok.com/@pichangol.app'" in h2 and "class='red-facebook' href=" not in h2
+        # Facebook sin configurar → cae a la página desde la que publica la torre (FB_PAGE_ID),
+        # con el enlace real si Graph ya lo devolvió; un enlace de BÚSQUEDA no vale como página.
+        import config as _cfg_mod
+        prev_pid = _cfg_mod.FB_PAGE_ID
+        try:
+            _cfg_mod.FB_PAGE_ID = "123456789012345"
+            assert [r["url"] for r in empresa.redes() if r["red"] == "facebook"] == ["https://www.facebook.com/123456789012345"]
+            stores.config["fb_page_link"] = "https://www.facebook.com/pichangol.app"
+            assert [r["url"] for r in empresa.redes() if r["red"] == "facebook"] == ["https://www.facebook.com/pichangol.app"]
+            assert "class='red-facebook' href='https://www.facebook.com/pichangol.app'" in cli.get("/canchas").text
+            stores.config.update(empresa.validar({"empresa_facebook": "https://www.facebook.com/profile.php?id=999"}))
+            assert [r["url"] for r in empresa.redes() if r["red"] == "facebook"] == ["https://www.facebook.com/profile.php?id=999"]
+        finally:
+            _cfg_mod.FB_PAGE_ID = prev_pid
+            stores.config.pop("fb_page_link", None)
+        for malo_fb in ("https://www.facebook.com/search/top?q=pichangol", "https://www.facebook.com/login/?next=x", "https://www.facebook.com/sharer/sharer.php?u=x"):
+            try:
+                empresa.validar({"empresa_facebook": malo_fb})
+                assert False, malo_fb
+            except ValueError:
+                pass
         # URL de otro dominio o basura → rechazada.
         for malo in ("https://google.com/pichangol", "pichangol pe", "javascript:alert(1)"):
             try:

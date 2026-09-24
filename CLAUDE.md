@@ -995,6 +995,10 @@ off → redeploy inmediato en cada push). URL pública:
     deporte). Sin SQL ni Edge (el catálogo se siembra solo en el snapshot).
     CAMBIÓ `lib/` → APK/AAB de PRD por `workflow_dispatch` de `build.yml`
     con `ref=prd` e `inputs.entorno=prod`.
+    APK/AAB de PRD = run 1335 (`pichangol-1335.apk`, artifact
+    `pichangol-aab-prod`; el 1.º intento falló por Gradle transitorio y se
+    relanzó). **Pase del 24-sep-2026 (2.º, autorizado):** `prd` = merge
+    `c2c3bd2` (texto blanco del botón del popup del mapa). Solo web.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
@@ -1013,6 +1017,343 @@ off → redeploy inmediato en cada push). URL pública:
     triggers siguen disparando: Postgres pide EXECUTE al CREAR el trigger,
     no al dispararlo (probado con tabla desechable: INSERT como anon →
     dispara; llamada directa como anon → permission denied).
+- **PUBLICAR EN FACEBOOK DESDE LA TORRE (pedido del director, 24-sep-2026:
+  "una variante con fotos reales de canchas para mi primera publicación… y
+  que en el admin haya un agente que mueva las redes"):** fase 1 en
+  `backend/growth/marketing/post_redes.py` + pane `/admin` → Comunicación →
+  **"📣 Publicar en Facebook"** (`GET /admin/api/redes/pichangol`, `POST
+  …/plantilla|previsualizar|publicar`). El operador elige un LOCAL (fotos
+  reales del bucket `canchas/` que subió el dueño, `_redes_canchas` agrupa
+  por `club`) o sube fotos desde su computadora (data URL, comprimidas a
+  1600 px en el navegador), hasta 4; plantilla (`PLANTILLAS`: lanzamiento,
+  nuevo_local, promo, libre; `rellenar()` con {local} {zona} {deportes}
+  {precio} {url}); `componer()` arma la pieza con Pillow (collage 1-4 fotos,
+  degradado inferior, logo en disco, etiqueta naranja, título/subtítulo/pie;
+  formatos `cuadrado` 1080², `horizontal` 1200×630, `historia` 1080×1920; DM
+  Sans en `marketing/assets/`, sin emojis en la imagen). Vista previa en
+  base64, "Descargar PNG" y **"Publicar en Facebook"** = Graph
+  `/{FB_PAGE_ID}/photos` con el archivo en multipart (`_graph_multipart`, no
+  necesita URL pública) + `message`. Credenciales `FB_PAGE_ID` +
+  `FB_PAGE_TOKEN` (Page Access Token de larga duración, app propia en modo
+  desarrollo: los administradores publican en sus páginas SIN App Review;
+  guía en el propio pane); sin ellas el botón queda deshabilitado y la torre
+  solo compone. Historial en `stores.publicaciones_redes` (snapshot, últimas
+  50). **TOKEN DE PÁGINA vs DE USUARIO (trampa real, 24-sep-2026):** el
+  director pegó en Railway el token de USUARIO extendido y Meta respondió
+  `(#200) The permission(s) publish_actions are not available… deprecated`
+  (ese mensaje NO habla de la página: sale cuando `/{page}/photos` recibe un
+  token de usuario o uno sin `pages_manage_posts`). Ahora
+  `post_redes._resolver_token()` pregunta `/me` con el token: si el id es la
+  página → token de página (scopes vía `debug_token`); si es una persona →
+  lee `/me/permissions`, pide `/{page}?fields=access_token` y publica con ESE
+  token de página (caché 10 min); `estado_pagina()` devuelve `token_tipo`,
+  `usuario`, `faltan`, `advertencia` y el pane lo pinta (rojo si falta
+  `pages_manage_posts` o el usuario no administra la página, ámbar si es de
+  usuario y se derivó solo). `_pista_error` traduce los #200/#190 a qué
+  hacer. **TOKEN QUE VENCE (caso real, 24-sep-2026 22:00 PDT: "(#190)
+  Session has expired"):** el token de usuario del Explorador sin extender
+  dura 1-2 h. Ahora `_resolver_token()` prueba (1) el token de PÁGINA que la
+  torre ya derivó y GUARDÓ cifrado en `stores.config[fb_page_token_cifrado]`
+  (Fernet con `META_TOKEN_KEY` vía `redes.cifrar`; meta en
+  `fb_page_token_meta`; se persiste al instante con `_persistir_ahora`) y
+  (2) `FB_PAGE_TOKEN` de Railway: si es de usuario lo EXTIENDE a 60 días
+  con `META_APP_ID/SECRET` (`oauth/access_token` `fb_exchange_token`) y
+  pide `/{page}?fields=access_token` → token de página que NO vence
+  (`debug_token` con `APP_ID|APP_SECRET` da `expires_at`, `vence`=0 =
+  nunca), y lo guarda. Un guardado que Facebook rechaza se olvida solo y
+  se cae al de Railway; publicar con (#190) también lo olvida. El pane tiene
+  "🔑 Token de Facebook": el operador PEGA un token nuevo (`POST
+  /admin/api/redes/pichangol/token`, `guardar_token_operador`: analiza,
+  deriva, guarda; nunca se devuelve) sin tocar Railway, ve origen
+  (torre/Railway) y vencimiento, y puede "Olvidar el guardado"
+  (`/token/olvidar`). `configurado()` vale con `FB_PAGE_ID` + (Railway o
+  guardado). Test `test_token_vencido_se_reemplaza_desde_la_torre_sin_
+  tocar_railway`. **VIDEO (pedido
+  del director, 24-sep-2026: "también debe permitir subir videos y que haga
+  el post"):** bloque "🎬 O publica un VIDEO" en el pane: el archivo (MP4/MOV/
+  M4V/WEBM/AVI/MKV/3GP, tope `FB_VIDEO_MAX_MB`=300) sube a la torre por XHR
+  con barra de progreso (`POST /admin/api/redes/pichangol/video?nombre=`,
+  cuerpo crudo por `request.stream()` a disco en `tempfile/pichangol_redes_
+  videos`, 413 si pasa el tope; `video_id` temporal 2 h, `_limpiar_videos`;
+  `/{id}/descartar`). La vista previa muestra el `<video>` local (el
+  navegador; nada se compone en el servidor) y el título pasa a "Título del
+  video (opcional)"; subtítulo/etiqueta/pie/formato se ocultan. Publicar con
+  `video_id` → `publicar_video_facebook`: subida REANUDABLE de Graph
+  `/{page}/videos` (`upload_phase=start` con `file_size` → `transfer` por
+  trozos `video_file_chunk` con los offsets que devuelve Meta, timeout 600 s,
+  corta si no avanza → `finish` con `description`=texto, `title`,
+  `published=true`); URL `facebook.com/{video_id}`; Facebook lo procesa unos
+  minutos. Historial con `tipo: video`, `video_nombre`, `video_bytes`; el
+  temporal se borra al publicar y se conserva si Facebook falló (reintento).
+  Preloader en todo (velo, barra, botón "Publicando…"). OJO Playwright: el
+  Chromium del sandbox no decodifica H.264 (duración 0 con .mp4); probar con
+  .webm. Test `test_video_se_sube_a_la_torre_y_se_publica_por_trozos`.
+  **REDACTOR CON IA (queja del director, 24-sep-2026: "todos los posts son la
+  misma temática, todos dicen llegó Pichangol; acá debe interactuar la IA
+  para que sea más natural"):** `post_redes.redactar(cancha, tono, enfoque,
+  tema, evitar)` + `POST /admin/api/redes/pichangol/redactar`. Chip
+  "✨ Redactar con IA" es la plantilla POR DEFECTO del pane (las fijas
+  siguen): controles de TONO (cercano/divertido/informativo/motivador),
+  ENFOQUE (`ENFOQUES`: auto, beneficio, local, comunidad, tip, finde, promo,
+  duenos, academia, humor, historia), "Algo que quieras que mencione" (texto
+  del operador) y "🔁 Otra versión". Motor = Anthropic (`ANTHROPIC_API_KEY`
+  + `MARKETING_MODEL`, el mismo del CM de academias) con `_SYSTEM_REDACTOR`
+  (español natural, 0-3 emojis, un CTA, 3-6 hashtags con #pichangol, solo
+  HECHOS del local vía `_contexto_local`: nombre, zona, deportes, precio con
+  moneda del país, horario, país por `pais_de_coordenadas`; prohibido
+  "¡Llegó Pichangol!" salvo pedido). ANTI-REPETICIÓN: se le pasan
+  `recientes_no_repetir` (título + 1.ª línea de los últimos 10 del historial
+  + lo generado en la sesión, `evitar`) y `enfoques_recientes`;
+  `_elegir_enfoque` en "auto" evita los últimos 4 enfoques publicados (el
+  historial guarda `enfoque` y `fuente`). Sin llave o si el modelo falla →
+  `_banco` (variantes por enfoque con los datos reales, humor según el
+  deporte) rotando a otro enfoque antes de repetir; un enfoque pedido a mano
+  se respeta. Topes: título ≤36 (va sobre la foto), subtítulo ≤80, etiqueta
+  ≤14. Test `test_redactor_ia_varia_el_enfoque_y_no_repite_lo_publicado`.
+  **PULIDO DE VIDEO "ESTILO CAPCUT" EN CASA + SUBTÍTULOS WHISPER (plan
+  aprobado por el director, 24-sep-2026, puntos 1 y 2; CapCut NO tiene API
+  pública):** `marketing/video_pulido.py`. Con el video ya subido, el pane
+  muestra "✨ Pulir con estilo Pichangol": formato (vertical 9:16 · cuadrado
+  · original), Logo (marca de agua `_png_marca`), Intro 1,2 s (`_png_intro`),
+  Rótulo con el título (`_png_rotulo`, 0,6-5,1 s), Cierre 3 s con título y
+  www.pichangol.app (`_png_cierre`), Subtítulos automáticos y música original
+  (`musica.generar_pista`) si el video no trae audio. Todo con el FFmpeg
+  empaquetado de `imageio-ffmpeg` (johnvansickle static 7.0: tiene `ass`/
+  `subtitles`, `gblur`, `concat`, `loudnorm`, `amix`; NO tiene `drawtext`,
+  por eso los textos de marca son PNG de Pillow que se superponen). Encuadre
+  que no calza → fondo desenfocado (`split` + `gblur=38` + overlay centrado);
+  audio `loudnorm I=-16`; H.264 veryfast CRF 22 + AAC 128k + faststart, 30
+  fps; intro/cierre = imagen en bucle + `aevalsrc` silencio → `concat`.
+  **Subtítulos:** `transcribir()` extrae el audio (mono 16 kHz MP3 48k) y
+  llama a Whisper (`OPENAI_API_KEY`, `WHISPER_MODEL`=whisper-1,
+  `verbose_json` con `timestamp_granularities[] = word + segment`);
+  `partir_segmentos` deja frases ≤6 palabras / ≤4 s; `escribir_ass` genera
+  ASS con DM Sans (`fontsdir=marketing/assets`), caja oscura (BorderStyle 3)
+  y la palabra en curso en LIMA con karaoke `\k` cuando hay tiempos por
+  palabra (estilo Plano si no). El operador CORRIGE los textos en la torre
+  ("✏️ Corregir subtítulos" → "🔁 Regenerar con mis correcciones"; una línea
+  editada pierde el resaltado por palabra). Trabajo en hilo
+  (`iniciar_trabajo`, progreso real de `-progress pipe:1`), endpoints
+  `POST /admin/api/redes/pichangol/video/{id}/pulir` (409 si ya corre o si
+  piden subtítulos sin llave), `GET …/estado` (sondeo cada 1,5 s),
+  `GET …/archivo?cual=pulido|original` (la torre lo pide con fetch +
+  cabecera y lo muestra como blob; un `<video src>` no puede mandar el
+  token). El pulido queda junto al temporal (`<id>_pulido.mp4`,
+  `anotar_video(pulido=, pulido_info=, transcripcion=)`); publicar usa la
+  pulida salvo `usar_pulido=false` (radio "Publicar la pulida / el
+  original"); historial con `pulido` y `subtitulos`. Un clip de 4 s se pule
+  en ~6 s; el sondeo muestra fase y %. Test
+  `test_pulido_estilo_pichangol_con_subtitulos_whisper` (renderiza de verdad
+  con FFmpeg; Whisper simulado). **Música DE FONDO o PROTAGONISTA (pregunta
+  del director, sep-2026):** chips "🎵 Música" Automática · De fondo ·
+  Protagonista · Sin música + "Estilo" Chill · Enérgica · Épica en el pulido
+  (`musica_modo` + `mood` en `PulirVideoRequest`, validados contra
+  `video_pulido.MODOS_MUSICA/MOODS_MUSICA`). `video_pulido.mezcla_musica(
+  tiene_audio, opciones)` decide volúmenes: fondo = 0.16 bajo la voz (0.55
+  sola si es mudo), protagonista = música 0.8 y audio original a 0.22 de
+  ambiente, no = solo el original (un mudo queda con pista en silencio,
+  Facebook prefiere que exista), auto = fondo con voz / protagonista mudo.
+  `musica: bool` sigue por compatibilidad; el agente usa `auto` con mood
+  `energetico` (jugadores) / `chill` (dueños). Backlog del plan: (3) plantillas en la nube
+  (Shotstack/Creatomate) si se quieren transiciones vistosas, (4) voz en off
+  ElevenLabs, (5) IG Reels con el mismo video.
+  **El entorno de Claude NO alcanza Storage de Supabase ni bancos de
+  fotos (proxy 403): las piezas con fotos reales se componen en el backend.**
+  **AGENTE DE MARKETING 24×7 (pedido del director, 24-sep-2026: "agentes de
+  marketing que vivan 24×7, un creativo y un community manager, estratega
+  comercial, que publiquen todos los días a las 7:00 am promocionando
+  Pichangol —descargar la app / reservar en la web— e incitando a los dueños
+  a administrar sus canchas"):** `marketing/agente_redes.py` + tarjeta
+  "🤖 Agente de marketing 24×7" arriba del pane de Facebook. **REGLA del
+  director (24-sep-2026, tras ver un borrador con la primera academia): la
+  publicidad es de la MARCA Pichangol (la app y la web), NUNCA de un local
+  por defecto; más adelante solo los locales PRO que paguen suscripción
+  tendrán publicidad aquí.** Por eso: el plan base no lleva el enfoque
+  "local" (`PLAN_DEFAULT`: lun beneficio · mar DUEÑOS · mié historia · jue
+  tip · vie finde · sáb comunidad · dom DUEÑOS), el `tema` que viaja al
+  redactor dice "no menciones ningún local", la IMAGEN es arte de marca
+  (`_arte_marca`: `arte_ia.fondo_para(deporte_del_día, semana_ISO, tema)`,
+  fotorrealista sin texto ni logos, cacheado en Storage por clave; sin
+  proveedor → `static/brand/portada_facebook.png`; en la receta queda
+  `brand:arte` y se recompone con la fecha del borrador) y `_locales()`
+  devuelve SOLO locales verificados con foto cuyo dueño tiene
+  `stores.pro_activo(dueno)` (la `muestra` de `_redes_canchas` ahora trae
+  `dueno`). Un local Pro entra únicamente con la casilla "Destacar locales
+  Pro" (`agente_fb_destacar_pro`, apagada por defecto) y en el enfoque
+  "local"; sin eso, "local" cae a "beneficio". **Estratega**
+  (`planificar`): plan editorial SEMANAL editable en la torre (audiencia
+  `jugadores|duenos`, enfoque o "auto"), objetivo comercial por audiencia
+  (`AUDIENCIAS[..]["objetivo"]`), rotación de locales Pro
+  (`agente_fb_ultimo_local`). **Creativo** (`crear_pieza`): arte de marca
+  (o fotos del local Pro destacado) + `post_redes.redactar` (IA, sin
+  repetir) + `componer` 1080². **Community
+  manager** (`tick` cada 60 s desde el cron de `main.py`
+  `_iniciar_cron_agente_redes`): si `agente_fb_activo=1`, hora local ≥
+  `agente_fb_hora` (zona `agente_fb_zona`: Lima/La_Paz/Guayaquil, ZoneInfo
+  con fallback a offset fijo) y `agente_fb_ultimo_dia` ≠ hoy → `ejecutar()`:
+  modo `auto` publica (`origen agente_auto`) o modo `aprobar` deja un
+  BORRADOR (receta sin bytes en `stores.agente_fb.borradores`, snapshot; la
+  imagen se recompone al verla/aprobarla); si Facebook rechaza queda como
+  borrador con `motivo` y NO cuenta el día (reintenta al aprobar). Si el
+  backend estuvo caído a las 07:00, publica al volver el mismo día
+  (`pendiente_hoy`). Bitácora `stores.agente_fb.corridas`. Torre: activo,
+  hora, zona, modo, tono, plan por día, "📝 Generar borrador ahora", "📣
+  Publicar ahora" (cuenta como la de hoy), borradores con Ver pieza / editar
+  título-subtítulo-texto / 🔁 Otra versión / ✅ Aprobar y publicar / 🗑
+  Descartar. Endpoints `GET/POST /admin/api/redes/agente`, `POST …/correr`,
+  `GET …/borrador/{id}/imagen`, `POST …/borrador/{id}/editar|aprobar|
+  descartar|regenerar`. Config en `stores.config` claves `agente_fb_*`
+  (arranca PAUSADO: el director lo enciende en la torre). Historial de
+  publicaciones con `fuente: agente`, `audiencia`, `origen`. Test
+  `test_agente_marketing_24x7_publica_a_las_7_y_alterna_audiencias` (reloj
+  simulado con `_ahora`). Backlog: Instagram con la misma pieza, métricas
+  de alcance por post (insights de Graph) para que el estratega aprenda.
+  Portada de la página: `tool/portada_facebook.py` →
+  `static/brand/portada_facebook.png` (1640×720). Test `test_redes_pichangol.py`.
+  **GOOGLE FOTOS = BIBLIOTECA DE MARCA + VIDEOS CON MÚSICA (pedido del
+  director, 24-sep-2026: "quiero enlazar mi Google Fotos para que desde ahí
+  agarres las fotos y videos y hagas el post; ojo, los videos deben tener
+  música"):** `marketing/biblioteca.py`. Google CERRÓ en 2025 la lectura de
+  la biblioteca completa por API: una app solo lee lo que el usuario ELIGE en
+  el selector oficial (**Google Photos Picker API**). Flujo: (1) **Conectar**
+  una vez: OAuth con el MISMO cliente "Aplicación web" del login
+  (`GOOGLE_WEB_CLIENT_ID` + nueva env `GOOGLE_WEB_CLIENT_SECRET`), scope
+  `photospicker.mediaitems.readonly`, `state` firmado HMAC 10 min (el
+  callback `GET /admin/api/redes/biblioteca/google/callback` vuelve SIN
+  cabecera de admin; la firma es la prueba); el *refresh token* se guarda
+  CIFRADO en `stores.config[gfotos_refresh_cifrado]` (Fernet vía
+  `redes.cifrar`, como el de Facebook) + `gfotos_cuenta`. **Setup por
+  ambiente (manual del director):** `GOOGLE_WEB_CLIENT_SECRET` en Railway,
+  habilitar "Google Photos Picker API" en el proyecto de Google Cloud y
+  registrar la URI de redirección `{PUBLIC_BASE_URL}/admin/api/redes/
+  biblioteca/google/callback` en el cliente OAuth (QAS `https://pg.ebim.pe/
+  …`, PRD `https://www.pichangol.app/…`); sin secreto la sección lo explica y
+  `/autorizar` responde 409. (2) **Elegir**: `POST …/google/sesion` abre una
+  sesión del Picker (`pickerUri` en otra pestaña), la torre sondea `GET
+  …/google/sesion/{id}` y, cuando `mediaItemsSet`, `importar_sesion` DESCARGA
+  cada elemento con el token (foto `=w2048-h2048`, video `=dv`; las URLs de
+  Google caducan en ~1 h) y lo SUBE a Storage `canchas/marca/biblioteca/
+  bm_<id>.jpg|mp4` (`almacen.subir(max_bytes=)`, tope video
+  `BIBLIOTECA_VIDEO_MAX_MB`=150); catálogo en `stores.biblioteca_marca`
+  (snapshot; `google_id` evita duplicados; `usos`/`ultimo_uso`); cierra la
+  sesión del Picker. (3) **Usar**: sección "📷 Google Fotos · biblioteca de
+  marca" bajo el paso 1 del pane (Conectar / Elegir en Google Fotos /
+  Quitar; una foto se marca para el collage, un video "▶ Usar video" →
+  `POST /admin/api/redes/pichangol/video/desde-biblioteca/{id}` lo copia al
+  flujo de video temporal, con la casilla "🎵 Música de fondo" ENCENDIDA por
+  defecto en el pulido). El **agente 24×7** prefiere la biblioteca sobre el
+  arte IA: `crear_pieza` → `elegir_fotos` (las MENOS usadas primero, 3 para
+  jugadores / 1 para dueños) y, en **días de video** (`DIAS_VIDEO` = jue/vie/
+  sáb) con `agente_fb_videos != nunca` (casilla "Videos con música"),
+  `elegir_video(14)` = un video sin usar en 14 días → `render_video` =
+  `video_pulido.pulir` cuadrado con logo, intro, rótulo, cierre y **`musica:
+  True` SIEMPRE** (música original `musica.generar_pista`; si el clip trae
+  audio se mezcla bajito) → `publicar_video_facebook`; póster para la torre
+  = frame + marca (`_poster_video`). Sin video disponible → foto de la
+  biblioteca; sin biblioteca → arte IA → portada. La receta guarda
+  `biblioteca_ids`/`video_id` y `_publicar_pieza` hace `marcar_uso` solo si
+  Facebook aceptó; historial con `tipo: video`, `musica`, `biblioteca`.
+  Acceso revocado (`invalid_grant`) → se desconecta solo y pide reconectar;
+  desconectar conserva lo importado; quitar borra también de Storage. Test
+  `test_biblioteca_google_fotos_importa_y_el_agente_publica_video_con_musica`
+  (Google simulado, FFmpeg real con clip mudo → sale con audio).
+  **UX DEL PANE = ASISTENTE POR PASOS (queja del director, 24-sep-2026: "me
+  confundo mucho, se me hace difícil navegar en la pantalla"):** el pane
+  "Publicar en Facebook" (`renderRedes`) ya no es una página larga sino una
+  tarjeta "📣 Redes de Pichangol" con PESTAÑAS (`redesUI.tab`, recordado en
+  `localStorage` `pichangol_redes_ui`): **✍️ Publicar ahora** = asistente de
+  4 pasos tipo acordeón (`.rd-paso`, uno abierto a la vez, cabecera con
+  número/✓ + resumen + "Editar", botones Siguiente/←): 1 Contenido (tiles
+  📷 Fotos / 🎬 Video + "De dónde": Google Fotos · Fotos de un local · Mi
+  computadora; tira "Elegidas n/4"; al elegir un video de la biblioteca o
+  terminar de subir uno salta solo al paso 2), 2 Estilo (fotos: formato,
+  etiqueta, pie; video: `pulidoHtml` con 🎵 Música y Estilo), 3 Texto
+  (plantilla/IA, título, subtítulo, texto) y 4 Revisar y publicar (botones +
+  `rd_msg`); vista previa sticky a la derecha. **🤖 Agente 24×7** (`#rd_agente`),
+  **🕘 Historial** (completo) y **🔌 Conexiones** (estado + token de Facebook +
+  guía, Google Fotos conectar/elegir/desconectar + gestión con ✕, motores del
+  ambiente). Píldoras de estado en la cabecera (Facebook / Google Fotos) que
+  llevan a Conexiones. TODOS los inputs (`rd_titulo`, `rd_etq`, `rd_formato`…)
+  quedan SIEMPRE en el DOM (pasos/pestañas ocultos con `display:none`), porque
+  `renderRedes` re-lee sus valores en cada repintado. `renderBiblioteca` pinta
+  en tres contenedores (`#rd_biblioteca` fotos, `#rd_biblioteca_videos`,
+  `#rd_biblioteca_con`) y los mensajes van a `.rd-bib-msg` (`bibMsg`). OJO:
+  la cabecera del paso es `<div class="rd-h">`, NO `<header>` (el CSS global
+  de la torre pinta `header b` en blanco y los títulos desaparecían).
+  **MI MÚSICA DESDE GOOGLE DRIVE (pedido del director, 24-sep-2026: "subo mi
+  música en una carpeta de mi Google Drive y desde ahí la elijo"; Spotify NO
+  sirve: su API no entrega audio y Facebook silencia música comercial):**
+  `marketing/musica_drive.py`. (1) **Conectar Drive** = OAuth INCREMENTAL con
+  el mismo cliente de Google Fotos (`biblioteca.url_autorizacion(scopes_extra=
+  [drive.readonly])`, `include_granted_scopes`; los scopes concedidos se guardan
+  en `stores.config[gfotos_scopes]` al canjear el código y `musica_drive.
+  conectado()` exige el de Drive; scope RESTRINGIDO de Google → en modo
+  pruebas vale para los usuarios de prueba). (2) **Carpeta**: enlace
+  `…/folders/<id>` o búsqueda por nombre (`buscar_carpetas`, Drive `files.list`
+  de carpetas); `elegir_carpeta` valida `mimeType` de carpeta y guarda
+  `gdrive_musica_carpeta[_nombre]`. (3) **Sincronizar** (`sincronizar`): lista
+  los audios de la carpeta Y SUS SUBCARPETAS (el director organiza por
+  género: Musica/Cumbia, Musica/Rock en español…; `listar_audio` recursivo,
+  ≤3 niveles, cada pista con `carpeta` = subcarpeta; mp3/m4a/wav/ogg/aac/flac
+  por mime o extensión, tope `MUSICA_PISTA_MAX_MB`=30), descarga con
+  `files/{id}?alt=media` los
+  nuevos o con `md5Checksum` distinto, los sube a Storage
+  `canchas/marca/musica/mm_<id>.<ext>` y QUITA del catálogo (y de Storage)
+  los que ya no están en Drive; catálogo `stores.musica_marca` (snapshot,
+  `usos`/`ultimo_uso`). (4) **Usar**: `PulirVideoRequest.musica_pista` (id) →
+  el endpoint resuelve `musica_ruta` (copia local desde Storage,
+  `descargar_a_temporal`) y `video_pulido.pulir` la mete con `-stream_loop -1`
+  (bucle si es más corta; `amix duration=first` la corta) con fundidos y el
+  volumen del modo (fondo/protagonista) en vez de `generar_pista`; el agente
+  24×7 (`planificar` → `elegir_pista` = la menos usada; receta `musica_id`/
+  `musica_nombre`; `marcar_uso` solo si Facebook aceptó; historial
+  `musica_nombre`) usa la pista propia y, sin pistas, la sintetizada. Torre:
+  Conexiones → "🎵 Mi música · carpeta de Google Drive" (`renderMusica`,
+  conectar, enlace/buscar carpeta, Sincronizar, lista con `<audio controls>` y
+  ✕ que no toca Drive), paso 2 del video → "Pista" (`#rd_pista`: Original
+  sintetizada, `optgroup` por subcarpeta con "🎲 Cualquiera de <género>" =
+  `carpeta:<nombre>` y "🎲 Cualquiera de mis pistas" = `cualquiera`, que
+  `musica_drive.resolver_pista` convierte en la menos usada; con pista se
+  oculta "Estilo"),
+  píldora "● Mi música · N pistas". Endpoints `GET /admin/api/redes/musica`,
+  `GET …/musica/google/autorizar`, `GET …/musica/carpetas?q=`, `POST
+  …/musica/carpeta {enlace}`, `POST …/musica/sincronizar`, `POST
+  …/musica/{id}/quitar`. Test `test_mi_musica_desde_google_drive_en_videos_y_
+  agente` (Drive simulado; FFmpeg real mezcla un WAV en bucle sobre un video
+  mudo y se verifica con volumedetect). Backlog: música con licencia por API
+  (Mubert / ElevenLabs Music) como catálogo de estilos.
+  **DESDE QUÉ SEGUNDO ARRANCA LA PISTA + FOTOS → VIDEO CON MOVIMIENTO
+  (pedido del director, 24-sep-2026: "hay veces que la música tarda 2 o 3
+  segundos en sonar… y me gustaría trabajar con fotos para que salgan
+  estilos con movimiento, CapCut o similar"):** (1) `PulirVideoRequest.
+  musica_desde` (segundos, 0-600): `video_pulido.recortar_pista` corta la
+  pista ANTES del bucle (`-ss`), así el video arranca ya con música. La
+  torre SUGIERE el valor: al sincronizar Drive, `musica_drive._inicio_
+  sugerido` corre `video_pulido.detectar_inicio` (FFmpeg `silencedetect`,
+  umbral −35 dB, hasta 15 s) y guarda `inicio_sugerido` por pista; el paso 2
+  del video muestra "Empieza en el segundo [n]" (`#rd_pista_desde`,
+  `musInicioSugerido`) con "📍 Usar donde está el reproductor"
+  (`pulDesdeReproductor` toma `currentTime` del `<audio>` de la vista
+  previa). El agente 24×7 manda `musica_desde = inicio_sugerido` de la
+  pista elegida. (2) `marketing/foto_video.py::generar(fotos, salida,
+  formato, segundos)`: Ken Burns (zoom/paneo lentos con ease in-out, 5
+  movimientos rotando), fundido desde negro, cruces de 0,5 s entre fotos y
+  cierre a negro; frames de Pillow enviados por pipe a FFmpeg (rawvideo →
+  H.264 CRF 22, 30 fps, sin audio); formatos `vertical` 1080×1920 (Reels),
+  `cuadrado` 1080², `horizontal` 1280×720; hasta 10 fotos, 1,5-6 s por
+  foto. `POST /admin/api/redes/pichangol/video/desde-fotos {fotos (URLs o
+  data URLs), formato, segundos}` deja el clip como VIDEO TEMPORAL
+  (`anotar_video(desde_fotos=n)`) y entra al mismo flujo de pulido (logo,
+  intro, rótulo, cierre, música). En el paso 1 del asistente, con fotos
+  elegidas, botón "🎬 Convertir estas fotos en un video con movimiento" +
+  selects formato / s por foto (`fotosAVideo`, `fvOcupado`); al terminar
+  salta solo al paso 2 con `redesUI.tipo='video'`. Con pista propia el pie
+  del pulido recuerda tener licencia para Facebook. Test
+  `test_fotos_a_video_con_movimiento_y_pista_desde_el_segundo` (3 fotos →
+  clip real de ~8 s; pulido con `musica_desde=1.0` → la pista de prueba
+  con 1 s de silencio ya suena desde el arranque, volumedetect). Backlog:
+  transiciones vistosas (Shotstack/Creatomate), plantillas de texto
+  animado, voz en off.
 - **DATOS DE LA EMPRESA CONFIGURABLES DESDE LA TORRE (pedido del director,
   sep-2026):** razón social, tipo y número de documento fiscal (RUC/NIT),
   dirección, ciudad corta, **WhatsApp POR PAÍS** (Perú, Ecuador, Bolivia:
@@ -1068,8 +1409,16 @@ off → redeploy inmediato en cada push). URL pública:
   tiktok|youtube`, URL oficial o @usuario, `_url_red` valida el dominio) y
   el pie muestra "Síguenos" + ícono SOLO de las configuradas
   (`ui.redes_pie`, `empresa.redes()`); sin configurar, ningún ícono (Culqi
-  rechaza íconos vacíos). Los SVG viven en `ui.RED_SVG` (router/academia los
-  reusan). (5) **Botón de compra funcional** → la causa real era que PCG-PRD
+  rechaza íconos vacíos). **Facebook tiene RESPALDO automático (24-sep-2026,
+  el director pegó `facebook.com/search/top?q=pichangol`, que es una
+  BÚSQUEDA, no la página):** si `empresa_facebook` está vacío,
+  `empresa.facebook_conectada()` enlaza la página desde la que PUBLICA la
+  torre (`FB_PAGE_ID`): el `link` real que devuelve Graph (lo guarda
+  `post_redes.estado_pagina` en `stores.config[fb_page_link]` al abrir el
+  pane de Facebook, persistido al instante) o, mientras no se consulte,
+  `facebook.com/<id>`. `_url_red` RECHAZA enlaces `search/`, `login/`,
+  `sharer/`, `hashtag/`… (no son la página). Los SVG viven en `ui.RED_SVG`
+  (router/academia los reusan). (5) **Botón de compra funcional** → la causa real era que PCG-PRD
   tenía 0 canchas públicas y `CULQI_PUBLIC_KEY` vacía (ver "Culqi en PRD"):
   sin canchas reservables ni llave, el revisor no ve ningún checkout. Hay que
   tener al menos una cancha VERIFICADA con dueño en PRD (y la academia con

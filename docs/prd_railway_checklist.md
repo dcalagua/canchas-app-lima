@@ -37,8 +37,17 @@ redeployando solo el piloto).
 `TWILIO_FROM`, `TWILIO_MESSAGING_SERVICE_SID`, `TWILIO_WHATSAPP_FROM`,
 `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_OTP_TEMPLATE`,
 `OTP_CANAL_PREFERIDO`, `PICHANGOL_ADMIN_WHATSAPP`, `ANTHROPIC_API_KEY`,
-`OPENAI_API_KEY` / `REPLICATE_API_TOKEN` (ilustraciones/packshots),
-`COMISION_PORC`, `COMISION_MIN_SOLES`, `META_*` (dejar `META_MODO=sandbox`).
+`OPENAI_API_KEY` / `REPLICATE_API_TOKEN` (ilustraciones/packshots; también
+subtítulos Whisper y arte de marca del agente de Facebook),
+`COMISION_PORC`, `COMISION_MIN_SOLES`, `META_*` (dejar `META_MODO=sandbox`),
+`GOOGLE_WEB_CLIENT_ID` + `GOOGLE_WEB_CLIENT_SECRET` (login web + biblioteca de
+Google Fotos de la torre; en Google Cloud el cliente OAuth debe tener la URI de
+redirección `https://www.pichangol.app/admin/api/redes/biblioteca/google/callback`
+y la Google Photos Picker API habilitada), `META_APP_ID` + `META_APP_SECRET` +
+`META_TOKEN_KEY` (token de página de Facebook que la torre deriva y guarda cifrado).
+`FB_PAGE_ID` + `FB_PAGE_TOKEN` son de la página de Pichangol (misma página en
+QAS y PRD: cuidado con publicar dos veces si el agente 24×7 queda ACTIVO en ambas
+torres; en PRD arranca pausado).
 
 **CAMBIAR (valores propios de PRD):**
 
