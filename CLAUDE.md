@@ -995,6 +995,10 @@ off → redeploy inmediato en cada push). URL pública:
     deporte). Sin SQL ni Edge (el catálogo se siembra solo en el snapshot).
     CAMBIÓ `lib/` → APK/AAB de PRD por `workflow_dispatch` de `build.yml`
     con `ref=prd` e `inputs.entorno=prod`.
+    APK/AAB de PRD = run 1335 (`pichangol-1335.apk`, artifact
+    `pichangol-aab-prod`; el 1.º intento falló por Gradle transitorio y se
+    relanzó). **Pase del 24-sep-2026 (2.º, autorizado):** `prd` = merge
+    `c2c3bd2` (texto blanco del botón del popup del mapa). Solo web.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
