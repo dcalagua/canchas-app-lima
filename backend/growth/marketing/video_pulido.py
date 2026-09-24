@@ -390,9 +390,38 @@ def _objetivo(formato: str, info: dict) -> tuple[int, int]:
     return max(320, W), max(320, H)
 
 
+MODOS_MUSICA = ("auto", "fondo", "protagonista", "no")
+MOODS_MUSICA = ("chill", "energetico", "epico")
+
+
+def mezcla_musica(tiene_audio: bool, opciones: dict) -> dict:
+    """Decide cómo entra la música original (pedido del director, sep-2026: "¿de fondo
+    o en primer plano?"). `musica_modo`: `fondo` = suave bajo la voz (o sola si el video
+    es mudo), `protagonista` = la música manda y el audio original queda de ambiente,
+    `no` = sin música, `auto` (defecto) = fondo si hay voz / protagonista si es mudo.
+    Compatibilidad: `musica: False` equivale a `no`, `musica: True` a `auto`."""
+    modo = str(opciones.get("musica_modo") or "").strip().lower()
+    if modo not in MODOS_MUSICA:
+        m = opciones.get("musica")
+        modo = "no" if m is False else "auto"
+    if modo == "auto":
+        modo = "fondo" if tiene_audio else "protagonista"
+    mood = str(opciones.get("mood") or "").strip().lower()
+    if mood == "energico":          # alias viejo
+        mood = "energetico"
+    if mood not in MOODS_MUSICA:
+        mood = "chill"
+    if modo == "no":
+        return {"usar": False, "modo": "no", "mood": mood, "vol_musica": 0.0, "vol_original": 1.0}
+    if modo == "protagonista":
+        return {"usar": True, "modo": modo, "mood": mood, "vol_musica": 0.8, "vol_original": 0.22 if tiene_audio else 1.0}
+    return {"usar": True, "modo": "fondo", "mood": mood, "vol_musica": 0.16 if tiene_audio else 0.55, "vol_original": 1.0}
+
+
 def pulir(ruta: str, salida: str, opciones: dict, *, progreso=None) -> dict:
     """Renderiza la versión pulida. `opciones`: formato, logo, intro, cierre, rotulo,
-    titulo, segmentos (subtítulos ya partidos o crudos), resaltar, musica.
+    titulo, segmentos (subtítulos ya partidos o crudos), resaltar, musica_modo
+    (auto|fondo|protagonista|no) + mood (chill|energetico|epico); `musica` bool = compat.
     `progreso(pct, mensaje)` se llama mientras avanza. Devuelve info de la salida."""
     ff = ffmpeg_exe()
     if not ff:
@@ -455,10 +484,11 @@ def pulir(ruta: str, salida: str, opciones: dict, *, progreso=None) -> dict:
     else:
         filtros.append(f"aevalsrc=0:d={D:.3f}:s=48000,aformat=sample_rates=48000:channel_layouts=stereo[a0]")
     a_main = "a0"
-    if opciones.get("musica", not info.get("audio")):
+    mezcla = mezcla_musica(bool(info.get("audio")), opciones)
+    if mezcla["usar"]:
         try:
             from marketing.musica import generar_pista
-            wav = generar_pista(D + 0.5, mood=str(opciones.get("mood") or "chill"))
+            wav = generar_pista(D + 0.5, mood=mezcla["mood"])
         except Exception:  # noqa: BLE001
             wav = None
         if wav:
@@ -466,9 +496,13 @@ def pulir(ruta: str, salida: str, opciones: dict, *, progreso=None) -> dict:
             with open(pm, "wb") as fh:
                 fh.write(wav)
             entradas += ["-i", pm]
-            vol = 0.55 if not info.get("audio") else 0.16
-            filtros.append(f"[{idx}:a]volume={vol},afade=t=out:st={max(0.0, D - 1.2):.2f}:d=1.2,aformat=sample_rates=48000:channel_layouts=stereo[amus]")
-            filtros.append(f"[a0][amus]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[amix]")
+            if mezcla["vol_original"] != 1.0:
+                filtros.append(f"[a0]volume={mezcla['vol_original']}[a0d]")
+                a_orig = "a0d"
+            else:
+                a_orig = "a0"
+            filtros.append(f"[{idx}:a]volume={mezcla['vol_musica']},afade=t=out:st={max(0.0, D - 1.2):.2f}:d=1.2,aformat=sample_rates=48000:channel_layouts=stereo[amus]")
+            filtros.append(f"[{a_orig}][amus]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[amix]")
             a_main, idx = "amix", idx + 1
 
     # 7) intro / cierre como clips (imagen en bucle + silencio) y concat

@@ -382,7 +382,9 @@ class PulirVideoRequest(BaseModel):
     subtitulos: bool = True
     segmentos: list[dict] | None = None   # subtítulos corregidos por el operador (None = transcribir / usar la transcripción guardada)
     resaltar: bool = True
-    musica: bool | None = None            # None = solo si el video no trae audio
+    musica: bool | None = None            # compat: True = auto, False = sin música
+    musica_modo: str = ""                 # auto | fondo | protagonista | no
+    mood: str = ""                        # chill | energetico | epico
 
 
 class RedactarRedesRequest(BaseModel):
@@ -747,6 +749,14 @@ def post_redes_video_pulir(video_id: str, req: PulirVideoRequest, x_admin_token:
                 "resaltar": req.resaltar}
     if req.musica is not None:
         opciones["musica"] = req.musica
+    if req.musica_modo:
+        if req.musica_modo not in _vp.MODOS_MUSICA:
+            raise HTTPException(status_code=400, detail="Modo de música no válido.")
+        opciones["musica_modo"] = req.musica_modo
+    if req.mood:
+        if req.mood not in _vp.MOODS_MUSICA:
+            raise HTTPException(status_code=400, detail="Estilo de música no válido.")
+        opciones["mood"] = req.mood
     salida = os.path.splitext(v["ruta"])[0] + "_pulido.mp4"
 
     def _al_terminar(vid, res, transcripcion):
@@ -3541,7 +3551,7 @@ async function agAccion(bid, accion){
   agOcupado=''; renderAgente();
 }
 // ── Pulido con estilo Pichangol (FFmpeg en el backend) + subtítulos Whisper ──
-const PUL_DEF = {formato:'vertical', logo:true, intro:true, rotulo:true, cierre:true, subtitulos:true, musica:true};
+const PUL_DEF = {formato:'vertical', logo:true, intro:true, rotulo:true, cierre:true, subtitulos:true, musica:true, musica_modo:'auto', mood:'chill'};
 function pulidoHtml(vd){
   const cap = redes.pulido || {};
   if(cap.disponible===false) return '<small style="display:block;margin-top:8px;color:var(--muted)">Este servidor no tiene FFmpeg: el video se publica tal cual.</small>';
@@ -3573,17 +3583,20 @@ function pulidoHtml(vd){
   return `<div style="margin-top:12px;padding:10px 12px;border-radius:12px;border:1px dashed var(--border);background:#fff">
       <div style="font-size:12.5px;font-weight:700">✨ Pulir con estilo Pichangol</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center"><small style="color:var(--muted);font-weight:700;margin-right:4px">Formato</small>${chip('formato','vertical','Vertical 9:16 · Reels')} ${chip('formato','cuadrado','Cuadrado 1:1')} ${chip('formato','original','Original')}</div>
-      <div style="margin-top:8px">${chk('logo','Logo')}${chk('intro','Intro')}${chk('rotulo','Rótulo con el título')}${chk('cierre','Cierre con título y web')}${chk('subtitulos','Subtítulos automáticos', {off: subsOff})}${chk('musica','🎵 Música de fondo')}</div>
+      <div style="margin-top:8px">${chk('logo','Logo')}${chk('intro','Intro')}${chk('rotulo','Rótulo con el título')}${chk('cierre','Cierre con título y web')}${chk('subtitulos','Subtítulos automáticos', {off: subsOff})}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center"><small style="color:var(--muted);font-weight:700;margin-right:4px">🎵 Música</small>${chip('musica_modo','auto','Automática')} ${chip('musica_modo','fondo','De fondo')} ${chip('musica_modo','protagonista','Protagonista')} ${chip('musica_modo','no','Sin música')}
+        <small style="color:var(--muted);margin-left:4px">${o.musica_modo==='fondo'?'Suave bajo la voz del video (sola si el video es mudo).':o.musica_modo==='protagonista'?'La música manda; el audio original queda de ambiente, bajito.':o.musica_modo==='no'?'Se conserva solo el audio original.':'De fondo si el video trae voz; protagonista si es mudo.'}</small></div>
+      ${o.musica_modo!=='no'?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center"><small style="color:var(--muted);font-weight:700;margin-right:4px">Estilo</small>${chip('mood','chill','Chill')} ${chip('mood','energetico','Enérgica')} ${chip('mood','epico','Épica')}</div>`:''}
       ${subsOff?'<small style="color:#8a5a00">Subtítulos automáticos apagados: falta OPENAI_API_KEY en este ambiente.</small>':''}
       <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <button type="button" class="btn-ap" id="rd_pulir" onclick="pulirVideo()" ${ocupado?'disabled':''}>${ocupado?'<span class="rd-spin blanco"></span> Procesando…':(listo?'🎬 Volver a generar':'🎬 Generar versión pulida')}</button>
-        <small style="color:var(--muted)">Usa el título de arriba para el rótulo y el cierre. La música es original de Pichangol (libre de regalías): suena sola si el video no trae audio y de fondo, suave, si trae voz.</small>
+        <small style="color:var(--muted)">Usa el título de arriba para el rótulo y el cierre. La música es original de Pichangol (libre de regalías), sin problemas de derechos en Facebook.</small>
       </div>
       ${estado}${usar}${editor}
     </div>`;
 }
 function fmtT(s){ s=Math.max(0,Number(s)||0); const m=Math.floor(s/60), r=s-m*60; return m+':'+(r<10?'0':'')+r.toFixed(1); }
-function pulOpt(k, v){ const pl = redesSel.video && redesSel.video.pulido; if(!pl) return; if(k==='formato') pl.opciones.formato=v; else pl.opciones[k]=!!v; renderRedes(); }
+function pulOpt(k, v){ const pl = redesSel.video && redesSel.video.pulido; if(!pl) return; if(k==='formato'||k==='musica_modo'||k==='mood') pl.opciones[k]=v; else pl.opciones[k]=!!v; renderRedes(); }
 function pulUsar(u){ const pl = redesSel.video && redesSel.video.pulido; if(!pl) return; pl.usar=!!u; renderRedes(); mostrarVideoPreview(); }
 function mostrarVideoPreview(){
   const v = document.querySelector('#rd_prev video'); const vd = redesSel.video; if(!v || !vd) return;
@@ -3597,7 +3610,7 @@ async function pulirVideo(segmentos){
   const titulo = (document.getElementById('rd_titulo')||{}).value || '';
   pl.estado = (o.subtitulos && !segmentos && !(pl.transcripcion && pl.transcripcion.segmentos)) ? 'transcribiendo' : 'renderizando'; pl.progreso = 0; pl.mensaje = 'Preparando…'; pl.error='';
   renderRedes(); botonesRedes('componiendo');
-  const cuerpo = {formato:o.formato, logo:!!o.logo, intro:!!o.intro, cierre:!!o.cierre, rotulo:!!o.rotulo, titulo:titulo, subtitulos:!!o.subtitulos, segmentos: segmentos||null, musica:o.musica};
+  const cuerpo = {formato:o.formato, logo:!!o.logo, intro:!!o.intro, cierre:!!o.cierre, rotulo:!!o.rotulo, titulo:titulo, subtitulos:!!o.subtitulos, segmentos: segmentos||null, musica:o.musica_modo!=='no', musica_modo:o.musica_modo||'auto', mood:o.mood||'chill'};
   try{
     const r = await fetch('/admin/api/redes/pichangol/video/'+encodeURIComponent(vd.id)+'/pulir',{method:'POST',headers:headers(),body:JSON.stringify(cuerpo)});
     const j = await r.json().catch(()=>({}));

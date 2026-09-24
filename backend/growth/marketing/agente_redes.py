@@ -344,7 +344,7 @@ def render_video(receta: dict) -> str:
     ruta = biblioteca.descargar_a_temporal(receta["video_id"])
     salida = os.path.splitext(ruta)[0] + f"_pub_{int(time.time())}.mp4"
     vp.pulir(ruta, salida, {"formato": "cuadrado", "logo": True, "intro": True, "cierre": True, "rotulo": True,
-                            "titulo": receta.get("titulo") or "", "segmentos": [], "musica": True, "mood": "energico" if receta.get("audiencia") == "jugadores" else "chill"})
+                            "titulo": receta.get("titulo") or "", "segmentos": [], "musica_modo": "auto", "mood": "energetico" if receta.get("audiencia") == "jugadores" else "chill"})
     return salida
 
 

@@ -449,7 +449,29 @@ def test_pulido_estilo_pichangol_con_subtitulos_whisper(monkeypatch, tmp_path):
         if e["estado"] in ("listo", "error"):
             break
         _t.sleep(0.5)
-    assert e["estado"] == "listo" and vp.sondear(pr.video(vid3)["pulido"])["audio"]   # música original de fondo
+    assert e["estado"] == "listo" and vp.sondear(pr.video(vid3)["pulido"])["audio"]   # música original (mudo → protagonista)
+    # Música DE FONDO o PROTAGONISTA (pregunta del director, sep-2026): el operador elige el modo y el estilo.
+    assert vp.mezcla_musica(True, {}) == {"usar": True, "modo": "fondo", "mood": "chill", "vol_musica": 0.16, "vol_original": 1.0}            # auto + voz → fondo
+    assert vp.mezcla_musica(False, {})["modo"] == "protagonista" and vp.mezcla_musica(False, {})["vol_musica"] == 0.8                          # auto + mudo → protagonista
+    m = vp.mezcla_musica(True, {"musica_modo": "protagonista", "mood": "epico"})
+    assert m["vol_musica"] == 0.8 and m["vol_original"] == 0.22 and m["mood"] == "epico"                                                        # la música manda, la voz de ambiente
+    assert vp.mezcla_musica(True, {"musica_modo": "no"})["usar"] is False and vp.mezcla_musica(True, {"musica": False})["usar"] is False
+    assert vp.mezcla_musica(False, {"musica": True, "mood": "energico"})["mood"] == "energetico"                                              # alias viejo del agente
+    assert client.post(f"/admin/api/redes/pichangol/video/{vid3}/pulir", json={"subtitulos": False, "musica_modo": "rock"}, headers=H).status_code == 400
+    assert client.post(f"/admin/api/redes/pichangol/video/{vid3}/pulir", json={"subtitulos": False, "mood": "trap"}, headers=H).status_code == 400
+    assert client.post(f"/admin/api/redes/pichangol/video/{vid3}/pulir", json={"subtitulos": False, "formato": "original", "musica_modo": "no"}, headers=H).status_code == 200
+    fin = _t.time() + 90
+    while _t.time() < fin:
+        e = client.get(f"/admin/api/redes/pichangol/video/{vid3}/estado", headers=H).json()
+        if e["estado"] in ("listo", "error"):
+            break
+        _t.sleep(0.5)
+    def _volumen_medio(ruta):   # dB medio de la pista de audio (silencio ≈ -91 dB)
+        p = subprocess.run([vp.ffmpeg_exe(), "-hide_banner", "-i", ruta, "-af", "volumedetect", "-f", "null", "-"], capture_output=True, text=True, errors="ignore")
+        import re as _re
+        m = _re.search(r"mean_volume:\s*(-?[\d.]+) dB", p.stderr or "")
+        return float(m.group(1)) if m else -999.0
+    assert e["estado"] == "listo" and _volumen_medio(pr.video(vid3)["pulido"]) < -60   # "Sin música" en un video mudo → pista en silencio (Facebook prefiere que exista)
 
 
 def test_token_vencido_se_reemplaza_desde_la_torre_sin_tocar_railway(monkeypatch):

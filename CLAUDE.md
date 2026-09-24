@@ -1144,7 +1144,17 @@ off → redeploy inmediato en cada push). URL pública:
   original"); historial con `pulido` y `subtitulos`. Un clip de 4 s se pule
   en ~6 s; el sondeo muestra fase y %. Test
   `test_pulido_estilo_pichangol_con_subtitulos_whisper` (renderiza de verdad
-  con FFmpeg; Whisper simulado). Backlog del plan: (3) plantillas en la nube
+  con FFmpeg; Whisper simulado). **Música DE FONDO o PROTAGONISTA (pregunta
+  del director, sep-2026):** chips "🎵 Música" Automática · De fondo ·
+  Protagonista · Sin música + "Estilo" Chill · Enérgica · Épica en el pulido
+  (`musica_modo` + `mood` en `PulirVideoRequest`, validados contra
+  `video_pulido.MODOS_MUSICA/MOODS_MUSICA`). `video_pulido.mezcla_musica(
+  tiene_audio, opciones)` decide volúmenes: fondo = 0.16 bajo la voz (0.55
+  sola si es mudo), protagonista = música 0.8 y audio original a 0.22 de
+  ambiente, no = solo el original (un mudo queda con pista en silencio,
+  Facebook prefiere que exista), auto = fondo con voz / protagonista mudo.
+  `musica: bool` sigue por compatibilidad; el agente usa `auto` con mood
+  `energetico` (jugadores) / `chill` (dueños). Backlog del plan: (3) plantillas en la nube
   (Shotstack/Creatomate) si se quieren transiciones vistosas, (4) voz en off
   ElevenLabs, (5) IG Reels con el mismo video.
   **El entorno de Claude NO alcanza Storage de Supabase ni bancos de
