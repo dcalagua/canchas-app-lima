@@ -1745,6 +1745,36 @@ _HTML = r"""<!DOCTYPE html>
   #rd_prev .rd-velo small{font-weight:400;color:var(--muted)}
   #rd_prev img.opaca,#rd_prev video.opaca{opacity:.35;filter:grayscale(.3)}
   #redesPanel button[disabled]{opacity:.6;cursor:progress}
+  #redesPanel .rd-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 14px;border-bottom:1px solid var(--border);padding-bottom:10px}
+  #redesPanel .rd-tabs button{border:1px solid var(--border);background:#fff;border-radius:999px;padding:8px 14px;font-family:inherit;font-weight:700;font-size:13px;cursor:pointer;color:var(--text)}
+  #redesPanel .rd-tabs button.on{background:var(--green-deep);color:#fff;border-color:transparent}
+  #redesPanel .rd-paso{border:1px solid var(--border);border-radius:14px;background:#fff;margin-bottom:10px;overflow:hidden}
+  #redesPanel .rd-paso.abierta{border-color:var(--green);box-shadow:0 2px 12px rgba(0,0,0,.05)}
+  #redesPanel .rd-paso>.rd-h{display:flex;align-items:center;gap:12px;padding:12px 14px;cursor:pointer;background:#FAFBFC;user-select:none}
+  #redesPanel .rd-paso.abierta>.rd-h{background:#F2F8F3}
+  #redesPanel .rd-paso>.rd-h>div{flex:1;min-width:0}
+  #redesPanel .rd-paso>.rd-h b{display:block;font-size:14px}
+  #redesPanel .rd-paso>.rd-h small{color:var(--muted);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #redesPanel .rd-num{width:28px;height:28px;border-radius:50%;background:#E9EDF0;color:var(--text);font-weight:800;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
+  #redesPanel .rd-paso.abierta .rd-num{background:var(--green);color:#fff}
+  #redesPanel .rd-paso.lista .rd-num{background:#DDF3E4;color:#0B6B33}
+  #redesPanel .rd-edit{font-size:12.5px;color:var(--green);font-weight:700;flex-shrink:0}
+  #redesPanel .rd-cuerpo{padding:12px 14px 14px}
+  #redesPanel .rd-tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  #redesPanel .rd-tile{border:2px solid var(--border);border-radius:14px;padding:12px 14px;cursor:pointer;background:#fff;text-align:left;font-family:inherit;color:var(--text)}
+  #redesPanel .rd-tile.on{border-color:var(--green);background:#F2F8F3}
+  #redesPanel .rd-tile b{display:block;font-size:15px;margin-bottom:2px}
+  #redesPanel .rd-tile small{color:var(--muted);line-height:1.35;display:block}
+  #redesPanel .rd-subs{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0 8px}
+  #redesPanel .rd-sub{border:1px solid var(--border);background:#fff;border-radius:999px;padding:6px 12px;font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;color:var(--text)}
+  #redesPanel .rd-sub.on{background:#EBEBEB;border-color:transparent}
+  #redesPanel .rd-next{display:flex;gap:8px;align-items:center;margin-top:14px;padding-top:10px;border-top:1px solid var(--border)}
+  #redesPanel .rd-next .btn-ap:only-child{margin-left:auto}
+  #redesPanel .rd-pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:5px 11px;font-size:12.5px;font-weight:700;cursor:pointer;border:1px solid transparent}
+  #redesPanel .rd-pill.ok{background:#DDF3E4;color:#0B6B33}
+  #redesPanel .rd-pill.warn{background:#FFF6E5;color:#8a5a00}
+  #redesPanel .rd-pill.bad{background:#FDECEC;color:var(--rojo)}
+  #redesPanel .rd-pill.off{background:#EEF0F2;color:var(--muted)}
   .rd-cargando{display:flex;align-items:center;gap:10px;color:var(--muted);padding:14px 4px}
   @media(max-width:640px){
     .topbar{padding:10px 14px}
@@ -3153,15 +3183,30 @@ async function cargarRedes(){
     aplicarPlantilla(); cargarAgente(); cargarBiblioteca();
   }catch(e){ box.innerHTML='<div class="card">Error de red.</div>'; }
 }
+// ── Estado de la interfaz del pane (pestaña, paso del asistente, tipo y fuente del contenido). Se recuerda en el navegador.
+let redesUI = {tab:'publicar', paso:1, tipo:'foto', fuente:'biblioteca', fuenteVideo:'biblioteca'};
+try{ Object.assign(redesUI, JSON.parse(localStorage.getItem('pichangol_redes_ui')||'{}'), {paso:1}); }catch(e){}
+function rdUI(k, v){ redesUI[k]=v; try{ localStorage.setItem('pichangol_redes_ui', JSON.stringify({tab:redesUI.tab, tipo:redesUI.tipo, fuente:redesUI.fuente, fuenteVideo:redesUI.fuenteVideo})); }catch(e){} renderRedes(); }
+function rdPaso(n){ redesUI.paso = n; renderRedes(); const el=document.querySelector('.rd-paso[data-paso="'+n+'"]'); if(el && el.getBoundingClientRect().top < 0) el.scrollIntoView({block:'start', behavior:'smooth'}); }
+function rdTipo(t){
+  if(t==='foto' && redesSel.video){ if(!confirm('¿Cambiar a fotos? Se descarta el video elegido.')) return; quitarVideoRedes(); }
+  rdUI('tipo', t);
+}
+function bibMsg(h){ document.querySelectorAll('.rd-bib-msg').forEach(m=>{ m.innerHTML = h; }); }
 function renderRedes(){
   const fb = redes.facebook || {};
   const g = id => (document.getElementById(id)||{}).value; const prev = {t:g('rd_titulo'), s:g('rd_sub'), x:g('rd_texto'), e:g('rd_etq'), p:g('rd_pie'), f:g('rd_formato'), tema:g('rd_tema')};
   const inp = 'style="display:block;width:100%;margin-top:4px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;font-family:inherit;font-size:14px"';
-  // Tipo de token: de PÁGINA (lo correcto), de USUARIO (la torre saca sola el de página) o con permisos faltantes.
+  const esVideo = !!redesSel.video, vd = redesSel.video || {};
+  if(esVideo) redesUI.tipo = 'video';
+  const tipo = redesUI.tipo === 'video' ? 'video' : 'foto';
+  const listoPub = esVideo ? (vd.estado==='listo' && !!vd.id) : !!redesSel.img;
+  const mb = b => b < 1048576 ? Math.max(1, Math.round(b/1024))+' KB' : (b/1048576).toFixed(b>=104857600?0:1)+' MB';
+  // ── Facebook: tipo de token (de PÁGINA = lo correcto; de USUARIO la torre saca sola el de página) y permisos.
   const faltaPublicar = (fb.faltan||[]).includes('pages_manage_posts');
   const tokenInfo = !fb.configurado || !fb.nombre ? '' :
     (fb.advertencia && (faltaPublicar || !fb.token_tipo || (fb.advertencia.indexOf('no entregó')>=0))
-      ? `<div style="margin-top:6px;padding:8px 10px;border-radius:10px;background:#FDECEC;color:var(--rojo);font-weight:600">⚠️ ${esc(fb.advertencia)} <small>(sección "Cómo conectar la página", paso 2)</small></div>`
+      ? `<div style="margin-top:6px;padding:8px 10px;border-radius:10px;background:#FDECEC;color:var(--rojo);font-weight:600">⚠️ ${esc(fb.advertencia)} <small>(ver "Cómo conectar la página", paso 2)</small></div>`
       : fb.advertencia ? `<div style="margin-top:6px;padding:8px 10px;border-radius:10px;background:#FFF6E5;color:#8a5a00">ℹ️ ${esc(fb.advertencia)}</div>`
       : fb.token_tipo==='pagina' ? `<small style="color:var(--muted);margin-left:8px">token de página ✓${(fb.faltan||[]).length?' · sin '+esc(fb.faltan.join(', ')):''}</small>` : '');
   const vence = fb.vence ? `vence el ${new Date(fb.vence*1000).toLocaleDateString('es-PE',{day:'2-digit',month:'short',year:'numeric'})}` : (fb.nombre ? 'no vence' : '');
@@ -3174,26 +3219,68 @@ function renderRedes(){
           ${fb.guardado?'<button type="button" class="btn-sec" onclick="olvidarTokenRedes()">Olvidar el guardado</button>':''}</div>
         <div id="rd_token_msg" style="margin-top:6px;font-size:12.5px"></div>
       </div></details>`;
-  const estado = (fb.configurado
+  const estadoFb = fb.configurado
     ? (fb.nombre ? `<span style="color:var(--green);font-weight:700">● Conectado a la página <b>${esc(fb.nombre)}</b></span> ${fb.link?`<a href="${esc(fb.link)}" target="_blank" rel="noopener">abrir ↗</a>`:''}${tokenInfo}`
                  : `<span style="color:var(--rojo);font-weight:700">● Credenciales configuradas pero Facebook respondió: ${esc(fb.error||'error')}</span>${/expired|190|venci/i.test(fb.error||'')?'<div style="margin-top:4px;color:var(--rojo)">El token venció (los de usuario sin extender duran 1-2 h). Pega uno nuevo abajo: la torre lo convierte en uno de página que no vence.</div>':''}`)
-    : `<span style="color:var(--muted);font-weight:700">○ Sin credenciales de Facebook</span>: la torre compone y descarga la pieza; para publicar directo, pon <code>FB_PAGE_ID</code> en Railway y pega el token abajo (o <code>FB_PAGE_TOKEN</code> en Railway).`) + tokenCaja;
-  const esVideo = !!redesSel.video, vd = redesSel.video || {};
-  const listoPub = esVideo ? (vd.estado==='listo' && !!vd.id) : !!redesSel.img;
-  const mb = b => b < 1048576 ? Math.max(1, Math.round(b/1024))+' KB' : (b/1048576).toFixed(b>=104857600?0:1)+' MB';
-  const vidHtml = !esVideo
-    ? `<div style="margin-top:6px"><label class="btn-sec" for="rd_video" style="cursor:pointer">🎬 Subir un video</label><input type="file" id="rd_video" accept="video/mp4,video/quicktime,video/x-m4v,video/webm,video/*" hidden onchange="subirVideoRedes(this)"><small style="color:var(--muted);margin-left:8px">MP4 o MOV · hasta ${redes.video_max_mb||300} MB · con video, la publicación es el video con tu texto (las fotos no se usan)</small></div>`
-    : `<div style="margin-top:6px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>🎞️ ${esc(vd.nombre||'video')}</b><small style="color:var(--muted)">${mb(vd.bytes||0)}${vd.dur?' · '+Math.round(vd.dur)+' s':''}</small>
-        <span id="rd_video_estado" style="flex:1;min-width:160px">${vd.estado==='subiendo'?'<span class="rd-spin chico"></span> Subiendo a la torre… <b id="rd_video_pct">'+(vd.pct||0)+'%</b>':vd.estado==='listo'?'<span style="color:var(--green);font-weight:700">✓ Listo para publicar</span>':'<span style="color:var(--rojo)">'+esc(vd.error||'No se pudo subir')+'</span>'}</span>
-        <button type="button" class="btn-sec" onclick="quitarVideoRedes()">✕ Quitar video</button></div>
-       <div style="height:6px;border-radius:3px;background:#E9EDF0;margin-top:8px;overflow:hidden;${vd.estado==='subiendo'?'':'display:none'}"><div id="rd_video_prog" style="height:100%;width:${vd.pct||0}%;background:var(--green);transition:width .2s"></div></div>
-       ${vd.estado==='listo' ? pulidoHtml(vd) : ''}`;
+    : `<span style="color:var(--muted);font-weight:700">○ Sin credenciales de Facebook</span>: la torre compone y descarga la pieza; para publicar directo, pon <code>FB_PAGE_ID</code> en Railway y pega el token abajo (o <code>FB_PAGE_TOKEN</code> en Railway).`;
+  const fbPill = !fb.configurado ? `<span class="rd-pill off" onclick="rdUI('tab','conexiones')" title="Ir a Conexiones">○ Facebook sin conectar</span>`
+    : !fb.nombre ? `<span class="rd-pill bad" onclick="rdUI('tab','conexiones')" title="Ir a Conexiones">⚠️ Facebook: ${esc((fb.error||'error').slice(0,60))}</span>`
+    : (faltaPublicar || !fb.token_tipo) ? `<span class="rd-pill warn" onclick="rdUI('tab','conexiones')" title="Ir a Conexiones">⚠️ Página ${esc(fb.nombre)} · revisar permisos</span>`
+    : `<span class="rd-pill ok" onclick="rdUI('tab','conexiones')" title="Ir a Conexiones">● Página ${esc(fb.nombre)}</span>`;
+  const bibPill = !bib ? '' : bib.conectado ? `<span class="rd-pill ok" onclick="rdUI('tab','conexiones')" title="Ir a Conexiones">● Google Fotos · ${bib.fotos||0} fotos · ${bib.videos||0} videos</span>` : `<span class="rd-pill off" onclick="rdUI('tab','conexiones')" title="Ir a Conexiones">○ Google Fotos sin conectar</span>`;
+
+  // ── PASO 1 · Contenido ───────────────────────────────────────────────────
   const locales = (redes.locales||[]).map(l=>`<option value="${esc(l.canchas[0].id)}"${redesSel.cancha===l.canchas[0].id?' selected':''}>${esc(l.local)}${l.zona?' · '+esc(l.zona):''} (${l.fotos.length} fotos)</option>`).join('');
   const loc = (redes.locales||[]).find(l=>l.canchas.some(c=>c.id===redesSel.cancha));
-  const fotos = loc ? loc.fotos.map(u=>`<label style="position:relative;cursor:pointer"><img src="${esc(u)}" style="width:118px;height:118px;object-fit:cover;border-radius:12px;border:3px solid ${redesSel.fotos.includes(u)?'var(--green)':'transparent'};display:block"><input type="checkbox" ${redesSel.fotos.includes(u)?'checked':''} onchange="toggleFotoRedes('${esc(u)}',this.checked)" style="position:absolute;top:8px;left:8px;width:18px;height:18px"></label>`).join('') : '<span style="color:var(--muted)">Este ambiente aún no tiene locales con fotos. Sube fotos desde tu computadora ↓</span>';
-  // Fotos SUBIDAS desde la computadora (data URL): también se ven, con ✕ para quitarlas.
-  const subidas = redesSel.fotos.filter(u=>u.startsWith('data:'));
-  const subidasHtml = subidas.length ? `<div style="margin-top:10px"><small style="color:var(--muted);font-weight:700">Subidas desde tu computadora</small><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${subidas.map((u,i)=>`<span style="position:relative;display:inline-block"><img src="${u}" style="width:118px;height:118px;object-fit:cover;border-radius:12px;border:3px solid var(--green);display:block"><button type="button" title="Quitar" onclick="quitarSubidaRedes(${i})" style="position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:50%;border:0;background:rgba(0,0,0,.65);color:#fff;font-weight:700;cursor:pointer;line-height:1">✕</button></span>`).join('')}</div></div>` : '';
+  const fotosLocal = loc ? loc.fotos.map(u=>`<label style="position:relative;cursor:pointer"><img src="${esc(u)}" style="width:118px;height:118px;object-fit:cover;border-radius:12px;border:3px solid ${redesSel.fotos.includes(u)?'var(--green)':'transparent'};display:block"><input type="checkbox" ${redesSel.fotos.includes(u)?'checked':''} onchange="toggleFotoRedes('${esc(u)}',this.checked)" style="position:absolute;top:8px;left:8px;width:18px;height:18px"></label>`).join('') : '<small style="color:var(--muted)">Elige un local arriba. Si este ambiente no tiene locales con fotos, usa Google Fotos o tu computadora.</small>';
+  const fuenteBtn = (k, txt) => `<button type="button" class="rd-sub${redesUI.fuente===k?' on':''}" onclick="rdUI('fuente','${k}')">${txt}</button>`;
+  const fuenteFoto = redesUI.fuente==='local'
+    ? `<select id="rd_local" ${inp} onchange="cambiarLocalRedes(this.value)"><option value="">— elige un local —</option>${locales}</select>
+       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px" id="rd_fotos">${fotosLocal}</div>
+       <small style="display:block;margin-top:6px;color:var(--muted)">Fotos reales que subió el dueño de cada local (bucket de canchas).</small>`
+    : redesUI.fuente==='pc'
+    ? `<label class="btn-sec" for="rd_subir" style="cursor:pointer">📷 Elegir fotos de mi computadora</label><input type="file" id="rd_subir" accept="image/*" multiple hidden onchange="subirFotosRedes(this)">
+       <small style="display:block;margin-top:6px;color:var(--muted)">Se comprimen en tu navegador (1600 px) y entran directo al collage. No se guardan en la biblioteca.</small>`
+    : `<div id="rd_biblioteca"></div>`;
+  const elegidas = redesSel.fotos.length ? `<div style="margin-top:12px;padding:10px 12px;border-radius:12px;background:#F2F8F3"><small style="font-weight:700">Elegidas para esta publicación · ${redesSel.fotos.length}/${redes.max_fotos||4}</small>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${redesSel.fotos.map(u=>`<span style="position:relative;display:inline-block"><img src="${esc(u)}" style="width:72px;height:72px;object-fit:cover;border-radius:10px;display:block"><button type="button" title="Quitar" onclick="toggleFotoRedes('${esc(u)}',false)" style="position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;border:0;background:#0A1B3D;color:#fff;font-weight:700;cursor:pointer;line-height:1">✕</button></span>`).join('')}</div>
+      <small style="color:var(--muted)">1 foto = imagen completa · 2 a 4 = collage. La primera es la principal.</small></div>` : '';
+  const fuenteVBtn = (k, txt) => `<button type="button" class="rd-sub${redesUI.fuenteVideo===k?' on':''}" onclick="rdUI('fuenteVideo','${k}')">${txt}</button>`;
+  const videoEstado = !esVideo ? '' : `<div style="margin-top:10px;padding:10px 12px;border-radius:12px;background:#F2F8F3;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>🎞️ ${esc(vd.nombre||'video')}</b><small style="color:var(--muted)">${mb(vd.bytes||0)}${vd.dur?' · '+Math.round(vd.dur)+' s':''}</small>
+        <span id="rd_video_estado" style="flex:1;min-width:160px">${vd.estado==='subiendo'?'<span class="rd-spin chico"></span> Subiendo a la torre… <b id="rd_video_pct">'+(vd.pct||0)+'%</b>':vd.estado==='listo'?'<span style="color:var(--green);font-weight:700">✓ Video listo</span>':'<span style="color:var(--rojo)">'+esc(vd.error||'No se pudo subir')+'</span>'}</span>
+        <button type="button" class="btn-sec" onclick="quitarVideoRedes()">✕ Quitar video</button>
+        <div style="flex-basis:100%;height:6px;border-radius:3px;background:#E9EDF0;overflow:hidden;${vd.estado==='subiendo'?'':'display:none'}"><div id="rd_video_prog" style="height:100%;width:${vd.pct||0}%;background:var(--green);transition:width .2s"></div></div></div>`;
+  const fuenteVideo = esVideo ? videoEstado
+    : redesUI.fuenteVideo==='pc'
+    ? `<label class="btn-sec" for="rd_video" style="cursor:pointer">🎬 Elegir un video de mi computadora</label><input type="file" id="rd_video" accept="video/mp4,video/quicktime,video/x-m4v,video/webm,video/*" hidden onchange="subirVideoRedes(this)"><small style="display:block;margin-top:6px;color:var(--muted)">MP4 o MOV · hasta ${redes.video_max_mb||300} MB. Sube a la torre con barra de progreso.</small>`
+    : `<div id="rd_biblioteca_videos"></div>`;
+  const paso1 = `<div class="rd-tiles">
+      <button type="button" class="rd-tile${tipo==='foto'?' on':''}" onclick="rdTipo('foto')"><b>📷 Fotos</b><small>Una imagen o collage de hasta ${redes.max_fotos||4} fotos con el logo, un título y el pie www.pichangol.app.</small></button>
+      <button type="button" class="rd-tile${tipo==='video'?' on':''}" onclick="rdTipo('video')"><b>🎬 Video</b><small>Un clip pulido con intro, marca de agua, cierre, subtítulos y música original.</small></button></div>
+    ${tipo==='foto' ? `<div class="rd-subs"><small style="align-self:center;color:var(--muted);font-weight:700;margin-right:4px">De dónde</small>${fuenteBtn('biblioteca','📷 Google Fotos'+(bib?' ('+(bib.fotos||0)+')':''))}${fuenteBtn('local','🏟️ Fotos de un local')}${fuenteBtn('pc','💻 Mi computadora')}</div>${fuenteFoto}${elegidas}`
+                    : (esVideo ? videoEstado : `<div class="rd-subs"><small style="align-self:center;color:var(--muted);font-weight:700;margin-right:4px">De dónde</small>${fuenteVBtn('biblioteca','📷 Google Fotos'+(bib?' ('+(bib.videos||0)+')':''))}${fuenteVBtn('pc','💻 Mi computadora')}</div>${fuenteVideo}`)}
+    <div class="rd-next"><button type="button" class="btn-ap" onclick="rdPaso(2)" ${(tipo==='foto'?redesSel.fotos.length:(esVideo&&vd.estado==='listo'))?'':'disabled'}>Siguiente: Estilo →</button></div>`;
+  const res1 = tipo==='foto' ? (redesSel.fotos.length ? `${redesSel.fotos.length} foto(s) elegida(s)` : 'Elige fotos o un video') : (esVideo ? `Video: ${esc(vd.nombre||'')} · ${mb(vd.bytes||0)}${vd.estado==='subiendo'?' · subiendo '+(vd.pct||0)+'%':''}` : 'Elige un video');
+  const ok1 = tipo==='foto' ? !!redesSel.fotos.length : (esVideo && vd.estado==='listo');
+
+  // ── PASO 2 · Estilo ──────────────────────────────────────────────────────
+  const estiloFoto = `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+        <label style="font-size:12.5px;font-weight:700">Formato<select id="rd_formato" ${inp} onchange="redesSel.formato=this.value"><option value="cuadrado">Cuadrado 1080×1080 (feed)</option><option value="horizontal">Horizontal 1200×630</option><option value="historia">Historia 1080×1920</option></select></label>
+        <label style="font-size:12.5px;font-weight:700">Etiqueta<input id="rd_etq" ${inp} maxlength="16" placeholder="Nuevo"></label>
+        <label style="font-size:12.5px;font-weight:700">Pie<input id="rd_pie" ${inp} value="www.pichangol.app" maxlength="40"></label></div>
+      <small style="display:block;margin-top:8px;color:var(--muted)">La etiqueta es la pastilla naranja arriba a la derecha (Tip, Nuevo, Promo…); el pie es la pastilla blanca de abajo. El título y el subtítulo que van sobre la imagen se escriben en el paso 3.</small>`;
+  const estiloVideo = !esVideo ? '<small style="color:var(--muted)">Primero elige un video en el paso 1.</small>'
+    : vd.estado!=='listo' ? '<small style="color:var(--muted)"><span class="rd-spin chico"></span> Espera a que el video termine de subir.</small>'
+    : `<small style="display:block;color:var(--muted);margin-bottom:4px">Opcional: si no generas la versión pulida, se publica el video tal cual.</small>${pulidoHtml(vd)}`;
+  const paso2 = `<div style="${tipo==='foto'?'':'display:none'}">${estiloFoto}</div><div style="${tipo==='video'?'':'display:none'}">${estiloVideo}</div>
+    <div class="rd-next"><button type="button" class="btn-sec" onclick="rdPaso(1)">← Contenido</button><span style="flex:1"></span><button type="button" class="btn-ap" onclick="rdPaso(3)">Siguiente: Texto →</button></div>`;
+  const pl = vd.pulido || {}, po = pl.opciones || {};
+  const MUS = {auto:'música automática', fondo:'música de fondo', protagonista:'música protagonista', no:'sin música'};
+  const res2 = tipo==='foto' ? `${{cuadrado:'Cuadrado 1080×1080',horizontal:'Horizontal 1200×630',historia:'Historia 1080×1920'}[prev.f||redesSel.formato]||'Cuadrado'}${prev.e?' · etiqueta "'+esc(prev.e)+'"':''}`
+    : !esVideo ? '—' : (pl.estado==='listo' && pl.url ? `${pl.usar?'Versión pulida':'Original'} · ${po.formato||'vertical'} · ${MUS[po.musica_modo||'auto']}` : (pl.estado==='transcribiendo'||pl.estado==='renderizando') ? 'Puliendo… '+(pl.progreso||0)+'%' : 'Sin pulir (se publica el original)');
+  const ok2 = redesUI.paso > 2;
+
+  // ── PASO 3 · Texto ───────────────────────────────────────────────────────
   const ia = redes.ia || {};
   const plantillas = [`<button class="btn-sec" style="${redesSel.plantilla==='ia'?'border-color:var(--green);background:#F2F8F3;font-weight:700':''}" onclick="redesSel.plantilla='ia';aplicarPlantilla()">✨ Redactar con IA</button>`]
     .concat(Object.entries(redes.plantillas||{}).map(([k,v])=>`<button class="btn-sec" style="${redesSel.plantilla===k?'border-color:var(--green);background:#F2F8F3':''}" onclick="redesSel.plantilla='${k}';aplicarPlantilla()">${esc(v.nombre)}</button>`)).join(' ');
@@ -3215,54 +3302,64 @@ function renderRedes(){
             </div>
             <small style="display:block;margin-top:6px;color:var(--muted)">La IA cambia el ángulo en cada pieza y evita repetir los ganchos de lo ya publicado. Edita lo que quieras antes de publicar.</small>
           </div>`;
-  const hist = (redes.historial||[]).slice(0,8).map(h=>`<div class="row" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--border);padding:8px 0"><span>${h.ok?'✅':'⚠️'}</span><div style="flex:1;min-width:200px">${h.tipo==='video'?'🎬 ':'🖼️ '}<b>${esc(h.titulo||h.video_nombre||'(sin título)')}</b> <small style="color:var(--muted)">· ${esc(h.plantilla||'')} · ${h.tipo==='video'?('video '+esc(h.video_nombre||'')+' · '+Math.round((h.video_bytes||0)/1048576)+' MB'+(h.pulido?' · ✨ pulido'+(h.subtitulos?' · '+h.subtitulos+' subtítulos':''):'')):(h.fotos+' foto(s)')} · ${new Date((h.creado_en||0)*1000).toLocaleString('es-PE')}</small>${h.error?`<br><small style="color:var(--rojo)">${esc(h.error)}</small>`:''}</div>${h.url?`<a class="btn-sec" href="${esc(h.url)}" target="_blank" rel="noopener">Ver en Facebook ↗</a>`:''}</div>`).join('') || '<div class="row" style="color:var(--muted)">Todavía no hay publicaciones.</div>';
+  const paso3 = `<small style="font-weight:700;color:var(--muted)">¿Quién escribe?</small><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">${plantillas}</div>${iaHtml}
+    <label style="display:block;margin-top:12px;font-size:12.5px;font-weight:700">${esVideo?'Título del video (va en el rótulo y el cierre; opcional)':'Título sobre la imagen'}<input id="rd_titulo" ${inp} maxlength="60" ${redesSel.redactando?'disabled placeholder="Redactando con IA…"':''}></label>
+    <label style="display:${esVideo?'none':'block'};margin-top:8px;font-size:12.5px;font-weight:700">Subtítulo sobre la imagen<input id="rd_sub" ${inp} maxlength="90"></label>
+    <label style="display:block;margin-top:12px;font-size:12.5px;font-weight:700">Texto de la publicación (lo que se lee en Facebook)<textarea id="rd_texto" rows="7" ${inp} ${redesSel.redactando?'disabled placeholder="Redactando con IA…"':''}></textarea></label>
+    <div class="rd-next"><button type="button" class="btn-sec" onclick="rdPaso(2)">← Estilo</button><span style="flex:1"></span><button type="button" class="btn-ap" onclick="rdPaso(4)">Siguiente: Revisar y publicar →</button></div>`;
+  const res3 = redesSel.redactando ? 'Redactando con IA…' : [prev.t ? `"${esc(prev.t)}"` : '', redesSel.plantilla==='ia' ? (redesSel.ia ? `✨ IA · ${esc(ENFOQUE_NAME(redesSel.ia.enfoque))}` : '✨ IA') : 'plantilla ' + esc(((redes.plantillas||{})[redesSel.plantilla]||{}).nombre||redesSel.plantilla)].filter(Boolean).join(' · ');
+  const ok3 = !!prev.t || !!prev.x;
+
+  // ── PASO 4 · Revisar y publicar ──────────────────────────────────────────
+  const paso4 = `<div style="font-size:13px;color:var(--muted);margin-bottom:8px">${esVideo ? 'Revisa el video en la vista previa (la versión pulida si la generaste) y el texto del paso 3.' : 'La vista previa de la derecha es exactamente lo que se publica. Si cambias algo en los pasos anteriores, se rearma sola.'}</div>
+    <div class="actions" style="margin-top:4px">
+      <button class="btn-sec" id="rd_prev_btn" onclick="previsualizarRedes()" ${esVideo?'style="display:none"':''}>👁️ Rearmar vista previa</button>
+      <button class="btn-sec" id="rd_descargar" onclick="descargarRedes()" ${redesSel.img&&!esVideo?'':'disabled'} ${esVideo?'style="display:none"':''}>⬇️ Descargar imagen</button>
+      <button class="btn-ap" id="rd_publicar" onclick="publicarRedes()" ${fb.configurado?(listoPub?'':'disabled title="'+(esVideo?'Espera a que termine de subir el video':'Primero arma la vista previa')+'"'):'disabled data-bloqueado="1" title="Conecta la página de Facebook en la pestaña Conexiones"'}>📣 Publicar ${esVideo?'video ':''}en Facebook</button>
+    </div>
+    ${!fb.configurado?'<small style="display:block;margin-top:8px;color:#8a5a00">Facebook no está conectado: puedes descargar la imagen y publicarla a mano, o conectar la página en <a href="#" onclick="rdUI(\'tab\',\'conexiones\');return false">Conexiones</a>.</small>':''}
+    <div id="rd_msg" class="row" style="margin-top:8px"></div>
+    <div class="rd-next"><button type="button" class="btn-sec" onclick="rdPaso(3)">← Texto</button></div>`;
+  const paso = (n, titulo, resumen, body, ok) => `<section class="rd-paso${redesUI.paso===n?' abierta':''}${ok&&redesUI.paso!==n?' lista':''}" data-paso="${n}">
+      <div class="rd-h" onclick="rdPaso(${n})"><span class="rd-num">${ok&&redesUI.paso!==n?'✓':n}</span><div><b>${titulo}</b><small>${resumen||''}</small></div><span class="rd-edit">${redesUI.paso===n?'':'Editar'}</span></div>
+      <div class="rd-cuerpo" style="${redesUI.paso===n?'':'display:none'}">${body}</div></section>`;
+
+  // ── Historial ────────────────────────────────────────────────────────────
+  const histN = (redes.historial||[]).length;
+  const hist = (redes.historial||[]).map(h=>`<div class="row" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--border);padding:8px 0"><span>${h.ok?'✅':'⚠️'}</span><div style="flex:1;min-width:200px">${h.tipo==='video'?'🎬 ':'🖼️ '}<b>${esc(h.titulo||h.video_nombre||'(sin título)')}</b> <small style="color:var(--muted)">· ${h.fuente==='agente'?'🤖 agente'+(h.audiencia?' · '+esc(h.audiencia):''):esc(h.plantilla||'')} · ${h.tipo==='video'?('video '+esc(h.video_nombre||'')+' · '+Math.round((h.video_bytes||0)/1048576)+' MB'+(h.pulido?' · ✨ pulido'+(h.musica?' · 🎵':'')+(h.subtitulos?' · '+h.subtitulos+' subtítulos':''):'')):(h.fotos+' foto(s)')} · ${new Date((h.creado_en||0)*1000).toLocaleString('es-PE')}</small>${h.error?`<br><small style="color:var(--rojo)">${esc(h.error)}</small>`:''}</div>${h.url?`<a class="btn-sec" href="${esc(h.url)}" target="_blank" rel="noopener">Ver en Facebook ↗</a>`:''}</div>`).join('') || '<div class="row" style="color:var(--muted)">Todavía no hay publicaciones.</div>';
+
+  // ── Pestañas ─────────────────────────────────────────────────────────────
+  const tabBtn = (k, txt) => `<button type="button" class="${redesUI.tab===k?'on':''}" onclick="rdUI('tab','${k}')">${txt}</button>`;
+  const tab = (k, html) => `<div class="rd-tab" data-tab="${k}" style="${redesUI.tab===k?'':'display:none'}">${html}</div>`;
+  const agActivo = agente && agente.config && agente.config.activo;
   document.getElementById('redesPanel').innerHTML = `
-    <div class="card" id="rd_agente"></div>
-    <div class="card"><div class="top"><h3>Publicar en Facebook</h3></div>
-      <div class="row">${estado}</div>
-      <div class="row rd-grid">
+    <div class="card">
+      <div class="top" style="flex-wrap:wrap;gap:8px"><h3>📣 Redes de Pichangol</h3><span style="flex:1"></span>${fbPill} ${bibPill}</div>
+      <div class="rd-tabs">${tabBtn('publicar','✍️ Publicar ahora')}${tabBtn('agente','🤖 Agente 24×7'+(agente?(agActivo?' · activo':' · pausado'):''))}${tabBtn('historial','🕘 Historial'+(histN?' ('+histN+')':''))}${tabBtn('conexiones','🔌 Conexiones')}</div>
+      ${tab('publicar', `<div class="rd-grid">
         <div>
-          <label style="font-size:12.5px;font-weight:700">1 · Local (fotos reales que subió el dueño)
-            <select id="rd_local" ${inp} onchange="cambiarLocalRedes(this.value)"><option value="">— elige un local —</option>${locales}</select></label>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px" id="rd_fotos">${fotos}</div>${subidasHtml}
-          <div style="margin-top:8px"><label class="btn-sec" for="rd_subir" style="cursor:pointer">📷 Subir fotos desde tu computadora</label><input type="file" id="rd_subir" accept="image/*" multiple hidden onchange="subirFotosRedes(this)"><small style="color:var(--muted);margin-left:8px">hasta ${redes.max_fotos||4} fotos en total · ${redesSel.fotos.length} elegida(s)</small></div>
-          <div id="rd_biblioteca" style="margin-top:12px"></div>
-          <div class="rd-video" style="margin-top:12px;padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:#FAFBFC">
-            <div style="font-size:12.5px;font-weight:700">🎬 O publica un VIDEO</div>
-            ${vidHtml}
-          </div>
-          <label style="display:block;margin-top:14px;font-size:12.5px;font-weight:700">2 · Plantilla</label>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">${plantillas}</div>${iaHtml}
-          <label style="display:block;margin-top:12px;font-size:12.5px;font-weight:700">${esVideo?'Título del video (opcional)':'Título en la imagen'}<input id="rd_titulo" ${inp} maxlength="60" ${redesSel.redactando?'disabled placeholder="Redactando con IA…"':''}></label>
-          <div id="rd_solo_foto" style="${esVideo?'display:none':''}">
-          <label style="display:block;margin-top:8px;font-size:12.5px;font-weight:700">Subtítulo<input id="rd_sub" ${inp} maxlength="90"></label>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px">
-            <label style="font-size:12.5px;font-weight:700">Etiqueta<input id="rd_etq" ${inp} maxlength="16" placeholder="Nuevo"></label>
-            <label style="font-size:12.5px;font-weight:700">Pie<input id="rd_pie" ${inp} value="www.pichangol.app" maxlength="40"></label>
-            <label style="font-size:12.5px;font-weight:700">Formato<select id="rd_formato" ${inp} onchange="redesSel.formato=this.value"><option value="cuadrado">Cuadrado 1080×1080 (feed)</option><option value="horizontal">Horizontal 1200×630</option><option value="historia">Historia 1080×1920</option></select></label>
-          </div>
-          </div>
-          <label style="display:block;margin-top:12px;font-size:12.5px;font-weight:700">3 · Texto de la publicación<textarea id="rd_texto" rows="7" ${inp} ${redesSel.redactando?'disabled placeholder="Redactando con IA…"':''}></textarea></label>
-          <div class="actions" style="margin-top:12px">
-            <button class="btn-sec" id="rd_prev_btn" onclick="previsualizarRedes()" ${esVideo?'style="display:none"':''}>👁️ Previsualizar</button>
-            <button class="btn-sec" id="rd_descargar" onclick="descargarRedes()" ${redesSel.img&&!esVideo?'':'disabled'} ${esVideo?'style="display:none"':''}>⬇️ Descargar imagen</button>
-            <button class="btn-ap" id="rd_publicar" onclick="publicarRedes()" ${fb.configurado?(listoPub?'':'disabled title="'+(esVideo?'Espera a que termine de subir el video':'Primero arma la vista previa')+'"'):'disabled data-bloqueado="1" title="Configura FB_PAGE_ID y FB_PAGE_TOKEN en Railway"'}>📣 Publicar ${esVideo?'video ':''}en Facebook</button>
-          </div>
-          <div id="rd_msg" class="row" style="margin-top:8px"></div>
+          ${paso(1,'Contenido',res1,paso1,ok1)}
+          ${paso(2,'Estilo',res2,paso2,ok2)}
+          ${paso(3,'Texto',res3,paso3,ok3)}
+          ${paso(4,'Revisar y publicar','',paso4,false)}
         </div>
         <div style="position:sticky;top:12px;align-self:start"><label style="font-size:12.5px;font-weight:700">Vista previa <small id="rd_prev_estado" style="color:var(--muted);font-weight:400"></small></label>
-          <div id="rd_prev" style="margin-top:4px;border:1px dashed var(--border);border-radius:14px;min-height:360px;display:flex;align-items:center;justify-content:center;color:var(--muted);background:#fafafa;overflow:hidden">${esVideo?`<video src="${(redesSel.video.pulido&&redesSel.video.pulido.usar&&redesSel.video.pulido.url)||redesSel.video.url}" controls playsinline style="max-width:100%;max-height:78vh;display:block;background:#000"></video>`:(redesSel.img?`<img src="${redesSel.img}" style="max-width:100%;max-height:78vh;display:block">`:'Elige o sube fotos o un video: la vista previa se arma sola.')}</div>
-          ${esVideo?`<small style="display:block;margin-top:6px;color:var(--muted)">${(redesSel.video.pulido&&redesSel.video.pulido.usar&&redesSel.video.pulido.url)?'Vista previa de la VERSIÓN PULIDA. ':''}Así se verá el video en la página; Facebook lo procesa unos minutos después de publicar. El texto de la publicación va debajo del video.</small>`:''}
+          <div id="rd_prev" style="margin-top:4px;border:1px dashed var(--border);border-radius:14px;min-height:360px;display:flex;align-items:center;justify-content:center;color:var(--muted);background:#fafafa;overflow:hidden">${esVideo?`<video src="${(vd.pulido&&vd.pulido.usar&&vd.pulido.url)||vd.url}" controls playsinline style="max-width:100%;max-height:78vh;display:block;background:#000"></video>`:(redesSel.img?`<img src="${redesSel.img}" style="max-width:100%;max-height:78vh;display:block">`:'Elige fotos o un video en el paso 1: la vista previa se arma sola.')}</div>
+          ${esVideo?`<small style="display:block;margin-top:6px;color:var(--muted)">${(vd.pulido&&vd.pulido.usar&&vd.pulido.url)?'Vista previa de la VERSIÓN PULIDA. ':''}Así se verá el video en la página; Facebook lo procesa unos minutos después de publicar. El texto de la publicación va debajo del video.</small>`:''}
         </div>
-      </div>
-      <details class="row" style="margin-top:14px"><summary style="cursor:pointer;font-weight:700">🔑 Cómo conectar la página (una sola vez)</summary>
-        <ol style="margin:8px 0 0 18px;line-height:1.6">
-          <li>Entra a <b>developers.facebook.com</b> con la cuenta que administra la página Pichangol → <b>Mis apps → Crear app</b> (tipo Empresa). Puede quedarse en <b>modo desarrollo</b>: los administradores de la app pueden publicar en sus propias páginas sin revisión de Meta.</li>
-          <li>En la app: <b>Herramientas → Explorador de la API Graph</b>. Elige la app, en "Usuario o página" selecciona <b>Obtener token de acceso a la página</b> → marca la página Pichangol y los permisos <code>pages_manage_posts</code>, <code>pages_read_engagement</code>, <code>pages_show_list</code> → Generar. <b>Tiene que ser el token de la PÁGINA</b> (en el desplegable debe quedar elegida "Pichangol", no tu nombre): con un token de usuario Facebook responde <i>"(#200) publish_actions… deprecated"</i>. Si pegas uno de usuario, la torre intenta obtener el de página sola, pero igual necesita que hayas marcado <code>pages_manage_posts</code>.</li>
-          <li>Convierte ese token en uno de LARGA duración: <b>Herramientas → Depurador de tokens de acceso</b> → pega el token → "Extender token de acceso". Un token de PÁGINA obtenido desde un token de usuario extendido no caduca.</li>
-          <li>Copia el <b>ID de la página</b> (Configuración de la página → Información de la página) y ponlo en Railway como <code>FB_PAGE_ID</code>. El token pégalo arriba en <b>🔑 Token de Facebook</b> (la torre lo extiende y guarda el de la página, que no vence) o, si prefieres, en Railway como <code>FB_PAGE_TOKEN</code>. <b>No lo pegues en el chat ni en el repo.</b></li>
-        </ol></details>
-      <div class="row" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)"><b>Historial</b>${hist}</div>
+      </div>`)}
+      ${tab('agente', `<div id="rd_agente"></div>`)}
+      ${tab('historial', `<div class="row"><b>Publicaciones hechas desde la torre y por el agente</b>${hist}</div>`)}
+      ${tab('conexiones', `<div class="row" style="padding:12px 14px;border:1px solid var(--border);border-radius:14px"><b>📘 Página de Facebook</b><div style="margin-top:6px">${estadoFb}</div>${tokenCaja}
+          <details class="row" style="margin-top:10px"><summary style="cursor:pointer;font-weight:700">Cómo conectar la página (una sola vez)</summary>
+            <ol style="margin:8px 0 0 18px;line-height:1.6">
+              <li>Entra a <b>developers.facebook.com</b> con la cuenta que administra la página Pichangol → <b>Mis apps → Crear app</b> (tipo Empresa). Puede quedarse en <b>modo desarrollo</b>: los administradores de la app pueden publicar en sus propias páginas sin revisión de Meta.</li>
+              <li>En la app: <b>Herramientas → Explorador de la API Graph</b>. Elige la app, en "Usuario o página" selecciona <b>Obtener token de acceso a la página</b> → marca la página Pichangol y los permisos <code>pages_manage_posts</code>, <code>pages_read_engagement</code>, <code>pages_show_list</code> → Generar. <b>Tiene que ser el token de la PÁGINA</b> (en el desplegable debe quedar elegida "Pichangol", no tu nombre): con un token de usuario Facebook responde <i>"(#200) publish_actions… deprecated"</i>. Si pegas uno de usuario, la torre intenta obtener el de página sola, pero igual necesita que hayas marcado <code>pages_manage_posts</code>.</li>
+              <li>Convierte ese token en uno de LARGA duración: <b>Herramientas → Depurador de tokens de acceso</b> → pega el token → "Extender token de acceso". Un token de PÁGINA obtenido desde un token de usuario extendido no caduca.</li>
+              <li>Copia el <b>ID de la página</b> (Configuración de la página → Información de la página) y ponlo en Railway como <code>FB_PAGE_ID</code>. El token pégalo arriba en <b>🔑 Token de Facebook</b> (la torre lo extiende y guarda el de la página, que no vence) o, si prefieres, en Railway como <code>FB_PAGE_TOKEN</code>. <b>No lo pegues en el chat ni en el repo.</b></li>
+            </ol></details></div>
+        <div class="row" style="margin-top:12px;padding:12px 14px;border:1px solid var(--border);border-radius:14px"><b>📷 Google Fotos · biblioteca de marca</b><div id="rd_biblioteca_con" style="margin-top:6px"></div></div>
+        <div class="row" style="margin-top:12px;font-size:12.5px;color:var(--muted)">Motores de este ambiente: redactor IA ${ia.disponible===false?'<b style="color:#8a5a00">apagado (sin ANTHROPIC_API_KEY)</b>':'<b style="color:var(--green)">activo</b>'} · pulido de video ${(redes.pulido||{}).disponible===false?'<b style="color:#8a5a00">sin FFmpeg</b>':'<b style="color:var(--green)">activo</b>'} · subtítulos Whisper ${(redes.pulido||{}).subtitulos===false?'<b style="color:#8a5a00">apagados (sin OPENAI_API_KEY)</b>':'<b style="color:var(--green)">activos</b>'}.</div>`)}
     </div>`;
   const set=(id,v)=>{ const el=document.getElementById(id); if(el && v!==undefined && v!==null && v!=='') el.value=v; };
   set('rd_titulo',prev.t); set('rd_sub',prev.s); set('rd_texto',prev.x); set('rd_etq',prev.e); set('rd_pie',prev.p); set('rd_formato', prev.f || redesSel.formato); set('rd_tema', prev.tema);
@@ -3378,36 +3475,36 @@ async function cargarBiblioteca(){
   renderBiblioteca();
 }
 function renderBiblioteca(){
-  const box = document.getElementById('rd_biblioteca'); if(!box) return;
-  if(!bib){ box.innerHTML = '<div class="rd-cargando" style="padding:8px 4px"><span class="rd-spin chico"></span> Cargando biblioteca…</div>'; return; }
-  const items = bib.items || [];
+  // Tres lugares: fotos (paso 1 · Fotos), videos (paso 1 · Video) y la conexión/gestión (pestaña Conexiones).
+  const bF = document.getElementById('rd_biblioteca'), bV = document.getElementById('rd_biblioteca_videos'), bC = document.getElementById('rd_biblioteca_con');
+  if(!bF && !bV && !bC) return;
+  const cargando = '<div class="rd-cargando" style="padding:8px 4px"><span class="rd-spin chico"></span> Cargando biblioteca…</div>';
+  if(!bib){ [bF,bV,bC].forEach(b=>{ if(b) b.innerHTML = cargando; }); return; }
+  const items = bib.items || [], fotos = items.filter(x=>x.tipo!=='video'), videos = items.filter(x=>x.tipo==='video');
   const enUso = new Set(redesSel.fotos);
-  const tarjeta = it => it.tipo==='video'
-    ? `<div style="position:relative;width:118px"><div style="width:118px;height:118px;border-radius:12px;background:#0A1B3D;display:flex;align-items:center;justify-content:center;color:#fff;font-size:28px">▶</div><small style="display:block;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(it.nombre||'video')}${it.usos?' · '+it.usos+' uso(s)':''}</small>
-        <button type="button" class="btn-sec" style="width:100%;margin-top:3px;padding:4px 6px;font-size:12px" onclick="bibUsarVideo('${it.id}')" ${bibOcupado?'disabled':''}>${bibOcupado==='video:'+it.id?'<span class="rd-spin chico"></span>':'🎬 Usar video'}</button>
-        <button type="button" title="Quitar de la biblioteca" onclick="bibQuitar('${it.id}')" style="position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;border:0;background:rgba(0,0,0,.65);color:#fff;font-weight:700;cursor:pointer;line-height:1">✕</button></div>`
-    : `<div style="position:relative;width:118px"><label style="cursor:pointer;display:block"><img src="${esc(it.url)}" loading="lazy" style="width:118px;height:118px;object-fit:cover;border-radius:12px;border:3px solid ${enUso.has(it.url)?'var(--green)':'transparent'};display:block"><input type="checkbox" ${enUso.has(it.url)?'checked':''} onchange="toggleFotoRedes('${esc(it.url)}',this.checked)" style="position:absolute;top:8px;left:8px;width:18px;height:18px"></label><small style="display:block;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${it.usos?it.usos+' uso(s)':'sin usar'}</small>
-        <button type="button" title="Quitar de la biblioteca" onclick="bibQuitar('${it.id}')" style="position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;border:0;background:rgba(0,0,0,.65);color:#fff;font-weight:700;cursor:pointer;line-height:1">✕</button></div>`;
-  const conexion = !bib.credenciales
+  const quitar = it => `<button type="button" title="Quitar de la biblioteca" onclick="bibQuitar('${it.id}')" style="position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;border:0;background:rgba(0,0,0,.65);color:#fff;font-weight:700;cursor:pointer;line-height:1">✕</button>`;
+  const tFoto = (it, conQuitar) => `<div style="position:relative;width:118px"><label style="cursor:pointer;display:block"><img src="${esc(it.url)}" loading="lazy" style="width:118px;height:118px;object-fit:cover;border-radius:12px;border:3px solid ${enUso.has(it.url)?'var(--green)':'transparent'};display:block"><input type="checkbox" ${enUso.has(it.url)?'checked':''} onchange="toggleFotoRedes('${esc(it.url)}',this.checked)" style="position:absolute;top:8px;left:8px;width:18px;height:18px"></label><small style="display:block;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${it.usos?it.usos+' uso(s)':'sin usar'}</small>${conQuitar?quitar(it):''}</div>`;
+  const tVideo = (it, conQuitar) => `<div style="position:relative;width:118px"><div style="width:118px;height:118px;border-radius:12px;background:#0A1B3D;display:flex;align-items:center;justify-content:center;color:#fff;font-size:28px">▶</div><small style="display:block;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(it.nombre||'video')}">${esc(it.nombre||'video')}${it.usos?' · '+it.usos+' uso(s)':''}</small>
+        ${conQuitar?quitar(it):`<button type="button" class="btn-ap" style="width:100%;margin-top:3px;padding:6px;font-size:12px" onclick="bibUsarVideo('${it.id}')" ${bibOcupado?'disabled':''}>${bibOcupado==='video:'+it.id?'<span class="rd-spin blanco"></span>':'Usar este video'}</button>`}</div>`;
+  const elegir = `<button type="button" class="btn-sec" onclick="bibElegir()" ${bibOcupado?'disabled':''}>${bibOcupado==='elegir'?'<span class="rd-spin blanco"></span> Esperando tu selección en Google Fotos…':'📷 Elegir en Google Fotos'}</button>${bibOcupado==='elegir'?' <button type="button" class="btn-sec" onclick="bibCancelarEspera()">Cancelar</button>':''}`;
+  const sinConexion = !bib.credenciales
     ? `<small style="color:#8a5a00">Para conectar Google Fotos faltan <code>GOOGLE_WEB_CLIENT_SECRET</code> (secreto del mismo cliente OAuth "Aplicación web" del login) en Railway y, en Google Cloud, habilitar la <b>Google Photos Picker API</b> y registrar la URI de redirección <code>${esc(bib.redirect_uri||'(PUBLIC_BASE_URL)/admin/api/redes/biblioteca/google/callback')}</code>.</small>`
-    : bib.conectado
-      ? `<span style="color:var(--green);font-weight:700">● Google Fotos conectado</span> <small style="color:var(--muted)">${esc(bib.cuenta||'')}</small>
-         <button type="button" class="btn-ap" style="margin-left:8px" onclick="bibElegir()" ${bibOcupado?'disabled':''}>${bibOcupado==='elegir'?'<span class="rd-spin blanco"></span> Esperando tu selección en Google Fotos…':'📷 Elegir fotos y videos en Google Fotos'}</button>
-         ${bibOcupado==='elegir'?'<button type="button" class="btn-sec" onclick="bibCancelarEspera()">Cancelar</button>':''}
-         <button type="button" class="btn-sec" onclick="bibDesconectar()" ${bibOcupado?'disabled':''}>Desconectar</button>`
-      : `<button type="button" class="btn-ap" onclick="bibConectar()">🔗 Conectar Google Fotos</button> <small style="color:var(--muted)">Se abre Google para autorizar; solo se leen las fotos y videos que TÚ elijas en el selector.</small>`;
-  box.innerHTML = `<details ${bibAbierta||items.length?'open':''} ontoggle="bibAbierta=this.open" style="padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:#FAFBFC">
-      <summary style="cursor:pointer;font-size:12.5px;font-weight:700">📷 Google Fotos · biblioteca de marca <small style="color:var(--muted);font-weight:400">· ${bib.fotos||0} fotos · ${bib.videos||0} videos</small></summary>
-      <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">${conexion}</div>
-      ${!bib.storage?'<small style="color:var(--rojo)">Sin SUPABASE_URL/ANON_KEY en Railway no se pueden guardar los archivos importados.</small>':''}
-      <div id="rd_bib_msg" style="margin-top:6px;font-size:12.5px"></div>
-      ${items.length?`<small style="display:block;margin-top:8px;color:var(--muted)">Marca fotos para esta publicación (entran al collage) o usa un video (pasa al flujo de pulido con música). El agente 24×7 también toma de aquí, rotando las menos usadas.</small>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">${items.map(tarjeta).join('')}</div>`:'<small style="display:block;margin-top:8px;color:var(--muted)">La biblioteca está vacía. Elige fotos y videos en Google Fotos y quedarán guardados aquí para las publicaciones y para el agente.</small>'}
-    </details>`;
+    : `<button type="button" class="btn-ap" onclick="bibConectar()">🔗 Conectar Google Fotos</button> <small style="color:var(--muted)">Se abre Google para autorizar; solo se leen las fotos y videos que TÚ elijas en el selector.</small>`;
+  const msg = '<div class="rd-bib-msg" style="margin-top:6px;font-size:12.5px"></div>';
+  if(bF) bF.innerHTML = !bib.conectado ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${sinConexion}</div>${msg}`
+    : `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><small style="color:var(--muted)">Marca las fotos que entran a esta publicación.</small><span style="flex:1"></span>${elegir}</div>${msg}
+       ${fotos.length?`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">${fotos.map(it=>tFoto(it,false)).join('')}</div>`:'<small style="display:block;margin-top:8px;color:var(--muted)">Aún no hay fotos en la biblioteca: pulsa "Elegir en Google Fotos".</small>'}`;
+  if(bV) bV.innerHTML = !bib.conectado ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${sinConexion}</div>${msg}`
+    : `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><small style="color:var(--muted)">Elige un video: pasa al paso 2 para pulirlo con música.</small><span style="flex:1"></span>${elegir}</div>${msg}
+       ${videos.length?`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">${videos.map(it=>tVideo(it,false)).join('')}</div>`:'<small style="display:block;margin-top:8px;color:var(--muted)">Aún no hay videos en la biblioteca: pulsa "Elegir en Google Fotos" y marca uno.</small>'}`;
+  if(bC) bC.innerHTML = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${!bib.conectado ? sinConexion : `<span style="color:var(--green);font-weight:700">● Google Fotos conectado</span> <small style="color:var(--muted)">${esc(bib.cuenta||'')}</small> ${elegir} <button type="button" class="btn-sec" onclick="bibDesconectar()" ${bibOcupado?'disabled':''}>Desconectar</button>`}</div>
+      ${!bib.storage?'<small style="color:var(--rojo)">Sin SUPABASE_URL/ANON_KEY en Railway no se pueden guardar los archivos importados.</small>':''}${msg}
+      <small style="display:block;margin-top:8px;color:var(--muted)">Lo que eliges en Google Fotos se copia a la biblioteca de Pichangol (${bib.fotos||0} fotos · ${bib.videos||0} videos). El agente 24×7 publica con estas fotos y, jueves a sábado, con un video que no haya usado en 14 días. Con ✕ se quita de la biblioteca y de Storage.</small>
+      ${items.length?`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">${items.map(it=>it.tipo==='video'?tVideo(it,true):tFoto(it,true)).join('')}</div>`:''}`;
 }
 async function bibConectar(){
   try{ const r = await fetch('/admin/api/redes/biblioteca/google/autorizar',{headers:headers()}); const j = await r.json().catch(()=>({}));
-    if(r.ok && j.ok){ window.open(j.url, '_blank', 'noopener'); const m=document.getElementById('rd_bib_msg'); if(m) m.innerHTML='<span class="rd-spin chico"></span> Autoriza en la pestaña de Google y vuelve aquí; la biblioteca se actualiza sola.'; let n=0; const t=setInterval(async()=>{ await cargarBiblioteca(); n++; if((bib&&bib.conectado)||n>60) clearInterval(t); }, 3000); }
+    if(r.ok && j.ok){ window.open(j.url, '_blank', 'noopener'); const m=({set innerHTML(h){ bibMsg(h); }}); if(m) m.innerHTML='<span class="rd-spin chico"></span> Autoriza en la pestaña de Google y vuelve aquí; la biblioteca se actualiza sola.'; let n=0; const t=setInterval(async()=>{ await cargarBiblioteca(); n++; if((bib&&bib.conectado)||n>60) clearInterval(t); }, 3000); }
     else alert(j.detail||'No se pudo iniciar la conexión'); }catch(e){ alert('Error de red'); }
 }
 async function bibDesconectar(){
@@ -3419,17 +3516,17 @@ async function bibElegir(){
   try{ const r = await fetch('/admin/api/redes/biblioteca/google/sesion',{method:'POST',headers:headers()}); const j = await r.json().catch(()=>({}));
     if(!(r.ok && j.ok)){ alert(j.detail||'No se pudo abrir el selector'); bibOcupado=''; renderBiblioteca(); return; }
     bibSesion = j.id; window.open(j.pickerUri, '_blank', 'noopener');
-    const m=document.getElementById('rd_bib_msg'); if(m) m.innerHTML='<span class="rd-spin chico"></span> Elige las fotos y videos en la pestaña de Google Fotos y pulsa "Listo" allá. Cuando termines, se importan solos.';
+    const m=({set innerHTML(h){ bibMsg(h); }}); if(m) m.innerHTML='<span class="rd-spin chico"></span> Elige las fotos y videos en la pestaña de Google Fotos y pulsa "Listo" allá. Cuando termines, se importan solos.';
     bibTimer = setTimeout(bibSondear, Math.max(2000, j.poll_ms||3000));
   }catch(e){ alert('Error de red'); bibOcupado=''; renderBiblioteca(); }
 }
 async function bibSondear(){
   if(!bibSesion) return;
   try{ const r = await fetch('/admin/api/redes/biblioteca/google/sesion/'+encodeURIComponent(bibSesion),{headers:headers()}); const j = await r.json().catch(()=>({}));
-    if(!r.ok){ const m=document.getElementById('rd_bib_msg'); if(m) m.innerHTML=`<span style="color:var(--rojo)">${esc(j.detail||'Error')}</span>`; bibOcupado=''; bibSesion=null; renderBiblioteca(); return; }
+    if(!r.ok){ const m=({set innerHTML(h){ bibMsg(h); }}); if(m) m.innerHTML=`<span style="color:var(--rojo)">${esc(j.detail||'Error')}</span>`; bibOcupado=''; bibSesion=null; renderBiblioteca(); return; }
     if(!j.listo){ bibTimer = setTimeout(bibSondear, 3000); return; }
     bibSesion=null; bibOcupado=''; await cargarBiblioteca();
-    const m=document.getElementById('rd_bib_msg'); if(m) m.innerHTML = `<span style="color:var(--green);font-weight:700">✓ Importados ${j.importados}</span>${j.omitidos?` · omitidos ${j.omitidos}`:''}${(j.detalle||[]).length?'<br><small style="color:var(--muted)">'+j.detalle.map(esc).join('<br>')+'</small>':''}`;
+    const m=({set innerHTML(h){ bibMsg(h); }}); if(m) m.innerHTML = `<span style="color:var(--green);font-weight:700">✓ Importados ${j.importados}</span>${j.omitidos?` · omitidos ${j.omitidos}`:''}${(j.detalle||[]).length?'<br><small style="color:var(--muted)">'+j.detalle.map(esc).join('<br>')+'</small>':''}`;
     toast('Biblioteca actualizada');
   }catch(e){ bibTimer = setTimeout(bibSondear, 4000); }
 }
@@ -3444,8 +3541,7 @@ async function bibUsarVideo(id){
     if(r.ok && j.ok){
       if(redesSel.video && redesSel.video.url && redesSel.video.url.startsWith('blob:')) URL.revokeObjectURL(redesSel.video.url);
       redesSel.video = {nombre:j.nombre, bytes:j.bytes, url:j.url, estado:'listo', pct:100, id:j.video_id, dur:0, pulido:null};
-      toast('Video listo: púlelo con música y publica'); renderRedes(); botonesRedes(false);
-      const el=document.getElementById('rd_pulir'); if(el) el.scrollIntoView({block:'center'});
+      redesUI.tipo='video'; redesUI.paso=2; toast('Video listo: elige la música y púlelo'); renderRedes(); botonesRedes(false);
     } else alert(j.detail||'No se pudo traer el video'); }catch(e){ alert('Error de red'); }
   bibOcupado=''; renderBiblioteca();
 }
@@ -3667,7 +3763,7 @@ function subirVideoRedes(inp){
   xhr.open('POST', '/admin/api/redes/pichangol/video?nombre='+encodeURIComponent(f.name));
   xhr.setRequestHeader('X-Admin-Token', tok()); xhr.setRequestHeader('Content-Type', f.type || 'application/octet-stream');
   xhr.upload.onprogress = e => { if(!e.lengthComputable || !redesSel.video) return; redesSel.video.pct = Math.round(e.loaded*100/e.total); const b=document.getElementById('rd_video_prog'), t=document.getElementById('rd_video_pct'); if(b) b.style.width = redesSel.video.pct+'%'; if(t) t.textContent = redesSel.video.pct+'%'; };
-  xhr.onload = () => { if(!redesSel.video) return; let j={}; try{ j=JSON.parse(xhr.responseText||'{}'); }catch(e){} if(xhr.status===401){ salir(); return; } if(xhr.status>=200 && xhr.status<300 && j.ok){ redesSel.video.id=j.video_id; redesSel.video.estado='listo'; redesSel.video.pct=100; toast('Video listo para publicar'); } else { redesSel.video.estado='error'; redesSel.video.error = j.detail || ('No se pudo subir (HTTP '+xhr.status+')'); } renderRedes(); botonesRedes(false); };
+  xhr.onload = () => { if(!redesSel.video) return; let j={}; try{ j=JSON.parse(xhr.responseText||'{}'); }catch(e){} if(xhr.status===401){ salir(); return; } if(xhr.status>=200 && xhr.status<300 && j.ok){ redesSel.video.id=j.video_id; redesSel.video.estado='listo'; redesSel.video.pct=100; redesUI.paso=2; toast('Video listo: elige la música y púlelo'); } else { redesSel.video.estado='error'; redesSel.video.error = j.detail || ('No se pudo subir (HTTP '+xhr.status+')'); } renderRedes(); botonesRedes(false); };
   xhr.onerror = () => { if(!redesSel.video) return; redesSel.video.estado='error'; redesSel.video.error='Se cortó la subida (red). Inténtalo de nuevo.'; renderRedes(); };
   xhr.send(f);
 }
@@ -3677,7 +3773,7 @@ function quitarVideoRedes(){
   if(v.url) URL.revokeObjectURL(v.url);
   if(v.pulido && v.pulido.url) URL.revokeObjectURL(v.pulido.url);
   clearTimeout(pulTimer);
-  redesSel.video = null; renderRedes(); autoPrevRedes();
+  redesSel.video = null; redesUI.paso = 1; renderRedes(); autoPrevRedes();
 }
 let rdSeq = 0;
 async function previsualizarRedes(auto){

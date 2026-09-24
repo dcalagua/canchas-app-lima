@@ -1257,6 +1257,29 @@ off → redeploy inmediato en cada push). URL pública:
   desconectar conserva lo importado; quitar borra también de Storage. Test
   `test_biblioteca_google_fotos_importa_y_el_agente_publica_video_con_musica`
   (Google simulado, FFmpeg real con clip mudo → sale con audio).
+  **UX DEL PANE = ASISTENTE POR PASOS (queja del director, 24-sep-2026: "me
+  confundo mucho, se me hace difícil navegar en la pantalla"):** el pane
+  "Publicar en Facebook" (`renderRedes`) ya no es una página larga sino una
+  tarjeta "📣 Redes de Pichangol" con PESTAÑAS (`redesUI.tab`, recordado en
+  `localStorage` `pichangol_redes_ui`): **✍️ Publicar ahora** = asistente de
+  4 pasos tipo acordeón (`.rd-paso`, uno abierto a la vez, cabecera con
+  número/✓ + resumen + "Editar", botones Siguiente/←): 1 Contenido (tiles
+  📷 Fotos / 🎬 Video + "De dónde": Google Fotos · Fotos de un local · Mi
+  computadora; tira "Elegidas n/4"; al elegir un video de la biblioteca o
+  terminar de subir uno salta solo al paso 2), 2 Estilo (fotos: formato,
+  etiqueta, pie; video: `pulidoHtml` con 🎵 Música y Estilo), 3 Texto
+  (plantilla/IA, título, subtítulo, texto) y 4 Revisar y publicar (botones +
+  `rd_msg`); vista previa sticky a la derecha. **🤖 Agente 24×7** (`#rd_agente`),
+  **🕘 Historial** (completo) y **🔌 Conexiones** (estado + token de Facebook +
+  guía, Google Fotos conectar/elegir/desconectar + gestión con ✕, motores del
+  ambiente). Píldoras de estado en la cabecera (Facebook / Google Fotos) que
+  llevan a Conexiones. TODOS los inputs (`rd_titulo`, `rd_etq`, `rd_formato`…)
+  quedan SIEMPRE en el DOM (pasos/pestañas ocultos con `display:none`), porque
+  `renderRedes` re-lee sus valores en cada repintado. `renderBiblioteca` pinta
+  en tres contenedores (`#rd_biblioteca` fotos, `#rd_biblioteca_videos`,
+  `#rd_biblioteca_con`) y los mensajes van a `.rd-bib-msg` (`bibMsg`). OJO:
+  la cabecera del paso es `<div class="rd-h">`, NO `<header>` (el CSS global
+  de la torre pinta `header b` en blanco y los títulos desaparecían).
 - **DATOS DE LA EMPRESA CONFIGURABLES DESDE LA TORRE (pedido del director,
   sep-2026):** razón social, tipo y número de documento fiscal (RUC/NIT),
   dirección, ciudad corta, **WhatsApp POR PAÍS** (Perú, Ecuador, Bolivia:
